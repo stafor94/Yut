@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { User } from 'firebase/auth';
 import { GameBoard, type BoardPiece } from '../features/game/components/GameBoard';
 import { ItemCard } from '../features/items/components/ItemCard';
-import type { ItemType } from '../features/items/logic/items';
+import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { createRoom, deleteRoom, subscribeRoom, updateRoomOptions, type RoomSummary } from '../features/room/services/roomService';
@@ -138,6 +138,7 @@ export function App() {
   const [rollAnimation, setRollAnimation] = useState<RollAnimation | null>(null);
   const [forcedRoll, setForcedRoll] = useState<YutResult | null>(null);
   const [goldenYutPickerOpen, setGoldenYutPickerOpen] = useState(false);
+  const [itemPromptTiming, setItemPromptTiming] = useState<ItemTiming | null>(null);
   const rooms = useRooms();
   const serverStatus = isFirebaseConfigured ? (user ? '온라인' : '입장 준비 중') : '연결 정보 확인 필요';
   const serverStatusTone = isFirebaseConfigured ? (user ? 'online' : 'pending') : 'offline';
@@ -202,10 +203,24 @@ export function App() {
   }, [maxPlayers, playMode]);
 
   useEffect(() => {
-    if (screen !== 'game' || winner || !activeSeat || isMyTurn || roll || movingPieceId) return undefined;
+    if (!itemPromptTiming) return undefined;
+    const timer = window.setTimeout(() => setItemPromptTiming(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [itemPromptTiming]);
+
+  useEffect(() => {
+    if (screen === 'game' && roll && isMyTurn && !movingPieceId) showItemPrompt('after_roll');
+  }, [roll]);
+
+  useEffect(() => {
+    if (screen === 'game' && lastMovedSeatId === 'host' && !movingPieceId) showItemPrompt('after_move');
+  }, [lastMovedPieceIds, lastMovedSeatId]);
+
+  useEffect(() => {
+    if (screen !== 'game' || winner || itemPromptTiming || !activeSeat || isMyTurn || roll || movingPieceId) return undefined;
     const timer = window.setTimeout(() => { void autoPlayTurn(activeSeat); }, TURN_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeSeat, isMyTurn, movingPieceId, pieces, roll, screen, winner]);
+  }, [activeSeat, isMyTurn, itemPromptTiming, movingPieceId, pieces, roll, screen, winner]);
 
 
   useEffect(() => {
@@ -262,7 +277,7 @@ export function App() {
     const nextPieces = makePieces(playableSeats, pieceCount);
     setPieces(nextPieces);
     setBoardItems(itemMode ? spawnInitialBoardItems(4, 8) : []);
-    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); setRoll(null); setForcedRoll(null); setGoldenYutPickerOpen(false); setBranchChoice('outer');
+    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); setRoll(null); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer');
     setLogs([{ id: Date.now(), text: '게임이 시작되었습니다. 윷을 던져주세요.' }]);
     setScreen('game');
   }
@@ -271,7 +286,21 @@ export function App() {
   function showToast(title: string, description?: string, icon?: string) {
     const nextToast = { id: Date.now(), title, description, icon };
     setToast(nextToast);
-    window.setTimeout(() => setToast((current) => current?.id === nextToast.id ? null : current), 3000);
+    window.setTimeout(() => setToast((current) => current?.id === nextToast.id ? null : current), 4000);
+  }
+  function getUsableHostItems(timing: ItemTiming) {
+    if (movingPieceId || winner) return [];
+    if (timing === 'after_roll' && (!isMyTurn || !roll)) return [];
+    if (timing === 'after_move' && lastMovedSeatId !== 'host') return [];
+    return (ownedItems.host ?? []).filter((type) => {
+      if (ITEM_DEFINITIONS[type].timing !== timing) return false;
+      if (type === 'shield') return lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && piece.ownerId === 'host' && piece.started && !piece.finished));
+      if (type === 'trap') return pieces.some((piece) => piece.id === selectedPieceId && piece.ownerId === 'host' && piece.started && !piece.finished);
+      return true;
+    });
+  }
+  function showItemPrompt(timing: ItemTiming) {
+    if (getUsableHostItems(timing).length) setItemPromptTiming(timing);
   }
   function makeRollSticks(result: YutResult) {
     const flatCount = result.name === '모' ? 0 : Math.max(0, result.steps);
@@ -338,12 +367,22 @@ export function App() {
     const movePathNodeIds = getMovePathNodeIds(currentNodeId, steps, branchChoice);
     for (let step = 0; step < Math.max(0, steps); step += 1) {
       const nextNodeId = movePathNodeIds[step];
-      finishedMove = !nextNodeId;
-      currentNodeId = finishedMove ? 'finish' : nextNodeId ?? 'finish';
-      nextNodeIndex = finishedMove ? 20 : BOARD_NODES.findIndex((node) => node.id === nextNodeId);
-      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: finishedMove } : piece));
+      if (!nextNodeId) {
+        currentNodeId = 'n01';
+        nextNodeIndex = 0;
+        setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: false } : piece));
+        await delay(STEP_DELAY_MS);
+        currentNodeId = 'finish';
+        nextNodeIndex = 20;
+        finishedMove = true;
+        setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: true } : piece));
+        await delay(STEP_DELAY_MS);
+        break;
+      }
+      currentNodeId = nextNodeId;
+      nextNodeIndex = BOARD_NODES.findIndex((node) => node.id === nextNodeId);
+      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: false } : piece));
       await delay(STEP_DELAY_MS);
-      if (finishedMove) break;
     }
     if (steps < 0 && movingPiece.started) {
       setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: true, finished: false } : piece));
@@ -359,7 +398,7 @@ export function App() {
       setBoardItems((items) => items.filter((item) => item.id !== landedItem.id));
       const itemName = ITEM_DEFINITIONS[landedItem.type].name;
       addLog(`${seat.label}이(가) 아이템 '${itemName}'을 획득했습니다.`);
-      showToast(`${seat.label} ${itemName} 획득`, ITEM_DEFINITIONS[landedItem.type].description, ITEM_DEFINITIONS[landedItem.type].icon);
+      showToast(itemName, ITEM_DEFINITIONS[landedItem.type].description, ITEM_DEFINITIONS[landedItem.type].icon);
       setHighlightedNodeId(landedNode?.id ?? '');
       window.setTimeout(() => setHighlightedNodeId((current) => current === landedNode?.id ? '' : current), 1400);
     }
@@ -439,7 +478,7 @@ export function App() {
     if (!itemOwnerSeat) return;
     const activeItems = ownedItems[itemOwnerId] ?? [];
     if (!activeItems.includes(type)) return;
-    const consumeItem = () => setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; });
+    const consumeItem = () => { setItemPromptTiming(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
     if (type === 'golden_yut') {
       if (!isMyTurn || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
       consumeItem();
@@ -483,7 +522,7 @@ export function App() {
     setMessage('방에서 나왔습니다.');
   }
 
-  function finishGame() { setScreen('lobby'); setActiveRoomTitle(''); setActiveRoomId(''); setIsRoomHost(false); setCountdown(-1); setSeats(createSeats(nickname, playMode, maxPlayers)); setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.'); }
+  function finishGame() { setScreen('lobby'); setActiveRoomTitle(''); setActiveRoomId(''); setIsRoomHost(false); setCountdown(-1); setItemPromptTiming(null); setSeats(createSeats(nickname, playMode, maxPlayers)); setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.'); }
 
   async function changeWaitingOptions(next: { itemMode?: boolean; pieceCount?: PieceCount }) {
     const nextItemMode = next.itemMode ?? itemMode;
@@ -507,6 +546,8 @@ export function App() {
     {screen === 'waitingRoom' && <section className="panel waiting-room" aria-label="방 대기 화면"><p className="section-kicker">게임 시작 대기</p><h2 className="room-title">{activeRoomTitle || title}</h2><p className="room-subtitle">{playMode === 'team' ? '팀을 고르고 인원을 맞춰주세요' : '모두 준비되면 방장이 시작합니다'}</p><div className="mode-summary"><b>{playMode === 'team' ? '팀전' : '개인전'}</b><span>{maxPlayers}인</span><span>말 {pieceCount}개</span><span>{itemMode ? '아이템 ON' : '아이템 OFF'}</span>{playMode === 'team' && <span>청팀 {teamCounts.청팀}명 / 홍팀 {teamCounts.홍팀}명</span>}</div>{isRoomHost && <div className="host-room-options"><label>말 개수<select value={pieceCount} onChange={(e) => changeWaitingOptions({ pieceCount: Number(e.target.value) as PieceCount })}><option value={1}>1개</option><option value={2}>2개</option><option value={3}>3개</option><option value={4}>4개</option></select></label><label className="check-row"><input type="checkbox" checked={itemMode} onChange={(e) => changeWaitingOptions({ itemMode: e.target.checked })} /> 아이템전</label></div>}<div className="ready-list">{seats.map((seat) => <article className={`ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''}`} key={seat.id}><b>{seat.label}</b><span>{seat.name}</span>{playMode === 'team' && <select value={seat.team} onChange={(e) => changeTeam(seat.id, e.target.value as Team)}><option value="청팀">청팀</option><option value="홍팀">홍팀</option></select>}<em>{seat.isAI ? 'AI 대체' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em>{seat.isHost && <small>방장</small>}{seat.isEmpty && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>AI 플레이</button>}{seat.isAI && !seat.isHost && <button className="mini-button secondary" onClick={() => cancelAISeat(seat.id)}>취소</button>}</article>)}</div>{countdown >= 0 && <div className="countdown-overlay" role="status"><span>게임 시작</span><strong>{countdown}</strong><button className="secondary mini-button" onClick={() => { setCountdown(-1); setMessage('시작이 취소되었습니다.'); }}>취소</button></div>}{playMode === 'team' && !teamBalanced && <p className="notice warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}<div className="waiting-actions"><button onClick={handleStartGame} disabled={!allReady}>게임 시작</button><button className="secondary" onClick={leaveRoom}>방 나가기</button></div>{message && <p className="notice">{message}</p>}</section>}
 
 
+
+    {itemPromptTiming && getUsableHostItems(itemPromptTiming).length > 0 && <div className="item-prompt" role="dialog" aria-modal="true" aria-label="아이템 사용 선택"><div className="item-prompt-card"><p className="section-kicker">아이템 사용</p><h2>지금 아이템을 사용할까요?</h2><p>10초 안에 선택하지 않으면 사용하지 않고 진행합니다.</p><div className="item-prompt-timer" aria-hidden="true"><span></span></div><div className="item-prompt-list">{getUsableHostItems(itemPromptTiming).map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><ItemCard type={type} /></button>)}</div><button className="secondary" onClick={() => setItemPromptTiming(null)}>사용 안 함</button></div></div>}
 
     {toast && <div className="toast-message" role="status" aria-live="polite"><strong>{toast.icon} {toast.title}</strong>{toast.description && <span>{toast.description}</span>}</div>}
 

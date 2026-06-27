@@ -778,28 +778,68 @@ select {
 .branch-controls {
   position: absolute;
   z-index: 18;
-  display: flex;
-  gap: 6px;
-  translate: calc(-50% + 34px) calc(-50% - 34px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(82px, 1fr));
+  gap: 8px;
+  width: min(230px, 42vw);
+  padding: 10px;
+  border: 2px solid rgba(242, 184, 75, .72);
+  border-radius: 20px;
+  background: rgba(255, 248, 234, .96);
+  box-shadow: 0 18px 44px rgba(42, 30, 23, .24);
+  translate: -50% calc(-100% - 28px);
+  backdrop-filter: blur(10px);
+}
+
+.branch-controls::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -10px;
+  width: 18px;
+  height: 18px;
+  translate: -50% 0;
+  rotate: 45deg;
+  background: rgba(255, 248, 234, .96);
+  border-right: 2px solid rgba(242, 184, 75, .72);
+  border-bottom: 2px solid rgba(242, 184, 75, .72);
+}
+
+.branch-controls-title {
+  grid-column: 1 / -1;
+  color: var(--green);
+  font-size: .82rem;
+  font-weight: 1000;
+  letter-spacing: .04em;
 }
 
 .branch-controls button {
-  width: 34px;
-  height: 34px;
-  border: 2px solid rgba(133, 77, 37, .45);
-  border-radius: 999px;
-  background: #fff9ea;
-  color: var(--brown);
-  font-size: 20px;
+  display: grid;
+  gap: 2px;
+  min-height: 54px;
+  padding: 9px 10px;
+  border: 2px solid rgba(133, 77, 37, .22);
+  border-radius: 14px;
+  background: #fff;
+  color: #2a1e17;
+  font-size: .95rem;
   font-weight: 1000;
-  box-shadow: 0 8px 18px rgba(42, 30, 23, .18);
+  box-shadow: 0 8px 18px rgba(42, 30, 23, .12);
+}
+
+.branch-controls button small {
+  color: rgba(42, 30, 23, .58);
+  font-size: .72rem;
+  font-weight: 900;
 }
 
 .branch-controls button.active {
-  border-color: var(--red);
-  background: var(--red);
+  border-color: var(--green);
+  background: linear-gradient(145deg, #2f6b4f, #224236);
   color: #fff;
 }
+
+.branch-controls button.active small { color: rgba(255, 255, 255, .78); }
 
 .board-node.route-preview {
   outline: 4px solid rgba(242, 184, 75, .72);
@@ -810,21 +850,6 @@ select {
 .board-node.item-collected {
   animation: item-node-burst 1.25s ease-out;
   z-index: 7;
-}
-
-.board-node.item-collected::after {
-  content: "아이템!";
-  position: absolute;
-  left: 50%;
-  top: -54px;
-  translate: -50% 0;
-  border-radius: 999px;
-  padding: 7px 12px;
-  background: var(--red);
-  color: #fff;
-  font-weight: 1000;
-  box-shadow: 0 14px 28px rgba(217, 74, 56, .3);
-  animation: item-pop-label 1.25s ease-out;
 }
 
 .toast-message {
@@ -1029,14 +1054,14 @@ aside.players,
   top: 50%;
   display: grid;
   gap: 8px;
-  width: min(92vw, 420px);
+  width: min(92vw, 460px);
   border-radius: 26px;
   text-align: center;
   background: linear-gradient(145deg, #224236, #2f6b4f);
-  animation-duration: 3s;
+  animation-duration: 4s;
 }
 
-.toast-message strong { font-size: 1.2rem; }
+.toast-message strong { font-size: clamp(1.35rem, 3vw, 1.8rem); }
 .toast-message span { font-weight: 800; opacity: .92; }
 
 .yut-stick.round i::before,
@@ -1144,6 +1169,10 @@ aside.players,
   gap: 10px;
 }
 
+.winner-overlay {
+  width: min(92vw, 552px);
+}
+
 .winner-overlay span {
   color: var(--green);
   font-weight: 1000;
@@ -1151,5 +1180,60 @@ aside.players,
 
 .winner-overlay strong {
   color: var(--red);
-  font-size: clamp(2rem, 7vw, 4rem);
+  font-size: clamp(1.6rem, 4.5vw, 3rem);
+}
+
+.item-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(42, 30, 23, .28);
+  backdrop-filter: blur(4px);
+}
+
+.item-prompt-card {
+  display: grid;
+  gap: 12px;
+  width: min(92vw, 520px);
+  max-height: min(86svh, 680px);
+  overflow: auto;
+  padding: 24px;
+  border-radius: 28px;
+  background: rgba(255, 248, 234, .98);
+  border: 3px solid rgba(242, 184, 75, .72);
+  box-shadow: 0 30px 80px rgba(42, 30, 23, .32);
+}
+
+.item-prompt-card h2,
+.item-prompt-card p {
+  margin: 0;
+}
+
+.item-prompt-timer {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(42, 30, 23, .12);
+}
+
+.item-prompt-timer span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), var(--gold));
+  animation: item-prompt-countdown 10s linear forwards;
+}
+
+.item-prompt-list {
+  display: grid;
+  gap: 10px;
+}
+
+@keyframes item-prompt-countdown {
+  from { width: 100%; }
+  to { width: 0%; }
 }
