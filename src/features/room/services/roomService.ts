@@ -8,7 +8,8 @@ export interface RoomSummary {
 
 export async function createRoom(params: { title: string; hostId: string; nickname: string; maxPlayers: 1|2|3|4; itemMode: boolean; playMode: 'individual'|'team'; password?: string; }) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
-  const roomRef = await addDoc(collection(db, 'rooms'), {
+  const firestore = db;
+  const roomRef = await addDoc(collection(firestore, 'rooms'), {
     title: params.title,
     hostId: params.hostId,
     maxPlayers: params.maxPlayers,
@@ -19,9 +20,9 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     status: 'waiting',
     createdAt: serverTimestamp(),
   });
-  await setDoc(doc(db, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: 'red', joinedAt: serverTimestamp() });
+  await setDoc(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: 'red', joinedAt: serverTimestamp() });
   if (params.itemMode) {
-    await Promise.all(spawnInitialBoardItems().map((item) => setDoc(doc(db, 'rooms', roomRef.id, 'boardItems', item.id), item)));
+    await Promise.all(spawnInitialBoardItems().map((item) => setDoc(doc(firestore, 'rooms', roomRef.id, 'boardItems', item.id), item)));
   }
   return roomRef.id;
 }
