@@ -48,8 +48,10 @@ export type BranchChoice = 'outer' | 'shortcut';
 const OUTER_ROUTE = ['n01','n02','n03','n04','n05','n06','n07','n08','n09','n10','n11','n12','n13','n14','n15','n16','n17','n18','n19','n20'];
 const SHORTCUTS: Record<string, string[]> = {
   n06: ['d05','d06','c01','d07','d08','n16','n17','n18','n19','n20'],
-  n11: ['d01','d02','c01','d03','d04','n01'],
-  c01: ['d03','d04','n01'],
+  // The bottom-right corner is the goal when reached from a shortcut/return path.
+  // Do not route back to n01, which is also the visual start point for pieces waiting to enter.
+  n11: ['d01','d02','c01','d03','d04'],
+  c01: ['d03','d04'],
 };
 const CENTER_OUTER_ROUTE = ['d07','d08','n16','n17','n18','n19','n20'];
 export const BRANCH_NODE_IDS = ['n06','n11','c01'] as const;

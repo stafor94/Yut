@@ -4,7 +4,7 @@ import { GameBoard, type BoardPiece } from '../features/game/components/GameBoar
 import { ItemCard } from '../features/items/components/ItemCard';
 import type { ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
-import { BOARD_NODES, getBoardNodeById, getMovePathNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
+import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { createRoom, deleteRoom, subscribeRoom, updateRoomOptions, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
@@ -67,6 +67,8 @@ const YUT_RESULTS = [
 ] as const;
 type YutResult = { name: '빽도' | '도' | '개' | '걸' | '윷' | '모' | '황금 윷'; steps: number; bonus?: boolean };
 const GOLDEN_YUT_CHOICES: YutResult[] = [{ name: '빽도', steps: -1 }, ...YUT_RESULTS];
+const AI_NAME_PREFIXES = ['씩씩한', '재빠른', '느긋한', '영리한', '용감한', '유쾌한', '차분한', '반짝이는', '든든한', '행운의'];
+const AI_NAME_BASES = ['단풍이', '구름이', '호랑이', '두루미', '반달이', '별님이', '솔방울', '바람이', '나무꾼', '달토끼', '해님이', '복주머니'];
 
 const createSeats = (hostName: string, playMode: PlayMode, playerCount: 2 | 3 | 4): Seat[] => {
   const defaultTeams: Team[] = playMode === 'team' ? ['청팀', '홍팀', '청팀', '홍팀'] : ['청팀', '청팀', '청팀', '청팀'];
@@ -153,7 +155,7 @@ export function App() {
       return finishedTeam ? `${finishedTeam} 승리` : '';
     }
     const finishedSeat = playableSeats.find((seat) => pieces.filter((piece) => piece.ownerId === seat.id).every((piece) => piece.finished));
-    return finishedSeat ? `${finishedSeat.label} 승리` : '';
+    return finishedSeat ? `${finishedSeat.label}-${finishedSeat.name} 승리` : '';
   }, [pieces, playMode, playableSeats]);
 
   useEffect(() => {
@@ -204,6 +206,20 @@ export function App() {
     const timer = window.setTimeout(() => { void autoPlayTurn(activeSeat); }, TURN_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [activeSeat, isMyTurn, movingPieceId, pieces, roll, screen, winner]);
+
+
+  useEffect(() => {
+    if (!roll || !activeSeat || !isMyTurn || movingPieceId || winner) return;
+    const steps = roll.steps;
+    const movablePieces = pieces.filter((piece) => piece.ownerId === activeSeat.id && !piece.finished && (steps >= 0 || piece.started));
+    if (movablePieces.length !== 1) return;
+    const onlyPiece = movablePieces[0];
+    const needsBranchChoice = onlyPiece.started && BRANCH_NODE_IDS.includes(onlyPiece.nodeId as typeof BRANCH_NODE_IDS[number]);
+    if (needsBranchChoice) return;
+    setSelectedPieceId(onlyPiece.id);
+    const timer = window.setTimeout(() => { void movePiece(onlyPiece.id, roll, activeSeat); }, TURN_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeSeat, isMyTurn, movingPieceId, pieces, roll, winner]);
 
   useEffect(() => {
     if (screen !== 'waitingRoom' || countdown < 0) return undefined;
@@ -262,9 +278,8 @@ export function App() {
     return Array.from({ length: 4 }, (_, index) => index < flatCount);
   }
   function makeUniqueAIName(currentSeats: Seat[]) {
-    const aiNames = ['단풍이', '구름이', '호랑이', '두루미', '반달이', '별님이', '솔방울', '바람이', '나무꾼', '달토끼', '해님이', '복주머니'];
     const usedNames = new Set(currentSeats.filter((seat) => !seat.isEmpty).map((seat) => seat.name));
-    const candidates = aiNames.filter((name) => !usedNames.has(name));
+    const candidates = AI_NAME_BASES.flatMap((baseName) => AI_NAME_PREFIXES.map((prefix) => `${prefix} ${baseName}`)).filter((name) => !usedNames.has(name));
     if (candidates.length) return candidates[Math.floor(Math.random() * candidates.length)];
     let suffix = 1;
     while (usedNames.has(`AI 친구 ${suffix}`)) suffix += 1;
@@ -276,6 +291,9 @@ export function App() {
       const aiName = makeUniqueAIName(currentSeats);
       return currentSeats.map((seat) => seat.id === playerId ? { ...seat, name: aiName, ready: true, isAI: true, isEmpty: false } : seat);
     });
+  }
+  function cancelAISeat(playerId: string) {
+    setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
   }
   function changeTeam(playerId: string, team: Team) { setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId ? { ...seat, team } : seat)); }
   function rollYutFor(seat: Seat) {
@@ -486,7 +504,7 @@ export function App() {
       <section className="panel room-panel"><p className="section-kicker">방 참여</p><h2>대기중 방</h2><div className="room-list">{rooms.length ? rooms.map((room) => <article className="room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'} · {room.maxPlayers}인</span></div><button onClick={() => openWaitingRoom(room)}>참여</button></article>) : <span>아직 만들어진 방이 없습니다.</span>}</div></section>
     </section>}
 
-    {screen === 'waitingRoom' && <section className="panel waiting-room" aria-label="방 대기 화면"><p className="section-kicker">게임 시작 대기</p><h2 className="room-title">{activeRoomTitle || title}</h2><p className="room-subtitle">{playMode === 'team' ? '팀을 고르고 인원을 맞춰주세요' : '모두 준비되면 방장이 시작합니다'}</p><div className="mode-summary"><b>{playMode === 'team' ? '팀전' : '개인전'}</b><span>{maxPlayers}인</span><span>말 {pieceCount}개</span><span>{itemMode ? '아이템 ON' : '아이템 OFF'}</span>{playMode === 'team' && <span>청팀 {teamCounts.청팀}명 / 홍팀 {teamCounts.홍팀}명</span>}</div>{isRoomHost && <div className="host-room-options"><label>말 개수<select value={pieceCount} onChange={(e) => changeWaitingOptions({ pieceCount: Number(e.target.value) as PieceCount })}><option value={1}>1개</option><option value={2}>2개</option><option value={3}>3개</option><option value={4}>4개</option></select></label><label className="check-row"><input type="checkbox" checked={itemMode} onChange={(e) => changeWaitingOptions({ itemMode: e.target.checked })} /> 아이템전</label></div>}<div className="ready-list">{seats.map((seat) => <article className={`ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''}`} key={seat.id}><b>{seat.label}</b><span>{seat.name}</span>{playMode === 'team' && <select value={seat.team} onChange={(e) => changeTeam(seat.id, e.target.value as Team)}><option value="청팀">청팀</option><option value="홍팀">홍팀</option></select>}<em>{seat.isAI ? 'AI 대체' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em>{seat.isHost && <small>방장</small>}{seat.isEmpty && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>AI로 채우기</button>}</article>)}</div>{countdown >= 0 && <div className="countdown-overlay" role="status"><span>게임 시작</span><strong>{countdown}</strong><button className="secondary mini-button" onClick={() => { setCountdown(-1); setMessage('시작이 취소되었습니다.'); }}>취소</button></div>}{playMode === 'team' && !teamBalanced && <p className="notice warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}<div className="waiting-actions"><button onClick={handleStartGame} disabled={!allReady}>게임 시작</button><button className="secondary" onClick={leaveRoom}>방 나가기</button></div>{message && <p className="notice">{message}</p>}</section>}
+    {screen === 'waitingRoom' && <section className="panel waiting-room" aria-label="방 대기 화면"><p className="section-kicker">게임 시작 대기</p><h2 className="room-title">{activeRoomTitle || title}</h2><p className="room-subtitle">{playMode === 'team' ? '팀을 고르고 인원을 맞춰주세요' : '모두 준비되면 방장이 시작합니다'}</p><div className="mode-summary"><b>{playMode === 'team' ? '팀전' : '개인전'}</b><span>{maxPlayers}인</span><span>말 {pieceCount}개</span><span>{itemMode ? '아이템 ON' : '아이템 OFF'}</span>{playMode === 'team' && <span>청팀 {teamCounts.청팀}명 / 홍팀 {teamCounts.홍팀}명</span>}</div>{isRoomHost && <div className="host-room-options"><label>말 개수<select value={pieceCount} onChange={(e) => changeWaitingOptions({ pieceCount: Number(e.target.value) as PieceCount })}><option value={1}>1개</option><option value={2}>2개</option><option value={3}>3개</option><option value={4}>4개</option></select></label><label className="check-row"><input type="checkbox" checked={itemMode} onChange={(e) => changeWaitingOptions({ itemMode: e.target.checked })} /> 아이템전</label></div>}<div className="ready-list">{seats.map((seat) => <article className={`ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''}`} key={seat.id}><b>{seat.label}</b><span>{seat.name}</span>{playMode === 'team' && <select value={seat.team} onChange={(e) => changeTeam(seat.id, e.target.value as Team)}><option value="청팀">청팀</option><option value="홍팀">홍팀</option></select>}<em>{seat.isAI ? 'AI 대체' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em>{seat.isHost && <small>방장</small>}{seat.isEmpty && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>AI 플레이</button>}{seat.isAI && !seat.isHost && <button className="mini-button secondary" onClick={() => cancelAISeat(seat.id)}>취소</button>}</article>)}</div>{countdown >= 0 && <div className="countdown-overlay" role="status"><span>게임 시작</span><strong>{countdown}</strong><button className="secondary mini-button" onClick={() => { setCountdown(-1); setMessage('시작이 취소되었습니다.'); }}>취소</button></div>}{playMode === 'team' && !teamBalanced && <p className="notice warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}<div className="waiting-actions"><button onClick={handleStartGame} disabled={!allReady}>게임 시작</button><button className="secondary" onClick={leaveRoom}>방 나가기</button></div>{message && <p className="notice">{message}</p>}</section>}
 
 
 
