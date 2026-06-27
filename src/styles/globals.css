@@ -227,3 +227,203 @@ button { background: var(--red); color: #fff; font-weight: 900; cursor: pointer;
     grid-template-columns: 1fr;
   }
 }
+
+.hero-actions {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.lobby-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, .82fr) minmax(360px, 1.18fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.section-kicker {
+  margin: 0 0 8px;
+  color: var(--red);
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 8px;
+  color: rgba(42, 30, 23, .72);
+  font-weight: 900;
+}
+
+.form-grid input,
+.form-grid button {
+  width: 100%;
+}
+
+.lobby-layout .room-panel {
+  margin-top: 0;
+}
+
+.lobby-layout .room-list {
+  grid-template-columns: 1fr;
+}
+
+.lobby-layout .room-card {
+  align-items: stretch;
+  margin: 0;
+}
+
+.lobby-layout .room-card div {
+  display: grid;
+  gap: 6px;
+}
+
+.lobby-layout .room-card span {
+  color: rgba(42, 30, 23, .68);
+  font-weight: 800;
+}
+
+.lobby-layout .room-card button {
+  align-self: center;
+  min-width: 88px;
+}
+
+.game-shell .game-layout {
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .hero-actions {
+    justify-items: stretch;
+  }
+
+  .status-card {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .lobby-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 900px) and (max-height: 900px) {
+  .lobby-shell {
+    overflow: auto;
+  }
+
+  .lobby-shell .room-panel {
+    display: block;
+  }
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+button.secondary {
+  background: #fff3d8;
+  color: #2a1e17;
+  border: 1px solid rgba(42, 30, 23, .12);
+}
+
+.waiting-room {
+  display: grid;
+  gap: 18px;
+}
+
+.ready-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ready-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 20px;
+  background: #fff3d8;
+  border: 1px solid rgba(42, 30, 23, .08);
+}
+
+.ready-card b,
+.player b {
+  color: var(--red);
+}
+
+.ready-card em {
+  color: var(--green);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.ready-card small {
+  width: max-content;
+  border-radius: 999px;
+  background: rgba(217, 74, 56, .1);
+  color: var(--red);
+  padding: 4px 8px;
+  font-weight: 900;
+}
+
+.ready-card.ai,
+.player.ai {
+  background: repeating-linear-gradient(135deg, #fff3d8, #fff3d8 10px, #f8e5bd 10px, #f8e5bd 20px);
+  border: 1px solid rgba(217, 74, 56, .2);
+}
+
+.waiting-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.countdown-panel {
+  min-height: 46svh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.countdown-panel p,
+.countdown-panel span {
+  margin: 0;
+  font-weight: 900;
+  color: rgba(42, 30, 23, .7);
+}
+
+.countdown-panel strong {
+  display: grid;
+  place-items: center;
+  width: clamp(120px, 18vw, 200px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font-size: clamp(4rem, 11vw, 8rem);
+  box-shadow: 0 24px 60px rgba(217, 74, 56, .24);
+}
+
+.mini-button {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(217, 74, 56, .12);
+  color: var(--red);
+  font-size: .85rem;
+}
+
+.end-game {
+  width: 100%;
+  margin-top: 12px;
+}
