@@ -775,6 +775,32 @@ select {
   white-space: nowrap;
 }
 
+.branch-controls {
+  position: absolute;
+  z-index: 18;
+  display: flex;
+  gap: 6px;
+  translate: calc(-50% + 34px) calc(-50% - 34px);
+}
+
+.branch-controls button {
+  width: 34px;
+  height: 34px;
+  border: 2px solid rgba(133, 77, 37, .45);
+  border-radius: 999px;
+  background: #fff9ea;
+  color: var(--brown);
+  font-size: 20px;
+  font-weight: 1000;
+  box-shadow: 0 8px 18px rgba(42, 30, 23, .18);
+}
+
+.branch-controls button.active {
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+
 .board-node.route-preview {
   outline: 4px solid rgba(242, 184, 75, .72);
   box-shadow: 0 0 0 8px rgba(242, 184, 75, .18);

@@ -48,8 +48,8 @@ export type BranchChoice = 'outer' | 'shortcut';
 const OUTER_ROUTE = ['n01','n02','n03','n04','n05','n06','n07','n08','n09','n10','n11','n12','n13','n14','n15','n16','n17','n18','n19','n20'];
 const SHORTCUTS: Record<string, string[]> = {
   n06: ['d05','d06','c01','d07','d08','n16','n17','n18','n19','n20'],
-  n11: ['d01','d02','c01','d03','d04','n16','n17','n18','n19','n20'],
-  c01: ['d03','d04','n16','n17','n18','n19','n20'],
+  n11: ['d01','d02','c01','d03','d04','n01'],
+  c01: ['d03','d04','n01'],
 };
 const CENTER_OUTER_ROUTE = ['d07','d08','n16','n17','n18','n19','n20'];
 export const BRANCH_NODE_IDS = ['n06','n11','c01'] as const;
@@ -70,6 +70,34 @@ export function getNextBoardNode(currentNode: BoardNode | undefined, branchChoic
   }
   const nextOuterId = OUTER_ROUTE[OUTER_ROUTE.indexOf(currentNode.id) + 1];
   return nextOuterId ? getBoardNodeById(nextOuterId) : undefined;
+}
+
+export function getMovePathNodeIds(startNodeId: string, steps: number, branchChoice: BranchChoice = 'outer') {
+  const pathNodeIds: string[] = [];
+  let currentNodeId = startNodeId;
+  let activeRoute: string[] | null = null;
+
+  for (let step = 0; step < Math.max(0, steps); step += 1) {
+    if (!activeRoute) {
+      if (branchChoice === 'shortcut' && SHORTCUTS[currentNodeId]) {
+        activeRoute = [currentNodeId, ...SHORTCUTS[currentNodeId]];
+      } else if (currentNodeId !== 'c01') {
+        const shortcutEntry = Object.entries(SHORTCUTS).find(([, route]) => route.includes(currentNodeId));
+        if (shortcutEntry) activeRoute = [shortcutEntry[0], ...shortcutEntry[1]];
+      }
+    }
+
+    const activeRouteIndex = activeRoute?.indexOf(currentNodeId) ?? -1;
+    const nextNodeId = activeRouteIndex >= 0
+      ? activeRoute?.[activeRouteIndex + 1]
+      : getNextBoardNode(getBoardNodeById(currentNodeId), branchChoice)?.id;
+    if (!nextNodeId) break;
+
+    pathNodeIds.push(nextNodeId);
+    currentNodeId = nextNodeId;
+  }
+
+  return pathNodeIds;
 }
 
 export function spawnInitialBoardItems(min = 4, max = 8): BoardItem[] {
