@@ -88,8 +88,9 @@ export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSel
       aria-label={`${piece.label} 말 선택`}
     >{piece.finished ? '완' : piece.label}</button>)}
     {canShowBranchControls && selectedPieceStyle ? <div className="branch-controls" style={selectedPieceStyle} aria-label="이동 방향 선택">
-      <button type="button" className={branchChoice === 'outer' ? 'active' : ''} onClick={() => onBranchChoiceChange?.('outer')} aria-label="바깥길로 이동">↺</button>
-      <button type="button" className={branchChoice === 'shortcut' ? 'active' : ''} onClick={() => onBranchChoiceChange?.('shortcut')} aria-label="지름길로 이동">↘</button>
+      <span className="branch-controls-title">방향 선택</span>
+      <button type="button" className={branchChoice === 'outer' ? 'active' : ''} onClick={() => onBranchChoiceChange?.('outer')} aria-label="바깥길로 이동"><span>바깥길</span><small>기본 경로</small></button>
+      <button type="button" className={branchChoice === 'shortcut' ? 'active' : ''} onClick={() => onBranchChoiceChange?.('shortcut')} aria-label="지름길로 이동"><span>지름길</span><small>중앙 경로</small></button>
     </div> : null}
   </div>;
 }
