@@ -4,7 +4,7 @@ import { GameBoard, type BoardPiece } from '../features/game/components/GameBoar
 import { ItemCard } from '../features/items/components/ItemCard';
 import type { ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
-import { BOARD_NODES, getBoardNodeById, getNextBoardNode, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
+import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getNextBoardNode, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { createRoom, deleteRoom, subscribeRoom, updateRoomOptions, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
@@ -31,6 +31,7 @@ type Seat = {
 type GameLog = { id: number; text: string };
 type ToastMessage = { id: number; title: string; description?: string; icon?: string };
 type RollAnimation = { id: number; result: YutResult; sticks: boolean[] };
+type TrapNode = { nodeId: string; ownerId: string };
 
 const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
 const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount' } as const;
@@ -95,6 +96,20 @@ const makePieces = (seats: Seat[], pieceCount: PieceCount): BoardPiece[] => seat
   })),
 );
 
+const getMovePreviewNodeIds = (piece: BoardPiece | undefined, result: YutResult | null, branchChoice: BranchChoice) => {
+  if (!piece || !result || piece.finished) return [];
+  if (result.steps < 0) return piece.started ? ['n01'] : [];
+  const previewNodeIds: string[] = [];
+  let currentNodeId = piece.nodeId;
+  for (let step = 0; step < result.steps; step += 1) {
+    const nextNode = getNextBoardNode(getBoardNodeById(currentNodeId), step === 0 ? branchChoice : 'outer');
+    if (!nextNode) break;
+    previewNodeIds.push(nextNode.id);
+    currentNodeId = nextNode.id;
+  }
+  return previewNodeIds;
+};
+
 export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [nickname, setNickname] = useState(() => getStoredText(STORAGE_KEYS.nickname, '플레이어'));
@@ -112,7 +127,11 @@ export function App() {
   const [seats, setSeats] = useState<Seat[]>(() => createSeats('플레이어', 'individual', 4));
   const [pieces, setPieces] = useState<BoardPiece[]>(() => makePieces(createSeats('플레이어', 'individual', 4), 4));
   const [boardItems, setBoardItems] = useState<BoardItem[]>([]);
-  const [ownedItems, setOwnedItems] = useState<ItemType[]>([]);
+  const [ownedItems, setOwnedItems] = useState<Record<string, ItemType[]>>({});
+  const [trapNodes, setTrapNodes] = useState<TrapNode[]>([]);
+  const [shieldedPieceIds, setShieldedPieceIds] = useState<string[]>([]);
+  const [lastMovedPieceIds, setLastMovedPieceIds] = useState<string[]>([]);
+  const [lastMovedSeatId, setLastMovedSeatId] = useState('');
   const [revealedItems, setRevealedItems] = useState<ItemType[]>([]);
   const [selectedPieceId, setSelectedPieceId] = useState('host-piece-1');
   const [turnIndex, setTurnIndex] = useState(0);
@@ -134,6 +153,8 @@ export function App() {
   const allReady = seats.every((seat) => !seat.isEmpty && (seat.ready || seat.isAI)) && teamBalanced;
   const activeSeat = playableSeats[turnIndex % playableSeats.length];
   const isMyTurn = activeSeat?.id === 'host' && !activeSeat.isAI;
+  const selectedPiece = useMemo(() => pieces.find((piece) => piece.id === selectedPieceId), [pieces, selectedPieceId]);
+  const previewNodeIds = useMemo(() => isMyTurn && !movingPieceId ? getMovePreviewNodeIds(selectedPiece, roll, branchChoice) : [], [branchChoice, isMyTurn, movingPieceId, roll, selectedPiece]);
   const winner = useMemo(() => {
     if (playMode === 'team') {
       const finishedTeam = (['청팀', '홍팀'] as Team[]).find((team) => playableSeats.filter((seat) => seat.team === team).every((seat) => pieces.filter((piece) => piece.ownerId === seat.id).every((piece) => piece.finished)));
@@ -233,7 +254,7 @@ export function App() {
     const nextPieces = makePieces(playableSeats, pieceCount);
     setPieces(nextPieces);
     setBoardItems(itemMode ? spawnInitialBoardItems(4, 8) : []);
-    setOwnedItems([]); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); setRoll(null); setForcedRoll(null); setGoldenYutPickerOpen(false); setBranchChoice('outer');
+    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); setRoll(null); setForcedRoll(null); setGoldenYutPickerOpen(false); setBranchChoice('outer');
     setLogs([{ id: Date.now(), text: '게임이 시작되었습니다. 윷을 던져주세요.' }]);
     setScreen('game');
   }
@@ -274,14 +295,30 @@ export function App() {
     addLog(`${seat.label}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
   }
-  function rollYut() { if (!activeSeat || !isMyTurn || movingPieceId) return; rollYutFor(activeSeat); }
+  function rollYut() { if (!activeSeat || !isMyTurn || movingPieceId) return; setShieldedPieceIds([]); rollYutFor(activeSeat); }
 
   async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0) {
-    if (winner || movingPieceId) return;
+    if (winner || movingPieceId) return false;
     const movingPiece = pieces.find((piece) => piece.id === pieceId && piece.ownerId === seat.id && !piece.finished);
-    if (!movingPiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return; }
+    if (!movingPiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return false; }
     const steps = result.steps + extraSteps;
+    if (steps < 0 && !movingPiece.started) {
+      addLog(`${seat.label}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
+      setBranchChoice('outer');
+      setRoll(null);
+      setTurnIndex((current) => (current + 1) % playableSeats.length);
+      return false;
+    }
+    if (steps === 0) {
+      addLog(`${seat.label} 말은 이동할 칸 수가 없어 제자리에 머뭅니다.`);
+      setBranchChoice('outer');
+      setRoll(null);
+      setTurnIndex((current) => (current + 1) % playableSeats.length);
+      return true;
+    }
     setMovingPieceId(pieceId);
+    const movingGroupIds = pieces.filter((piece) => piece.ownerId === seat.id && !piece.finished && piece.nodeId === movingPiece.nodeId && piece.started === movingPiece.started).map((piece) => piece.id);
+    if (movingGroupIds.length > 1) addLog(`${seat.label}의 말 ${movingGroupIds.length}개가 업혀 함께 이동합니다.`);
     if (!movingPiece.started) await delay(STEP_DELAY_MS);
     let nextNodeIndex = movingPiece.nodeIndex;
     let currentNodeId = movingPiece.nodeId;
@@ -291,12 +328,12 @@ export function App() {
       finishedMove = !nextNode;
       currentNodeId = finishedMove ? 'finish' : nextNode?.id ?? 'finish';
       nextNodeIndex = finishedMove ? 20 : BOARD_NODES.findIndex((node) => node.id === nextNode?.id);
-      setPieces((currentPieces) => currentPieces.map((piece) => piece.id === pieceId ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: finishedMove } : piece));
+      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: finishedMove } : piece));
       await delay(STEP_DELAY_MS);
       if (finishedMove) break;
     }
     if (steps < 0 && movingPiece.started) {
-      setPieces((currentPieces) => currentPieces.map((piece) => piece.id === pieceId ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: true, finished: false } : piece));
+      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: true, finished: false } : piece));
       currentNodeId = 'n01';
       nextNodeIndex = 0;
       await delay(STEP_DELAY_MS);
@@ -304,7 +341,7 @@ export function App() {
     const landedNode = getBoardNodeById(currentNodeId);
     const landedItem = boardItems.find((item) => item.nodeId === landedNode?.id);
     if (landedItem) {
-      setOwnedItems((items) => [...items, landedItem.type]);
+      setOwnedItems((items) => ({ ...items, [seat.id]: [...(items[seat.id] ?? []), landedItem.type] }));
       setRevealedItems((items) => Array.from(new Set([...items, landedItem.type])));
       setBoardItems((items) => items.filter((item) => item.id !== landedItem.id));
       const itemName = ITEM_DEFINITIONS[landedItem.type].name;
@@ -313,11 +350,32 @@ export function App() {
       setHighlightedNodeId(landedNode?.id ?? '');
       window.setTimeout(() => setHighlightedNodeId((current) => current === landedNode?.id ? '' : current), 1400);
     }
+    const steppedOnTrap = trapNodes.find((trap) => trap.nodeId === currentNodeId && trap.ownerId !== seat.id);
+    if (steppedOnTrap) {
+      setTrapNodes((nodes) => nodes.filter((trap) => trap !== steppedOnTrap));
+      const shieldedFromTrap = movingGroupIds.some((id) => shieldedPieceIds.includes(id));
+      if (shieldedFromTrap) {
+        setShieldedPieceIds((ids) => ids.filter((id) => !movingGroupIds.includes(id)));
+        addLog(`${seat.label} 말이 방패로 함정을 막았습니다.`);
+      } else {
+        setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false, finished: false } : piece));
+        addLog(`${seat.label} 말이 함정을 밟아 시작점으로 돌아갑니다.`);
+        currentNodeId = 'n01';
+        nextNodeIndex = 0;
+        await delay(STEP_DELAY_MS);
+      }
+    }
     let captured = false;
     if (currentNodeId !== 'finish') {
-      captured = pieces.some((piece) => piece.ownerId !== seat.id && !piece.finished && piece.started && piece.nodeId === currentNodeId);
+      const capturablePieces = pieces.filter((piece) => piece.ownerId !== seat.id && !piece.finished && piece.started && piece.nodeId === currentNodeId);
+      const shieldedCaptures = capturablePieces.filter((piece) => shieldedPieceIds.includes(piece.id));
+      captured = capturablePieces.some((piece) => !shieldedPieceIds.includes(piece.id));
+      if (shieldedCaptures.length) {
+        setShieldedPieceIds((ids) => ids.filter((id) => !shieldedCaptures.some((piece) => piece.id === id)));
+        addLog('방패가 상대의 잡기를 1회 막았습니다.');
+      }
       if (captured) {
-        setPieces((currentPieces) => currentPieces.map((piece) => piece.ownerId !== seat.id && !piece.finished && piece.started && piece.nodeId === currentNodeId ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false } : piece));
+        setPieces((currentPieces) => currentPieces.map((piece) => piece.ownerId !== seat.id && !piece.finished && piece.started && piece.nodeId === currentNodeId && !shieldedPieceIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false } : piece));
         addLog(`${seat.label}이(가) 상대 말을 잡아 한 번 더 던집니다.`);
       }
     }
@@ -325,36 +383,85 @@ export function App() {
     const seatDone = pieces.filter((piece) => piece.ownerId === seat.id && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
     if (seatDone) addLog(`${seat.label}이(가) 모든 말을 완주했습니다.`);
     if (result.bonus || captured) addLog(`${result.name} 또는 잡기 보너스로 한 번 더 던질 수 있습니다.`); else setTurnIndex((current) => (current + 1) % playableSeats.length);
+    setLastMovedPieceIds(movingGroupIds);
+    setLastMovedSeatId(seat.id);
     setBranchChoice('outer');
     setMovingPieceId('');
     setRoll(null);
+    return true;
   }
 
   function moveSelectedPiece(extraSteps = 0) {
-    if (!roll || !activeSeat || !isMyTurn) return;
-    const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId && piece.ownerId === activeSeat.id && !piece.finished);
-    const fallbackPiece = pieces.find((piece) => piece.ownerId === activeSeat.id && !piece.finished);
+    if (!roll || !activeSeat || !isMyTurn) return false;
+    const steps = roll.steps + extraSteps;
+    const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
+    const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId && piece.ownerId === activeSeat.id && !piece.finished && canMovePiece(piece));
+    const fallbackPiece = pieces.find((piece) => piece.ownerId === activeSeat.id && !piece.finished && canMovePiece(piece));
     if (!selectedPiece && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
-    if (!selectedPiece && !fallbackPiece) return;
+    if (!selectedPiece && !fallbackPiece) {
+      if (steps < 0) {
+        addLog(`${activeSeat.label}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
+        setBranchChoice('outer');
+        setRoll(null);
+        setTurnIndex((current) => (current + 1) % playableSeats.length);
+      }
+      return false;
+    }
     void movePiece((selectedPiece ?? fallbackPiece)?.id ?? selectedPieceId, roll, activeSeat, extraSteps);
+    return true;
   }
 
   async function autoPlayTurn(seat: Seat) {
-    const playablePiece = pieces.find((piece) => piece.ownerId === seat.id && !piece.finished);
-    if (!playablePiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); return; }
     const nextRoll = rollYutFor(seat);
+    const playablePiece = pieces.find((piece) => piece.ownerId === seat.id && !piece.finished && (nextRoll.steps >= 0 || piece.started)) ?? pieces.find((piece) => piece.ownerId === seat.id && !piece.finished);
+    if (!playablePiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return; }
     await delay(AI_MOVE_DELAY_MS);
     await movePiece(playablePiece.id, nextRoll, seat);
   }
 
   function useItem(type: ItemType) {
-    if (!ownedItems.includes(type)) return;
-    setOwnedItems((items) => { const copy = [...items]; copy.splice(copy.indexOf(type), 1); return copy; });
-    if (type === 'golden_yut') { setGoldenYutPickerOpen(true); addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.'); return; }
-    if (type === 'reroll') { if (activeSeat) rollYutFor(activeSeat); return; }
-    if (type === 'move_plus_one') { moveSelectedPiece(1); return; }
-    if (type === 'move_minus_one') { moveSelectedPiece(-1); return; }
-    addLog(`${ITEM_DEFINITIONS[type].name} 아이템을 사용했습니다.`);
+    if (movingPieceId) return;
+    const itemOwnerId = 'host';
+    const itemOwnerSeat = playableSeats.find((seat) => seat.id === itemOwnerId);
+    if (!itemOwnerSeat) return;
+    const activeItems = ownedItems[itemOwnerId] ?? [];
+    if (!activeItems.includes(type)) return;
+    const consumeItem = () => setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; });
+    if (type === 'golden_yut') {
+      if (!isMyTurn || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
+      consumeItem();
+      setGoldenYutPickerOpen(true);
+      addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.');
+      return;
+    }
+    if (type === 'reroll') {
+      if (!isMyTurn || !roll) { addLog('다시 던지기는 내 턴에 윷을 던진 뒤 사용할 수 있습니다.'); return; }
+      consumeItem();
+      rollYutFor(itemOwnerSeat);
+      return;
+    }
+    if (type === 'move_plus_one' || type === 'move_minus_one') {
+      if (!isMyTurn || !roll) { addLog('이동 보정 아이템은 내 턴에 윷을 던진 뒤 사용할 수 있습니다.'); return; }
+      if (!moveSelectedPiece(type === 'move_plus_one' ? 1 : -1)) return;
+      consumeItem();
+      return;
+    }
+    if (type === 'shield') {
+      const shieldTargets = lastMovedSeatId === itemOwnerId ? lastMovedPieceIds.filter((id) => pieces.some((piece) => piece.id === id && piece.ownerId === itemOwnerId && piece.started && !piece.finished)) : [];
+      if (!shieldTargets.length) { addLog('방패는 방금 이동한 내 말이 말판 위에 있을 때 사용할 수 있습니다.'); return; }
+      consumeItem();
+      setShieldedPieceIds((ids) => Array.from(new Set([...ids, ...shieldTargets])));
+      addLog(`${itemOwnerSeat.label}의 방금 이동한 말에 방패를 씌웠습니다.`);
+      return;
+    }
+    if (type === 'trap') {
+      const trapPiece = pieces.find((piece) => piece.id === selectedPieceId && piece.ownerId === itemOwnerId && piece.started && !piece.finished);
+      if (!trapPiece) { addLog('함정은 말판 위에 있는 내 말을 선택한 뒤 설치할 수 있습니다.'); return; }
+      if (lastMovedSeatId !== itemOwnerId) { addLog('함정은 내 말이 이동한 직후에 설치할 수 있습니다.'); return; }
+      consumeItem();
+      setTrapNodes((nodes) => [...nodes.filter((trap) => trap.nodeId !== trapPiece.nodeId), { nodeId: trapPiece.nodeId, ownerId: itemOwnerId }]);
+      addLog(`${itemOwnerSeat.label}이(가) ${trapPiece.label} 위치에 함정을 설치했습니다.`);
+    }
   }
 
   async function leaveRoom() {
@@ -391,8 +498,8 @@ export function App() {
     {toast && <div className="toast-message" role="status" aria-live="polite"><strong>{toast.icon} {toast.title}</strong>{toast.description && <span>{toast.description}</span>}</div>}
 
     {screen === 'game' && <section className="game-layout" aria-label="게임 플레이 화면">
-      <aside className="panel players"><h2>{activeRoomTitle || title}</h2><p className="game-end-guide">내 모든 말이 완주하면 개인전 승리, 팀전은 같은 팀 전원의 말이 모두 완주하면 승리합니다. 결과가 나오면 게임 종료로 대기화면에 돌아갈 수 있습니다.</p>{playableSeats.map((seat) => <div className={`player ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''}`} key={seat.id}><b>{seat.label}</b><span>{seat.color} 말 {pieceCount}개 · {seat.name}</span>{playMode === 'team' && <small>{seat.team}</small>}<em>{seat.isAI ? 'AI 플레이' : activeSeat?.id === seat.id ? '현재 턴' : '대기'}</em>{!seat.isHost && !seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}</div>)}<div className="player-items"><h2>보유 아이템</h2>{ownedItems.length ? <div className="item-grid">{ownedItems.map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><ItemCard type={type} /></button>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div><button className="secondary end-game" onClick={finishGame}>게임 종료</button></aside>
-      <section className="panel board-panel">{winner && <div className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{winner}</strong><p>{winner}했습니다. 아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button></div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={setSelectedPieceId} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-mat"><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((flat, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${flat ? 'flat' : 'round'}`} style={{ '--stick-index': index } as CSSProperties}><i></i></span>)}</div></div>}<div className="play-controls"><strong>{winner ? `${winner} · 게임 종료` : `${activeSeat?.label} 턴`}</strong><span>{roll ? `${roll.name} · ${roll.steps}칸` : isMyTurn ? '윷을 던져주세요' : '상대 턴입니다'}</span>{roll && isMyTurn && ['n06','n11','c01'].includes((pieces.find((piece) => piece.id === selectedPieceId)?.nodeId ?? '')) && <select value={branchChoice} onChange={(e) => setBranchChoice(e.target.value as BranchChoice)} aria-label="이동 방향 선택"><option value="shortcut">지름길</option><option value="outer">바깥길</option></select>}<button onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button></div></section>
+      <aside className="panel players"><h2>{activeRoomTitle || title}</h2><p className="game-end-guide">내 모든 말이 완주하면 개인전 승리, 팀전은 같은 팀 전원의 말이 모두 완주하면 승리합니다. 결과가 나오면 게임 종료로 대기화면에 돌아갈 수 있습니다.</p>{playableSeats.map((seat) => <div className={`player ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''}`} key={seat.id}><b style={{ color: PLAYER_COLORS[playableSeats.findIndex((player) => player.id === seat.id)] }}>{seat.label}</b><span>{seat.color} 말 {pieceCount}개 · {seat.name}</span>{playMode === 'team' && <small>{seat.team}</small>}<em>{seat.isAI ? 'AI 플레이' : activeSeat?.id === seat.id ? '현재 턴' : '대기'}</em>{!seat.isHost && !seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}</div>)}<div className="player-items"><h2>보유 아이템</h2>{(ownedItems.host ?? []).length ? <div className="item-grid">{(ownedItems.host ?? []).map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><ItemCard type={type} /></button>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div><button className="secondary end-game" onClick={finishGame}>게임 종료</button></aside>
+      <section className="panel board-panel">{winner && <div className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{winner}</strong><p>{winner}했습니다. 아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button></div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={setSelectedPieceId} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} trapNodeIds={trapNodes.map((trap) => trap.nodeId)} previewNodeIds={previewNodeIds} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-mat"><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((flat, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${flat ? 'flat' : 'round'}`} style={{ '--stick-index': index } as CSSProperties}><i></i></span>)}</div></div>}<div className="play-controls"><strong>{winner ? `${winner} · 게임 종료` : `${activeSeat?.label} 턴`}</strong><span>{roll ? `${roll.name} · ${roll.steps}칸` : isMyTurn ? '윷을 던져주세요' : '상대 턴입니다'}</span>{roll && isMyTurn && BRANCH_NODE_IDS.includes((pieces.find((piece) => piece.id === selectedPieceId)?.nodeId ?? '') as typeof BRANCH_NODE_IDS[number]) && <select value={branchChoice} onChange={(e) => setBranchChoice(e.target.value as BranchChoice)} aria-label="이동 방향 선택"><option value="shortcut">지름길</option><option value="outer">다른 길</option></select>}<button onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button></div></section>
       <aside className="panel side"><h2>진행 기록</h2><div className="log-list">{logs.map((log) => <p key={log.id}>{log.text}</p>)}</div></aside>
     </section>}
   </main>;
