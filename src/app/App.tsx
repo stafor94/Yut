@@ -188,7 +188,7 @@ export function App() {
 
   return <main className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
     <section className="hero panel">
-      <div className="hero-copy"><p className="eyebrow">YUT ONLINE</p><h1>{screen === 'lobby' ? '빠르고 깔끔한 온라인 윷놀이' : activeRoomTitle}</h1><p>{screen === 'game' ? '윷을 던지고 말을 선택해 이동하세요. 아이템은 획득 후 이름과 효과가 공개됩니다.' : '방 옵션을 고르고 친구를 초대한 뒤, 모두 준비되면 바로 시작하세요.'}</p></div>
+      <div className="hero-copy"><p className="eyebrow">YUT ONLINE</p><h1>{screen === 'lobby' ? '빠르고 깔끔한 온라인 윷놀이' : activeRoomTitle}</h1>{screen !== 'game' && <p>방 옵션을 고르고 친구를 초대한 뒤, 모두 준비되면 바로 시작하세요.</p>}</div>
       <div className="hero-actions"><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>서버</strong><span>{serverStatus}</span></div></div>
     </section>
 

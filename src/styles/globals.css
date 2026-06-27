@@ -576,3 +576,105 @@ select {
 .ready-card.empty em {
   color: rgba(217, 74, 56, .76);
 }
+
+.item-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.item-card-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(242, 184, 75, .22);
+  font-size: 1.05rem;
+}
+
+@media (min-width: 900px) and (max-height: 900px) {
+  .game-shell {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .game-shell .hero {
+    min-height: 0;
+    padding: 12px 20px;
+  }
+
+  .game-shell .hero-copy p:not(.eyebrow) {
+    display: none;
+  }
+
+  .game-shell .eyebrow {
+    margin-bottom: 4px;
+    font-size: .9rem;
+  }
+
+  .game-shell h1 {
+    font-size: clamp(2rem, 3.4vw, 3.1rem);
+    margin: 0;
+  }
+
+  .game-shell .panel {
+    padding: 16px;
+    border-radius: 24px;
+  }
+
+  .game-shell .game-layout {
+    overflow: hidden;
+  }
+
+  .game-shell .board-panel {
+    grid-template-rows: minmax(0, 1fr) auto;
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .game-shell .board {
+    width: min(100%, calc(100svh - 330px));
+    max-width: 500px;
+    align-self: center;
+  }
+
+  .game-shell .play-controls {
+    margin-top: 10px;
+    padding: 10px;
+    width: min(100%, 500px);
+  }
+
+  .game-shell .play-controls button,
+  .game-shell .play-controls span,
+  .game-shell .play-controls strong {
+    padding-block: 10px;
+    font-size: .95rem;
+  }
+
+  .game-shell .player {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px 8px;
+    align-items: center;
+    padding: 9px 10px;
+  }
+
+  .game-shell .player span,
+  .game-shell .player em,
+  .game-shell .player small {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: .9rem;
+  }
+
+  .game-shell .player em,
+  .game-shell .player small {
+    justify-self: end;
+  }
+
+  .game-shell .player .mini-button {
+    grid-column: 1 / -1;
+  }
+}

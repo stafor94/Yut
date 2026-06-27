@@ -30,7 +30,7 @@ export function GameBoard({ pieces, items, selectedPieceId, onSelectPiece, revea
       const itemName = item ? ITEM_DEFINITIONS[item.type].name : '';
       return <div key={node.id} className={`board-node ${node.kind}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={node.id}>
         {item ? <span className="floating-board-item" aria-label="말판 아이템">
-          <span className="item-orb" aria-hidden="true">?</span>
+          <span className="item-orb" aria-hidden="true">{ITEM_DEFINITIONS[item.type].icon}</span>
           {revealedItems.includes(item.type) ? <span className="item-revealed-name">{itemName}</span> : null}
         </span> : null}
       </div>;
