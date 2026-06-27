@@ -8,6 +8,7 @@ export type BoardPiece = {
   ownerId: string;
   color: string;
   nodeIndex: number;
+  nodeId: string;
   started: boolean;
   finished: boolean;
 };
@@ -29,8 +30,14 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[]) {
     const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
     return { left: `${112 + ownerIndex * 8}%`, top: `${20 + Math.max(0, ownerOrder) * 15}%`, background: piece.color, translate: '-50% -50%' };
   }
-  const node: BoardNode | undefined = BOARD_NODES[piece.nodeIndex] ?? BOARD_NODES[0];
-  const stackedPieces = pieces.filter((candidate) => candidate.nodeIndex === piece.nodeIndex && candidate.finished === piece.finished);
+  if (piece.finished) {
+    const finishedPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && candidate.finished);
+    const finishedIndex = Math.max(0, finishedPieces.findIndex((candidate) => candidate.id === piece.id));
+    const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
+    return { left: `${112 + finishedIndex * 8}%`, top: `${72 + Math.max(0, ownerOrder) * 7}%`, background: piece.color, translate: '-50% -50%' };
+  }
+  const node: BoardNode | undefined = BOARD_NODES.find((candidate) => candidate.id === piece.nodeId) ?? BOARD_NODES[piece.nodeIndex] ?? BOARD_NODES[0];
+  const stackedPieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished);
   const stackIndex = Math.max(0, stackedPieces.findIndex((candidate) => candidate.id === piece.id));
   const angle = (Math.PI * 2 * stackIndex) / Math.max(stackedPieces.length, 1);
   const radius = stackedPieces.length > 1 ? 12 : 0;
@@ -60,7 +67,7 @@ export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSel
       className={`piece-token ${selectedPieceId === piece.id ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''}`}
       style={getPieceStyle(piece, pieces)}
       onClick={() => onSelectPiece(piece.id)}
-      disabled={piece.finished}
+      disabled={piece.finished || (!piece.started && !piece.finished)}
       aria-label={`${piece.label} 말 선택`}
     >{piece.finished ? '완' : piece.label}</button>)}
   </div>;

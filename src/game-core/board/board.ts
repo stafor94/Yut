@@ -43,8 +43,34 @@ export const BOARD_NODES: BoardNode[] = [
   { id: 'd08', x: 22, y: 78, kind: 'normal', playable: true },
 ];
 
+export type BranchChoice = 'outer' | 'shortcut';
+
+const OUTER_ROUTE = ['n01','n02','n03','n04','n05','n06','n07','n08','n09','n10','n11','n12','n13','n14','n15','n16','n17','n18','n19','n20'];
+const SHORTCUTS: Record<string, string[]> = {
+  n06: ['d05','d06','c01','d07','d08','n16','n17','n18','n19','n20'],
+  n11: ['d01','d02','c01','d03','d04','n01'],
+  c01: ['d03','d04','n01'],
+};
+
+export function getBoardNodeById(nodeId: string) {
+  return BOARD_NODES.find((node) => node.id === nodeId);
+}
+
+export function getNextBoardNode(currentNode: BoardNode | undefined, branchChoice: BranchChoice = 'outer') {
+  if (!currentNode) return BOARD_NODES[0];
+  if (branchChoice === 'shortcut' && SHORTCUTS[currentNode.id]) return getBoardNodeById(SHORTCUTS[currentNode.id][0]);
+  const shortcutEntry = Object.entries(SHORTCUTS).find(([, route]) => route.includes(currentNode.id));
+  if (shortcutEntry) {
+    const route = shortcutEntry[1];
+    const nextId = route[route.indexOf(currentNode.id) + 1];
+    return nextId ? getBoardNodeById(nextId) : undefined;
+  }
+  const nextOuterId = OUTER_ROUTE[OUTER_ROUTE.indexOf(currentNode.id) + 1];
+  return nextOuterId ? getBoardNodeById(nextOuterId) : undefined;
+}
+
 export function spawnInitialBoardItems(min = 4, max = 8): BoardItem[] {
   const count = Math.floor(Math.random() * (max - min + 1)) + min;
-  const candidates = [...BOARD_NODES].sort(() => Math.random() - 0.5).slice(0, count);
+  const candidates = [...BOARD_NODES].filter((node) => node.id !== 'n01').sort(() => Math.random() - 0.5).slice(0, count);
   return candidates.map((node, index) => ({ id: `item-${Date.now()}-${index}`, type: getRandomItemType(), nodeId: node.id }));
 }
