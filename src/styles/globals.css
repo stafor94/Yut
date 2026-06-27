@@ -1014,3 +1014,77 @@ select {
   border-radius: 16px;
   background: rgba(242, 184, 75, .16);
 }
+
+.board-node.start {
+  background: linear-gradient(145deg, #2f6b4f, #224236);
+  color: #fff;
+  border-color: #f2b84b;
+  box-shadow: 0 0 0 6px rgba(242, 184, 75, .22);
+}
+
+.board-node.start::before {
+  content: "시작";
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  translate: -50% 0;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #224236;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 1000;
+  white-space: nowrap;
+}
+
+.board-node.start::after {
+  content: "↑";
+  position: absolute;
+  right: -38px;
+  top: -52px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 62px;
+  color: var(--red);
+  font-size: 3rem;
+  font-weight: 1000;
+  text-shadow: 0 3px 0 rgba(255, 255, 255, .9);
+}
+
+.golden-yut-picker,
+.winner-overlay {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  z-index: 45;
+  display: grid;
+  gap: 14px;
+  width: min(92vw, 460px);
+  padding: 24px;
+  border-radius: 28px;
+  background: rgba(255, 248, 234, .97);
+  border: 3px solid rgba(242, 184, 75, .72);
+  box-shadow: 0 30px 80px rgba(42, 30, 23, .32);
+  text-align: center;
+}
+
+.golden-yut-picker h2,
+.golden-yut-picker p,
+.winner-overlay p { margin: 0; }
+
+.golden-yut-picker div {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.winner-overlay span {
+  color: var(--green);
+  font-weight: 1000;
+}
+
+.winner-overlay strong {
+  color: var(--red);
+  font-size: clamp(2rem, 7vw, 4rem);
+}

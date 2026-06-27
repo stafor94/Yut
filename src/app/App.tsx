@@ -33,7 +33,21 @@ type ToastMessage = { id: number; title: string; description?: string; icon?: st
 type RollAnimation = { id: number; result: YutResult; sticks: boolean[] };
 
 const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
-const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title' } as const;
+const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount' } as const;
+const getStoredBoolean = (key: string, fallback: boolean) => {
+  if (typeof window === 'undefined') return fallback;
+  const stored = window.localStorage.getItem(key);
+  return stored === null ? fallback : stored === 'true';
+};
+const getStoredNumber = <T extends number>(key: string, fallback: T, allowed: readonly T[]) => {
+  if (typeof window === 'undefined') return fallback;
+  const stored = Number(window.localStorage.getItem(key));
+  return allowed.includes(stored as T) ? stored as T : fallback;
+};
+const getStoredPlayMode = () => {
+  const stored = getStoredText(STORAGE_KEYS.playMode, 'individual');
+  return stored === 'team' ? 'team' : 'individual';
+};
 const getStoredText = (key: string, fallback: string) => {
   if (typeof window === 'undefined') return fallback;
   return window.localStorage.getItem(key) || fallback;
@@ -49,8 +63,9 @@ const YUT_RESULTS = [
   { name: '걸', steps: 3 },
   { name: '윷', steps: 4, bonus: true },
   { name: '모', steps: 5, bonus: true },
-];
-type YutResult = typeof YUT_RESULTS[number];
+] as const;
+type YutResult = { name: '빽도' | '도' | '개' | '걸' | '윷' | '모' | '황금 윷'; steps: number; bonus?: boolean };
+const GOLDEN_YUT_CHOICES: YutResult[] = [{ name: '빽도', steps: -1 }, ...YUT_RESULTS];
 
 const createSeats = (hostName: string, playMode: PlayMode, playerCount: 2 | 3 | 4): Seat[] => {
   const defaultTeams: Team[] = playMode === 'team' ? ['청팀', '홍팀', '청팀', '홍팀'] : ['청팀', '청팀', '청팀', '청팀'];
@@ -84,10 +99,10 @@ export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [nickname, setNickname] = useState(() => getStoredText(STORAGE_KEYS.nickname, '플레이어'));
   const [title, setTitle] = useState(() => getStoredText(STORAGE_KEYS.title, '친구들과 윷놀이'));
-  const [playMode, setPlayMode] = useState<PlayMode>('individual');
-  const [maxPlayers, setMaxPlayers] = useState<2 | 3 | 4>(4);
-  const [itemMode, setItemMode] = useState(true);
-  const [pieceCount, setPieceCount] = useState<PieceCount>(4);
+  const [playMode, setPlayMode] = useState<PlayMode>(() => getStoredPlayMode());
+  const [maxPlayers, setMaxPlayers] = useState<2 | 3 | 4>(() => getStoredNumber(STORAGE_KEYS.maxPlayers, 4, [2, 3, 4] as const));
+  const [itemMode, setItemMode] = useState(() => getStoredBoolean(STORAGE_KEYS.itemMode, true));
+  const [pieceCount, setPieceCount] = useState<PieceCount>(() => getStoredNumber(STORAGE_KEYS.pieceCount, 4, [1, 2, 3, 4] as const));
   const [message, setMessage] = useState('');
   const [screen, setScreen] = useState<Screen>('lobby');
   const [activeRoomTitle, setActiveRoomTitle] = useState('');
@@ -108,6 +123,8 @@ export function App() {
   const [highlightedNodeId, setHighlightedNodeId] = useState('');
   const [branchChoice, setBranchChoice] = useState<BranchChoice>('outer');
   const [rollAnimation, setRollAnimation] = useState<RollAnimation | null>(null);
+  const [forcedRoll, setForcedRoll] = useState<YutResult | null>(null);
+  const [goldenYutPickerOpen, setGoldenYutPickerOpen] = useState(false);
   const rooms = useRooms();
   const serverStatus = isFirebaseConfigured ? (user ? '온라인' : '입장 준비 중') : '연결 정보 확인 필요';
   const serverStatusTone = isFirebaseConfigured ? (user ? 'online' : 'pending') : 'offline';
@@ -140,6 +157,11 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.title, title);
   }, [title]);
+
+  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.playMode, playMode); }, [playMode]);
+  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.maxPlayers, String(maxPlayers)); }, [maxPlayers]);
+  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.itemMode, String(itemMode)); }, [itemMode]);
+  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.pieceCount, String(pieceCount)); }, [pieceCount]);
 
   useEffect(() => {
     if (!activeRoomId) return undefined;
@@ -211,7 +233,7 @@ export function App() {
     const nextPieces = makePieces(playableSeats, pieceCount);
     setPieces(nextPieces);
     setBoardItems(itemMode ? spawnInitialBoardItems(4, 8) : []);
-    setOwnedItems([]); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); setRoll(null); setBranchChoice('outer');
+    setOwnedItems([]); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); setRoll(null); setForcedRoll(null); setGoldenYutPickerOpen(false); setBranchChoice('outer');
     setLogs([{ id: Date.now(), text: '게임이 시작되었습니다. 윷을 던져주세요.' }]);
     setScreen('game');
   }
@@ -223,7 +245,7 @@ export function App() {
     window.setTimeout(() => setToast((current) => current?.id === nextToast.id ? null : current), 3000);
   }
   function makeRollSticks(result: YutResult) {
-    const flatCount = result.name === '모' ? 0 : result.steps;
+    const flatCount = result.name === '모' ? 0 : Math.max(0, result.steps);
     return Array.from({ length: 4 }, (_, index) => index < flatCount);
   }
   function makeUniqueAIName(currentSeats: Seat[]) {
@@ -244,7 +266,8 @@ export function App() {
   }
   function changeTeam(playerId: string, team: Team) { setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId ? { ...seat, team } : seat)); }
   function rollYutFor(seat: Seat) {
-    const nextRoll = YUT_RESULTS[Math.floor(Math.random() * YUT_RESULTS.length)];
+    const nextRoll = forcedRoll ?? YUT_RESULTS[Math.floor(Math.random() * YUT_RESULTS.length)];
+    setForcedRoll(null);
     setRoll(nextRoll);
     setRollAnimation({ id: Date.now(), result: nextRoll, sticks: makeRollSticks(nextRoll) });
     window.setTimeout(() => setRollAnimation(null), 1900);
@@ -257,12 +280,13 @@ export function App() {
     if (winner || movingPieceId) return;
     const movingPiece = pieces.find((piece) => piece.id === pieceId && piece.ownerId === seat.id && !piece.finished);
     if (!movingPiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return; }
-    const steps = Math.max(0, result.steps + extraSteps);
+    const steps = result.steps + extraSteps;
     setMovingPieceId(pieceId);
+    if (!movingPiece.started) await delay(STEP_DELAY_MS);
     let nextNodeIndex = movingPiece.nodeIndex;
     let currentNodeId = movingPiece.nodeId;
     let finishedMove = false;
-    for (let step = 0; step < steps; step += 1) {
+    for (let step = 0; step < Math.max(0, steps); step += 1) {
       const nextNode = getNextBoardNode(getBoardNodeById(currentNodeId), step === 0 ? branchChoice : 'outer');
       finishedMove = !nextNode;
       currentNodeId = finishedMove ? 'finish' : nextNode?.id ?? 'finish';
@@ -270,6 +294,12 @@ export function App() {
       setPieces((currentPieces) => currentPieces.map((piece) => piece.id === pieceId ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: finishedMove } : piece));
       await delay(STEP_DELAY_MS);
       if (finishedMove) break;
+    }
+    if (steps < 0 && movingPiece.started) {
+      setPieces((currentPieces) => currentPieces.map((piece) => piece.id === pieceId ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: true, finished: false } : piece));
+      currentNodeId = 'n01';
+      nextNodeIndex = 0;
+      await delay(STEP_DELAY_MS);
     }
     const landedNode = getBoardNodeById(currentNodeId);
     const landedItem = boardItems.find((item) => item.nodeId === landedNode?.id);
@@ -320,7 +350,7 @@ export function App() {
   function useItem(type: ItemType) {
     if (!ownedItems.includes(type)) return;
     setOwnedItems((items) => { const copy = [...items]; copy.splice(copy.indexOf(type), 1); return copy; });
-    if (type === 'golden_yut') { setRoll({ name: '황금 윷', steps: 4, bonus: true }); addLog('황금 윷으로 4칸 이동 결과를 선택했습니다.'); return; }
+    if (type === 'golden_yut') { setGoldenYutPickerOpen(true); addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.'); return; }
     if (type === 'reroll') { if (activeSeat) rollYutFor(activeSeat); return; }
     if (type === 'move_plus_one') { moveSelectedPiece(1); return; }
     if (type === 'move_minus_one') { moveSelectedPiece(-1); return; }
@@ -362,7 +392,7 @@ export function App() {
 
     {screen === 'game' && <section className="game-layout" aria-label="게임 플레이 화면">
       <aside className="panel players"><h2>{activeRoomTitle || title}</h2><p className="game-end-guide">내 모든 말이 완주하면 개인전 승리, 팀전은 같은 팀 전원의 말이 모두 완주하면 승리합니다. 결과가 나오면 게임 종료로 대기화면에 돌아갈 수 있습니다.</p>{playableSeats.map((seat) => <div className={`player ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''}`} key={seat.id}><b>{seat.label}</b><span>{seat.color} 말 {pieceCount}개 · {seat.name}</span>{playMode === 'team' && <small>{seat.team}</small>}<em>{seat.isAI ? 'AI 플레이' : activeSeat?.id === seat.id ? '현재 턴' : '대기'}</em>{!seat.isHost && !seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}</div>)}<div className="player-items"><h2>보유 아이템</h2>{ownedItems.length ? <div className="item-grid">{ownedItems.map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><ItemCard type={type} /></button>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div><button className="secondary end-game" onClick={finishGame}>게임 종료</button></aside>
-      <section className="panel board-panel"><GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={setSelectedPieceId} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-mat"><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((flat, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${flat ? 'flat' : 'round'}`} style={{ '--stick-index': index } as CSSProperties}><i></i></span>)}</div></div>}<div className="play-controls"><strong>{winner ? `${winner} · 게임 종료` : `${activeSeat?.label} 턴`}</strong><span>{roll ? `${roll.name} · ${roll.steps}칸` : isMyTurn ? '윷을 던져주세요' : '상대 턴입니다'}</span>{roll && isMyTurn && ['n06','n11','c01'].includes((pieces.find((piece) => piece.id === selectedPieceId)?.nodeId ?? '')) && <select value={branchChoice} onChange={(e) => setBranchChoice(e.target.value as BranchChoice)} aria-label="이동 방향 선택"><option value="shortcut">지름길</option><option value="outer">바깥길</option></select>}<button onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button></div></section>
+      <section className="panel board-panel">{winner && <div className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{winner}</strong><p>{winner}했습니다. 아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button></div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={setSelectedPieceId} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-mat"><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((flat, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${flat ? 'flat' : 'round'}`} style={{ '--stick-index': index } as CSSProperties}><i></i></span>)}</div></div>}<div className="play-controls"><strong>{winner ? `${winner} · 게임 종료` : `${activeSeat?.label} 턴`}</strong><span>{roll ? `${roll.name} · ${roll.steps}칸` : isMyTurn ? '윷을 던져주세요' : '상대 턴입니다'}</span>{roll && isMyTurn && ['n06','n11','c01'].includes((pieces.find((piece) => piece.id === selectedPieceId)?.nodeId ?? '')) && <select value={branchChoice} onChange={(e) => setBranchChoice(e.target.value as BranchChoice)} aria-label="이동 방향 선택"><option value="shortcut">지름길</option><option value="outer">바깥길</option></select>}<button onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button></div></section>
       <aside className="panel side"><h2>진행 기록</h2><div className="log-list">{logs.map((log) => <p key={log.id}>{log.text}</p>)}</div></aside>
     </section>}
   </main>;
