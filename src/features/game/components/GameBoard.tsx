@@ -21,6 +21,8 @@ type GameBoardProps = {
   onSelectPiece: (pieceId: string) => void;
   revealedItems: ItemType[];
   highlightedNodeId?: string;
+  trapNodeIds?: string[];
+  previewNodeIds?: string[];
 };
 
 function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = '') {
@@ -46,7 +48,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSelectPiece, highlightedNodeId }: GameBoardProps) {
+export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [] }: GameBoardProps) {
   return <div className="board" aria-label="윷놀이 말판">
     <svg className="board-route-lines" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
       <rect x="8" y="8" width="84" height="84" rx="0" />
@@ -55,10 +57,12 @@ export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSel
     </svg>
     {BOARD_NODES.map((node) => {
       const item = items.find((boardItem) => boardItem.nodeId === node.id);
-      return <div key={node.id} className={`board-node ${node.kind} ${highlightedNodeId === node.id ? 'item-collected' : ''}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={node.id}>
+      return <div key={node.id} className={`board-node ${node.kind} ${highlightedNodeId === node.id ? 'item-collected' : ''} ${previewNodeIds.includes(node.id) ? 'route-preview' : ''}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={node.id}>
         {item ? <span className="floating-board-item" aria-label="말판 아이템">
           <span className="item-orb" aria-hidden="true">{ITEM_DEFINITIONS[item.type].icon}</span>
         </span> : null}
+        {previewNodeIds.includes(node.id) ? <span className="route-preview-marker" aria-label="이동 예정 칸">{previewNodeIds.indexOf(node.id) + 1}</span> : null}
+        {trapNodeIds.includes(node.id) ? <span className="trap-marker" aria-label="설치된 함정">🪤</span> : null}
       </div>;
     })}
     {pieces.map((piece) => <button
