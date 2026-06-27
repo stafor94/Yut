@@ -995,3 +995,22 @@ select {
 .play-controls button:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.35); }
 .side { min-height: 0; }
 .log-list { overscroll-behavior: contain; }
+
+.room-title {
+  margin-bottom: 6px;
+}
+
+.room-subtitle,
+.game-end-guide {
+  margin: 0;
+  color: rgba(42, 30, 23, .68);
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.game-end-guide {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(242, 184, 75, .16);
+}
