@@ -435,7 +435,7 @@ button.secondary {
 
 .end-game {
   width: 100%;
-  margin-top: 12px;
+  margin-top: auto;
 }
 
 .hero {
@@ -596,7 +596,7 @@ select {
 .play-controls span { font-weight: 900; color: var(--green); }
 .item-button { padding: 0; text-align: left; background: transparent; color: inherit; }
 .log-list { display: grid; gap: 8px; }
-.log-list p { margin: 0; padding: 10px 12px; border-radius: 14px; background: #fff3d8; font-weight: 800; color: rgba(42, 30, 23, .72); }
+.log-list p { margin: 0; padding: 10px 12px; border-radius: 14px; background: #fff3d8; font-weight: 800; color: rgba(42, 30, 23, .72); align-self: start; }
 
 @media (max-width: 767px) {
   .play-controls { grid-template-columns: 1fr; }
@@ -882,6 +882,7 @@ select {
   border: 2px solid rgba(122, 74, 38, .42);
 }
 
+aside.players,
 .side { display: flex; flex-direction: column; min-height: 0; }
 .side h2 { flex: 0 0 auto; }
 .log-list {
@@ -890,6 +891,8 @@ select {
   max-height: none;
   overflow-y: auto;
   padding-right: 4px;
+  align-content: start;
+  align-items: start;
 }
 
 @keyframes item-node-burst {
@@ -1059,7 +1062,7 @@ select {
 }
 
 .board-node.start::before {
-  content: "시작";
+  content: "출발";
   position: absolute;
   bottom: -30px;
   left: 50%;
