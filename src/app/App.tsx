@@ -4,7 +4,7 @@ import { GameBoard, type BoardPiece } from '../features/game/components/GameBoar
 import { ItemCard } from '../features/items/components/ItemCard';
 import type { ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
-import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getNextBoardNode, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
+import { BOARD_NODES, getBoardNodeById, getMovePathNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { createRoom, deleteRoom, subscribeRoom, updateRoomOptions, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
@@ -99,15 +99,7 @@ const makePieces = (seats: Seat[], pieceCount: PieceCount): BoardPiece[] => seat
 const getMovePreviewNodeIds = (piece: BoardPiece | undefined, result: YutResult | null, branchChoice: BranchChoice) => {
   if (!piece || !result || piece.finished) return [];
   if (result.steps < 0) return piece.started ? ['n01'] : [];
-  const previewNodeIds: string[] = [];
-  let currentNodeId = piece.nodeId;
-  for (let step = 0; step < result.steps; step += 1) {
-    const nextNode = getNextBoardNode(getBoardNodeById(currentNodeId), step === 0 ? branchChoice : 'outer');
-    if (!nextNode) break;
-    previewNodeIds.push(nextNode.id);
-    currentNodeId = nextNode.id;
-  }
-  return previewNodeIds;
+  return getMovePathNodeIds(piece.nodeId, result.steps, branchChoice);
 };
 
 export function App() {
@@ -325,11 +317,12 @@ export function App() {
     let nextNodeIndex = movingPiece.nodeIndex;
     let currentNodeId = movingPiece.nodeId;
     let finishedMove = false;
+    const movePathNodeIds = getMovePathNodeIds(currentNodeId, steps, branchChoice);
     for (let step = 0; step < Math.max(0, steps); step += 1) {
-      const nextNode = getNextBoardNode(getBoardNodeById(currentNodeId), step === 0 ? branchChoice : 'outer');
-      finishedMove = !nextNode;
-      currentNodeId = finishedMove ? 'finish' : nextNode?.id ?? 'finish';
-      nextNodeIndex = finishedMove ? 20 : BOARD_NODES.findIndex((node) => node.id === nextNode?.id);
+      const nextNodeId = movePathNodeIds[step];
+      finishedMove = !nextNodeId;
+      currentNodeId = finishedMove ? 'finish' : nextNodeId ?? 'finish';
+      nextNodeIndex = finishedMove ? 20 : BOARD_NODES.findIndex((node) => node.id === nextNodeId);
       setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: finishedMove } : piece));
       await delay(STEP_DELAY_MS);
       if (finishedMove) break;
@@ -501,7 +494,7 @@ export function App() {
 
     {screen === 'game' && <section className="game-layout" aria-label="게임 플레이 화면">
       <aside className="panel players"><h2>{activeRoomTitle || title}</h2><p className="game-end-guide">내 모든 말이 완주하면 개인전 승리, 팀전은 같은 팀 전원의 말이 모두 완주하면 승리합니다. 결과가 나오면 게임 종료로 대기화면에 돌아갈 수 있습니다.</p>{playableSeats.map((seat) => <div className={`player ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''}`} key={seat.id}><b style={{ color: PLAYER_COLORS[playableSeats.findIndex((player) => player.id === seat.id)] }}>{seat.label}</b><span>{seat.color} 말 {pieceCount}개 · {seat.name}</span>{playMode === 'team' && <small>{seat.team}</small>}<em>{seat.isAI ? 'AI 플레이' : activeSeat?.id === seat.id ? '현재 턴' : '대기'}</em>{!seat.isHost && !seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}</div>)}<div className="player-items"><h2>보유 아이템</h2>{(ownedItems.host ?? []).length ? <div className="item-grid">{(ownedItems.host ?? []).map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><ItemCard type={type} /></button>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div><button className="secondary end-game" onClick={finishGame}>게임 종료</button></aside>
-      <section className="panel board-panel">{winner && <div className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{winner}</strong><p>{winner}했습니다. 아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button></div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={setSelectedPieceId} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} trapNodeIds={trapNodes.map((trap) => trap.nodeId)} previewNodeIds={previewNodeIds} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-mat"><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((flat, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${flat ? 'flat' : 'round'}`} style={{ '--stick-index': index } as CSSProperties}><i></i></span>)}</div></div>}<div className="play-controls"><strong>{winner ? `${winner} · 게임 종료` : `${activeSeat?.label} 턴`}</strong><span>{roll ? `${roll.name} · ${roll.steps}칸` : isMyTurn ? '윷을 던져주세요' : '상대 턴입니다'}</span>{roll && isMyTurn && BRANCH_NODE_IDS.includes((pieces.find((piece) => piece.id === selectedPieceId)?.nodeId ?? '') as typeof BRANCH_NODE_IDS[number]) && <select value={branchChoice} onChange={(e) => setBranchChoice(e.target.value as BranchChoice)} aria-label="이동 방향 선택"><option value="shortcut">지름길</option><option value="outer">다른 길</option></select>}<button onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button></div></section>
+      <section className="panel board-panel">{winner && <div className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{winner}</strong><p>{winner}했습니다. 아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button></div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={setSelectedPieceId} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} trapNodeIds={trapNodes.map((trap) => trap.nodeId)} previewNodeIds={previewNodeIds} branchChoice={branchChoice} onBranchChoiceChange={setBranchChoice} showBranchControls={Boolean(roll && isMyTurn)} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-mat"><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((flat, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${flat ? 'flat' : 'round'}`} style={{ '--stick-index': index } as CSSProperties}><i></i></span>)}</div></div>}<div className="play-controls"><strong>{winner ? `${winner} · 게임 종료` : `${activeSeat?.label} 턴`}</strong><span>{roll ? `${roll.name} · ${roll.steps}칸` : isMyTurn ? '윷을 던져주세요' : '상대 턴입니다'}</span><button onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button></div></section>
       <aside className="panel side"><h2>진행 기록</h2><div className="log-list">{logs.map((log) => <p key={log.id}>{log.text}</p>)}</div></aside>
     </section>}
   </main>;
