@@ -23,8 +23,8 @@ type GameBoardProps = {
   highlightedNodeId?: string;
 };
 
-function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[]) {
-  if (!piece.started && !piece.finished) {
+function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = '') {
+  if (!piece.started && !piece.finished && movingPieceId !== piece.id) {
     const ownerPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && !candidate.started && !candidate.finished);
     const ownerIndex = Math.max(0, ownerPieces.findIndex((candidate) => candidate.id === piece.id));
     const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
@@ -65,9 +65,9 @@ export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSel
       type="button"
       key={piece.id}
       className={`piece-token ${selectedPieceId === piece.id ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''}`}
-      style={getPieceStyle(piece, pieces)}
+      style={getPieceStyle(piece, pieces, movingPieceId)}
       onClick={() => onSelectPiece(piece.id)}
-      disabled={piece.finished || (!piece.started && !piece.finished)}
+      disabled={piece.finished}
       aria-label={`${piece.label} 말 선택`}
     >{piece.finished ? '완' : piece.label}</button>)}
   </div>;

@@ -11,7 +11,7 @@ const outerAt = (index: number) => Number((OUTER_MIN + OUTER_STEP * index).toFix
 
 export const BOARD_NODES: BoardNode[] = [
   // 정식 윷놀이 말판의 바깥길: 시작점에서 첫 이동 방향이 위쪽이 되도록 오른쪽 변을 먼저 오릅니다.
-  { id: 'n01', x: outerAt(5), y: outerAt(5), kind: 'corner', playable: true },
+  { id: 'n01', x: outerAt(5), y: outerAt(5), kind: 'start', playable: true },
   { id: 'n02', x: outerAt(5), y: outerAt(4), kind: 'normal', playable: true },
   { id: 'n03', x: outerAt(5), y: outerAt(3), kind: 'normal', playable: true },
   { id: 'n04', x: outerAt(5), y: outerAt(2), kind: 'normal', playable: true },
