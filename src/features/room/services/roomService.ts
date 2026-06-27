@@ -1,10 +1,15 @@
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, type Unsubscribe } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, type Unsubscribe } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
-import { spawnInitialBoardItems } from '../../../game-core/board/board';
+import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board/board';
 
 export interface RoomSummary {
   id: string; title: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown;
 }
+export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; joinedAt?: unknown; }
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; roll: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; updatedAt?: unknown; turnVersion: number; }
+
+const COLORS = ['red', 'blue', 'green', 'yellow'];
+const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 
 export async function createRoom(params: { title: string; hostId: string; nickname: string; maxPlayers: 2|3|4; itemMode: boolean; playMode: 'individual'|'team'; pieceCount: 1|2|3|4; password?: string; }) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
@@ -21,11 +26,55 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     status: 'waiting',
     createdAt: serverTimestamp(),
   });
-  await setDoc(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: 'red', joinedAt: serverTimestamp() });
+  await setDoc(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp() });
   if (params.itemMode) {
     await Promise.all(spawnInitialBoardItems().map((item) => setDoc(doc(firestore, 'rooms', roomRef.id, 'boardItems', item.id), item)));
   }
   return roomRef.id;
+}
+
+export async function joinRoom(roomId: string, params: { userId: string; nickname: string; playMode: 'individual'|'team'; }) {
+  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  const playerRef = doc(db, 'rooms', roomId, 'players', params.userId);
+  const existingPlayer = await getDoc(playerRef);
+  if (existingPlayer.exists()) {
+    await setDoc(playerRef, { nickname: params.nickname }, { merge: true });
+    return;
+  }
+  const playersRef = collection(db, 'rooms', roomId, 'players');
+  const snapshot = await getDocs(query(playersRef, orderBy('seatIndex', 'asc'), limit(4)));
+  const usedSeats = new Set(snapshot.docs.map((playerDoc) => Number(playerDoc.data().seatIndex)));
+  let seatIndex = 0;
+  while (usedSeats.has(seatIndex) && seatIndex < 4) seatIndex += 1;
+  if (seatIndex >= 4) throw new Error('방이 가득 찼습니다.');
+  await setDoc(playerRef, {
+    nickname: params.nickname,
+    ready: false,
+    color: COLORS[seatIndex] ?? 'black',
+    seatIndex,
+    team: params.playMode === 'team' ? TEAMS[seatIndex] : '청팀',
+    joinedAt: serverTimestamp(),
+  }, { merge: true });
+}
+
+export function subscribeRoomPlayers(roomId: string, callback: (players: RoomPlayer[]) => void): Unsubscribe {
+  if (!db) { callback([]); return () => undefined; }
+  return onSnapshot(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc')), (snapshot) => callback(snapshot.docs.map((playerDoc) => ({ id: playerDoc.id, ...(playerDoc.data() as Omit<RoomPlayer, 'id'>) }))));
+}
+
+export async function saveGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>) {
+  if (!db || !roomId) return;
+  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(gameStateRef);
+    const currentVersion = snapshot.exists() ? Number(snapshot.data().turnVersion ?? 0) : 0;
+    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: currentVersion + 1 }, { merge: true });
+  });
+}
+
+export function subscribeGameState(roomId: string, callback: (state: SyncedGameState | null) => void): Unsubscribe {
+  if (!db) { callback(null); return () => undefined; }
+  return onSnapshot(doc(db, 'rooms', roomId, 'state', 'current'), (snapshot) => callback(snapshot.exists() ? snapshot.data() as SyncedGameState : null));
 }
 
 export function subscribeWaitingRooms(callback: (rooms: RoomSummary[]) => void): Unsubscribe {
@@ -33,7 +82,6 @@ export function subscribeWaitingRooms(callback: (rooms: RoomSummary[]) => void):
   const roomsQuery = query(collection(db, 'rooms'), where('status', '==', 'waiting'), orderBy('createdAt', 'desc'));
   return onSnapshot(roomsQuery, (snapshot) => callback(snapshot.docs.map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))));
 }
-
 
 export function subscribeRoom(roomId: string, callback: (room: RoomSummary | null) => void): Unsubscribe {
   if (!db) { callback(null); return () => undefined; }
@@ -45,6 +93,21 @@ export function subscribeRoom(roomId: string, callback: (room: RoomSummary | nul
 export async function updateRoomOptions(roomId: string, params: { itemMode: boolean; pieceCount: 1|2|3|4; }) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   await updateDoc(doc(db, 'rooms', roomId), { itemMode: params.itemMode, pieceCount: params.pieceCount });
+}
+
+export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
+  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  await setDoc(doc(db, 'rooms', roomId, 'players', playerId), params, { merge: true });
+}
+
+export async function removeRoomPlayer(roomId: string, playerId: string) {
+  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  await deleteDoc(doc(db, 'rooms', roomId, 'players', playerId));
+}
+
+export async function updateRoomStatus(roomId: string, status: RoomSummary['status']) {
+  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  await updateDoc(doc(db, 'rooms', roomId), { status });
 }
 
 export async function deleteRoom(roomId: string) {
