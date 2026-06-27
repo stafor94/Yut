@@ -14,7 +14,7 @@ export const ITEM_DEFINITIONS: Record<ItemType, { name: string; timing: ItemTimi
   move_plus_one: { name: '한 칸 더 이동', timing: 'after_roll', description: '이번 이동에서 선택한 말이 1칸 더 이동합니다.', icon: '➕' },
   move_minus_one: { name: '한 칸 덜 이동', timing: 'after_roll', description: '이번 이동에서 선택한 말이 1칸 덜 이동합니다.', icon: '➖' },
   shield: { name: '방패', timing: 'after_move', description: '방금 이동한 말을 다음 내 턴까지 1회 보호합니다.', icon: '🛡️' },
-  trap: { name: '함정 설치', timing: 'after_move', description: '이동한 말 주변 2칸 이내에 함정을 설치합니다.', icon: '🪤' },
+  trap: { name: '함정 설치', timing: 'after_move', description: '선택한 내 말 위치에 함정을 설치합니다.', icon: '🪤' },
   golden_yut: { name: '황금 윷', timing: 'before_roll', description: '윷을 던지기 전 원하는 결과를 선택합니다.', icon: '✨' },
 };
 

@@ -44,6 +44,8 @@ export const BOARD_NODES: BoardNode[] = [
 ];
 
 export type BranchChoice = 'outer' | 'shortcut';
+export type PieceStatus = 'home' | 'onBoard' | 'finished';
+export type RouteContext = 'outer' | 'n06Shortcut' | 'n11Shortcut' | 'centerToN20' | 'centerToN16';
 
 const OUTER_ROUTE = ['n01','n02','n03','n04','n05','n06','n07','n08','n09','n10','n11','n12','n13','n14','n15','n16','n17','n18','n19','n20'];
 const SHORTCUTS: Record<string, string[]> = {
@@ -75,6 +77,7 @@ export function getNextBoardNode(currentNode: BoardNode | undefined, branchChoic
 }
 
 export function getMovePathNodeIds(startNodeId: string, steps: number, branchChoice: BranchChoice = 'outer') {
+  if (steps < 0) return getBackwardPathNodeIds(startNodeId, Math.abs(steps));
   const pathNodeIds: string[] = [];
   let currentNodeId = startNodeId;
   let activeRoute: string[] | null = null;
@@ -100,6 +103,34 @@ export function getMovePathNodeIds(startNodeId: string, steps: number, branchCho
   }
 
   return pathNodeIds;
+}
+
+export function getBackwardPathNodeIds(startNodeId: string, steps: number) {
+  const pathNodeIds: string[] = [];
+  let currentNodeId = startNodeId;
+  for (let step = 0; step < Math.max(0, steps); step += 1) {
+    const routeEntry = Object.entries(SHORTCUTS).find(([, route]) => route.includes(currentNodeId));
+    if (routeEntry) {
+      const route = [routeEntry[0], ...routeEntry[1]];
+      const previousId = route[route.indexOf(currentNodeId) - 1];
+      if (!previousId) break;
+      pathNodeIds.push(previousId);
+      currentNodeId = previousId;
+      continue;
+    }
+    const outerIndex = OUTER_ROUTE.indexOf(currentNodeId);
+    const previousId = outerIndex > 0 ? OUTER_ROUTE[outerIndex - 1] : undefined;
+    if (!previousId) break;
+    pathNodeIds.push(previousId);
+    currentNodeId = previousId;
+  }
+  return pathNodeIds;
+}
+
+export function getNearbyNodeIds(nodeId: string, range: number) {
+  const forward = getMovePathNodeIds(nodeId, range);
+  const backward = getBackwardPathNodeIds(nodeId, range);
+  return Array.from(new Set([...forward, ...backward]));
 }
 
 export function spawnInitialBoardItems(min = 4, max = 8): BoardItem[] {

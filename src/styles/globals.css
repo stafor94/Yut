@@ -1237,3 +1237,6 @@ aside.players,
   from { width: 100%; }
   to { width: 0%; }
 }
+
+.yut-stick.marked i { box-shadow: inset 0 0 0 3px rgba(217, 74, 56, .38); }
+.yut-stick.marked i::after { content: ''; position: absolute; inset: 48% 18% auto; height: 3px; background: rgba(217, 74, 56, .72); border-radius: 999px; }
