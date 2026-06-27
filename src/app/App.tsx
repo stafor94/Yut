@@ -317,7 +317,9 @@ export function App() {
       return true;
     }
     setMovingPieceId(pieceId);
-    const movingGroupIds = pieces.filter((piece) => piece.ownerId === seat.id && !piece.finished && piece.nodeId === movingPiece.nodeId && piece.started === movingPiece.started).map((piece) => piece.id);
+    const movingGroupIds = movingPiece.started
+      ? pieces.filter((piece) => piece.ownerId === seat.id && !piece.finished && piece.started && piece.nodeId === movingPiece.nodeId).map((piece) => piece.id)
+      : [movingPiece.id];
     if (movingGroupIds.length > 1) addLog(`${seat.label}의 말 ${movingGroupIds.length}개가 업혀 함께 이동합니다.`);
     if (!movingPiece.started) await delay(STEP_DELAY_MS);
     let nextNodeIndex = movingPiece.nodeIndex;
