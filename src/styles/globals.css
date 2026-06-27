@@ -724,3 +724,165 @@ select {
   from { transform: translateY(0) scale(1); }
   to { transform: translateY(-12px) scale(1.08); }
 }
+
+.brand-title {
+  margin: 0;
+  font-size: clamp(3rem, 7vw, 6.8rem);
+  letter-spacing: .04em;
+}
+
+.player-items {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(42, 30, 23, .12);
+}
+
+.player-items h2 {
+  margin: 0 0 10px;
+}
+
+.board {
+  overflow: visible;
+}
+
+.piece-token:not(.finished) {
+  white-space: nowrap;
+}
+
+.board-node.item-collected {
+  animation: item-node-burst 1.25s ease-out;
+  z-index: 7;
+}
+
+.board-node.item-collected::after {
+  content: "아이템!";
+  position: absolute;
+  left: 50%;
+  top: -54px;
+  translate: -50% 0;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: var(--red);
+  color: #fff;
+  font-weight: 1000;
+  box-shadow: 0 14px 28px rgba(217, 74, 56, .3);
+  animation: item-pop-label 1.25s ease-out;
+}
+
+.toast-message {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  translate: -50% 0;
+  z-index: 50;
+  padding: 14px 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--red), #a93627);
+  color: #fff;
+  font-weight: 1000;
+  box-shadow: 0 18px 44px rgba(42, 30, 23, .24);
+  animation: toast-in-out 2.4s ease both;
+}
+
+.roll-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.board-panel {
+  position: relative;
+}
+
+.roll-mat {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 42px);
+  gap: 14px;
+  place-items: center;
+  padding: 54px 34px 30px;
+  border-radius: 28px;
+  background: radial-gradient(circle, #fff7df, #d39a58);
+  border: 8px solid #7a4a26;
+  box-shadow: 0 28px 70px rgba(42, 30, 23, .35);
+  animation: mat-pop 1.9s ease both;
+}
+
+.roll-label {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  translate: -50% 0;
+  min-width: 90px;
+  text-align: center;
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: #2a1e17;
+  color: #fff;
+  font-size: 1.45rem;
+  font-weight: 1000;
+}
+
+.yut-stick {
+  --stick-index: 0;
+  width: 24px;
+  height: 98px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6f3b1d, #c48948, #6f3b1d);
+  transform-origin: center;
+  animation: yut-flight 1.35s cubic-bezier(.2, .8, .2, 1) both;
+  animation-delay: calc(var(--stick-index) * 80ms);
+}
+
+.yut-stick i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, .18);
+}
+
+.yut-stick.flat i {
+  background: linear-gradient(#fff8ea, #f1d8a9);
+  border: 2px solid rgba(122, 74, 38, .42);
+}
+
+.log-list {
+  max-height: min(54svh, 560px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+@keyframes item-node-burst {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(242, 184, 75, .85); }
+  35% { transform: scale(1.45); box-shadow: 0 0 0 22px rgba(242, 184, 75, .34); }
+  100% { transform: scale(1); box-shadow: 0 0 0 34px rgba(242, 184, 75, 0); }
+}
+
+@keyframes item-pop-label {
+  0% { opacity: 0; transform: translateY(10px) scale(.8); }
+  20%, 75% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-12px) scale(.9); }
+}
+
+@keyframes toast-in-out {
+  0% { opacity: 0; transform: translateY(-16px) scale(.95); }
+  12%, 82% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-18px) scale(.96); }
+}
+
+@keyframes mat-pop {
+  0% { opacity: 0; transform: scale(.75) rotate(-3deg); }
+  14%, 82% { opacity: 1; transform: scale(1) rotate(0); }
+  100% { opacity: 0; transform: scale(.95) rotate(2deg); }
+}
+
+@keyframes yut-flight {
+  0% { opacity: 0; transform: translateY(-220px) rotate(calc(-360deg + var(--stick-index) * 45deg)); }
+  62% { opacity: 1; transform: translateY(8px) rotate(calc(28deg - var(--stick-index) * 14deg)); }
+  78% { transform: translateY(-18px) rotate(calc(12deg + var(--stick-index) * 18deg)); }
+  100% { opacity: 1; transform: translateY(0) rotate(calc(-8deg + var(--stick-index) * 12deg)); }
+}
