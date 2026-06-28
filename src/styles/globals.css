@@ -2612,3 +2612,118 @@ aside.players,
 .turn-order-list span { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 14px; background: #fff3d8; font-weight: 900; }
 .turn-order-list span.active { outline: 3px solid rgba(217, 74, 56, .45); color: var(--red); }
 .turn-order-list span.done { background: rgba(47, 107, 79, .12); color: var(--green); }
+
+/* Keep waiting-room option controls inside their card on tablet/desktop/mobile. */
+.waiting-room .waiting-setup-card {
+  inline-size: 100%;
+}
+
+.waiting-room .host-room-options.compact-options {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(5px, .8vw, 8px);
+  overflow: hidden;
+}
+
+.waiting-room .host-room-options.compact-options .radio-group {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(4px, .55vw, 6px);
+}
+
+.waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
+.waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.waiting-room .host-room-options.compact-options .radio-group label {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  min-height: clamp(28px, 3.2vw, 34px);
+  padding-inline: clamp(3px, .65vw, 7px);
+  padding-block: clamp(4px, .55vw, 6px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.1;
+  font-size: clamp(.72rem, 1.35vw, .88rem);
+}
+
+.waiting-room .host-room-options.compact-options .radio-group legend {
+  font-size: clamp(.78rem, 1.25vw, .95rem);
+  line-height: 1.15;
+}
+
+@media (max-width: 560px) {
+  .waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
+  .waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.play-time.stopped {
+  color: var(--red);
+  border-color: rgba(217, 74, 56, .22);
+  background: rgba(217, 74, 56, .08);
+}
+
+.turn-order-timer {
+  display: inline-grid;
+  place-items: center;
+  justify-self: center;
+  min-width: 128px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(217, 74, 56, .1);
+  color: var(--red);
+  font-size: clamp(1rem, 2vw, 1.3rem);
+  font-weight: 1000;
+}
+
+.turn-order-ready-overlay,
+.turn-order-lock {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  z-index: 46;
+  display: grid;
+  gap: 12px;
+  width: min(92vw, 620px);
+  padding: clamp(20px, 4vw, 34px);
+  border-radius: 30px;
+  background: rgba(255, 248, 234, .97);
+  border: 3px solid rgba(242, 184, 75, .72);
+  box-shadow: 0 30px 80px rgba(42, 30, 23, .32);
+  text-align: center;
+}
+
+.turn-order-ready-overlay span {
+  color: var(--green);
+  font-weight: 1000;
+}
+
+.turn-order-ready-overlay strong {
+  color: #2a1e17;
+  font-size: clamp(1.25rem, 3.6vw, 2.25rem);
+  line-height: 1.25;
+}
+
+.turn-order-ready-overlay p {
+  margin: 0;
+  color: rgba(42, 30, 23, .68);
+  font-weight: 900;
+}
+
+.turn-order-lock {
+  width: min(80vw, 360px);
+  color: var(--green);
+  font-size: clamp(1.15rem, 3vw, 1.7rem);
+  font-weight: 1000;
+}
+
+.piece-token.selected {
+  box-shadow: 0 0 0 6px rgba(242, 184, 75, .22), 0 0 0 12px rgba(47, 107, 79, .1);
+}

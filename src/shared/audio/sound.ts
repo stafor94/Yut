@@ -8,7 +8,6 @@ const getAudioContext = () => {
   const AudioContextConstructor = window.AudioContext ?? (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextConstructor) return null;
   if (!audioContext) audioContext = new AudioContextConstructor();
-  if (audioContext.state === 'suspended') void audioContext.resume();
   return audioContext;
 };
 
@@ -64,55 +63,64 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
   if (!enabled) return;
   const context = getAudioContext();
   if (!context) return;
-  const safeVolume = SOUND_EFFECT_VOLUME;
-  const now = context.currentTime;
-  if (now - lastPlayedAt < 0.035 && effect === 'move') return;
-  lastPlayedAt = now;
 
-  switch (effect) {
-    case 'roll':
-      playNoise(context, nowWithOffset(context), 0.16, safeVolume, 650);
-      playTone(context, 170, nowWithOffset(context, 0.08), 0.14, safeVolume, 'triangle');
-      playTone(context, 115, nowWithOffset(context, 0.2), 0.18, safeVolume, 'triangle');
-      break;
-    case 'bonus':
-      [392, 523, 659, 784, 1047].forEach((frequency, index) => playTone(context, frequency, now + index * 0.06, 0.18, safeVolume * 0.72, 'triangle'));
-      playNoise(context, now + 0.03, 0.2, safeVolume * 0.18, 1800);
-      break;
-    case 'move':
-      playTone(context, 260, now, 0.055, safeVolume * 0.32, 'triangle');
-      playNoise(context, now, 0.045, safeVolume * 0.12, 520);
-      break;
-    case 'arrive':
-      playTone(context, 420, now, 0.08, safeVolume * 0.7, 'triangle');
-      playTone(context, 560, now + 0.06, 0.11, safeVolume * 0.55, 'triangle');
-      break;
-    case 'capture':
-      playNoise(context, now, 0.12, safeVolume, 1200);
-      playTone(context, 98, now, 0.22, safeVolume, 'sawtooth');
-      playTone(context, 392, now + 0.06, 0.12, safeVolume * 0.7, 'triangle');
-      break;
-    case 'itemPickup':
-      [740, 988].forEach((frequency, index) => playTone(context, frequency, now + index * 0.06, 0.12, safeVolume * 0.75, 'sine'));
-      break;
-    case 'itemUse':
-      [440, 660, 880].forEach((frequency, index) => playTone(context, frequency, now + index * 0.045, 0.12, safeVolume * 0.65, 'triangle'));
-      break;
-    case 'trap':
-      playTone(context, 180, now, 0.18, safeVolume, 'sawtooth');
-      playNoise(context, now + 0.02, 0.16, safeVolume * 0.8, 420);
-      break;
-    case 'shield':
-      playTone(context, 620, now, 0.18, safeVolume * 0.7, 'sine');
-      playTone(context, 930, now + 0.04, 0.22, safeVolume * 0.55, 'sine');
-      break;
-    case 'win':
-      [523, 659, 784, 1047, 1319].forEach((frequency, index) => playTone(context, frequency, now + index * 0.09, 0.28, safeVolume * 0.75, 'triangle'));
-      break;
-    case 'toast':
-      playTone(context, 880, now, 0.08, safeVolume * 0.45, 'sine');
-      break;
-    default:
-      break;
+  const play = () => {
+    const safeVolume = SOUND_EFFECT_VOLUME;
+    const now = context.currentTime;
+    if (now - lastPlayedAt < 0.035 && effect === 'move') return;
+    lastPlayedAt = now;
+
+    switch (effect) {
+      case 'roll':
+        playNoise(context, nowWithOffset(context), 0.16, safeVolume, 650);
+        playTone(context, 170, nowWithOffset(context, 0.08), 0.14, safeVolume, 'triangle');
+        playTone(context, 115, nowWithOffset(context, 0.2), 0.18, safeVolume, 'triangle');
+        break;
+      case 'bonus':
+        [392, 523, 659, 784, 1047].forEach((frequency, index) => playTone(context, frequency, now + index * 0.06, 0.18, safeVolume * 0.72, 'triangle'));
+        playNoise(context, now + 0.03, 0.2, safeVolume * 0.18, 1800);
+        break;
+      case 'move':
+        playTone(context, 260, now, 0.055, safeVolume * 0.32, 'triangle');
+        playNoise(context, now, 0.045, safeVolume * 0.12, 520);
+        break;
+      case 'arrive':
+        playTone(context, 420, now, 0.08, safeVolume * 0.7, 'triangle');
+        playTone(context, 560, now + 0.06, 0.11, safeVolume * 0.55, 'triangle');
+        break;
+      case 'capture':
+        playNoise(context, now, 0.12, safeVolume, 1200);
+        playTone(context, 98, now, 0.22, safeVolume, 'sawtooth');
+        playTone(context, 392, now + 0.06, 0.12, safeVolume * 0.7, 'triangle');
+        break;
+      case 'itemPickup':
+        [740, 988].forEach((frequency, index) => playTone(context, frequency, now + index * 0.06, 0.12, safeVolume * 0.75, 'sine'));
+        break;
+      case 'itemUse':
+        [440, 660, 880].forEach((frequency, index) => playTone(context, frequency, now + index * 0.045, 0.12, safeVolume * 0.65, 'triangle'));
+        break;
+      case 'trap':
+        playTone(context, 180, now, 0.18, safeVolume, 'sawtooth');
+        playNoise(context, now + 0.02, 0.16, safeVolume * 0.8, 420);
+        break;
+      case 'shield':
+        playTone(context, 620, now, 0.18, safeVolume * 0.7, 'sine');
+        playTone(context, 930, now + 0.04, 0.22, safeVolume * 0.55, 'sine');
+        break;
+      case 'win':
+        [523, 659, 784, 1047, 1319].forEach((frequency, index) => playTone(context, frequency, now + index * 0.09, 0.28, safeVolume * 0.75, 'triangle'));
+        break;
+      case 'toast':
+        playTone(context, 880, now, 0.08, safeVolume * 0.45, 'sine');
+        break;
+      default:
+        break;
+    }
+  };
+
+  if (context.state === 'suspended') {
+    void context.resume().then(play).catch(() => undefined);
+    return;
   }
+  play();
 };
