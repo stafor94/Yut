@@ -6,7 +6,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
-import { cleanupStaleRooms, createRoom, deleteRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cleanupStaleRooms, createRoom, deleteRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -74,6 +74,7 @@ const TURN_ORDER_AI_MIN_DELAY_MS = 2000;
 const TURN_ORDER_AI_DELAY_SPREAD_MS = 1000;
 const TURN_ORDER_ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_MS = 2600;
+const ROLL_ANIMATION_MS = 2600;
 const MAX_OWNED_ITEMS = 1;
 const ITEM_PICKUP_ROLL_LOCK_MS = 3000;
 const TRAP_EFFECT_MS = 3000;
@@ -248,6 +249,10 @@ export function App() {
   const rollInProgressRef = useRef(false);
   const moveInProgressRef = useRef(false);
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
+  const currentRollRef = useRef<YutResult | null>(null);
+  const rollAnimationTimerRef = useRef<number | null>(null);
+  const lastAnimatedRollKeyRef = useRef('');
+  const pendingSequenceMetaRef = useRef<{ type: GameSequenceType; actorId: string; payload?: Record<string, unknown> } | null>(null);
   const applyingSyncedStateRef = useRef(false);
   const lastAppliedStateVersionRef = useRef(0);
   const lastWinnerSoundRef = useRef('');
@@ -333,7 +338,12 @@ export function App() {
   useEffect(() => () => {
     remoteActionRetryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     remoteActionRetryTimersRef.current.clear();
+    if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    currentRollRef.current = roll;
+  }, [roll]);
 
   useEffect(() => {
     activeRoomIdRef.current = activeRoomId;
@@ -342,6 +352,14 @@ export function App() {
     completedActionIdsRef.current.clear();
     rollInProgressRef.current = false;
     moveInProgressRef.current = false;
+    currentRollRef.current = null;
+    lastAnimatedRollKeyRef.current = '';
+    pendingSequenceMetaRef.current = null;
+    if (rollAnimationTimerRef.current !== null) {
+      window.clearTimeout(rollAnimationTimerRef.current);
+      rollAnimationTimerRef.current = null;
+    }
+    setRollAnimation(null);
     if (activeRoomId) window.localStorage.setItem(STORAGE_KEYS.activeRoomId, activeRoomId);
     else window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
   }, [activeRoomId, user]);
@@ -496,6 +514,17 @@ export function App() {
     });
   }, [activeRoomId, isRoomHost, maxPlayers, playMode, screen]);
 
+  function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false) {
+    if (lastAnimatedRollKeyRef.current === key) return;
+    lastAnimatedRollKeyRef.current = key;
+    if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
+    setRollAnimation({ id: Date.now(), result, sticks, turnOrder });
+    rollAnimationTimerRef.current = window.setTimeout(() => {
+      setRollAnimation(null);
+      rollAnimationTimerRef.current = null;
+    }, turnOrder ? TURN_ORDER_ROLL_ANIMATION_MS : ROLL_ANIMATION_MS);
+  }
+
   useEffect(() => {
     if (!activeRoomId) return undefined;
     return subscribeGameState(activeRoomId, (state) => {
@@ -504,10 +533,17 @@ export function App() {
       if (stateVersion && stateVersion < lastAppliedStateVersionRef.current) return;
       applyingSyncedStateRef.current = true;
       lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
+      const nextRoll = state.roll as YutResult | null;
+      const nextRollResultReadyAt = Number(state.rollResultReadyAt ?? 0);
+      const nextTurnIndex = Number(state.turnIndex ?? 0);
+      if (nextRoll && !currentRollRef.current) {
+        const animationKey = `${nextTurnIndex}:${nextRoll.name}:${nextRoll.steps}:${nextRollResultReadyAt}`;
+        playRollAnimationOnce(nextRoll, makeDisplaySticks(nextRoll), animationKey);
+      }
+      currentRollRef.current = nextRoll;
       setPieces(state.pieces as BoardPiece[]);
-      setTurnIndex(state.turnIndex);
-      setRoll(state.roll as YutResult | null);
-      setRollAnimation((state.rollAnimation as RollAnimation | null | undefined) ?? null);
+      setTurnIndex(nextTurnIndex);
+      setRoll(nextRoll);
       setBoardItems(state.boardItems);
       setOwnedItems(state.ownedItems as Record<string, ItemType[]>);
       setTrapNodes(state.trapNodes as TrapNode[]);
@@ -524,7 +560,7 @@ export function App() {
       setLastMovedSeatId(state.lastMovedSeatId ?? '');
       setItemPromptTiming((state.itemPromptTiming as ItemTiming | null | undefined) ?? null);
       setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
-      setRollResultReadyAt(Number(state.rollResultReadyAt ?? 0));
+      setRollResultReadyAt(nextRollResultReadyAt);
       setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
       window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
     });
@@ -537,11 +573,15 @@ export function App() {
     const isHostOnlyPhaseWriter = Boolean(isRoomHost && (!gameStartedAt || turnOrderPhase.active || turnOrderIntro || activeSeat?.isAI));
     if (!isTurnOwnerWriter && !isPostTurnActionWriter && !isHostOnlyPhaseWriter) return;
     const clientMutationId = `${localSeatId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const sequenceType = winner ? 'game_finished' : roll ? 'roll_yut' : lastMovedSeatId === localSeatId ? 'move_piece_resolved' : pendingTrapPlacement?.ownerId === localSeatId ? 'item_used' : 'state_snapshot';
-    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, rollAnimation, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase }, { type: sequenceType, actorId: localSeatId, clientMutationId, payload: { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId } }).then((version) => {
+    const pendingSequenceMeta = pendingSequenceMetaRef.current;
+    pendingSequenceMetaRef.current = null;
+    const sequenceType = pendingSequenceMeta?.type ?? (winner ? 'game_finished' : lastMovedSeatId === localSeatId ? 'move_piece_resolved' : pendingTrapPlacement?.ownerId === localSeatId ? 'item_used' : 'state_snapshot');
+    const sequenceActorId = pendingSequenceMeta?.actorId ?? localSeatId;
+    const sequencePayload = pendingSequenceMeta?.payload ?? { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId };
+    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload }).then((version) => {
       if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
     });
-  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, gameStartedAt, isRoomHost, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, ownedItems, pendingTrapPlacement, pieces, roll, rollAnimation, rollLockUntil, rollResultReadyAt, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
+  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, gameStartedAt, isRoomHost, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, ownedItems, pendingTrapPlacement, pieces, roll, rollLockUntil, rollResultReadyAt, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -970,7 +1010,6 @@ export function App() {
         turnIndex: 0,
         turnOrderIds: nextTurnOrderIds,
         roll: null,
-        rollAnimation: null,
         boardItems: nextBoardItems,
         ownedItems: {},
         trapNodes: [],
@@ -1032,7 +1071,6 @@ export function App() {
         turnIndex: 0,
         turnOrderIds: nextTurnOrderIds,
         roll: null,
-        rollAnimation: null,
         logs: [...ceremonyLogs, ...currentLogs],
         winner: '',
         captureEffect: null,
@@ -1163,14 +1201,17 @@ export function App() {
     rollInProgressRef.current = true;
     const rolled = forcedResult ? { result: forcedResult, sticks: makeDisplaySticks(forcedResult) } : rollYutResult();
     const nextRoll = rolled.result;
+    const rollResultReadyAtMs = Date.now() + ROLL_RESULT_HOLD_MS;
+    const animationKey = `${turnIndex}:${nextRoll.name}:${nextRoll.steps}:${rollResultReadyAtMs}`;
     setForcedRoll(null);
-    setRollResultReadyAt(Date.now() + ROLL_RESULT_HOLD_MS);
+    setRollResultReadyAt(rollResultReadyAtMs);
+    currentRollRef.current = nextRoll;
     setRoll(nextRoll);
-    setRollAnimation({ id: Date.now(), result: nextRoll, sticks: rolled.sticks });
+    playRollAnimationOnce(nextRoll, rolled.sticks, animationKey);
+    pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name } };
     playSfx('roll');
     if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
-    window.setTimeout(() => setRollAnimation(null), 2600);
-    window.setTimeout(() => { rollInProgressRef.current = false; }, 0);
+    window.setTimeout(() => { rollInProgressRef.current = false; }, ROLL_RESULT_HOLD_MS);
     addLog(`${seat.label}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
   }
