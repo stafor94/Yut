@@ -1548,9 +1548,9 @@ aside.players,
 
 .bottom-branch-controls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 10px;
-  width: min(100%, 460px);
+  width: min(100%, 620px);
 }
 
 .bottom-branch-controls button {
@@ -1567,6 +1567,18 @@ aside.players,
   background: linear-gradient(145deg, #2f6b4f, #224236);
   color: #fff;
   transform: translateY(-2px);
+}
+
+.bottom-branch-controls .branch-move-button {
+  border-color: rgba(217, 74, 56, .3);
+  background: var(--red);
+  color: #fff;
+}
+
+@media (max-width: 560px) {
+  .bottom-branch-controls {
+    grid-template-columns: 1fr;
+  }
 }
 
 .inline-item-prompt {
@@ -2130,4 +2142,90 @@ aside.players,
   .join-room-panel { border-radius: 24px; }
   .lobby-room-card { display: grid; }
   .lobby-room-card button { width: 100%; }
+}
+
+.nickname-chip {
+  min-width: max-content;
+  background: rgba(255, 243, 216, .92);
+  color: var(--green);
+  border: 1px solid rgba(47, 107, 79, .18);
+  box-shadow: 0 10px 24px rgba(82, 49, 18, .08);
+}
+
+.nickname-chip:disabled {
+  opacity: .72;
+  cursor: default;
+}
+
+.sound-controls {
+  display: inline-flex;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.host-room-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 14px;
+  border-radius: 20px;
+  background: rgba(255, 243, 216, .66);
+  border: 1px solid rgba(42, 30, 23, .08);
+}
+
+.host-room-options label {
+  display: grid;
+  gap: 8px;
+  color: rgba(42, 30, 23, .72);
+  font-weight: 900;
+}
+
+.host-room-options .check-row {
+  align-self: end;
+  min-height: 48px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(42, 30, 23, .32);
+  backdrop-filter: blur(6px);
+}
+
+.nickname-modal {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 14px;
+}
+
+.nickname-modal h2,
+.nickname-modal p {
+  margin: 0;
+}
+
+.nickname-modal p:not(.section-kicker) {
+  color: rgba(42, 30, 23, .68);
+  font-weight: 800;
+}
+
+.nickname-modal input {
+  width: 100%;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-actions button {
+  flex: 1;
 }
