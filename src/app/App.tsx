@@ -683,11 +683,16 @@ export function App() {
       const canActorAct = Boolean(actorSeat && !winner && canProcessDuringMove && !turnOrderIntro && (isActorsTurn || (isPostMoveItem && lastMovedSeatId === action.actorId) || isTrapPlacementAction));
 
       if (action.type === 'turn_order_roll') {
-        const isCurrentTurnOrderActor = turnOrderPhase.active && playableSeats[turnOrderPhase.index]?.id === action.actorId;
+        const currentTurnOrderSeat = turnOrderPhase.active ? playableSeats[turnOrderPhase.index] : null;
+        const isCurrentTurnOrderActor = currentTurnOrderSeat?.id === action.actorId;
+        const hasActorAlreadyRolled = turnOrderPhase.rolls.some((rollEntry) => rollEntry.seat.id === action.actorId);
+
         if (isCurrentTurnOrderActor) {
           rollForTurnOrder(true);
           shouldMarkProcessed = true;
-        } else if (!turnOrderPhase.active || actorSeat) {
+        } else if (turnOrderPhase.active && hasActorAlreadyRolled) {
+          shouldMarkProcessed = true;
+        } else if (turnOrderIntro || gameStartedAt) {
           shouldMarkProcessed = true;
         }
         return;
