@@ -5,6 +5,15 @@ import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board
 export interface RoomSummary {
   id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown;
 }
+
+const getCreatedAtMillis = (createdAt: unknown) => {
+  if (createdAt && typeof createdAt === 'object' && 'toMillis' in createdAt && typeof createdAt.toMillis === 'function') {
+    return createdAt.toMillis();
+  }
+  if (createdAt instanceof Date) return createdAt.getTime();
+  if (typeof createdAt === 'number') return createdAt;
+  return 0;
+};
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; }
 export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; updatedAt?: unknown; turnVersion: number; }
 
@@ -92,8 +101,13 @@ export function subscribeGameState(roomId: string, callback: (state: SyncedGameS
 
 export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): Unsubscribe {
   if (!db) { callback([]); return () => undefined; }
-  const roomsQuery = query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing']), orderBy('createdAt', 'desc'));
-  return onSnapshot(roomsQuery, (snapshot) => callback(snapshot.docs.map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))));
+  const roomsQuery = query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing']));
+  return onSnapshot(roomsQuery, (snapshot) => {
+    const rooms = snapshot.docs
+      .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
+      .sort((a, b) => getCreatedAtMillis(b.createdAt) - getCreatedAtMillis(a.createdAt));
+    callback(rooms);
+  }, () => callback([]));
 }
 
 export function subscribeRoom(roomId: string, callback: (room: RoomSummary | null) => void): Unsubscribe {
