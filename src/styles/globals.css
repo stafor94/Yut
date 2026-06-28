@@ -3051,3 +3051,109 @@ aside.players,
     height: 7px;
   }
 }
+
+/* Smartphone readability: make lobby/waiting-room text and controls comfortably legible on narrow screens. */
+@media (max-width: 767px) {
+  body {
+    font-size: 17px;
+  }
+
+  .lobby-shell {
+    padding: 14px;
+  }
+
+  .lobby-shell .hero {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+
+  .lobby-shell .brand-title {
+    font-size: clamp(2rem, 10vw, 2.7rem);
+    line-height: 1.05;
+    letter-spacing: .08em;
+  }
+
+  .lobby-shell .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .lobby-shell .hero-actions > *,
+  .lobby-shell .nickname-chip,
+  .lobby-shell .sound-toggle,
+  .lobby-shell .status-card {
+    width: 100%;
+    min-height: 48px;
+    justify-content: center;
+    padding: 12px 14px;
+    font-size: 1rem;
+  }
+
+  .lobby-shell .panel,
+  .create-room-panel,
+  .join-room-panel {
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .section-kicker,
+  .lobby-shell .section-kicker,
+  .waiting-room .section-kicker {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+
+  .lobby-panel-heading h2,
+  .waiting-room .room-title {
+    font-size: clamp(2rem, 9vw, 2.8rem);
+    line-height: 1.08;
+  }
+
+  .lobby-panel-heading span,
+  .form-grid label,
+  .lobby-form label:not(.check-row),
+  .empty-lobby-room span,
+  .room-card span,
+  .waiting-room .room-subtitle,
+  .mode-summary > *,
+  .ready-card span,
+  .notice {
+    font-size: 1.05rem;
+    line-height: 1.5;
+  }
+
+  input,
+  select,
+  button,
+  .primary-cta,
+  .lobby-room-card button,
+  .waiting-actions button {
+    min-height: 56px;
+    font-size: 1.05rem;
+  }
+
+  .lobby-form input[type="text"],
+  .lobby-form input:not([type]) {
+    min-height: 60px;
+  }
+
+  .lobby-room-card {
+    gap: 14px;
+    padding: 20px;
+  }
+
+  .lobby-room-card b,
+  .empty-lobby-room strong {
+    font-size: 1.35rem;
+    line-height: 1.25;
+  }
+
+  .empty-lobby-room {
+    min-height: 220px;
+    padding: 28px 18px;
+  }
+}
