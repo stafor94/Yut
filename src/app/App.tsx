@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { User } from 'firebase/auth';
 import { GameBoard, type BoardPiece } from '../features/game/components/GameBoard';
 import { ItemCard } from '../features/items/components/ItemCard';
@@ -10,6 +10,7 @@ import { createRoom, deleteRoom, joinRoom, removeRoomPlayer, saveGameState, subs
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
+import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
 import '../styles/globals.css';
 
 type Screen = 'lobby' | 'waitingRoom' | 'game';
@@ -37,7 +38,7 @@ type TrapNode = { nodeId: string; ownerId: string };
 
 const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
 const ROOM_COLOR_LABELS: Record<string, string> = { red: '빨강', blue: '파랑', green: '초록', yellow: '노랑' };
-const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount' } as const;
+const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount', soundEnabled: 'yut-online:soundEnabled', soundVolume: 'yut-online:soundVolume' } as const;
 const getStoredBoolean = (key: string, fallback: boolean) => {
   if (typeof window === 'undefined') return fallback;
   const stored = window.localStorage.getItem(key);
@@ -126,6 +127,8 @@ export function App() {
   const [maxPlayers, setMaxPlayers] = useState<2 | 3 | 4>(() => getStoredNumber(STORAGE_KEYS.maxPlayers, 4, [2, 3, 4] as const));
   const [itemMode, setItemMode] = useState(() => getStoredBoolean(STORAGE_KEYS.itemMode, true));
   const [pieceCount, setPieceCount] = useState<PieceCount>(() => getStoredNumber(STORAGE_KEYS.pieceCount, 4, [1, 2, 3, 4] as const));
+  const [soundEnabled, setSoundEnabled] = useState(() => getStoredBoolean(STORAGE_KEYS.soundEnabled, true));
+  const [soundVolume, setSoundVolume] = useState(() => getStoredNumber(STORAGE_KEYS.soundVolume, 0.5, [0, 0.25, 0.5, 0.75, 1] as const));
   const [message, setMessage] = useState('');
   const [screen, setScreen] = useState<Screen>('lobby');
   const [activeRoomTitle, setActiveRoomTitle] = useState('');
@@ -154,6 +157,7 @@ export function App() {
   const [forcedRoll, setForcedRoll] = useState<YutResult | null>(null);
   const [goldenYutPickerOpen, setGoldenYutPickerOpen] = useState(false);
   const [itemPromptTiming, setItemPromptTiming] = useState<ItemTiming | null>(null);
+  const lastWinnerSoundRef = useRef('');
   const rooms = useRooms();
   const serverStatus = isFirebaseConfigured ? (user ? '온라인' : '입장 준비 중') : '연결 정보 확인 필요';
   const serverStatusTone = isFirebaseConfigured ? (user ? 'online' : 'pending') : 'offline';
@@ -200,6 +204,15 @@ export function App() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.maxPlayers, String(maxPlayers)); }, [maxPlayers]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.itemMode, String(itemMode)); }, [itemMode]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.pieceCount, String(pieceCount)); }, [pieceCount]);
+  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
+  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundVolume, String(soundVolume)); }, [soundVolume]);
+
+  useEffect(() => {
+    if (!winner) { lastWinnerSoundRef.current = ''; return; }
+    if (lastWinnerSoundRef.current === winner) return;
+    lastWinnerSoundRef.current = winner;
+    playSoundEffect('win', soundEnabled, soundVolume);
+  }, [soundEnabled, soundVolume, winner]);
 
   useEffect(() => {
     if (!activeRoomId) return undefined;
@@ -348,10 +361,12 @@ export function App() {
     setScreen('game');
   }
 
+  function playSfx(effect: SoundEffect) { playSoundEffect(effect, soundEnabled, soundVolume); }
   function addLog(text: string) { setLogs((current) => [{ id: Date.now(), text }, ...current]); }
   function showToast(title: string, description?: string, icon?: string) {
     const nextToast = { id: Date.now(), title, description, icon };
     setToast(nextToast);
+    playSfx('toast');
     window.setTimeout(() => setToast((current) => current?.id === nextToast.id ? null : current), 4000);
   }
   function getUsableHostItems(timing: ItemTiming) {
@@ -401,6 +416,8 @@ export function App() {
     setForcedRoll(null);
     setRoll(nextRoll);
     setRollAnimation({ id: Date.now(), result: nextRoll, sticks: rolled.sticks });
+    playSfx('roll');
+    if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
     window.setTimeout(() => setRollAnimation(null), 2600);
     addLog(`${seat.label}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
@@ -453,6 +470,7 @@ export function App() {
       currentNodeId = nextNodeId;
       nextNodeIndex = BOARD_NODES.findIndex((node) => node.id === nextNodeId);
       setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: false } : piece));
+      playSfx('move');
       await delay(STEP_DELAY_MS);
     }
 
@@ -465,6 +483,7 @@ export function App() {
       const itemName = ITEM_DEFINITIONS[landedItem.type].name;
       addLog(`${seat.label}이(가) 아이템 '${itemName}'을 획득했습니다.`);
       showToast(itemName, ITEM_DEFINITIONS[landedItem.type].description, ITEM_DEFINITIONS[landedItem.type].icon);
+      playSfx('itemPickup');
       setHighlightedNodeId(landedNode?.id ?? '');
       window.setTimeout(() => setHighlightedNodeId((current) => current === landedNode?.id ? '' : current), 1400);
     }
@@ -475,9 +494,11 @@ export function App() {
       if (shieldedFromTrap) {
         setShieldedPieceIds((ids) => ids.filter((id) => !movingGroupIds.includes(id)));
         addLog(`${seat.label} 말이 방패로 함정을 막았습니다.`);
+        playSfx('shield');
       } else {
         setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false, finished: false } : piece));
         addLog(`${seat.label} 말이 함정을 밟아 시작점으로 돌아갑니다.`);
+        playSfx('trap');
         currentNodeId = 'n01';
         nextNodeIndex = 0;
         await delay(STEP_DELAY_MS);
@@ -496,13 +517,14 @@ export function App() {
         const capturedPieceIds = capturablePieces.filter((piece) => !shieldedPieceIds.includes(piece.id)).map((piece) => piece.id);
         const effect = { id: Date.now(), pieceIds: capturedPieceIds };
         setCaptureEffect(effect);
+        playSfx('capture');
         await delay(STEP_DELAY_MS * 2);
         setPieces((currentPieces) => currentPieces.map((piece) => capturedPieceIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false } : piece));
         window.setTimeout(() => setCaptureEffect((current) => current?.id === effect.id ? null : current), 450);
         addLog(`${seat.label}이(가) 상대 말을 잡아 한 번 더 던집니다.`);
       }
     }
-    if (finishedMove) addLog(`${seat.label} 말이 완주했습니다!`);
+    if (finishedMove) { addLog(`${seat.label} 말이 완주했습니다!`); playSfx('arrive'); }
     const seatDone = pieces.filter((piece) => piece.ownerId === seat.id && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
     if (seatDone) addLog(`${seat.label}이(가) 모든 말을 완주했습니다.`);
     if (result.bonus && captured) addLog(`${result.name}와 잡기 보너스로 한 번 더 던질 수 있습니다.`);
@@ -552,7 +574,7 @@ export function App() {
     if (!itemOwnerSeat) return;
     const activeItems = ownedItems[itemOwnerId] ?? [];
     if (!activeItems.includes(type)) return;
-    const consumeItem = () => { setItemPromptTiming(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
+    const consumeItem = () => { playSfx('itemUse'); setItemPromptTiming(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
     if (type === 'golden_yut') {
       if (!isMyTurn || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
       consumeItem();
@@ -609,7 +631,7 @@ export function App() {
   return <main className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
     <section className="hero panel">
       <div className="hero-copy"><h1 className="brand-title">YUT ONLINE</h1></div>
-      <div className="hero-actions"><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
+      <div className="hero-actions"><div className="sound-controls" aria-label="효과음 설정"><button className={`sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={() => { const nextEnabled = !soundEnabled; setSoundEnabled(nextEnabled); if (nextEnabled) playSoundEffect('toast', true, soundVolume); }}>{soundEnabled ? '🔊 효과음 ON' : '🔇 효과음 OFF'}</button><label>볼륨<select value={soundVolume} onChange={(e) => setSoundVolume(Number(e.target.value) as 0 | 0.25 | 0.5 | 0.75 | 1)}><option value={0}>0%</option><option value={0.25}>25%</option><option value={0.5}>50%</option><option value={0.75}>75%</option><option value={1}>100%</option></select></label></div><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
     </section>
 
     {screen === 'lobby' && <section className="lobby-layout" aria-label="첫 대기 화면">
