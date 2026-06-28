@@ -14,6 +14,10 @@ const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 export async function createRoom(params: { title: string; hostId: string; nickname: string; maxPlayers: 2|3|4; itemMode: boolean; playMode: 'individual'|'team'; pieceCount: 1|2|3|4; password?: string; }) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const firestore = db;
+  const existingHostRooms = await getDocs(query(collection(firestore, 'rooms'), where('hostId', '==', params.hostId)));
+  await Promise.all(existingHostRooms.docs
+    .filter((roomDoc) => ['waiting', 'finished'].includes(String(roomDoc.data().status)))
+    .map((roomDoc) => deleteDoc(roomDoc.ref)));
   const roomRef = await addDoc(collection(firestore, 'rooms'), {
     title: params.title,
     hostId: params.hostId,
@@ -35,6 +39,10 @@ export async function createRoom(params: { title: string; hostId: string; nickna
 
 export async function joinRoom(roomId: string, params: { userId: string; nickname: string; playMode: 'individual'|'team'; }) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  const roomSnapshot = await getDoc(doc(db, 'rooms', roomId));
+  if (!roomSnapshot.exists()) throw new Error('존재하지 않는 방입니다.');
+  const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
+  if (room.status !== 'waiting') throw new Error('이미 시작되었거나 종료된 방입니다.');
   const playerRef = doc(db, 'rooms', roomId, 'players', params.userId);
   const existingPlayer = await getDoc(playerRef);
   if (existingPlayer.exists()) {
@@ -45,8 +53,8 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
   const snapshot = await getDocs(query(playersRef, orderBy('seatIndex', 'asc'), limit(4)));
   const usedSeats = new Set(snapshot.docs.map((playerDoc) => Number(playerDoc.data().seatIndex)));
   let seatIndex = 0;
-  while (usedSeats.has(seatIndex) && seatIndex < 4) seatIndex += 1;
-  if (seatIndex >= 4) throw new Error('방이 가득 찼습니다.');
+  while (usedSeats.has(seatIndex) && seatIndex < room.maxPlayers) seatIndex += 1;
+  if (seatIndex >= room.maxPlayers) throw new Error('방이 가득 찼습니다.');
   await setDoc(playerRef, {
     nickname: params.nickname,
     ready: false,
