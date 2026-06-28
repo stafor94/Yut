@@ -59,6 +59,7 @@ const getStoredText = (key: string, fallback: string) => {
 };
 const TURN_DELAY_MS = 650;
 const AI_MOVE_DELAY_MS = 2000;
+const AUTO_SINGLE_MOVE_DELAY_MS = 2000;
 const STEP_DELAY_MS = 240;
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -317,7 +318,7 @@ export function App() {
     const needsBranchChoice = onlyPiece.started && BRANCH_NODE_IDS.includes(onlyPiece.nodeId as typeof BRANCH_NODE_IDS[number]);
     if (needsBranchChoice) return;
     setSelectedPieceId(onlyPiece.id);
-    const timer = window.setTimeout(() => { void movePiece(onlyPiece.id, roll, activeSeat); }, TURN_DELAY_MS);
+    const timer = window.setTimeout(() => { void movePiece(onlyPiece.id, roll, activeSeat); }, AUTO_SINGLE_MOVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [activeSeat, isMyTurn, movingPieceId, pieces, playableSeats.length, roll, winner]);
 
@@ -434,7 +435,7 @@ export function App() {
   }
   function rollYut() { if (!activeSeat || !isMyTurn || movingPieceId) return; setShieldedPieceIds([]); rollYutFor(activeSeat); }
 
-  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0) {
+  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice) {
     if (winner || movingPieceId) return false;
     const movingPiece = pieces.find((piece) => piece.id === pieceId && piece.ownerId === seat.id && !piece.finished);
     if (!movingPiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return false; }
@@ -462,8 +463,8 @@ export function App() {
     let nextNodeIndex = movingPiece.nodeIndex;
     let currentNodeId = movingPiece.nodeId;
     let finishedMove = false;
-    const movePathNodeIds = getMovePathNodeIds(currentNodeId, steps, branchChoice);
-    for (let step = 0; step < Math.max(0, steps); step += 1) {
+    const movePathNodeIds = getMovePathNodeIds(currentNodeId, steps, branchOverride);
+    for (let step = 0; step < Math.abs(steps); step += 1) {
       const nextNodeId = movePathNodeIds[step];
       if (!nextNodeId) {
         currentNodeId = 'n01';
@@ -569,12 +570,40 @@ export function App() {
     return true;
   }
 
+  function getAiBranchChoice(piece: BoardPiece): BranchChoice {
+    return piece.started && BRANCH_NODE_IDS.includes(piece.nodeId as typeof BRANCH_NODE_IDS[number]) ? 'shortcut' : 'outer';
+  }
+
+  function scoreAiMove(piece: BoardPiece, result: YutResult, seat: Seat, aiBranchChoice: BranchChoice) {
+    const steps = result.steps;
+    if (steps < 0 && !piece.started) return Number.NEGATIVE_INFINITY;
+    const pathNodeIds = getMovePathNodeIds(piece.nodeId, steps, aiBranchChoice);
+    const landedNodeId = pathNodeIds[pathNodeIds.length - 1] ?? piece.nodeId;
+    const finishes = steps > 0 && pathNodeIds.length < steps;
+    const captures = !finishes && pieces.some((target) => !isSameSide(getSeatById(target.ownerId), seat) && target.started && !target.finished && target.nodeId === landedNodeId);
+    const stacks = !finishes && piece.started ? pieces.filter((target) => target.ownerId === seat.id && target.started && !target.finished && target.nodeId === piece.nodeId).length - 1 : 0;
+    const startsNewPiece = !piece.started && steps > 0;
+    const progress = finishes ? 25 : BOARD_NODES.findIndex((node) => node.id === landedNodeId);
+    return (finishes ? 1000 : 0) + (captures ? 400 : 0) + (aiBranchChoice === 'shortcut' ? 80 : 0) + (startsNewPiece ? 60 : 0) + (stacks * 30) + progress - (piece.finished ? 10000 : 0);
+  }
+
+  function chooseAiMove(seat: Seat, result: YutResult) {
+    return pieces
+      .filter((piece) => piece.ownerId === seat.id && !piece.finished && (result.steps >= 0 || piece.started))
+      .map((piece) => {
+        const aiBranchChoice = getAiBranchChoice(piece);
+        return { piece, branchChoice: aiBranchChoice, score: scoreAiMove(piece, result, seat, aiBranchChoice) };
+      })
+      .sort((left, right) => right.score - left.score)[0];
+  }
+
   async function autoPlayTurn(seat: Seat) {
     const nextRoll = rollYutFor(seat);
-    const playablePiece = pieces.find((piece) => piece.ownerId === seat.id && !piece.finished && (nextRoll.steps >= 0 || piece.started)) ?? pieces.find((piece) => piece.ownerId === seat.id && !piece.finished);
-    if (!playablePiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return; }
+    const aiMove = chooseAiMove(seat, nextRoll);
+    if (!aiMove) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return; }
+    setBranchChoice(aiMove.branchChoice);
     await delay(AI_MOVE_DELAY_MS);
-    await movePiece(playablePiece.id, nextRoll, seat);
+    await movePiece(aiMove.piece.id, nextRoll, seat, 0, aiMove.branchChoice);
   }
 
   function useItem(type: ItemType) {
@@ -661,7 +690,7 @@ export function App() {
 
     {screen === 'game' && <section className="game-layout" aria-label="게임 플레이 화면">
       <aside className="panel players"><h2>{activeRoomTitle || title}</h2><p className="game-end-guide">개인전은 내 말 모두, 팀전은 팀 말 모두 완주하면 승리!</p>{playableSeats.map((seat) => <div className={`player ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''}`} key={seat.id}><b style={{ color: PLAYER_COLORS[playableSeats.findIndex((player) => player.id === seat.id)] }}>{seat.label}</b><span>{seat.color} 말 {pieceCount}개 · {seat.name}</span>{playMode === 'team' && <small>{seat.team}</small>}<em>{seat.isAI ? 'AI 플레이' : activeSeat?.id === seat.id ? '현재 턴' : '대기'}</em>{!seat.isHost && !seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}</div>)}<div className="player-items"><h2>보유 아이템</h2>{(ownedItems[localSeatId] ?? []).length ? <div className="item-grid">{(ownedItems[localSeatId] ?? []).map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><ItemCard type={type} /></button>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div><button className="secondary end-game" onClick={finishGame}>게임 종료</button></aside>
-      <section className="panel board-panel">{winner && <div className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{winner}</strong><p>{winner}했습니다. 아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button></div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<div className="turn-indicator" style={{ color: activeSeat ? PLAYER_COLORS[playableSeats.findIndex((player) => player.id === activeSeat.id)] : undefined }}>{winner ? `${winner} · 게임 종료` : `${activeSeat?.label} 턴`}</div><GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={setSelectedPieceId} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} trapNodeIds={trapNodes.map((trap) => trap.nodeId)} previewNodeIds={previewNodeIds} branchChoice={branchChoice} onBranchChoiceChange={setBranchChoice} showBranchControls={canUseMoveButton} capturedPieceIds={captureEffect?.pieceIds ?? []} boardShaking={Boolean(captureEffect)} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-aura" aria-hidden="true"></div><div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div><div className="roll-mat"><span className="roll-callout">윷!</span><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((stick, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${stick.flat ? 'flat' : 'round'} ${stick.marked ? 'marked' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg` } as CSSProperties}><i></i></span>)}</div></div>}<div className={`play-controls ${!roll ? 'roll-ready' : ''}`}><button className={!roll ? 'roll-button' : undefined} onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId) || Boolean(roll && !canMoveSelectedPiece)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button></div></section>
+      <section className="panel board-panel">{winner && <div className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{winner}</strong><p>{winner}했습니다. 아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button></div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<div className="turn-indicator" style={{ color: activeSeat ? PLAYER_COLORS[playableSeats.findIndex((player) => player.id === activeSeat.id)] : undefined }}>{winner ? `${winner} · 게임 종료` : activeSeat ? `${activeSeat.label}-${activeSeat.name} 턴` : '턴 대기'}</div><GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={setSelectedPieceId} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} trapNodeIds={trapNodes.map((trap) => trap.nodeId)} previewNodeIds={previewNodeIds} branchChoice={branchChoice} onBranchChoiceChange={setBranchChoice} showBranchControls={canUseMoveButton} capturedPieceIds={captureEffect?.pieceIds ?? []} boardShaking={Boolean(captureEffect)} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-aura" aria-hidden="true"></div><div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div><div className="roll-mat"><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((stick, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${stick.flat ? 'flat' : 'round'} ${stick.marked ? 'marked' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg` } as CSSProperties}><i></i></span>)}</div></div>}<div className={`play-controls ${!roll ? 'roll-ready' : ''}`}><button className={!roll ? 'roll-button' : undefined} onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId) || Boolean(roll && !canMoveSelectedPiece)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button></div></section>
       <aside className="panel side"><h2>진행 기록</h2><div className="log-list">{logs.map((log) => <p key={log.id}>{log.text}</p>)}</div></aside>
     </section>}
   </main>;
