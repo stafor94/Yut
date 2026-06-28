@@ -1,5 +1,5 @@
 import type { BoardItem, BoardNode, BranchChoice } from '../../../game-core/board/board';
-import { BOARD_NODES, BRANCH_NODE_IDS } from '../../../game-core/board/board';
+import { BOARD_NODES } from '../../../game-core/board/board';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
 
 export type BoardPiece = {
@@ -28,6 +28,7 @@ type GameBoardProps = {
   showBranchControls?: boolean;
   capturedPieceIds?: string[];
   boardShaking?: boolean;
+  isPieceSelectable?: (piece: BoardPiece) => boolean;
 };
 
 function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = '') {
@@ -53,16 +54,10 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], boardShaking = false }: GameBoardProps) {
-  const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId);
-  const canShowBranchControls = Boolean(
-    showBranchControls &&
-    selectedPiece?.started &&
-    !selectedPiece.finished &&
-    BRANCH_NODE_IDS.includes(selectedPiece.nodeId as typeof BRANCH_NODE_IDS[number]) &&
-    onBranchChoiceChange,
-  );
-  const selectedPieceStyle = selectedPiece ? getPieceStyle(selectedPiece, pieces, movingPieceId) : undefined;
+export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], boardShaking = false, isPieceSelectable }: GameBoardProps) {
+  void branchChoice;
+  void onBranchChoiceChange;
+  void showBranchControls;
 
   return <div className={`board ${boardShaking ? 'capture-shake' : ''}`} aria-label="윷놀이 말판">
     <svg className="board-route-lines" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
@@ -86,13 +81,8 @@ export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSel
       className={`piece-token ${selectedPieceId === piece.id ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
       style={getPieceStyle(piece, pieces, movingPieceId)}
       onClick={() => onSelectPiece(piece.id)}
-      disabled={piece.finished}
+      disabled={piece.finished || isPieceSelectable?.(piece) === false}
       aria-label={`${piece.label} 말 선택`}
     >{piece.finished ? '완' : piece.label}</button>)}
-    {canShowBranchControls && selectedPieceStyle ? <div className="branch-controls" style={selectedPieceStyle} aria-label="이동 방향 선택">
-      <span className="branch-controls-title">방향 선택</span>
-      <button type="button" className={branchChoice === 'outer' ? 'active' : ''} onClick={() => onBranchChoiceChange?.('outer')} aria-label="바깥길로 이동"><span>바깥길</span><small>기본 경로</small></button>
-      <button type="button" className={branchChoice === 'shortcut' ? 'active' : ''} onClick={() => onBranchChoiceChange?.('shortcut')} aria-label="지름길로 이동"><span>지름길</span><small>중앙 경로</small></button>
-    </div> : null}
   </div>;
 }
