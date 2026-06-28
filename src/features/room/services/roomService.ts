@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, type Unsubscribe } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch, type DocumentReference, type Unsubscribe } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
 import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board/board';
 
@@ -25,6 +25,8 @@ const MAX_ACTIVE_ROOMS = 3;
 const EMPTY_ROOM_DELETE_DELAY_MS = 30000;
 const STALE_PLAYER_DELETE_MS = 45000;
 const ROOM_MAX_AGE_MS = 60 * 60 * 1000;
+const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'seats', 'state'] as const;
+const DELETE_BATCH_SIZE = 450;
 
 const getTimestampMillis = (value: unknown) => {
   if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
@@ -44,7 +46,7 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   const existingHostRooms = await getDocs(query(roomsRef, where('hostId', '==', params.hostId)));
   await Promise.all(existingHostRooms.docs
     .filter((roomDoc) => ['waiting', 'finished'].includes(String(roomDoc.data().status)))
-    .map((roomDoc) => deleteDoc(roomDoc.ref)));
+    .map((roomDoc) => deleteRoom(roomDoc.id)));
   const activeRoomsSnapshot = await getDocs(query(roomsRef, where('status', 'in', ['waiting', 'playing'])));
   const now = Date.now();
   const activeRoomDocs = activeRoomsSnapshot.docs.filter((roomDoc) => {
@@ -208,8 +210,25 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
       const player = playerDoc.data() as RoomPlayer;
       return !player.isAI;
     });
-    if (!remainingHumans.length) await deleteDoc(roomDoc.ref);
+    if (!remainingHumans.length) await deleteRoom(roomDoc.id);
   }));
+}
+
+async function deleteDocumentRefs(refs: DocumentReference[]) {
+  if (!db || refs.length === 0) return;
+  for (let index = 0; index < refs.length; index += DELETE_BATCH_SIZE) {
+    const batch = writeBatch(db);
+    refs.slice(index, index + DELETE_BATCH_SIZE).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+}
+
+async function deleteRoomSubcollections(roomId: string) {
+  if (!db || !roomId) return;
+  for (const subcollectionName of ROOM_SUBCOLLECTIONS) {
+    const snapshot = await getDocs(collection(db, 'rooms', roomId, subcollectionName));
+    await deleteDocumentRefs(snapshot.docs.map((snapshotDoc) => snapshotDoc.ref));
+  }
 }
 
 export async function saveGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>) {
@@ -293,7 +312,7 @@ export function subscribePendingGameActions(roomId: string, callback: (actions: 
 
 export async function markGameActionProcessed(roomId: string, actionId: string) {
   if (!db || !roomId || !actionId) return;
-  await setDoc(doc(db, 'rooms', roomId, 'actions', actionId), { processed: true }, { merge: true });
+  await deleteDoc(doc(db, 'rooms', roomId, 'actions', actionId));
 }
 
 export async function getRoom(roomId: string): Promise<RoomSummary | null> {
@@ -321,7 +340,7 @@ async function deleteRoomIfStillEmpty(roomId: string, expectedEmptySince: number
   if (!roomSnapshot.exists()) return;
   const playersSnapshot = await getDocs(query(collection(db, 'rooms', roomId, 'players'), limit(1)));
   const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
-  if (playersSnapshot.empty && Number(room.emptySince ?? 0) === expectedEmptySince) await deleteDoc(roomRef);
+  if (playersSnapshot.empty && Number(room.emptySince ?? 0) === expectedEmptySince) await deleteRoom(roomId);
 }
 
 export async function scheduleEmptyRoomDeletion(roomId: string) {
@@ -364,5 +383,6 @@ export async function updateRoomStatus(roomId: string, status: RoomSummary['stat
 
 export async function deleteRoom(roomId: string) {
   if (!db) return;
+  await deleteRoomSubcollections(roomId);
   await deleteDoc(doc(db, 'rooms', roomId));
 }
