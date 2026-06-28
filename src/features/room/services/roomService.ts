@@ -91,9 +91,41 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
     const existingPlayer = await transaction.get(playerRef);
     if (existingPlayer.exists()) {
       const existingData = existingPlayer.data() as RoomPlayer;
-      transaction.set(playerRef, { nickname: params.nickname, lastSeen: serverTimestamp() }, { merge: true });
-      transaction.set(roomRef, { emptySince: null }, { merge: true });
-      return { role: existingData.isSpectator ? 'spectator' : 'player', seatIndex: existingData.isSpectator ? null : Number(existingData.seatIndex) };
+      const existingSeatIndex = Number(existingData.seatIndex);
+      const hasValidActiveSeat = !existingData.isSpectator && Number.isInteger(existingSeatIndex) && existingSeatIndex >= 0 && existingSeatIndex < Number(room.maxPlayers);
+      if (existingData.isSpectator || hasValidActiveSeat) {
+        transaction.set(playerRef, { nickname: params.nickname, lastSeen: serverTimestamp() }, { merge: true });
+        if (hasValidActiveSeat) transaction.set(doc(db!, 'rooms', roomId, 'seats', String(existingSeatIndex)), { playerId: params.userId, updatedAt: serverTimestamp() }, { merge: true });
+        transaction.set(roomRef, { emptySince: null }, { merge: true });
+        return { role: existingData.isSpectator ? 'spectator' : 'player', seatIndex: existingData.isSpectator ? null : existingSeatIndex };
+      }
+
+      const maxPlayers = room.maxPlayers as 2 | 3 | 4;
+      const seatRefs = Array.from({ length: maxPlayers }, (_, index) => doc(db!, 'rooms', roomId, 'seats', String(index)));
+      const seatSnapshots = await Promise.all(seatRefs.map((seatRef) => transaction.get(seatRef)));
+      const currentPlayers = seatSnapshots.filter((seatSnapshot) => seatSnapshot.exists()).length;
+
+      if (room.status === 'playing') {
+        transaction.set(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: existingData.joinedAt ?? serverTimestamp(), lastSeen: serverTimestamp() }, { merge: true });
+        transaction.set(roomRef, { emptySince: null, currentPlayers }, { merge: true });
+        return { role: 'spectator', seatIndex: null };
+      }
+
+      const seatIndex = seatSnapshots.findIndex((seatSnapshot) => !seatSnapshot.exists());
+      if (seatIndex < 0) throw new Error('방이 가득 찼습니다.');
+      transaction.set(playerRef, {
+        nickname: params.nickname,
+        ready: false,
+        color: COLORS[seatIndex] ?? 'black',
+        seatIndex,
+        team: params.playMode === 'team' ? TEAMS[seatIndex] : '청팀',
+        isSpectator: false,
+        joinedAt: existingData.joinedAt ?? serverTimestamp(),
+        lastSeen: serverTimestamp(),
+      }, { merge: true });
+      transaction.set(seatRefs[seatIndex], { playerId: params.userId, updatedAt: serverTimestamp() });
+      transaction.set(roomRef, { emptySince: null, currentPlayers: currentPlayers + 1 }, { merge: true });
+      return { role: 'player', seatIndex };
     }
 
     const maxPlayers = room.maxPlayers as 2 | 3 | 4;
@@ -133,7 +165,10 @@ export function subscribeRoomPlayers(roomId: string, callback: (players: RoomPla
 
 export async function heartbeatRoomPlayer(roomId: string, playerId: string) {
   if (!db || !roomId || !playerId) return;
-  await setDoc(doc(db, 'rooms', roomId, 'players', playerId), { lastSeen: serverTimestamp() }, { merge: true });
+  const playerRef = doc(db, 'rooms', roomId, 'players', playerId);
+  const playerSnapshot = await getDoc(playerRef);
+  if (!playerSnapshot.exists()) return;
+  await updateDoc(playerRef, { lastSeen: serverTimestamp() });
 }
 
 export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protectedRoomId = '') {
@@ -197,6 +232,12 @@ export function subscribeRoom(roomId: string, callback: (room: RoomSummary | nul
   return onSnapshot(doc(db, 'rooms', roomId), (snapshot) => {
     callback(snapshot.exists() ? { id: snapshot.id, ...(snapshot.data() as Omit<RoomSummary, 'id'>) } : null);
   });
+}
+
+export async function getRoom(roomId: string): Promise<RoomSummary | null> {
+  if (!db) return null;
+  const roomSnapshot = await getDoc(doc(db, 'rooms', roomId));
+  return roomSnapshot.exists() ? { id: roomSnapshot.id, ...(roomSnapshot.data() as Omit<RoomSummary, 'id'>) } : null;
 }
 
 export async function updateRoomOptions(roomId: string, params: Partial<Pick<RoomSummary, 'itemMode' | 'pieceCount' | 'playMode' | 'maxPlayers'>>) {
