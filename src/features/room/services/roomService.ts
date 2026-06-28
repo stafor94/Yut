@@ -203,12 +203,14 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
 }
 
 export async function saveGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>) {
-  if (!db || !roomId) return;
+  if (!db || !roomId) return null;
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
-  await runTransaction(db, async (transaction) => {
+  return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(gameStateRef);
     const currentVersion = snapshot.exists() ? Number(snapshot.data().turnVersion ?? 0) : 0;
-    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: currentVersion + 1 }, { merge: true });
+    const nextVersion = currentVersion + 1;
+    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: nextVersion }, { merge: true });
+    return nextVersion;
   });
 }
 
