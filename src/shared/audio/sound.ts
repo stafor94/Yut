@@ -25,9 +25,16 @@ const makeGain = (context: AudioContext, volume: number, start: number, duration
 
 const playTone = (context: AudioContext, frequency: number, start: number, duration: number, volume: number, type: OscillatorType = 'sine') => {
   const oscillator = context.createOscillator();
+  const filter = context.createBiquadFilter();
   oscillator.type = type;
   oscillator.frequency.setValueAtTime(frequency, start);
-  oscillator.connect(makeGain(context, volume, start, duration));
+  oscillator.detune.setValueAtTime(-7, start);
+  oscillator.detune.linearRampToValueAtTime(5, start + duration * 0.55);
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(Math.max(420, frequency * 2.8), start);
+  filter.Q.setValueAtTime(0.7, start);
+  oscillator.connect(filter);
+  filter.connect(makeGain(context, volume, start, duration));
   oscillator.start(start);
   oscillator.stop(start + duration + 0.03);
 };
@@ -51,7 +58,7 @@ const playNoise = (context: AudioContext, start: number, duration: number, volum
   source.stop(start + duration + 0.03);
 };
 
-const SOUND_EFFECT_VOLUME = 0.5;
+const SOUND_EFFECT_VOLUME = 0.38;
 
 export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
   if (!enabled) return;
@@ -69,10 +76,12 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
       playTone(context, 115, nowWithOffset(context, 0.2), 0.18, safeVolume, 'triangle');
       break;
     case 'bonus':
-      [523, 659, 784, 1047].forEach((frequency, index) => playTone(context, frequency, now + index * 0.055, 0.16, safeVolume, 'sine'));
+      [392, 523, 659, 784, 1047].forEach((frequency, index) => playTone(context, frequency, now + index * 0.06, 0.18, safeVolume * 0.72, 'triangle'));
+      playNoise(context, now + 0.03, 0.2, safeVolume * 0.18, 1800);
       break;
     case 'move':
-      playTone(context, 290, now, 0.07, safeVolume * 0.5, 'square');
+      playTone(context, 260, now, 0.055, safeVolume * 0.32, 'triangle');
+      playNoise(context, now, 0.045, safeVolume * 0.12, 520);
       break;
     case 'arrive':
       playTone(context, 420, now, 0.08, safeVolume * 0.7, 'triangle');
