@@ -240,6 +240,8 @@ export function App() {
   const [rollResultReadyAt, setRollResultReadyAt] = useState(0);
   const [trapPlacementClock, setTrapPlacementClock] = useState(() => Date.now());
   const processedActionIdsRef = useRef<Set<string>>(new Set());
+  const applyingSyncedStateRef = useRef(false);
+  const lastAppliedStateVersionRef = useRef(0);
   const lastWinnerSoundRef = useRef('');
   const lastBranchControlKeyRef = useRef('');
   const activeRoomIdRef = useRef('');
@@ -308,6 +310,7 @@ export function App() {
 
   useEffect(() => {
     activeRoomIdRef.current = activeRoomId;
+    lastAppliedStateVersionRef.current = 0;
     if (activeRoomId) window.localStorage.setItem(STORAGE_KEYS.activeRoomId, activeRoomId);
     else window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
   }, [activeRoomId, user]);
@@ -463,16 +466,20 @@ export function App() {
   }, [activeRoomId, isRoomHost, maxPlayers, playMode, screen]);
 
   useEffect(() => {
-    if (!activeRoomId || isRoomHost) return undefined;
+    if (!activeRoomId) return undefined;
     return subscribeGameState(activeRoomId, (state) => {
       if (!state) return;
+      const stateVersion = Number(state.turnVersion ?? 0);
+      if (stateVersion && stateVersion < lastAppliedStateVersionRef.current) return;
+      applyingSyncedStateRef.current = true;
+      lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
       setPieces(state.pieces as BoardPiece[]);
       setTurnIndex(state.turnIndex);
       setRoll(state.roll as YutResult | null);
       setBoardItems(state.boardItems);
       setOwnedItems(state.ownedItems as Record<string, ItemType[]>);
       setTrapNodes(state.trapNodes as TrapNode[]);
-      setPendingTrapPlacement(null);
+      setPendingTrapPlacement((state.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? null);
       setShieldedPieceIds(state.shieldedPieceIds);
       setLogs(state.logs as GameLog[]);
       setCaptureEffect((state.captureEffect as CaptureEffect | null | undefined) ?? null);
@@ -480,19 +487,22 @@ export function App() {
       setGameStartedAt((state.gameStartedAt as number | null | undefined) ?? null);
       setTurnOrderIds((state.turnOrderIds as string[] | undefined) ?? []);
       setTurnOrderIntro((state.turnOrderIntro as TurnOrderIntro | null | undefined) ?? null);
-      setPendingTrapPlacement((state.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? null);
       setRollLockUntil(Number(state.rollLockUntil ?? 0));
       setLastMovedPieceIds((state.lastMovedPieceIds as string[] | undefined) ?? []);
       setLastMovedSeatId(state.lastMovedSeatId ?? '');
       setItemPromptTiming((state.itemPromptTiming as ItemTiming | null | undefined) ?? null);
       setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
       setRollResultReadyAt(Number(state.rollResultReadyAt ?? 0));
+      setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
+      window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
     });
-  }, [activeRoomId, isRoomHost, isSpectator]);
+  }, [activeRoomId]);
 
   useEffect(() => {
-    if (!activeRoomId || !isRoomHost || screen !== 'game') return;
-    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase });
+    if (!activeRoomId || !isRoomHost || screen !== 'game' || applyingSyncedStateRef.current) return;
+    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase }).then((version) => {
+      if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
+    });
   }, [activeRoomId, boardItems, captureEffect, trapEffect, gameStartedAt, isRoomHost, logs, ownedItems, pieces, roll, screen, shieldedPieceIds, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, winner, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase]);
 
   useEffect(() => {
@@ -577,14 +587,18 @@ export function App() {
     turnOrderRollingRef.current = false;
     if (!turnOrderPhase.active) return undefined;
     const seat = playableSeats[turnOrderPhase.index];
-    if (!seat) { finishTurnOrderCeremony(turnOrderPhase.rolls); return undefined; }
+    if (!seat) {
+      if (!activeRoomId || isRoomHost) finishTurnOrderCeremony(turnOrderPhase.rolls);
+      return undefined;
+    }
+    if (activeRoomId && !isRoomHost && (seat.id !== localSeatId || seat.isAI)) return undefined;
     const now = Date.now();
     const readyWait = Math.max(0, turnOrderPhase.readyAt - now);
     const remaining = Math.max(0, turnOrderPhase.deadline - now);
     const delayMs = readyWait || (seat.isAI ? 700 : remaining);
     const timer = window.setTimeout(() => rollForTurnOrder(), delayMs);
     return () => window.clearTimeout(timer);
-  }, [localSeatId, playableSeats, turnOrderPhase]);
+  }, [activeRoomId, isRoomHost, localSeatId, playableSeats, turnOrderPhase]);
 
   useEffect(() => {
     if (!showBottomBranchControls || !selectedPiece || !roll) {
@@ -658,33 +672,58 @@ export function App() {
   async function handleRemoteGameAction(action: GameAction) {
     if (!activeRoomId || processedActionIdsRef.current.has(action.id)) return;
     processedActionIdsRef.current.add(action.id);
+    let shouldMarkProcessed = false;
     try {
       const actorSeat = playableSeats.find((seat) => seat.id === action.actorId);
       const isActorsTurn = activeSeat?.id === action.actorId;
-      const canActorAct = Boolean(actorSeat && (isActorsTurn || lastMovedSeatId === action.actorId) && !winner && !movingPieceId && !turnOrderIntro);
+      const remoteItemType = action.payload?.itemType as ItemType | undefined;
+      const isPostMoveItem = action.type === 'use_item' && (remoteItemType === 'shield' || remoteItemType === 'trap');
+      const isTrapPlacementAction = action.type === 'place_trap' && pendingTrapPlacement?.ownerId === action.actorId;
+      const canProcessDuringMove = !movingPieceId;
+      const canActorAct = Boolean(actorSeat && !winner && canProcessDuringMove && !turnOrderIntro && (isActorsTurn || (isPostMoveItem && lastMovedSeatId === action.actorId) || isTrapPlacementAction));
+
       if (action.type === 'turn_order_roll') {
-        if (turnOrderPhase.active && playableSeats[turnOrderPhase.index]?.id === action.actorId) rollForTurnOrder(true);
+        const isCurrentTurnOrderActor = turnOrderPhase.active && playableSeats[turnOrderPhase.index]?.id === action.actorId;
+        if (isCurrentTurnOrderActor) {
+          rollForTurnOrder(true);
+          shouldMarkProcessed = true;
+        } else if (!turnOrderPhase.active || actorSeat) {
+          shouldMarkProcessed = true;
+        }
         return;
       }
-      if (!canActorAct) return;
+
+      if (!actorSeat) { shouldMarkProcessed = true; return; }
+      if (!canActorAct) {
+        shouldMarkProcessed = !movingPieceId;
+        return;
+      }
       if (action.type !== 'place_trap' && pendingTrapPlacement) return;
+
       if (action.type === 'roll_yut') {
-        if (!roll) {
+        if (isActorsTurn && !roll) {
           setShieldedPieceIds([]);
-          rollYutFor(actorSeat!);
+          rollYutFor(actorSeat, (action.payload?.forcedResult as YutResult | null | undefined) ?? null);
         }
+        shouldMarkProcessed = true;
       }
       if (action.type === 'move_piece') {
-        if (roll) await movePiece(String(action.payload?.pieceId ?? ''), roll, actorSeat!, Number(action.payload?.extraSteps ?? 0), (action.payload?.branchChoice as BranchChoice | undefined) ?? branchChoice);
+        if (!isActorsTurn || !roll) return;
+        await movePiece(String(action.payload?.pieceId ?? ''), roll, actorSeat, Number(action.payload?.extraSteps ?? 0), (action.payload?.branchChoice as BranchChoice | undefined) ?? branchChoice);
+        shouldMarkProcessed = true;
       }
       if (action.type === 'use_item') {
-        useItem(action.payload?.itemType as ItemType, action.actorId);
+        useItem(remoteItemType as ItemType, action.actorId, action.payload ?? {});
+        shouldMarkProcessed = true;
       }
       if (action.type === 'place_trap') {
+        if (!pendingTrapPlacement || pendingTrapPlacement.ownerId !== action.actorId) return;
         placePendingTrap(String(action.payload?.nodeId ?? ''), action.actorId);
+        shouldMarkProcessed = true;
       }
     } finally {
-      await markGameActionProcessed(activeRoomId, action.id);
+      processedActionIdsRef.current.delete(action.id);
+      if (shouldMarkProcessed) await markGameActionProcessed(activeRoomId, action.id);
     }
   }
 
@@ -909,8 +948,8 @@ export function App() {
     if (activeRoomId) { void updateRoomPlayer(activeRoomId, playerId, { team }); }
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId ? { ...seat, team } : seat));
   }
-  function rollYutFor(seat: Seat) {
-    const rolled = forcedRoll ? { result: forcedRoll, sticks: makeDisplaySticks(forcedRoll) } : rollYutResult();
+  function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll) {
+    const rolled = forcedResult ? { result: forcedResult, sticks: makeDisplaySticks(forcedResult) } : rollYutResult();
     const nextRoll = rolled.result;
     setForcedRoll(null);
     setRollResultReadyAt(Date.now() + ROLL_RESULT_HOLD_MS);
@@ -922,7 +961,16 @@ export function App() {
     addLog(`${seat.label}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
   }
-  function rollYut() { if (!activeSeat || !canRollNow) return; if (activeRoomId && !isRoomHost) { void submitRemoteAction('roll_yut'); return; } setShieldedPieceIds([]); rollYutFor(activeSeat); }
+  function rollYut() {
+    if (!activeSeat || !canRollNow) return;
+    if (activeRoomId && !isRoomHost) {
+      void submitRemoteAction('roll_yut', forcedRoll ? { forcedResult: forcedRoll } : {});
+      setForcedRoll(null);
+      return;
+    }
+    setShieldedPieceIds([]);
+    rollYutFor(activeSeat);
+  }
 
   async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice) {
     if (winner || movingPieceId) return false;
@@ -1142,9 +1190,19 @@ export function App() {
     setPendingTrapPlacement(null);
   }
 
-  function useItem(type: ItemType, actorId = localSeatId) {
+  function useItem(type: ItemType, actorId = localSeatId, remotePayload: Record<string, unknown> = {}) {
     if (movingPieceId) return;
-    if (activeRoomId && !isRoomHost && actorId === localSeatId) { void submitRemoteAction('use_item', { itemType: type }); return; }
+    if (activeRoomId && !isRoomHost && actorId === localSeatId) {
+      if (type === 'golden_yut') {
+        if (!isMyTurn || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
+        void submitRemoteAction('use_item', { itemType: type });
+        setGoldenYutPickerOpen(true);
+        addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.');
+        return;
+      }
+      void submitRemoteAction('use_item', { itemType: type, pieceId: selectedPieceId, branchChoice });
+      return;
+    }
     const itemOwnerId = actorId;
     const itemOwnerSeat = playableSeats.find((seat) => seat.id === itemOwnerId);
     if (!itemOwnerSeat) return;
@@ -1152,10 +1210,14 @@ export function App() {
     if (!activeItems.includes(type)) return;
     const consumeItem = () => { playSfx('itemUse'); setItemPromptTiming(null); setPendingTrapPlacement(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
     if (type === 'golden_yut') {
-      if (!isMyTurn || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
+      if (activeSeat?.id !== itemOwnerId || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
       consumeItem();
-      setGoldenYutPickerOpen(true);
-      addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.');
+      if (actorId === localSeatId) {
+        setGoldenYutPickerOpen(true);
+        addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.');
+      } else {
+        addLog(`${itemOwnerSeat.label}이(가) 황금 윷을 사용했습니다. 다음 윷 결과를 선택 중입니다.`);
+      }
       return;
     }
     if (type === 'reroll') {
@@ -1168,8 +1230,13 @@ export function App() {
     if (type === 'move_plus_one' || type === 'move_minus_one') {
       if (activeSeat?.id !== itemOwnerId || !roll) { addLog('이동 보정 아이템은 내 턴에 윷을 던진 뒤 사용할 수 있습니다.'); return; }
       if (type === 'move_minus_one' && roll.steps === 1) { addLog('도에서는 한 칸 덜 이동 아이템을 사용할 수 없습니다.'); return; }
-      if (actorId === localSeatId && !moveSelectedPiece(type === 'move_plus_one' ? 1 : -1)) return;
-      if (actorId !== localSeatId) { void movePiece(selectedPieceId, roll, itemOwnerSeat, type === 'move_plus_one' ? 1 : -1); }
+      const itemMoveSteps = type === 'move_plus_one' ? 1 : -1;
+      if (actorId === localSeatId && !moveSelectedPiece(itemMoveSteps)) return;
+      if (actorId !== localSeatId) {
+        const remotePieceId = String(remotePayload.pieceId ?? selectedPieceId);
+        const remoteBranchChoice = (remotePayload.branchChoice as BranchChoice | undefined) ?? branchChoice;
+        void movePiece(remotePieceId, roll, itemOwnerSeat, itemMoveSteps, remoteBranchChoice);
+      }
       consumeItem();
       return;
     }
@@ -1182,7 +1249,8 @@ export function App() {
       return;
     }
     if (type === 'trap') {
-      const trapPiece = pieces.find((piece) => piece.id === selectedPieceId && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished);
+      const trapPieceId = actorId === localSeatId ? selectedPieceId : String(remotePayload.pieceId ?? selectedPieceId);
+      const trapPiece = pieces.find((piece) => piece.id === trapPieceId && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished);
       if (!trapPiece) { addLog('함정은 말판 위에 있는 내 말을 선택한 뒤 설치할 수 있습니다.'); return; }
       if (lastMovedSeatId !== itemOwnerId) { addLog('함정은 내 말이 이동한 직후에 설치할 수 있습니다.'); return; }
       const nodeIds = getNearbyNodeIds(trapPiece.nodeId, 2).filter((nodeId) => nodeId !== 'n01');

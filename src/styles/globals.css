@@ -2937,3 +2937,82 @@ aside.players,
   color: rgba(42, 30, 23, .72);
   font-size: .92rem;
 }
+
+@media (max-width: 900px) and (orientation: portrait) {
+  .game-shell .hero {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    padding: 14px 16px;
+  }
+
+  .game-shell .brand-title {
+    font-size: clamp(1.45rem, 6.8vw, 2rem);
+    white-space: nowrap;
+  }
+
+  .game-shell .play-time {
+    min-width: max-content;
+    padding-inline: 12px;
+  }
+
+  .game-shell .hero-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-auto-flow: row;
+    gap: 8px;
+    justify-self: end;
+    justify-items: end;
+    align-items: center;
+    width: min(100%, 260px);
+  }
+
+  .game-shell .hero-actions > * {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .game-shell .status-card {
+    grid-column: 1 / -1;
+    width: auto;
+    justify-self: end;
+    padding: 8px 12px;
+    white-space: nowrap;
+    font-size: .82rem;
+  }
+
+  .game-shell .nickname-chip,
+  .game-shell .sound-toggle {
+    width: 100%;
+    padding: 8px 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: .78rem;
+  }
+}
+
+@media (max-width: 430px) and (orientation: portrait) {
+  .game-shell .hero {
+    grid-template-columns: minmax(0, 1fr) auto minmax(116px, .72fr);
+    padding-inline: 12px;
+  }
+
+  .game-shell .hero-actions {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    width: 116px;
+  }
+
+  .game-shell .nickname-chip,
+  .game-shell .sound-toggle,
+  .game-shell .status-card {
+    padding: 7px 8px;
+    font-size: .7rem;
+  }
+
+  .game-shell .status-dot {
+    width: 7px;
+    height: 7px;
+  }
+}
