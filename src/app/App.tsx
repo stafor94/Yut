@@ -6,7 +6,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
-import { cleanupStaleRooms, createRoom, heartbeatRoomPlayer, joinRoom, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cleanupStaleRooms, createRoom, getRoom, heartbeatRoomPlayer, joinRoom, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -316,10 +316,54 @@ export function App() {
     if (!user || activeRoomId) return;
     const storedRoomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId);
     if (!storedRoomId) return;
-    setActiveRoomId(storedRoomId);
-    setIsRoomHost(window.localStorage.getItem(STORAGE_KEYS.isRoomHost) === 'true');
-    setMessage('새로고침 전 참여 중이던 방을 복구했습니다.');
-  }, [activeRoomId, user]);
+    let cancelled = false;
+    setMessage('새로고침 전 참여 중이던 방을 확인하고 있습니다...');
+    void (async () => {
+      try {
+        const storedRoom = await getRoom(storedRoomId);
+        if (cancelled) return;
+        if (!storedRoom || storedRoom.status === 'finished') {
+          window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+          window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+          setMessage('이전에 참여했던 방이 없어져 대기화면으로 돌아왔습니다.');
+          return;
+        }
+
+        const restoredAsHost = storedRoom.hostId === user.uid;
+        const restoredMaxPlayers = storedRoom.maxPlayers as 2 | 3 | 4;
+        const joinResult = restoredAsHost ? null : await joinRoom(storedRoom.id, { userId: user.uid, nickname, playMode: storedRoom.playMode });
+        if (restoredAsHost) {
+          await updateRoomPlayer(storedRoom.id, user.uid, { nickname, ready: true, color: 'red', seatIndex: 0, team: '청팀', isSpectator: false });
+        }
+        if (cancelled) return;
+
+        setActiveRoomId(storedRoom.id);
+        setIsRoomHost(restoredAsHost);
+        setActiveRoomTitle(storedRoom.title);
+        setPlayMode(storedRoom.playMode);
+        setMaxPlayers(restoredMaxPlayers);
+        setItemMode(storedRoom.itemMode);
+        setPieceCount(storedRoom.pieceCount ?? 4);
+        if (joinResult?.role === 'player') {
+          setSeats(seatsWithJoinedPlayer([], user.uid, nickname, storedRoom.playMode, restoredMaxPlayers, joinResult.seatIndex));
+        } else if (restoredAsHost) {
+          setSeats(createSeats(nickname, storedRoom.playMode, restoredMaxPlayers));
+        }
+        setScreen(storedRoom.status === 'playing' ? 'game' : 'waitingRoom');
+        setMessage('새로고침 전 참여 중이던 방을 복구했습니다.');
+      } catch (error) {
+        if (cancelled) return;
+        window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+        window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+        setActiveRoomId('');
+        setIsRoomHost(false);
+        setActiveRoomTitle('');
+        setScreen('lobby');
+        setMessage(error instanceof Error ? error.message : '이전 방 복구에 실패했습니다. 다시 참가해주세요.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeRoomId, nickname, user]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.nickname, nickname);
