@@ -6,7 +6,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
-import { cleanupStaleRooms, createRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cleanupStaleRooms, createRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, updateTurnOrderState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -311,7 +311,6 @@ export function App() {
   const canRollNow = Boolean(isMyTurn && !winner && !turnOrderIntro && !movingPieceId && !roll && !isRollLocked && !trapPlacementActive);
   const rolledTurnOrderSeatIds = useMemo(() => new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id)), [turnOrderPhase.rolls]);
   const localTurnOrderSeatRolled = rolledTurnOrderSeatIds.has(localSeatId);
-  const canControlTurnOrderTimeout = !activeRoomId || isRoomHost;
   const isTurnOrderTimedOut = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline && playableSeats.some((seat) => !rolledTurnOrderSeatIds.has(seat.id)));
   const isTurnOrderFallbackDue = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline + TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS);
   const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut);
@@ -496,10 +495,6 @@ export function App() {
       if (!state) return;
       const stateVersion = Number(state.turnVersion ?? 0);
       if (stateVersion && stateVersion < lastAppliedStateVersionRef.current) return;
-      if (isRoomHost && screen === 'game') {
-        lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
-        return;
-      }
       applyingSyncedStateRef.current = true;
       lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
       setPieces(state.pieces as BoardPiece[]);
@@ -562,14 +557,13 @@ export function App() {
 
   useEffect(() => {
     if (!turnOrderPhase.active || !playableSeats.length) return undefined;
-    if (activeRoomId && !isRoomHost) return undefined;
     const rolledSeatIds = new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id));
     const allSeatsRolled = playableSeats.every((seat) => rolledSeatIds.has(seat.id));
     if (!allSeatsRolled) return undefined;
     const delayMs = Math.max(0, turnOrderPhase.deadline - Date.now());
     const timer = window.setTimeout(() => finishTurnOrderCeremony(turnOrderPhase.rolls), delayMs);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, isRoomHost, playableSeats, turnOrderPhase]);
+  }, [playableSeats, turnOrderPhase]);
 
   useEffect(() => {
     if (!turnOrderIntro) return undefined;
@@ -633,19 +627,19 @@ export function App() {
   }, [localSeatId, localTurnOrderSeatRolled, playableSeats, turnOrderPhase]);
 
   useEffect(() => {
-    if (!turnOrderPhase.active || (activeRoomId && !isRoomHost)) return undefined;
+    if (!turnOrderPhase.active) return undefined;
     const timers = playableSeats
       .filter((seat) => seat.isAI && !rolledTurnOrderSeatIds.has(seat.id))
       .map((seat) => window.setTimeout(() => rollForTurnOrder(false, seat.id), Math.max(0, turnOrderPhase.readyAt - Date.now()) + TURN_ORDER_AI_MIN_DELAY_MS + Math.random() * TURN_ORDER_AI_DELAY_SPREAD_MS));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [activeRoomId, isRoomHost, playableSeats, rolledTurnOrderSeatIds, turnOrderPhase]);
+  }, [playableSeats, rolledTurnOrderSeatIds, turnOrderPhase]);
 
 
   useEffect(() => {
-    if (!turnOrderPhase.active || !canControlTurnOrderTimeout || turnOrderPhase.readyAt > turnOrderClock || turnOrderPhase.deadline <= 0) return;
+    if (!turnOrderPhase.active || turnOrderPhase.readyAt > turnOrderClock || turnOrderPhase.deadline <= 0) return;
     if (turnOrderClock < turnOrderPhase.deadline) return;
     finishTurnOrderCeremony(turnOrderPhase.rolls);
-  }, [canControlTurnOrderTimeout, turnOrderClock, turnOrderPhase]);
+  }, [turnOrderClock, turnOrderPhase]);
 
   useEffect(() => {
     if (!turnOrderPhase.active || turnOrderPhase.deadline <= 0 || !isTurnOrderFallbackDue) return;
@@ -884,8 +878,8 @@ export function App() {
       .sort((left, right) => getTurnOrderScore(right.result) - getTurnOrderScore(left.result));
   }
 
-  function decideTurnOrder(rolls = resolveTurnOrderRolls(playableSeats)) {
-    const rankedRolls = rolls.sort((left, right) => getTurnOrderScore(right.result) - getTurnOrderScore(left.result));
+  function getTurnOrderFromRolls(rolls: TurnOrderRoll[]) {
+    const rankedRolls = [...rolls].sort((left, right) => getTurnOrderScore(right.result) - getTurnOrderScore(left.result));
     const turnOrder = playMode === 'team'
       ? (() => {
         const teamRankings = {
@@ -897,11 +891,20 @@ export function App() {
         return [0, 1].flatMap((index) => [teamRankings[firstTeam][index], teamRankings[secondTeam][index]].filter(Boolean)).map((entry) => entry.seat);
       })()
       : rankedRolls.map((entry) => entry.seat);
+    return { rankedRolls, turnOrder };
+  }
+
+  function getTurnOrderLogTexts(rankedRolls: TurnOrderRoll[], turnOrder: Seat[]) {
     const rollSummary = rankedRolls.map((entry) => `${entry.seat.label} ${entry.result.name}${entry.rollOffRound > 1 ? `(${entry.rollOffRound}차)` : ''}`).join(' · ');
-    addLogs([
+    return [
       `순서 정하기: ${rollSummary}`,
-      `차례 순서: ${turnOrder.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join(' / ')}`, 
-    ]);
+      `차례 순서: ${turnOrder.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join(' / ')}`,
+    ];
+  }
+
+  function decideTurnOrder(rolls = resolveTurnOrderRolls(playableSeats)) {
+    const { rankedRolls, turnOrder } = getTurnOrderFromRolls(rolls);
+    addLogs(getTurnOrderLogTexts(rankedRolls, turnOrder));
     setTurnOrderIds(turnOrder.map((seat) => seat.id));
     return turnOrder;
   }
@@ -931,40 +934,112 @@ export function App() {
         const rolled = rollYutResult(undefined, false);
         return { seat, result: rolled.result, rollOffRound: 1 };
       });
-    if (fallbackRolls.length) addLogs(fallbackRolls.map((rollEntry) => `${rollEntry.seat.label}이(가) 시간 초과로 자동 순서 정하기 굴림 처리되었습니다.`));
     return [...rolls, ...fallbackRolls];
   }
 
-  function finishTurnOrderCeremony(rolls: TurnOrderRoll[]) {
-    const completedRolls = completeTurnOrderRolls(rolls);
-    const orderedSeats = decideTurnOrder(completedRolls);
+  function makeTurnOrderCeremonyPatch(sourceRolls: TurnOrderRoll[], currentLogs: GameLog[]) {
+    const rolledSeatIds = new Set(sourceRolls.map((rollEntry) => rollEntry.seat.id));
+    const timeoutLogTexts = playableSeats
+      .filter((seat) => !rolledSeatIds.has(seat.id))
+      .map((seat) => `${seat.label}이(가) 시간 초과로 자동 순서 정하기 굴림 처리되었습니다.`);
+    const completedRolls = completeTurnOrderRolls(sourceRolls);
+    const { rankedRolls, turnOrder: orderedSeats } = getTurnOrderFromRolls(completedRolls);
     const nextPieces = makePieces(orderedSeats, pieceCount, playMode);
-    resetGameBoard(nextPieces);
-    setTurnOrderPhase({ active: false, index: 0, rolls: completedRolls, deadline: 0, readyAt: 0 });
+    const nextTurnOrderPhase = { active: false, index: 0, rolls: completedRolls, deadline: 0, readyAt: 0 };
+    const nextTurnOrderIds = orderedSeats.map((seat) => seat.id);
+    const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
     const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
+    const nextTurnOrderIntro = { order, visible: true, readyAt: Date.now() + TURN_ORDER_REVEAL_MS };
     const orderText = orderedSeats.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join('\n');
-    setTurnOrderIntro({ order, visible: true, readyAt: Date.now() + TURN_ORDER_REVEAL_MS });
+    const finalOrderLog = `최종 차례 순서: ${orderText.replace(/\n/g, ' / ')}`;
+    const ceremonyLogs = [...timeoutLogTexts, ...getTurnOrderLogTexts(rankedRolls, orderedSeats), finalOrderLog].reverse().map((text) => makeLog(text));
+
+    return {
+      local: { completedRolls, orderedSeats, nextPieces, nextBoardItems, nextTurnOrderIds, nextTurnOrderPhase, nextTurnOrderIntro, finalOrderLog },
+      patch: {
+        pieces: nextPieces,
+        boardItems: nextBoardItems,
+        ownedItems: {},
+        trapNodes: [],
+        shieldedPieceIds: [],
+        turnIndex: 0,
+        turnOrderIds: nextTurnOrderIds,
+        roll: null,
+        rollAnimation: null,
+        logs: [...ceremonyLogs, ...currentLogs],
+        winner: '',
+        captureEffect: null,
+        trapEffect: null,
+        gameStartedAt: null,
+        turnOrderIntro: nextTurnOrderIntro,
+        pendingTrapPlacement: null,
+        rollLockUntil: 0,
+        lastMovedPieceIds: [],
+        lastMovedSeatId: '',
+        itemPromptTiming: null,
+        branchChoice: 'outer',
+        rollResultReadyAt: 0,
+        turnOrderPhase: nextTurnOrderPhase,
+      },
+    };
+  }
+
+  function finishTurnOrderCeremony(rolls: TurnOrderRoll[]) {
+    if (activeRoomId) {
+      void updateTurnOrderState(activeRoomId, (state) => {
+        const remotePhase = state?.turnOrderPhase as TurnOrderPhase | null | undefined;
+        if (remotePhase && !remotePhase.active) return null;
+        return makeTurnOrderCeremonyPatch(remotePhase?.rolls ?? rolls, (state?.logs as GameLog[] | undefined) ?? logs).patch;
+      });
+      return;
+    }
+
+    const { local } = makeTurnOrderCeremonyPatch(rolls, logs);
+    setPieces(local.nextPieces);
+    setBoardItems(local.nextBoardItems);
+    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(local.nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); setRoll(null); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null);
+    setTurnOrderIds(local.nextTurnOrderIds);
+    setTurnOrderPhase(local.nextTurnOrderPhase);
+    setTurnOrderIntro(local.nextTurnOrderIntro);
     setGameStartedAt(null);
-    addLog(`최종 차례 순서: ${orderText.replace(/\n/g, ' / ')}`);
+    addLogs([local.finalOrderLog]);
   }
 
   function rollForTurnOrder(fromRemote = false, requestedSeatId = localSeatId) {
     if (!turnOrderPhase.active || Date.now() < turnOrderPhase.readyAt) return;
     const seat = playableSeats.find((candidate) => candidate.id === requestedSeatId);
     if (!seat) return;
-    if (activeRoomId && !isRoomHost && !fromRemote) { void submitRemoteAction('turn_order_roll'); return; }
     const rolled = rollYutResult(undefined, false);
+    const rollEntry = { seat, result: rolled.result, rollOffRound: 1 };
+    const nextAnimation = { id: Date.now(), result: rolled.result, sticks: rolled.sticks, turnOrder: true };
+    const logText = `${seat.label}이(가) 순서 정하기에서 ${rolled.result.name}(${getTurnOrderScore(rolled.result)}점)를 던졌습니다.`;
+
+    if (activeRoomId && !fromRemote) {
+      void updateTurnOrderState(activeRoomId, (state) => {
+        const remotePhase = state?.turnOrderPhase as TurnOrderPhase | null | undefined;
+        if (!remotePhase?.active || Date.now() < remotePhase.readyAt || remotePhase.rolls.some((entry) => entry.seat.id === seat.id)) return null;
+        return {
+          turnOrderPhase: { ...remotePhase, rolls: [...remotePhase.rolls, rollEntry] },
+          rollAnimation: nextAnimation,
+          logs: [makeLog(logText), ...((state?.logs as GameLog[] | undefined) ?? logs)],
+        };
+      });
+      playSfx('roll');
+      window.setTimeout(() => setRollAnimation(null), TURN_ORDER_ROLL_ANIMATION_MS);
+      return;
+    }
+
     let accepted = false;
     setTurnOrderPhase((current) => {
-      if (!current.active || current.rolls.some((rollEntry) => rollEntry.seat.id === seat.id)) return current;
+      if (!current.active || current.rolls.some((entry) => entry.seat.id === seat.id)) return current;
       accepted = true;
-      return { ...current, rolls: [...current.rolls, { seat, result: rolled.result, rollOffRound: 1 }] };
+      return { ...current, rolls: [...current.rolls, rollEntry] };
     });
     if (!accepted) return;
-    setRollAnimation({ id: Date.now(), result: rolled.result, sticks: rolled.sticks, turnOrder: true });
+    setRollAnimation(nextAnimation);
     playSfx('roll');
     window.setTimeout(() => setRollAnimation(null), TURN_ORDER_ROLL_ANIMATION_MS);
-    addLog(`${seat.label}이(가) 순서 정하기에서 ${rolled.result.name}(${getTurnOrderScore(rolled.result)}점)를 던졌습니다.`);
+    addLog(logText);
   }
 
   function playSfx(effect: SoundEffect) { playSoundEffect(effect, soundEnabled); }

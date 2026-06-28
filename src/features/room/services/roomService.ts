@@ -16,6 +16,7 @@ const getCreatedAtMillis = (createdAt: unknown) => {
 };
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; }
 export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; updatedAt?: unknown; turnVersion: number; }
+export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 
 const COLORS = ['red', 'blue', 'green', 'yellow'];
@@ -219,6 +220,21 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
     const currentVersion = snapshot.exists() ? Number(snapshot.data().turnVersion ?? 0) : 0;
     const nextVersion = currentVersion + 1;
     transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: nextVersion }, { merge: true });
+    return nextVersion;
+  });
+}
+
+export async function updateTurnOrderState(roomId: string, patcher: (state: SyncedGameState | null) => GameStatePatch | null) {
+  if (!db || !roomId) return null;
+  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(gameStateRef);
+    const currentState = snapshot.exists() ? snapshot.data() as SyncedGameState : null;
+    const patch = patcher(currentState);
+    if (!patch) return null;
+    const currentVersion = Number(currentState?.turnVersion ?? 0);
+    const nextVersion = currentVersion + 1;
+    transaction.set(gameStateRef, { ...patch, updatedAt: serverTimestamp(), turnVersion: nextVersion }, { merge: true });
     return nextVersion;
   });
 }
