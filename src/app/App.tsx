@@ -471,6 +471,10 @@ export function App() {
       if (!state) return;
       const stateVersion = Number(state.turnVersion ?? 0);
       if (stateVersion && stateVersion < lastAppliedStateVersionRef.current) return;
+      if (isRoomHost && screen === 'game') {
+        lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
+        return;
+      }
       applyingSyncedStateRef.current = true;
       lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
       setPieces(state.pieces as BoardPiece[]);
@@ -496,7 +500,7 @@ export function App() {
       setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
       window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
     });
-  }, [activeRoomId]);
+  }, [activeRoomId, isRoomHost, screen]);
 
   useEffect(() => {
     if (!activeRoomId || !isRoomHost || screen !== 'game' || applyingSyncedStateRef.current) return;
@@ -727,8 +731,8 @@ export function App() {
         shouldMarkProcessed = true;
       }
     } finally {
-      processedActionIdsRef.current.delete(action.id);
       if (shouldMarkProcessed) await markGameActionProcessed(activeRoomId, action.id);
+      processedActionIdsRef.current.delete(action.id);
     }
   }
 
