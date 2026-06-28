@@ -2229,3 +2229,79 @@ aside.players,
 .modal-actions button {
   flex: 1;
 }
+
+.room-title {
+  font-size: clamp(2rem, 4vw, 4.6rem);
+  line-height: 1.08;
+}
+
+.host-room-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  align-items: stretch;
+}
+
+.host-room-options .radio-group {
+  min-width: 0;
+}
+
+.item-mode-group {
+  grid-template-columns: repeat(2, minmax(70px, 1fr));
+}
+
+.ready-player-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ready-player-line b {
+  flex: 0 0 auto;
+}
+
+.ready-player-line span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.ready-player-line em,
+.ready-player-line .ai-cancel-button {
+  flex: 0 0 auto;
+}
+
+.ready-card .ai-cancel-button {
+  width: auto;
+  padding: 7px 10px;
+  line-height: 1;
+}
+
+.countdown-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(42, 30, 23, .38);
+  backdrop-filter: blur(2px);
+}
+
+.countdown-scrim .countdown-overlay {
+  position: static;
+  translate: none;
+}
+
+@media (max-width: 900px) {
+  .host-room-options {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .host-room-options {
+    grid-template-columns: 1fr;
+  }
+}
