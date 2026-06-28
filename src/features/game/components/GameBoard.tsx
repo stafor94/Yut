@@ -28,6 +28,9 @@ type GameBoardProps = {
   onBranchChoiceChange?: (branchChoice: BranchChoice) => void;
   showBranchControls?: boolean;
   capturedPieceIds?: string[];
+  trapEffectNodeId?: string;
+  selectableNodeIds?: string[];
+  onSelectNode?: (nodeId: string) => void;
   boardShaking?: boolean;
   isPieceSelectable?: (piece: BoardPiece) => boolean;
 };
@@ -55,7 +58,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], boardShaking = false, isPieceSelectable }: GameBoardProps) {
+export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable }: GameBoardProps) {
   void branchChoice;
   void onBranchChoiceChange;
   void showBranchControls;
@@ -70,13 +73,14 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
     </svg>
     {BOARD_NODES.map((node) => {
       const item = items.find((boardItem) => boardItem.nodeId === node.id);
-      return <div key={node.id} data-testid={`board-node-${node.id}`} className={`board-node ${node.kind} ${highlightedNodeId === node.id ? 'item-collected' : ''} ${previewNodeIds.includes(node.id) ? 'route-preview' : ''}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={node.id}>
+      const selectable = selectableNodeIds.includes(node.id);
+      return <button type="button" key={node.id} data-testid={`board-node-${node.id}`} className={`board-node ${node.kind} ${highlightedNodeId === node.id ? 'item-collected' : ''} ${previewNodeIds.includes(node.id) ? 'route-preview' : ''} ${selectable ? 'trap-selectable' : ''} ${trapEffectNodeId === node.id ? 'trap-exploding' : ''}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={node.id} onClick={() => selectable && onSelectNode?.(node.id)} disabled={!selectable}>
         {item ? <span className="floating-board-item" aria-label="말판 아이템">
           <span className="item-orb" aria-hidden="true">{ITEM_DEFINITIONS[item.type].icon}</span>
         </span> : null}
         {previewNodeIds.includes(node.id) ? <span className="route-preview-marker" aria-label="이동 예정 칸">{previewNodeIds.indexOf(node.id) + 1}</span> : null}
         {trapNodeIds.includes(node.id) ? <span className="trap-marker" aria-label="설치된 함정">🪤</span> : null}
-      </div>;
+      </button>;
     })}
     {pieces.map((piece) => <button
       type="button"
