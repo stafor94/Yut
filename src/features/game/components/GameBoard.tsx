@@ -59,7 +59,7 @@ export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSel
   void onBranchChoiceChange;
   void showBranchControls;
 
-  return <div className={`board ${boardShaking ? 'capture-shake' : ''}`} aria-label="윷놀이 말판">
+  return <div data-testid="game-board" className={`board ${boardShaking ? 'capture-shake' : ''}`} aria-label="윷놀이 말판">
     <svg className="board-route-lines" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
       <rect x="8" y="8" width="84" height="84" rx="0" />
       <line x1="8" y1="8" x2="92" y2="92" />
@@ -67,7 +67,7 @@ export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSel
     </svg>
     {BOARD_NODES.map((node) => {
       const item = items.find((boardItem) => boardItem.nodeId === node.id);
-      return <div key={node.id} className={`board-node ${node.kind} ${highlightedNodeId === node.id ? 'item-collected' : ''} ${previewNodeIds.includes(node.id) ? 'route-preview' : ''}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={node.id}>
+      return <div key={node.id} data-testid={`board-node-${node.id}`} className={`board-node ${node.kind} ${highlightedNodeId === node.id ? 'item-collected' : ''} ${previewNodeIds.includes(node.id) ? 'route-preview' : ''}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={node.id}>
         {item ? <span className="floating-board-item" aria-label="말판 아이템">
           <span className="item-orb" aria-hidden="true">{ITEM_DEFINITIONS[item.type].icon}</span>
         </span> : null}
@@ -77,6 +77,7 @@ export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSel
     })}
     {pieces.map((piece) => <button
       type="button"
+      data-testid={`piece-${piece.id}`}
       key={piece.id}
       className={`piece-token ${selectedPieceId === piece.id ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
       style={getPieceStyle(piece, pieces, movingPieceId)}
