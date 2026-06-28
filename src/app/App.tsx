@@ -480,6 +480,7 @@ export function App() {
       setPieces(state.pieces as BoardPiece[]);
       setTurnIndex(state.turnIndex);
       setRoll(state.roll as YutResult | null);
+      setRollAnimation((state.rollAnimation as RollAnimation | null | undefined) ?? null);
       setBoardItems(state.boardItems);
       setOwnedItems(state.ownedItems as Record<string, ItemType[]>);
       setTrapNodes(state.trapNodes as TrapNode[]);
@@ -504,10 +505,10 @@ export function App() {
 
   useEffect(() => {
     if (!activeRoomId || !isRoomHost || screen !== 'game' || applyingSyncedStateRef.current) return;
-    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase }).then((version) => {
+    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, rollAnimation, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase }).then((version) => {
       if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
     });
-  }, [activeRoomId, boardItems, captureEffect, trapEffect, gameStartedAt, isRoomHost, logs, ownedItems, pieces, roll, screen, shieldedPieceIds, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, winner, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase]);
+  }, [activeRoomId, boardItems, captureEffect, trapEffect, gameStartedAt, isRoomHost, logs, ownedItems, pieces, roll, rollAnimation, screen, shieldedPieceIds, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, winner, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -534,6 +535,17 @@ export function App() {
     const timer = window.setInterval(() => setTurnOrderClock(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, [turnOrderPhase.active, turnOrderPhase.deadline]);
+
+  useEffect(() => {
+    if (!turnOrderPhase.active || !playableSeats.length) return undefined;
+    if (activeRoomId && !isRoomHost) return undefined;
+    const rolledSeatIds = new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id));
+    const allSeatsRolled = playableSeats.every((seat) => rolledSeatIds.has(seat.id));
+    if (!allSeatsRolled) return undefined;
+    const delayMs = Math.max(0, turnOrderPhase.readyAt - Date.now());
+    const timer = window.setTimeout(() => finishTurnOrderCeremony(turnOrderPhase.rolls), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [activeRoomId, isRoomHost, playableSeats, turnOrderPhase]);
 
   useEffect(() => {
     if (!turnOrderIntro) return undefined;
@@ -876,7 +888,15 @@ export function App() {
     if (activeRoomId && !isRoomHost && !fromRemote) { void submitRemoteAction('turn_order_roll'); return; }
     if (!turnOrderPhase.active || turnOrderRollingRef.current) return;
     const seat = playableSeats[turnOrderPhase.index];
-    if (seat && turnOrderPhase.rolls.some((rollEntry) => rollEntry.seat.id === seat.id)) return;
+    const rolledSeatIds = new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id));
+    if (seat && rolledSeatIds.has(seat.id)) {
+      const nextUnrolledIndex = playableSeats.findIndex((candidate, index) => index > turnOrderPhase.index && !rolledSeatIds.has(candidate.id));
+      if (nextUnrolledIndex >= 0) {
+        const now = Date.now();
+        setTurnOrderPhase({ ...turnOrderPhase, index: nextUnrolledIndex, readyAt: now, deadline: now + 10000 });
+      }
+      return;
+    }
     turnOrderRollingRef.current = true;
     if (!seat) { finishTurnOrderCeremony(turnOrderPhase.rolls); return; }
     const rolled = rollYutResult(undefined, false);
@@ -885,9 +905,10 @@ export function App() {
     window.setTimeout(() => setRollAnimation(null), TURN_ORDER_ROLL_ANIMATION_MS);
     const nextRolls = [...turnOrderPhase.rolls, { seat, result: rolled.result, rollOffRound: 1 }];
     addLog(`${seat.label}이(가) 순서 정하기에서 ${rolled.result.name}(${getTurnOrderScore(rolled.result)}점)를 던졌습니다.`);
-    if (turnOrderPhase.index + 1 >= playableSeats.length) window.setTimeout(() => finishTurnOrderCeremony(nextRolls), TURN_ORDER_NEXT_PLAYER_DELAY_MS);
-    else {
-      const readyAt = Date.now() + TURN_ORDER_NEXT_PLAYER_DELAY_MS;
+    const readyAt = Date.now() + TURN_ORDER_NEXT_PLAYER_DELAY_MS;
+    if (turnOrderPhase.index + 1 >= playableSeats.length) {
+      setTurnOrderPhase({ active: true, index: turnOrderPhase.index, rolls: nextRolls, readyAt, deadline: readyAt });
+    } else {
       setTurnOrderPhase({ active: true, index: turnOrderPhase.index + 1, rolls: nextRolls, readyAt, deadline: readyAt + 10000 });
     }
   }
