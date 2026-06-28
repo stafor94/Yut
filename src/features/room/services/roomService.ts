@@ -98,9 +98,9 @@ export function subscribeRoom(roomId: string, callback: (room: RoomSummary | nul
   });
 }
 
-export async function updateRoomOptions(roomId: string, params: { itemMode: boolean; pieceCount: 1|2|3|4; }) {
+export async function updateRoomOptions(roomId: string, params: Partial<Pick<RoomSummary, 'itemMode' | 'pieceCount' | 'playMode' | 'maxPlayers'>>) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
-  await updateDoc(doc(db, 'rooms', roomId), { itemMode: params.itemMode, pieceCount: params.pieceCount });
+  await updateDoc(doc(db, 'rooms', roomId), params);
 }
 
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
