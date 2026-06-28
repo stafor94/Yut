@@ -26,6 +26,25 @@ npm install
 npm run dev
 ```
 
+## E2E 테스트
+
+Playwright 기반 자동 QA 테스트가 포함되어 있습니다. 처음 실행하는 환경에서는 의존성과 브라우저 바이너리를 설치한 뒤 테스트를 실행하세요.
+
+```bash
+npm install
+npx playwright install --with-deps
+npm run test:e2e
+```
+
+`npm run test:e2e`는 Vite 프로덕션 빌드를 먼저 생성한 뒤 Playwright 테스트를 실행합니다. 테스트 서버는 Playwright 설정의 `webServer`에서 `npm run preview`로 자동 시작됩니다.
+
+테스트 결과와 디버깅 산출물은 다음 위치에 생성됩니다.
+
+- `playwright-report`: HTML 리포트
+- `test-results`: 실패 시 trace, video, screenshot 등 Playwright 산출물
+- `screenshots`: 테스트 단계별 전체 페이지 스크린샷
+- `console-log.txt`: 테스트 중 브라우저 콘솔 로그
+
 ## GitHub Pages 배포
 
 저장소 `Settings` > `Pages`에서 `Build and deployment`의 `Source`를 `GitHub Actions`로 설정하세요.
