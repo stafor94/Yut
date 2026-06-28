@@ -2727,3 +2727,23 @@ aside.players,
 .piece-token.selected {
   box-shadow: 0 0 0 6px rgba(242, 184, 75, .22), 0 0 0 12px rgba(47, 107, 79, .1);
 }
+
+.turn-order-final-list {
+  display: grid;
+  gap: 10px;
+}
+
+.turn-order-ready-overlay .turn-order-final-card {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid currentColor;
+  border-radius: 18px;
+  background: rgba(255, 243, 216, .9);
+  text-align: left;
+  font-size: clamp(1.1rem, 3vw, 1.7rem);
+}
+
+.log-player-label {
+  font-weight: 1000;
+}
