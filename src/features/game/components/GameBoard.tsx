@@ -17,6 +17,7 @@ type GameBoardProps = {
   pieces: BoardPiece[];
   items: BoardItem[];
   selectedPieceId?: string;
+  selectedPieceIds?: string[];
   movingPieceId?: string;
   onSelectPiece: (pieceId: string) => void;
   revealedItems: ItemType[];
@@ -54,10 +55,12 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], boardShaking = false, isPieceSelectable }: GameBoardProps) {
+export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], boardShaking = false, isPieceSelectable }: GameBoardProps) {
   void branchChoice;
   void onBranchChoiceChange;
   void showBranchControls;
+
+  const selectedIds = selectedPieceIds ?? (selectedPieceId ? [selectedPieceId] : []);
 
   return <div data-testid="game-board" className={`board ${boardShaking ? 'capture-shake' : ''}`} aria-label="윷놀이 말판">
     <svg className="board-route-lines" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
@@ -79,7 +82,7 @@ export function GameBoard({ pieces, items, selectedPieceId, movingPieceId, onSel
       type="button"
       data-testid={`piece-${piece.id}`}
       key={piece.id}
-      className={`piece-token ${selectedPieceId === piece.id ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
+      className={`piece-token ${selectedIds.includes(piece.id) ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
       style={getPieceStyle(piece, pieces, movingPieceId)}
       onClick={() => onSelectPiece(piece.id)}
       disabled={piece.finished || isPieceSelectable?.(piece) === false}
