@@ -2570,3 +2570,45 @@ aside.players,
   .waiting-actions.role-actions { display: grid; grid-template-columns: 1fr; }
   .role-actions button { width: 100%; }
 }
+
+/* Compact text-only option buttons: selected state is shown by the label highlight. */
+.radio-group label {
+  min-height: 34px;
+  padding: 6px 10px;
+  gap: 0;
+}
+
+.radio-group input[type="radio"] {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.waiting-room .radio-group label,
+.compact-options .radio-group label {
+  min-height: 30px;
+  padding: 5px 8px;
+}
+
+.turn-order-overlay {
+  position: absolute;
+  z-index: 18;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: min(520px, calc(100% - 32px));
+  padding: 24px;
+  border-radius: 28px;
+  border: 2px solid rgba(242, 184, 75, .6);
+  background: rgba(255, 248, 234, .96);
+  box-shadow: 0 24px 70px rgba(42, 30, 23, .22);
+  text-align: center;
+}
+
+.turn-order-overlay h2 { margin: 0 0 8px; color: var(--red); font-size: 1.7rem; }
+.turn-order-overlay p { margin: 0 0 16px; color: rgba(42, 30, 23, .72); font-weight: 800; }
+.turn-order-list { display: grid; gap: 8px; margin-bottom: 18px; }
+.turn-order-list span { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 14px; background: #fff3d8; font-weight: 900; }
+.turn-order-list span.active { outline: 3px solid rgba(217, 74, 56, .45); color: var(--red); }
+.turn-order-list span.done { background: rgba(47, 107, 79, .12); color: var(--green); }
