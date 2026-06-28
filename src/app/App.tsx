@@ -6,7 +6,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
-import { cleanupStaleRooms, createRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, updateTurnOrderState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cleanupStaleRooms, createRoom, deleteRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -313,7 +313,7 @@ export function App() {
   const localTurnOrderSeatRolled = rolledTurnOrderSeatIds.has(localSeatId);
   const isTurnOrderTimedOut = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline && playableSeats.some((seat) => !rolledTurnOrderSeatIds.has(seat.id)));
   const isTurnOrderFallbackDue = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline + TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS);
-  const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut);
+  const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut && (!activeRoomId || isRoomHost));
   const turnOrderTimerText = (() => {
     if (!turnOrderPhase.active) return '';
     if (turnOrderPhase.readyAt > turnOrderClock) {
@@ -621,30 +621,34 @@ export function App() {
     if (!turnOrderPhase.active) return undefined;
     const localSeat = playableSeats.find((seat) => seat.id === localSeatId);
     if (!localSeat || localSeat.isAI || localTurnOrderSeatRolled) return undefined;
+    if (activeRoomId) return undefined;
     const delayMs = Math.max(0, turnOrderPhase.deadline - Date.now());
     const timer = window.setTimeout(() => rollForTurnOrder(false, localSeat.id), delayMs);
     return () => window.clearTimeout(timer);
-  }, [localSeatId, localTurnOrderSeatRolled, playableSeats, turnOrderPhase]);
+  }, [activeRoomId, localSeatId, localTurnOrderSeatRolled, playableSeats, turnOrderPhase]);
 
   useEffect(() => {
     if (!turnOrderPhase.active) return undefined;
+    if (activeRoomId && !isRoomHost) return undefined;
     const timers = playableSeats
       .filter((seat) => seat.isAI && !rolledTurnOrderSeatIds.has(seat.id))
       .map((seat) => window.setTimeout(() => rollForTurnOrder(false, seat.id), Math.max(0, turnOrderPhase.readyAt - Date.now()) + TURN_ORDER_AI_MIN_DELAY_MS + Math.random() * TURN_ORDER_AI_DELAY_SPREAD_MS));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [playableSeats, rolledTurnOrderSeatIds, turnOrderPhase]);
+  }, [activeRoomId, isRoomHost, playableSeats, rolledTurnOrderSeatIds, turnOrderPhase]);
 
 
   useEffect(() => {
     if (!turnOrderPhase.active || turnOrderPhase.readyAt > turnOrderClock || turnOrderPhase.deadline <= 0) return;
+    if (activeRoomId && !isRoomHost) return;
     if (turnOrderClock < turnOrderPhase.deadline) return;
     finishTurnOrderCeremony(turnOrderPhase.rolls);
-  }, [turnOrderClock, turnOrderPhase]);
+  }, [activeRoomId, isRoomHost, turnOrderClock, turnOrderPhase]);
 
   useEffect(() => {
     if (!turnOrderPhase.active || turnOrderPhase.deadline <= 0 || !isTurnOrderFallbackDue) return;
+    if (activeRoomId && !isRoomHost) return;
     finishTurnOrderCeremony(turnOrderPhase.rolls);
-  }, [isTurnOrderFallbackDue, turnOrderPhase]);
+  }, [activeRoomId, isRoomHost, isTurnOrderFallbackDue, turnOrderPhase]);
 
   useEffect(() => {
     if (!showBottomBranchControls || !selectedPiece || !roll) {
@@ -741,7 +745,11 @@ export function App() {
       if (action.type === 'turn_order_roll') {
         const hasActorAlreadyRolled = turnOrderPhase.rolls.some((rollEntry) => rollEntry.seat.id === action.actorId);
 
-        if (turnOrderPhase.active && actorSeat && !hasActorAlreadyRolled) {
+        if (turnOrderPhase.active && !actorSeat) {
+          shouldRetry = true;
+        } else if (turnOrderPhase.active && Date.now() < turnOrderPhase.readyAt) {
+          shouldRetry = true;
+        } else if (turnOrderPhase.active && actorSeat && !hasActorAlreadyRolled) {
           rollForTurnOrder(true, action.actorId);
           shouldMarkProcessed = true;
         } else if (turnOrderPhase.active && hasActorAlreadyRolled) {
@@ -916,14 +924,45 @@ export function App() {
   }
 
   function startLocalGame() {
-    if (activeRoomId && isRoomHost) { void updateRoomStatus(activeRoomId, 'playing'); }
-    resetGameBoard(makePieces(playableSeats, pieceCount, playMode));
-    setLogs([makeLog('3초 뒤 순서 정하기를 시작합니다. 모두 동시에 10초 안에 윷을 던져주세요.')]);
-    setTurnOrderIntro(null);
+    const nextPieces = makePieces(playableSeats, pieceCount, playMode);
+    const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
+    const introLog = makeLog('3초 뒤 순서 정하기를 시작합니다. 모두 동시에 10초 안에 윷을 던져주세요.');
     const turnOrderReadyAt = Date.now() + TURN_ORDER_START_DELAY_MS;
-    setTurnOrderPhase({ active: true, index: 0, rolls: [], deadline: turnOrderReadyAt + TURN_ORDER_TIMEOUT_MS, readyAt: turnOrderReadyAt });
+    const nextTurnOrderPhase = { active: true, index: 0, rolls: [], deadline: turnOrderReadyAt + TURN_ORDER_TIMEOUT_MS, readyAt: turnOrderReadyAt };
+    resetGameBoard(nextPieces);
+    setBoardItems(nextBoardItems);
+    setLogs([introLog]);
+    setTurnOrderIntro(null);
+    setTurnOrderPhase(nextTurnOrderPhase);
     setGameStartedAt(null);
     setScreen('game');
+    if (activeRoomId && isRoomHost) {
+      void saveGameState(activeRoomId, {
+        pieces: nextPieces,
+        turnIndex: 0,
+        turnOrderIds: [],
+        roll: null,
+        rollAnimation: null,
+        boardItems: nextBoardItems,
+        ownedItems: {},
+        trapNodes: [],
+        shieldedPieceIds: [],
+        logs: [introLog],
+        winner: '',
+        captureEffect: null,
+        trapEffect: null,
+        gameStartedAt: null,
+        turnOrderIntro: null,
+        pendingTrapPlacement: null,
+        rollLockUntil: 0,
+        lastMovedPieceIds: [],
+        lastMovedSeatId: '',
+        itemPromptTiming: null,
+        branchChoice: 'outer',
+        rollResultReadyAt: 0,
+        turnOrderPhase: nextTurnOrderPhase,
+      }).then(() => updateRoomStatus(activeRoomId, 'playing'));
+    }
   }
 
   function completeTurnOrderRolls(rolls: TurnOrderRoll[]) {
@@ -955,7 +994,7 @@ export function App() {
     const ceremonyLogs = [...timeoutLogTexts, ...getTurnOrderLogTexts(rankedRolls, orderedSeats), finalOrderLog].reverse().map((text) => makeLog(text));
 
     return {
-      local: { completedRolls, orderedSeats, nextPieces, nextBoardItems, nextTurnOrderIds, nextTurnOrderPhase, nextTurnOrderIntro, finalOrderLog },
+      local: { completedRolls, orderedSeats, nextPieces, nextBoardItems, nextTurnOrderIds, nextTurnOrderPhase, nextTurnOrderIntro, finalOrderLog, nextLogs: [...ceremonyLogs, ...currentLogs] },
       patch: {
         pieces: nextPieces,
         boardItems: nextBoardItems,
@@ -985,14 +1024,7 @@ export function App() {
   }
 
   function finishTurnOrderCeremony(rolls: TurnOrderRoll[]) {
-    if (activeRoomId) {
-      void updateTurnOrderState(activeRoomId, (state) => {
-        const remotePhase = state?.turnOrderPhase as TurnOrderPhase | null | undefined;
-        if (remotePhase && !remotePhase.active) return null;
-        return makeTurnOrderCeremonyPatch(remotePhase?.rolls ?? rolls, (state?.logs as GameLog[] | undefined) ?? logs).patch;
-      });
-      return;
-    }
+    if (activeRoomId && !isRoomHost) return;
 
     const { local } = makeTurnOrderCeremonyPatch(rolls, logs);
     setPieces(local.nextPieces);
@@ -1002,7 +1034,7 @@ export function App() {
     setTurnOrderPhase(local.nextTurnOrderPhase);
     setTurnOrderIntro(local.nextTurnOrderIntro);
     setGameStartedAt(null);
-    addLogs([local.finalOrderLog]);
+    setLogs(local.nextLogs);
   }
 
   function rollForTurnOrder(fromRemote = false, requestedSeatId = localSeatId) {
@@ -1014,18 +1046,9 @@ export function App() {
     const nextAnimation = { id: Date.now(), result: rolled.result, sticks: rolled.sticks, turnOrder: true };
     const logText = `${seat.label}이(가) 순서 정하기에서 ${rolled.result.name}(${getTurnOrderScore(rolled.result)}점)를 던졌습니다.`;
 
-    if (activeRoomId && !fromRemote) {
-      void updateTurnOrderState(activeRoomId, (state) => {
-        const remotePhase = state?.turnOrderPhase as TurnOrderPhase | null | undefined;
-        if (!remotePhase?.active || Date.now() < remotePhase.readyAt || remotePhase.rolls.some((entry) => entry.seat.id === seat.id)) return null;
-        return {
-          turnOrderPhase: { ...remotePhase, rolls: [...remotePhase.rolls, rollEntry] },
-          rollAnimation: nextAnimation,
-          logs: [makeLog(logText), ...((state?.logs as GameLog[] | undefined) ?? logs)],
-        };
-      });
-      playSfx('roll');
-      window.setTimeout(() => setRollAnimation(null), TURN_ORDER_ROLL_ANIMATION_MS);
+    if (activeRoomId && !isRoomHost && !fromRemote) {
+      if (requestedSeatId !== localSeatId) return;
+      void submitRemoteAction('turn_order_roll');
       return;
     }
 
@@ -1460,7 +1483,7 @@ export function App() {
     setSeats(createSeats(nickname, playMode, maxPlayers));
     setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
     if (finishedRoomId && wasHost) {
-      void updateRoomStatus(finishedRoomId, 'finished');
+      void deleteRoom(finishedRoomId);
     } else if (finishedRoomId) {
       void removeRoomPlayer(finishedRoomId, localSeatId);
     }
