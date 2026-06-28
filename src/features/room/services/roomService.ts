@@ -3,7 +3,7 @@ import { db } from '../../../services/firebase/firebaseDb';
 import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board/board';
 
 export interface RoomSummary {
-  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null;
+  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number;
 }
 
 const getCreatedAtMillis = (createdAt: unknown) => {
@@ -57,50 +57,72 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     passwordHint: params.password ? '설정됨' : '',
     status: 'waiting',
     emptySince: null,
+    currentPlayers: 1,
     createdAt: serverTimestamp(),
   });
   await setDoc(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
+  await setDoc(doc(firestore, 'rooms', roomRef.id, 'seats', '0'), { playerId: params.hostId, updatedAt: serverTimestamp() });
   if (params.itemMode) {
     await Promise.all(spawnInitialBoardItems().map((item) => setDoc(doc(firestore, 'rooms', roomRef.id, 'boardItems', item.id), item)));
   }
   return roomRef.id;
 }
 
-export async function joinRoom(roomId: string, params: { userId: string; nickname: string; playMode: 'individual'|'team'; }) {
+
+async function syncRoomPlayerCount(roomId: string) {
+  if (!db) return;
+  const playersSnapshot = await getDocs(collection(db, 'rooms', roomId, 'players'));
+  const currentPlayers = playersSnapshot.docs.filter((playerDoc) => !(playerDoc.data() as RoomPlayer).isSpectator).length;
+  await setDoc(doc(db, 'rooms', roomId), { currentPlayers }, { merge: true });
+}
+
+export type JoinRoomResult = { role: 'player' | 'spectator'; seatIndex: number | null };
+
+export async function joinRoom(roomId: string, params: { userId: string; nickname: string; playMode: 'individual'|'team'; }): Promise<JoinRoomResult> {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
-  const roomSnapshot = await getDoc(doc(db, 'rooms', roomId));
-  if (!roomSnapshot.exists()) throw new Error('존재하지 않는 방입니다.');
-  const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
-  if (room.status === 'finished') throw new Error('이미 종료된 방입니다.');
+  const roomRef = doc(db, 'rooms', roomId);
   const playerRef = doc(db, 'rooms', roomId, 'players', params.userId);
-  const existingPlayer = await getDoc(playerRef);
-  if (existingPlayer.exists()) {
-    await setDoc(playerRef, { nickname: params.nickname, lastSeen: serverTimestamp() }, { merge: true });
-    await setDoc(doc(db, 'rooms', roomId), { emptySince: null }, { merge: true });
-    return existingPlayer.data().isSpectator ? 'spectator' : 'player';
-  }
-  if (room.status === 'playing') {
-    await setDoc(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: serverTimestamp(), lastSeen: serverTimestamp() }, { merge: true });
-    await setDoc(doc(db, 'rooms', roomId), { emptySince: null }, { merge: true });
-    return 'spectator';
-  }
-  const playersRef = collection(db, 'rooms', roomId, 'players');
-  const snapshot = await getDocs(query(playersRef, orderBy('seatIndex', 'asc'), limit(4)));
-  const usedSeats = new Set(snapshot.docs.map((playerDoc) => Number(playerDoc.data().seatIndex)));
-  let seatIndex = 0;
-  while (usedSeats.has(seatIndex) && seatIndex < room.maxPlayers) seatIndex += 1;
-  if (seatIndex >= room.maxPlayers) throw new Error('방이 가득 찼습니다.');
-  await setDoc(playerRef, {
-    nickname: params.nickname,
-    ready: false,
-    color: COLORS[seatIndex] ?? 'black',
-    seatIndex,
-    team: params.playMode === 'team' ? TEAMS[seatIndex] : '청팀',
-    joinedAt: serverTimestamp(),
-    lastSeen: serverTimestamp(),
-  }, { merge: true });
-  await setDoc(doc(db, 'rooms', roomId), { emptySince: null }, { merge: true });
-  return 'player';
+  return runTransaction(db, async (transaction) => {
+    const roomSnapshot = await transaction.get(roomRef);
+    if (!roomSnapshot.exists()) throw new Error('존재하지 않는 방입니다.');
+    const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
+    if (room.status === 'finished') throw new Error('이미 종료된 방입니다.');
+
+    const existingPlayer = await transaction.get(playerRef);
+    if (existingPlayer.exists()) {
+      const existingData = existingPlayer.data() as RoomPlayer;
+      transaction.set(playerRef, { nickname: params.nickname, lastSeen: serverTimestamp() }, { merge: true });
+      transaction.set(roomRef, { emptySince: null }, { merge: true });
+      return { role: existingData.isSpectator ? 'spectator' : 'player', seatIndex: existingData.isSpectator ? null : Number(existingData.seatIndex) };
+    }
+
+    const maxPlayers = room.maxPlayers as 2 | 3 | 4;
+    const seatRefs = Array.from({ length: maxPlayers }, (_, index) => doc(db!, 'rooms', roomId, 'seats', String(index)));
+    const seatSnapshots = await Promise.all(seatRefs.map((seatRef) => transaction.get(seatRef)));
+    const currentPlayers = seatSnapshots.filter((seatSnapshot) => seatSnapshot.exists()).length;
+
+    if (room.status === 'playing') {
+      transaction.set(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: serverTimestamp(), lastSeen: serverTimestamp() }, { merge: true });
+      transaction.set(roomRef, { emptySince: null, currentPlayers }, { merge: true });
+      return { role: 'spectator', seatIndex: null };
+    }
+
+    const seatIndex = seatSnapshots.findIndex((seatSnapshot) => !seatSnapshot.exists());
+    if (seatIndex < 0) throw new Error('방이 가득 찼습니다.');
+
+    transaction.set(playerRef, {
+      nickname: params.nickname,
+      ready: false,
+      color: COLORS[seatIndex] ?? 'black',
+      seatIndex,
+      team: params.playMode === 'team' ? TEAMS[seatIndex] : '청팀',
+      joinedAt: serverTimestamp(),
+      lastSeen: serverTimestamp(),
+    }, { merge: true });
+    transaction.set(seatRefs[seatIndex], { playerId: params.userId, updatedAt: serverTimestamp() });
+    transaction.set(roomRef, { emptySince: null, currentPlayers: currentPlayers + 1 }, { merge: true });
+    return { role: 'player', seatIndex };
+  });
 }
 
 export function subscribeRoomPlayers(roomId: string, callback: (players: RoomPlayer[]) => void): Unsubscribe {
@@ -120,15 +142,21 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
   const activeRoomsSnapshot = await getDocs(query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing'])));
   await Promise.all(activeRoomsSnapshot.docs.map(async (roomDoc) => {
     if (roomDoc.id === protectedRoomId) return;
+    const room = roomDoc.data() as Omit<RoomSummary, 'id'>;
     const playersRef = collection(db!, 'rooms', roomDoc.id, 'players');
     const playersSnapshot = await getDocs(playersRef);
     const stalePlayers = playersSnapshot.docs.filter((playerDoc) => {
       const player = playerDoc.data() as RoomPlayer;
-      if (player.isAI) return false;
+      if (playerDoc.id === room.hostId || player.isAI) return false;
       const lastSeen = getTimestampMillis(player.lastSeen ?? player.joinedAt);
       return !lastSeen || now - lastSeen > staleMs;
     });
-    await Promise.all(stalePlayers.map((playerDoc) => deleteDoc(playerDoc.ref)));
+    await Promise.all(stalePlayers.map(async (playerDoc) => {
+      const player = playerDoc.data() as RoomPlayer;
+      await deleteDoc(playerDoc.ref);
+      if (!player.isSpectator && Number.isFinite(Number(player.seatIndex))) await deleteDoc(doc(db!, 'rooms', roomDoc.id, 'seats', String(player.seatIndex)));
+    }));
+    if (stalePlayers.length) await syncRoomPlayerCount(roomDoc.id);
     const remainingHumans = playersSnapshot.docs.filter((playerDoc) => {
       if (stalePlayers.some((staleDoc) => staleDoc.id === playerDoc.id)) return false;
       const player = playerDoc.data() as RoomPlayer;
@@ -179,6 +207,8 @@ export async function updateRoomOptions(roomId: string, params: Partial<Pick<Roo
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   await setDoc(doc(db, 'rooms', roomId, 'players', playerId), params, { merge: true });
+  if (typeof params.seatIndex === 'number' && !params.isSpectator) await setDoc(doc(db, 'rooms', roomId, 'seats', String(params.seatIndex)), { playerId, updatedAt: serverTimestamp() }, { merge: true });
+  await syncRoomPlayerCount(roomId);
 }
 
 async function deleteRoomIfStillEmpty(roomId: string, expectedEmptySince: number) {
@@ -196,6 +226,7 @@ export async function scheduleEmptyRoomDeletion(roomId: string) {
   const playersSnapshot = await getDocs(query(collection(db, 'rooms', roomId, 'players'), limit(1)));
   const roomRef = doc(db, 'rooms', roomId);
   if (!playersSnapshot.empty) {
+    await syncRoomPlayerCount(roomId);
     await setDoc(roomRef, { emptySince: null }, { merge: true });
     return;
   }
@@ -208,7 +239,12 @@ export async function removeRoomPlayer(roomId: string, playerId: string) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const roomRef = doc(db, 'rooms', roomId);
   const roomSnapshot = await getDoc(roomRef);
-  await deleteDoc(doc(db, 'rooms', roomId, 'players', playerId));
+  const playerRef = doc(db, 'rooms', roomId, 'players', playerId);
+  const playerSnapshot = await getDoc(playerRef);
+  const player = playerSnapshot.exists() ? playerSnapshot.data() as RoomPlayer : null;
+  await deleteDoc(playerRef);
+  if (player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) await deleteDoc(doc(db, 'rooms', roomId, 'seats', String(player.seatIndex)));
+  await syncRoomPlayerCount(roomId);
   const remainingPlayersSnapshot = await getDocs(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc'), limit(1)));
   if (remainingPlayersSnapshot.empty) {
     await scheduleEmptyRoomDeletion(roomId);
