@@ -415,7 +415,7 @@ export function App() {
     try {
       const timeout = new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('방 만들기 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.')), CREATE_ROOM_TIMEOUT_MS));
       const roomId = await Promise.race([createRoom({ title, hostId: user.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
-      await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, `${title} 방이 생성되었습니다. 옵션을 확인하고 모두 준비되면 시작하세요.`, true);
+      await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, '', true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '방 생성에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
     } finally {
@@ -893,7 +893,6 @@ export function App() {
       return <section className={`panel waiting-room compact-waiting-room ${isRoomHost ? 'host-view' : 'player-view'}`} aria-label="방 대기 화면">
         <header className="waiting-header">
           <div>
-            <p className="section-kicker">게임 시작 대기</p>
             <h2 className="room-title">{activeRoomTitle || title}</h2>
             <p className="room-subtitle">{isRoomHost ? '방장은 규칙·팀·AI를 관리하고 게임을 시작할 수 있어요.' : '일반 플레이어는 준비/준비취소와 방 나가기만 할 수 있어요.'}</p>
           </div>
@@ -927,7 +926,6 @@ export function App() {
           {isRoomHost ? <button onClick={handleStartGame} disabled={!allReady}>게임 시작</button> : <button onClick={() => { void toggleMyReady(); }} disabled={!myWaitingSeat}>{myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
           <button className="secondary" onClick={leaveRoom}>방 나가기</button>
         </footer>
-        {message && <p className="notice">{message}</p>}
       </section>;
     })()}
 
