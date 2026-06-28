@@ -436,14 +436,18 @@ export function App() {
   }, [allReady, countdown, screen]);
 
   async function handleCreateRoom() {
-    if (!user) { setMessage('입장 준비가 끝난 뒤 다시 시도하세요.'); return; }
+    if (isFirebaseConfigured && !user) { setMessage('입장 준비가 끝난 뒤 다시 시도하세요.'); return; }
     if (!nickname.trim()) { setMessage('닉네임을 먼저 정해주세요.'); return; }
     if (isCreatingRoom) return;
     setIsCreatingRoom(true);
     setMessage('방을 만드는 중입니다. 잠시만 기다려주세요...');
     try {
       const timeout = new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('방 만들기 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.')), CREATE_ROOM_TIMEOUT_MS));
-      const roomId = await Promise.race([createRoom({ title, hostId: user.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
+      if (!isFirebaseConfigured) {
+        await openWaitingRoom({ title, itemMode, maxPlayers, playMode, pieceCount }, '', true);
+        return;
+      }
+      const roomId = await Promise.race([createRoom({ title, hostId: user!.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
       await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, '', true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '방 생성에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
@@ -907,10 +911,10 @@ export function App() {
     setMessage('닉네임이 변경되었습니다.');
   }
 
-  return <main className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
+  return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
     <section className="hero panel">
       <div className="hero-copy"><h1 className="brand-title">YUT ONLINE</h1></div>
-      {screen === 'game' && <div className="play-time" aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}
+      {screen === 'game' && <div data-testid="play-timer" className="play-time" aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}
       <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><div className="sound-controls" aria-label="효과음 설정"><button className={`sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={() => { const nextEnabled = !soundEnabled; setSoundEnabled(nextEnabled); if (nextEnabled) playSoundEffect('toast', true); }}>{soundEnabled ? '🔊 효과음 ON' : '🔇 효과음 OFF'}</button></div><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
     </section>
 
@@ -924,8 +928,8 @@ export function App() {
           <span>방 제목만 입력하면 바로 대기실로 이동해 세부 룰을 설정할 수 있어요.</span>
         </div>
         <div className="form-grid lobby-form">
-          <label>방 제목<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="방 제목" /></label>
-          <button className="primary-cta" onClick={handleCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '방 만드는 중...' : '방 만들기'}</button>
+          <label>방 제목<input data-testid="room-title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="방 제목" /></label>
+          <button data-testid="create-room-button" className="primary-cta" onClick={handleCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '방 만드는 중...' : '방 만들기'}</button>
         </div>
         {message && <p className="notice lobby-notice">{message}</p>}
       </section>
@@ -945,7 +949,7 @@ export function App() {
       const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
       const startStatusText = allReady ? '시작 가능' : teamStartHint || `${readyMissingCount}명이 더 준비해야 해요.`;
       const roomRuleText = `${playMode === 'team' ? '팀전' : '개인전'} · ${maxPlayers}인 · 말 ${pieceCount}개 · 아이템 ${itemMode ? 'ON' : 'OFF'}`;
-      return <section className={`panel waiting-room compact-waiting-room ${isRoomHost ? 'host-view' : 'player-view'}`} aria-label="방 대기 화면">
+      return <section data-testid="waiting-room" className={`panel waiting-room compact-waiting-room ${isRoomHost ? 'host-view' : 'player-view'}`} aria-label="방 대기 화면">
         <header className="waiting-header">
           <div>
             <h2 className="room-title">{activeRoomTitle || title}</h2>
@@ -968,7 +972,7 @@ export function App() {
               <div className="seat-topline"><b>{seat.label}</b><span>{seat.isHost ? '방장' : seat.id === localSeatId ? '나' : seat.isEmpty ? '대기' : '참가자'}</span></div>
               <div className="seat-name-row"><strong>{seat.name}</strong><em>{seat.isAI ? 'AI' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em></div>
               {playMode === 'team' && <select value={seat.team} onChange={(e) => changeTeam(seat.id, e.target.value as Team)} disabled={!isRoomHost || !seat.isEmpty && seat.id === localSeatId && !isRoomHost} aria-label={`${seat.label} 팀 선택`}><option value="청팀">청팀</option><option value="홍팀">홍팀</option></select>}
-              {seat.isEmpty && isRoomHost && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}
+              {seat.isEmpty && isRoomHost && <button data-testid={`add-ai-${seat.label}`} className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}
               {seat.isAI && isRoomHost && !seat.isHost && <button className="mini-button secondary ai-cancel-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}
             </article>)}
           </section>
@@ -977,7 +981,7 @@ export function App() {
         {countdown >= 0 && <div className="countdown-scrim" role="presentation"><div className="countdown-overlay" role="status"><span>게임 시작</span><strong>{countdown}</strong>{isRoomHost && <button className="secondary mini-button" onClick={() => { setCountdown(-1); setMessage('시작이 취소되었습니다.'); }}>취소</button>}</div></div>}
         {playMode === 'team' && !teamBalanced && <p className="notice warning inline-warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}
         <footer className="waiting-actions role-actions">
-          {isRoomHost ? <button onClick={handleStartGame} disabled={!allReady}>게임 시작</button> : <button onClick={() => { void toggleMyReady(); }} disabled={!myWaitingSeat}>{myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
+          {isRoomHost ? <button data-testid="start-game-button" onClick={handleStartGame} disabled={!allReady}>게임 시작</button> : <button onClick={() => { void toggleMyReady(); }} disabled={!myWaitingSeat}>{myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
           <button className="secondary" onClick={leaveRoom}>방 나가기</button>
         </footer>
       </section>;
