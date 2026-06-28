@@ -23,6 +23,7 @@ const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 const MAX_ACTIVE_ROOMS = 3;
 const EMPTY_ROOM_DELETE_DELAY_MS = 30000;
 const STALE_PLAYER_DELETE_MS = 45000;
+const ROOM_MAX_AGE_MS = 60 * 60 * 1000;
 
 const getTimestampMillis = (value: unknown) => {
   if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
@@ -44,7 +45,15 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     .filter((roomDoc) => ['waiting', 'finished'].includes(String(roomDoc.data().status)))
     .map((roomDoc) => deleteDoc(roomDoc.ref)));
   const activeRoomsSnapshot = await getDocs(query(roomsRef, where('status', 'in', ['waiting', 'playing'])));
-  const activeRooms = activeRoomsSnapshot.docs.map((roomDoc) => roomDoc.data() as Omit<RoomSummary, 'id'>);
+  const now = Date.now();
+  const activeRoomDocs = activeRoomsSnapshot.docs.filter((roomDoc) => {
+    const room = roomDoc.data() as Omit<RoomSummary, 'id'>;
+    const createdAt = getCreatedAtMillis(room.createdAt);
+    const expired = Boolean(createdAt && now - createdAt > ROOM_MAX_AGE_MS);
+    if (expired) void deleteDoc(roomDoc.ref);
+    return !expired;
+  });
+  const activeRooms = activeRoomDocs.map((roomDoc) => roomDoc.data() as Omit<RoomSummary, 'id'>);
   if (activeRooms.length >= MAX_ACTIVE_ROOMS) throw new Error('방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.');
   if (activeRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error('이미 존재하는 방 제목입니다. 다른 제목을 입력해주세요.');
   const roomRef = await addDoc(roomsRef, {
@@ -223,8 +232,16 @@ export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): 
   if (!db) { callback([]); return () => undefined; }
   const roomsQuery = query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing']));
   return onSnapshot(roomsQuery, (snapshot) => {
+    const now = Date.now();
     const rooms = snapshot.docs
-      .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
+      .map((roomDoc) => ({ id: roomDoc.id, ref: roomDoc.ref, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
+      .filter((room) => {
+        const createdAt = getCreatedAtMillis(room.createdAt);
+        const expired = Boolean(createdAt && now - createdAt > ROOM_MAX_AGE_MS);
+        if (expired) void deleteDoc(room.ref);
+        return !expired;
+      })
+      .map(({ ref: _ref, ...room }) => room)
       .sort((a, b) => getCreatedAtMillis(b.createdAt) - getCreatedAtMillis(a.createdAt));
     callback(rooms);
   }, () => callback([]));
