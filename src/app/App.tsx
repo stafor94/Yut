@@ -38,7 +38,7 @@ type TrapNode = { nodeId: string; ownerId: string };
 
 const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
 const ROOM_COLOR_LABELS: Record<string, string> = { red: '빨강', blue: '파랑', green: '초록', yellow: '노랑' };
-const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount', soundEnabled: 'yut-online:soundEnabled', soundVolume: 'yut-online:soundVolume' } as const;
+const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount', soundEnabled: 'yut-online:soundEnabled' } as const;
 const getStoredBoolean = (key: string, fallback: boolean) => {
   if (typeof window === 'undefined') return fallback;
   const stored = window.localStorage.getItem(key);
@@ -129,7 +129,6 @@ export function App() {
   const [itemMode, setItemMode] = useState(() => getStoredBoolean(STORAGE_KEYS.itemMode, true));
   const [pieceCount, setPieceCount] = useState<PieceCount>(() => getStoredNumber(STORAGE_KEYS.pieceCount, 4, [1, 2, 3, 4] as const));
   const [soundEnabled, setSoundEnabled] = useState(() => getStoredBoolean(STORAGE_KEYS.soundEnabled, true));
-  const [soundVolume, setSoundVolume] = useState(() => getStoredNumber(STORAGE_KEYS.soundVolume, 0.5, [0, 0.25, 0.5, 0.75, 1] as const));
   const [message, setMessage] = useState('');
   const [screen, setScreen] = useState<Screen>('lobby');
   const [activeRoomTitle, setActiveRoomTitle] = useState('');
@@ -207,14 +206,13 @@ export function App() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.itemMode, String(itemMode)); }, [itemMode]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.pieceCount, String(pieceCount)); }, [pieceCount]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
-  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundVolume, String(soundVolume)); }, [soundVolume]);
 
   useEffect(() => {
     if (!winner) { lastWinnerSoundRef.current = ''; return; }
     if (lastWinnerSoundRef.current === winner) return;
     lastWinnerSoundRef.current = winner;
-    playSoundEffect('win', soundEnabled, soundVolume);
-  }, [soundEnabled, soundVolume, winner]);
+    playSoundEffect('win', soundEnabled);
+  }, [soundEnabled, winner]);
 
   useEffect(() => {
     if (!activeRoomId) return undefined;
@@ -372,7 +370,7 @@ export function App() {
     setScreen('game');
   }
 
-  function playSfx(effect: SoundEffect) { playSoundEffect(effect, soundEnabled, soundVolume); }
+  function playSfx(effect: SoundEffect) { playSoundEffect(effect, soundEnabled); }
   function addLog(text: string) { setLogs((current) => [{ id: Date.now(), text }, ...current]); }
   function showToast(title: string, description?: string, icon?: string) {
     const nextToast = { id: Date.now(), title, description, icon };
@@ -670,7 +668,7 @@ export function App() {
   return <main className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
     <section className="hero panel">
       <div className="hero-copy"><h1 className="brand-title">YUT ONLINE</h1></div>
-      <div className="hero-actions"><div className="sound-controls" aria-label="효과음 설정"><button className={`sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={() => { const nextEnabled = !soundEnabled; setSoundEnabled(nextEnabled); if (nextEnabled) playSoundEffect('toast', true, soundVolume); }}>{soundEnabled ? '🔊 효과음 ON' : '🔇 효과음 OFF'}</button><label>볼륨<select value={soundVolume} onChange={(e) => setSoundVolume(Number(e.target.value) as 0 | 0.25 | 0.5 | 0.75 | 1)}><option value={0}>0%</option><option value={0.25}>25%</option><option value={0.5}>50%</option><option value={0.75}>75%</option><option value={1}>100%</option></select></label></div><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
+      <div className="hero-actions"><div className="sound-controls" aria-label="효과음 설정"><button className={`sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={() => { const nextEnabled = !soundEnabled; setSoundEnabled(nextEnabled); if (nextEnabled) playSoundEffect('toast', true); }}>{soundEnabled ? '🔊 효과음 ON' : '🔇 효과음 OFF'}</button></div><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
     </section>
 
     {screen === 'lobby' && <section className="lobby-layout" aria-label="첫 대기 화면">

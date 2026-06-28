@@ -51,11 +51,13 @@ const playNoise = (context: AudioContext, start: number, duration: number, volum
   source.stop(start + duration + 0.03);
 };
 
-export const playSoundEffect = (effect: SoundEffect, enabled: boolean, volume: number) => {
-  if (!enabled || volume <= 0) return;
+const SOUND_EFFECT_VOLUME = 0.5;
+
+export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
+  if (!enabled) return;
   const context = getAudioContext();
   if (!context) return;
-  const safeVolume = Math.min(1, Math.max(0, volume));
+  const safeVolume = SOUND_EFFECT_VOLUME;
   const now = context.currentTime;
   if (now - lastPlayedAt < 0.035 && effect === 'move') return;
   lastPlayedAt = now;
