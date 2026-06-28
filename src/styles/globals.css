@@ -142,6 +142,8 @@ h2 { margin-top: 0; }
 
 .board-node {
   position: absolute;
+  appearance: none;
+  padding: 0;
   translate: -50% -50%;
   width: 42px;
   height: 42px;
@@ -150,8 +152,16 @@ h2 { margin-top: 0; }
   border: 4px solid #7a4a26;
   display: grid;
   place-items: center;
+  color: var(--brown);
+  font: inherit;
   z-index: 2;
 }
+
+.board-node:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 
 .board-node.center { background: var(--gold); }
 .board-item { font-size: 11px; background: var(--red); color: white; border-radius: 999px; padding: 4px; position: absolute; top: -18px; white-space: nowrap; }
@@ -857,6 +867,37 @@ select {
   z-index: 6;
 }
 
+.board-node.trap-selectable {
+  cursor: pointer;
+  outline: 4px dashed rgba(217, 74, 56, .78);
+  box-shadow: 0 0 0 10px rgba(217, 74, 56, .15), 0 0 24px rgba(217, 74, 56, .35);
+  z-index: 9;
+  animation: trap-select-pulse 1s ease-in-out infinite alternate;
+}
+
+.board-node.trap-selectable::after {
+  content: "🪤";
+  position: absolute;
+  inset: -18px -18px auto auto;
+  filter: drop-shadow(0 6px 10px rgba(42, 30, 23, .24));
+}
+
+.board-node.trap-exploding {
+  z-index: 12;
+  animation: trap-node-explosion 3s ease both;
+}
+
+.board-node.trap-exploding::before {
+  content: "💥";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  font-size: 3rem;
+  animation: trap-burst-pop 3s ease both;
+  pointer-events: none;
+}
+
 .board-node.item-collected {
   animation: item-node-burst 1.25s ease-out;
   z-index: 7;
@@ -1377,16 +1418,17 @@ aside.players,
 
 .roll-callout {
   position: absolute;
-  top: -58px;
+  top: -96px;
   left: 50%;
   translate: -50% 0;
   z-index: 3;
-  padding: 8px 22px;
+  padding: 7px 20px;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--gold), #fff2b8);
   color: #7a2f1f;
-  font-size: clamp(1.4rem, 4vw, 2.4rem);
+  font-size: clamp(1.15rem, 3vw, 1.9rem);
   font-weight: 1000;
+  white-space: nowrap;
   box-shadow: 0 18px 36px rgba(242, 184, 75, .42);
   animation: roll-callout-pop 2.2s cubic-bezier(.16, 1, .3, 1) both;
 }
@@ -1624,7 +1666,26 @@ aside.players,
 
 .play-controls.item-prompt-mode {
   align-content: center;
-  min-height: 196px;
+  min-height: 76px;
+}
+
+
+@keyframes trap-select-pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
+
+@keyframes trap-node-explosion {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 74, 56, 0); transform: scale(1); }
+  12%, 72% { box-shadow: 0 0 0 18px rgba(217, 74, 56, .24), 0 0 44px rgba(242, 184, 75, .7); transform: scale(1.14); }
+  36% { transform: scale(.96); }
+  56% { transform: scale(1.2); }
+}
+
+@keyframes trap-burst-pop {
+  0% { opacity: 0; transform: scale(.3) rotate(-18deg); }
+  12%, 78% { opacity: 1; transform: scale(1.28) rotate(8deg); }
+  100% { opacity: 0; transform: scale(.8) rotate(18deg); }
 }
 
 .roll-mat.bonus-roll {
