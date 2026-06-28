@@ -584,27 +584,21 @@ select {
 .play-controls {
   width: min(100%, 620px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 220px);
+  grid-template-columns: 1fr;
   gap: 10px;
   align-items: center;
-  min-height: 90px;
+  justify-items: center;
+  min-height: 76px;
   margin-top: 14px;
   padding: 14px;
   border-radius: 20px;
   background: #fff3d8;
 }
 
-.play-controls span {
-  min-width: 0;
-  font-weight: 900;
-  color: var(--green);
-  overflow-wrap: anywhere;
-}
-
 .play-controls button {
   width: 220px;
   min-height: 52px;
-  justify-self: end;
+  justify-self: center;
 }
 .item-button { padding: 0; text-align: left; background: transparent; color: inherit; }
 .log-list { display: grid; gap: 8px; }
@@ -677,13 +671,15 @@ select {
   }
 
   .game-shell .board-panel {
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     align-content: stretch;
+    align-items: center;
+    gap: 8px;
     overflow: hidden;
   }
 
   .game-shell .board {
-    width: min(100%, calc(100svh - 330px));
+    width: min(100%, calc(100svh - 370px));
     max-width: 500px;
     align-self: center;
   }
@@ -881,6 +877,26 @@ select {
   animation: toast-in-out 2.4s ease both;
 }
 
+.turn-toast {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  z-index: 55;
+  width: max-content;
+  max-width: min(86vw, 520px);
+  padding: 18px 28px;
+  border-radius: 999px;
+  background: rgba(34, 66, 54, .94);
+  color: #fff8ea;
+  border: 2px solid rgba(242, 184, 75, .72);
+  box-shadow: 0 24px 70px rgba(42, 30, 23, .34);
+  font-size: clamp(1.35rem, 4vw, 2.35rem);
+  font-weight: 1000;
+  text-align: center;
+  pointer-events: none;
+  animation: turn-toast-in-out 3s cubic-bezier(.16, 1, .3, 1) both;
+}
+
 .roll-stage {
   position: absolute;
   inset: 0;
@@ -981,6 +997,12 @@ aside.players,
   0% { opacity: 0; transform: translateY(-16px) scale(.95); }
   12%, 82% { opacity: 1; transform: translateY(0) scale(1); }
   100% { opacity: 0; transform: translateY(-18px) scale(.96); }
+}
+
+@keyframes turn-toast-in-out {
+  0% { opacity: 0; transform: translateY(18px) scale(.9); }
+  12%, 74% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-12px) scale(.96); }
 }
 
 @keyframes mat-pop {
@@ -1263,12 +1285,16 @@ aside.players,
 
 .turn-indicator {
   width: min(100%, 620px);
-  margin: 0 0 12px;
+  margin: 0;
   text-align: center;
   font-size: clamp(1.35rem, 2.2vw, 1.9rem);
+  line-height: 1.18;
   font-weight: 1000;
   letter-spacing: .03em;
   text-shadow: 0 2px 0 rgba(255, 255, 255, .86);
+  position: relative;
+  z-index: 10;
+  align-self: end;
 }
 
 .play-controls.roll-ready {
@@ -1310,6 +1336,8 @@ aside.players,
 .roll-stage {
   background: radial-gradient(circle, rgba(242, 184, 75, .24), rgba(217, 74, 56, .12) 38%, rgba(42, 30, 23, .26) 72%, transparent 100%);
   animation: roll-stage-flash 2.6s ease both;
+  contain: layout paint;
+  transform: translateZ(0);
 }
 
 .roll-aura {
@@ -1318,9 +1346,11 @@ aside.players,
   aspect-ratio: 1;
   border-radius: 999px;
   background: conic-gradient(from 0deg, rgba(242, 184, 75, 0), rgba(242, 184, 75, .8), rgba(217, 74, 56, .6), rgba(242, 184, 75, 0));
-  filter: blur(18px);
-  opacity: .78;
+  filter: blur(10px);
+  opacity: .62;
   animation: roll-aura-spin 2.6s cubic-bezier(.18, .8, .2, 1) both;
+  will-change: transform, opacity;
+  transform: translateZ(0);
 }
 
 .roll-impact-burst {
@@ -1395,14 +1425,18 @@ aside.players,
   transform-style: preserve-3d;
   perspective: 900px;
   animation-duration: 2.6s;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
 }
 
 .yut-stick {
   width: 30px;
   height: 118px;
   box-shadow: 0 16px 28px rgba(42, 30, 23, .28);
-  animation: yut-flight 2.05s cubic-bezier(.16, .84, .22, 1) both;
-  animation-delay: calc(var(--stick-index) * 110ms);
+  animation: yut-flight 1.85s cubic-bezier(.18, .86, .24, 1) both;
+  animation-delay: calc(var(--stick-index) * 70ms);
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 .roll-label {
@@ -1414,20 +1448,20 @@ aside.players,
 }
 
 @keyframes mat-pop {
-  0% { opacity: 0; transform: translateY(34px) scale(.5) rotate(-8deg); filter: blur(8px); }
-  12% { opacity: 1; transform: translateY(0) scale(1.08) rotate(2deg); filter: blur(0); }
-  22% { transform: scale(.98) rotate(-1deg); }
+  0% { opacity: 0; transform: translate3d(0, 30px, 0) scale(.72) rotate(-5deg); }
+  12% { opacity: 1; transform: translate3d(0, 0, 0) scale(1.04) rotate(1deg); }
+  22% { transform: translate3d(0, 0, 0) scale(.99) rotate(-.5deg); }
   70% { opacity: 1; transform: scale(1) rotate(0); }
-  100% { opacity: 0; transform: translateY(18px) scale(.9) rotate(4deg); }
+  100% { opacity: 0; transform: translate3d(0, 16px, 0) scale(.94) rotate(2deg); }
 }
 
 @keyframes yut-flight {
-  0% { opacity: 0; transform: translate3d(calc(-80px + var(--stick-index) * 52px), -360px, 0) rotateZ(calc(-900deg + var(--stick-index) * 75deg)) rotateX(0deg); }
-  28% { opacity: 1; transform: translate3d(calc(42px - var(--stick-index) * 24px), -92px, 0) rotateZ(calc(520deg - var(--stick-index) * 60deg)) rotateX(540deg); }
-  52% { transform: translate3d(calc(-20px + var(--stick-index) * 12px), 18px, 0) rotateZ(calc(42deg - var(--stick-index) * 18deg)) rotateX(820deg); }
-  66% { transform: translate3d(calc(12px - var(--stick-index) * 7px), -34px, 0) rotateZ(calc(-24deg + var(--stick-index) * 22deg)) rotateX(980deg); }
-  84% { transform: translate3d(0, 8px, 0) rotateZ(calc(14deg - var(--stick-index) * 10deg)) rotateX(1080deg); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) rotateZ(calc(-8deg + var(--stick-index) * 12deg)) rotateX(1080deg); }
+  0% { opacity: 0; transform: translate3d(calc(-70px + var(--stick-index) * 46px), -300px, 0) rotateZ(calc(-620deg + var(--stick-index) * 55deg)) scale(.92); }
+  24% { opacity: 1; transform: translate3d(calc(34px - var(--stick-index) * 20px), -88px, 0) rotateZ(calc(300deg - var(--stick-index) * 44deg)) scale(1.02); }
+  52% { transform: translate3d(calc(-16px + var(--stick-index) * 10px), 16px, 0) rotateZ(calc(38deg - var(--stick-index) * 16deg)) scale(1); }
+  68% { transform: translate3d(calc(9px - var(--stick-index) * 6px), -28px, 0) rotateZ(calc(-20deg + var(--stick-index) * 18deg)) scale(1.01); }
+  86% { transform: translate3d(0, 6px, 0) rotateZ(calc(10deg - var(--stick-index) * 8deg)) scale(1); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) rotateZ(calc(-8deg + var(--stick-index) * 12deg)) scale(1); }
 }
 
 @keyframes roll-label-pulse {
