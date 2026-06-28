@@ -3,9 +3,9 @@ import { db } from '../../../services/firebase/firebaseDb';
 import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board/board';
 
 export interface RoomSummary {
-  id: string; title: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown;
+  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown;
 }
-export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; joinedAt?: unknown; }
+export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; }
 export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; updatedAt?: unknown; turnVersion: number; }
 
 const COLORS = ['red', 'blue', 'green', 'yellow'];
@@ -42,12 +42,16 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
   const roomSnapshot = await getDoc(doc(db, 'rooms', roomId));
   if (!roomSnapshot.exists()) throw new Error('존재하지 않는 방입니다.');
   const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
-  if (room.status !== 'waiting') throw new Error('이미 시작되었거나 종료된 방입니다.');
+  if (room.status === 'finished') throw new Error('이미 종료된 방입니다.');
   const playerRef = doc(db, 'rooms', roomId, 'players', params.userId);
   const existingPlayer = await getDoc(playerRef);
   if (existingPlayer.exists()) {
     await setDoc(playerRef, { nickname: params.nickname }, { merge: true });
-    return;
+    return existingPlayer.data().isSpectator ? 'spectator' : 'player';
+  }
+  if (room.status === 'playing') {
+    await setDoc(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: serverTimestamp() }, { merge: true });
+    return 'spectator';
   }
   const playersRef = collection(db, 'rooms', roomId, 'players');
   const snapshot = await getDocs(query(playersRef, orderBy('seatIndex', 'asc'), limit(4)));
@@ -63,6 +67,7 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
     team: params.playMode === 'team' ? TEAMS[seatIndex] : '청팀',
     joinedAt: serverTimestamp(),
   }, { merge: true });
+  return 'player';
 }
 
 export function subscribeRoomPlayers(roomId: string, callback: (players: RoomPlayer[]) => void): Unsubscribe {
@@ -85,9 +90,9 @@ export function subscribeGameState(roomId: string, callback: (state: SyncedGameS
   return onSnapshot(doc(db, 'rooms', roomId, 'state', 'current'), (snapshot) => callback(snapshot.exists() ? snapshot.data() as SyncedGameState : null));
 }
 
-export function subscribeWaitingRooms(callback: (rooms: RoomSummary[]) => void): Unsubscribe {
+export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): Unsubscribe {
   if (!db) { callback([]); return () => undefined; }
-  const roomsQuery = query(collection(db, 'rooms'), where('status', '==', 'waiting'), orderBy('createdAt', 'desc'));
+  const roomsQuery = query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing']), orderBy('createdAt', 'desc'));
   return onSnapshot(roomsQuery, (snapshot) => callback(snapshot.docs.map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))));
 }
 

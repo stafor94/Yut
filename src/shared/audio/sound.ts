@@ -65,6 +65,7 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
   if (!context) return;
 
   const play = () => {
+    if (context.state === 'suspended') return;
     const safeVolume = SOUND_EFFECT_VOLUME;
     const now = context.currentTime;
     if (now - lastPlayedAt < 0.035 && effect === 'move') return;
@@ -119,7 +120,7 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
   };
 
   if (context.state === 'suspended') {
-    void context.resume().then(play).catch(() => undefined);
+    void context.resume().then(() => window.setTimeout(play, 0)).catch(() => undefined);
     return;
   }
   play();
