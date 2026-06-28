@@ -2859,3 +2859,8 @@ aside.players,
     padding: 10px;
   }
 }
+
+.ready-inline-button {
+  width: 100%;
+  margin-top: 4px;
+}
