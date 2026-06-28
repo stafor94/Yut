@@ -243,7 +243,10 @@ export function App() {
   const [rollLockClock, setRollLockClock] = useState(() => Date.now());
   const [rollResultReadyAt, setRollResultReadyAt] = useState(0);
   const [trapPlacementClock, setTrapPlacementClock] = useState(() => Date.now());
-  const processedActionIdsRef = useRef<Set<string>>(new Set());
+  const processingActionIdsRef = useRef<Set<string>>(new Set());
+  const completedActionIdsRef = useRef<Set<string>>(new Set());
+  const rollInProgressRef = useRef(false);
+  const moveInProgressRef = useRef(false);
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
   const applyingSyncedStateRef = useRef(false);
   const lastAppliedStateVersionRef = useRef(0);
@@ -335,6 +338,10 @@ export function App() {
   useEffect(() => {
     activeRoomIdRef.current = activeRoomId;
     lastAppliedStateVersionRef.current = 0;
+    processingActionIdsRef.current.clear();
+    completedActionIdsRef.current.clear();
+    rollInProgressRef.current = false;
+    moveInProgressRef.current = false;
     if (activeRoomId) window.localStorage.setItem(STORAGE_KEYS.activeRoomId, activeRoomId);
     else window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
   }, [activeRoomId, user]);
@@ -735,8 +742,8 @@ export function App() {
   }
 
   async function handleRemoteGameAction(action: GameAction) {
-    if (!activeRoomId || processedActionIdsRef.current.has(action.id)) return;
-    processedActionIdsRef.current.add(action.id);
+    if (!activeRoomId || completedActionIdsRef.current.has(action.id) || processingActionIdsRef.current.has(action.id)) return;
+    processingActionIdsRef.current.add(action.id);
     let shouldMarkProcessed = false;
     let shouldRetry = false;
     try {
@@ -776,7 +783,8 @@ export function App() {
       if (action.type === 'roll_yut') {
         if (isActorsTurn && !roll) {
           setShieldedPieceIds([]);
-          rollYutFor(actorSeat, (action.payload?.forcedResult as YutResult | null | undefined) ?? null);
+          const remoteRoll = rollYutFor(actorSeat, (action.payload?.forcedResult as YutResult | null | undefined) ?? null);
+          if (!remoteRoll) { shouldRetry = true; return; }
         }
         shouldMarkProcessed = true;
       }
@@ -799,9 +807,10 @@ export function App() {
         const retryTimer = remoteActionRetryTimersRef.current.get(action.id);
         if (retryTimer) window.clearTimeout(retryTimer);
         remoteActionRetryTimersRef.current.delete(action.id);
+        completedActionIdsRef.current.add(action.id);
         await markGameActionProcessed(activeRoomId, action.id);
       }
-      processedActionIdsRef.current.delete(action.id);
+      processingActionIdsRef.current.delete(action.id);
       if (!shouldMarkProcessed && shouldRetry) retryRemoteGameAction(action);
     }
   }
@@ -1150,6 +1159,8 @@ export function App() {
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId ? { ...seat, team } : seat));
   }
   function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll) {
+    if (rollInProgressRef.current) return null;
+    rollInProgressRef.current = true;
     const rolled = forcedResult ? { result: forcedResult, sticks: makeDisplaySticks(forcedResult) } : rollYutResult();
     const nextRoll = rolled.result;
     setForcedRoll(null);
@@ -1159,6 +1170,7 @@ export function App() {
     playSfx('roll');
     if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
     window.setTimeout(() => setRollAnimation(null), 2600);
+    window.setTimeout(() => { rollInProgressRef.current = false; }, 0);
     addLog(`${seat.label}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
   }
@@ -1169,15 +1181,17 @@ export function App() {
   }
 
   async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice) {
-    if (winner || movingPieceId) return false;
+    if (winner || movingPieceId || moveInProgressRef.current) return false;
+    moveInProgressRef.current = true;
     const movingPiece = pieces.find((piece) => piece.id === pieceId && canSeatControlPiece(seat, piece) && !piece.finished);
-    if (!movingPiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return false; }
+    if (!movingPiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); moveInProgressRef.current = false; return false; }
     const steps = result.steps + extraSteps;
     if (steps < 0 && !movingPiece.started) {
       addLog(`${seat.label}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
       setBranchChoice('outer');
       setRoll(null);
       setTurnIndex((current) => (current + 1) % playableSeats.length);
+      moveInProgressRef.current = false;
       return false;
     }
     if (steps === 0) {
@@ -1185,6 +1199,7 @@ export function App() {
       setBranchChoice('outer');
       setRoll(null);
       setTurnIndex((current) => (current + 1) % playableSeats.length);
+      moveInProgressRef.current = false;
       return true;
     }
     setMovingPieceId(pieceId);
@@ -1306,6 +1321,7 @@ export function App() {
     setBranchChoice('outer');
     setMovingPieceId('');
     setRoll(null);
+    moveInProgressRef.current = false;
     return true;
   }
 
@@ -1360,6 +1376,7 @@ export function App() {
   async function autoPlayTurn(seat: Seat) {
     if (!seat.isAI) return;
     const nextRoll = rollYutFor(seat);
+    if (!nextRoll) return;
     const aiMove = chooseAiMove(seat, nextRoll);
     if (!aiMove) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return; }
     setBranchChoice(aiMove.branchChoice);
