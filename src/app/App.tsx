@@ -38,6 +38,7 @@ type CaptureEffect = { id: number; pieceIds: string[] };
 type TrapNode = { nodeId: string; ownerId: string };
 
 const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
+const TEAM_COLORS: Record<Team, string> = { 청팀: '#3a78c2', 홍팀: '#d94a38' };
 const ROOM_COLOR_LABELS: Record<string, string> = { red: '빨강', blue: '파랑', green: '초록', yellow: '노랑' };
 const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount', soundEnabled: 'yut-online:soundEnabled' } as const;
 const getStoredBoolean = (key: string, fallback: boolean) => {
@@ -61,6 +62,7 @@ const getStoredText = (key: string, fallback: string) => {
 const TURN_DELAY_MS = 650;
 const AI_MOVE_DELAY_MS = 2000;
 const AUTO_SINGLE_MOVE_DELAY_MS = 2000;
+const CREATE_ROOM_TIMEOUT_MS = 12000;
 const STEP_DELAY_MS = 240;
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -106,18 +108,40 @@ const seatsFromRoomPlayers = (players: RoomPlayer[], playMode: PlayMode, playerC
   });
 };
 
-const makePieces = (seats: Seat[], pieceCount: PieceCount): BoardPiece[] => seats.filter((seat) => !seat.isEmpty).flatMap((seat, index) =>
-  Array.from({ length: pieceCount }, (_, pieceIndex) => ({
-    id: `${seat.id}-piece-${pieceIndex + 1}`,
-    ownerId: seat.id,
-    label: `${seat.label}-${pieceIndex + 1}`,
-    color: PLAYER_COLORS[index] ?? '#2a1e17',
-    nodeIndex: 0,
-    nodeId: 'n01',
-    started: false,
-    finished: false,
-  })),
-);
+const makePieces = (seats: Seat[], pieceCount: PieceCount, mode: PlayMode = 'individual'): BoardPiece[] => {
+  const activeSeats = seats.filter((seat) => !seat.isEmpty);
+  if (mode === 'team') {
+    return (['청팀', '홍팀'] as Team[]).flatMap((team) => {
+      const teamSeats = activeSeats.filter((seat) => seat.team === team);
+      return Array.from({ length: pieceCount }, (_, pieceIndex) => {
+        const ownerSeat = teamSeats[pieceIndex % Math.max(teamSeats.length, 1)] ?? teamSeats[0];
+        return {
+          id: `${team}-piece-${pieceIndex + 1}`,
+          ownerId: ownerSeat?.id ?? team,
+          label: `${team === '청팀' ? '청' : '홍'}-${pieceIndex + 1}`,
+          color: TEAM_COLORS[team],
+          nodeIndex: 0,
+          nodeId: 'n01',
+          started: false,
+          finished: false,
+        };
+      });
+    });
+  }
+
+  return activeSeats.flatMap((seat, index) =>
+    Array.from({ length: pieceCount }, (_, pieceIndex) => ({
+      id: `${seat.id}-piece-${pieceIndex + 1}`,
+      ownerId: seat.id,
+      label: `${seat.label}-${pieceIndex + 1}`,
+      color: PLAYER_COLORS[index] ?? '#2a1e17',
+      nodeIndex: 0,
+      nodeId: 'n01',
+      started: false,
+      finished: false,
+    })),
+  );
+};
 
 const getMovePreviewNodeIds = (piece: BoardPiece | undefined, result: YutResult | null, branchChoice: BranchChoice) => {
   if (!piece || !result || piece.finished) return [];
@@ -144,6 +168,9 @@ export function App() {
   const [countdown, setCountdown] = useState(-1);
   const [seats, setSeats] = useState<Seat[]>(() => createSeats('플레이어', 'individual', 4));
   const [pieces, setPieces] = useState<BoardPiece[]>(() => makePieces(createSeats('플레이어', 'individual', 4), 4));
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [gameStartedAt, setGameStartedAt] = useState<number | null>(null);
+  const [playTimeNow, setPlayTimeNow] = useState(() => Date.now());
   const [boardItems, setBoardItems] = useState<BoardItem[]>([]);
   const [ownedItems, setOwnedItems] = useState<Record<string, ItemType[]>>({});
   const [trapNodes, setTrapNodes] = useState<TrapNode[]>([]);
@@ -184,20 +211,30 @@ export function App() {
   const hostSeatId = playableSeats.find((seat) => seat.isHost)?.id ?? 'host';
   const localSeatId = activeRoomId && user ? user.uid : hostSeatId;
   const isMyTurn = activeSeat?.id === localSeatId && !activeSeat.isAI;
-  const selectedPiece = useMemo(() => pieces.find((piece) => piece.id === selectedPieceId), [pieces, selectedPieceId]);
-  const previewNodeIds = useMemo(() => isMyTurn && !movingPieceId ? getMovePreviewNodeIds(selectedPiece, roll, branchChoice) : [], [branchChoice, isMyTurn, movingPieceId, roll, selectedPiece]);
-  const isSameSide = (a: Seat | undefined, b: Seat | undefined) => Boolean(a && b && (playMode === 'team' ? a.team === b.team : a.id === b.id));
   const getSeatById = (seatId: string) => playableSeats.find((seat) => seat.id === seatId);
+  const isSameSide = (a: Seat | undefined, b: Seat | undefined) => Boolean(a && b && (playMode === 'team' ? a.team === b.team : a.id === b.id));
+  const canSeatControlPiece = (seat: Seat | undefined, piece: BoardPiece | undefined) => Boolean(seat && piece && isSameSide(getSeatById(piece.ownerId), seat));
+  const selectedPiece = useMemo(() => pieces.find((piece) => piece.id === selectedPieceId), [pieces, selectedPieceId]);
+  const previewNodeIds = useMemo(() => isMyTurn && !movingPieceId && canSeatControlPiece(activeSeat, selectedPiece) ? getMovePreviewNodeIds(selectedPiece, roll, branchChoice) : [], [activeSeat, branchChoice, isMyTurn, movingPieceId, roll, selectedPiece]);
+  const formatPlayTime = (elapsedMs: number) => {
+    const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const two = (value: number) => String(value).padStart(2, '0');
+    return hours > 0 ? `${two(hours)}:${two(minutes)}:${two(seconds)}` : `${two(minutes)}:${two(seconds)}`;
+  };
+  const playTimeText = gameStartedAt ? formatPlayTime(playTimeNow - gameStartedAt) : '00:00';
   const winner = useMemo(() => {
     if (playMode === 'team') {
-      const finishedTeam = (['청팀', '홍팀'] as Team[]).find((team) => playableSeats.filter((seat) => seat.team === team).every((seat) => pieces.filter((piece) => piece.ownerId === seat.id).every((piece) => piece.finished)));
+      const finishedTeam = (['청팀', '홍팀'] as Team[]).find((team) => playableSeats.filter((seat) => seat.team === team).every((seat) => pieces.filter((piece) => getSeatById(piece.ownerId)?.team === team).every((piece) => piece.finished)));
       return finishedTeam ? `${finishedTeam} 승리` : '';
     }
     const finishedSeat = playableSeats.find((seat) => pieces.filter((piece) => piece.ownerId === seat.id).every((piece) => piece.finished));
     return finishedSeat ? `${finishedSeat.label}-${finishedSeat.name} 승리` : '';
   }, [pieces, playMode, playableSeats]);
   const selectedMoveSteps = roll?.steps ?? 0;
-  const canMoveSelectedPiece = Boolean(roll && activeSeat && isMyTurn && selectedPiece?.ownerId === activeSeat.id && !selectedPiece.finished && (selectedMoveSteps >= 0 || selectedPiece.started));
+  const canMoveSelectedPiece = Boolean(roll && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const canUseMoveButton = Boolean(roll && activeSeat && isMyTurn && !winner && !movingPieceId && canMoveSelectedPiece);
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedPiece?.started && BRANCH_NODE_IDS.includes(selectedPiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const activeItemPromptTypes = itemPromptTiming ? getUsableHostItems(itemPromptTiming) : [];
@@ -288,14 +325,15 @@ export function App() {
       setShieldedPieceIds(state.shieldedPieceIds);
       setLogs(state.logs as GameLog[]);
       setCaptureEffect((state.captureEffect as CaptureEffect | null | undefined) ?? null);
+      setGameStartedAt((state.gameStartedAt as number | null | undefined) ?? null);
       setTurnOrderIds((state.turnOrderIds as string[] | undefined) ?? []);
     });
   }, [activeRoomId, isRoomHost]);
 
   useEffect(() => {
     if (!activeRoomId || !isRoomHost || screen !== 'game') return;
-    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect });
-  }, [activeRoomId, boardItems, captureEffect, isRoomHost, logs, ownedItems, pieces, roll, screen, shieldedPieceIds, trapNodes, turnIndex, turnOrderIds, winner]);
+    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, gameStartedAt });
+  }, [activeRoomId, boardItems, captureEffect, gameStartedAt, isRoomHost, logs, ownedItems, pieces, roll, screen, shieldedPieceIds, trapNodes, turnIndex, turnOrderIds, winner]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -306,6 +344,13 @@ export function App() {
     const timer = window.setTimeout(() => setItemPromptTiming(null), 10000);
     return () => window.clearTimeout(timer);
   }, [itemPromptTiming]);
+
+  useEffect(() => {
+    if (screen !== 'game' || !gameStartedAt) return undefined;
+    setPlayTimeNow(Date.now());
+    const timer = window.setInterval(() => setPlayTimeNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [gameStartedAt, screen]);
 
   useEffect(() => {
     if (screen === 'game' && roll && isMyTurn && !movingPieceId) showItemPrompt('after_roll');
@@ -334,7 +379,7 @@ export function App() {
   useEffect(() => {
     if (!roll || !activeSeat || !isMyTurn || movingPieceId || winner) return;
     const steps = roll.steps;
-    const movablePieces = pieces.filter((piece) => piece.ownerId === activeSeat.id && !piece.finished && (steps >= 0 || piece.started));
+    const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (steps >= 0 || piece.started));
     if (movablePieces.length === 0) {
       const timer = window.setTimeout(() => {
         addLog(steps < 0 ? `${activeSeat.label}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.` : `${activeSeat.label}은(는) 이동할 말이 없습니다.`);
@@ -344,7 +389,7 @@ export function App() {
       }, TURN_DELAY_MS);
       return () => window.clearTimeout(timer);
     }
-    if (movablePieces.length !== 1) return;
+    if (movablePieces.length !== 1 && movablePieces.some((piece) => piece.started)) return;
     const onlyPiece = movablePieces[0];
     const needsBranchChoice = onlyPiece.started && BRANCH_NODE_IDS.includes(onlyPiece.nodeId as typeof BRANCH_NODE_IDS[number]);
     if (needsBranchChoice) return;
@@ -364,11 +409,17 @@ export function App() {
   async function handleCreateRoom() {
     if (!user) { setMessage('입장 준비가 끝난 뒤 다시 시도하세요.'); return; }
     if (!nickname.trim()) { setMessage('닉네임을 먼저 정해주세요.'); return; }
+    if (isCreatingRoom) return;
+    setIsCreatingRoom(true);
+    setMessage('방을 만드는 중입니다. 잠시만 기다려주세요...');
     try {
-      const roomId = await createRoom({ title, hostId: user.uid, nickname, maxPlayers, itemMode, playMode, pieceCount });
+      const timeout = new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('방 만들기 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.')), CREATE_ROOM_TIMEOUT_MS));
+      const roomId = await Promise.race([createRoom({ title, hostId: user.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
       await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, `${title} 방이 생성되었습니다. 옵션을 확인하고 모두 준비되면 시작하세요.`, true);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '방 생성 실패');
+      setMessage(error instanceof Error ? error.message : '방 생성에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
+    } finally {
+      setIsCreatingRoom(false);
     }
   }
 
@@ -439,11 +490,12 @@ export function App() {
   function startLocalGame() {
     if (activeRoomId && isRoomHost) { void updateRoomStatus(activeRoomId, 'playing'); }
     const orderedSeats = decideTurnOrder();
-    const nextPieces = makePieces(orderedSeats, pieceCount);
+    const nextPieces = makePieces(orderedSeats, pieceCount, playMode);
     setPieces(nextPieces);
     setBoardItems(itemMode ? spawnInitialBoardItems(4, 8) : []);
     setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); setRoll(null); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null);
-    setLogs((current) => [{ id: Date.now(), text: '게임이 시작되었습니다. 시작 순서를 정했습니다.' }, ...current]);
+    setGameStartedAt(Date.now());
+    setLogs([{ id: Date.now(), text: '게임이 시작되었습니다. 시작 순서를 정했습니다.' }]);
     setScreen('game');
   }
 
@@ -461,8 +513,8 @@ export function App() {
     if (timing === 'after_move' && lastMovedSeatId !== localSeatId) return [];
     return (ownedItems[localSeatId] ?? []).filter((type) => {
       if (ITEM_DEFINITIONS[type].timing !== timing) return false;
-      if (type === 'shield') return lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && piece.ownerId === localSeatId && piece.started && !piece.finished));
-      if (type === 'trap') return pieces.some((piece) => piece.id === selectedPieceId && piece.ownerId === localSeatId && piece.started && !piece.finished);
+      if (type === 'shield') return lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished));
+      if (type === 'trap') return pieces.some((piece) => piece.id === selectedPieceId && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished);
       return true;
     });
   }
@@ -512,7 +564,7 @@ export function App() {
 
   async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice) {
     if (winner || movingPieceId) return false;
-    const movingPiece = pieces.find((piece) => piece.id === pieceId && piece.ownerId === seat.id && !piece.finished);
+    const movingPiece = pieces.find((piece) => piece.id === pieceId && canSeatControlPiece(seat, piece) && !piece.finished);
     if (!movingPiece) { setTurnIndex((current) => (current + 1) % playableSeats.length); setRoll(null); return false; }
     const steps = result.steps + extraSteps;
     if (steps < 0 && !movingPiece.started) {
@@ -531,7 +583,7 @@ export function App() {
     }
     setMovingPieceId(pieceId);
     const movingGroupIds = movingPiece.started
-      ? pieces.filter((piece) => piece.ownerId === seat.id && !piece.finished && piece.started && piece.nodeId === movingPiece.nodeId).map((piece) => piece.id)
+      ? pieces.filter((piece) => canSeatControlPiece(seat, piece) && !piece.finished && piece.started && piece.nodeId === movingPiece.nodeId).map((piece) => piece.id)
       : [movingPiece.id];
     if (movingGroupIds.length > 1) addLog(`${seat.label}의 말 ${movingGroupIds.length}개가 업혀 함께 이동합니다.`);
     if (!movingPiece.started) await delay(STEP_DELAY_MS);
@@ -585,7 +637,7 @@ export function App() {
       setHighlightedNodeId(landedNode?.id ?? '');
       window.setTimeout(() => setHighlightedNodeId((current) => current === landedNode?.id ? '' : current), 1400);
     }
-    const steppedOnTrap = trapNodes.find((trap) => trap.nodeId === currentNodeId && trap.ownerId !== seat.id);
+    const steppedOnTrap = trapNodes.find((trap) => trap.nodeId === currentNodeId && !isSameSide(getSeatById(trap.ownerId), seat));
     if (steppedOnTrap) {
       setTrapNodes((nodes) => nodes.filter((trap) => trap !== steppedOnTrap));
       const shieldedFromTrap = movingGroupIds.some((id) => shieldedPieceIds.includes(id));
@@ -623,8 +675,8 @@ export function App() {
       }
     }
     if (finishedMove) { addLog(`${seat.label} 말이 완주했습니다!`); playSfx('arrive'); }
-    const seatDone = pieces.filter((piece) => piece.ownerId === seat.id && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
-    if (seatDone) addLog(`${seat.label}이(가) 모든 말을 완주했습니다.`);
+    const controlledPiecesDone = pieces.filter((piece) => canSeatControlPiece(seat, piece) && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
+    if (controlledPiecesDone) addLog(`${playMode === 'team' ? seat.team : seat.label}의 모든 말이 완주했습니다.`);
     if (result.bonus && captured) addLog(`${result.name}와 잡기 보너스로 한 번 더 던질 수 있습니다.`);
     else if (result.bonus) addLog(`${result.name}가 나와 한 번 더 던질 수 있습니다.`);
     else if (captured) addLog('상대 말을 잡아 한 번 더 던질 수 있습니다.');
@@ -641,8 +693,8 @@ export function App() {
     if (!roll || !activeSeat || !isMyTurn) return false;
     const steps = roll.steps + extraSteps;
     const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
-    const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId && piece.ownerId === activeSeat.id && !piece.finished && canMovePiece(piece));
-    const fallbackPiece = pieces.find((piece) => piece.ownerId === activeSeat.id && !piece.finished && canMovePiece(piece));
+    const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId && canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
+    const fallbackPiece = pieces.find((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
     if (!selectedPiece && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
     if (!selectedPiece && !fallbackPiece) {
       if (steps < 0) {
@@ -668,7 +720,7 @@ export function App() {
     const landedNodeId = pathNodeIds[pathNodeIds.length - 1] ?? piece.nodeId;
     const finishes = steps > 0 && pathNodeIds.length < steps;
     const captures = !finishes && pieces.some((target) => !isSameSide(getSeatById(target.ownerId), seat) && target.started && !target.finished && target.nodeId === landedNodeId);
-    const stacks = !finishes && piece.started ? pieces.filter((target) => target.ownerId === seat.id && target.started && !target.finished && target.nodeId === piece.nodeId).length - 1 : 0;
+    const stacks = !finishes && piece.started ? pieces.filter((target) => canSeatControlPiece(seat, target) && target.started && !target.finished && target.nodeId === piece.nodeId).length - 1 : 0;
     const startsNewPiece = !piece.started && steps > 0;
     const progress = finishes ? 25 : BOARD_NODES.findIndex((node) => node.id === landedNodeId);
     return (finishes ? 1000 : 0) + (captures ? 400 : 0) + (aiBranchChoice === 'shortcut' ? 80 : 0) + (startsNewPiece ? 60 : 0) + (stacks * 30) + progress - (piece.finished ? 10000 : 0);
@@ -676,7 +728,7 @@ export function App() {
 
   function chooseAiMove(seat: Seat, result: YutResult) {
     return pieces
-      .filter((piece) => piece.ownerId === seat.id && !piece.finished && (result.steps >= 0 || piece.started))
+      .filter((piece) => canSeatControlPiece(seat, piece) && !piece.finished && (result.steps >= 0 || piece.started))
       .map((piece) => {
         const aiBranchChoice = getAiBranchChoice(piece);
         return { piece, branchChoice: aiBranchChoice, score: scoreAiMove(piece, result, seat, aiBranchChoice) };
@@ -721,7 +773,7 @@ export function App() {
       return;
     }
     if (type === 'shield') {
-      const shieldTargets = lastMovedSeatId === itemOwnerId ? lastMovedPieceIds.filter((id) => pieces.some((piece) => piece.id === id && piece.ownerId === itemOwnerId && piece.started && !piece.finished)) : [];
+      const shieldTargets = lastMovedSeatId === itemOwnerId ? lastMovedPieceIds.filter((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished)) : [];
       if (!shieldTargets.length) { addLog('방패는 방금 이동한 내 말이 말판 위에 있을 때 사용할 수 있습니다.'); return; }
       consumeItem();
       setShieldedPieceIds((ids) => Array.from(new Set([...ids, ...shieldTargets])));
@@ -729,7 +781,7 @@ export function App() {
       return;
     }
     if (type === 'trap') {
-      const trapPiece = pieces.find((piece) => piece.id === selectedPieceId && piece.ownerId === itemOwnerId && piece.started && !piece.finished);
+      const trapPiece = pieces.find((piece) => piece.id === selectedPieceId && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished);
       if (!trapPiece) { addLog('함정은 말판 위에 있는 내 말을 선택한 뒤 설치할 수 있습니다.'); return; }
       if (lastMovedSeatId !== itemOwnerId) { addLog('함정은 내 말이 이동한 직후에 설치할 수 있습니다.'); return; }
       consumeItem();
@@ -740,7 +792,7 @@ export function App() {
 
   async function leaveRoom() {
     if (isRoomHost && activeRoomId) await deleteRoom(activeRoomId);
-    setScreen('lobby'); setActiveRoomId(''); setActiveRoomTitle(''); setIsRoomHost(false); setCountdown(-1); setTurnOrderIds([]); setSeats(createSeats(nickname, playMode, maxPlayers));
+    setScreen('lobby'); setActiveRoomId(''); setActiveRoomTitle(''); setIsRoomHost(false); setCountdown(-1); setTurnOrderIds([]); setGameStartedAt(null); setSeats(createSeats(nickname, playMode, maxPlayers));
     setMessage('방에서 나왔습니다.');
   }
 
@@ -753,6 +805,7 @@ export function App() {
     setIsRoomHost(false);
     setCountdown(-1);
     setTurnOrderIds([]);
+    setGameStartedAt(null);
     setItemPromptTiming(null);
     setSeats(createSeats(nickname, playMode, maxPlayers));
     setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
@@ -791,7 +844,7 @@ export function App() {
 
   return <main className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
     <section className="hero panel">
-      <div className="hero-copy"><h1 className="brand-title">YUT ONLINE</h1></div>
+      <div className="hero-copy"><h1 className="brand-title">YUT ONLINE</h1>{screen === 'game' && <div className="play-time" aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}</div>
       <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><div className="sound-controls" aria-label="효과음 설정"><button className={`sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={() => { const nextEnabled = !soundEnabled; setSoundEnabled(nextEnabled); if (nextEnabled) playSoundEffect('toast', true); }}>{soundEnabled ? '🔊 효과음 ON' : '🔇 효과음 OFF'}</button></div><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
     </section>
 
@@ -806,7 +859,7 @@ export function App() {
         </div>
         <div className="form-grid lobby-form">
           <label>방 제목<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="방 제목" /></label>
-          <button className="primary-cta" onClick={handleCreateRoom}>방 만들기</button>
+          <button className="primary-cta" onClick={handleCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '방 만드는 중...' : '방 만들기'}</button>
         </div>
         {message && <p className="notice lobby-notice">{message}</p>}
       </section>
@@ -820,14 +873,14 @@ export function App() {
       </section>
     </section>}
 
-    {screen === 'waitingRoom' && <section className="panel waiting-room" aria-label="방 대기 화면"><p className="section-kicker">게임 시작 대기</p><h2 className="room-title">{activeRoomTitle || title}</h2><p className="room-subtitle">{playMode === 'team' ? '팀을 고르고 인원을 맞춰주세요' : '모두 준비되면 방장이 시작합니다'}</p><div className="mode-summary"><b>{playMode === 'team' ? '팀전' : '개인전'}</b><span>{maxPlayers}인</span><span>말 {pieceCount}개</span><span>{itemMode ? '아이템 ON' : '아이템 OFF'}</span>{playMode === 'team' && <span>청팀 {teamCounts.청팀}명 / 홍팀 {teamCounts.홍팀}명</span>}</div>{isRoomHost && <div className="host-room-options"><fieldset className="radio-group"><legend>진행 방식</legend>{(['individual', 'team'] as PlayMode[]).map((mode) => <label key={mode}><input type="radio" name="playMode" checked={playMode === mode} onChange={() => changeWaitingOptions({ playMode: mode })} />{mode === 'team' ? '팀전' : '개인전'}</label>)}</fieldset><fieldset className="radio-group"><legend>인원</legend>{([2, 3, 4] as const).map((count) => <label key={count} className={playMode === 'team' && count !== 4 ? 'disabled' : ''}><input type="radio" name="maxPlayers" checked={maxPlayers === count} disabled={playMode === 'team' && count !== 4} onChange={() => changeWaitingOptions({ maxPlayers: count })} />{count}인</label>)}</fieldset><fieldset className="radio-group"><legend>말 개수</legend>{([1, 2, 3, 4] as const).map((count) => <label key={count}><input type="radio" name="pieceCount" checked={pieceCount === count} onChange={() => changeWaitingOptions({ pieceCount: count })} />{count}개</label>)}</fieldset><fieldset className="radio-group item-mode-group"><legend>아이템 전</legend>{([true, false] as const).map((enabled) => <label key={String(enabled)}><input type="radio" name="itemMode" checked={itemMode === enabled} onChange={() => changeWaitingOptions({ itemMode: enabled })} />{enabled ? 'ON' : 'OFF'}</label>)}</fieldset></div>}<div className="ready-list">{seats.map((seat) => <article className={`ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''}`} key={seat.id}><div className="ready-player-line"><b>{seat.label}</b><span>{seat.name}</span><em>{seat.isAI ? 'AI 대체' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em>{seat.isAI && !seat.isHost && <button className="mini-button secondary ai-cancel-button" onClick={() => cancelAISeat(seat.id)}>취소</button>}</div>{playMode === 'team' && <select value={seat.team} onChange={(e) => changeTeam(seat.id, e.target.value as Team)} disabled={!isRoomHost}><option value="청팀">청팀</option><option value="홍팀">홍팀</option></select>}{seat.isHost && <small>방장</small>}{seat.isEmpty && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)} disabled={!isRoomHost}>AI 플레이</button>}</article>)}</div>{countdown >= 0 && <div className="countdown-scrim" role="presentation"><div className="countdown-overlay" role="status"><span>게임 시작</span><strong>{countdown}</strong><button className="secondary mini-button" onClick={() => { setCountdown(-1); setMessage('시작이 취소되었습니다.'); }}>취소</button></div></div>}{playMode === 'team' && !teamBalanced && <p className="notice warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}<div className="waiting-actions"><button onClick={handleStartGame} disabled={!allReady}>게임 시작</button><button className="secondary" onClick={leaveRoom}>방 나가기</button></div>{message && <p className="notice">{message}</p>}</section>}
+    {screen === 'waitingRoom' && <section className="panel waiting-room" aria-label="방 대기 화면"><p className="section-kicker">게임 시작 대기</p><h2 className="room-title">{activeRoomTitle || title}</h2><p className="room-subtitle">{playMode === 'team' ? '팀을 고르고 인원을 맞춰주세요' : '모두 준비되면 방장이 시작합니다'}</p>{playMode === 'team' && <div className="team-balance-summary">청팀 {teamCounts.청팀}명 / 홍팀 {teamCounts.홍팀}명</div>}{isRoomHost && <div className="host-room-options"><fieldset className="radio-group"><legend>진행 방식</legend>{(['individual', 'team'] as PlayMode[]).map((mode) => <label key={mode}><input type="radio" name="playMode" checked={playMode === mode} onChange={() => changeWaitingOptions({ playMode: mode })} />{mode === 'team' ? '팀전' : '개인전'}</label>)}</fieldset><fieldset className="radio-group"><legend>인원</legend>{([2, 3, 4] as const).map((count) => <label key={count} className={playMode === 'team' && count !== 4 ? 'disabled' : ''}><input type="radio" name="maxPlayers" checked={maxPlayers === count} disabled={playMode === 'team' && count !== 4} onChange={() => changeWaitingOptions({ maxPlayers: count })} />{count}인</label>)}</fieldset><fieldset className="radio-group"><legend>말 개수</legend>{([1, 2, 3, 4] as const).map((count) => <label key={count}><input type="radio" name="pieceCount" checked={pieceCount === count} onChange={() => changeWaitingOptions({ pieceCount: count })} />{count}개</label>)}</fieldset><fieldset className="radio-group item-mode-group"><legend>아이템 전</legend>{([true, false] as const).map((enabled) => <label key={String(enabled)}><input type="radio" name="itemMode" checked={itemMode === enabled} onChange={() => changeWaitingOptions({ itemMode: enabled })} />{enabled ? 'ON' : 'OFF'}</label>)}</fieldset></div>}<div className="ready-list">{seats.map((seat) => <article className={`ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}><div className="ready-player-line"><b>{seat.label}</b><span>{seat.name}</span><em>{seat.isAI ? 'AI 대체' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em>{seat.isAI && !seat.isHost && <button className="mini-button secondary ai-cancel-button" onClick={() => cancelAISeat(seat.id)}>취소</button>}</div>{playMode === 'team' && <select value={seat.team} onChange={(e) => changeTeam(seat.id, e.target.value as Team)} disabled={!isRoomHost}><option value="청팀">청팀</option><option value="홍팀">홍팀</option></select>}{seat.isHost && <small>방장</small>}{seat.isEmpty && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)} disabled={!isRoomHost}>AI 플레이</button>}</article>)}</div>{countdown >= 0 && <div className="countdown-scrim" role="presentation"><div className="countdown-overlay" role="status"><span>게임 시작</span><strong>{countdown}</strong><button className="secondary mini-button" onClick={() => { setCountdown(-1); setMessage('시작이 취소되었습니다.'); }}>취소</button></div></div>}{playMode === 'team' && !teamBalanced && <p className="notice warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}<div className="waiting-actions"><button onClick={handleStartGame} disabled={!allReady}>게임 시작</button><button className="secondary" onClick={leaveRoom}>방 나가기</button></div>{message && <p className="notice">{message}</p>}</section>}
 
 
 
 
     {screen === 'game' && <section className="game-layout" aria-label="게임 플레이 화면">
-      <aside className="panel players"><h2>{activeRoomTitle || title}</h2><p className="game-end-guide">개인전은 내 말 모두, 팀전은 팀 말 모두 완주하면 승리!</p>{playableSeats.map((seat) => <div className={`player ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''}`} key={seat.id}><b style={{ color: PLAYER_COLORS[playableSeats.findIndex((player) => player.id === seat.id)] }}>{seat.label}</b><span>{seat.color} 말 {pieceCount}개 · {seat.name}</span>{playMode === 'team' && <small>{seat.team}</small>}<em>{seat.isAI ? 'AI 플레이' : activeSeat?.id === seat.id ? '현재 턴' : '대기'}</em>{!seat.isHost && !seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}</div>)}<div className="player-items"><h2>보유 아이템</h2>{(ownedItems[localSeatId] ?? []).length ? <div className="item-grid">{(ownedItems[localSeatId] ?? []).map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><ItemCard type={type} /></button>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div><button className="secondary end-game" onClick={finishGame}>게임 종료</button></aside>
-      <section className="panel board-panel">{winner && <div className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{winner}</strong><p>{winner}했습니다. 아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button></div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<div className="turn-indicator" style={{ color: activeSeat ? PLAYER_COLORS[playableSeats.findIndex((player) => player.id === activeSeat.id)] : undefined }}>{winner ? `${winner} · 게임 종료` : activeSeat ? `${activeSeat.label}-${activeSeat.name} 턴` : '턴 대기'}</div>{(turnToast || toast) && <div className="board-message-stack" aria-live="polite">{turnToast && <div className="turn-toast board-toast" key={turnToast.id} role="status">{turnToast.text}</div>}{toast && <div className="toast-message board-toast" role="status"><strong>{toast.icon} {toast.title}</strong>{toast.description && <span>{toast.description}</span>}</div>}</div>}<GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={(pieceId) => { const targetPiece = pieces.find((piece) => piece.id === pieceId); if (canUseMoveButton && targetPiece && activeSeat && targetPiece.ownerId !== activeSeat.id) return; setSelectedPieceId(pieceId); }} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} trapNodeIds={trapNodes.map((trap) => trap.nodeId)} previewNodeIds={previewNodeIds} branchChoice={branchChoice} onBranchChoiceChange={setBranchChoice} showBranchControls={false} capturedPieceIds={captureEffect?.pieceIds ?? []} boardShaking={Boolean(captureEffect)} isPieceSelectable={(piece) => !(canUseMoveButton && activeSeat && piece.ownerId !== activeSeat.id)} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-aura" aria-hidden="true"></div><div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div><div className={`roll-mat ${rollAnimation.result.bonus ? 'bonus-roll' : ''}`}><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.result.bonus && <strong className="roll-callout">{rollAnimation.result.name}! 한 번 더!</strong>}{rollAnimation.sticks.map((stick, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${stick.flat ? 'flat' : 'round'} ${stick.marked ? 'marked' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg` } as CSSProperties}><i></i></span>)}</div></div>}<div className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length ? 'item-prompt-mode' : ''}`}>{activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택"><div><strong>아이템을 사용할까요?</strong><span>10초 안에 선택하지 않으면 사용하지 않고 진행합니다.</span></div><div className="item-prompt-timer" aria-hidden="true"><span></span></div><div className="inline-item-actions">{activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}<button className="secondary" onClick={() => setItemPromptTiming(null)}>사용 안 함</button></div></div> : showBottomBranchControls ? <div className="bottom-branch-controls" aria-label="이동 방향 선택"><button type="button" className={branchChoice === 'outer' ? 'active' : ''} onClick={() => setBranchChoice('outer')}>바깥길</button><button type="button" className={branchChoice === 'shortcut' ? 'active' : ''} onClick={() => setBranchChoice('shortcut')}>지름길</button><button type="button" className="branch-move-button" onClick={() => moveSelectedPiece()} disabled={!canMoveSelectedPiece}>선택한 말 이동</button></div> : <button className={!roll ? 'roll-button' : undefined} onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId) || Boolean(roll && !canMoveSelectedPiece)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button>}</div></section>
+      <aside className="panel players"><h2>{activeRoomTitle || title}</h2><p className="game-end-guide">개인전은 내 말 모두, 팀전은 팀 말 모두 완주하면 승리!</p>{playableSeats.map((seat) => <div className={`player ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}><b style={{ color: PLAYER_COLORS[playableSeats.findIndex((player) => player.id === seat.id)] }}>{seat.label}</b><span>{playMode === 'team' ? `${seat.team} 말 ${pieceCount}개` : `${seat.color} 말 ${pieceCount}개`} · {seat.name}</span>{playMode === 'team' && <small>{seat.team}</small>}<em>{seat.isAI ? 'AI 플레이' : activeSeat?.id === seat.id ? '현재 턴' : '대기'}</em>{!seat.isHost && !seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}</div>)}<div className="player-items"><h2>보유 아이템</h2>{(ownedItems[localSeatId] ?? []).length ? <div className="item-grid">{(ownedItems[localSeatId] ?? []).map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><ItemCard type={type} /></button>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div><button className="secondary end-game" onClick={finishGame}>게임 종료</button></aside>
+      <section className="panel board-panel">{winner && <div className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{winner}</strong><p>{winner}했습니다. 아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button></div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<div className="turn-indicator" style={{ color: activeSeat ? PLAYER_COLORS[playableSeats.findIndex((player) => player.id === activeSeat.id)] : undefined }}>{winner ? `${winner} · 게임 종료` : activeSeat ? `${activeSeat.label}-${activeSeat.name} 턴` : '턴 대기'}</div>{(turnToast || toast) && <div className="board-message-stack" aria-live="polite">{turnToast && <div className="turn-toast board-toast" key={turnToast.id} role="status">{turnToast.text}</div>}{toast && <div className="toast-message board-toast" role="status"><strong>{toast.icon} {toast.title}</strong>{toast.description && <span>{toast.description}</span>}</div>}</div>}<GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId} movingPieceId={movingPieceId} onSelectPiece={(pieceId) => { const targetPiece = pieces.find((piece) => piece.id === pieceId); if (canUseMoveButton && targetPiece && activeSeat && !canSeatControlPiece(activeSeat, targetPiece)) return; setSelectedPieceId(pieceId); }} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} trapNodeIds={trapNodes.map((trap) => trap.nodeId)} previewNodeIds={previewNodeIds} branchChoice={branchChoice} onBranchChoiceChange={setBranchChoice} showBranchControls={false} capturedPieceIds={captureEffect?.pieceIds ?? []} boardShaking={Boolean(captureEffect)} isPieceSelectable={(piece) => !(canUseMoveButton && activeSeat && !canSeatControlPiece(activeSeat, piece))} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-aura" aria-hidden="true"></div><div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div><div className={`roll-mat ${rollAnimation.result.bonus ? 'bonus-roll' : ''}`}><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.result.bonus && <strong className="roll-callout">{rollAnimation.result.name}! 한 번 더!</strong>}{rollAnimation.sticks.map((stick, index) => <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${stick.flat ? 'flat' : 'round'} ${stick.marked ? 'marked' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg` } as CSSProperties}><i></i></span>)}</div></div>}<div className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length ? 'item-prompt-mode' : ''}`}>{activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택"><div><strong>아이템을 사용할까요?</strong><span>10초 안에 선택하지 않으면 사용하지 않고 진행합니다.</span></div><div className="item-prompt-timer" aria-hidden="true"><span></span></div><div className="inline-item-actions">{activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}<button className="secondary" onClick={() => setItemPromptTiming(null)}>사용 안 함</button></div></div> : showBottomBranchControls ? <div className="bottom-branch-controls" aria-label="이동 방향 선택"><button type="button" className={branchChoice === 'outer' ? 'active' : ''} onClick={() => setBranchChoice('outer')}>바깥길</button><button type="button" className={branchChoice === 'shortcut' ? 'active' : ''} onClick={() => setBranchChoice('shortcut')}>지름길</button><button type="button" className="branch-move-button" onClick={() => moveSelectedPiece()} disabled={!canMoveSelectedPiece}>선택한 말 이동</button></div> : <button className={!roll ? 'roll-button' : undefined} onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={!isMyTurn || Boolean(winner) || Boolean(movingPieceId) || Boolean(roll && !canMoveSelectedPiece)}>{roll ? '선택한 말 이동' : '윷 던지기'}</button>}</div></section>
       <aside className="panel side"><h2>진행 기록</h2><div className="log-list">{logs.map((log) => <p key={log.id}>{log.text}</p>)}</div></aside>
     </section>}
   </main>;
