@@ -159,6 +159,7 @@ export function App() {
   const [goldenYutPickerOpen, setGoldenYutPickerOpen] = useState(false);
   const [itemPromptTiming, setItemPromptTiming] = useState<ItemTiming | null>(null);
   const lastWinnerSoundRef = useRef('');
+  const activeRoomIdRef = useRef('');
   const rooms = useRooms();
   const serverStatus = isFirebaseConfigured ? (user ? '온라인' : '입장 준비 중') : '연결 정보 확인 필요';
   const serverStatusTone = isFirebaseConfigured ? (user ? 'online' : 'pending') : 'offline';
@@ -187,6 +188,10 @@ export function App() {
   const canUseMoveButton = Boolean(roll && activeSeat && isMyTurn && !winner && !movingPieceId && canMoveSelectedPiece);
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedPiece?.started && BRANCH_NODE_IDS.includes(selectedPiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const activeItemPromptTypes = itemPromptTiming ? getUsableHostItems(itemPromptTiming) : [];
+
+  useEffect(() => {
+    activeRoomIdRef.current = activeRoomId;
+  }, [activeRoomId]);
 
   useEffect(() => {
     const unsubscribe = listenAuthState(setUser);
@@ -218,12 +223,16 @@ export function App() {
 
   useEffect(() => {
     if (!activeRoomId) return undefined;
-    return subscribeRoom(activeRoomId, (room: RoomSummary | null) => {
+    const subscribedRoomId = activeRoomId;
+    return subscribeRoom(subscribedRoomId, (room: RoomSummary | null) => {
+      if (activeRoomIdRef.current !== subscribedRoomId) return;
       if (!room) {
         setScreen('lobby');
         setActiveRoomId('');
         setActiveRoomTitle('');
         setIsRoomHost(false);
+        setCountdown(-1);
+        setItemPromptTiming(null);
         setMessage('방이 종료되어 대기실로 이동했습니다.');
         return;
       }
@@ -233,7 +242,15 @@ export function App() {
       setItemMode(room.itemMode);
       setPieceCount(room.pieceCount ?? 4);
       if (room.status === 'playing') setScreen('game');
-      if (room.status === 'finished') setScreen('lobby');
+      if (room.status === 'finished') {
+        setScreen('lobby');
+        setActiveRoomId('');
+        setActiveRoomTitle('');
+        setIsRoomHost(false);
+        setCountdown(-1);
+        setItemPromptTiming(null);
+        setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
+      }
     });
   }, [activeRoomId]);
 
@@ -334,13 +351,14 @@ export function App() {
     if (!user) { setMessage('입장 준비가 끝난 뒤 다시 시도하세요.'); return; }
     try {
       const roomId = await createRoom({ title, hostId: user.uid, nickname, maxPlayers, itemMode, playMode, pieceCount });
-      void openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, `${title} 방이 생성되었습니다. 옵션을 확인하고 모두 준비되면 시작하세요.`, true);
+      await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, `${title} 방이 생성되었습니다. 옵션을 확인하고 모두 준비되면 시작하세요.`, true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '방 생성 실패');
     }
   }
 
   async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & { id?: string }, nextMessage = '', asHost = false) {
+    setMessage('방으로 이동하는 중입니다...');
     setActiveRoomId(room.id ?? '');
     setIsRoomHost(asHost);
     setActiveRoomTitle(room.title);
@@ -669,7 +687,23 @@ export function App() {
     setMessage('방에서 나왔습니다.');
   }
 
-  function finishGame() { if (activeRoomId && isRoomHost) { void updateRoomStatus(activeRoomId, 'finished'); } setScreen('lobby'); setActiveRoomTitle(''); setActiveRoomId(''); setIsRoomHost(false); setCountdown(-1); setItemPromptTiming(null); setSeats(createSeats(nickname, playMode, maxPlayers)); setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.'); }
+  function finishGame() {
+    const finishedRoomId = activeRoomId;
+    const wasHost = isRoomHost;
+    setScreen('lobby');
+    setActiveRoomTitle('');
+    setActiveRoomId('');
+    setIsRoomHost(false);
+    setCountdown(-1);
+    setItemPromptTiming(null);
+    setSeats(createSeats(nickname, playMode, maxPlayers));
+    setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
+    if (finishedRoomId && wasHost) {
+      void deleteRoom(finishedRoomId);
+    } else if (finishedRoomId) {
+      void removeRoomPlayer(finishedRoomId, localSeatId);
+    }
+  }
 
   async function changeWaitingOptions(next: { itemMode?: boolean; pieceCount?: PieceCount }) {
     const nextItemMode = next.itemMode ?? itemMode;
@@ -685,9 +719,32 @@ export function App() {
       <div className="hero-actions"><div className="sound-controls" aria-label="효과음 설정"><button className={`sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={() => { const nextEnabled = !soundEnabled; setSoundEnabled(nextEnabled); if (nextEnabled) playSoundEffect('toast', true); }}>{soundEnabled ? '🔊 효과음 ON' : '🔇 효과음 OFF'}</button></div><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
     </section>
 
-    {screen === 'lobby' && <section className="lobby-layout" aria-label="첫 대기 화면">
-      <section className="panel room-panel"><p className="section-kicker">방 만들기</p><h2>새 방 설정</h2><div className="form-grid"><label>닉네임<input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="닉네임" /></label><label>방 제목<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="방 제목" /></label><fieldset className="radio-group"><legend>진행 방식</legend><label><input type="radio" name="playMode" checked={playMode === 'individual'} onChange={() => setPlayMode('individual')} />개인전</label><label><input type="radio" name="playMode" checked={playMode === 'team'} onChange={() => setPlayMode('team')} />팀전</label></fieldset><fieldset className="radio-group"><legend>인원</legend>{([2, 3, 4] as const).map((count) => <label key={count} className={playMode === 'team' && count !== 4 ? 'disabled' : ''}><input type="radio" name="maxPlayers" checked={maxPlayers === count} disabled={playMode === 'team' && count !== 4} onChange={() => setMaxPlayers(count)} />{count}인</label>)}</fieldset><fieldset className="radio-group"><legend>말 개수</legend>{([1, 2, 3, 4] as const).map((count) => <label key={count}><input type="radio" name="pieceCount" checked={pieceCount === count} onChange={() => setPieceCount(count)} />{count}개</label>)}</fieldset><label className="check-row"><input type="checkbox" checked={itemMode} onChange={(e) => setItemMode(e.target.checked)} /> 아이템 모드</label><button onClick={handleCreateRoom}>방 만들기</button></div>{message && <p className="notice">{message}</p>}</section>
-      <section className="panel room-panel"><p className="section-kicker">방 참여</p><h2>대기중 방</h2><div className="room-list">{rooms.length ? rooms.map((room) => <article className="room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'} · {room.maxPlayers}인</span></div><button onClick={() => { void openWaitingRoom(room); }}>참여</button></article>) : <span>아직 만들어진 방이 없습니다.</span>}</div></section>
+    {screen === 'lobby' && <section className="lobby-layout premium-lobby" aria-label="첫 대기 화면">
+      <section className="panel room-panel create-room-panel">
+        <div className="lobby-panel-heading">
+          <p className="section-kicker">방 만들기</p>
+          <h2>새 게임을 세팅하세요</h2>
+          <span>닉네임과 룰을 고르면 바로 프리미엄 대기실로 이동합니다.</span>
+        </div>
+        <div className="form-grid lobby-form">
+          <label>닉네임<input value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="닉네임" /></label>
+          <label>방 제목<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="방 제목" /></label>
+          <fieldset className="radio-group"><legend>진행 방식</legend><label><input type="radio" name="playMode" checked={playMode === 'individual'} onChange={() => setPlayMode('individual')} />개인전</label><label><input type="radio" name="playMode" checked={playMode === 'team'} onChange={() => setPlayMode('team')} />팀전</label></fieldset>
+          <fieldset className="radio-group"><legend>인원</legend>{([2, 3, 4] as const).map((count) => <label key={count} className={playMode === 'team' && count !== 4 ? 'disabled' : ''}><input type="radio" name="maxPlayers" checked={maxPlayers === count} disabled={playMode === 'team' && count !== 4} onChange={() => setMaxPlayers(count)} />{count}인</label>)}</fieldset>
+          <fieldset className="radio-group"><legend>말 개수</legend>{([1, 2, 3, 4] as const).map((count) => <label key={count}><input type="radio" name="pieceCount" checked={pieceCount === count} onChange={() => setPieceCount(count)} />{count}개</label>)}</fieldset>
+          <label className="check-row lobby-switch"><input type="checkbox" checked={itemMode} onChange={(e) => setItemMode(e.target.checked)} /> 아이템 모드</label>
+          <button className="primary-cta" onClick={handleCreateRoom}>방 만들기</button>
+        </div>
+        {message && <p className="notice lobby-notice">{message}</p>}
+      </section>
+      <section className="panel room-panel join-room-panel">
+        <div className="lobby-panel-heading">
+          <p className="section-kicker">방 참여</p>
+          <h2>대기중 방</h2>
+          <span>{rooms.length ? `${rooms.length}개의 방이 플레이어를 기다리고 있어요.` : '새 방을 만들거나 친구의 방을 기다려보세요.'}</span>
+        </div>
+        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode === 'team' ? '팀전' : '개인전'} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'} · {room.maxPlayers}인</span></div><button onClick={() => { void openWaitingRoom(room); }}>참여</button></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong><span>왼쪽에서 방을 만들면 친구들이 바로 참여할 수 있어요.</span></div>}</div>
+      </section>
     </section>}
 
     {screen === 'waitingRoom' && <section className="panel waiting-room" aria-label="방 대기 화면"><p className="section-kicker">게임 시작 대기</p><h2 className="room-title">{activeRoomTitle || title}</h2><p className="room-subtitle">{playMode === 'team' ? '팀을 고르고 인원을 맞춰주세요' : '모두 준비되면 방장이 시작합니다'}</p><div className="mode-summary"><b>{playMode === 'team' ? '팀전' : '개인전'}</b><span>{maxPlayers}인</span><span>말 {pieceCount}개</span><span>{itemMode ? '아이템 ON' : '아이템 OFF'}</span>{playMode === 'team' && <span>청팀 {teamCounts.청팀}명 / 홍팀 {teamCounts.홍팀}명</span>}</div>{isRoomHost && <div className="host-room-options"><label>말 개수<select value={pieceCount} onChange={(e) => changeWaitingOptions({ pieceCount: Number(e.target.value) as PieceCount })}><option value={1}>1개</option><option value={2}>2개</option><option value={3}>3개</option><option value={4}>4개</option></select></label><label className="check-row"><input type="checkbox" checked={itemMode} onChange={(e) => changeWaitingOptions({ itemMode: e.target.checked })} /> 아이템전</label></div>}<div className="ready-list">{seats.map((seat) => <article className={`ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''}`} key={seat.id}><b>{seat.label}</b><span>{seat.name}</span>{playMode === 'team' && <select value={seat.team} onChange={(e) => changeTeam(seat.id, e.target.value as Team)}><option value="청팀">청팀</option><option value="홍팀">홍팀</option></select>}<em>{seat.isAI ? 'AI 대체' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em>{seat.isHost && <small>방장</small>}{seat.isEmpty && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>AI 플레이</button>}{seat.isAI && !seat.isHost && <button className="mini-button secondary" onClick={() => cancelAISeat(seat.id)}>취소</button>}</article>)}</div>{countdown >= 0 && <div className="countdown-overlay" role="status"><span>게임 시작</span><strong>{countdown}</strong><button className="secondary mini-button" onClick={() => { setCountdown(-1); setMessage('시작이 취소되었습니다.'); }}>취소</button></div>}{playMode === 'team' && !teamBalanced && <p className="notice warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}<div className="waiting-actions"><button onClick={handleStartGame} disabled={!allReady}>게임 시작</button><button className="secondary" onClick={leaveRoom}>방 나가기</button></div>{message && <p className="notice">{message}</p>}</section>}
