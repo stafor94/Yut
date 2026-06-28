@@ -584,22 +584,35 @@ select {
 .play-controls {
   width: min(100%, 620px);
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 220px);
   gap: 10px;
   align-items: center;
+  min-height: 90px;
   margin-top: 14px;
   padding: 14px;
   border-radius: 20px;
   background: #fff3d8;
 }
 
-.play-controls span { font-weight: 900; color: var(--green); }
+.play-controls span {
+  min-width: 0;
+  font-weight: 900;
+  color: var(--green);
+  overflow-wrap: anywhere;
+}
+
+.play-controls button {
+  width: 220px;
+  min-height: 52px;
+  justify-self: end;
+}
 .item-button { padding: 0; text-align: left; background: transparent; color: inherit; }
 .log-list { display: grid; gap: 8px; }
 .log-list p { margin: 0; padding: 10px 12px; border-radius: 14px; background: #fff3d8; font-weight: 800; color: rgba(42, 30, 23, .72); align-self: start; }
 
 @media (max-width: 767px) {
-  .play-controls { grid-template-columns: 1fr; }
+  .play-controls { grid-template-columns: 1fr; min-height: 132px; }
+  .play-controls button { width: 100%; justify-self: stretch; }
 }
 
 .ready-card.empty {
@@ -679,6 +692,7 @@ select {
     margin-top: 10px;
     padding: 10px;
     width: min(100%, 500px);
+    min-height: 82px;
   }
 
   .game-shell .play-controls button,
@@ -911,11 +925,16 @@ select {
 
 .yut-stick {
   --stick-index: 0;
+  --stick-start-rotate: -360deg;
+  --stick-land-rotate: 28deg;
+  --stick-bounce-rotate: 12deg;
+  --stick-final-rotate: -8deg;
   width: 24px;
   height: 98px;
   border-radius: 999px;
   background: linear-gradient(90deg, #6f3b1d, #c48948, #6f3b1d);
   transform-origin: center;
+  will-change: transform, opacity;
   animation: yut-flight 1.35s cubic-bezier(.2, .8, .2, 1) both;
   animation-delay: calc(var(--stick-index) * 80ms);
 }
@@ -971,10 +990,10 @@ aside.players,
 }
 
 @keyframes yut-flight {
-  0% { opacity: 0; transform: translateY(-220px) rotate(calc(-360deg + var(--stick-index) * 45deg)); }
-  62% { opacity: 1; transform: translateY(8px) rotate(calc(28deg - var(--stick-index) * 14deg)); }
-  78% { transform: translateY(-18px) rotate(calc(12deg + var(--stick-index) * 18deg)); }
-  100% { opacity: 1; transform: translateY(0) rotate(calc(-8deg + var(--stick-index) * 12deg)); }
+  0% { opacity: 0; transform: translate3d(0, -220px, 0) rotate(var(--stick-start-rotate)); }
+  62% { opacity: 1; transform: translate3d(0, 8px, 0) rotate(var(--stick-land-rotate)); }
+  78% { transform: translate3d(0, -18px, 0) rotate(var(--stick-bounce-rotate)); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) rotate(var(--stick-final-rotate)); }
 }
 
 .brand-title {
@@ -1052,6 +1071,7 @@ aside.players,
 
 .toast-message {
   top: 50%;
+  translate: -50% -50%;
   display: grid;
   gap: 8px;
   width: min(92vw, 460px);
