@@ -2598,6 +2598,20 @@ aside.players,
   padding-top: 8px;
   background: linear-gradient(180deg, rgba(255, 248, 234, 0), rgba(255, 248, 234, .96) 30%);
 }
+
+.player-view .waiting-main-grid {
+  grid-template-columns: 1fr;
+}
+
+.player-view .compact-ready-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.player-view .compact-ready-card {
+  min-height: 150px;
+  padding: 16px;
+}
 .role-actions button { min-width: 142px; }
 .player-view .compact-ready-card select:disabled { opacity: 1; color: rgba(42, 30, 23, .82); }
 
@@ -2621,14 +2635,35 @@ aside.players,
   .compact-waiting-room { min-height: auto; }
   .waiting-header, .waiting-main-grid { grid-template-columns: 1fr; }
   .compact-ready-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .player-view.compact-waiting-room { padding-bottom: calc(108px + env(safe-area-inset-bottom)); }
+  .player-view .role-actions {
+    position: fixed;
+    left: max(14px, env(safe-area-inset-left));
+    right: max(14px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px;
+    border-radius: 22px;
+    background: rgba(255, 248, 234, .96);
+    border: 1px solid rgba(122, 74, 38, .12);
+    box-shadow: 0 18px 42px rgba(82, 49, 18, .22), inset 0 1px 0 rgba(255, 255, 255, .86);
+    backdrop-filter: blur(12px);
+  }
+  .player-view .role-actions button { width: 100%; min-width: 0; min-height: 52px; }
 }
 
 @media (max-width: 560px) {
   .compact-ready-list, .compact-options { grid-template-columns: 1fr; }
+  .player-view .compact-ready-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .player-view .compact-ready-card { min-height: 138px; padding: 13px; }
+  .player-view .seat-topline b { width: 42px; height: 42px; }
   .compact-options .radio-group:nth-of-type(2),
   .compact-options .radio-group:nth-of-type(3) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .team-checklist { grid-template-columns: 1fr; }
   .waiting-actions.role-actions { display: grid; grid-template-columns: 1fr; }
+  .player-view .waiting-actions.role-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .role-actions button { width: 100%; }
 }
 
