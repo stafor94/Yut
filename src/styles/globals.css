@@ -2864,3 +2864,76 @@ aside.players,
   width: 100%;
   margin-top: 4px;
 }
+
+@media (orientation: portrait) {
+  .lobby-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .lobby-layout .room-panel,
+  .create-room-panel,
+  .join-room-panel {
+    width: 100%;
+  }
+}
+
+.team-card-selector {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.team-card-option {
+  border: 2px solid rgba(42, 30, 23, .12);
+  background: #fff3d8;
+  color: rgba(42, 30, 23, .72);
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+
+.team-card-option.blue.active,
+.team-card-option.blue:not(:disabled):hover {
+  background: rgba(58, 120, 194, .16);
+  border-color: #3a78c2;
+  color: #2f5f98;
+}
+
+.team-card-option.red.active,
+.team-card-option.red:not(:disabled):hover {
+  background: rgba(217, 74, 56, .16);
+  border-color: #d94a38;
+  color: #b93d2e;
+}
+
+.team-card-option:disabled {
+  cursor: default;
+  opacity: .82;
+}
+
+.player-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.turn-order-badge {
+  color: var(--green);
+}
+
+.trap-placement-banner {
+  display: grid;
+  gap: 4px;
+  width: min(100%, 520px);
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(217, 74, 56, .12);
+  border: 1px solid rgba(217, 74, 56, .24);
+  color: var(--red);
+  font-weight: 900;
+  text-align: center;
+}
+
+.trap-placement-banner span {
+  color: rgba(42, 30, 23, .72);
+  font-size: .92rem;
+}
