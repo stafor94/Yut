@@ -15,9 +15,12 @@ const getCreatedAtMillis = (createdAt: unknown) => {
   return 0;
 };
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; }
-export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; updatedAt?: unknown; turnVersion: number; }
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; updatedAt?: unknown; turnVersion: number; lastSequence?: number; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
+export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'roll_yut' | 'move_piece_resolved' | 'item_used' | 'trap_placed' | 'game_finished';
+export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
+export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; clientMutationId?: string; clientCreatedAt?: number };
 
 const COLORS = ['red', 'blue', 'green', 'yellow'];
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
@@ -25,8 +28,9 @@ const MAX_ACTIVE_ROOMS = 3;
 const EMPTY_ROOM_DELETE_DELAY_MS = 30000;
 const STALE_PLAYER_DELETE_MS = 45000;
 const ROOM_MAX_AGE_MS = 60 * 60 * 1000;
-const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'seats', 'state'] as const;
+const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'seats', 'state', 'sequences'] as const;
 const DELETE_BATCH_SIZE = 450;
+const SEQUENCE_ID_PAD_LENGTH = 12;
 
 const getTimestampMillis = (value: unknown) => {
   if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
@@ -231,14 +235,29 @@ async function deleteRoomSubcollections(roomId: string) {
   }
 }
 
-export async function saveGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>) {
+const makeSequenceDocId = (sequence: number) => String(sequence).padStart(SEQUENCE_ID_PAD_LENGTH, '0');
+
+export async function saveGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>, meta: GameSequenceMeta = {}) {
   if (!db || !roomId) return null;
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(gameStateRef);
     const currentVersion = snapshot.exists() ? Number(snapshot.data().turnVersion ?? 0) : 0;
+    const currentSequence = snapshot.exists() ? Number(snapshot.data().lastSequence ?? 0) : 0;
     const nextVersion = currentVersion + 1;
-    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: nextVersion }, { merge: true });
+    const nextSequence = currentSequence + 1;
+    const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
+    transaction.set(sequenceRef, {
+      sequence: nextSequence,
+      type: meta.type ?? 'state_snapshot',
+      actorId: meta.actorId ?? 'system',
+      payload: meta.payload ?? {},
+      expectedPreviousSequence: currentSequence,
+      ...(meta.clientMutationId ? { clientMutationId: meta.clientMutationId } : {}),
+      clientCreatedAt: meta.clientCreatedAt ?? Date.now(),
+      createdAt: serverTimestamp(),
+    });
+    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence }, { merge: true });
     return nextVersion;
   });
 }
@@ -261,6 +280,19 @@ export async function updateTurnOrderState(roomId: string, patcher: (state: Sync
 export function subscribeGameState(roomId: string, callback: (state: SyncedGameState | null) => void): Unsubscribe {
   if (!db) { callback(null); return () => undefined; }
   return onSnapshot(doc(db, 'rooms', roomId, 'state', 'current'), (snapshot) => callback(snapshot.exists() ? snapshot.data() as SyncedGameState : null));
+}
+
+export function subscribeGameSequences(roomId: string, afterSequence: number, callback: (sequences: GameSequence[]) => void): Unsubscribe {
+  if (!db) { callback([]); return () => undefined; }
+  return onSnapshot(query(collection(db, 'rooms', roomId, 'sequences'), where('sequence', '>', afterSequence), orderBy('sequence', 'asc')), (snapshot) => {
+    callback(snapshot.docs.map((sequenceDoc) => ({ id: sequenceDoc.id, ...(sequenceDoc.data() as Omit<GameSequence, 'id'>) })));
+  }, () => callback([]));
+}
+
+export async function getGameSequencesSince(roomId: string, afterSequence: number): Promise<GameSequence[]> {
+  if (!db || !roomId) return [];
+  const snapshot = await getDocs(query(collection(db, 'rooms', roomId, 'sequences'), where('sequence', '>', afterSequence), orderBy('sequence', 'asc')));
+  return snapshot.docs.map((sequenceDoc) => ({ id: sequenceDoc.id, ...(sequenceDoc.data() as Omit<GameSequence, 'id'>) }));
 }
 
 export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): Unsubscribe {

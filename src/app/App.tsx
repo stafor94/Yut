@@ -524,11 +524,17 @@ export function App() {
   }, [activeRoomId, isRoomHost, screen]);
 
   useEffect(() => {
-    if (!activeRoomId || !isRoomHost || screen !== 'game' || applyingSyncedStateRef.current) return;
-    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, rollAnimation, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase }).then((version) => {
+    if (!activeRoomId || screen !== 'game' || applyingSyncedStateRef.current) return;
+    const isTurnOwnerWriter = Boolean(activeSeat?.id === localSeatId && !isSpectator);
+    const isPostTurnActionWriter = Boolean(lastMovedSeatId === localSeatId || pendingTrapPlacement?.ownerId === localSeatId);
+    const isHostOnlyPhaseWriter = Boolean(isRoomHost && (!gameStartedAt || turnOrderPhase.active || turnOrderIntro || activeSeat?.isAI));
+    if (!isTurnOwnerWriter && !isPostTurnActionWriter && !isHostOnlyPhaseWriter) return;
+    const clientMutationId = `${localSeatId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const sequenceType = winner ? 'game_finished' : roll ? 'roll_yut' : lastMovedSeatId === localSeatId ? 'move_piece_resolved' : pendingTrapPlacement?.ownerId === localSeatId ? 'item_used' : 'state_snapshot';
+    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, rollAnimation, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase }, { type: sequenceType, actorId: localSeatId, clientMutationId, payload: { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId } }).then((version) => {
       if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
     });
-  }, [activeRoomId, boardItems, captureEffect, trapEffect, gameStartedAt, isRoomHost, logs, ownedItems, pieces, roll, rollAnimation, screen, shieldedPieceIds, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, winner, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase]);
+  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, gameStartedAt, isRoomHost, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, ownedItems, pendingTrapPlacement, pieces, roll, rollAnimation, rollLockUntil, rollResultReadyAt, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -974,7 +980,7 @@ export function App() {
         branchChoice: 'outer',
         rollResultReadyAt: 0,
         turnOrderPhase: { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
-      }).then(() => updateRoomStatus(activeRoomId, 'playing'));
+      }, { type: 'game_initialized', actorId: localSeatId, payload: { turnOrderIds: nextTurnOrderIds } }).then(() => updateRoomStatus(activeRoomId, 'playing'));
     }
   }
 
@@ -1158,11 +1164,6 @@ export function App() {
   }
   function rollYut() {
     if (!activeSeat || !canRollNow) return;
-    if (activeRoomId && !isRoomHost) {
-      void submitRemoteAction('roll_yut', forcedRoll ? { forcedResult: forcedRoll } : {});
-      setForcedRoll(null);
-      return;
-    }
     setShieldedPieceIds([]);
     rollYutFor(activeSeat);
   }
@@ -1325,7 +1326,6 @@ export function App() {
       return false;
     }
     const pieceToMove = selectedPiece ?? fallbackPiece;
-    if (activeRoomId && !isRoomHost) { void submitRemoteAction('move_piece', { pieceId: pieceToMove?.id ?? selectedPieceId, extraSteps, branchChoice: getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', branchChoice) }); return true; }
     void movePiece(pieceToMove?.id ?? selectedPieceId, roll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', branchChoice));
     return true;
   }
@@ -1368,7 +1368,6 @@ export function App() {
   }
 
   function placePendingTrap(nodeId: string, actorId = localSeatId) {
-    if (activeRoomId && !isRoomHost && actorId === localSeatId) { void submitRemoteAction('place_trap', { nodeId }); return; }
     if (!pendingTrapPlacement || !pendingTrapPlacement.nodeIds.includes(nodeId)) return;
     const itemOwnerSeat = playableSeats.find((seat) => seat.id === pendingTrapPlacement.ownerId);
     const trapPiece = pieces.find((piece) => piece.id === pendingTrapPlacement.pieceId);
@@ -1387,17 +1386,6 @@ export function App() {
 
   function useItem(type: ItemType, actorId = localSeatId, remotePayload: Record<string, unknown> = {}) {
     if (movingPieceId) return;
-    if (activeRoomId && !isRoomHost && actorId === localSeatId) {
-      if (type === 'golden_yut') {
-        if (!isMyTurn || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
-        void submitRemoteAction('use_item', { itemType: type });
-        setGoldenYutPickerOpen(true);
-        addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.');
-        return;
-      }
-      void submitRemoteAction('use_item', { itemType: type, pieceId: selectedPieceId, branchChoice });
-      return;
-    }
     const itemOwnerId = actorId;
     const itemOwnerSeat = playableSeats.find((seat) => seat.id === itemOwnerId);
     if (!itemOwnerSeat) return;
