@@ -126,12 +126,12 @@ const seatsFromRoomPlayers = (players: RoomPlayer[], playMode: PlayMode, playerC
 };
 
 
-const seatsWithJoinedPlayer = (players: RoomPlayer[], currentUserId: string, nickname: string, playMode: PlayMode, playerCount: 2 | 3 | 4): Seat[] => {
+const seatsWithJoinedPlayer = (players: RoomPlayer[], currentUserId: string, nickname: string, playMode: PlayMode, playerCount: 2 | 3 | 4, joinedSeatIndex: number | null = null): Seat[] => {
   const seats = seatsFromRoomPlayers(players, playMode, playerCount);
   if (players.some((player) => player.id === currentUserId)) return seats;
-  const firstEmptySeat = seats.find((seat) => seat.isEmpty);
-  if (!firstEmptySeat) return seats;
-  return seats.map((seat) => seat.id === firstEmptySeat.id ? { ...seat, id: currentUserId, name: nickname, ready: false, isEmpty: false } : seat);
+  const targetSeat = joinedSeatIndex === null ? seats.find((seat) => seat.isEmpty) : seats[joinedSeatIndex];
+  if (!targetSeat) return seats;
+  return seats.map((seat) => seat.id === targetSeat.id ? { ...seat, id: currentUserId, name: nickname, ready: false, isEmpty: false } : seat);
 };
 
 const spectatorsFromRoomPlayers = (players: RoomPlayer[]): Seat[] => players
@@ -336,7 +336,7 @@ export function App() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
 
   useEffect(() => {
-    if (!activeRoomId || !localSeatId || localSeatId === hostSeatId) return undefined;
+    if (!activeRoomId || !localSeatId) return undefined;
     void heartbeatRoomPlayer(activeRoomId, localSeatId);
     const heartbeatTimer = window.setInterval(() => { void heartbeatRoomPlayer(activeRoomId, localSeatId); }, 15000);
     return () => window.clearInterval(heartbeatTimer);
@@ -585,22 +585,31 @@ export function App() {
 
   async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & { id?: string }, nextMessage = '', asHost = false) {
     setMessage('방으로 이동하는 중입니다...');
-    setActiveRoomId(room.id ?? '');
-    setIsRoomHost(asHost);
-    setActiveRoomTitle(room.title);
-    setPlayMode(room.playMode);
-    setMaxPlayers(room.maxPlayers as 2 | 3 | 4);
-    setItemMode(room.itemMode);
-    setPieceCount(room.pieceCount ?? 4);
-    const nextSeats = createSeats(nickname, room.playMode, room.maxPlayers as 2 | 3 | 4);
-    if (!asHost && room.id && user) {
-      await joinRoom(room.id, { userId: user.uid, nickname, playMode: room.playMode });
-      setSeats(seatsWithJoinedPlayer([], user.uid, nickname, room.playMode, room.maxPlayers as 2 | 3 | 4));
-    } else {
-      setSeats(nextSeats);
+    const nextMaxPlayers = room.maxPlayers as 2 | 3 | 4;
+    try {
+      const joinResult = !asHost && room.id && user ? await joinRoom(room.id, { userId: user.uid, nickname, playMode: room.playMode }) : null;
+      setActiveRoomId(room.id ?? '');
+      setIsRoomHost(asHost);
+      setActiveRoomTitle(room.title);
+      setPlayMode(room.playMode);
+      setMaxPlayers(nextMaxPlayers);
+      setItemMode(room.itemMode);
+      setPieceCount(room.pieceCount ?? 4);
+      const nextSeats = createSeats(nickname, room.playMode, nextMaxPlayers);
+      if (joinResult?.role === 'player' && user) {
+        setSeats(seatsWithJoinedPlayer([], user.uid, nickname, room.playMode, nextMaxPlayers, joinResult.seatIndex));
+      } else {
+        setSeats(nextSeats);
+      }
+      setScreen(room.id && !asHost && 'status' in room && (room as RoomSummary).status === 'playing' ? 'game' : 'waitingRoom');
+      setMessage(nextMessage);
+    } catch (error) {
+      setActiveRoomId('');
+      setIsRoomHost(false);
+      setActiveRoomTitle('');
+      setScreen('lobby');
+      setMessage(error instanceof Error ? error.message : '방 참가에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
     }
-    setScreen(room.id && !asHost && 'status' in room && (room as RoomSummary).status === 'playing' ? 'game' : 'waitingRoom');
-    setMessage(nextMessage);
   }
 
   function handleStartGame() {
@@ -1044,8 +1053,13 @@ export function App() {
     if (!mySeat) { setMessage('내 참가 정보를 찾는 중입니다. 잠시 뒤 다시 시도하세요.'); return; }
     const nextReady = !mySeat.ready;
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === mySeat.id ? { ...seat, ready: nextReady } : seat));
-    if (activeRoomId) await updateRoomPlayer(activeRoomId, mySeat.id, { ready: nextReady });
-    setMessage(nextReady ? '준비 완료했습니다. 방장이 시작할 때까지 기다려주세요.' : '준비를 취소했습니다.');
+    try {
+      if (activeRoomId) await updateRoomPlayer(activeRoomId, mySeat.id, { ready: nextReady });
+      setMessage(nextReady ? '준비 완료했습니다. 방장이 시작할 때까지 기다려주세요.' : '준비를 취소했습니다.');
+    } catch (error) {
+      setSeats((currentSeats) => currentSeats.map((seat) => seat.id === mySeat.id ? { ...seat, ready: mySeat.ready } : seat));
+      setMessage(error instanceof Error ? error.message : '준비 상태 변경에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
+    }
   }
 
   async function leaveRoom() {
@@ -1083,6 +1097,11 @@ export function App() {
     const nextMaxPlayers = nextPlayMode === 'team' ? 4 : next.maxPlayers ?? maxPlayers;
     const nextItemMode = next.itemMode ?? itemMode;
     const nextPieceCount = next.pieceCount ?? pieceCount;
+    const activePlayerCount = seats.filter((seat) => !seat.isEmpty && !seat.isSpectator).length;
+    if (nextMaxPlayers < activePlayerCount) {
+      setMessage(`현재 참가 인원 ${activePlayerCount}명보다 적게 인원을 줄일 수 없습니다.`);
+      return;
+    }
     setPlayMode(nextPlayMode);
     setMaxPlayers(nextMaxPlayers);
     setItemMode(nextItemMode);
@@ -1132,7 +1151,7 @@ export function App() {
           <h2>방 목록</h2>
           <span>{rooms.length ? `${rooms.length}개의 방이 참여 또는 관전을 기다리고 있어요.` : '새 방을 만들거나 친구의 방을 기다려보세요.'}</span>
         </div>
-        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode === 'team' ? '팀전' : '개인전'} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'} · {room.maxPlayers}인</span></div><button onClick={() => { void openWaitingRoom(room); }}>{room.status === 'playing' ? '관전' : '참여'}</button></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong><span>왼쪽에서 방을 만들면 친구들이 바로 참여할 수 있어요.</span></div>}</div>
+        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span></div><button onClick={() => { void openWaitingRoom(room); }}>{room.status === 'playing' ? '관전' : '참여'}</button></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong><span>왼쪽에서 방을 만들면 친구들이 바로 참여할 수 있어요.</span></div>}</div>
       </section>
     </section>}
 
@@ -1155,10 +1174,10 @@ export function App() {
         </header>
 
         <div className="waiting-main-grid">
-          <section className="waiting-setup-card" aria-label="방 설정과 시작 조건">
+          {(isRoomHost || playMode === 'team') && <section className="waiting-setup-card" aria-label="방 설정과 시작 조건">
             {playMode === 'team' && <div className="team-checklist" aria-label="팀전 시작 조건"><strong>팀 균형</strong><span className={teamCounts.청팀 === 2 ? 'ok' : ''}>청팀 {teamCounts.청팀}/2</span><span className={teamCounts.홍팀 === 2 ? 'ok' : ''}>홍팀 {teamCounts.홍팀}/2</span></div>}
-            {isRoomHost ? <div className="host-room-options compact-options"><fieldset className="radio-group"><legend>진행</legend>{(['individual', 'team'] as PlayMode[]).map((mode) => <label key={mode}><input type="radio" name="playMode" checked={playMode === mode} onChange={() => changeWaitingOptions({ playMode: mode })} />{mode === 'team' ? '팀전' : '개인전'}</label>)}</fieldset><fieldset className="radio-group"><legend>인원</legend>{([2, 3, 4] as const).map((count) => <label key={count} className={playMode === 'team' && count !== 4 ? 'disabled' : ''} title={playMode === 'team' && count !== 4 ? '팀전은 4인만 가능합니다.' : undefined}><input type="radio" name="maxPlayers" checked={maxPlayers === count} disabled={playMode === 'team' && count !== 4} onChange={() => changeWaitingOptions({ maxPlayers: count })} />{count}인</label>)}</fieldset><fieldset className="radio-group"><legend>말</legend>{([1, 2, 3, 4] as const).map((count) => <label key={count}><input type="radio" name="pieceCount" checked={pieceCount === count} onChange={() => changeWaitingOptions({ pieceCount: count })} />{count}개</label>)}</fieldset><fieldset className="radio-group item-mode-group"><legend>아이템</legend>{([true, false] as const).map((enabled) => <label key={String(enabled)}><input type="radio" name="itemMode" checked={itemMode === enabled} onChange={() => changeWaitingOptions({ itemMode: enabled })} />{enabled ? 'ON' : 'OFF'}</label>)}</fieldset></div> : <div className="permission-note"><strong>내 권한</strong><span>준비/준비취소 · 방 나가기</span><button className="ready-inline-button" onClick={() => { void toggleMyReady(); }} disabled={!myWaitingSeat}>{myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button><small>규칙 변경, 팀 변경, AI 배치, 시작은 방장만 할 수 있어요.</small></div>}
-          </section>
+            {isRoomHost ? <div className="host-room-options compact-options"><fieldset className="radio-group"><legend>진행</legend>{(['individual', 'team'] as PlayMode[]).map((mode) => <label key={mode}><input type="radio" name="playMode" checked={playMode === mode} onChange={() => changeWaitingOptions({ playMode: mode })} />{mode === 'team' ? '팀전' : '개인전'}</label>)}</fieldset><fieldset className="radio-group"><legend>인원</legend>{([2, 3, 4] as const).map((count) => <label key={count} className={playMode === 'team' && count !== 4 ? 'disabled' : ''} title={playMode === 'team' && count !== 4 ? '팀전은 4인만 가능합니다.' : undefined}><input type="radio" name="maxPlayers" checked={maxPlayers === count} disabled={playMode === 'team' && count !== 4} onChange={() => changeWaitingOptions({ maxPlayers: count })} />{count}인</label>)}</fieldset><fieldset className="radio-group"><legend>말</legend>{([1, 2, 3, 4] as const).map((count) => <label key={count}><input type="radio" name="pieceCount" checked={pieceCount === count} onChange={() => changeWaitingOptions({ pieceCount: count })} />{count}개</label>)}</fieldset><fieldset className="radio-group item-mode-group"><legend>아이템</legend>{([true, false] as const).map((enabled) => <label key={String(enabled)}><input type="radio" name="itemMode" checked={itemMode === enabled} onChange={() => changeWaitingOptions({ itemMode: enabled })} />{enabled ? 'ON' : 'OFF'}</label>)}</fieldset></div> : null}
+          </section>}
 
           <section className="ready-list compact-ready-list" aria-label="플레이어 자리">
             {seats.map((seat) => <article className={`ready-card compact-ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''} ${seat.id === localSeatId ? 'me' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
