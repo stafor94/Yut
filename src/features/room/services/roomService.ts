@@ -14,13 +14,23 @@ const getCreatedAtMillis = (createdAt: unknown) => {
   if (typeof createdAt === 'number') return createdAt;
   return 0;
 };
-export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; }
+export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; }
 export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; updatedAt?: unknown; turnVersion: number; }
 
 const COLORS = ['red', 'blue', 'green', 'yellow'];
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 const MAX_ACTIVE_ROOMS = 3;
 const EMPTY_ROOM_DELETE_DELAY_MS = 30000;
+const STALE_PLAYER_DELETE_MS = 45000;
+
+const getTimestampMillis = (value: unknown) => {
+  if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
+    return value.toMillis();
+  }
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  return 0;
+};
 
 export async function createRoom(params: { title: string; hostId: string; nickname: string; maxPlayers: 2|3|4; itemMode: boolean; playMode: 'individual'|'team'; pieceCount: 1|2|3|4; password?: string; }) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
@@ -49,7 +59,7 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     emptySince: null,
     createdAt: serverTimestamp(),
   });
-  await setDoc(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp() });
+  await setDoc(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
   if (params.itemMode) {
     await Promise.all(spawnInitialBoardItems().map((item) => setDoc(doc(firestore, 'rooms', roomRef.id, 'boardItems', item.id), item)));
   }
@@ -65,12 +75,12 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
   const playerRef = doc(db, 'rooms', roomId, 'players', params.userId);
   const existingPlayer = await getDoc(playerRef);
   if (existingPlayer.exists()) {
-    await setDoc(playerRef, { nickname: params.nickname }, { merge: true });
+    await setDoc(playerRef, { nickname: params.nickname, lastSeen: serverTimestamp() }, { merge: true });
     await setDoc(doc(db, 'rooms', roomId), { emptySince: null }, { merge: true });
     return existingPlayer.data().isSpectator ? 'spectator' : 'player';
   }
   if (room.status === 'playing') {
-    await setDoc(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: serverTimestamp() }, { merge: true });
+    await setDoc(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: serverTimestamp(), lastSeen: serverTimestamp() }, { merge: true });
     await setDoc(doc(db, 'rooms', roomId), { emptySince: null }, { merge: true });
     return 'spectator';
   }
@@ -87,6 +97,7 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
     seatIndex,
     team: params.playMode === 'team' ? TEAMS[seatIndex] : '청팀',
     joinedAt: serverTimestamp(),
+    lastSeen: serverTimestamp(),
   }, { merge: true });
   await setDoc(doc(db, 'rooms', roomId), { emptySince: null }, { merge: true });
   return 'player';
@@ -95,6 +106,36 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
 export function subscribeRoomPlayers(roomId: string, callback: (players: RoomPlayer[]) => void): Unsubscribe {
   if (!db) { callback([]); return () => undefined; }
   return onSnapshot(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc')), (snapshot) => callback(snapshot.docs.map((playerDoc) => ({ id: playerDoc.id, ...(playerDoc.data() as Omit<RoomPlayer, 'id'>) }))));
+}
+
+
+export async function heartbeatRoomPlayer(roomId: string, playerId: string) {
+  if (!db || !roomId || !playerId) return;
+  await setDoc(doc(db, 'rooms', roomId, 'players', playerId), { lastSeen: serverTimestamp() }, { merge: true });
+}
+
+export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protectedRoomId = '') {
+  if (!db) return;
+  const now = Date.now();
+  const activeRoomsSnapshot = await getDocs(query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing'])));
+  await Promise.all(activeRoomsSnapshot.docs.map(async (roomDoc) => {
+    if (roomDoc.id === protectedRoomId) return;
+    const playersRef = collection(db!, 'rooms', roomDoc.id, 'players');
+    const playersSnapshot = await getDocs(playersRef);
+    const stalePlayers = playersSnapshot.docs.filter((playerDoc) => {
+      const player = playerDoc.data() as RoomPlayer;
+      if (player.isAI) return false;
+      const lastSeen = getTimestampMillis(player.lastSeen ?? player.joinedAt);
+      return !lastSeen || now - lastSeen > staleMs;
+    });
+    await Promise.all(stalePlayers.map((playerDoc) => deleteDoc(playerDoc.ref)));
+    const remainingHumans = playersSnapshot.docs.filter((playerDoc) => {
+      if (stalePlayers.some((staleDoc) => staleDoc.id === playerDoc.id)) return false;
+      const player = playerDoc.data() as RoomPlayer;
+      return !player.isAI;
+    });
+    if (!remainingHumans.length) await deleteDoc(roomDoc.ref);
+  }));
 }
 
 export async function saveGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>) {

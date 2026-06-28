@@ -6,7 +6,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
-import { createRoom, joinRoom, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cleanupStaleRooms, createRoom, heartbeatRoomPlayer, joinRoom, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -325,6 +325,19 @@ export function App() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.itemMode, String(itemMode)); }, [itemMode]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.pieceCount, String(pieceCount)); }, [pieceCount]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
+
+  useEffect(() => {
+    if (!activeRoomId || !localSeatId || localSeatId === hostSeatId) return undefined;
+    void heartbeatRoomPlayer(activeRoomId, localSeatId);
+    const heartbeatTimer = window.setInterval(() => { void heartbeatRoomPlayer(activeRoomId, localSeatId); }, 15000);
+    return () => window.clearInterval(heartbeatTimer);
+  }, [activeRoomId, localSeatId]);
+
+  useEffect(() => {
+    void cleanupStaleRooms(undefined, activeRoomId);
+    const cleanupTimer = window.setInterval(() => { void cleanupStaleRooms(undefined, activeRoomId); }, 30000);
+    return () => window.clearInterval(cleanupTimer);
+  }, [activeRoomId]);
 
   useEffect(() => {
     if (!winner) { lastWinnerSoundRef.current = ''; return; }
