@@ -15,7 +15,8 @@ const getCreatedAtMillis = (createdAt: unknown) => {
   return 0;
 };
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; }
-export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; updatedAt?: unknown; turnVersion: number; }
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; updatedAt?: unknown; turnVersion: number; }
+export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 
 const COLORS = ['red', 'blue', 'green', 'yellow'];
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
@@ -232,6 +233,32 @@ export function subscribeRoom(roomId: string, callback: (room: RoomSummary | nul
   return onSnapshot(doc(db, 'rooms', roomId), (snapshot) => {
     callback(snapshot.exists() ? { id: snapshot.id, ...(snapshot.data() as Omit<RoomSummary, 'id'>) } : null);
   });
+}
+
+export async function findActiveRoomByHost(hostId: string): Promise<RoomSummary | null> {
+  if (!db || !hostId) return null;
+  const snapshot = await getDocs(query(collection(db, 'rooms'), where('hostId', '==', hostId), where('status', 'in', ['waiting', 'playing'])));
+  const rooms = snapshot.docs
+    .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
+    .sort((a, b) => getCreatedAtMillis(b.createdAt) - getCreatedAtMillis(a.createdAt));
+  return rooms[0] ?? null;
+}
+
+export async function submitGameAction(roomId: string, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) {
+  if (!db || !roomId) return;
+  await addDoc(collection(db, 'rooms', roomId, 'actions'), { ...action, processed: false, createdAt: serverTimestamp() });
+}
+
+export function subscribePendingGameActions(roomId: string, callback: (actions: GameAction[]) => void): Unsubscribe {
+  if (!db) { callback([]); return () => undefined; }
+  return onSnapshot(query(collection(db, 'rooms', roomId, 'actions'), where('processed', '==', false), orderBy('createdAt', 'asc')), (snapshot) => {
+    callback(snapshot.docs.map((actionDoc) => ({ id: actionDoc.id, ...(actionDoc.data() as Omit<GameAction, 'id'>) })));
+  }, () => callback([]));
+}
+
+export async function markGameActionProcessed(roomId: string, actionId: string) {
+  if (!db || !roomId || !actionId) return;
+  await setDoc(doc(db, 'rooms', roomId, 'actions', actionId), { processed: true }, { merge: true });
 }
 
 export async function getRoom(roomId: string): Promise<RoomSummary | null> {
