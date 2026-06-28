@@ -6,7 +6,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
-import { createRoom, deleteRoom, joinRoom, removeRoomPlayer, saveGameState, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { createRoom, joinRoom, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -384,6 +384,7 @@ export function App() {
       }
       spectatorIdsRef.current = new Set(nextSpectators.map((spectator) => spectator.id));
       setSpectators(nextSpectators);
+      if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
   }, [activeRoomId, isRoomHost, maxPlayers, playMode, screen]);
 
@@ -1024,8 +1025,10 @@ export function App() {
   }
 
   async function leaveRoom() {
-    if (screen === 'game' && activeRoomId) { addLog(`${nickname}님이 나갔습니다. AI가 대신 진행합니다.`); markPlayerAsAI(localSeatId); }
-    else if (isRoomHost && activeRoomId) await deleteRoom(activeRoomId);
+    if (screen === 'game' && activeRoomId) {
+      addLog(`${nickname}님이 나갔습니다.`);
+      await removeRoomPlayer(activeRoomId, localSeatId);
+    }
     else if (activeRoomId) await removeRoomPlayer(activeRoomId, localSeatId);
     setScreen('lobby'); setActiveRoomId(''); setActiveRoomTitle(''); setIsRoomHost(false); setCountdown(-1); setTurnOrderIds([]); setGameStartedAt(null); setSeats(createSeats(nickname, playMode, maxPlayers));
     setMessage('방에서 나왔습니다.');

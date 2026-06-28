@@ -2808,3 +2808,54 @@ aside.players,
 .log-player-label {
   font-weight: 1000;
 }
+
+@media (max-width: 900px) and (orientation: portrait) {
+  .game-shell {
+    align-content: start;
+  }
+
+  .game-shell .hero {
+    margin-bottom: 10px;
+  }
+
+  .game-shell .game-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "board board"
+      "players history";
+    gap: 10px;
+    align-items: start;
+  }
+
+  .game-shell .board-panel {
+    grid-area: board;
+    padding-block: 12px;
+  }
+
+  .game-shell .players {
+    grid-area: players;
+  }
+
+  .game-shell .side {
+    grid-area: history;
+  }
+
+  .game-shell .players,
+  .game-shell .side {
+    display: flex;
+    min-width: 0;
+    max-height: 38svh;
+    overflow: auto;
+    padding: 12px;
+  }
+
+  .game-shell .board {
+    width: min(100%, 58svh, 560px);
+  }
+
+  .game-shell .player {
+    margin: 6px 0;
+    padding: 10px;
+  }
+}
