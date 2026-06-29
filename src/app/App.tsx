@@ -191,6 +191,11 @@ const getMovePreviewNodeIds = (piece: BoardPiece | undefined, result: YutResult 
 
 export function App() {
   const [user, setUser] = useState<User | null>(null);
+  const userRef = useRef<User | null>(null);
+  const rememberUser = (nextUser: User | null) => {
+    userRef.current = nextUser;
+    setUser(nextUser);
+  };
   const [nickname, setNickname] = useState(() => getInitialNickname());
   const [nicknameDraft, setNicknameDraft] = useState(() => getInitialNickname());
   const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false);
@@ -268,8 +273,9 @@ export function App() {
   const logIdRef = useRef(0);
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const rooms = useRooms();
-  const serverStatus = isFirebaseConfigured ? (user ? '온라인' : '입장 준비 중') : '연결 정보 확인 필요';
-  const serverStatusTone = isFirebaseConfigured ? (user ? 'online' : 'pending') : 'offline';
+  const currentUser = userRef.current ?? user;
+  const serverStatus = isFirebaseConfigured ? (currentUser ? '온라인' : '입장 준비 중') : '연결 정보 확인 필요';
+  const serverStatusTone = isFirebaseConfigured ? (currentUser ? 'online' : 'pending') : 'offline';
   const playableSeats = useMemo(() => seats.filter((seat) => !seat.isEmpty), [seats]);
   const teamCounts = useMemo(() => playableSeats.reduce<Record<Team, number>>((acc, seat) => ({ ...acc, [seat.team]: acc[seat.team] + 1 }), { 청팀: 0, 홍팀: 0 }), [playableSeats]);
   const teamBalanced = playMode === 'individual' || (maxPlayers === 4 && teamCounts.청팀 === 2 && teamCounts.홍팀 === 2);
@@ -281,8 +287,8 @@ export function App() {
   }, [playableSeats, turnOrderIds]);
   const activeSeat = turnSeats[turnIndex % turnSeats.length];
   const hostSeatId = playableSeats.find((seat) => seat.isHost)?.id ?? 'host';
-  const localSeatId = activeRoomId ? user?.uid ?? '' : hostSeatId;
-  const isSpectator = Boolean(activeRoomId && user && spectators.some((spectator) => spectator.id === user.uid));
+  const localSeatId = activeRoomId ? currentUser?.uid ?? '' : hostSeatId;
+  const isSpectator = Boolean(activeRoomId && currentUser && spectators.some((spectator) => spectator.id === currentUser.uid));
   const isMyTurn = activeSeat?.id === localSeatId && !activeSeat.isAI && !isSpectator;
   const getSeatById = (seatId: string) => playableSeats.find((seat) => seat.id === seatId);
   const getSeatColorIndex = (seat: Seat | undefined) => Math.max(0, Number(seat?.label.replace('P', '')) - 1);
@@ -391,18 +397,28 @@ export function App() {
     setRollAnimation(null);
     if (activeRoomId) window.localStorage.setItem(STORAGE_KEYS.activeRoomId, activeRoomId);
     else window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-  }, [activeRoomId, user]);
+  }, [activeRoomId, currentUser]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.isRoomHost, String(isRoomHost)); }, [isRoomHost]);
 
   useEffect(() => {
-    const unsubscribe = listenAuthState(setUser);
-    signInAsGuest().catch((error) => setMessage(error.message));
-    return unsubscribe;
+    let mounted = true;
+    const applyUser = (nextUser: User | null) => { if (mounted) rememberUser(nextUser); };
+    const unsubscribe = listenAuthState(applyUser);
+    signInAsGuest()
+      .then((nextUser) => {
+        if (!nextUser) return;
+        applyUser(nextUser);
+      })
+      .catch((error) => setMessage(error.message));
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
 
   useEffect(() => {
-    if (!user || activeRoomId) return;
+    if (!currentUser || activeRoomId) return;
     const storedRoomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId);
     if (!storedRoomId) return;
     let cancelled = false;
@@ -418,11 +434,11 @@ export function App() {
           return;
         }
 
-        const restoredAsHost = storedRoom.hostId === user.uid;
+        const restoredAsHost = storedRoom.hostId === currentUser.uid;
         const restoredMaxPlayers = storedRoom.maxPlayers as 2 | 3 | 4;
-        const joinResult = restoredAsHost ? null : await joinRoom(storedRoom.id, { userId: user.uid, nickname, playMode: storedRoom.playMode });
+        const joinResult = restoredAsHost ? null : await joinRoom(storedRoom.id, { userId: currentUser.uid, nickname, playMode: storedRoom.playMode });
         if (restoredAsHost) {
-          await updateRoomPlayer(storedRoom.id, user.uid, { nickname, ready: true, color: 'red', seatIndex: 0, team: '청팀', isSpectator: false });
+          await updateRoomPlayer(storedRoom.id, currentUser.uid, { nickname, ready: true, color: 'red', seatIndex: 0, team: '청팀', isSpectator: false });
         }
         if (cancelled) return;
 
@@ -434,7 +450,7 @@ export function App() {
         setItemMode(storedRoom.itemMode);
         setPieceCount(storedRoom.pieceCount ?? 4);
         if (joinResult?.role === 'player') {
-          setSeats(seatsWithJoinedPlayer([], user.uid, nickname, storedRoom.playMode, restoredMaxPlayers, joinResult.seatIndex));
+          setSeats(seatsWithJoinedPlayer([], currentUser.uid, nickname, storedRoom.playMode, restoredMaxPlayers, joinResult.seatIndex));
         } else if (restoredAsHost) {
           setSeats(createSeats(nickname, storedRoom.playMode, restoredMaxPlayers));
         }
@@ -452,7 +468,7 @@ export function App() {
       }
     })();
     return () => { cancelled = true; };
-  }, [activeRoomId, nickname, user]);
+  }, [activeRoomId, currentUser, nickname]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.nickname, nickname);
@@ -509,7 +525,8 @@ export function App() {
       setMaxPlayers(room.maxPlayers as 2 | 3 | 4);
       setItemMode(room.itemMode);
       setPieceCount(room.pieceCount ?? 4);
-      setIsRoomHost(Boolean(user && room.hostId === user.uid));
+      const roomUser = userRef.current ?? currentUser;
+      setIsRoomHost(Boolean(roomUser && room.hostId === roomUser.uid));
       if (room.status === 'playing') setScreen('game');
       if (room.status === 'finished') {
         setScreen('lobby');
@@ -522,7 +539,7 @@ export function App() {
         setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
       }
     });
-  }, [activeRoomId, user]);
+  }, [activeRoomId, currentUser]);
 
 
   useEffect(() => {
@@ -530,7 +547,7 @@ export function App() {
     spectatorIdsRef.current = new Set();
     return subscribeRoomPlayers(activeRoomId, (players) => {
       const nextSeats = seatsFromRoomPlayers(players, playMode, maxPlayers);
-      const currentUserId = user?.uid;
+      const currentUserId = (userRef.current ?? currentUser)?.uid;
       const hasCurrentUserInSnapshot = Boolean(currentUserId && players.some((player) => player.id === currentUserId && !player.isSpectator));
       setSeats((currentSeats) => {
         if (!currentUserId || isRoomHost || screen !== 'waitingRoom' || hasCurrentUserInSnapshot) return nextSeats;
@@ -550,7 +567,7 @@ export function App() {
       setSpectators(nextSpectators);
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
-  }, [activeRoomId, isRoomHost, maxPlayers, playMode, screen, user?.uid]);
+  }, [activeRoomId, currentUser?.uid, isRoomHost, maxPlayers, playMode, screen]);
 
   function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false) {
     if (lastAnimatedRollKeyRef.current === key) return;
@@ -935,12 +952,13 @@ export function App() {
 
   async function leavePreviousOnlineRoom(nextRoomId = '') {
     const previousRoomId = activeRoomIdRef.current || window.localStorage.getItem(STORAGE_KEYS.activeRoomId) || '';
-    if (!previousRoomId || previousRoomId === nextRoomId || !isFirebaseConfigured || !user) return;
+    const roomUser = userRef.current ?? currentUser;
+    if (!previousRoomId || previousRoomId === nextRoomId || !isFirebaseConfigured || !roomUser) return;
     try {
       const previousRoom = await getRoom(previousRoomId);
       if (!previousRoom) return;
-      if (previousRoom.hostId === user.uid) await deleteRoom(previousRoomId);
-      else await removeRoomPlayer(previousRoomId, user.uid);
+      if (previousRoom.hostId === roomUser.uid) await deleteRoom(previousRoomId);
+      else await removeRoomPlayer(previousRoomId, roomUser.uid);
     } catch (error) {
       console.warn('이전 방 정리에 실패했습니다.', error);
     } finally {
@@ -954,8 +972,8 @@ export function App() {
     if (!nickname.trim()) { setMessage('닉네임을 먼저 정해주세요.'); return; }
     if (isCreatingRoom) return;
     setIsCreatingRoom(true);
-    setMessage(isFirebaseConfigured && !user ? '입장 준비를 마친 뒤 방을 만드는 중입니다...' : '방을 만드는 중입니다. 잠시만 기다려주세요...');
-    let roomHost = user;
+    setMessage(isFirebaseConfigured && !currentUser ? '입장 준비를 마친 뒤 방을 만드는 중입니다...' : '방을 만드는 중입니다. 잠시만 기다려주세요...');
+    let roomHost = userRef.current ?? currentUser;
     try {
       const timeout = new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('CREATE_ROOM_TIMEOUT')), CREATE_ROOM_TIMEOUT_MS));
       if (!isFirebaseConfigured) {
@@ -964,6 +982,7 @@ export function App() {
       }
       roomHost = roomHost ?? await Promise.race([signInAsGuest(), timeout]);
       if (!roomHost) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
+      rememberUser(roomHost);
       await leaveDuplicatePlayerRooms(roomHost.uid);
       await leavePreviousOnlineRoom();
       const roomId = await Promise.race([createRoom({ title, hostId: roomHost.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
@@ -989,11 +1008,13 @@ export function App() {
     setMessage('방으로 이동하는 중입니다...');
     const nextMaxPlayers = room.maxPlayers as 2 | 3 | 4;
     try {
-      const joiningUser = !asHost && room.id && isFirebaseConfigured ? user ?? await Promise.race([
+      const roomUser = userRef.current ?? currentUser;
+      const joiningUser = !asHost && room.id && isFirebaseConfigured ? roomUser ?? await Promise.race([
         signInAsGuest(),
         new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('JOIN_ROOM_TIMEOUT')), CREATE_ROOM_TIMEOUT_MS)),
-      ]) : user;
+      ]) : roomUser;
       if (!asHost && room.id && isFirebaseConfigured && !joiningUser) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
+      if (joiningUser) rememberUser(joiningUser);
       if (joiningUser && room.id) await leaveDuplicatePlayerRooms(joiningUser.uid, room.id);
       await leavePreviousOnlineRoom(room.id ?? '');
       const joinResult = !asHost && room.id && joiningUser ? await joinRoom(room.id, { userId: joiningUser.uid, nickname, playMode: room.playMode }) : null;
@@ -1847,7 +1868,7 @@ export function App() {
           <h2>방 목록</h2>
           <span>{rooms.length ? `${rooms.length}개의 방이 참여 또는 관전을 기다리고 있어요.` : '새 방을 만들거나 친구의 방을 기다려보세요.'}</span>
         </div>
-        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span></div><button disabled={isFirebaseConfigured && !user} onClick={() => { void openWaitingRoom(room); }}>{isFirebaseConfigured && !user ? '입장 준비 중' : room.status === 'playing' ? '관전' : '참여'}</button></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong><span>왼쪽에서 방을 만들면 친구들이 바로 참여할 수 있어요.</span></div>}</div>
+        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span></div><button disabled={isFirebaseConfigured && !currentUser} onClick={() => { void openWaitingRoom(room); }}>{isFirebaseConfigured && !currentUser ? '입장 준비 중' : room.status === 'playing' ? '관전' : '참여'}</button></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong><span>왼쪽에서 방을 만들면 친구들이 바로 참여할 수 있어요.</span></div>}</div>
       </section>
     </section>}
 

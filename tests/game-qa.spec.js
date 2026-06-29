@@ -89,6 +89,31 @@ function attachConsoleErrorCapture(page, consoleErrors) {
   page.on('pageerror', (error) => consoleErrors.push(error.message));
 }
 
+
+function formatQaError(error) {
+  if (error instanceof Error) return error.stack || error.message;
+  return String(error);
+}
+
+async function appendQaStepLog(testInfo, status, step, details = '') {
+  const suffix = details ? ` - ${details}` : '';
+  await fs.appendFile(consoleLogPath, `[${new Date().toISOString()}] [${testInfo.project.name}] [${status}] ${step}${suffix}\n`);
+}
+
+async function runQaStep(testInfo, step, action) {
+  await appendQaStepLog(testInfo, 'START', step);
+  return test.step(step, async () => {
+    try {
+      const result = await action();
+      await appendQaStepLog(testInfo, 'PASS', step);
+      return result;
+    } catch (error) {
+      await appendQaStepLog(testInfo, 'FAIL', step, formatQaError(error));
+      throw error;
+    }
+  });
+}
+
 async function primeQaLobbyStorage(context, { nickname, maxPlayers = '2', playMode = 'individual', itemMode = 'false' }) {
   await context.addInitScript(({ nickname: nextNickname, maxPlayers: nextMaxPlayers, playMode: nextPlayMode, itemMode: nextItemMode }) => {
     window.localStorage.setItem('yut-online:nickname', nextNickname);
@@ -168,49 +193,61 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
   attachConsoleErrorCapture(page, consoleErrors);
 
   try {
-    await page.goto('/');
-    await expect(page.getByTestId('app-shell')).toBeVisible();
-    await saveStepScreenshot(page, testInfo, '01-lobby');
+    await runQaStep(testInfo, '01 로비 진입', async () => {
+      await page.goto('/');
+      await expect(page.getByTestId('app-shell')).toBeVisible();
+      await saveStepScreenshot(page, testInfo, '01-lobby');
+    });
 
-    await page.getByTestId('room-title-input').fill(qaRoomTitle);
-    await page.getByTestId('create-room-button').click();
-    await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
-    await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 방 ID를 기억해야 합니다.' }).toBeTruthy();
-    await saveStepScreenshot(page, testInfo, '02-waiting-room');
+    await runQaStep(testInfo, '02 방 생성 후 대기실 진입', async () => {
+      await page.getByTestId('room-title-input').fill(qaRoomTitle);
+      await page.getByTestId('create-room-button').click();
+      await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+      await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 방 ID를 기억해야 합니다.' }).toBeTruthy();
+      await saveStepScreenshot(page, testInfo, '02-waiting-room');
+    });
 
-    for (const label of ['P2', 'P3', 'P4']) {
-      const button = page.getByTestId(`add-ai-${label}`);
-      if (await button.isVisible()) await button.click();
-    }
-    await expect(page.getByTestId('start-game-button')).toBeEnabled();
-    await saveStepScreenshot(page, testInfo, '03-ai-filled');
+    await runQaStep(testInfo, '03 AI 채우기 및 시작 버튼 활성화 확인', async () => {
+      for (const label of ['P2', 'P3', 'P4']) {
+        const button = page.getByTestId(`add-ai-${label}`);
+        if (await button.isVisible()) await button.click();
+      }
+      await expect(page.getByTestId('start-game-button')).toBeEnabled();
+      await saveStepScreenshot(page, testInfo, '03-ai-filled');
+    });
 
-    await page.getByTestId('start-game-button').click();
-    await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 8_000 });
-    await expect(page.getByTestId('play-timer')).toBeVisible();
-    await expect(page.getByTestId('players-panel')).toContainText('P1');
-    await expect(page.getByTestId('turn-indicator')).toBeVisible();
-    await expect(page.getByTestId('game-board')).toBeVisible();
-    await expect(page.locator('[data-testid^="piece-"]').first()).toBeVisible();
-    await saveStepScreenshot(page, testInfo, '04-game-started');
+    await runQaStep(testInfo, '04 게임 시작 화면 확인', async () => {
+      await page.getByTestId('start-game-button').click();
+      await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByTestId('play-timer')).toBeVisible();
+      await expect(page.getByTestId('players-panel')).toContainText('P1');
+      await expect(page.getByTestId('turn-indicator')).toBeVisible();
+      await expect(page.getByTestId('game-board')).toBeVisible();
+      await expect(page.locator('[data-testid^="piece-"]').first()).toBeVisible();
+      await saveStepScreenshot(page, testInfo, '04-game-started');
+    });
 
     for (let turn = 1; turn <= 5; turn += 1) {
-      const rollButton = page.getByTestId('roll-yut-button');
-      if (await rollButton.isVisible().catch(() => false)) {
-        await expect(rollButton).toBeEnabled({ timeout: 15_000 });
-        await rollButton.click();
-        const moveButton = page.getByTestId('move-piece-button');
-        if (await moveButton.isVisible({ timeout: 4_000 }).catch(() => false)) {
-          await expect(moveButton).toBeEnabled({ timeout: 15_000 });
-          await moveButton.click();
+      await runQaStep(testInfo, `05-${turn} 짧은 자동 진행 턴`, async () => {
+        const rollButton = page.getByTestId('roll-yut-button');
+        if (await rollButton.isVisible().catch(() => false)) {
+          await expect(rollButton).toBeEnabled({ timeout: 15_000 });
+          await rollButton.click();
+          const moveButton = page.getByTestId('move-piece-button');
+          if (await moveButton.isVisible({ timeout: 4_000 }).catch(() => false)) {
+            await expect(moveButton).toBeEnabled({ timeout: 15_000 });
+            await moveButton.click();
+          }
         }
-      }
-      await expect(page.getByTestId('game-screen')).toBeVisible();
-      await saveStepScreenshot(page, testInfo, `05-turn-${turn}`);
-      await page.waitForTimeout(600);
+        await expect(page.getByTestId('game-screen')).toBeVisible();
+        await saveStepScreenshot(page, testInfo, `05-turn-${turn}`);
+        await page.waitForTimeout(600);
+      });
     }
 
-    assertConsoleErrorsWithinQaAllowance(consoleErrors);
+    await runQaStep(testInfo, '06 콘솔 에러 허용 범위 확인', async () => {
+      assertConsoleErrorsWithinQaAllowance(consoleErrors);
+    });
   } finally {
     await cleanupRememberedRooms();
   }
@@ -231,53 +268,67 @@ test.describe('mobile device-to-device QA', () => {
     const galaxyContext = await galaxyBrowser.newContext({ ...devices['Galaxy S9+'], viewport: { width: 412, height: 915 }, deviceScaleFactor: 3.5 });
 
     try {
-      await primeQaLobbyStorage(ipadContext, { nickname: ipadNickname });
-      await primeQaLobbyStorage(galaxyContext, { nickname: galaxyNickname });
+      await runQaStep(testInfo, '기기전 01 로컬 스토리지 준비', async () => {
+        await primeQaLobbyStorage(ipadContext, { nickname: ipadNickname });
+        await primeQaLobbyStorage(galaxyContext, { nickname: galaxyNickname });
+      });
 
-      const ipadPage = await ipadContext.newPage();
-      const galaxyPage = await galaxyContext.newPage();
+      const ipadPage = await runQaStep(testInfo, '기기전 02 iPad 페이지 생성', async () => ipadContext.newPage());
+      const galaxyPage = await runQaStep(testInfo, '기기전 03 Galaxy 페이지 생성', async () => galaxyContext.newPage());
       attachConsoleErrorCapture(ipadPage, consoleErrors);
       attachConsoleErrorCapture(galaxyPage, consoleErrors);
 
-      await ipadPage.goto(baseURL);
-      await expect(ipadPage.getByTestId('app-shell')).toBeVisible();
-      await ipadPage.getByTestId('room-title-input').fill(qaRoomTitle);
-      await ipadPage.getByTestId('create-room-button').click();
-      await expect(ipadPage.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
-      await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 기기 대전 방 ID를 기억해야 합니다.' }).toBeTruthy();
-      await saveStepScreenshot(ipadPage, testInfo, '06-device-host-waiting');
+      await runQaStep(testInfo, '기기전 04 iPad 방 생성 및 대기실 진입', async () => {
+        await ipadPage.goto(baseURL);
+        await expect(ipadPage.getByTestId('app-shell')).toBeVisible();
+        await ipadPage.getByTestId('room-title-input').fill(qaRoomTitle);
+        await ipadPage.getByTestId('create-room-button').click();
+        await expect(ipadPage.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+        await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 기기 대전 방 ID를 기억해야 합니다.' }).toBeTruthy();
+        await saveStepScreenshot(ipadPage, testInfo, '06-device-host-waiting');
+      });
 
-      await galaxyPage.goto(baseURL);
-      await expect(galaxyPage.getByTestId('app-shell')).toBeVisible();
-      const targetRoomCard = galaxyPage.locator('.lobby-room-card').filter({ hasText: qaRoomTitle });
-      await expect(targetRoomCard).toBeVisible({ timeout: 15_000 });
-      await targetRoomCard.getByRole('button', { name: '참여' }).click();
-      const galaxyWaitingRoom = galaxyPage.getByTestId('waiting-room');
-      const galaxyReadyCard = galaxyWaitingRoom.locator('.ready-card.me');
-      await expect(galaxyWaitingRoom).toBeVisible({ timeout: 25_000 });
-      await expect(galaxyReadyCard).toContainText(galaxyNickname, { timeout: 15_000 });
-      await expect(galaxyReadyCard).toContainText('나', { timeout: 15_000 });
-      await expect(galaxyPage.getByRole('button', { name: '준비 완료' })).toBeEnabled({ timeout: 15_000 });
-      await saveStepScreenshot(galaxyPage, testInfo, '07-device-guest-waiting');
+      await runQaStep(testInfo, '기기전 05 Galaxy 방 참여 및 준비 버튼 확인', async () => {
+        await galaxyPage.goto(baseURL);
+        await expect(galaxyPage.getByTestId('app-shell')).toBeVisible();
+        const targetRoomCard = galaxyPage.locator('.lobby-room-card').filter({ hasText: qaRoomTitle });
+        await expect(targetRoomCard).toBeVisible({ timeout: 15_000 });
+        await targetRoomCard.getByRole('button', { name: '참여' }).click();
+        const galaxyWaitingRoom = galaxyPage.getByTestId('waiting-room');
+        const galaxyReadyCard = galaxyWaitingRoom.locator('.ready-card.me');
+        await expect(galaxyWaitingRoom).toBeVisible({ timeout: 25_000 });
+        await expect(galaxyReadyCard).toContainText(galaxyNickname, { timeout: 15_000 });
+        await expect(galaxyReadyCard).toContainText('나', { timeout: 15_000 });
+        await expect(galaxyPage.getByRole('button', { name: '준비 완료' })).toBeEnabled({ timeout: 15_000 });
+        await saveStepScreenshot(galaxyPage, testInfo, '07-device-guest-waiting');
+      });
 
-      await galaxyPage.getByRole('button', { name: '준비 완료' }).click();
-      await expect(ipadPage.getByTestId('waiting-room').locator('.ready-card').filter({ hasText: galaxyNickname })).toBeVisible({ timeout: 15_000 });
-      await expect(ipadPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
-      await ipadPage.getByTestId('start-game-button').click();
+      await runQaStep(testInfo, '기기전 06 Galaxy 준비 완료 후 iPad 시작 버튼 확인', async () => {
+        await galaxyPage.getByRole('button', { name: '준비 완료' }).click();
+        await expect(ipadPage.getByTestId('waiting-room').locator('.ready-card').filter({ hasText: galaxyNickname })).toBeVisible({ timeout: 15_000 });
+        await expect(ipadPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+        await ipadPage.getByTestId('start-game-button').click();
+      });
 
-      await expectTwoPlayerGameReady(ipadPage, ipadNickname, galaxyNickname);
-      await expectTwoPlayerGameReady(galaxyPage, ipadNickname, galaxyNickname);
-      await saveStepScreenshot(ipadPage, testInfo, '08-device-host-game');
-      await saveStepScreenshot(galaxyPage, testInfo, '09-device-guest-game');
+      await runQaStep(testInfo, '기기전 07 양쪽 게임 화면 준비 확인', async () => {
+        await expectTwoPlayerGameReady(ipadPage, ipadNickname, galaxyNickname);
+        await expectTwoPlayerGameReady(galaxyPage, ipadNickname, galaxyNickname);
+        await saveStepScreenshot(ipadPage, testInfo, '08-device-host-game');
+        await saveStepScreenshot(galaxyPage, testInfo, '09-device-guest-game');
+      });
 
-      await waitForAnyRollButtonVisible([ipadPage, galaxyPage]);
-      const hostPlayed = await playOneVisibleTurn(ipadPage);
-      const guestPlayed = hostPlayed ? false : await playOneVisibleTurn(galaxyPage);
-      expect(hostPlayed || guestPlayed, 'iPad 또는 Galaxy 중 현재 턴인 기기가 한 턴을 진행해야 합니다.').toBeTruthy();
-      await expect(ipadPage.getByTestId('game-screen')).toBeVisible();
-      await expect(galaxyPage.getByTestId('game-screen')).toBeVisible();
+      await runQaStep(testInfo, '기기전 08 한 턴 진행 가능 확인', async () => {
+        await waitForAnyRollButtonVisible([ipadPage, galaxyPage]);
+        const hostPlayed = await playOneVisibleTurn(ipadPage);
+        const guestPlayed = hostPlayed ? false : await playOneVisibleTurn(galaxyPage);
+        expect(hostPlayed || guestPlayed, 'iPad 또는 Galaxy 중 현재 턴인 기기가 한 턴을 진행해야 합니다.').toBeTruthy();
+        await expect(ipadPage.getByTestId('game-screen')).toBeVisible();
+        await expect(galaxyPage.getByTestId('game-screen')).toBeVisible();
+      });
 
-      assertConsoleErrorsWithinQaAllowance(consoleErrors);
+      await runQaStep(testInfo, '기기전 09 콘솔 에러 허용 범위 확인', async () => {
+        assertConsoleErrorsWithinQaAllowance(consoleErrors);
+      });
     } finally {
       await ipadContext.close().catch(() => {});
       await galaxyContext.close().catch(() => {});
