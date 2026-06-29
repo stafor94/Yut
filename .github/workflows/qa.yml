@@ -29,31 +29,7 @@ jobs:
       - name: Summarize QA failure
         if: always()
         run: |
-          {
-            echo "## Game QA 실행 요약"
-            echo
-            echo "- 커밋: \`${GITHUB_SHA::7}\`"
-            echo "- 이벤트: \`${GITHUB_EVENT_NAME}\`"
-            echo "- 실행 결과: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo
-            if [ -s build.log ]; then
-              echo "### npm run build 마지막 로그"
-              echo '```text'
-              tail -n 80 build.log
-              echo '```'
-              echo
-            fi
-            if [ -s playwright.log ]; then
-              echo "### npx playwright test 마지막 로그"
-              echo '```text'
-              tail -n 160 playwright.log
-              echo '```'
-              echo
-            fi
-            if [ ! -s build.log ] && [ ! -s playwright.log ]; then
-              echo "아직 빌드 또는 Playwright 로그가 생성되지 않았습니다. 실패한 이전 단계 로그를 확인해주세요."
-            fi
-          } > qa-failure-summary.md
+          node .github/scripts/summarize-qa.mjs
           cat qa-failure-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Playwright report
         if: always()
@@ -66,6 +42,14 @@ jobs:
             build.log
             playwright.log
             qa-failure-summary.md
+            qa-environment.md
+            qa-failed-tests.md
+            qa-failure-details.md
+            qa-artifacts.md
+            qa-console-summary.md
+            qa-artifact-manifest.md
+            console-log.txt
+            screenshots
           if-no-files-found: ignore
       - name: Create issue on QA failure
         if: failure()
@@ -83,7 +67,8 @@ jobs:
               `${targetLine}\n` +
               `- 커밋: \`${context.sha.slice(0, 7)}\`\n` +
               `- Actions 실행: ${runUrl}\n\n` +
-              `빌드 또는 Playwright E2E가 실패했습니다. 아래 요약에서 실패 원인을 먼저 확인하고, 전체 로그가 필요할 때만 \`playwright-report\` 아티팩트를 내려받아주세요.\n\n` +
+              `빌드 또는 Playwright E2E가 실패했습니다. 아래 요약에 실행 환경, 실패 테스트 후보, 실패 상세 블록, 브라우저 콘솔 마지막 로그, 아티팩트 위치를 함께 남깁니다.\n` +
+              `trace/video/screenshot 전체가 필요하면 Actions 실행 페이지의 \`playwright-report\` 아티팩트를 확인해주세요.\n\n` +
               summary;
             const query = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "[Game QA 실패] ${targetLabel}"`;
             const { data: searchResult } = await github.rest.search.issuesAndPullRequests({ q: query, per_page: 1 });
