@@ -15,12 +15,12 @@ const getCreatedAtMillis = (createdAt: unknown) => {
   return 0;
 };
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; }
-export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; updatedAt?: unknown; turnVersion: number; lastSequence?: number; }
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'roll_yut' | 'move_piece_resolved' | 'item_used' | 'trap_placed' | 'game_finished';
 export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
-export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; clientMutationId?: string; clientCreatedAt?: number };
+export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; clientMutationId?: string; clientCreatedAt?: number; expectedPreviousSequence?: number };
 
 const COLORS = ['red', 'blue', 'green', 'yellow'];
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
@@ -242,8 +242,11 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(gameStateRef);
-    const currentVersion = snapshot.exists() ? Number(snapshot.data().turnVersion ?? 0) : 0;
-    const currentSequence = snapshot.exists() ? Number(snapshot.data().lastSequence ?? 0) : 0;
+    const currentState = snapshot.exists() ? snapshot.data() as SyncedGameState : null;
+    const currentVersion = Number(currentState?.turnVersion ?? 0);
+    const currentSequence = Number(currentState?.lastSequence ?? 0);
+    if (meta.clientMutationId && currentState?.lastClientMutationId === meta.clientMutationId) return currentVersion;
+    if (typeof meta.expectedPreviousSequence === 'number' && currentSequence !== meta.expectedPreviousSequence) return null;
     const nextVersion = currentVersion + 1;
     const nextSequence = currentSequence + 1;
     const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
@@ -252,12 +255,12 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
       type: meta.type ?? 'state_snapshot',
       actorId: meta.actorId ?? 'system',
       payload: meta.payload ?? {},
-      expectedPreviousSequence: currentSequence,
+      expectedPreviousSequence: meta.expectedPreviousSequence ?? currentSequence,
       ...(meta.clientMutationId ? { clientMutationId: meta.clientMutationId } : {}),
       clientCreatedAt: meta.clientCreatedAt ?? Date.now(),
       createdAt: serverTimestamp(),
     });
-    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence }, { merge: true });
+    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, ...(meta.clientMutationId ? { lastClientMutationId: meta.clientMutationId } : {}) }, { merge: true });
     return nextVersion;
   });
 }
