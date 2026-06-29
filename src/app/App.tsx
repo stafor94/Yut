@@ -281,7 +281,7 @@ export function App() {
   }, [playableSeats, turnOrderIds]);
   const activeSeat = turnSeats[turnIndex % turnSeats.length];
   const hostSeatId = playableSeats.find((seat) => seat.isHost)?.id ?? 'host';
-  const localSeatId = activeRoomId && user ? user.uid : hostSeatId;
+  const localSeatId = activeRoomId ? user?.uid ?? '' : hostSeatId;
   const isSpectator = Boolean(activeRoomId && user && spectators.some((spectator) => spectator.id === user.uid));
   const isMyTurn = activeSeat?.id === localSeatId && !activeSeat.isAI && !isSpectator;
   const getSeatById = (seatId: string) => playableSeats.find((seat) => seat.id === seatId);
@@ -989,9 +989,14 @@ export function App() {
     setMessage('방으로 이동하는 중입니다...');
     const nextMaxPlayers = room.maxPlayers as 2 | 3 | 4;
     try {
-      if (user && room.id) await leaveDuplicatePlayerRooms(user.uid, room.id);
+      const joiningUser = !asHost && room.id && isFirebaseConfigured ? user ?? await Promise.race([
+        signInAsGuest(),
+        new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('JOIN_ROOM_TIMEOUT')), CREATE_ROOM_TIMEOUT_MS)),
+      ]) : user;
+      if (!asHost && room.id && isFirebaseConfigured && !joiningUser) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
+      if (joiningUser && room.id) await leaveDuplicatePlayerRooms(joiningUser.uid, room.id);
       await leavePreviousOnlineRoom(room.id ?? '');
-      const joinResult = !asHost && room.id && user ? await joinRoom(room.id, { userId: user.uid, nickname, playMode: room.playMode }) : null;
+      const joinResult = !asHost && room.id && joiningUser ? await joinRoom(room.id, { userId: joiningUser.uid, nickname, playMode: room.playMode }) : null;
       setActiveRoomId(room.id ?? '');
       setIsRoomHost(asHost);
       setActiveRoomTitle(room.title);
@@ -1000,8 +1005,8 @@ export function App() {
       setItemMode(room.itemMode);
       setPieceCount(room.pieceCount ?? 4);
       const nextSeats = createSeats(nickname, room.playMode, nextMaxPlayers);
-      if (joinResult?.role === 'player' && user) {
-        setSeats(seatsWithJoinedPlayer([], user.uid, nickname, room.playMode, nextMaxPlayers, joinResult.seatIndex));
+      if (joinResult?.role === 'player' && joiningUser) {
+        setSeats(seatsWithJoinedPlayer([], joiningUser.uid, nickname, room.playMode, nextMaxPlayers, joinResult.seatIndex));
       } else {
         setSeats(nextSeats);
       }
@@ -1842,7 +1847,7 @@ export function App() {
           <h2>방 목록</h2>
           <span>{rooms.length ? `${rooms.length}개의 방이 참여 또는 관전을 기다리고 있어요.` : '새 방을 만들거나 친구의 방을 기다려보세요.'}</span>
         </div>
-        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span></div><button onClick={() => { void openWaitingRoom(room); }}>{room.status === 'playing' ? '관전' : '참여'}</button></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong><span>왼쪽에서 방을 만들면 친구들이 바로 참여할 수 있어요.</span></div>}</div>
+        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span></div><button disabled={isFirebaseConfigured && !user} onClick={() => { void openWaitingRoom(room); }}>{isFirebaseConfigured && !user ? '입장 준비 중' : room.status === 'playing' ? '관전' : '참여'}</button></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong><span>왼쪽에서 방을 만들면 친구들이 바로 참여할 수 있어요.</span></div>}</div>
       </section>
     </section>}
 
