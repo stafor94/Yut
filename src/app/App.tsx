@@ -925,23 +925,25 @@ export function App() {
   }
 
   async function handleCreateRoom() {
-    if (isFirebaseConfigured && !user) { setMessage('입장 준비가 끝난 뒤 다시 시도하세요.'); return; }
     if (!nickname.trim()) { setMessage('닉네임을 먼저 정해주세요.'); return; }
     if (isCreatingRoom) return;
     setIsCreatingRoom(true);
-    setMessage('방을 만드는 중입니다. 잠시만 기다려주세요...');
+    setMessage(isFirebaseConfigured && !user ? '입장 준비를 마친 뒤 방을 만드는 중입니다...' : '방을 만드는 중입니다. 잠시만 기다려주세요...');
+    let roomHost = user;
     try {
       const timeout = new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('CREATE_ROOM_TIMEOUT')), CREATE_ROOM_TIMEOUT_MS));
       if (!isFirebaseConfigured) {
         await openWaitingRoom({ title, itemMode, maxPlayers, playMode, pieceCount }, '', true);
         return;
       }
-      const roomId = await Promise.race([createRoom({ title, hostId: user!.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
+      roomHost = roomHost ?? await Promise.race([signInAsGuest(), timeout]);
+      if (!roomHost) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
+      const roomId = await Promise.race([createRoom({ title, hostId: roomHost.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
       await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, '', true);
     } catch (error) {
-      if (isFirebaseConfigured && user && error instanceof Error && error.message === 'CREATE_ROOM_TIMEOUT') {
+      if (isFirebaseConfigured && roomHost && error instanceof Error && error.message === 'CREATE_ROOM_TIMEOUT') {
         setMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
-        const recoveredRoom = await findActiveRoomByHost(user.uid);
+        const recoveredRoom = await findActiveRoomByHost(roomHost.uid);
         if (recoveredRoom) {
           await openWaitingRoom(recoveredRoom, '방 생성은 완료되어 대기실로 이동했습니다.', true);
         } else {
