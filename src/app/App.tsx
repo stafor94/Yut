@@ -248,6 +248,7 @@ export function App() {
   const completedActionIdsRef = useRef<Set<string>>(new Set());
   const rollInProgressRef = useRef(false);
   const moveInProgressRef = useRef(false);
+  const pendingLocalRemoteActionsRef = useRef<Set<GameAction['type']>>(new Set());
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
   const currentRollRef = useRef<YutResult | null>(null);
   const rollAnimationTimerRef = useRef<number | null>(null);
@@ -562,16 +563,14 @@ export function App() {
       setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
       setRollResultReadyAt(nextRollResultReadyAt);
       setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
+      pendingLocalRemoteActionsRef.current.clear();
       window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
     });
   }, [activeRoomId, isRoomHost, screen]);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || applyingSyncedStateRef.current) return;
-    const isTurnOwnerWriter = Boolean(activeSeat?.id === localSeatId && !isSpectator);
-    const isPostTurnActionWriter = Boolean(lastMovedSeatId === localSeatId || pendingTrapPlacement?.ownerId === localSeatId);
-    const isHostOnlyPhaseWriter = Boolean(isRoomHost && (!gameStartedAt || turnOrderPhase.active || turnOrderIntro || activeSeat?.isAI));
-    if (!isTurnOwnerWriter && !isPostTurnActionWriter && !isHostOnlyPhaseWriter) return;
+    if (!isRoomHost) return;
     const clientMutationId = `${localSeatId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const pendingSequenceMeta = pendingSequenceMetaRef.current;
     pendingSequenceMetaRef.current = null;
@@ -626,7 +625,7 @@ export function App() {
     const hideTimer = window.setTimeout(() => setTurnOrderIntro((current) => current ? { ...current, visible: false } : current), hideDelay);
     const readyTimer = window.setTimeout(() => {
       setTurnOrderIntro(null);
-      setGameStartedAt(Date.now());
+      setGameStartedAt((current) => current ?? Date.now());
     }, readyDelay);
     return () => { window.clearTimeout(hideTimer); window.clearTimeout(readyTimer); };
   }, [turnOrderIntro?.readyAt]);
@@ -770,6 +769,14 @@ export function App() {
   async function submitRemoteAction(type: GameAction['type'], payload: Record<string, unknown> = {}) {
     if (!activeRoomId) return;
     await submitGameAction(activeRoomId, { type, actorId: localSeatId, payload });
+  }
+
+  function submitLocalRemoteActionOnce(type: GameAction['type'], payload: Record<string, unknown> = {}) {
+    if (pendingLocalRemoteActionsRef.current.has(type)) return;
+    pendingLocalRemoteActionsRef.current.add(type);
+    void submitRemoteAction(type, payload).catch(() => {
+      pendingLocalRemoteActionsRef.current.delete(type);
+    });
   }
 
   function retryRemoteGameAction(action: GameAction) {
@@ -994,6 +1001,7 @@ export function App() {
     const nextTurnOrderIds = orderedSeats.map((seat) => seat.id);
     const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
     const nextTurnOrderIntro = { order, visible: true, readyAt: Date.now() + TURN_ORDER_REVEAL_MS };
+    const nextGameStartedAt = nextTurnOrderIntro.readyAt;
     const orderText = orderedSeats.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join(' / ');
     const introLog = makeLog(`랜덤 차례 순서: ${orderText}`);
     resetGameBoard(nextPieces);
@@ -1002,7 +1010,7 @@ export function App() {
     setTurnOrderIds(nextTurnOrderIds);
     setTurnOrderIntro(nextTurnOrderIntro);
     setTurnOrderPhase({ active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
-    setGameStartedAt(null);
+    setGameStartedAt(nextGameStartedAt);
     setScreen('game');
     if (activeRoomId && isRoomHost) {
       void saveGameState(activeRoomId, {
@@ -1018,7 +1026,7 @@ export function App() {
         winner: '',
         captureEffect: null,
         trapEffect: null,
-        gameStartedAt: null,
+        gameStartedAt: nextGameStartedAt,
         turnOrderIntro: nextTurnOrderIntro,
         pendingTrapPlacement: null,
         rollLockUntil: 0,
@@ -1056,12 +1064,13 @@ export function App() {
     const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
     const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
     const nextTurnOrderIntro = { order, visible: true, readyAt: Date.now() + TURN_ORDER_REVEAL_MS };
+    const nextGameStartedAt = nextTurnOrderIntro.readyAt;
     const orderText = orderedSeats.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join('\n');
     const finalOrderLog = `최종 차례 순서: ${orderText.replace(/\n/g, ' / ')}`;
     const ceremonyLogs = [...timeoutLogTexts, ...getTurnOrderLogTexts(rankedRolls, orderedSeats), finalOrderLog].reverse().map((text) => makeLog(text));
 
     return {
-      local: { completedRolls, orderedSeats, nextPieces, nextBoardItems, nextTurnOrderIds, nextTurnOrderPhase, nextTurnOrderIntro, finalOrderLog, nextLogs: [...ceremonyLogs, ...currentLogs] },
+      local: { completedRolls, orderedSeats, nextPieces, nextBoardItems, nextTurnOrderIds, nextTurnOrderPhase, nextTurnOrderIntro, nextGameStartedAt, finalOrderLog, nextLogs: [...ceremonyLogs, ...currentLogs] },
       patch: {
         pieces: nextPieces,
         boardItems: nextBoardItems,
@@ -1075,7 +1084,7 @@ export function App() {
         winner: '',
         captureEffect: null,
         trapEffect: null,
-        gameStartedAt: null,
+        gameStartedAt: nextGameStartedAt,
         turnOrderIntro: nextTurnOrderIntro,
         pendingTrapPlacement: null,
         rollLockUntil: 0,
@@ -1099,7 +1108,7 @@ export function App() {
     setTurnOrderIds(local.nextTurnOrderIds);
     setTurnOrderPhase(local.nextTurnOrderPhase);
     setTurnOrderIntro(local.nextTurnOrderIntro);
-    setGameStartedAt(null);
+    setGameStartedAt(local.nextGameStartedAt);
     setLogs(local.nextLogs);
   }
 
@@ -1217,6 +1226,11 @@ export function App() {
   }
   function rollYut() {
     if (!activeSeat || !canRollNow) return;
+    if (activeRoomId && !isRoomHost) {
+      submitLocalRemoteActionOnce('roll_yut', forcedRoll ? { forcedResult: forcedRoll } : {});
+      setForcedRoll(null);
+      return;
+    }
     setShieldedPieceIds([]);
     rollYutFor(activeSeat);
   }
@@ -1373,6 +1387,15 @@ export function App() {
     const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId && canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
     const fallbackPiece = pieces.find((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
     if (!selectedPiece && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
+    if (activeRoomId && !isRoomHost) {
+      const pieceToMove = selectedPiece ?? fallbackPiece;
+      submitLocalRemoteActionOnce('move_piece', {
+        pieceId: pieceToMove?.id ?? '',
+        extraSteps,
+        branchChoice: getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', branchChoice),
+      });
+      return true;
+    }
     if (!selectedPiece && !fallbackPiece) {
       if (steps < 0) {
         addLog(`${activeSeat.label}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
