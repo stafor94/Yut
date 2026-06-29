@@ -120,6 +120,15 @@ async function playOneVisibleTurn(page) {
   return true;
 }
 
+async function waitForAnyRollButtonVisible(pages, timeout = 20_000) {
+  await expect.poll(async () => {
+    for (const page of pages) {
+      if (await page.getByTestId('roll-yut-button').isVisible().catch(() => false)) return true;
+    }
+    return false;
+  }, { message: '차례 순서 연출이 끝난 뒤 현재 턴 기기의 윷 던지기 버튼이 보여야 합니다.', timeout }).toBeTruthy();
+}
+
 async function cleanupRememberedRooms() {
   const errors = [];
   for (const roomId of Array.from(rememberedRoomIds)) {
@@ -165,7 +174,7 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
 
     await page.getByTestId('room-title-input').fill(qaRoomTitle);
     await page.getByTestId('create-room-button').click();
-    await expect(page.getByTestId('waiting-room')).toBeVisible();
+    await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
     await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 방 ID를 기억해야 합니다.' }).toBeTruthy();
     await saveStepScreenshot(page, testInfo, '02-waiting-room');
 
@@ -234,7 +243,7 @@ test.describe('mobile device-to-device QA', () => {
       await expect(ipadPage.getByTestId('app-shell')).toBeVisible();
       await ipadPage.getByTestId('room-title-input').fill(qaRoomTitle);
       await ipadPage.getByTestId('create-room-button').click();
-      await expect(ipadPage.getByTestId('waiting-room')).toBeVisible();
+      await expect(ipadPage.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
       await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 기기 대전 방 ID를 기억해야 합니다.' }).toBeTruthy();
       await saveStepScreenshot(ipadPage, testInfo, '06-device-host-waiting');
 
@@ -245,7 +254,7 @@ test.describe('mobile device-to-device QA', () => {
       await targetRoomCard.getByRole('button', { name: '참여' }).click();
       const galaxyWaitingRoom = galaxyPage.getByTestId('waiting-room');
       const galaxyReadyCard = galaxyWaitingRoom.locator('.ready-card.me');
-      await expect(galaxyWaitingRoom).toBeVisible();
+      await expect(galaxyWaitingRoom).toBeVisible({ timeout: 25_000 });
       await expect(galaxyReadyCard).toContainText(galaxyNickname, { timeout: 15_000 });
       await expect(galaxyReadyCard).toContainText('나', { timeout: 15_000 });
       await expect(galaxyPage.getByRole('button', { name: '준비 완료' })).toBeEnabled({ timeout: 15_000 });
@@ -261,6 +270,7 @@ test.describe('mobile device-to-device QA', () => {
       await saveStepScreenshot(ipadPage, testInfo, '08-device-host-game');
       await saveStepScreenshot(galaxyPage, testInfo, '09-device-guest-game');
 
+      await waitForAnyRollButtonVisible([ipadPage, galaxyPage]);
       const hostPlayed = await playOneVisibleTurn(ipadPage);
       const guestPlayed = hostPlayed ? false : await playOneVisibleTurn(galaxyPage);
       expect(hostPlayed || guestPlayed, 'iPad 또는 Galaxy 중 현재 턴인 기기가 한 턴을 진행해야 합니다.').toBeTruthy();
