@@ -1,22 +1,78 @@
-name: Game QA
+name: Merged PR QA and Deploy
 
 on:
-  push:
-  workflow_dispatch:
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 permissions:
   contents: read
   issues: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: merged-pr-qa-deploy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-e2e:
+  qa-and-deploy:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm install
+      - name: Prepare Firebase environment
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const rawConfig = process.env.FIREBASE_CONFIG?.trim();
+          const keyMap = {
+            apiKey: 'VITE_FIREBASE_API_KEY',
+            authDomain: 'VITE_FIREBASE_AUTH_DOMAIN',
+            projectId: 'VITE_FIREBASE_PROJECT_ID',
+            storageBucket: 'VITE_FIREBASE_STORAGE_BUCKET',
+            messagingSenderId: 'VITE_FIREBASE_MESSAGING_SENDER_ID',
+            appId: 'VITE_FIREBASE_APP_ID',
+          };
+
+          function parseFirebaseConfig(value) {
+            if (!value) return {};
+
+            const objectText = value.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\})\s*;?/)?.[1] ?? value;
+            const jsonish = objectText
+              .replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3')
+              .replace(/'/g, '"')
+              .replace(/,\s*}/g, '}');
+
+            return JSON.parse(jsonish);
+          }
+
+          const config = parseFirebaseConfig(rawConfig);
+          const lines = [];
+
+          for (const [firebaseKey, envKey] of Object.entries(keyMap)) {
+            const value = process.env[envKey] || config[firebaseKey];
+            if (value) lines.push(`${envKey}=${value}`);
+          }
+
+          fs.writeFileSync('.env.production', `${lines.join('\n')}\n`);
+          console.log(`Wrote ${lines.length} Firebase build variables to .env.production`);
+          NODE
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
       - name: Build app
         run: |
           set -o pipefail
@@ -76,10 +132,13 @@ jobs:
               return `${text.slice(0, maxLength)}\n\n... ${text.length - maxLength}자를 생략했습니다. 이슈 본문에는 핵심 로그를 우선 포함했으며, 원본 전체 로그가 필요하면 Actions 아티팩트의 qa-failure-summary.md를 확인해주세요.`;
             };
             const summary = truncate(readFile('qa-issue-summary.md', '요약 로그를 생성하지 못했습니다. Actions 실행 로그를 확인해주세요.'));
-            const refName = context.ref.replace('refs/heads/', '');
-            const targetLabel = `브랜치 ${refName}`;
-            const title = `[Game QA 실패] 브랜치 ${refName}`;
-            const targetLine = `- 브랜치: \`${refName}\``;
+            const pullRequest = context.payload.pull_request;
+            const refName = pullRequest ? `${pullRequest.head.ref} → ${pullRequest.base.ref}` : context.ref.replace('refs/heads/', '');
+            const targetLabel = `PR ${pullRequest?.number ?? refName}`;
+            const title = `[Game QA 실패] ${targetLabel}`;
+            const targetLine = pullRequest
+              ? `- PR: #${pullRequest.number} \`${pullRequest.head.ref}\` → \`${pullRequest.base.ref}\``
+              : `- 브랜치: \`${refName}\``;
             const body = truncate(`## Game QA 실패\n\n` +
               `${targetLine}\n` +
               `- 커밋: \`${context.sha.slice(0, 7)}\`\n` +
@@ -115,3 +174,8 @@ jobs:
               await core.summary.write();
               throw error;
             }
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - uses: actions/deploy-pages@v4
