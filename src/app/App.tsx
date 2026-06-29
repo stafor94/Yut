@@ -262,6 +262,8 @@ export function App() {
   const lastBranchControlKeyRef = useRef('');
   const lastSavedStateFingerprintRef = useRef('');
   const savingStateFingerprintRef = useRef('');
+  const aiTurnActionKeyRef = useRef('');
+  const liveTurnGuardRef = useRef({ activeSeatId: '', winner: '', movingPieceId: '', pendingTrapPlacement: false, turnOrderActive: false, turnOrderIntro: false });
   const activeRoomIdRef = useRef('');
   const logIdRef = useRef(0);
   const spectatorIdsRef = useRef<Set<string>>(new Set());
@@ -330,6 +332,15 @@ export function App() {
   const isTurnOrderTimedOut = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline && playableSeats.some((seat) => !rolledTurnOrderSeatIds.has(seat.id)));
   const isTurnOrderFallbackDue = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline + TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS);
   const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut && (!activeRoomId || isRoomHost));
+  liveTurnGuardRef.current = {
+    activeSeatId: activeSeat?.id ?? '',
+    winner,
+    movingPieceId,
+    pendingTrapPlacement: Boolean(pendingTrapPlacement),
+    turnOrderActive: turnOrderPhase.active,
+    turnOrderIntro: Boolean(turnOrderIntro),
+  };
+
   const turnOrderTimerText = (() => {
     if (!turnOrderPhase.active) return '';
     if (turnOrderPhase.readyAt > turnOrderClock) {
@@ -690,9 +701,15 @@ export function App() {
   useEffect(() => {
     if (screen !== 'game' || winner || turnOrderPhase.active || turnOrderIntro || itemPromptTiming || !activeSeat || !activeSeat.isAI || isMyTurn || roll || movingPieceId || pendingTrapPlacement) return undefined;
     if (activeRoomId && !isRoomHost) return undefined;
-    const timer = window.setTimeout(() => { void autoPlayTurn(activeSeat); }, TURN_DELAY_MS);
+    const actionKey = `${activeSeat.id}:${turnIndex}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
+    if (aiTurnActionKeyRef.current === actionKey) return undefined;
+    const timer = window.setTimeout(() => {
+      if (aiTurnActionKeyRef.current === actionKey) return;
+      aiTurnActionKeyRef.current = actionKey;
+      void autoPlayTurn(activeSeat, actionKey);
+    }, TURN_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, isMyTurn, isRoomHost, itemPromptTiming, movingPieceId, pendingTrapPlacement, pieces, roll, screen, turnOrderIntro, winner]);
+  }, [activeRoomId, activeSeat, isMyTurn, isRoomHost, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingTrapPlacement, pieces, roll, screen, turnIndex, turnOrderIntro, turnOrderPhase.active, winner]);
 
 
   useEffect(() => {
@@ -1546,15 +1563,35 @@ export function App() {
       .sort((left, right) => right.score - left.score)[0];
   }
 
-  async function autoPlayTurn(seat: Seat) {
-    if (!seat.isAI) return;
+  async function autoPlayTurn(seat: Seat, actionKey = `${seat.id}:${turnIndex}`) {
+    const canContinueAiTurn = () => {
+      const guard = liveTurnGuardRef.current;
+      return seat.isAI && guard.activeSeatId === seat.id && !guard.winner && !guard.movingPieceId && !guard.pendingTrapPlacement && !guard.turnOrderActive && !guard.turnOrderIntro;
+    };
+    if (!canContinueAiTurn()) {
+      if (aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
+      return;
+    }
     const nextRoll = rollYutFor(seat);
-    if (!nextRoll) return;
+    if (!nextRoll) {
+      if (aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
+      return;
+    }
     const aiMove = chooseAiMove(seat, nextRoll);
-    if (!aiMove) { setTurnIndex((current) => (current + 1) % playableSeats.length); clearRoll(); return; }
+    if (!aiMove) {
+      setTurnIndex((current) => (current + 1) % playableSeats.length);
+      clearRoll();
+      if (aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
+      return;
+    }
     setBranchChoice(aiMove.branchChoice);
     await delay(AI_MOVE_DELAY_MS);
-    await movePiece(aiMove.piece.id, nextRoll, seat, 0, aiMove.branchChoice);
+    if (!canContinueAiTurn()) {
+      if (aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
+      return;
+    }
+    const moved = await movePiece(aiMove.piece.id, nextRoll, seat, 0, aiMove.branchChoice);
+    if (!moved && aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
   }
 
   function placePendingTrap(nodeId: string, actorId = localSeatId) {

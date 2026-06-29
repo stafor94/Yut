@@ -48,12 +48,19 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   const normalizedTitle = params.title.trim();
   if (!normalizedTitle) throw new Error('방 제목을 입력해주세요.');
   const roomsRef = collection(firestore, 'rooms');
-  const existingHostRooms = await getDocs(query(roomsRef, where('hostId', '==', params.hostId)));
-  await Promise.all(existingHostRooms.docs
-    .filter((roomDoc) => ['waiting', 'finished'].includes(String(roomDoc.data().status)))
-    .map((roomDoc) => deleteRoom(roomDoc.id)));
-  const activeRoomsSnapshot = await getDocs(query(roomsRef, where('status', 'in', ['waiting', 'playing'])));
   const now = Date.now();
+  const existingHostRooms = await getDocs(query(roomsRef, where('hostId', '==', params.hostId)));
+  const staleHostRoomRefs = existingHostRooms.docs
+    .filter((roomDoc) => ['waiting', 'finished'].includes(String(roomDoc.data().status)))
+    .map((roomDoc) => roomDoc.ref);
+  if (staleHostRoomRefs.length) {
+    const cleanupBatch = writeBatch(firestore);
+    staleHostRoomRefs.forEach((roomRef) => cleanupBatch.set(roomRef, { status: 'finished', emptySince: now }, { merge: true }));
+    await cleanupBatch.commit();
+    staleHostRoomRefs.forEach((roomRef) => { void deleteRoom(roomRef.id); });
+  }
+
+  const activeRoomsSnapshot = await getDocs(query(roomsRef, where('status', 'in', ['waiting', 'playing'])));
   const activeRoomDocs = activeRoomsSnapshot.docs.filter((roomDoc) => {
     const room = roomDoc.data() as Omit<RoomSummary, 'id'>;
     const createdAt = getCreatedAtMillis(room.createdAt);
@@ -64,7 +71,10 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   const activeRooms = activeRoomDocs.map((roomDoc) => roomDoc.data() as Omit<RoomSummary, 'id'>);
   if (activeRooms.length >= MAX_ACTIVE_ROOMS) throw new Error('방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.');
   if (activeRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error('이미 존재하는 방 제목입니다. 다른 제목을 입력해주세요.');
-  const roomRef = await addDoc(roomsRef, {
+
+  const roomRef = doc(roomsRef);
+  const createBatch = writeBatch(firestore);
+  createBatch.set(roomRef, {
     title: normalizedTitle,
     hostId: params.hostId,
     maxPlayers: params.maxPlayers,
@@ -78,11 +88,12 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     currentPlayers: 1,
     createdAt: serverTimestamp(),
   });
-  await setDoc(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
-  await setDoc(doc(firestore, 'rooms', roomRef.id, 'seats', '0'), { playerId: params.hostId, updatedAt: serverTimestamp() });
+  createBatch.set(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
+  createBatch.set(doc(firestore, 'rooms', roomRef.id, 'seats', '0'), { playerId: params.hostId, updatedAt: serverTimestamp() });
   if (params.itemMode) {
-    await Promise.all(spawnInitialBoardItems().map((item) => setDoc(doc(firestore, 'rooms', roomRef.id, 'boardItems', item.id), item)));
+    spawnInitialBoardItems().forEach((item) => createBatch.set(doc(firestore, 'rooms', roomRef.id, 'boardItems', item.id), item));
   }
+  await createBatch.commit();
   return roomRef.id;
 }
 
