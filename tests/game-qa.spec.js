@@ -227,7 +227,7 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
       await saveStepScreenshot(page, testInfo, '04-game-started');
     });
 
-    for (let turn = 1; turn <= 5; turn += 1) {
+    for (let turn = 1; turn <= 10; turn += 1) {
       await runQaStep(testInfo, `05-${turn} 짧은 자동 진행 턴`, async () => {
         const rollButton = page.getByTestId('roll-yut-button');
         if (await rollButton.isVisible().catch(() => false)) {

@@ -78,8 +78,8 @@ const ROLL_ANIMATION_MS = 2600;
 const MAX_OWNED_ITEMS = 1;
 const ITEM_PICKUP_ROLL_LOCK_MS = 3000;
 const TRAP_EFFECT_MS = 3000;
-const AI_MOVE_DELAY_MS = 2000;
-const AUTO_SINGLE_MOVE_DELAY_MS = 2000;
+const AI_MOVE_DELAY_MS = 1000;
+const AUTO_SINGLE_MOVE_DELAY_MS = 1000;
 const CREATE_ROOM_TIMEOUT_MS = 12000;
 const STEP_DELAY_MS = 240;
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -844,10 +844,19 @@ export function App() {
     return `${type}:${localSeatId}:${turnKey}:${payload.itemType ?? ''}:${payload.pieceId ?? ''}`;
   };
 
+  function getActorLogName(seat: Seat | undefined) {
+    if (!seat) return '';
+    return `${seat.label}-${seat.name}`;
+  }
+
+  function withActorLogPayload(payload: Record<string, unknown> = {}, seat: Seat | undefined = getSeatById(localSeatId)) {
+    return { ...payload, actorLabel: seat?.label ?? '', actorName: seat?.name ?? '', actorLogName: getActorLogName(seat) };
+  }
+
   async function submitRemoteAction(type: GameAction['type'], payload: Record<string, unknown> = {}) {
     if (!activeRoomId) return;
     const clientActionId = String(payload.clientActionId ?? getLocalActionKey(type, payload));
-    await submitGameAction(activeRoomId, { type, actorId: localSeatId, payload: { ...payload, clientActionId } });
+    await submitGameAction(activeRoomId, { type, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId }) });
   }
 
   function submitLocalRemoteActionOnce(type: GameAction['type'], payload: Record<string, unknown> = {}) {
@@ -1302,11 +1311,13 @@ export function App() {
   function addLog(text: string) { setLogs((current) => [makeLog(text), ...current]); }
   function addLogs(texts: string[]) { setLogs((current) => [...texts].reverse().map((text) => makeLog(text)).concat(current)); }
   function renderLogText(text: string) {
-    return text.split(/(P[1-4])/g).map((part, index) => {
-      const seat = playableSeats.find((candidate) => candidate.label === part);
+    const escapedSeatTokens = playableSeats.flatMap((seat) => [seat.id, seat.label]).filter(Boolean).map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (!escapedSeatTokens.length) return text;
+    return text.split(new RegExp(`(${escapedSeatTokens.join('|')})`, 'g')).map((part, index) => {
+      const seat = playableSeats.find((candidate) => candidate.id === part || candidate.label === part);
       if (!seat) return part;
       const color = playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat);
-      return <span className="log-player-label" style={{ color }} key={`${part}-${index}`}>{part}</span>;
+      return <span className="log-player-label" style={{ color }} key={`${part}-${index}`}>{getActorLogName(seat)}</span>;
     });
   }
 
@@ -1408,7 +1419,7 @@ export function App() {
         return;
       }
 
-      void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: { ...rollPayload, clientActionId: actionKey } })
+      void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) })
         .then((result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') {
             setMessage(result.reason ?? '윷 던지기 처리에 실패했습니다.');
@@ -1606,7 +1617,7 @@ export function App() {
           });
         return true;
       }
-      void commitAuthoritativeGameAction(activeRoomId, { type: 'move_piece', actorId: localSeatId, payload: { ...payload, clientActionId: actionKey } })
+      void commitAuthoritativeGameAction(activeRoomId, { type: 'move_piece', actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) })
         .then((result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') setMessage(result.reason ?? '말 이동 처리에 실패했습니다.');
         })
