@@ -1,19 +1,21 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const isCi = Boolean(process.env.CI);
+
 export default defineConfig({
   testDir: './tests',
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
-  reporter: [['html', { outputFolder: 'playwright-report', open: 'never' }], ['list']],
+  reporter: isCi ? [['list']] : [['html', { outputFolder: 'playwright-report', open: 'never' }], ['list']],
   outputDir: 'test-results',
   use: {
     baseURL: 'http://127.0.0.1:4173',
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
-    trace: 'retain-on-failure',
+    video: isCi ? 'off' : 'retain-on-failure',
+    trace: isCi ? 'off' : 'retain-on-failure',
   },
   webServer: {
     command: 'npm run preview -- --host 127.0.0.1 --port 4173',
