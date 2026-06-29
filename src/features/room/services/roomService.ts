@@ -238,7 +238,23 @@ async function deleteRoomSubcollections(roomId: string) {
 
 const makeSequenceDocId = (sequence: number) => String(sequence).padStart(SEQUENCE_ID_PAD_LENGTH, '0');
 
-const makeFirestoreSafeId = (value: string) => value.replace(/\//g, '_').slice(0, 140) || `action_${Date.now()}`;
+const hashFirestoreId = (value: string) => {
+  let hash = 0xcbf29ce484222325n;
+  const prime = 0x100000001b3n;
+  const mask = 0xffffffffffffffffn;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= BigInt(value.charCodeAt(index));
+    hash = (hash * prime) & mask;
+  }
+  return hash.toString(16).padStart(16, '0');
+};
+
+const makeFirestoreSafeId = (value: string) => {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return `action_${Date.now()}`;
+  const readablePrefix = trimmedValue.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80);
+  return `${readablePrefix || 'action'}_${hashFirestoreId(trimmedValue)}`;
+};
 const getClientMutationDocRef = (roomId: string, clientMutationId: string) => doc(db!, 'rooms', roomId, 'processedActions', makeFirestoreSafeId(clientMutationId));
 
 
