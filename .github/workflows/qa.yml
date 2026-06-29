@@ -26,22 +26,34 @@ jobs:
         run: |
           set -o pipefail
           npx playwright test 2>&1 | tee playwright.log
+      - name: Prune bulky QA artifacts
+        if: always()
+        run: |
+          rm -rf playwright-report screenshots
+          find test-results -type f \( -name '*.zip' -o -name '*.webm' -o -name '*.mp4' \) -delete 2>/dev/null || true
+          max_bytes=$((50 * 1024 * 1024))
+          current_bytes=$(du -sb test-results *.log console-log.txt 2>/dev/null | awk '{sum += $1} END {print sum + 0}')
+          if [ "$current_bytes" -gt "$max_bytes" ]; then
+            echo "QA artifact candidates are ${current_bytes} bytes, removing test-results to stay below 50MB. Issue body and logs remain."
+            rm -rf test-results
+          fi
+          du -sh test-results *.log console-log.txt 2>/dev/null || true
       - name: Summarize QA failure
         if: always()
         run: |
           node .github/scripts/summarize-qa.mjs
           cat qa-failure-summary.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload Playwright report
-        if: always()
+      - name: Upload QA failure summary
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: qa-failure-summary
           path: |
-            playwright-report
             test-results
             build.log
             playwright.log
             qa-failure-summary.md
+            qa-issue-summary.md
             qa-environment.md
             qa-failed-tests.md
             qa-failure-details.md
@@ -49,8 +61,8 @@ jobs:
             qa-console-summary.md
             qa-artifact-manifest.md
             console-log.txt
-            screenshots
           if-no-files-found: ignore
+          retention-days: 7
       - name: Create issue on QA failure
         if: failure()
         uses: actions/github-script@v7
@@ -58,32 +70,48 @@ jobs:
           script: |
             const fs = require('node:fs');
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const summary = fs.existsSync('qa-failure-summary.md') ? fs.readFileSync('qa-failure-summary.md', 'utf8') : '요약 로그를 생성하지 못했습니다. Actions 실행 로그를 확인해주세요.';
+            const readFile = (filePath, fallback) => fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : fallback;
+            const truncate = (text, maxLength = 55_000) => {
+              if (text.length <= maxLength) return text;
+              return `${text.slice(0, maxLength)}\n\n... ${text.length - maxLength}자를 생략했습니다. 이슈 본문에는 핵심 로그를 우선 포함했으며, 원본 전체 로그가 필요하면 Actions 아티팩트의 qa-failure-summary.md를 확인해주세요.`;
+            };
+            const summary = truncate(readFile('qa-issue-summary.md', '요약 로그를 생성하지 못했습니다. Actions 실행 로그를 확인해주세요.'));
             const refName = context.ref.replace('refs/heads/', '');
             const targetLabel = `브랜치 ${refName}`;
             const title = `[Game QA 실패] 브랜치 ${refName}`;
             const targetLine = `- 브랜치: \`${refName}\``;
-            const body = `## Game QA 실패\n\n` +
+            const body = truncate(`## Game QA 실패\n\n` +
               `${targetLine}\n` +
               `- 커밋: \`${context.sha.slice(0, 7)}\`\n` +
               `- Actions 실행: ${runUrl}\n\n` +
-              `빌드 또는 Playwright E2E가 실패했습니다. 아래 요약에 실행 환경, 실패 테스트 후보, 실패 상세 블록, 브라우저 콘솔 마지막 로그, 아티팩트 위치를 함께 남깁니다.\n` +
-              `trace/video/screenshot 전체가 필요하면 Actions 실행 페이지의 \`playwright-report\` 아티팩트를 확인해주세요.\n\n` +
-              summary;
+              `빌드 또는 Playwright E2E가 실패했습니다. 이 Issue 본문에 자동 추정 원인, 실패 테스트, 핵심 실패 로그, 콘솔/Playwright 꼬리 로그를 함께 남깁니다. 실패한 테스트의 error-context와 핵심 로그가 필요할 때만 Actions 아티팩트 \`qa-failure-summary\`를 추가로 확인하세요.\n\n` +
+              summary);
             const query = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "[Game QA 실패] ${targetLabel}"`;
-            const { data: searchResult } = await github.rest.search.issuesAndPullRequests({ q: query, per_page: 1 });
-            if (searchResult.items.length > 0) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: searchResult.items[0].number,
-                body: `동일 대상에서 Game QA가 다시 실패했습니다.\n\n- 커밋: \`${context.sha.slice(0, 7)}\`\n- Actions 실행: ${runUrl}\n\n${summary}`,
-              });
-            } else {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-              });
+            try {
+              const { data: searchResult } = await github.rest.search.issuesAndPullRequests({ q: query, per_page: 1 });
+              if (searchResult.items.length > 0) {
+                const issueNumber = searchResult.items[0].number;
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  body: truncate(`동일 대상에서 Game QA가 다시 실패했습니다.\n\n- 커밋: \`${context.sha.slice(0, 7)}\`\n- Actions 실행: ${runUrl}\n\n${summary}`),
+                });
+                core.notice(`기존 QA 실패 Issue #${issueNumber}에 실패 요약 댓글을 추가했습니다.`);
+              } else {
+                const { data: issue } = await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                });
+                core.notice(`새 QA 실패 Issue #${issue.number}를 생성했습니다.`);
+              }
+            } catch (error) {
+              core.error(`QA 실패 Issue 생성/댓글 추가에 실패했습니다: ${error.message}`);
+              core.summary
+                .addHeading('QA 실패 Issue 연동 실패')
+                .addRaw(`Issue 생성/댓글 추가 중 오류가 발생했습니다.\n\n- 오류: ${error.message}\n- 검색 쿼리: ${query}\n- 실행 URL: ${runUrl}`);
+              await core.summary.write();
+              throw error;
             }

@@ -6,6 +6,7 @@ const screenshotDir = path.join(process.cwd(), 'screenshots');
 const consoleLogPath = path.join(process.cwd(), 'console-log.txt');
 
 async function saveStepScreenshot(page, testInfo, step) {
+  if (process.env.CI) return;
   await fs.mkdir(screenshotDir, { recursive: true });
   const fileName = `${testInfo.project.name.replaceAll(' ', '-')}-${String(testInfo.retry)}-${step}.png`;
   await page.screenshot({ path: path.join(screenshotDir, fileName), fullPage: true });
