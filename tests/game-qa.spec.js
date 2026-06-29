@@ -1,9 +1,85 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { initializeApp, getApps } from 'firebase/app';
+import { collection, deleteDoc, doc, getDocs, getFirestore, query, where, writeBatch } from 'firebase/firestore';
 
 const screenshotDir = path.join(process.cwd(), 'screenshots');
 const consoleLogPath = path.join(process.cwd(), 'console-log.txt');
+const roomSubcollections = ['actions', 'boardItems', 'players', 'seats', 'state', 'sequences', 'processedActions'];
+const rememberedRoomIds = new Set();
+
+async function loadFirebaseConfig() {
+  const fileEnv = {};
+  for (const fileName of ['.env.production', '.env.local', '.env']) {
+    const filePath = path.join(process.cwd(), fileName);
+    const content = await fs.readFile(filePath, 'utf8').catch(() => '');
+    for (const line of content.split('\n')) {
+      const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (match) fileEnv[match[1]] = match[2].replace(/^['"]|['"]$/g, '');
+    }
+  }
+
+  const readEnv = (key) => process.env[key] || fileEnv[key];
+  const config = {
+    apiKey: readEnv('VITE_FIREBASE_API_KEY'),
+    authDomain: readEnv('VITE_FIREBASE_AUTH_DOMAIN'),
+    projectId: readEnv('VITE_FIREBASE_PROJECT_ID'),
+    storageBucket: readEnv('VITE_FIREBASE_STORAGE_BUCKET'),
+    messagingSenderId: readEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
+    appId: readEnv('VITE_FIREBASE_APP_ID'),
+  };
+  return Object.values(config).every(Boolean) ? config : null;
+}
+
+let testDbPromise;
+async function getTestDb() {
+  if (!testDbPromise) {
+    testDbPromise = (async () => {
+      const config = await loadFirebaseConfig();
+      if (!config) return null;
+      const app = getApps().find((candidate) => candidate.name === 'qa-cleanup') ?? initializeApp(config, 'qa-cleanup');
+      return getFirestore(app);
+    })();
+  }
+  return testDbPromise;
+}
+
+async function rememberRoomIdByTitle(title) {
+  const db = await getTestDb();
+  if (!db) return null;
+  const snapshot = await getDocs(query(collection(db, 'rooms'), where('title', '==', title)));
+  const roomId = snapshot.docs[0]?.id ?? null;
+  if (roomId) rememberedRoomIds.add(roomId);
+  return roomId;
+}
+
+async function deleteRoomForQa(roomId) {
+  const db = await getTestDb();
+  if (!db || !roomId) return;
+  for (const subcollectionName of roomSubcollections) {
+    const snapshot = await getDocs(collection(db, 'rooms', roomId, subcollectionName));
+    for (let index = 0; index < snapshot.docs.length; index += 450) {
+      const batch = writeBatch(db);
+      snapshot.docs.slice(index, index + 450).forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
+      await batch.commit();
+    }
+  }
+  await deleteDoc(doc(db, 'rooms', roomId));
+}
+
+async function cleanupRememberedRooms() {
+  const errors = [];
+  for (const roomId of Array.from(rememberedRoomIds)) {
+    try {
+      await deleteRoomForQa(roomId);
+      rememberedRoomIds.delete(roomId);
+    } catch (error) {
+      errors.push(`${roomId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  expect(errors, `QA 방 폭파 실패:\n${errors.join('\n')}`).toEqual([]);
+}
 
 async function saveStepScreenshot(page, testInfo, step) {
   if (process.env.CI) return;
@@ -21,53 +97,63 @@ test.beforeEach(async ({ page }, testInfo) => {
   });
 });
 
+test.afterEach(async () => {
+  await cleanupRememberedRooms();
+});
+
 test('mobile game QA: room creation, AI fill, start, and short autoplay', async ({ page }, testInfo) => {
   const consoleErrors = [];
+  const qaRoomTitle = `QA 자동 테스트 ${testInfo.project.name} ${Date.now()}-${testInfo.retry}-${testInfo.workerIndex}`;
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text());
   });
   page.on('pageerror', (error) => consoleErrors.push(error.message));
 
-  await page.goto('/');
-  await expect(page.getByTestId('app-shell')).toBeVisible();
-  await saveStepScreenshot(page, testInfo, '01-lobby');
+  try {
+    await page.goto('/');
+    await expect(page.getByTestId('app-shell')).toBeVisible();
+    await saveStepScreenshot(page, testInfo, '01-lobby');
 
-  await page.getByTestId('room-title-input').fill(`QA 자동 테스트 ${testInfo.project.name}`);
-  await page.getByTestId('create-room-button').click();
-  await expect(page.getByTestId('waiting-room')).toBeVisible();
-  await saveStepScreenshot(page, testInfo, '02-waiting-room');
+    await page.getByTestId('room-title-input').fill(qaRoomTitle);
+    await page.getByTestId('create-room-button').click();
+    await expect(page.getByTestId('waiting-room')).toBeVisible();
+    await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 방 ID를 기억해야 합니다.' }).toBeTruthy();
+    await saveStepScreenshot(page, testInfo, '02-waiting-room');
 
-  for (const label of ['P2', 'P3', 'P4']) {
-    const button = page.getByTestId(`add-ai-${label}`);
-    if (await button.isVisible()) await button.click();
-  }
-  await expect(page.getByTestId('start-game-button')).toBeEnabled();
-  await saveStepScreenshot(page, testInfo, '03-ai-filled');
-
-  await page.getByTestId('start-game-button').click();
-  await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 8_000 });
-  await expect(page.getByTestId('play-timer')).toBeVisible();
-  await expect(page.getByTestId('players-panel')).toContainText('P1');
-  await expect(page.getByTestId('turn-indicator')).toBeVisible();
-  await expect(page.getByTestId('game-board')).toBeVisible();
-  await expect(page.locator('[data-testid^="piece-"]').first()).toBeVisible();
-  await saveStepScreenshot(page, testInfo, '04-game-started');
-
-  for (let turn = 1; turn <= 5; turn += 1) {
-    const rollButton = page.getByTestId('roll-yut-button');
-    if (await rollButton.isVisible().catch(() => false)) {
-      await expect(rollButton).toBeEnabled({ timeout: 15_000 });
-      await rollButton.click();
-      const moveButton = page.getByTestId('move-piece-button');
-      if (await moveButton.isVisible({ timeout: 4_000 }).catch(() => false)) {
-        await expect(moveButton).toBeEnabled({ timeout: 15_000 });
-        await moveButton.click();
-      }
+    for (const label of ['P2', 'P3', 'P4']) {
+      const button = page.getByTestId(`add-ai-${label}`);
+      if (await button.isVisible()) await button.click();
     }
-    await expect(page.getByTestId('game-screen')).toBeVisible();
-    await saveStepScreenshot(page, testInfo, `05-turn-${turn}`);
-    await page.waitForTimeout(600);
-  }
+    await expect(page.getByTestId('start-game-button')).toBeEnabled();
+    await saveStepScreenshot(page, testInfo, '03-ai-filled');
 
-  expect(consoleErrors, `Console/page errors:\n${consoleErrors.join('\n')}`).toEqual([]);
+    await page.getByTestId('start-game-button').click();
+    await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByTestId('play-timer')).toBeVisible();
+    await expect(page.getByTestId('players-panel')).toContainText('P1');
+    await expect(page.getByTestId('turn-indicator')).toBeVisible();
+    await expect(page.getByTestId('game-board')).toBeVisible();
+    await expect(page.locator('[data-testid^="piece-"]').first()).toBeVisible();
+    await saveStepScreenshot(page, testInfo, '04-game-started');
+
+    for (let turn = 1; turn <= 5; turn += 1) {
+      const rollButton = page.getByTestId('roll-yut-button');
+      if (await rollButton.isVisible().catch(() => false)) {
+        await expect(rollButton).toBeEnabled({ timeout: 15_000 });
+        await rollButton.click();
+        const moveButton = page.getByTestId('move-piece-button');
+        if (await moveButton.isVisible({ timeout: 4_000 }).catch(() => false)) {
+          await expect(moveButton).toBeEnabled({ timeout: 15_000 });
+          await moveButton.click();
+        }
+      }
+      await expect(page.getByTestId('game-screen')).toBeVisible();
+      await saveStepScreenshot(page, testInfo, `05-turn-${turn}`);
+      await page.waitForTimeout(600);
+    }
+
+    expect(consoleErrors, `Console/page errors:\n${consoleErrors.join('\n')}`).toEqual([]);
+  } finally {
+    await cleanupRememberedRooms();
+  }
 });
