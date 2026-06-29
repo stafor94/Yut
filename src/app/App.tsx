@@ -6,7 +6,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
-import { cleanupStaleRooms, createRoom, deleteRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cleanupStaleRooms, commitAuthoritativeGameAction, createRoom, deleteRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -1275,8 +1275,22 @@ export function App() {
   }
   function rollYut() {
     if (!activeSeat || !canRollNow) return;
-    if (activeRoomId && !isRoomHost) {
-      if (!submitLocalRemoteActionOnce('roll_yut', forcedRoll ? { forcedResult: forcedRoll } : {})) return;
+    if (activeRoomId) {
+      const actionKey = getLocalActionKey('roll_yut', forcedRoll ? { forcedResult: forcedRoll } : {});
+      if (pendingLocalRemoteActionsRef.current.has(actionKey)) return;
+      pendingLocalRemoteActionsRef.current.add(actionKey);
+      setRollInProgress(true);
+      rollInProgressRef.current = true;
+      void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: { ...(forcedRoll ? { forcedResult: forcedRoll } : {}), clientActionId: actionKey } })
+        .then((result) => {
+          if (result.status === 'rejected' || result.status === 'unsupported') setMessage(result.reason ?? '윷 던지기 처리에 실패했습니다.');
+        })
+        .catch((error) => setMessage(error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.'))
+        .finally(() => {
+          pendingLocalRemoteActionsRef.current.delete(actionKey);
+          rollInProgressRef.current = false;
+          setRollInProgress(false);
+        });
       setForcedRoll(null);
       return;
     }
@@ -1436,13 +1450,22 @@ export function App() {
     const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId && canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
     const fallbackPiece = pieces.find((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
     if (!selectedPiece && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
-    if (activeRoomId && !isRoomHost) {
+    if (activeRoomId) {
       const pieceToMove = selectedPiece ?? fallbackPiece;
-      if (!submitLocalRemoteActionOnce('move_piece', {
+      const payload = {
         pieceId: pieceToMove?.id ?? '',
         extraSteps,
         branchChoice: getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', branchChoice),
-      })) return false;
+      };
+      const actionKey = getLocalActionKey('move_piece', payload);
+      if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
+      pendingLocalRemoteActionsRef.current.add(actionKey);
+      void commitAuthoritativeGameAction(activeRoomId, { type: 'move_piece', actorId: localSeatId, payload: { ...payload, clientActionId: actionKey } })
+        .then((result) => {
+          if (result.status === 'rejected' || result.status === 'unsupported') setMessage(result.reason ?? '말 이동 처리에 실패했습니다.');
+        })
+        .catch((error) => setMessage(error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'))
+        .finally(() => pendingLocalRemoteActionsRef.current.delete(actionKey));
       return true;
     }
     if (!selectedPiece && !fallbackPiece) {
