@@ -243,15 +243,16 @@ test.describe('mobile device-to-device QA', () => {
       const targetRoomCard = galaxyPage.locator('.lobby-room-card').filter({ hasText: qaRoomTitle });
       await expect(targetRoomCard).toBeVisible({ timeout: 15_000 });
       await targetRoomCard.getByRole('button', { name: '참여' }).click();
-      await expect(galaxyPage.getByTestId('waiting-room')).toBeVisible();
-      await expect(galaxyPage.getByText(galaxyNickname)).toBeVisible();
-      await expect(galaxyPage.locator('.ready-card.me')).toContainText(galaxyNickname, { timeout: 15_000 });
-      await expect(galaxyPage.locator('.ready-card.me')).toContainText('나', { timeout: 15_000 });
+      const galaxyWaitingRoom = galaxyPage.getByTestId('waiting-room');
+      const galaxyReadyCard = galaxyWaitingRoom.locator('.ready-card.me');
+      await expect(galaxyWaitingRoom).toBeVisible();
+      await expect(galaxyReadyCard).toContainText(galaxyNickname, { timeout: 15_000 });
+      await expect(galaxyReadyCard).toContainText('나', { timeout: 15_000 });
       await expect(galaxyPage.getByRole('button', { name: '준비 완료' })).toBeEnabled({ timeout: 15_000 });
       await saveStepScreenshot(galaxyPage, testInfo, '07-device-guest-waiting');
 
       await galaxyPage.getByRole('button', { name: '준비 완료' }).click();
-      await expect(ipadPage.getByText(galaxyNickname)).toBeVisible({ timeout: 15_000 });
+      await expect(ipadPage.getByTestId('waiting-room').locator('.ready-card').filter({ hasText: galaxyNickname })).toBeVisible({ timeout: 15_000 });
       await expect(ipadPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
       await ipadPage.getByTestId('start-game-button').click();
 
