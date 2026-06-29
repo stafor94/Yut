@@ -445,6 +445,16 @@ const isSameAuthoritativeSide = (leftId: string, rightId: string, playMode: Room
 };
 const canAuthoritativeSeatControlPiece = (actorId: string, piece: AuthoritativePiece | undefined, playMode: RoomSummary['playMode'], sides: AuthoritativeSeatSide[]) => Boolean(piece && isSameAuthoritativeSide(actorId, piece.ownerId, playMode, sides));
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
+const getActionActorLogName = (action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => {
+  const actorLogName = action.payload?.actorLogName;
+  const actorLabel = action.payload?.actorLabel;
+  const actorName = action.payload?.actorName;
+  if (typeof actorLogName === 'string' && actorLogName.trim()) return actorLogName.trim();
+  if (typeof actorLabel === 'string' && typeof actorName === 'string' && actorLabel.trim() && actorName.trim()) return `${actorLabel.trim()}-${actorName.trim()}`;
+  if (typeof actorName === 'string' && actorName.trim()) return actorName.trim();
+  if (typeof actorLabel === 'string' && actorLabel.trim()) return actorLabel.trim();
+  return action.actorId;
+};
 
 function reduceAuthoritativeRoll(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>): AuthoritativeReduction {
   const turnOrderIds = state.turnOrderIds ?? [];
@@ -465,13 +475,14 @@ function reduceAuthoritativeRoll(state: SyncedGameState, action: Omit<GameAction
       roll: nextRoll,
       rollResultReadyAt,
       shieldedPieceIds: [],
-      logs: [makeAuthoritativeLog(state.logs ?? [], `${action.actorId}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`), ...(state.logs ?? [])],
+      logs: [makeAuthoritativeLog(state.logs ?? [], `${getActionActorLogName(action)}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`), ...(state.logs ?? [])],
     } satisfies GameStatePatch,
     payload: { activeSeatId: action.actorId, rollName: nextRoll.name, steps: nextRoll.steps },
   };
 }
 
 function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>, room: Omit<RoomSummary, 'id'>, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
+  const actorLogName = getActionActorLogName(action);
   const turnOrderIds = state.turnOrderIds ?? [];
   const activeActorId = turnOrderIds[Number(state.turnIndex ?? 0) % Math.max(turnOrderIds.length, 1)];
   if (!turnOrderIds.length) return makeActionReject('아직 차례 순서가 정해지지 않았습니다.');
@@ -491,7 +502,7 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
   const pushLog = (text: string) => nextLogs.unshift(makeAuthoritativeLog(nextLogs, text));
   if (!movingPiece) {
     if (steps < 0) {
-      pushLog(`${action.actorId}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
+      pushLog(`${actorLogName}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
       return {
         status: 'committed' as const,
         patch: { roll: null, branchChoice: 'outer', turnIndex: (Number(state.turnIndex ?? 0) + 1) % turnOrderIds.length, logs: nextLogs, lastMovedSeatId: action.actorId, lastMovedPieceIds: [] } satisfies GameStatePatch,
@@ -502,7 +513,7 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
   }
 
   if (steps < 0 && !movingPiece.started) {
-    pushLog(`${action.actorId}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
+    pushLog(`${actorLogName}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
     return {
       status: 'committed' as const,
       patch: { roll: null, branchChoice: 'outer', turnIndex: (Number(state.turnIndex ?? 0) + 1) % turnOrderIds.length, logs: nextLogs, lastMovedSeatId: action.actorId, lastMovedPieceIds: [] } satisfies GameStatePatch,
@@ -510,7 +521,7 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
     };
   }
   if (steps === 0) {
-    pushLog(`${action.actorId} 말은 이동할 칸 수가 없어 제자리에 머뭅니다.`);
+    pushLog(`${actorLogName} 말은 이동할 칸 수가 없어 제자리에 머뭅니다.`);
     return {
       status: 'committed' as const,
       patch: { roll: null, branchChoice: 'outer', turnIndex: (Number(state.turnIndex ?? 0) + 1) % turnOrderIds.length, logs: nextLogs, lastMovedSeatId: action.actorId, lastMovedPieceIds: [movingPiece.id] } satisfies GameStatePatch,
@@ -550,7 +561,7 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
     const shieldedFromTrap = movingGroupIds.some((id) => nextShieldedPieceIds.includes(id));
     if (shieldedFromTrap) {
       nextShieldedPieceIds = nextShieldedPieceIds.filter((id) => !movingGroupIds.includes(id));
-      pushLog(`${action.actorId} 말이 방패로 함정을 막았습니다.`);
+      pushLog(`${actorLogName} 말이 방패로 함정을 막았습니다.`);
     } else {
       nextPieces.forEach((piece) => {
         if (movingGroupIds.includes(piece.id)) {
@@ -558,7 +569,7 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
         }
       });
       currentNodeId = 'n01';
-      pushLog(`${action.actorId} 말이 함정을 밟아 시작점으로 돌아갑니다.`);
+      pushLog(`${actorLogName} 말이 함정을 밟아 시작점으로 돌아갑니다.`);
     }
   }
 
@@ -577,8 +588,8 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
     }
   }
 
-  if (movingGroupIds.length > 1) pushLog(`${action.actorId}의 말 ${movingGroupIds.length}개가 업혀 함께 이동합니다.`);
-  if (finishedMove) pushLog(`${action.actorId} 말이 완주했습니다!`);
+  if (movingGroupIds.length > 1) pushLog(`${actorLogName}의 말 ${movingGroupIds.length}개가 업혀 함께 이동합니다.`);
+  if (finishedMove) pushLog(`${actorLogName} 말이 완주했습니다!`);
   const nextTurnIndex = result.bonus || captured ? Number(state.turnIndex ?? 0) : (Number(state.turnIndex ?? 0) + 1) % turnOrderIds.length;
 
   return {
