@@ -529,7 +529,16 @@ export function App() {
     if (!activeRoomId) return undefined;
     spectatorIdsRef.current = new Set();
     return subscribeRoomPlayers(activeRoomId, (players) => {
-      setSeats(seatsFromRoomPlayers(players, playMode, maxPlayers));
+      const nextSeats = seatsFromRoomPlayers(players, playMode, maxPlayers);
+      const currentUserId = user?.uid;
+      const hasCurrentUserInSnapshot = Boolean(currentUserId && players.some((player) => player.id === currentUserId && !player.isSpectator));
+      setSeats((currentSeats) => {
+        if (!currentUserId || isRoomHost || screen !== 'waitingRoom' || hasCurrentUserInSnapshot) return nextSeats;
+        if (nextSeats.some((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI)) return nextSeats;
+        const optimisticSeat = currentSeats.find((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI);
+        if (!optimisticSeat) return nextSeats;
+        return nextSeats.map((seat) => seat.label === optimisticSeat.label ? { ...seat, ...optimisticSeat, isHost: false, isEmpty: false } : seat);
+      });
       const nextSpectators = spectatorsFromRoomPlayers(players);
       if (isRoomHost && screen === 'game') {
         const previousIds = spectatorIdsRef.current;
@@ -541,7 +550,7 @@ export function App() {
       setSpectators(nextSpectators);
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
-  }, [activeRoomId, isRoomHost, maxPlayers, playMode, screen]);
+  }, [activeRoomId, isRoomHost, maxPlayers, playMode, screen, user?.uid]);
 
   function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false) {
     if (lastAnimatedRollKeyRef.current === key) return;
