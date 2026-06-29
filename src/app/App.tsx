@@ -1098,7 +1098,8 @@ export function App() {
     setGameStartedAt(nextGameStartedAt);
     setScreen('game');
     if (activeRoomId && isRoomHost) {
-      void saveGameState(activeRoomId, {
+      const initialTurnOrderPhase = { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 };
+      const initialSyncedState = {
         pieces: nextPieces,
         turnIndex: 0,
         turnOrderIds: nextTurnOrderIds,
@@ -1120,8 +1121,41 @@ export function App() {
         itemPromptTiming: null,
         branchChoice: 'outer',
         rollResultReadyAt: 0,
-        turnOrderPhase: { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
-      }, { type: 'game_initialized', actorId: localSeatId, payload: { turnOrderIds: nextTurnOrderIds } }).then(() => updateRoomStatus(activeRoomId, 'playing'));
+        turnOrderPhase: initialTurnOrderPhase,
+      };
+      const initialStateFingerprint = JSON.stringify({
+        pieces: nextPieces,
+        turnIndex: 0,
+        turnOrderIds: nextTurnOrderIds,
+        roll: null,
+        boardItems: nextBoardItems,
+        ownedItems: {},
+        trapNodes: [],
+        shieldedPieceIds: [],
+        winner: '',
+        gameStartedAt: nextGameStartedAt,
+        pendingTrapPlacement: null,
+        rollLockUntil: 0,
+        lastMovedPieceIds: [],
+        lastMovedSeatId: '',
+        itemPromptTiming: null,
+        branchChoice: 'outer',
+        rollResultReadyAt: 0,
+        turnOrderPhase: initialTurnOrderPhase,
+      });
+      savingStateFingerprintRef.current = initialStateFingerprint;
+      void saveGameState(activeRoomId, initialSyncedState, {
+        type: 'game_initialized',
+        actorId: localSeatId,
+        clientMutationId: `game_initialized:${activeRoomId}`,
+        expectedPreviousSequence: 0,
+        payload: { turnOrderIds: nextTurnOrderIds },
+      }).then((version) => {
+        if (version) lastSavedStateFingerprintRef.current = initialStateFingerprint;
+        return updateRoomStatus(activeRoomId, 'playing');
+      }).finally(() => {
+        if (savingStateFingerprintRef.current === initialStateFingerprint) savingStateFingerprintRef.current = '';
+      });
     }
   }
 
