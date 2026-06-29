@@ -245,6 +245,7 @@ test.describe('mobile device-to-device QA', () => {
       await targetRoomCard.getByRole('button', { name: '참여' }).click();
       await expect(galaxyPage.getByTestId('waiting-room')).toBeVisible();
       await expect(galaxyPage.getByText(galaxyNickname)).toBeVisible();
+      await expect(galaxyPage.getByRole('button', { name: '준비 완료' })).toBeEnabled({ timeout: 15_000 });
       await saveStepScreenshot(galaxyPage, testInfo, '07-device-guest-waiting');
 
       await galaxyPage.getByRole('button', { name: '준비 완료' }).click();
