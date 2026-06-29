@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, devices } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { initializeApp, getApps } from 'firebase/app';
@@ -82,6 +82,44 @@ function assertConsoleErrorsWithinQaAllowance(consoleErrors) {
   expect(transientFirestoreErrors.length, `반복 Firestore 콘솔 에러:\n${transientFirestoreErrors.join('\n')}`).toBeLessThanOrEqual(1);
 }
 
+function attachConsoleErrorCapture(page, consoleErrors) {
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => consoleErrors.push(error.message));
+}
+
+async function primeQaLobbyStorage(context, { nickname, maxPlayers = '2', playMode = 'individual', itemMode = 'false' }) {
+  await context.addInitScript(({ nickname: nextNickname, maxPlayers: nextMaxPlayers, playMode: nextPlayMode, itemMode: nextItemMode }) => {
+    window.localStorage.setItem('yut-online:nickname', nextNickname);
+    window.localStorage.setItem('yut-online:maxPlayers', nextMaxPlayers);
+    window.localStorage.setItem('yut-online:playMode', nextPlayMode);
+    window.localStorage.setItem('yut-online:itemMode', nextItemMode);
+  }, { nickname, maxPlayers, playMode, itemMode });
+}
+
+async function expectTwoPlayerGameReady(page, firstNickname, secondNickname) {
+  await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('play-timer')).toBeVisible();
+  await expect(page.getByTestId('players-panel')).toContainText(firstNickname);
+  await expect(page.getByTestId('players-panel')).toContainText(secondNickname);
+  await expect(page.getByTestId('turn-indicator')).toBeVisible();
+  await expect(page.getByTestId('game-board')).toBeVisible();
+}
+
+async function playOneVisibleTurn(page) {
+  const rollButton = page.getByTestId('roll-yut-button');
+  if (!(await rollButton.isVisible().catch(() => false))) return false;
+  await expect(rollButton).toBeEnabled({ timeout: 15_000 });
+  await rollButton.click();
+  const moveButton = page.getByTestId('move-piece-button');
+  if (await moveButton.isVisible({ timeout: 4_000 }).catch(() => false)) {
+    await expect(moveButton).toBeEnabled({ timeout: 15_000 });
+    await moveButton.click();
+  }
+  return true;
+}
+
 async function cleanupRememberedRooms() {
   const errors = [];
   for (const roomId of Array.from(rememberedRoomIds)) {
@@ -118,10 +156,7 @@ test.afterEach(async () => {
 test('mobile game QA: room creation, AI fill, start, and short autoplay', async ({ page }, testInfo) => {
   const consoleErrors = [];
   const qaRoomTitle = `QA 자동 테스트 ${testInfo.project.name} ${Date.now()}-${testInfo.retry}-${testInfo.workerIndex}`;
-  page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
-  });
-  page.on('pageerror', (error) => consoleErrors.push(error.message));
+  attachConsoleErrorCapture(page, consoleErrors);
 
   try {
     await page.goto('/');
@@ -170,4 +205,71 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
   } finally {
     await cleanupRememberedRooms();
   }
+});
+
+test.describe('mobile device-to-device QA', () => {
+  test.skip(({ browserName }) => browserName !== 'webkit', '기기 간 대전은 iPad/WebKit 프로젝트에서 한 번만 실행합니다.');
+
+  test('mobile game QA: iPad and Galaxy join one individual match', async ({ playwright }, testInfo) => {
+    const consoleErrors = [];
+    const qaRoomTitle = `QA 기기 대전 ${Date.now()}-${testInfo.retry}-${testInfo.workerIndex}`;
+    const ipadNickname = 'QA iPad';
+    const galaxyNickname = 'QA Galaxy';
+    const baseURL = testInfo.project.use.baseURL ?? 'http://127.0.0.1:4173';
+    const ipadBrowser = await playwright.webkit.launch();
+    const galaxyBrowser = await playwright.chromium.launch();
+    const ipadContext = await ipadBrowser.newContext({ ...devices['iPad (gen 7)'], viewport: { width: 810, height: 1080 } });
+    const galaxyContext = await galaxyBrowser.newContext({ ...devices['Galaxy S9+'], viewport: { width: 412, height: 915 }, deviceScaleFactor: 3.5 });
+
+    try {
+      await primeQaLobbyStorage(ipadContext, { nickname: ipadNickname });
+      await primeQaLobbyStorage(galaxyContext, { nickname: galaxyNickname });
+
+      const ipadPage = await ipadContext.newPage();
+      const galaxyPage = await galaxyContext.newPage();
+      attachConsoleErrorCapture(ipadPage, consoleErrors);
+      attachConsoleErrorCapture(galaxyPage, consoleErrors);
+
+      await ipadPage.goto(baseURL);
+      await expect(ipadPage.getByTestId('app-shell')).toBeVisible();
+      await ipadPage.getByTestId('room-title-input').fill(qaRoomTitle);
+      await ipadPage.getByTestId('create-room-button').click();
+      await expect(ipadPage.getByTestId('waiting-room')).toBeVisible();
+      await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 기기 대전 방 ID를 기억해야 합니다.' }).toBeTruthy();
+      await saveStepScreenshot(ipadPage, testInfo, '06-device-host-waiting');
+
+      await galaxyPage.goto(baseURL);
+      await expect(galaxyPage.getByTestId('app-shell')).toBeVisible();
+      const targetRoomCard = galaxyPage.locator('.lobby-room-card').filter({ hasText: qaRoomTitle });
+      await expect(targetRoomCard).toBeVisible({ timeout: 15_000 });
+      await targetRoomCard.getByRole('button', { name: '참여' }).click();
+      await expect(galaxyPage.getByTestId('waiting-room')).toBeVisible();
+      await expect(galaxyPage.getByText(galaxyNickname)).toBeVisible();
+      await saveStepScreenshot(galaxyPage, testInfo, '07-device-guest-waiting');
+
+      await galaxyPage.getByRole('button', { name: '준비 완료' }).click();
+      await expect(ipadPage.getByText(galaxyNickname)).toBeVisible({ timeout: 15_000 });
+      await expect(ipadPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await ipadPage.getByTestId('start-game-button').click();
+
+      await expectTwoPlayerGameReady(ipadPage, ipadNickname, galaxyNickname);
+      await expectTwoPlayerGameReady(galaxyPage, ipadNickname, galaxyNickname);
+      await saveStepScreenshot(ipadPage, testInfo, '08-device-host-game');
+      await saveStepScreenshot(galaxyPage, testInfo, '09-device-guest-game');
+
+      const hostPlayed = await playOneVisibleTurn(ipadPage);
+      const guestPlayed = hostPlayed ? false : await playOneVisibleTurn(galaxyPage);
+      expect(hostPlayed || guestPlayed, 'iPad 또는 Galaxy 중 현재 턴인 기기가 한 턴을 진행해야 합니다.').toBeTruthy();
+      await expect(ipadPage.getByTestId('game-screen')).toBeVisible();
+      await expect(galaxyPage.getByTestId('game-screen')).toBeVisible();
+
+      assertConsoleErrorsWithinQaAllowance(consoleErrors);
+    } finally {
+      await ipadContext.close().catch(() => {});
+      await galaxyContext.close().catch(() => {});
+      await ipadBrowser.close().catch(() => {});
+      await galaxyBrowser.close().catch(() => {});
+      await cleanupRememberedRooms();
+    }
+  });
 });
