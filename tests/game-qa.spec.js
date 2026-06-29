@@ -191,6 +191,7 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
   const consoleErrors = [];
   const qaRoomTitle = `QA 자동 테스트 ${testInfo.project.name} ${Date.now()}-${testInfo.retry}-${testInfo.workerIndex}`;
   attachConsoleErrorCapture(page, consoleErrors);
+  await primeQaLobbyStorage(page.context(), { nickname: `QA-${testInfo.project.name}-${testInfo.workerIndex}`, maxPlayers: '4' });
 
   try {
     await runQaStep(testInfo, '01 로비 진입', async () => {
@@ -210,9 +211,14 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
     await runQaStep(testInfo, '03 AI 채우기 및 시작 버튼 활성화 확인', async () => {
       for (const label of ['P2', 'P3', 'P4']) {
         const button = page.getByTestId(`add-ai-${label}`);
-        if (await button.isVisible()) await button.click();
+        if (await button.isVisible()) {
+          await button.click();
+          await expect(button).toBeHidden({ timeout: 10_000 });
+        }
       }
-      await expect(page.getByTestId('start-game-button')).toBeEnabled();
+      await expect(page.getByTestId('waiting-room')).toBeVisible();
+      await expect(page.getByTestId('start-game-button')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 10_000 });
       await saveStepScreenshot(page, testInfo, '03-ai-filled');
     });
 

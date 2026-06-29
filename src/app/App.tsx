@@ -272,8 +272,10 @@ export function App() {
   const activeRoomIdRef = useRef('');
   const logIdRef = useRef(0);
   const spectatorIdsRef = useRef<Set<string>>(new Set());
+  const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const rooms = useRooms();
   const currentUser = userRef.current ?? user;
+  const currentUserId = currentUser?.uid ?? '';
   const serverStatus = isFirebaseConfigured ? (currentUser ? '온라인' : '입장 준비 중') : '연결 정보 확인 필요';
   const serverStatusTone = isFirebaseConfigured ? (currentUser ? 'online' : 'pending') : 'offline';
   const playableSeats = useMemo(() => seats.filter((seat) => !seat.isEmpty), [seats]);
@@ -287,8 +289,8 @@ export function App() {
   }, [playableSeats, turnOrderIds]);
   const activeSeat = turnSeats[turnIndex % turnSeats.length];
   const hostSeatId = playableSeats.find((seat) => seat.isHost)?.id ?? 'host';
-  const localSeatId = activeRoomId ? currentUser?.uid ?? '' : hostSeatId;
-  const isSpectator = Boolean(activeRoomId && currentUser && spectators.some((spectator) => spectator.id === currentUser.uid));
+  const localSeatId = activeRoomId ? currentUserId : hostSeatId;
+  const isSpectator = Boolean(activeRoomId && currentUserId && spectators.some((spectator) => spectator.id === currentUserId));
   const isMyTurn = activeSeat?.id === localSeatId && !activeSeat.isAI && !isSpectator;
   const getSeatById = (seatId: string) => playableSeats.find((seat) => seat.id === seatId);
   const getSeatColorIndex = (seat: Seat | undefined) => Math.max(0, Number(seat?.label.replace('P', '')) - 1);
@@ -525,8 +527,8 @@ export function App() {
       setMaxPlayers(room.maxPlayers as 2 | 3 | 4);
       setItemMode(room.itemMode);
       setPieceCount(room.pieceCount ?? 4);
-      const roomUser = userRef.current ?? currentUser;
-      setIsRoomHost(Boolean(roomUser && room.hostId === roomUser.uid));
+      const hostUserId = (userRef.current ?? currentUser)?.uid ?? '';
+      setIsRoomHost((previousIsRoomHost) => hostUserId ? room.hostId === hostUserId : previousIsRoomHost);
       if (room.status === 'playing') setScreen('game');
       if (room.status === 'finished') {
         setScreen('lobby');
@@ -539,7 +541,7 @@ export function App() {
         setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
       }
     });
-  }, [activeRoomId, currentUser]);
+  }, [activeRoomId, currentUserId]);
 
 
   useEffect(() => {
@@ -549,12 +551,20 @@ export function App() {
       const nextSeats = seatsFromRoomPlayers(players, playMode, maxPlayers);
       const currentUserId = (userRef.current ?? currentUser)?.uid;
       const hasCurrentUserInSnapshot = Boolean(currentUserId && players.some((player) => player.id === currentUserId && !player.isSpectator));
+      players.forEach((player) => {
+        if (player.isAI) pendingAiSeatIdsRef.current.delete(player.id);
+      });
       setSeats((currentSeats) => {
-        if (!currentUserId || isRoomHost || screen !== 'waitingRoom' || hasCurrentUserInSnapshot) return nextSeats;
-        if (nextSeats.some((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI)) return nextSeats;
+        const seatsWithPendingAI = nextSeats.map((nextSeat) => {
+          if (!pendingAiSeatIdsRef.current.has(nextSeat.id) || !nextSeat.isEmpty) return nextSeat;
+          const optimisticAISeat = currentSeats.find((seat) => seat.id === nextSeat.id && seat.isAI);
+          return optimisticAISeat ? { ...nextSeat, ...optimisticAISeat, isEmpty: false, ready: true, isAI: true } : nextSeat;
+        });
+        if (!currentUserId || isRoomHost || screen !== 'waitingRoom' || hasCurrentUserInSnapshot) return seatsWithPendingAI;
+        if (seatsWithPendingAI.some((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI)) return seatsWithPendingAI;
         const optimisticSeat = currentSeats.find((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI);
-        if (!optimisticSeat) return nextSeats;
-        return nextSeats.map((seat) => seat.label === optimisticSeat.label ? { ...seat, ...optimisticSeat, isHost: false, isEmpty: false } : seat);
+        if (!optimisticSeat) return seatsWithPendingAI;
+        return seatsWithPendingAI.map((seat) => seat.label === optimisticSeat.label ? { ...seat, ...optimisticSeat, isHost: false, isEmpty: false } : seat);
       });
       const nextSpectators = spectatorsFromRoomPlayers(players);
       if (isRoomHost && screen === 'game') {
@@ -567,7 +577,7 @@ export function App() {
       setSpectators(nextSpectators);
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
-  }, [activeRoomId, currentUser?.uid, isRoomHost, maxPlayers, playMode, screen]);
+  }, [activeRoomId, currentUserId, isRoomHost, maxPlayers, playMode, screen]);
 
   function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false) {
     if (lastAnimatedRollKeyRef.current === key) return;
@@ -1357,12 +1367,20 @@ export function App() {
       const aiName = makeUniqueAIName(currentSeats);
       const targetSeat = currentSeats.find((seat) => seat.id === playerId);
       if (activeRoomId && targetSeat) {
-        void updateRoomPlayer(activeRoomId, playerId, { nickname: aiName, ready: true, isAI: true, seatIndex: Number(targetSeat.label.replace('P', '')) - 1, color: ['red', 'blue', 'green', 'yellow'][Number(targetSeat.label.replace('P', '')) - 1] ?? 'black', team: targetSeat.team });
+        pendingAiSeatIdsRef.current.add(playerId);
+        void updateRoomPlayer(activeRoomId, playerId, { nickname: aiName, ready: true, isAI: true, seatIndex: Number(targetSeat.label.replace('P', '')) - 1, color: ['red', 'blue', 'green', 'yellow'][Number(targetSeat.label.replace('P', '')) - 1] ?? 'black', team: targetSeat.team })
+          .catch((error) => {
+            pendingAiSeatIdsRef.current.delete(playerId);
+            console.warn('AI 추가에 실패했습니다.', error);
+            setMessage('AI 추가에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
+            setSeats((latestSeats) => latestSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
+          });
       }
       return currentSeats.map((seat) => seat.id === playerId ? { ...seat, name: aiName, ready: true, isAI: true, isEmpty: false } : seat);
     });
   }
   function cancelAISeat(playerId: string) {
+    pendingAiSeatIdsRef.current.delete(playerId);
     if (activeRoomId) { void removeRoomPlayer(activeRoomId, playerId); }
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
   }
