@@ -6,7 +6,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
-import { cleanupStaleRooms, commitAuthoritativeGameAction, createRoom, deleteRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cleanupStaleRooms, commitAuthoritativeGameAction, createRoom, deleteRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, leaveDuplicatePlayerRooms, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -924,6 +924,23 @@ export function App() {
     }
   }
 
+  async function leavePreviousOnlineRoom(nextRoomId = '') {
+    const previousRoomId = activeRoomIdRef.current || window.localStorage.getItem(STORAGE_KEYS.activeRoomId) || '';
+    if (!previousRoomId || previousRoomId === nextRoomId || !isFirebaseConfigured || !user) return;
+    try {
+      const previousRoom = await getRoom(previousRoomId);
+      if (!previousRoom) return;
+      if (previousRoom.hostId === user.uid) await deleteRoom(previousRoomId);
+      else await removeRoomPlayer(previousRoomId, user.uid);
+    } catch (error) {
+      console.warn('이전 방 정리에 실패했습니다.', error);
+    } finally {
+      if (activeRoomIdRef.current === previousRoomId) setActiveRoomId('');
+      window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+      window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+    }
+  }
+
   async function handleCreateRoom() {
     if (!nickname.trim()) { setMessage('닉네임을 먼저 정해주세요.'); return; }
     if (isCreatingRoom) return;
@@ -938,6 +955,8 @@ export function App() {
       }
       roomHost = roomHost ?? await Promise.race([signInAsGuest(), timeout]);
       if (!roomHost) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
+      await leaveDuplicatePlayerRooms(roomHost.uid);
+      await leavePreviousOnlineRoom();
       const roomId = await Promise.race([createRoom({ title, hostId: roomHost.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
       await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, '', true);
     } catch (error) {
@@ -961,6 +980,8 @@ export function App() {
     setMessage('방으로 이동하는 중입니다...');
     const nextMaxPlayers = room.maxPlayers as 2 | 3 | 4;
     try {
+      if (user && room.id) await leaveDuplicatePlayerRooms(user.uid, room.id);
+      await leavePreviousOnlineRoom(room.id ?? '');
       const joinResult = !asHost && room.id && user ? await joinRoom(room.id, { userId: user.uid, nickname, playMode: room.playMode }) : null;
       setActiveRoomId(room.id ?? '');
       setIsRoomHost(asHost);

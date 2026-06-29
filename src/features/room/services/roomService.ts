@@ -42,6 +42,35 @@ const getTimestampMillis = (value: unknown) => {
   return 0;
 };
 
+type PlayerRoomMembership = { room: RoomSummary; player: RoomPlayer; joinedAt: number };
+
+async function getActivePlayerRoomMemberships(playerId: string): Promise<PlayerRoomMembership[]> {
+  if (!db || !playerId) return [];
+  const roomsSnapshot = await getDocs(query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing'])));
+  const memberships = await Promise.all(roomsSnapshot.docs.map(async (roomDoc) => {
+    const playerSnapshot = await getDoc(doc(db!, 'rooms', roomDoc.id, 'players', playerId));
+    if (!playerSnapshot.exists()) return null;
+    const player = { id: playerSnapshot.id, ...(playerSnapshot.data() as Omit<RoomPlayer, 'id'>) };
+    const joinedAt = getTimestampMillis(player.joinedAt) || getTimestampMillis(player.lastSeen) || getCreatedAtMillis((roomDoc.data() as Omit<RoomSummary, 'id'>).createdAt);
+    return { room: { id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }, player, joinedAt };
+  }));
+  return memberships.filter((membership): membership is PlayerRoomMembership => Boolean(membership));
+}
+
+export async function leaveDuplicatePlayerRooms(playerId: string, keepRoomId = '') {
+  if (!db || !playerId) return [];
+  const memberships = await getActivePlayerRoomMemberships(playerId);
+  if (memberships.length < 2 && !keepRoomId) return [];
+  const sortedMemberships = [...memberships].sort((left, right) => right.joinedAt - left.joinedAt);
+  const selectedKeepRoomId = keepRoomId || sortedMemberships[0]?.room.id || '';
+  const roomsToLeave = memberships.filter((membership) => membership.room.id !== selectedKeepRoomId);
+  await Promise.all(roomsToLeave.map(async ({ room }) => {
+    if (room.hostId === playerId) await deleteRoom(room.id);
+    else await removeRoomPlayer(room.id, playerId);
+  }));
+  return roomsToLeave.map(({ room }) => room.id);
+}
+
 export async function createRoom(params: { title: string; hostId: string; nickname: string; maxPlayers: 2|3|4; itemMode: boolean; playMode: 'individual'|'team'; pieceCount: 1|2|3|4; password?: string; }) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const firestore = db;
@@ -51,7 +80,7 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   const now = Date.now();
   const existingHostRooms = await getDocs(query(roomsRef, where('hostId', '==', params.hostId)));
   const staleHostRoomRefs = existingHostRooms.docs
-    .filter((roomDoc) => ['waiting', 'finished'].includes(String(roomDoc.data().status)))
+    .filter((roomDoc) => ['waiting', 'playing', 'finished'].includes(String(roomDoc.data().status)))
     .map((roomDoc) => roomDoc.ref);
   if (staleHostRoomRefs.length) {
     const cleanupBatch = writeBatch(firestore);
@@ -65,8 +94,9 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     const room = roomDoc.data() as Omit<RoomSummary, 'id'>;
     const createdAt = getCreatedAtMillis(room.createdAt);
     const expired = Boolean(createdAt && now - createdAt > ROOM_MAX_AGE_MS);
-    if (expired) void deleteDoc(roomDoc.ref);
-    return !expired;
+    const emptyGhost = room.currentPlayers !== undefined && Number(room.currentPlayers) <= 0;
+    if (expired || emptyGhost) void deleteRoom(roomDoc.id);
+    return !expired && !emptyGhost;
   });
   const activeRooms = activeRoomDocs.map((roomDoc) => roomDoc.data() as Omit<RoomSummary, 'id'>);
   if (activeRooms.length >= MAX_ACTIVE_ROOMS) throw new Error('방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.');
@@ -685,7 +715,7 @@ export async function removeRoomPlayer(roomId: string, playerId: string) {
   await syncRoomPlayerCount(roomId);
   const remainingPlayersSnapshot = await getDocs(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc'), limit(1)));
   if (remainingPlayersSnapshot.empty) {
-    await scheduleEmptyRoomDeletion(roomId);
+    await deleteRoom(roomId);
     return;
   }
   const room = roomSnapshot.exists() ? roomSnapshot.data() as Omit<RoomSummary, 'id'> : null;
