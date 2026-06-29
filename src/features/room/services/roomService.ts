@@ -378,7 +378,7 @@ export async function submitGameAction(roomId: string, action: Omit<GameAction, 
   await addDoc(collection(db, 'rooms', roomId, 'actions'), actionPayload);
 }
 
-type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string };
+type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string; patch?: GameStatePatch; payload?: Record<string, unknown> };
 type AuthoritativeCommitReduction = { status: 'committed'; patch: GameStatePatch; payload: Record<string, unknown> };
 type AuthoritativeReduction = AuthoritativeCommitReduction | Exclude<AuthoritativeActionResult, { status: 'committed' }>;
 const isAuthoritativeCommitReduction = (reduction: AuthoritativeReduction): reduction is AuthoritativeCommitReduction => 'patch' in reduction;
@@ -604,7 +604,7 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     });
     transaction.set(gameStateRef, { ...reduction.patch, updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: clientActionId }, { merge: true });
     transaction.set(processedActionRef, { clientMutationId: clientActionId, sequence: nextSequence, turnVersion: nextVersion, type: action.type, actorId: action.actorId, createdAt: serverTimestamp() });
-    return { status: 'committed', sequence: nextSequence, turnVersion: nextVersion };
+    return { status: 'committed', sequence: nextSequence, turnVersion: nextVersion, patch: reduction.patch, payload: reduction.payload };
   });
 }
 

@@ -1283,7 +1283,22 @@ export function App() {
       rollInProgressRef.current = true;
       void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: { ...(forcedRoll ? { forcedResult: forcedRoll } : {}), clientActionId: actionKey } })
         .then((result) => {
-          if (result.status === 'rejected' || result.status === 'unsupported') setMessage(result.reason ?? '윷 던지기 처리에 실패했습니다.');
+          if (result.status === 'rejected' || result.status === 'unsupported') {
+            setMessage(result.reason ?? '윷 던지기 처리에 실패했습니다.');
+            return;
+          }
+          if (result.status === 'committed') {
+            const committedRoll = result.patch?.roll as YutResult | null | undefined;
+            const committedRollResultReadyAt = Number(result.patch?.rollResultReadyAt ?? 0);
+            if (committedRoll && !currentRollRef.current) {
+              currentRollRef.current = committedRoll;
+              setRoll(committedRoll);
+              setRollResultReadyAt(committedRollResultReadyAt);
+              playRollAnimationOnce(committedRoll, makeDisplaySticks(committedRoll), `${turnIndex}:${committedRoll.name}:${committedRoll.steps}:${committedRollResultReadyAt}`);
+              playSfx('roll');
+              if (committedRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
+            }
+          }
         })
         .catch((error) => setMessage(error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.'))
         .finally(() => {
