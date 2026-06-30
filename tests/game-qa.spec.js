@@ -333,14 +333,54 @@ async function playUntilActions(page, testInfo, { targetActions = 10, maxTicks =
   return coverage;
 }
 
-async function playOneVisibleTurn(page) {
-  const coverage = createGameActionCoverage();
-  for (let tick = 0; tick < 30; tick += 1) {
-    const action = await playOneAvailableGameAction(page, coverage);
-    if (action === 'winner') return false;
-    if (action !== 'wait') return true;
-  }
+async function isPlayableActionVisible(page) {
+  if (await page.getByRole('dialog', { name: '아이템 교체 선택' }).isVisible().catch(() => false)) return true;
+  if (await page.getByTestId('roll-yut-button').isVisible().catch(() => false)) return true;
+  if (await page.getByTestId('move-piece-button').isVisible().catch(() => false)) return true;
+  if (await page.locator('.bottom-branch-controls').isVisible().catch(() => false)) return true;
+  if (await page.locator('.inline-item-prompt').isVisible().catch(() => false)) return true;
+  if (await page.locator('.trap-placement-banner').isVisible().catch(() => false)) return true;
+  if (await page.locator('.winner-overlay').isVisible().catch(() => false)) return true;
   return false;
+}
+
+async function playOneAvailableGameActionAcrossPages(pages, coverage) {
+  for (const page of pages) {
+    if (await isPlayableActionVisible(page)) return playOneAvailableGameAction(page, coverage);
+  }
+
+  for (const page of pages) {
+    if (await isVisible(page.getByTestId('game-screen'))) {
+      await page.waitForTimeout(350);
+      coverage.autoWaited += 1;
+      return 'wait';
+    }
+  }
+
+  throw new Error(`처리 가능한 기기전 게임 액션을 찾지 못했습니다: ${JSON.stringify(await Promise.all(pages.map((page) => collectGameDebugState(page))), null, 2)}`);
+}
+
+async function playUntilActionsAcrossPages(pages, testInfo, { targetActions = 10, maxTicks = 100, minActionsBeforeWinner = 6, stepPrefix = 'device-action' } = {}) {
+  const coverage = createGameActionCoverage();
+  let progressedActions = 0;
+  for (let tick = 1; tick <= maxTicks && progressedActions < targetActions; tick += 1) {
+    const action = await playOneAvailableGameActionAcrossPages(pages, coverage);
+    if (action === 'winner') {
+      const debugStates = await Promise.all(pages.map((page) => collectGameDebugState(page)));
+      expect(progressedActions, `기기전 게임이 너무 빨리 종료되었습니다: ${JSON.stringify(debugStates, null, 2)}`).toBeGreaterThanOrEqual(minActionsBeforeWinner);
+      break;
+    }
+    if (action !== 'wait') progressedActions += 1;
+    if (tick % 10 === 0) {
+      await Promise.all(pages.map((page, index) => saveStepScreenshot(page, testInfo, `${stepPrefix}-${index + 1}-${tick}`)));
+    }
+  }
+
+  const debugStates = await Promise.all(pages.map((page) => collectGameDebugState(page)));
+  expect(progressedActions, `기기전에서 충분한 게임 액션을 진행하지 못했습니다: ${JSON.stringify(debugStates, null, 2)}`).toBeGreaterThanOrEqual(targetActions);
+  expect(coverage.rolled, '기기전 QA 루프에서 윷 던지기를 최소 1회 이상 수행해야 합니다.').toBeGreaterThan(0);
+  expect(coverage.manualMoved + coverage.autoWaited, '기기전 QA 루프에서 수동 이동 또는 자동 이동 대기 상태를 검증해야 합니다.').toBeGreaterThan(0);
+  return coverage;
 }
 
 async function waitForAnyPlayableActionVisible(pages, timeout = 20_000) {
@@ -514,11 +554,10 @@ test.describe('mobile device-to-device QA', () => {
         await saveStepScreenshot(galaxyPage, testInfo, '09-device-guest-game');
       });
 
-      await runQaStep(testInfo, '기기전 08 한 턴 진행 가능 확인', async () => {
+      await runQaStep(testInfo, '기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행', async () => {
         await waitForAnyPlayableActionVisible([ipadPage, galaxyPage]);
-        const hostPlayed = await playOneVisibleTurn(ipadPage);
-        const guestPlayed = hostPlayed ? false : await playOneVisibleTurn(galaxyPage);
-        expect(hostPlayed || guestPlayed, 'iPad 또는 Galaxy 중 현재 턴인 기기가 한 턴을 진행해야 합니다.').toBeTruthy();
+        const coverage = await playUntilActionsAcrossPages([ipadPage, galaxyPage], testInfo, { targetActions: 10, maxTicks: 100, minActionsBeforeWinner: 6, stepPrefix: '10-device-action' });
+        await appendQaStepLog(testInfo, 'INFO', '기기전 08 상태 머신 커버리지', JSON.stringify(coverage));
         await expect(ipadPage.getByTestId('game-screen')).toBeVisible();
         await expect(galaxyPage.getByTestId('game-screen')).toBeVisible();
       });
