@@ -1321,12 +1321,24 @@ export function App() {
     logIdRef.current += 1;
     return { id: logIdRef.current, text };
   }
-  function addLog(text: string) { setLogs((current) => [makeLog(text), ...current]); }
-  function addLogs(texts: string[]) { setLogs((current) => [...texts].reverse().map((text) => makeLog(text)).concat(current)); }
+  function shouldSuppressDuplicateLog(text: string, currentLogs: GameLog[]) {
+    const recentSameText = currentLogs.slice(0, 6).find((log) => log.text === text);
+    if (!recentSameText) return false;
+    return /아이템|함정|방패|순서|관전자로 입장|시간이 만료/.test(text);
+  }
+  function addLog(text: string) {
+    setLogs((current) => shouldSuppressDuplicateLog(text, current) ? current : [makeLog(text), ...current]);
+  }
+  function addLogs(texts: string[]) {
+    setLogs((current) => {
+      const uniqueTexts = texts.filter((text, index) => texts.indexOf(text) === index && !shouldSuppressDuplicateLog(text, current));
+      return [...uniqueTexts].reverse().map((text) => makeLog(text)).concat(current);
+    });
+  }
   function renderLogText(text: string) {
     const escapedSeatTokens = playableSeats.flatMap((seat) => [seat.id, seat.label]).filter(Boolean).map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     if (!escapedSeatTokens.length) return text;
-    return text.split(new RegExp(`(${escapedSeatTokens.join('|')})`, 'g')).map((part, index) => {
+    return text.split(new RegExp(`(?<![\\p{L}\\p{N}_-])(${escapedSeatTokens.join('|')})(?![\\p{L}\\p{N}_-])`, 'gu')).map((part, index) => {
       const seat = playableSeats.find((candidate) => candidate.id === part || candidate.label === part);
       if (!seat) return part;
       const color = playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat);
@@ -1692,30 +1704,27 @@ export function App() {
       const guard = liveTurnGuardRef.current;
       return seat.isAI && guard.activeSeatId === seat.id && !guard.winner && !guard.movingPieceId && !guard.pendingTrapPlacement && !guard.turnOrderActive && !guard.turnOrderIntro;
     };
-    if (!canContinueAiTurn()) {
+    const clearCurrentAiActionKey = () => {
       if (aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
-      return;
+    };
+
+    try {
+      if (!canContinueAiTurn()) return;
+      const nextRoll = rollYutFor(seat);
+      if (!nextRoll) return;
+      const aiMove = chooseAiMove(seat, nextRoll);
+      if (!aiMove) {
+        setTurnIndex((current) => (current + 1) % playableSeats.length);
+        clearRoll();
+        return;
+      }
+      setBranchChoice(aiMove.branchChoice);
+      await delay(AI_MOVE_DELAY_MS);
+      if (!canContinueAiTurn()) return;
+      await movePiece(aiMove.piece.id, nextRoll, seat, 0, aiMove.branchChoice);
+    } finally {
+      clearCurrentAiActionKey();
     }
-    const nextRoll = rollYutFor(seat);
-    if (!nextRoll) {
-      if (aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
-      return;
-    }
-    const aiMove = chooseAiMove(seat, nextRoll);
-    if (!aiMove) {
-      setTurnIndex((current) => (current + 1) % playableSeats.length);
-      clearRoll();
-      if (aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
-      return;
-    }
-    setBranchChoice(aiMove.branchChoice);
-    await delay(AI_MOVE_DELAY_MS);
-    if (!canContinueAiTurn()) {
-      if (aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
-      return;
-    }
-    const moved = await movePiece(aiMove.piece.id, nextRoll, seat, 0, aiMove.branchChoice);
-    if (!moved && aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
   }
 
   function placePendingTrap(nodeId: string, actorId = localSeatId) {

@@ -234,16 +234,15 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
     });
 
     for (let turn = 1; turn <= 10; turn += 1) {
-      await runQaStep(testInfo, `05-${turn} 짧은 자동 진행 턴`, async () => {
+      await runQaStep(testInfo, `05-${turn} 10턴 윷 던지기 연속 검증`, async () => {
         const rollButton = page.getByTestId('roll-yut-button');
-        if (await rollButton.isVisible().catch(() => false)) {
-          await expect(rollButton).toBeEnabled({ timeout: 15_000 });
-          await rollButton.click();
-          const moveButton = page.getByTestId('move-piece-button');
-          if (await moveButton.isVisible({ timeout: 4_000 }).catch(() => false)) {
-            await expect(moveButton).toBeEnabled({ timeout: 15_000 });
-            await moveButton.click();
-          }
+        await expect(rollButton, `${turn}번째 사람 턴에서 윷 던지기 버튼이 다시 보여야 합니다.`).toBeVisible({ timeout: 45_000 });
+        await expect(rollButton, `${turn}번째 사람 턴에서 윷 던지기 버튼이 비활성화되면 안 됩니다.`).toBeEnabled({ timeout: 15_000 });
+        await rollButton.click();
+        const moveButton = page.getByTestId('move-piece-button');
+        if (await moveButton.isVisible({ timeout: 4_000 }).catch(() => false)) {
+          await expect(moveButton).toBeEnabled({ timeout: 15_000 });
+          await moveButton.click();
         }
         await expect(page.getByTestId('game-screen')).toBeVisible();
         await saveStepScreenshot(page, testInfo, `05-turn-${turn}`);
