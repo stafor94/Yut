@@ -324,6 +324,7 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
   let lastDebugStates = beforeDebugStates;
   let sawRollState = false;
   let sawPendingTurnAction = hasPendingTurnActionAcrossPages(beforeDebugStates);
+  let lastHasPendingTurnAction = sawPendingTurnAction;
 
   while (Date.now() < deadline || (sawPendingTurnAction && Date.now() < pendingDeadline)) {
     const debugStates = await collectGameDebugStates(pages);
@@ -344,7 +345,8 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
     if (canonicalDebugState?.yutDebug?.roll !== null && canonicalDebugState?.yutDebug?.roll !== undefined) {
       sawRollState = true;
     }
-    if (hasPendingTurnActionAcrossPages(debugStates)) {
+    lastHasPendingTurnAction = hasPendingTurnActionAcrossPages(debugStates);
+    if (lastHasPendingTurnAction) {
       sawPendingTurnAction = true;
     }
 
@@ -352,7 +354,8 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
   }
 
   if (sawRollState) return { kind: 'roll-observed', debugStates: lastDebugStates };
-  if (sawPendingTurnAction) return { kind: 'pending-timeout', debugStates: lastDebugStates };
+  if (hasStateAdvancedAcrossPages(beforeDebugStates, lastDebugStates)) return { kind: 'state-advanced', debugStates: lastDebugStates };
+  if (sawPendingTurnAction && lastHasPendingTurnAction) return { kind: 'pending-timeout', debugStates: lastDebugStates };
   return { kind: 'no-state-change', debugStates: lastDebugStates };
 }
 
