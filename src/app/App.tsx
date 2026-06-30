@@ -82,6 +82,7 @@ const TRAP_EFFECT_MS = 3000;
 const AI_MOVE_DELAY_MS = 1000;
 const AUTO_SINGLE_MOVE_DELAY_MS = 1000;
 const CREATE_ROOM_TIMEOUT_MS = 12000;
+const CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;
 const STEP_DELAY_MS = 240;
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 const normalizeRollResultReadyAt = (readyAt: number, now = Date.now()) => {
@@ -1037,6 +1038,21 @@ export function App() {
     }
   }
 
+  async function waitForRoomCreationCleanup(label: string, cleanup: () => Promise<unknown>) {
+    let timeoutId = 0;
+    const cleanupResult = await Promise.race([
+      cleanup().then(() => 'done' as const).catch((error) => {
+        console.warn(`${label}에 실패했습니다. 방 생성은 계속 진행합니다.`, error);
+        return 'failed' as const;
+      }),
+      new Promise<'timeout'>((resolve) => {
+        timeoutId = window.setTimeout(() => resolve('timeout'), CREATE_ROOM_CLEANUP_TIMEOUT_MS);
+      }),
+    ]);
+    if (timeoutId) window.clearTimeout(timeoutId);
+    if (cleanupResult === 'timeout') console.warn(`${label}이 지연되어 방 생성은 계속 진행합니다.`);
+  }
+
   async function leavePreviousOnlineRoom(nextRoomId = '') {
     const previousRoomId = activeRoomIdRef.current || window.localStorage.getItem(STORAGE_KEYS.activeRoomId) || '';
     const roomUser = userRef.current ?? currentUser;
@@ -1070,8 +1086,9 @@ export function App() {
       roomHost = roomHost ?? await Promise.race([signInAsGuest(), timeout]);
       if (!roomHost) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
       rememberUser(roomHost);
-      await leaveDuplicatePlayerRooms(roomHost.uid);
-      await leavePreviousOnlineRoom();
+      const roomHostId = roomHost.uid;
+      await waitForRoomCreationCleanup('중복 방 정리', () => leaveDuplicatePlayerRooms(roomHostId));
+      await waitForRoomCreationCleanup('이전 방 정리', () => leavePreviousOnlineRoom());
       const roomId = await Promise.race([createRoom({ title, hostId: roomHost.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
       await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, '', true, roomHost);
     } catch (error) {
