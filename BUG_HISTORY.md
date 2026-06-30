@@ -67,6 +67,67 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #136 모바일 기기전 QA 대기실 진입 timeout 재발
+
+### Symptom
+
+- PR #135 이후 `mobile device-to-device QA`의 `기기전 04 iPad 방 생성 및 대기실 진입` 단계에서 timeout이 발생했다.
+- iPad host가 방 제목을 입력하고 `create-room-button`을 클릭했지만, 25초 안에 `waiting-room`이 visible 상태가 되지 않았다.
+
+### Expected behavior
+
+- iPad host가 방을 만들면 방 생성에 사용한 host 사용자로 대기실에 진입해야 한다.
+- 실패하더라도 화면 상태, lobby notice, create button, matching room card, `__YUT_DEBUG_STATE__`가 실패 로그에 남아야 한다.
+
+### Actual behavior
+
+- assertion은 `waitingRoom.visible`이 `true`가 되는지만 검사했고, 실패 이슈에서 이미 수집 중인 transition debug state 전체가 충분히 드러나지 않았다.
+- 방 생성 실패, `openWaitingRoom()` 실패, subscription/cleanup에 의한 lobby 복귀 중 어느 경로인지 확정하기 어려웠다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 iPad/WebKit 기기전 프로젝트에서 실행한다.
+2. iPad host page에서 QA 방 제목을 입력한다.
+3. `create-room-button`을 클릭한다.
+4. `waiting-room` visible poll이 timeout되면 실패한다.
+
+### Suspected root cause
+
+- Issue #126의 대기실 진입 timeout과 같은 계열의 반복 실패지만, 현재 로그만으로 앱 로직의 정확한 실패 지점은 확정되지 않았다.
+- 기존 `collectLobbyTransitionDebugState()`는 필요한 정보를 수집하지만, poll matcher가 `waitingRoom.visible` 비교 중심이라 다음 원인 구분에 필요한 전체 상태가 실패 로그에 충분히 남지 않았다.
+
+### Confirmed root cause
+
+- 아직 미확정. 이번 변경은 반복 실패 원인을 확정하기 위한 QA 실패 로그 보강이다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #126에서 iPad 방 생성 후 대기실 진입 assertion에 lobby notice, create button, waiting-room, matching room card, `__YUT_DEBUG_STATE__` 수집 함수를 추가했다.
+  - Why it failed: 수집 함수는 생겼지만 matcher 실패 출력이 전체 수집값을 안정적으로 드러내지 않아 Issue #136에서도 실제 전환 실패 지점을 확정하기 어려웠다.
+- Attempt 2:
+  - What was changed: Issue #128에서 host uid fallback 및 방장 권한 경로를 보강했다.
+  - Why it failed: Issue #136은 시작 버튼 미노출이 아니라 `waiting-room` 자체 미표시라 같은 원인으로 단정할 수 없다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 시작 버튼/방장 권한 문제로 단정해 `canManageRoom`만 수정하지 않는다.
+- 원인 확인 없이 방 생성, 인증, room cleanup 경로를 넓게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- 먼저 기기전 host 방 생성 poll 실패 시 `collectLobbyTransitionDebugState()` 전체 객체가 assertion actual value로 남도록 테스트 진단만 최소 보강한다.
+- 다음 실패 로그에서 방 생성 실패, `openWaitingRoom()` 실패, subscription/cleanup에 의한 lobby 복귀를 구분한다.
+- 원인이 확인된 뒤 앱 로직의 해당 경로만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [ ] No unrelated UI changes
+
 ## 2026-06-30 - Issue #133 모바일 QA Firestore transient 콘솔 에러 반복
 
 ### Symptom

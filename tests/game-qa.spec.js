@@ -520,7 +520,10 @@ test.describe('mobile device-to-device QA', () => {
         await expect(ipadPage.getByTestId('app-shell')).toBeVisible();
         await ipadPage.getByTestId('room-title-input').fill(qaRoomTitle);
         await ipadPage.getByTestId('create-room-button').click();
-        await expect.poll(() => collectLobbyTransitionDebugState(ipadPage, qaRoomTitle), { message: '기기전 host 방 생성 후 대기실로 이동해야 합니다.', timeout: 25_000 }).toMatchObject({ waitingRoom: { visible: true } });
+        await expect.poll(async () => {
+          const state = await collectLobbyTransitionDebugState(ipadPage, qaRoomTitle);
+          return state.waitingRoom.visible ? 'ready' : JSON.stringify(state, null, 2);
+        }, { message: '기기전 host 방 생성 후 대기실로 이동해야 합니다.', timeout: 25_000 }).toBe('ready');
         await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 기기 대전 방 ID를 기억해야 합니다.' }).toBeTruthy();
         await saveStepScreenshot(ipadPage, testInfo, '06-device-host-waiting');
       });
