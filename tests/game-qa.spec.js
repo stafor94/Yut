@@ -182,7 +182,11 @@ function didAutoAdvanceAfterRoll(beforeDebugState, afterDebugState) {
   if (beforeYutDebug.lastMovedSeatId !== afterYutDebug.lastMovedSeatId) return true;
   const beforeMovedPieceIds = Array.isArray(beforeYutDebug.lastMovedPieceIds) ? beforeYutDebug.lastMovedPieceIds.join(',') : '';
   const afterMovedPieceIds = Array.isArray(afterYutDebug.lastMovedPieceIds) ? afterYutDebug.lastMovedPieceIds.join(',') : '';
-  return beforeMovedPieceIds !== afterMovedPieceIds;
+  if (beforeMovedPieceIds !== afterMovedPieceIds) return true;
+  const summarizePieces = (pieces) => Array.isArray(pieces)
+    ? pieces.map((piece) => `${piece.id}:${piece.ownerId}:${piece.nodeId}:${piece.started ? '1' : '0'}:${piece.finished ? '1' : '0'}`).sort().join('|')
+    : '';
+  return summarizePieces(beforeYutDebug.pieces) !== summarizePieces(afterYutDebug.pieces);
 }
 
 async function collectWaitingRoomDebugState(page) {

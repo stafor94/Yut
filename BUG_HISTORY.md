@@ -1002,3 +1002,64 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Device-to-device mobile QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #150 모바일 기기전 QA roll-only 이동 커버리지 재발
+
+### Symptom
+
+- PR #149 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 다시 실패했다.
+- 실패 로그에서 `coverage.rolled`는 10이었지만 `coverage.manualMoved + coverage.autoWaited`는 0으로 남았다.
+- 최종 debug state는 `roll: null`, `rollResultHolding: false`, `rollButton.visible: true`였지만 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 변화만으로는 자동 진행을 인정하지 못했다.
+
+### Expected behavior
+
+- 윷 던지기 뒤 앱이 자동 이동 또는 이동 불가 스킵으로 다시 윷 던지기 가능한 상태가 되면, QA 루프가 실제 상태 변화가 확인되는 경우에만 자동 진행을 이동 관련 검증으로 집계해야 한다.
+- `roll` 액션마다 무조건 이동 커버리지를 올리면 안 된다.
+
+### Actual behavior
+
+- `didAutoAdvanceAfterRoll()`은 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 변화만 비교했다.
+- 보너스 턴 또는 상태 동기화 타이밍 때문에 이 값들이 그대로인 상태에서도 말 위치 변화가 발생할 수 있는데, 앱 debug state에는 전체 말 위치를 비교할 최소 snapshot이 없어 테스트가 자동 진행을 관측할 근거가 부족했다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프 중 윷 던지기 후 앱이 다시 윷 던지기 가능한 상태로 돌아온다.
+4. 테스트가 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 변화만 보다가 실제 말 위치 변화 또는 자동 진행을 놓치면 `manualMoved + autoWaited` assertion이 실패한다.
+
+### Suspected root cause
+
+- 반복 실패 계열상 앱 진행 고착보다는 기기전 QA 자동 진행 관측값이 부족했던 것으로 보인다.
+- `roll` 이후 다시 윷 던지기 가능한 상태가 되었는지뿐 아니라, 실제 말 위치 snapshot이 바뀌었는지를 함께 비교해야 한다.
+
+### Confirmed root cause
+
+- `window.__YUT_DEBUG_STATE__`에 전체 말 위치를 비교할 QA용 `pieces` snapshot이 없었고, `didAutoAdvanceAfterRoll()`도 말 위치 변화를 자동 진행 근거로 사용하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #144에서 roll 클릭 후 자동 진행 감지 로직을 추가했다.
+  - Why it failed: `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 비교만으로는 일부 자동 진행/보너스 턴 상태 변화를 충분히 관측하지 못했다.
+- Attempt 2:
+  - What was changed: Issue #146에서 debug state에 `lastMovedSeatId`와 `lastMovedPieceIds`를 노출했다.
+  - Why it failed: last moved 필드만으로는 전체 말 위치 변화 여부를 확인할 수 없어, 값이 유지되는 경로에서 자동 진행으로 인정하지 못했다.
+
+### Do not try again
+
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+
+### Correct fix plan
+
+- 앱 debug state에 QA용 말 위치 snapshot의 최소 필드(`id`, `ownerId`, `nodeId`, `started`, `finished`)를 노출한다.
+- `didAutoAdvanceAfterRoll()`은 기존 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 비교를 유지하되, 추가로 말 위치 snapshot 변화가 있을 때만 자동 진행으로 인정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
