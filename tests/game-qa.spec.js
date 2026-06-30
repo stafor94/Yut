@@ -270,8 +270,48 @@ function hasPendingTurnActionAcrossPages(debugStates) {
   return debugStates.some(hasPendingTurnAction);
 }
 
-function hasStateAdvancedAcrossPages(beforeDebugStates, afterDebugStates) {
-  return hasStateAdvanced(findCanonicalDebugState(beforeDebugStates)?.yutDebug ?? {}, findCanonicalDebugState(afterDebugStates)?.yutDebug ?? {});
+
+function summarizeActionBlockers(debugState) {
+  const yutDebug = debugState?.yutDebug ?? {};
+  return {
+    screen: yutDebug.screen ?? null,
+    turnActionBlockReasons: yutDebug.turnActionBlockReasons ?? [],
+    rollActionBlockReasons: yutDebug.rollActionBlockReasons ?? [],
+    moveActionBlockReasons: yutDebug.moveActionBlockReasons ?? [],
+    canSubmitTurnAction: yutDebug.canSubmitTurnAction ?? null,
+    canRollNow: yutDebug.canRollNow ?? null,
+    canRequestMove: yutDebug.canRequestMove ?? null,
+    roll: yutDebug.roll ?? null,
+    rollResultHolding: yutDebug.rollResultHolding ?? null,
+    activeTurnOrderIntro: Boolean(yutDebug.activeTurnOrderIntro),
+    turnOrderPhaseActive: Boolean(yutDebug.turnOrderPhase?.active),
+    pendingLocalRemoteActionCount: Number(yutDebug.pendingLocalRemoteActionCount ?? 0),
+    processingActionCount: Number(yutDebug.processingActionCount ?? 0),
+    lastAppliedSequence: Number(yutDebug.lastAppliedSequence ?? 0),
+    lastAppliedStateVersion: Number(yutDebug.lastAppliedStateVersion ?? 0),
+  };
+}
+
+function classifyRollOutcomeFailure(kind, debugStates) {
+  const states = Array.isArray(debugStates) ? debugStates : [];
+  const blockers = states.map(summarizeActionBlockers);
+  if (states.some((debugState) => debugState?.pageUnavailable)) return { kind, category: 'page-unavailable', blockers };
+  const terminalState = findTerminalGameState(states);
+  if (terminalState) return { kind, category: 'left-game-screen', terminalState: summarizeActionBlockers(terminalState), blockers };
+  if (states.some((debugState) => debugState?.yutDebug?.activeTurnOrderIntro)) return { kind, category: 'blocked-by-turn-order-intro', blockers };
+  if (states.some((debugState) => debugState?.yutDebug?.turnOrderPhase?.active)) return { kind, category: 'blocked-by-turn-order-phase', blockers };
+  if (states.some(hasPendingTurnAction)) return { kind, category: 'pending-remote-action', blockers };
+  if (states.some((debugState) => debugState?.yutDebug?.rollResultHolding)) return { kind, category: 'roll-result-holding', blockers };
+  if (states.some((debugState) => (debugState?.yutDebug?.rollActionBlockReasons ?? []).length > 0)) return { kind, category: 'roll-blocked', blockers };
+  return { kind, category: 'unclassified-no-progress', blockers };
+}
+
+function formatRollOutcomeFailure(kind, beforeDebugStates, afterDebugStates) {
+  return JSON.stringify({
+    classification: classifyRollOutcomeFailure(kind, afterDebugStates),
+    before: beforeDebugStates.map(summarizeActionBlockers),
+    after: afterDebugStates,
+  }, null, 2);
 }
 
 async function collectGameDebugStates(pages) {
@@ -458,13 +498,13 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
 
     const rollOutcome = await waitForRollOutcomeAfterClick(pages, beforeRollDebugStates);
     if (rollOutcome.kind === 'terminal-state') {
-      throw new Error(`윷 던지기 이후 게임 화면을 벗어났습니다: ${JSON.stringify(rollOutcome.debugStates, null, 2)}`);
+      throw new Error(`윷 던지기 이후 게임 화면을 벗어났습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
     }
     if (rollOutcome.kind === 'pending-timeout') {
-      throw new Error(`윷 던지기 클릭 이후 원격 액션 대기 상태가 해소되지 않았습니다: ${JSON.stringify({ beforeDebugStates: beforeRollDebugStates, afterDebugStates: rollOutcome.debugStates }, null, 2)}`);
+      throw new Error(`윷 던지기 클릭 이후 원격 액션 대기 상태가 해소되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
     }
     if (rollOutcome.kind === 'no-state-change') {
-      throw new Error(`윷 던지기 클릭 이후 게임 상태 변화가 관측되지 않았습니다: ${JSON.stringify({ beforeDebugStates: beforeRollDebugStates, afterDebugStates: rollOutcome.debugStates }, null, 2)}`);
+      throw new Error(`윷 던지기 클릭 이후 게임 상태 변화가 관측되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
     }
 
     coverage.rolled += 1;
