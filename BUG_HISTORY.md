@@ -67,6 +67,72 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #128 모바일 QA 방장 권한 불일치 재발
+
+### Symptom
+
+- Galaxy S24 Ultra 단일 모바일 QA에서 AI 추가 후 `start-game-button`이 보이지 않았다.
+- 실패 시 debug state는 `screen: "waitingRoom"`이지만 `isRoomHost: false`, `canManageRoom: false`였고, `currentUserId`와 `hostSeatId`가 서로 달랐다.
+- iPad QA에서는 `move-piece-button` enabled 대기 중 최종 debug state에서 이동 버튼이 보이지 않는 상태가 관측되었다.
+- iPad 기기전 QA에서는 Firestore transient console error가 허용치보다 많이 발생했다.
+
+### Expected behavior
+
+- 방 생성 직후 host 클라이언트는 동일한 host uid로 대기실에 진입하고 `start-game-button`을 볼 수 있어야 한다.
+- 윷 결과 이후 이동 가능한 상태에서는 `move-piece-button`이 안정적으로 보이고 활성화되어야 한다.
+- QA 중 반복 Firestore transaction 경합이 사용자 진행을 막지 않아야 한다.
+
+### Actual behavior
+
+- 방 생성 직후 로컬 현재 사용자 uid와 방/seat의 host uid가 불일치해 host-only UI가 일반 플레이어 UI로 바뀌었다.
+- 일부 모바일 QA에서 이동 버튼 또는 Firestore transaction 경합 증상이 이어졌다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. Galaxy S24 Ultra 단일 모바일 경로에서 방을 생성하고 AI를 채운다.
+3. 시작 버튼 visible/enabled assertion을 기다린다.
+4. iPad 단일/기기전 경로에서 한 턴 진행 및 콘솔 에러 검사를 수행한다.
+
+### Suspected root cause
+
+- `handleCreateRoom()`이 확보한 `roomHost` uid로 Firestore 방을 만들지만, `openWaitingRoom()`은 다시 `userRef.current ?? currentUser`를 읽어 대기실 host seat를 구성한다.
+- 모바일 QA 타이밍에서 auth/current user 참조가 바뀌거나 아직 안정화되지 않으면 Firestore `room.hostId`/seat host uid와 로컬 `currentUserId`가 달라져 `canManageRoom`이 false가 된다.
+- 이동 버튼과 Firestore 경합은 같은 모바일 QA 계열의 상태 동기화 재발 가능성이 있으나, Issue #128 로그상 시작 버튼 미노출은 host uid 불일치가 직접 원인으로 보인다.
+
+### Confirmed root cause
+
+- 시작 버튼 미노출 경로는 host uid 불일치로 확인했다. 이동 버튼 visible false 및 Firestore transient error 증상은 추가 QA 재실행으로 재확인이 필요하다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 방 생성/대기실/이동 버튼 실패 시 debug state를 보강했다.
+  - Why it failed: 진단 정보는 늘었지만 host uid 불일치 자체는 막지 못했다.
+- Attempt 2:
+  - What was changed: `rollResultReadyAt` stale/future/timeout clear 경로를 여러 차례 보강했다.
+  - Why it failed: Issue #128의 Galaxy 시작 버튼 미노출은 roll hold가 아니라 대기실 host 권한 불일치 문제였다.
+
+### Do not try again
+
+- 시작 버튼 selector 대기 시간만 늘리지 않는다.
+- 테스트에서 일반 플레이어 화면을 host 성공으로 허용하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `rollResultReadyAt`만 반복 수정하지 않는다.
+
+### Correct fix plan
+
+- 방 생성에 사용한 `roomHost`를 host 대기실 진입에도 명시적으로 전달한다.
+- host 대기실 진입 시 같은 uid를 `rememberUser()`와 host seat 구성에 사용한다.
+- room subscribe에서 current user가 일시적으로 비어 있어도 방 생성에 사용한 host uid fallback으로 host 판정을 유지한다.
+- 방을 떠나거나 종료/복구 실패 시 host uid fallback을 정리한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
 ## 2026-06-30 - Issue #126 모바일 QA 대기실 진입 및 이동 버튼 재발 조사
 
 ### Symptom
