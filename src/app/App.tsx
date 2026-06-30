@@ -402,6 +402,7 @@ export function App() {
       turnIndex,
       lastMovedSeatId,
       lastMovedPieceIds,
+      pieces: pieces.map((piece) => ({ id: piece.id, ownerId: piece.ownerId, nodeId: piece.nodeId, started: piece.started, finished: piece.finished })),
       activeSeat: activeSeat ? { id: activeSeat.id, label: activeSeat.label, isAI: activeSeat.isAI } : null,
       isMyTurn,
       canSubmitTurnAction,
@@ -410,7 +411,7 @@ export function App() {
       selectedPieceId,
       selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
     };
-  }, [activeRoomId, activeSeat, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hostSeatId, isMyTurn, isRoomHost, localSeatId, roll, rollLockClock, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnIndex, lastMovedSeatId, lastMovedPieceIds]);
+  }, [activeRoomId, activeSeat, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hostSeatId, isMyTurn, isRoomHost, localSeatId, pieces, roll, rollLockClock, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnIndex, lastMovedSeatId, lastMovedPieceIds]);
 
 
   useEffect(() => () => {
