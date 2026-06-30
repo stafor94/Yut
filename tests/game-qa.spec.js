@@ -143,7 +143,7 @@ async function expectTwoPlayerGameReady(page, firstNickname, secondNickname) {
 }
 
 function createGameActionCoverage() {
-  return { rolled: 0, manualMoved: 0, autoWaited: 0, branchOuterSelected: 0, branchShortcutSelected: 0, itemPromptHandled: 0, itemUsed: 0, itemSkipped: 0, itemPickupModalHandled: 0, trapPlacementHandled: 0 };
+  return { rolled: 0, manualMoved: 0, autoWaited: 0, branchOuterSelected: 0, branchShortcutSelected: 0, branchMoved: 0, itemPromptHandled: 0, itemUsed: 0, itemSkipped: 0, itemPickupModalHandled: 0, trapPlacementHandled: 0 };
 }
 
 async function isVisible(locator) {
@@ -263,6 +263,7 @@ async function handleBranchMove(page, coverage) {
   const moveButton = controls.locator('.branch-move-button');
   await expect(moveButton, '갈림길 선택 후 이동 버튼이 활성화되어야 합니다.').toBeEnabled({ timeout: 15_000 });
   await moveButton.click();
+  coverage.branchMoved += 1;
   coverage.manualMoved += 1;
   return true;
 }
