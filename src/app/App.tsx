@@ -74,6 +74,7 @@ const TURN_ORDER_AI_MIN_DELAY_MS = 2000;
 const TURN_ORDER_AI_DELAY_SPREAD_MS = 1000;
 const TURN_ORDER_ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_MS = 2600;
+const ROLL_RESULT_HOLD_GRACE_MS = 1200;
 const ROLL_ANIMATION_MS = 2600;
 const MAX_OWNED_ITEMS = 1;
 const ITEM_PICKUP_ROLL_LOCK_MS = 3000;
@@ -83,6 +84,10 @@ const AUTO_SINGLE_MOVE_DELAY_MS = 1000;
 const CREATE_ROOM_TIMEOUT_MS = 12000;
 const STEP_DELAY_MS = 240;
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const normalizeRollResultReadyAt = (readyAt: number, now = Date.now()) => {
+  const maxExpectedReadyAt = now + ROLL_RESULT_HOLD_MS + ROLL_RESULT_HOLD_GRACE_MS;
+  return readyAt > now && readyAt <= maxExpectedReadyAt ? readyAt : 0;
+};
 const hasFinalConsonant = (text: string) => {
   const lastCode = text.charCodeAt(text.length - 1);
   return lastCode >= 0xac00 && lastCode <= 0xd7a3 && (lastCode - 0xac00) % 28 > 0;
@@ -340,7 +345,7 @@ export function App() {
   }, [getSeatById, pieceCount, pieces, playMode, playableSeats, turnSeats]);
   const selectedMoveSteps = roll?.steps ?? 0;
   const isRollLocked = rollLockUntil > rollLockClock;
-  const effectiveRollResultReadyAt = rollResultReadyAt > Date.now() ? rollResultReadyAt : 0;
+  const effectiveRollResultReadyAt = normalizeRollResultReadyAt(rollResultReadyAt);
   const rollResultHolding = effectiveRollResultReadyAt > rollLockClock;
   const trapPlacementActive = Boolean(pendingTrapPlacement);
   const isRemoteActionClient = Boolean(activeRoomId && !isRoomHost);
@@ -645,7 +650,7 @@ export function App() {
       lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
       const nextRoll = state.roll as YutResult | null;
       const syncedRollResultReadyAt = Number(state.rollResultReadyAt ?? 0);
-      const nextRollResultReadyAt = syncedRollResultReadyAt > Date.now() ? syncedRollResultReadyAt : 0;
+      const nextRollResultReadyAt = normalizeRollResultReadyAt(syncedRollResultReadyAt);
       const nextTurnIndex = Number(state.turnIndex ?? 0);
       if (nextRoll && !currentRollRef.current) {
         const animationKey = `${nextTurnIndex}:${nextRoll.name}:${nextRoll.steps}:${nextRollResultReadyAt}`;
