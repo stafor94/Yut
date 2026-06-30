@@ -67,6 +67,65 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - 모바일 QA 이동 버튼 hold 타이머 해제 보강
+
+### Symptom
+
+- Issue #124에서 PR #123 병합 후에도 iPad와 Galaxy S24 Ultra 모바일 QA가 `move-piece-button` enabled 대기 중 실패했다.
+- 버튼 텍스트는 `결과 확인 중...`으로 남고 15초 timeout 동안 disabled 상태가 유지되었다.
+
+### Expected behavior
+
+- 윷 결과 연출 대기 시간이 지나면 이동 가능한 말이 있을 때 `move-piece-button`이 활성화되어야 한다.
+
+### Actual behavior
+
+- 클라이언트가 `rollResultHolding` 상태를 계속 유지해 QA 액션 루프가 다음 이동으로 진행하지 못했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. 방을 생성하고 AI를 채운 뒤 게임을 시작한다.
+3. 실제 게임 상태 머신으로 액션을 진행한다.
+4. iPad 또는 Galaxy S24 Ultra 프로젝트에서 `move-piece-button` enabled assertion이 실패한다.
+
+### Suspected root cause
+
+- 이전 수정으로 subscribe/save/authoritative roll commit 경로의 `rollResultReadyAt` 정규화는 보강되었지만, hold 해제는 여전히 `rollLockClock` interval 갱신에 의존했다.
+- 모바일 QA 환경에서 interval/render 갱신이 기대대로 진행되지 않거나 raw `rollResultReadyAt`이 상태에 남으면 `rollResultHolding`이 만료 시점 이후에도 유지될 수 있었다.
+
+### Confirmed root cause
+
+- 코드 경로상 `rollResultReadyAt` 만료 시점에 상태를 직접 0으로 clear하는 fail-safe가 없었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `rollResultReadyAt`을 0으로 초기화했다.
+  - Why it failed: 이동 버튼 활성화 이전에 stale/future 값으로 hold되는 경로를 막지 못했다.
+- Attempt 2:
+  - What was changed: subscribe/save 및 authoritative roll commit 적용 경로에서 `rollResultReadyAt`을 정규화했다.
+  - Why it failed: hold 만료 자체가 clock interval 갱신에만 의존해 모바일 QA에서 만료 상태를 안정적으로 state에 반영하지 못할 수 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `clearRoll()` 초기화만 반복하지 않는다.
+
+### Correct fix plan
+
+- `rollResultReadyAt` effect에서 정규화된 ready time을 기준으로 동작한다.
+- 정규화 결과가 무효이면 상태를 0으로 정리한다.
+- 유효한 ready time은 기존 interval clock 갱신을 유지하면서 만료 시점 timeout으로 `rollResultReadyAt`을 0으로 clear한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
 ## 2026-06-30 - 모바일 QA authoritative rollResultReadyAt 정규화 누락
 
 ### Symptom

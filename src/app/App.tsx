@@ -762,10 +762,21 @@ export function App() {
   }, [rollLockUntil]);
 
   useEffect(() => {
-    if (rollResultReadyAt <= Date.now()) return undefined;
+    const nextRollResultReadyAt = normalizeRollResultReadyAt(rollResultReadyAt);
+    if (!nextRollResultReadyAt) {
+      if (rollResultReadyAt) setRollResultReadyAt(0);
+      return undefined;
+    }
     setRollLockClock(Date.now());
-    const timer = window.setInterval(() => setRollLockClock(Date.now()), 200);
-    return () => window.clearInterval(timer);
+    const interval = window.setInterval(() => setRollLockClock(Date.now()), 200);
+    const timeout = window.setTimeout(() => {
+      setRollLockClock(Date.now());
+      setRollResultReadyAt(0);
+    }, Math.max(0, nextRollResultReadyAt - Date.now()));
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
   }, [rollResultReadyAt]);
 
   useEffect(() => {
