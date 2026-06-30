@@ -67,6 +67,71 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #172 Game QA stale local turn state 및 move click race 재발
+
+### Symptom
+
+- PR #171 이후 `Game QA`의 모바일 단일 QA와 모바일 기기전 QA가 실제 게임 상태 머신 액션 루프에서 실패했다.
+- 윷 던지기 클릭 후 `message: "지금은 내 차례가 아닙니다."`가 표시되면서 `roll`, sequence/version, 말 위치 변화가 관측되지 않는 실패가 발생했다.
+- 일부 실패는 `message: "이미 윷을 던졌습니다. 말을 이동해주세요."`, 로컬 `roll: null`, `canRollNow: true` 조합으로 `stale-roll-state-timeout`이 발생했다.
+- 기기전에서는 `move-piece-button`을 ready로 본 뒤 실제 클릭 시점에 버튼이 disabled/비가시 상태로 바뀌어 timeout이 발생했다.
+
+### Expected behavior
+
+- 로컬 화면이 authoritative Firestore 턴/roll 상태보다 늦게 반영된 경우 QA는 즉시 일반 no-state-change나 click timeout으로 실패하지 않고 짧게 subscription 반영 또는 다른 기기의 현재 턴 UI 전환을 기다려야 한다.
+- 끝까지 반영되지 않으면 stale local turn/roll state로 분류된 실패 로그를 남겨야 한다.
+
+### Actual behavior
+
+- `waitForRollOutcomeAfterClick()`은 "이미 윷을 던졌습니다" stale roll race만 별도 분류했고, "지금은 내 차례가 아닙니다" actor mismatch race는 일반 실패로 남길 수 있었다.
+- `move-piece-button` 클릭 경로는 ready 판정 직후 stale local turn 상태로 바뀐 경우를 pending/holding race처럼 재평가하지 않았다.
+
+### Reproduction steps
+
+1. 모바일 단일 QA 또는 모바일 기기전 QA를 실행한다.
+2. 실제 게임 상태 머신 액션 루프에서 로컬 화면에 보이는 윷 던지기 또는 이동 버튼을 클릭한다.
+3. authoritative state에서는 이미 턴 또는 roll 상태가 바뀌었지만 로컬 화면 반영이 늦으면 reject message 또는 stale button 상태가 관측된다.
+4. QA helper가 이를 stale local state로 분류하지 못하면 no-state-change, stale-roll-state-timeout, 또는 move click timeout으로 실패한다.
+
+### Suspected root cause
+
+- 모바일 WebKit/Firestore 타이밍에서 로컬 React 상태가 authoritative game state보다 늦게 반영되는 순간에 QA가 stale 버튼을 클릭하는 race로 보인다.
+- 앱의 `canRollNow`는 로컬 `roll === null`과 local turn state를 기준으로 버튼을 노출하지만, authoritative reducer는 Firestore state의 active actor와 `state.roll`을 기준으로 reject한다.
+
+### Confirmed root cause
+
+- 아직 미확정. 이번 변경은 stale local turn state를 별도 분류하고, move click 직전 stale local turn으로 바뀐 경우를 transient race로 재평가하도록 하는 QA 보강이다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #168에서 stale local roll state를 별도 분류하고 subscription 반영을 추가 대기하도록 보강했다.
+  - Why it failed: Issue #172에는 `이미 윷을 던졌습니다`뿐 아니라 `지금은 내 차례가 아닙니다` actor mismatch stale turn race가 추가로 나타났다.
+- Attempt 2:
+  - What was changed: Issue #160에서 move click race와 roll pending/no-state-change 진단을 보강했다.
+  - Why it failed: ready 판정 후 stale local turn 상태로 바뀐 move click race를 별도 허용 조건으로 분류하지 못했다.
+
+### Do not try again
+
+- Playwright timeout만 무작정 늘리지 않는다.
+- UI 구조나 버튼 표시 방식을 변경하지 않는다.
+- authoritative reducer의 턴/roll reject 조건을 원인 확정 없이 완화하지 않는다.
+- 앱 원격 액션/Firestore 동기화 구조를 원인 확정 없이 광범위하게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- QA의 roll 클릭 후 outcome 관측에서 "지금은 내 차례가 아닙니다" 메시지와 로컬 `roll: null`, `canRollNow: true`, roll 버튼 visible 조합 또는 `not-local-turn` blocker를 stale local turn state로 분류한다.
+- 해당 조합이 보이면 즉시 실패하지 않고 기존 pending 대기 한도까지 subscription 반영, move UI, sequence/version 증가를 기다린다.
+- 끝까지 반영되지 않으면 `stale-turn-state-timeout`으로 실패시켜 다음 로그에서 원인을 좁힌다.
+- move 버튼 click 실패 직후 stale local turn 상태가 확인되면 hard failure 대신 다음 tick에서 현재 기기/상태를 재평가하도록 `wait`로 처리한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile single QA rerun checked
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No unrelated UI changes
+
 ## 2026-06-30 - Issue #168 Game QA 윷 던지기 후 stale local roll state
 
 ### Symptom
