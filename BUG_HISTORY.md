@@ -823,3 +823,62 @@ Confirmed only documentation files were added and no application code was change
 ### Remaining risks
 
 Future Codex tasks must actually follow these files; the rules reduce repeated mistakes but do not guarantee perfect fixes.
+
+## 2026-06-30 - Issue #144 모바일 기기전 QA roll-only 액션 히스토리 재발
+
+### Symptom
+
+- PR #143 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 다시 실패했다.
+- 실패 로그의 `actionHistory`가 `roll` 10개로만 채워졌고, `coverage.rolled`는 10이었지만 `coverage.manualMoved + coverage.autoWaited`는 0이었다.
+
+### Expected behavior
+
+- 윷 던지기 뒤 앱이 자동 이동 또는 이동 불가 스킵으로 다음 턴/다음 상태에 진입한 경우, QA 루프가 그 자동 진행을 이동 관련 검증으로 관측해야 한다.
+- 단순히 윷을 던졌다는 이유만으로 이동 커버리지를 올리면 안 된다.
+
+### Actual behavior
+
+- QA 루프는 `roll-yut-button` 클릭을 `roll` 액션으로만 기록했다.
+- 버튼 클릭 직후 앱이 자동 이동 또는 이동 불가 스킵으로 `roll`을 비우고 다시 윷 던지기 가능한 상태가 되어도, 이 상태 전환은 `autoWaited`에 반영되지 않았다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프 중 윷 던지기 후 앱이 자동으로 이동 또는 이동 불가 스킵을 처리한다.
+4. 테스트가 이동 버튼을 직접 관측하지 못한 채 다음 윷 던지기만 반복 기록하면 `manualMoved + autoWaited` assertion이 실패한다.
+
+### Suspected root cause
+
+- 기기전 QA 커버리지 집계가 윷 던지기 직후의 자동 상태 전환을 관측하지 않아 `actionHistory`가 `roll`로만 채워질 수 있었다.
+
+### Confirmed root cause
+
+- `playOneAvailableGameAction()`의 `roll-yut-button` 경로는 클릭 후 `coverage.rolled`만 증가시키고 반환했다. 따라서 클릭 직후 앱이 `roll: null`과 다음 윷 던지기 가능 상태로 자동 진행했는지 확인하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #138에서 갈림길 이동 버튼 클릭 성공 시 `coverage.manualMoved`를 증가시켰다.
+  - Why it failed: 이번 실패의 `branchMoved`는 0이어서 갈림길 이동 누락과 다른 경로였다.
+- Attempt 2:
+  - What was changed: Issue #140에서 실패 메시지에 `coverage`, `actionHistory`, `debugStates`를 포함했다.
+  - Why it failed: 진단 정보는 확보됐지만, `roll` 직후 자동 진행을 커버리지에 반영하는 로직은 없었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+
+### Correct fix plan
+
+- `roll-yut-button` 클릭 전후의 debug state를 비교한다.
+- 클릭 후 `roll`이 `null`이고 결과 대기 상태가 아니며 다시 윷 던지기 가능한 상태가 되었고, `turnIndex`, `lastMovedSeatId`, 또는 `lastMovedPieceIds`가 바뀐 경우에만 자동 진행으로 보고 `coverage.autoWaited`를 증가시킨다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
