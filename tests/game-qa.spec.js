@@ -428,7 +428,7 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
       throw new Error(`윷 던지기 이후 게임 화면을 벗어났습니다: ${JSON.stringify(rollOutcome.debugStates, null, 2)}`);
     }
     if (rollOutcome.kind === 'no-state-change') {
-      return 'wait';
+      throw new Error(`윷 던지기 클릭 이후 게임 상태 변화가 관측되지 않았습니다: ${JSON.stringify({ beforeDebugStates: beforeRollDebugStates, afterDebugStates: rollOutcome.debugStates }, null, 2)}`);
     }
 
     coverage.rolled += 1;
@@ -452,20 +452,24 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
 
 async function playUntilActions(page, testInfo, { targetActions = 10, maxTicks = 80, minActionsBeforeWinner = 6, stepPrefix = 'action-loop' } = {}) {
   const coverage = createGameActionCoverage();
+  const actionHistory = [];
   let progressedActions = 0;
   for (let tick = 1; tick <= maxTicks && progressedActions < targetActions; tick += 1) {
     const action = await playOneAvailableGameAction(page, coverage);
+    actionHistory.push(action);
     if (action === 'winner') {
       const debugState = await collectGameDebugState(page);
-      expect(progressedActions, `게임이 너무 빨리 종료되었습니다: ${JSON.stringify(debugState, null, 2)}`).toBeGreaterThanOrEqual(minActionsBeforeWinner);
+      expect(progressedActions, `게임이 너무 빨리 종료되었습니다: ${JSON.stringify({ coverage, actionHistory, debugState }, null, 2)}`).toBeGreaterThanOrEqual(minActionsBeforeWinner);
       break;
     }
     if (action !== 'wait') progressedActions += 1;
     if (tick % 10 === 0) await saveStepScreenshot(page, testInfo, `${stepPrefix}-${tick}`);
   }
-  expect(progressedActions, `충분한 게임 액션을 진행하지 못했습니다: ${JSON.stringify(await collectGameDebugState(page), null, 2)}`).toBeGreaterThanOrEqual(targetActions);
-  expect(coverage.rolled, 'QA 루프에서 윷 던지기를 최소 1회 이상 수행해야 합니다.').toBeGreaterThan(0);
-  expect(coverage.manualMoved + coverage.autoWaited, 'QA 루프에서 수동 이동 또는 자동 이동 대기 상태를 검증해야 합니다.').toBeGreaterThan(0);
+  const debugState = await collectGameDebugState(page);
+  const failureDebug = JSON.stringify({ coverage, actionHistory, debugState }, null, 2);
+  expect(progressedActions, `충분한 게임 액션을 진행하지 못했습니다: ${failureDebug}`).toBeGreaterThanOrEqual(targetActions);
+  expect(coverage.rolled, `QA 루프에서 윷 던지기를 최소 1회 이상 수행해야 합니다: ${failureDebug}`).toBeGreaterThan(0);
+  expect(coverage.manualMoved + coverage.autoWaited, `QA 루프에서 수동 이동 또는 자동 이동 대기 상태를 검증해야 합니다: ${failureDebug}`).toBeGreaterThan(0);
   return coverage;
 }
 
