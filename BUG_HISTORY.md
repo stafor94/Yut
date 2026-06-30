@@ -67,6 +67,59 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #154 Playwright game QA turnOrderIntro stale state timeout
+
+### Symptom
+
+- PR #153 merge 후 `Merged PR QA and Deploy`의 Playwright E2E가 `Run Playwright tests` 단계에서 실패했다.
+- iPad/Galaxy 단일 QA와 iPad device-to-device QA가 게임 액션 루프 중 timeout 또는 page/context closed 오류로 실패했다.
+- artifact 화면에서는 게임 화면에서 roll 버튼이 비활성 대기 상태이거나, 방 종료 후 lobby로 돌아간 상태가 확인됐다.
+
+### Expected behavior
+
+- 차례 순서 안내 `turnOrderIntro`의 `readyAt`이 지난 뒤에는 게임 액션, AI autoplay, remote action 처리가 진행되어야 한다.
+- 상태 동기화가 실패하더라도 만료된 intro가 영구적으로 게임 진행을 막으면 안 된다.
+
+### Actual behavior
+
+- host autosave fingerprint에 `turnOrderIntro`가 빠져 intro 해제 상태 변경이 저장 트리거에서 누락될 수 있었다.
+- Firestore에 만료된 `turnOrderIntro`가 남으면 `canSubmitTurnAction`, AI autoplay, remote action 처리가 계속 차단됐다.
+- Playwright helper는 game 화면 이탈이나 context close를 조기 실패로 드러내지 못하고 roll 결과 대기를 반복하다 전체 test timeout에 도달했다.
+
+### Confirmed root cause
+
+- `turnOrderIntro` 해제 상태가 autosave fingerprint에 포함되지 않았고, 만료된 intro를 active 상태와 동일하게 취급하는 조건들이 남아 있었다.
+- authoritative roll reducer도 Firestore의 만료된 `turnOrderIntro`를 그대로 진행 차단 조건으로 사용했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: PR #153에서 roll 이후 실제 상태 변화 관측을 강화했다.
+  - Why it failed: 테스트의 false positive는 줄였지만, 앱의 stale `turnOrderIntro` 동기화 버그 자체는 해결하지 못했다.
+- Attempt 2:
+  - What was changed: 이전 이슈들에서 Playwright coverage와 debug state를 여러 차례 보강했다.
+  - Why it failed: timeout 원인인 상태 머신 차단 조건과 Firestore intro 완료 커밋 경로가 남아 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled roll/move 버튼을 테스트에서 강제로 클릭하지 않는다.
+- `turnOrderIntro`를 단순히 UI에서만 숨기고 Firestore 상태 정리를 생략하지 않는다.
+- 만료 여부 확인 없이 raw `turnOrderIntro` 존재만으로 액션을 차단하지 않는다.
+
+### Correct fix plan
+
+- autosave fingerprint에 `turnOrderIntro`를 포함한다.
+- 만료된 intro는 UI, action guard, authoritative reducer에서 active intro로 취급하지 않는다.
+- host가 `readyAt` 이후 idempotent transaction으로 `turnOrderIntro: null`을 Firestore에 기록한다.
+- Playwright helper는 game 화면 이탈/page close를 즉시 원인 포함 실패로 보고한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] GitHub Actions Playwright rerun checked
+- [x] No unrelated UI redesign
+
 
 ## 2026-06-30 - Issue #148 모바일 기기전 QA host 방 생성 중 대기실 진입 timeout
 

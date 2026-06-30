@@ -163,31 +163,39 @@ async function isVisible(locator) {
 }
 
 async function collectGameDebugState(page) {
-  return page.evaluate(() => ({
-    turn: document.querySelector('[data-testid="turn-indicator"]')?.textContent?.trim() ?? '',
-    controls: document.querySelector('.play-controls')?.textContent?.trim() ?? '',
-    moveButton: {
-      visible: Boolean(document.querySelector('[data-testid="move-piece-button"]')),
-      text: document.querySelector('[data-testid="move-piece-button"]')?.textContent?.trim() ?? '',
-      disabled: Boolean(document.querySelector('[data-testid="move-piece-button"]')?.hasAttribute('disabled')),
-    },
-    rollButton: {
-      visible: Boolean(document.querySelector('[data-testid="roll-yut-button"]')),
-      text: document.querySelector('[data-testid="roll-yut-button"]')?.textContent?.trim() ?? '',
-      disabled: Boolean(document.querySelector('[data-testid="roll-yut-button"]')?.hasAttribute('disabled')),
-    },
-    branchControls: {
-      visible: Boolean(document.querySelector('.bottom-branch-controls')),
-      text: document.querySelector('.bottom-branch-controls')?.textContent?.trim() ?? '',
-      moveDisabled: Boolean(document.querySelector('.bottom-branch-controls .branch-move-button')?.hasAttribute('disabled')),
-    },
-    winner: document.querySelector('.winner-overlay')?.textContent?.trim() ?? '',
-    prompt: document.querySelector('.inline-item-prompt')?.textContent?.trim() ?? '',
-    trap: document.querySelector('.trap-placement-banner')?.textContent?.trim() ?? '',
-    yutDebug: window.__YUT_DEBUG_STATE__ ?? null,
-    logs: Array.from(document.querySelectorAll('.log-list p')).slice(0, 5).map((node) => node.textContent?.trim() ?? ''),
-    pieces: Array.from(document.querySelectorAll('[data-testid^="piece-"]')).map((node) => ({ testId: node.getAttribute('data-testid'), text: node.textContent?.trim(), className: node.getAttribute('class') })),
-  }));
+  try {
+    return await page.evaluate(() => ({
+      turn: document.querySelector('[data-testid="turn-indicator"]')?.textContent?.trim() ?? '',
+      controls: document.querySelector('.play-controls')?.textContent?.trim() ?? '',
+      moveButton: {
+        visible: Boolean(document.querySelector('[data-testid="move-piece-button"]')),
+        text: document.querySelector('[data-testid="move-piece-button"]')?.textContent?.trim() ?? '',
+        disabled: Boolean(document.querySelector('[data-testid="move-piece-button"]')?.hasAttribute('disabled')),
+      },
+      rollButton: {
+        visible: Boolean(document.querySelector('[data-testid="roll-yut-button"]')),
+        text: document.querySelector('[data-testid="roll-yut-button"]')?.textContent?.trim() ?? '',
+        disabled: Boolean(document.querySelector('[data-testid="roll-yut-button"]')?.hasAttribute('disabled')),
+      },
+      branchControls: {
+        visible: Boolean(document.querySelector('.bottom-branch-controls')),
+        text: document.querySelector('.bottom-branch-controls')?.textContent?.trim() ?? '',
+        moveDisabled: Boolean(document.querySelector('.bottom-branch-controls .branch-move-button')?.hasAttribute('disabled')),
+      },
+      winner: document.querySelector('.winner-overlay')?.textContent?.trim() ?? '',
+      prompt: document.querySelector('.inline-item-prompt')?.textContent?.trim() ?? '',
+      trap: document.querySelector('.trap-placement-banner')?.textContent?.trim() ?? '',
+      yutDebug: window.__YUT_DEBUG_STATE__ ?? null,
+      logs: Array.from(document.querySelectorAll('.log-list p')).slice(0, 5).map((node) => node.textContent?.trim() ?? ''),
+      pieces: Array.from(document.querySelectorAll('[data-testid^="piece-"]')).map((node) => ({ testId: node.getAttribute('data-testid'), text: node.textContent?.trim(), className: node.getAttribute('class') })),
+    }));
+  } catch (error) {
+    return {
+      pageUnavailable: true,
+      error: error instanceof Error ? error.message : String(error),
+      yutDebug: null,
+    };
+  }
 }
 
 function summarizeDebugPieces(pieces) {
@@ -217,6 +225,14 @@ function hasMoveResolutionUi(debugState) {
     debugState?.trap ||
     debugState?.winner
   );
+}
+
+function findTerminalGameState(debugStates) {
+  return debugStates.find((debugState) => {
+    if (debugState?.pageUnavailable) return true;
+    const screen = debugState?.yutDebug?.screen;
+    return screen && screen !== 'game';
+  }) ?? null;
 }
 
 function findCanonicalDebugState(debugStates) {
@@ -252,6 +268,9 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
   while (Date.now() < deadline) {
     const debugStates = await collectGameDebugStates(pages);
     lastDebugStates = debugStates;
+
+    const terminalDebugState = findTerminalGameState(debugStates);
+    if (terminalDebugState) return { kind: 'terminal-state', debugStates, terminalDebugState };
 
     if (didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, debugStates)) {
       return { kind: 'auto-advance', debugStates };
@@ -405,6 +424,9 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
     await rollButton.click();
 
     const rollOutcome = await waitForRollOutcomeAfterClick(pages, beforeRollDebugStates);
+    if (rollOutcome.kind === 'terminal-state') {
+      throw new Error(`윷 던지기 이후 게임 화면을 벗어났습니다: ${JSON.stringify(rollOutcome.debugStates, null, 2)}`);
+    }
     if (rollOutcome.kind === 'no-state-change') {
       return 'wait';
     }
