@@ -319,13 +319,24 @@ export function App() {
   };
   const playTimeText = gameStartedAt ? formatPlayTime(playTimeNow - gameStartedAt) : '00:00';
   const winner = useMemo(() => {
+    const activeGameSeats = turnSeats.length ? turnSeats : playableSeats;
+    if (!activeGameSeats.length || !pieces.length) return '';
+
     if (playMode === 'team') {
-      const finishedTeam = (['청팀', '홍팀'] as Team[]).find((team) => playableSeats.filter((seat) => seat.team === team).every((seat) => pieces.filter((piece) => getSeatById(piece.ownerId)?.team === team).every((piece) => piece.finished)));
+      const finishedTeam = (['청팀', '홍팀'] as Team[]).find((team) => {
+        if (!activeGameSeats.some((seat) => seat.team === team)) return false;
+        const teamPieces = pieces.filter((piece) => getSeatById(piece.ownerId)?.team === team);
+        return teamPieces.length >= pieceCount && teamPieces.every((piece) => piece.finished);
+      });
       return finishedTeam ? `${finishedTeam} 승리` : '';
     }
-    const finishedSeat = playableSeats.find((seat) => pieces.filter((piece) => piece.ownerId === seat.id).every((piece) => piece.finished));
+
+    const finishedSeat = activeGameSeats.find((seat) => {
+      const seatPieces = pieces.filter((piece) => piece.ownerId === seat.id);
+      return seatPieces.length >= pieceCount && seatPieces.every((piece) => piece.finished);
+    });
     return finishedSeat ? `${finishedSeat.label}-${finishedSeat.name} 승리` : '';
-  }, [pieces, playMode, playableSeats]);
+  }, [getSeatById, pieceCount, pieces, playMode, playableSeats, turnSeats]);
   const selectedMoveSteps = roll?.steps ?? 0;
   const isRollLocked = rollLockUntil > rollLockClock;
   const rollResultHolding = rollResultReadyAt > rollLockClock;
