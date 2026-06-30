@@ -67,6 +67,69 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #168 Game QA 윷 던지기 후 stale local roll state
+
+### Symptom
+
+- PR #167 이후 모바일 단일 QA와 모바일 기기전 QA의 실제 게임 상태 머신 액션 루프에서 실패했다.
+- 윷 던지기 버튼 클릭 후 `roll`, `lastAppliedSequence`, `lastAppliedStateVersion`, 말 위치 변화가 관측되지 않아 `no-state-change`로 실패하거나, 기기전에서 `pendingLocalRemoteActionCount`가 남아 `pending-remote-action`으로 실패했다.
+- 실패 로그 일부에는 `message: "이미 윷을 던졌습니다. 말을 이동해주세요."`가 보이지만 로컬 debug state의 `roll`은 `null`, `canRollNow`는 `true`로 남아 있었다.
+
+### Expected behavior
+
+- authoritative Firestore state가 이미 roll을 처리한 경우 QA는 즉시 실패하지 않고 짧게 subscription 반영 또는 이동 UI 전환을 기다려야 한다.
+- 추가 대기 후에도 로컬 화면이 authoritative roll 상태를 반영하지 못하면 stale local state로 분류된 실패 로그를 남겨야 한다.
+
+### Actual behavior
+
+- `waitForRollOutcomeAfterClick()`은 roll/move UI, sequence/version 증가, pending 상태만 관측했다.
+- authoritative reducer의 "이미 윷을 던졌습니다" reject 메시지와 로컬 `roll: null` 조합을 별도 race로 분류하지 않아 일반 `no-state-change` 또는 pending 실패로 떨어졌다.
+
+### Reproduction steps
+
+1. 모바일 단일 QA 또는 모바일 기기전 QA를 실행한다.
+2. 실제 게임 상태 머신 액션 루프에서 로컬 화면에 보이는 윷 던지기 버튼을 클릭한다.
+3. authoritative state가 이미 roll을 보유한 타이밍이면 앱 메시지는 "이미 윷을 던졌습니다. 말을 이동해주세요."로 바뀌지만 로컬 debug state의 `roll`은 아직 `null`일 수 있다.
+4. 테스트가 subscription 반영을 충분히 분류하지 못하면 상태 변화 없음 또는 pending 원격 액션으로 실패한다.
+
+### Suspected root cause
+
+- 모바일 WebKit/Firestore 타이밍에서 로컬 React 상태가 authoritative game state보다 늦게 반영되는 순간에 QA가 roll 버튼을 클릭하는 race로 보인다.
+- 앱의 `canRollNow`는 로컬 `roll === null`을 기준으로 버튼을 노출하지만, authoritative reducer는 Firestore state의 `state.roll`을 기준으로 이미 roll이 있으면 reject한다.
+
+### Confirmed root cause
+
+- 아직 미확정. 이번 변경은 stale local roll state를 별도 분류하고 subscription 반영을 짧게 추가 대기하도록 하는 QA 보강이다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #154에서 turnOrderIntro stale state와 pending action 관련 진단/정리를 보강했다.
+  - Why it failed: Issue #168 로그에서는 `activeTurnOrderIntro`와 `turnOrderPhase`가 false라 같은 원인으로 단정할 수 없다.
+- Attempt 2:
+  - What was changed: PR #167에서 기기전 helper의 state advancement wrapper 누락을 수정했다.
+  - Why it failed: ReferenceError 계열은 제거됐지만, roll 클릭 이후 authoritative/local state race 분류는 남아 있었다.
+
+### Do not try again
+
+- Playwright timeout만 무작정 늘리지 않는다.
+- UI 구조나 버튼 표시 방식을 변경하지 않는다.
+- turnOrderIntro 문제로 단정해 관련 상태를 다시 넓게 수정하지 않는다.
+- 앱 원격 액션/Firestore 동기화 구조를 원인 확정 없이 광범위하게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- QA의 roll 클릭 후 outcome 관측에서 "이미 윷을 던졌습니다" 메시지와 로컬 `roll: null`, `canRollNow: true`, roll 버튼 visible 조합을 stale local roll state로 분류한다.
+- 해당 조합이 보이면 즉시 실패하지 않고 기존 pending 대기 한도까지 subscription 반영, move UI, sequence/version 증가를 기다린다.
+- 끝까지 반영되지 않으면 `stale-roll-state-timeout`으로 실패시켜 다음 로그에서 원인을 좁힌다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile single QA rerun checked
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No unrelated UI changes
+
 ## 2026-06-30 - Issue #154 Playwright game QA turnOrderIntro stale state timeout
 
 ### Symptom
