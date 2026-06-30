@@ -1116,3 +1116,64 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Device-to-device mobile QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #156 모바일 Game QA 진행 중 방 삭제로 lobby 복귀
+
+### Symptom
+
+- PR #155 이후 모바일 Game QA의 실제 게임 상태 머신 액션 진행 단계에서 실패했다.
+- 윷 던지기 직후 debug state가 `screen: "lobby"`, `activeRoomId: ""`, `message: "방이 종료되어 대기실로 이동했습니다."` 상태로 관측됐다.
+
+### Expected behavior
+
+- 게임 진행 중인 방은 일반 stale room cleanup 때문에 즉시 삭제되지 않아야 한다.
+- QA 액션 루프가 윷 던지기 직후 방 삭제로 lobby에 복귀하지 않아야 한다.
+
+### Actual behavior
+
+- `cleanupStaleRooms()`가 `waiting`뿐 아니라 `playing` 방도 cleanup 대상으로 조회했다.
+- stale player 정리 후 남은 사람이 AI뿐이라고 판단하면 `playing` 방도 `deleteRoom()` 대상이 될 수 있었다.
+- 방 문서가 삭제되면 `subscribeRoom()`의 `!room` 경로가 실행되어 lobby로 돌아가고, QA는 이를 terminal state로 실패 처리했다.
+
+### Reproduction steps
+
+1. 모바일 Game QA를 실행한다.
+2. AI를 포함한 방에서 실제 게임 상태 머신 액션 루프를 진행한다.
+3. cleanup 타이밍에 playing 방의 human player snapshot이 stale 또는 부재로 판단된다.
+4. 방이 삭제되면 클라이언트가 lobby로 복귀하고, 윷 던지기 이후 terminal-state 오류가 발생한다.
+
+### Suspected root cause
+
+- 모바일 WebKit/CI 타이밍에서 heartbeat 반영보다 cleanup 판단이 앞서면, 진행 중인 게임 방도 빈 방으로 오인될 수 있다.
+
+### Confirmed root cause
+
+- `cleanupStaleRooms()`가 `status in ['waiting', 'playing']` 방을 대상으로 하면서, `playing` 방도 남은 human player가 없으면 `deleteRoom()`를 호출할 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #144/#146/#150에서 roll 직후 자동 진행 관측값과 QA debug state를 보강했다.
+  - Why it failed: 이번 증상은 이동 커버리지 누락이 아니라 방 문서 삭제로 인한 game screen 이탈이었다.
+- Attempt 2:
+  - What was changed: Issue #154에서 stale `turnOrderIntro` 차단 조건과 저장 경로를 보강했다.
+  - Why it failed: 이번 debug state는 turnOrderIntro 고착이 아니라 `activeRoomId`가 비워진 lobby 복귀 상태였다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- game screen 이탈을 테스트에서 무시하지 않는다.
+
+### Correct fix plan
+
+- stale room cleanup은 계속 수행하되, `playing` 방은 stale player 정리 후에도 empty-room `deleteRoom()` 대상에서 제외한다.
+- `waiting` 방의 빈 방 정리 동작은 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No unrelated UI changes
