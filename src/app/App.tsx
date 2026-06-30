@@ -387,6 +387,7 @@ export function App() {
   const clearRoll = () => {
     currentRollRef.current = null;
     setRoll(null);
+    setRollResultReadyAt(0);
   };
 
   useEffect(() => {
