@@ -67,6 +67,65 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #142 모바일 기기전 QA host 대기실 전환 지연
+
+### Symptom
+
+- PR #141 이후 `mobile device-to-device QA`의 `기기전 04 iPad 방 생성 및 대기실 진입` 단계에서 timeout이 발생했다.
+- iPad host가 방 만들기를 누른 뒤 Firestore 방 카드는 로비에 보였지만, 화면은 `screen: "lobby"`와 `방으로 이동하는 중입니다...` 상태에 머물렀고 `waiting-room`이 표시되지 않았다.
+
+### Expected behavior
+
+- host가 방 생성에 성공하면 새 방 대기실로 즉시 전환되어야 한다.
+- 생성된 방이 이미 보호 대상이면 대기실 전환 전 중복 방 정리 작업이 새 방 입장을 불필요하게 지연시키지 않아야 한다.
+
+### Actual behavior
+
+- `openWaitingRoom()`은 host 생성 경로에서도 `leaveDuplicatePlayerRooms(joiningUser.uid, room.id)`를 다시 await했다.
+- `handleCreateRoom()`은 새 방 생성 전에 이미 같은 host uid의 중복 방 정리를 수행하므로, 새 방 생성 후 대기실 상태 전환 전에 같은 정리 작업을 다시 기다릴 필요가 없었다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad host가 QA 방 제목을 입력하고 방 만들기를 누른다.
+3. Firestore에는 QA 방이 생성되어 로비 카드가 보인다.
+4. 대기실 상태 전환 전에 정리 작업이 지연되면 `waiting-room` visible assertion이 timeout된다.
+
+### Suspected root cause
+
+- 새 방 생성 후 host 대기실 전환 전에 중복 방 정리 작업을 다시 await하면서, 모바일 WebKit/Firestore CI 타이밍에서 `setActiveRoomId()`와 `setScreen('waitingRoom')`까지 도달하지 못한 것으로 보인다.
+
+### Confirmed root cause
+
+- 코드 경로상 host 생성 직전 `handleCreateRoom()`에서 `leaveDuplicatePlayerRooms(roomHost.uid)`를 이미 await한 뒤에도, 생성 직후 `openWaitingRoom()`에서 host를 `joiningUser`로 취급해 `leaveDuplicatePlayerRooms(joiningUser.uid, room.id)`를 다시 await했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #136에서 대기실 진입 실패 로그가 보강되었다.
+  - Why it failed: 진단은 강화되었지만 host 대기실 전환 전 중복 정리 await 경로는 그대로 남아 있었다.
+- Attempt 2:
+  - What was changed: Issue #128에서 host uid fallback 및 방장 권한 경로가 보강되었다.
+  - Why it failed: Issue #142는 방장 권한 미노출이 아니라 `waiting-room` 자체로 전환되기 전 정리 await가 지연되는 경로였다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 시작 버튼/방장 권한 문제로 단정해 `canManageRoom`만 수정하지 않는다.
+- 원인 확인 없이 방 생성, 인증, room cleanup 경로를 넓게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- host 생성 경로에서는 새 방 생성 전에 이미 중복 방 정리를 수행했으므로, `openWaitingRoom()`의 새 방 입장 전 중복 방 정리 await는 비-host 참여 경로에만 적용한다.
+- 기존 참여자 join 경로의 중복 방 보호 정리는 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
+
 ## 2026-06-30 - Issue #140 모바일 기기전 QA 이동 커버리지 재발 진단
 
 ### Symptom

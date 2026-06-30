@@ -1102,7 +1102,7 @@ export function App() {
       ]) : roomUser;
       if (!asHost && room.id && isFirebaseConfigured && !joiningUser) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
       if (joiningUser) rememberUser(joiningUser);
-      if (joiningUser && room.id) await leaveDuplicatePlayerRooms(joiningUser.uid, room.id);
+      if (!asHost && joiningUser && room.id) await leaveDuplicatePlayerRooms(joiningUser.uid, room.id);
       await leavePreviousOnlineRoom(room.id ?? '');
       const joinResult = !asHost && room.id && joiningUser ? await joinRoom(room.id, { userId: joiningUser.uid, nickname, playMode: room.playMode }) : null;
       setActiveRoomId(room.id ?? '');
