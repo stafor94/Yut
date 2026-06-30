@@ -111,6 +111,7 @@ h2 { margin-top: 0; }
 }
 
 .player em { color: var(--green); font-style: normal; font-weight: 800; }
+.player-mobile-line { display: none; }
 .board-panel { display: grid; place-items: center; min-width: 0; }
 
 .board {
@@ -3196,18 +3197,16 @@ aside.players,
   }
 
   .game-shell .player b,
-  .game-shell .player span,
+  .game-shell .player > span:not(.player-mobile-line),
   .game-shell .player .player-badges,
   .game-shell .player em {
-    min-width: 0;
-  }
-
-  .game-shell .player b {
     display: none;
   }
 
-  .game-shell .player > span {
+  .game-shell .player .player-mobile-line {
+    display: block;
     flex: 1 1 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
