@@ -1512,7 +1512,7 @@ export function App() {
           }
           if (result.status === 'committed') {
             const committedRoll = result.patch?.roll as YutResult | null | undefined;
-            const committedRollResultReadyAt = Number(result.patch?.rollResultReadyAt ?? 0);
+            const committedRollResultReadyAt = normalizeRollResultReadyAt(Number(result.patch?.rollResultReadyAt ?? 0));
             if (committedRoll && !currentRollRef.current) {
               currentRollRef.current = committedRoll;
               setRoll(committedRoll);
