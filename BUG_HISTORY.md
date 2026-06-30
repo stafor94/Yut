@@ -67,7 +67,69 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
-No repeated bug entries yet.
+## 2026-06-30 - 모바일 QA 게임 진행/대기실 버튼 재발
+
+### Symptom
+
+- iPad QA에서 `move-piece-button`이 `결과 확인 중...` disabled 상태로 15초 이상 유지된다.
+- Galaxy S24 Ultra QA에서 AI 추가 후 `start-game-button`이 보이지 않는다.
+
+### Expected behavior
+
+- 윷 결과 연출 대기 시간이 지나면 이동 가능한 말이 있을 때 `move-piece-button`이 활성화되어야 한다.
+- 방장이 AI를 모두 채운 뒤에는 `start-game-button`이 보이고 활성화되어야 한다.
+
+### Actual behavior
+
+- 이동 버튼이 `rollResultHolding` 상태에 묶여 QA 루프가 다음 액션으로 진행하지 못했다.
+- 일부 모바일 프로젝트에서 방장 시작 버튼이 렌더링되지 않아 대기실 단계가 실패했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. 방을 생성하고 AI를 추가한다.
+3. 게임을 시작한 뒤 QA 자동 액션 루프를 진행한다.
+4. 특정 모바일 프로젝트에서 시작 버튼 또는 이동 버튼 assertion이 실패한다.
+
+### Suspected root cause
+
+- `rollResultReadyAt`이 과거값이 되었거나 stale sync 값이 되었는데도 클라이언트가 결과 대기 상태로 해석하는 경로가 있었다.
+- 방장 대기실에서는 `canManageRoom`, `currentUserId`, `hostSeatId`, seats snapshot의 순간 불일치가 시작 버튼 미노출로 이어질 수 있었다.
+
+### Confirmed root cause
+
+- 이전 수정은 `clearRoll()`에서만 `rollResultReadyAt`을 0으로 초기화했다. 그러나 재발 실패는 말 이동 후 `clearRoll()`에 도달하기 전에 이동 버튼이 비활성화된 상태라 해당 수정만으로는 충분하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `setRollResultReadyAt(0)`을 호출했다.
+  - Why it failed: 이동 이후 초기화 경로만 보강했기 때문에, 이동 버튼 활성화 이전에 stale/future `rollResultReadyAt`으로 막히는 상황을 해결하지 못했다.
+- Attempt 2:
+  - What was changed: AI 추가 후 버튼 hidden 확인과 시작 버튼 visible/enabled 대기를 강화했다.
+  - Why it failed: 시작 버튼이 단순히 늦게 활성화되는 문제가 아니라 방장 UI 렌더링 조건이 일시적으로 깨질 수 있는 문제를 직접 관측하지 못했다.
+
+### Do not try again
+
+- `clearRoll()` 초기화만 추가 반복하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- 시작 버튼 selector 대기만 늘리지 않는다.
+- 원인 확인 없이 UI 구조나 레이아웃을 변경하지 않는다.
+
+### Correct fix plan
+
+- stale `rollResultReadyAt`을 subscribe 적용 및 저장 단계에서 과거값이면 0으로 정규화한다.
+- QA 실패 메시지에 `rollResultReadyAt`, `rollResultHolding`, `canRequestMove`, `canManageRoom`, seats 등 실제 상태를 포함한다.
+- host snapshot 저장은 마지막으로 적용된 sequence를 기준으로 stale write를 줄인다.
+
+### Verification checklist
+
+- [ ] Issue no longer reproduces
+- [ ] Related feature still works
+- [ ] No unrelated UI changes
+- [ ] No console errors
+- [ ] Mobile layout checked, if applicable
 
 ---
 
