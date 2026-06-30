@@ -247,6 +247,12 @@ function didAutoAdvanceAfterRoll(beforeDebugState, afterDebugState) {
   return hasStateAdvanced(beforeYutDebug, afterYutDebug);
 }
 
+function hasStateAdvancedAcrossPages(beforeDebugStates, afterDebugStates) {
+  const beforeDebugState = findCanonicalDebugState(beforeDebugStates);
+  const afterDebugState = findCanonicalDebugState(afterDebugStates);
+  return hasStateAdvanced(beforeDebugState?.yutDebug ?? {}, afterDebugState?.yutDebug ?? {});
+}
+
 function didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, afterDebugStates) {
   const beforeDebugState = findCanonicalDebugState(beforeDebugStates);
   const afterDebugState = findCanonicalDebugState(afterDebugStates);
