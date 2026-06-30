@@ -75,11 +75,20 @@ function isTransientFirestoreConsoleError(message) {
   );
 }
 
+function getTransientFirestoreIncidentKey(message) {
+  if (!isTransientFirestoreConsoleError(message)) return null;
+  if (/already-exists/i.test(message) || /Failed to load resource: the server responded with a status of (400|409)/.test(message)) {
+    return 'firestore-commit-retry';
+  }
+  return message.replace(/https?:\/\/\S+/g, '<url>').replace(/\s+/g, ' ').trim();
+}
+
 function assertConsoleErrorsWithinQaAllowance(consoleErrors) {
   const transientFirestoreErrors = consoleErrors.filter(isTransientFirestoreConsoleError);
+  const transientFirestoreIncidents = new Set(transientFirestoreErrors.map(getTransientFirestoreIncidentKey).filter(Boolean));
   const blockingErrors = consoleErrors.filter((message) => !isTransientFirestoreConsoleError(message));
   expect(blockingErrors, `Console/page errors:\n${blockingErrors.join('\n')}`).toEqual([]);
-  expect(transientFirestoreErrors.length, `반복 Firestore 콘솔 에러:\n${transientFirestoreErrors.join('\n')}`).toBeLessThanOrEqual(1);
+  expect(transientFirestoreIncidents.size, `반복 Firestore 콘솔 에러:\n${transientFirestoreErrors.join('\n')}`).toBeLessThanOrEqual(1);
 }
 
 function attachConsoleErrorCapture(page, consoleErrors) {

@@ -67,6 +67,66 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #133 모바일 QA Firestore transient 콘솔 에러 반복
+
+### Symptom
+
+- iPad 모바일 Game QA의 `06 콘솔 에러 허용 범위 확인` 단계에서 transient Firestore 콘솔 에러가 2개 수집되어 허용치 1개를 초과했다.
+- 로그에는 Firestore Commit `already-exists` 계열과 `Failed to load resource` 400/409 계열이 함께 나타났다.
+
+### Expected behavior
+
+- 사용자 진행을 막는 blocking console/page error는 없어야 한다.
+- Firestore transaction retry 과정에서 함께 발생한 400/409 및 `already-exists` 로그는 같은 transient incident로 판단되어야 한다.
+
+### Actual behavior
+
+- QA assertion이 transient Firestore 로그 개수를 원문 메시지 단위로 세어, 같은 Commit retry incident로 보이는 400/409와 `already-exists` 로그를 별도 반복 에러로 처리했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 iPad 프로젝트에서 실행한다.
+2. 방을 생성하고 게임을 시작한다.
+3. 상태 머신 액션 루프를 완료한다.
+4. 콘솔 에러 허용 범위 확인 단계에서 transient Firestore 로그가 2개 이상 수집되면 실패한다.
+
+### Suspected root cause
+
+- Firestore transaction 경합 또는 SDK retry 과정에서 같은 Commit retry incident가 `Failed to load resource` 400/409와 Firestore `already-exists` 메시지로 나뉘어 콘솔에 기록될 수 있다.
+- 기존 QA assertion은 같은 retry incident인지 구분하지 않고 transient 로그 원문 개수를 직접 제한했다.
+
+### Confirmed root cause
+
+- 테스트 코드상 transient Firestore error를 incident 단위가 아니라 메시지 개수 단위로 집계했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 모바일 QA의 시작 버튼/이동 버튼/rollResultReadyAt 경로를 여러 차례 보강했다.
+  - Why it failed: Issue #133의 실패 지점은 UI 진행 고착이 아니라 최종 콘솔 transient error 집계 기준이었다.
+- Attempt 2:
+  - What was changed: Firestore transient error를 최대 1개 원문 메시지까지만 허용했다.
+  - Why it failed: 같은 Commit retry incident가 복수 콘솔 메시지로 노출될 수 있어 정상 복구 가능한 경합도 실패로 처리했다.
+
+### Do not try again
+
+- UI 구조나 레이아웃을 변경하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- blocking console/page error를 transient로 허용하지 않는다.
+- transient Firestore 허용치를 근거 없이 크게 늘리지 않는다.
+
+### Correct fix plan
+
+- blocking console/page error는 계속 실패시킨다.
+- Firestore 400/409 및 `already-exists` Commit retry 로그는 같은 transient incident key로 묶어 집계한다.
+- 서로 다른 transient incident가 반복되면 기존처럼 실패시킨다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No blocking console/page errors
+
 ## 2026-06-30 - Issue #130 모바일 QA 이동 버튼 자동 진행 경합
 
 ### Symptom
