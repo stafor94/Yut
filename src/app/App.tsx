@@ -358,6 +358,31 @@ export function App() {
   const canRequestMove = Boolean(canSubmitTurnAction && roll && !rollResultHolding && canMoveSelectedPiece);
   const canUseMoveButton = canRequestMove;
   const canRollNow = Boolean(canSubmitTurnAction && !roll && !isRollLocked && (isRemoteActionClient || !rollInProgress));
+  const turnActionBlockReasons = useMemo(() => [
+    !activeSeat ? 'no-active-seat' : '',
+    activeSeat && !isMyTurn ? 'not-local-turn' : '',
+    winner ? 'winner' : '',
+    turnOrderPhase.active ? 'turn-order-phase-active' : '',
+    activeTurnOrderIntro ? 'turn-order-intro-active' : '',
+    movingPieceId ? 'moving-piece' : '',
+    trapPlacementActive ? 'pending-trap-placement' : '',
+  ].filter(Boolean), [activeSeat, activeTurnOrderIntro, isMyTurn, movingPieceId, trapPlacementActive, turnOrderPhase.active, winner]);
+  const rollActionBlockReasons = useMemo(() => [
+    ...turnActionBlockReasons,
+    roll ? 'roll-already-exists' : '',
+    isRollLocked ? 'roll-locked' : '',
+    !isRemoteActionClient && rollInProgress ? 'roll-in-progress' : '',
+    pendingLocalRemoteActionsRef.current.size > 0 ? 'pending-local-remote-action' : '',
+    processingActionIdsRef.current.size > 0 ? 'processing-remote-action' : '',
+  ].filter(Boolean), [isRemoteActionClient, isRollLocked, roll, rollInProgress, turnActionBlockReasons]);
+  const moveActionBlockReasons = useMemo(() => [
+    ...turnActionBlockReasons,
+    !roll ? 'no-roll' : '',
+    rollResultHolding ? 'roll-result-holding' : '',
+    !canMoveSelectedPiece ? 'selected-piece-not-movable' : '',
+    pendingLocalRemoteActionsRef.current.size > 0 ? 'pending-local-remote-action' : '',
+    processingActionIdsRef.current.size > 0 ? 'processing-remote-action' : '',
+  ].filter(Boolean), [canMoveSelectedPiece, roll, rollResultHolding, turnActionBlockReasons]);
   const rolledTurnOrderSeatIds = useMemo(() => new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id)), [turnOrderPhase.rolls]);
   const localTurnOrderSeatRolled = rolledTurnOrderSeatIds.has(localSeatId);
   const isTurnOrderTimedOut = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline && playableSeats.some((seat) => !rolledTurnOrderSeatIds.has(seat.id)));
@@ -424,10 +449,13 @@ export function App() {
       canRollNow,
       canMoveSelectedPiece,
       canRequestMove,
+      turnActionBlockReasons,
+      rollActionBlockReasons,
+      moveActionBlockReasons,
       selectedPieceId,
       selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
     };
-  }, [activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hostSeatId, isMyTurn, isRollLocked, isRoomHost, localSeatId, message, pieces, roll, rollInProgress, rollLockClock, rollLockUntil, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnIndex, turnOrderIds, turnOrderIntro, lastMovedSeatId, lastMovedPieceIds]);
+  }, [activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hostSeatId, isMyTurn, isRollLocked, isRemoteActionClient, isRoomHost, localSeatId, message, moveActionBlockReasons, movingPieceId, pieces, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, trapPlacementActive, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase.active, winner, lastMovedSeatId, lastMovedPieceIds]);
 
 
   useEffect(() => () => {
