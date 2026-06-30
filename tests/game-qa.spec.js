@@ -266,10 +266,25 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
 
   const moveButton = page.getByTestId('move-piece-button');
   if (await isVisible(moveButton)) {
-    await expect.poll(() => collectGameDebugState(page), { message: '선택한 말 이동 버튼이 보이면 활성화되어야 합니다.', timeout: 15_000 }).toMatchObject({ moveButton: { visible: true, disabled: false } });
-    await moveButton.click();
-    coverage.manualMoved += 1;
-    return 'manual-move';
+    let moveButtonState = 'waiting';
+    await expect.poll(async () => {
+      const debugState = await collectGameDebugState(page);
+      if (debugState.moveButton.visible && !debugState.moveButton.disabled) moveButtonState = 'ready';
+      else {
+        const yutDebug = debugState.yutDebug ?? {};
+        moveButtonState = !debugState.moveButton.visible && yutDebug.roll === null && yutDebug.rollResultHolding === false ? 'advanced' : 'waiting';
+      }
+      return moveButtonState;
+    }, { message: '선택한 말 이동 버튼은 활성화되거나 자동 이동으로 다음 상태에 진입해야 합니다.', timeout: 15_000 }).toMatch(/^(ready|advanced)$/);
+
+    if (moveButtonState === 'ready' && await isVisible(moveButton) && await moveButton.isEnabled().catch(() => false)) {
+      await moveButton.click();
+      coverage.manualMoved += 1;
+      return 'manual-move';
+    }
+
+    coverage.autoWaited += 1;
+    return 'auto-move';
   }
 
   const rollButton = page.getByTestId('roll-yut-button');

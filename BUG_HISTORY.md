@@ -67,6 +67,67 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #130 모바일 QA 이동 버튼 자동 진행 경합
+
+### Symptom
+
+- PR #129 병합 후 Galaxy S24 Ultra QA에서 `move-piece-button` enabled 대기 assertion이 실패했다.
+- 최종 debug state의 `moveButton`은 `{ visible: false, disabled: false }`로, 버튼이 disabled로 고착된 이전 증상과 달리 버튼 자체가 사라진 상태였다.
+
+### Expected behavior
+
+- 이동 버튼이 보이면 활성화된 버튼을 클릭하거나, 자동 단일 말 이동으로 이미 다음 상태에 진입한 경우 QA 루프가 진행을 계속해야 한다.
+
+### Actual behavior
+
+- 테스트가 `move-piece-button`을 한 번 관측한 뒤 15초 동안 계속 visible/enabled 상태만 허용해, 자동 이동으로 `roll`이 clear되고 버튼 test id가 바뀐 상태를 실패로 처리했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. Galaxy S24 Ultra 프로젝트에서 AI를 채우고 게임을 시작한다.
+3. 실제 게임 상태 머신으로 액션 루프를 진행한다.
+4. `move-piece-button` visible 확인 직후 자동 이동 또는 턴 전환으로 버튼이 사라지면 enabled 대기 assertion이 실패한다.
+
+### Suspected root cause
+
+- 앱에는 이동 가능한 말 그룹이 하나뿐이고 갈림길 선택이 필요 없을 때 자동 이동하는 경로가 있다.
+- QA 테스트는 이 정상 진행 경합을 고려하지 않고 `move-piece-button`이 계속 visible이어야 한다고 고정 기대했다.
+
+### Confirmed root cause
+
+- 코드 경로상 `playOneAvailableGameAction()`은 `move-piece-button`이 최초 visible이면 이후에도 visible/enabled만 성공으로 인정했다.
+- 그러나 앱의 자동 단일 말 이동 effect는 `rollResultHolding`이 끝난 뒤 `movePiece()`를 호출하고 `clearRoll()`로 버튼을 제거할 수 있다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `rollResultReadyAt` stale/future/timeout clear 경로를 보강했다.
+  - Why it failed: Issue #130의 최종 상태는 hold 고착이 아니라 버튼 부재 상태였으므로 같은 수정으로는 테스트 경합을 해결하지 못한다.
+- Attempt 2:
+  - What was changed: 이동 버튼 visible/enabled assertion을 강화했다.
+  - Why it failed: 자동 이동으로 버튼이 사라지는 정상 진행 상태까지 실패로 처리했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 성공으로 허용하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `rollResultReadyAt`만 반복 수정하지 않는다.
+- 자동 단일 말 이동 앱 로직을 원인 확인 없이 제거하지 않는다.
+
+### Correct fix plan
+
+- `move-piece-button`이 보인 뒤 활성화되면 기존처럼 클릭한다.
+- 폴링 중 버튼이 사라졌고 debug state상 `roll`이 `null`, `rollResultHolding`이 `false`이면 자동 진행으로 간주해 QA 루프를 계속한다.
+- 버튼이 여전히 보이지만 disabled로 남는 경우는 기존처럼 실패시킨다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
 ## 2026-06-30 - Issue #128 모바일 QA 방장 권한 불일치 재발
 
 ### Symptom
