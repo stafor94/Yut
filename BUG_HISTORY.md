@@ -1177,3 +1177,68 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Mobile Game QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #158 모바일 Game QA roll click no-state-change timeout
+
+### Symptom
+
+- PR #157 이후 모바일 Game QA와 모바일 기기전 QA의 실제 게임 상태 머신 액션 진행 단계가 실패했다.
+- 실패 stack은 `waitForRollOutcomeAfterClick()` 내부 `page.waitForTimeout(250)` 대기 중 전체 테스트 timeout에 도달한 형태였다.
+- 실패 직전 debug state는 game 화면과 활성화된 윷 던지기 가능 상태를 보여 주었지만, roll 클릭 이후 상태 변화 원인이 실패 메시지에 충분히 남지 않았다.
+
+### Expected behavior
+
+- 윷 던지기 버튼 클릭 후에는 roll 상태, 자동 진행, 이동 UI, 또는 terminal state 중 하나가 관측되어야 한다.
+- 상태 변화가 전혀 관측되지 않으면 QA가 같은 wait 루프를 반복해 전체 timeout까지 끌고 가지 않고, 클릭 전후 debug state를 포함해 즉시 원인을 드러내야 한다.
+
+### Actual behavior
+
+- `playOneAvailableGameAction()`은 `waitForRollOutcomeAfterClick()` 결과가 `no-state-change`일 때 `wait`를 반환했다.
+- 이 때문에 roll click no-op/reject/sequence 미증가 같은 실제 원인이 있어도 진행 액션으로 집계되지 않은 채 반복 대기할 수 있었다.
+- 단일 모바일 QA의 최종 assertion 메시지는 기기전 QA보다 `coverage`와 `actionHistory` 정보가 부족해 반복 실패 분석이 어려웠다.
+
+### Reproduction steps
+
+1. 모바일 Game QA 또는 모바일 기기전 QA를 실행한다.
+2. 게임 화면에서 `roll-yut-button`이 보여 활성화된 상태로 클릭된다.
+3. 클릭 후 `roll`, 자동 진행, 이동 UI, terminal state가 관측되지 않는다.
+4. 테스트가 `wait`로 되돌아가 반복하다가 전체 test timeout에 도달한다.
+
+### Suspected root cause
+
+- 앱의 authoritative roll 처리 또는 remote state sync가 상태 변화를 만들지 않는 경로가 있을 수 있으나, 현재 실패 메시지로는 reject/duplicate/no-op/sequence 미증가 중 무엇인지 확정하기 어렵다.
+- QA helper가 `no-state-change`를 실패로 드러내지 않고 `wait`로 삼켜 root cause 확인을 지연시켰다.
+
+### Confirmed root cause
+
+- 테스트 코드상 `rollOutcome.kind === 'no-state-change'`가 `return 'wait'`로 처리되어 click 이후 무변화 상태를 명확한 실패로 보고하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #144/#146/#150에서 roll 이후 자동 진행 관측값과 debug state를 보강했다.
+  - Why it failed: 이번 실패는 자동 진행 판정 근거 부족만으로 확정되지 않았고, roll click 이후 상태 변화 자체가 관측되지 않는 경우를 별도 실패로 드러내지 못했다.
+- Attempt 2:
+  - What was changed: Issue #156에서 playing room 삭제로 인한 lobby 복귀를 막았다.
+  - Why it failed: 이번 debug tail은 lobby 복귀가 아니라 game 화면에서 roll 가능 상태가 유지되는 계열이었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- `no-state-change`를 단순 wait로 삼켜 전체 timeout까지 반복하지 않는다.
+
+### Correct fix plan
+
+- `rollOutcome.kind === 'no-state-change'`는 클릭 전후 debug state를 포함한 명시적 오류로 처리한다.
+- 단일 모바일 QA의 실패 메시지도 기기전 QA처럼 `coverage`, `actionHistory`, debug state를 포함하게 한다.
+- 이후에도 실패하면 새 실패 메시지의 before/after debug state를 기준으로 authoritative roll reject, duplicate, sequence 미증가, click target 문제를 구분한 뒤 앱 로직 수정 여부를 판단한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
