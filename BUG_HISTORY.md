@@ -67,6 +67,63 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - 모바일 QA authoritative rollResultReadyAt 정규화 누락
+
+### Symptom
+
+- Issue #122에서 iPad 모바일 QA가 `move-piece-button` enabled 대기 중 실패했다.
+- 버튼 텍스트는 `결과 확인 중...`으로 남고 15초 timeout 동안 disabled 상태가 유지되었다.
+
+### Expected behavior
+
+- 윷 결과 연출 대기 시간이 지나면 이동 가능한 말이 있을 때 `move-piece-button`이 활성화되어야 한다.
+
+### Actual behavior
+
+- 클라이언트가 `rollResultHolding` 상태를 계속 유지해 QA 액션 루프가 다음 이동으로 진행하지 못했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. 방을 생성하고 AI를 채운 뒤 게임을 시작한다.
+3. 실제 게임 상태 머신으로 액션을 진행한다.
+4. iPad 프로젝트에서 `move-piece-button` enabled assertion이 실패한다.
+
+### Suspected root cause
+
+- `subscribeGameState()`와 host snapshot 저장 경로는 `rollResultReadyAt`을 정규화하지만, host가 authoritative roll commit 결과를 즉시 적용하는 경로에서는 `result.patch.rollResultReadyAt`을 그대로 `setRollResultReadyAt()`에 전달했다.
+- 이 경로로 stale/future 값이 들어오면 `rollResultHolding`이 계속 true로 계산될 수 있었다.
+
+### Confirmed root cause
+
+- 코드 경로상 authoritative roll commit 결과 적용부가 `normalizeRollResultReadyAt()`을 거치지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `rollResultReadyAt`을 0으로 초기화했다.
+  - Why it failed: 이동 버튼 활성화 이전에 stale/future 값으로 hold되는 경로를 막지 못했다.
+- Attempt 2:
+  - What was changed: subscribe 적용 및 저장 단계에서 `rollResultReadyAt`을 정규화했다.
+  - Why it failed: host의 authoritative roll commit 즉시 적용 경로가 정규화 대상에서 빠져 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+
+### Correct fix plan
+
+- authoritative roll commit 결과를 로컬 상태에 적용할 때도 `rollResultReadyAt`을 `normalizeRollResultReadyAt()`으로 정규화한다.
+- 별도 UI 변경 없이 기존 subscribe/save 정규화 정책과 동일하게 맞춘다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
 ## 2026-06-30 - 모바일 QA 게임 진행/대기실 버튼 재발
 
 ### Symptom
