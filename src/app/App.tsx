@@ -279,6 +279,7 @@ export function App() {
   const logIdRef = useRef(0);
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
+  const hostingRoomUserIdRef = useRef('');
   const rooms = useRooms();
   const currentUser = userRef.current ?? user;
   const currentUserId = currentUser?.uid ?? '';
@@ -511,6 +512,7 @@ export function App() {
         if (cancelled) return;
         window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
         window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+        hostingRoomUserIdRef.current = '';
         setActiveRoomId('');
         setIsRoomHost(false);
         setActiveRoomTitle('');
@@ -561,6 +563,7 @@ export function App() {
     return subscribeRoom(subscribedRoomId, (room: RoomSummary | null) => {
       if (activeRoomIdRef.current !== subscribedRoomId) return;
       if (!room) {
+        hostingRoomUserIdRef.current = '';
         setScreen('lobby');
         setActiveRoomId('');
         setActiveRoomTitle('');
@@ -576,10 +579,11 @@ export function App() {
       setMaxPlayers(room.maxPlayers as 2 | 3 | 4);
       setItemMode(room.itemMode);
       setPieceCount(room.pieceCount ?? 4);
-      const hostUserId = (userRef.current ?? currentUser)?.uid ?? '';
+      const hostUserId = (userRef.current ?? currentUser)?.uid ?? hostingRoomUserIdRef.current;
       setIsRoomHost((previousIsRoomHost) => hostUserId ? room.hostId === hostUserId : previousIsRoomHost);
       if (room.status === 'playing') setScreen('game');
       if (room.status === 'finished') {
+        hostingRoomUserIdRef.current = '';
         setScreen('lobby');
         setActiveRoomId('');
         setActiveRoomTitle('');
@@ -1067,13 +1071,13 @@ export function App() {
       await leaveDuplicatePlayerRooms(roomHost.uid);
       await leavePreviousOnlineRoom();
       const roomId = await Promise.race([createRoom({ title, hostId: roomHost.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
-      await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, '', true);
+      await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, '', true, roomHost);
     } catch (error) {
       if (isFirebaseConfigured && roomHost && error instanceof Error && error.message === 'CREATE_ROOM_TIMEOUT') {
         setMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
         const recoveredRoom = await findActiveRoomByHost(roomHost.uid);
         if (recoveredRoom) {
-          await openWaitingRoom(recoveredRoom, '방 생성은 완료되어 대기실로 이동했습니다.', true);
+          await openWaitingRoom(recoveredRoom, '방 생성은 완료되어 대기실로 이동했습니다.', true, roomHost);
         } else {
           setMessage('방 만들기 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.');
         }
@@ -1085,11 +1089,13 @@ export function App() {
     }
   }
 
-  async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & { id?: string }, nextMessage = '', asHost = false) {
+  async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & { id?: string }, nextMessage = '', asHost = false, hostUserOverride: User | null = null) {
     setMessage('방으로 이동하는 중입니다...');
     const nextMaxPlayers = room.maxPlayers as 2 | 3 | 4;
     try {
-      const roomUser = userRef.current ?? currentUser;
+      const roomUser = asHost && hostUserOverride ? hostUserOverride : userRef.current ?? currentUser;
+      hostingRoomUserIdRef.current = asHost && roomUser ? roomUser.uid : '';
+      if (asHost && roomUser) rememberUser(roomUser);
       const joiningUser = !asHost && room.id && isFirebaseConfigured ? roomUser ?? await Promise.race([
         signInAsGuest(),
         new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('JOIN_ROOM_TIMEOUT')), CREATE_ROOM_TIMEOUT_MS)),
@@ -1117,6 +1123,7 @@ export function App() {
       setScreen(room.id && !asHost && 'status' in room && (room as RoomSummary).status === 'playing' ? 'game' : 'waitingRoom');
       setMessage(nextMessage);
     } catch (error) {
+      hostingRoomUserIdRef.current = '';
       setActiveRoomId('');
       setIsRoomHost(false);
       setActiveRoomTitle('');
@@ -1889,6 +1896,7 @@ export function App() {
       await removeRoomPlayer(activeRoomId, localSeatId);
     }
     else if (activeRoomId) await removeRoomPlayer(activeRoomId, localSeatId);
+    hostingRoomUserIdRef.current = '';
     setScreen('lobby'); setActiveRoomId(''); setActiveRoomTitle(''); setIsRoomHost(false); setCountdown(-1); setTurnOrderIds([]); setGameStartedAt(null); setSeats(createSeats(nickname, playMode, maxPlayers));
     setMessage('방에서 나왔습니다.');
   }
@@ -1896,6 +1904,7 @@ export function App() {
   function finishGame() {
     const finishedRoomId = activeRoomId;
     const wasHost = isRoomHost;
+    hostingRoomUserIdRef.current = '';
     setScreen('lobby');
     setActiveRoomTitle('');
     setActiveRoomId('');
