@@ -295,7 +295,23 @@ function summarizeActionBlockers(debugState) {
     processingActionCount: Number(yutDebug.processingActionCount ?? 0),
     lastAppliedSequence: Number(yutDebug.lastAppliedSequence ?? 0),
     lastAppliedStateVersion: Number(yutDebug.lastAppliedStateVersion ?? 0),
+    message: yutDebug.message ?? '',
   };
+}
+
+function hasAuthoritativeAlreadyRolledStaleState(debugState) {
+  const yutDebug = debugState?.yutDebug ?? {};
+  return Boolean(
+    typeof yutDebug.message === 'string' &&
+    yutDebug.message.includes('이미 윷을 던졌습니다') &&
+    yutDebug.roll === null &&
+    yutDebug.canRollNow === true &&
+    debugState?.rollButton?.visible
+  );
+}
+
+function hasAuthoritativeAlreadyRolledStaleStateAcrossPages(debugStates) {
+  return debugStates.some(hasAuthoritativeAlreadyRolledStaleState);
 }
 
 function classifyRollOutcomeFailure(kind, debugStates) {
@@ -306,6 +322,7 @@ function classifyRollOutcomeFailure(kind, debugStates) {
   if (terminalState) return { kind, category: 'left-game-screen', terminalState: summarizeActionBlockers(terminalState), blockers };
   if (states.some((debugState) => debugState?.yutDebug?.activeTurnOrderIntro)) return { kind, category: 'blocked-by-turn-order-intro', blockers };
   if (states.some((debugState) => debugState?.yutDebug?.turnOrderPhase?.active)) return { kind, category: 'blocked-by-turn-order-phase', blockers };
+  if (hasAuthoritativeAlreadyRolledStaleStateAcrossPages(states)) return { kind, category: 'stale-local-roll-state', blockers };
   if (states.some(hasPendingTurnAction)) return { kind, category: 'pending-remote-action', blockers };
   if (states.some((debugState) => debugState?.yutDebug?.rollResultHolding)) return { kind, category: 'roll-result-holding', blockers };
   if (states.some((debugState) => (debugState?.yutDebug?.rollActionBlockReasons ?? []).length > 0)) return { kind, category: 'roll-blocked', blockers };
@@ -331,8 +348,10 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
   let sawRollState = false;
   let sawPendingTurnAction = hasPendingTurnActionAcrossPages(beforeDebugStates);
   let lastHasPendingTurnAction = sawPendingTurnAction;
+  let sawAuthoritativeAlreadyRolledStaleState = hasAuthoritativeAlreadyRolledStaleStateAcrossPages(beforeDebugStates);
+  let lastHasAuthoritativeAlreadyRolledStaleState = sawAuthoritativeAlreadyRolledStaleState;
 
-  while (Date.now() < deadline || (sawPendingTurnAction && Date.now() < pendingDeadline)) {
+  while (Date.now() < deadline || ((sawPendingTurnAction || sawAuthoritativeAlreadyRolledStaleState) && Date.now() < pendingDeadline)) {
     const debugStates = await collectGameDebugStates(pages);
     lastDebugStates = debugStates;
 
@@ -355,6 +374,10 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
     if (lastHasPendingTurnAction) {
       sawPendingTurnAction = true;
     }
+    lastHasAuthoritativeAlreadyRolledStaleState = hasAuthoritativeAlreadyRolledStaleStateAcrossPages(debugStates);
+    if (lastHasAuthoritativeAlreadyRolledStaleState) {
+      sawAuthoritativeAlreadyRolledStaleState = true;
+    }
 
     await pages[0].waitForTimeout(250);
   }
@@ -362,6 +385,7 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
   if (sawRollState) return { kind: 'roll-observed', debugStates: lastDebugStates };
   if (hasStateAdvancedAcrossPages(beforeDebugStates, lastDebugStates)) return { kind: 'state-advanced', debugStates: lastDebugStates };
   if (sawPendingTurnAction && lastHasPendingTurnAction) return { kind: 'pending-timeout', debugStates: lastDebugStates };
+  if (sawAuthoritativeAlreadyRolledStaleState && lastHasAuthoritativeAlreadyRolledStaleState) return { kind: 'stale-roll-state-timeout', debugStates: lastDebugStates };
   return { kind: 'no-state-change', debugStates: lastDebugStates };
 }
 
@@ -511,6 +535,9 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
     }
     if (rollOutcome.kind === 'no-state-change') {
       throw new Error(`윷 던지기 클릭 이후 게임 상태 변화가 관측되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
+    }
+    if (rollOutcome.kind === 'stale-roll-state-timeout') {
+      throw new Error(`윷 던지기 클릭 이후 authoritative roll 상태가 로컬 화면에 동기화되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
     }
 
     coverage.rolled += 1;
