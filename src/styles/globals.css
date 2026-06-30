@@ -2857,8 +2857,9 @@ aside.players,
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
+      "players players"
       "board board"
-      "players history";
+      "history history";
     gap: 10px;
     align-items: start;
   }
@@ -2880,9 +2881,17 @@ aside.players,
   .game-shell .side {
     display: flex;
     min-width: 0;
-    max-height: 38svh;
     overflow: auto;
     padding: 12px;
+  }
+
+  .game-shell .players {
+    max-height: none;
+    overflow: hidden;
+  }
+
+  .game-shell .side {
+    max-height: 28svh;
   }
 
   .game-shell .board {
@@ -3171,26 +3180,19 @@ aside.players,
   .game-shell .players .player-items,
   .game-shell .players .end-game,
   .game-shell .players .spectator-list {
-    grid-column: 1 / -1;
-  }
-
-  .game-shell .players h2 {
-    margin-bottom: 2px;
-  }
-
-  .game-shell .players .game-end-guide {
-    margin: 0 0 4px;
-    padding-block: 8px;
+    display: none;
   }
 
   .game-shell .player {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    gap: 4px 6px;
+    display: flex;
+    gap: 6px;
     align-items: center;
+    justify-content: flex-start;
     min-height: 0;
     margin: 0;
     padding: 7px 8px;
+    overflow: hidden;
+    white-space: nowrap;
   }
 
   .game-shell .player b,
@@ -3201,7 +3203,14 @@ aside.players,
   }
 
   .game-shell .player b {
-    font-size: .85rem;
+    display: none;
+  }
+
+  .game-shell .player > span {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .game-shell .player span,
@@ -3213,11 +3222,15 @@ aside.players,
 
   .game-shell .player .player-badges {
     flex-wrap: nowrap;
+    flex: 0 0 auto;
     justify-content: flex-end;
   }
 
+  .game-shell .player em {
+    flex: 0 0 auto;
+  }
+
   .game-shell .player .mini-button {
-    grid-column: 1 / -1;
-    padding: 8px 10px;
+    display: none;
   }
 }
