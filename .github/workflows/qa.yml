@@ -94,8 +94,10 @@ jobs:
             rm -rf test-results
           fi
           du -sh test-results *.log console-log.txt 2>/dev/null || true
-      - name: Summarize QA failure
+      - name: Summarize QA result
         if: always()
+        env:
+          QA_JOB_STATUS: ${{ job.status }}
         run: |
           node .github/scripts/summarize-qa.mjs
           cat qa-failure-summary.md >> "$GITHUB_STEP_SUMMARY"
