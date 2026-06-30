@@ -67,6 +67,66 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+
+## 2026-06-30 - Issue #148 모바일 기기전 QA host 방 생성 중 대기실 진입 timeout
+
+### Symptom
+
+- PR #147 이후 `mobile device-to-device QA`의 `기기전 04 iPad 방 생성 및 대기실 진입` 단계에서 timeout이 발생했다.
+- 실패 로그에서 iPad host는 `screen: "lobby"`, notice `방을 만드는 중입니다. 잠시만 기다려주세요...`, create button `방 만드는 중...` disabled 상태였고 `waiting-room`이 표시되지 않았다.
+
+### Expected behavior
+
+- host가 방 만들기를 누르면 방 생성 전 정리 작업이 지연되더라도 새 방 생성 또는 timeout 복구 경로로 진행해야 한다.
+- 선행 cleanup 지연 때문에 대기실 전환 전 상태에 무기한 가깝게 머물면 안 된다.
+
+### Actual behavior
+
+- `handleCreateRoom()`은 `leaveDuplicatePlayerRooms(roomHost.uid)`와 `leavePreviousOnlineRoom()`을 `createRoom()` 호출 전에 순차적으로 await했다.
+- `CREATE_ROOM_TIMEOUT`은 sign-in 및 `createRoom()`에만 적용되어 선행 cleanup 지연 시 버튼은 계속 `방 만드는 중...` 상태로 남을 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad host가 QA 방 제목을 입력하고 방 만들기를 누른다.
+3. Firestore cleanup 또는 이전 방 정리 단계가 지연된다.
+4. `createRoom()` 또는 `openWaitingRoom()`까지 도달하지 못하면 `waiting-room` visible assertion이 timeout된다.
+
+### Suspected root cause
+
+- 방 생성 전 선행 cleanup await에 제한 시간이 없어 모바일 WebKit/Firestore CI 타이밍에서 대기실 진입 경로가 막힌 것으로 보인다.
+
+### Confirmed root cause
+
+- 코드 경로상 `handleCreateRoom()`의 선행 cleanup 두 단계는 `CREATE_ROOM_TIMEOUT` race 밖에서 await되고 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #142에서 host 생성 후 `openWaitingRoom()` 내부 중복 방 정리 await를 non-host 참여 경로로 제한했다.
+  - Why it failed: Issue #148은 `openWaitingRoom()` 진입 후가 아니라 `방 만드는 중...` 상태로 남아, 생성 전 cleanup/create 단계 지연에 더 가깝다.
+- Attempt 2:
+  - What was changed: Issue #136에서 대기실 진입 실패 로그를 보강했다.
+  - Why it failed: 진단은 가능해졌지만 `handleCreateRoom()` 선행 cleanup 지연은 제한하지 않았다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 시작 버튼/방장 권한 문제로 단정해 `canManageRoom`만 수정하지 않는다.
+- 원인 확인 없이 방 생성, 인증, room cleanup 경로를 넓게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- host 방 생성 전 cleanup은 짧은 제한 시간 안에서만 기다리고, 실패 또는 지연 시 warning을 남긴 뒤 방 생성을 계속 진행한다.
+- 기존 참여자 join 경로의 중복 방 보호 정리는 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
+
 ## 2026-06-30 - Issue #142 모바일 기기전 QA host 대기실 전환 지연
 
 ### Symptom
