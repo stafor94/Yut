@@ -256,16 +256,32 @@ function didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, afterDebugStates)
   return hasStateAdvanced(beforeDebugState?.yutDebug ?? {}, afterYutDebug);
 }
 
+function hasPendingTurnAction(debugState) {
+  const yutDebug = debugState?.yutDebug ?? {};
+  return Boolean(
+    yutDebug.rollInProgress ||
+    yutDebug.rollInProgressRef ||
+    Number(yutDebug.pendingLocalRemoteActionCount ?? 0) > 0 ||
+    Number(yutDebug.processingActionCount ?? 0) > 0
+  );
+}
+
+function hasPendingTurnActionAcrossPages(debugStates) {
+  return debugStates.some(hasPendingTurnAction);
+}
+
 async function collectGameDebugStates(pages) {
   return Promise.all(pages.map((page) => collectGameDebugState(page)));
 }
 
-async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout = 7_000 } = {}) {
+async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout = 7_000, pendingTimeout = 15_000 } = {}) {
   const deadline = Date.now() + timeout;
+  const pendingDeadline = Date.now() + pendingTimeout;
   let lastDebugStates = beforeDebugStates;
   let sawRollState = false;
+  let sawPendingTurnAction = hasPendingTurnActionAcrossPages(beforeDebugStates);
 
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline || (sawPendingTurnAction && Date.now() < pendingDeadline)) {
     const debugStates = await collectGameDebugStates(pages);
     lastDebugStates = debugStates;
 
@@ -284,11 +300,15 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
     if (canonicalDebugState?.yutDebug?.roll !== null && canonicalDebugState?.yutDebug?.roll !== undefined) {
       sawRollState = true;
     }
+    if (hasPendingTurnActionAcrossPages(debugStates)) {
+      sawPendingTurnAction = true;
+    }
 
     await pages[0].waitForTimeout(250);
   }
 
   if (sawRollState) return { kind: 'roll-observed', debugStates: lastDebugStates };
+  if (sawPendingTurnAction) return { kind: 'pending-timeout', debugStates: lastDebugStates };
   return { kind: 'no-state-change', debugStates: lastDebugStates };
 }
 
@@ -408,9 +428,15 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
     }, { message: '선택한 말 이동 버튼은 활성화되거나 자동 이동으로 다음 상태에 진입해야 합니다.', timeout: 15_000 }).toMatch(/^(ready|advanced)$/);
 
     if (moveButtonState === 'ready' && await isVisible(moveButton) && await moveButton.isEnabled().catch(() => false)) {
-      await moveButton.click();
-      coverage.manualMoved += 1;
-      return 'manual-move';
+      try {
+        await moveButton.click({ timeout: 2_000 });
+        coverage.manualMoved += 1;
+        return 'manual-move';
+      } catch (error) {
+        const debugState = await collectGameDebugState(page);
+        if (hasPendingTurnAction(debugState) || debugState.yutDebug?.rollResultHolding) return 'wait';
+        throw new Error(`선택한 말 이동 버튼 클릭이 실패했습니다: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error), debugState }, null, 2)}`);
+      }
     }
 
     coverage.autoWaited += 1;
@@ -426,6 +452,9 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
     const rollOutcome = await waitForRollOutcomeAfterClick(pages, beforeRollDebugStates);
     if (rollOutcome.kind === 'terminal-state') {
       throw new Error(`윷 던지기 이후 게임 화면을 벗어났습니다: ${JSON.stringify(rollOutcome.debugStates, null, 2)}`);
+    }
+    if (rollOutcome.kind === 'pending-timeout') {
+      throw new Error(`윷 던지기 클릭 이후 원격 액션 대기 상태가 해소되지 않았습니다: ${JSON.stringify({ beforeDebugStates: beforeRollDebugStates, afterDebugStates: rollOutcome.debugStates }, null, 2)}`);
     }
     if (rollOutcome.kind === 'no-state-change') {
       throw new Error(`윷 던지기 클릭 이후 게임 상태 변화가 관측되지 않았습니다: ${JSON.stringify({ beforeDebugStates: beforeRollDebugStates, afterDebugStates: rollOutcome.debugStates }, null, 2)}`);
