@@ -67,6 +67,65 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #138 모바일 기기전 QA 갈림길 이동 커버리지 누락
+
+### Symptom
+
+- PR #137 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 실패했다.
+- 기기전 루프는 목표 액션과 윷 던지기 커버리지를 통과했지만 `coverage.manualMoved + coverage.autoWaited`가 0으로 남아 이동/자동 이동 검증 assertion이 실패했다.
+
+### Expected behavior
+
+- 일반 이동 버튼, 자동 이동 대기뿐 아니라 갈림길 선택 후 이동 버튼을 누른 경우도 실제 수동 이동 커버리지로 집계되어야 한다.
+
+### Actual behavior
+
+- `handleBranchMove()`는 갈림길 버튼 선택 횟수만 기록하고, 실제 `.branch-move-button` 클릭 성공 후에도 `manualMoved`를 증가시키지 않았다.
+- 따라서 갈림길 이동만 발생한 정상 진행도 마지막 이동 커버리지 assertion에서 이동 검증 없음으로 오판될 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프 중 갈림길 이동 경로가 실제 이동을 처리한다.
+4. 루프 종료 후 `manualMoved + autoWaited`가 0이면 실패한다.
+
+### Suspected root cause
+
+- Issue #130 계열의 이동 버튼/자동 진행 커버리지 보강 이후에도, 갈림길 이동은 별도 카운터만 증가하고 최종 이동 검증 assertion에는 포함되지 않았다.
+
+### Confirmed root cause
+
+- `handleBranchMove()`에서 실제 이동 버튼 클릭 성공 후 `coverage.manualMoved`를 증가시키지 않아 QA 커버리지 집계가 실제 이동 경로를 누락했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #130에서 일반 `move-piece-button`이 사라지고 `roll`이 clear된 경우 자동 이동으로 인정하도록 보강했다.
+  - Why it failed: 갈림길 이동 버튼 경로는 일반 `move-piece-button` 경로가 아니라 별도 `handleBranchMove()`에서 처리되어 해당 커버리지 보강 대상에 포함되지 않았다.
+- Attempt 2:
+  - What was changed: 이동 버튼/대기실/Firestore 관련 모바일 QA 진단과 상태 동기화 보강이 여러 차례 이루어졌다.
+  - Why it failed: Issue #138의 실패 지점은 앱 진행 고착이 아니라 테스트 커버리지 카운터 누락이었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 앱 자동 이동 또는 갈림길 이동 로직을 원인 확인 없이 변경하지 않는다.
+- 실제 이동이 아닌 콘솔 transient 문제로 단정하지 않는다.
+
+### Correct fix plan
+
+- `handleBranchMove()`에서 갈림길 이동 버튼 클릭 성공 시 branch 이동 전용 카운터와 함께 `manualMoved`도 증가시킨다.
+- 기존 최종 assertion은 유지해 일반 이동, 자동 이동, 갈림길 수동 이동을 모두 같은 이동 검증 범위로 집계한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [ ] No unrelated UI changes
+
+
 ## 2026-06-30 - Issue #136 모바일 기기전 QA 대기실 진입 timeout 재발
 
 ### Symptom
