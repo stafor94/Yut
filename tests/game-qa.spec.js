@@ -145,11 +145,35 @@ async function collectGameDebugState(page) {
   return page.evaluate(() => ({
     turn: document.querySelector('[data-testid="turn-indicator"]')?.textContent?.trim() ?? '',
     controls: document.querySelector('.play-controls')?.textContent?.trim() ?? '',
+    moveButton: {
+      visible: Boolean(document.querySelector('[data-testid="move-piece-button"]')),
+      text: document.querySelector('[data-testid="move-piece-button"]')?.textContent?.trim() ?? '',
+      disabled: Boolean(document.querySelector('[data-testid="move-piece-button"]')?.hasAttribute('disabled')),
+    },
+    rollButton: {
+      visible: Boolean(document.querySelector('[data-testid="roll-yut-button"]')),
+      text: document.querySelector('[data-testid="roll-yut-button"]')?.textContent?.trim() ?? '',
+      disabled: Boolean(document.querySelector('[data-testid="roll-yut-button"]')?.hasAttribute('disabled')),
+    },
     winner: document.querySelector('.winner-overlay')?.textContent?.trim() ?? '',
     prompt: document.querySelector('.inline-item-prompt')?.textContent?.trim() ?? '',
     trap: document.querySelector('.trap-placement-banner')?.textContent?.trim() ?? '',
+    yutDebug: window.__YUT_DEBUG_STATE__ ?? null,
     logs: Array.from(document.querySelectorAll('.log-list p')).slice(0, 5).map((node) => node.textContent?.trim() ?? ''),
     pieces: Array.from(document.querySelectorAll('[data-testid^="piece-"]')).map((node) => ({ testId: node.getAttribute('data-testid'), text: node.textContent?.trim(), className: node.getAttribute('class') })),
+  }));
+}
+
+async function collectWaitingRoomDebugState(page) {
+  return page.evaluate(() => ({
+    waitingRoom: document.querySelector('[data-testid="waiting-room"]')?.textContent?.trim() ?? '',
+    startButton: {
+      visible: Boolean(document.querySelector('[data-testid="start-game-button"]')),
+      text: document.querySelector('[data-testid="start-game-button"]')?.textContent?.trim() ?? '',
+      disabled: Boolean(document.querySelector('[data-testid="start-game-button"]')?.hasAttribute('disabled')),
+    },
+    addAiButtons: Array.from(document.querySelectorAll('[data-testid^="add-ai-"]')).map((node) => ({ testId: node.getAttribute('data-testid'), text: node.textContent?.trim() ?? '', disabled: node.hasAttribute('disabled') })),
+    yutDebug: window.__YUT_DEBUG_STATE__ ?? null,
   }));
 }
 
@@ -350,8 +374,8 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
         }
       }
       await expect(page.getByTestId('waiting-room')).toBeVisible();
-      await expect(page.getByTestId('start-game-button')).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 10_000 });
+      await expect(page.getByTestId('start-game-button'), `시작 버튼이 방장 대기실에 보여야 합니다: ${JSON.stringify(await collectWaitingRoomDebugState(page), null, 2)}`).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('start-game-button'), `모든 AI 추가 후 시작 버튼이 활성화되어야 합니다: ${JSON.stringify(await collectWaitingRoomDebugState(page), null, 2)}`).toBeEnabled({ timeout: 10_000 });
       await saveStepScreenshot(page, testInfo, '03-ai-filled');
     });
 

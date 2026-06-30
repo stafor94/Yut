@@ -263,6 +263,7 @@ export function App() {
   const pendingSequenceMetaRef = useRef<{ type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; clientMutationId?: string } | null>(null);
   const applyingSyncedStateRef = useRef(false);
   const lastAppliedStateVersionRef = useRef(0);
+  const lastAppliedSequenceRef = useRef(0);
   const lastWinnerSoundRef = useRef('');
   const lastBranchControlKeyRef = useRef('');
   const lastSavedStateFingerprintRef = useRef('');
@@ -339,7 +340,8 @@ export function App() {
   }, [getSeatById, pieceCount, pieces, playMode, playableSeats, turnSeats]);
   const selectedMoveSteps = roll?.steps ?? 0;
   const isRollLocked = rollLockUntil > rollLockClock;
-  const rollResultHolding = rollResultReadyAt > rollLockClock;
+  const effectiveRollResultReadyAt = rollResultReadyAt > Date.now() ? rollResultReadyAt : 0;
+  const rollResultHolding = effectiveRollResultReadyAt > rollLockClock;
   const trapPlacementActive = Boolean(pendingTrapPlacement);
   const isRemoteActionClient = Boolean(activeRoomId && !isRoomHost);
   const canSubmitTurnAction = Boolean(activeSeat && isMyTurn && !winner && !turnOrderPhase.active && !turnOrderIntro && !movingPieceId && !trapPlacementActive);
@@ -373,6 +375,34 @@ export function App() {
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedPiece?.started && BRANCH_NODE_IDS.includes(selectedPiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const activeItemPromptTypes = itemPromptTiming && !trapPlacementActive ? getUsableHostItems(itemPromptTiming) : [];
 
+  useEffect(() => {
+    (window as typeof window & { __YUT_DEBUG_STATE__?: Record<string, unknown> }).__YUT_DEBUG_STATE__ = {
+      screen,
+      activeRoomId,
+      isRoomHost,
+      canManageRoom,
+      currentUserId,
+      localSeatId,
+      hostSeatId,
+      allReady,
+      teamBalanced,
+      seats: seats.map((seat) => ({ id: seat.id, label: seat.label, ready: seat.ready, isAI: seat.isAI, isEmpty: seat.isEmpty, isHost: seat.isHost, team: seat.team })),
+      roll,
+      rollResultReadyAt,
+      effectiveRollResultReadyAt,
+      rollLockClock,
+      rollResultHolding,
+      turnIndex,
+      activeSeat: activeSeat ? { id: activeSeat.id, label: activeSeat.label, isAI: activeSeat.isAI } : null,
+      isMyTurn,
+      canSubmitTurnAction,
+      canMoveSelectedPiece,
+      canRequestMove,
+      selectedPieceId,
+      selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
+    };
+  }, [activeRoomId, activeSeat, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hostSeatId, isMyTurn, isRoomHost, localSeatId, roll, rollLockClock, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnIndex]);
+
 
   useEffect(() => () => {
     remoteActionRetryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -393,6 +423,7 @@ export function App() {
   useEffect(() => {
     activeRoomIdRef.current = activeRoomId;
     lastAppliedStateVersionRef.current = 0;
+    lastAppliedSequenceRef.current = 0;
     processingActionIdsRef.current.clear();
     completedActionIdsRef.current.clear();
     processedClientActionIdsRef.current.clear();
@@ -467,7 +498,7 @@ export function App() {
         if (joinResult?.role === 'player') {
           setSeats(seatsWithJoinedPlayer([], currentUser.uid, nickname, storedRoom.playMode, restoredMaxPlayers, joinResult.seatIndex));
         } else if (restoredAsHost) {
-          setSeats(createSeats(nickname, storedRoom.playMode, restoredMaxPlayers));
+          setSeats(createSeats(nickname, storedRoom.playMode, restoredMaxPlayers).map((seat) => seat.isHost ? { ...seat, id: currentUser.uid } : seat));
         }
         setScreen(storedRoom.status === 'playing' ? 'game' : 'waitingRoom');
         setMessage('새로고침 전 참여 중이던 방을 복구했습니다.');
@@ -611,8 +642,10 @@ export function App() {
       if (stateVersion && stateVersion <= lastAppliedStateVersionRef.current) return;
       applyingSyncedStateRef.current = true;
       lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
+      lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
       const nextRoll = state.roll as YutResult | null;
-      const nextRollResultReadyAt = Number(state.rollResultReadyAt ?? 0);
+      const syncedRollResultReadyAt = Number(state.rollResultReadyAt ?? 0);
+      const nextRollResultReadyAt = syncedRollResultReadyAt > Date.now() ? syncedRollResultReadyAt : 0;
       const nextTurnIndex = Number(state.turnIndex ?? 0);
       if (nextRoll && !currentRollRef.current) {
         const animationKey = `${nextTurnIndex}:${nextRoll.name}:${nextRoll.steps}:${nextRollResultReadyAt}`;
@@ -649,7 +682,7 @@ export function App() {
     if (!activeRoomId || screen !== 'game' || applyingSyncedStateRef.current) return;
     if (!isRoomHost) return;
     if (moveInProgressRef.current || movingPieceId) return;
-    const stateFingerprint = JSON.stringify({ pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase });
+    const stateFingerprint = JSON.stringify({ pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, effectiveRollResultReadyAt, turnOrderPhase });
     if (lastSavedStateFingerprintRef.current === stateFingerprint || savingStateFingerprintRef.current === stateFingerprint) return;
     savingStateFingerprintRef.current = stateFingerprint;
     const pendingSequenceMeta = pendingSequenceMetaRef.current;
@@ -658,7 +691,7 @@ export function App() {
     const sequenceActorId = pendingSequenceMeta?.actorId ?? localSeatId;
     const sequencePayload = pendingSequenceMeta?.payload ?? { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId };
     const clientMutationId = pendingSequenceMeta?.clientMutationId ?? `${sequenceType}:${sequenceActorId}:${stateFingerprint}`;
-    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt, turnOrderPhase }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload }).then((version) => {
+    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, expectedPreviousSequence: lastAppliedSequenceRef.current }).then((version) => {
       if (version) {
         lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
         lastSavedStateFingerprintRef.current = stateFingerprint;
@@ -666,7 +699,7 @@ export function App() {
     }).finally(() => {
       if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
     });
-  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, gameStartedAt, isRoomHost, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, roll, rollLockUntil, rollResultReadyAt, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
+  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, effectiveRollResultReadyAt, gameStartedAt, isRoomHost, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -1060,6 +1093,8 @@ export function App() {
       const nextSeats = createSeats(nickname, room.playMode, nextMaxPlayers);
       if (joinResult?.role === 'player' && joiningUser) {
         setSeats(seatsWithJoinedPlayer([], joiningUser.uid, nickname, room.playMode, nextMaxPlayers, joinResult.seatIndex));
+      } else if (asHost && roomUser) {
+        setSeats(nextSeats.map((seat) => seat.isHost ? { ...seat, id: roomUser.uid } : seat));
       } else {
         setSeats(nextSeats);
       }
