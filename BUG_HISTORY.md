@@ -67,6 +67,68 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #140 모바일 기기전 QA 이동 커버리지 재발 진단
+
+### Symptom
+
+- PR #139 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 다시 실패했다.
+- 기기전 루프는 목표 액션과 윷 던지기 커버리지를 통과했지만 `coverage.manualMoved + coverage.autoWaited`가 0으로 남아 이동/자동 이동 검증 assertion이 실패했다.
+
+### Expected behavior
+
+- 실패 시 어떤 액션들이 10개 이상 진행되었는지, 전체 coverage 카운터와 양쪽 기기의 debug state가 assertion 메시지에 남아야 한다.
+- 실제 이동 경로가 누락된 것인지, 아이템/함정/roll 액션만으로 목표 액션이 채워진 것인지 구분할 수 있어야 한다.
+
+### Actual behavior
+
+- Issue #138의 갈림길 이동 카운터 누락 보강 후에도 같은 최종 assertion이 재발했다.
+- 기존 실패 메시지는 `manualMoved + autoWaited`가 0이라는 결과만 보여 주고, `coverage` 전체와 액션 이력을 함께 보여 주지 않아 다음 원인을 확정하기 어려웠다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프가 10개 이상 액션을 진행한다.
+4. 루프 종료 후 `manualMoved + autoWaited`가 0이면 실패한다.
+
+### Suspected root cause
+
+- PR #139의 `branchMoved` -> `manualMoved` 반영은 현재 코드에 존재하므로, 같은 갈림길 누락만으로 단정하기 어렵다.
+- 실제 이동 실패보다는 기기전 QA 커버리지 집계가 아이템/함정/roll 등 일부 정상 진행 조합을 이동 검증 실패로 오판했을 가능성이 있다.
+- 다만 실패 로그에 전체 coverage와 action history가 없어 확정할 수 없다.
+
+### Confirmed root cause
+
+- 아직 미확정. 이번 변경은 반복 실패 원인을 확정하기 위한 QA 실패 로그 보강이다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #138에서 갈림길 이동 버튼 클릭 성공 시 `coverage.manualMoved`를 증가시켰다.
+  - Why it failed: PR #139 이후에도 같은 최종 assertion이 재발했고, 실패 로그만으로는 실제 액션 조합을 확인할 수 없었다.
+- Attempt 2:
+  - What was changed: Issue #130에서 일반 이동 버튼이 사라지고 roll이 clear된 경우 자동 이동으로 인정하도록 보강했다.
+  - Why it failed: 이번 재발은 일반 이동 버튼 자동 진행 경합인지, 아이템/함정/roll 위주 진행인지 구분할 정보가 부족했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- `manualMoved` 또는 `autoWaited`를 무조건 증가시키는 식으로 assertion을 우회하지 않는다.
+
+### Correct fix plan
+
+- 먼저 `playUntilActionsAcrossPages()`의 최종 assertion 실패 메시지에 `coverage`, `actionHistory`, 양쪽 `debugStates`를 포함한다.
+- 다음 실패 로그에서 어떤 액션 조합으로 목표 액션이 채워졌는지 확인한 뒤, 실제 누락된 경로만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [ ] No unrelated UI changes
+
+
 ## 2026-06-30 - Issue #138 모바일 기기전 QA 갈림길 이동 커버리지 누락
 
 ### Symptom

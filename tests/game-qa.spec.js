@@ -363,12 +363,14 @@ async function playOneAvailableGameActionAcrossPages(pages, coverage) {
 
 async function playUntilActionsAcrossPages(pages, testInfo, { targetActions = 10, maxTicks = 100, minActionsBeforeWinner = 6, stepPrefix = 'device-action' } = {}) {
   const coverage = createGameActionCoverage();
+  const actionHistory = [];
   let progressedActions = 0;
   for (let tick = 1; tick <= maxTicks && progressedActions < targetActions; tick += 1) {
     const action = await playOneAvailableGameActionAcrossPages(pages, coverage);
+    actionHistory.push(action);
     if (action === 'winner') {
       const debugStates = await Promise.all(pages.map((page) => collectGameDebugState(page)));
-      expect(progressedActions, `기기전 게임이 너무 빨리 종료되었습니다: ${JSON.stringify(debugStates, null, 2)}`).toBeGreaterThanOrEqual(minActionsBeforeWinner);
+      expect(progressedActions, `기기전 게임이 너무 빨리 종료되었습니다: ${JSON.stringify({ coverage, actionHistory, debugStates }, null, 2)}`).toBeGreaterThanOrEqual(minActionsBeforeWinner);
       break;
     }
     if (action !== 'wait') progressedActions += 1;
@@ -378,9 +380,10 @@ async function playUntilActionsAcrossPages(pages, testInfo, { targetActions = 10
   }
 
   const debugStates = await Promise.all(pages.map((page) => collectGameDebugState(page)));
-  expect(progressedActions, `기기전에서 충분한 게임 액션을 진행하지 못했습니다: ${JSON.stringify(debugStates, null, 2)}`).toBeGreaterThanOrEqual(targetActions);
-  expect(coverage.rolled, '기기전 QA 루프에서 윷 던지기를 최소 1회 이상 수행해야 합니다.').toBeGreaterThan(0);
-  expect(coverage.manualMoved + coverage.autoWaited, '기기전 QA 루프에서 수동 이동 또는 자동 이동 대기 상태를 검증해야 합니다.').toBeGreaterThan(0);
+  const failureDebug = JSON.stringify({ coverage, actionHistory, debugStates }, null, 2);
+  expect(progressedActions, `기기전에서 충분한 게임 액션을 진행하지 못했습니다: ${failureDebug}`).toBeGreaterThanOrEqual(targetActions);
+  expect(coverage.rolled, `기기전 QA 루프에서 윷 던지기를 최소 1회 이상 수행해야 합니다: ${failureDebug}`).toBeGreaterThan(0);
+  expect(coverage.manualMoved + coverage.autoWaited, `기기전 QA 루프에서 수동 이동 또는 자동 이동 대기 상태를 검증해야 합니다: ${failureDebug}`).toBeGreaterThan(0);
   return coverage;
 }
 
