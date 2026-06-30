@@ -1368,3 +1368,58 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Mobile Game QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #166 모바일 Game QA hasStateAdvancedAcrossPages ReferenceError
+
+### Symptom
+
+- PR #165 병합 후 모바일 Game QA와 모바일 기기전 QA가 실제 게임 상태 머신 액션 진행 단계에서 실패했다.
+- 실패 메시지는 `ReferenceError: hasStateAdvancedAcrossPages is not defined`였다.
+
+### Expected behavior
+
+- roll 클릭 이후 roll/move UI가 아직 관측되지 않아도 state/sequence가 진행되면 QA helper가 `state-advanced` outcome으로 처리해야 한다.
+- helper 누락 때문에 테스트가 ReferenceError로 중단되면 안 된다.
+
+### Actual behavior
+
+- `waitForRollOutcomeAfterClick()`은 `hasStateAdvancedAcrossPages(beforeDebugStates, lastDebugStates)`를 호출했다.
+- 하지만 `tests/game-qa.spec.js`에는 해당 across-pages helper 정의가 없어 ReferenceError가 발생했다.
+
+### Reproduction steps
+
+1. 모바일 Game QA 또는 모바일 기기전 QA를 실행한다.
+2. 윷 던지기 클릭 이후 `waitForRollOutcomeAfterClick()`이 timeout 종료부에 도달한다.
+3. `hasStateAdvancedAcrossPages()` 호출 시 정의되지 않은 함수 ReferenceError로 테스트가 실패한다.
+
+### Suspected root cause
+
+- Issue #162의 `state-advanced` outcome 계획을 반영하는 과정에서 단일 state helper인 `hasStateAdvanced()`만 존재하고, 여러 페이지 debug state 배열용 wrapper helper가 누락되었다.
+
+### Confirmed root cause
+
+- `hasStateAdvancedAcrossPages()` 호출은 존재하지만 함수 정의가 없었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #162에서 pending timeout 오분류 방지를 위해 `state-advanced` outcome 호출을 추가했다.
+  - Why it failed: 호출 대상 across-pages helper 정의가 함께 추가되지 않아 ReferenceError가 발생했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 앱 게임 로직을 원인 확인 없이 수정하지 않는다.
+- undefined helper를 우회하려고 `state-advanced` 판정을 제거하지 않는다.
+
+### Correct fix plan
+
+- 기존 `findCanonicalDebugState()`와 `hasStateAdvanced()`를 재사용하는 최소 `hasStateAdvancedAcrossPages()` wrapper를 추가한다.
+- roll outcome 처리, coverage, UI selector, 앱 소스 코드는 변경하지 않는다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Relevant Playwright QA rerun checked (local Playwright browser executable missing)
+- [x] No unrelated UI changes
