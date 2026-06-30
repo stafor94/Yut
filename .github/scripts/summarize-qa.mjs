@@ -88,6 +88,8 @@ const runUrl = `${process.env.GITHUB_SERVER_URL ?? 'https://github.com'}/${proce
 const failedTests = extractFailedTests(playwrightLog);
 const failureBlocks = extractFailureBlocks(playwrightLog);
 const inferredCauses = inferFailureCauses(playwrightLog, consoleLog);
+const qaJobStatus = (process.env.QA_JOB_STATUS ?? '').toLowerCase();
+const isQaSuccess = qaJobStatus === 'success';
 
 const environment = [
   '## 실행 환경',
@@ -138,6 +140,15 @@ const artifacts = [
   fs.existsSync('console-log.txt') ? '- console-log.txt: 생성됨' : '- console-log.txt: 없음',
 ].join('\n');
 
+const successArtifacts = [
+  '## 추가 확인 대상',
+  '',
+  '- Game QA가 성공했으므로 실패 이슈 또는 실패 아티팩트는 생성하지 않습니다.',
+  '- 상세 로그가 필요하면 Actions 실행 페이지의 각 단계 로그를 확인하세요.',
+  `- test-results 파일 수: \`${walkFiles('test-results').length}\``,
+  fs.existsSync('console-log.txt') ? '- console-log.txt: 생성됨' : '- console-log.txt: 없음',
+].join('\n');
+
 const consoleSummary = [
   '## 브라우저 콘솔 로그 마지막 80줄',
   '',
@@ -148,6 +159,10 @@ const logSummary = [
   buildLog ? ['### npm run build 마지막 80줄', '', codeBlock(lineTail(buildLog, 80))].join('\n') : '',
   playwrightLog ? ['### npx playwright test 마지막 120줄', '', codeBlock(lineTail(playwrightLog, 120))].join('\n') : '',
 ].filter(Boolean).join('\n\n') || '아직 빌드 또는 Playwright 로그가 생성되지 않았습니다. 실패한 이전 단계 로그를 확인해주세요.';
+const successLogSummary = [
+  buildLog ? ['### npm run build 마지막 80줄', '', codeBlock(lineTail(buildLog, 80))].join('\n') : '',
+  playwrightLog ? ['### npx playwright test 마지막 120줄', '', codeBlock(lineTail(playwrightLog, 120))].join('\n') : '',
+].filter(Boolean).join('\n\n') || '현재 요약 파일에 포함할 빌드 또는 Playwright 로그가 없습니다. 상세 내용은 Actions 실행 페이지의 단계 로그를 확인하세요.';
 
 const issueFailureDetails = [
   '## Issue 본문용 실패 상세',
@@ -193,7 +208,25 @@ writeText('qa-issue-summary.md', truncateText(issueSummary, 55_000));
 writeText('qa-artifact-manifest.md', [
   formatFileList('test-results 파일 목록', 'test-results'),
 ].join('\n\n'));
-writeText('qa-failure-summary.md', [
+
+const successSummary = [
+  '## Game QA 성공 요약',
+  '',
+  `- 커밋: \`${(process.env.GITHUB_SHA ?? 'unknown').slice(0, 7)}\``,
+  `- 브랜치/Ref: \`${process.env.GITHUB_REF_NAME ?? 'unknown'}\``,
+  `- 이벤트: \`${process.env.GITHUB_EVENT_NAME ?? 'unknown'}\``,
+  `- 실행 결과: ${runUrl}`,
+  '',
+  '빌드와 Playwright Game QA가 모두 성공했습니다.',
+  '',
+  environment,
+  '',
+  successArtifacts,
+  '',
+  successLogSummary,
+].join('\n');
+
+const failureSummary = [
   '## Game QA 실행 요약',
   '',
   `- 커밋: \`${(process.env.GITHUB_SHA ?? 'unknown').slice(0, 7)}\``,
@@ -218,4 +251,6 @@ writeText('qa-failure-summary.md', [
   '자세한 파일 목록은 `qa-artifact-manifest.md`를 확인해주세요.',
   '',
   logSummary,
-].join('\n'));
+].join('\n');
+
+writeText('qa-failure-summary.md', isQaSuccess ? successSummary : failureSummary);
