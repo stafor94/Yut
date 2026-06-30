@@ -131,6 +131,65 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 - [ ] No console errors
 - [ ] Mobile layout checked, if applicable
 
+
+## 2026-06-30 - 모바일 QA 이동 버튼 rollResultReadyAt stale future 재발
+
+### Symptom
+
+- Issue #120에서 iPad와 Galaxy S24 Ultra 모바일 QA가 `move-piece-button` enabled 대기 중 실패했다.
+- 버튼 텍스트는 `결과 확인 중...`으로 남고 15초 timeout 동안 disabled 상태가 유지되었다.
+
+### Expected behavior
+
+- 윷 결과 연출 대기 시간 이후 이동 가능한 말이 있으면 `move-piece-button`이 활성화되어야 한다.
+
+### Actual behavior
+
+- 클라이언트가 `rollResultHolding` 상태를 계속 유지해 QA 액션 루프가 다음 이동으로 진행하지 못했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. 방을 생성하고 AI를 채운 뒤 게임을 시작한다.
+3. 실제 게임 상태 머신으로 액션을 진행한다.
+4. 특정 모바일 프로젝트에서 `move-piece-button` enabled assertion이 실패한다.
+
+### Suspected root cause
+
+- `rollResultReadyAt`이 과거값이면 0으로 정규화되지만, 비정상적으로 먼 미래값은 그대로 적용/저장될 수 있었다.
+- stale future `rollResultReadyAt`이 subscribe 또는 host snapshot 저장 경로에서 재적용되면 `rollResultHolding`이 계속 true로 계산된다.
+
+### Confirmed root cause
+
+- 코드 경로상 `rollResultReadyAt > Date.now()` 조건만 사용해 future 값의 상한을 검증하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `rollResultReadyAt`을 0으로 초기화했다.
+  - Why it failed: 이동 버튼 활성화 이전에 stale/future 값으로 hold되는 경로를 막지 못했다.
+- Attempt 2:
+  - What was changed: 테스트 대기와 시작 버튼 확인을 강화했다.
+  - Why it failed: 이동 버튼의 hold 상태 계산 원인을 직접 차단하지 못했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+
+### Correct fix plan
+
+- `rollResultReadyAt`을 클라이언트 적용 및 저장 단계에서 허용 가능한 윷 결과 연출 시간 범위로 정규화한다.
+- 과거값 또는 비정상적으로 먼 미래값은 0으로 저장/적용해 stale hold를 제거한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] No unrelated UI changes
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
 ---
 
 ## Completion requirements
