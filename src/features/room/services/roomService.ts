@@ -251,6 +251,7 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
       if (!player.isSpectator && Number.isFinite(Number(player.seatIndex))) await deleteDoc(doc(db!, 'rooms', roomDoc.id, 'seats', String(player.seatIndex)));
     }));
     if (stalePlayers.length) await syncRoomPlayerCount(roomDoc.id);
+    if (room.status === 'playing') return;
     const remainingHumans = playersSnapshot.docs.filter((playerDoc) => {
       if (stalePlayers.some((staleDoc) => staleDoc.id === playerDoc.id)) return false;
       const player = playerDoc.data() as RoomPlayer;
