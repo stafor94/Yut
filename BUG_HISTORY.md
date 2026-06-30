@@ -882,3 +882,63 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Device-to-device mobile QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #146 모바일 기기전 QA 자동 진행 관측값 누락
+
+### Symptom
+
+- PR #145 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 다시 실패했다.
+- 실패 로그에서 `coverage.rolled`는 10이었지만 `coverage.manualMoved + coverage.autoWaited`는 0으로 남았다.
+- 최종 debug state는 `roll: null`, `rollResultHolding: false`, `rollButton.visible: true`라 앱은 다시 윷 던지기 가능한 상태였지만 테스트가 이동 관련 자동 진행으로 인정하지 못했다.
+
+### Expected behavior
+
+- 윷 던지기 후 자동 이동 또는 이동 불가 스킵으로 다음 상태에 진입하면 QA 루프가 이를 `autoWaited`로 관측해야 한다.
+- 자동 진행 판정은 실제 상태 변화가 확인될 때만 해야 하며, `roll` 액션마다 무조건 커버리지를 증가시키면 안 된다.
+
+### Actual behavior
+
+- `didAutoAdvanceAfterRoll()`은 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 변화를 비교하도록 작성되었다.
+- 하지만 앱의 `window.__YUT_DEBUG_STATE__`에는 `lastMovedSeatId`와 `lastMovedPieceIds`가 노출되지 않아, 보너스 턴처럼 `turnIndex`가 유지되는 자동 진행을 테스트가 관측하지 못할 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프 중 윷 던지기 후 앱이 자동으로 다음 윷 던지기 가능 상태로 돌아온다.
+4. 테스트 debug state에 last moved 정보가 없고 `turnIndex` 변화도 없으면 `autoWaited`가 증가하지 않아 최종 assertion이 실패한다.
+
+### Suspected root cause
+
+- Issue #144 수정은 roll 클릭 전후 `lastMovedSeatId`와 `lastMovedPieceIds`를 비교하도록 했지만, 실제 앱 debug state가 그 값을 제공하지 않았다.
+
+### Confirmed root cause
+
+- `src/app/App.tsx`의 `window.__YUT_DEBUG_STATE__`에 `lastMovedSeatId`와 `lastMovedPieceIds`가 포함되지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #144에서 roll 클릭 후 자동 진행을 감지하는 테스트 로직을 추가했다.
+  - Why it failed: 테스트가 비교하는 last moved 값이 debug state에 없어 일부 자동 진행을 관측하지 못했다.
+- Attempt 2:
+  - What was changed: Issue #140에서 실패 메시지에 coverage/actionHistory/debugStates를 포함했다.
+  - Why it failed: 진단 정보는 늘었지만 앱 debug state의 last moved 필드 누락은 그대로였다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+
+### Correct fix plan
+
+- 앱 debug state에 `lastMovedSeatId`와 `lastMovedPieceIds`를 노출한다.
+- 기존 `didAutoAdvanceAfterRoll()` 판정 로직은 유지하고, 테스트가 의도한 관측값을 받을 수 있게 한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
