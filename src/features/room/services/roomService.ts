@@ -19,7 +19,7 @@ export interface RoomPlayer { id: string; nickname: string; ready: boolean; colo
 export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
-export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'roll_yut' | 'move_piece_resolved' | 'item_used' | 'trap_placed' | 'game_finished';
+export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'item_used' | 'trap_placed' | 'game_finished';
 export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
 export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; clientMutationId?: string; clientCreatedAt?: number; expectedPreviousSequence?: number };
 
@@ -298,6 +298,10 @@ const makeFirestoreSafeId = (value: string) => {
 };
 const getClientMutationDocRef = (roomId: string, clientMutationId: string) => doc(db!, 'rooms', roomId, 'processedActions', makeFirestoreSafeId(clientMutationId));
 
+const isTurnOrderIntroActive = (intro: unknown, now = Date.now()) => {
+  if (!intro || typeof intro !== 'object' || !('readyAt' in intro)) return false;
+  return Number((intro as { readyAt?: unknown }).readyAt ?? 0) > now;
+};
 
 export async function saveGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>, meta: GameSequenceMeta = {}) {
   if (!db || !roomId) return null;
@@ -351,6 +355,54 @@ export async function updateTurnOrderState(roomId: string, patcher: (state: Sync
     const currentVersion = Number(currentState?.turnVersion ?? 0);
     const nextVersion = currentVersion + 1;
     transaction.set(gameStateRef, { ...patch, updatedAt: serverTimestamp(), turnVersion: nextVersion }, { merge: true });
+    return nextVersion;
+  });
+}
+
+export async function completeTurnOrderIntro(roomId: string, params: { readyAt: number; actorId: string }) {
+  if (!db || !roomId || !params.readyAt) return null;
+  const clientMutationId = `turn_order_intro_completed:${roomId}:${params.readyAt}`;
+  const processedActionRef = getClientMutationDocRef(roomId, clientMutationId);
+  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
+  return runTransaction(db, async (transaction) => {
+    const processedActionSnapshot = await transaction.get(processedActionRef);
+    if (processedActionSnapshot.exists()) return Number(processedActionSnapshot.data().turnVersion ?? 0);
+    const snapshot = await transaction.get(gameStateRef);
+    if (!snapshot.exists()) return null;
+    const currentState = snapshot.data() as SyncedGameState;
+    const currentIntro = currentState.turnOrderIntro as { readyAt?: unknown } | null | undefined;
+    if (!currentIntro || Number(currentIntro.readyAt ?? 0) !== params.readyAt) return Number(currentState.turnVersion ?? 0);
+    const currentVersion = Number(currentState.turnVersion ?? 0);
+    const currentSequence = Number(currentState.lastSequence ?? 0);
+    const nextVersion = currentVersion + 1;
+    const nextSequence = currentSequence + 1;
+    const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
+    transaction.set(sequenceRef, {
+      sequence: nextSequence,
+      type: 'turn_order_intro_completed',
+      actorId: params.actorId,
+      payload: { readyAt: params.readyAt },
+      expectedPreviousSequence: currentSequence,
+      clientMutationId,
+      clientCreatedAt: Date.now(),
+      createdAt: serverTimestamp(),
+    });
+    transaction.set(gameStateRef, {
+      turnOrderIntro: null,
+      gameStartedAt: Number(currentState.gameStartedAt ?? 0) || Date.now(),
+      updatedAt: serverTimestamp(),
+      turnVersion: nextVersion,
+      lastSequence: nextSequence,
+      lastClientMutationId: clientMutationId,
+    }, { merge: true });
+    transaction.set(processedActionRef, {
+      clientMutationId,
+      sequence: nextSequence,
+      turnVersion: nextVersion,
+      type: 'turn_order_intro_completed',
+      actorId: params.actorId,
+      createdAt: serverTimestamp(),
+    });
     return nextVersion;
   });
 }
@@ -463,7 +515,7 @@ function reduceAuthoritativeRoll(state: SyncedGameState, action: Omit<GameAction
   if (activeActorId !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
   if (state.winner) return makeActionReject('이미 종료된 게임입니다.');
   if (state.turnOrderPhase && typeof state.turnOrderPhase === 'object' && 'active' in state.turnOrderPhase && state.turnOrderPhase.active) return makeActionReject('차례 순서를 정하는 중입니다.');
-  if (state.turnOrderIntro) return makeActionReject('차례 순서 안내가 끝난 뒤 진행해주세요.');
+  if (isTurnOrderIntroActive(state.turnOrderIntro)) return makeActionReject('차례 순서 안내가 끝난 뒤 진행해주세요.');
   if (state.pendingTrapPlacement) return makeActionReject('함정 설치 선택이 먼저 필요합니다.');
   if (state.roll) return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
 

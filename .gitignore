@@ -10,3 +10,5 @@ playwright-report/
 test-results/
 screenshots/
 console-log.txt
+qa-failure-summary-*.zip
+qa-failure-summary-*/

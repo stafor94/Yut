@@ -133,3 +133,18 @@ If the same issue fails twice:
 4. Identify why previous fixes failed.
 5. Propose a new fix plan.
 6. Wait for approval before editing code.
+
+---
+
+## PR 및 GitHub Actions 운영 규칙
+
+이 저장소에서 PR을 생성해야 하는 작업은 다음 규칙을 따른다.
+
+1. PR은 Draft PR이 아니라 일반 PR로 생성한다.
+2. PR 생성 후 가능한 경우 merge까지 진행한다.
+3. merge 후 가장 최근의 GitHub Actions workflow를 확인한다.
+4. workflow 확인은 merge 시점으로부터 3분 뒤에 시작하고, 이후 1분 주기로 최대 6분까지 반복한다.
+5. workflow가 실패하면 실패 이후 가장 최근에 생성된 Issue를 확인한다.
+6. 실패한 workflow와 최신 Issue를 기준으로 원인을 분석한다.
+7. 정확한 원인 파악이 어렵다면 해당 workflow run의 Artifacts를 내려받아 확인한다.
+8. 실패 직후 바로 수정하지 말고, 먼저 원인 분석과 수정 계획을 작성해서 보고한다.
