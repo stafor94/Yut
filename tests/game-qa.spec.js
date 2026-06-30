@@ -114,13 +114,14 @@ async function runQaStep(testInfo, step, action) {
   });
 }
 
-async function primeQaLobbyStorage(context, { nickname, maxPlayers = '2', playMode = 'individual', itemMode = 'false' }) {
-  await context.addInitScript(({ nickname: nextNickname, maxPlayers: nextMaxPlayers, playMode: nextPlayMode, itemMode: nextItemMode }) => {
+async function primeQaLobbyStorage(context, { nickname, maxPlayers = '2', playMode = 'individual', itemMode = 'false', pieceCount = '4' }) {
+  await context.addInitScript(({ nickname: nextNickname, maxPlayers: nextMaxPlayers, playMode: nextPlayMode, itemMode: nextItemMode, pieceCount: nextPieceCount }) => {
     window.localStorage.setItem('yut-online:nickname', nextNickname);
     window.localStorage.setItem('yut-online:maxPlayers', nextMaxPlayers);
     window.localStorage.setItem('yut-online:playMode', nextPlayMode);
     window.localStorage.setItem('yut-online:itemMode', nextItemMode);
-  }, { nickname, maxPlayers, playMode, itemMode });
+    window.localStorage.setItem('yut-online:pieceCount', nextPieceCount);
+  }, { nickname, maxPlayers, playMode, itemMode, pieceCount });
 }
 
 async function expectTwoPlayerGameReady(page, firstNickname, secondNickname) {
@@ -132,26 +133,158 @@ async function expectTwoPlayerGameReady(page, firstNickname, secondNickname) {
   await expect(page.getByTestId('game-board')).toBeVisible();
 }
 
-async function playOneVisibleTurn(page) {
-  const rollButton = page.getByTestId('roll-yut-button');
-  if (!(await rollButton.isVisible().catch(() => false))) return false;
-  await expect(rollButton).toBeEnabled({ timeout: 15_000 });
-  await rollButton.click();
-  const moveButton = page.getByTestId('move-piece-button');
-  if (await moveButton.isVisible({ timeout: 4_000 }).catch(() => false)) {
-    await expect(moveButton).toBeEnabled({ timeout: 15_000 });
-    await moveButton.click();
+function createGameActionCoverage() {
+  return { rolled: 0, manualMoved: 0, autoWaited: 0, branchOuterSelected: 0, branchShortcutSelected: 0, itemPromptHandled: 0, itemUsed: 0, itemSkipped: 0, itemPickupModalHandled: 0, trapPlacementHandled: 0 };
+}
+
+async function isVisible(locator) {
+  return locator.isVisible().catch(() => false);
+}
+
+async function collectGameDebugState(page) {
+  return page.evaluate(() => ({
+    turn: document.querySelector('[data-testid="turn-indicator"]')?.textContent?.trim() ?? '',
+    controls: document.querySelector('.play-controls')?.textContent?.trim() ?? '',
+    winner: document.querySelector('.winner-overlay')?.textContent?.trim() ?? '',
+    prompt: document.querySelector('.inline-item-prompt')?.textContent?.trim() ?? '',
+    trap: document.querySelector('.trap-placement-banner')?.textContent?.trim() ?? '',
+    logs: Array.from(document.querySelectorAll('.log-list p')).slice(0, 5).map((node) => node.textContent?.trim() ?? ''),
+    pieces: Array.from(document.querySelectorAll('[data-testid^="piece-"]')).map((node) => ({ testId: node.getAttribute('data-testid'), text: node.textContent?.trim(), className: node.getAttribute('class') })),
+  }));
+}
+
+async function handleItemPickupModal(page, coverage) {
+  const modal = page.getByRole('dialog', { name: '아이템 교체 선택' });
+  if (!(await isVisible(modal))) return false;
+  const skipButton = modal.getByRole('button', { name: '획득 안 함' });
+  if (await isVisible(skipButton)) {
+    await skipButton.click();
+    coverage.itemPickupModalHandled += 1;
+    return true;
   }
+  const discardButton = modal.getByRole('button', { name: /버리기/ }).first();
+  await expect(discardButton, '아이템 교체 모달에는 버리기 또는 획득 안 함 버튼이 있어야 합니다.').toBeVisible({ timeout: 5_000 });
+  await discardButton.click();
+  coverage.itemPickupModalHandled += 1;
   return true;
 }
 
-async function waitForAnyRollButtonVisible(pages, timeout = 20_000) {
+async function handleItemPrompt(page, coverage, { preferUseItem = true } = {}) {
+  const prompt = page.locator('.inline-item-prompt');
+  if (!(await isVisible(prompt))) return false;
+  if (preferUseItem) {
+    const itemButton = prompt.locator('.inline-item-button').first();
+    if (await isVisible(itemButton)) {
+      await itemButton.click();
+      coverage.itemPromptHandled += 1;
+      coverage.itemUsed += 1;
+      return true;
+    }
+  }
+  const skipButton = prompt.getByRole('button', { name: '사용 안 함' });
+  await expect(skipButton, '아이템 사용 프롬프트에는 사용 안 함 버튼이 있어야 합니다.').toBeVisible({ timeout: 5_000 });
+  await skipButton.click();
+  coverage.itemPromptHandled += 1;
+  coverage.itemSkipped += 1;
+  return true;
+}
+
+async function handleTrapPlacement(page, coverage) {
+  if (!(await isVisible(page.locator('.trap-placement-banner')))) return false;
+  const selectableNode = page.locator('.board-node.trap-selectable').first();
+  await expect(selectableNode, '함정 설치 중에는 선택 가능한 말판 노드가 있어야 합니다.').toBeVisible({ timeout: 10_000 });
+  await selectableNode.click();
+  coverage.trapPlacementHandled += 1;
+  return true;
+}
+
+async function handleBranchMove(page, coverage) {
+  const controls = page.locator('.bottom-branch-controls');
+  if (!(await isVisible(controls))) return false;
+  const useShortcut = coverage.branchShortcutSelected <= coverage.branchOuterSelected;
+  const branchButton = controls.getByRole('button', { name: useShortcut ? '지름길' : '바깥길' });
+  await branchButton.click();
+  if (useShortcut) coverage.branchShortcutSelected += 1;
+  else coverage.branchOuterSelected += 1;
+  const moveButton = controls.locator('.branch-move-button');
+  await expect(moveButton, '갈림길 선택 후 이동 버튼이 활성화되어야 합니다.').toBeEnabled({ timeout: 15_000 });
+  await moveButton.click();
+  coverage.manualMoved += 1;
+  return true;
+}
+
+async function playOneAvailableGameAction(page, coverage, options = {}) {
+  if (await handleItemPickupModal(page, coverage)) return 'item-pickup-modal';
+  if (await handleItemPrompt(page, coverage, options)) return 'item-prompt';
+  if (await handleTrapPlacement(page, coverage)) return 'trap-placement';
+  if (await handleBranchMove(page, coverage)) return 'branch-move';
+
+  const moveButton = page.getByTestId('move-piece-button');
+  if (await isVisible(moveButton)) {
+    await expect(moveButton, '선택한 말 이동 버튼이 보이면 활성화되어야 합니다.').toBeEnabled({ timeout: 15_000 });
+    await moveButton.click();
+    coverage.manualMoved += 1;
+    return 'manual-move';
+  }
+
+  const rollButton = page.getByTestId('roll-yut-button');
+  if (await isVisible(rollButton)) {
+    await expect(rollButton, '윷 던지기 버튼이 보이면 활성화되어야 합니다.').toBeEnabled({ timeout: 15_000 });
+    await rollButton.click();
+    coverage.rolled += 1;
+    return 'roll';
+  }
+
+  if (await isVisible(page.locator('.winner-overlay'))) return 'winner';
+  if (await isVisible(page.getByTestId('game-screen'))) {
+    await page.waitForTimeout(350);
+    coverage.autoWaited += 1;
+    return 'wait';
+  }
+
+  throw new Error(`처리 가능한 게임 액션을 찾지 못했습니다: ${JSON.stringify(await collectGameDebugState(page), null, 2)}`);
+}
+
+async function playUntilActions(page, testInfo, { targetActions = 10, maxTicks = 80, minActionsBeforeWinner = 6, stepPrefix = 'action-loop' } = {}) {
+  const coverage = createGameActionCoverage();
+  let progressedActions = 0;
+  for (let tick = 1; tick <= maxTicks && progressedActions < targetActions; tick += 1) {
+    const action = await playOneAvailableGameAction(page, coverage);
+    if (action === 'winner') {
+      const debugState = await collectGameDebugState(page);
+      expect(progressedActions, `게임이 너무 빨리 종료되었습니다: ${JSON.stringify(debugState, null, 2)}`).toBeGreaterThanOrEqual(minActionsBeforeWinner);
+      break;
+    }
+    if (action !== 'wait') progressedActions += 1;
+    if (tick % 10 === 0) await saveStepScreenshot(page, testInfo, `${stepPrefix}-${tick}`);
+  }
+  expect(progressedActions, `충분한 게임 액션을 진행하지 못했습니다: ${JSON.stringify(await collectGameDebugState(page), null, 2)}`).toBeGreaterThanOrEqual(targetActions);
+  expect(coverage.rolled, 'QA 루프에서 윷 던지기를 최소 1회 이상 수행해야 합니다.').toBeGreaterThan(0);
+  expect(coverage.manualMoved + coverage.autoWaited, 'QA 루프에서 수동 이동 또는 자동 이동 대기 상태를 검증해야 합니다.').toBeGreaterThan(0);
+  return coverage;
+}
+
+async function playOneVisibleTurn(page) {
+  const coverage = createGameActionCoverage();
+  for (let tick = 0; tick < 30; tick += 1) {
+    const action = await playOneAvailableGameAction(page, coverage);
+    if (action === 'winner') return false;
+    if (action !== 'wait') return true;
+  }
+  return false;
+}
+
+async function waitForAnyPlayableActionVisible(pages, timeout = 20_000) {
   await expect.poll(async () => {
     for (const page of pages) {
       if (await page.getByTestId('roll-yut-button').isVisible().catch(() => false)) return true;
+      if (await page.getByTestId('move-piece-button').isVisible().catch(() => false)) return true;
+      if (await page.locator('.bottom-branch-controls').isVisible().catch(() => false)) return true;
+      if (await page.locator('.inline-item-prompt').isVisible().catch(() => false)) return true;
+      if (await page.locator('.trap-placement-banner').isVisible().catch(() => false)) return true;
     }
     return false;
-  }, { message: '차례 순서 연출이 끝난 뒤 현재 턴 기기의 윷 던지기 버튼이 보여야 합니다.', timeout }).toBeTruthy();
+  }, { message: '차례 순서 연출이 끝난 뒤 현재 턴 기기에서 처리 가능한 게임 액션이 보여야 합니다.', timeout }).toBeTruthy();
 }
 
 async function cleanupRememberedRooms() {
@@ -191,7 +324,7 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
   const consoleErrors = [];
   const qaRoomTitle = `QA 자동 테스트 ${testInfo.project.name} ${Date.now()}-${testInfo.retry}-${testInfo.workerIndex}`;
   attachConsoleErrorCapture(page, consoleErrors);
-  await primeQaLobbyStorage(page.context(), { nickname: `QA-${testInfo.project.name}-${testInfo.workerIndex}`, maxPlayers: '4' });
+  await primeQaLobbyStorage(page.context(), { nickname: `QA-${testInfo.project.name}-${testInfo.workerIndex}`, maxPlayers: '4', itemMode: 'true', pieceCount: '4' });
 
   try {
     await runQaStep(testInfo, '01 로비 진입', async () => {
@@ -233,22 +366,12 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
       await saveStepScreenshot(page, testInfo, '04-game-started');
     });
 
-    for (let turn = 1; turn <= 10; turn += 1) {
-      await runQaStep(testInfo, `05-${turn} 10턴 윷 던지기 연속 검증`, async () => {
-        const rollButton = page.getByTestId('roll-yut-button');
-        await expect(rollButton, `${turn}번째 사람 턴에서 윷 던지기 버튼이 다시 보여야 합니다.`).toBeVisible({ timeout: 45_000 });
-        await expect(rollButton, `${turn}번째 사람 턴에서 윷 던지기 버튼이 비활성화되면 안 됩니다.`).toBeEnabled({ timeout: 15_000 });
-        await rollButton.click();
-        const moveButton = page.getByTestId('move-piece-button');
-        if (await moveButton.isVisible({ timeout: 4_000 }).catch(() => false)) {
-          await expect(moveButton).toBeEnabled({ timeout: 15_000 });
-          await moveButton.click();
-        }
-        await expect(page.getByTestId('game-screen')).toBeVisible();
-        await saveStepScreenshot(page, testInfo, `05-turn-${turn}`);
-        await page.waitForTimeout(600);
-      });
-    }
+    await runQaStep(testInfo, '05 실제 게임 상태 머신으로 10개 이상 액션 진행', async () => {
+      const coverage = await playUntilActions(page, testInfo, { targetActions: 10, maxTicks: 100, minActionsBeforeWinner: 6, stepPrefix: '05-action' });
+      await appendQaStepLog(testInfo, 'INFO', '05 상태 머신 커버리지', JSON.stringify(coverage));
+      await expect(page.getByTestId('game-screen')).toBeVisible();
+      await saveStepScreenshot(page, testInfo, '05-action-loop-complete');
+    });
 
     await runQaStep(testInfo, '06 콘솔 에러 허용 범위 확인', async () => {
       assertConsoleErrorsWithinQaAllowance(consoleErrors);
@@ -323,7 +446,7 @@ test.describe('mobile device-to-device QA', () => {
       });
 
       await runQaStep(testInfo, '기기전 08 한 턴 진행 가능 확인', async () => {
-        await waitForAnyRollButtonVisible([ipadPage, galaxyPage]);
+        await waitForAnyPlayableActionVisible([ipadPage, galaxyPage]);
         const hostPlayed = await playOneVisibleTurn(ipadPage);
         const guestPlayed = hostPlayed ? false : await playOneVisibleTurn(galaxyPage);
         expect(hostPlayed || guestPlayed, 'iPad 또는 Galaxy 중 현재 턴인 기기가 한 턴을 진행해야 합니다.').toBeTruthy();
