@@ -1306,3 +1306,65 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [ ] Mobile Game QA rerun checked
 - [ ] Device-to-device mobile QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #162 모바일 Game QA roll pending-timeout 재발
+
+### Symptom
+
+- PR #161 이후 모바일 Game QA의 `05 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계가 iPad와 Galaxy S24 Ultra에서 실패했다.
+- 실패 메시지는 `윷 던지기 클릭 이후 원격 액션 대기 상태가 해소되지 않았습니다`였고, roll 클릭 전 debug state는 game 화면에서 윷 던지기 버튼이 활성화된 상태였다.
+
+### Expected behavior
+
+- 윷 던지기 클릭 후 pending 상태가 잠깐 관측되더라도, 마지막 debug state에서 pending이 이미 해소됐거나 서버 state/sequence 적용이 진행됐다면 QA helper가 이를 무조건 pending timeout으로 분류하면 안 된다.
+- pending이 실제로 마지막까지 유지되는 경우에만 pending timeout으로 실패해야 한다.
+
+### Actual behavior
+
+- `waitForRollOutcomeAfterClick()`은 pending을 한 번이라도 관측하면 `sawPendingTurnAction`을 계속 true로 유지했다.
+- 이후 마지막 debug state에서 pending이 해소됐는지 확인하지 않고, roll/move UI를 보지 못하면 `pending-timeout`으로 반환할 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 Game QA를 실행한다.
+2. 게임 화면에서 활성화된 윷 던지기 버튼을 클릭한다.
+3. 클릭 직후 remote/action pending 상태가 일시적으로 관측된다.
+4. pending이 해소됐지만 roll/move UI 관측이 sync timing 때문에 늦으면 QA helper가 pending timeout으로 실패할 수 있다.
+
+### Suspected root cause
+
+- 모바일 WebKit/Firestore 타이밍에서 host authoritative roll commit과 subscribe 반영 사이 transient gap이 발생할 수 있다.
+- QA helper가 pending을 sticky flag로만 저장하고 마지막 pending 상태 및 state/sequence 증가 여부를 분리하지 않아, 해소된 pending도 pending timeout으로 오분류한 것으로 보인다.
+
+### Confirmed root cause
+
+- `waitForRollOutcomeAfterClick()`의 pending timeout 판정이 `sawPendingTurnAction`만 사용하고 마지막 debug state의 pending 여부를 확인하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #158에서 roll no-state-change를 명시적 오류로 드러냈다.
+  - Why it failed: pending 상태와 no-state-change는 구분했지만, pending이 마지막까지 유지됐는지 여부는 분리하지 못했다.
+- Attempt 2:
+  - What was changed: Issue #160에서 pending remote/action processing 상태를 bounded timeout으로 관측하도록 했다.
+  - Why it failed: pending을 한 번 본 뒤 마지막에는 해소된 경우까지 pending timeout으로 분류할 수 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- 해소된 pending과 마지막까지 유지되는 pending을 같은 실패로 뭉개지 않는다.
+
+### Correct fix plan
+
+- `waitForRollOutcomeAfterClick()`에서 마지막 poll의 pending 여부를 별도로 추적한다.
+- pending timeout은 pending을 관측한 적이 있고 마지막 debug state에서도 pending이 유지될 때만 반환한다.
+- roll/move UI가 아직 없더라도 state/sequence가 클릭 전보다 증가했다면 별도 `state-advanced` outcome으로 반환해 pending timeout 오분류를 피한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No unrelated UI changes
