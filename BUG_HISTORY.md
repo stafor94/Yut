@@ -1242,3 +1242,67 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [ ] Mobile Game QA rerun checked
 - [ ] Device-to-device mobile QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #160 모바일 Game QA move click race 및 roll pending/no-state-change 재발
+
+### Symptom
+
+- PR #159 이후 모바일 Game QA와 모바일 기기전 QA의 실제 게임 상태 머신 액션 진행 단계가 실패했다.
+- 한 실패는 `move-piece-button`을 ready로 판단한 뒤 실제 클릭 시점에는 버튼이 disabled 상태로 유지되어 Playwright click timeout이 발생했다.
+- 다른 실패들은 윷 던지기 클릭 이후 `roll`, 이동 UI, 자동 진행, terminal state가 관측되지 않아 `no-state-change` 오류로 실패했다.
+
+### Expected behavior
+
+- 이동 버튼이 ready로 관측된 직후 React/원격 액션 상태 전환으로 다시 disabled가 되면 QA helper는 즉시 15초 click timeout으로 고착되지 않고 현재 debug state를 기준으로 재평가해야 한다.
+- 윷 던지기 클릭 후 원격 액션 pending/processing 상태가 관측되면 일반 no-state-change와 구분해 제한 시간 안에서 상태 해소를 기다리고, 끝내 해소되지 않을 때는 pending timeout으로 원인을 드러내야 한다.
+
+### Actual behavior
+
+- `playOneAvailableGameAction()`은 poll에서 한 번 `ready`로 판정한 뒤 click 직전 상태가 다시 바뀌는 경합을 충분히 처리하지 못했다.
+- `waitForRollOutcomeAfterClick()`은 pending remote/action processing 상태를 별도로 추적하지 않아, 원격 액션 대기 지연과 진짜 no-state-change를 구분하기 어려웠다.
+
+### Reproduction steps
+
+1. 모바일 Game QA 또는 모바일 기기전 QA를 실행한다.
+2. 게임 액션 루프 중 이동 버튼 또는 윷 던지기 버튼을 클릭한다.
+3. React 상태/Firestore 원격 액션 동기화 타이밍에 버튼 또는 debug state가 transient 상태가 된다.
+4. QA helper가 transient disabled click 또는 roll no-state-change/pending 상태를 명확히 구분하지 못해 실패한다.
+
+### Suspected root cause
+
+- 앱 진행 고착으로 확정하기보다는 QA helper가 모바일 WebKit/Firestore 타이밍의 transient button disabled 및 remote action pending 상태를 너무 단일 상태로 판정한 것으로 보인다.
+
+### Confirmed root cause
+
+- `move-piece-button` 클릭 경로에는 ready 판정과 실제 click 사이 버튼 상태 재평가/짧은 실패 복구가 없었다.
+- `waitForRollOutcomeAfterClick()`은 debug state의 `rollInProgress`, `pendingLocalRemoteActionCount`, `processingActionCount`를 outcome 판정에 사용하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #158에서 roll no-state-change를 wait로 삼키지 않고 명시적 오류로 드러냈다.
+  - Why it failed: 오류는 명확해졌지만 pending/processing 지연과 진짜 no-state-change를 구분하는 판정은 부족했다.
+- Attempt 2:
+  - What was changed: Issue #130에서 이동 버튼이 사라지는 자동 이동 경합을 `advanced`로 인정했다.
+  - Why it failed: 이번 증상은 버튼이 사라지는 경합이 아니라 ready 판정 후 click 시점에 다시 disabled가 되는 경합이었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- `no-state-change`와 remote pending timeout을 같은 실패로 뭉개지 않는다.
+
+### Correct fix plan
+
+- 이동 버튼 ready 판정 후 click은 짧은 timeout으로 시도하고, 실패 시 debug state에서 pending/hold 상태가 확인되면 다음 QA tick에서 재평가한다.
+- roll outcome 대기는 pending remote/action processing 상태를 관측하면 bounded pending timeout까지 기다리고, 해소되지 않으면 별도 pending timeout 오류를 낸다.
+- pending이 전혀 관측되지 않는 click 무변화는 기존처럼 no-state-change 오류로 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
