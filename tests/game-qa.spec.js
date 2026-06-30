@@ -177,6 +177,27 @@ async function collectWaitingRoomDebugState(page) {
   }));
 }
 
+async function collectLobbyTransitionDebugState(page, roomTitle) {
+  return page.evaluate((expectedRoomTitle) => {
+    const createButton = document.querySelector('[data-testid="create-room-button"]');
+    return {
+      screen: window.__YUT_DEBUG_STATE__?.screen ?? null,
+      notice: document.querySelector('.lobby-notice')?.textContent?.trim() ?? '',
+      createButton: {
+        visible: Boolean(createButton),
+        text: createButton?.textContent?.trim() ?? '',
+        disabled: Boolean(createButton?.hasAttribute('disabled')),
+      },
+      waitingRoom: {
+        visible: Boolean(document.querySelector('[data-testid="waiting-room"]')),
+        text: document.querySelector('[data-testid="waiting-room"]')?.textContent?.trim() ?? '',
+      },
+      matchingRoomCards: Array.from(document.querySelectorAll('.lobby-room-card')).filter((node) => node.textContent?.includes(expectedRoomTitle)).map((node) => node.textContent?.trim() ?? ''),
+      yutDebug: window.__YUT_DEBUG_STATE__ ?? null,
+    };
+  }, roomTitle);
+}
+
 async function handleItemPickupModal(page, coverage) {
   const modal = page.getByRole('dialog', { name: '아이템 교체 선택' });
   if (!(await isVisible(modal))) return false;
@@ -245,7 +266,7 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
 
   const moveButton = page.getByTestId('move-piece-button');
   if (await isVisible(moveButton)) {
-    await expect(moveButton, '선택한 말 이동 버튼이 보이면 활성화되어야 합니다.').toBeEnabled({ timeout: 15_000 });
+    await expect.poll(() => collectGameDebugState(page), { message: '선택한 말 이동 버튼이 보이면 활성화되어야 합니다.', timeout: 15_000 }).toMatchObject({ moveButton: { visible: true, disabled: false } });
     await moveButton.click();
     coverage.manualMoved += 1;
     return 'manual-move';
@@ -360,7 +381,7 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
     await runQaStep(testInfo, '02 방 생성 후 대기실 진입', async () => {
       await page.getByTestId('room-title-input').fill(qaRoomTitle);
       await page.getByTestId('create-room-button').click();
-      await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+      await expect.poll(() => collectLobbyTransitionDebugState(page, qaRoomTitle), { message: '방 생성 후 대기실로 이동해야 합니다.', timeout: 25_000 }).toMatchObject({ waitingRoom: { visible: true } });
       await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 방 ID를 기억해야 합니다.' }).toBeTruthy();
       await saveStepScreenshot(page, testInfo, '02-waiting-room');
     });
@@ -435,7 +456,7 @@ test.describe('mobile device-to-device QA', () => {
         await expect(ipadPage.getByTestId('app-shell')).toBeVisible();
         await ipadPage.getByTestId('room-title-input').fill(qaRoomTitle);
         await ipadPage.getByTestId('create-room-button').click();
-        await expect(ipadPage.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+        await expect.poll(() => collectLobbyTransitionDebugState(ipadPage, qaRoomTitle), { message: '기기전 host 방 생성 후 대기실로 이동해야 합니다.', timeout: 25_000 }).toMatchObject({ waitingRoom: { visible: true } });
         await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 기기 대전 방 ID를 기억해야 합니다.' }).toBeTruthy();
         await saveStepScreenshot(ipadPage, testInfo, '06-device-host-waiting');
       });

@@ -67,6 +67,69 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - Issue #126 모바일 QA 대기실 진입 및 이동 버튼 재발 조사
+
+### Symptom
+
+- PR #125 병합 후 Issue #126에서 모바일 QA가 다시 실패했다.
+- iPad 기기전 QA는 방 생성 버튼 클릭 후 `waiting-room` visible 대기에서 timeout이 발생했다.
+- Galaxy S24 Ultra QA는 `move-piece-button`이 `결과 확인 중...` disabled 상태로 남아 enabled 대기에서 timeout이 발생했다.
+
+### Expected behavior
+
+- 방 생성 후 host는 대기실로 이동해야 한다.
+- 윷 결과 연출 대기 시간이 지나면 이동 가능한 말이 있을 때 `move-piece-button`이 활성화되어야 한다.
+
+### Actual behavior
+
+- iPad host 화면은 대기실 진입 여부를 확인하지 못한 채 timeout이 발생했다.
+- Galaxy S24 Ultra 화면은 이동 버튼이 결과 hold 상태로 남아 QA 액션 루프가 다음 이동으로 진행하지 못했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. iPad 기기전 경로에서 방을 생성한다.
+3. Galaxy S24 Ultra 단일 모바일 QA 경로에서 AI를 채우고 게임을 시작한다.
+4. 대기실 visible 또는 이동 버튼 enabled assertion이 실패한다.
+
+### Suspected root cause
+
+- 대기실 실패는 방 생성/인증/중복 방 정리/openWaitingRoom 상태 전환 중 어떤 단계에서 lobby에 머물렀는지 실패 로그가 부족해 구분이 어려웠다.
+- 이동 버튼 실패는 이전 `rollResultReadyAt` 보강 이후에도 특정 모바일 QA 타이밍에서 hold 상태가 재발했지만, enabled timeout 시점의 `rollResultReadyAt`, `rollResultHolding`, `canRequestMove`, 선택 말 상태가 assertion 결과에 충분히 남지 않았다.
+
+### Confirmed root cause
+
+- 아직 미확정. 이번 변경은 반복 실패 원인을 확정하기 위한 QA 진단 정보 보강이다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `rollResultReadyAt`을 0으로 초기화했다.
+  - Why it failed: 이동 버튼 활성화 이전에 stale/future 값으로 hold되는 경로를 막지 못했다.
+- Attempt 2:
+  - What was changed: subscribe/save/authoritative roll commit 및 timeout clear 경로를 보강했다.
+  - Why it failed: Issue #126에서 모바일 QA 이동 버튼 hold 증상이 다시 관측되었고, 실패 시점의 실제 상태를 더 구체적으로 확인해야 한다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `clearRoll()` 초기화만 반복하지 않는다.
+- 원인 확인 없이 방 생성 또는 게임 상태 흐름을 넓게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- iPad 방 생성 후 대기실 진입 assertion에 lobby notice, create button 상태, waiting-room 표시 여부, matching room card, `__YUT_DEBUG_STATE__`를 포함한다.
+- `move-piece-button` enabled 대기는 최종 timeout 출력에 `collectGameDebugState()` 전체가 남도록 poll assertion으로 바꾼다.
+- 다음 재현 로그에서 실제 원인이 확인된 뒤 앱 로직만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
 ## 2026-06-30 - 모바일 QA 이동 버튼 hold 타이머 해제 보강
 
 ### Symptom
