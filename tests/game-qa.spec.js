@@ -54,6 +54,18 @@ async function rememberRoomIdByTitle(title) {
   return roomId;
 }
 
+async function rememberRoomIdFromPage(page) {
+  const roomId = await page.evaluate(() => String(window.__YUT_DEBUG_STATE__?.activeRoomId ?? ''));
+  if (roomId) rememberedRoomIds.add(roomId);
+  return roomId || null;
+}
+
+async function rememberRoomIdForQa(page, title) {
+  const roomId = (await rememberRoomIdFromPage(page)) ?? (await rememberRoomIdByTitle(title));
+  if (roomId) return roomId;
+  return (await getTestDb()) ? null : 'local-room-without-firebase-cleanup';
+}
+
 async function deleteRoomForQa(roomId) {
   const db = await getTestDb();
   if (!db || !roomId) return;
@@ -164,6 +176,11 @@ async function collectGameDebugState(page) {
       text: document.querySelector('[data-testid="roll-yut-button"]')?.textContent?.trim() ?? '',
       disabled: Boolean(document.querySelector('[data-testid="roll-yut-button"]')?.hasAttribute('disabled')),
     },
+    branchControls: {
+      visible: Boolean(document.querySelector('.bottom-branch-controls')),
+      text: document.querySelector('.bottom-branch-controls')?.textContent?.trim() ?? '',
+      moveDisabled: Boolean(document.querySelector('.bottom-branch-controls .branch-move-button')?.hasAttribute('disabled')),
+    },
     winner: document.querySelector('.winner-overlay')?.textContent?.trim() ?? '',
     prompt: document.querySelector('.inline-item-prompt')?.textContent?.trim() ?? '',
     trap: document.querySelector('.trap-placement-banner')?.textContent?.trim() ?? '',
@@ -173,20 +190,87 @@ async function collectGameDebugState(page) {
   }));
 }
 
+function summarizeDebugPieces(pieces) {
+  return Array.isArray(pieces)
+    ? pieces.map((piece) => `${piece.id}:${piece.ownerId}:${piece.nodeId}:${piece.started ? '1' : '0'}:${piece.finished ? '1' : '0'}`).sort().join('|')
+    : '';
+}
+
+function summarizeMovedPieceIds(pieceIds) {
+  return Array.isArray(pieceIds) ? pieceIds.join(',') : '';
+}
+
+function hasStateAdvanced(beforeYutDebug = {}, afterYutDebug = {}) {
+  if (Number(afterYutDebug.lastAppliedSequence ?? 0) > Number(beforeYutDebug.lastAppliedSequence ?? 0)) return true;
+  if (Number(afterYutDebug.lastAppliedStateVersion ?? 0) > Number(beforeYutDebug.lastAppliedStateVersion ?? 0)) return true;
+  if (beforeYutDebug.turnIndex !== afterYutDebug.turnIndex) return true;
+  if (beforeYutDebug.lastMovedSeatId !== afterYutDebug.lastMovedSeatId) return true;
+  if (summarizeMovedPieceIds(beforeYutDebug.lastMovedPieceIds) !== summarizeMovedPieceIds(afterYutDebug.lastMovedPieceIds)) return true;
+  return summarizeDebugPieces(beforeYutDebug.pieces) !== summarizeDebugPieces(afterYutDebug.pieces);
+}
+
+function hasMoveResolutionUi(debugState) {
+  return Boolean(
+    debugState?.moveButton?.visible ||
+    debugState?.branchControls?.visible ||
+    debugState?.prompt ||
+    debugState?.trap ||
+    debugState?.winner
+  );
+}
+
+function findCanonicalDebugState(debugStates) {
+  return debugStates.find((debugState) => debugState?.yutDebug?.screen === 'game') ?? debugStates[0] ?? null;
+}
+
 function didAutoAdvanceAfterRoll(beforeDebugState, afterDebugState) {
   const beforeYutDebug = beforeDebugState?.yutDebug ?? {};
   const afterYutDebug = afterDebugState?.yutDebug ?? {};
   if (afterYutDebug.roll !== null || afterYutDebug.rollResultHolding) return false;
   if (!afterDebugState?.rollButton?.visible || afterDebugState.rollButton.disabled) return false;
-  if (beforeYutDebug.turnIndex !== afterYutDebug.turnIndex) return true;
-  if (beforeYutDebug.lastMovedSeatId !== afterYutDebug.lastMovedSeatId) return true;
-  const beforeMovedPieceIds = Array.isArray(beforeYutDebug.lastMovedPieceIds) ? beforeYutDebug.lastMovedPieceIds.join(',') : '';
-  const afterMovedPieceIds = Array.isArray(afterYutDebug.lastMovedPieceIds) ? afterYutDebug.lastMovedPieceIds.join(',') : '';
-  if (beforeMovedPieceIds !== afterMovedPieceIds) return true;
-  const summarizePieces = (pieces) => Array.isArray(pieces)
-    ? pieces.map((piece) => `${piece.id}:${piece.ownerId}:${piece.nodeId}:${piece.started ? '1' : '0'}:${piece.finished ? '1' : '0'}`).sort().join('|')
-    : '';
-  return summarizePieces(beforeYutDebug.pieces) !== summarizePieces(afterYutDebug.pieces);
+  return hasStateAdvanced(beforeYutDebug, afterYutDebug);
+}
+
+function didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, afterDebugStates) {
+  const beforeDebugState = findCanonicalDebugState(beforeDebugStates);
+  const afterDebugState = findCanonicalDebugState(afterDebugStates);
+  const afterYutDebug = afterDebugState?.yutDebug ?? {};
+  const hasReadyRollButton = afterDebugStates.some((debugState) => debugState?.rollButton?.visible && !debugState.rollButton.disabled);
+  if (afterYutDebug.roll !== null || afterYutDebug.rollResultHolding || !hasReadyRollButton) return false;
+  return hasStateAdvanced(beforeDebugState?.yutDebug ?? {}, afterYutDebug);
+}
+
+async function collectGameDebugStates(pages) {
+  return Promise.all(pages.map((page) => collectGameDebugState(page)));
+}
+
+async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout = 7_000 } = {}) {
+  const deadline = Date.now() + timeout;
+  let lastDebugStates = beforeDebugStates;
+  let sawRollState = false;
+
+  while (Date.now() < deadline) {
+    const debugStates = await collectGameDebugStates(pages);
+    lastDebugStates = debugStates;
+
+    if (didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, debugStates)) {
+      return { kind: 'auto-advance', debugStates };
+    }
+
+    if (debugStates.some(hasMoveResolutionUi)) {
+      return { kind: 'move-resolution-ui', debugStates };
+    }
+
+    const canonicalDebugState = findCanonicalDebugState(debugStates);
+    if (canonicalDebugState?.yutDebug?.roll !== null && canonicalDebugState?.yutDebug?.roll !== undefined) {
+      sawRollState = true;
+    }
+
+    await pages[0].waitForTimeout(250);
+  }
+
+  if (sawRollState) return { kind: 'roll-observed', debugStates: lastDebugStates };
+  return { kind: 'no-state-change', debugStates: lastDebugStates };
 }
 
 async function collectWaitingRoomDebugState(page) {
@@ -285,6 +369,7 @@ async function handleBranchMove(page, coverage) {
 }
 
 async function playOneAvailableGameAction(page, coverage, options = {}) {
+  const pages = options.pages ?? [page];
   if (await handleItemPickupModal(page, coverage)) return 'item-pickup-modal';
   if (await handleItemPrompt(page, coverage, options)) return 'item-prompt';
   if (await handleTrapPlacement(page, coverage)) return 'trap-placement';
@@ -316,17 +401,21 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
   const rollButton = page.getByTestId('roll-yut-button');
   if (await isVisible(rollButton)) {
     await expect(rollButton, '윷 던지기 버튼이 보이면 활성화되어야 합니다.').toBeEnabled({ timeout: 15_000 });
-    const beforeRollDebugState = await collectGameDebugState(page);
+    const beforeRollDebugStates = await collectGameDebugStates(pages);
     await rollButton.click();
+
+    const rollOutcome = await waitForRollOutcomeAfterClick(pages, beforeRollDebugStates);
+    if (rollOutcome.kind === 'no-state-change') {
+      return 'wait';
+    }
+
     coverage.rolled += 1;
+    if (rollOutcome.kind === 'auto-advance') {
+      coverage.autoWaited += 1;
+      return 'roll-auto';
+    }
 
-    const autoAdvancedAfterRoll = await expect.poll(async () => {
-      const afterRollDebugState = await collectGameDebugState(page);
-      return didAutoAdvanceAfterRoll(beforeRollDebugState, afterRollDebugState);
-    }, { message: '윷 던지기 후 자동 이동 또는 이동 불가 스킵이 완료되면 커버리지에 반영합니다.', timeout: 4_000 }).toBeTruthy().then(() => true).catch(() => false);
-    if (autoAdvancedAfterRoll) coverage.autoWaited += 1;
-
-    return 'roll';
+    return rollOutcome.kind === 'roll-observed' ? 'roll-observed' : 'roll';
   }
 
   if (await isVisible(page.locator('.winner-overlay'))) return 'winner';
@@ -371,7 +460,7 @@ async function isPlayableActionVisible(page) {
 
 async function playOneAvailableGameActionAcrossPages(pages, coverage) {
   for (const page of pages) {
-    if (await isPlayableActionVisible(page)) return playOneAvailableGameAction(page, coverage);
+    if (await isPlayableActionVisible(page)) return playOneAvailableGameAction(page, coverage, { pages });
   }
 
   for (const page of pages) {
@@ -474,7 +563,7 @@ test('mobile game QA: room creation, AI fill, start, and short autoplay', async 
       await page.getByTestId('room-title-input').fill(qaRoomTitle);
       await page.getByTestId('create-room-button').click();
       await expect.poll(() => collectLobbyTransitionDebugState(page, qaRoomTitle), { message: '방 생성 후 대기실로 이동해야 합니다.', timeout: 25_000 }).toMatchObject({ waitingRoom: { visible: true } });
-      await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 방 ID를 기억해야 합니다.' }).toBeTruthy();
+      await expect.poll(() => rememberRoomIdForQa(page, qaRoomTitle), { message: '생성한 QA 방 ID를 기억해야 합니다.' }).toBeTruthy();
       await saveStepScreenshot(page, testInfo, '02-waiting-room');
     });
 
@@ -522,6 +611,7 @@ test.describe('mobile device-to-device QA', () => {
   test.skip(({ browserName }) => browserName !== 'webkit', '기기 간 대전은 iPad/WebKit 프로젝트에서 한 번만 실행합니다.');
 
   test('mobile game QA: iPad and Galaxy join one individual match', async ({ playwright }, testInfo) => {
+    test.skip(!(await loadFirebaseConfig()), '기기 간 대전 QA는 Firebase 설정이 필요합니다.');
     const consoleErrors = [];
     const qaRoomTitle = `QA 기기 대전 ${Date.now()}-${testInfo.retry}-${testInfo.workerIndex}`;
     const ipadNickname = 'QA iPad';
@@ -552,7 +642,7 @@ test.describe('mobile device-to-device QA', () => {
           const state = await collectLobbyTransitionDebugState(ipadPage, qaRoomTitle);
           return state.waitingRoom.visible ? 'ready' : JSON.stringify(state, null, 2);
         }, { message: '기기전 host 방 생성 후 대기실로 이동해야 합니다.', timeout: 25_000 }).toBe('ready');
-        await expect.poll(() => rememberRoomIdByTitle(qaRoomTitle), { message: '생성한 QA 기기 대전 방 ID를 기억해야 합니다.' }).toBeTruthy();
+        await expect.poll(() => rememberRoomIdForQa(ipadPage, qaRoomTitle), { message: '생성한 QA 기기 대전 방 ID를 기억해야 합니다.' }).toBeTruthy();
         await saveStepScreenshot(ipadPage, testInfo, '06-device-host-waiting');
       });
 

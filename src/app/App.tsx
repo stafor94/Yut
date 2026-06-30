@@ -394,24 +394,36 @@ export function App() {
       allReady,
       teamBalanced,
       seats: seats.map((seat) => ({ id: seat.id, label: seat.label, ready: seat.ready, isAI: seat.isAI, isEmpty: seat.isEmpty, isHost: seat.isHost, team: seat.team })),
+      message,
+      turnOrderIds,
       roll,
+      rollInProgress,
+      rollInProgressRef: rollInProgressRef.current,
+      isRollLocked,
+      rollLockUntil,
       rollResultReadyAt,
       effectiveRollResultReadyAt,
       rollLockClock,
       rollResultHolding,
       turnIndex,
+      lastAppliedStateVersion: lastAppliedStateVersionRef.current,
+      lastAppliedSequence: lastAppliedSequenceRef.current,
+      pendingLocalRemoteActionCount: pendingLocalRemoteActionsRef.current.size,
+      processingActionCount: processingActionIdsRef.current.size,
+      completedActionCount: completedActionIdsRef.current.size,
       lastMovedSeatId,
       lastMovedPieceIds,
       pieces: pieces.map((piece) => ({ id: piece.id, ownerId: piece.ownerId, nodeId: piece.nodeId, started: piece.started, finished: piece.finished })),
       activeSeat: activeSeat ? { id: activeSeat.id, label: activeSeat.label, isAI: activeSeat.isAI } : null,
       isMyTurn,
       canSubmitTurnAction,
+      canRollNow,
       canMoveSelectedPiece,
       canRequestMove,
       selectedPieceId,
       selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
     };
-  }, [activeRoomId, activeSeat, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hostSeatId, isMyTurn, isRoomHost, localSeatId, pieces, roll, rollLockClock, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnIndex, lastMovedSeatId, lastMovedPieceIds]);
+  }, [activeRoomId, activeSeat, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hostSeatId, isMyTurn, isRollLocked, isRoomHost, localSeatId, message, pieces, roll, rollInProgress, rollLockClock, rollLockUntil, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnIndex, turnOrderIds, lastMovedSeatId, lastMovedPieceIds]);
 
 
   useEffect(() => () => {
