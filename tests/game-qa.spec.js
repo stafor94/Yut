@@ -173,6 +173,18 @@ async function collectGameDebugState(page) {
   }));
 }
 
+function didAutoAdvanceAfterRoll(beforeDebugState, afterDebugState) {
+  const beforeYutDebug = beforeDebugState?.yutDebug ?? {};
+  const afterYutDebug = afterDebugState?.yutDebug ?? {};
+  if (afterYutDebug.roll !== null || afterYutDebug.rollResultHolding) return false;
+  if (!afterDebugState?.rollButton?.visible || afterDebugState.rollButton.disabled) return false;
+  if (beforeYutDebug.turnIndex !== afterYutDebug.turnIndex) return true;
+  if (beforeYutDebug.lastMovedSeatId !== afterYutDebug.lastMovedSeatId) return true;
+  const beforeMovedPieceIds = Array.isArray(beforeYutDebug.lastMovedPieceIds) ? beforeYutDebug.lastMovedPieceIds.join(',') : '';
+  const afterMovedPieceIds = Array.isArray(afterYutDebug.lastMovedPieceIds) ? afterYutDebug.lastMovedPieceIds.join(',') : '';
+  return beforeMovedPieceIds !== afterMovedPieceIds;
+}
+
 async function collectWaitingRoomDebugState(page) {
   return page.evaluate(() => ({
     waitingRoom: document.querySelector('[data-testid="waiting-room"]')?.textContent?.trim() ?? '',
@@ -300,8 +312,16 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
   const rollButton = page.getByTestId('roll-yut-button');
   if (await isVisible(rollButton)) {
     await expect(rollButton, '윷 던지기 버튼이 보이면 활성화되어야 합니다.').toBeEnabled({ timeout: 15_000 });
+    const beforeRollDebugState = await collectGameDebugState(page);
     await rollButton.click();
     coverage.rolled += 1;
+
+    const autoAdvancedAfterRoll = await expect.poll(async () => {
+      const afterRollDebugState = await collectGameDebugState(page);
+      return didAutoAdvanceAfterRoll(beforeRollDebugState, afterRollDebugState);
+    }, { message: '윷 던지기 후 자동 이동 또는 이동 불가 스킵이 완료되면 커버리지에 반영합니다.', timeout: 4_000 }).toBeTruthy().then(() => true).catch(() => false);
+    if (autoAdvancedAfterRoll) coverage.autoWaited += 1;
+
     return 'roll';
   }
 
