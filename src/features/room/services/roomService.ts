@@ -21,8 +21,8 @@ export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrd
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'item_used' | 'trap_placed' | 'game_finished';
-export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
-export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; clientMutationId?: string; clientCreatedAt?: number; expectedPreviousSequence?: number };
+export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; eventSchemaVersion?: number; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; patch?: GameStatePatch | null; stateBefore?: SyncedGameState | null; stateAfter?: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
+export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; clientMutationId?: string; clientCreatedAt?: number; expectedPreviousSequence?: number };
 
 const COLORS = ['red', 'blue', 'green', 'yellow'];
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
@@ -307,16 +307,13 @@ const sanitizeForFirestore = (value: unknown): unknown => {
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, sanitizeForFirestore(entry)]));
 };
 
-const makeReplaySequencePayload = (params: { basePayload?: Record<string, unknown>; stateBefore: SyncedGameState | null; stateAfter: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; patch?: GameStatePatch; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> }) => sanitizeForFirestore({
-  ...(params.basePayload ?? {}),
-  replay: {
-    schemaVersion: 1,
-    action: params.action ?? null,
-    patch: params.patch ?? null,
-    stateBefore: params.stateBefore,
-    stateAfter: params.stateAfter,
-  },
-}) as Record<string, unknown>;
+const makeSequenceEventFields = (params: { stateBefore: SyncedGameState | null; stateAfter: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; patch?: GameStatePatch; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> }) => sanitizeForFirestore({
+  eventSchemaVersion: 1,
+  action: params.action ?? null,
+  patch: params.patch ?? null,
+  stateBefore: params.stateBefore,
+  stateAfter: params.stateAfter,
+}) as Pick<GameSequence, 'eventSchemaVersion' | 'action' | 'patch' | 'stateBefore' | 'stateAfter'>;
 
 const isTurnOrderIntroActive = (intro: unknown, now = Date.now()) => {
   if (!intro || typeof intro !== 'object' || !('readyAt' in intro)) return false;
@@ -351,7 +348,8 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
       sequence: nextSequence,
       type: meta.type ?? 'state_snapshot',
       actorId: meta.actorId ?? 'system',
-      payload: makeReplaySequencePayload({ basePayload: meta.payload, stateBefore: currentState, stateAfter: state }),
+      payload: sanitizeForFirestore(meta.payload ?? {}) as Record<string, unknown>,
+      ...makeSequenceEventFields({ stateBefore: currentState, stateAfter: state, action: meta.action ?? undefined }),
       expectedPreviousSequence: meta.expectedPreviousSequence ?? currentSequence,
       ...(meta.clientMutationId ? { clientMutationId: meta.clientMutationId } : {}),
       clientCreatedAt: meta.clientCreatedAt ?? Date.now(),
@@ -411,7 +409,8 @@ export async function completeTurnOrderIntro(roomId: string, params: { readyAt: 
       sequence: nextSequence,
       type: 'turn_order_intro_completed',
       actorId: params.actorId,
-      payload: makeReplaySequencePayload({ basePayload: { readyAt: params.readyAt }, stateBefore: currentState, stateAfter: { ...currentState, ...statePatch }, patch: statePatch }),
+      payload: sanitizeForFirestore({ readyAt: params.readyAt }) as Record<string, unknown>,
+      ...makeSequenceEventFields({ stateBefore: currentState, stateAfter: { ...currentState, ...statePatch }, patch: statePatch }),
       expectedPreviousSequence: currentSequence,
       clientMutationId,
       clientCreatedAt: Date.now(),
@@ -617,7 +616,8 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
       sequence: nextSequence,
       type: action.type === 'roll_yut' ? 'roll_yut' : 'move_piece_resolved',
       actorId: action.actorId,
-      payload: makeReplaySequencePayload({ basePayload: reduction.payload, stateBefore: state, stateAfter, patch: reduction.patch, action }),
+      payload: sanitizeForFirestore(reduction.payload) as Record<string, unknown>,
+      ...makeSequenceEventFields({ stateBefore: state, stateAfter, patch: reduction.patch, action }),
       expectedPreviousSequence: currentSequence,
       clientMutationId: clientActionId,
       clientCreatedAt: Date.now(),
