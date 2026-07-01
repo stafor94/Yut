@@ -67,6 +67,65 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-01 - 윷 던지기 무반응 재발 원인 재점검
+
+### Symptom
+
+- 사용자가 "윷 던지기"를 눌러도 아무 액션이 일어나지 않는 상태가 여전히 재현된다고 보고했다.
+- 이전 BUG_HISTORY에는 같은 계열의 "윷 던지기 무반응" 항목이 여러 차례 누적되어 있다.
+
+### Expected behavior
+
+- 버튼이 눌릴 수 있는 상태라면 클릭 직후 로컬/원격 처리 경로 중 하나가 반드시 진행되고, 실패하더라도 사용자에게 실패 사유가 표시되어야 한다.
+- 방장 승계, 원격 클라이언트, 두 번째 턴, 저장 pending 등 온라인 상태 차이에 따라 처리 경로가 엇갈려도 버튼 클릭이 무음으로 사라지면 안 된다.
+
+### Actual behavior
+
+- 이전 수정들은 `rollInProgress` stale lock, `clearRoll()` 누락, `isRoomHost`와 실제 `room.hostId` 불일치, host autosave pending race처럼 각각 발견된 단일 차단 조건을 부분적으로 해결했다.
+- 그러나 클릭 핸들러 초입의 `if (!activeSeat || !canRollNow) return;` 경로는 여전히 아무 메시지 없이 종료된다.
+- 따라서 `canRollNow`를 막는 새로운/잔여 조건이 발생하면 사용자는 버튼을 눌렀는데 아무 액션이 없는 것처럼 보게 된다.
+
+### Suspected root cause
+
+- 같은 증상이 여러 원인으로 반복됐는데, 이전 패치는 각 원인을 개별적으로 제거했을 뿐 "클릭이 왜 차단됐는지"를 사용자/로그에 드러내는 공통 진단 경로가 부족했다.
+- 현재 코드에도 `rollActionBlockReasons` debug 값은 있지만 실제 `rollYut()`의 조기 반환 시 사용자 메시지나 영구 로그로 연결되지 않는다.
+
+### Confirmed root cause
+
+- 미확정. 이번 요청에서는 같은 버그가 이미 여러 번 실패한 규칙에 해당하므로, 즉시 추가 코드 수정을 하지 않고 재발 원인 분석만 기록한다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 원격 클라이언트 state sync 경로에서 stale `rollInProgress`를 해제했다.
+  - Why it failed: 방장 로컬 `clearRoll()` 경로에서 남는 stale lock은 직접 해제하지 못했다.
+- Attempt 2:
+  - What was changed: `clearRoll()`에서 roll 진행 잠금을 함께 초기화했다.
+  - Why it failed: 방장 승계/복구 타이밍에서 `isRoomHost` state만 보고 원격 action queue로 빠지는 경로는 남아 있었다.
+- Attempt 3:
+  - What was changed: 실제 `room.hostId === currentUserId`를 포함한 effective host 판정으로 host action 경로를 보강했다.
+  - Why it failed: 사용자가 다시 무반응을 보고했으므로, 버튼 disabled/host 판정 외에 다른 `canRollNow` 차단 또는 클릭 처리 조기 반환 경로가 남아 있을 가능성이 크다.
+
+### Do not try again
+
+- 버튼 disabled 조건만 완화하지 않는다.
+- `rollInProgress`만 계속 초기화하는 식으로 같은 접근을 반복하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- 실제 차단 reason을 수집하지 않은 상태에서 또 다른 추정성 game state 패치를 하지 않는다.
+
+### Correct fix plan
+
+- 다음 수정 전, 재현 시점의 `rollActionBlockReasons`, `canRollNow`, `canSubmitTurnAction`, `isRemoteActionClient`, `canHostRoom`, `rollInProgress`, `pendingLocalRemoteActionCount`, `processingActionCount`, `activeSeat/localSeatId`를 함께 확인한다.
+- `rollYut()` 조기 반환 경로가 발생할 때 debug reason을 사용자 메시지 또는 QA 로그로 남기는 최소 진단 패치를 먼저 고려한다.
+- 진단 결과가 누적되면 실제 차단 조건 하나만 대상으로 최소 수정한다.
+
+### Verification checklist
+
+- [ ] Reproduction state captured with roll block reasons
+- [ ] Related feature still works
+- [ ] No unrelated UI changes
+- [ ] No console errors
+
 ## 2026-06-30 - 세로모드 플레이어 카드 한 줄 스타일 미적용
 
 ### Symptom

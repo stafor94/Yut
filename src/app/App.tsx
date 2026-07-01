@@ -90,6 +90,7 @@ const CREATE_ROOM_TIMEOUT_MS = 12000;
 const CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;
 const STEP_DELAY_MS = 240;
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const splitMessageBySentence = (message: string) => message.match(/.+?(?:[.!?。]|…+)(?=\s|$)|.+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [message];
 const normalizeRollResultReadyAt = (readyAt: number, now = Date.now()) => {
   const maxExpectedReadyAt = now + ROLL_RESULT_HOLD_MS + ROLL_RESULT_HOLD_GRACE_MS;
   return readyAt > now && readyAt <= maxExpectedReadyAt ? readyAt : 0;
@@ -2118,7 +2119,7 @@ export function App() {
       <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`효과음 ${soundEnabled ? '끄기' : '켜기'}`}><span aria-hidden="true">{soundEnabled ? '🔊 효과음' : '🔇 효과음'}</span></button><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><span>{serverStatus}</span></div></div>
     </section>
 
-    {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{loadingMessage}</p></section></div>}
+    {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
 
     {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>대기실 닉네임 수정</h2><p>닉네임은 대기실에서만 변경할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={16} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
 
@@ -2133,7 +2134,6 @@ export function App() {
           <label>방 제목<input data-testid="room-title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="방 제목" /></label>
           <button data-testid="create-room-button" className="primary-cta" onClick={handleCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '방 만드는 중...' : '방 만들기'}</button>
         </div>
-        {message && <p className="notice lobby-notice">{message}</p>}
       </section>
       <section className="panel room-panel join-room-panel">
         <div className="lobby-panel-heading">
