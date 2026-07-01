@@ -96,6 +96,9 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ### Previous failed attempts
 
+- Attempt 4:
+  - What was changed: 윷 던지기 차단/오류 경로를 팝업으로 표시하면서 버튼 disabled 조건까지 완화했다.
+  - Why it failed: BUG_HISTORY의 "버튼 disabled 조건만 완화하지 않는다" 원칙을 벗어나 정상적인 비활성 상태까지 클릭 가능하게 만드는 범위 초과 변경이었다.
 - Attempt 1:
   - What was changed: 원격 클라이언트 state sync 경로에서 stale `rollInProgress`를 해제했다.
   - Why it failed: 방장 로컬 `clearRoll()` 경로에서 남는 stale lock은 직접 해제하지 못했다.
