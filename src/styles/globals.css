@@ -3543,3 +3543,63 @@ aside.players,
     font-size: 2.8rem;
   }
 }
+
+/* Mobile portrait game fixes: keep player actions visible and prevent global button sizing from stretching board tokens. */
+@media (orientation: portrait), (max-width: 767px) {
+  .game-shell .game-players-panel .player-items {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: 6px;
+    margin-top: 4px;
+    padding: 8px;
+    border-top: 1px solid rgba(42, 30, 23, .1);
+    border-radius: 14px;
+    background: rgba(255, 243, 216, .62);
+  }
+
+  .game-shell .game-players-panel .player-items h2 {
+    display: block;
+    margin: 0;
+    color: #224236;
+    font-size: .86rem;
+    line-height: 1.15;
+  }
+
+  .game-shell .game-players-panel .player-items .empty-state {
+    padding: 7px 9px;
+    border-radius: 10px;
+    font-size: .72rem;
+    line-height: 1.2;
+  }
+
+  .game-shell .game-players-panel .player-items .item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .game-shell .game-players-panel .end-game {
+    display: block;
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 40px;
+    margin-top: 0;
+    padding: 8px 10px;
+    border-radius: 12px;
+    font-size: .78rem;
+  }
+
+  .game-shell .board-node,
+  .game-shell .piece-token {
+    min-width: 0;
+    min-height: 0;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    line-height: 1;
+  }
+}
+
+/* Sound toggle is the actual full-size hit target; avoid a larger wrapper with dead click zones. */
+.sound-controls.sound-toggle {
+  justify-content: center;
+  min-height: 40px;
+}
