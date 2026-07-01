@@ -67,6 +67,66 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-01 - Issue #226 모바일 기기전 QA roll no-state-change 오분류
+
+### Symptom
+
+- Issue #226에서 모바일 기기전 QA가 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 실패했다.
+- 선택된 Galaxy 페이지는 `canRollNow: true`이고 blocker가 없었지만, 윷 던지기 클릭 후 QA는 `no-state-change`로 실패했다.
+
+### Expected behavior
+
+- 기기전 QA는 실제 클릭한 기기의 debug state를 우선으로 클릭 전후 상태 변화를 비교해야 한다.
+- 원격 액션 pending을 한 번이라도 관측했다면, 로컬 watchdog이 pending 표시를 지운 뒤에도 이를 단순 `no-state-change`로 분류하지 않아야 한다.
+
+### Actual behavior
+
+- `waitForRollOutcomeAfterClick()`은 전체 pages 배열을 받지만 state advance/auto advance 판정에서 첫 번째 game page를 canonical state로 사용했다.
+- 기기전에서 실제 조작한 페이지가 두 번째 페이지이면 클릭 페이지의 sequence/version 변화가 canonical 비교에서 우선 반영되지 않았다.
+- 또한 pending을 관측했더라도 마지막 poll에서 pending이 사라져 있으면 `pending-timeout`이 아니라 `no-state-change`로 떨어질 수 있었다.
+
+### Suspected root cause
+
+- 기기전 QA helper가 실제 클릭 페이지 index를 roll outcome 판정에 전달하지 않았다.
+- pending 관측 이력과 마지막 pending 상태를 구분하는 과정에서, 상태 변화가 없는데 pending만 사라진 경우를 `no-state-change`로 오분류했다.
+
+### Confirmed root cause
+
+- `playOneAvailableGameActionAcrossPages()`는 선택한 page index를 알고 있었지만 `waitForRollOutcomeAfterClick()`에는 전달하지 않았다.
+- `hasStateAdvancedAcrossPages()`와 `didAutoAdvanceAfterRollAcrossPages()`는 클릭 페이지가 아니라 canonical page를 기준으로 먼저 비교했다.
+- `waitForRollOutcomeAfterClick()` 종료부는 `sawPendingTurnAction && lastHasPendingTurnAction`일 때만 pending timeout으로 분류했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #220에서 기기전 액션 선택은 `canRollNow`/`canRequestMove`를 우선하도록 보강했다.
+  - Why it failed: 선택한 페이지 index를 클릭 이후 outcome 판정까지 전달하지 않아, 실제 클릭 페이지와 상태 비교 기준 페이지가 분리될 수 있었다.
+- Attempt 2:
+  - What was changed: Issue #222에서 roll button transient blocker 오분류를 보강했다.
+  - Why it failed: 버튼 readiness 판정은 개선했지만, 클릭 이후 pending 해소/상태 변화 판정의 기준 페이지 문제는 남아 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- 앱 UI나 게임 로직을 원인 확인 없이 변경하지 않는다.
+- 기기전에서 실제 클릭한 페이지와 무관한 첫 번째 game page만 기준으로 상태 변화를 판단하지 않는다.
+- pending을 관측한 액션을 마지막 순간 pending이 지워졌다는 이유만으로 `no-state-change`로 분류하지 않는다.
+
+### Correct fix plan
+
+- 기기전 helper가 선택한 page index를 `playOneAvailableGameAction()`과 `waitForRollOutcomeAfterClick()`에 전달한다.
+- roll outcome의 state advance/auto advance 판정은 클릭 페이지를 우선 비교하고, 보조로 전체 page의 sequence/version 변화도 확인한다.
+- 실패 로그에 clicked page index와 클릭 페이지의 before/after blocker summary를 포함한다.
+- 상태 변화가 없고 pending을 한 번이라도 관측했다면 `pending-timeout`으로 분류한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No app UI changes
+- [x] No new dependency
+
+
 ## 2026-07-01 - Issue #224 모바일 기기전 QA 게임 화면 전환 timeout
 
 ### Symptom
