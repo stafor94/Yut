@@ -1548,3 +1548,57 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Mobile Game QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-07-01 - 인게임 효과음 토글 클릭 차단 및 원격 윷 던지기 진행 상태 고착
+
+### Symptom
+
+- 인게임 세로모드에서 효과음 버튼을 눌러도 토글되지 않는 것처럼 보였다.
+- 온라인/인게임 윷 던지기가 첫 동작 후 두 번째부터 눌러도 반응하지 않는 상태가 재현될 수 있었다.
+
+### Expected behavior
+
+- 세로모드 헤더의 장식/주변 요소가 효과음 버튼의 탭 이벤트를 막지 않아야 한다.
+- 원격 클라이언트가 윷 던지기 요청을 보낸 뒤 서버 상태 동기화가 도착하면 로컬 `rollInProgress` 잠금이 즉시 해제되어 다음 턴에서 다시 던질 수 있어야 한다.
+
+### Actual behavior
+
+- `.hero::after` 장식 pseudo-element에 `pointer-events: none`이 없어 헤더 우측/하단 영역의 클릭을 가로챌 수 있었다.
+- 비방장 원격 클라이언트의 윷 던지기 성공 경로는 서버 state sync 후 `pendingLocalRemoteActionsRef`만 비우고 `rollInProgressRef`/`rollInProgress`를 해제하지 않았다.
+- 이동 후 `roll`이 사라진 다음에도 stale `rollInProgress`가 남으면 `canRollNow`가 막혀 다음 윷 던지기가 12초 watchdog 전까지 비활성/무반응처럼 보일 수 있었다.
+
+### Suspected root cause
+
+- 세로모드 자체가 원인이 아니라 헤더 pseudo-element의 pointer event와 원격 roll 진행 상태 해제 누락이 원인이다.
+
+### Confirmed root cause
+
+- `src/styles/globals.css`의 `.hero::after`가 절대 위치 장식 요소인데 pointer event를 명시적으로 끄지 않았다.
+- `src/app/App.tsx`의 `subscribeGameState()` 동기화 경로에서 서버 state를 적용하면서 `pendingLocalRemoteActionsRef.current.clear()`만 호출하고 roll 진행 ref/state는 초기화하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 효과음 버튼 자체에 `position: relative`, `z-index`, `pointer-events: auto`만 추가했다.
+  - Why it failed: 실제로 클릭을 가로챌 수 있는 헤더 pseudo-element의 pointer event를 제거하지 못했다.
+- Attempt 2:
+  - What was changed: 원격 action key에 `lastAppliedSequenceRef.current`를 포함했다.
+  - Why it failed: 중복 clientActionId 가능성은 줄였지만, 서버 state sync 후 stale `rollInProgress`가 남는 직접 원인은 해결하지 못했다.
+
+### Do not try again
+
+- 효과음 버튼 z-index만 계속 올리지 않는다.
+- 윷 던지기 action key만 바꾸면서 `rollInProgress` 해제 경로를 방치하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+
+### Correct fix plan
+
+- `.hero::after`에는 `pointer-events: none`을 부여하고, 실제 헤더 액션 그룹은 장식보다 위 레이어로 둔다.
+- 서버 game state sync가 적용되면 원격 action pending뿐 아니라 stale roll 진행 ref/state도 함께 해제한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile browser portrait tap target checked
+- [ ] Relevant Playwright QA rerun checked (local Playwright browser executable missing)
+- [x] No unrelated UI redesign

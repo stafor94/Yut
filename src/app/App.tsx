@@ -755,6 +755,9 @@ export function App() {
       setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
       setRollResultReadyAt(nextRollResultReadyAt);
       setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
+      rollInProgressRef.current = false;
+      rollInProgressStartedAtRef.current = 0;
+      setRollInProgress(false);
       pendingLocalRemoteActionsRef.current.clear();
       window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
     });
@@ -1004,7 +1007,7 @@ export function App() {
   }, [activeRoomId, isRoomHost, screen, activeSeat?.id, roll, movingPieceId, pendingTrapPlacement, activeTurnOrderIntro, winner, lastMovedSeatId, turnOrderPhase]);
 
   const getLocalActionKey = (type: GameAction['type'], payload: Record<string, unknown> = {}) => {
-    const turnKey = `${turnIndex}:${roll ? `${roll.name}:${roll.steps}` : 'ready'}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
+    const turnKey = `${lastAppliedSequenceRef.current}:${turnIndex}:${roll ? `${roll.name}:${roll.steps}` : 'ready'}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (type === 'roll_yut') return `${type}:${localSeatId}:${turnKey}`;
     if (type === 'move_piece') return `${type}:${localSeatId}:${turnKey}:${payload.pieceId ?? ''}:${payload.extraSteps ?? 0}:${payload.branchChoice ?? ''}`;
     if (type === 'turn_order_roll') return `${type}:${localSeatId}:${turnOrderPhase.index}:${turnOrderPhase.rolls.length}`;
