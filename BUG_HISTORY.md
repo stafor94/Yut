@@ -1602,3 +1602,44 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [ ] Mobile browser portrait tap target checked
 - [ ] Relevant Playwright QA rerun checked (local Playwright browser executable missing)
 - [x] No unrelated UI redesign
+
+## 2026-07-01 - 방장 첫 번째 플레이어 두 번째 윷 던지기 무반응
+
+### Symptom
+
+- 방장이자 첫 번째 플레이어인 사용자가 첫 윷 던지기와 이동 이후 다시 자기 차례가 되었을 때 윷 던지기 버튼을 눌러도 반응하지 않을 수 있었다.
+
+### Expected behavior
+
+- 기존 윷 결과가 이동 처리로 정리되면 진행 중인 윷 던지기 잠금도 함께 정리되어 다음 윷 던지기를 즉시 요청할 수 있어야 한다.
+
+### Actual behavior
+
+- `clearRoll()`은 `roll`과 `rollResultReadyAt`만 비우고 `rollInProgressRef`/`rollInProgressStartedAtRef`/`rollInProgress`는 정리하지 않았다.
+- 방장 클라이언트의 `canRollNow`는 `!rollInProgress`를 요구하므로, stale 진행 잠금이 남으면 `roll`이 이미 없어도 다음 클릭이 막혔다.
+
+### Confirmed root cause
+
+- 윷 결과 정리 함수인 `clearRoll()`에서 윷 던지기 진행 잠금을 함께 해제하지 않아, 방장 로컬 상태에 stale `rollInProgress`가 남을 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 원격 클라이언트 state sync 경로에서 `rollInProgress`를 해제했다.
+  - Why it failed: 방장 로컬 `clearRoll()` 경로에서 남는 stale lock은 직접 해제하지 못했다.
+
+### Do not try again
+
+- 윷 던지기 action key만 바꾸지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- 버튼 UI만 활성화된 것처럼 보이게 하지 않는다.
+
+### Correct fix plan
+
+- `clearRoll()`이 `roll`을 비울 때 `rollInProgressRef`, `rollInProgressStartedAtRef`, React `rollInProgress` state를 같이 초기화한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Local Playwright QA checked (browser executable missing)
+- [x] No unrelated UI redesign
