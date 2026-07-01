@@ -256,6 +256,7 @@ export function App() {
   const [rollResultReadyAt, setRollResultReadyAt] = useState(0);
   const [trapPlacementClock, setTrapPlacementClock] = useState(() => Date.now());
   const [rollInProgress, setRollInProgress] = useState(false);
+  const [hostStateSaveKey, setHostStateSaveKey] = useState('');
   const processingActionIdsRef = useRef<Set<string>>(new Set());
   const completedActionIdsRef = useRef<Set<string>>(new Set());
   const processedClientActionIdsRef = useRef<Set<string>>(new Set());
@@ -353,7 +354,8 @@ export function App() {
   const activeTurnOrderIntro = turnOrderIntro && turnOrderIntro.readyAt > Date.now() ? turnOrderIntro : null;
   const trapPlacementActive = Boolean(pendingTrapPlacement);
   const isRemoteActionClient = Boolean(activeRoomId && !isRoomHost);
-  const canSubmitTurnAction = Boolean(activeSeat && isMyTurn && !winner && !turnOrderPhase.active && !activeTurnOrderIntro && !movingPieceId && !trapPlacementActive);
+  const hasPendingHostStateSave = Boolean(activeRoomId && isRoomHost && hostStateSaveKey);
+  const canSubmitTurnAction = Boolean(activeSeat && isMyTurn && !winner && !turnOrderPhase.active && !activeTurnOrderIntro && !movingPieceId && !trapPlacementActive && !hasPendingHostStateSave);
   const canMoveSelectedPiece = Boolean(roll && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const canRequestMove = Boolean(canSubmitTurnAction && roll && !rollResultHolding && canMoveSelectedPiece);
   const canUseMoveButton = canRequestMove;
@@ -366,7 +368,8 @@ export function App() {
     activeTurnOrderIntro ? 'turn-order-intro-active' : '',
     movingPieceId ? 'moving-piece' : '',
     trapPlacementActive ? 'pending-trap-placement' : '',
-  ].filter(Boolean), [activeSeat, activeTurnOrderIntro, isMyTurn, movingPieceId, trapPlacementActive, turnOrderPhase.active, winner]);
+    hasPendingHostStateSave ? 'saving-host-state' : '',
+  ].filter(Boolean), [activeSeat, activeTurnOrderIntro, hasPendingHostStateSave, isMyTurn, movingPieceId, trapPlacementActive, turnOrderPhase.active, winner]);
   const rollActionBlockReasons = useMemo(() => [
     ...turnActionBlockReasons,
     roll ? 'roll-already-exists' : '',
@@ -426,6 +429,8 @@ export function App() {
       roll,
       rollInProgress,
       rollInProgressRef: rollInProgressRef.current,
+      hostStateSaveKey,
+      hasPendingHostStateSave,
       isRollLocked,
       rollLockUntil,
       rollResultReadyAt,
@@ -455,7 +460,7 @@ export function App() {
       selectedPieceId,
       selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
     };
-  }, [activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hostSeatId, isMyTurn, isRollLocked, isRemoteActionClient, isRoomHost, localSeatId, message, moveActionBlockReasons, movingPieceId, pieces, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, trapPlacementActive, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase.active, winner, lastMovedSeatId, lastMovedPieceIds]);
+  }, [activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, isMyTurn, isRollLocked, isRemoteActionClient, isRoomHost, localSeatId, message, moveActionBlockReasons, movingPieceId, pieces, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, trapPlacementActive, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase.active, winner, lastMovedSeatId, lastMovedPieceIds]);
 
 
   useEffect(() => () => {
@@ -490,6 +495,7 @@ export function App() {
     pendingLocalRemoteActionsRef.current.clear();
     lastSavedStateFingerprintRef.current = '';
     savingStateFingerprintRef.current = '';
+    setHostStateSaveKey('');
     if (rollAnimationTimerRef.current !== null) {
       window.clearTimeout(rollAnimationTimerRef.current);
       rollAnimationTimerRef.current = null;
@@ -742,6 +748,7 @@ export function App() {
     const stateFingerprint = JSON.stringify({ pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, effectiveRollResultReadyAt, turnOrderPhase });
     if (lastSavedStateFingerprintRef.current === stateFingerprint || savingStateFingerprintRef.current === stateFingerprint) return;
     savingStateFingerprintRef.current = stateFingerprint;
+    setHostStateSaveKey(stateFingerprint);
     const pendingSequenceMeta = pendingSequenceMetaRef.current;
     pendingSequenceMetaRef.current = null;
     const sequenceType = pendingSequenceMeta?.type ?? (winner ? 'game_finished' : lastMovedSeatId === localSeatId ? 'move_piece_resolved' : pendingTrapPlacement?.ownerId === localSeatId ? 'item_used' : 'state_snapshot');
@@ -755,6 +762,7 @@ export function App() {
       }
     }).finally(() => {
       if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
+      setHostStateSaveKey((current) => current === stateFingerprint ? '' : current);
     });
   }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, effectiveRollResultReadyAt, gameStartedAt, isRoomHost, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
 
@@ -1038,6 +1046,11 @@ export function App() {
       const isTrapPlacementAction = action.type === 'place_trap' && pendingTrapPlacement?.ownerId === action.actorId;
       const canProcessDuringMove = !movingPieceId;
       const canActorAct = Boolean(actorSeat && !winner && canProcessDuringMove && !activeTurnOrderIntro && (isActorsTurn || (isPostMoveItem && lastMovedSeatId === action.actorId) || isTrapPlacementAction));
+
+      if (savingStateFingerprintRef.current) {
+        shouldRetry = true;
+        return;
+      }
 
       if (action.type === 'turn_order_roll') {
         const hasActorAlreadyRolled = turnOrderPhase.rolls.some((rollEntry) => rollEntry.seat.id === action.actorId);
