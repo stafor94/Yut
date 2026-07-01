@@ -67,6 +67,58 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-06-30 - 세로모드 플레이어 카드 한 줄 스타일 미적용
+
+### Symptom
+
+- 모바일 세로모드 화면에서 플레이어 카드가 여전히 P라벨, 이름, 순서, 상태를 여러 줄로 표시했다.
+- 카드 높이가 줄지 않아 말판이 아래로 밀려 스크롤이 필요했다.
+
+### Expected behavior
+
+- 세로모드에서는 플레이어 카드가 `P1-이름 · 순서 · 상태` 형태의 한 줄 요약으로 표시되어야 한다.
+- 플레이어 카드 영역이 줄어 말판이 더 빨리 보여야 한다.
+
+### Actual behavior
+
+- 기존 수정은 `max-width: 900px` 조건에 묶여 있어 실제 모바일 브라우저/배포 화면에서 세로모드 규칙이 적용되지 않는 경우가 있었다.
+- 그 결과 새로 추가한 `.player-mobile-line`이 보이지 않고 기존 여러 줄 요소가 계속 표시됐다.
+
+### Confirmed root cause
+
+- 기본 JSX가 별도 라벨 `P1`과 이름 문자열 `P1-이름`을 동시에 출력해, 반응형 CSS가 적용되지 않거나 fallback 규칙으로 떨어질 때 P라벨이 중복 표시됐다.
+- 좁은 화면 fallback인 `@media (max-width: 767px)`에서는 `.players`가 1열로 돌아가 카드 높이가 커질 수 있었다.
+- 사용자 요구는 실제 모바일 좁은 화면과 세로모드 둘 다에서 동작해야 하므로, 플레이어 카드 한 줄 규칙은 `@media (orientation: portrait), (max-width: 767px)` 기준으로 적용되어야 한다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 카드 `gap`, `padding`, `font-size`, `line-height`만 줄였다.
+  - Why it failed: 여러 줄 구조를 한 줄 구조로 바꾸지 못했다.
+- Attempt 2:
+  - What was changed: `.player-mobile-line`과 viewport meta를 추가했다.
+  - Why it failed: 플레이어 카드 세로모드 규칙이 여전히 `max-width: 900px` 조건에 묶여 실제 화면에서 적용되지 않는 경우가 남았다.
+
+### Do not try again
+
+- 카드 여백 숫자만 줄이지 않는다.
+- `orientation` 조건에만 의존하거나 `max-width` fallback을 방치해서 모바일 게임 화면 플레이어 카드 규칙을 적용하지 않는다.
+- JSX에서 `P1` 라벨과 `P1-이름`을 동시에 출력하지 않는다.
+- 실제 적용 여부 확인 없이 “수정 완료”라고 보고하지 않는다.
+
+### Correct fix plan
+
+- 게임 화면의 플레이어 카드 한 줄 요약 규칙을 `@media (orientation: portrait), (max-width: 767px)` 기준으로 적용한다.
+- 기본 이름 문자열에서는 P라벨을 제거해 fallback 상태에서도 P라벨이 한 번만 보이게 한다.
+- 기존 데스크톱/가로모드 표시는 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Real mobile portrait browser checked after deploy
+- [x] No new dependency
+
+
 ## 2026-06-30 - Issue #154 Playwright game QA turnOrderIntro stale state timeout
 
 ### Symptom
