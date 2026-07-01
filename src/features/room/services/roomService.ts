@@ -305,8 +305,10 @@ const isTurnOrderIntroActive = (intro: unknown, now = Date.now()) => {
   return Number((intro as { readyAt?: unknown }).readyAt ?? 0) > now;
 };
 
-export async function saveGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>, meta: GameSequenceMeta = {}) {
-  if (!db || !roomId) return null;
+export type SaveGameStateResult = { status: 'committed' | 'duplicate' | 'sequence_mismatch' | 'unavailable'; turnVersion?: number; lastSequence?: number };
+
+export async function saveGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>, meta: GameSequenceMeta = {}): Promise<SaveGameStateResult> {
+  if (!db || !roomId) return { status: 'unavailable' };
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(gameStateRef);
@@ -316,10 +318,14 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
     const processedActionRef = meta.clientMutationId ? getClientMutationDocRef(roomId, meta.clientMutationId) : null;
     if (processedActionRef) {
       const processedActionSnapshot = await transaction.get(processedActionRef);
-      if (processedActionSnapshot.exists()) return Number(processedActionSnapshot.data().turnVersion ?? currentVersion);
+      if (processedActionSnapshot.exists()) return {
+        status: 'duplicate' as const,
+        turnVersion: Number(processedActionSnapshot.data().turnVersion ?? currentVersion),
+        lastSequence: Number(processedActionSnapshot.data().sequence ?? currentSequence),
+      };
     }
-    if (meta.clientMutationId && currentState?.lastClientMutationId === meta.clientMutationId) return currentVersion;
-    if (typeof meta.expectedPreviousSequence === 'number' && currentSequence !== meta.expectedPreviousSequence) return null;
+    if (meta.clientMutationId && currentState?.lastClientMutationId === meta.clientMutationId) return { status: 'duplicate' as const, turnVersion: currentVersion, lastSequence: currentSequence };
+    if (typeof meta.expectedPreviousSequence === 'number' && currentSequence !== meta.expectedPreviousSequence) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
     const nextVersion = currentVersion + 1;
     const nextSequence = currentSequence + 1;
     const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
@@ -342,7 +348,7 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
       actorId: meta.actorId ?? 'system',
       createdAt: serverTimestamp(),
     });
-    return nextVersion;
+    return { status: 'committed' as const, turnVersion: nextVersion, lastSequence: nextSequence };
   });
 }
 
