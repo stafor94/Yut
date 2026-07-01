@@ -635,6 +635,29 @@ select {
   min-height: 52px;
   justify-self: center;
 }
+
+.turn-action-timer {
+  width: min(100%, 260px);
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(42, 30, 23, .12);
+}
+
+.turn-action-timer span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), var(--gold), var(--red));
+  animation: turn-action-countdown 15s linear forwards;
+}
+
+@keyframes turn-action-countdown {
+  from { transform: scaleX(1); transform-origin: left center; }
+  to { transform: scaleX(0); transform-origin: left center; }
+}
+
 .item-button { padding: 0; text-align: left; background: transparent; color: inherit; }
 .log-list { display: grid; gap: 8px; }
 .log-list p { margin: 0; padding: 10px 12px; border-radius: 14px; background: #fff3d8; font-weight: 800; color: rgba(42, 30, 23, .72); align-self: start; }
@@ -1269,7 +1292,8 @@ aside.players,
 
 .golden-yut-picker h2,
 .golden-yut-picker p,
-.winner-overlay p { margin: 0; }
+.winner-overlay p { margin: 0; color: #2a1e17; }
+.winner-player-label { color: inherit; }
 
 .golden-yut-picker div {
   display: grid;
@@ -1287,7 +1311,7 @@ aside.players,
 }
 
 .winner-overlay strong {
-  color: var(--red);
+  color: #2a1e17;
   font-size: clamp(1.6rem, 4.5vw, 3rem);
 }
 
@@ -1451,7 +1475,7 @@ aside.players,
   border-radius: 999px;
   background: linear-gradient(135deg, var(--gold), #fff2b8);
   color: #7a2f1f;
-  font-size: clamp(1.15rem, 3vw, 1.9rem);
+  font-size: clamp(.9rem, 2vw, 1.25rem);
   font-weight: 1000;
   white-space: nowrap;
   box-shadow: 0 18px 36px rgba(242, 184, 75, .42);

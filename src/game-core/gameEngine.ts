@@ -235,6 +235,13 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
           piece.nodeIndex = 0; piece.nodeId = 'n01'; piece.started = false; piece.finished = false;
         }
       });
+      const capturedOwnerCounts = capturedPieceIds.reduce<Record<string, number>>((counts, capturedPieceId) => {
+        const ownerId = nextPieces.find((piece) => piece.id === capturedPieceId)?.ownerId ?? '';
+        if (!ownerId) return counts;
+        counts[ownerId] = (counts[ownerId] ?? 0) + 1;
+        return counts;
+      }, {});
+      Object.entries(capturedOwnerCounts).forEach(([ownerId, count]) => pushLog(`${actorLogName}이(가) ${ownerId}의 말 ${count}개를 잡았습니다.`));
       pushLog('상대 말을 잡아 한 번 더 던질 수 있습니다.');
     }
   }
