@@ -80,6 +80,7 @@ const TURN_ORDER_ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_MS = 2600;
 const ROLL_RESULT_HOLD_GRACE_MS = 1200;
 const ROLL_ANIMATION_MS = 2600;
+const ROLL_STUCK_TIMEOUT_MS = 12000;
 const MAX_OWNED_ITEMS = 1;
 const ITEM_PICKUP_ROLL_LOCK_MS = 3000;
 const TRAP_EFFECT_MS = 3000;
@@ -265,6 +266,7 @@ export function App() {
   const completedActionIdsRef = useRef<Set<string>>(new Set());
   const processedClientActionIdsRef = useRef<Set<string>>(new Set());
   const rollInProgressRef = useRef(false);
+  const rollInProgressStartedAtRef = useRef(0);
   const moveInProgressRef = useRef(false);
   const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
   const completingTurnOrderIntroRef = useRef<Set<number>>(new Set());
@@ -477,6 +479,18 @@ export function App() {
     currentRollRef.current = roll;
   }, [roll]);
 
+  useEffect(() => {
+    if (!rollInProgress || roll || !rollInProgressStartedAtRef.current) return undefined;
+    const timer = window.setTimeout(() => {
+      if (currentRollRef.current || !rollInProgressRef.current) return;
+      rollInProgressRef.current = false;
+      rollInProgressStartedAtRef.current = 0;
+      pendingLocalRemoteActionsRef.current.clear();
+      setRollInProgress(false);
+    }, ROLL_STUCK_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [roll, rollInProgress]);
+
   const clearRoll = () => {
     currentRollRef.current = null;
     setRoll(null);
@@ -491,6 +505,7 @@ export function App() {
     completedActionIdsRef.current.clear();
     processedClientActionIdsRef.current.clear();
     rollInProgressRef.current = false;
+    rollInProgressStartedAtRef.current = 0;
     setRollInProgress(false);
     moveInProgressRef.current = false;
     currentRollRef.current = null;
@@ -1581,6 +1596,7 @@ export function App() {
   function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll) {
     if (rollInProgressRef.current || currentRollRef.current) return null;
     rollInProgressRef.current = true;
+    rollInProgressStartedAtRef.current = Date.now();
     setRollInProgress(true);
     const rolled = forcedResult ? { result: forcedResult, sticks: makeDisplaySticks(forcedResult) } : rollYutResult();
     const nextRoll = rolled.result;
@@ -1596,6 +1612,7 @@ export function App() {
     if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
     window.setTimeout(() => {
       rollInProgressRef.current = false;
+      rollInProgressStartedAtRef.current = 0;
       setRollInProgress(false);
     }, ROLL_RESULT_HOLD_MS);
     addLog(`${seat.label}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
@@ -1610,10 +1627,12 @@ export function App() {
       pendingLocalRemoteActionsRef.current.add(actionKey);
       setRollInProgress(true);
       rollInProgressRef.current = true;
+      rollInProgressStartedAtRef.current = Date.now();
 
       const finishPendingRoll = () => {
         pendingLocalRemoteActionsRef.current.delete(actionKey);
         rollInProgressRef.current = false;
+        rollInProgressStartedAtRef.current = 0;
         setRollInProgress(false);
       };
 
@@ -2068,7 +2087,7 @@ export function App() {
     <section className="hero panel">
       <div className="hero-copy"><h1 className="brand-title">YUT ONLINE</h1></div>
       {screen === 'game' && <div data-testid="play-timer" className={`play-time ${winner ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}
-      <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`효과음 ${soundEnabled ? '끄기' : '켜기'}`}>{soundEnabled ? '🔊 효과음' : '🔇 효과음'}</button><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
+      <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`효과음 ${soundEnabled ? '끄기' : '켜기'}`}><span aria-hidden="true">{soundEnabled ? '🔊 효과음' : '🔇 효과음'}</span></button><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
     </section>
 
     {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>대기실 닉네임 수정</h2><p>닉네임은 대기실에서만 변경할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={16} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
