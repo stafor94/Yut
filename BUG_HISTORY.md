@@ -101,6 +101,9 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 - Attempt 3:
   - What was changed: 기존 모바일 규칙 뒤에 `aside.players` 대상 `!important` 보강 CSS를 추가했다.
   - Why it failed: 이미 같은 목적의 `.player-mobile-line` 모바일 규칙이 존재했는데 실제 DOM/CSS 적용 경로를 확인하지 않고 중복 규칙만 덧붙였다. 스크린샷처럼 모바일 요약과 기존 P라벨/배지/상태가 같이 보이는 상태는 플레이어 카드 내부 요소를 명확히 분리해 타겟하지 않으면 재발할 수 있다.
+- Attempt 4:
+  - What was changed: 카드 이름에서 `P1-` 같은 좌석 라벨 prefix만 제거했다.
+  - Why it failed: 모바일 요약과 데스크톱용 라벨/이름/배지/상태를 동시에 렌더링한 뒤 CSS로 숨기는 구조 자체는 그대로 남아, fallback 상태에서 카드가 여러 줄로 커지는 문제를 해결하지 못했다.
 
 ### Do not try again
 
