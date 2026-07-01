@@ -3600,7 +3600,10 @@ aside.players,
 
 /* Sound toggle is the actual full-size hit target; avoid a larger wrapper with dead click zones. */
 .sound-controls.sound-toggle {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  gap: 10px;
   min-height: 40px;
   border: 1px solid rgba(42, 30, 23, .1);
   background: rgba(42, 30, 23, .1);
@@ -3610,6 +3613,10 @@ aside.players,
 .sound-controls.sound-toggle.active {
   background: linear-gradient(135deg, var(--green), #3d8d68);
   color: #fff;
+}
+
+.sound-controls.sound-toggle > span {
+  pointer-events: none;
 }
 
 /* Portrait game board: reserve a bench under the board for pieces that have not entered or have finished. */
