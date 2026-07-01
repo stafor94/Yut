@@ -77,6 +77,11 @@ jobs:
         run: |
           set -o pipefail
           npm run build 2>&1 | tee build.log
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - uses: actions/deploy-pages@v4
       - run: npx playwright install --with-deps
       - name: Run Playwright tests
         run: |
@@ -176,8 +181,3 @@ jobs:
               await core.summary.write();
               throw error;
             }
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-      - uses: actions/deploy-pages@v4
