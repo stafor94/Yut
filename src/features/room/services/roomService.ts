@@ -523,6 +523,8 @@ function makeEngineState(state: SyncedGameState): EngineState {
     trapNodes: (state.trapNodes as AuthoritativeTrapNode[] | undefined) ?? [],
     shieldedPieceIds: state.shieldedPieceIds ?? [],
     branchChoice: (state.branchChoice as BranchChoice | undefined) ?? 'outer',
+    boardItems: state.boardItems ?? [],
+    ownedItems: state.ownedItems as Record<string, never[]> | undefined,
   };
 }
 
