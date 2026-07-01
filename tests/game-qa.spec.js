@@ -276,15 +276,21 @@ function didAutoAdvanceAfterRoll(beforeDebugState, afterDebugState) {
   return hasStateAdvanced(beforeYutDebug, afterYutDebug);
 }
 
-function hasStateAdvancedAcrossPages(beforeDebugStates, afterDebugStates) {
-  const beforeDebugState = findCanonicalDebugState(beforeDebugStates);
-  const afterDebugState = findCanonicalDebugState(afterDebugStates);
-  return hasStateAdvanced(beforeDebugState?.yutDebug ?? {}, afterDebugState?.yutDebug ?? {});
+function getPreferredDebugState(debugStates, preferredPageIndex) {
+  if (Number.isInteger(preferredPageIndex) && debugStates[preferredPageIndex]?.yutDebug?.screen === 'game') return debugStates[preferredPageIndex];
+  return findCanonicalDebugState(debugStates);
 }
 
-function didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, afterDebugStates) {
-  const beforeDebugState = findCanonicalDebugState(beforeDebugStates);
-  const afterDebugState = findCanonicalDebugState(afterDebugStates);
+function hasStateAdvancedAcrossPages(beforeDebugStates, afterDebugStates, preferredPageIndex) {
+  const beforeDebugState = getPreferredDebugState(beforeDebugStates, preferredPageIndex);
+  const afterDebugState = getPreferredDebugState(afterDebugStates, preferredPageIndex);
+  if (hasStateAdvanced(beforeDebugState?.yutDebug ?? {}, afterDebugState?.yutDebug ?? {})) return true;
+  return afterDebugStates.some((afterDebugState, index) => hasStateAdvanced(beforeDebugStates[index]?.yutDebug ?? {}, afterDebugState?.yutDebug ?? {}));
+}
+
+function didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, afterDebugStates, preferredPageIndex) {
+  const beforeDebugState = getPreferredDebugState(beforeDebugStates, preferredPageIndex);
+  const afterDebugState = getPreferredDebugState(afterDebugStates, preferredPageIndex);
   const afterYutDebug = afterDebugState?.yutDebug ?? {};
   const hasReadyRollButton = afterDebugStates.some((debugState) => debugState?.rollButton?.visible && !debugState.rollButton.disabled);
   if (afterYutDebug.roll !== null || afterYutDebug.rollResultHolding || !hasReadyRollButton) return false;
@@ -431,9 +437,12 @@ function classifyRollOutcomeFailure(kind, debugStates) {
   return { kind, category: 'unclassified-no-progress', blockers };
 }
 
-function formatRollOutcomeFailure(kind, beforeDebugStates, afterDebugStates) {
+function formatRollOutcomeFailure(kind, beforeDebugStates, afterDebugStates, preferredPageIndex) {
   return JSON.stringify({
     classification: classifyRollOutcomeFailure(kind, afterDebugStates),
+    clickedPageIndex: Number.isInteger(preferredPageIndex) ? preferredPageIndex : null,
+    clickedPageBefore: Number.isInteger(preferredPageIndex) ? summarizeActionBlockers(beforeDebugStates[preferredPageIndex]) : null,
+    clickedPageAfter: Number.isInteger(preferredPageIndex) ? summarizeActionBlockers(afterDebugStates[preferredPageIndex]) : null,
     before: beforeDebugStates.map(summarizeActionBlockers),
     after: afterDebugStates,
   }, null, 2);
@@ -443,7 +452,7 @@ async function collectGameDebugStates(pages) {
   return Promise.all(pages.map((page) => collectGameDebugState(page)));
 }
 
-async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout = 7_000, pendingTimeout = 15_000 } = {}) {
+async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout = 7_000, pendingTimeout = 15_000, preferredPageIndex } = {}) {
   const deadline = Date.now() + timeout;
   const pendingDeadline = Date.now() + pendingTimeout;
   let lastDebugStates = beforeDebugStates;
@@ -462,7 +471,7 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
     const terminalDebugState = findTerminalGameState(debugStates);
     if (terminalDebugState) return { kind: 'terminal-state', debugStates, terminalDebugState };
 
-    if (didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, debugStates)) {
+    if (didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, debugStates, preferredPageIndex)) {
       return { kind: 'auto-advance', debugStates };
     }
 
@@ -470,8 +479,7 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
       return { kind: 'move-resolution-ui', debugStates };
     }
 
-    const canonicalDebugState = findCanonicalDebugState(debugStates);
-    if (canonicalDebugState?.yutDebug?.roll !== null && canonicalDebugState?.yutDebug?.roll !== undefined) {
+    if (debugStates.some((debugState) => debugState?.yutDebug?.roll !== null && debugState?.yutDebug?.roll !== undefined)) {
       sawRollState = true;
     }
     lastHasPendingTurnAction = hasPendingTurnActionAcrossPages(debugStates);
@@ -491,8 +499,8 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
   }
 
   if (sawRollState) return { kind: 'roll-observed', debugStates: lastDebugStates };
-  if (hasStateAdvancedAcrossPages(beforeDebugStates, lastDebugStates)) return { kind: 'state-advanced', debugStates: lastDebugStates };
-  if (sawPendingTurnAction && lastHasPendingTurnAction) return { kind: 'pending-timeout', debugStates: lastDebugStates };
+  if (hasStateAdvancedAcrossPages(beforeDebugStates, lastDebugStates, preferredPageIndex)) return { kind: 'state-advanced', debugStates: lastDebugStates };
+  if (sawPendingTurnAction) return { kind: 'pending-timeout', debugStates: lastDebugStates };
   if (sawAuthoritativeAlreadyRolledStaleState && lastHasAuthoritativeAlreadyRolledStaleState) return { kind: 'stale-roll-state-timeout', debugStates: lastDebugStates };
   if (sawAuthoritativeTurnMismatchStaleState && lastHasAuthoritativeTurnMismatchStaleState) return { kind: 'stale-turn-state-timeout', debugStates: lastDebugStates };
   return { kind: 'no-state-change', debugStates: lastDebugStates };
@@ -595,6 +603,7 @@ async function handleBranchMove(page, coverage) {
 
 async function playOneAvailableGameAction(page, coverage, options = {}) {
   const pages = options.pages ?? [page];
+  const preferredPageIndex = Number.isInteger(options.preferredPageIndex) ? options.preferredPageIndex : pages.indexOf(page);
   if (await handleItemPickupModal(page, coverage)) return 'item-pickup-modal';
   if (await handleItemPrompt(page, coverage, options)) return 'item-prompt';
   if (await handleTrapPlacement(page, coverage)) return 'trap-placement';
@@ -659,21 +668,21 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
     const beforeRollDebugStates = await collectGameDebugStates(pages);
     await rollButton.click();
 
-    const rollOutcome = await waitForRollOutcomeAfterClick(pages, beforeRollDebugStates);
+    const rollOutcome = await waitForRollOutcomeAfterClick(pages, beforeRollDebugStates, { preferredPageIndex });
     if (rollOutcome.kind === 'terminal-state') {
-      throw new Error(`윷 던지기 이후 게임 화면을 벗어났습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
+      throw new Error(`윷 던지기 이후 게임 화면을 벗어났습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates, preferredPageIndex)}`);
     }
     if (rollOutcome.kind === 'pending-timeout') {
-      throw new Error(`윷 던지기 클릭 이후 원격 액션 대기 상태가 해소되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
+      throw new Error(`윷 던지기 클릭 이후 원격 액션 대기 상태가 해소되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates, preferredPageIndex)}`);
     }
     if (rollOutcome.kind === 'no-state-change') {
-      throw new Error(`윷 던지기 클릭 이후 게임 상태 변화가 관측되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
+      throw new Error(`윷 던지기 클릭 이후 게임 상태 변화가 관측되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates, preferredPageIndex)}`);
     }
     if (rollOutcome.kind === 'stale-roll-state-timeout') {
-      throw new Error(`윷 던지기 클릭 이후 authoritative roll 상태가 로컬 화면에 동기화되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
+      throw new Error(`윷 던지기 클릭 이후 authoritative roll 상태가 로컬 화면에 동기화되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates, preferredPageIndex)}`);
     }
     if (rollOutcome.kind === 'stale-turn-state-timeout') {
-      throw new Error(`윷 던지기 클릭 이후 authoritative 턴 상태가 로컬 화면에 동기화되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
+      throw new Error(`윷 던지기 클릭 이후 authoritative 턴 상태가 로컬 화면에 동기화되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates, preferredPageIndex)}`);
     }
 
     coverage.rolled += 1;
@@ -744,10 +753,10 @@ async function playOneAvailableGameActionAcrossPages(pages, coverage) {
     .map((entry, index) => ({ ...entry, index, priority: getPlayableActionPriority(entry.debugState) }))
     .filter((entry) => Number.isFinite(entry.priority))
     .sort((left, right) => left.priority - right.priority || left.index - right.index)[0];
-  if (playablePageState) return playOneAvailableGameAction(playablePageState.page, coverage, { pages });
+  if (playablePageState) return playOneAvailableGameAction(playablePageState.page, coverage, { pages, preferredPageIndex: playablePageState.index });
 
   for (const page of pages) {
-    if (await isPlayableActionVisible(page)) return playOneAvailableGameAction(page, coverage, { pages });
+    if (await isPlayableActionVisible(page)) return playOneAvailableGameAction(page, coverage, { pages, preferredPageIndex: pages.indexOf(page) });
   }
 
   for (const page of pages) {
