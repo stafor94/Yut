@@ -247,6 +247,12 @@ function didAutoAdvanceAfterRoll(beforeDebugState, afterDebugState) {
   return hasStateAdvanced(beforeYutDebug, afterYutDebug);
 }
 
+function hasStateAdvancedAcrossPages(beforeDebugStates, afterDebugStates) {
+  const beforeDebugState = findCanonicalDebugState(beforeDebugStates);
+  const afterDebugState = findCanonicalDebugState(afterDebugStates);
+  return hasStateAdvanced(beforeDebugState?.yutDebug ?? {}, afterDebugState?.yutDebug ?? {});
+}
+
 function didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, afterDebugStates) {
   const beforeDebugState = findCanonicalDebugState(beforeDebugStates);
   const afterDebugState = findCanonicalDebugState(afterDebugStates);
@@ -289,7 +295,57 @@ function summarizeActionBlockers(debugState) {
     processingActionCount: Number(yutDebug.processingActionCount ?? 0),
     lastAppliedSequence: Number(yutDebug.lastAppliedSequence ?? 0),
     lastAppliedStateVersion: Number(yutDebug.lastAppliedStateVersion ?? 0),
+    message: yutDebug.message ?? '',
   };
+}
+
+function hasAuthoritativeAlreadyRolledStaleState(debugState) {
+  const yutDebug = debugState?.yutDebug ?? {};
+  return Boolean(
+    typeof yutDebug.message === 'string' &&
+    yutDebug.message.includes('이미 윷을 던졌습니다') &&
+    yutDebug.roll === null &&
+    yutDebug.canRollNow === true &&
+    debugState?.rollButton?.visible
+  );
+}
+
+function hasAuthoritativeAlreadyRolledStaleStateAcrossPages(debugStates) {
+  return debugStates.some(hasAuthoritativeAlreadyRolledStaleState);
+}
+
+function hasAuthoritativeTurnMismatchStaleState(debugState) {
+  const yutDebug = debugState?.yutDebug ?? {};
+  const turnActionBlockReasons = yutDebug.turnActionBlockReasons ?? [];
+  const rollActionBlockReasons = yutDebug.rollActionBlockReasons ?? [];
+  return Boolean(
+    debugState?.rollButton?.visible &&
+    yutDebug.roll === null &&
+    yutDebug.canRollNow === true &&
+    (
+      (typeof yutDebug.message === 'string' && yutDebug.message.includes('지금은 내 차례가 아닙니다')) ||
+      turnActionBlockReasons.includes('not-local-turn') ||
+      rollActionBlockReasons.includes('not-local-turn')
+    )
+  );
+}
+
+function hasAuthoritativeTurnMismatchStaleStateAcrossPages(debugStates) {
+  return debugStates.some(hasAuthoritativeTurnMismatchStaleState);
+}
+
+function hasStaleLocalMoveTarget(debugState) {
+  const yutDebug = debugState?.yutDebug ?? {};
+  const turnActionBlockReasons = yutDebug.turnActionBlockReasons ?? [];
+  const moveActionBlockReasons = yutDebug.moveActionBlockReasons ?? [];
+  return Boolean(
+    (
+      (typeof yutDebug.message === 'string' && yutDebug.message.includes('지금은 내 차례가 아닙니다')) ||
+      turnActionBlockReasons.includes('not-local-turn') ||
+      moveActionBlockReasons.includes('not-local-turn')
+    ) &&
+    (!debugState?.moveButton?.visible || debugState.moveButton.disabled)
+  );
 }
 
 function classifyRollOutcomeFailure(kind, debugStates) {
@@ -300,6 +356,8 @@ function classifyRollOutcomeFailure(kind, debugStates) {
   if (terminalState) return { kind, category: 'left-game-screen', terminalState: summarizeActionBlockers(terminalState), blockers };
   if (states.some((debugState) => debugState?.yutDebug?.activeTurnOrderIntro)) return { kind, category: 'blocked-by-turn-order-intro', blockers };
   if (states.some((debugState) => debugState?.yutDebug?.turnOrderPhase?.active)) return { kind, category: 'blocked-by-turn-order-phase', blockers };
+  if (hasAuthoritativeAlreadyRolledStaleStateAcrossPages(states)) return { kind, category: 'stale-local-roll-state', blockers };
+  if (hasAuthoritativeTurnMismatchStaleStateAcrossPages(states)) return { kind, category: 'stale-local-turn-state', blockers };
   if (states.some(hasPendingTurnAction)) return { kind, category: 'pending-remote-action', blockers };
   if (states.some((debugState) => debugState?.yutDebug?.rollResultHolding)) return { kind, category: 'roll-result-holding', blockers };
   if (states.some((debugState) => (debugState?.yutDebug?.rollActionBlockReasons ?? []).length > 0)) return { kind, category: 'roll-blocked', blockers };
@@ -325,8 +383,12 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
   let sawRollState = false;
   let sawPendingTurnAction = hasPendingTurnActionAcrossPages(beforeDebugStates);
   let lastHasPendingTurnAction = sawPendingTurnAction;
+  let sawAuthoritativeAlreadyRolledStaleState = hasAuthoritativeAlreadyRolledStaleStateAcrossPages(beforeDebugStates);
+  let lastHasAuthoritativeAlreadyRolledStaleState = sawAuthoritativeAlreadyRolledStaleState;
+  let sawAuthoritativeTurnMismatchStaleState = hasAuthoritativeTurnMismatchStaleStateAcrossPages(beforeDebugStates);
+  let lastHasAuthoritativeTurnMismatchStaleState = sawAuthoritativeTurnMismatchStaleState;
 
-  while (Date.now() < deadline || (sawPendingTurnAction && Date.now() < pendingDeadline)) {
+  while (Date.now() < deadline || ((sawPendingTurnAction || sawAuthoritativeAlreadyRolledStaleState || sawAuthoritativeTurnMismatchStaleState) && Date.now() < pendingDeadline)) {
     const debugStates = await collectGameDebugStates(pages);
     lastDebugStates = debugStates;
 
@@ -349,6 +411,14 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
     if (lastHasPendingTurnAction) {
       sawPendingTurnAction = true;
     }
+    lastHasAuthoritativeAlreadyRolledStaleState = hasAuthoritativeAlreadyRolledStaleStateAcrossPages(debugStates);
+    if (lastHasAuthoritativeAlreadyRolledStaleState) {
+      sawAuthoritativeAlreadyRolledStaleState = true;
+    }
+    lastHasAuthoritativeTurnMismatchStaleState = hasAuthoritativeTurnMismatchStaleStateAcrossPages(debugStates);
+    if (lastHasAuthoritativeTurnMismatchStaleState) {
+      sawAuthoritativeTurnMismatchStaleState = true;
+    }
 
     await pages[0].waitForTimeout(250);
   }
@@ -356,6 +426,8 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
   if (sawRollState) return { kind: 'roll-observed', debugStates: lastDebugStates };
   if (hasStateAdvancedAcrossPages(beforeDebugStates, lastDebugStates)) return { kind: 'state-advanced', debugStates: lastDebugStates };
   if (sawPendingTurnAction && lastHasPendingTurnAction) return { kind: 'pending-timeout', debugStates: lastDebugStates };
+  if (sawAuthoritativeAlreadyRolledStaleState && lastHasAuthoritativeAlreadyRolledStaleState) return { kind: 'stale-roll-state-timeout', debugStates: lastDebugStates };
+  if (sawAuthoritativeTurnMismatchStaleState && lastHasAuthoritativeTurnMismatchStaleState) return { kind: 'stale-turn-state-timeout', debugStates: lastDebugStates };
   return { kind: 'no-state-change', debugStates: lastDebugStates };
 }
 
@@ -481,7 +553,7 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
         return 'manual-move';
       } catch (error) {
         const debugState = await collectGameDebugState(page);
-        if (hasPendingTurnAction(debugState) || debugState.yutDebug?.rollResultHolding) return 'wait';
+        if (hasPendingTurnAction(debugState) || debugState.yutDebug?.rollResultHolding || hasStaleLocalMoveTarget(debugState)) return 'wait';
         throw new Error(`선택한 말 이동 버튼 클릭이 실패했습니다: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error), debugState }, null, 2)}`);
       }
     }
@@ -505,6 +577,12 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
     }
     if (rollOutcome.kind === 'no-state-change') {
       throw new Error(`윷 던지기 클릭 이후 게임 상태 변화가 관측되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
+    }
+    if (rollOutcome.kind === 'stale-roll-state-timeout') {
+      throw new Error(`윷 던지기 클릭 이후 authoritative roll 상태가 로컬 화면에 동기화되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
+    }
+    if (rollOutcome.kind === 'stale-turn-state-timeout') {
+      throw new Error(`윷 던지기 클릭 이후 authoritative 턴 상태가 로컬 화면에 동기화되지 않았습니다: ${formatRollOutcomeFailure(rollOutcome.kind, beforeRollDebugStates, rollOutcome.debugStates)}`);
     }
 
     coverage.rolled += 1;
