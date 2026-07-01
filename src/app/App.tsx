@@ -65,6 +65,10 @@ const getStoredText = (key: string, fallback: string) => {
   if (typeof window === 'undefined') return fallback;
   return window.localStorage.getItem(key) || fallback;
 };
+const normalizeMaxPlayers = (value: unknown, mode: PlayMode): 2 | 3 | 4 => {
+  if (mode === 'team') return 4;
+  return value === 2 || value === 3 || value === 4 ? value : 4;
+};
 const TURN_DELAY_MS = 650;
 const TURN_ORDER_START_DELAY_MS = 3000;
 const TURN_ORDER_TIMEOUT_MS = 10000;
@@ -1159,8 +1163,10 @@ export function App() {
     let roomHost = userRef.current ?? currentUser;
     try {
       const timeout = new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('CREATE_ROOM_TIMEOUT')), CREATE_ROOM_TIMEOUT_MS));
+      const roomMaxPlayers = normalizeMaxPlayers(maxPlayers, playMode);
+      if (roomMaxPlayers !== maxPlayers) setMaxPlayers(roomMaxPlayers);
       if (!isFirebaseConfigured) {
-        await openWaitingRoom({ title, itemMode, maxPlayers, playMode, pieceCount }, '', true);
+        await openWaitingRoom({ title, itemMode, maxPlayers: roomMaxPlayers, playMode, pieceCount }, '', true);
         return;
       }
       roomHost = roomHost ?? await Promise.race([signInAsGuest(), timeout]);
@@ -1169,8 +1175,8 @@ export function App() {
       const roomHostId = roomHost.uid;
       await waitForRoomCreationCleanup('중복 방 정리', () => leaveDuplicatePlayerRooms(roomHostId));
       await waitForRoomCreationCleanup('이전 방 정리', () => leavePreviousOnlineRoom());
-      const roomId = await Promise.race([createRoom({ title, hostId: roomHost.uid, nickname, maxPlayers, itemMode, playMode, pieceCount }), timeout]);
-      await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers, playMode, pieceCount }, '', true, roomHost);
+      const roomId = await Promise.race([createRoom({ title, hostId: roomHost.uid, nickname, maxPlayers: roomMaxPlayers, itemMode, playMode, pieceCount }), timeout]);
+      await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers: roomMaxPlayers, playMode, pieceCount }, '', true, roomHost);
     } catch (error) {
       if (isFirebaseConfigured && roomHost && error instanceof Error && error.message === 'CREATE_ROOM_TIMEOUT') {
         setMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
@@ -2052,11 +2058,17 @@ export function App() {
     setMessage('닉네임이 변경되었습니다.');
   }
 
+  function toggleSoundEnabled() {
+    const nextEnabled = !soundEnabled;
+    setSoundEnabled(nextEnabled);
+    if (nextEnabled) playSoundEffect('toast', true);
+  }
+
   return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
     <section className="hero panel">
       <div className="hero-copy"><h1 className="brand-title">YUT ONLINE</h1></div>
       {screen === 'game' && <div data-testid="play-timer" className={`play-time ${winner ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}
-      <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><div className="sound-controls" aria-label="효과음 설정"><button className={`sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={() => { const nextEnabled = !soundEnabled; setSoundEnabled(nextEnabled); if (nextEnabled) playSoundEffect('toast', true); }}>{soundEnabled ? '🔊 효과음' : '🔇 효과음'}</button></div><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
+      <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`효과음 ${soundEnabled ? '끄기' : '켜기'}`}>{soundEnabled ? '🔊 효과음' : '🔇 효과음'}</button><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><strong>접속</strong><span>{serverStatus}</span></div></div>
     </section>
 
     {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>대기실 닉네임 수정</h2><p>닉네임은 대기실에서만 변경할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={16} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
