@@ -67,6 +67,65 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-01 - Issue #228 모바일 Game QA 이동 버튼 대기 및 기기전 대기실 잔류
+
+### Symptom
+
+- 모바일 Game QA가 `05 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 `move-piece-button` 활성화 대기 timeout으로 실패했다.
+- 모바일 기기전 QA가 `기기전 07 양쪽 게임 화면 준비 확인` 단계에서 Galaxy 페이지가 `waitingRoom`에 남아 timeout으로 실패했다.
+- 기기전 실패 debug state에는 `pieces`, `turnOrderIds`, `lastAppliedStateVersion`, `lastAppliedSequence`, `canRollNow`가 이미 존재해 게임 상태 구독은 완료된 상태였다.
+
+### Expected behavior
+
+- 윷 결과가 있고 현재 턴 플레이어가 이동 가능한 말이 있으면, 이전 선택 말이 stale이어도 이동 버튼 guard가 현재 턴의 이동 가능한 말로 보정되어야 한다.
+- 온라인 기기전에서 초기 게임 상태가 구독되면 room status snapshot 반영이 늦어도 게임 화면으로 진입해야 한다.
+
+### Actual behavior
+
+- `selectedPieceId`가 이전/다른 플레이어 말인 상태에서는 `selectedPiece`가 없거나 현재 턴 플레이어가 제어할 수 없어 `canMoveSelectedPiece`와 `canRequestMove`가 false가 됐다.
+- `moveSelectedPiece()`에는 fallback movable piece 이동 경로가 있었지만, 버튼이 disabled 상태라 QA와 사용자가 그 클릭 경로에 진입하지 못했다.
+- `subscribeGameState()`는 state 문서를 받아 로컬 게임 상태를 적용했지만, 화면 전환은 room 문서 `status === 'playing'`을 받는 `subscribeRoom()` 경로에 의존했다.
+
+### Suspected root cause
+
+- 선택 말 보정이 클릭 핸들러 내부에만 있어 disabled 계산보다 늦게 실행됐다.
+- 초기 state/current 저장과 room status `playing` 업데이트가 별도 비동기 경로라서, 기기전 한쪽 클라이언트가 state는 받았지만 room status snapshot은 늦게 받는 순간이 있었다.
+
+### Confirmed root cause
+
+- `canRequestMove`는 stale `selectedPieceId`를 fallback으로 보정하지 않고 `canMoveSelectedPiece`를 계산했다.
+- `subscribeGameState()`는 유효한 게임 state를 받아도 `screen`을 `game`으로 바꾸지 않아, `subscribeRoom()`의 status 업데이트가 지연되면 대기실에 남았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #220에서 이동 버튼 클릭 race와 기기전 조작 페이지 선택을 QA helper에서 일부 보강했다.
+  - Why it failed: 클릭 직전/후 race는 분류했지만, 버튼 disabled 원인인 stale selected piece를 앱 상태에서 선제 보정하지 못했다.
+- Attempt 2:
+  - What was changed: Issue #224에서 게임 화면 준비 실패 시 debug state를 수집하도록 QA assertion을 보강했다.
+  - Why it failed: 진단 정보만 늘렸고, state 구독 완료 후 room status 지연으로 화면이 대기실에 남는 앱 경로는 보정하지 않았다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- 이동 버튼 disabled 조건만 임의로 완화하지 않는다.
+- 게임 상태가 이미 구독된 기기전 실패를 단순 room list/로비 문제로 보지 않는다.
+- UI 레이아웃이나 컴포넌트 구조를 바꾸지 않는다.
+
+### Correct fix plan
+
+- 윷 결과가 있고 현재 턴이면, 선택 말이 이동 불가능할 때 현재 턴 플레이어가 이동 가능한 fallback piece로 `selectedPieceId`를 먼저 보정한다.
+- `subscribeGameState()`에서 유효한 게임 state(`pieces`, `turnOrderIds`)를 받았고 현재 화면이 대기실이면 `screen`을 `game`으로 전환해 room status snapshot 지연을 보완한다.
+- 기존 `moveSelectedPiece()` fallback 경로와 authoritative action 처리는 그대로 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No unrelated UI changes
+- [x] No new dependency
+
 ## 2026-07-01 - Issue #226 모바일 기기전 QA roll no-state-change 오분류
 
 ### Symptom
