@@ -1475,3 +1475,66 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Relevant Playwright QA rerun checked (local Playwright browser executable missing)
 - [x] No unrelated UI changes
+
+## 2026-07-01 - Issue #180 모바일 Game QA stale-local-turn-state / pending-remote-action
+
+### Symptom
+
+- PR #179 병합 후 모바일 Game QA의 실제 게임 상태 머신 액션 진행 단계에서 실패했다.
+- QA 분류는 `stale-local-turn-state` 또는 `pending-remote-action`으로 나타났다.
+- 로컬 화면에는 윷 던지기 버튼이 가능한 상태로 보였지만 authoritative 처리 결과는 `지금은 내 차례가 아닙니다.`였다.
+
+### Expected behavior
+
+- host가 AI 자동 턴을 진행한 뒤 다음 사람 턴의 버튼은 Firestore authoritative 상태 저장이 끝난 뒤 활성화되어야 한다.
+- 원격 action은 host의 최신 상태 저장 중에는 처리되지 않고 잠시 retry되어야 한다.
+
+### Actual behavior
+
+- host AI 자동 턴은 로컬 state를 먼저 변경하고 autosave로 Firestore에 반영했다.
+- `canSubmitTurnAction` / `canRollNow`는 host autosave pending 상태를 보지 않아, Firestore가 이전 턴인 동안에도 다음 사람 턴 버튼이 활성화될 수 있었다.
+- 이 상태에서 `commitAuthoritativeGameAction()`이 Firestore 기준 turnIndex를 검증하면 actor mismatch로 reject되었다.
+
+### Reproduction steps
+
+1. 모바일 Game QA를 실행한다.
+2. AI가 포함된 온라인 방에서 AI 자동 턴이 빠르게 진행된다.
+3. host local state는 다음 human turn으로 먼저 바뀌지만 Firestore autosave가 아직 완료되지 않은 순간에 윷 던지기를 누른다.
+4. authoritative reducer가 Firestore의 이전 turnIndex를 기준으로 `지금은 내 차례가 아닙니다.`를 반환하거나 pending remote action이 해소되지 않는다.
+
+### Suspected root cause
+
+- 모바일 WebKit/CI 타이밍에서 host local AI autoplay와 Firestore autosave, 다음 human authoritative action 사이에 race가 있다.
+
+### Confirmed root cause
+
+- `canSubmitTurnAction`은 `activeSeat`, `isMyTurn`, `winner`, turn-order/intro/moving/trap 상태만 보고 host autosave pending 상태를 차단하지 않았다.
+- host의 pending remote action 처리도 저장 중인 local state가 Firestore에 반영되기 전 처리될 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #154에서 stale `turnOrderIntro` 차단 조건과 저장 경로를 보강했다.
+  - Why it failed: 이번 실패의 debug state는 `activeTurnOrderIntro: false`이며, 실제 원인은 intro 고착이 아니라 AI/local autosave와 authoritative transaction 사이의 race였다.
+- Attempt 2:
+  - What was changed: Issue #162/#166에서 QA helper의 stale/pending 분류와 state-advanced 판정을 보강했다.
+  - Why it failed: 테스트 분류는 정확해졌지만 앱의 host autosave pending guard가 없어 실제 race는 남아 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- AI/이동 전체를 한 번에 대규모 리팩터링하지 않는다.
+- `지금은 내 차례가 아닙니다.` reject를 테스트에서 무시하지 않는다.
+
+### Correct fix plan
+
+- host autosave pending 상태를 렌더 state로 노출한다.
+- host autosave pending 중에는 `canSubmitTurnAction`을 차단하고 debug block reason에 `saving-host-state`를 남긴다.
+- host가 원격 action을 처리할 때 저장 중인 local state가 있으면 즉시 처리하지 않고 retry한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No unrelated UI changes
