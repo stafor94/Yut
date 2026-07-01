@@ -1,4 +1,5 @@
-import { BOARD_NODES, getMovePathNodeIds, type BranchChoice } from './board/board';
+import { BOARD_NODES, getMovePathNodeIds, type BoardItem, type BranchChoice } from './board/board';
+import { ITEM_DEFINITIONS, type ItemType } from '../features/items/logic/items';
 import type { YutResult } from './roll';
 
 export type GameCommandType = 'roll_yut' | 'move_piece';
@@ -36,6 +37,8 @@ export type EngineState = {
   trapNodes: EngineTrapNode[];
   shieldedPieceIds: string[];
   branchChoice?: BranchChoice;
+  boardItems?: BoardItem[];
+  ownedItems?: Record<string, ItemType[]>;
 };
 
 export type TurnActionGuardInput = {
@@ -204,6 +207,8 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
     : piece);
   let nextTrapNodes = [...(state.trapNodes ?? [])];
   let nextShieldedPieceIds = [...(state.shieldedPieceIds ?? [])];
+  let nextBoardItems = [...(state.boardItems ?? [])];
+  let nextOwnedItems = { ...((state.ownedItems ?? {}) as Record<string, ItemType[]>) };
   let captured = false;
 
   const steppedOnTrap = nextTrapNodes.find((trap) => trap.nodeId === currentNodeId && !isSameSide(trap.ownerId, actorId, playMode, sides));
@@ -222,6 +227,15 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
       currentNodeId = 'n01';
       pushLog(`${actorLogName} 말이 함정을 밟아 시작점으로 돌아갑니다.`);
     }
+  }
+
+  const landedItem = currentNodeId !== 'finish' ? nextBoardItems.find((item) => item.nodeId === currentNodeId) : undefined;
+  if (landedItem) {
+    const currentItems = [...(nextOwnedItems[actorId] ?? [])];
+    if (currentItems.length >= 1) currentItems.shift();
+    nextOwnedItems = { ...nextOwnedItems, [actorId]: [...currentItems, landedItem.type] };
+    nextBoardItems = nextBoardItems.filter((item) => item.id !== landedItem.id);
+    pushLog(`${actorLogName}이(가) 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 획득했습니다.`);
   }
 
   if (currentNodeId !== 'finish') {
@@ -258,6 +272,8 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
       roll: null,
       trapNodes: nextTrapNodes,
       shieldedPieceIds: nextShieldedPieceIds,
+      boardItems: nextBoardItems,
+      ownedItems: nextOwnedItems,
       logs: nextLogs,
       lastMovedPieceIds: movingGroupIds,
       lastMovedSeatId: actorId,
