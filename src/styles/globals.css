@@ -3602,4 +3602,24 @@ aside.players,
 .sound-controls.sound-toggle {
   justify-content: center;
   min-height: 40px;
+  border: 1px solid rgba(42, 30, 23, .1);
+  background: rgba(42, 30, 23, .1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+
+.sound-controls.sound-toggle.active {
+  background: linear-gradient(135deg, var(--green), #3d8d68);
+  color: #fff;
+}
+
+/* Portrait game board: reserve a bench under the board for pieces that have not entered or have finished. */
+@media (orientation: portrait) {
+  .game-shell .board {
+    margin-bottom: 104px;
+  }
+
+  .game-shell .piece-token.off-board {
+    left: var(--portrait-bench-left) !important;
+    top: calc(100% + var(--portrait-bench-top)) !important;
+  }
 }
