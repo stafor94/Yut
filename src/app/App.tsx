@@ -87,7 +87,7 @@ const TURN_ACTION_TIMEOUT_MS = 15000;
 const MAX_OWNED_ITEMS = 1;
 const ITEM_PICKUP_ROLL_LOCK_MS = 3000;
 const TRAP_EFFECT_MS = 3000;
-const AI_MOVE_DELAY_MS = 1000;
+const AI_MOVE_DELAY_MS = Math.max(ROLL_ANIMATION_MS, ROLL_RESULT_HOLD_MS);
 const AUTO_SINGLE_MOVE_DELAY_MS = 1000;
 const CREATE_ROOM_TIMEOUT_MS = 12000;
 const CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;
@@ -2298,25 +2298,26 @@ export function App() {
   function renderTurnOrderIntroOverlay() {
     if (!activeTurnOrderIntro?.visible) return null;
     const slotUntil = activeTurnOrderIntro.slotUntil ?? activeTurnOrderIntro.readyAt - TURN_ORDER_FINAL_HOLD_MS;
-    const isSlotAnimating = turnOrderClock < slotUntil;
+    const slotStartedAt = slotUntil - TURN_ORDER_REVEAL_MS;
     const order = activeTurnOrderIntro.order ?? [];
+    const revealStepMs = order.length ? TURN_ORDER_REVEAL_MS / order.length : TURN_ORDER_REVEAL_MS;
+    const stoppedCount = Math.min(order.length, Math.max(0, Math.floor((turnOrderClock - slotStartedAt) / revealStepMs)));
+    const isSlotAnimating = stoppedCount < order.length;
     const slotRows = order.length ? Array.from({ length: 10 }, (_, rowIndex) => order[rowIndex % order.length]) : [];
-    return <div className={`turn-order-ready-overlay ${isSlotAnimating ? 'slot-machine' : 'final'}`} role="status" aria-live="assertive">
+    return <div className="turn-order-ready-overlay slot-machine" role="status" aria-live="assertive">
       <span>순서 정하기</span>
-      {isSlotAnimating ? <>
-        <strong>순서를 섞는 중...</strong>
-        <div className="turn-order-slot-list" aria-hidden="true">
-          {order.map((entry, columnIndex) => <div className="turn-order-slot-window" key={entry.seatId} style={{ '--slot-index': columnIndex } as CSSProperties}>
-            <div className="turn-order-slot-reel">
+      {isSlotAnimating && <strong>순서를 섞는 중...</strong>}
+      <div className="turn-order-slot-list" aria-hidden="true">
+        {order.map((entry, columnIndex) => {
+          const isStopped = columnIndex < stoppedCount;
+          return <div className={`turn-order-slot-window ${isStopped ? 'stopped' : ''}`} key={entry.seatId} style={{ '--slot-index': columnIndex } as CSSProperties}>
+            {isStopped ? <span className="turn-order-slot-card final-card" style={{ color: entry.color, borderColor: entry.color }}>{columnIndex + 1}. {entry.label}-{entry.name}</span> : <div className="turn-order-slot-reel">
               {slotRows.map((slotEntry, rowIndex) => <span className="turn-order-slot-card" style={{ color: slotEntry.color, borderColor: slotEntry.color }} key={`${entry.seatId}-${slotEntry.seatId}-${rowIndex}`}>{slotEntry.label}-{slotEntry.name}</span>)}
-            </div>
-          </div>)}
-        </div>
-        <p>{Math.max(1, Math.ceil((slotUntil - turnOrderClock) / 1000))}초 뒤 최종 순서가 공개됩니다.</p>
-      </> : <>
-        <strong className="turn-order-final-list">{order.map((entry, index) => <span className="turn-order-final-card" style={{ color: entry.color, borderColor: entry.color }} key={entry.seatId}>{index + 1}. {entry.label}-{entry.name}</span>)}</strong>
-        <p>최종 순서가 정해졌습니다.</p>
-      </>}
+            </div>}
+          </div>;
+        })}
+      </div>
+      {isSlotAnimating && <p>{Math.max(1, Math.ceil((slotUntil - turnOrderClock) / 1000))}초 뒤 모든 순서가 공개됩니다.</p>}
     </div>;
   }
 

@@ -3718,8 +3718,8 @@ aside.players,
 
 .turn-order-slot-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .turn-order-slot-window {
@@ -3729,6 +3729,13 @@ aside.players,
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 243, 216, .55), rgba(255, 255, 255, .92), rgba(255, 243, 216, .55));
   box-shadow: inset 0 8px 18px rgba(42, 30, 23, .12), inset 0 -8px 18px rgba(42, 30, 23, .08);
+}
+
+.turn-order-slot-window.stopped {
+  display: grid;
+  place-items: center;
+  background: rgba(255, 248, 234, .92);
+  box-shadow: 0 8px 18px rgba(242, 184, 75, .18);
 }
 
 .turn-order-slot-reel {
@@ -3751,8 +3758,28 @@ aside.players,
   white-space: nowrap;
 }
 
+.turn-order-slot-card.final-card {
+  width: calc(100% - 16px);
+  animation: turn-order-final-pop .22s ease-out both;
+}
+
 .turn-order-ready-overlay.final {
   animation: turn-order-final-pop .28s ease-out both;
+}
+
+@media (max-width: 520px) {
+  .turn-order-slot-list {
+    gap: 10px;
+  }
+
+  .turn-order-slot-window {
+    height: 62px;
+  }
+
+  .turn-order-slot-card {
+    min-height: 46px;
+    font-size: clamp(.8rem, 3.4vw, 1rem);
+  }
 }
 
 @keyframes turn-order-slot-spin {

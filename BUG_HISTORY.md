@@ -67,6 +67,60 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-01 - AI 윷 애니메이션 종료 전 말 이동
+
+### Symptom
+
+- AI 플레이어가 윷을 던진 뒤 윷 던지기 애니메이션이 끝나기도 전에 바로 말을 이동했다.
+
+### Expected behavior
+
+- AI도 사람 플레이어와 동일하게 윷 결과 확인/애니메이션 시간이 끝난 뒤 말을 이동해야 한다.
+
+### Actual behavior
+
+- AI 자동 턴은 윷을 던진 뒤 1초만 기다리고 말을 이동했다.
+- 일반 윷 애니메이션과 결과 확인 시간은 2.6초라서, 약 1.6초 동안 애니메이션이 남아 있는데 이동이 시작될 수 있었다.
+
+### Reproduction steps
+
+1. AI가 포함된 게임을 시작한다.
+2. AI 차례가 되어 윷을 던지게 둔다.
+3. 윷 던지기 애니메이션이 끝나기 전에 AI 말 이동이 시작되는지 확인한다.
+
+### Suspected root cause
+
+- AI 이동 지연값이 윷 애니메이션/결과 확인 시간과 별도로 고정되어 있었다.
+
+### Confirmed root cause
+
+- `AI_MOVE_DELAY_MS`가 1000ms였고, `ROLL_ANIMATION_MS`와 `ROLL_RESULT_HOLD_MS`는 2600ms였다.
+- `autoPlayTurn()`은 `AI_MOVE_DELAY_MS`만 기다린 뒤 `movePiece()`를 호출했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 이전 응답에서는 소스 분석만 수행했다.
+  - Why it failed: 실제 코드 변경이 없어 증상이 계속 남았다.
+
+### Do not try again
+
+- AI 이동 지연을 윷 애니메이션 시간보다 짧게 유지하지 않는다.
+- 사람 플레이어 이동 guard만 수정하고 AI 자동 이동 경로를 방치하지 않는다.
+- CSS 애니메이션만 조정해서 해결하려고 하지 않는다.
+
+### Correct fix plan
+
+- AI 이동 지연을 윷 애니메이션 시간과 결과 확인 시간 중 더 긴 값에 맞춘다.
+- 순서 정하기 슬롯머신 수정과 분리된 최소 상수 변경으로 처리한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] AI 포함 게임에서 브라우저 시각 확인
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
 ## 2026-07-01 - Issue #230 반복 윷 던지기/기기전 실패 진단 경로 고정
 
 ### Symptom
