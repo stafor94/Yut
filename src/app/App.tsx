@@ -221,6 +221,7 @@ export function App() {
   const [soundEnabled, setSoundEnabled] = useState(() => getStoredBoolean(STORAGE_KEYS.soundEnabled, true));
   const [message, setMessage] = useState('');
   const [actionErrorDialog, setActionErrorDialog] = useState('');
+  const [lastActionDiagnostic, setLastActionDiagnostic] = useState<{ type: string; message: string; reasons: string[]; createdAt: number } | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [screen, setScreen] = useState<Screen>('lobby');
   const [activeRoomTitle, setActiveRoomTitle] = useState('');
@@ -455,6 +456,8 @@ export function App() {
       teamBalanced,
       seats: seats.map((seat) => ({ id: seat.id, label: seat.label, ready: seat.ready, isAI: seat.isAI, isEmpty: seat.isEmpty, isHost: seat.isHost, team: seat.team })),
       message,
+      actionErrorDialog,
+      lastActionDiagnostic,
       turnOrderIds,
       roll,
       rollInProgress,
@@ -490,7 +493,7 @@ export function App() {
       selectedPieceId,
       selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
     };
-  }, [activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canHostRoom, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, isMyTurn, isRollLocked, isRemoteActionClient, isRoomHost, localSeatId, message, moveActionBlockReasons, movingPieceId, pieces, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, trapPlacementActive, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase.active, winner, lastMovedSeatId, lastMovedPieceIds]);
+  }, [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canHostRoom, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, isMyTurn, isRollLocked, isRemoteActionClient, isRoomHost, lastActionDiagnostic, localSeatId, message, moveActionBlockReasons, movingPieceId, pieces, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, trapPlacementActive, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase.active, winner, lastMovedSeatId, lastMovedPieceIds]);
 
 
   useEffect(() => () => {
@@ -1683,21 +1686,31 @@ export function App() {
     addLog(`${seat.label}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
   }
-  function showRollError(messageText: string) {
+  function reportTurnActionBlocked(type: 'roll_yut' | 'move_piece', reasons: string[], fallbackMessage: string) {
+    const normalizedReasons = reasons.length ? reasons : ['unknown'];
+    const messageText = `${fallbackMessage}: ${normalizedReasons.join(', ')}`;
+    setLastActionDiagnostic({ type, message: messageText, reasons: normalizedReasons, createdAt: Date.now() });
+    setMessage(messageText);
+    setActionErrorDialog(messageText);
+  }
+  function reportTurnActionFailure(type: 'roll_yut' | 'move_piece', messageText: string, reasons: string[] = []) {
+    setLastActionDiagnostic({ type, message: messageText, reasons, createdAt: Date.now() });
     setMessage(messageText);
     setActionErrorDialog(messageText);
   }
 
   function rollYut() {
     if (!activeSeat || !canRollNow) {
-      const reasons = rollActionBlockReasons.length ? rollActionBlockReasons.join(', ') : 'unknown';
-      showRollError(`윷 던지기를 진행할 수 없습니다: ${reasons}`);
+      reportTurnActionBlocked('roll_yut', rollActionBlockReasons, '윷 던지기를 진행할 수 없습니다');
       return;
     }
     if (activeRoomId) {
       const rollPayload = forcedRoll ? { forcedResult: forcedRoll } : {};
       const actionKey = `${getLocalActionKey('roll_yut', rollPayload)}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-      if (pendingLocalRemoteActionsRef.current.has(actionKey)) return;
+      if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
+        reportTurnActionBlocked('roll_yut', ['pending-local-remote-action'], '이미 윷 던지기 요청을 처리 중입니다');
+        return;
+      }
       pendingLocalRemoteActionsRef.current.add(actionKey);
       setRollInProgress(true);
       rollInProgressRef.current = true;
@@ -1713,7 +1726,7 @@ export function App() {
       if (!canHostRoom) {
         void submitRemoteAction('roll_yut', { ...rollPayload, clientActionId: actionKey })
           .catch((error) => {
-            showRollError(error instanceof Error ? error.message : '윷 던지기 요청을 보내지 못했습니다.');
+            reportTurnActionFailure('roll_yut', error instanceof Error ? error.message : '윷 던지기 요청을 보내지 못했습니다.');
             finishPendingRoll();
           });
         setForcedRoll(null);
@@ -1723,7 +1736,7 @@ export function App() {
       void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) })
         .then((result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') {
-            showRollError(result.reason ?? '윷 던지기 처리에 실패했습니다.');
+            reportTurnActionFailure('roll_yut', result.reason ?? '윷 던지기 처리에 실패했습니다.');
             return;
           }
           if (result.status === 'committed') {
@@ -1739,7 +1752,7 @@ export function App() {
             }
           }
         })
-        .catch((error) => showRollError(error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.'))
+        .catch((error) => reportTurnActionFailure('roll_yut', error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.'))
         .finally(finishPendingRoll);
       setForcedRoll(null);
       return;
@@ -1894,7 +1907,10 @@ export function App() {
   }
 
   function moveSelectedPiece(extraSteps = 0) {
-    if (!roll || !activeSeat || !canRequestMove) return false;
+    if (!roll || !activeSeat || !canRequestMove) {
+      reportTurnActionBlocked('move_piece', moveActionBlockReasons, '말 이동을 진행할 수 없습니다');
+      return false;
+    }
     const steps = roll.steps + extraSteps;
     const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
     const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId && canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
@@ -1908,21 +1924,24 @@ export function App() {
         branchChoice: getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', branchChoice),
       };
       const actionKey = getLocalActionKey('move_piece', payload);
-      if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
+      if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
+        reportTurnActionBlocked('move_piece', ['pending-local-remote-action'], '이미 말 이동 요청을 처리 중입니다');
+        return false;
+      }
       pendingLocalRemoteActionsRef.current.add(actionKey);
       if (!canHostRoom) {
         void submitRemoteAction('move_piece', { ...payload, clientActionId: actionKey })
           .catch((error) => {
-            setMessage(error instanceof Error ? error.message : '말 이동 요청을 보내지 못했습니다.');
+            reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 요청을 보내지 못했습니다.');
             pendingLocalRemoteActionsRef.current.delete(actionKey);
           });
         return true;
       }
       void commitAuthoritativeGameAction(activeRoomId, { type: 'move_piece', actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) })
         .then((result) => {
-          if (result.status === 'rejected' || result.status === 'unsupported') setMessage(result.reason ?? '말 이동 처리에 실패했습니다.');
+          if (result.status === 'rejected' || result.status === 'unsupported') reportTurnActionFailure('move_piece', result.reason ?? '말 이동 처리에 실패했습니다.');
         })
-        .catch((error) => setMessage(error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'))
+        .catch((error) => reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'))
         .finally(() => pendingLocalRemoteActionsRef.current.delete(actionKey));
       return true;
     }
