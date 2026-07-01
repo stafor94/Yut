@@ -3711,3 +3711,56 @@ aside.players,
   z-index: 2;
   pointer-events: auto;
 }
+
+.turn-order-ready-overlay.slot-machine {
+  overflow: hidden;
+}
+
+.turn-order-slot-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.turn-order-slot-window {
+  height: 68px;
+  overflow: hidden;
+  border: 2px solid rgba(242, 184, 75, .75);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 243, 216, .55), rgba(255, 255, 255, .92), rgba(255, 243, 216, .55));
+  box-shadow: inset 0 8px 18px rgba(42, 30, 23, .12), inset 0 -8px 18px rgba(42, 30, 23, .08);
+}
+
+.turn-order-slot-reel {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  animation: turn-order-slot-spin 0.55s linear infinite;
+  animation-delay: calc(var(--slot-index, 0) * -0.09s);
+}
+
+.turn-order-slot-card {
+  display: grid;
+  place-items: center;
+  min-height: 52px;
+  border: 2px solid currentColor;
+  border-radius: 14px;
+  background: rgba(255, 248, 234, .96);
+  font-size: clamp(.95rem, 2.4vw, 1.25rem);
+  font-weight: 1000;
+  white-space: nowrap;
+}
+
+.turn-order-ready-overlay.final {
+  animation: turn-order-final-pop .28s ease-out both;
+}
+
+@keyframes turn-order-slot-spin {
+  from { transform: translateY(0); }
+  to { transform: translateY(-60px); }
+}
+
+@keyframes turn-order-final-pop {
+  from { opacity: .55; transform: scale(.96); }
+  to { opacity: 1; transform: scale(1); }
+}
