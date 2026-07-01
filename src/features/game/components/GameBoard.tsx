@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { BoardItem, BoardNode, BranchChoice } from '../../../game-core/board/board';
 import { BOARD_NODES } from '../../../game-core/board/board';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
@@ -35,18 +36,31 @@ type GameBoardProps = {
   isPieceSelectable?: (piece: BoardPiece) => boolean;
 };
 
+function getOffBoardPieceStyle(piece: BoardPiece, pieces: BoardPiece[], ownerIndex: number, ownerOrder: number, desktopTop: number) {
+  const portraitColumn = ownerOrder % 2;
+  const portraitRow = Math.floor(ownerOrder / 2);
+  return {
+    left: `${112 + ownerIndex * 8}%`,
+    top: `${desktopTop}%`,
+    background: piece.color,
+    translate: '-50% -50%',
+    '--portrait-bench-left': `${16 + portraitColumn * 48 + ownerIndex * 8}%`,
+    '--portrait-bench-top': `${34 + portraitRow * 44}px`,
+  } as CSSProperties;
+}
+
 function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = '') {
   if (!piece.started && !piece.finished && movingPieceId !== piece.id) {
     const ownerPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && !candidate.started && !candidate.finished);
     const ownerIndex = Math.max(0, ownerPieces.findIndex((candidate) => candidate.id === piece.id));
     const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
-    return { left: `${112 + ownerIndex * 8}%`, top: `${20 + Math.max(0, ownerOrder) * 15}%`, background: piece.color, translate: '-50% -50%' };
+    return getOffBoardPieceStyle(piece, pieces, ownerIndex, Math.max(0, ownerOrder), 20 + Math.max(0, ownerOrder) * 15);
   }
   if (piece.finished) {
     const finishedPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && candidate.finished);
     const finishedIndex = Math.max(0, finishedPieces.findIndex((candidate) => candidate.id === piece.id));
     const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
-    return { left: `${112 + finishedIndex * 8}%`, top: `${72 + Math.max(0, ownerOrder) * 7}%`, background: piece.color, translate: '-50% -50%' };
+    return getOffBoardPieceStyle(piece, pieces, finishedIndex, Math.max(0, ownerOrder), 72 + Math.max(0, ownerOrder) * 7);
   }
   const node: BoardNode | undefined = BOARD_NODES.find((candidate) => candidate.id === piece.nodeId) ?? BOARD_NODES[piece.nodeIndex] ?? BOARD_NODES[0];
   const stackedPieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished);
@@ -86,7 +100,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
       type="button"
       data-testid={`piece-${piece.id}`}
       key={piece.id}
-      className={`piece-token ${selectedIds.includes(piece.id) ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
+      className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${selectedIds.includes(piece.id) ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
       style={getPieceStyle(piece, pieces, movingPieceId)}
       onClick={() => onSelectPiece(piece.id)}
       disabled={piece.finished || isPieceSelectable?.(piece) === false}
