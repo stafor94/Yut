@@ -3249,3 +3249,124 @@ aside.players,
     display: none;
   }
 }
+
+/* Mobile portrait game layout: keep the game header compact and prevent board-side overflow. */
+@media (orientation: portrait) {
+  .game-shell .hero {
+    grid-template-columns: repeat(4, minmax(0, auto));
+    justify-content: stretch;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .game-shell .hero-copy {
+    grid-column: 1 / -1;
+    justify-self: start;
+    max-width: 100%;
+  }
+
+  .game-shell .brand-title {
+    margin: 0;
+  }
+
+  .game-shell .play-time {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+    min-width: 0;
+    padding: 7px 9px;
+    font-size: clamp(.68rem, 2.7vw, .86rem);
+    white-space: nowrap;
+  }
+
+  .game-shell .hero-actions {
+    display: contents;
+  }
+
+  .game-shell .nickname-chip {
+    grid-column: 2;
+    grid-row: 2;
+    min-width: 0;
+    width: 100%;
+    padding: 7px 8px;
+    font-size: clamp(.68rem, 2.7vw, .84rem);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .game-shell .sound-controls {
+    grid-column: 3;
+    grid-row: 2;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .game-shell .sound-toggle {
+    width: 100%;
+    padding: 7px 8px;
+    font-size: clamp(.68rem, 2.7vw, .84rem);
+    white-space: nowrap;
+  }
+
+  .game-shell .status-card {
+    grid-column: 4;
+    grid-row: 2;
+    justify-self: end;
+    min-width: 0;
+    width: 100%;
+    padding: 7px 8px;
+    gap: 5px;
+    font-size: clamp(.66rem, 2.6vw, .82rem);
+    white-space: nowrap;
+  }
+
+  .game-shell .status-dot {
+    width: 7px;
+    height: 7px;
+    box-shadow: 0 0 0 3px rgba(47, 107, 79, .14);
+  }
+
+  .game-shell .status-dot.pending {
+    box-shadow: 0 0 0 3px rgba(242, 184, 75, .18);
+  }
+
+  .game-shell .status-dot.offline {
+    box-shadow: 0 0 0 3px rgba(217, 74, 56, .14);
+  }
+
+  .game-shell .board-panel {
+    overflow-x: clip;
+  }
+
+  .game-shell .board {
+    width: min(82vw, 52svh, 480px);
+  }
+
+  .game-shell .side h2 {
+    font-size: clamp(1.35rem, 5vw, 1.75rem);
+    margin-bottom: 10px;
+  }
+
+  .game-shell .log-list {
+    gap: 6px;
+  }
+
+  .game-shell .log-list p {
+    padding: 8px 10px;
+    font-size: clamp(.82rem, 3.2vw, .95rem);
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 430px) and (orientation: portrait) {
+  .game-shell .hero {
+    grid-template-columns: minmax(3.8rem, .72fr) minmax(0, 1fr) minmax(4.6rem, .9fr) minmax(4.35rem, .82fr);
+    padding: 12px;
+    gap: 6px;
+  }
+
+  .game-shell .board {
+    width: min(74vw, 46svh, 340px);
+  }
+}
