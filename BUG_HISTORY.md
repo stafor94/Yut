@@ -98,6 +98,9 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 - Attempt 2:
   - What was changed: `.player-mobile-line`과 viewport meta를 추가했다.
   - Why it failed: 플레이어 카드 세로모드 규칙이 여전히 `max-width: 900px` 조건에 묶여 실제 화면에서 적용되지 않는 경우가 남았다.
+- Attempt 3:
+  - What was changed: 기존 모바일 규칙 뒤에 `aside.players` 대상 `!important` 보강 CSS를 추가했다.
+  - Why it failed: 이미 같은 목적의 `.player-mobile-line` 모바일 규칙이 존재했는데 실제 DOM/CSS 적용 경로를 확인하지 않고 중복 규칙만 덧붙였다. 스크린샷처럼 모바일 요약과 기존 P라벨/배지/상태가 같이 보이는 상태는 플레이어 카드 내부 요소를 명확히 분리해 타겟하지 않으면 재발할 수 있다.
 
 ### Do not try again
 
@@ -105,12 +108,16 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 - `orientation` 조건에만 의존하거나 `max-width` fallback을 방치해서 모바일 게임 화면 플레이어 카드 규칙을 적용하지 않는다.
 - JSX에서 `P1` 라벨과 `P1-이름`을 동시에 출력하지 않는다.
 - 실제 적용 여부 확인 없이 “수정 완료”라고 보고하지 않는다.
+- 이미 존재하는 모바일 규칙 뒤에 같은 내용의 `!important` 보강 블록만 추가하지 않는다.
 
 ### Correct fix plan
 
 - 게임 화면의 플레이어 카드 한 줄 요약 규칙을 `@media (orientation: portrait), (max-width: 767px)` 기준으로 적용한다.
 - 기본 이름 문자열에서는 P라벨을 제거해 fallback 상태에서도 P라벨이 한 번만 보이게 한다.
 - 기존 데스크톱/가로모드 표시는 유지한다.
+- 게임 화면 플레이어 패널과 카드 내부 요소에 전용 클래스를 부여해 로비/대기실의 `.players`, `.player` 규칙과 섞이지 않게 한다.
+- 중복 `!important` 보강 블록을 제거하고, 한 곳의 모바일 규칙에서 전용 클래스만 타겟한다.
+- 수정 후 빌드뿐 아니라 모바일 브라우저/Playwright viewport에서 실제 DOM computed style을 확인한다.
 
 ### Verification checklist
 
