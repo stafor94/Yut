@@ -218,6 +218,7 @@ export function App() {
   const [pieceCount, setPieceCount] = useState<PieceCount>(() => getStoredNumber(STORAGE_KEYS.pieceCount, 4, [1, 2, 3, 4] as const));
   const [soundEnabled, setSoundEnabled] = useState(() => getStoredBoolean(STORAGE_KEYS.soundEnabled, true));
   const [message, setMessage] = useState('');
+  const [loadingMessage, setLoadingMessage] = useState('');
   const [screen, setScreen] = useState<Screen>('lobby');
   const [activeRoomTitle, setActiveRoomTitle] = useState('');
   const [activeRoomId, setActiveRoomId] = useState('');
@@ -555,7 +556,7 @@ export function App() {
     const storedRoomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId);
     if (!storedRoomId) return;
     let cancelled = false;
-    setMessage('새로고침 전 참여 중이던 방을 확인하고 있습니다...');
+    setLoadingMessage('새로고침 전 참여 중이던 방을 확인하고 있습니다...');
     void (async () => {
       try {
         const storedRoom = await getRoom(storedRoomId);
@@ -563,6 +564,7 @@ export function App() {
         if (!storedRoom || storedRoom.status === 'finished') {
           window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
           window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+          setLoadingMessage('');
           setMessage('이전에 참여했던 방이 없어져 대기화면으로 돌아왔습니다.');
           return;
         }
@@ -589,6 +591,7 @@ export function App() {
           setSeats(createSeats(nickname, storedRoom.playMode, restoredMaxPlayers).map((seat) => seat.isHost ? { ...seat, id: currentUser.uid } : seat));
         }
         setScreen(storedRoom.status === 'playing' ? 'game' : 'waitingRoom');
+        setLoadingMessage('');
         setMessage('새로고침 전 참여 중이던 방을 복구했습니다.');
       } catch (error) {
         if (cancelled) return;
@@ -599,6 +602,7 @@ export function App() {
         setIsRoomHost(false);
         setActiveRoomTitle('');
         setScreen('lobby');
+        setLoadingMessage('');
         setMessage(error instanceof Error ? error.message : '이전 방 복구에 실패했습니다. 다시 참가해주세요.');
       }
     })();
@@ -1190,7 +1194,8 @@ export function App() {
     if (!nickname.trim()) { setMessage('닉네임을 먼저 정해주세요.'); return; }
     if (isCreatingRoom) return;
     setIsCreatingRoom(true);
-    setMessage(isFirebaseConfigured && !currentUser ? '입장 준비를 마친 뒤 방을 만드는 중입니다...' : '방을 만드는 중입니다. 잠시만 기다려주세요...');
+    setMessage('');
+    setLoadingMessage(isFirebaseConfigured && !currentUser ? '입장 준비를 마친 뒤 방을 만드는 중입니다...' : '방을 만드는 중입니다. 잠시만 기다려주세요...');
     let roomHost = userRef.current ?? currentUser;
     try {
       const timeout = new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('CREATE_ROOM_TIMEOUT')), CREATE_ROOM_TIMEOUT_MS));
@@ -1210,14 +1215,16 @@ export function App() {
       await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers: roomMaxPlayers, playMode, pieceCount }, '', true, roomHost);
     } catch (error) {
       if (isFirebaseConfigured && roomHost && error instanceof Error && error.message === 'CREATE_ROOM_TIMEOUT') {
-        setMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
+        setLoadingMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
         const recoveredRoom = await findActiveRoomByHost(roomHost.uid);
         if (recoveredRoom) {
           await openWaitingRoom(recoveredRoom, '방 생성은 완료되어 대기실로 이동했습니다.', true, roomHost);
         } else {
+          setLoadingMessage('');
           setMessage('방 만들기 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.');
         }
       } else {
+        setLoadingMessage('');
         setMessage(error instanceof Error ? error.message : '방 생성에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
       }
     } finally {
@@ -1226,7 +1233,7 @@ export function App() {
   }
 
   async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & { id?: string }, nextMessage = '', asHost = false, hostUserOverride: User | null = null) {
-    setMessage('방으로 이동하는 중입니다...');
+    setLoadingMessage('방으로 이동하는 중입니다...');
     const nextMaxPlayers = room.maxPlayers as 2 | 3 | 4;
     try {
       const roomUser = asHost && hostUserOverride ? hostUserOverride : userRef.current ?? currentUser;
@@ -1258,6 +1265,7 @@ export function App() {
         setSeats(nextSeats);
       }
       setScreen(room.id && !asHost && 'status' in room && (room as RoomSummary).status === 'playing' ? 'game' : 'waitingRoom');
+      setLoadingMessage('');
       setMessage(nextMessage);
     } catch (error) {
       hostingRoomUserIdRef.current = '';
@@ -1266,6 +1274,7 @@ export function App() {
       setActiveRoomTitle('');
       setActiveRoomHostId('');
       setScreen('lobby');
+      setLoadingMessage('');
       setMessage(error instanceof Error ? error.message : '방 참가에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
     }
   }
@@ -2108,6 +2117,8 @@ export function App() {
       {screen === 'game' && <div data-testid="play-timer" className={`play-time ${winner ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}
       <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`효과음 ${soundEnabled ? '끄기' : '켜기'}`}><span aria-hidden="true">{soundEnabled ? '🔊 효과음' : '🔇 효과음'}</span></button><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><span>{serverStatus}</span></div></div>
     </section>
+
+    {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{loadingMessage}</p></section></div>}
 
     {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>대기실 닉네임 수정</h2><p>닉네임은 대기실에서만 변경할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={16} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
 
