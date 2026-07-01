@@ -5,7 +5,7 @@ import { rollYutResult, type YutResult } from '../../../game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 
 export interface RoomSummary {
-  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number;
+  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; startCountdownUntil?: number;
 }
 
 const getCreatedAtMillis = (createdAt: unknown) => {
@@ -704,7 +704,12 @@ export async function removeRoomPlayer(roomId: string, playerId: string) {
 
 export async function updateRoomStatus(roomId: string, status: RoomSummary['status']) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
-  await updateDoc(doc(db, 'rooms', roomId), { status });
+  await updateDoc(doc(db, 'rooms', roomId), { status, ...(status === 'playing' ? { startCountdownUntil: 0 } : {}) });
+}
+
+export async function updateRoomStartCountdown(roomId: string, startCountdownUntil: number) {
+  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  await updateDoc(doc(db, 'rooms', roomId), { startCountdownUntil });
 }
 
 export async function deleteRoom(roomId: string) {
