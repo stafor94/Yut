@@ -220,6 +220,7 @@ export function App() {
   const [pieceCount, setPieceCount] = useState<PieceCount>(() => getStoredNumber(STORAGE_KEYS.pieceCount, 4, [1, 2, 3, 4] as const));
   const [soundEnabled, setSoundEnabled] = useState(() => getStoredBoolean(STORAGE_KEYS.soundEnabled, true));
   const [message, setMessage] = useState('');
+  const [actionErrorDialog, setActionErrorDialog] = useState('');
   const [loadingMessage, setLoadingMessage] = useState('');
   const [screen, setScreen] = useState<Screen>('lobby');
   const [activeRoomTitle, setActiveRoomTitle] = useState('');
@@ -1669,10 +1670,15 @@ export function App() {
     addLog(`${seat.label}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
   }
+  function showRollError(messageText: string) {
+    setMessage(messageText);
+    setActionErrorDialog(messageText);
+  }
+
   function rollYut() {
     if (!activeSeat || !canRollNow) {
       const reasons = rollActionBlockReasons.length ? rollActionBlockReasons.join(', ') : 'unknown';
-      setMessage(`윷 던지기를 진행할 수 없습니다: ${reasons}`);
+      showRollError(`윷 던지기를 진행할 수 없습니다: ${reasons}`);
       return;
     }
     if (activeRoomId) {
@@ -1694,7 +1700,7 @@ export function App() {
       if (!canHostRoom) {
         void submitRemoteAction('roll_yut', { ...rollPayload, clientActionId: actionKey })
           .catch((error) => {
-            setMessage(error instanceof Error ? error.message : '윷 던지기 요청을 보내지 못했습니다.');
+            showRollError(error instanceof Error ? error.message : '윷 던지기 요청을 보내지 못했습니다.');
             finishPendingRoll();
           });
         setForcedRoll(null);
@@ -1704,7 +1710,7 @@ export function App() {
       void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) })
         .then((result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') {
-            setMessage(result.reason ?? '윷 던지기 처리에 실패했습니다.');
+            showRollError(result.reason ?? '윷 던지기 처리에 실패했습니다.');
             return;
           }
           if (result.status === 'committed') {
@@ -1720,7 +1726,7 @@ export function App() {
             }
           }
         })
-        .catch((error) => setMessage(error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.'))
+        .catch((error) => showRollError(error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.'))
         .finally(finishPendingRoll);
       setForcedRoll(null);
       return;
@@ -2147,6 +2153,8 @@ export function App() {
     </section>
 
     {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
+
+    {actionErrorDialog && <div className="modal-backdrop" role="presentation" onMouseDown={() => setActionErrorDialog('')}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label="액션 오류" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">오류</p><h2>요청을 처리할 수 없습니다</h2><p>{actionErrorDialog}</p><div className="modal-actions"><button onClick={() => setActionErrorDialog('')}>확인</button></div></section></div>}
 
     {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>대기실 닉네임 수정</h2><p>닉네임은 대기실에서만 변경할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={16} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
 
