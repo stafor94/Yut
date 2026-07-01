@@ -67,6 +67,67 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-01 - Issue #224 모바일 기기전 QA 게임 화면 전환 timeout
+
+### Symptom
+
+- Issue #224에서 모바일 기기전 QA가 `기기전 07 양쪽 게임 화면 준비 확인` 단계에서 실패했다.
+- iPad 페이지의 `game-screen`이 10초 안에 보이지 않아 `expectTwoPlayerGameReady()`의 `toBeVisible()` assertion이 timeout 됐다.
+- 같은 실패 로그에 Firestore `Commit` 요청의 `failed-precondition`/400 오류와 `expectedPreviousSequence` 값이 포함되어 있었다.
+
+### Expected behavior
+
+- 시작 버튼 클릭 이후 초기 게임 상태 저장과 room status 전환이 완료되어 iPad/Galaxy 양쪽이 게임 화면으로 진입해야 한다.
+- 게임 화면 진입이 지연되거나 실패하면 QA 실패 메시지에 현재 화면, 대기실 잔류 여부, 앱 메시지, debug state가 포함되어야 한다.
+
+### Actual behavior
+
+- 기존 `expectTwoPlayerGameReady()`는 `game-screen` visibility만 기다렸기 때문에, 실패 시 페이지가 대기실에 남았는지, room status 전환이 늦었는지, 초기 저장/sequence mismatch가 있었는지 확인할 정보가 부족했다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. Galaxy가 준비 완료를 누른 뒤 iPad가 시작 버튼을 클릭한다.
+3. `기기전 07 양쪽 게임 화면 준비 확인`에서 iPad와 Galaxy의 `game-screen` 전환을 확인한다.
+4. iPad 페이지가 10초 안에 `game-screen`을 표시하지 못하면 timeout으로 실패한다.
+
+### Suspected root cause
+
+- 게임 시작 직후 초기 `saveGameState()` 또는 host autosave가 Firestore sequence/precondition 충돌을 만나면서 room status `playing` 전환 또는 구독 반영이 지연된 것으로 추정된다.
+- 다만 실패 시점의 화면/debug state가 부족해 앱 로직을 즉시 수정하기보다 QA 진단을 먼저 보강해야 한다.
+
+### Confirmed root cause
+
+- 미확정. 현재 조치에서는 앱 동작을 바꾸지 않고 실패 시점의 화면/debug state를 수집하도록 QA assertion만 보강했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #216에서 autosave sequence mismatch 결과 처리와 sequence ref 보정을 보강했다.
+  - Why it failed: 액션 진행 중 stale local turn state는 줄였지만, 게임 시작 직후 화면 전환 timeout의 실패 시점 정보를 충분히 남기지는 못했다.
+- Attempt 2:
+  - What was changed: Issue #222에서 roll button transient blocker 오분류를 QA helper에서 보강했다.
+  - Why it failed: 이번 실패는 roll/move 액션 이전의 게임 화면 진입 단계라 해당 helper가 관여하지 않는다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI/CSS나 게임 보드 렌더링을 원인 확인 없이 변경하지 않는다.
+- roll/move action helper를 이번 증상의 직접 원인으로 단정해 수정하지 않는다.
+- Firestore sequence/precondition 실패를 테스트에서 무시하지 않는다.
+
+### Correct fix plan
+
+- `expectTwoPlayerGameReady()`에서 `game-screen` 대기 실패 시 현재 화면, waiting room text, game text, 앱 메시지, 기대 플레이어 표시 여부, `window.__YUT_DEBUG_STATE__`를 assertion 메시지에 포함한다.
+- 앱 로직 변경은 보강된 실패 정보로 초기 저장 실패, room status 전환 지연, 구독 반영 문제 중 실제 원인을 확인한 뒤 별도 최소 패치로 진행한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No app UI changes
+- [x] No new dependency
+
 ## 2026-07-01 - Issue #222 모바일 Game QA roll-yut-button disabled 오분류
 
 ### Symptom
