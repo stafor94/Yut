@@ -67,6 +67,57 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-01 - Issue #230 반복 윷 던지기/기기전 실패 진단 경로 고정
+
+### Symptom
+
+- Issue #230을 포함해 모바일 Game QA와 모바일 기기전 QA에서 윷 던지기, 말 이동, 원격 액션 대기, stale local state 계열 실패가 반복됐다.
+- 사용자는 같은 계열 이슈가 계속 이어져 앞으로도 해결되지 않을 것 같다고 보고했다.
+
+### Expected behavior
+
+- 사용자가 윷 던지기 또는 말 이동을 요청했는데 guard, pending action, authoritative rejection 때문에 진행할 수 없다면, 그 이유가 사용자 메시지와 QA debug state에 같은 형태로 남아야 한다.
+- 다음 실패는 추정성 패치가 아니라 마지막 액션의 type/message/reason을 기준으로 하나의 깨진 불변식만 추적할 수 있어야 한다.
+
+### Actual behavior
+
+- roll/move guard와 authoritative rejection은 일부 메시지를 표시했지만, QA가 일관되게 수집할 수 있는 마지막 액션 진단 값은 없었다.
+- 실패 시점의 `message`, dialog text, blocker 배열이 서로 분리되어 같은 증상을 다시 단일 원인으로 오판할 위험이 남아 있었다.
+
+### Suspected root cause
+
+- 온라인 상태 전환 자체가 여러 race를 포함하지만, 반복을 키운 직접 원인은 실패 reason을 하나의 진단 경로로 고정하지 못한 점이다.
+
+### Confirmed root cause
+
+- 앱 debug state에는 guard 배열이 있었지만 마지막으로 거부/실패한 액션의 type, 사용자 표시 메시지, reason 배열이 함께 보존되지 않았다.
+- QA failure summary도 액션 오류 dialog와 마지막 액션 진단 값을 요약에 포함하지 않아, 다음 실패 분석이 다시 로그 추정에 의존할 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 개별 stale lock, host 판정, autosave pending, QA timeout/race 분류를 각각 수정했다.
+  - Why it failed: 각 수정은 해당 blocker만 줄였고, 다음 blocker가 발생했을 때 동일한 진단 경로로 원인을 고정하지 못했다.
+
+### Do not try again
+
+- 버튼 disabled 조건만 완화하지 않는다.
+- 원인 확인 없이 원격 action timeout이나 Playwright timeout만 늘리지 않는다.
+- 실패 reason을 debug state에 남기지 않은 채 또 다른 상태 전이 패치를 하지 않는다.
+
+### Correct fix plan
+
+- roll/move 요청이 guard 또는 pending 중복으로 막히면 공통 진단 helper를 통해 사용자 메시지, 오류 dialog, 마지막 액션 진단 값을 동시에 기록한다.
+- authoritative reject/catch 경로도 같은 마지막 액션 진단 값으로 남긴다.
+- QA debug 수집과 failure summary에 액션 오류 dialog 및 마지막 액션 진단 값을 포함한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
 ## 2026-07-01 - Issue #228 모바일 Game QA 이동 버튼 대기 및 기기전 대기실 잔류
 
 ### Symptom

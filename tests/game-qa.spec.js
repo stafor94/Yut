@@ -214,6 +214,7 @@ async function collectGameDebugState(page) {
       winner: document.querySelector('.winner-overlay')?.textContent?.trim() ?? '',
       prompt: document.querySelector('.inline-item-prompt')?.textContent?.trim() ?? '',
       trap: document.querySelector('.trap-placement-banner')?.textContent?.trim() ?? '',
+      actionErrorDialog: document.querySelector('[role="alertdialog"][aria-label="액션 오류"]')?.textContent?.trim() ?? '',
       yutDebug: window.__YUT_DEBUG_STATE__ ?? null,
       logs: Array.from(document.querySelectorAll('.log-list p')).slice(0, 5).map((node) => node.textContent?.trim() ?? ''),
       pieces: Array.from(document.querySelectorAll('[data-testid^="piece-"]')).map((node) => ({ testId: node.getAttribute('data-testid'), text: node.textContent?.trim(), className: node.getAttribute('class') })),
@@ -361,6 +362,8 @@ function summarizeActionBlockers(debugState) {
     lastAppliedSequence: Number(yutDebug.lastAppliedSequence ?? 0),
     lastAppliedStateVersion: Number(yutDebug.lastAppliedStateVersion ?? 0),
     message: yutDebug.message ?? '',
+    actionErrorDialog: yutDebug.actionErrorDialog ?? '',
+    lastActionDiagnostic: yutDebug.lastActionDiagnostic ?? null,
   };
 }
 
