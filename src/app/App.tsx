@@ -124,19 +124,19 @@ const createSeats = (hostName: string, playMode: PlayMode, playerCount: 2 | 3 | 
 };
 
 
-const seatsFromRoomPlayers = (players: RoomPlayer[], playMode: PlayMode, playerCount: 2 | 3 | 4): Seat[] => {
+const seatsFromRoomPlayers = (players: RoomPlayer[], playMode: PlayMode, playerCount: 2 | 3 | 4, hostId = ''): Seat[] => {
   const defaults = createSeats('', playMode, playerCount);
   const activePlayers = players.filter((player) => !player.isSpectator);
   return defaults.map((seat, index) => {
     const player = activePlayers.find((candidate) => candidate.seatIndex === index);
-    if (!player) return seat;
+    if (!player) return hostId ? { ...seat, isHost: false } : seat;
     return {
       ...seat,
       id: player.id,
       name: player.nickname,
       color: ROOM_COLOR_LABELS[player.color] ?? player.color,
       ready: player.ready,
-      isHost: index === 0,
+      isHost: hostId ? player.id === hostId : index === 0,
       isAI: player.isAI,
       isEmpty: false,
       team: player.team,
@@ -220,6 +220,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>('lobby');
   const [activeRoomTitle, setActiveRoomTitle] = useState('');
   const [activeRoomId, setActiveRoomId] = useState('');
+  const [activeRoomHostId, setActiveRoomHostId] = useState('');
   const [isRoomHost, setIsRoomHost] = useState(false);
   const [countdown, setCountdown] = useState(-1);
   const [spectators, setSpectators] = useState<Seat[]>([]);
@@ -304,9 +305,10 @@ export function App() {
     return orderedSeats.length === playableSeats.length ? orderedSeats : playableSeats;
   }, [playableSeats, turnOrderIds]);
   const activeSeat = turnSeats[turnIndex % turnSeats.length];
-  const hostSeatId = playableSeats.find((seat) => seat.isHost)?.id ?? 'host';
+  const hostSeatId = playableSeats.find((seat) => seat.isHost)?.id ?? (activeRoomHostId || 'host');
   const localSeatId = activeRoomId ? currentUserId : hostSeatId;
-  const canManageRoom = isRoomHost || Boolean(activeRoomId && currentUserId && hostSeatId === currentUserId);
+  const canHostRoom = Boolean(isRoomHost || (activeRoomId && currentUserId && activeRoomHostId === currentUserId));
+  const canManageRoom = canHostRoom || Boolean(activeRoomId && currentUserId && hostSeatId === currentUserId);
   const isSpectator = Boolean(activeRoomId && currentUserId && spectators.some((spectator) => spectator.id === currentUserId));
   const isMyTurn = activeSeat?.id === localSeatId && !activeSeat.isAI && !isSpectator;
   const getSeatById = (seatId: string) => playableSeats.find((seat) => seat.id === seatId);
@@ -359,8 +361,8 @@ export function App() {
   const rollResultHolding = effectiveRollResultReadyAt > rollLockClock;
   const activeTurnOrderIntro = turnOrderIntro && turnOrderIntro.readyAt > Date.now() ? turnOrderIntro : null;
   const trapPlacementActive = Boolean(pendingTrapPlacement);
-  const isRemoteActionClient = Boolean(activeRoomId && !isRoomHost);
-  const hasPendingHostStateSave = Boolean(activeRoomId && isRoomHost && hostStateSaveKey);
+  const isRemoteActionClient = Boolean(activeRoomId && !canHostRoom);
+  const hasPendingHostStateSave = Boolean(activeRoomId && canHostRoom && hostStateSaveKey);
   const canSubmitTurnAction = Boolean(activeSeat && isMyTurn && !winner && !turnOrderPhase.active && !activeTurnOrderIntro && !movingPieceId && !trapPlacementActive && !hasPendingHostStateSave);
   const canMoveSelectedPiece = Boolean(roll && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const canRequestMove = Boolean(canSubmitTurnAction && roll && !rollResultHolding && canMoveSelectedPiece);
@@ -396,7 +398,7 @@ export function App() {
   const localTurnOrderSeatRolled = rolledTurnOrderSeatIds.has(localSeatId);
   const isTurnOrderTimedOut = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline && playableSeats.some((seat) => !rolledTurnOrderSeatIds.has(seat.id)));
   const isTurnOrderFallbackDue = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline + TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS);
-  const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut && (!activeRoomId || isRoomHost));
+  const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut && (!activeRoomId || canHostRoom));
   liveTurnGuardRef.current = {
     activeSeatId: activeSeat?.id ?? '',
     winner,
@@ -423,6 +425,7 @@ export function App() {
       screen,
       activeRoomId,
       isRoomHost,
+      canHostRoom,
       canManageRoom,
       currentUserId,
       localSeatId,
@@ -466,7 +469,7 @@ export function App() {
       selectedPieceId,
       selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
     };
-  }, [activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, isMyTurn, isRollLocked, isRemoteActionClient, isRoomHost, localSeatId, message, moveActionBlockReasons, movingPieceId, pieces, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, trapPlacementActive, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase.active, winner, lastMovedSeatId, lastMovedPieceIds]);
+  }, [activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canHostRoom, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canSubmitTurnAction, currentUserId, effectiveRollResultReadyAt, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, isMyTurn, isRollLocked, isRemoteActionClient, isRoomHost, localSeatId, message, moveActionBlockReasons, movingPieceId, pieces, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, trapPlacementActive, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase.active, winner, lastMovedSeatId, lastMovedPieceIds]);
 
 
   useEffect(() => () => {
@@ -573,6 +576,7 @@ export function App() {
         setActiveRoomId(storedRoom.id);
         setIsRoomHost(restoredAsHost);
         setActiveRoomTitle(storedRoom.title);
+        setActiveRoomHostId(storedRoom.hostId ?? '');
         setPlayMode(storedRoom.playMode);
         setMaxPlayers(restoredMaxPlayers);
         setItemMode(storedRoom.itemMode);
@@ -643,6 +647,7 @@ export function App() {
         setScreen('lobby');
         setActiveRoomId('');
         setActiveRoomTitle('');
+        setActiveRoomHostId('');
         setIsRoomHost(false);
         setCountdown(-1);
         setItemPromptTiming(null);
@@ -651,6 +656,7 @@ export function App() {
         return;
       }
       setActiveRoomTitle(room.title);
+      setActiveRoomHostId(room.hostId ?? '');
       setPlayMode(room.playMode);
       setMaxPlayers(room.maxPlayers as 2 | 3 | 4);
       setItemMode(room.itemMode);
@@ -663,6 +669,7 @@ export function App() {
         setScreen('lobby');
         setActiveRoomId('');
         setActiveRoomTitle('');
+        setActiveRoomHostId('');
         setIsRoomHost(false);
         setCountdown(-1);
         setItemPromptTiming(null);
@@ -677,7 +684,7 @@ export function App() {
     if (!activeRoomId) return undefined;
     spectatorIdsRef.current = new Set();
     return subscribeRoomPlayers(activeRoomId, (players) => {
-      const nextSeats = seatsFromRoomPlayers(players, playMode, maxPlayers);
+      const nextSeats = seatsFromRoomPlayers(players, playMode, maxPlayers, activeRoomHostId);
       const currentUserId = (userRef.current ?? currentUser)?.uid;
       const hasCurrentUserInSnapshot = Boolean(currentUserId && players.some((player) => player.id === currentUserId && !player.isSpectator));
       players.forEach((player) => {
@@ -689,14 +696,14 @@ export function App() {
           const optimisticAISeat = currentSeats.find((seat) => seat.id === nextSeat.id && seat.isAI);
           return optimisticAISeat ? { ...nextSeat, ...optimisticAISeat, isEmpty: false, ready: true, isAI: true } : nextSeat;
         });
-        if (!currentUserId || isRoomHost || screen !== 'waitingRoom' || hasCurrentUserInSnapshot) return seatsWithPendingAI;
+        if (!currentUserId || canHostRoom || screen !== 'waitingRoom' || hasCurrentUserInSnapshot) return seatsWithPendingAI;
         if (seatsWithPendingAI.some((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI)) return seatsWithPendingAI;
         const optimisticSeat = currentSeats.find((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI);
         if (!optimisticSeat) return seatsWithPendingAI;
         return seatsWithPendingAI.map((seat) => seat.label === optimisticSeat.label ? { ...seat, ...optimisticSeat, isHost: false, isEmpty: false } : seat);
       });
       const nextSpectators = spectatorsFromRoomPlayers(players);
-      if (isRoomHost && screen === 'game') {
+      if (canHostRoom && screen === 'game') {
         const previousIds = spectatorIdsRef.current;
         nextSpectators.forEach((spectator) => {
           if (!previousIds.has(spectator.id)) addLog(`${spectator.name}님이 관전자로 입장했습니다.`);
@@ -706,7 +713,7 @@ export function App() {
       setSpectators(nextSpectators);
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
-  }, [activeRoomId, currentUserId, isRoomHost, maxPlayers, playMode, screen]);
+  }, [activeRoomHostId, activeRoomId, canHostRoom, currentUserId, maxPlayers, playMode, screen]);
 
   function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false) {
     if (lastAnimatedRollKeyRef.current === key) return;
@@ -764,11 +771,11 @@ export function App() {
       pendingLocalRemoteActionsRef.current.clear();
       window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
     });
-  }, [activeRoomId, isRoomHost, screen]);
+  }, [activeRoomId, canHostRoom, screen]);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || applyingSyncedStateRef.current) return;
-    if (!isRoomHost) return;
+    if (!canHostRoom) return;
     if (moveInProgressRef.current || movingPieceId) return;
     const stateFingerprint = JSON.stringify({ pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, effectiveRollResultReadyAt, turnOrderPhase });
     if (lastSavedStateFingerprintRef.current === stateFingerprint || savingStateFingerprintRef.current === stateFingerprint) return;
@@ -789,7 +796,7 @@ export function App() {
       if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
       setHostStateSaveKey((current) => current === stateFingerprint ? '' : current);
     });
-  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, effectiveRollResultReadyAt, gameStartedAt, isRoomHost, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
+  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, effectiveRollResultReadyAt, gameStartedAt, canHostRoom, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -840,7 +847,7 @@ export function App() {
   }, [turnOrderIntro?.readyAt]);
 
   useEffect(() => {
-    if (!activeRoomId || !isRoomHost || screen !== 'game' || !turnOrderIntro?.readyAt) return undefined;
+    if (!activeRoomId || !canHostRoom || screen !== 'game' || !turnOrderIntro?.readyAt) return undefined;
     const readyAt = turnOrderIntro.readyAt;
     const completeIntro = () => {
       if (completingTurnOrderIntroRef.current.has(readyAt)) return;
@@ -854,7 +861,7 @@ export function App() {
     const delayMs = Math.max(0, readyAt - Date.now());
     const timer = window.setTimeout(completeIntro, delayMs);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, isRoomHost, localSeatId, screen, turnOrderIntro?.readyAt]);
+  }, [activeRoomId, canHostRoom, localSeatId, screen, turnOrderIntro?.readyAt]);
 
   useEffect(() => {
     if (rollLockUntil <= Date.now()) return undefined;
@@ -900,7 +907,7 @@ export function App() {
 
   useEffect(() => {
     if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || itemPromptTiming || !activeSeat || !activeSeat.isAI || isMyTurn || roll || movingPieceId || pendingTrapPlacement) return undefined;
-    if (activeRoomId && !isRoomHost) return undefined;
+    if (activeRoomId && !canHostRoom) return undefined;
     const actionKey = `${activeSeat.id}:${turnIndex}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (aiTurnActionKeyRef.current === actionKey) return undefined;
     const timer = window.setTimeout(() => {
@@ -909,7 +916,7 @@ export function App() {
       void autoPlayTurn(activeSeat, actionKey);
     }, TURN_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, activeTurnOrderIntro, isMyTurn, isRoomHost, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingTrapPlacement, pieces, roll, screen, turnIndex, turnOrderPhase.active, winner]);
+  }, [activeRoomId, activeSeat, activeTurnOrderIntro, canHostRoom, isMyTurn, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingTrapPlacement, pieces, roll, screen, turnIndex, turnOrderPhase.active, winner]);
 
 
   useEffect(() => {
@@ -924,26 +931,26 @@ export function App() {
 
   useEffect(() => {
     if (!turnOrderPhase.active) return undefined;
-    if (activeRoomId && !isRoomHost) return undefined;
+    if (activeRoomId && !canHostRoom) return undefined;
     const timers = playableSeats
       .filter((seat) => seat.isAI && !rolledTurnOrderSeatIds.has(seat.id))
       .map((seat) => window.setTimeout(() => rollForTurnOrder(false, seat.id), Math.max(0, turnOrderPhase.readyAt - Date.now()) + TURN_ORDER_AI_MIN_DELAY_MS + Math.random() * TURN_ORDER_AI_DELAY_SPREAD_MS));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [activeRoomId, isRoomHost, playableSeats, rolledTurnOrderSeatIds, turnOrderPhase]);
+  }, [activeRoomId, canHostRoom, playableSeats, rolledTurnOrderSeatIds, turnOrderPhase]);
 
 
   useEffect(() => {
     if (!turnOrderPhase.active || turnOrderPhase.readyAt > turnOrderClock || turnOrderPhase.deadline <= 0) return;
-    if (activeRoomId && !isRoomHost) return;
+    if (activeRoomId && !canHostRoom) return;
     if (turnOrderClock < turnOrderPhase.deadline) return;
     finishTurnOrderCeremony(turnOrderPhase.rolls);
-  }, [activeRoomId, isRoomHost, turnOrderClock, turnOrderPhase]);
+  }, [activeRoomId, canHostRoom, turnOrderClock, turnOrderPhase]);
 
   useEffect(() => {
     if (!turnOrderPhase.active || turnOrderPhase.deadline <= 0 || !isTurnOrderFallbackDue) return;
-    if (activeRoomId && !isRoomHost) return;
+    if (activeRoomId && !canHostRoom) return;
     finishTurnOrderCeremony(turnOrderPhase.rolls);
-  }, [activeRoomId, isRoomHost, isTurnOrderFallbackDue, turnOrderPhase]);
+  }, [activeRoomId, canHostRoom, isTurnOrderFallbackDue, turnOrderPhase]);
 
   useEffect(() => {
     if (!showBottomBranchControls || !selectedPiece || !roll) {
@@ -1003,11 +1010,11 @@ export function App() {
   }, [pendingTrapPlacement?.deadline]);
 
   useEffect(() => {
-    if (!activeRoomId || !isRoomHost || screen !== 'game') return undefined;
+    if (!activeRoomId || !canHostRoom || screen !== 'game') return undefined;
     return subscribePendingGameActions(activeRoomId, (actions) => {
       actions.forEach((action) => { void handleRemoteGameAction(action); });
     });
-  }, [activeRoomId, isRoomHost, screen, activeSeat?.id, roll, movingPieceId, pendingTrapPlacement, activeTurnOrderIntro, winner, lastMovedSeatId, turnOrderPhase]);
+  }, [activeRoomId, canHostRoom, screen, activeSeat?.id, roll, movingPieceId, pendingTrapPlacement, activeTurnOrderIntro, winner, lastMovedSeatId, turnOrderPhase]);
 
   const getLocalActionKey = (type: GameAction['type'], payload: Record<string, unknown> = {}) => {
     const turnKey = `${lastAppliedSequenceRef.current}:${turnIndex}:${roll ? `${roll.name}:${roll.steps}` : 'ready'}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
@@ -1234,6 +1241,7 @@ export function App() {
       setActiveRoomId(room.id ?? '');
       setIsRoomHost(asHost);
       setActiveRoomTitle(room.title);
+      setActiveRoomHostId(asHost && roomUser ? roomUser.uid : ('hostId' in room ? String((room as RoomSummary).hostId ?? '') : ''));
       setPlayMode(room.playMode);
       setMaxPlayers(nextMaxPlayers);
       setItemMode(room.itemMode);
@@ -1253,6 +1261,7 @@ export function App() {
       setActiveRoomId('');
       setIsRoomHost(false);
       setActiveRoomTitle('');
+      setActiveRoomHostId('');
       setScreen('lobby');
       setMessage(error instanceof Error ? error.message : '방 참가에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
     }
@@ -1260,7 +1269,7 @@ export function App() {
 
   function handleStartGame() {
     if (!canManageRoom) { setMessage('방장 정보를 확인하는 중입니다. 잠시 뒤 다시 시도해주세요.'); return; }
-    if (!isRoomHost) setIsRoomHost(true);
+    if (!canHostRoom) setIsRoomHost(true);
     if (!allReady) { setMessage(playMode === 'team' && !teamBalanced ? '팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.' : '아직 준비하지 않은 플레이어가 있습니다.'); return; }
     setCountdown(3); setScreen('waitingRoom'); setMessage('');
   }
@@ -1471,7 +1480,7 @@ export function App() {
   }
 
   function finishTurnOrderCeremony(rolls: TurnOrderRoll[]) {
-    if (activeRoomId && !isRoomHost) return;
+    if (activeRoomId && !canHostRoom) return;
 
     const { local } = makeTurnOrderCeremonyPatch(rolls, logs);
     setPieces(local.nextPieces);
@@ -1493,7 +1502,7 @@ export function App() {
     const nextAnimation = { id: Date.now(), result: rolled.result, sticks: rolled.sticks, turnOrder: true };
     const logText = `${seat.label}이(가) 순서 정하기에서 ${rolled.result.name}(${getTurnOrderScore(rolled.result)}점)를 던졌습니다.`;
 
-    if (activeRoomId && !isRoomHost && !fromRemote) {
+    if (activeRoomId && !canHostRoom && !fromRemote) {
       if (requestedSeatId !== localSeatId) return;
       void submitRemoteAction('turn_order_roll');
       return;
@@ -1642,7 +1651,7 @@ export function App() {
         setRollInProgress(false);
       };
 
-      if (!isRoomHost) {
+      if (!canHostRoom) {
         void submitRemoteAction('roll_yut', { ...rollPayload, clientActionId: actionKey })
           .catch((error) => {
             setMessage(error instanceof Error ? error.message : '윷 던지기 요청을 보내지 못했습니다.');
@@ -1842,7 +1851,7 @@ export function App() {
       const actionKey = getLocalActionKey('move_piece', payload);
       if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
       pendingLocalRemoteActionsRef.current.add(actionKey);
-      if (!isRoomHost) {
+      if (!canHostRoom) {
         void submitRemoteAction('move_piece', { ...payload, clientActionId: actionKey })
           .catch((error) => {
             setMessage(error instanceof Error ? error.message : '말 이동 요청을 보내지 못했습니다.');
@@ -2006,7 +2015,7 @@ export function App() {
 
 
   async function toggleMyReady() {
-    if (isRoomHost) return;
+    if (canHostRoom) return;
     const mySeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
     if (!mySeat) { setMessage('내 참가 정보를 찾는 중입니다. 잠시 뒤 다시 시도하세요.'); return; }
     const nextReady = !mySeat.ready;
@@ -2033,7 +2042,7 @@ export function App() {
 
   function finishGame() {
     const finishedRoomId = activeRoomId;
-    const wasHost = isRoomHost;
+    const wasHost = canHostRoom;
     hostingRoomUserIdRef.current = '';
     setScreen('lobby');
     setActiveRoomTitle('');

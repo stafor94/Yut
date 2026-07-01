@@ -1643,3 +1643,49 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Local Playwright QA checked (browser executable missing)
 - [x] No unrelated UI redesign
+
+## 2026-07-01 - 방장 두 번째 플레이어 윷 던지기 무반응
+
+### Symptom
+
+- 다른 사람 턴에는 윷 던지기 버튼이 비활성화되고 내 턴에는 활성화되지만, 방장인 사용자가 두 번째 플레이어/승계된 방장 상태일 때 버튼을 눌러도 윷 결과가 진행되지 않을 수 있었다.
+
+### Expected behavior
+
+- 현재 사용자의 uid가 `room.hostId`와 같으면 `isRoomHost` 상태가 늦거나 틀려도 host authoritative action 처리 경로를 사용해야 한다.
+- 방장 클라이언트는 자기 턴 윷 던지기를 원격 action queue에만 넣고 기다리면 안 된다.
+
+### Actual behavior
+
+- 버튼 활성화는 `activeSeat.id === localSeatId`와 `canSubmitTurnAction`을 기준으로 정상 동작했다.
+- 하지만 온라인 action 처리 경로는 `isRoomHost` state만 기준으로 host/remote client를 나눴다.
+- 방장 승계/복구 타이밍에서 실제 `room.hostId === currentUserId`인데 `isRoomHost` state가 아직 false이면, 방장 클라이언트가 자기 윷 던지기를 `submitRemoteAction()`으로만 등록하고 직접 처리하지 않았다.
+
+### Confirmed root cause
+
+- 실제 방장 여부를 나타내는 `room.hostId/currentUserId` 판정과 action 처리에 쓰이는 `isRoomHost` state 판정이 분리되어 있었다.
+- `canRollNow`는 이미 true가 될 수 있으므로 버튼 상태가 아니라 클릭 후 host authoritative 처리 경로 선택이 문제였다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 좌석의 `isHost` 표시를 `room.hostId` 기준으로 바꿨다.
+  - Why it failed: 버튼 활성/비활성 문제로 가정했지만, 실제 문제는 클릭 후 `isRoomHost`만 보고 remote action client 경로로 빠지는 것이었다.
+
+### Do not try again
+
+- 윷 던지기 버튼 disabled 조건만 바꾸지 않는다.
+- 좌석 `isHost` 표시만 바꾸고 action 처리 경로의 host 판정을 방치하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+
+### Correct fix plan
+
+- `room.hostId === currentUserId`를 포함한 effective host 판정 값을 만든다.
+- 윷 던지기/말 이동/원격 action 처리/host autosave/AI 진행/순서 정리 등 host 권한이 필요한 실행 경로는 effective host 판정을 사용한다.
+- 기존 UI의 내 턴 판정은 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Multi-client Firebase manual check
+- [x] No unrelated UI redesign
