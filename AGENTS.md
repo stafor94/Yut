@@ -70,6 +70,23 @@ Do not do any of the following unless explicitly requested:
 
 ---
 
+
+## Mobile / responsive UI rules
+
+For mobile, portrait, viewport, or responsive layout issues:
+
+1. Before changing component CSS, inspect `index.html` and confirm whether a viewport meta tag exists.
+2. Confirm which media query should apply to the reported device or screenshot.
+3. If a mobile screenshot shows that expected responsive rules are not taking effect, do not keep tweaking spacing values. First investigate viewport scaling, CSS cascade order, and whether the deployed page includes the latest bundle.
+4. For layout bugs reported with screenshots, identify whether the issue is:
+   - CSS rule not written
+   - CSS rule written but not matching
+   - CSS rule overridden later
+   - deployed build/cache not updated
+5. Do not claim a mobile UI issue is resolved unless build verification and browser/manual viewport reasoning are reported.
+
+---
+
 ## Verification rules
 
 Before final response, run available checks whenever possible.
