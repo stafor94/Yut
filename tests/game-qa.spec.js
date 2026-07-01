@@ -145,8 +145,37 @@ async function primeQaLobbyStorage(context, { nickname, maxPlayers = '2', playMo
   }, { nickname, maxPlayers, playMode, itemMode, pieceCount });
 }
 
+async function collectGameScreenReadinessDebug(page, firstNickname, secondNickname) {
+  try {
+    return await page.evaluate(({ firstNickname: expectedFirstNickname, secondNickname: expectedSecondNickname }) => ({
+      url: window.location.href,
+      visibleScreens: {
+        lobby: Boolean(document.querySelector('[data-testid="lobby-screen"]')),
+        waitingRoom: Boolean(document.querySelector('[data-testid="waiting-room"]')),
+        game: Boolean(document.querySelector('[data-testid="game-screen"]')),
+      },
+      waitingRoomText: document.querySelector('[data-testid="waiting-room"]')?.textContent?.trim() ?? '',
+      gameText: document.querySelector('[data-testid="game-screen"]')?.textContent?.trim() ?? '',
+      appMessage: document.querySelector('.app-message, .toast-message, .board-toast')?.textContent?.trim() ?? '',
+      expectedPlayersVisible: {
+        first: document.body.textContent?.includes(expectedFirstNickname) ?? false,
+        second: document.body.textContent?.includes(expectedSecondNickname) ?? false,
+      },
+      yutDebug: window.__YUT_DEBUG_STATE__ ?? null,
+    }), { firstNickname, secondNickname });
+  } catch (error) {
+    return {
+      pageUnavailable: true,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function expectTwoPlayerGameReady(page, firstNickname, secondNickname) {
-  await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 10_000 });
+  await expect.poll(async () => {
+    const state = await collectGameScreenReadinessDebug(page, firstNickname, secondNickname);
+    return state.visibleScreens?.game ? 'ready' : JSON.stringify(state, null, 2);
+  }, { message: '두 플레이어 게임 화면으로 전환되어야 합니다.', timeout: 10_000 }).toBe('ready');
   await expect(page.getByTestId('play-timer')).toBeVisible();
   await expect(page.getByTestId('players-panel')).toContainText(firstNickname);
   await expect(page.getByTestId('players-panel')).toContainText(secondNickname);
