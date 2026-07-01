@@ -3169,22 +3169,22 @@ aside.players,
 }
 
 @media (orientation: portrait), (max-width: 767px) {
-  .game-shell .players {
+  .game-shell .game-players-panel {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
     align-content: start;
   }
 
-  .game-shell .players h2,
-  .game-shell .players .game-end-guide,
-  .game-shell .players .player-items,
-  .game-shell .players .end-game,
-  .game-shell .players .spectator-list {
+  .game-shell .game-players-panel h2,
+  .game-shell .game-players-panel .game-end-guide,
+  .game-shell .game-players-panel .player-items,
+  .game-shell .game-players-panel .end-game,
+  .game-shell .game-players-panel .spectator-list {
     display: none;
   }
 
-  .game-shell .player {
+  .game-shell .game-player-card {
     display: flex;
     gap: 4px;
     align-items: center;
@@ -3196,41 +3196,25 @@ aside.players,
     white-space: nowrap;
   }
 
-  .game-shell .player b,
-  .game-shell .player > span:not(.player-mobile-line),
-  .game-shell .player .player-badges,
-  .game-shell .player em {
+  .game-shell .game-player-label,
+  .game-shell .game-player-name,
+  .game-shell .game-player-badges,
+  .game-shell .game-player-status {
     display: none;
   }
 
-  .game-shell .player .player-mobile-line {
+  .game-shell .game-player-mobile-summary {
     display: block;
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .game-shell .player span,
-  .game-shell .player em,
-  .game-shell .player small {
     font-size: .74rem;
     line-height: 1.05;
   }
 
-  .game-shell .player .player-badges {
-    flex-wrap: nowrap;
-    flex: 0 0 auto;
-    gap: 3px;
-    justify-content: flex-end;
-  }
-
-  .game-shell .player em {
-    flex: 0 0 auto;
-  }
-
-  .game-shell .player .mini-button {
+  .game-shell .game-player-card .mini-button {
     display: none;
   }
 }
