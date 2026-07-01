@@ -111,6 +111,7 @@ h2 { margin-top: 0; }
 }
 
 .player em { color: var(--green); font-style: normal; font-weight: 800; }
+.player-mobile-line { display: none; }
 .board-panel { display: grid; place-items: center; min-width: 0; }
 
 .board {
@@ -2844,7 +2845,7 @@ aside.players,
   font-weight: 1000;
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (orientation: portrait) {
   .game-shell {
     align-content: start;
   }
@@ -2982,7 +2983,7 @@ aside.players,
   font-size: .92rem;
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (orientation: portrait) {
   .game-shell .hero {
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 8px;
@@ -3167,7 +3168,7 @@ aside.players,
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (orientation: portrait) {
   .game-shell .players {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3185,29 +3186,27 @@ aside.players,
 
   .game-shell .player {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     align-items: center;
     justify-content: flex-start;
     min-height: 0;
     margin: 0;
-    padding: 7px 8px;
+    padding: 4px 6px;
     overflow: hidden;
     white-space: nowrap;
   }
 
   .game-shell .player b,
-  .game-shell .player span,
+  .game-shell .player > span:not(.player-mobile-line),
   .game-shell .player .player-badges,
   .game-shell .player em {
-    min-width: 0;
-  }
-
-  .game-shell .player b {
     display: none;
   }
 
-  .game-shell .player > span {
+  .game-shell .player .player-mobile-line {
+    display: block;
     flex: 1 1 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -3216,13 +3215,14 @@ aside.players,
   .game-shell .player span,
   .game-shell .player em,
   .game-shell .player small {
-    font-size: .78rem;
-    line-height: 1.15;
+    font-size: .74rem;
+    line-height: 1.05;
   }
 
   .game-shell .player .player-badges {
     flex-wrap: nowrap;
     flex: 0 0 auto;
+    gap: 3px;
     justify-content: flex-end;
   }
 
