@@ -3370,3 +3370,120 @@ aside.players,
     width: min(74vw, 46svh, 340px);
   }
 }
+
+/* Mobile portrait lobby header: keep account, sound, and connection chips in one compact row under the title. */
+@media (max-width: 767px) and (orientation: portrait) {
+  .lobby-shell .hero {
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .lobby-shell .brand-title {
+    font-size: clamp(1.75rem, 8.4vw, 2.35rem);
+    letter-spacing: .06em;
+  }
+
+  .lobby-shell .hero-actions {
+    grid-template-columns: minmax(0, 1.22fr) minmax(0, 1fr) minmax(0, .92fr);
+    gap: 6px;
+    align-items: stretch;
+  }
+
+  .lobby-shell .hero-actions > *,
+  .lobby-shell .nickname-chip,
+  .lobby-shell .sound-toggle,
+  .lobby-shell .status-card {
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 7px;
+    font-size: clamp(.68rem, 3.05vw, .82rem);
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .lobby-shell .nickname-chip,
+  .lobby-shell .sound-toggle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lobby-shell .sound-controls {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .lobby-shell .status-card {
+    gap: 4px;
+  }
+
+  .lobby-shell .status-dot {
+    width: 7px;
+    height: 7px;
+    box-shadow: 0 0 0 3px rgba(47, 107, 79, .14);
+  }
+}
+
+/* Mobile portrait game header and board fit refinements. */
+@media (max-width: 767px) and (orientation: portrait) {
+  .game-shell .hero {
+    gap: 8px 5px;
+    padding: 12px 14px;
+    grid-template-columns: minmax(3.35rem, .62fr) minmax(0, 1.46fr) minmax(4.85rem, .95fr) minmax(4.35rem, .82fr);
+  }
+
+  .game-shell .brand-title {
+    font-size: clamp(1.65rem, 8vw, 2.3rem);
+    letter-spacing: .055em;
+  }
+
+  .game-shell .play-time,
+  .game-shell .nickname-chip,
+  .game-shell .sound-toggle,
+  .game-shell .status-card {
+    height: 40px;
+    min-height: 40px;
+    padding: 7px 6px;
+    font-size: clamp(.66rem, 2.85vw, .8rem);
+    line-height: 1;
+    align-items: center;
+  }
+
+  .game-shell .nickname-chip {
+    padding-inline: 8px;
+  }
+
+  .game-shell .sound-controls,
+  .game-shell .status-card {
+    align-self: stretch;
+  }
+
+  .game-shell .status-card {
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .game-shell .board-panel {
+    overflow: visible;
+    padding: 12px 14px 14px;
+  }
+
+  .game-shell .board {
+    width: min(78vw, 48svh, 420px);
+    max-width: calc(100vw - 72px);
+  }
+
+  .game-shell .piece-token {
+    width: 38px;
+    height: 38px;
+    border-width: 3px;
+    font-size: .78rem;
+  }
+
+  .game-shell .board-node.start::after {
+    right: -32px;
+    top: -50px;
+    width: 28px;
+    height: 58px;
+    font-size: 2.8rem;
+  }
+}
