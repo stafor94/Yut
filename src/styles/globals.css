@@ -111,7 +111,6 @@ h2 { margin-top: 0; }
 }
 
 .player em { color: var(--green); font-style: normal; font-weight: 800; }
-.player-mobile-line { display: none; }
 .board-panel { display: grid; place-items: center; min-width: 0; }
 
 .board {
@@ -378,6 +377,30 @@ button.secondary {
 .ready-card b,
 .player b {
   color: var(--red);
+}
+
+.game-player-title {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  font-weight: 900;
+}
+
+.game-player-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-player-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.game-player-status {
+  white-space: nowrap;
 }
 
 .ready-card em {
@@ -3196,22 +3219,30 @@ aside.players,
     white-space: nowrap;
   }
 
-  .game-shell .game-player-label,
-  .game-shell .game-player-name,
-  .game-shell .game-player-badges,
-  .game-shell .game-player-status {
-    display: none;
-  }
-
-  .game-shell .game-player-mobile-summary {
-    display: block;
+  .game-shell .game-player-title {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     font-size: .74rem;
     line-height: 1.05;
+  }
+
+  .game-shell .game-player-title b,
+  .game-shell .game-player-name {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .game-shell .game-player-meta {
+    flex: 0 0 auto;
+    gap: 3px;
+  }
+
+  .game-shell .game-player-meta small,
+  .game-shell .game-player-status {
+    flex: 0 0 auto;
+    font-size: .68rem;
+    line-height: 1;
   }
 
   .game-shell .game-player-card .mini-button {
