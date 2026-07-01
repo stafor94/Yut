@@ -276,6 +276,36 @@ function hasPendingTurnActionAcrossPages(debugStates) {
   return debugStates.some(hasPendingTurnAction);
 }
 
+const transientRollBlockReasons = new Set([
+  'roll-in-progress',
+  'pending-local-remote-action',
+  'processing-remote-action',
+  'saving-host-state',
+  'roll-locked',
+  'turn-order-intro-active',
+  'turn-order-phase-active',
+]);
+
+function hasTransientRollBlocker(debugState) {
+  const rollActionBlockReasons = debugState?.yutDebug?.rollActionBlockReasons ?? [];
+  return rollActionBlockReasons.some((reason) => transientRollBlockReasons.has(reason));
+}
+
+function isWaitingForRollReadiness(debugState) {
+  const yutDebug = debugState?.yutDebug ?? {};
+  return Boolean(
+    debugState?.rollButton?.visible &&
+    debugState.rollButton.disabled &&
+    (
+      hasTransientRollBlocker(debugState) ||
+      hasPendingTurnAction(debugState) ||
+      yutDebug.rollResultHolding ||
+      yutDebug.activeTurnOrderIntro ||
+      yutDebug.turnOrderPhase?.active
+    )
+  );
+}
+
 
 function summarizeActionBlockers(debugState) {
   const yutDebug = debugState?.yutDebug ?? {};
@@ -577,7 +607,26 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
 
   const rollButton = page.getByTestId('roll-yut-button');
   if (await isVisible(rollButton)) {
-    await expect(rollButton, '윷 던지기 버튼이 보이면 활성화되어야 합니다.').toBeEnabled({ timeout: 15_000 });
+    let lastRollReadinessDebugState = await collectGameDebugState(page);
+    await expect.poll(async () => {
+      const debugState = await collectGameDebugState(page);
+      lastRollReadinessDebugState = debugState;
+      if (!debugState.rollButton.visible) return 'not-visible';
+      if (!debugState.rollButton.disabled && debugState.yutDebug?.canRollNow === true) return 'ready';
+      if (isWaitingForRollReadiness(debugState)) return 'waiting';
+      return 'blocked';
+    }, { message: '윷 던지기 버튼은 활성화되거나 일시적인 진행/저장 상태로 분류되어야 합니다.', timeout: 15_000 }).not.toBe('blocked');
+
+    if (isWaitingForRollReadiness(lastRollReadinessDebugState)) {
+      coverage.autoWaited += 1;
+      return 'wait';
+    }
+    if (!lastRollReadinessDebugState.rollButton.visible) {
+      coverage.autoWaited += 1;
+      return 'wait';
+    }
+
+    await expect(rollButton, `윷 던지기 버튼이 보이면 활성화되어야 합니다: ${JSON.stringify(summarizeActionBlockers(lastRollReadinessDebugState), null, 2)}`).toBeEnabled({ timeout: 1_000 });
     const beforeRollDebugStates = await collectGameDebugStates(pages);
     await rollButton.click();
 
