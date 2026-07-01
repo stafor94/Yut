@@ -2612,6 +2612,11 @@ aside.players,
 .compact-ready-card.empty .seat-name-row em { background: rgba(217, 74, 56, .1); color: var(--red); }
 .compact-ready-card select { width: 100%; padding: 10px 12px; border-radius: 13px; }
 .compact-ready-card .mini-button { padding: 9px 10px; }
+.compact-ready-card.empty .mini-button {
+  background: linear-gradient(135deg, rgba(217, 74, 56, .86), rgba(159, 43, 31, .92));
+  color: #fffaf0;
+  box-shadow: 0 12px 24px rgba(159, 43, 31, .2);
+}
 
 .inline-warning { margin: 0; }
 .role-actions {
@@ -2683,8 +2688,10 @@ aside.players,
   .player-view .compact-ready-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .player-view .compact-ready-card { min-height: 138px; padding: 13px; }
   .player-view .seat-topline b { width: 42px; height: 42px; }
-  .compact-options .radio-group:nth-of-type(2),
-  .compact-options .radio-group:nth-of-type(3) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compact-options .radio-group:nth-of-type(2) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .compact-options .radio-group:nth-of-type(3) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .compact-options .radio-group:nth-of-type(2) label,
+  .compact-options .radio-group:nth-of-type(3) label { padding-inline: 3px; }
   .team-checklist { grid-template-columns: 1fr; }
   .waiting-actions.role-actions { display: grid; grid-template-columns: 1fr; }
   .player-view .waiting-actions.role-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2778,9 +2785,17 @@ aside.players,
 }
 
 @media (max-width: 560px) {
-  .waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
+  .waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2) label,
+  .waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) label {
+    padding-inline: 3px;
   }
 }
 
@@ -3272,8 +3287,9 @@ aside.players,
   .game-shell .play-time {
     grid-column: 1;
     grid-row: 2;
-    justify-self: start;
+    justify-self: stretch;
     min-width: 0;
+    width: 100%;
     padding: 7px 9px;
     font-size: clamp(.68rem, 2.7vw, .86rem);
     white-space: nowrap;
@@ -3341,6 +3357,7 @@ aside.players,
 
   .game-shell .board {
     width: min(82vw, 52svh, 480px);
+    height: min(82vw, 52svh, 480px);
   }
 
   .game-shell .side h2 {
@@ -3368,6 +3385,15 @@ aside.players,
 
   .game-shell .board {
     width: min(74vw, 46svh, 340px);
+    height: min(74vw, 46svh, 340px);
+  }
+}
+
+
+@media (max-width: 767px) and (orientation: portrait) {
+  .compact-waiting-room .waiting-header .room-title {
+    font-size: clamp(1.65rem, 7.4vw, 2.25rem);
+    line-height: 1.06;
   }
 }
 
@@ -3394,21 +3420,34 @@ aside.players,
   .lobby-shell .sound-toggle,
   .lobby-shell .status-card {
     min-width: 0;
+    height: 40px;
     min-height: 40px;
     padding: 8px 7px;
     font-size: clamp(.68rem, 3.05vw, .82rem);
     line-height: 1.1;
     white-space: nowrap;
+    align-items: center;
   }
 
   .lobby-shell .nickname-chip,
   .lobby-shell .sound-toggle {
+    display: inline-flex;
+    justify-content: center;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .lobby-shell .sound-controls {
     min-width: 0;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    align-self: stretch;
+  }
+
+  .lobby-shell .sound-toggle {
     width: 100%;
   }
 
@@ -3445,7 +3484,14 @@ aside.players,
     padding: 7px 6px;
     font-size: clamp(.66rem, 2.85vw, .8rem);
     line-height: 1;
+    display: inline-flex;
+    justify-content: center;
     align-items: center;
+  }
+
+  .game-shell .play-time {
+    letter-spacing: 0;
+    text-align: center;
   }
 
   .game-shell .nickname-chip {
@@ -3469,7 +3515,17 @@ aside.players,
 
   .game-shell .board {
     width: min(78vw, 48svh, 420px);
+    height: min(78vw, 48svh, 420px);
     max-width: calc(100vw - 72px);
+    max-height: calc(100vw - 72px);
+  }
+
+  .game-shell .board-node,
+  .game-shell .piece-token {
+    aspect-ratio: 1;
+    box-sizing: border-box;
+    border-radius: 50%;
+    flex: 0 0 auto;
   }
 
   .game-shell .piece-token {
