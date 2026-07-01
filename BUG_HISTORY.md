@@ -86,8 +86,9 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ### Confirmed root cause
 
-- 세로모드 전용 플레이어 카드 규칙이 `@media (max-width: 900px) and (orientation: portrait)`에만 들어 있어, 세로 화면이어도 CSS viewport/브라우저 스케일/배포 상태에 따라 조건 매칭이 불안정했다.
-- 사용자 요구는 화면 폭보다 세로모드 자체에 대한 동작이므로, 해당 게임 화면 규칙은 `@media (orientation: portrait)` 기준으로 적용되어야 한다.
+- 기본 JSX가 별도 라벨 `P1`과 이름 문자열 `P1-이름`을 동시에 출력해, 반응형 CSS가 적용되지 않거나 fallback 규칙으로 떨어질 때 P라벨이 중복 표시됐다.
+- 좁은 화면 fallback인 `@media (max-width: 767px)`에서는 `.players`가 1열로 돌아가 카드 높이가 커질 수 있었다.
+- 사용자 요구는 실제 모바일 좁은 화면과 세로모드 둘 다에서 동작해야 하므로, 플레이어 카드 한 줄 규칙은 `@media (orientation: portrait), (max-width: 767px)` 기준으로 적용되어야 한다.
 
 ### Previous failed attempts
 
@@ -101,12 +102,14 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 ### Do not try again
 
 - 카드 여백 숫자만 줄이지 않는다.
-- `max-width` 조건에만 의존해서 세로모드 게임 화면 플레이어 카드 규칙을 적용하지 않는다.
+- `orientation` 조건에만 의존하거나 `max-width` fallback을 방치해서 모바일 게임 화면 플레이어 카드 규칙을 적용하지 않는다.
+- JSX에서 `P1` 라벨과 `P1-이름`을 동시에 출력하지 않는다.
 - 실제 적용 여부 확인 없이 “수정 완료”라고 보고하지 않는다.
 
 ### Correct fix plan
 
-- 게임 화면의 세로모드 레이아웃과 플레이어 카드 한 줄 요약 규칙을 `@media (orientation: portrait)` 기준으로 적용한다.
+- 게임 화면의 플레이어 카드 한 줄 요약 규칙을 `@media (orientation: portrait), (max-width: 767px)` 기준으로 적용한다.
+- 기본 이름 문자열에서는 P라벨을 제거해 fallback 상태에서도 P라벨이 한 번만 보이게 한다.
 - 기존 데스크톱/가로모드 표시는 유지한다.
 
 ### Verification checklist

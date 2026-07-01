@@ -3168,7 +3168,7 @@ aside.players,
   }
 }
 
-@media (orientation: portrait) {
+@media (orientation: portrait), (max-width: 767px) {
   .game-shell .players {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
