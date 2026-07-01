@@ -432,6 +432,16 @@ export function App() {
   const activeItemPromptTypes = itemPromptTiming && !trapPlacementActive ? getUsableHostItems(itemPromptTiming) : [];
 
   useEffect(() => {
+    if (!roll || !activeSeat || !isMyTurn) return;
+    const steps = roll.steps;
+    const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
+    const selectedPieceCanMove = Boolean(selectedPiece && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece.finished && canMovePiece(selectedPiece));
+    if (selectedPieceCanMove) return;
+    const fallbackPiece = pieces.find((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
+    if (fallbackPiece && fallbackPiece.id !== selectedPieceId) setSelectedPieceId(fallbackPiece.id);
+  }, [activeSeat, isMyTurn, pieces, roll, selectedPiece, selectedPieceId]);
+
+  useEffect(() => {
     (window as typeof window & { __YUT_DEBUG_STATE__?: Record<string, unknown> }).__YUT_DEBUG_STATE__ = {
       screen,
       activeRoomId,
@@ -750,6 +760,9 @@ export function App() {
       if (stateVersion && stateVersion <= lastAppliedStateVersionRef.current) {
         lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
         return;
+      }
+      if (screen === 'waitingRoom' && Array.isArray(state.pieces) && state.pieces.length > 0 && Array.isArray(state.turnOrderIds) && state.turnOrderIds.length > 0) {
+        setScreen('game');
       }
       applyingSyncedStateRef.current = true;
       lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
