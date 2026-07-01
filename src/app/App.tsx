@@ -267,6 +267,7 @@ export function App() {
   const [trapPlacementClock, setTrapPlacementClock] = useState(() => Date.now());
   const [rollInProgress, setRollInProgress] = useState(false);
   const [hostStateSaveKey, setHostStateSaveKey] = useState('');
+  const [hostStateSaveRetryTick, setHostStateSaveRetryTick] = useState(0);
   const processingActionIdsRef = useRef<Set<string>>(new Set());
   const completedActionIdsRef = useRef<Set<string>>(new Set());
   const processedClientActionIdsRef = useRef<Set<string>>(new Set());
@@ -745,7 +746,10 @@ export function App() {
     return subscribeGameState(activeRoomId, (state) => {
       if (!state) return;
       const stateVersion = Number(state.turnVersion ?? 0);
-      if (stateVersion && stateVersion <= lastAppliedStateVersionRef.current) return;
+      if (stateVersion && stateVersion <= lastAppliedStateVersionRef.current) {
+        lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
+        return;
+      }
       applyingSyncedStateRef.current = true;
       lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
       lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
@@ -801,16 +805,23 @@ export function App() {
     const sequenceActorId = pendingSequenceMeta?.actorId ?? localSeatId;
     const sequencePayload = pendingSequenceMeta?.payload ?? { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId };
     const clientMutationId = pendingSequenceMeta?.clientMutationId ?? `${sequenceType}:${sequenceActorId}:${stateFingerprint}`;
-    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, expectedPreviousSequence: lastAppliedSequenceRef.current }).then((version) => {
-      if (version) {
-        lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
+    let keepHostStateSavePending = false;
+    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, expectedPreviousSequence: lastAppliedSequenceRef.current }).then((result) => {
+      if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
+      if ((result.status === 'committed' || result.status === 'duplicate') && result.turnVersion) {
+        lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
         lastSavedStateFingerprintRef.current = stateFingerprint;
       }
+      if (result.status === 'sequence_mismatch') {
+        keepHostStateSavePending = true;
+        if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
+        setHostStateSaveRetryTick((tick) => tick + 1);
+      }
     }).finally(() => {
-      if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
-      setHostStateSaveKey((current) => current === stateFingerprint ? '' : current);
+      if (!keepHostStateSavePending && savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
+      if (!keepHostStateSavePending) setHostStateSaveKey((current) => current === stateFingerprint ? '' : current);
     });
-  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, effectiveRollResultReadyAt, gameStartedAt, canHostRoom, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
+  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, branchChoice, captureEffect, effectiveRollResultReadyAt, gameStartedAt, canHostRoom, hostStateSaveRetryTick, isSpectator, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, winner, itemPromptTiming]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -1431,9 +1442,15 @@ export function App() {
         clientMutationId: `game_initialized:${activeRoomId}`,
         expectedPreviousSequence: 0,
         payload: { turnOrderIds: nextTurnOrderIds },
-      }).then((version) => {
-        if (version) lastSavedStateFingerprintRef.current = initialStateFingerprint;
-        return updateRoomStatus(activeRoomId, 'playing');
+      }).then((result) => {
+        if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
+        if (result.status === 'committed' || result.status === 'duplicate') {
+          if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
+          lastSavedStateFingerprintRef.current = initialStateFingerprint;
+          return updateRoomStatus(activeRoomId, 'playing');
+        }
+        setMessage('게임 상태 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+        return undefined;
       }).finally(() => {
         if (savingStateFingerprintRef.current === initialStateFingerprint) savingStateFingerprintRef.current = '';
       });

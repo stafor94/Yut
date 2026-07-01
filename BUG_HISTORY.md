@@ -1748,3 +1748,68 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Multi-client Firebase manual check
 - [x] No unrelated UI redesign
+
+## 2026-07-01 - Issue #216 모바일 Game QA stale-local-turn-state 재발
+
+### Symptom
+
+- Issue #216에서 모바일 Game QA의 실제 게임 상태 머신 액션 진행 단계가 `stale-local-turn-state`로 실패했다.
+- 디버그 상태에서는 `canRollNow: true`, `rollActionBlockReasons: []`였지만 메시지는 `지금은 내 차례가 아닙니다.`로 남았다.
+
+### Expected behavior
+
+- host 로컬 상태 저장이 Firestore authoritative state에 반영되기 전에는 다음 윷 던지기/원격 action이 진행 가능한 것처럼 표시되면 안 된다.
+- autosave sequence mismatch가 발생하면 stale local turn state로 계속 진행하지 말고 최신 sequence 기준으로 저장을 재시도해야 한다.
+
+### Actual behavior
+
+- `saveGameState()`는 `expectedPreviousSequence` mismatch 시 `null`만 반환했다.
+- App의 host autosave effect는 저장 결과가 `null`이어도 `finally`에서 저장 pending key를 해제했다.
+- 그 결과 실제 저장이 반영되지 않은 로컬 상태에서도 `hasPendingHostStateSave`가 false가 되어 윷 던지기 guard가 통과할 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 Game QA를 실행한다.
+2. host 로컬 AI/autosave 진행 중 Firestore sequence가 먼저 증가하거나 subscribe 반영이 늦어진다.
+3. host autosave가 오래된 `expectedPreviousSequence`로 저장을 시도해 mismatch가 발생한다.
+4. pending save 표시가 해제된 로컬 화면에서 다음 사람 턴 윷 던지기를 클릭한다.
+5. authoritative reducer가 Firestore 기준 turnIndex로 검증하며 `지금은 내 차례가 아닙니다.`를 반환한다.
+
+### Suspected root cause
+
+- Issue #180의 host autosave pending guard 보강 이후에도 autosave 실패/sequence mismatch 결과 자체를 성공과 구분하지 못해 pending guard가 너무 빨리 해제될 수 있었다.
+
+### Confirmed root cause
+
+- `saveGameState()`가 sequence mismatch와 duplicate/commit success를 구분해 반환하지 않았다.
+- autosave 호출부가 성공한 저장의 `lastSequence`를 `lastAppliedSequenceRef`에 반영하지 않아 다음 저장이 오래된 expected sequence로 반복될 수 있었다.
+- subscribe는 이미 적용한 version 이하의 snapshot을 즉시 무시해, 더 최신 `lastSequence`만 보정할 기회도 놓칠 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #180에서 host autosave pending 상태를 guard에 연결해 저장 중에는 `saving-host-state`로 차단했다.
+  - Why it failed: 저장 pending 중인 경우는 차단했지만, 저장이 sequence mismatch로 실패한 뒤 pending key가 해제되는 경로는 막지 못했다.
+- Attempt 2:
+  - What was changed: QA helper가 authoritative turn mismatch를 `stale-local-turn-state`로 분류하도록 보강했다.
+  - Why it failed: 테스트 분류는 정확해졌지만 앱의 autosave 결과 처리와 sequence ref 보정은 부족했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- `지금은 내 차례가 아닙니다.` reject를 테스트에서 무시하지 않는다.
+- UI 구조나 버튼 disabled 조건만 임의로 바꾸지 않는다.
+- 저장 결과를 성공/실패 구분 없이 단순 truthy version으로 처리하지 않는다.
+
+### Correct fix plan
+
+- `saveGameState()`가 `committed`, `duplicate`, `sequence_mismatch`, `unavailable` 상태와 `turnVersion`, `lastSequence`를 반환하게 한다.
+- autosave 성공/duplicate일 때만 saved fingerprint를 갱신하고, 반환된 `lastSequence`를 `lastAppliedSequenceRef`에 반영한다.
+- sequence mismatch가 발생하면 최신 sequence를 반영한 뒤 autosave를 재시도한다.
+- 이미 적용한 version 이하의 snapshot이라도 더 최신 `lastSequence`는 반영한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No unrelated UI changes
