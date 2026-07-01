@@ -1,7 +1,8 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch, type DocumentReference, type Unsubscribe } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
-import { BOARD_NODES, getMovePathNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../../../game-core/board/board';
+import { spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../../../game-core/board/board';
 import { rollYutResult, type YutResult } from '../../../game-core/roll';
+import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 
 export interface RoomSummary {
   id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number;
@@ -490,13 +491,6 @@ const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
   const forcedResult = payload?.forcedResult as YutResult | null | undefined;
   return forcedResult ?? rollYutResult().result;
 };
-const isSameAuthoritativeSide = (leftId: string, rightId: string, playMode: RoomSummary['playMode'], sides: AuthoritativeSeatSide[]) => {
-  if (playMode !== 'team') return leftId === rightId;
-  const left = sides.find((side) => side.id === leftId);
-  const right = sides.find((side) => side.id === rightId);
-  return Boolean(left && right && left.team === right.team);
-};
-const canAuthoritativeSeatControlPiece = (actorId: string, piece: AuthoritativePiece | undefined, playMode: RoomSummary['playMode'], sides: AuthoritativeSeatSide[]) => Boolean(piece && isSameAuthoritativeSide(actorId, piece.ownerId, playMode, sides));
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
 const getActionActorLogName = (action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => {
   const actorLogName = action.payload?.actorLogName;
@@ -509,160 +503,52 @@ const getActionActorLogName = (action: Omit<GameAction, 'id' | 'createdAt' | 'pr
   return action.actorId;
 };
 
+function makeEngineState(state: SyncedGameState): EngineState {
+  return {
+    pieces: state.pieces as AuthoritativePiece[],
+    turnIndex: Number(state.turnIndex ?? 0),
+    turnOrderIds: state.turnOrderIds ?? [],
+    roll: (state.roll as YutResult | null | undefined) ?? null,
+    logs: (state.logs as AuthoritativeLog[] | undefined) ?? [],
+    winner: state.winner ?? '',
+    turnOrderPhase: state.turnOrderPhase as { active?: boolean } | null | undefined,
+    turnOrderIntro: state.turnOrderIntro as { readyAt?: unknown } | null | undefined,
+    pendingTrapPlacement: state.pendingTrapPlacement,
+    trapNodes: (state.trapNodes as AuthoritativeTrapNode[] | undefined) ?? [],
+    shieldedPieceIds: state.shieldedPieceIds ?? [],
+    branchChoice: (state.branchChoice as BranchChoice | undefined) ?? 'outer',
+  };
+}
+
+function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand> | ReturnType<typeof reduceMoveCommand>): AuthoritativeReduction {
+  if (!reduction.ok) return makeActionReject(reduction.message);
+  return { status: 'committed' as const, patch: reduction.patch as GameStatePatch, payload: reduction.payload };
+}
+
 function reduceAuthoritativeRoll(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>): AuthoritativeReduction {
-  const turnOrderIds = state.turnOrderIds ?? [];
-  const activeActorId = turnOrderIds[Number(state.turnIndex ?? 0) % Math.max(turnOrderIds.length, 1)];
-  if (!turnOrderIds.length) return makeActionReject('아직 차례 순서가 정해지지 않았습니다.');
-  if (activeActorId !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
-  if (state.winner) return makeActionReject('이미 종료된 게임입니다.');
-  if (state.turnOrderPhase && typeof state.turnOrderPhase === 'object' && 'active' in state.turnOrderPhase && state.turnOrderPhase.active) return makeActionReject('차례 순서를 정하는 중입니다.');
-  if (isTurnOrderIntroActive(state.turnOrderIntro)) return makeActionReject('차례 순서 안내가 끝난 뒤 진행해주세요.');
-  if (state.pendingTrapPlacement) return makeActionReject('함정 설치 선택이 먼저 필요합니다.');
-  if (state.roll) return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
-
   const nextRoll = getAuthoritativeRoll(action.payload);
-  const rollResultReadyAt = Date.now() + 2600;
-  return {
-    status: 'committed' as const,
-    patch: {
-      roll: nextRoll,
-      rollResultReadyAt,
-      shieldedPieceIds: [],
-      logs: [makeAuthoritativeLog(state.logs ?? [], `${getActionActorLogName(action)}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`), ...(state.logs ?? [])],
-    } satisfies GameStatePatch,
-    payload: { activeSeatId: action.actorId, rollName: nextRoll.name, steps: nextRoll.steps },
-  };
+  return toAuthoritativeReduction(reduceRollCommand({
+    state: makeEngineState(state),
+    actorId: action.actorId,
+    nextRoll,
+    actorLogName: getActionActorLogName(action),
+    rollResultReadyAt: Date.now() + 2600,
+    makeLog: makeAuthoritativeLog,
+  }));
 }
-
 function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>, room: Omit<RoomSummary, 'id'>, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
-  const actorLogName = getActionActorLogName(action);
-  const turnOrderIds = state.turnOrderIds ?? [];
-  const activeActorId = turnOrderIds[Number(state.turnIndex ?? 0) % Math.max(turnOrderIds.length, 1)];
-  if (!turnOrderIds.length) return makeActionReject('아직 차례 순서가 정해지지 않았습니다.');
-  if (activeActorId !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
-  if (state.winner) return makeActionReject('이미 종료된 게임입니다.');
-  if (!state.roll) return makeActionReject('먼저 윷을 던져주세요.');
-  if (state.pendingTrapPlacement) return makeActionReject('함정 설치 선택이 먼저 필요합니다.');
-
-  const result = state.roll as YutResult;
-  const pieces = [...(state.pieces as AuthoritativePiece[])];
-  const pieceId = String(action.payload?.pieceId ?? '');
-  const branchChoice = (action.payload?.branchChoice as BranchChoice | undefined) ?? 'outer';
-  const extraSteps = Number(action.payload?.extraSteps ?? 0);
-  const movingPiece = pieces.find((piece) => piece.id === pieceId && !piece.finished && canAuthoritativeSeatControlPiece(action.actorId, piece, room.playMode, sides));
-  const steps = result.steps + extraSteps;
-  const nextLogs = [...(state.logs ?? [])];
-  const pushLog = (text: string) => nextLogs.unshift(makeAuthoritativeLog(nextLogs, text));
-  if (!movingPiece) {
-    if (steps < 0) {
-      pushLog(`${actorLogName}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
-      return {
-        status: 'committed' as const,
-        patch: { roll: null, branchChoice: 'outer', turnIndex: (Number(state.turnIndex ?? 0) + 1) % turnOrderIds.length, logs: nextLogs, lastMovedSeatId: action.actorId, lastMovedPieceIds: [] } satisfies GameStatePatch,
-        payload: { activeSeatId: action.actorId, pieceId, skipped: true },
-      };
-    }
-    return makeActionReject('이동할 수 있는 말을 선택해주세요.');
-  }
-
-  if (steps < 0 && !movingPiece.started) {
-    pushLog(`${actorLogName}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
-    return {
-      status: 'committed' as const,
-      patch: { roll: null, branchChoice: 'outer', turnIndex: (Number(state.turnIndex ?? 0) + 1) % turnOrderIds.length, logs: nextLogs, lastMovedSeatId: action.actorId, lastMovedPieceIds: [] } satisfies GameStatePatch,
-      payload: { activeSeatId: action.actorId, pieceId, skipped: true },
-    };
-  }
-  if (steps === 0) {
-    pushLog(`${actorLogName} 말은 이동할 칸 수가 없어 제자리에 머뭅니다.`);
-    return {
-      status: 'committed' as const,
-      patch: { roll: null, branchChoice: 'outer', turnIndex: (Number(state.turnIndex ?? 0) + 1) % turnOrderIds.length, logs: nextLogs, lastMovedSeatId: action.actorId, lastMovedPieceIds: [movingPiece.id] } satisfies GameStatePatch,
-      payload: { activeSeatId: action.actorId, pieceId, stayed: true },
-    };
-  }
-
-  const movingGroupIds = movingPiece.started
-    ? pieces.filter((piece) => piece.started && !piece.finished && piece.nodeId === movingPiece.nodeId && canAuthoritativeSeatControlPiece(action.actorId, piece, room.playMode, sides)).map((piece) => piece.id)
-    : [movingPiece.id];
-  const movePathNodeIds = getMovePathNodeIds(movingPiece.nodeId, steps, branchChoice);
-  let currentNodeId = movingPiece.nodeId;
-  let currentNodeIndex = movingPiece.nodeIndex;
-  let finishedMove = false;
-  for (let step = 0; step < Math.abs(steps); step += 1) {
-    const nextNodeId = movePathNodeIds[step];
-    if (!nextNodeId || (steps < 0 && nextNodeId === 'n01' && currentNodeId === 'n02')) {
-      currentNodeId = 'finish';
-      currentNodeIndex = 20;
-      finishedMove = true;
-      break;
-    }
-    currentNodeId = nextNodeId;
-    currentNodeIndex = Math.max(0, BOARD_NODES.findIndex((node) => node.id === nextNodeId));
-  }
-
-  const nextPieces = pieces.map((piece) => movingGroupIds.includes(piece.id)
-    ? { ...piece, nodeId: currentNodeId, nodeIndex: currentNodeIndex, started: currentNodeId !== 'finish', finished: currentNodeId === 'finish' }
-    : piece);
-  let nextTrapNodes = [...(state.trapNodes as AuthoritativeTrapNode[])];
-  let nextShieldedPieceIds = [...(state.shieldedPieceIds ?? [])];
-  let captured = false;
-
-  const steppedOnTrap = nextTrapNodes.find((trap) => trap.nodeId === currentNodeId && !isSameAuthoritativeSide(trap.ownerId, action.actorId, room.playMode, sides));
-  if (steppedOnTrap) {
-    nextTrapNodes = nextTrapNodes.filter((trap) => trap !== steppedOnTrap);
-    const shieldedFromTrap = movingGroupIds.some((id) => nextShieldedPieceIds.includes(id));
-    if (shieldedFromTrap) {
-      nextShieldedPieceIds = nextShieldedPieceIds.filter((id) => !movingGroupIds.includes(id));
-      pushLog(`${actorLogName} 말이 방패로 함정을 막았습니다.`);
-    } else {
-      nextPieces.forEach((piece) => {
-        if (movingGroupIds.includes(piece.id)) {
-          piece.nodeIndex = 0; piece.nodeId = 'n01'; piece.started = false; piece.finished = false;
-        }
-      });
-      currentNodeId = 'n01';
-      pushLog(`${actorLogName} 말이 함정을 밟아 시작점으로 돌아갑니다.`);
-    }
-  }
-
-  if (currentNodeId !== 'finish') {
-    const capturedPieceIds = nextPieces
-      .filter((piece) => !movingGroupIds.includes(piece.id) && piece.started && !piece.finished && piece.nodeId === currentNodeId && !isSameAuthoritativeSide(piece.ownerId, action.actorId, room.playMode, sides) && !nextShieldedPieceIds.includes(piece.id))
-      .map((piece) => piece.id);
-    if (capturedPieceIds.length) {
-      captured = true;
-      nextPieces.forEach((piece) => {
-        if (capturedPieceIds.includes(piece.id)) {
-          piece.nodeIndex = 0; piece.nodeId = 'n01'; piece.started = false; piece.finished = false;
-        }
-      });
-      pushLog('상대 말을 잡아 한 번 더 던질 수 있습니다.');
-    }
-  }
-
-  if (movingGroupIds.length > 1) pushLog(`${actorLogName}의 말 ${movingGroupIds.length}개가 업혀 함께 이동합니다.`);
-  if (finishedMove) pushLog(`${actorLogName} 말이 완주했습니다!`);
-  const nextTurnIndex = result.bonus || captured ? Number(state.turnIndex ?? 0) : (Number(state.turnIndex ?? 0) + 1) % turnOrderIds.length;
-
-  return {
-    status: 'committed' as const,
-    patch: {
-      pieces: nextPieces,
-      turnIndex: nextTurnIndex,
-      roll: null,
-      trapNodes: nextTrapNodes,
-      shieldedPieceIds: nextShieldedPieceIds,
-      logs: nextLogs,
-      lastMovedPieceIds: movingGroupIds,
-      lastMovedSeatId: action.actorId,
-      branchChoice: 'outer',
-      rollResultReadyAt: 0,
-    } satisfies GameStatePatch,
-    payload: { activeSeatId: action.actorId, pieceId, movingGroupIds, captured, finishedMove },
-  };
+  return toAuthoritativeReduction(reduceMoveCommand({
+    state: makeEngineState(state),
+    actorId: action.actorId,
+    pieceId: String(action.payload?.pieceId ?? ''),
+    branchChoice: (action.payload?.branchChoice as BranchChoice | undefined) ?? 'outer',
+    extraSteps: Number(action.payload?.extraSteps ?? 0),
+    actorLogName: getActionActorLogName(action),
+    playMode: room.playMode,
+    sides,
+    makeLog: makeAuthoritativeLog,
+  }));
 }
-
 export async function commitAuthoritativeGameAction(roomId: string, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>): Promise<AuthoritativeActionResult> {
   if (!db || !roomId) return { status: 'rejected', reason: 'Firebase 환경변수가 설정되지 않았습니다.' };
   const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : `${action.type}:${action.actorId}:${Date.now()}`;

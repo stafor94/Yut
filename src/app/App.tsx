@@ -6,6 +6,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
+import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
 import { cleanupStaleRooms, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, leaveDuplicatePlayerRooms, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
@@ -366,29 +367,34 @@ export function App() {
   const trapPlacementActive = Boolean(pendingTrapPlacement);
   const isRemoteActionClient = Boolean(activeRoomId && !canHostRoom);
   const hasPendingHostStateSave = Boolean(activeRoomId && canHostRoom && hostStateSaveKey);
-  const canSubmitTurnAction = Boolean(activeSeat && isMyTurn && !winner && !turnOrderPhase.active && !activeTurnOrderIntro && !movingPieceId && !trapPlacementActive && !hasPendingHostStateSave);
+  const turnActionGuardInput = {
+    activeSeatId: activeSeat?.id,
+    actorId: localSeatId,
+    isActorAI: Boolean(activeSeat?.isAI),
+    isSpectator,
+    winner,
+    turnOrderPhaseActive: turnOrderPhase.active,
+    turnOrderIntroActive: Boolean(activeTurnOrderIntro),
+    movingPieceId,
+    pendingTrapPlacement: trapPlacementActive,
+    pendingHostStateSave: hasPendingHostStateSave,
+  };
+  const rollActionGuardInput = {
+    ...turnActionGuardInput,
+    roll,
+    rollLocked: isRollLocked,
+    remoteActionClient: isRemoteActionClient,
+    rollInProgress,
+    pendingLocalRemoteActionCount: pendingLocalRemoteActionsRef.current.size,
+    processingActionCount: processingActionIdsRef.current.size,
+  };
+  const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingHostStateSave, isSpectator, localSeatId, movingPieceId, trapPlacementActive, turnOrderPhase.active, winner]);
+  const canSubmitTurnAction = canSubmitTurnActionFromEngine(turnActionGuardInput);
   const canMoveSelectedPiece = Boolean(roll && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const canRequestMove = Boolean(canSubmitTurnAction && roll && !rollResultHolding && canMoveSelectedPiece);
   const canUseMoveButton = canRequestMove;
-  const canRollNow = Boolean(canSubmitTurnAction && !roll && !isRollLocked && (isRemoteActionClient || !rollInProgress));
-  const turnActionBlockReasons = useMemo(() => [
-    !activeSeat ? 'no-active-seat' : '',
-    activeSeat && !isMyTurn ? 'not-local-turn' : '',
-    winner ? 'winner' : '',
-    turnOrderPhase.active ? 'turn-order-phase-active' : '',
-    activeTurnOrderIntro ? 'turn-order-intro-active' : '',
-    movingPieceId ? 'moving-piece' : '',
-    trapPlacementActive ? 'pending-trap-placement' : '',
-    hasPendingHostStateSave ? 'saving-host-state' : '',
-  ].filter(Boolean), [activeSeat, activeTurnOrderIntro, hasPendingHostStateSave, isMyTurn, movingPieceId, trapPlacementActive, turnOrderPhase.active, winner]);
-  const rollActionBlockReasons = useMemo(() => [
-    ...turnActionBlockReasons,
-    roll ? 'roll-already-exists' : '',
-    isRollLocked ? 'roll-locked' : '',
-    !isRemoteActionClient && rollInProgress ? 'roll-in-progress' : '',
-    pendingLocalRemoteActionsRef.current.size > 0 ? 'pending-local-remote-action' : '',
-    processingActionIdsRef.current.size > 0 ? 'processing-remote-action' : '',
-  ].filter(Boolean), [isRemoteActionClient, isRollLocked, roll, rollInProgress, turnActionBlockReasons]);
+  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingHostStateSave, isRemoteActionClient, isRollLocked, isSpectator, localSeatId, movingPieceId, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, winner]);
+  const canRollNow = canRoll(rollActionGuardInput);
   const moveActionBlockReasons = useMemo(() => [
     ...turnActionBlockReasons,
     !roll ? 'no-roll' : '',
@@ -1647,7 +1653,11 @@ export function App() {
     return nextRoll;
   }
   function rollYut() {
-    if (!activeSeat || !canRollNow) return;
+    if (!activeSeat || !canRollNow) {
+      const reasons = rollActionBlockReasons.length ? rollActionBlockReasons.join(', ') : 'unknown';
+      setMessage(`윷 던지기를 진행할 수 없습니다: ${reasons}`);
+      return;
+    }
     if (activeRoomId) {
       const rollPayload = forcedRoll ? { forcedResult: forcedRoll } : {};
       const actionKey = `${getLocalActionKey('roll_yut', rollPayload)}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
