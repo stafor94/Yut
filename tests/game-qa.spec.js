@@ -348,6 +348,14 @@ function hasStaleLocalMoveTarget(debugState) {
   );
 }
 
+function didMoveAdvanceBeforeClickCompleted(beforeDebugState, afterDebugState) {
+  const afterYutDebug = afterDebugState?.yutDebug ?? {};
+  if (afterDebugState?.moveButton?.visible) return false;
+  if (afterYutDebug.roll !== null || afterYutDebug.rollResultHolding) return false;
+  if (hasStateAdvanced(beforeDebugState?.yutDebug ?? {}, afterYutDebug)) return true;
+  return Boolean((afterDebugState?.rollButton?.visible && !afterDebugState.rollButton.disabled) || afterDebugState?.prompt || afterDebugState?.trap || afterDebugState?.winner);
+}
+
 function classifyRollOutcomeFailure(kind, debugStates) {
   const states = Array.isArray(debugStates) ? debugStates : [];
   const blockers = states.map(summarizeActionBlockers);
@@ -547,14 +555,19 @@ async function playOneAvailableGameAction(page, coverage, options = {}) {
     }, { message: '선택한 말 이동 버튼은 활성화되거나 자동 이동으로 다음 상태에 진입해야 합니다.', timeout: 15_000 }).toMatch(/^(ready|advanced)$/);
 
     if (moveButtonState === 'ready' && await isVisible(moveButton) && await moveButton.isEnabled().catch(() => false)) {
+      const beforeMoveDebugState = await collectGameDebugState(page);
       try {
         await moveButton.click({ timeout: 2_000 });
         coverage.manualMoved += 1;
         return 'manual-move';
       } catch (error) {
         const debugState = await collectGameDebugState(page);
+        if (didMoveAdvanceBeforeClickCompleted(beforeMoveDebugState, debugState)) {
+          coverage.autoWaited += 1;
+          return 'auto-move';
+        }
         if (hasPendingTurnAction(debugState) || debugState.yutDebug?.rollResultHolding || hasStaleLocalMoveTarget(debugState)) return 'wait';
-        throw new Error(`선택한 말 이동 버튼 클릭이 실패했습니다: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error), debugState }, null, 2)}`);
+        throw new Error(`선택한 말 이동 버튼 클릭이 실패했습니다: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error), beforeMoveDebugState, debugState }, null, 2)}`);
       }
     }
 
@@ -638,7 +651,23 @@ async function isPlayableActionVisible(page) {
   return false;
 }
 
+function getPlayableActionPriority(debugState) {
+  const yutDebug = debugState?.yutDebug ?? {};
+  if (debugState?.moveButton?.visible && !debugState.moveButton.disabled && yutDebug.canRequestMove === true) return 1;
+  if (debugState?.branchControls?.visible && !debugState.branchControls.moveDisabled && yutDebug.canRequestMove === true) return 2;
+  if (debugState?.rollButton?.visible && !debugState.rollButton.disabled && yutDebug.canRollNow === true && (yutDebug.rollActionBlockReasons ?? []).length === 0) return 3;
+  if (debugState?.prompt || debugState?.trap || debugState?.winner) return 4;
+  return Number.POSITIVE_INFINITY;
+}
+
 async function playOneAvailableGameActionAcrossPages(pages, coverage) {
+  const pageStates = await Promise.all(pages.map(async (page) => ({ page, debugState: await collectGameDebugState(page) })));
+  const playablePageState = pageStates
+    .map((entry, index) => ({ ...entry, index, priority: getPlayableActionPriority(entry.debugState) }))
+    .filter((entry) => Number.isFinite(entry.priority))
+    .sort((left, right) => left.priority - right.priority || left.index - right.index)[0];
+  if (playablePageState) return playOneAvailableGameAction(playablePageState.page, coverage, { pages });
+
   for (const page of pages) {
     if (await isPlayableActionVisible(page)) return playOneAvailableGameAction(page, coverage, { pages });
   }
@@ -651,7 +680,7 @@ async function playOneAvailableGameActionAcrossPages(pages, coverage) {
     }
   }
 
-  throw new Error(`처리 가능한 기기전 게임 액션을 찾지 못했습니다: ${JSON.stringify(await Promise.all(pages.map((page) => collectGameDebugState(page))), null, 2)}`);
+  throw new Error(`처리 가능한 기기전 게임 액션을 찾지 못했습니다: ${JSON.stringify(pageStates.map((entry) => entry.debugState), null, 2)}`);
 }
 
 async function playUntilActionsAcrossPages(pages, testInfo, { targetActions = 10, maxTicks = 100, minActionsBeforeWinner = 6, stepPrefix = 'device-action' } = {}) {

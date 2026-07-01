@@ -67,6 +67,59 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-01 - Issue #220 모바일 QA 이동/기기전 액션 race 오분류
+
+### Symptom
+
+- Issue #220에서 모바일 Game QA가 `move-piece-button` 클릭 실패로 중단됐다.
+- 같은 이슈의 기기전 QA는 roll 클릭 이후 `no-state-change` 또는 `roll-blocked`로 분류됐다.
+
+### Expected behavior
+
+- 이동 버튼이 ready로 관측된 직후 앱 상태가 이미 다음 턴으로 진행되어 버튼이 사라진 경우에는 QA가 이를 클릭 실패로 오분류하지 않아야 한다.
+- 기기전 QA는 단순 버튼 visibility가 아니라 현재 페이지의 `canRequestMove`/`canRollNow` debug 상태를 기준으로 실제 조작 가능한 기기를 우선 선택해야 한다.
+
+### Actual behavior
+
+- `playOneAvailableGameAction()`은 이동 버튼 클릭 catch 이후 pending/holding/stale-local-move만 wait로 분류했고, 이미 `roll: null` 및 다음 roll 가능 상태로 진행된 경우를 정상 진행으로 인정하지 않았다.
+- `playOneAvailableGameActionAcrossPages()`는 여러 기기 중 버튼이 보이는 첫 페이지를 선택해, transient 상태에서 실제 local turn/action 가능 페이지보다 visibility만 먼저 잡힌 페이지를 조작할 수 있었다.
+
+### Suspected root cause
+
+- 앱 상태 전환과 Playwright locator click 사이의 짧은 race를 QA helper가 정상 자동 진행으로 분류하지 못했다.
+- 기기전 액션 선택 기준이 debug guard 상태보다 DOM visibility에 치우쳐 있었다.
+
+### Confirmed root cause
+
+- 코드상 이동 클릭 catch 경로에는 `hasStateAdvanced()` 기반의 진행 완료 판정이 없었다.
+- 코드상 기기전 페이지 선택은 `isPlayableActionVisible()` 순회가 먼저라 `canRollNow`/`canRequestMove`를 우선하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 이전 이슈들에서 pending remote/action processing, stale turn/roll state 분류를 보강했다.
+  - Why it failed: 이동 버튼 클릭 직전 상태가 이미 다음 턴으로 전환되는 click race와 기기전 조작 페이지 선택 기준은 별도로 해결하지 못했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- 앱 UI나 게임 로직을 원인 확인 없이 변경하지 않는다.
+- 기기전에서 단순 버튼 visibility만으로 조작 페이지를 선택하지 않는다.
+- 이미 진행된 move를 클릭 실패로 단정하지 않는다.
+
+### Correct fix plan
+
+- 이동 버튼 click catch에서 클릭 전/후 debug state를 비교해 이미 `roll: null`, `rollResultHolding: false`, 상태 sequence/version 또는 다음 roll 가능 UI로 전환된 경우 자동 진행으로 분류한다.
+- 기기전 helper는 `canRequestMove === true` 또는 `canRollNow === true`이고 block reason이 없는 페이지를 우선 선택한다.
+- 앱 소스/UI는 변경하지 않고 QA helper와 실패 이력만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] GitHub Actions mobile QA rerun checked
+- [x] No app UI changes
+- [x] No new dependency
+
 ## 2026-07-01 - 윷 던지기 무반응 재발 원인 재점검
 
 ### Symptom
