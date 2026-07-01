@@ -300,6 +300,24 @@ const makeFirestoreSafeId = (value: string) => {
 };
 const getClientMutationDocRef = (roomId: string, clientMutationId: string) => doc(db!, 'rooms', roomId, 'processedActions', makeFirestoreSafeId(clientMutationId));
 
+const sanitizeForFirestore = (value: unknown): unknown => {
+  if (value === undefined) return null;
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((entry) => sanitizeForFirestore(entry));
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, sanitizeForFirestore(entry)]));
+};
+
+const makeReplaySequencePayload = (params: { basePayload?: Record<string, unknown>; stateBefore: SyncedGameState | null; stateAfter: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; patch?: GameStatePatch; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> }) => sanitizeForFirestore({
+  ...(params.basePayload ?? {}),
+  replay: {
+    schemaVersion: 1,
+    action: params.action ?? null,
+    patch: params.patch ?? null,
+    stateBefore: params.stateBefore,
+    stateAfter: params.stateAfter,
+  },
+}) as Record<string, unknown>;
+
 const isTurnOrderIntroActive = (intro: unknown, now = Date.now()) => {
   if (!intro || typeof intro !== 'object' || !('readyAt' in intro)) return false;
   return Number((intro as { readyAt?: unknown }).readyAt ?? 0) > now;
@@ -333,7 +351,7 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
       sequence: nextSequence,
       type: meta.type ?? 'state_snapshot',
       actorId: meta.actorId ?? 'system',
-      payload: meta.payload ?? {},
+      payload: makeReplaySequencePayload({ basePayload: meta.payload, stateBefore: currentState, stateAfter: state }),
       expectedPreviousSequence: meta.expectedPreviousSequence ?? currentSequence,
       ...(meta.clientMutationId ? { clientMutationId: meta.clientMutationId } : {}),
       clientCreatedAt: meta.clientCreatedAt ?? Date.now(),
@@ -384,20 +402,23 @@ export async function completeTurnOrderIntro(roomId: string, params: { readyAt: 
     const currentSequence = Number(currentState.lastSequence ?? 0);
     const nextVersion = currentVersion + 1;
     const nextSequence = currentSequence + 1;
+    const statePatch = {
+      turnOrderIntro: null,
+      gameStartedAt: Number(currentState.gameStartedAt ?? 0) || Date.now(),
+    };
     const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
     transaction.set(sequenceRef, {
       sequence: nextSequence,
       type: 'turn_order_intro_completed',
       actorId: params.actorId,
-      payload: { readyAt: params.readyAt },
+      payload: makeReplaySequencePayload({ basePayload: { readyAt: params.readyAt }, stateBefore: currentState, stateAfter: { ...currentState, ...statePatch }, patch: statePatch }),
       expectedPreviousSequence: currentSequence,
       clientMutationId,
       clientCreatedAt: Date.now(),
       createdAt: serverTimestamp(),
     });
     transaction.set(gameStateRef, {
-      turnOrderIntro: null,
-      gameStartedAt: Number(currentState.gameStartedAt ?? 0) || Date.now(),
+      ...statePatch,
       updatedAt: serverTimestamp(),
       turnVersion: nextVersion,
       lastSequence: nextSequence,
@@ -591,11 +612,12 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const nextVersion = currentVersion + 1;
     const nextSequence = currentSequence + 1;
     const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
+    const stateAfter = { ...state, ...reduction.patch };
     transaction.set(sequenceRef, {
       sequence: nextSequence,
       type: action.type === 'roll_yut' ? 'roll_yut' : 'move_piece_resolved',
       actorId: action.actorId,
-      payload: reduction.payload,
+      payload: makeReplaySequencePayload({ basePayload: reduction.payload, stateBefore: state, stateAfter, patch: reduction.patch, action }),
       expectedPreviousSequence: currentSequence,
       clientMutationId: clientActionId,
       clientCreatedAt: Date.now(),

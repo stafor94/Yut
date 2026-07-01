@@ -186,6 +186,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
   const movingGroupIds = movingPiece.started
     ? pieces.filter((piece) => piece.started && !piece.finished && piece.nodeId === movingPiece.nodeId && canControlPiece(actorId, piece, playMode, sides)).map((piece) => piece.id)
     : [movingPiece.id];
+  const beforeMovingPieces = pieces.filter((piece) => movingGroupIds.includes(piece.id)).map((piece) => ({ ...piece }));
   const movePathNodeIds = getMovePathNodeIds(movingPiece.nodeId, steps, branchChoice);
   let currentNodeId = movingPiece.nodeId;
   let currentNodeIndex = movingPiece.nodeIndex;
@@ -210,6 +211,10 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
   let nextBoardItems = [...(state.boardItems ?? [])];
   let nextOwnedItems = { ...((state.ownedItems ?? {}) as Record<string, ItemType[]>) };
   let captured = false;
+  let trapEvent: Record<string, unknown> | null = null;
+  let itemEvent: Record<string, unknown> | null = null;
+  let shieldedCapturePieceIds: string[] = [];
+  let capturedPieceIds: string[] = [];
 
   const steppedOnTrap = nextTrapNodes.find((trap) => trap.nodeId === currentNodeId && !isSameSide(trap.ownerId, actorId, playMode, sides));
   if (steppedOnTrap) {
@@ -217,6 +222,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
     const shieldedFromTrap = movingGroupIds.some((id) => nextShieldedPieceIds.includes(id));
     if (shieldedFromTrap) {
       nextShieldedPieceIds = nextShieldedPieceIds.filter((id) => !movingGroupIds.includes(id));
+      trapEvent = { nodeId: steppedOnTrap.nodeId, ownerId: steppedOnTrap.ownerId, blockedByShield: true, affectedPieceIds: movingGroupIds };
       pushLog(`${actorLogName} 말이 방패로 함정을 막았습니다.`);
     } else {
       nextPieces.forEach((piece) => {
@@ -225,6 +231,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
         }
       });
       currentNodeId = 'n01';
+      trapEvent = { nodeId: steppedOnTrap.nodeId, ownerId: steppedOnTrap.ownerId, blockedByShield: false, affectedPieceIds: movingGroupIds };
       pushLog(`${actorLogName} 말이 함정을 밟아 시작점으로 돌아갑니다.`);
     }
   }
@@ -235,13 +242,18 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
     if (currentItems.length >= 1) currentItems.shift();
     nextOwnedItems = { ...nextOwnedItems, [actorId]: [...currentItems, landedItem.type] };
     nextBoardItems = nextBoardItems.filter((item) => item.id !== landedItem.id);
+    itemEvent = { itemId: landedItem.id, itemType: landedItem.type, nodeId: landedItem.nodeId, ownerId: actorId };
     pushLog(`${actorLogName}이(가) 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 획득했습니다.`);
   }
 
   if (currentNodeId !== 'finish') {
-    const capturedPieceIds = nextPieces
+    shieldedCapturePieceIds = nextPieces
+      .filter((piece) => !movingGroupIds.includes(piece.id) && piece.started && !piece.finished && piece.nodeId === currentNodeId && !isSameSide(piece.ownerId, actorId, playMode, sides) && nextShieldedPieceIds.includes(piece.id))
+      .map((piece) => piece.id);
+    capturedPieceIds = nextPieces
       .filter((piece) => !movingGroupIds.includes(piece.id) && piece.started && !piece.finished && piece.nodeId === currentNodeId && !isSameSide(piece.ownerId, actorId, playMode, sides) && !nextShieldedPieceIds.includes(piece.id))
       .map((piece) => piece.id);
+    if (shieldedCapturePieceIds.length) nextShieldedPieceIds = nextShieldedPieceIds.filter((id) => !shieldedCapturePieceIds.includes(id));
     if (capturedPieceIds.length) {
       captured = true;
       nextPieces.forEach((piece) => {
@@ -280,6 +292,29 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
       branchChoice: 'outer',
       rollResultReadyAt: 0,
     },
-    payload: { activeSeatId: actorId, pieceId, movingGroupIds, captured, finishedMove },
+    payload: {
+      activeSeatId: actorId,
+      pieceId,
+      rollName: result.name,
+      rollSteps: result.steps,
+      extraSteps,
+      totalSteps: steps,
+      branchChoice,
+      fromNodeId: movingPiece.nodeId,
+      toNodeId: currentNodeId,
+      pathNodeIds: movePathNodeIds,
+      movingGroupIds,
+      beforeMovingPieces,
+      afterMovingPieces: nextPieces.filter((piece) => movingGroupIds.includes(piece.id)).map((piece) => ({ ...piece })),
+      captured,
+      capturedPieceIds,
+      shieldedCapturePieceIds,
+      trapEvent,
+      itemEvent,
+      finishedMove,
+      nextTurnIndex,
+      extraTurn: nextTurnIndex === Number(state.turnIndex ?? 0),
+      extraTurnReasons: [result.bonus ? 'roll_bonus' : '', captured ? 'capture' : ''].filter(Boolean),
+    },
   };
 }
