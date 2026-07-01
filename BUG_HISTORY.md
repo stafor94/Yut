@@ -67,6 +67,60 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-01 - Issue #222 모바일 Game QA roll-yut-button disabled 오분류
+
+### Symptom
+
+- Issue #222에서 모바일 Game QA가 `roll-yut-button`을 찾은 뒤 enabled 대기에서 실패했다.
+- 실패 메시지는 버튼이 보이면 활성화되어야 한다는 QA assertion에서 발생했다.
+
+### Expected behavior
+
+- `roll-yut-button`이 보이더라도 저장/원격 액션/roll lock/차례 순서 연출 같은 일시 상태면 QA가 즉시 실패하지 않고 대기 상태로 분류해야 한다.
+- transient 상태가 아닌 차단이면 `rollActionBlockReasons` 등 debug guard 값을 포함해 원인을 드러내야 한다.
+
+### Actual behavior
+
+- `playOneAvailableGameAction()`은 `roll-yut-button` visibility만 확인한 뒤 `toBeEnabled()`를 기대했다.
+- 앱은 `canSubmitTurnAction`이 true이면 `roll-yut-button`을 렌더링하지만, 실제 disabled 여부는 더 좁은 `canRollNow`와 roll 전용 blocker에 의해 결정된다.
+- 따라서 `roll-in-progress`, `pending-local-remote-action`, `processing-remote-action`, `saving-host-state`, `roll-locked` 같은 transient blocker가 있는 정상 대기 상태도 테스트 실패로 오분류될 수 있었다.
+
+### Suspected root cause
+
+- 모바일/Firebase 타이밍에서 버튼 DOM visibility와 실제 roll 가능 guard 사이에 transient gap이 발생했다.
+- QA helper가 debug guard를 확인하지 않고 visibility 기반으로 enabled를 강제 기대했다.
+
+### Confirmed root cause
+
+- 코드상 roll 버튼 처리 경로가 `collectGameDebugState()`의 `canRollNow`/`rollActionBlockReasons`를 확인하기 전에 `toBeEnabled()`를 호출했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #220에서 기기전 액션 선택은 `canRollNow`/`canRequestMove`를 우선하도록 보강했다.
+  - Why it failed: 단일 페이지 `playOneAvailableGameAction()`의 roll 버튼 enabled 대기 경로에는 같은 transient 분류가 적용되지 않았다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- 앱 UI나 게임 로직을 원인 확인 없이 변경하지 않는다.
+- `roll-yut-button` visibility만으로 즉시 enabled를 기대하지 않는다.
+- transient roll blocker를 실패로 단정하지 않는다.
+
+### Correct fix plan
+
+- `playOneAvailableGameAction()`의 roll 버튼 경로에서 enabled assertion 전에 debug state를 수집한다.
+- `rollActionBlockReasons`가 transient blocker이면 `wait`로 분류하고 다음 QA tick에서 다시 판단한다.
+- transient blocker가 아닌데 disabled이면 debug blocker 요약을 포함해 실패시킨다.
+- 앱 소스/UI는 변경하지 않고 QA helper와 실패 이력만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No app UI changes
+- [x] No new dependency
+
 ## 2026-07-01 - Issue #220 모바일 QA 이동/기기전 액션 race 오분류
 
 ### Symptom
