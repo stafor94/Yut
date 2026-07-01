@@ -284,7 +284,7 @@ export function App() {
   const currentRollRef = useRef<YutResult | null>(null);
   const rollAnimationTimerRef = useRef<number | null>(null);
   const lastAnimatedRollKeyRef = useRef('');
-  const pendingSequenceMetaRef = useRef<{ type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; clientMutationId?: string } | null>(null);
+  const pendingSequenceMetaRef = useRef<{ type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; clientMutationId?: string } | null>(null);
   const applyingSyncedStateRef = useRef(false);
   const lastAppliedStateVersionRef = useRef(0);
   const lastAppliedSequenceRef = useRef(0);
@@ -862,7 +862,7 @@ export function App() {
     const sequencePayload = pendingSequenceMeta?.payload ?? { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId };
     const clientMutationId = pendingSequenceMeta?.clientMutationId ?? `${sequenceType}:${sequenceActorId}:${stateFingerprint}`;
     let keepHostStateSavePending = false;
-    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, expectedPreviousSequence: lastAppliedSequenceRef.current }).then((result) => {
+    void saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, branchChoice, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, action: pendingSequenceMeta?.action ?? null, expectedPreviousSequence: lastAppliedSequenceRef.current }).then((result) => {
       if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.turnVersion) {
         lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
@@ -1040,10 +1040,11 @@ export function App() {
   }, [activeRoomId, canHostRoom, isTurnOrderFallbackDue, turnOrderPhase]);
 
   useEffect(() => {
-    if (!showBottomBranchControls || !selectedPiece || !roll) {
+    if (!selectedPiece || !roll) {
       lastBranchControlKeyRef.current = '';
       return;
     }
+    if (!showBottomBranchControls) return;
     const branchControlKey = `${selectedPiece.id}:${selectedPiece.nodeId}:${roll.name}:${roll.steps}`;
     if (lastBranchControlKeyRef.current === branchControlKey) return;
     lastBranchControlKeyRef.current = branchControlKey;
@@ -1141,6 +1142,11 @@ export function App() {
     return { ...payload, actorLabel: seat?.label ?? '', actorName: seat?.name ?? '', actorLogName: getActorLogName(seat) };
   }
 
+  function makeSequenceAction(action: GameAction): Omit<GameAction, 'id' | 'createdAt' | 'processed'> {
+    return { type: action.type, actorId: action.actorId, payload: action.payload ?? {} };
+  }
+
+
   async function submitRemoteAction(type: GameAction['type'], payload: Record<string, unknown> = {}) {
     if (!activeRoomId) return;
     const clientActionId = String(payload.clientActionId ?? getLocalActionKey(type, payload));
@@ -1199,6 +1205,7 @@ export function App() {
         } else if (turnOrderPhase.active && Date.now() < turnOrderPhase.readyAt) {
           shouldRetry = true;
         } else if (turnOrderPhase.active && actorSeat && !hasActorAlreadyRolled) {
+          pendingSequenceMetaRef.current = { type: 'turn_order_roll', actorId: action.actorId, clientMutationId: clientActionId || `turn_order_roll:${action.actorId}:${turnOrderPhase.index}:${turnOrderPhase.rolls.length}`, payload: { rollIndex: turnOrderPhase.rolls.length }, action: makeSequenceAction(action) };
           rollForTurnOrder(true, action.actorId);
           shouldMarkProcessed = true;
         } else if (turnOrderPhase.active && hasActorAlreadyRolled) {
@@ -1219,22 +1226,25 @@ export function App() {
       if (action.type === 'roll_yut') {
         if (isActorsTurn && !roll) {
           setShieldedPieceIds([]);
-          const remoteRoll = rollYutFor(actorSeat, (action.payload?.forcedResult as YutResult | null | undefined) ?? null);
+          const remoteRoll = rollYutFor(actorSeat, (action.payload?.forcedResult as YutResult | null | undefined) ?? null, makeSequenceAction(action));
           if (!remoteRoll) { shouldRetry = true; return; }
         }
         shouldMarkProcessed = true;
       }
       if (action.type === 'move_piece') {
         if (!isActorsTurn || !roll) { shouldRetry = true; return; }
+        pendingSequenceMetaRef.current = { type: 'move_piece_resolved', actorId: action.actorId, clientMutationId: clientActionId || getLocalActionKey('move_piece', action.payload ?? {}), payload: action.payload ?? {}, action: makeSequenceAction(action) };
         await movePiece(String(action.payload?.pieceId ?? ''), roll, actorSeat, Number(action.payload?.extraSteps ?? 0), (action.payload?.branchChoice as BranchChoice | undefined) ?? branchChoice);
         shouldMarkProcessed = true;
       }
       if (action.type === 'use_item') {
+        pendingSequenceMetaRef.current = { type: 'item_used', actorId: action.actorId, clientMutationId: clientActionId || getLocalActionKey('use_item', action.payload ?? {}), payload: action.payload ?? {}, action: makeSequenceAction(action) };
         useItem(remoteItemType as ItemType, action.actorId, action.payload ?? {});
         shouldMarkProcessed = true;
       }
       if (action.type === 'place_trap') {
         if (!pendingTrapPlacement || pendingTrapPlacement.ownerId !== action.actorId) { shouldRetry = true; return; }
+        pendingSequenceMetaRef.current = { type: 'trap_placed', actorId: action.actorId, clientMutationId: clientActionId || getLocalActionKey('place_trap', action.payload ?? {}), payload: action.payload ?? {}, action: makeSequenceAction(action) };
         placePendingTrap(String(action.payload?.nodeId ?? ''), action.actorId);
         shouldMarkProcessed = true;
       }
@@ -1721,7 +1731,7 @@ export function App() {
     if (activeRoomId) { void updateRoomPlayer(activeRoomId, playerId, { team }); }
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId ? { ...seat, team } : seat));
   }
-  function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll) {
+  function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null) {
     if (rollInProgressRef.current || currentRollRef.current) return null;
     rollInProgressRef.current = true;
     rollInProgressStartedAtRef.current = Date.now();
@@ -1735,7 +1745,7 @@ export function App() {
     currentRollRef.current = nextRoll;
     setRoll(nextRoll);
     playRollAnimationOnce(nextRoll, rolled.sticks, animationKey);
-    pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: `roll_yut:${seat.id}:${turnIndex}:${nextRoll.name}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name } };
+    pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut:${seat.id}:${turnIndex}:${nextRoll.name}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name }, action: sourceAction ?? null };
     playSfx('roll');
     if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
     window.setTimeout(() => {
@@ -1789,7 +1799,8 @@ export function App() {
             reportTurnActionFailure('roll_yut', error instanceof Error ? error.message : '윷 던지기 요청을 보내지 못했습니다.');
             finishPendingRoll();
           });
-        setForcedRoll(null);
+        const optimisticRoll = rollYutFor(activeSeat, (rollPayload.forcedResult as YutResult | undefined) ?? null, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) });
+        if (!optimisticRoll) finishPendingRoll();
         return;
       }
 
@@ -2004,6 +2015,8 @@ export function App() {
             reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 요청을 보내지 못했습니다.');
             pendingLocalRemoteActionsRef.current.delete(actionKey);
           });
+        void movePiece(payload.pieceId, roll, activeSeat, extraSteps, payload.branchChoice)
+          .catch((error) => reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'));
         return true;
       }
       void commitAuthoritativeGameAction(activeRoomId, { type: 'move_piece', actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) })
@@ -2085,9 +2098,17 @@ export function App() {
 
   function placePendingTrap(nodeId: string, actorId = localSeatId) {
     if (!pendingTrapPlacement || !pendingTrapPlacement.nodeIds.includes(nodeId)) return;
+    if (activeRoomId && !canHostRoom && actorId === localSeatId) {
+      void submitRemoteAction('place_trap', { nodeId, pieceId: pendingTrapPlacement.pieceId });
+    }
     const itemOwnerSeat = playableSeats.find((seat) => seat.id === pendingTrapPlacement.ownerId);
     const trapPiece = pieces.find((piece) => piece.id === pendingTrapPlacement.pieceId);
     if (!itemOwnerSeat || !trapPiece) { setPendingTrapPlacement(null); return; }
+    if (activeRoomId && canHostRoom && actorId === localSeatId) {
+      const payload = { nodeId, pieceId: pendingTrapPlacement.pieceId };
+      const clientMutationId = getLocalActionKey('place_trap', payload);
+      pendingSequenceMetaRef.current = { type: 'trap_placed', actorId, clientMutationId, payload, action: { type: 'place_trap', actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) } };
+    }
     playSfx('itemUse');
     setOwnedItems((items) => {
       const nextSeatItems = [...(items[pendingTrapPlacement.ownerId] ?? [])];
@@ -2107,9 +2128,18 @@ export function App() {
     if (!itemOwnerSeat) return;
     const activeItems = ownedItems[itemOwnerId] ?? [];
     if (!activeItems.includes(type)) return;
+    const itemActionPayload = { itemType: type, pieceId: selectedPieceId, branchChoice };
+    const submitItemActionIfRemote = () => {
+      if (activeRoomId && !canHostRoom && actorId === localSeatId) void submitRemoteAction('use_item', itemActionPayload);
+    };
+    const clientMutationId = getLocalActionKey('use_item', itemActionPayload);
+    if (activeRoomId && canHostRoom && actorId === localSeatId) {
+      pendingSequenceMetaRef.current = { type: 'item_used', actorId, clientMutationId, payload: itemActionPayload, action: { type: 'use_item', actorId, payload: withActorLogPayload({ ...itemActionPayload, clientActionId: clientMutationId }, itemOwnerSeat) } };
+    }
     const consumeItem = () => { playSfx('itemUse'); setItemPromptTiming(null); setPendingTrapPlacement(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
     if (type === 'golden_yut') {
       if (activeSeat?.id !== itemOwnerId || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
+      submitItemActionIfRemote();
       consumeItem();
       if (actorId === localSeatId) {
         setGoldenYutPickerOpen(true);
@@ -2121,6 +2151,7 @@ export function App() {
     }
     if (type === 'reroll') {
       if (activeSeat?.id !== itemOwnerId || !roll) { addLog('다시 던지기는 내 턴에 윷을 던진 뒤 사용할 수 있습니다.'); return; }
+      submitItemActionIfRemote();
       consumeItem();
       clearRoll();
       window.setTimeout(() => rollYutFor(itemOwnerSeat), 450);
@@ -2129,6 +2160,7 @@ export function App() {
     if (type === 'move_plus_one' || type === 'move_minus_one') {
       if (activeSeat?.id !== itemOwnerId || !roll) { addLog('이동 보정 아이템은 내 턴에 윷을 던진 뒤 사용할 수 있습니다.'); return; }
       if (type === 'move_minus_one' && roll.steps === 1) { addLog('도에서는 한 칸 덜 이동 아이템을 사용할 수 없습니다.'); return; }
+      submitItemActionIfRemote();
       const itemMoveSteps = type === 'move_plus_one' ? 1 : -1;
       if (actorId === localSeatId && !moveSelectedPiece(itemMoveSteps)) return;
       if (actorId !== localSeatId) {
@@ -2142,6 +2174,7 @@ export function App() {
     if (type === 'shield') {
       const shieldTargets = lastMovedSeatId === itemOwnerId ? lastMovedPieceIds.filter((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished)) : [];
       if (!shieldTargets.length) { addLog('방패는 방금 이동한 내 말이 말판 위에 있을 때 사용할 수 있습니다.'); return; }
+      submitItemActionIfRemote();
       consumeItem();
       setShieldedPieceIds((ids) => Array.from(new Set([...ids, ...shieldTargets])));
       addLog(`${itemOwnerSeat.label}의 방금 이동한 말에 방패를 씌웠습니다.`);
@@ -2154,6 +2187,7 @@ export function App() {
       if (lastMovedSeatId !== itemOwnerId) { addLog('함정은 내 말이 이동한 직후에 설치할 수 있습니다.'); return; }
       const nodeIds = getNearbyNodeIds(trapPiece.nodeId, 2).filter((nodeId) => nodeId !== 'n01');
       if (!nodeIds.length) { addLog('함정을 설치할 수 있는 칸이 없습니다.'); return; }
+      submitItemActionIfRemote();
       setItemPromptTiming(null);
       setPendingTrapPlacement({ ownerId: itemOwnerId, pieceId: trapPiece.id, nodeIds, deadline: Date.now() + 10000 });
       addLog(`${trapPiece.label} 기준 앞뒤 2칸 이내에서 함정을 설치할 칸을 선택하세요.`);
