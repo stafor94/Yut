@@ -3,10 +3,18 @@ import { firebaseApp } from './firebaseApp';
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null;
 
+let guestSignInPromise: Promise<User | null> | null = null;
+
 export async function signInAsGuest() {
   if (!auth) return null;
-  const result = await signInAnonymously(auth);
-  return result.user;
+  if (!guestSignInPromise) {
+    guestSignInPromise = signInAnonymously(auth)
+      .then((result) => result.user)
+      .finally(() => {
+        guestSignInPromise = null;
+      });
+  }
+  return guestSignInPromise;
 }
 
 export function listenAuthState(callback: (user: User | null) => void) {
