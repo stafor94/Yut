@@ -7,7 +7,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cleanupStaleRooms, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getRoom, heartbeatRoomPlayer, joinRoom, leaveDuplicatePlayerRooms, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStartCountdown, updateRoomStatus, type GameAction, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cleanupStaleRooms, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getRoom, heartbeatRoomPlayer, joinRoom, leaveDuplicatePlayerRooms, markGameActionProcessed, removeRoomPlayer, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStartCountdown, updateRoomStatus, type GameAction, type GameSequence, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -42,6 +42,32 @@ type CaptureEffect = { id: number; pieceIds: string[] };
 type TrapEffect = { id: number; nodeId: string; pieceIds: string[] };
 type PendingTrapPlacement = { ownerId: string; pieceId: string; nodeIds: string[]; deadline: number };
 type TrapNode = { nodeId: string; ownerId: string };
+type SequenceStateSnapshot = Partial<{
+  pieces: BoardPiece[];
+  turnIndex: number;
+  turnOrderIds: string[];
+  roll: YutResult | null;
+  boardItems: BoardItem[];
+  ownedItems: Record<string, ItemType[]>;
+  trapNodes: TrapNode[];
+  shieldedPieceIds: string[];
+  logs: GameLog[];
+  winner: string;
+  captureEffect: CaptureEffect | null;
+  trapEffect: TrapEffect | null;
+  gameStartedAt: number | null;
+  turnOrderIntro: TurnOrderIntro | null;
+  pendingTrapPlacement: PendingTrapPlacement | null;
+  rollLockUntil: number;
+  lastMovedPieceIds: string[];
+  lastMovedSeatId: string;
+  itemPromptTiming: ItemTiming | null;
+  branchChoice: BranchChoice;
+  rollResultReadyAt: number;
+  turnOrderPhase: TurnOrderPhase | null;
+  turnVersion: number;
+  lastSequence: number;
+}>;
 
 const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
 const PLAYER_COLOR_LABELS = ['빨강', '파랑', '초록', '노랑'];
@@ -280,6 +306,9 @@ export function App() {
   const rollInProgressStartedAtRef = useRef(0);
   const moveInProgressRef = useRef(false);
   const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
+  const localClientMutationIdsRef = useRef<Set<string>>(new Set());
+  const sequenceReplayInProgressRef = useRef(false);
+  const queuedSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
   const completingTurnOrderIntroRef = useRef<Set<number>>(new Set());
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
   const currentRollRef = useRef<YutResult | null>(null);
@@ -555,10 +584,13 @@ export function App() {
     rollInProgressStartedAtRef.current = 0;
     setRollInProgress(false);
     moveInProgressRef.current = false;
+    sequenceReplayInProgressRef.current = false;
+    queuedSyncedStateRef.current = null;
     currentRollRef.current = null;
     lastAnimatedRollKeyRef.current = '';
     pendingSequenceMetaRef.current = null;
     pendingLocalRemoteActionsRef.current.clear();
+    localClientMutationIdsRef.current.clear();
     lastSavedStateFingerprintRef.current = '';
     savingStateFingerprintRef.current = '';
     setHostStateSaveKey('');
@@ -812,62 +844,136 @@ export function App() {
     }, turnOrder ? TURN_ORDER_ROLL_ANIMATION_MS : ROLL_ANIMATION_MS);
   }
 
+  const applySyncedStateSnapshot = (state: SequenceStateSnapshot, options: { allowMoveAnimation?: boolean; updateVersion?: boolean; updateSequence?: boolean } = {}) => {
+    const { allowMoveAnimation = true, updateVersion = true, updateSequence = true } = options;
+    const stateVersion = Number('turnVersion' in state ? state.turnVersion ?? 0 : 0);
+    if (updateVersion && stateVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
+    if (updateSequence && 'lastSequence' in state) lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
+    const nextRoll = (state.roll as YutResult | null | undefined) ?? null;
+    const previousRoll = currentRollRef.current;
+    const syncedPieces = (state.pieces as BoardPiece[] | undefined) ?? piecesRef.current;
+    const syncedLastMovedPieceIds = (state.lastMovedPieceIds as string[] | undefined) ?? [];
+    const syncedBranchChoice = (state.branchChoice as BranchChoice | undefined) ?? 'outer';
+    const shouldAnimateSyncedMove = Boolean(allowMoveAnimation && !nextRoll && previousRoll && syncedLastMovedPieceIds.length && !moveInProgressRef.current && piecesRef.current.some((piece) => syncedLastMovedPieceIds.includes(piece.id) && syncedPieces.some((nextPiece) => nextPiece.id === piece.id && nextPiece.nodeId !== piece.nodeId)));
+    const syncedRollResultReadyAt = Number(state.rollResultReadyAt ?? 0);
+    const nextRollResultReadyAt = normalizeRollResultReadyAt(syncedRollResultReadyAt);
+    const nextTurnIndex = Number(state.turnIndex ?? 0);
+    if (nextRoll && !currentRollRef.current) {
+      const animationKey = `${nextTurnIndex}:${nextRoll.name}:${nextRoll.steps}:${nextRollResultReadyAt}`;
+      playRollAnimationOnce(nextRoll, makeDisplaySticks(nextRoll), animationKey);
+    }
+    currentRollRef.current = nextRoll;
+    if (shouldAnimateSyncedMove && previousRoll) void animateSyncedPieceMove(piecesRef.current, syncedPieces, syncedLastMovedPieceIds, previousRoll.steps, syncedBranchChoice);
+    else setPieces(syncedPieces);
+    setTurnIndex(nextTurnIndex);
+    setRoll(nextRoll);
+    if (state.boardItems) setBoardItems(state.boardItems);
+    if (state.ownedItems) setOwnedItems(state.ownedItems as Record<string, ItemType[]>);
+    if (state.trapNodes) setTrapNodes(state.trapNodes as TrapNode[]);
+    setPendingTrapPlacement((state.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? null);
+    if (state.shieldedPieceIds) setShieldedPieceIds(state.shieldedPieceIds);
+    if (state.logs) setLogs(state.logs as GameLog[]);
+    setCaptureEffect((state.captureEffect as CaptureEffect | null | undefined) ?? null);
+    setTrapEffect((state.trapEffect as TrapEffect | null | undefined) ?? null);
+    setGameStartedAt((state.gameStartedAt as number | null | undefined) ?? null);
+    setTurnOrderIds((state.turnOrderIds as string[] | undefined) ?? []);
+    setTurnOrderIntro((state.turnOrderIntro as TurnOrderIntro | null | undefined) ?? null);
+    setRollLockUntil(Number(state.rollLockUntil ?? 0));
+    setLastMovedPieceIds((state.lastMovedPieceIds as string[] | undefined) ?? []);
+    setLastMovedSeatId(state.lastMovedSeatId ?? '');
+    setItemPromptTiming((state.itemPromptTiming as ItemTiming | null | undefined) ?? null);
+    setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
+    setRollResultReadyAt(nextRollResultReadyAt);
+    setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
+    rollInProgressRef.current = false;
+    rollInProgressStartedAtRef.current = 0;
+    setRollInProgress(false);
+  };
+
+  async function replayMoveSequence(sequence: GameSequence) {
+    const payload = sequence.payload ?? {};
+    const clientMutationId = sequence.clientMutationId ?? '';
+    const finalPieces = (sequence.stateAfter?.pieces as BoardPiece[] | undefined) ?? null;
+    const movingGroupIds = Array.isArray(payload.movingGroupIds) ? payload.movingGroupIds.map(String) : [];
+    const pathNodeIds = Array.isArray(payload.pathNodeIds) ? payload.pathNodeIds.map(String).filter(Boolean) : [];
+    if (!finalPieces || !movingGroupIds.length || !pathNodeIds.length || moveInProgressRef.current || (clientMutationId && (pendingLocalRemoteActionsRef.current.has(clientMutationId) || localClientMutationIdsRef.current.has(clientMutationId)))) {
+      if (finalPieces) setPieces(finalPieces);
+      return;
+    }
+    const anchorBefore = piecesRef.current.find((piece) => piece.id === movingGroupIds[0]);
+    const anchorAfter = finalPieces.find((piece) => piece.id === movingGroupIds[0]);
+    if (!anchorBefore || !anchorAfter || anchorBefore.nodeId === anchorAfter.nodeId) {
+      setPieces(finalPieces);
+      return;
+    }
+    moveInProgressRef.current = true;
+    setMovingPieceId(anchorBefore.id);
+    setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, started: true, finished: false } : piece));
+    for (const nextNodeId of pathNodeIds) {
+      const nextNodeIndex = Math.max(0, BOARD_NODES.findIndex((node) => node.id === nextNodeId));
+      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeId: nextNodeId, nodeIndex: nextNodeIndex, started: nextNodeId !== 'finish', finished: nextNodeId === 'finish' } : piece));
+      await delay(STEP_DELAY_MS);
+      if (nextNodeId === anchorAfter.nodeId) break;
+    }
+    setPieces(finalPieces);
+    setMovingPieceId('');
+    moveInProgressRef.current = false;
+  }
+
+  async function replayMissingSequencesThenApply(finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) {
+    if (!activeRoomId || sequenceReplayInProgressRef.current) {
+      queuedSyncedStateRef.current = finalState;
+      return;
+    }
+    sequenceReplayInProgressRef.current = true;
+    try {
+      const sequences = (await getGameSequencesSince(activeRoomId, localSequence))
+        .filter((sequence) => Number(sequence.sequence ?? 0) > lastAppliedSequenceRef.current && Number(sequence.sequence ?? 0) <= remoteSequence)
+        .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
+      for (const sequence of sequences) {
+        const sequenceNumber = Number(sequence.sequence ?? 0);
+        if (!sequenceNumber || sequenceNumber <= lastAppliedSequenceRef.current) continue;
+        if (sequence.type === 'move_piece_resolved') await replayMoveSequence(sequence);
+        else if (sequence.stateAfter) applySyncedStateSnapshot(sequence.stateAfter as SequenceStateSnapshot, { allowMoveAnimation: false, updateVersion: false, updateSequence: false });
+        lastAppliedSequenceRef.current = sequenceNumber;
+      }
+      applySyncedStateSnapshot(finalState, { allowMoveAnimation: false, updateVersion: true, updateSequence: true });
+    } catch {
+      applySyncedStateSnapshot(finalState, { allowMoveAnimation: false, updateVersion: true, updateSequence: true });
+    } finally {
+      pendingLocalRemoteActionsRef.current.clear();
+      sequenceReplayInProgressRef.current = false;
+      const queuedState = queuedSyncedStateRef.current;
+      queuedSyncedStateRef.current = null;
+      const queuedSequence = Number(queuedState?.lastSequence ?? 0);
+      if (queuedState && queuedSequence > lastAppliedSequenceRef.current) void replayMissingSequencesThenApply(queuedState, lastAppliedSequenceRef.current, queuedSequence);
+    }
+  }
+
   useEffect(() => {
     if (!activeRoomId) return undefined;
     return subscribeGameState(activeRoomId, (state) => {
       if (!state) return;
       const stateVersion = Number(state.turnVersion ?? 0);
+      const remoteSequence = Number(state.lastSequence ?? 0);
+      const localSequence = lastAppliedSequenceRef.current;
       if (stateVersion && stateVersion <= lastAppliedStateVersionRef.current) {
-        lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
+        if (remoteSequence > localSequence) void replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence);
         return;
       }
       if (screen === 'waitingRoom' && Array.isArray(state.pieces) && state.pieces.length > 0 && Array.isArray(state.turnOrderIds) && state.turnOrderIds.length > 0) {
         setScreen('game');
       }
       applyingSyncedStateRef.current = true;
-      lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
-      lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
-      const nextRoll = state.roll as YutResult | null;
-      const previousRoll = currentRollRef.current;
-      const syncedPieces = state.pieces as BoardPiece[];
-      const syncedLastMovedPieceIds = (state.lastMovedPieceIds as string[] | undefined) ?? [];
-      const syncedBranchChoice = (state.branchChoice as BranchChoice | undefined) ?? 'outer';
-      const shouldAnimateSyncedMove = Boolean(!nextRoll && previousRoll && syncedLastMovedPieceIds.length && !moveInProgressRef.current && piecesRef.current.some((piece) => syncedLastMovedPieceIds.includes(piece.id) && syncedPieces.some((nextPiece) => nextPiece.id === piece.id && nextPiece.nodeId !== piece.nodeId)));
-      const syncedRollResultReadyAt = Number(state.rollResultReadyAt ?? 0);
-      const nextRollResultReadyAt = normalizeRollResultReadyAt(syncedRollResultReadyAt);
-      const nextTurnIndex = Number(state.turnIndex ?? 0);
-      if (nextRoll && !currentRollRef.current) {
-        const animationKey = `${nextTurnIndex}:${nextRoll.name}:${nextRoll.steps}:${nextRollResultReadyAt}`;
-        playRollAnimationOnce(nextRoll, makeDisplaySticks(nextRoll), animationKey);
+      if (remoteSequence > localSequence) {
+        void replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence).finally(() => {
+          window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
+        });
+      } else {
+        applySyncedStateSnapshot(state as SequenceStateSnapshot);
+        pendingLocalRemoteActionsRef.current.clear();
+        window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
       }
-      currentRollRef.current = nextRoll;
-      if (shouldAnimateSyncedMove && previousRoll) void animateSyncedPieceMove(piecesRef.current, syncedPieces, syncedLastMovedPieceIds, previousRoll.steps, syncedBranchChoice);
-      else setPieces(syncedPieces);
-      setTurnIndex(nextTurnIndex);
-      setRoll(nextRoll);
-      setBoardItems(state.boardItems);
-      setOwnedItems(state.ownedItems as Record<string, ItemType[]>);
-      setTrapNodes(state.trapNodes as TrapNode[]);
-      setPendingTrapPlacement((state.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? null);
-      setShieldedPieceIds(state.shieldedPieceIds);
-      setLogs(state.logs as GameLog[]);
-      setCaptureEffect((state.captureEffect as CaptureEffect | null | undefined) ?? null);
-      setTrapEffect((state.trapEffect as TrapEffect | null | undefined) ?? null);
-      setGameStartedAt((state.gameStartedAt as number | null | undefined) ?? null);
-      setTurnOrderIds((state.turnOrderIds as string[] | undefined) ?? []);
-      setTurnOrderIntro((state.turnOrderIntro as TurnOrderIntro | null | undefined) ?? null);
-      setRollLockUntil(Number(state.rollLockUntil ?? 0));
-      setLastMovedPieceIds((state.lastMovedPieceIds as string[] | undefined) ?? []);
-      setLastMovedSeatId(state.lastMovedSeatId ?? '');
-      setItemPromptTiming((state.itemPromptTiming as ItemTiming | null | undefined) ?? null);
-      setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
-      setRollResultReadyAt(nextRollResultReadyAt);
-      setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
-      rollInProgressRef.current = false;
-      rollInProgressStartedAtRef.current = 0;
-      setRollInProgress(false);
-      pendingLocalRemoteActionsRef.current.clear();
-      window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
     });
   }, [activeRoomId, canHostRoom, screen]);
 
@@ -1198,6 +1304,7 @@ export function App() {
     const actionKey = getLocalActionKey(type, payload);
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
     pendingLocalRemoteActionsRef.current.add(actionKey);
+    localClientMutationIdsRef.current.add(actionKey);
     void submitRemoteAction(type, { ...payload, clientActionId: actionKey }).catch(() => {
       pendingLocalRemoteActionsRef.current.delete(actionKey);
     });
@@ -1839,6 +1946,7 @@ export function App() {
         return;
       }
       pendingLocalRemoteActionsRef.current.add(actionKey);
+      localClientMutationIdsRef.current.add(actionKey);
       setRollInProgress(true);
       rollInProgressRef.current = true;
       rollInProgressStartedAtRef.current = Date.now();
@@ -2066,6 +2174,7 @@ export function App() {
         return false;
       }
       pendingLocalRemoteActionsRef.current.add(actionKey);
+      localClientMutationIdsRef.current.add(actionKey);
       if (!canHostRoom) {
         void submitRemoteAction('move_piece', { ...payload, clientActionId: actionKey })
           .catch((error) => {
