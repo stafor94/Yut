@@ -3746,6 +3746,7 @@ aside.players,
 }
 
 .turn-order-slot-reel {
+  --slot-row-step: 60px;
   display: grid;
   gap: 8px;
   padding: 8px;
@@ -3783,6 +3784,10 @@ aside.players,
     height: 62px;
   }
 
+  .turn-order-slot-reel {
+    --slot-row-step: 54px;
+  }
+
   .turn-order-slot-card {
     min-height: 46px;
     font-size: clamp(.8rem, 3.4vw, 1rem);
@@ -3791,7 +3796,7 @@ aside.players,
 
 @keyframes turn-order-slot-spin {
   from { transform: translateY(0); }
-  to { transform: translateY(-60px); }
+  to { transform: translateY(calc(var(--slot-row-step, 60px) * var(--slot-row-count, 1) * -1)); }
 }
 
 @keyframes turn-order-final-pop {
