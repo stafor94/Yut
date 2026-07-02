@@ -83,10 +83,18 @@ jobs:
           path: dist
       - uses: actions/deploy-pages@v4
       - run: npx playwright install --with-deps
-      - name: Run Playwright tests
+      - name: Run Playwright smoke QA
         run: |
           set -o pipefail
-          npx playwright test 2>&1 | tee playwright.log
+          npm run test:smoke 2>&1 | tee -a playwright.log
+      - name: Run Playwright game-flow QA
+        run: |
+          set -o pipefail
+          npm run test:game-flow 2>&1 | tee -a playwright.log
+      - name: Run Playwright mobile layout QA
+        run: |
+          set -o pipefail
+          npm run test:mobile 2>&1 | tee -a playwright.log
       - name: Prune bulky QA artifacts
         if: always()
         run: |

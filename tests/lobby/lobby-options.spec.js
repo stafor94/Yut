@@ -1,0 +1,17 @@
+import { test, expect } from '@playwright/test';
+import { expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { makeQaName } from '../helpers/env.js';
+
+test.describe('lobby QA', () => {
+  test('로비 저장 옵션이 현재 화면에 반영된다', async ({ page, context }, testInfo) => {
+    const nickname = makeQaName(testInfo, 'nick');
+    await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+
+    await runQaStep(testInfo, '저장된 로비 값으로 앱 열기', async () => {
+      await expectAppShell(page);
+      await expect(page.getByDisplayValue(nickname)).toBeVisible();
+      await expect(page.getByTestId('room-title-input')).toBeVisible();
+      await expect(page.getByTestId('create-room-button')).toBeEnabled();
+    });
+  });
+});

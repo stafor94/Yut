@@ -4,7 +4,7 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 90_000,
+  timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   reporter: isCi ? [['list']] : [['html', { outputFolder: 'playwright-report', open: 'never' }], ['list']],
@@ -25,12 +25,25 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'iPad',
-      use: { ...devices['iPad (gen 7)'], viewport: { width: 810, height: 1080 } },
+      name: 'desktop-chromium',
+      testMatch: [
+        /smoke\/.*\.spec\.js/,
+        /lobby\/.*\.spec\.js/,
+        /online\/.*\.spec\.js/,
+        /game-flow\/.*\.spec\.js/,
+        /regression\/.*\.spec\.js/,
+      ],
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
     },
     {
-      name: 'Galaxy S24 Ultra',
+      name: 'mobile-galaxy',
+      testMatch: /mobile\/.*\.spec\.js/,
       use: { ...devices['Galaxy S9+'], viewport: { width: 412, height: 915 }, deviceScaleFactor: 3.5 },
+    },
+    {
+      name: 'tablet-ipad',
+      testMatch: /mobile\/.*\.spec\.js/,
+      use: { ...devices['iPad (gen 7)'], viewport: { width: 810, height: 1080 } },
     },
   ],
 });
