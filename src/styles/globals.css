@@ -68,15 +68,6 @@ h2 { margin-top: 0; }
   line-height: 1.05;
 }
 
-.firebase-latency {
-  margin-top: 2px;
-  font-size: .62rem;
-  font-weight: 800;
-  opacity: .72;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
 .status-card.pending {
   background: rgba(242, 184, 75, .12);
   color: #8a5a00;
