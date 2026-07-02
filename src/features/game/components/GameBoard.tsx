@@ -73,7 +73,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
     const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
     const safeOwnerOrder = Math.max(0, ownerOrder);
     const portraitRow = Math.floor(safeOwnerOrder / 2);
-    return getOffBoardPieceStyle(piece, ownerIndex, safeOwnerOrder, 20 + safeOwnerOrder * 15, 34 + portraitRow * 56);
+    return getOffBoardPieceStyle(piece, ownerIndex, safeOwnerOrder, 20 + safeOwnerOrder * 15, 18 + portraitRow * 48);
   }
   if (piece.finished) {
     return getFinishedPieceStyle(piece, pieces);
