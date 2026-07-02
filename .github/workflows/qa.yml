@@ -109,9 +109,31 @@ jobs:
           path: dist
       - uses: actions/deploy-pages@v4
 
+  qa-cleanup-before:
+    name: Cleanup QA rooms before tests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Cleanup old QA rooms
+        run: npm run qa:cleanup-rooms
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+
   qa-smoke:
     name: QA smoke
-    needs: build
+    needs: [build, qa-cleanup-before]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -144,7 +166,7 @@ jobs:
 
   qa-game-flow:
     name: QA game flow
-    needs: build
+    needs: [build, qa-cleanup-before]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -177,7 +199,7 @@ jobs:
 
   qa-mobile:
     name: QA mobile layout
-    needs: build
+    needs: [build, qa-cleanup-before]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -208,10 +230,33 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  qa-cleanup-after:
+    name: Cleanup QA rooms after tests
+    if: always() && github.event.pull_request.merged == true
+    needs: [build, qa-smoke, qa-game-flow, qa-mobile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Cleanup created QA rooms
+        run: npm run qa:cleanup-rooms
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+
   qa-summary:
     name: Summarize QA result
     if: always() && github.event.pull_request.merged == true
-    needs: [build, deploy-pages, qa-smoke, qa-game-flow, qa-mobile]
+    needs: [build, deploy-pages, qa-smoke, qa-game-flow, qa-mobile, qa-cleanup-after]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

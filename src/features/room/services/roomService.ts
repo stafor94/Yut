@@ -27,12 +27,15 @@ export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payl
 const COLORS = ['red', 'blue', 'green', 'yellow'];
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 const MAX_ACTIVE_ROOMS = 3;
+const QA_ROOM_TITLE_PREFIX = 'QA-';
 const EMPTY_ROOM_DELETE_DELAY_MS = 30000;
 const STALE_PLAYER_DELETE_MS = 45000;
 const ROOM_MAX_AGE_MS = 60 * 60 * 1000;
 const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'seats', 'state', 'sequences', 'processedActions'] as const;
 const DELETE_BATCH_SIZE = 450;
 const SEQUENCE_ID_PAD_LENGTH = 12;
+
+const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.startsWith(QA_ROOM_TITLE_PREFIX);
 
 const getTimestampMillis = (value: unknown) => {
   if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
@@ -100,7 +103,8 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     return !expired && !emptyGhost;
   });
   const activeRooms = activeRoomDocs.map((roomDoc) => roomDoc.data() as Omit<RoomSummary, 'id'>);
-  if (activeRooms.length >= MAX_ACTIVE_ROOMS) throw new Error('방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.');
+  const activeUserRooms = activeRooms.filter((room) => !isQaRoomTitle(room.title));
+  if (!isQaRoomTitle(normalizedTitle) && activeUserRooms.length >= MAX_ACTIVE_ROOMS) throw new Error('방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.');
   if (activeRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error('이미 존재하는 방 제목입니다. 다른 제목을 입력해주세요.');
 
   const roomRef = doc(roomsRef);
