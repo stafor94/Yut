@@ -9,7 +9,10 @@ export function useRooms() {
     const roomPlayerUnsubscribes = new Map<string, () => void>();
 
     const publishRooms = () => {
-      setRooms(activeRooms.map((room) => ({ ...room, currentPlayers: playerCounts.get(room.id) ?? room.currentPlayers ?? 0 })));
+      const visibleRooms = activeRooms
+        .map((room) => ({ ...room, currentPlayers: playerCounts.get(room.id) ?? room.currentPlayers ?? 0 }))
+        .filter((room) => room.currentPlayers > 0);
+      setRooms(visibleRooms);
     };
 
     const unsubscribeRooms = subscribeActiveRooms((nextRooms) => {
