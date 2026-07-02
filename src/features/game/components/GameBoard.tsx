@@ -48,14 +48,21 @@ function getOffBoardPieceStyle(piece: BoardPiece, ownerIndex: number, ownerOrder
   } as CSSProperties;
 }
 
-function getFinishedPieceStyle(piece: BoardPiece, finishedIndex: number) {
+function getFinishedPieceStyle(piece: BoardPiece, pieces: BoardPiece[]) {
+  const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
+  const safeOwnerOrder = Math.max(0, ownerOrder);
+  const ownerFinishedPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && candidate.finished);
+  const ownerFinishedIndex = Math.max(0, ownerFinishedPieces.findIndex((candidate) => candidate.id === piece.id));
+  const portraitColumn = safeOwnerOrder % 2;
+  const portraitRow = Math.floor(safeOwnerOrder / 2);
+
   return {
-    left: `${112 + finishedIndex * 8}%`,
-    top: '72%',
+    left: `${124 + ownerFinishedIndex * 8}%`,
+    top: `${20 + safeOwnerOrder * 15}%`,
     background: piece.color,
     translate: '-50% -50%',
-    '--portrait-bench-left': `${32 + finishedIndex * 12}%`,
-    '--portrait-bench-top': '14px',
+    '--portrait-bench-left': `${36 + portraitColumn * 48 + ownerFinishedIndex * 8}%`,
+    '--portrait-bench-top': `${34 + portraitRow * 56}px`,
   } as CSSProperties;
 }
 
@@ -66,12 +73,10 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
     const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
     const safeOwnerOrder = Math.max(0, ownerOrder);
     const portraitRow = Math.floor(safeOwnerOrder / 2);
-    return getOffBoardPieceStyle(piece, ownerIndex, safeOwnerOrder, 20 + safeOwnerOrder * 15, 34 + portraitRow * 80);
+    return getOffBoardPieceStyle(piece, ownerIndex, safeOwnerOrder, 20 + safeOwnerOrder * 15, 34 + portraitRow * 56);
   }
   if (piece.finished) {
-    const finishedPieces = pieces.filter((candidate) => candidate.finished);
-    const finishedIndex = Math.max(0, finishedPieces.findIndex((candidate) => candidate.id === piece.id));
-    return getFinishedPieceStyle(piece, finishedIndex);
+    return getFinishedPieceStyle(piece, pieces);
   }
   const node: BoardNode | undefined = BOARD_NODES.find((candidate) => candidate.id === piece.nodeId) ?? BOARD_NODES[piece.nodeIndex] ?? BOARD_NODES[0];
   const stackedPieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished);
