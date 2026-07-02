@@ -1376,6 +1376,10 @@ aside.players,
 .turn-indicator {
   width: min(100%, 620px);
   margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
   text-align: center;
   font-size: clamp(1.35rem, 2.2vw, 1.9rem);
   line-height: 1.18;
@@ -1386,6 +1390,27 @@ aside.players,
   z-index: 10;
   align-self: end;
 }
+
+.turn-indicator strong {
+  min-width: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.turn-neighbor {
+  min-width: 0;
+  color: rgba(42, 30, 23, .4);
+  font-size: clamp(.78rem, 1.35vw, 1rem);
+  font-weight: 900;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .72);
+}
+
+.previous-turn { text-align: right; }
+.next-turn { text-align: left; }
 
 .play-controls.roll-ready {
   grid-template-columns: 1fr;
@@ -3704,7 +3729,7 @@ aside.players,
 /* Portrait game board: reserve a bench under the board for pieces that have not entered or have finished. */
 @media (orientation: portrait) {
   .game-shell .board {
-    margin-bottom: 104px;
+    margin-bottom: 80px;
   }
 
   .game-shell .piece-token.off-board {
@@ -3772,6 +3797,13 @@ aside.players,
   font-size: clamp(.95rem, 2.4vw, 1.25rem);
   font-weight: 1000;
   white-space: nowrap;
+}
+
+
+.turn-order-slot-card.mine {
+  border-color: var(--green) !important;
+  background: linear-gradient(135deg, rgba(47, 107, 79, .18), rgba(255, 243, 216, .98));
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .86), 0 8px 18px rgba(47, 107, 79, .22);
 }
 
 .turn-order-slot-card.final-card {
