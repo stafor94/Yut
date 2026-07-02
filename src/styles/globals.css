@@ -656,7 +656,7 @@ select {
 
 .turn-action-timer span {
   background: linear-gradient(90deg, var(--green), var(--gold), var(--red));
-  animation: turn-action-countdown 15s linear forwards;
+  animation: turn-action-countdown var(--timer-duration, 15s) linear forwards;
 }
 
 @keyframes turn-action-countdown {
@@ -1356,7 +1356,7 @@ aside.players,
 
 .item-prompt-timer span {
   background: linear-gradient(90deg, var(--green), var(--gold), var(--red));
-  animation: item-prompt-countdown 10s linear forwards;
+  animation: item-prompt-countdown var(--timer-duration, 10s) linear forwards;
 }
 
 .item-prompt-list {
