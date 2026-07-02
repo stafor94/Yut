@@ -393,6 +393,7 @@ export function App() {
   const localSeatId = activeRoomId ? currentUserId : hostSeatId;
   const canHostRoom = Boolean(isRoomHost || (activeRoomId && currentUserId && activeRoomHostId === currentUserId));
   const canManageRoom = canHostRoom || Boolean(activeRoomId && currentUserId && hostSeatId === currentUserId);
+  const gameExitDescription = canHostRoom ? '현재 방과 진행 중인 윷놀이가 종료됩니다.' : 'AI가 대신 플레이하게 됩니다.';
   const isSpectator = Boolean(activeRoomId && currentUserId && spectators.some((spectator) => spectator.id === currentUserId));
   const isMyTurn = activeSeat?.id === localSeatId && !activeSeat.isAI && !isSpectator;
   const getSeatById = (seatId: string) => playableSeats.find((seat) => seat.id === seatId);
@@ -2674,7 +2675,7 @@ export function App() {
 
     {pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>새 아이템 {ITEM_DEFINITIONS[pendingItemPickup.item].name}을 얻으려면 기존 아이템 하나를 버려야 합니다.</p><div className="inline-item-actions">{(ownedItems[pendingItemPickup.seatId] ?? []).map((type, index) => <button key={`${type}-${index}`} onClick={() => { const pickup = pendingItemPickup; setOwnedItems((items) => { const next = [...(items[pickup.seatId] ?? [])]; next.splice(index, 1, pickup.item); return { ...items, [pickup.seatId]: next }; }); setBoardItems((items) => items.filter((item) => item.id !== pickup.itemId)); addLog(`아이템 '${ITEM_DEFINITIONS[type].name}'을 버리고 '${ITEM_DEFINITIONS[pickup.item].name}'을 획득했습니다.`); resolvePendingItemPickup(); }}>{ITEM_DEFINITIONS[type].name} 버리기</button>)}<button className="secondary" onClick={() => { addLog(`새 아이템 '${ITEM_DEFINITIONS[pendingItemPickup.item].name}'을 획득하지 않았습니다.`); resolvePendingItemPickup(); }}>획득 안 함</button></div></section></div>}
 
-    {endGameDialogOpen && screen === 'game' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setEndGameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="게임 종료 확인" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">게임 종료</p><h2>정말 윷판을 정리할까요?</h2><p>지금 나가면 현재 방과 진행 중인 윷놀이가 종료됩니다.</p><div className="modal-actions"><button className="danger" onClick={finishGame}>게임 종료</button><button className="secondary" onClick={() => setEndGameDialogOpen(false)}>계속하기</button></div></section></div>}
+    {endGameDialogOpen && screen === 'game' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setEndGameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="게임 종료 확인" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">게임 종료</p><h2>정말 윷판을 정리할까요?</h2><p>{gameExitDescription}</p><div className="modal-actions"><button className="danger" onClick={finishGame}>게임 종료</button><button className="secondary" onClick={() => setEndGameDialogOpen(false)}>계속하기</button></div></section></div>}
 
 
     {screen === 'game' && <section data-testid="game-screen" className="game-layout" aria-label="게임 플레이 화면">
