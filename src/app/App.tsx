@@ -300,6 +300,7 @@ export function App() {
   const logIdRef = useRef(0);
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
+  const confirmedRoomPlayerRef = useRef(false);
   const hostingRoomUserIdRef = useRef('');
   const rooms = useRooms();
   const currentUser = userRef.current ?? user;
@@ -736,6 +737,17 @@ export function App() {
       const nextSeats = seatsFromRoomPlayers(players, playMode, maxPlayers, activeRoomHostId);
       const currentUserId = (userRef.current ?? currentUser)?.uid;
       const hasCurrentUserInSnapshot = Boolean(currentUserId && players.some((player) => player.id === currentUserId && !player.isSpectator));
+      if (hasCurrentUserInSnapshot) confirmedRoomPlayerRef.current = true;
+      if (currentUserId && !canHostRoom && screen === 'waitingRoom' && confirmedRoomPlayerRef.current && !hasCurrentUserInSnapshot) {
+        confirmedRoomPlayerRef.current = false;
+        setScreen('lobby');
+        setActiveRoomId('');
+        setActiveRoomTitle('');
+        setIsRoomHost(false);
+        setCountdown(-1);
+        setMessage('방장에 의해 방에서 나갔습니다.');
+        return;
+      }
       players.forEach((player) => {
         if (player.isAI) pendingAiSeatIdsRef.current.delete(player.id);
       });
@@ -1760,6 +1772,18 @@ export function App() {
     if (activeRoomId) { void removeRoomPlayer(activeRoomId, playerId); }
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
   }
+  async function kickWaitingPlayer(seat: Seat) {
+    if (!activeRoomId || !canManageRoom || seat.isEmpty || seat.isHost || seat.isAI) return;
+    const previousSeat = seat;
+    setSeats((currentSeats) => currentSeats.map((currentSeat) => currentSeat.id === previousSeat.id ? { ...currentSeat, id: `slot-${Number(currentSeat.label.replace('P', ''))}`, name: '빈 자리', ready: false, isEmpty: true } : currentSeat));
+    try {
+      await removeRoomPlayer(activeRoomId, previousSeat.id);
+      setMessage(`${previousSeat.name}님을 방에서 내보냈습니다.`);
+    } catch (error) {
+      setSeats((currentSeats) => currentSeats.map((currentSeat) => currentSeat.label === previousSeat.label ? previousSeat : currentSeat));
+      setMessage(error instanceof Error ? error.message : '플레이어 강퇴에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
+    }
+  }
   function changeTeam(playerId: string, team: Team) {
     if (activeRoomId) { void updateRoomPlayer(activeRoomId, playerId, { team }); }
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId ? { ...seat, team } : seat));
@@ -2250,6 +2274,7 @@ export function App() {
     }
     else if (activeRoomId) await removeRoomPlayer(activeRoomId, localSeatId);
     hostingRoomUserIdRef.current = '';
+    confirmedRoomPlayerRef.current = false;
     setScreen('lobby'); setActiveRoomId(''); setActiveRoomTitle(''); setIsRoomHost(false); setCountdown(-1); setTurnOrderIds([]); setGameStartedAt(null); setSeats(createSeats(nickname, playMode, maxPlayers));
     setMessage('방에서 나왔습니다.');
   }
@@ -2397,11 +2422,9 @@ export function App() {
 
           <section className="ready-list compact-ready-list" aria-label="플레이어 자리">
             {seats.map((seat) => <article className={`ready-card compact-ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''} ${seat.id === localSeatId ? 'me' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
-              <div className="seat-topline"><b>{seat.label}</b><span>{seat.isHost ? '방장' : seat.id === localSeatId ? '나' : seat.isEmpty ? '대기' : '참가자'}</span></div>
-              <div className="seat-name-row"><strong>{seat.name}</strong><em>{seat.isAI ? 'AI' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em></div>
+              <div className="seat-topline"><b>{seat.label}</b><span className="seat-top-status">{canManageRoom && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => { void kickWaitingPlayer(seat); }}>강퇴</button>}{seat.isHost ? '방장' : seat.id === localSeatId ? '나' : seat.isEmpty ? '대기' : '참가자'}</span></div>
+              <div className="seat-name-row"><strong>{seat.name}</strong><span className="seat-status-actions">{seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}{seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}<em>{seat.isAI ? 'AI' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em></span></div>
               {playMode === 'team' && <div className="team-card-selector" role="group" aria-label={`${seat.label} 팀 선택`}>{(['청팀', '홍팀'] as Team[]).map((team) => <button type="button" key={team} className={`team-card-option ${team === seat.team ? 'active' : ''} ${team === '청팀' ? 'blue' : 'red'}`} disabled={!canManageRoom} onClick={() => changeTeam(seat.id, team)}>{team}</button>)}</div>}
-              {seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}
-              {seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-cancel-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}
             </article>)}
           </section>
         </div>
