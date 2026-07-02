@@ -16,7 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  qa-and-deploy:
+  build:
+    name: Build app
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
@@ -77,24 +78,158 @@ jobs:
         run: |
           set -o pipefail
           npm run build 2>&1 | tee build.log
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-app
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deploy-pages:
+    name: Deploy Pages
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: built-app
+          path: dist
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
       - uses: actions/deploy-pages@v4
+
+  qa-smoke:
+    name: QA smoke
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - uses: actions/download-artifact@v4
+        with:
+          name: built-app
+          path: dist
       - run: npx playwright install --with-deps
       - name: Run Playwright smoke QA
         run: |
           set -o pipefail
-          npm run test:smoke 2>&1 | tee -a playwright.log
+          npm run test:smoke 2>&1 | tee playwright-smoke.log
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-smoke-results
+          path: |
+            test-results
+            playwright-smoke.log
+            console-log.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  qa-game-flow:
+    name: QA game flow
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - uses: actions/download-artifact@v4
+        with:
+          name: built-app
+          path: dist
+      - run: npx playwright install --with-deps
       - name: Run Playwright game-flow QA
         run: |
           set -o pipefail
-          npm run test:game-flow 2>&1 | tee -a playwright.log
+          npm run test:game-flow 2>&1 | tee playwright-game-flow.log
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-game-flow-results
+          path: |
+            test-results
+            playwright-game-flow.log
+            console-log.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  qa-mobile:
+    name: QA mobile layout
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - uses: actions/download-artifact@v4
+        with:
+          name: built-app
+          path: dist
+      - run: npx playwright install --with-deps
       - name: Run Playwright mobile layout QA
         run: |
           set -o pipefail
-          npm run test:mobile 2>&1 | tee -a playwright.log
+          npm run test:mobile 2>&1 | tee playwright-mobile.log
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-mobile-results
+          path: |
+            test-results
+            playwright-mobile.log
+            console-log.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  qa-summary:
+    name: Summarize QA result
+    if: always() && github.event.pull_request.merged == true
+    needs: [build, deploy-pages, qa-smoke, qa-game-flow, qa-mobile]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download QA artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*'
+          merge-multiple: true
+        continue-on-error: true
+      - name: Combine Playwright logs
+        if: always()
+        run: |
+          cat playwright-*.log > playwright.log 2>/dev/null || touch playwright.log
       - name: Prune bulky QA artifacts
         if: always()
         run: |
@@ -110,12 +245,12 @@ jobs:
       - name: Summarize QA result
         if: always()
         env:
-          QA_JOB_STATUS: ${{ job.status }}
+          QA_JOB_STATUS: ${{ (needs.build.result == 'success' && needs.deploy-pages.result == 'success' && needs.qa-smoke.result == 'success' && needs.qa-game-flow.result == 'success' && needs.qa-mobile.result == 'success') && 'success' || 'failure' }}
         run: |
           node .github/scripts/summarize-qa.mjs
           cat qa-failure-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload QA failure summary
-        if: failure()
+        if: needs.build.result == 'failure' || needs.deploy-pages.result == 'failure' || needs.qa-smoke.result == 'failure' || needs.qa-game-flow.result == 'failure' || needs.qa-mobile.result == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: qa-failure-summary
@@ -135,7 +270,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Create issue on QA failure
-        if: failure()
+        if: needs.build.result == 'failure' || needs.deploy-pages.result == 'failure' || needs.qa-smoke.result == 'failure' || needs.qa-game-flow.result == 'failure' || needs.qa-mobile.result == 'failure'
         uses: actions/github-script@v7
         with:
           script: |
