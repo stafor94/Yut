@@ -1390,10 +1390,10 @@ export function App() {
       if (now < startCountdownStartsAt) setCountdown(5);
       else setCountdown(Math.max(0, Math.ceil((startCountdownEndsAt - now) / 1000)));
       if (canManageRoom && now >= startCountdownEndsAt) {
-        void (async () => {
-          if (activeRoomId) await measureFirebaseLatency(() => markRoomGameEntering(activeRoomId, startRequestVersion));
-          startLocalGame();
-        })();
+        if (activeRoomId) {
+          void measureFirebaseLatency(() => markRoomGameEntering(activeRoomId, startRequestVersion)).catch(() => undefined);
+        }
+        startLocalGame();
       }
     };
     updateCountdown();
