@@ -1,6 +1,31 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+const firebaseConfigKeyMap = {
+  apiKey: 'VITE_FIREBASE_API_KEY',
+  authDomain: 'VITE_FIREBASE_AUTH_DOMAIN',
+  projectId: 'VITE_FIREBASE_PROJECT_ID',
+  storageBucket: 'VITE_FIREBASE_STORAGE_BUCKET',
+  messagingSenderId: 'VITE_FIREBASE_MESSAGING_SENDER_ID',
+  appId: 'VITE_FIREBASE_APP_ID',
+};
+
+function parseFirebaseConfig(value) {
+  if (!value) return {};
+
+  const objectText = value.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\})\s*;?/)?.[1] ?? value;
+  const jsonish = objectText
+    .replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3')
+    .replace(/'/g, '"')
+    .replace(/,\s*}/g, '}');
+
+  try {
+    return JSON.parse(jsonish);
+  } catch {
+    return {};
+  }
+}
+
 export async function loadFileEnv() {
   const values = {};
   for (const fileName of ['.env.production', '.env.local', '.env']) {
@@ -17,14 +42,12 @@ export async function loadFileEnv() {
 export async function loadFirebaseConfig() {
   const fileEnv = await loadFileEnv();
   const readEnv = (key) => process.env[key] || fileEnv[key];
-  const config = {
-    apiKey: readEnv('VITE_FIREBASE_API_KEY'),
-    authDomain: readEnv('VITE_FIREBASE_AUTH_DOMAIN'),
-    projectId: readEnv('VITE_FIREBASE_PROJECT_ID'),
-    storageBucket: readEnv('VITE_FIREBASE_STORAGE_BUCKET'),
-    messagingSenderId: readEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
-    appId: readEnv('VITE_FIREBASE_APP_ID'),
-  };
+  const rawFirebaseConfig = readEnv('FIREBASE_CONFIG') || readEnv('FIREBASE');
+  const parsedFirebaseConfig = parseFirebaseConfig(rawFirebaseConfig);
+  const config = Object.fromEntries(Object.entries(firebaseConfigKeyMap).map(([firebaseKey, envKey]) => [
+    firebaseKey,
+    readEnv(envKey) || parsedFirebaseConfig[firebaseKey],
+  ]));
   return Object.values(config).every(Boolean) ? config : null;
 }
 
