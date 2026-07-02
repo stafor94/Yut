@@ -995,7 +995,7 @@ select {
 .roll-stage {
   position: absolute;
   inset: 0;
-  z-index: 20;
+  z-index: 40;
   display: grid;
   place-items: center;
   pointer-events: none;
@@ -2251,10 +2251,12 @@ aside.players,
 }
 
 .lobby-room-card div {
-  padding-right: 74px;
+  min-width: 0;
 }
 
 .lobby-room-card b {
+  display: block;
+  padding-right: 74px;
   color: #2a1e17;
   font-size: 1.14rem;
 }
