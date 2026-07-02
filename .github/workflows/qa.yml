@@ -166,8 +166,7 @@ jobs:
 
   qa-game-flow:
     name: QA game flow
-    if: always() && github.event.pull_request.merged == true && needs.build.result == 'success'
-    needs: [build, qa-smoke]
+    needs: [build, qa-cleanup-before]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -200,8 +199,7 @@ jobs:
 
   qa-mobile:
     name: QA mobile layout
-    if: always() && github.event.pull_request.merged == true && needs.build.result == 'success'
-    needs: [build, qa-game-flow]
+    needs: [build, qa-cleanup-before]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
