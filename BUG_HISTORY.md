@@ -67,6 +67,61 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-02 - QA 방 cleanup job 이후 QA 방 잔존
+
+### Symptom
+
+- GitHub Actions QA 성공 이후에도 로비에 `QA-*-room`, `QA-*-reg-room` 형태의 QA 방이 남았다.
+
+### Expected behavior
+
+- `qa-cleanup-before`와 `qa-cleanup-after`는 `QA-`로 시작하는 모든 QA 방을 Firestore에서 삭제해야 한다.
+
+### Actual behavior
+
+- Actions run `28588515708`은 cleanup job이 성공으로 표시됐지만, 실제 로비에는 QA 방이 계속 표시됐다.
+- cleanup 스크립트는 Firebase 설정을 읽지 못하면 성공 종료로 정리를 건너뛰는 경로가 있었다.
+
+### Reproduction steps
+
+1. `FIREBASE` 단일 secret/variable만 제공되고 개별 `VITE_FIREBASE_*` 값이 비어 있는 GitHub Actions 환경에서 merged PR QA를 실행한다.
+2. build job은 `FIREBASE` 값을 파싱해 배포 번들에 Firebase 설정을 주입한다.
+3. Playwright QA가 Firebase에 QA 방을 생성한다.
+4. cleanup job은 개별 `VITE_FIREBASE_*`만 받아 DB 연결에 실패하고 방 정리를 건너뛴다.
+
+### Suspected root cause
+
+- cleanup job의 Firebase 환경 변수 주입 경로가 build job과 달라 `FIREBASE` 단일 설정을 사용하지 못했다.
+
+### Confirmed root cause
+
+- `qa-cleanup-before`와 `qa-cleanup-after`는 `FIREBASE_CONFIG`를 전달하지 않았고, `tests/helpers/env.js`도 `FIREBASE`/`FIREBASE_CONFIG` 원본 설정을 파싱하지 않았다.
+- 따라서 build/QA 앱은 Firebase에 접속할 수 있어도 cleanup helper는 Firebase 설정 없음으로 조용히 skip할 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: QA 방 cleanup script와 CI cleanup job을 추가했다.
+  - Why it failed: cleanup job이 build job과 동일한 Firebase 설정 입력(`FIREBASE`)을 받거나 파싱하지 못해 실제 DB 정리가 보장되지 않았다.
+
+### Do not try again
+
+- cleanup job 성공 상태만 보고 QA 방이 삭제됐다고 단정하지 않는다.
+- `QA-` title filter만 반복 수정하지 않는다.
+- build job에만 Firebase 설정 변환 로직을 두고 cleanup/test helper 설정 로딩 경로를 분리하지 않는다.
+
+### Correct fix plan
+
+- cleanup job에도 `FIREBASE_CONFIG`를 전달한다.
+- test helper 환경 로더가 개별 `VITE_FIREBASE_*`뿐 아니라 `FIREBASE`/`FIREBASE_CONFIG` JSON 또는 `firebaseConfig = {...}` 형태도 파싱하게 한다.
+
+### Verification checklist
+
+- [x] Firebase config parser unit-level check
+- [x] Build succeeds
+- [ ] Merged PR QA cleanup rerun checked
+- [x] No unrelated UI changes
+
 ## 2026-07-01 - AI 윷 애니메이션 종료 전 말 이동
 
 ### Symptom
