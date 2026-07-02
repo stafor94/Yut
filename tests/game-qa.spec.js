@@ -8,6 +8,7 @@ const screenshotDir = path.join(process.cwd(), 'screenshots');
 const consoleLogPath = path.join(process.cwd(), 'console-log.txt');
 const roomSubcollections = ['actions', 'boardItems', 'players', 'seats', 'state', 'sequences', 'processedActions'];
 const rememberedRoomIds = new Set();
+const FINAL_ROLL_OUTCOME_RECHECK_MS = 3_000;
 
 async function loadFirebaseConfig() {
   const fileEnv = {};
@@ -312,6 +313,20 @@ function hasPendingTurnActionAcrossPages(debugStates) {
   return debugStates.some(hasPendingTurnAction);
 }
 
+function hasRollStateAcrossPages(debugStates) {
+  return debugStates.some((debugState) => debugState?.yutDebug?.roll !== null && debugState?.yutDebug?.roll !== undefined);
+}
+
+function getResolvedRollOutcome(beforeDebugStates, debugStates, preferredPageIndex) {
+  const terminalDebugState = findTerminalGameState(debugStates);
+  if (terminalDebugState) return { kind: 'terminal-state', debugStates, terminalDebugState };
+  if (didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, debugStates, preferredPageIndex)) return { kind: 'auto-advance', debugStates };
+  if (debugStates.some(hasMoveResolutionUi)) return { kind: 'move-resolution-ui', debugStates };
+  if (hasRollStateAcrossPages(debugStates)) return { kind: 'roll-observed', debugStates };
+  if (hasStateAdvancedAcrossPages(beforeDebugStates, debugStates, preferredPageIndex)) return { kind: 'state-advanced', debugStates };
+  return null;
+}
+
 const transientRollBlockReasons = new Set([
   'roll-in-progress',
   'pending-local-remote-action',
@@ -471,18 +486,10 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
     const debugStates = await collectGameDebugStates(pages);
     lastDebugStates = debugStates;
 
-    const terminalDebugState = findTerminalGameState(debugStates);
-    if (terminalDebugState) return { kind: 'terminal-state', debugStates, terminalDebugState };
+    const resolvedOutcome = getResolvedRollOutcome(beforeDebugStates, debugStates, preferredPageIndex);
+    if (resolvedOutcome) return resolvedOutcome;
 
-    if (didAutoAdvanceAfterRollAcrossPages(beforeDebugStates, debugStates, preferredPageIndex)) {
-      return { kind: 'auto-advance', debugStates };
-    }
-
-    if (debugStates.some(hasMoveResolutionUi)) {
-      return { kind: 'move-resolution-ui', debugStates };
-    }
-
-    if (debugStates.some((debugState) => debugState?.yutDebug?.roll !== null && debugState?.yutDebug?.roll !== undefined)) {
+    if (hasRollStateAcrossPages(debugStates)) {
       sawRollState = true;
     }
     lastHasPendingTurnAction = hasPendingTurnActionAcrossPages(debugStates);
@@ -501,12 +508,19 @@ async function waitForRollOutcomeAfterClick(pages, beforeDebugStates, { timeout 
     await pages[0].waitForTimeout(250);
   }
 
-  if (sawRollState) return { kind: 'roll-observed', debugStates: lastDebugStates };
-  if (hasStateAdvancedAcrossPages(beforeDebugStates, lastDebugStates, preferredPageIndex)) return { kind: 'state-advanced', debugStates: lastDebugStates };
-  if (sawPendingTurnAction) return { kind: 'pending-timeout', debugStates: lastDebugStates };
-  if (sawAuthoritativeAlreadyRolledStaleState && lastHasAuthoritativeAlreadyRolledStaleState) return { kind: 'stale-roll-state-timeout', debugStates: lastDebugStates };
-  if (sawAuthoritativeTurnMismatchStaleState && lastHasAuthoritativeTurnMismatchStaleState) return { kind: 'stale-turn-state-timeout', debugStates: lastDebugStates };
-  return { kind: 'no-state-change', debugStates: lastDebugStates };
+  const finalResolvedOutcome = getResolvedRollOutcome(beforeDebugStates, lastDebugStates, preferredPageIndex);
+  if (finalResolvedOutcome) return finalResolvedOutcome;
+
+  await pages[0].waitForTimeout(FINAL_ROLL_OUTCOME_RECHECK_MS);
+  const recheckedDebugStates = await collectGameDebugStates(pages);
+  const recheckedResolvedOutcome = getResolvedRollOutcome(beforeDebugStates, recheckedDebugStates, preferredPageIndex);
+  if (recheckedResolvedOutcome) return recheckedResolvedOutcome;
+
+  if (sawRollState || hasRollStateAcrossPages(recheckedDebugStates)) return { kind: 'roll-observed', debugStates: recheckedDebugStates };
+  if (sawPendingTurnAction && hasPendingTurnActionAcrossPages(recheckedDebugStates)) return { kind: 'pending-timeout', debugStates: recheckedDebugStates };
+  if (sawAuthoritativeAlreadyRolledStaleState && hasAuthoritativeAlreadyRolledStaleStateAcrossPages(recheckedDebugStates)) return { kind: 'stale-roll-state-timeout', debugStates: recheckedDebugStates };
+  if (sawAuthoritativeTurnMismatchStaleState && hasAuthoritativeTurnMismatchStaleStateAcrossPages(recheckedDebugStates)) return { kind: 'stale-turn-state-timeout', debugStates: recheckedDebugStates };
+  return { kind: 'no-state-change', debugStates: recheckedDebugStates };
 }
 
 async function collectWaitingRoomDebugState(page) {
