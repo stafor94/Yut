@@ -590,7 +590,7 @@ select {
   color: #fff;
   font-size: .78rem;
   box-shadow: 0 8px 20px rgba(42, 30, 23, .24);
-  z-index: 6;
+  z-index: 10;
 }
 
 .route-preview-marker {
@@ -927,7 +927,7 @@ select {
 .board-node.route-preview {
   outline: 4px solid rgba(242, 184, 75, .72);
   box-shadow: 0 0 0 8px rgba(242, 184, 75, .18);
-  z-index: 6;
+  z-index: 4;
 }
 
 .board-node.trap-selectable {
@@ -3057,7 +3057,7 @@ aside.players,
   }
 
   .game-shell .side {
-    max-height: 28svh;
+    max-height: 42svh;
   }
 
   .game-shell .board {
@@ -3754,7 +3754,7 @@ aside.players,
 /* Portrait game board: reserve a bench under the board for pieces that have not entered or have finished. */
 @media (orientation: portrait) {
   .game-shell .board {
-    margin-bottom: 80px;
+    margin-bottom: 104px;
   }
 
   .game-shell .piece-token.off-board {

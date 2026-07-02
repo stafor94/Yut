@@ -35,8 +35,9 @@ export function rollYutResult(random = Math.random, useBackDo = true) {
 }
 
 export function makeDisplaySticks(result: YutResult): YutStick[] {
-  if (result.name === '모') return Array.from({ length: 4 }, () => ({ flat: false, marked: false }));
-  if (result.name === '빽도') return Array.from({ length: 4 }, (_, index) => ({ flat: index > 0, marked: index === 0 }));
+  if (result.name === '모') return Array.from({ length: 4 }, (_, index) => ({ flat: false, marked: index === 0 }));
+  if (result.name === '빽도') return Array.from({ length: 4 }, (_, index) => ({ flat: index === 0, marked: index === 0 }));
+  if (result.name === '도') return Array.from({ length: 4 }, (_, index) => ({ flat: index === 1, marked: index === 0 }));
   const flatCount = Math.max(0, Math.min(4, result.steps));
-  return Array.from({ length: 4 }, (_, index) => ({ flat: index < flatCount, marked: false }));
+  return Array.from({ length: 4 }, (_, index) => ({ flat: index < flatCount, marked: index === 0 }));
 }
