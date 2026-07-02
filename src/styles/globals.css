@@ -631,7 +631,7 @@ select {
   align-items: center;
   justify-items: center;
   min-height: 76px;
-  margin-top: 14px;
+  margin-top: 22px;
   padding: 14px;
   border-radius: 20px;
   background: #fff3d8;
@@ -673,12 +673,12 @@ select {
 
 .item-button { padding: 0; text-align: left; background: transparent; color: inherit; }
 .log-list { display: grid; gap: 8px; }
-.log-list p { margin: 0; padding: 10px 12px; border-radius: 14px; background: var(--log-card-bg, #fff3d8); font-weight: 800; color: var(--log-card-color, rgba(42, 30, 23, .72)); align-self: start; box-shadow: 0 8px 18px rgba(42, 30, 23, .1); }
+.log-list p { margin: 0; padding: 10px 12px; border: 2px solid var(--log-card-border, transparent); border-radius: 14px; background: var(--log-card-bg, #fff3d8); font-weight: 800; color: var(--log-card-color, rgba(42, 30, 23, .72)); align-self: start; box-shadow: 0 8px 18px rgba(42, 30, 23, .1); }
 .log-list p .log-player-label { color: inherit !important; }
 .log-sequence { display: inline-block; margin-right: 8px; font-weight: 1000; opacity: .78; }
 
 @media (max-width: 767px) {
-  .play-controls { grid-template-columns: 1fr; min-height: 132px; }
+  .play-controls { grid-template-columns: 1fr; min-height: 132px; margin-top: 24px; }
   .play-controls button { width: 100%; justify-self: stretch; }
 }
 
