@@ -2208,3 +2208,156 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [ ] Mobile Game QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-07-02 - sequence replay 이후 말 이동 순간이동 재발
+
+### Symptom
+
+- 최신 sequence까지 받아와 순차적으로 재생하도록 변경한 뒤에도, 원격 말 이동이 한 칸씩 애니메이션되지 않고 최종 위치로 순간이동할 수 있었다.
+
+### Expected behavior
+
+- 누락된 `move_piece_resolved` sequence를 가져오면 현재 로컬 말 위치를 기준으로 `pathNodeIds`를 순서대로 적용해 이동 애니메이션을 재생해야 한다.
+
+### Actual behavior
+
+- replay 경로가 이동 전 말 위치를 찾지 못하면 `finalPieces`를 즉시 적용해 최종 위치로 점프했다.
+
+### Reproduction steps
+
+1. 온라인 게임에서 한 클라이언트가 말 이동을 처리한다.
+2. 다른 클라이언트가 `lastSequence` 증가를 구독하고 누락 sequence replay 경로로 진입한다.
+3. replay 시작 위치를 찾지 못하는 경우 말이 최종 위치로 즉시 적용되는지 확인한다.
+
+### Suspected root cause
+
+- 최신 sequence replay 로직이 참조하는 `piecesRef`가 React `pieces` 상태와 동기화되지 않았다.
+
+### Confirmed root cause
+
+- `piecesRef`는 선언만 되어 있고 `pieces` 변경 시 갱신하는 effect가 없어 기본값인 빈 배열로 남을 수 있었다.
+- `replayMoveSequence()`는 `piecesRef.current`에서 이동 시작 말인 `anchorBefore`를 찾기 때문에, 빈 ref에서는 시작점을 찾지 못하고 `setPieces(finalPieces)` fallback으로 순간이동했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 누락 sequence를 최신까지 가져와 순차 replay하도록 했다.
+  - Why it failed: replay 기준이 되는 `piecesRef` 자체가 최신 로컬 말 상태를 담지 않아, sequence를 받아도 이동 시작점을 계산하지 못했다.
+
+### Do not try again
+
+- sequence 조회 범위만 다시 넓히지 않는다.
+- 말 CSS transition이나 지연 시간만 조정하지 않는다.
+- 시작 위치 ref 동기화 없이 `finalPieces` fallback을 유지한 채 애니메이션이 된다고 가정하지 않는다.
+
+### Correct fix plan
+
+- `pieces` 상태가 바뀔 때마다 `piecesRef.current`를 동기화한다.
+- 기존 sequence replay와 snapshot 적용 구조는 유지하고, 이동 시작점 탐색에 필요한 참조 상태만 보정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Multi-client browser replay checked
+- [x] No unrelated UI changes
+- [x] No new dependency
+
+## 2026-07-02 - 순서 정하기 슬롯머신 일부 닉네임만 표시
+
+### Symptom
+
+- 순서 정하기 슬롯머신 애니메이션에서 일부 플레이어의 닉네임만 반복적으로 보이고, 모든 참가자 닉네임이 슬롯 릴에 노출되지 않았다.
+
+### Expected behavior
+
+- 순서 정하기 결과 공개 전 슬롯머신 릴에는 현재 참가한 모든 플레이어 닉네임이 순환 표시되어야 한다.
+
+### Actual behavior
+
+- 릴 데이터에는 참가자 순서가 반복으로 들어갔지만 CSS 애니메이션 이동 거리가 한 행(`60px`)으로 고정되어 첫 행 주변의 일부 닉네임만 보였다.
+
+### Reproduction steps
+
+1. 3명 이상 참가한 게임을 시작한다.
+2. 순서 정하기 완료 후 슬롯머신 오버레이를 확인한다.
+3. 릴이 섞이는 동안 모든 닉네임이 아니라 일부 닉네임만 반복 노출되는지 확인한다.
+
+### Suspected root cause
+
+- 슬롯 릴의 실제 참가자 수와 CSS keyframe 이동 거리가 연결되어 있지 않았다.
+
+### Confirmed root cause
+
+- `turn-order-slot-spin` keyframe이 항상 `translateY(-60px)`까지만 이동해 한 행만 순환했다.
+- React 렌더링은 반복 row를 만들었지만 애니메이션이 참가자 수만큼 이동하지 않아 전체 닉네임 목록을 지나가지 못했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 슬롯머신 UI는 최종 순서 배열을 기반으로 렌더링했다.
+  - Why it failed: 데이터 배열은 전체 참가자를 포함했지만 CSS 이동 거리가 한 행으로 고정되어 화면에 보이는 닉네임은 일부로 제한됐다.
+
+### Do not try again
+
+- 최종 순서 배열만 다시 만드는 방식으로 해결하려 하지 않는다.
+- 닉네임 텍스트만 줄이거나 슬롯 창 높이만 바꾸지 않는다.
+
+### Correct fix plan
+
+- 슬롯 릴에 참가자 수를 CSS 변수로 전달한다.
+- keyframe 이동 거리를 참가자 수와 행 높이에 맞춰 계산해 전체 닉네임이 한 주기 안에 모두 지나가도록 한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Browser visual check with 3+ players
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
+## 2026-07-02 - 순서 정하기 슬롯머신 정지 타이밍 불일치
+
+### Symptom
+
+- 슬롯머신 애니메이션이 처음 3초 동안 계속 돈 뒤 순서를 하나씩 멈춰 보여주는 요구와 다르게, 전체 공개 시간이 참가자 수와 무관한 균등 분할로 처리됐다.
+- 마지막 순서도 직전 순서 공개 후 0.5초 뒤에 멈추는 별도 타이밍이 적용되지 않았다.
+
+### Expected behavior
+
+- 슬롯머신은 처음 3초 동안 모든 슬롯이 돌고, 이후 다음 순서를 1초 간격으로 멈춰 보여줘야 한다.
+- 마지막 순서는 그 전 순서가 보인 뒤 0.5초 후에 멈춰 보여줘야 한다.
+
+### Actual behavior
+
+- 기존 공개 계산은 전체 reveal 시간을 순서 수로 나눠 `stoppedCount`를 계산했기 때문에 요구된 3초 초기 회전, 1초 간격, 마지막 0.5초 예외를 표현하지 못했다.
+
+### Suspected root cause
+
+- 슬롯머신 공개 타이밍이 명시적인 단계 스케줄이 아니라 전체 reveal 시간의 균등 분할로 계산됐다.
+
+### Confirmed root cause
+
+- `renderTurnOrderIntroOverlay()`가 `TURN_ORDER_REVEAL_MS / revealSteps`로 공개 간격을 계산해 모든 정지 간격을 균등하게 만들었다.
+- `slotUntil`도 고정 reveal 시간 기준이라 참가자 수별 마지막 공개 시점을 정확히 반영하지 못했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 슬롯 릴이 모든 닉네임을 지나가도록 이동 거리만 참가자 수 기반으로 바꿨다.
+  - Why it failed: 닉네임 노출 범위는 개선했지만, 순서별 정지 스케줄은 여전히 균등 공개 계산에 의존했다.
+
+### Do not try again
+
+- CSS 이동 거리만 조정하지 않는다.
+- 전체 reveal 시간을 순서 수로 균등 분할하지 않는다.
+
+### Correct fix plan
+
+- 3초 초기 회전, 중간 순서 1초 간격, 마지막 순서 0.5초 간격을 별도 상수와 helper로 계산한다.
+- `slotUntil`은 참가자 수에 따른 전체 정지 완료 시점으로 저장하고, 렌더링은 elapsed time을 단계 스케줄에 맞춰 `stoppedCount`로 변환한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Browser visual timing check with 3+ players
+- [x] No unrelated UI redesign
+- [x] No new dependency

@@ -92,6 +92,18 @@ const getStoredText = (key: string, fallback: string) => {
   if (typeof window === 'undefined') return fallback;
   return window.localStorage.getItem(key) || fallback;
 };
+const getTurnOrderSlotRevealDurationMs = (orderLength: number) => {
+  if (orderLength <= 0) return 0;
+  if (orderLength === 1) return TURN_ORDER_INITIAL_SLOT_SPIN_MS;
+  return TURN_ORDER_INITIAL_SLOT_SPIN_MS + Math.max(0, orderLength - 2) * TURN_ORDER_SLOT_REVEAL_INTERVAL_MS + TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS;
+};
+const getTurnOrderStoppedSlotCount = (orderLength: number, elapsedMs: number) => {
+  if (orderLength <= 0 || elapsedMs < TURN_ORDER_INITIAL_SLOT_SPIN_MS) return 0;
+  if (orderLength === 1) return 1;
+  const beforeLastCount = Math.min(orderLength - 1, 1 + Math.floor((elapsedMs - TURN_ORDER_INITIAL_SLOT_SPIN_MS) / TURN_ORDER_SLOT_REVEAL_INTERVAL_MS));
+  const lastRevealAt = TURN_ORDER_INITIAL_SLOT_SPIN_MS + Math.max(0, orderLength - 2) * TURN_ORDER_SLOT_REVEAL_INTERVAL_MS + TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS;
+  return elapsedMs >= lastRevealAt ? orderLength : beforeLastCount;
+};
 const normalizeMaxPlayers = (value: unknown, mode: PlayMode): 2 | 3 | 4 => {
   if (mode === 'team') return 4;
   return value === 2 || value === 3 || value === 4 ? value : 4;
@@ -100,7 +112,9 @@ const TURN_DELAY_MS = 650;
 const TURN_ORDER_START_DELAY_MS = 3000;
 const TURN_ORDER_TIMEOUT_MS = 10000;
 const TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS = 1500;
-const TURN_ORDER_REVEAL_MS = 5000;
+const TURN_ORDER_INITIAL_SLOT_SPIN_MS = 3000;
+const TURN_ORDER_SLOT_REVEAL_INTERVAL_MS = 1000;
+const TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS = 500;
 const TURN_ORDER_FINAL_HOLD_MS = 2000;
 const TURN_ORDER_AI_MIN_DELAY_MS = 2000;
 const TURN_ORDER_AI_DELAY_SPREAD_MS = 1000;
@@ -594,6 +608,10 @@ export function App() {
   useEffect(() => {
     currentRollRef.current = roll;
   }, [roll]);
+
+  useEffect(() => {
+    piecesRef.current = pieces;
+  }, [pieces]);
 
   useEffect(() => {
     if (!rollInProgress || roll || !rollInProgressStartedAtRef.current) return undefined;
@@ -1677,7 +1695,7 @@ export function App() {
     const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
     const nextTurnOrderIds = orderedSeats.map((seat) => seat.id);
     const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
-    const slotUntil = Date.now() + TURN_ORDER_REVEAL_MS;
+    const slotUntil = Date.now() + getTurnOrderSlotRevealDurationMs(order.length);
     const nextTurnOrderIntro = { order, visible: true, slotUntil, readyAt: slotUntil + TURN_ORDER_FINAL_HOLD_MS };
     const nextGameStartedAt = nextTurnOrderIntro.readyAt;
     const orderText = orderedSeats.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join(' / ');
@@ -1781,7 +1799,7 @@ export function App() {
     const nextTurnOrderIds = orderedSeats.map((seat) => seat.id);
     const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
     const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
-    const slotUntil = Date.now() + TURN_ORDER_REVEAL_MS;
+    const slotUntil = Date.now() + getTurnOrderSlotRevealDurationMs(order.length);
     const nextTurnOrderIntro = { order, visible: true, slotUntil, readyAt: slotUntil + TURN_ORDER_FINAL_HOLD_MS };
     const nextGameStartedAt = nextTurnOrderIntro.readyAt;
     const orderText = orderedSeats.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join('\n');
@@ -2532,21 +2550,20 @@ export function App() {
   function renderTurnOrderIntroOverlay() {
     if (!activeTurnOrderIntro?.visible) return null;
     const slotUntil = activeTurnOrderIntro.slotUntil ?? activeTurnOrderIntro.readyAt - TURN_ORDER_FINAL_HOLD_MS;
-    const slotStartedAt = slotUntil - TURN_ORDER_REVEAL_MS;
     const order = activeTurnOrderIntro.order ?? [];
-    const revealSteps = Math.max(1, order.length - 1);
-    const revealStepMs = TURN_ORDER_REVEAL_MS / revealSteps;
-    const elapsedRevealSteps = Math.max(0, Math.floor((turnOrderClock - slotStartedAt) / revealStepMs));
-    const stoppedCount = order.length > 1 && elapsedRevealSteps >= order.length - 1 ? order.length : Math.min(order.length, elapsedRevealSteps);
+    const slotRevealDurationMs = getTurnOrderSlotRevealDurationMs(order.length);
+    const slotStartedAt = slotUntil - slotRevealDurationMs;
+    const elapsedRevealMs = Math.max(0, turnOrderClock - slotStartedAt);
+    const stoppedCount = getTurnOrderStoppedSlotCount(order.length, elapsedRevealMs);
     const isSlotAnimating = stoppedCount < order.length;
-    const slotRows = order.length ? Array.from({ length: 10 }, (_, rowIndex) => order[rowIndex % order.length]) : [];
+    const slotRows = order.length ? Array.from({ length: order.length * 3 }, (_, rowIndex) => order[rowIndex % order.length]) : [];
     return <div className="turn-order-ready-overlay slot-machine" role="status" aria-live="assertive">
       <span>순서 정하기</span>
       {isSlotAnimating && <strong>순서를 섞는 중...</strong>}
       <div className="turn-order-slot-list" aria-hidden="true">
         {order.map((entry, columnIndex) => {
           const isStopped = columnIndex < stoppedCount;
-          return <div className={`turn-order-slot-window ${isStopped ? 'stopped' : ''}`} key={entry.seatId} style={{ '--slot-index': columnIndex } as CSSProperties}>
+          return <div className={`turn-order-slot-window ${isStopped ? 'stopped' : ''}`} key={entry.seatId} style={{ '--slot-index': columnIndex, '--slot-row-count': Math.max(order.length, 1) } as CSSProperties}>
             {isStopped ? <span className="turn-order-slot-card final-card" style={{ color: entry.color, borderColor: entry.color }}>{columnIndex + 1}. {entry.label}-{entry.name}</span> : <div className="turn-order-slot-reel">
               {slotRows.map((slotEntry, rowIndex) => <span className="turn-order-slot-card" style={{ color: slotEntry.color, borderColor: slotEntry.color }} key={`${entry.seatId}-${slotEntry.seatId}-${rowIndex}`}>{slotEntry.label}-{slotEntry.name}</span>)}
             </div>}
