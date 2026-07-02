@@ -614,7 +614,8 @@ select {
 }
 
 .piece-token.selected { outline: 4px solid rgba(242, 184, 75, .82); }
-.piece-token.finished { filter: grayscale(.45); opacity: .75; }
+.piece-token:disabled { opacity: 1; }
+.piece-token.finished { filter: grayscale(.45); opacity: 1; }
 
 .play-controls {
   width: min(100%, 620px);
