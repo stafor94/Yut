@@ -19,13 +19,14 @@ test.describe('BUG_HISTORY regression smoke', () => {
       await expectAppShell(page);
       await page.getByTestId('room-title-input').fill(roomTitle);
       await page.getByTestId('create-room-button').click();
-      await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
       const addAiButton = page.getByTestId('add-ai-P2');
       if (await addAiButton.isVisible().catch(() => false)) await addAiButton.click();
       await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
       await page.getByTestId('start-game-button').click();
-      await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('start-countdown-overlay')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
     });
 
     await runQaStep(testInfo, '턴 컨트롤 상태 진단', async () => {

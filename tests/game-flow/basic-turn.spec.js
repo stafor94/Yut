@@ -19,7 +19,7 @@ test.describe('game flow QA', () => {
       await expectAppShell(page);
       await page.getByTestId('room-title-input').fill(roomTitle);
       await page.getByTestId('create-room-button').click();
-      await expect(page.getByTestId('waiting-room'), `대기실 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('waiting-room'), `대기실 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
     });
 
@@ -28,7 +28,8 @@ test.describe('game flow QA', () => {
       if (await addAiButton.isVisible().catch(() => false)) await addAiButton.click();
       await expect(page.getByTestId('start-game-button'), `시작 버튼 상태: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeEnabled({ timeout: 15_000 });
       await page.getByTestId('start-game-button').click();
-      await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('start-countdown-overlay')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       await expect(page.getByTestId('players-panel')).toContainText(hostName);
       await expect(page.getByTestId('turn-indicator')).toBeVisible();
       await expect(page.getByTestId('game-board')).toBeVisible();

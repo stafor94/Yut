@@ -5,7 +5,7 @@ import { rollYutResult, type YutResult } from '../../../game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 
 export interface RoomSummary {
-  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; startCountdownUntil?: number;
+  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; roomConfigVersion?: number;
 }
 
 const getCreatedAtMillis = (createdAt: unknown) => {
@@ -16,8 +16,8 @@ const getCreatedAtMillis = (createdAt: unknown) => {
   if (typeof createdAt === 'number') return createdAt;
   return 0;
 };
-export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; }
-export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
+export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; enteredGameAt?: number; enteredStartVersion?: number; lastGamePresenceAt?: number; }
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; startRequestVersion?: number; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'item_used' | 'trap_placed' | 'game_finished';
@@ -667,7 +667,12 @@ export async function getRoom(roomId: string): Promise<RoomSummary | null> {
 
 export async function updateRoomOptions(roomId: string, params: Partial<Pick<RoomSummary, 'itemMode' | 'pieceCount' | 'playMode' | 'maxPlayers'>>) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
-  await updateDoc(doc(db, 'rooms', roomId), params);
+  const roomRef = doc(db, 'rooms', roomId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(roomRef);
+    const currentVersion = Number((snapshot.data() as Partial<RoomSummary> | undefined)?.roomConfigVersion ?? 0);
+    transaction.set(roomRef, { ...params, roomConfigVersion: currentVersion + 1 }, { merge: true });
+  });
 }
 
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
@@ -722,12 +727,55 @@ export async function removeRoomPlayer(roomId: string, playerId: string) {
 
 export async function updateRoomStatus(roomId: string, status: RoomSummary['status']) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
-  await updateDoc(doc(db, 'rooms', roomId), { status, ...(status === 'playing' ? { startCountdownUntil: 0 } : {}) });
+  await updateDoc(doc(db, 'rooms', roomId), { status, ...(status === 'playing' ? { startCountdownUntil: 0, startStatus: 'playing' } : {}) });
 }
 
 export async function updateRoomStartCountdown(roomId: string, startCountdownUntil: number) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   await updateDoc(doc(db, 'rooms', roomId), { startCountdownUntil });
+}
+
+export async function requestRoomGameStart(roomId: string, requestedAt: number) {
+  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  const roomRef = doc(db, 'rooms', roomId);
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(roomRef);
+    if (!snapshot.exists()) throw new Error('존재하지 않는 방입니다.');
+    const room = snapshot.data() as RoomSummary;
+    const nextVersion = Number(room.startRequestVersion ?? 0) + 1;
+    const startsAt = requestedAt + 1000;
+    const endsAt = startsAt + 5000;
+    transaction.set(roomRef, {
+      startRequestVersion: nextVersion,
+      startRequestedAt: requestedAt,
+      startCountdownStartsAt: startsAt,
+      startCountdownEndsAt: endsAt,
+      startCountdownUntil: endsAt,
+      startCancelledAt: null,
+      startStatus: 'requested',
+    }, { merge: true });
+    return { startRequestVersion: nextVersion, startRequestedAt: requestedAt, startCountdownStartsAt: startsAt, startCountdownEndsAt: endsAt };
+  });
+}
+
+export async function cancelRoomGameStart(roomId: string, startRequestVersion: number, cancelledAt: number) {
+  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  const roomRef = doc(db, 'rooms', roomId);
+  return runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(roomRef);
+    if (!snapshot.exists()) return false;
+    const room = snapshot.data() as RoomSummary;
+    const currentVersion = Number(room.startRequestVersion ?? 0);
+    const countdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
+    if (currentVersion !== startRequestVersion || room.startStatus !== 'requested' || countdownEndsAt - cancelledAt <= 2000) return false;
+    transaction.set(roomRef, { startCancelledAt: cancelledAt, startStatus: 'cancelled', startCountdownUntil: 0 }, { merge: true });
+    return true;
+  });
+}
+
+export async function markRoomGameEntering(roomId: string, startRequestVersion: number) {
+  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  await setDoc(doc(db, 'rooms', roomId), { startStatus: 'entering', startRequestVersion, startCountdownUntil: 0 }, { merge: true });
 }
 
 export async function deleteRoom(roomId: string) {
