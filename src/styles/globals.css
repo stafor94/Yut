@@ -1202,23 +1202,38 @@ aside.players,
 .toast-message strong { font-size: clamp(1.35rem, 3vw, 1.8rem); }
 .toast-message span { font-weight: 800; opacity: .92; }
 
-.yut-stick.round i::before,
-.yut-stick.round i::after {
+.yut-stick { position: relative; }
+.yut-stick i { position: relative; }
+
+.yut-mark {
+  position: absolute;
+  left: 50%;
+  top: calc(28% + var(--mark-index, 0) * 22%);
+  width: 20px;
+  height: 20px;
+  translate: -50% -50%;
+}
+
+.yut-mark:nth-child(1) { --mark-index: 0; }
+.yut-mark:nth-child(2) { --mark-index: 1; }
+.yut-mark:nth-child(3) { --mark-index: 2; }
+.yut-stick.marked .yut-mark:only-child { --mark-index: 1; }
+
+.yut-mark::before,
+.yut-mark::after {
   content: "";
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 18px;
+  width: 22px;
   height: 3px;
   border-radius: 999px;
   background: rgba(42, 30, 23, .72);
   transform-origin: center;
 }
 
-.yut-stick { position: relative; }
-.yut-stick i { position: relative; }
-.yut-stick.round i::before { transform: translate(-50%, -50%) rotate(45deg); }
-.yut-stick.round i::after { transform: translate(-50%, -50%) rotate(-45deg); }
+.yut-mark::before { transform: translate(-50%, -50%) rotate(45deg); }
+.yut-mark::after { transform: translate(-50%, -50%) rotate(-45deg); }
 
 .play-controls button:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.35); }
 .side { min-height: 0; }
@@ -1370,8 +1385,6 @@ aside.players,
   to { width: 0%; }
 }
 
-.yut-stick.marked i { box-shadow: inset 0 0 0 3px rgba(217, 74, 56, .38); }
-.yut-stick.marked i::after { content: ''; position: absolute; inset: 48% 18% auto; height: 3px; background: rgba(217, 74, 56, .72); border-radius: 999px; }
 
 .turn-indicator {
   width: min(100%, 620px);
@@ -1600,35 +1613,6 @@ aside.players,
     repeating-linear-gradient(178deg, rgba(122, 74, 38, .18) 0 2px, transparent 2px 15px),
     linear-gradient(#fff3d4, #e7bd7a);
   border-color: rgba(122, 47, 31, .58);
-}
-
-.yut-stick.flat.marked i::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 24px;
-  height: 24px;
-  translate: -50% -50%;
-  border-radius: 999px;
-  background: rgba(217, 74, 56, .92);
-  box-shadow: 0 0 0 4px rgba(217, 74, 56, .16), inset 0 2px 0 rgba(255, 255, 255, .28);
-}
-
-.yut-stick.flat.marked i::after {
-  content: "빽";
-  position: absolute;
-  inset: 50% auto auto 50%;
-  translate: -50% -50%;
-  width: auto;
-  height: auto;
-  background: transparent;
-  color: #fff8ea;
-  font-size: 12px;
-  font-weight: 1000;
-  line-height: 1;
-  letter-spacing: -.08em;
-  text-shadow: 0 1px 0 rgba(122, 47, 31, .7);
 }
 
 .sound-controls {
