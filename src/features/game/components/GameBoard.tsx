@@ -36,16 +36,15 @@ type GameBoardProps = {
   isPieceSelectable?: (piece: BoardPiece) => boolean;
 };
 
-function getOffBoardPieceStyle(piece: BoardPiece, pieces: BoardPiece[], ownerIndex: number, ownerOrder: number, desktopTop: number) {
+function getOffBoardPieceStyle(piece: BoardPiece, ownerIndex: number, ownerOrder: number, desktopTop: number, portraitTop: number) {
   const portraitColumn = ownerOrder % 2;
-  const portraitRow = Math.floor(ownerOrder / 2);
   return {
     left: `${112 + ownerIndex * 8}%`,
     top: `${desktopTop}%`,
     background: piece.color,
     translate: '-50% -50%',
     '--portrait-bench-left': `${16 + portraitColumn * 48 + ownerIndex * 8}%`,
-    '--portrait-bench-top': `${34 + portraitRow * 44}px`,
+    '--portrait-bench-top': `${portraitTop}px`,
   } as CSSProperties;
 }
 
@@ -54,13 +53,17 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
     const ownerPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && !candidate.started && !candidate.finished);
     const ownerIndex = Math.max(0, ownerPieces.findIndex((candidate) => candidate.id === piece.id));
     const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
-    return getOffBoardPieceStyle(piece, pieces, ownerIndex, Math.max(0, ownerOrder), 20 + Math.max(0, ownerOrder) * 15);
+    const safeOwnerOrder = Math.max(0, ownerOrder);
+    const portraitRow = Math.floor(safeOwnerOrder / 2);
+    return getOffBoardPieceStyle(piece, ownerIndex, safeOwnerOrder, 20 + safeOwnerOrder * 15, 34 + portraitRow * 80);
   }
   if (piece.finished) {
     const finishedPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && candidate.finished);
     const finishedIndex = Math.max(0, finishedPieces.findIndex((candidate) => candidate.id === piece.id));
     const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
-    return getOffBoardPieceStyle(piece, pieces, finishedIndex, Math.max(0, ownerOrder), 72 + Math.max(0, ownerOrder) * 7);
+    const safeOwnerOrder = Math.max(0, ownerOrder);
+    const portraitRow = Math.floor(safeOwnerOrder / 2);
+    return getOffBoardPieceStyle(piece, finishedIndex, safeOwnerOrder, 72 + safeOwnerOrder * 7, 72 + portraitRow * 80);
   }
   const node: BoardNode | undefined = BOARD_NODES.find((candidate) => candidate.id === piece.nodeId) ?? BOARD_NODES[piece.nodeIndex] ?? BOARD_NODES[0];
   const stackedPieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished);
