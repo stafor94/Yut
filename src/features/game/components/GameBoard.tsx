@@ -48,6 +48,17 @@ function getOffBoardPieceStyle(piece: BoardPiece, ownerIndex: number, ownerOrder
   } as CSSProperties;
 }
 
+function getFinishedPieceStyle(piece: BoardPiece, finishedIndex: number) {
+  return {
+    left: `${112 + finishedIndex * 8}%`,
+    top: '72%',
+    background: piece.color,
+    translate: '-50% -50%',
+    '--portrait-bench-left': `${32 + finishedIndex * 12}%`,
+    '--portrait-bench-top': '14px',
+  } as CSSProperties;
+}
+
 function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = '') {
   if (!piece.started && !piece.finished && movingPieceId !== piece.id) {
     const ownerPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && !candidate.started && !candidate.finished);
@@ -58,12 +69,9 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
     return getOffBoardPieceStyle(piece, ownerIndex, safeOwnerOrder, 20 + safeOwnerOrder * 15, 34 + portraitRow * 80);
   }
   if (piece.finished) {
-    const finishedPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && candidate.finished);
+    const finishedPieces = pieces.filter((candidate) => candidate.finished);
     const finishedIndex = Math.max(0, finishedPieces.findIndex((candidate) => candidate.id === piece.id));
-    const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
-    const safeOwnerOrder = Math.max(0, ownerOrder);
-    const portraitRow = Math.floor(safeOwnerOrder / 2);
-    return getOffBoardPieceStyle(piece, finishedIndex, safeOwnerOrder, 72 + safeOwnerOrder * 7, 72 + portraitRow * 80);
+    return getFinishedPieceStyle(piece, finishedIndex);
   }
   const node: BoardNode | undefined = BOARD_NODES.find((candidate) => candidate.id === piece.nodeId) ?? BOARD_NODES[piece.nodeIndex] ?? BOARD_NODES[0];
   const stackedPieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished);
@@ -99,15 +107,19 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         {trapNodeIds.includes(node.id) ? <span className="trap-marker" aria-label="설치된 함정">🪤</span> : null}
       </button>;
     })}
-    {pieces.map((piece) => <button
-      type="button"
-      data-testid={`piece-${piece.id}`}
-      key={piece.id}
-      className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${selectedIds.includes(piece.id) ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
-      style={getPieceStyle(piece, pieces, movingPieceId)}
-      onClick={() => onSelectPiece(piece.id)}
-      disabled={piece.finished || isPieceSelectable?.(piece) === false}
-      aria-label={`${piece.label} 말 선택`}
-    >{piece.finished ? '완' : piece.label}</button>)}
+    {pieces.map((piece) => {
+      const pieceSelectable = isPieceSelectable?.(piece) !== false;
+      const pieceSelected = pieceSelectable && selectedIds.includes(piece.id);
+      return <button
+        type="button"
+        data-testid={`piece-${piece.id}`}
+        key={piece.id}
+        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
+        style={getPieceStyle(piece, pieces, movingPieceId)}
+        onClick={() => onSelectPiece(piece.id)}
+        disabled={piece.finished || !pieceSelectable}
+        aria-label={`${piece.label} 말 선택`}
+      >{piece.finished ? '완' : piece.label}</button>;
+    })}
   </div>;
 }

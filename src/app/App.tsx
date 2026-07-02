@@ -958,15 +958,29 @@ export function App() {
     setRollInProgress(false);
   };
 
+  async function waitForCurrentMoveToFinish(maxWaitMs: number) {
+    const startedAt = Date.now();
+    while (moveInProgressRef.current && Date.now() - startedAt < maxWaitMs) {
+      await delay(STEP_DELAY_MS);
+    }
+    return !moveInProgressRef.current;
+  }
+
   async function replayMoveSequence(sequence: GameSequence) {
     const payload = sequence.payload ?? {};
-    const clientMutationId = sequence.clientMutationId ?? '';
     const finalPieces = (sequence.stateAfter?.pieces as BoardPiece[] | undefined) ?? null;
     const movingGroupIds = Array.isArray(payload.movingGroupIds) ? payload.movingGroupIds.map(String) : [];
     const pathNodeIds = Array.isArray(payload.pathNodeIds) ? payload.pathNodeIds.map(String).filter(Boolean) : [];
-    if (!finalPieces || !movingGroupIds.length || !pathNodeIds.length || moveInProgressRef.current || (clientMutationId && (pendingLocalRemoteActionsRef.current.has(clientMutationId) || localClientMutationIdsRef.current.has(clientMutationId)))) {
+    if (!finalPieces || !movingGroupIds.length || !pathNodeIds.length) {
       if (finalPieces) setPieces(finalPieces);
       return;
+    }
+    if (moveInProgressRef.current) {
+      const moveFinished = await waitForCurrentMoveToFinish((pathNodeIds.length + 6) * STEP_DELAY_MS);
+      if (!moveFinished) {
+        setPieces(finalPieces);
+        return;
+      }
     }
     const anchorBefore = piecesRef.current.find((piece) => piece.id === movingGroupIds[0]);
     const anchorAfter = finalPieces.find((piece) => piece.id === movingGroupIds[0]);
