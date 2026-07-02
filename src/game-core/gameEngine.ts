@@ -49,6 +49,7 @@ export type TurnActionGuardInput = {
   winner?: string;
   turnOrderPhaseActive?: boolean;
   turnOrderIntroActive?: boolean;
+  waitingForTurnOrder?: boolean;
   movingPieceId?: string;
   pendingTrapPlacement?: boolean;
   pendingHostStateSave?: boolean;
@@ -70,6 +71,7 @@ export function getTurnActionBlockReasons(input: TurnActionGuardInput) {
     input.isActorAI ? 'ai-turn' : '',
     input.isSpectator ? 'spectator' : '',
     input.winner ? 'winner' : '',
+    input.waitingForTurnOrder ? 'waiting-for-turn-order' : '',
     input.turnOrderPhaseActive ? 'turn-order-phase-active' : '',
     input.turnOrderIntroActive ? 'turn-order-intro-active' : '',
     input.movingPieceId ? 'moving-piece' : '',

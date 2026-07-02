@@ -1405,9 +1405,9 @@ aside.players,
   width: min(100%, 620px);
   margin: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr);
   align-items: end;
-  gap: 10px;
+  gap: 8px;
   text-align: center;
   font-size: clamp(1.35rem, 2.2vw, 1.9rem);
   line-height: 1.18;
@@ -1423,6 +1423,14 @@ aside.players,
   min-width: 0;
   color: inherit;
   font: inherit;
+}
+
+.turn-separator {
+  align-self: center;
+  color: rgba(42, 30, 23, .34);
+  font-size: clamp(.9rem, 1.5vw, 1.1rem);
+  font-weight: 1000;
+  line-height: 1;
 }
 
 .turn-neighbor {
@@ -2124,6 +2132,16 @@ aside.players,
   margin-bottom: 18px;
 }
 
+.create-room-heading {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.create-room-heading .section-kicker {
+  margin-bottom: 0;
+}
+
 .lobby-panel-heading h2 {
   margin: 0;
   color: #224236;
@@ -2186,6 +2204,16 @@ aside.players,
   transform: translateY(-2px);
   filter: saturate(1.05);
   box-shadow: 0 26px 54px rgba(217, 74, 56, .34), inset 0 1px 0 rgba(255, 255, 255, .28);
+}
+
+.create-room-heading-button {
+  width: auto;
+  min-width: 104px;
+  min-height: 42px;
+  padding: 10px 18px;
+  border-radius: 16px;
+  font-size: .95rem;
+  white-space: nowrap;
 }
 
 .lobby-notice {
@@ -3288,6 +3316,11 @@ aside.players,
   .waiting-actions button {
     min-height: 56px;
     font-size: 1.05rem;
+  }
+
+  .create-room-heading-button {
+    min-height: 42px;
+    font-size: .95rem;
   }
 
   .lobby-form input[type="text"],
