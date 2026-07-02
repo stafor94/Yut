@@ -32,7 +32,18 @@ export async function hasFirebaseConfig() {
   return Boolean(await loadFirebaseConfig());
 }
 
+function formatQaTimestamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  return `${year}.${month}.${day}_${hours}${minutes}${seconds}`;
+}
+
 export function makeQaName(testInfo, suffix) {
   const project = testInfo.project.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'project';
-  return `QA-${Date.now()}-${project}-${suffix}`;
+  return `QA-${formatQaTimestamp()}-${project}-${suffix}`;
 }

@@ -87,7 +87,7 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     const cleanupBatch = writeBatch(firestore);
     staleHostRoomRefs.forEach((roomRef) => cleanupBatch.set(roomRef, { status: 'finished', emptySince: now }, { merge: true }));
     await cleanupBatch.commit();
-    staleHostRoomRefs.forEach((roomRef) => { void deleteRoom(roomRef.id); });
+    await Promise.all(staleHostRoomRefs.map((roomRef) => deleteRoom(roomRef.id)));
   }
 
   const activeRoomsSnapshot = await getDocs(query(roomsRef, where('status', 'in', ['waiting', 'playing'])));
@@ -453,6 +453,21 @@ export async function getGameSequencesSince(roomId: string, afterSequence: numbe
   return snapshot.docs.map((sequenceDoc) => ({ id: sequenceDoc.id, ...(sequenceDoc.data() as Omit<GameSequence, 'id'>) }));
 }
 
+function keepNewestRoomPerHost(rooms: RoomSummary[]) {
+  const latestRoomsByHost = new Map<string, RoomSummary>();
+  const roomsWithoutHost: RoomSummary[] = [];
+  rooms.forEach((room) => {
+    if (!room.hostId) {
+      roomsWithoutHost.push(room);
+      return;
+    }
+    const currentRoom = latestRoomsByHost.get(room.hostId);
+    if (!currentRoom || getCreatedAtMillis(room.createdAt) > getCreatedAtMillis(currentRoom.createdAt)) latestRoomsByHost.set(room.hostId, room);
+  });
+  return [...latestRoomsByHost.values(), ...roomsWithoutHost]
+    .sort((a, b) => getCreatedAtMillis(b.createdAt) - getCreatedAtMillis(a.createdAt));
+}
+
 export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): Unsubscribe {
   if (!db) { callback([]); return () => undefined; }
   const roomsQuery = query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing']));
@@ -466,9 +481,8 @@ export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): 
         if (expired) void deleteDoc(room.ref);
         return !expired;
       })
-      .map(({ ref: _ref, ...room }) => room)
-      .sort((a, b) => getCreatedAtMillis(b.createdAt) - getCreatedAtMillis(a.createdAt));
-    callback(rooms);
+      .map(({ ref: _ref, ...room }) => room);
+    callback(keepNewestRoomPerHost(rooms).slice(0, MAX_ACTIVE_ROOMS));
   }, () => callback([]));
 }
 
