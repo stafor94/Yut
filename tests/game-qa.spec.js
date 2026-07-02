@@ -185,7 +185,7 @@ async function expectTwoPlayerGameReady(page, firstNickname, secondNickname) {
 }
 
 function createGameActionCoverage() {
-  return { rolled: 0, manualMoved: 0, autoWaited: 0, branchOuterSelected: 0, branchShortcutSelected: 0, branchMoved: 0, itemPromptHandled: 0, itemUsed: 0, itemSkipped: 0, itemPickupModalHandled: 0, trapPlacementHandled: 0 };
+  return { rolled: 0, manualMoved: 0, autoWaited: 0, branchOuterSelected: 0, branchShortcutSelected: 0, branchMoved: 0, itemPromptHandled: 0, itemUsed: 0, itemSkipped: 0, itemPickupModalHandled: 0, trapPlacementHandled: 0, actionErrorDialogHandled: 0 };
 }
 
 async function isVisible(locator) {
@@ -573,6 +573,18 @@ async function handleItemPickupModal(page, coverage) {
   return true;
 }
 
+async function handleActionErrorDialog(page, coverage) {
+  const dialog = page.getByRole('alertdialog', { name: '액션 오류' });
+  if (!(await isVisible(dialog))) return false;
+  const confirmButton = dialog.getByRole('button', { name: '확인' });
+  await expect(confirmButton, '액션 오류 모달에는 확인 버튼이 있어야 합니다.').toBeVisible({ timeout: 5_000 });
+  await confirmButton.click();
+  await expect(dialog, '액션 오류 모달은 확인 후 닫혀야 합니다.').toBeHidden({ timeout: 5_000 });
+  coverage.actionErrorDialogHandled += 1;
+  coverage.autoWaited += 1;
+  return true;
+}
+
 async function handleItemPrompt(page, coverage, { preferUseItem = true } = {}) {
   const prompt = page.locator('.inline-item-prompt');
   if (!(await isVisible(prompt))) return false;
@@ -597,9 +609,19 @@ async function handleTrapPlacement(page, coverage) {
   if (!(await isVisible(page.locator('.trap-placement-banner')))) return false;
   const selectableNode = page.locator('.board-node.trap-selectable').first();
   await expect(selectableNode, '함정 설치 중에는 선택 가능한 말판 노드가 있어야 합니다.').toBeVisible({ timeout: 10_000 });
-  await selectableNode.click();
+  try {
+    await expect(selectableNode, '함정 설치 말판 노드는 클릭 가능한 상태여야 합니다.').toBeEnabled({ timeout: 5_000 });
+    await selectableNode.click({ timeout: 5_000 });
+  } catch (error) {
+    const debugState = await collectGameDebugState(page);
+    if (!debugState.trap || hasPendingTurnAction(debugState)) {
+      coverage.autoWaited += 1;
+      return 'wait';
+    }
+    throw new Error(`함정 설치 말판 클릭이 실패했습니다: ${JSON.stringify({ error: error instanceof Error ? error.message : String(error), debugState }, null, 2)}`);
+  }
   coverage.trapPlacementHandled += 1;
-  return true;
+  return 'trap-placement';
 }
 
 async function handleBranchMove(page, coverage) {
@@ -621,9 +643,11 @@ async function handleBranchMove(page, coverage) {
 async function playOneAvailableGameAction(page, coverage, options = {}) {
   const pages = options.pages ?? [page];
   const preferredPageIndex = Number.isInteger(options.preferredPageIndex) ? options.preferredPageIndex : pages.indexOf(page);
+  if (await handleActionErrorDialog(page, coverage)) return 'wait';
   if (await handleItemPickupModal(page, coverage)) return 'item-pickup-modal';
   if (await handleItemPrompt(page, coverage, options)) return 'item-prompt';
-  if (await handleTrapPlacement(page, coverage)) return 'trap-placement';
+  const trapPlacementAction = await handleTrapPlacement(page, coverage);
+  if (trapPlacementAction) return trapPlacementAction;
   if (await handleBranchMove(page, coverage)) return 'branch-move';
 
   const moveButton = page.getByTestId('move-piece-button');
@@ -745,6 +769,7 @@ async function playUntilActions(page, testInfo, { targetActions = 10, maxTicks =
 }
 
 async function isPlayableActionVisible(page) {
+  if (await page.getByRole('alertdialog', { name: '액션 오류' }).isVisible().catch(() => false)) return true;
   if (await page.getByRole('dialog', { name: '아이템 교체 선택' }).isVisible().catch(() => false)) return true;
   if (await page.getByTestId('roll-yut-button').isVisible().catch(() => false)) return true;
   if (await page.getByTestId('move-piece-button').isVisible().catch(() => false)) return true;
@@ -757,6 +782,7 @@ async function isPlayableActionVisible(page) {
 
 function getPlayableActionPriority(debugState) {
   const yutDebug = debugState?.yutDebug ?? {};
+  if (debugState?.actionErrorDialog) return 0;
   if (debugState?.moveButton?.visible && !debugState.moveButton.disabled && yutDebug.canRequestMove === true) return 1;
   if (debugState?.branchControls?.visible && !debugState.branchControls.moveDisabled && yutDebug.canRequestMove === true) return 2;
   if (debugState?.rollButton?.visible && !debugState.rollButton.disabled && yutDebug.canRollNow === true && (yutDebug.rollActionBlockReasons ?? []).length === 0) return 3;
