@@ -113,8 +113,8 @@ const TURN_ORDER_START_DELAY_MS = 3000;
 const TURN_ORDER_TIMEOUT_MS = 10000;
 const TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS = 1500;
 const TURN_ORDER_INITIAL_SLOT_SPIN_MS = 3000;
-const TURN_ORDER_SLOT_REVEAL_INTERVAL_MS = 1000;
-const TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS = 500;
+const TURN_ORDER_SLOT_REVEAL_INTERVAL_MS = 2000;
+const TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS = 1000;
 const TURN_ORDER_FINAL_HOLD_MS = 2000;
 const TURN_ORDER_AI_MIN_DELAY_MS = 2000;
 const TURN_ORDER_AI_DELAY_SPREAD_MS = 1000;
@@ -2563,10 +2563,13 @@ export function App() {
       <div className="turn-order-slot-list" aria-hidden="true">
         {order.map((entry, columnIndex) => {
           const isStopped = columnIndex < stoppedCount;
-          return <div className={`turn-order-slot-window ${isStopped ? 'stopped' : ''}`} key={entry.seatId} style={{ '--slot-index': columnIndex, '--slot-row-count': Math.max(order.length, 1) } as CSSProperties}>
-            {isStopped ? <span className="turn-order-slot-card final-card" style={{ color: entry.color, borderColor: entry.color }}>{columnIndex + 1}. {entry.label}-{entry.name}</span> : <div className="turn-order-slot-reel">
-              {slotRows.map((slotEntry, rowIndex) => <span className="turn-order-slot-card" style={{ color: slotEntry.color, borderColor: slotEntry.color }} key={`${entry.seatId}-${slotEntry.seatId}-${rowIndex}`}>{slotEntry.label}-{slotEntry.name}</span>)}
-            </div>}
+          return <div className={`turn-order-slot-window ${isStopped ? 'stopped' : ''}`} key={entry.seatId} style={{ '--slot-index': columnIndex, '--slot-row-count': Math.max(order.length, 1), '--slot-target-row': order.length + columnIndex } as CSSProperties}>
+            <div className="turn-order-slot-reel">
+              {slotRows.map((slotEntry, rowIndex) => {
+                const isTargetRow = rowIndex === order.length + columnIndex;
+                return <span className={`turn-order-slot-card ${isStopped && isTargetRow ? 'final-card' : ''}`} style={{ color: slotEntry.color, borderColor: slotEntry.color }} key={`${entry.seatId}-${slotEntry.seatId}-${rowIndex}`}>{isTargetRow ? `${columnIndex + 1}. ` : ''}{slotEntry.label}-{slotEntry.name}</span>;
+              })}
+            </div>
           </div>;
         })}
       </div>
