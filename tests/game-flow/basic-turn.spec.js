@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
-import { makeQaName } from '../helpers/env.js';
+import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 test.describe('game flow QA', () => {
@@ -11,7 +11,7 @@ test.describe('game flow QA', () => {
   });
 
   test('AI를 추가한 2인 방에서 게임 화면 진입과 첫 턴 조작 UI를 검증한다', async ({ page, context }, testInfo) => {
-    const hostName = makeQaName(testInfo, 'host');
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'host'));
     const roomTitle = makeQaName(testInfo, 'room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
