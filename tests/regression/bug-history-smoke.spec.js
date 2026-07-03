@@ -26,7 +26,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
       await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
       await page.getByTestId('start-game-button').click();
       await expect(page.getByTestId('start-countdown-overlay')).toBeVisible({ timeout: 5_000 });
-      await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+      await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
     });
 
     await runQaStep(testInfo, '턴 컨트롤 상태 진단', async () => {

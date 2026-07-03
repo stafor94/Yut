@@ -5,7 +5,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "test:e2e": "npm run build && playwright test",
     "test:smoke": "playwright test --project=desktop-chromium tests/smoke tests/lobby",
-    "test:game-flow": "playwright test --project=desktop-chromium tests/online tests/game-flow tests/regression",
+    "test:game-flow": "playwright test --workers=1 --project=desktop-chromium tests/online tests/game-flow tests/regression",
     "test:mobile": "playwright test --project=mobile-galaxy --project=tablet-ipad tests/mobile",
     "qa:cleanup-rooms": "node tests/helpers/cleanup-qa-rooms.js"
   },
