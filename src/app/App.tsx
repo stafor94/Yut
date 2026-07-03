@@ -1926,6 +1926,14 @@ export function App() {
     const nextTurnOrderIntro = { order, visible: true, slotUntil, readyAt: slotUntil + TURN_ORDER_FINAL_HOLD_MS };
     const nextGameStartedAt = nextTurnOrderIntro.readyAt;
     const introLog = makeLog(formatTurnOrderSummary(orderedSeats));
+    if (activeRoomId) {
+      pendingSequenceMetaRef.current = {
+        type: 'turn_order_resolved',
+        actorId: localSeatId,
+        clientMutationId: `turn_order_intro:${activeRoomId}:${startRequestVersion}:${nextTurnOrderIntro.readyAt}`,
+        payload: { startRequestVersion, turnOrderIds: nextTurnOrderIds, slotUntil, readyAt: nextTurnOrderIntro.readyAt },
+      };
+    }
     setLogs((currentLogs) => [introLog, ...currentLogs]);
     setTurnOrderIds(nextTurnOrderIds);
     setTurnOrderIntro(nextTurnOrderIntro);
@@ -2079,6 +2087,20 @@ export function App() {
     if (!canCoordinateOnlineGame) return;
 
     const { local } = makeTurnOrderCeremonyPatch(rolls, logs);
+    if (activeRoomId) {
+      pendingSequenceMetaRef.current = {
+        type: 'turn_order_resolved',
+        actorId: localSeatId,
+        clientMutationId: `turn_order_resolved:${activeRoomId}:${startRequestVersion}:${local.nextTurnOrderIntro.readyAt}`,
+        payload: {
+          startRequestVersion,
+          turnOrderIds: local.nextTurnOrderIds,
+          completedRollCount: local.completedRolls.length,
+          slotUntil: local.nextTurnOrderIntro.slotUntil,
+          readyAt: local.nextTurnOrderIntro.readyAt,
+        },
+      };
+    }
     setPieces(local.nextPieces);
     setBoardItems(local.nextBoardItems);
     setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(local.nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null);
