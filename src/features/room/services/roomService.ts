@@ -69,8 +69,7 @@ export async function leaveDuplicatePlayerRooms(playerId: string, keepRoomId = '
   const selectedKeepRoomId = keepRoomId || sortedMemberships[0]?.room.id || '';
   const roomsToLeave = memberships.filter((membership) => membership.room.id !== selectedKeepRoomId);
   await Promise.all(roomsToLeave.map(async ({ room }) => {
-    if (room.hostId === playerId) await deleteRoom(room.id);
-    else await removeRoomPlayer(room.id, playerId);
+    await removeRoomPlayer(room.id, playerId);
   }));
   return roomsToLeave.map(({ room }) => room.id);
 }
@@ -260,7 +259,7 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
     const remainingHumans = playersSnapshot.docs.filter((playerDoc) => {
       if (stalePlayers.some((staleDoc) => staleDoc.id === playerDoc.id)) return false;
       const player = playerDoc.data() as RoomPlayer;
-      return !player.isAI;
+      return !player.isAI && !player.isSpectator;
     });
     if (!remainingHumans.length) await deleteRoom(roomDoc.id);
   }));
@@ -644,7 +643,6 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
 }
 
 function reduceContinueRace(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>, room: Omit<RoomSummary, 'id'>): AuthoritativeReduction {
-  if (room.hostId !== action.actorId) return makeActionReject('방장만 이어서 진행할 수 있습니다.');
   if (room.playMode !== 'individual') return makeActionReject('개인전에서만 이어서 진행할 수 있습니다.');
   if (state.gameEndMode !== 'partial_finish') return makeActionReject('이어서 진행할 수 있는 종료 상태가 아닙니다.');
   const activeSeatIds = normalizeSeatIds(state.initialTurnOrderIds?.length ? state.initialTurnOrderIds : state.turnOrderIds);
@@ -810,17 +808,12 @@ export async function removeRoomPlayer(roomId: string, playerId: string) {
   await syncRoomPlayerCount(roomId);
   const remainingPlayersSnapshot = await getDocs(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc')));
   const remainingPlayers = remainingPlayersSnapshot.docs.map((playerDoc) => ({ id: playerDoc.id, ...(playerDoc.data() as Omit<RoomPlayer, 'id'>) }));
-  const remainingActivePlayers = remainingPlayers.filter((remainingPlayer) => !remainingPlayer.isSpectator);
-  if (!remainingActivePlayers.length) {
+  const remainingHumanPlayers = remainingPlayers.filter((remainingPlayer) => !remainingPlayer.isSpectator && !remainingPlayer.isAI);
+  if (!remainingHumanPlayers.length) {
     await deleteRoom(roomId);
     return;
   }
-  const nextHost = room?.hostId === playerId ? remainingActivePlayers.find((remainingPlayer) => !remainingPlayer.isAI) : null;
-  if (room?.hostId === playerId && !nextHost) {
-    await deleteRoom(roomId);
-    return;
-  }
-  await setDoc(roomRef, { emptySince: null, ...(nextHost ? { hostId: nextHost.id } : {}) }, { merge: true });
+  await setDoc(roomRef, { emptySince: null }, { merge: true });
 }
 
 export async function updateRoomStatus(roomId: string, status: RoomSummary['status']) {
