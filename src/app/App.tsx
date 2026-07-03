@@ -79,6 +79,62 @@ type SequenceStateSnapshot = Partial<{
   lastSequence: number;
 }>;
 
+type GameStateFingerprintInput = {
+  pieces: BoardPiece[];
+  turnIndex: number;
+  turnOrderIds: string[];
+  initialTurnOrderIds: string[];
+  completedSeatIds: string[];
+  rankingSeatIds: string[];
+  gameEndMode: 'partial_finish' | 'final' | '';
+  lastFinishedSeatId: string;
+  continuationRound: number;
+  roll: YutResult | null;
+  boardItems: BoardItem[];
+  ownedItems: Record<string, ItemType[]>;
+  trapNodes: TrapNode[];
+  shieldedPieceIds: string[];
+  winner: string;
+  gameStartedAt: number | null;
+  turnOrderIntro: TurnOrderIntro | null;
+  pendingTrapPlacement: PendingTrapPlacement | null;
+  rollLockUntil: number;
+  lastMovedPieceIds: string[];
+  lastMovedSeatId: string;
+  effectiveRollResultReadyAt: number;
+  turnOrderPhase: TurnOrderPhase | null;
+  waitingForPlayersReady: boolean;
+  startRequestVersion: number;
+};
+
+const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JSON.stringify({
+  pieces: state.pieces,
+  turnIndex: state.turnIndex,
+  turnOrderIds: state.turnOrderIds,
+  initialTurnOrderIds: state.initialTurnOrderIds,
+  completedSeatIds: state.completedSeatIds,
+  rankingSeatIds: state.rankingSeatIds,
+  gameEndMode: state.gameEndMode,
+  lastFinishedSeatId: state.lastFinishedSeatId,
+  continuationRound: state.continuationRound,
+  roll: state.roll,
+  boardItems: state.boardItems,
+  ownedItems: state.ownedItems,
+  trapNodes: state.trapNodes,
+  shieldedPieceIds: state.shieldedPieceIds,
+  winner: state.winner,
+  gameStartedAt: state.gameStartedAt,
+  turnOrderIntro: state.turnOrderIntro,
+  pendingTrapPlacement: state.pendingTrapPlacement,
+  rollLockUntil: state.rollLockUntil,
+  lastMovedPieceIds: state.lastMovedPieceIds,
+  lastMovedSeatId: state.lastMovedSeatId,
+  effectiveRollResultReadyAt: state.effectiveRollResultReadyAt,
+  turnOrderPhase: state.turnOrderPhase,
+  waitingForPlayersReady: state.waitingForPlayersReady,
+  startRequestVersion: state.startRequestVersion,
+});
+
 const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
 const PLAYER_COLOR_LABELS = ['빨강', '파랑', '초록', '노랑'];
 const TEAM_COLORS: Record<Team, string> = { 청팀: '#3a78c2', 홍팀: '#d94a38' };
@@ -543,7 +599,7 @@ export function App() {
   const activeTurnOrderIntro = turnOrderIntro && turnOrderIntro.readyAt > turnOrderClock ? turnOrderIntro : null;
   const waitingForOnlineTurnOrder = Boolean(screen === 'game' && activeRoomId && !turnOrderIds.length && !turnOrderPhase.active && !activeTurnOrderIntro);
   const trapPlacementActive = Boolean(pendingTrapPlacement);
-  const hasPendingHostStateSave = Boolean(activeRoomId && canCoordinateOnlineGame && hostStateSaveKey);
+  const hasPendingGameStateSave = Boolean(activeRoomId && canCoordinateOnlineGame && hostStateSaveKey);
   const turnActionGuardInput = {
     activeSeatId: activeSeat?.id,
     actorId: localSeatId,
@@ -555,7 +611,9 @@ export function App() {
     turnOrderIntroActive: Boolean(activeTurnOrderIntro),
     movingPieceId,
     pendingTrapPlacement: trapPlacementActive,
-    pendingHostStateSave: hasPendingHostStateSave,
+    pendingGameStateSave: hasPendingGameStateSave,
+    pendingLocalRemoteActionCount,
+    processingActionCount: processingActionIdsRef.current.size,
   };
   const rollActionGuardInput = {
     ...turnActionGuardInput,
@@ -563,15 +621,13 @@ export function App() {
     rollLocked: isRollLocked,
     remoteActionClient: false,
     rollInProgress,
-    pendingLocalRemoteActionCount: 0,
-    processingActionCount: 0,
   };
-  const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingHostStateSave, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
+  const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canSubmitTurnAction = canSubmitTurnActionFromEngine(turnActionGuardInput);
   const canMoveSelectedPiece = Boolean(roll && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const canRequestMove = Boolean(canSubmitTurnAction && roll && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && canMoveSelectedPiece);
   const canUseMoveButton = canRequestMove;
-  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingHostStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
+  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
   const visibleBoardTurnSeat = activeSeat && !waitingForOnlineTurnOrder && !turnOrderPhase.active && !activeTurnOrderIntro ? activeSeat : undefined;
   const visibleBoardTurnIndex = visibleBoardTurnSeat ? turnSeats.findIndex((seat) => seat.id === visibleBoardTurnSeat.id) : -1;
@@ -674,7 +730,7 @@ export function App() {
     rollInProgress,
     rollInProgressRef: rollInProgressRef.current,
     hostStateSaveKey,
-    hasPendingHostStateSave,
+    hasPendingGameStateSave,
     isRollLocked,
     rollLockUntil,
     rollResultReadyAt,
@@ -719,7 +775,7 @@ export function App() {
     pendingTrapPlacement,
     itemPromptTiming,
     branchChoice,
-  }), [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice]);
+  }), [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingGameStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
 
@@ -1121,6 +1177,33 @@ export function App() {
     setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
     setWaitingForPlayersReady(Boolean(state.waitingForPlayersReady));
     if (typeof state.startRequestVersion === 'number') setStartRequestVersion(Number(state.startRequestVersion));
+    lastSavedStateFingerprintRef.current = makeGameStateFingerprint({
+      pieces: syncedPieces,
+      turnIndex: nextTurnIndex,
+      turnOrderIds: (state.turnOrderIds as string[] | undefined) ?? [],
+      initialTurnOrderIds: (state.initialTurnOrderIds as string[] | undefined) ?? [],
+      completedSeatIds: (state.completedSeatIds as string[] | undefined) ?? [],
+      rankingSeatIds: (state.rankingSeatIds as string[] | undefined) ?? [],
+      gameEndMode: (state.gameEndMode as 'partial_finish' | 'final' | '' | undefined) ?? '',
+      lastFinishedSeatId: String(state.lastFinishedSeatId ?? ''),
+      continuationRound: Number(state.continuationRound ?? 0),
+      roll: nextRoll,
+      boardItems: (state.boardItems as BoardItem[] | undefined) ?? [],
+      ownedItems: (state.ownedItems as Record<string, ItemType[]> | undefined) ?? {},
+      trapNodes: (state.trapNodes as TrapNode[] | undefined) ?? [],
+      shieldedPieceIds: (state.shieldedPieceIds as string[] | undefined) ?? [],
+      winner: String(state.winner ?? ''),
+      gameStartedAt: (state.gameStartedAt as number | null | undefined) ?? null,
+      turnOrderIntro: (state.turnOrderIntro as TurnOrderIntro | null | undefined) ?? null,
+      pendingTrapPlacement: (state.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? null,
+      rollLockUntil: Number(state.rollLockUntil ?? 0),
+      lastMovedPieceIds: syncedLastMovedPieceIds,
+      lastMovedSeatId: String(state.lastMovedSeatId ?? ''),
+      effectiveRollResultReadyAt: nextRollResultReadyAt,
+      turnOrderPhase: (state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
+      waitingForPlayersReady: Boolean(state.waitingForPlayersReady),
+      startRequestVersion: Number(state.startRequestVersion ?? 0),
+    });
     rollInProgressRef.current = false;
     rollInProgressStartedAtRef.current = 0;
     setRollInProgress(false);
@@ -1228,9 +1311,9 @@ export function App() {
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || applyingSyncedStateRef.current) return;
-    if (!canCoordinateOnlineGame && !pendingSequenceMetaRef.current) return;
+    if (!pendingSequenceMetaRef.current) return;
     if (moveInProgressRef.current || movingPieceId) return;
-    const stateFingerprint = JSON.stringify({ pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, startRequestVersion });
+    const stateFingerprint = makeGameStateFingerprint({ pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, startRequestVersion });
     if (lastSavedStateFingerprintRef.current === stateFingerprint || savingStateFingerprintRef.current === stateFingerprint) return;
     savingStateFingerprintRef.current = stateFingerprint;
     setHostStateSaveKey(stateFingerprint);
@@ -1241,7 +1324,7 @@ export function App() {
     const sequencePayload = pendingSequenceMeta?.payload ?? { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId };
     const clientMutationId = pendingSequenceMeta?.clientMutationId ?? `${sequenceType}:${sequenceActorId}:${stateFingerprint}`;
     let keepHostStateSavePending = false;
-    void measureFirebaseLatency(() => saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, startRequestVersion }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, action: pendingSequenceMeta?.action ?? null, expectedPreviousSequence: lastAppliedSequenceRef.current })).then((result) => {
+    void measureFirebaseLatency(() => saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, startRequestVersion }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, action: pendingSequenceMeta?.action ?? null, expectedPreviousSequence: lastAppliedSequenceRef.current })).then((result) => {
       if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.turnVersion) {
         lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
@@ -1256,7 +1339,7 @@ export function App() {
       if (!keepHostStateSavePending && savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
       if (!keepHostStateSavePending) setHostStateSaveKey((current) => current === stateFingerprint ? '' : current);
     });
-  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, captureEffect, completedSeatIds, continuationRound, effectiveRollResultReadyAt, gameEndMode, gameStartedAt, canCoordinateOnlineGame, hostStateSaveRetryTick, initialTurnOrderIds, isSpectator, lastFinishedSeatId, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, rankingSeatIds, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, waitingForPlayersReady, startRequestVersion, winner, itemPromptTiming]);
+  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, captureEffect, completedSeatIds, continuationRound, effectiveRollResultReadyAt, gameEndMode, gameStartedAt, canCoordinateOnlineGame, hostStateSaveRetryTick, initialTurnOrderIds, isSpectator, lastFinishedSeatId, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, rankingSeatIds, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, waitingForPlayersReady, startRequestVersion, winner]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -1905,7 +1988,7 @@ export function App() {
         waitingForPlayersReady: true,
         startRequestVersion,
       };
-      const initialStateFingerprint = JSON.stringify({ pieces: nextPieces, turnIndex: 0, turnOrderIds: [], initialTurnOrderIds: [], completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: null, turnOrderIntro: null, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', itemPromptTiming: null, effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: true, startRequestVersion });
+      const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: [], initialTurnOrderIds: [], completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: null, turnOrderIntro: null, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: true, startRequestVersion });
       savingStateFingerprintRef.current = initialStateFingerprint;
       void measureFirebaseLatency(() => saveGameState(activeRoomId, initialSyncedState, {
         type: 'game_initialized',

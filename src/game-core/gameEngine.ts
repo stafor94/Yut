@@ -52,7 +52,9 @@ export type TurnActionGuardInput = {
   waitingForTurnOrder?: boolean;
   movingPieceId?: string;
   pendingTrapPlacement?: boolean;
-  pendingHostStateSave?: boolean;
+  pendingGameStateSave?: boolean;
+  pendingLocalRemoteActionCount?: number;
+  processingActionCount?: number;
 };
 
 export type RollGuardInput = TurnActionGuardInput & {
@@ -60,8 +62,6 @@ export type RollGuardInput = TurnActionGuardInput & {
   rollLocked?: boolean;
   remoteActionClient?: boolean;
   rollInProgress?: boolean;
-  pendingLocalRemoteActionCount?: number;
-  processingActionCount?: number;
 };
 
 export function getTurnActionBlockReasons(input: TurnActionGuardInput) {
@@ -76,7 +76,9 @@ export function getTurnActionBlockReasons(input: TurnActionGuardInput) {
     input.turnOrderIntroActive ? 'turn-order-intro-active' : '',
     input.movingPieceId ? 'moving-piece' : '',
     input.pendingTrapPlacement ? 'pending-trap-placement' : '',
-    input.pendingHostStateSave ? 'saving-host-state' : '',
+    input.pendingGameStateSave ? 'saving-game-state' : '',
+    (input.pendingLocalRemoteActionCount ?? 0) > 0 ? 'pending-local-remote-action' : '',
+    (input.processingActionCount ?? 0) > 0 ? 'processing-remote-action' : '',
   ].filter(Boolean);
 }
 
@@ -86,8 +88,6 @@ export function getRollActionBlockReasons(input: RollGuardInput) {
     input.roll ? 'roll-already-exists' : '',
     input.rollLocked ? 'roll-locked' : '',
     !input.remoteActionClient && input.rollInProgress ? 'roll-in-progress' : '',
-    (input.pendingLocalRemoteActionCount ?? 0) > 0 ? 'pending-local-remote-action' : '',
-    (input.processingActionCount ?? 0) > 0 ? 'processing-remote-action' : '',
   ].filter(Boolean);
 }
 
