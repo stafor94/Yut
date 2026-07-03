@@ -2460,6 +2460,9 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - Attempt 1:
   - What was changed: Playwright QA가 Pages 배포와 독립적으로 실행되도록 `deploy-pages` needs를 제거했다.
   - Why it failed: 사용자는 배포 실패 시 반영된 페이지가 없으므로 이후 QA 3종을 진행하면 안 된다고 지적했다. 실제 수정 대상은 QA 분리가 아니라 Pages 배포 실패 원인인 workflow 동시 실행/배포 충돌 가능성이었다.
+- Attempt 2:
+  - What was changed: workflow concurrency와 QA summary 진단을 보강했다.
+  - Why it failed: `deploy-pages` job 자체는 여전히 `actions/deploy-pages@v4`와 기본 10분 timeout/환경 설정 없음 상태라, Node 20 deprecation 경고가 남고 GitHub Pages 배포 상태 확인이 지연되는 경우를 충분히 흡수하지 못할 수 있었다.
 
 ### Do not try again
 
@@ -2473,6 +2476,7 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - QA cleanup-before와 Playwright QA jobs는 `deploy-pages` 성공 이후에만 실행되도록 유지한다.
 - workflow concurrency group을 PR 번호가 아니라 base branch/ref 기준으로 묶고 `cancel-in-progress: false`로 설정해 merged PR deploy/QA를 순차 실행한다.
 - QA summary에 개별 job 결과를 전달하고, deploy failure + 빈 Playwright 로그 상황을 명시적으로 원인 추정에 포함한다.
+- deploy job에 `github-pages` environment와 배포 step id를 명시하고, `actions/deploy-pages@v5` 및 더 긴 status polling timeout으로 갱신한다.
 
 ### Verification checklist
 
