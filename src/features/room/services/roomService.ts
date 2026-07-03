@@ -251,6 +251,15 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
     });
     await Promise.all(stalePlayers.map(async (playerDoc) => {
       const player = playerDoc.data() as RoomPlayer;
+      if (room.status === 'playing' && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) {
+        await setDoc(playerDoc.ref, {
+          nickname: `${player.nickname || '플레이어'} AI`,
+          ready: true,
+          isAI: true,
+          lastSeen: serverTimestamp(),
+        }, { merge: true });
+        return;
+      }
       await deleteDoc(playerDoc.ref);
       if (!player.isSpectator && Number.isFinite(Number(player.seatIndex))) await deleteDoc(doc(db!, 'rooms', roomDoc.id, 'seats', String(player.seatIndex)));
     }));

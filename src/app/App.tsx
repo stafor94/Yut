@@ -1310,7 +1310,7 @@ export function App() {
   }, [activeRoomId, canCoordinateOnlineGame, screen]);
 
   useEffect(() => {
-    if (!activeRoomId || screen !== 'game' || applyingSyncedStateRef.current) return;
+    if (!activeRoomId || screen !== 'game' || !canCoordinateOnlineGame || applyingSyncedStateRef.current) return;
     if (!pendingSequenceMetaRef.current) return;
     if (moveInProgressRef.current || movingPieceId) return;
     const stateFingerprint = makeGameStateFingerprint({ pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, startRequestVersion });
@@ -2144,7 +2144,7 @@ export function App() {
   }
   function getLogSeatTokens() {
     return playableSeats
-      .flatMap((seat) => [getActorLogName(seat), seat.label, seat.id].filter(Boolean).map((token) => ({ seat, token })))
+      .flatMap((seat) => [getActorLogName(seat), seat.label].filter(Boolean).map((token) => ({ seat, token })))
       .sort((left, right) => right.token.length - left.token.length);
   }
   function getEscapedLogSeatTokens() {
@@ -2794,7 +2794,9 @@ export function App() {
     const leavingSeatId = localSeatId;
     const wasGameScreen = screen === 'game';
     leavingRoomRef.current = true;
-    if (wasGameScreen && leavingRoomId) addLog(`${nickname}님이 나갔습니다.`);
+    const leavingSeat = seats.find((seat) => seat.id === leavingSeatId && !seat.isEmpty && !seat.isAI);
+    const aiName = leavingSeat ? makeUniqueAIName(seats) : '';
+    if (wasGameScreen && leavingRoomId) addLog(`${nickname}님이 나갔습니다. AI가 이어서 플레이합니다.`);
     hostingRoomUserIdRef.current = '';
     activeRoomIdRef.current = '';
     confirmedRoomPlayerRef.current = false;
@@ -2807,8 +2809,15 @@ export function App() {
       return;
     }
     try {
-      await removeRoomPlayer(leavingRoomId, leavingSeatId);
+      if (wasGameScreen && leavingSeat) {
+        pendingAiSeatIdsRef.current.add(leavingSeatId);
+        await updateRoomPlayer(leavingRoomId, leavingSeatId, getAiRoomPlayerUpdate(leavingSeat, aiName));
+        pendingAiSeatIdsRef.current.delete(leavingSeatId);
+      } else {
+        await removeRoomPlayer(leavingRoomId, leavingSeatId);
+      }
     } catch (error) {
+      pendingAiSeatIdsRef.current.delete(leavingSeatId);
       console.warn('방 나가기 정리에 실패했습니다.', error);
     } finally {
       leavingRoomRef.current = false;
