@@ -2411,6 +2411,11 @@ aside.players,
   backdrop-filter: blur(6px);
 }
 
+.nickname-dialog-backdrop {
+  align-items: start;
+  padding-top: clamp(24px, 12dvh, 96px);
+}
+
 .nickname-modal {
   width: min(100%, 420px);
   display: grid;

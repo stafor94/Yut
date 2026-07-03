@@ -84,6 +84,8 @@ const PLAYER_COLOR_LABELS = ['빨강', '파랑', '초록', '노랑'];
 const TEAM_COLORS: Record<Team, string> = { 청팀: '#3a78c2', 홍팀: '#d94a38' };
 const ROOM_COLOR_LABELS: Record<string, string> = { red: '빨강', blue: '파랑', green: '초록', yellow: '노랑' };
 const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount', soundEnabled: 'yut-online:soundEnabled', activeRoomId: 'yut-online:activeRoomId', isRoomHost: 'yut-online:isRoomHost' } as const;
+const NICKNAME_MAX_LENGTH = 7;
+const normalizeNickname = (value: string) => value.trim().slice(0, NICKNAME_MAX_LENGTH);
 const getStoredBoolean = (key: string, fallback: boolean) => {
   if (typeof window === 'undefined') return fallback;
   const stored = window.localStorage.getItem(key);
@@ -167,7 +169,7 @@ const AI_NAME_BASES = ['단풍이', '구름이', '호랑이', '두루미', '반�
 const RANDOM_NICKNAME_PREFIXES = ['민첩한', '행운의', '반짝이는', '용감한', '느긋한', '쾌활한', '든든한', '재빠른'];
 const RANDOM_NICKNAME_BASES = ['토끼', '호랑이', '두루미', '다람쥐', '구름', '단풍', '별님', '솔방울'];
 const makeRandomNickname = () => `${RANDOM_NICKNAME_PREFIXES[Math.floor(Math.random() * RANDOM_NICKNAME_PREFIXES.length)]} ${RANDOM_NICKNAME_BASES[Math.floor(Math.random() * RANDOM_NICKNAME_BASES.length)]}${Math.floor(Math.random() * 90) + 10}`;
-const getInitialNickname = () => getStoredText(STORAGE_KEYS.nickname, '') || makeRandomNickname();
+const getInitialNickname = () => normalizeNickname(getStoredText(STORAGE_KEYS.nickname, '') || makeRandomNickname());
 
 const createSeats = (hostName: string, playMode: PlayMode, playerCount: 2 | 3 | 4): Seat[] => {
   const defaultTeams: Team[] = playMode === 'team' ? ['청팀', '홍팀', '청팀', '홍팀'] : ['청팀', '청팀', '청팀', '청팀'];
@@ -419,6 +421,7 @@ export function App() {
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const confirmedRoomPlayerRef = useRef(false);
+  const leavingRoomRef = useRef(false);
   const hostingRoomUserIdRef = useRef('');
   const rooms = useRooms();
   const currentUser = userRef.current ?? user;
@@ -931,7 +934,7 @@ export function App() {
       const currentUserId = (userRef.current ?? currentUser)?.uid;
       const hasCurrentUserInSnapshot = Boolean(currentUserId && players.some((player) => player.id === currentUserId && !player.isSpectator));
       if (hasCurrentUserInSnapshot) confirmedRoomPlayerRef.current = true;
-      if (currentUserId && !canAuthoritativelyManageGame && screen === 'waitingRoom' && confirmedRoomPlayerRef.current && !hasCurrentUserInSnapshot) {
+      if (currentUserId && !leavingRoomRef.current && !canAuthoritativelyManageGame && screen === 'waitingRoom' && confirmedRoomPlayerRef.current && !hasCurrentUserInSnapshot) {
         confirmedRoomPlayerRef.current = false;
         setScreen('lobby');
         setActiveRoomId('');
@@ -1726,6 +1729,7 @@ export function App() {
   }
 
   async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & { id?: string }, nextMessage = '', asHost = false, hostUserOverride: User | null = null) {
+    leavingRoomRef.current = false;
     setLoadingMessage('방으로 이동하는 중입니다...');
     const nextMaxPlayers = room.maxPlayers as 2 | 3 | 4;
     try {
@@ -2711,15 +2715,29 @@ export function App() {
   }
 
   async function leaveRoom() {
-    if (screen === 'game' && activeRoomId) {
-      addLog(`${nickname}님이 나갔습니다.`);
-      await removeRoomPlayer(activeRoomId, localSeatId);
-    }
-    else if (activeRoomId) await removeRoomPlayer(activeRoomId, localSeatId);
+    const leavingRoomId = activeRoomId;
+    const leavingSeatId = localSeatId;
+    const wasGameScreen = screen === 'game';
+    leavingRoomRef.current = true;
+    if (wasGameScreen && leavingRoomId) addLog(`${nickname}님이 나갔습니다.`);
     hostingRoomUserIdRef.current = '';
+    activeRoomIdRef.current = '';
     confirmedRoomPlayerRef.current = false;
-    setScreen('lobby'); setActiveRoomId(''); setActiveRoomTitle(''); setIsRoomHost(false); setCountdown(-1); setTurnOrderIds([]); setGameStartedAt(null); setSeats(createSeats(nickname, playMode, maxPlayers));
+    setScreen('lobby'); setActiveRoomId(''); setActiveRoomTitle(''); setActiveRoomHostId(''); setIsRoomHost(false); setCountdown(-1); setTurnOrderIds([]); setGameStartedAt(null); setSeats(createSeats(nickname, playMode, maxPlayers));
+    window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+    window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
     setMessage('방에서 나왔습니다.');
+    if (!leavingRoomId || !leavingSeatId) {
+      leavingRoomRef.current = false;
+      return;
+    }
+    try {
+      await removeRoomPlayer(leavingRoomId, leavingSeatId);
+    } catch (error) {
+      console.warn('방 나가기 정리에 실패했습니다.', error);
+    } finally {
+      leavingRoomRef.current = false;
+    }
   }
 
   function finishGame() {
@@ -2793,7 +2811,7 @@ export function App() {
   }
 
   function saveNickname() {
-    const nextNickname = nicknameDraft.trim();
+    const nextNickname = normalizeNickname(nicknameDraft);
     if (!nextNickname) { setMessage('닉네임은 비워둘 수 없습니다.'); return; }
     setNickname(nextNickname);
     setNicknameDialogOpen(false);
@@ -2847,7 +2865,7 @@ export function App() {
 
     {actionErrorDialog && <div className="modal-backdrop" role="presentation" onMouseDown={() => setActionErrorDialog('')}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label="액션 오류" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">오류</p><h2>요청을 처리할 수 없습니다</h2><p>{actionErrorDialog}</p><div className="modal-actions"><button onClick={() => setActionErrorDialog('')}>확인</button></div></section></div>}
 
-    {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>대기실 닉네임 수정</h2><p>닉네임은 대기실에서만 변경할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={16} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
+    {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>닉네임 수정</h2><p>닉네임은 7글자까지 사용할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
 
     {screen === 'lobby' && <section className="lobby-layout premium-lobby" aria-label="첫 대기 화면">
       <section className="panel room-panel create-room-panel">
@@ -2893,7 +2911,7 @@ export function App() {
 
           <section className="ready-list compact-ready-list" aria-label="플레이어 자리">
             {seats.map((seat) => <article className={`ready-card compact-ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''} ${seat.id === localSeatId ? 'me' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
-              <div className="seat-topline"><b style={{ background: getSeatPieceColor(seat) }}>{seat.label}</b><span className="seat-top-status">{canManageRoom && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => { void kickWaitingPlayer(seat); }}>강퇴</button>}{seat.isHost ? '방장' : seat.id === localSeatId ? '나' : seat.isEmpty ? '대기' : '참가자'}</span></div>
+              <div className="seat-topline"><b style={{ background: getSeatPieceColor(seat) }}>{seat.label}</b><span className="seat-top-status">{canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => { void kickWaitingPlayer(seat); }}>강퇴</button>}{seat.isHost ? '방장' : seat.id === localSeatId ? '나' : seat.isEmpty ? '대기' : '참가자'}</span></div>
               <div className="seat-name-row"><strong>{seat.name}</strong><span className="seat-status-actions">{seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}{seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}<em>{seat.isAI ? 'AI' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em></span></div>
               {playMode === 'team' && <div className="team-card-selector" role="group" aria-label={`${seat.label} 팀 선택`}>{(['청팀', '홍팀'] as Team[]).map((team) => <button type="button" key={team} className={`team-card-option ${team === seat.team ? 'active' : ''} ${team === '청팀' ? 'blue' : 'red'}`} disabled={!canManageRoom} onClick={() => changeTeam(seat.id, team)}>{team}</button>)}</div>}
             </article>)}
