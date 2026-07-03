@@ -906,7 +906,10 @@ export function App() {
       setStartCountdownStartsAt(nextCountdownStartsAt);
       setStartCountdownEndsAt(nextCountdownEndsAt);
       setStartStatus(nextStartStatus);
-      if (nextStartStatus === 'requested' && nextCountdownEndsAt > Date.now()) setCountdown(Math.max(1, Math.ceil((nextCountdownEndsAt - Date.now()) / 1000)));
+      if (nextStartStatus === 'requested' && nextCountdownEndsAt > Date.now()) {
+        const now = Date.now();
+        setCountdown(now >= nextCountdownStartsAt ? Math.max(1, Math.ceil((nextCountdownEndsAt - now) / 1000)) : -1);
+      }
       else if (countdown >= 0) setCountdown(-1);
       if (room.status === 'playing') setScreen('game');
       if (room.status === 'finished') {
@@ -1444,7 +1447,7 @@ export function App() {
     }
     const updateCountdown = () => {
       const now = Date.now();
-      if (now < startCountdownStartsAt) setCountdown(5);
+      if (now < startCountdownStartsAt) setCountdown(-1);
       else setCountdown(Math.max(0, Math.ceil((startCountdownEndsAt - now) / 1000)));
       if (canManageRoom && now >= startCountdownEndsAt) {
         if (activeRoomId) {
@@ -1787,7 +1790,7 @@ export function App() {
     setStartCountdownStartsAt(requestedAt + START_COUNTDOWN_DELAY_MS);
     setStartCountdownEndsAt(requestedAt + START_COUNTDOWN_DELAY_MS + START_COUNTDOWN_MS);
     setStartStatus('requested');
-    setCountdown(5); setScreen('waitingRoom'); setMessage('');
+    setCountdown(-1); setScreen('waitingRoom'); setMessage('');
     void measureFirebaseLatency(() => requestRoomGameStart(activeRoomId, requestedAt)).then((startState) => {
       setStartRequestVersion(startState.startRequestVersion);
       setStartCountdownStartsAt(startState.startCountdownStartsAt);
@@ -2856,9 +2859,9 @@ export function App() {
 
   return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
     <section className="hero panel">
-      <div className="hero-copy"><h1 className="brand-title">YUT ONLINE</h1></div>
+      <div className="hero-copy" aria-hidden="true"></div>
       {screen === 'game' && <div data-testid="play-timer" className={`play-time ${winner ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}
-      <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`효과음 ${soundEnabled ? '끄기' : '켜기'}`}><span aria-hidden="true">{soundEnabled ? '🔊 효과음' : '🔇 효과음'}</span></button><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><span className="status-text">{serverStatus}</span></div></div>
+      <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`소리 ${soundEnabled ? '끄기' : '켜기'}`}><span className="sound-icon" aria-hidden="true"><span className="sound-icon-speaker"></span><span className="sound-icon-wave"></span></span></button><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><span className="status-text">{serverStatus}</span></div></div>
     </section>
 
     {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
@@ -2911,14 +2914,13 @@ export function App() {
 
           <section className="ready-list compact-ready-list" aria-label="플레이어 자리">
             {seats.map((seat) => <article className={`ready-card compact-ready-card ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''} ${seat.id === localSeatId ? 'me' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
-              <div className="seat-topline"><b style={{ background: getSeatPieceColor(seat) }}>{seat.label}</b><span className="seat-top-status">{canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => { void kickWaitingPlayer(seat); }}>강퇴</button>}{seat.isHost ? '방장' : seat.id === localSeatId ? '나' : seat.isEmpty ? '대기' : '참가자'}</span></div>
-              <div className="seat-name-row"><strong>{seat.name}</strong><span className="seat-status-actions">{seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}{seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}<em>{seat.isAI ? 'AI' : seat.isEmpty ? '빈 자리' : seat.ready ? '준비 완료' : '준비 중'}</em></span></div>
+              <div className="seat-row"><b style={{ background: getSeatPieceColor(seat) }}>{seat.label}</b><strong>{seat.name}</strong><span className="seat-status-actions">{canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => { void kickWaitingPlayer(seat); }}>강퇴</button>}{seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}{seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}</span><em>{seat.isAI ? 'AI' : '플레이어'}</em></div>
               {playMode === 'team' && <div className="team-card-selector" role="group" aria-label={`${seat.label} 팀 선택`}>{(['청팀', '홍팀'] as Team[]).map((team) => <button type="button" key={team} className={`team-card-option ${team === seat.team ? 'active' : ''} ${team === '청팀' ? 'blue' : 'red'}`} disabled={!canManageRoom} onClick={() => changeTeam(seat.id, team)}>{team}</button>)}</div>}
             </article>)}
           </section>
         </div>
 
-        {countdown >= 0 && startStatus === 'requested' && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={cancelStartCountdown}>취소</button>}</div></div>}
+        {countdown >= 0 && startStatus === 'requested' && Date.now() >= startCountdownStartsAt && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={cancelStartCountdown}>취소</button>}</div></div>}
         {playMode === 'team' && !teamBalanced && <p className="notice warning inline-warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}
         <footer className="waiting-actions role-actions">
           {canManageRoom ? <button data-testid="start-game-button" onClick={handleStartGame} disabled={!allReady}>게임 시작</button> : <button onClick={() => { void toggleMyReady(); }} disabled={!myWaitingSeat}>{myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
@@ -2943,7 +2945,7 @@ export function App() {
         {playableSeats.map((seat) => {
           const orderIndex = turnOrderIds.indexOf(seat.id);
           const orderText = orderIndex >= 0 ? `${orderIndex + 1}번째` : '';
-          const statusText = seat.isAI ? 'AI 플레이' : activeSeat?.id === seat.id ? '현재 턴' : '대기';
+          const statusText = seat.isAI ? 'AI' : '유저';
           const displayName = getPlayerCardName(seat);
           return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
             <span className="game-player-title">

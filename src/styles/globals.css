@@ -2734,16 +2734,15 @@ aside.players,
 .compact-ready-card.red-team { border-left-color: var(--red); }
 .compact-ready-card.empty { opacity: 1; background: rgba(255, 243, 216, .42); color: #2a1e17; }
 .compact-ready-card.me { box-shadow: inset 0 0 0 2px rgba(242, 184, 75, .7); }
-.seat-topline, .seat-name-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
-.seat-status-actions { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-.seat-topline b { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 14px; background: #2a1e17; color: #fff; }
-.seat-topline span, .seat-name-row em { border-radius: 999px; padding: 5px 9px; background: rgba(47, 107, 79, .1); color: var(--green); font-size: .8rem; font-weight: 1000; white-space: nowrap; }
-.seat-top-status { display: inline-flex; align-items: center; gap: 6px; }
-.seat-name-row .ai-add-button,
-.seat-name-row .ai-remove-button,
-.seat-topline .kick-player-button { width: auto; min-height: 0; padding: 5px 8px; border-radius: 999px; font-size: .76rem; line-height: 1; }
-.seat-name-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(1rem, 2vw, 1.18rem); color: #2a1e17; }
-.compact-ready-card.empty .seat-name-row em { background: rgba(217, 74, 56, .1); color: var(--red); }
+.seat-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-width: 0; }
+.seat-status-actions { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; min-width: 0; }
+.seat-row b { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 14px; background: #2a1e17; color: #fff; }
+.seat-row em { border-radius: 999px; padding: 5px 9px; background: rgba(47, 107, 79, .1); color: var(--green); font-size: .8rem; font-weight: 1000; font-style: normal; white-space: nowrap; }
+.seat-row .ai-add-button,
+.seat-row .ai-remove-button,
+.seat-row .kick-player-button { width: auto; min-height: 0; padding: 5px 8px; border-radius: 999px; font-size: .76rem; line-height: 1; }
+.seat-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(1rem, 2vw, 1.18rem); color: #2a1e17; }
+.compact-ready-card.empty .seat-row em { background: rgba(217, 74, 56, .1); color: var(--red); }
 .compact-ready-card select { width: 100%; padding: 10px 12px; border-radius: 13px; }
 .compact-ready-card .mini-button { padding: 9px 10px; }
 .compact-ready-card.empty .mini-button {
@@ -3756,6 +3755,55 @@ aside.players,
 
 .sound-controls.sound-toggle > span {
   pointer-events: none;
+}
+
+.sound-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+}
+
+.sound-icon-speaker {
+  position: absolute;
+  left: 3px;
+  width: 9px;
+  height: 12px;
+  border-radius: 3px 1px 1px 3px;
+  background: currentColor;
+}
+
+.sound-icon-speaker::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: -3px;
+  width: 0;
+  height: 0;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-left: 9px solid currentColor;
+}
+
+.sound-icon-wave {
+  position: absolute;
+  right: 2px;
+  width: 9px;
+  height: 15px;
+  border: 3px solid currentColor;
+  border-left: 0;
+  border-radius: 0 999px 999px 0;
+}
+
+.sound-controls.sound-toggle:not(.active) .sound-icon-wave {
+  width: 16px;
+  height: 3px;
+  right: 0;
+  border: 0;
+  border-radius: 999px;
+  background: currentColor;
+  transform: rotate(-45deg);
 }
 
 /* Portrait game board: reserve a bench under the board for pieces that have not entered or have finished. */
