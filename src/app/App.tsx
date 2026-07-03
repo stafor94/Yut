@@ -2889,7 +2889,6 @@ export function App() {
         <header className="waiting-header">
           <div>
             <h2 className="room-title">{activeRoomTitle || title}</h2>
-            {!canManageRoom && <p className="room-subtitle">일반 플레이어는 준비/준비취소와 방 나가기만 할 수 있어요.</p>}
           </div>
           <div className={`start-status ${allReady ? 'ready' : 'blocked'}`} role="status">
             <strong>{startStatusText}</strong>
@@ -2905,7 +2904,7 @@ export function App() {
 
           <section className="ready-list compact-ready-list" aria-label="플레이어 자리">
             {seats.map((seat) => <article className={`ready-card compact-ready-card ${seat.ready && !seat.isEmpty ? 'ready' : ''} ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''} ${seat.id === localSeatId ? 'me' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
-              <div className="seat-row"><b style={{ background: getSeatPieceColor(seat) }}>{seat.label}</b><strong>{seat.name}</strong><span className="seat-status-actions">{canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => { void kickWaitingPlayer(seat); }}>강퇴</button>}{seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}{seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}</span><em>{seat.ready && !seat.isEmpty && <span className="seat-ready-label">준비</span>}{seat.isAI ? 'AI' : '플레이어'}</em></div>
+              <div className="seat-row"><b style={{ background: getSeatPieceColor(seat) }}>{seat.label}</b><strong>{seat.name}</strong><span className="seat-status-actions">{canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => { void kickWaitingPlayer(seat); }}>강퇴</button>}{seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}{seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}</span><em>{seat.ready && !seat.isEmpty && !seat.isHost && <span className="seat-ready-label">준비</span>}{seat.isHost ? '방장' : seat.isAI ? 'AI' : '플레이어'}</em></div>
               {playMode === 'team' && <div className="team-card-selector" role="group" aria-label={`${seat.label} 팀 선택`}>{(['청팀', '홍팀'] as Team[]).map((team) => <button type="button" key={team} className={`team-card-option ${team === seat.team ? 'active' : ''} ${team === '청팀' ? 'blue' : 'red'}`} disabled={!canManageRoom} onClick={() => changeTeam(seat.id, team)}>{team}</button>)}</div>}
             </article>)}
           </section>

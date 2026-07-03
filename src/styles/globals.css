@@ -2751,9 +2751,9 @@ aside.players,
 }
 .compact-ready-card {
   position: relative;
-  gap: 8px;
-  min-height: 116px;
-  padding: 10px 14px;
+  gap: 6px;
+  min-height: 104px;
+  padding: 8px 14px;
   overflow: hidden;
   border-left: 8px solid rgba(42, 30, 23, .16);
 }
@@ -2809,8 +2809,8 @@ aside.players,
 }
 
 .player-view .compact-ready-card {
-  min-height: 126px;
-  padding: 11px 14px;
+  min-height: 112px;
+  padding: 8px 14px;
 }
 .role-actions button { min-width: 142px; }
 .player-view .compact-ready-card select:disabled { opacity: 1; color: rgba(42, 30, 23, .82); }
@@ -2857,7 +2857,7 @@ aside.players,
 @media (max-width: 560px) {
   .compact-ready-list, .compact-options { grid-template-columns: 1fr; }
   .player-view .compact-ready-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .player-view .compact-ready-card { min-height: 112px; padding: 9px 12px; }
+  .player-view .compact-ready-card { min-height: 96px; padding: 7px 12px; }
   .player-view .seat-topline b { width: 42px; height: 42px; }
   .compact-options .radio-group:nth-of-type(2) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .compact-options .radio-group:nth-of-type(3) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -3834,6 +3834,19 @@ aside.players,
   font-size: 1.24rem;
   line-height: 1;
   filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .34));
+}
+
+
+/* Tighten the icon-only sound button so it does not waste horizontal room in compact headers. */
+.sound-controls.sound-toggle {
+  padding-inline: 10px;
+}
+
+@media (max-width: 767px) and (orientation: portrait) {
+  .lobby-shell .sound-toggle,
+  .game-shell .sound-toggle {
+    padding-inline: 4px;
+  }
 }
 
 /* Portrait game board: reserve a bench under the board for pieces that have not entered or have finished. */
