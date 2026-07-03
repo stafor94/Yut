@@ -2269,6 +2269,7 @@ aside.players,
 }
 
 .lobby-room-card {
+  --lobby-room-status-width: 62px;
   position: relative;
   overflow: hidden;
   margin: 0;
@@ -2285,8 +2286,11 @@ aside.players,
   position: absolute;
   right: 14px;
   top: 12px;
-  padding: 5px 9px;
+  box-sizing: border-box;
+  inline-size: var(--lobby-room-status-width);
+  padding: 5px 0;
   border-radius: 999px;
+  text-align: center;
   background: rgba(47, 107, 79, .12);
   color: #224236;
   font-size: .78rem;
@@ -2328,8 +2332,10 @@ aside.players,
 .lobby-room-card .lobby-room-action {
   flex: 0 0 auto;
   min-height: 0;
-  padding: 7px 12px;
+  inline-size: var(--lobby-room-status-width);
+  padding: 7px 0;
   border-radius: 999px;
+  text-align: center;
   background: linear-gradient(135deg, #224236, #2f6b4f);
   box-shadow: 0 10px 20px rgba(34, 66, 54, .16);
   font-size: .82rem;
@@ -2365,7 +2371,12 @@ aside.players,
   .create-room-panel,
   .join-room-panel { border-radius: 24px; }
   .lobby-room-card { display: grid; }
-  .lobby-room-card button { width: 100%; }
+  .lobby-room-card .lobby-room-meta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .lobby-room-card .lobby-room-action { width: var(--lobby-room-status-width); }
 }
 
 .nickname-chip {
@@ -2844,6 +2855,14 @@ aside.players,
   .waiting-actions.role-actions { display: grid; grid-template-columns: 1fr; }
   .player-view .waiting-actions.role-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .role-actions button { width: 100%; }
+}
+
+
+@media (orientation: portrait) {
+  .compact-ready-list,
+  .player-view .compact-ready-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Compact text-only option buttons: selected state is shown by the label highlight. */
