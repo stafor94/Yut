@@ -479,6 +479,10 @@ export function App() {
     finally { recordFirebaseLatency(performance.now() - startedAt); }
   };
   const lastAnimatedRollKeyRef = useRef('');
+  const lastSyncedRollSoundKeyRef = useRef('');
+  const playedSyncedMoveSoundKeysRef = useRef<Set<string>>(new Set());
+  const lastSyncedCaptureSoundKeyRef = useRef('');
+  const lastSyncedTrapSoundKeyRef = useRef('');
   const lastTurnToastKeyRef = useRef('');
   const pendingSequenceMetaRef = useRef<{ type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; clientMutationId?: string } | null>(null);
   const applyingSyncedStateRef = useRef(false);
@@ -1090,7 +1094,40 @@ export function App() {
     });
   }, [activeRoomHostId, activeRoomId, canCoordinateOnlineGame, currentUserId, isRoomManager, maxPlayers, playMode, screen]);
 
-  async function animateSyncedPieceMove(previousPieces: BoardPiece[], finalPieces: BoardPiece[], movedPieceIds: string[], steps: number, syncedBranchChoice: BranchChoice) {
+  function isLocalSyncedMutation(clientMutationId: unknown) {
+    return typeof clientMutationId === 'string' && localClientMutationIdsRef.current.has(clientMutationId);
+  }
+
+  function playSyncedRollSoundOnce(result: YutResult, soundKey: string, clientMutationId?: unknown) {
+    if (!soundKey || isLocalSyncedMutation(clientMutationId) || lastSyncedRollSoundKeyRef.current === soundKey) return;
+    lastSyncedRollSoundKeyRef.current = soundKey;
+    playSfx('roll');
+    if (result.bonus) window.setTimeout(() => playSfx('bonus'), 420);
+  }
+
+  function playSyncedMoveSoundOnce(soundKey: string, clientMutationId?: unknown) {
+    if (!soundKey || isLocalSyncedMutation(clientMutationId) || playedSyncedMoveSoundKeysRef.current.has(soundKey)) return false;
+    playedSyncedMoveSoundKeysRef.current.add(soundKey);
+    if (playedSyncedMoveSoundKeysRef.current.size > 160) playedSyncedMoveSoundKeysRef.current = new Set(Array.from(playedSyncedMoveSoundKeysRef.current).slice(-80));
+    playSfx('move');
+    return true;
+  }
+
+  function playSyncedEffectSoundOnce(state: SequenceStateSnapshot, clientMutationId?: unknown) {
+    if (isLocalSyncedMutation(clientMutationId)) return;
+    const captureEffectId = state.captureEffect?.id;
+    if (captureEffectId && lastSyncedCaptureSoundKeyRef.current !== String(captureEffectId)) {
+      lastSyncedCaptureSoundKeyRef.current = String(captureEffectId);
+      playSfx('capture');
+    }
+    const trapEffectId = state.trapEffect?.id;
+    if (trapEffectId && lastSyncedTrapSoundKeyRef.current !== String(trapEffectId)) {
+      lastSyncedTrapSoundKeyRef.current = String(trapEffectId);
+      playSfx('trap');
+    }
+  }
+
+  async function animateSyncedPieceMove(previousPieces: BoardPiece[], finalPieces: BoardPiece[], movedPieceIds: string[], steps: number, syncedBranchChoice: BranchChoice, soundKey = '', clientMutationId?: unknown) {
     if (!movedPieceIds.length || moveInProgressRef.current) return false;
     const anchorBefore = previousPieces.find((piece) => piece.id === movedPieceIds[0]);
     const anchorAfter = finalPieces.find((piece) => piece.id === movedPieceIds[0]);
@@ -1106,6 +1143,7 @@ export function App() {
       currentNodeId = nextNodeId;
       const nextNodeIndex = Math.max(0, BOARD_NODES.findIndex((node) => node.id === currentNodeId));
       setPieces((currentPieces) => currentPieces.map((piece) => movedPieceIds.includes(piece.id) ? { ...piece, nodeId: currentNodeId, nodeIndex: nextNodeIndex, started: true, finished: false } : piece));
+      playSyncedMoveSoundOnce(`${soundKey}:${currentNodeId}`, clientMutationId);
       await delay(STEP_DELAY_MS);
       if (currentNodeId === anchorAfter.nodeId) break;
     }
@@ -1132,6 +1170,7 @@ export function App() {
     if (updateVersion && stateVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
     if (updateSequence && 'lastSequence' in state) lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
     const nextRoll = (state.roll as YutResult | null | undefined) ?? null;
+    const lastClientMutationId = (state as { lastClientMutationId?: unknown }).lastClientMutationId;
     const previousRoll = currentRollRef.current;
     const syncedPieces = (state.pieces as BoardPiece[] | undefined) ?? piecesRef.current;
     const syncedLastMovedPieceIds = (state.lastMovedPieceIds as string[] | undefined) ?? [];
@@ -1143,9 +1182,10 @@ export function App() {
     if (nextRoll && !currentRollRef.current) {
       const animationKey = `${nextTurnIndex}:${nextRoll.name}:${nextRoll.steps}:${nextRollResultReadyAt}`;
       playRollAnimationOnce(nextRoll, makeDisplaySticks(nextRoll), animationKey);
+      playSyncedRollSoundOnce(nextRoll, animationKey, lastClientMutationId);
     }
     currentRollRef.current = nextRoll;
-    if (shouldAnimateSyncedMove && previousRoll) void animateSyncedPieceMove(piecesRef.current, syncedPieces, syncedLastMovedPieceIds, previousRoll.steps, syncedBranchChoice);
+    if (shouldAnimateSyncedMove && previousRoll) void animateSyncedPieceMove(piecesRef.current, syncedPieces, syncedLastMovedPieceIds, previousRoll.steps, syncedBranchChoice, `snapshot:${stateVersion}:${Number(state.lastSequence ?? 0)}`, lastClientMutationId);
     else setPieces(syncedPieces);
     setTurnIndex(nextTurnIndex);
     setRoll(nextRoll);
@@ -1161,6 +1201,7 @@ export function App() {
     }
     setCaptureEffect((state.captureEffect as CaptureEffect | null | undefined) ?? null);
     setTrapEffect((state.trapEffect as TrapEffect | null | undefined) ?? null);
+    playSyncedEffectSoundOnce(state, lastClientMutationId);
     setGameStartedAt((state.gameStartedAt as number | null | undefined) ?? null);
     setTurnOrderIds((state.turnOrderIds as string[] | undefined) ?? []);
     setInitialTurnOrderIds((state.initialTurnOrderIds as string[] | undefined) ?? []);
@@ -1210,7 +1251,7 @@ export function App() {
     rollInProgressRef.current = false;
     rollInProgressStartedAtRef.current = 0;
     setRollInProgress(false);
-    acknowledgePendingLocalRemoteAction((state as { lastClientMutationId?: unknown }).lastClientMutationId);
+    acknowledgePendingLocalRemoteAction(lastClientMutationId);
   };
 
   async function waitForCurrentMoveToFinish(maxWaitMs: number) {
@@ -1249,6 +1290,7 @@ export function App() {
     for (const nextNodeId of pathNodeIds) {
       const nextNodeIndex = Math.max(0, BOARD_NODES.findIndex((node) => node.id === nextNodeId));
       setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeId: nextNodeId, nodeIndex: nextNodeIndex, started: nextNodeId !== 'finish', finished: nextNodeId === 'finish' } : piece));
+      playSyncedMoveSoundOnce(`sequence:${sequence.sequence}:${nextNodeId}`, sequence.clientMutationId);
       await delay(STEP_DELAY_MS);
       if (nextNodeId === anchorAfter.nodeId) break;
     }
