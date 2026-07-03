@@ -2176,13 +2176,22 @@ export function App() {
     return `AI 친구 ${suffix}`;
   }
 
+  function getSeatIndex(seat: Seat) {
+    return Number(seat.label.replace('P', '')) - 1;
+  }
+
+  function getAiRoomPlayerUpdate(seat: Seat, aiName: string): Partial<Omit<RoomPlayer, 'id'>> {
+    const seatIndex = getSeatIndex(seat);
+    return { nickname: aiName, ready: true, isAI: true, seatIndex, color: ['red', 'blue', 'green', 'yellow'][seatIndex] ?? 'black', team: seat.team };
+  }
+
   function markPlayerAsAI(playerId: string) {
     setSeats((currentSeats) => {
       const aiName = makeUniqueAIName(currentSeats);
       const targetSeat = currentSeats.find((seat) => seat.id === playerId);
       if (activeRoomId && targetSeat) {
         pendingAiSeatIdsRef.current.add(playerId);
-        void updateRoomPlayer(activeRoomId, playerId, { nickname: aiName, ready: true, isAI: true, seatIndex: Number(targetSeat.label.replace('P', '')) - 1, color: ['red', 'blue', 'green', 'yellow'][Number(targetSeat.label.replace('P', '')) - 1] ?? 'black', team: targetSeat.team })
+        void updateRoomPlayer(activeRoomId, playerId, getAiRoomPlayerUpdate(targetSeat, aiName))
           .catch((error) => {
             pendingAiSeatIdsRef.current.delete(playerId);
             console.warn('AI 추가에 실패했습니다.', error);
@@ -2725,6 +2734,9 @@ export function App() {
 
   function finishGame() {
     const finishedRoomId = activeRoomId;
+    const finishedSeatId = localSeatId;
+    const finishedSeat = seats.find((seat) => seat.id === finishedSeatId && !seat.isEmpty && !seat.isAI);
+    const aiName = finishedSeat ? makeUniqueAIName(seats) : '';
     hostingRoomUserIdRef.current = '';
     setScreen('lobby');
     setActiveRoomTitle('');
@@ -2737,7 +2749,13 @@ export function App() {
     setSeats(createSeats(nickname, playMode, maxPlayers));
     setEndGameDialogOpen(false);
     setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
-    if (finishedRoomId) void removeRoomPlayer(finishedRoomId, localSeatId);
+    if (finishedRoomId && finishedSeatId && finishedSeat) {
+      pendingAiSeatIdsRef.current.add(finishedSeatId);
+      void updateRoomPlayer(finishedRoomId, finishedSeatId, getAiRoomPlayerUpdate(finishedSeat, aiName)).catch((error) => {
+        pendingAiSeatIdsRef.current.delete(finishedSeatId);
+        console.warn('게임 종료 후 AI 전환에 실패했습니다.', error);
+      });
+    }
   }
 
   function continueRace() {
@@ -2930,7 +2948,6 @@ export function App() {
               {playMode === 'team' && <small>{seat.team}</small>}
             </span>
             <em className="game-player-status">{statusText}</em>
-            {!seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}
           </div>;
         })}
         {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
