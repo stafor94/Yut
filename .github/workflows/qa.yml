@@ -1,8 +1,7 @@
 name: Merged PR QA and Deploy
 
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
 
 permissions:
@@ -12,18 +11,15 @@ permissions:
   id-token: write
 
 concurrency:
-  group: merged-pr-qa-deploy-${{ github.event.pull_request.base.ref || github.ref }}
+  group: merged-pr-qa-deploy-${{ github.ref_name || github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
     name: Build app
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -126,8 +122,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -149,8 +143,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -182,8 +174,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -215,8 +205,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -244,13 +232,11 @@ jobs:
 
   qa-cleanup-after:
     name: Cleanup QA rooms after tests
-    if: always() && github.event.pull_request.merged == true
+    if: always()
     needs: [build, qa-smoke, qa-game-flow, qa-mobile]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -268,13 +254,11 @@ jobs:
 
   qa-summary:
     name: Summarize QA result
-    if: always() && github.event.pull_request.merged == true
+    if: always()
     needs: [build, deploy-pages, qa-smoke, qa-game-flow, qa-mobile, qa-cleanup-after]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.base.ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
