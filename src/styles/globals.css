@@ -2677,7 +2677,7 @@ aside.players,
 
 .team-checklist {
   display: grid;
-  grid-template-columns: auto 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   align-items: center;
   padding: 10px;
@@ -2685,7 +2685,7 @@ aside.players,
   background: #fff3d8;
   font-weight: 900;
 }
-.team-checklist strong { color: rgba(42, 30, 23, .7); }
+.team-checklist strong { grid-column: 1 / -1; color: rgba(42, 30, 23, .7); text-align: center; }
 .team-checklist span { text-align: center; border-radius: 999px; padding: 6px 8px; background: rgba(217, 74, 56, .1); color: var(--red); }
 .team-checklist span.ok { background: rgba(47, 107, 79, .12); color: var(--green); }
 
@@ -2825,7 +2825,7 @@ aside.players,
   .compact-options .radio-group:nth-of-type(3) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .compact-options .radio-group:nth-of-type(2) label,
   .compact-options .radio-group:nth-of-type(3) label { padding-inline: 3px; }
-  .team-checklist { grid-template-columns: 1fr; }
+  .team-checklist { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .waiting-actions.role-actions { display: grid; grid-template-columns: 1fr; }
   .player-view .waiting-actions.role-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .role-actions button { width: 100%; }
@@ -3038,7 +3038,7 @@ aside.players,
 
   .game-shell .board-panel {
     grid-area: board;
-    padding-block: 12px;
+    padding-block: 22px 12px;
   }
 
   .game-shell .players {
@@ -3103,8 +3103,9 @@ aside.players,
   border: 2px solid rgba(42, 30, 23, .12);
   background: #fff3d8;
   color: rgba(42, 30, 23, .72);
-  border-radius: 16px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 6px 10px;
+  line-height: 1.1;
 }
 
 .team-card-option.blue.active,
@@ -3741,15 +3742,18 @@ aside.players,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   min-height: 40px;
-  border: 1px solid rgba(42, 30, 23, .1);
-  background: rgba(42, 30, 23, .1);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6);
+  min-width: 46px;
+  border: 1px solid rgba(42, 30, 23, .12);
+  background: rgba(255, 243, 216, .88);
+  color: rgba(42, 30, 23, .72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 8px 18px rgba(42, 30, 23, .1);
 }
 
 .sound-controls.sound-toggle.active {
   background: linear-gradient(135deg, var(--green), #3d8d68);
+  border-color: rgba(47, 107, 79, .42);
   color: #fff;
 }
 
@@ -3758,52 +3762,13 @@ aside.players,
 }
 
 .sound-icon {
-  position: relative;
   display: inline-grid;
   place-items: center;
   width: 24px;
   height: 24px;
-}
-
-.sound-icon-speaker {
-  position: absolute;
-  left: 3px;
-  width: 9px;
-  height: 12px;
-  border-radius: 3px 1px 1px 3px;
-  background: currentColor;
-}
-
-.sound-icon-speaker::after {
-  content: "";
-  position: absolute;
-  left: 7px;
-  top: -3px;
-  width: 0;
-  height: 0;
-  border-top: 9px solid transparent;
-  border-bottom: 9px solid transparent;
-  border-left: 9px solid currentColor;
-}
-
-.sound-icon-wave {
-  position: absolute;
-  right: 2px;
-  width: 9px;
-  height: 15px;
-  border: 3px solid currentColor;
-  border-left: 0;
-  border-radius: 0 999px 999px 0;
-}
-
-.sound-controls.sound-toggle:not(.active) .sound-icon-wave {
-  width: 16px;
-  height: 3px;
-  right: 0;
-  border: 0;
-  border-radius: 999px;
-  background: currentColor;
-  transform: rotate(-45deg);
+  font-size: 1.24rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .34));
 }
 
 /* Portrait game board: reserve a bench under the board for pieces that have not entered or have finished. */
