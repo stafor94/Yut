@@ -2065,9 +2065,10 @@ export function App() {
     return { '--log-card-bg': backgroundColor, '--log-card-color': getReadableLogTextColor(backgroundColor), '--log-card-border': backgroundColor } as CSSProperties;
   }
   function renderLogText(text: string) {
+    const displayText = text.replace(/\(-?\d+칸\)/g, '');
     const tokenEntries = getEscapedLogSeatTokens();
-    if (!tokenEntries.length) return text;
-    return text.split(new RegExp(`(?<![A-Za-z0-9_])(${tokenEntries.map((entry) => entry.escapedToken).join('|')})(?![A-Za-z0-9_])`, 'gu')).map((part, index) => {
+    if (!tokenEntries.length) return displayText;
+    return displayText.split(new RegExp(`(?<![A-Za-z0-9_])(${tokenEntries.map((entry) => entry.escapedToken).join('|')})(?![A-Za-z0-9_])`, 'gu')).map((part, index) => {
       const seat = tokenEntries.find((entry) => entry.token === part)?.seat;
       if (!seat) return part;
       const color = playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat);
