@@ -55,6 +55,10 @@ export async function collectScreenState(page) {
     appShellText: document.querySelector('[data-testid="app-shell"]')?.textContent?.trim().slice(0, 1000) ?? '',
     waitingRoomText: document.querySelector('[data-testid="waiting-room"]')?.textContent?.trim().slice(0, 1000) ?? '',
     gameText: document.querySelector('[data-testid="game-screen"]')?.textContent?.trim().slice(0, 1000) ?? '',
+    winnerOverlay: {
+      visible: Boolean(document.querySelector('[data-testid="winner-overlay"]')),
+      text: document.querySelector('[data-testid="winner-overlay"]')?.textContent?.trim() ?? '',
+    },
     rollButton: {
       visible: Boolean(document.querySelector('[data-testid="roll-yut-button"]')),
       disabled: Boolean(document.querySelector('[data-testid="roll-yut-button"]')?.hasAttribute('disabled')),
@@ -68,6 +72,11 @@ export async function collectScreenState(page) {
     turnWaitingButton: {
       visible: Boolean(document.querySelector('[data-testid="turn-waiting-button"]')),
       text: document.querySelector('[data-testid="turn-waiting-button"]')?.textContent?.trim() ?? '',
+    },
+    continueRaceButton: {
+      visible: Boolean(document.querySelector('[data-testid="continue-race-button"]')),
+      disabled: Boolean(document.querySelector('[data-testid="continue-race-button"]')?.hasAttribute('disabled')),
+      text: document.querySelector('[data-testid="continue-race-button"]')?.textContent?.trim() ?? '',
     },
     pieces: Array.from(document.querySelectorAll('[data-testid^="piece-"]')).map((node) => ({
       testId: node.getAttribute('data-testid'),

@@ -17,10 +17,10 @@ const getCreatedAtMillis = (createdAt: unknown) => {
   return 0;
 };
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; enteredGameAt?: number; enteredStartVersion?: number; lastGamePresenceAt?: number; }
-export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; startRequestVersion?: number; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; startRequestVersion?: number; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
-export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
-export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'item_used' | 'trap_placed' | 'game_finished';
+export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
+export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'game_finished';
 export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; eventSchemaVersion?: number; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; patch?: GameStatePatch | null; stateBefore?: SyncedGameState | null; stateAfter?: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
 export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; clientMutationId?: string; clientCreatedAt?: number; expectedPreviousSequence?: number };
 
@@ -546,6 +546,13 @@ const getActionActorLogName = (action: Omit<GameAction, 'id' | 'createdAt' | 'pr
   if (typeof actorLabel === 'string' && actorLabel.trim()) return actorLabel.trim();
   return action.actorId;
 };
+const normalizeSeatIds = (ids: unknown[] | undefined) => (ids ?? []).map(String).filter(Boolean);
+const getCompletedIndividualSeatIds = (pieces: AuthoritativePiece[], seatIds: string[], pieceCount: number) => seatIds.filter((seatId) => {
+  const seatPieces = pieces.filter((piece) => piece.ownerId === seatId);
+  return seatPieces.length >= pieceCount && seatPieces.every((piece) => piece.finished);
+});
+const getUnfinishedSeatIds = (seatIds: string[], completedSeatIds: string[]) => seatIds.filter((seatId) => !completedSeatIds.includes(seatId));
+const appendUnique = (ids: string[], nextIds: string[]) => [...ids, ...nextIds.filter((id) => id && !ids.includes(id))];
 
 function makeEngineState(state: SyncedGameState): EngineState {
   return {
@@ -583,7 +590,7 @@ function reduceAuthoritativeRoll(state: SyncedGameState, action: Omit<GameAction
   }));
 }
 function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>, room: Omit<RoomSummary, 'id'>, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
-  return toAuthoritativeReduction(reduceMoveCommand({
+  const baseReduction = toAuthoritativeReduction(reduceMoveCommand({
     state: makeEngineState(state),
     actorId: action.actorId,
     pieceId: String(action.payload?.pieceId ?? ''),
@@ -594,6 +601,89 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
     sides,
     makeLog: makeAuthoritativeLog,
   }));
+  if (!isAuthoritativeCommitReduction(baseReduction) || room.playMode !== 'individual') return baseReduction;
+
+  const nextPieces = (baseReduction.patch.pieces as AuthoritativePiece[] | undefined) ?? (state.pieces as AuthoritativePiece[]);
+  const activeSeatIds = normalizeSeatIds(state.initialTurnOrderIds?.length ? state.initialTurnOrderIds : state.turnOrderIds);
+  const configuredPieceCount = Number(room.pieceCount ?? 4);
+  const previousCompletedSeatIds = normalizeSeatIds(state.completedSeatIds);
+  const completedSeatIds = getCompletedIndividualSeatIds(nextPieces, activeSeatIds, configuredPieceCount);
+  const newlyCompletedSeatIds = completedSeatIds.filter((seatId) => !previousCompletedSeatIds.includes(seatId));
+  if (!newlyCompletedSeatIds.includes(action.actorId)) return baseReduction;
+
+  const nextCompletedSeatIds = appendUnique(previousCompletedSeatIds, newlyCompletedSeatIds);
+  const nextRankingSeatIds = appendUnique(normalizeSeatIds(state.rankingSeatIds), newlyCompletedSeatIds);
+  const unfinishedSeatIds = getUnfinishedSeatIds(activeSeatIds, nextCompletedSeatIds);
+  const isContinuationEligibleGame = activeSeatIds.length >= 3;
+  const canContinueRace = isContinuationEligibleGame && unfinishedSeatIds.length >= 2;
+  const actorLogName = getActionActorLogName(action);
+  const nextLogs = (baseReduction.patch.logs as AuthoritativeLog[] | undefined) ?? ((state.logs as AuthoritativeLog[] | undefined) ?? []);
+  const rankNumber = nextRankingSeatIds.indexOf(action.actorId) + 1;
+  const rankLog = makeAuthoritativeLog(nextLogs, `${actorLogName}이(가) ${rankNumber > 0 ? `${rankNumber}위로 ` : ''}완주했습니다.`);
+
+  return {
+    status: 'committed',
+    patch: {
+      ...baseReduction.patch,
+      logs: [rankLog, ...nextLogs],
+      completedSeatIds: nextCompletedSeatIds,
+      rankingSeatIds: nextRankingSeatIds,
+      initialTurnOrderIds: activeSeatIds,
+      lastFinishedSeatId: action.actorId,
+      gameEndMode: canContinueRace ? 'partial_finish' : 'final',
+      winner: `${actorLogName} 승리`,
+    },
+    payload: {
+      ...baseReduction.payload,
+      completedSeatIds: nextCompletedSeatIds,
+      rankingSeatIds: nextRankingSeatIds,
+      unfinishedSeatIds,
+      gameEndMode: canContinueRace ? 'partial_finish' : 'final',
+    },
+  };
+}
+
+function reduceContinueRace(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>, room: Omit<RoomSummary, 'id'>): AuthoritativeReduction {
+  if (room.hostId !== action.actorId) return makeActionReject('방장만 이어서 진행할 수 있습니다.');
+  if (room.playMode !== 'individual') return makeActionReject('개인전에서만 이어서 진행할 수 있습니다.');
+  if (state.gameEndMode !== 'partial_finish') return makeActionReject('이어서 진행할 수 있는 종료 상태가 아닙니다.');
+  const activeSeatIds = normalizeSeatIds(state.initialTurnOrderIds?.length ? state.initialTurnOrderIds : state.turnOrderIds);
+  if (activeSeatIds.length < 3) return makeActionReject('3인 이상 개인전에서만 이어서 진행할 수 있습니다.');
+  const pieces = state.pieces as AuthoritativePiece[];
+  const completedSeatIds = normalizeSeatIds(state.completedSeatIds).length
+    ? normalizeSeatIds(state.completedSeatIds)
+    : getCompletedIndividualSeatIds(pieces, activeSeatIds, Number(room.pieceCount ?? 4));
+  const unfinishedSeatIds = getUnfinishedSeatIds(activeSeatIds, completedSeatIds);
+  if (unfinishedSeatIds.length < 2) return makeActionReject('이어서 진행할 플레이어가 부족합니다.');
+  const previousLogs = (state.logs as AuthoritativeLog[] | undefined) ?? [];
+  const nextRound = Number(state.continuationRound ?? 0) + 1;
+  const nextLogs = [makeAuthoritativeLog(previousLogs, `완주하지 못한 ${unfinishedSeatIds.length}명이 이어서 진행합니다.`), ...previousLogs];
+  return {
+    status: 'committed',
+    patch: {
+      winner: '',
+      gameEndMode: '',
+      lastFinishedSeatId: '',
+      turnOrderIds: unfinishedSeatIds,
+      turnIndex: 0,
+      roll: null,
+      rollAnimation: null,
+      rollResultReadyAt: 0,
+      rollLockUntil: 0,
+      captureEffect: null,
+      trapEffect: null,
+      pendingTrapPlacement: null,
+      itemPromptTiming: null,
+      branchChoice: 'outer',
+      lastMovedPieceIds: [],
+      lastMovedSeatId: '',
+      logs: nextLogs,
+      completedSeatIds,
+      initialTurnOrderIds: activeSeatIds,
+      continuationRound: nextRound,
+    },
+    payload: { unfinishedSeatIds, completedSeatIds, continuationRound: nextRound },
+  };
 }
 export async function commitAuthoritativeGameAction(roomId: string, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>): Promise<AuthoritativeActionResult> {
   if (!db || !roomId) return { status: 'rejected', reason: 'Firebase 환경변수가 설정되지 않았습니다.' };
@@ -624,7 +714,8 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
         return { id: playerId, team: player.team } satisfies AuthoritativeSeatSide;
       }));
       reduction = reduceAuthoritativeMove(state, action, room, transactionSides.filter((entry): entry is AuthoritativeSeatSide => Boolean(entry)));
-    } else return { status: 'unsupported', reason: '아직 transaction 처리로 이전되지 않은 액션입니다.' };
+    } else if (action.type === 'continue_race') reduction = reduceContinueRace(state, action, room);
+    else return { status: 'unsupported', reason: '아직 transaction 처리로 이전되지 않은 액션입니다.' };
     if (!isAuthoritativeCommitReduction(reduction)) return reduction;
     const nextVersion = currentVersion + 1;
     const nextSequence = currentSequence + 1;
@@ -632,7 +723,7 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const stateAfter = { ...state, ...reduction.patch };
     transaction.set(sequenceRef, {
       sequence: nextSequence,
-      type: action.type === 'roll_yut' ? 'roll_yut' : 'move_piece_resolved',
+      type: action.type === 'roll_yut' ? 'roll_yut' : action.type === 'continue_race' ? 'race_continued' : 'move_piece_resolved',
       actorId: action.actorId,
       payload: sanitizeForFirestore(reduction.payload) as Record<string, unknown>,
       ...makeSequenceEventFields({ stateBefore: state, stateAfter, patch: reduction.patch, action }),
