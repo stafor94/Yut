@@ -2543,3 +2543,64 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] QA summary deploy-failure sample generation check
 - [x] Build succeeds
 - [ ] Merged PR QA rerun checked
+
+## 2026-07-03 - Issue #319 Deploy Pages 환경 보호 규칙 거부
+
+### Symptom
+
+- Actions run `28644170305`에서 `Deploy Pages` job이 2초 만에 실패했다.
+- 후속 `QA smoke`, `QA game flow`, `QA mobile layout`은 배포 실패 때문에 skip됐다.
+- GitHub annotation에는 `Branch "refs/pull/318/merge" is not allowed to deploy to github-pages due to environment protection rules.`가 표시됐다.
+
+### Expected behavior
+
+- GitHub Pages 배포는 `github-pages` environment 보호 규칙에서 허용된 `main` ref로 실행되어야 한다.
+- 배포 성공 이후에만 QA job들이 실행되어야 한다.
+
+### Actual behavior
+
+- workflow가 `pull_request.closed` 이벤트에서 실행되어 PR 병합 커밋을 checkout하더라도 배포 deployment의 ref는 `refs/pull/318/merge`로 남았다.
+- `github-pages` environment 보호 규칙이 PR merge ref 배포를 거부했다.
+
+### Reproduction steps
+
+1. `pull_request.closed` 이벤트로 merged PR QA workflow를 실행한다.
+2. `Deploy Pages` job이 `github-pages` environment에 deployment를 생성한다.
+3. environment 보호 규칙이 이벤트 ref인 `refs/pull/<PR>/merge`를 검사한다.
+4. 허용 브랜치가 아니어서 deploy-pages step이 실패한다.
+
+### Suspected root cause
+
+- PR closed 이벤트에서 `actions/checkout` ref만 base branch로 맞추면 Pages environment 보호 규칙도 main으로 통과한다고 잘못 가정했다.
+
+### Confirmed root cause
+
+- run `28644170305`의 Deploy Pages annotation이 `refs/pull/318/merge`가 `github-pages` environment 보호 규칙에 허용되지 않는다고 명시했다.
+- 따라서 문제는 Pages 액션 버전이나 Playwright QA가 아니라 workflow 트리거 ref와 environment 보호 규칙의 불일치다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: deploy-pages action을 안정화하면서 `github-pages` environment를 명시했다.
+  - Why it failed: workflow가 여전히 `pull_request.closed` 이벤트에서 실행되어 deployment ref가 PR merge ref로 생성됐다.
+- Attempt 2:
+  - What was changed: action 버전을 `actions/deploy-pages@v4`로 되돌렸다.
+  - Why it failed: action 버전 문제는 해결했지만 environment 보호 규칙이 거부한 ref 문제는 남았다.
+
+### Do not try again
+
+- `actions/checkout`의 `ref`만 바꿔서 environment 보호 규칙 ref가 바뀐다고 가정하지 않는다.
+- Playwright timeout이나 QA 테스트 코드를 수정해 deploy environment 거부를 해결하려 하지 않는다.
+- `github-pages` environment를 제거해서 보호 규칙을 우회하지 않는다.
+
+### Correct fix plan
+
+- merged PR 배포/QA workflow를 `pull_request.closed`가 아니라 `push` to `main` 이벤트에서 실행한다.
+- checkout은 이벤트의 main 커밋을 그대로 사용한다.
+- 배포 성공 이후 QA job들이 실행되는 의존성은 유지한다.
+
+### Verification checklist
+
+- [x] Workflow syntax/static inspection
+- [x] Build succeeds
+- [ ] main push workflow rerun checked
