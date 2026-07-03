@@ -2759,12 +2759,23 @@ aside.players,
 }
 .compact-ready-card.blue-team { border-left-color: #3a78c2; }
 .compact-ready-card.red-team { border-left-color: var(--red); }
+.compact-ready-card.ready {
+  border-color: rgba(93, 178, 84, .78);
+  box-shadow: inset 0 0 0 2px rgba(93, 178, 84, .36), 0 18px 36px rgba(47, 107, 79, .12);
+}
 .compact-ready-card.empty { opacity: 1; background: rgba(255, 243, 216, .42); color: #2a1e17; }
 .compact-ready-card.me { box-shadow: inset 0 0 0 2px rgba(242, 184, 75, .7); }
+.compact-ready-card.ready.me {
+  box-shadow: inset 0 0 0 2px rgba(93, 178, 84, .42), 0 18px 36px rgba(47, 107, 79, .12);
+}
 .seat-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-width: 0; }
 .seat-status-actions { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; min-width: 0; }
 .seat-row b { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 14px; background: #2a1e17; color: #fff; }
 .seat-row em { border-radius: 999px; padding: 5px 9px; background: rgba(47, 107, 79, .1); color: var(--green); font-size: .8rem; font-weight: 1000; font-style: normal; white-space: nowrap; }
+.seat-ready-label {
+  margin-right: 5px;
+  color: #2f7d32;
+}
 .seat-row .ai-add-button,
 .seat-row .ai-remove-button,
 .seat-row .kick-player-button { width: auto; min-height: 0; padding: 5px 8px; border-radius: 999px; font-size: .76rem; line-height: 1; }
@@ -3381,8 +3392,11 @@ aside.players,
   }
 
   .lobby-room-card .lobby-room-action {
-    min-height: 48px;
-    font-size: .92rem;
+    width: var(--lobby-room-status-width);
+    min-height: 32px;
+    padding: 5px 0;
+    font-size: .82rem;
+    line-height: 1;
   }
 
   .empty-lobby-room {
