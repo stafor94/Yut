@@ -1374,6 +1374,15 @@ export function App() {
   }, [activeTurnOrderIntro, turnOrderPhase.active, turnOrderPhase.index, turnOrderPhase.deadline]);
 
   useEffect(() => {
+    if (screen !== 'game' || !turnOrderPhase.active) return undefined;
+    if (!window.matchMedia('(orientation: portrait)').matches) return undefined;
+    const timer = window.setTimeout(() => {
+      window.scrollBy({ top: 96, behavior: 'smooth' });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [screen, turnOrderPhase.active]);
+
+  useEffect(() => {
     if (!turnOrderPhase.active || !playableSeats.length) return undefined;
     const rolledSeatIds = new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id));
     const allSeatsRolled = playableSeats.every((seat) => rolledSeatIds.has(seat.id));
@@ -2479,7 +2488,6 @@ export function App() {
     const movingGroupIds = movingPiece.started
       ? pieces.filter((piece) => canSeatControlPiece(seat, piece) && !piece.finished && piece.started && piece.nodeId === movingPiece.nodeId).map((piece) => piece.id)
       : [movingPiece.id];
-    if (movingGroupIds.length > 1) addLog(`${seat.label}의 말 ${movingGroupIds.length}개가 업혀 함께 이동합니다.`);
     if (!movingPiece.started) await delay(STEP_DELAY_MS);
     let nextNodeIndex = movingPiece.nodeIndex;
     let currentNodeId = movingPiece.nodeId;
