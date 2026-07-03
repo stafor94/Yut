@@ -2270,7 +2270,7 @@ aside.players,
 
 .lobby-room-card {
   --lobby-room-status-width: 62px;
-  --lobby-room-action-width: 62px;
+  --lobby-room-action-width: 54px;
   position: relative;
   overflow: hidden;
   margin: 0;
@@ -2346,6 +2346,10 @@ aside.players,
   box-shadow: 0 10px 20px rgba(34, 66, 54, .16);
   font-size: .82rem;
   line-height: 1;
+}
+
+.lobby-layout .lobby-room-card .lobby-room-action {
+  min-width: 0;
 }
 
 .empty-lobby-room {
@@ -3397,7 +3401,7 @@ aside.players,
   }
 
   .lobby-room-card .lobby-room-action {
-    width: var(--lobby-room-status-width);
+    width: var(--lobby-room-action-width);
     min-width: 0;
     min-height: 32px;
     margin-right: -6px;

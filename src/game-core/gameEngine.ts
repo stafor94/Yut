@@ -274,7 +274,6 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
     }
   }
 
-  if (movingGroupIds.length > 1) pushLog(`${actorLogName}의 말 ${movingGroupIds.length}개가 업혀 함께 이동합니다.`);
   if (finishedMove) pushLog(`${actorLogName} 말이 완주했습니다!`);
   const nextTurnIndex = result.bonus || captured ? Number(state.turnIndex ?? 0) : (Number(state.turnIndex ?? 0) + 1) % state.turnOrderIds.length;
 
