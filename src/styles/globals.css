@@ -2333,7 +2333,11 @@ aside.players,
 
 .lobby-room-card .lobby-room-action {
   flex: 0 0 auto;
+  box-sizing: border-box;
+  min-width: 0;
   min-height: 0;
+  margin-left: auto;
+  margin-right: -4px;
   inline-size: var(--lobby-room-action-width);
   padding: 7px 0;
   border-radius: 999px;
@@ -3394,7 +3398,9 @@ aside.players,
 
   .lobby-room-card .lobby-room-action {
     width: var(--lobby-room-status-width);
+    min-width: 0;
     min-height: 32px;
+    margin-right: -6px;
     padding: 5px 0;
     font-size: .82rem;
     line-height: 1;

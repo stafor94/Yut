@@ -379,6 +379,7 @@ export function App() {
   const [rankingSeatIds, setRankingSeatIds] = useState<string[]>([]);
   const [gameEndMode, setGameEndMode] = useState<'partial_finish' | 'final' | ''>('');
   const [lastFinishedSeatId, setLastFinishedSeatId] = useState('');
+  const [authoritativeWinner, setAuthoritativeWinner] = useState('');
   const [continuationRound, setContinuationRound] = useState(0);
   const [roll, setRoll] = useState<YutResult | null>(null);
   const [movingPieceId, setMovingPieceId] = useState('');
@@ -553,7 +554,7 @@ export function App() {
     return hours > 0 ? `${two(hours)}:${two(minutes)}:${two(seconds)}` : `${two(minutes)}:${two(seconds)}`;
   };
   const playTimeText = gameStartedAt ? formatPlayTime(playTimeNow - gameStartedAt) : '00:00';
-  const winner = useMemo(() => {
+  const derivedWinner = useMemo(() => {
     const activeGameSeats = turnSeats.length ? turnSeats : playableSeats;
     if (!activeGameSeats.length || !pieces.length) return '';
 
@@ -572,6 +573,7 @@ export function App() {
     });
     return finishedSeat ? `${finishedSeat.label}-${finishedSeat.name} 승리` : '';
   }, [getSeatById, pieceCount, pieces, playMode, playableSeats, turnSeats]);
+  const winner = authoritativeWinner || derivedWinner;
 
   const winnerSeat = useMemo(() => {
     const match = winner.match(/^(P\d+)-/);
@@ -1166,6 +1168,7 @@ export function App() {
     setRankingSeatIds((state.rankingSeatIds as string[] | undefined) ?? []);
     setGameEndMode((state.gameEndMode as 'partial_finish' | 'final' | '' | undefined) ?? '');
     setLastFinishedSeatId(String(state.lastFinishedSeatId ?? ''));
+    setAuthoritativeWinner(String(state.winner ?? ''));
     setContinuationRound(Number(state.continuationRound ?? 0));
     setTurnOrderIntro((state.turnOrderIntro as TurnOrderIntro | null | undefined) ?? null);
     setRollLockUntil(Number(state.rollLockUntil ?? 0));
@@ -1521,14 +1524,14 @@ export function App() {
   }, [activeRoomId, canCoordinateOnlineGame, isTurnOrderFallbackDue, turnOrderPhase]);
 
   useEffect(() => {
-    if (!selectedBranchControlKey) {
+    if (!showBottomBranchControls || !selectedBranchControlKey) {
       lastBranchControlKeyRef.current = '';
       return;
     }
     if (lastBranchControlKeyRef.current === selectedBranchControlKey) return;
     lastBranchControlKeyRef.current = selectedBranchControlKey;
     setBranchChoice('shortcut');
-  }, [selectedBranchControlKey]);
+  }, [selectedBranchControlKey, showBottomBranchControls]);
 
 
 
@@ -1938,6 +1941,7 @@ export function App() {
     setTurnOrderIds(nextTurnOrderIds);
     setTurnOrderIntro(nextTurnOrderIntro);
     setWaitingForPlayersReady(false);
+    setAuthoritativeWinner('');
     setGameStartedAt(nextGameStartedAt);
   }
 
@@ -1960,6 +1964,7 @@ export function App() {
     setTurnOrderIds([]);
     setTurnOrderIntro(null);
     setTurnOrderPhase(initialTurnOrderPhase);
+    setAuthoritativeWinner('');
     setWaitingForPlayersReady(Boolean(activeRoomId));
     setGameStartedAt(null);
     setScreen('game');
@@ -2110,6 +2115,7 @@ export function App() {
     setRankingSeatIds([]);
     setGameEndMode('');
     setLastFinishedSeatId('');
+    setAuthoritativeWinner('');
     setContinuationRound(0);
     setTurnOrderPhase(local.nextTurnOrderPhase);
     setTurnOrderIntro(local.nextTurnOrderIntro);
