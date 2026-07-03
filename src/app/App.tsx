@@ -2136,6 +2136,17 @@ export function App() {
   function addLog(text: string) {
     setLogs((current) => shouldSuppressDuplicateLog(text, current) ? current : [makeLog(text), ...current]);
   }
+  function ensureRollLogExists(seat: Seat, result: YutResult) {
+    const rollLogText = `${seat.label}이(가) ${result.name}(${result.steps}칸)를 던졌습니다.`;
+    setLogs((current) => {
+      const currentTurnLogs = [];
+      for (const log of current.slice(0, 8)) {
+        if (log.text.includes('한 번 더 던질 수 있습니다.')) break;
+        currentTurnLogs.push(log);
+      }
+      return currentTurnLogs.some((log) => log.text === rollLogText) ? current : [makeLog(rollLogText), ...current];
+    });
+  }
   function addLogs(texts: string[]) {
     setLogs((current) => {
       const uniqueTexts = texts.filter((text, index) => texts.indexOf(text) === index && !shouldSuppressDuplicateLog(text, current));
@@ -2415,6 +2426,7 @@ export function App() {
 
   async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice) {
     if (winner || movingPieceId || moveInProgressRef.current) return false;
+    ensureRollLogExists(seat, result);
     setMoveInProgressState(true);
     const movingPiece = pieces.find((piece) => piece.id === pieceId && canSeatControlPiece(seat, piece) && !piece.finished);
     if (!movingPiece) { setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1)); clearRoll(); setMoveInProgressState(false); return false; }
