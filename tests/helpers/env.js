@@ -66,7 +66,13 @@ function formatQaTimestamp(date = new Date()) {
   return `${year}.${month}.${day}_${hours}${minutes}${seconds}`;
 }
 
+export const QA_NICKNAME_MAX_LENGTH = 7;
+
 export function makeQaName(testInfo, suffix) {
   const project = testInfo.project.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'project';
   return `QA-${formatQaTimestamp()}-${project}-${suffix}`;
+}
+
+export function normalizeQaNickname(value) {
+  return value.trim().slice(0, QA_NICKNAME_MAX_LENGTH);
 }

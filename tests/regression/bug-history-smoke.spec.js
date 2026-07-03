@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
-import { makeQaName } from '../helpers/env.js';
+import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 test.describe('BUG_HISTORY regression smoke', () => {
@@ -11,7 +11,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
   });
 
   test('게임 시작 직후 윷 던지기/대기 버튼 상태가 고착되지 않는다', async ({ page, context }, testInfo) => {
-    const hostName = makeQaName(testInfo, 'reg-host');
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'reg-host'));
     const roomTitle = makeQaName(testInfo, 'reg-room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 

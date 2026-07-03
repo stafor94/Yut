@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { hasFirebaseConfig, makeQaName } from '../helpers/env.js';
+import { hasFirebaseConfig, makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -12,7 +12,7 @@ test.describe('online room QA', () => {
 
   test('방 생성 후 대기실에 진입한다', async ({ page, context }, testInfo) => {
     test.skip(!(await hasFirebaseConfig()), 'Firebase 설정이 없으면 온라인 방 lifecycle QA를 건너뜁니다.');
-    const nickname = makeQaName(testInfo, 'online-host');
+    const nickname = normalizeQaNickname(makeQaName(testInfo, 'online-host'));
     const roomTitle = makeQaName(testInfo, 'online-room');
     await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
