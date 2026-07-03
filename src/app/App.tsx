@@ -684,18 +684,17 @@ export function App() {
     moveActionBlockReasons,
     selectedPieceId,
     selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
-  }), [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canAuthoritativelyManageGame, canHostRoom, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds]);
+    logs: visibleLogs.map((log) => ({ id: log.id, text: log.text })),
+    boardItems,
+    ownedItems,
+    trapNodes,
+    shieldedPieceIds,
+    pendingTrapPlacement,
+    itemPromptTiming,
+    branchChoice,
+  }), [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canAuthoritativelyManageGame, canHostRoom, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
-  const diagnosticHighlights = useMemo(() => [
-    { label: '화면', value: diagnosticState.screen },
-    { label: '현재 턴', value: diagnosticState.activeSeat ? `${diagnosticState.activeSeat.label}-${diagnosticState.activeSeat.name ?? diagnosticState.activeSeat.id}` : '없음' },
-    { label: '내 턴 여부', value: diagnosticState.isMyTurn ? '예' : '아니오' },
-    { label: '윷 결과', value: diagnosticState.roll ? `${diagnosticState.roll.name}(${diagnosticState.roll.steps}칸)` : '없음' },
-    { label: '이동 버튼 가능', value: diagnosticState.canRequestMove ? '가능' : '불가' },
-    { label: '이동 차단 사유', value: diagnosticState.moveActionBlockReasons.length ? diagnosticState.moveActionBlockReasons.join(', ') : '없음' },
-    { label: '선택 말', value: diagnosticState.selectedPieceId || '없음' },
-    { label: '마지막 오류', value: diagnosticState.actionErrorDialog || diagnosticState.lastActionDiagnostic?.message || '없음' },
-  ], [diagnosticState]);
+
 
   useEffect(() => {
     (window as typeof window & { __YUT_DEBUG_STATE__?: Record<string, unknown> }).__YUT_DEBUG_STATE__ = diagnosticState;
@@ -2153,9 +2152,13 @@ export function App() {
   }
   function getLogSeat(text: string) {
     const tokenEntries = getEscapedLogSeatTokens();
-    if (!tokenEntries.length) return undefined;
-    const match = text.match(new RegExp(`(?<![A-Za-z0-9_])(${tokenEntries.map((entry) => entry.escapedToken).join('|')})(?![A-Za-z0-9_])`, 'u'));
-    return match ? tokenEntries.find((entry) => entry.token === match[1])?.seat : undefined;
+    if (tokenEntries.length) {
+      const match = text.match(new RegExp(`(?<![A-Za-z0-9_])(${tokenEntries.map((entry) => entry.escapedToken).join('|')})(?![A-Za-z0-9_])`, 'u'));
+      const matchedSeat = match ? tokenEntries.find((entry) => entry.token === match[1])?.seat : undefined;
+      if (matchedSeat) return matchedSeat;
+    }
+    const labelMatch = text.match(/P([1-4])(?:-|\b)/u);
+    return labelMatch ? playableSeats.find((seat) => seat.label === `P${labelMatch[1]}`) : undefined;
   }
   function getReadableLogTextColor(backgroundColor: string) {
     const hex = backgroundColor.replace('#', '');
@@ -2945,7 +2948,7 @@ export function App() {
     {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
 
     {actionErrorDialog && <div className="modal-backdrop" role="presentation" onMouseDown={() => setActionErrorDialog('')}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label="액션 오류" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">오류</p><h2>요청을 처리할 수 없습니다</h2><p>{actionErrorDialog}</p><div className="modal-actions"><button onClick={() => setActionErrorDialog('')}>확인</button></div></section></div>}
-    {diagnosticDialogOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setDiagnosticDialogOpen(false)}><section className="diagnostic-modal panel" role="dialog" aria-modal="true" aria-label="게임 상태 진단" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">진단</p><h2>게임 상태 진단</h2><p className="diagnostic-description">멈춤, 버튼 비활성화, 원격 액션 대기 같은 현상을 파악하기 위한 현재 상태값입니다.</p><div className="diagnostic-summary">{diagnosticHighlights.map((item) => <div key={item.label}><span>{item.label}</span><strong>{String(item.value)}</strong></div>)}</div><pre className="diagnostic-raw">{diagnosticText}</pre><div className="modal-actions"><button onClick={copyDiagnosticState}>{diagnosticCopied ? '복사 완료' : '복사'}</button><button className="secondary" onClick={() => setDiagnosticDialogOpen(false)}>닫기</button></div></section></div>}
+    {diagnosticDialogOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setDiagnosticDialogOpen(false)}><section className="diagnostic-modal panel" role="dialog" aria-modal="true" aria-label="게임 상태 분석 요청 데이터" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">분석 요청</p><h2>게임 상태 분석 데이터</h2><p className="diagnostic-description">아래 텍스트를 복사해 시스템에 전달하면 에러 원인 분석에 사용할 수 있습니다.</p><pre className="diagnostic-raw">{diagnosticText}</pre><div className="modal-actions"><button onClick={copyDiagnosticState}>{diagnosticCopied ? '복사 완료' : '복사'}</button><button className="secondary" onClick={() => setDiagnosticDialogOpen(false)}>닫기</button></div></section></div>}
 
     {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>닉네임 수정</h2><p>닉네임은 7글자까지 사용할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
 

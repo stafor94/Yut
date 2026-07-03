@@ -3915,8 +3915,8 @@ aside.players,
 }
 
 .diagnostic-button {
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
@@ -3926,6 +3926,7 @@ aside.players,
   color: #7a4a26;
   border: 2px solid rgba(122, 74, 38, .18);
   box-shadow: 0 8px 18px rgba(42, 30, 23, .1);
+  font-size: .9rem;
 }
 
 .diagnostic-button:hover,
@@ -3936,9 +3937,10 @@ aside.players,
 
 .diagnostic-modal {
   width: min(100%, 760px);
-  max-height: min(86dvh, 760px);
+  max-height: min(68dvh, 560px);
   display: grid;
-  gap: 14px;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: 12px;
 }
 
 .diagnostic-modal h2,
@@ -3979,8 +3981,8 @@ aside.players,
 }
 
 .diagnostic-raw {
-  min-height: 180px;
-  max-height: 34dvh;
+  min-height: 120px;
+  max-height: 100%;
   overflow: auto;
   margin: 0;
   padding: 12px;
