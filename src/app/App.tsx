@@ -507,7 +507,8 @@ export function App() {
     .map((seat) => seat.id), [pieceCount, pieces, playableSeats]);
   const raceBaseSeatIds = initialTurnOrderIds.length ? initialTurnOrderIds : turnOrderIds;
   const unfinishedRaceSeatIds = raceBaseSeatIds.filter((seatId) => !derivedCompletedSeatIds.includes(seatId));
-  const canShowContinueRaceButton = Boolean(activeRoomId && canAuthoritativelyManageGame && playMode === 'individual' && gameEndMode === 'partial_finish' && unfinishedRaceSeatIds.length >= 2);
+  const derivedPartialFinish = Boolean(winner && playMode === 'individual' && raceBaseSeatIds.length >= 3 && unfinishedRaceSeatIds.length >= 2);
+  const canShowContinueRaceButton = Boolean(activeRoomId && canAuthoritativelyManageGame && playMode === 'individual' && (gameEndMode === 'partial_finish' || derivedPartialFinish) && unfinishedRaceSeatIds.length >= 2);
   const selectedMoveSteps = roll?.steps ?? 0;
   const isRollLocked = rollLockUntil > rollLockClock;
   const effectiveRollResultReadyAt = normalizeRollResultReadyAt(rollResultReadyAt);
@@ -546,7 +547,7 @@ export function App() {
   const canUseMoveButton = canRequestMove;
   const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingHostStateSave, isRemoteActionClient, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
-  const visibleBoardTurnSeat = activeSeat && !waitingForOnlineTurnOrder && !turnOrderPhase.active && !activeTurnOrderIntro && (activeSeat.id !== localSeatId || roll || canRollNow || canRequestMove) ? activeSeat : undefined;
+  const visibleBoardTurnSeat = activeSeat && !waitingForOnlineTurnOrder && !turnOrderPhase.active && !activeTurnOrderIntro ? activeSeat : undefined;
   const visibleBoardTurnIndex = visibleBoardTurnSeat ? turnSeats.findIndex((seat) => seat.id === visibleBoardTurnSeat.id) : -1;
   const previousBoardTurnSeat = visibleBoardTurnIndex >= 0 && turnSeats.length > 1 ? turnSeats[(visibleBoardTurnIndex - 1 + turnSeats.length) % turnSeats.length] : undefined;
   const nextBoardTurnSeat = visibleBoardTurnIndex >= 0 && turnSeats.length > 1 ? turnSeats[(visibleBoardTurnIndex + 1) % turnSeats.length] : undefined;
@@ -676,7 +677,7 @@ export function App() {
       selectedPieceId,
       selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
     };
-  }, [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canAuthoritativelyManageGame, canHostRoom, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isRemoteActionClient, isRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, moveInProgress, movingPieceId, pendingLocalRemoteActionCount, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, trapPlacementActive, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase.active, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, winner, lastMovedSeatId, lastMovedPieceIds]);
+  }, [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canAuthoritativelyManageGame, canHostRoom, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isRemoteActionClient, isRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, moveInProgress, movingPieceId, pendingLocalRemoteActionCount, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, trapPlacementActive, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase.active, unfinishedRaceSeatIds, derivedPartialFinish, waitingForOnlineTurnOrder, winner, lastMovedSeatId, lastMovedPieceIds]);
 
 
   useEffect(() => () => {
