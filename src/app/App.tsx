@@ -2827,9 +2827,9 @@ export function App() {
   function finishGame() {
     const finishedRoomId = activeRoomId;
     const finishedSeatId = localSeatId;
-    const finishedSeat = seats.find((seat) => seat.id === finishedSeatId && !seat.isEmpty && !seat.isAI);
-    const aiName = finishedSeat ? makeUniqueAIName(seats) : '';
     hostingRoomUserIdRef.current = '';
+    activeRoomIdRef.current = '';
+    confirmedRoomPlayerRef.current = false;
     setScreen('lobby');
     setActiveRoomTitle('');
     setActiveRoomId('');
@@ -2840,12 +2840,12 @@ export function App() {
     setItemPromptTiming(null);
     setSeats(createSeats(nickname, playMode, maxPlayers));
     setEndGameDialogOpen(false);
+    window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+    window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
     setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
-    if (finishedRoomId && finishedSeatId && finishedSeat) {
-      pendingAiSeatIdsRef.current.add(finishedSeatId);
-      void updateRoomPlayer(finishedRoomId, finishedSeatId, getAiRoomPlayerUpdate(finishedSeat, aiName)).catch((error) => {
-        pendingAiSeatIdsRef.current.delete(finishedSeatId);
-        console.warn('게임 종료 후 AI 전환에 실패했습니다.', error);
+    if (finishedRoomId && finishedSeatId) {
+      void removeRoomPlayer(finishedRoomId, finishedSeatId).catch((error) => {
+        console.warn('게임 종료 후 방 정리에 실패했습니다.', error);
       });
     }
   }
