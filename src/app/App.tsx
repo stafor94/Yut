@@ -363,6 +363,7 @@ export function App() {
     setMoveInProgress(nextMoveInProgress);
   }
   const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
+  const pendingLocalRemoteActionMetaRef = useRef<Map<string, { type: GameAction['type']; createdAt: number }>>(new Map());
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
   const sequenceReplayInProgressRef = useRef(false);
   const queuedSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
@@ -376,16 +377,28 @@ export function App() {
   const startedGameRequestVersionsRef = useRef<Set<number>>(new Set());
 
   const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(pendingLocalRemoteActionsRef.current.size);
-  const addPendingLocalRemoteAction = (actionKey: string) => {
+  const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {
+    const [type] = actionKey.split(':');
+    return (type || 'roll_yut') as GameAction['type'];
+  };
+  const addPendingLocalRemoteAction = (actionKey: string, type = getPendingLocalRemoteActionType(actionKey)) => {
     pendingLocalRemoteActionsRef.current.add(actionKey);
+    pendingLocalRemoteActionMetaRef.current.set(actionKey, { type, createdAt: Date.now() });
     syncPendingLocalRemoteActionCount();
   };
   const deletePendingLocalRemoteAction = (actionKey: string) => {
     pendingLocalRemoteActionsRef.current.delete(actionKey);
+    pendingLocalRemoteActionMetaRef.current.delete(actionKey);
     syncPendingLocalRemoteActionCount();
+  };
+  const acknowledgePendingLocalRemoteAction = (clientMutationId: unknown) => {
+    if (typeof clientMutationId !== 'string' || !clientMutationId) return;
+    if (!pendingLocalRemoteActionsRef.current.has(clientMutationId)) return;
+    deletePendingLocalRemoteAction(clientMutationId);
   };
   const clearPendingLocalRemoteActions = () => {
     pendingLocalRemoteActionsRef.current.clear();
+    pendingLocalRemoteActionMetaRef.current.clear();
     syncPendingLocalRemoteActionCount();
   };
   const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? '') => turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : TURN_ACTION_TIMEOUT_MS;
@@ -667,6 +680,10 @@ export function App() {
     lastAppliedStateVersion: lastAppliedStateVersionRef.current,
     lastAppliedSequence: lastAppliedSequenceRef.current,
     pendingLocalRemoteActionCount,
+    pendingLocalRemoteActions: Array.from(pendingLocalRemoteActionsRef.current).map((key) => {
+      const meta = pendingLocalRemoteActionMetaRef.current.get(key);
+      return { key, type: meta?.type ?? getPendingLocalRemoteActionType(key), ageMs: meta ? Math.max(0, Date.now() - meta.createdAt) : 0 };
+    }),
     turnActionTimeoutPenaltyBySeatId,
     currentTurnActionTimeoutMs: activeSeat ? getTurnActionTimeoutMs(activeSeat.id) : TURN_ACTION_TIMEOUT_MS,
     currentItemPromptTimeoutMs: getItemPromptTimeoutMs(localSeatId),
@@ -1097,6 +1114,7 @@ export function App() {
     rollInProgressRef.current = false;
     rollInProgressStartedAtRef.current = 0;
     setRollInProgress(false);
+    acknowledgePendingLocalRemoteAction((state as { lastClientMutationId?: unknown }).lastClientMutationId);
   };
 
   async function waitForCurrentMoveToFinish(maxWaitMs: number) {
@@ -1158,13 +1176,13 @@ export function App() {
         if (!sequenceNumber || sequenceNumber <= lastAppliedSequenceRef.current) continue;
         if (sequence.type === 'move_piece_resolved') await replayMoveSequence(sequence);
         else if (sequence.stateAfter) applySyncedStateSnapshot(sequence.stateAfter as SequenceStateSnapshot, { allowMoveAnimation: false, updateVersion: false, updateSequence: false });
+        acknowledgePendingLocalRemoteAction(sequence.clientMutationId);
         lastAppliedSequenceRef.current = sequenceNumber;
       }
       applySyncedStateSnapshot(finalState, { allowMoveAnimation: false, updateVersion: true, updateSequence: true });
     } catch {
       applySyncedStateSnapshot(finalState, { allowMoveAnimation: false, updateVersion: true, updateSequence: true });
     } finally {
-      clearPendingLocalRemoteActions();
       sequenceReplayInProgressRef.current = false;
       const queuedState = queuedSyncedStateRef.current;
       queuedSyncedStateRef.current = null;
@@ -1193,7 +1211,6 @@ export function App() {
         });
       } else {
         applySyncedStateSnapshot(state as SequenceStateSnapshot);
-        clearPendingLocalRemoteActions();
         window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
       }
     });
@@ -1446,6 +1463,7 @@ export function App() {
 
   useEffect(() => {
     if (!roll || !activeSeat || !isMyTurn || movingPieceId || winner || rollResultHolding || pendingTrapPlacement) return;
+    if (activeRoomId && !canAuthoritativelyManageGame && !canRequestMove) return;
     const steps = roll.steps;
     const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (steps >= 0 || piece.started));
     if (movablePieces.length === 0) {
@@ -1464,11 +1482,14 @@ export function App() {
     if (needsBranchChoice) return;
     setSelectedPieceId(onlyPiece.id);
     const timer = window.setTimeout(() => {
-      if (activeRoomId && !canAuthoritativelyManageGame) void moveSelectedPiece();
+      if (activeRoomId && !canAuthoritativelyManageGame) {
+        if (!canRequestMove) return;
+        void moveSelectedPiece();
+      }
       else void movePiece(onlyPiece.id, roll, activeSeat);
     }, AUTO_SINGLE_MOVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, canAuthoritativelyManageGame, isMyTurn, movingPieceId, pieces, turnSeats.length, roll, winner, rollResultHolding, pendingTrapPlacement]);
+  }, [activeRoomId, activeSeat, canAuthoritativelyManageGame, canRequestMove, isMyTurn, movingPieceId, pieces, turnSeats.length, roll, winner, rollResultHolding, pendingTrapPlacement]);
 
   useEffect(() => {
     if (!startCountdownActive) {
@@ -2118,7 +2139,7 @@ export function App() {
 
     if (activeRoomId && !canAuthoritativelyManageGame && !fromRemote) {
       if (requestedSeatId !== localSeatId) return;
-      void submitRemoteAction('turn_order_roll');
+      if (!submitLocalRemoteActionOnce('turn_order_roll')) return;
       return;
     }
 
@@ -2699,7 +2720,8 @@ export function App() {
   function placePendingTrap(nodeId: string, actorId = localSeatId) {
     if (!pendingTrapPlacement || !pendingTrapPlacement.nodeIds.includes(nodeId)) return;
     if (activeRoomId && !canAuthoritativelyManageGame && actorId === localSeatId) {
-      void submitRemoteAction('place_trap', { nodeId, pieceId: pendingTrapPlacement.pieceId });
+      const clientActionId = getLocalActionKey('place_trap', { nodeId, pieceId: pendingTrapPlacement.pieceId });
+      void submitRemoteAction('place_trap', { nodeId, pieceId: pendingTrapPlacement.pieceId, clientActionId });
     }
     const itemOwnerSeat = playableSeats.find((seat) => seat.id === pendingTrapPlacement.ownerId);
     const trapPiece = pieces.find((piece) => piece.id === pendingTrapPlacement.pieceId);
@@ -2729,10 +2751,10 @@ export function App() {
     const activeItems = ownedItems[itemOwnerId] ?? [];
     if (!activeItems.includes(type)) return;
     const itemActionPayload = { itemType: type, pieceId: selectedPieceId, branchChoice };
-    const submitItemActionIfRemote = () => {
-      if (activeRoomId && !canAuthoritativelyManageGame && actorId === localSeatId) void submitRemoteAction('use_item', itemActionPayload);
-    };
     const clientMutationId = getLocalActionKey('use_item', itemActionPayload);
+    const submitItemActionIfRemote = () => {
+      if (activeRoomId && !canAuthoritativelyManageGame && actorId === localSeatId) void submitRemoteAction('use_item', { ...itemActionPayload, clientActionId: clientMutationId });
+    };
     if (activeRoomId && canAuthoritativelyManageGame && actorId === localSeatId) {
       pendingSequenceMetaRef.current = { type: 'item_used', actorId, clientMutationId, payload: itemActionPayload, action: { type: 'use_item', actorId, payload: withActorLogPayload({ ...itemActionPayload, clientActionId: clientMutationId }, itemOwnerSeat) } };
     }
