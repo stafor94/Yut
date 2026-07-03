@@ -2314,12 +2314,26 @@ aside.players,
   color: rgba(42, 30, 23, .64);
 }
 
-.lobby-room-card button {
-  align-self: end;
-  min-height: 48px;
-  border-radius: 16px;
+.lobby-room-card .lobby-room-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lobby-room-card .lobby-room-meta > span {
+  min-width: 0;
+}
+
+.lobby-room-card .lobby-room-action {
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 7px 12px;
+  border-radius: 999px;
   background: linear-gradient(135deg, #224236, #2f6b4f);
-  box-shadow: 0 14px 28px rgba(34, 66, 54, .18);
+  box-shadow: 0 10px 20px rgba(34, 66, 54, .16);
+  font-size: .82rem;
+  line-height: 1;
 }
 
 .empty-lobby-room {

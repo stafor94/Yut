@@ -284,6 +284,7 @@ export function App() {
   const [soundEnabled, setSoundEnabled] = useState(() => getStoredBoolean(STORAGE_KEYS.soundEnabled, true));
   const [message, setMessage] = useState('');
   const [actionErrorDialog, setActionErrorDialog] = useState('');
+  const [roomNoticeDialog, setRoomNoticeDialog] = useState<{ title: string; message: string } | null>(null);
   const [lastActionDiagnostic, setLastActionDiagnostic] = useState<{ type: string; message: string; reasons: string[]; createdAt: number } | null>(null);
   const [diagnosticDialogOpen, setDiagnosticDialogOpen] = useState(false);
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
@@ -419,6 +420,7 @@ export function App() {
   const aiTurnActionKeyRef = useRef('');
   const liveTurnGuardRef = useRef({ activeSeatId: '', winner: '', movingPieceId: '', pendingTrapPlacement: false, turnOrderActive: false, turnOrderIntro: false });
   const activeRoomIdRef = useRef('');
+  const activeRoomHostIdRef = useRef('');
   const logIdRef = useRef(0);
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
@@ -744,6 +746,7 @@ export function App() {
   useEffect(() => {
     const previousActiveRoomId = activeRoomIdRef.current;
     activeRoomIdRef.current = activeRoomId;
+    activeRoomHostIdRef.current = '';
     lastAppliedStateVersionRef.current = 0;
     lastAppliedSequenceRef.current = 0;
     processingActionIdsRef.current.clear();
@@ -897,6 +900,7 @@ export function App() {
       if (activeRoomIdRef.current !== subscribedRoomId) return;
       if (!room) {
         hostingRoomUserIdRef.current = '';
+        activeRoomHostIdRef.current = '';
         setScreen('lobby');
         setActiveRoomId('');
         setActiveRoomTitle('');
@@ -908,13 +912,19 @@ export function App() {
         setMessage('방이 종료되어 대기실로 이동했습니다.');
         return;
       }
+      const previousHostId = activeRoomHostIdRef.current;
+      const nextHostId = room.hostId ?? '';
+      const hostUserId = (userRef.current ?? currentUser)?.uid ?? hostingRoomUserIdRef.current;
+      if (previousHostId && previousHostId !== nextHostId && nextHostId && nextHostId === hostUserId && previousHostId !== hostUserId) {
+        setRoomNoticeDialog({ title: '방장이 되었습니다', message: '방장이 나가 새로운 방장이 되었습니다.' });
+      }
+      activeRoomHostIdRef.current = nextHostId;
       setActiveRoomTitle(room.title);
-      setActiveRoomHostId(room.hostId ?? '');
+      setActiveRoomHostId(nextHostId);
       setPlayMode(room.playMode);
       setMaxPlayers(room.maxPlayers as 2 | 3 | 4);
       setItemMode(room.itemMode);
       setPieceCount(room.pieceCount ?? 4);
-      const hostUserId = (userRef.current ?? currentUser)?.uid ?? hostingRoomUserIdRef.current;
       setIsRoomHost((previousIsRoomHost) => hostUserId ? room.hostId === hostUserId : previousIsRoomHost);
       const nextStartVersion = Number(room.startRequestVersion ?? 0);
       const nextCountdownStartsAt = Number(room.startCountdownStartsAt ?? 0);
@@ -932,6 +942,7 @@ export function App() {
       if (room.status === 'playing') setScreen('game');
       if (room.status === 'finished') {
         hostingRoomUserIdRef.current = '';
+        activeRoomHostIdRef.current = '';
         setScreen('lobby');
         setActiveRoomId('');
         setActiveRoomTitle('');
@@ -962,7 +973,8 @@ export function App() {
         setActiveRoomTitle('');
         setIsRoomHost(false);
         setCountdown(-1);
-        setMessage('방장에 의해 방에서 나갔습니다.');
+        setMessage('방장에게 강퇴당했습니다.');
+        setRoomNoticeDialog({ title: '방장에게 강퇴당했습니다.', message: '로비로 이동했습니다.' });
         return;
       }
       players.forEach((player) => {
@@ -2948,6 +2960,7 @@ export function App() {
     {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
 
     {actionErrorDialog && <div className="modal-backdrop" role="presentation" onMouseDown={() => setActionErrorDialog('')}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label="액션 오류" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">오류</p><h2>요청을 처리할 수 없습니다</h2><p>{actionErrorDialog}</p><div className="modal-actions"><button onClick={() => setActionErrorDialog('')}>확인</button></div></section></div>}
+    {roomNoticeDialog && <div className="modal-backdrop" role="presentation" onMouseDown={() => setRoomNoticeDialog(null)}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label={roomNoticeDialog.title} onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">방 알림</p><h2>{roomNoticeDialog.title}</h2><p>{roomNoticeDialog.message}</p><div className="modal-actions"><button onClick={() => setRoomNoticeDialog(null)}>확인</button></div></section></div>}
     {diagnosticDialogOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setDiagnosticDialogOpen(false)}><section className="diagnostic-modal panel" role="dialog" aria-modal="true" aria-label="게임 상태 분석 요청 데이터" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">분석 요청</p><h2>게임 상태 분석 데이터</h2><p className="diagnostic-description">아래 텍스트를 복사해 시스템에 전달하면 에러 원인 분석에 사용할 수 있습니다.</p><pre className="diagnostic-raw">{diagnosticText}</pre><div className="modal-actions"><button onClick={copyDiagnosticState}>{diagnosticCopied ? '복사 완료' : '복사'}</button><button className="secondary" onClick={() => setDiagnosticDialogOpen(false)}>닫기</button></div></section></div>}
 
     {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>닉네임 수정</h2><p>닉네임은 7글자까지 사용할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
@@ -2966,7 +2979,7 @@ export function App() {
         <div className="lobby-panel-heading">
           <p className="section-kicker">방 참여</p>
         </div>
-        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span>{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span></div><button disabled={isFirebaseConfigured && !currentUser} onClick={() => { void openWaitingRoom(room); }}>{isFirebaseConfigured && !currentUser ? '입장 준비 중' : room.status === 'playing' ? '관전' : '참여'}</button></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong></div>}</div>
+        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span className="lobby-room-meta"><span>{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span><button className="lobby-room-action" disabled={isFirebaseConfigured && !currentUser} onClick={() => { void openWaitingRoom(room); }}>{isFirebaseConfigured && !currentUser ? '준비 중' : room.status === 'playing' ? '관전' : '참여'}</button></span></div></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong></div>}</div>
       </section>
     </section>}
 
