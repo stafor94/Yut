@@ -2569,6 +2569,33 @@ export function App() {
     clearRoll();
     setMovingPieceId('');
     setMoveInProgressState(false);
+    if (activeRoomId && canCoordinateOnlineGame) {
+      const nextTurnIndex = shouldAdvanceTurn ? (turnIndex + 1) % Math.max(turnSeats.length, 1) : turnIndex;
+      const clientMutationId = `move_piece:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${pieceId}:${Date.now()}`;
+      pendingSequenceMetaRef.current = {
+        type: 'move_piece_resolved',
+        actorId: seat.id,
+        clientMutationId,
+        payload: {
+          activeSeatId: seat.id,
+          pieceId,
+          rollName: result.name,
+          rollSteps: result.steps,
+          extraSteps,
+          totalSteps: steps,
+          branchChoice: getEffectiveBranchChoice(movingPiece.nodeId, branchOverride),
+          fromNodeId: movingPiece.nodeId,
+          toNodeId: currentNodeId,
+          pathNodeIds: movePathNodeIds,
+          movingGroupIds,
+          nextTurnIndex,
+          extraTurn: nextTurnIndex === turnIndex,
+          extraTurnReasons: [result.bonus ? 'roll_bonus' : '', captured ? 'capture' : ''].filter(Boolean),
+        },
+        action: null,
+      };
+      setHostStateSaveKey((current) => current || clientMutationId);
+    }
     return true;
   }
 
