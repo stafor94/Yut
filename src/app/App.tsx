@@ -1449,7 +1449,7 @@ export function App() {
       const now = Date.now();
       if (now < startCountdownStartsAt) setCountdown(-1);
       else setCountdown(Math.max(0, Math.ceil((startCountdownEndsAt - now) / 1000)));
-      if (canManageRoom && now >= startCountdownEndsAt) {
+      if ((canManageRoom || canHostRoom) && now >= startCountdownEndsAt) {
         if (activeRoomId) {
           void measureFirebaseLatency(() => markRoomGameEntering(activeRoomId, startRequestVersion)).catch(() => undefined);
         }
@@ -1459,7 +1459,7 @@ export function App() {
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 250);
     return () => window.clearInterval(timer);
-  }, [activeRoomId, canManageRoom, countdown, startCountdownActive, startCountdownEndsAt, startCountdownStartsAt, startRequestVersion, startStatus]);
+  }, [activeRoomId, canHostRoom, canManageRoom, countdown, startCountdownActive, startCountdownEndsAt, startCountdownStartsAt, startRequestVersion, startStatus]);
 
   useEffect(() => {
     if (!activeRoomId || !currentUserId || screen !== 'game' || !startRequestVersion) return;
@@ -1863,11 +1863,15 @@ export function App() {
     return turnOrder;
   }
 
+  function formatTurnOrderSummary(turnOrder: Seat[]) {
+    return `순서: ${turnOrder.map((seat) => `${seat.label}-${seat.name}`).join(' > ')}`;
+  }
+
   function getTurnOrderLogTexts(rankedRolls: TurnOrderRoll[], turnOrder: Seat[]) {
     const rollSummary = rankedRolls.map((entry) => `${entry.seat.label} ${entry.result.name}${entry.rollOffRound > 1 ? `(${entry.rollOffRound}차)` : ''}`).join(' · ');
     return [
       `순서 정하기: ${rollSummary}`,
-      `차례 순서: ${turnOrder.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join(' / ')}`,
+      formatTurnOrderSummary(turnOrder),
     ];
   }
 
@@ -1903,8 +1907,7 @@ export function App() {
     const slotUntil = Date.now() + getTurnOrderSlotRevealDurationMs(order.length);
     const nextTurnOrderIntro = { order, visible: true, slotUntil, readyAt: slotUntil + TURN_ORDER_FINAL_HOLD_MS };
     const nextGameStartedAt = nextTurnOrderIntro.readyAt;
-    const orderText = orderedSeats.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join(' / ');
-    const introLog = makeLog(`순서 정하기: ${orderText}`);
+    const introLog = makeLog(formatTurnOrderSummary(orderedSeats));
     setLogs((currentLogs) => [introLog, ...currentLogs]);
     setTurnOrderIds(nextTurnOrderIds);
     setTurnOrderIntro(nextTurnOrderIntro);
@@ -1934,7 +1937,7 @@ export function App() {
     setWaitingForPlayersReady(Boolean(activeRoomId));
     setGameStartedAt(null);
     setScreen('game');
-    if (canManageRoom) {
+    if (canManageRoom || canHostRoom) {
       const initialSyncedState = {
         pieces: nextPieces,
         turnIndex: 0,
@@ -2016,9 +2019,8 @@ export function App() {
     const slotUntil = Date.now() + getTurnOrderSlotRevealDurationMs(order.length);
     const nextTurnOrderIntro = { order, visible: true, slotUntil, readyAt: slotUntil + TURN_ORDER_FINAL_HOLD_MS };
     const nextGameStartedAt = nextTurnOrderIntro.readyAt;
-    const orderText = orderedSeats.map((seat, index) => `${index + 1}. ${seat.label}-${seat.name}`).join('\n');
-    const finalOrderLog = `최종 차례 순서: ${orderText.replace(/\n/g, ' / ')}`;
-    const ceremonyLogs = [...timeoutLogTexts, ...getTurnOrderLogTexts(rankedRolls, orderedSeats), finalOrderLog].reverse().map((text) => makeLog(text));
+    const finalOrderLog = formatTurnOrderSummary(orderedSeats);
+    const ceremonyLogs = [...timeoutLogTexts, ...getTurnOrderLogTexts(rankedRolls, orderedSeats)].reverse().map((text) => makeLog(text));
 
     return {
       local: { completedRolls, orderedSeats, nextPieces, nextBoardItems, nextTurnOrderIds, nextTurnOrderPhase, nextTurnOrderIntro, nextGameStartedAt, finalOrderLog, nextLogs: [...ceremonyLogs, ...currentLogs] },
@@ -2152,8 +2154,7 @@ export function App() {
   }
   function isTurnOrderSystemLog(text: string) {
     return text.startsWith('순서 정하기:')
-      || text.startsWith('차례 순서:')
-      || text.startsWith('최종 차례 순서:')
+      || text.startsWith('순서:')
       || text.includes('자동 순서 정하기 굴림')
       || text.includes('재윷을 던집니다.');
   }
