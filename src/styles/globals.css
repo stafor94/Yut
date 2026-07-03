@@ -3900,3 +3900,95 @@ aside.players,
   from { opacity: .55; transform: scale(.96); }
   to { opacity: 1; transform: scale(1); }
 }
+
+.log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+}
+
+.log-header h2 {
+  margin: 0;
+}
+
+.diagnostic-button {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border-radius: 14px;
+  background: #fff3d8;
+  color: #7a4a26;
+  border: 2px solid rgba(122, 74, 38, .18);
+  box-shadow: 0 8px 18px rgba(42, 30, 23, .1);
+}
+
+.diagnostic-button:hover,
+.diagnostic-button:focus-visible {
+  background: #ffe3a8;
+  outline: 3px solid rgba(242, 184, 75, .34);
+}
+
+.diagnostic-modal {
+  width: min(100%, 760px);
+  max-height: min(86dvh, 760px);
+  display: grid;
+  gap: 14px;
+}
+
+.diagnostic-modal h2,
+.diagnostic-modal p {
+  margin: 0;
+}
+
+.diagnostic-description {
+  color: rgba(42, 30, 23, .68);
+  font-weight: 800;
+}
+
+.diagnostic-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.diagnostic-summary div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff3d8;
+  border: 1px solid rgba(122, 74, 38, .12);
+}
+
+.diagnostic-summary span {
+  color: rgba(42, 30, 23, .58);
+  font-size: .78rem;
+  font-weight: 900;
+}
+
+.diagnostic-summary strong {
+  overflow-wrap: anywhere;
+  color: #2a1e17;
+  font-size: .9rem;
+}
+
+.diagnostic-raw {
+  min-height: 180px;
+  max-height: 34dvh;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: #1f1a17;
+  color: #fff8ea;
+  font-size: .78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
