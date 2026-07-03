@@ -446,7 +446,8 @@ export function App() {
   const currentUserId = currentUser?.uid ?? '';
   const serverStatus = isFirebaseConfigured ? (currentUser ? '온라인' : '입장 준비 중') : '연결 정보 확인 필요';
   const serverStatusTone = isFirebaseConfigured ? (currentUser ? 'online' : 'pending') : 'offline';
-  const playableSeats = useMemo(() => seats.filter((seat) => !seat.isEmpty), [seats]);
+  const displaySeats = useMemo(() => screen === 'game' ? seats.map((seat) => ({ ...seat, isHost: false })) : seats, [screen, seats]);
+  const playableSeats = useMemo(() => displaySeats.filter((seat) => !seat.isEmpty), [displaySeats]);
   const teamCounts = useMemo(() => playableSeats.reduce<Record<Team, number>>((acc, seat) => ({ ...acc, [seat.team]: acc[seat.team] + 1 }), { 청팀: 0, 홍팀: 0 }), [playableSeats]);
   const teamBalanced = playMode === 'individual' || (maxPlayers === 4 && teamCounts.청팀 === 2 && teamCounts.홍팀 === 2);
   const allReady = seats.every((seat) => !seat.isEmpty && (seat.ready || seat.isAI)) && teamBalanced;
@@ -456,12 +457,14 @@ export function App() {
     return orderedSeats.length ? orderedSeats : playableSeats;
   }, [playableSeats, turnOrderIds]);
   const activeSeat = turnSeats[turnIndex % turnSeats.length];
-  const hostSeatId = playableSeats.find((seat) => seat.isHost)?.id ?? (activeRoomHostId || 'host');
+  const hostSeatId = (!activeRoomId || screen === 'waitingRoom') ? playableSeats.find((seat) => seat.isHost)?.id ?? (activeRoomHostId || 'host') : '';
   const localSeatId = activeRoomId ? currentUserId : hostSeatId;
   const isSpectator = Boolean(activeRoomId && currentUserId && spectators.some((spectator) => spectator.id === currentUserId));
-  const onlineGameRole = !activeRoomId ? 'offline' : isSpectator ? 'spectator' : currentUserId && (activeRoomHostId === currentUserId || hostSeatId === currentUserId) ? 'host' : 'player';
-  const isRoomManager = onlineGameRole === 'host' || Boolean(isRoomHost);
-  const isOnlinePlayer = onlineGameRole === 'host' || onlineGameRole === 'player';
+  const hasWaitingRoomHostAuthority = Boolean(screen === 'waitingRoom' && currentUserId && (activeRoomHostId === currentUserId || hostSeatId === currentUserId));
+  const isWaitingRoomHost = Boolean(screen === 'waitingRoom' && isRoomHost);
+  const onlineGameRole = !activeRoomId ? 'offline' : isSpectator ? 'spectator' : hasWaitingRoomHostAuthority ? 'host' : 'player';
+  const isRoomManager = hasWaitingRoomHostAuthority || isWaitingRoomHost;
+  const isOnlinePlayer = onlineGameRole === 'player';
   const onlineGameCoordinatorSeatId = playableSeats.find((seat) => !seat.isEmpty && !seat.isAI)?.id ?? '';
   const canCoordinateOnlineGame = !activeRoomId || Boolean(isOnlinePlayer && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
   const canManageRoom = isRoomManager;
@@ -641,7 +644,7 @@ export function App() {
   const diagnosticState = useMemo(() => ({
     screen,
     activeRoomId,
-    isRoomHost,
+    isRoomHost: isWaitingRoomHost,
     onlineGameRole,
     isRoomManager,
     isOnlinePlayer,
@@ -653,7 +656,7 @@ export function App() {
     hostSeatId,
     allReady,
     teamBalanced,
-    seats: seats.map((seat) => ({ id: seat.id, label: seat.label, ready: seat.ready, isAI: seat.isAI, isEmpty: seat.isEmpty, isHost: seat.isHost, team: seat.team })),
+    seats: displaySeats.map((seat) => ({ id: seat.id, label: seat.label, ready: seat.ready, isAI: seat.isAI, isEmpty: seat.isEmpty, isHost: seat.isHost, team: seat.team })),
     message,
     actionErrorDialog,
     lastActionDiagnostic,
@@ -716,7 +719,7 @@ export function App() {
     pendingTrapPlacement,
     itemPromptTiming,
     branchChoice,
-  }), [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice]);
+  }), [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
 
@@ -805,6 +808,12 @@ export function App() {
     else if (previousActiveRoomId) window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
   }, [activeRoomId, currentUser]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.isRoomHost, String(isRoomHost)); }, [isRoomHost]);
+
+  useEffect(() => {
+    if (screen !== 'game' || !isRoomHost) return;
+    setIsRoomHost(false);
+    window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+  }, [isRoomHost, screen]);
 
   useEffect(() => {
     let mounted = true;
@@ -1525,9 +1534,9 @@ export function App() {
   }, [activeRoomId, currentUserId, screen, startRequestVersion]);
 
   useEffect(() => {
-    if (!activeRoomId || !canManageRoom || screen !== 'game' || !waitingForPlayersReady || turnOrderIntro || turnOrderIds.length > 0 || !startRequestVersion || !allHumansEnteredGame) return;
+    if (!activeRoomId || !canCoordinateOnlineGame || screen !== 'game' || !waitingForPlayersReady || turnOrderIntro || turnOrderIds.length > 0 || !startRequestVersion || !allHumansEnteredGame) return;
     beginTurnOrderIntro();
-  }, [activeRoomId, allHumansEnteredGame, canManageRoom, screen, startRequestVersion, turnOrderIds.length, turnOrderIntro, waitingForPlayersReady]);
+  }, [activeRoomId, allHumansEnteredGame, canCoordinateOnlineGame, screen, startRequestVersion, turnOrderIds.length, turnOrderIntro, waitingForPlayersReady]);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || isMyTurn || winner) return undefined;
@@ -2921,7 +2930,7 @@ export function App() {
               {playMode === 'team' && <small>{seat.team}</small>}
             </span>
             <em className="game-player-status">{statusText}</em>
-            {!seat.isHost && !seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}
+            {!seat.isAI && <button className="mini-button" onClick={() => markPlayerAsAI(seat.id)}>나감 처리</button>}
           </div>;
         })}
         {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
