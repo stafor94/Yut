@@ -2416,3 +2416,67 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [ ] Browser visual timing check with 3+ players
 - [x] No unrelated UI redesign
 - [x] No new dependency
+
+## 2026-07-03 - Issue #304 Deploy Pages 동시 배포 충돌로 QA job 스킵 및 빈 실패 Issue 생성
+
+### Symptom
+
+- Issue #304에서 `Deploy Pages` job이 `Deployment failed, try again later.`로 실패했다.
+- `QA smoke`, `QA game flow`, `QA mobile layout`은 0초로 스킵되어 Playwright 로그와 test-results가 생성되지 않았다.
+- 생성된 Game QA 실패 Issue 본문은 실패 테스트명, 상세 로그, 콘솔 로그를 모두 추출하지 못해 원인 파악에 필요한 job 상태를 보여주지 못했다.
+
+### Expected behavior
+
+- merged PR QA는 GitHub Pages 배포가 성공한 뒤에만 실행되어야 한다.
+- 같은 Pages 대상 배포 workflow는 서로 충돌하지 않도록 순차 실행되어야 한다.
+- 배포 job이 실패하면 실패 Issue/요약에 개별 job 결과와 배포 실패 원인이 명시되어야 한다.
+
+### Actual behavior
+
+- `deploy-pages` 실패로 QA 전 cleanup 및 Playwright QA jobs가 의도대로 스킵됐지만, 실제 배포 실패 가능성을 키운 workflow concurrency가 PR 번호 기준으로 분리되어 있었다.
+- 요약 스크립트는 Playwright/build 로그 중심으로만 원인을 추정해 deploy-only 실패를 특정하지 못했다.
+
+### Reproduction steps
+
+1. merged PR QA workflow를 실행한다.
+2. `build`는 성공하지만 `deploy-pages`가 일시 실패한다.
+3. `qa-cleanup-before`와 Playwright QA jobs가 스킵된다.
+4. `qa-summary`가 빈 Playwright 로그 기반으로 Issue를 생성한다.
+
+### Suspected root cause
+
+- 같은 GitHub Pages 대상에 여러 merged PR workflow가 동시에 배포될 수 있는 concurrency 설정이었다.
+- QA summary가 `needs.*.result`를 본문에 전달하지 않았다.
+
+### Confirmed root cause
+
+- `.github/workflows/qa.yml`의 workflow concurrency group이 PR 번호 기반이라, 여러 merged PR workflow가 같은 GitHub Pages 대상에 동시에 배포할 수 있었다.
+- `cancel-in-progress: true`라서 같은 배포 대상의 이전 merged PR QA/deploy를 보존하지 않고 취소할 위험도 있었다.
+- `qa-cleanup-before`, `qa-smoke`, `qa-game-flow`, `qa-mobile`이 `deploy-pages`를 `needs`로 포함하는 것은 의도된 순서였으나, deploy failure 시 summary가 개별 job 결과를 보여주지 않아 원인 파악이 어려웠다.
+- `.github/scripts/summarize-qa.mjs`가 job 결과 환경 변수를 받지 않아 deploy failure를 자동 추정 원인으로 표시하지 못했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Playwright QA가 Pages 배포와 독립적으로 실행되도록 `deploy-pages` needs를 제거했다.
+  - Why it failed: 사용자는 배포 실패 시 반영된 페이지가 없으므로 이후 QA 3종을 진행하면 안 된다고 지적했다. 실제 수정 대상은 QA 분리가 아니라 Pages 배포 실패 원인인 workflow 동시 실행/배포 충돌 가능성이었다.
+
+### Do not try again
+
+- Playwright timeout이나 테스트 코드를 수정해 deploy-only 실패를 해결하려 하지 않는다.
+- 배포 실패 후 QA 3종을 강제로 실행하지 않는다.
+- Playwright 로그가 비어 있는 상태에서 테스트 실패로 단정하지 않는다.
+- PR 번호별 concurrency group으로 같은 Pages 대상 배포를 병렬 실행하게 두지 않는다.
+
+### Correct fix plan
+
+- QA cleanup-before와 Playwright QA jobs는 `deploy-pages` 성공 이후에만 실행되도록 유지한다.
+- workflow concurrency group을 PR 번호가 아니라 base branch/ref 기준으로 묶고 `cancel-in-progress: false`로 설정해 merged PR deploy/QA를 순차 실행한다.
+- QA summary에 개별 job 결과를 전달하고, deploy failure + 빈 Playwright 로그 상황을 명시적으로 원인 추정에 포함한다.
+
+### Verification checklist
+
+- [x] Workflow/script syntax check
+- [x] QA summary deploy-failure sample generation check
+- [x] Build succeeds
+- [ ] Merged PR QA rerun checked

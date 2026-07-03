@@ -89,6 +89,14 @@ const failedTests = extractFailedTests(playwrightLog);
 const failureBlocks = extractFailureBlocks(playwrightLog);
 const inferredCauses = inferFailureCauses(playwrightLog, consoleLog);
 const qaJobStatus = (process.env.QA_JOB_STATUS ?? '').toLowerCase();
+const jobResults = [
+  ['Build app', process.env.BUILD_JOB_RESULT],
+  ['Deploy Pages', process.env.DEPLOY_PAGES_JOB_RESULT],
+  ['QA smoke', process.env.QA_SMOKE_JOB_RESULT],
+  ['QA game flow', process.env.QA_GAME_FLOW_JOB_RESULT],
+  ['QA mobile layout', process.env.QA_MOBILE_JOB_RESULT],
+].filter(([, result]) => Boolean(result));
+const failedOrSkippedJobs = jobResults.filter(([, result]) => !['success', 'skipped'].includes(String(result).toLowerCase()));
 const isQaSuccess = qaJobStatus === 'success';
 
 const environment = [
@@ -106,6 +114,18 @@ const environment = [
   `- 실행 ID: \`${process.env.GITHUB_RUN_ID ?? 'unknown'}\``,
   `- 실행 URL: ${runUrl}`,
 ].join('\n');
+
+const jobResultSummary = [
+  '## Job 결과',
+  '',
+  jobResults.length > 0
+    ? jobResults.map(([name, result]) => `- ${name}: \`${result}\``).join('\n')
+    : 'Workflow job 결과 환경 변수가 없어 개별 job 상태를 확인하지 못했습니다.',
+].join('\n');
+
+if (failedOrSkippedJobs.some(([name]) => name === 'Deploy Pages') && playwrightLog.trim().length === 0) {
+  inferredCauses.unshift('`Deploy Pages` job이 실패해 배포 이후 QA job이 실행되지 않았고 Playwright 로그가 생성되지 않았습니다. Pages 배포 실패 원인과 workflow 동시 실행 여부를 먼저 확인해야 합니다.');
+}
 
 const failedTestsSummary = [
   '## 실패 테스트 후보',
@@ -221,6 +241,8 @@ const successSummary = [
   '',
   environment,
   '',
+  jobResultSummary,
+  '',
   successArtifacts,
   '',
   successLogSummary,
@@ -235,6 +257,8 @@ const failureSummary = [
   `- 실행 결과: ${runUrl}`,
   '',
   environment,
+  '',
+  jobResultSummary,
   '',
   inferredCauseSummary,
   '',
