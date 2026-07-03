@@ -2305,12 +2305,15 @@ aside.players,
 }
 
 .lobby-room-card div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   flex: 1 1 auto;
   min-width: 0;
 }
 
 .lobby-room-card b {
   display: block;
+  grid-column: 1 / -1;
   padding-right: 74px;
   color: #2a1e17;
   font-size: 1.14rem;
@@ -2321,14 +2324,12 @@ aside.players,
 }
 
 .lobby-room-card .lobby-room-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  display: contents;
 }
 
 .lobby-room-card .lobby-room-meta > span {
   min-width: 0;
+  grid-column: 1;
 }
 
 .lobby-room-card .lobby-room-action {
@@ -2381,11 +2382,6 @@ aside.players,
   .create-room-panel,
   .join-room-panel { border-radius: 24px; }
   .lobby-room-card { display: grid; }
-  .lobby-room-card .lobby-room-meta {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-  }
   .lobby-room-card .lobby-room-action { width: var(--lobby-room-action-width); }
 }
 
