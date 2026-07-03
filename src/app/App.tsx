@@ -1832,17 +1832,35 @@ export function App() {
   function getTurnOrderFromRolls(rolls: TurnOrderRoll[]) {
     const rankedRolls = [...rolls].sort((left, right) => getTurnOrderScore(right.result) - getTurnOrderScore(left.result));
     const turnOrder = playMode === 'team'
-      ? (() => {
-        const teamRankings = {
-          청팀: rankedRolls.filter((entry) => entry.seat.team === '청팀'),
-          홍팀: rankedRolls.filter((entry) => entry.seat.team === '홍팀'),
-        };
-        const firstTeam: Team = getTurnOrderScore((teamRankings.청팀[0] ?? rankedRolls[0]).result) >= getTurnOrderScore((teamRankings.홍팀[0] ?? rankedRolls[0]).result) ? '청팀' : '홍팀';
-        const secondTeam: Team = firstTeam === '청팀' ? '홍팀' : '청팀';
-        return [0, 1].flatMap((index) => [teamRankings[firstTeam][index], teamRankings[secondTeam][index]].filter(Boolean)).map((entry) => entry.seat);
-      })()
+      ? buildAlternatingTeamTurnOrder(rankedRolls)
       : rankedRolls.map((entry) => entry.seat);
     return { rankedRolls, turnOrder };
+  }
+
+  function buildAlternatingTeamTurnOrder(rankedRolls: TurnOrderRoll[]) {
+    const teamRankings = {
+      청팀: rankedRolls.filter((entry) => entry.seat.team === '청팀'),
+      홍팀: rankedRolls.filter((entry) => entry.seat.team === '홍팀'),
+    };
+    const blueTopScore = getTurnOrderScore((teamRankings.청팀[0] ?? rankedRolls[0]).result);
+    const redTopScore = getTurnOrderScore((teamRankings.홍팀[0] ?? rankedRolls[0]).result);
+    const firstTeam: Team = blueTopScore >= redTopScore ? '청팀' : '홍팀';
+    const secondTeam: Team = firstTeam === '청팀' ? '홍팀' : '청팀';
+    const teamQueues: Record<Team, TurnOrderRoll[]> = { 청팀: [...teamRankings.청팀], 홍팀: [...teamRankings.홍팀] };
+    const turnOrder: Seat[] = [];
+    let preferredTeam: Team = firstTeam;
+
+    while (teamQueues.청팀.length || teamQueues.홍팀.length) {
+      const previousTeam = turnOrder[turnOrder.length - 1]?.team;
+      const oppositeTeam = previousTeam === '청팀' ? '홍팀' : '청팀';
+      const nextTeam = previousTeam && teamQueues[oppositeTeam].length ? oppositeTeam : teamQueues[preferredTeam].length ? preferredTeam : secondTeam;
+      const nextRoll = teamQueues[nextTeam].shift();
+      if (!nextRoll) break;
+      turnOrder.push(nextRoll.seat);
+      preferredTeam = nextTeam === firstTeam ? secondTeam : firstTeam;
+    }
+
+    return turnOrder;
   }
 
   function getTurnOrderLogTexts(rankedRolls: TurnOrderRoll[], turnOrder: Seat[]) {
@@ -1876,7 +1894,10 @@ export function App() {
   }
 
   function beginTurnOrderIntro() {
-    const orderedSeats = shuffleSeatsForGame(playableSeats);
+    const shuffledSeats = shuffleSeatsForGame(playableSeats);
+    const orderedSeats = playMode === 'team'
+      ? buildAlternatingTeamTurnOrder(shuffledSeats.map((seat) => ({ seat, result: { name: '도', steps: 1, bonus: false }, rollOffRound: 1 })))
+      : shuffledSeats;
     const nextTurnOrderIds = orderedSeats.map((seat) => seat.id);
     const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
     const slotUntil = Date.now() + getTurnOrderSlotRevealDurationMs(order.length);
@@ -2123,13 +2144,22 @@ export function App() {
     return luminance > 0.62 ? '#2a1e17' : '#fffaf0';
   }
   function getLogCardStyle(text: string): CSSProperties {
+    if (isTurnOrderSystemLog(text)) return {};
     const seat = getLogSeat(text);
     if (!seat) return {};
     const backgroundColor = playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat);
     return { '--log-card-bg': backgroundColor, '--log-card-color': getReadableLogTextColor(backgroundColor), '--log-card-border': backgroundColor } as CSSProperties;
   }
+  function isTurnOrderSystemLog(text: string) {
+    return text.startsWith('순서 정하기:')
+      || text.startsWith('차례 순서:')
+      || text.startsWith('최종 차례 순서:')
+      || text.includes('자동 순서 정하기 굴림')
+      || text.includes('재윷을 던집니다.');
+  }
   function renderLogText(text: string) {
     const displayText = text.replace(/\(-?\d+칸\)/g, '');
+    if (isTurnOrderSystemLog(text)) return displayText;
     const tokenEntries = getEscapedLogSeatTokens();
     if (!tokenEntries.length) return displayText;
     return displayText.split(new RegExp(`(?<![A-Za-z0-9_])(${tokenEntries.map((entry) => entry.escapedToken).join('|')})(?![A-Za-z0-9_])`, 'gu')).map((part, index) => {
@@ -2296,9 +2326,11 @@ export function App() {
         return;
       }
 
-      setRollInProgress(true);
-      rollInProgressRef.current = true;
-      rollInProgressStartedAtRef.current = Date.now();
+      const optimisticRoll = rollYutFor(activeSeat, (rollPayload.forcedResult as YutResult | undefined) ?? null, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) });
+      if (!optimisticRoll) {
+        finishPendingRoll();
+        return;
+      }
 
       void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) })
         .then((result) => {
@@ -2526,12 +2558,14 @@ export function App() {
           .catch((error) => reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'));
         return true;
       }
+      void movePiece(payload.pieceId, roll, activeSeat, extraSteps, payload.branchChoice)
+        .catch((error) => reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'))
+        .finally(() => deletePendingLocalRemoteAction(actionKey));
       void commitAuthoritativeGameAction(activeRoomId, { type: 'move_piece', actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) })
         .then((result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') reportTurnActionFailure('move_piece', result.reason ?? '말 이동 처리에 실패했습니다.');
         })
-        .catch((error) => reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'))
-        .finally(() => deletePendingLocalRemoteAction(actionKey));
+        .catch((error) => reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'));
       return true;
     }
     if (!selectedPiece && !fallbackPiece) {
@@ -2861,7 +2895,7 @@ export function App() {
     <section className="hero panel">
       <div className="hero-copy" aria-hidden="true"></div>
       {screen === 'game' && <div data-testid="play-timer" className={`play-time ${winner ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}
-      <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`소리 ${soundEnabled ? '끄기' : '켜기'}`}><span className="sound-icon" aria-hidden="true"><span className="sound-icon-speaker"></span><span className="sound-icon-wave"></span></span></button><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><span className="status-text">{serverStatus}</span></div></div>
+      <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`소리 ${soundEnabled ? '끄기' : '켜기'}`}><span className="sound-icon" aria-hidden="true">{soundEnabled ? '🔊' : '🔇'}</span></button><div className={`status-card ${serverStatusTone}`} aria-label={`서버 상태: ${serverStatus}`}><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><span className="status-text">{serverStatus}</span></div></div>
     </section>
 
     {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
