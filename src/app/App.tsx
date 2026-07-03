@@ -7,7 +7,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, cleanupStaleRooms, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getRoom, heartbeatRoomPlayer, joinRoom, leaveDuplicatePlayerRooms, markGameActionProcessed, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribePendingGameActions, subscribeRoom, subscribeRoomPlayers, submitGameAction, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequence, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cancelRoomGameStart, cleanupStaleRooms, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getRoom, heartbeatRoomPlayer, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequence, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -458,11 +458,14 @@ export function App() {
   const activeSeat = turnSeats[turnIndex % turnSeats.length];
   const hostSeatId = playableSeats.find((seat) => seat.isHost)?.id ?? (activeRoomHostId || 'host');
   const localSeatId = activeRoomId ? currentUserId : hostSeatId;
-  const canHostRoom = Boolean(isRoomHost || (activeRoomId && currentUserId && activeRoomHostId === currentUserId));
-  const canManageRoom = canHostRoom || Boolean(activeRoomId && currentUserId && hostSeatId === currentUserId);
-  const canAuthoritativelyManageGame = canManageRoom;
-  const gameExitDescription = canAuthoritativelyManageGame ? '현재 방과 진행 중인 윷놀이가 종료됩니다.' : 'AI가 대신 플레이하게 됩니다.';
   const isSpectator = Boolean(activeRoomId && currentUserId && spectators.some((spectator) => spectator.id === currentUserId));
+  const onlineGameRole = !activeRoomId ? 'offline' : isSpectator ? 'spectator' : currentUserId && (activeRoomHostId === currentUserId || hostSeatId === currentUserId) ? 'host' : 'player';
+  const isRoomManager = onlineGameRole === 'host' || Boolean(isRoomHost);
+  const isOnlinePlayer = onlineGameRole === 'host' || onlineGameRole === 'player';
+  const onlineGameCoordinatorSeatId = playableSeats.find((seat) => !seat.isEmpty && !seat.isAI)?.id ?? '';
+  const canCoordinateOnlineGame = !activeRoomId || Boolean(isOnlinePlayer && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
+  const canManageRoom = isRoomManager;
+  const gameExitDescription = activeRoomId ? '현재 방에서 나가 로비로 이동합니다. 모든 사람 플레이어가 나가면 방이 종료됩니다.' : 'AI가 대신 플레이하게 됩니다.';
   const isMyTurn = activeSeat?.id === localSeatId && !activeSeat.isAI && !isSpectator;
   const getSeatById = (seatId: string) => playableSeats.find((seat) => seat.id === seatId);
   const getSeatColorIndex = (seat: Seat | undefined) => Math.max(0, Number(seat?.label.replace('P', '')) - 1);
@@ -529,7 +532,7 @@ export function App() {
   const raceBaseSeatIds = initialTurnOrderIds.length ? initialTurnOrderIds : turnOrderIds;
   const unfinishedRaceSeatIds = raceBaseSeatIds.filter((seatId) => !derivedCompletedSeatIds.includes(seatId));
   const derivedPartialFinish = Boolean(winner && playMode === 'individual' && raceBaseSeatIds.length >= 3 && unfinishedRaceSeatIds.length >= 2);
-  const canShowContinueRaceButton = Boolean(activeRoomId && canAuthoritativelyManageGame && playMode === 'individual' && (gameEndMode === 'partial_finish' || derivedPartialFinish) && unfinishedRaceSeatIds.length >= 2);
+  const canShowContinueRaceButton = Boolean(activeRoomId && playMode === 'individual' && (gameEndMode === 'partial_finish' || derivedPartialFinish) && unfinishedRaceSeatIds.length >= 2);
   const selectedMoveSteps = roll?.steps ?? 0;
   const isRollLocked = rollLockUntil > rollLockClock;
   const effectiveRollResultReadyAt = normalizeRollResultReadyAt(rollResultReadyAt);
@@ -537,8 +540,7 @@ export function App() {
   const activeTurnOrderIntro = turnOrderIntro && turnOrderIntro.readyAt > turnOrderClock ? turnOrderIntro : null;
   const waitingForOnlineTurnOrder = Boolean(screen === 'game' && activeRoomId && !turnOrderIds.length && !turnOrderPhase.active && !activeTurnOrderIntro);
   const trapPlacementActive = Boolean(pendingTrapPlacement);
-  const isRemoteActionClient = Boolean(activeRoomId && !canAuthoritativelyManageGame);
-  const hasPendingHostStateSave = Boolean(activeRoomId && canAuthoritativelyManageGame && hostStateSaveKey);
+  const hasPendingHostStateSave = Boolean(activeRoomId && canCoordinateOnlineGame && hostStateSaveKey);
   const turnActionGuardInput = {
     activeSeatId: activeSeat?.id,
     actorId: localSeatId,
@@ -556,7 +558,7 @@ export function App() {
     ...turnActionGuardInput,
     roll,
     rollLocked: isRollLocked,
-    remoteActionClient: isRemoteActionClient,
+    remoteActionClient: false,
     rollInProgress,
     pendingLocalRemoteActionCount: 0,
     processingActionCount: 0,
@@ -566,7 +568,7 @@ export function App() {
   const canMoveSelectedPiece = Boolean(roll && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const canRequestMove = Boolean(canSubmitTurnAction && roll && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && canMoveSelectedPiece);
   const canUseMoveButton = canRequestMove;
-  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingHostStateSave, isRemoteActionClient, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
+  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingHostStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
   const visibleBoardTurnSeat = activeSeat && !waitingForOnlineTurnOrder && !turnOrderPhase.active && !activeTurnOrderIntro ? activeSeat : undefined;
   const visibleBoardTurnIndex = visibleBoardTurnSeat ? turnSeats.findIndex((seat) => seat.id === visibleBoardTurnSeat.id) : -1;
@@ -592,7 +594,7 @@ export function App() {
   const localTurnOrderSeatRolled = rolledTurnOrderSeatIds.has(localSeatId);
   const isTurnOrderTimedOut = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline && playableSeats.some((seat) => !rolledTurnOrderSeatIds.has(seat.id)));
   const isTurnOrderFallbackDue = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline + TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS);
-  const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut && (!activeRoomId || canAuthoritativelyManageGame));
+  const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut && canCoordinateOnlineGame);
   liveTurnGuardRef.current = {
     activeSeatId: activeSeat?.id ?? '',
     winner,
@@ -640,9 +642,12 @@ export function App() {
     screen,
     activeRoomId,
     isRoomHost,
-    canHostRoom,
+    onlineGameRole,
+    isRoomManager,
+    isOnlinePlayer,
+    onlineGameCoordinatorSeatId,
+    canCoordinateOnlineGame,
     canManageRoom,
-    canAuthoritativelyManageGame,
     currentUserId,
     localSeatId,
     hostSeatId,
@@ -711,7 +716,7 @@ export function App() {
     pendingTrapPlacement,
     itemPromptTiming,
     branchChoice,
-  }), [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, canAuthoritativelyManageGame, canHostRoom, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice]);
+  }), [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingHostStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
 
@@ -929,12 +934,8 @@ export function App() {
         setMessage('방이 종료되어 대기실로 이동했습니다.');
         return;
       }
-      const previousHostId = activeRoomHostIdRef.current;
       const nextHostId = room.hostId ?? '';
       const hostUserId = (userRef.current ?? currentUser)?.uid ?? hostingRoomUserIdRef.current;
-      if (previousHostId && previousHostId !== nextHostId && nextHostId && nextHostId === hostUserId && previousHostId !== hostUserId) {
-        setRoomNoticeDialog({ title: '방장이 되었습니다', message: '방장이 나가 새로운 방장이 되었습니다.' });
-      }
       activeRoomHostIdRef.current = nextHostId;
       setActiveRoomTitle(room.title);
       setActiveRoomHostId(nextHostId);
@@ -983,7 +984,7 @@ export function App() {
       const currentUserId = (userRef.current ?? currentUser)?.uid;
       const hasCurrentUserInSnapshot = Boolean(currentUserId && players.some((player) => player.id === currentUserId && !player.isSpectator));
       if (hasCurrentUserInSnapshot) confirmedRoomPlayerRef.current = true;
-      if (currentUserId && !leavingRoomRef.current && !canAuthoritativelyManageGame && screen === 'waitingRoom' && confirmedRoomPlayerRef.current && !hasCurrentUserInSnapshot) {
+      if (currentUserId && !leavingRoomRef.current && !isRoomManager && screen === 'waitingRoom' && confirmedRoomPlayerRef.current && !hasCurrentUserInSnapshot) {
         confirmedRoomPlayerRef.current = false;
         setScreen('lobby');
         setActiveRoomId('');
@@ -1003,14 +1004,14 @@ export function App() {
           const optimisticAISeat = currentSeats.find((seat) => seat.id === nextSeat.id && seat.isAI);
           return optimisticAISeat ? { ...nextSeat, ...optimisticAISeat, isEmpty: false, ready: true, isAI: true } : nextSeat;
         });
-        if (!currentUserId || canAuthoritativelyManageGame || screen !== 'waitingRoom' || hasCurrentUserInSnapshot) return seatsWithPendingAI;
+        if (!currentUserId || isRoomManager || screen !== 'waitingRoom' || hasCurrentUserInSnapshot) return seatsWithPendingAI;
         if (seatsWithPendingAI.some((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI)) return seatsWithPendingAI;
         const optimisticSeat = currentSeats.find((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI);
         if (!optimisticSeat) return seatsWithPendingAI;
         return seatsWithPendingAI.map((seat) => seat.label === optimisticSeat.label ? { ...seat, ...optimisticSeat, isHost: false, isEmpty: false } : seat);
       });
       const nextSpectators = spectatorsFromRoomPlayers(players);
-      if (canAuthoritativelyManageGame && screen === 'game') {
+      if (canCoordinateOnlineGame && screen === 'game') {
         const previousIds = spectatorIdsRef.current;
         nextSpectators.forEach((spectator) => {
           if (!previousIds.has(spectator.id)) addLog(`${spectator.name}님이 관전자로 입장했습니다.`);
@@ -1020,7 +1021,7 @@ export function App() {
       setSpectators(nextSpectators);
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
-  }, [activeRoomHostId, activeRoomId, canAuthoritativelyManageGame, currentUserId, maxPlayers, playMode, screen]);
+  }, [activeRoomHostId, activeRoomId, canCoordinateOnlineGame, currentUserId, isRoomManager, maxPlayers, playMode, screen]);
 
   async function animateSyncedPieceMove(previousPieces: BoardPiece[], finalPieces: BoardPiece[], movedPieceIds: string[], steps: number, syncedBranchChoice: BranchChoice) {
     if (!movedPieceIds.length || moveInProgressRef.current) return false;
@@ -1214,11 +1215,11 @@ export function App() {
         window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
       }
     });
-  }, [activeRoomId, canAuthoritativelyManageGame, screen]);
+  }, [activeRoomId, canCoordinateOnlineGame, screen]);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || applyingSyncedStateRef.current) return;
-    if (!canAuthoritativelyManageGame) return;
+    if (!canCoordinateOnlineGame && !pendingSequenceMetaRef.current) return;
     if (moveInProgressRef.current || movingPieceId) return;
     const stateFingerprint = JSON.stringify({ pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, itemPromptTiming, effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, startRequestVersion });
     if (lastSavedStateFingerprintRef.current === stateFingerprint || savingStateFingerprintRef.current === stateFingerprint) return;
@@ -1246,7 +1247,7 @@ export function App() {
       if (!keepHostStateSavePending && savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
       if (!keepHostStateSavePending) setHostStateSaveKey((current) => current === stateFingerprint ? '' : current);
     });
-  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, captureEffect, completedSeatIds, continuationRound, effectiveRollResultReadyAt, gameEndMode, gameStartedAt, canAuthoritativelyManageGame, hostStateSaveRetryTick, initialTurnOrderIds, isSpectator, lastFinishedSeatId, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, rankingSeatIds, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, waitingForPlayersReady, startRequestVersion, winner, itemPromptTiming]);
+  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, captureEffect, completedSeatIds, continuationRound, effectiveRollResultReadyAt, gameEndMode, gameStartedAt, canCoordinateOnlineGame, hostStateSaveRetryTick, initialTurnOrderIds, isSpectator, lastFinishedSeatId, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, rankingSeatIds, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, waitingForPlayersReady, startRequestVersion, winner, itemPromptTiming]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -1301,7 +1302,7 @@ export function App() {
   }, [turnOrderIntro?.readyAt]);
 
   useEffect(() => {
-    if (!activeRoomId || !canAuthoritativelyManageGame || screen !== 'game' || !turnOrderIntro?.readyAt) return undefined;
+    if (!activeRoomId || !canCoordinateOnlineGame || screen !== 'game' || !turnOrderIntro?.readyAt) return undefined;
     const readyAt = turnOrderIntro.readyAt;
     const completeIntro = () => {
       if (completingTurnOrderIntroRef.current.has(readyAt)) return;
@@ -1315,7 +1316,7 @@ export function App() {
     const delayMs = Math.max(0, readyAt - Date.now());
     const timer = window.setTimeout(completeIntro, delayMs);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, canAuthoritativelyManageGame, localSeatId, screen, turnOrderIntro?.readyAt]);
+  }, [activeRoomId, canCoordinateOnlineGame, localSeatId, screen, turnOrderIntro?.readyAt]);
 
   useEffect(() => {
     if (rollLockUntil <= Date.now()) return undefined;
@@ -1382,7 +1383,7 @@ export function App() {
 
   useEffect(() => {
     if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || itemPromptTiming || !activeSeat || !activeSeat.isAI || isMyTurn || roll || movingPieceId || pendingTrapPlacement) return undefined;
-    if (activeRoomId && !canAuthoritativelyManageGame) return undefined;
+    if (!canCoordinateOnlineGame) return undefined;
     const actionKey = `${activeSeat.id}:${turnIndex}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (aiTurnActionKeyRef.current === actionKey) return undefined;
     const timer = window.setTimeout(() => {
@@ -1391,7 +1392,7 @@ export function App() {
       void autoPlayTurn(activeSeat, actionKey);
     }, TURN_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, activeTurnOrderIntro, canAuthoritativelyManageGame, isMyTurn, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingTrapPlacement, pieces, roll, screen, turnIndex, turnOrderPhase.active, winner]);
+  }, [activeRoomId, activeSeat, activeTurnOrderIntro, canCoordinateOnlineGame, isMyTurn, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingTrapPlacement, pieces, roll, screen, turnIndex, turnOrderPhase.active, winner]);
 
 
   useEffect(() => {
@@ -1406,26 +1407,26 @@ export function App() {
 
   useEffect(() => {
     if (!turnOrderPhase.active) return undefined;
-    if (activeRoomId && !canAuthoritativelyManageGame) return undefined;
+    if (!canCoordinateOnlineGame) return undefined;
     const timers = playableSeats
       .filter((seat) => seat.isAI && !rolledTurnOrderSeatIds.has(seat.id))
       .map((seat) => window.setTimeout(() => rollForTurnOrder(false, seat.id), Math.max(0, turnOrderPhase.readyAt - Date.now()) + TURN_ORDER_AI_MIN_DELAY_MS + Math.random() * TURN_ORDER_AI_DELAY_SPREAD_MS));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [activeRoomId, canAuthoritativelyManageGame, playableSeats, rolledTurnOrderSeatIds, turnOrderPhase]);
+  }, [activeRoomId, canCoordinateOnlineGame, playableSeats, rolledTurnOrderSeatIds, turnOrderPhase]);
 
 
   useEffect(() => {
     if (!turnOrderPhase.active || turnOrderPhase.readyAt > turnOrderClock || turnOrderPhase.deadline <= 0) return;
-    if (activeRoomId && !canAuthoritativelyManageGame) return;
+    if (!canCoordinateOnlineGame) return;
     if (turnOrderClock < turnOrderPhase.deadline) return;
     finishTurnOrderCeremony(turnOrderPhase.rolls);
-  }, [activeRoomId, canAuthoritativelyManageGame, turnOrderClock, turnOrderPhase]);
+  }, [activeRoomId, canCoordinateOnlineGame, turnOrderClock, turnOrderPhase]);
 
   useEffect(() => {
     if (!turnOrderPhase.active || turnOrderPhase.deadline <= 0 || !isTurnOrderFallbackDue) return;
-    if (activeRoomId && !canAuthoritativelyManageGame) return;
+    if (!canCoordinateOnlineGame) return;
     finishTurnOrderCeremony(turnOrderPhase.rolls);
-  }, [activeRoomId, canAuthoritativelyManageGame, isTurnOrderFallbackDue, turnOrderPhase]);
+  }, [activeRoomId, canCoordinateOnlineGame, isTurnOrderFallbackDue, turnOrderPhase]);
 
   useEffect(() => {
     if (!selectedBranchControlKey) {
@@ -1463,7 +1464,7 @@ export function App() {
 
   useEffect(() => {
     if (!roll || !activeSeat || !isMyTurn || movingPieceId || winner || rollResultHolding || pendingTrapPlacement) return;
-    if (activeRoomId && !canAuthoritativelyManageGame && !canRequestMove) return;
+    if (activeRoomId && !canRequestMove) return;
     const steps = roll.steps;
     const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (steps >= 0 || piece.started));
     if (movablePieces.length === 0) {
@@ -1482,14 +1483,15 @@ export function App() {
     if (needsBranchChoice) return;
     setSelectedPieceId(onlyPiece.id);
     const timer = window.setTimeout(() => {
-      if (activeRoomId && !canAuthoritativelyManageGame) {
+      if (activeRoomId) {
         if (!canRequestMove) return;
         void moveSelectedPiece();
+      } else {
+        void movePiece(onlyPiece.id, roll, activeSeat);
       }
-      else void movePiece(onlyPiece.id, roll, activeSeat);
     }, AUTO_SINGLE_MOVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, canAuthoritativelyManageGame, canRequestMove, isMyTurn, movingPieceId, pieces, turnSeats.length, roll, winner, rollResultHolding, pendingTrapPlacement]);
+  }, [activeRoomId, activeSeat, canRequestMove, isMyTurn, movingPieceId, pieces, turnSeats.length, roll, winner, rollResultHolding, pendingTrapPlacement]);
 
   useEffect(() => {
     if (!startCountdownActive) {
@@ -1500,7 +1502,7 @@ export function App() {
       const now = Date.now();
       if (now < startCountdownStartsAt) setCountdown(-1);
       else setCountdown(Math.max(0, Math.ceil((startCountdownEndsAt - now) / 1000)));
-      if ((canManageRoom || canHostRoom) && now >= startCountdownEndsAt) {
+      if (isRoomManager && now >= startCountdownEndsAt) {
         if (activeRoomId) {
           void measureFirebaseLatency(() => markRoomGameEntering(activeRoomId, startRequestVersion)).catch(() => undefined);
         }
@@ -1510,7 +1512,7 @@ export function App() {
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 250);
     return () => window.clearInterval(timer);
-  }, [activeRoomId, canHostRoom, canManageRoom, countdown, startCountdownActive, startCountdownEndsAt, startCountdownStartsAt, startRequestVersion, startStatus]);
+  }, [activeRoomId, isRoomManager, canManageRoom, countdown, startCountdownActive, startCountdownEndsAt, startCountdownStartsAt, startRequestVersion, startStatus]);
 
   useEffect(() => {
     if (!activeRoomId || !currentUserId || screen !== 'game' || !startRequestVersion) return;
@@ -1557,12 +1559,6 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [pendingTrapPlacement?.deadline]);
 
-  useEffect(() => {
-    if (!activeRoomId || !canAuthoritativelyManageGame || screen !== 'game') return undefined;
-    return subscribePendingGameActions(activeRoomId, (actions) => {
-      actions.forEach((action) => { void handleRemoteGameAction(action); });
-    });
-  }, [activeRoomId, canAuthoritativelyManageGame, screen, activeSeat?.id, roll, movingPieceId, pendingTrapPlacement, activeTurnOrderIntro, winner, lastMovedSeatId, turnOrderPhase]);
 
   const getLocalActionKey = (type: GameAction['type'], payload: Record<string, unknown> = {}) => {
     const turnKey = `${lastAppliedSequenceRef.current}:${turnIndex}:${roll ? `${roll.name}:${roll.steps}` : 'ready'}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
@@ -1572,7 +1568,6 @@ export function App() {
     if (type === 'place_trap') return `${type}:${localSeatId}:${pendingTrapPlacement?.pieceId ?? ''}:${payload.nodeId ?? ''}`;
     return `${type}:${localSeatId}:${turnKey}:${payload.itemType ?? ''}:${payload.pieceId ?? ''}`;
   };
-
 
   function getPlayerCardName(seat: Seat) {
     return seat.name.replace(new RegExp(`^${seat.label}\\s*-\\s*`), '');
@@ -1585,125 +1580,6 @@ export function App() {
 
   function withActorLogPayload(payload: Record<string, unknown> = {}, seat: Seat | undefined = getSeatById(localSeatId)) {
     return { ...payload, actorLabel: seat?.label ?? '', actorName: seat?.name ?? '', actorLogName: getActorLogName(seat) };
-  }
-
-  function makeSequenceAction(action: GameAction): Omit<GameAction, 'id' | 'createdAt' | 'processed'> {
-    return { type: action.type, actorId: action.actorId, payload: action.payload ?? {} };
-  }
-
-
-  async function submitRemoteAction(type: GameAction['type'], payload: Record<string, unknown> = {}) {
-    if (!activeRoomId) return;
-    const clientActionId = String(payload.clientActionId ?? getLocalActionKey(type, payload));
-    await submitGameAction(activeRoomId, { type, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId }) });
-  }
-
-  function submitLocalRemoteActionOnce(type: GameAction['type'], payload: Record<string, unknown> = {}) {
-    const actionKey = getLocalActionKey(type, payload);
-    if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
-    addPendingLocalRemoteAction(actionKey);
-    localClientMutationIdsRef.current.add(actionKey);
-    void submitRemoteAction(type, { ...payload, clientActionId: actionKey }).catch(() => {
-      deletePendingLocalRemoteAction(actionKey);
-    });
-    return true;
-  }
-
-  function retryRemoteGameAction(action: GameAction) {
-    if (remoteActionRetryTimersRef.current.has(action.id)) return;
-    const timer = window.setTimeout(() => {
-      remoteActionRetryTimersRef.current.delete(action.id);
-      void handleRemoteGameAction(action);
-    }, 250);
-    remoteActionRetryTimersRef.current.set(action.id, timer);
-  }
-
-  async function handleRemoteGameAction(action: GameAction) {
-    if (!activeRoomId || completedActionIdsRef.current.has(action.id) || processingActionIdsRef.current.has(action.id)) return;
-    const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
-    if (clientActionId && processedClientActionIdsRef.current.has(clientActionId)) {
-      completedActionIdsRef.current.add(action.id);
-      await markGameActionProcessed(activeRoomId, action.id);
-      return;
-    }
-    processingActionIdsRef.current.add(action.id);
-    let shouldMarkProcessed = false;
-    let shouldRetry = false;
-    try {
-      const actorSeat = playableSeats.find((seat) => seat.id === action.actorId);
-      const isActorsTurn = activeSeat?.id === action.actorId;
-      const remoteItemType = action.payload?.itemType as ItemType | undefined;
-      const isPostMoveItem = action.type === 'use_item' && (remoteItemType === 'shield' || remoteItemType === 'trap');
-      const isTrapPlacementAction = action.type === 'place_trap' && pendingTrapPlacement?.ownerId === action.actorId;
-      const canProcessDuringMove = !movingPieceId;
-      const canActorAct = Boolean(actorSeat && !winner && canProcessDuringMove && !activeTurnOrderIntro && (isActorsTurn || (isPostMoveItem && lastMovedSeatId === action.actorId) || isTrapPlacementAction));
-
-      if (savingStateFingerprintRef.current) {
-        shouldRetry = true;
-        return;
-      }
-
-      if (action.type === 'turn_order_roll') {
-        const hasActorAlreadyRolled = turnOrderPhase.rolls.some((rollEntry) => rollEntry.seat.id === action.actorId);
-
-        if (turnOrderPhase.active && !actorSeat) {
-          shouldRetry = true;
-        } else if (turnOrderPhase.active && Date.now() < turnOrderPhase.readyAt) {
-          shouldRetry = true;
-        } else if (turnOrderPhase.active && actorSeat && !hasActorAlreadyRolled) {
-          pendingSequenceMetaRef.current = { type: 'turn_order_roll', actorId: action.actorId, clientMutationId: clientActionId || `turn_order_roll:${action.actorId}:${turnOrderPhase.index}:${turnOrderPhase.rolls.length}`, payload: { rollIndex: turnOrderPhase.rolls.length }, action: makeSequenceAction(action) };
-          rollForTurnOrder(true, action.actorId);
-          shouldMarkProcessed = true;
-        } else if (turnOrderPhase.active && hasActorAlreadyRolled) {
-          shouldMarkProcessed = true;
-        } else if (activeTurnOrderIntro || gameStartedAt) {
-          shouldMarkProcessed = true;
-        }
-        return;
-      }
-
-      if (!actorSeat) { shouldRetry = true; return; }
-      if (action.type !== 'roll_yut' && action.type !== 'move_piece' && !canActorAct) {
-        shouldRetry = true;
-        return;
-      }
-      if (action.type !== 'roll_yut' && action.type !== 'move_piece' && action.type !== 'place_trap' && pendingTrapPlacement) { shouldRetry = true; return; }
-
-      if (action.type === 'roll_yut' || action.type === 'move_piece') {
-        const result = await measureFirebaseLatency(() => commitAuthoritativeGameAction(activeRoomId, makeSequenceAction(action)));
-        if (result.status === 'committed' || result.status === 'duplicate') {
-          shouldMarkProcessed = true;
-          return;
-        }
-        if (result.status === 'rejected' || result.status === 'unsupported') {
-          recordRemoteActionDiagnostic(action.type, 'remote-action-commit-result', result.reason ?? '원격 액션 처리에 실패했습니다.', { status: result.status, actionKey: clientActionId });
-          shouldMarkProcessed = true;
-          return;
-        }
-      }
-      if (action.type === 'use_item') {
-        pendingSequenceMetaRef.current = { type: 'item_used', actorId: action.actorId, clientMutationId: clientActionId || getLocalActionKey('use_item', action.payload ?? {}), payload: action.payload ?? {}, action: makeSequenceAction(action) };
-        useItem(remoteItemType as ItemType, action.actorId, action.payload ?? {});
-        shouldMarkProcessed = true;
-      }
-      if (action.type === 'place_trap') {
-        if (!pendingTrapPlacement || pendingTrapPlacement.ownerId !== action.actorId) { shouldRetry = true; return; }
-        pendingSequenceMetaRef.current = { type: 'trap_placed', actorId: action.actorId, clientMutationId: clientActionId || getLocalActionKey('place_trap', action.payload ?? {}), payload: action.payload ?? {}, action: makeSequenceAction(action) };
-        placePendingTrap(String(action.payload?.nodeId ?? ''), action.actorId);
-        shouldMarkProcessed = true;
-      }
-    } finally {
-      if (shouldMarkProcessed) {
-        const retryTimer = remoteActionRetryTimersRef.current.get(action.id);
-        if (retryTimer) window.clearTimeout(retryTimer);
-        remoteActionRetryTimersRef.current.delete(action.id);
-        completedActionIdsRef.current.add(action.id);
-        if (clientActionId) processedClientActionIdsRef.current.add(clientActionId);
-        await markGameActionProcessed(activeRoomId, action.id);
-      }
-      processingActionIdsRef.current.delete(action.id);
-      if (!shouldMarkProcessed && shouldRetry) retryRemoteGameAction(action);
-    }
   }
 
   async function waitForRoomCreationCleanup(label: string, cleanup: () => Promise<unknown>) {
@@ -1728,8 +1604,7 @@ export function App() {
     try {
       const previousRoom = await getRoom(previousRoomId);
       if (!previousRoom) return;
-      if (previousRoom.hostId === roomUser.uid) await deleteRoom(previousRoomId);
-      else await removeRoomPlayer(previousRoomId, roomUser.uid);
+      await removeRoomPlayer(previousRoomId, roomUser.uid);
     } catch (error) {
       console.warn('이전 방 정리에 실패했습니다.', error);
     } finally {
@@ -1833,7 +1708,7 @@ export function App() {
   function handleStartGame() {
     if (!activeRoomId) { setMessage('온라인 방 정보가 없어 게임을 시작할 수 없습니다.'); return; }
     if (!canManageRoom) { setMessage('방장 정보를 확인하는 중입니다. 잠시 뒤 다시 시도해주세요.'); return; }
-    if (!canHostRoom) setIsRoomHost(true);
+    if (!isRoomManager) setIsRoomHost(true);
     if (!allReady) { setMessage(playMode === 'team' && !teamBalanced ? '팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.' : '아직 준비하지 않은 플레이어가 있습니다.'); return; }
     const requestedAt = Date.now();
     const localVersion = startRequestVersion + 1;
@@ -1988,7 +1863,7 @@ export function App() {
     setWaitingForPlayersReady(Boolean(activeRoomId));
     setGameStartedAt(null);
     setScreen('game');
-    if (canManageRoom || canHostRoom) {
+    if (isRoomManager) {
       const initialSyncedState = {
         pieces: nextPieces,
         turnIndex: 0,
@@ -2109,7 +1984,7 @@ export function App() {
   }
 
   function finishTurnOrderCeremony(rolls: TurnOrderRoll[]) {
-    if (activeRoomId && !canAuthoritativelyManageGame) return;
+    if (!canCoordinateOnlineGame) return;
 
     const { local } = makeTurnOrderCeremonyPatch(rolls, logs);
     setPieces(local.nextPieces);
@@ -2137,10 +2012,10 @@ export function App() {
     const nextAnimation = { id: Date.now(), result: rolled.result, sticks: rolled.sticks, turnOrder: true };
     const logText = `${seat.label}이(가) 순서 정하기에서 ${rolled.result.name}(${getTurnOrderScore(rolled.result)}점)를 던졌습니다.`;
 
-    if (activeRoomId && !canAuthoritativelyManageGame && !fromRemote) {
-      if (requestedSeatId !== localSeatId) return;
-      if (!submitLocalRemoteActionOnce('turn_order_roll')) return;
-      return;
+    if (activeRoomId && requestedSeatId !== localSeatId && !fromRemote) return;
+    const clientMutationId = getLocalActionKey('turn_order_roll', {});
+    if (activeRoomId && requestedSeatId === localSeatId && !fromRemote) {
+      pendingSequenceMetaRef.current = { type: 'turn_order_roll', actorId: requestedSeatId, clientMutationId, payload: { rollIndex: turnOrderPhase.rolls.length }, action: { type: 'turn_order_roll', actorId: requestedSeatId, payload: withActorLogPayload({ clientActionId: clientMutationId }, seat) } };
     }
 
     let accepted = false;
@@ -2409,42 +2284,10 @@ export function App() {
         setRollInProgress(false);
       };
 
-      if (!canAuthoritativelyManageGame) {
-        const optimisticRoll = rollYutFor(activeSeat, (rollPayload.forcedResult as YutResult | undefined) ?? null, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) });
-        if (!optimisticRoll) {
-          finishPendingRoll();
-          return;
-        }
-        void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) })
-          .then((result) => {
-            if (result.status === 'committed' || result.status === 'duplicate') {
-              finishPendingRoll();
-              return;
-            }
-            recordRemoteActionDiagnostic('roll_yut', 'direct-commit-result', result.reason ?? '윷 던지기 처리에 실패했습니다.', { status: result.status, actionKey });
-            finishPendingRoll();
-          })
-          .catch((error) => {
-            recordRemoteActionDiagnostic('roll_yut', 'direct-commit-error', error instanceof Error ? error.message : '윷 던지기 직접 처리 중 Firebase 오류가 발생했습니다.', { actionKey });
-            void submitRemoteAction('roll_yut', { ...rollPayload, clientActionId: actionKey })
-              .catch((error) => {
-                recordRemoteActionDiagnostic('roll_yut', 'submit-remote-action-error', error instanceof Error ? error.message : '윷 던지기 요청을 보내지 못했습니다.', { actionKey });
-                finishPendingRoll();
-              });
-          });
-        return;
-      }
-
-      const optimisticRoll = rollYutFor(activeSeat, (rollPayload.forcedResult as YutResult | undefined) ?? null, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) });
-      if (!optimisticRoll) {
-        finishPendingRoll();
-        return;
-      }
-
       void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) })
         .then((result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') {
-            recordRemoteActionDiagnostic('roll_yut', 'host-commit-result', result.reason ?? '윷 던지기 처리에 실패했습니다.', { status: result.status, actionKey });
+            recordRemoteActionDiagnostic('roll_yut', 'commit-result', result.reason ?? '윷 던지기 처리에 실패했습니다.', { status: result.status, actionKey });
             return;
           }
           if (result.status === 'committed') {
@@ -2460,7 +2303,7 @@ export function App() {
             }
           }
         })
-        .catch((error) => recordRemoteActionDiagnostic('roll_yut', 'host-commit-error', error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.', { actionKey }))
+        .catch((error) => recordRemoteActionDiagnostic('roll_yut', 'commit-error', error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.', { actionKey }))
         .finally(finishPendingRoll);
       setForcedRoll(null);
       return;
@@ -2657,36 +2500,14 @@ export function App() {
       }
       addPendingLocalRemoteAction(actionKey);
       localClientMutationIdsRef.current.add(actionKey);
-      if (!canAuthoritativelyManageGame) {
-        void movePiece(payload.pieceId, roll, activeSeat, extraSteps, payload.branchChoice)
-          .catch((error) => reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'));
-        void commitAuthoritativeGameAction(activeRoomId, { type: 'move_piece', actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) })
-          .then((result) => {
-            if (result.status === 'committed' || result.status === 'duplicate') {
-              deletePendingLocalRemoteAction(actionKey);
-              return;
-            }
-            recordRemoteActionDiagnostic('move_piece', 'direct-commit-result', result.reason ?? '말 이동 처리에 실패했습니다.', { status: result.status, actionKey });
-            deletePendingLocalRemoteAction(actionKey);
-          })
-          .catch((error) => {
-            recordRemoteActionDiagnostic('move_piece', 'direct-commit-error', error instanceof Error ? error.message : '말 이동 직접 처리 중 Firebase 오류가 발생했습니다.', { actionKey });
-            void submitRemoteAction('move_piece', { ...payload, clientActionId: actionKey })
-              .catch((error) => {
-                recordRemoteActionDiagnostic('move_piece', 'submit-remote-action-error', error instanceof Error ? error.message : '말 이동 요청을 보내지 못했습니다.', { actionKey });
-                deletePendingLocalRemoteAction(actionKey);
-              });
-          });
-        return true;
-      }
-      void movePiece(payload.pieceId, roll, activeSeat, extraSteps, payload.branchChoice)
-        .catch((error) => reportTurnActionFailure('move_piece', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.'))
-        .finally(() => deletePendingLocalRemoteAction(actionKey));
       void commitAuthoritativeGameAction(activeRoomId, { type: 'move_piece', actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) })
         .then((result) => {
-          if (result.status === 'rejected' || result.status === 'unsupported') recordRemoteActionDiagnostic('move_piece', 'host-commit-result', result.reason ?? '말 이동 처리에 실패했습니다.', { status: result.status, actionKey });
+          if (result.status === 'rejected' || result.status === 'unsupported') {
+            recordRemoteActionDiagnostic('move_piece', 'commit-result', result.reason ?? '말 이동 처리에 실패했습니다.', { status: result.status, actionKey });
+          }
         })
-        .catch((error) => recordRemoteActionDiagnostic('move_piece', 'host-commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey }));
+        .catch((error) => recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey }))
+        .finally(() => deletePendingLocalRemoteAction(actionKey));
       return true;
     }
     if (!selectedPiece && !fallbackPiece) {
@@ -2760,14 +2581,10 @@ export function App() {
 
   function placePendingTrap(nodeId: string, actorId = localSeatId) {
     if (!pendingTrapPlacement || !pendingTrapPlacement.nodeIds.includes(nodeId)) return;
-    if (activeRoomId && !canAuthoritativelyManageGame && actorId === localSeatId) {
-      const clientActionId = getLocalActionKey('place_trap', { nodeId, pieceId: pendingTrapPlacement.pieceId });
-      void submitRemoteAction('place_trap', { nodeId, pieceId: pendingTrapPlacement.pieceId, clientActionId });
-    }
     const itemOwnerSeat = playableSeats.find((seat) => seat.id === pendingTrapPlacement.ownerId);
     const trapPiece = pieces.find((piece) => piece.id === pendingTrapPlacement.pieceId);
     if (!itemOwnerSeat || !trapPiece) { setPendingTrapPlacement(null); return; }
-    if (activeRoomId && canAuthoritativelyManageGame && actorId === localSeatId) {
+    if (activeRoomId && actorId === localSeatId) {
       const payload = { nodeId, pieceId: pendingTrapPlacement.pieceId };
       const clientMutationId = getLocalActionKey('place_trap', payload);
       pendingSequenceMetaRef.current = { type: 'trap_placed', actorId, clientMutationId, payload, action: { type: 'place_trap', actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) } };
@@ -2793,10 +2610,8 @@ export function App() {
     if (!activeItems.includes(type)) return;
     const itemActionPayload = { itemType: type, pieceId: selectedPieceId, branchChoice };
     const clientMutationId = getLocalActionKey('use_item', itemActionPayload);
-    const submitItemActionIfRemote = () => {
-      if (activeRoomId && !canAuthoritativelyManageGame && actorId === localSeatId) void submitRemoteAction('use_item', { ...itemActionPayload, clientActionId: clientMutationId });
-    };
-    if (activeRoomId && canAuthoritativelyManageGame && actorId === localSeatId) {
+    const submitItemActionIfRemote = () => undefined;
+    if (activeRoomId && actorId === localSeatId) {
       pendingSequenceMetaRef.current = { type: 'item_used', actorId, clientMutationId, payload: itemActionPayload, action: { type: 'use_item', actorId, payload: withActorLogPayload({ ...itemActionPayload, clientActionId: clientMutationId }, itemOwnerSeat) } };
     }
     const consumeItem = () => { clearTurnActionTimeoutPenalty(itemOwnerId); playSfx('itemUse'); setItemPromptTiming(null); setPendingTrapPlacement(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
@@ -2859,7 +2674,7 @@ export function App() {
 
 
   async function toggleMyReady() {
-    if (canAuthoritativelyManageGame) return;
+    if (isRoomManager) return;
     const mySeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
     if (!mySeat) { setMessage('내 참가 정보를 찾는 중입니다. 잠시 뒤 다시 시도하세요.'); return; }
     const nextReady = !mySeat.ready;
@@ -2901,7 +2716,6 @@ export function App() {
 
   function finishGame() {
     const finishedRoomId = activeRoomId;
-    const wasHost = canAuthoritativelyManageGame;
     hostingRoomUserIdRef.current = '';
     setScreen('lobby');
     setActiveRoomTitle('');
@@ -2914,20 +2728,12 @@ export function App() {
     setSeats(createSeats(nickname, playMode, maxPlayers));
     setEndGameDialogOpen(false);
     setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
-    if (finishedRoomId && wasHost) {
-      void deleteRoom(finishedRoomId);
-    } else if (finishedRoomId) {
-      void removeRoomPlayer(finishedRoomId, localSeatId);
-    }
+    if (finishedRoomId) void removeRoomPlayer(finishedRoomId, localSeatId);
   }
 
   function continueRace() {
     if (!activeRoomId) {
       setMessage('온라인 방 정보가 없어 이어서 진행할 수 없습니다.');
-      return;
-    }
-    if (!canAuthoritativelyManageGame) {
-      setMessage('방장만 이어서 진행할 수 있습니다.');
       return;
     }
     if (!canShowContinueRaceButton) {
