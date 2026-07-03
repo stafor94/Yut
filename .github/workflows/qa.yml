@@ -12,8 +12,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: merged-pr-qa-deploy-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: merged-pr-qa-deploy-${{ github.event.pull_request.base.ref || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -296,6 +296,11 @@ jobs:
         if: always()
         env:
           QA_JOB_STATUS: ${{ (needs.build.result == 'success' && needs.deploy-pages.result == 'success' && needs.qa-smoke.result == 'success' && needs.qa-game-flow.result == 'success' && needs.qa-mobile.result == 'success') && 'success' || 'failure' }}
+          BUILD_JOB_RESULT: ${{ needs.build.result }}
+          DEPLOY_PAGES_JOB_RESULT: ${{ needs.deploy-pages.result }}
+          QA_SMOKE_JOB_RESULT: ${{ needs.qa-smoke.result }}
+          QA_GAME_FLOW_JOB_RESULT: ${{ needs.qa-game-flow.result }}
+          QA_MOBILE_JOB_RESULT: ${{ needs.qa-mobile.result }}
         run: |
           node .github/scripts/summarize-qa.mjs
           cat qa-failure-summary.md >> "$GITHUB_STEP_SUMMARY"
