@@ -801,19 +801,26 @@ export async function removeRoomPlayer(roomId: string, playerId: string) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const roomRef = doc(db, 'rooms', roomId);
   const roomSnapshot = await getDoc(roomRef);
+  const room = roomSnapshot.exists() ? roomSnapshot.data() as Omit<RoomSummary, 'id'> : null;
   const playerRef = doc(db, 'rooms', roomId, 'players', playerId);
   const playerSnapshot = await getDoc(playerRef);
   const player = playerSnapshot.exists() ? playerSnapshot.data() as RoomPlayer : null;
   await deleteDoc(playerRef);
   if (player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) await deleteDoc(doc(db, 'rooms', roomId, 'seats', String(player.seatIndex)));
   await syncRoomPlayerCount(roomId);
-  const remainingPlayersSnapshot = await getDocs(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc'), limit(1)));
-  if (remainingPlayersSnapshot.empty) {
+  const remainingPlayersSnapshot = await getDocs(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc')));
+  const remainingPlayers = remainingPlayersSnapshot.docs.map((playerDoc) => ({ id: playerDoc.id, ...(playerDoc.data() as Omit<RoomPlayer, 'id'>) }));
+  const remainingActivePlayers = remainingPlayers.filter((remainingPlayer) => !remainingPlayer.isSpectator);
+  if (!remainingActivePlayers.length) {
     await deleteRoom(roomId);
     return;
   }
-  const room = roomSnapshot.exists() ? roomSnapshot.data() as Omit<RoomSummary, 'id'> : null;
-  await setDoc(roomRef, { emptySince: null, ...(room?.hostId === playerId ? { hostId: remainingPlayersSnapshot.docs[0].id } : {}) }, { merge: true });
+  const nextHost = room?.hostId === playerId ? remainingActivePlayers.find((remainingPlayer) => !remainingPlayer.isAI) : null;
+  if (room?.hostId === playerId && !nextHost) {
+    await deleteRoom(roomId);
+    return;
+  }
+  await setDoc(roomRef, { emptySince: null, ...(nextHost ? { hostId: nextHost.id } : {}) }, { merge: true });
 }
 
 export async function updateRoomStatus(roomId: string, status: RoomSummary['status']) {
