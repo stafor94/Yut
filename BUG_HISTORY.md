@@ -2604,3 +2604,61 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Workflow syntax/static inspection
 - [x] Build succeeds
 - [ ] main push workflow rerun checked
+
+## 2026-07-03 - Issue #321 Game QA regression smoke game-screen timeout
+
+### Symptom
+
+- GitHub Actions run `28644495313`에서 `test:game-flow` job의 regression smoke가 `start-countdown-overlay` 확인 후 `game-screen`을 25초 안에 찾지 못해 실패했다.
+- 같은 job 안의 기본 game-flow QA는 성공했고, mobile/smoke QA도 성공했다.
+
+### Expected behavior
+
+- 온라인 Firebase 상태를 사용하는 game-flow/regression QA는 서로의 방 생성/시작 상태에 영향을 주지 않고 안정적으로 순차 검증되어야 한다.
+- 게임 화면 진입 실패 시에는 현재 화면, 대기실 텍스트, 앱 debug state가 실패 메시지에 남아야 한다.
+
+### Actual behavior
+
+- CI 로그는 `Running 3 tests using 2 workers`로 live Firebase 기반 game-flow/regression 테스트를 동시에 실행했다.
+- regression smoke의 `game-screen` assertion에는 `collectScreenState()` 메시지가 없어 대기실 잔류/상태 전환 지연/디버그 상태를 Issue 본문만으로 확인하기 어려웠다.
+
+### Reproduction steps
+
+1. main push 후 `Merged PR QA and Deploy` workflow를 실행한다.
+2. `QA game flow` job에서 `npm run test:game-flow`가 `tests/online`, `tests/game-flow`, `tests/regression`을 실행한다.
+3. CI runner가 2 workers로 live Firebase 기반 테스트 파일을 병렬 실행한다.
+4. regression smoke가 countdown 이후 `game-screen` 전환을 기다리다 timeout될 수 있다.
+
+### Suspected root cause
+
+- 원격 Firebase/배포 환경을 공유하는 상태ful QA 파일들이 2 workers로 동시에 방 생성/AI 추가/게임 시작/cleanup을 수행해 CI 타이밍 경합이 발생했다.
+- regression smoke만 게임 화면 진입 실패 메시지에 화면/debug state를 포함하지 않아 반복 실패 시 원인 고정이 어려웠다.
+
+### Confirmed root cause
+
+- Issue #321 로그에서 `test:game-flow`는 2 workers로 실행됐고, 실패한 regression smoke는 `game-screen` locator timeout만 남겼다.
+- 로컬 환경에서는 Playwright 브라우저 바이너리 부재로 동일 E2E 재현은 불가능했지만, workflow/package script상 worker 제한이 없어 CI에서 병렬 실행되는 경로는 확인됐다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: game-flow/basic-turn에는 `collectScreenState()` 진단 메시지가 추가되어 있었다.
+  - Why it failed: regression smoke의 동일한 게임 시작 assertion에는 진단 메시지가 없고, live Firebase 기반 game-flow job 병렬 실행은 제한되지 않았다.
+
+### Do not try again
+
+- 원인 확인 없이 `game-screen` timeout만 계속 늘리지 않는다.
+- live Firebase를 공유하는 game-flow/regression QA를 병렬 worker로 계속 실행하지 않는다.
+- 실패 메시지에 화면/debug state 없이 locator timeout만 남기지 않는다.
+
+### Correct fix plan
+
+- `test:game-flow`를 `--workers=1`로 실행해 online/game-flow/regression QA를 순차화한다.
+- regression smoke의 게임 화면 진입 assertion에도 `collectScreenState()` 진단 메시지를 추가한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] `test:game-flow` script worker 제한 확인
+- [ ] CI merged PR QA rerun checked
+- [x] No unrelated UI changes
