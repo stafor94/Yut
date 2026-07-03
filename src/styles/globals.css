@@ -2270,6 +2270,7 @@ aside.players,
 
 .lobby-room-card {
   --lobby-room-status-width: 62px;
+  --lobby-room-action-width: 52px;
   position: relative;
   overflow: hidden;
   margin: 0;
@@ -2332,7 +2333,7 @@ aside.players,
 .lobby-room-card .lobby-room-action {
   flex: 0 0 auto;
   min-height: 0;
-  inline-size: var(--lobby-room-status-width);
+  inline-size: var(--lobby-room-action-width);
   padding: 7px 0;
   border-radius: 999px;
   text-align: center;
@@ -2376,7 +2377,7 @@ aside.players,
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
   }
-  .lobby-room-card .lobby-room-action { width: var(--lobby-room-status-width); }
+  .lobby-room-card .lobby-room-action { width: var(--lobby-room-action-width); }
 }
 
 .nickname-chip {
@@ -2750,9 +2751,9 @@ aside.players,
 }
 .compact-ready-card {
   position: relative;
-  gap: 10px;
-  min-height: 132px;
-  padding: 14px;
+  gap: 8px;
+  min-height: 116px;
+  padding: 10px 14px;
   overflow: hidden;
   border-left: 8px solid rgba(42, 30, 23, .16);
 }
@@ -2797,8 +2798,8 @@ aside.players,
 }
 
 .player-view .compact-ready-card {
-  min-height: 150px;
-  padding: 16px;
+  min-height: 126px;
+  padding: 11px 14px;
 }
 .role-actions button { min-width: 142px; }
 .player-view .compact-ready-card select:disabled { opacity: 1; color: rgba(42, 30, 23, .82); }
@@ -2816,7 +2817,7 @@ aside.players,
   .waiting-main-grid { overflow: hidden; }
   .waiting-setup-card,
   .compact-ready-list { max-height: 100%; overflow: visible; }
-  .compact-ready-card { min-height: 108px; padding: 10px; }
+  .compact-ready-card { min-height: 96px; padding: 8px 10px; }
 }
 
 @media (max-width: 899px) {
@@ -2845,7 +2846,7 @@ aside.players,
 @media (max-width: 560px) {
   .compact-ready-list, .compact-options { grid-template-columns: 1fr; }
   .player-view .compact-ready-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .player-view .compact-ready-card { min-height: 138px; padding: 13px; }
+  .player-view .compact-ready-card { min-height: 112px; padding: 9px 12px; }
   .player-view .seat-topline b { width: 42px; height: 42px; }
   .compact-options .radio-group:nth-of-type(2) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .compact-options .radio-group:nth-of-type(3) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -3372,6 +3373,16 @@ aside.players,
   .empty-lobby-room strong {
     font-size: 1.35rem;
     line-height: 1.25;
+  }
+
+  .lobby-room-card .lobby-room-meta > span {
+    font-size: .92rem;
+    line-height: 1.35;
+  }
+
+  .lobby-room-card .lobby-room-action {
+    min-height: 48px;
+    font-size: .92rem;
   }
 
   .empty-lobby-room {
