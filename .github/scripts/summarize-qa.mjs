@@ -213,6 +213,8 @@ const issueSummary = [
   `- 이벤트: \`${process.env.GITHUB_EVENT_NAME ?? 'unknown'}\``,
   `- 실행 결과: ${runUrl}`,
   '',
+  jobResultSummary,
+  '',
   inferredCauseSummary,
   '',
   failedTestsSummary,

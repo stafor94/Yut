@@ -2484,3 +2484,62 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] QA summary deploy-failure sample generation check
 - [x] Build succeeds
 - [ ] Merged PR QA rerun checked
+
+## 2026-07-03 - Issue #317 Deploy Pages 액션 버전 태그 오류로 QA job 스킵
+
+### Symptom
+
+- Issue #317에서 PR #316 병합 후 `Deploy Pages` job이 실패했다.
+- `QA smoke`, `QA game flow`, `QA mobile layout`은 배포 실패로 실행되지 않았고 Playwright 로그가 생성되지 않았다.
+
+### Expected behavior
+
+- GitHub Pages 배포 job은 공식 Pages 배포 액션의 존재하는 major tag를 사용해야 한다.
+- 배포 실패 Issue 본문에는 개별 job 결과가 함께 포함되어야 한다.
+
+### Actual behavior
+
+- workflow가 `actions/deploy-pages@v5`를 참조했다.
+- 공식 `actions/deploy-pages` 문서/마켓플레이스 예시는 현재 major tag로 `v4`를 안내한다.
+- QA summary 스크립트는 job 결과 요약을 생성했지만 Issue 본문용 요약에는 포함하지 않아 deploy-only 실패에서 확인 정보가 부족했다.
+
+### Reproduction steps
+
+1. PR #316 병합으로 merged PR QA workflow를 실행한다.
+2. `Deploy Pages` job에서 `actions/deploy-pages@v5` step을 실행한다.
+3. 배포 job 실패로 후속 QA jobs가 skip된다.
+4. 자동 생성 Issue 본문에는 Playwright 로그가 비어 있고 job 결과 표가 빠진다.
+
+### Suspected root cause
+
+- 이전 안정화에서 deploy-pages action을 존재하지 않거나 공식 문서와 맞지 않는 `v5` major tag로 올렸다.
+- Issue 본문용 summary 조립부에 `jobResultSummary`가 누락됐다.
+
+### Confirmed root cause
+
+- `.github/workflows/qa.yml`의 deploy step이 `actions/deploy-pages@v5`였다.
+- `.github/scripts/summarize-qa.mjs`는 `jobResultSummary`를 failure summary에는 넣지만 `qa-issue-summary.md`에는 넣지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: PR #316에서 deploy job을 `actions/deploy-pages@v5`로 갱신했다.
+  - Why it failed: 공식 사용 예시와 맞지 않는 major tag를 참조해 deploy step 자체가 안정적으로 실행될 수 없었다.
+
+### Do not try again
+
+- 공식 문서/마켓플레이스에서 확인되지 않은 Pages action major tag로 올리지 않는다.
+- deploy-only 실패를 Playwright 테스트 실패로 보지 않는다.
+- Playwright timeout이나 테스트 코드를 수정해 Pages action 참조 오류를 해결하려 하지 않는다.
+
+### Correct fix plan
+
+- `actions/deploy-pages`를 공식 문서에서 안내하는 `v4` major tag로 되돌린다.
+- Issue 본문용 QA 요약에도 개별 job 결과를 포함한다.
+
+### Verification checklist
+
+- [x] Workflow/script syntax check
+- [x] QA summary deploy-failure sample generation check
+- [x] Build succeeds
+- [ ] Merged PR QA rerun checked
