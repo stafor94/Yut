@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { User } from 'firebase/auth';
-import { GameBoard, type BoardPiece } from '../features/game/components/GameBoard';
+import type { BoardPiece } from '../features/game/components/GameBoard';
 import { ItemCard } from '../features/items/components/ItemCard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, saveGameState, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, saveGameState, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
+import { useGameStatePersistence } from './hooks/useGameStatePersistence';
+import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';
 import { useRoomPresence } from './hooks/useRoomPresence';
 import { useTurnOrderAutoFinish, useTurnOrderClock, useTurnOrderPortraitScroll } from './hooks/useTurnOrderTimers';
-import { BoardPanel, GameLogPanel, GameScreen, PlayersPanel } from './screens/GameScreen';
-import { LobbyScreen } from './screens/LobbyScreen';
-import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from './screens/WaitingRoomScreen';
+import { BoardPanel, GameScreen } from './screens/GameScreen';
+import { GameLogPanelView, GamePlayersPanel } from './containers/GamePanels';
+import { BoardMessageStack, GoldenYutPicker, RollStage, TurnIndicator, WinnerOverlay } from './containers/GameBoardOverlays';
+import { GameBoardControls } from './containers/GameBoardControls';
+import { GameBoardSection } from './containers/GameBoardSection';
+import { LobbyContainer } from './containers/LobbyContainer';
+import { WaitingRoomContainer } from './containers/WaitingRoomContainer';
 import {
   AI_NAME_BASES,
   AI_NAME_PREFIXES,
@@ -58,27 +64,26 @@ import {
   type TurnOrderPhase,
   type TurnOrderRoll,
 } from './appState';
+import {
+  delay,
+  formatRoomRuleText,
+  formatStoredLogSequence,
+  getEffectiveBranchChoice,
+  getMovePreviewNodeIds,
+  getTurnOrderSlotRevealDurationMs,
+  getTurnOrderStoppedSlotCount,
+  normalizeMaxPlayers,
+  normalizeRollResultReadyAt,
+  splitMessageBySentence,
+  withAndParticle,
+  withSubjectParticle,
+} from './appUtils';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
+import { makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
 import '../styles/globals.css';
 
-const getTurnOrderSlotRevealDurationMs = (orderLength: number) => {
-  if (orderLength <= 0) return 0;
-  if (orderLength === 1) return TURN_ORDER_INITIAL_SLOT_SPIN_MS;
-  return TURN_ORDER_INITIAL_SLOT_SPIN_MS + Math.max(0, orderLength - 2) * TURN_ORDER_SLOT_REVEAL_INTERVAL_MS + TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS;
-};
-const getTurnOrderStoppedSlotCount = (orderLength: number, elapsedMs: number) => {
-  if (orderLength <= 0 || elapsedMs < TURN_ORDER_INITIAL_SLOT_SPIN_MS) return 0;
-  if (orderLength === 1) return 1;
-  const beforeLastCount = Math.min(orderLength - 1, 1 + Math.floor((elapsedMs - TURN_ORDER_INITIAL_SLOT_SPIN_MS) / TURN_ORDER_SLOT_REVEAL_INTERVAL_MS));
-  const lastRevealAt = TURN_ORDER_INITIAL_SLOT_SPIN_MS + Math.max(0, orderLength - 2) * TURN_ORDER_SLOT_REVEAL_INTERVAL_MS + TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS;
-  return elapsedMs >= lastRevealAt ? orderLength : beforeLastCount;
-};
-const normalizeMaxPlayers = (value: unknown, mode: PlayMode): 2 | 3 | 4 => {
-  if (mode === 'team') return 4;
-  return value === 2 || value === 3 || value === 4 ? value : 4;
-};
 const TURN_DELAY_MS = 650;
 const START_COUNTDOWN_DELAY_MS = 1000;
 const START_COUNTDOWN_MS = 5000;
@@ -110,28 +115,6 @@ const TOAST_MESSAGE_MS = 4000;
 const CREATE_ROOM_TIMEOUT_MS = 12000;
 const CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;
 const STEP_DELAY_MS = 240;
-const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-const splitMessageBySentence = (message: string) => message.match(/.+?(?:[.!?。]|…+)(?=\s|$)|.+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [message];
-const normalizeRollResultReadyAt = (readyAt: number, now = Date.now()) => {
-  const maxExpectedReadyAt = now + ROLL_ANIMATION_MS + ROLL_RESULT_HOLD_GRACE_MS;
-  return readyAt > now && readyAt <= maxExpectedReadyAt ? readyAt : 0;
-};
-const hasFinalConsonant = (text: string) => {
-  const lastCode = text.charCodeAt(text.length - 1);
-  return lastCode >= 0xac00 && lastCode <= 0xd7a3 && (lastCode - 0xac00) % 28 > 0;
-};
-const withSubjectParticle = (text: string) => `${text}${hasFinalConsonant(text) ? '이' : '가'}`;
-const withAndParticle = (text: string) => `${text}${hasFinalConsonant(text) ? '과' : '와'}`;
-const formatStoredLogSequence = (log: GameLog, displayIndex?: number) => `#${String(displayIndex ?? log.id).padStart(3, '0')}`;
-const formatRoomRuleText = (mode: PlayMode, players: 2 | 3 | 4, pieces: PieceCount, itemsEnabled: boolean) => `${mode === 'team' ? '팀전' : '개인전'} · ${players}인 · ${mode === 'team' ? `팀별 말 ${pieces}개` : `말 ${pieces}개`} · 아이템 ${itemsEnabled ? 'ON' : 'OFF'}`;
-
-const getEffectiveBranchChoice = (nodeId: string, branchChoice: BranchChoice) => BRANCH_NODE_IDS.includes(nodeId as typeof BRANCH_NODE_IDS[number]) ? branchChoice : 'outer';
-
-const getMovePreviewNodeIds = (piece: BoardPiece | undefined, result: YutResult | null, branchChoice: BranchChoice) => {
-  if (!piece || !result || piece.finished) return [];
-  if (result.steps < 0 && !piece.started) return [];
-  return getMovePathNodeIds(piece.nodeId, result.steps, getEffectiveBranchChoice(piece.nodeId, branchChoice));
-};
 
 export function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -222,10 +205,7 @@ export function App() {
   const [itemPickupClock, setItemPickupClock] = useState(() => Date.now());
   const [rollInProgress, setRollInProgress] = useState(false);
   const [moveInProgress, setMoveInProgress] = useState(false);
-  const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
   const [turnActionTimeoutPenaltyBySeatId, setTurnActionTimeoutPenaltyBySeatId] = useState<Record<string, boolean>>({});
-  const [hostStateSaveKey, setHostStateSaveKey] = useState('');
-  const [hostStateSaveRetryTick, setHostStateSaveRetryTick] = useState(0);
   const processingActionIdsRef = useRef<Set<string>>(new Set());
   const completedActionIdsRef = useRef<Set<string>>(new Set());
   const processedClientActionIdsRef = useRef<Set<string>>(new Set());
@@ -236,10 +216,18 @@ export function App() {
     moveInProgressRef.current = nextMoveInProgress;
     setMoveInProgress(nextMoveInProgress);
   }
-  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
-  const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
-  const pendingLocalRemoteActionMetaRef = useRef<Map<string, { type: GameAction['type']; createdAt: number }>>(new Map());
-  const localClientMutationIdsRef = useRef<Set<string>>(new Set());
+  const {
+    pendingLocalRemoteActionCount,
+    pendingLocalRemoteActionsRef,
+    rejectedRemoteActionKeysRef,
+    pendingLocalRemoteActionMetaRef,
+    localClientMutationIdsRef,
+    getPendingLocalRemoteActionType,
+    addPendingLocalRemoteAction,
+    deletePendingLocalRemoteAction,
+    acknowledgePendingLocalRemoteAction,
+    clearPendingLocalRemoteActions,
+  } = usePendingRemoteActions();
   const localActionCommitQueueRef = useRef(Promise.resolve());
   const sequenceReplayInProgressRef = useRef(false);
   const queuedSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
@@ -255,31 +243,6 @@ export function App() {
   const enteredGamePresenceKeyRef = useRef('');
   const startedGameRequestVersionsRef = useRef<Set<number>>(new Set());
 
-  const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(pendingLocalRemoteActionsRef.current.size);
-  const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {
-    const [type] = actionKey.split(':');
-    return (type || 'roll_yut') as GameAction['type'];
-  };
-  const addPendingLocalRemoteAction = (actionKey: string, type = getPendingLocalRemoteActionType(actionKey)) => {
-    pendingLocalRemoteActionsRef.current.add(actionKey);
-    pendingLocalRemoteActionMetaRef.current.set(actionKey, { type, createdAt: Date.now() });
-    syncPendingLocalRemoteActionCount();
-  };
-  const deletePendingLocalRemoteAction = (actionKey: string) => {
-    pendingLocalRemoteActionsRef.current.delete(actionKey);
-    pendingLocalRemoteActionMetaRef.current.delete(actionKey);
-    syncPendingLocalRemoteActionCount();
-  };
-  const acknowledgePendingLocalRemoteAction = (clientMutationId: unknown) => {
-    if (typeof clientMutationId !== 'string' || !clientMutationId) return;
-    if (!pendingLocalRemoteActionsRef.current.has(clientMutationId)) return;
-    deletePendingLocalRemoteAction(clientMutationId);
-  };
-  const clearPendingLocalRemoteActions = () => {
-    pendingLocalRemoteActionsRef.current.clear();
-    pendingLocalRemoteActionMetaRef.current.clear();
-    syncPendingLocalRemoteActionCount();
-  };
   const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? '') => turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : TURN_ACTION_TIMEOUT_MS;
   const getItemPromptTimeoutMs = (seatId = localSeatId) => turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : ITEM_PROMPT_TIMEOUT_MS;
   const markTurnActionTimedOut = (seatId = activeSeat?.id ?? localSeatId) => {
@@ -306,14 +269,11 @@ export function App() {
   const lastSyncedCaptureSoundKeyRef = useRef('');
   const lastSyncedTrapSoundKeyRef = useRef('');
   const lastTurnToastKeyRef = useRef('');
-  const pendingSequenceMetaRef = useRef<{ type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; clientMutationId?: string } | null>(null);
   const applyingSyncedStateRef = useRef(false);
   const lastAppliedStateVersionRef = useRef(0);
   const lastAppliedSequenceRef = useRef(0);
   const lastWinnerSoundRef = useRef('');
   const lastBranchControlKeyRef = useRef('');
-  const lastSavedStateFingerprintRef = useRef('');
-  const savingStateFingerprintRef = useRef('');
   const aiTurnActionKeyRef = useRef('');
   const liveTurnGuardRef = useRef({ activeSeatId: '', winner: '', movingPieceId: '', pendingTrapPlacement: false, turnOrderActive: false, turnOrderIntro: false });
   const activeRoomIdRef = useRef('');
@@ -427,6 +387,54 @@ export function App() {
   const activeTurnOrderIntro = turnOrderIntro && turnOrderIntro.readyAt > turnOrderClock ? turnOrderIntro : null;
   const waitingForOnlineTurnOrder = Boolean(screen === 'game' && activeRoomId && !turnOrderIds.length && !turnOrderPhase.active && !activeTurnOrderIntro);
   const trapPlacementActive = Boolean(pendingTrapPlacement);
+  const {
+    hostStateSaveKey,
+    setHostStateSaveKey,
+    hostStateSaveRetryTick,
+    pendingSequenceMetaRef,
+    lastSavedStateFingerprintRef,
+    savingStateFingerprintRef,
+  } = useGameStatePersistence({
+    activeRoomId,
+    screen,
+    canCoordinateOnlineGame,
+    applyingSyncedStateRef,
+    moveInProgressRef,
+    movingPieceId,
+    pieces,
+    turnIndex,
+    turnOrderIds,
+    initialTurnOrderIds,
+    completedSeatIds,
+    rankingSeatIds,
+    gameEndMode,
+    lastFinishedSeatId,
+    continuationRound,
+    roll,
+    boardItems,
+    ownedItems,
+    trapNodes,
+    shieldedPieceIds,
+    winner,
+    gameStartedAt,
+    turnOrderIntro,
+    pendingTrapPlacement,
+    rollLockUntil,
+    lastMovedPieceIds,
+    lastMovedSeatId,
+    effectiveRollResultReadyAt,
+    turnOrderPhase,
+    waitingForPlayersReady,
+    startRequestVersion,
+    localSeatId,
+    activeSeat,
+    logs,
+    captureEffect,
+    trapEffect,
+    lastAppliedSequenceRef,
+    lastAppliedStateVersionRef,
+    measureFirebaseLatency,
+  });
   const hasPendingGameStateSave = Boolean(activeRoomId && canCoordinateOnlineGame && hostStateSaveKey);
   const shouldWaitForAuthoritativeTurnSync = Boolean(activeRoomId && screen === 'game' && pendingLocalRemoteActionCount > 0 && !isMyTurn);
   const effectivePendingLocalRemoteActionCount = shouldWaitForAuthoritativeTurnSync ? pendingLocalRemoteActionCount : 0;
@@ -644,10 +652,10 @@ export function App() {
     if (fallbackPiece && fallbackPiece.id !== selectedPieceId) setSelectedPieceId(fallbackPiece.id);
   }, [activeSeat, isMyTurn, pieces, roll, selectedPiece, selectedPieceId]);
 
-  const diagnosticState = useMemo(() => ({
+  const diagnosticState = useMemo(() => makeGameDiagnosticState({
     screen,
     activeRoomId,
-    isRoomHost: isWaitingRoomHost,
+    isWaitingRoomHost,
     onlineGameRole,
     isRoomManager,
     isOnlinePlayer,
@@ -659,7 +667,7 @@ export function App() {
     hostSeatId,
     allReady,
     teamBalanced,
-    seats: displaySeats.map((seat) => ({ id: seat.id, label: seat.label, ready: seat.ready, isAI: seat.isAI, isEmpty: seat.isEmpty, isHost: seat.isHost, team: seat.team })),
+    displaySeats,
     message,
     actionErrorDialog,
     lastActionDiagnostic,
@@ -676,7 +684,7 @@ export function App() {
     canShowContinueRaceButton,
     roll,
     rollInProgress,
-    rollInProgressRef: rollInProgressRef.current,
+    rollInProgressRef,
     hostStateSaveKey,
     hasPendingGameStateSave,
     isRollLocked,
@@ -689,25 +697,24 @@ export function App() {
     activeTurnOrderIntro,
     waitingForOnlineTurnOrder,
     turnIndex,
-    lastAppliedStateVersion: lastAppliedStateVersionRef.current,
-    lastAppliedSequence: lastAppliedSequenceRef.current,
-    syncPipeline: syncPipelineDiagnostic,
-    actionPipeline: actionPipelineDiagnostic,
-    turnHealth: turnHealthDiagnostic,
+    lastAppliedStateVersionRef,
+    lastAppliedSequenceRef,
+    syncPipelineDiagnostic,
+    actionPipelineDiagnostic,
+    turnHealthDiagnostic,
     pendingLocalRemoteActionCount,
-    pendingLocalRemoteActions: Array.from(pendingLocalRemoteActionsRef.current).map((key) => {
-      const meta = pendingLocalRemoteActionMetaRef.current.get(key);
-      return { key, type: meta?.type ?? getPendingLocalRemoteActionType(key), ageMs: meta ? Math.max(0, Date.now() - meta.createdAt) : 0 };
-    }),
+    pendingLocalRemoteActionsRef,
+    pendingLocalRemoteActionMetaRef,
+    getPendingLocalRemoteActionType,
     turnActionTimeoutPenaltyBySeatId,
-    currentTurnActionTimeoutMs: activeSeat ? getTurnActionTimeoutMs(activeSeat.id) : TURN_ACTION_TIMEOUT_MS,
-    currentItemPromptTimeoutMs: getItemPromptTimeoutMs(localSeatId),
-    processingActionCount: processingActionIdsRef.current.size,
-    completedActionCount: completedActionIdsRef.current.size,
+    activeSeat,
+    getTurnActionTimeoutMs,
+    getItemPromptTimeoutMs,
+    processingActionIdsRef,
+    completedActionIdsRef,
     lastMovedSeatId,
     lastMovedPieceIds,
-    pieces: pieces.map((piece) => ({ id: piece.id, ownerId: piece.ownerId, nodeId: piece.nodeId, started: piece.started, finished: piece.finished })),
-    activeSeat: activeSeat ? { id: activeSeat.id, label: activeSeat.label, name: activeSeat.name, isAI: activeSeat.isAI } : null,
+    pieces,
     isMyTurn,
     canSubmitTurnAction,
     canRollNow,
@@ -716,29 +723,24 @@ export function App() {
     turnActionBlockReasons,
     rollActionBlockReasons,
     moveActionBlockReasons,
-    stalledTurn: {
-      detected: stalledTurnDetected,
-      reason: stalledTurnReason,
-      ageMs: stalledTurnAgeMs,
-      syncAgeMs: stalledTurnSyncAgeMs,
-      recoveryAfterMs: TURN_ACTION_TIMEOUT_MS,
-      watchKey: stalledTurnWatchKey,
-      needsBranchChoice: stalledTurnNeedsBranchChoice,
-      fallbackPiece: stalledTurnFallbackPiece ? { id: stalledTurnFallbackPiece.id, ownerId: stalledTurnFallbackPiece.ownerId, label: stalledTurnFallbackPiece.label, nodeId: stalledTurnFallbackPiece.nodeId, started: stalledTurnFallbackPiece.started, finished: stalledTurnFallbackPiece.finished } : null,
-      movablePieces: stalledTurnMovablePieces.map((piece) => ({ id: piece.id, ownerId: piece.ownerId, label: piece.label, nodeId: piece.nodeId, started: piece.started, finished: piece.finished })),
-      syncResolution: getStalledTurnSyncResolution(),
-    },
+    stalledTurnDetected,
+    stalledTurnReason,
+    stalledTurnAgeMs,
+    stalledTurnSyncAgeMs,
+    stalledTurnWatchKey,
+    stalledTurnNeedsBranchChoice,
+    stalledTurnFallbackPiece,
+    stalledTurnMovablePieces,
+    getStalledTurnSyncResolution,
     selectedPieceId,
+    selectedPiece,
     selectedPieceCanMove,
     activeSeatPiecesOnBoard,
-    fallbackMovablePiece: fallbackMovablePiece ? { id: fallbackMovablePiece.id, ownerId: fallbackMovablePiece.ownerId, label: fallbackMovablePiece.label, started: fallbackMovablePiece.started, finished: fallbackMovablePiece.finished, nodeId: fallbackMovablePiece.nodeId } : null,
-    activeMovablePiece: activeMovablePiece ? { id: activeMovablePiece.id, ownerId: activeMovablePiece.ownerId, label: activeMovablePiece.label, started: activeMovablePiece.started, finished: activeMovablePiece.finished, nodeId: activeMovablePiece.nodeId } : null,
-    movablePiecesForActiveSeat: activeSeat && roll ? pieces
-      .filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (selectedMoveSteps >= 0 || piece.started))
-      .map((piece) => ({ id: piece.id, ownerId: piece.ownerId, label: piece.label, nodeId: piece.nodeId, started: piece.started, finished: piece.finished })) : [],
-    moveSelectionReason: selectedPieceCanMove ? 'selected-piece' : fallbackMovablePiece ? (activeSeatPiecesOnBoard ? 'fallback-on-board' : 'fallback-off-board-first') : 'none',
-    selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
-    logs: visibleLogs.map((log) => ({ id: log.id, text: log.text })),
+    fallbackMovablePiece,
+    activeMovablePiece,
+    selectedMoveSteps,
+    canSeatControlPiece,
+    visibleLogs,
     boardItems,
     ownedItems,
     trapNodes,
@@ -746,6 +748,7 @@ export function App() {
     pendingTrapPlacement,
     itemPromptTiming,
     branchChoice,
+    turnActionTimeoutMs: TURN_ACTION_TIMEOUT_MS,
   }), [actionErrorDialog, actionPipelineDiagnostic, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingGameStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, lastManualSyncResolution, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, syncPipelineDiagnostic, turnActionTimeoutPenaltyBySeatId, turnHealthDiagnostic, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps, stalledTurnAgeMs, stalledTurnDetected, stalledTurnFallbackPiece, stalledTurnMovablePieces, stalledTurnNeedsBranchChoice, stalledTurnReason, stalledTurnSyncAgeMs, stalledTurnWatchKey]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
@@ -1425,38 +1428,6 @@ export function App() {
     replayMissingSequencesThenApply,
     applySyncedStateSnapshot,
   });
-
-  useEffect(() => {
-    if (!activeRoomId || screen !== 'game' || !canCoordinateOnlineGame || applyingSyncedStateRef.current) return;
-    if (!pendingSequenceMetaRef.current) return;
-    if (moveInProgressRef.current || movingPieceId) return;
-    const stateFingerprint = makeGameStateFingerprint({ pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, startRequestVersion });
-    if (lastSavedStateFingerprintRef.current === stateFingerprint || savingStateFingerprintRef.current === stateFingerprint) return;
-    savingStateFingerprintRef.current = stateFingerprint;
-    setHostStateSaveKey(stateFingerprint);
-    const pendingSequenceMeta = pendingSequenceMetaRef.current;
-    pendingSequenceMetaRef.current = null;
-    const sequenceType = pendingSequenceMeta?.type ?? (winner && gameEndMode !== 'partial_finish' ? 'game_finished' : lastMovedSeatId === localSeatId ? 'move_piece_resolved' : pendingTrapPlacement?.ownerId === localSeatId ? 'item_used' : 'state_snapshot');
-    const sequenceActorId = pendingSequenceMeta?.actorId ?? localSeatId;
-    const sequencePayload = pendingSequenceMeta?.payload ?? { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId };
-    const clientMutationId = pendingSequenceMeta?.clientMutationId ?? `${sequenceType}:${sequenceActorId}:${stateFingerprint}`;
-    let keepHostStateSavePending = false;
-    void measureFirebaseLatency(() => saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, gameStartedAt, turnOrderIntro, pendingTrapPlacement, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, startRequestVersion }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, action: pendingSequenceMeta?.action ?? null, expectedPreviousSequence: lastAppliedSequenceRef.current })).then((result) => {
-      if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
-      if ((result.status === 'committed' || result.status === 'duplicate') && result.turnVersion) {
-        lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
-        lastSavedStateFingerprintRef.current = stateFingerprint;
-      }
-      if (result.status === 'sequence_mismatch') {
-        keepHostStateSavePending = true;
-        if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
-        setHostStateSaveRetryTick((tick) => tick + 1);
-      }
-    }).finally(() => {
-      if (!keepHostStateSavePending && savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
-      if (!keepHostStateSavePending) setHostStateSaveKey((current) => current === stateFingerprint ? '' : current);
-    });
-  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, captureEffect, completedSeatIds, continuationRound, effectiveRollResultReadyAt, gameEndMode, gameStartedAt, canCoordinateOnlineGame, hostStateSaveRetryTick, initialTurnOrderIds, isSpectator, lastFinishedSeatId, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, rankingSeatIds, roll, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, waitingForPlayersReady, startRequestVersion, winner]);
 
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
@@ -3407,7 +3378,7 @@ export function App() {
 
     {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>닉네임 수정</h2><p>닉네임은 7글자까지 사용할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
 
-    {screen === 'lobby' && <LobbyScreen
+    {screen === 'lobby' && <LobbyContainer
       title={title}
       rooms={rooms}
       isCreatingRoom={isCreatingRoom}
@@ -3415,43 +3386,37 @@ export function App() {
       currentUser={currentUser}
       onTitleChange={setTitle}
       onCreateRoom={handleCreateRoom}
-      onOpenWaitingRoom={(room) => { void openWaitingRoom(room); }}
+      onOpenWaitingRoom={openWaitingRoom}
     />}
 
-    {screen === 'waitingRoom' && (() => {
-      const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
-      const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
-      const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
-      const startStatusText = allReady ? '시작 가능' : teamStartHint || `${readyMissingCount}명이 더 준비해야 해요.`;
-      const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode);
-      return <WaitingRoomScreen canManageRoom={canManageRoom}>
-        <header className="waiting-header">
-          <div>
-            <h2 className="room-title">{activeRoomTitle || title}</h2>
-          </div>
-          <div className={`start-status ${allReady ? 'ready' : 'blocked'}`} role="status">
-            <strong>{startStatusText}</strong>
-            <span>{roomRuleText}</span>
-          </div>
-        </header>
-
-        <div className="waiting-main-grid">
-          <WaitingRoomSettingsPanel isVisible={canManageRoom || playMode === 'team'}>
-            {playMode === 'team' && <div className="team-checklist" aria-label="팀전 시작 조건"><strong>팀 균형</strong><span className={teamCounts.청팀 === 2 ? 'ok' : ''}>청팀 {teamCounts.청팀}/2</span><span className={teamCounts.홍팀 === 2 ? 'ok' : ''}>홍팀 {teamCounts.홍팀}/2</span></div>}
-            {canManageRoom ? <div className="host-room-options compact-options"><fieldset className="radio-group"><legend>진행</legend>{(['individual', 'team'] as PlayMode[]).map((mode) => <label key={mode}><input type="radio" name="playMode" checked={playMode === mode} onChange={() => changeWaitingOptions({ playMode: mode })} />{mode === 'team' ? '팀전' : '개인전'}</label>)}</fieldset><fieldset className="radio-group"><legend>인원</legend>{([2, 3, 4] as const).map((count) => <label key={count} className={playMode === 'team' && count !== 4 ? 'disabled' : ''} title={playMode === 'team' && count !== 4 ? '팀전은 4인만 가능합니다.' : undefined}><input type="radio" name="maxPlayers" checked={maxPlayers === count} disabled={playMode === 'team' && count !== 4} onChange={() => changeWaitingOptions({ maxPlayers: count })} />{count}인</label>)}</fieldset><fieldset className="radio-group"><legend>말</legend>{([1, 2, 3, 4] as const).map((count) => <label key={count}><input type="radio" name="pieceCount" checked={pieceCount === count} onChange={() => changeWaitingOptions({ pieceCount: count })} />{count}개</label>)}</fieldset><fieldset className="radio-group item-mode-group"><legend>아이템</legend>{([true, false] as const).map((enabled) => <label key={String(enabled)}><input type="radio" name="itemMode" checked={itemMode === enabled} onChange={() => changeWaitingOptions({ itemMode: enabled })} />{enabled ? 'ON' : 'OFF'}</label>)}</fieldset></div> : null}
-          </WaitingRoomSettingsPanel>
-
-          <WaitingRoomSeatList seats={seats} canManageRoom={canManageRoom} localSeatId={localSeatId} playMode={playMode} getSeatPieceColor={getSeatPieceColor} onKickPlayer={(seat) => { void kickWaitingPlayer(seat); }} onAddAI={markPlayerAsAI} onRemoveAI={cancelAISeat} onChangeTeam={changeTeam} />
-        </div>
-
-        {countdown >= 0 && startStatus === 'requested' && Date.now() >= startCountdownStartsAt && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={cancelStartCountdown}>취소</button>}</div></div>}
-        {playMode === 'team' && !teamBalanced && <p className="notice warning inline-warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}
-        <footer className="waiting-actions role-actions">
-          {canManageRoom ? <button data-testid="start-game-button" onClick={handleStartGame} disabled={!allReady}>게임 시작</button> : <button onClick={() => { void toggleMyReady(); }} disabled={!myWaitingSeat}>{myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
-          <button className="secondary" onClick={leaveRoom}>방 나가기</button>
-        </footer>
-      </WaitingRoomScreen>;
-    })()}
+    {screen === 'waitingRoom' && <WaitingRoomContainer
+      canManageRoom={canManageRoom}
+      activeRoomTitle={activeRoomTitle}
+      title={title}
+      seats={seats}
+      localSeatId={localSeatId}
+      playMode={playMode}
+      maxPlayers={maxPlayers}
+      pieceCount={pieceCount}
+      itemMode={itemMode}
+      teamBalanced={teamBalanced}
+      teamCounts={teamCounts}
+      allReady={allReady}
+      countdown={countdown}
+      startStatus={startStatus}
+      startCountdownStartsAt={startCountdownStartsAt}
+      startCancelDisabled={startCancelDisabled}
+      getSeatPieceColor={getSeatPieceColor}
+      onChangeOptions={changeWaitingOptions}
+      onKickPlayer={(seat) => { void kickWaitingPlayer(seat); }}
+      onAddAI={markPlayerAsAI}
+      onRemoveAI={cancelAISeat}
+      onChangeTeam={changeTeam}
+      onCancelStartCountdown={cancelStartCountdown}
+      onStartGame={handleStartGame}
+      onToggleReady={() => { void toggleMyReady(); }}
+      onLeaveRoom={leaveRoom}
+    />}
 
 
 
@@ -3463,28 +3428,73 @@ export function App() {
 
 
     {screen === 'game' && <GameScreen>
-      <PlayersPanel>
-        <h2>{activeRoomTitle || title}</h2>
-        <p className="game-end-guide">{formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode)}</p>
-        {(activeTurnOrderIntro || turnOrderPhase.active ? playableSeats : turnSeats).map((seat) => {
-          const statusText = seat.isAI ? 'AI' : '유저';
-          const displayName = getPlayerCardName(seat);
-          return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
-            <span className="game-player-title">
-              <b className="game-player-label" style={{ color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }}>{displayName}</b>
-            </span>
-            <span className="player-badges game-player-meta">
-              {playMode === 'team' && <small>{seat.team}</small>}
-            </span>
-            <em className="game-player-status">{statusText}</em>
-          </div>;
-        })}
-        {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
-        <div className="player-items"><h2>보유 아이템</h2>{(ownedItems[localSeatId] ?? []).length ? <div className="item-grid">{(ownedItems[localSeatId] ?? []).map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><ItemCard type={type} /></button>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div>
-        <button className="secondary end-game" onClick={() => setEndGameDialogOpen(true)}>게임 종료</button>
-      </PlayersPanel>
-      <BoardPanel>{winner && <div data-testid="winner-overlay" className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{renderWinnerText()}</strong><p>아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button>{canShowContinueRaceButton && <button data-testid="continue-race-button" onClick={continueRace}>이어서 진행</button>}</div>}{renderTurnOrderIntroOverlay()}{activeTurnOrderIntro && !activeTurnOrderIntro.visible && <div className="turn-order-lock" role="status" aria-live="polite">잠시 후 게임 시작!</div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<div data-testid="turn-indicator" className="turn-indicator" style={{ color: boardTurnIndicatorColor }}>{shouldShowBoardTurnNeighbors && <span className="turn-neighbor previous-turn">{previousBoardTurnText}</span>}{shouldShowBoardTurnNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}<strong>{boardTurnIndicatorText}</strong>{shouldShowBoardTurnNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}{shouldShowBoardTurnNeighbors && <span className="turn-neighbor next-turn">{nextBoardTurnText}</span>}</div>{(turnToast || toast) && <div className="board-message-stack" aria-live="polite">{turnToast && <div className="turn-toast board-toast" key={turnToast.id} role="status">{turnToast.text}</div>}{toast && <div className="toast-message board-toast" role="status"><strong>{toast.icon} {toast.title}</strong>{toast.description && <span>{toast.description}</span>}</div>}</div>}<GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId || activeMovablePiece?.id} selectedPieceIds={selectedGroupPieceIds.length ? selectedGroupPieceIds : activeMovablePiece ? [activeMovablePiece.id] : []} movingPieceId={movingPieceId} onSelectPiece={(pieceId) => { const targetPiece = pieces.find((piece) => piece.id === pieceId); if (!targetPiece || !isMyTurn || !activeSeat || !canSeatControlPiece(activeSeat, targetPiece)) return; setSelectedPieceId(pieceId); }} getPieceGroupKey={getPieceSideKey} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} trapNodeIds={trapNodes.map((trap) => trap.nodeId)} previewNodeIds={previewNodeIds} branchChoice={branchChoice} onBranchChoiceChange={setBranchChoice} showBranchControls={false} capturedPieceIds={Array.from(new Set([...(captureEffect?.pieceIds ?? []), ...(trapEffect?.pieceIds ?? [])]))} trapEffectNodeId={trapEffect?.nodeId} selectableNodeIds={trapPlacementNodeIds} onSelectNode={placePendingTrap} boardShaking={Boolean(captureEffect)} isPieceSelectable={(piece) => Boolean(isMyTurn && activeSeat && canSeatControlPiece(activeSeat, piece))} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-aura" aria-hidden="true"></div><div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div><div className={`roll-mat ${rollAnimation.result.bonus && !rollAnimation.turnOrder ? 'bonus-roll' : ''}`}><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((stick, index) => { const markCount = stick.flat ? stick.marked ? 1 : 0 : 3; return <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${stick.flat ? 'flat' : 'round'} ${stick.marked ? 'marked' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg` } as CSSProperties}><i>{Array.from({ length: markCount }, (_, markIndex) => <span key={`mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark" aria-hidden="true"></span>)}</i></span>; })}</div></div>}{pendingTrapPlacement && <div className="trap-placement-banner" role="status"><strong>함정 설치 위치를 선택하세요</strong><span>{Math.max(0, Math.ceil((pendingTrapPlacement.deadline - trapPlacementClock) / 1000))}초 남음 · 설치 중에는 윷을 던질 수 없습니다.</span></div>}<div className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length ? 'item-prompt-mode' : ''}`}>{activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택"><div><strong>아이템을 사용할까요?</strong></div><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${getItemPromptTimeoutMs(localSeatId)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="inline-item-actions">{activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}<button className="secondary" onClick={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); }}>사용 안 함</button></div></div> : showBottomBranchControls ? <div className="bottom-branch-controls" aria-label="이동 방향 선택"><button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => setBranchChoice('outer')}>바깥길</button><button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => setBranchChoice('shortcut')}>지름길</button>{canRequestMove && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${activeSeat ? getTurnActionTimeoutMs(activeSeat.id) : TURN_ACTION_TIMEOUT_MS}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}<button type="button" className="branch-move-button" onClick={() => moveSelectedPiece()} disabled={!canRequestMove}>선택한 말 이동</button></div> : <>{((!roll && canRollNow) || (roll && canRequestMove)) && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${activeSeat ? getTurnActionTimeoutMs(activeSeat.id) : TURN_ACTION_TIMEOUT_MS}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}<button data-testid={roll ? 'move-piece-button' : canSubmitTurnAction ? 'roll-yut-button' : 'turn-waiting-button'} className={!roll ? 'roll-button' : undefined} onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={(!canRollNow && !roll) || Boolean(roll && !canRequestMove)}>{roll ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동') : activeSeat && activeSeat.id !== localSeatId ? `${getSeatDisplayName(activeSeat)} 차례` : pendingTrapPlacement ? '함정 설치 대기 중' : waitingForOnlineTurnOrder ? '순서 정하기 대기 중' : activeTurnOrderIntro ? '결과 확인 중' : '윷 던지기'}</button></>}</div></BoardPanel>
-      <GameLogPanel><div className="log-header"><h2>진행 기록</h2><button type="button" className="diagnostic-button" onClick={() => setDiagnosticDialogOpen(true)} aria-label="게임 상태 진단 열기" title="게임 상태 진단">📄</button></div><div className="log-list">{visibleLogs.map((log, index) => <p key={log.id} style={getLogCardStyle(log.text, visibleLogs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log, visibleLogs.length - index)}</span>{renderLogText(log.text)}</p>)}</div></GameLogPanel>
+      <GamePlayersPanel
+        title={activeRoomTitle || title}
+        ruleText={formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode)}
+        seats={activeTurnOrderIntro || turnOrderPhase.active ? playableSeats : turnSeats}
+        activeSeatId={activeSeat?.id}
+        playMode={playMode}
+        spectators={spectators}
+        ownedItems={ownedItems}
+        localSeatId={localSeatId}
+        getPlayerCardName={getPlayerCardName}
+        getSeatPieceColor={getSeatPieceColor}
+        onUseItem={useItem}
+        onOpenEndGameDialog={() => setEndGameDialogOpen(true)}
+      />
+      <BoardPanel><WinnerOverlay winner={winner} winnerText={renderWinnerText()} canContinueRace={canShowContinueRaceButton} onFinishGame={finishGame} onContinueRace={continueRace} />{renderTurnOrderIntroOverlay()}{activeTurnOrderIntro && !activeTurnOrderIntro.visible && <div className="turn-order-lock" role="status" aria-live="polite">잠시 후 게임 시작!</div>}<GoldenYutPicker isOpen={goldenYutPickerOpen} choices={GOLDEN_YUT_CHOICES} onSelect={(choice) => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }} /><TurnIndicator color={boardTurnIndicatorColor} showNeighbors={shouldShowBoardTurnNeighbors} previousText={previousBoardTurnText} currentText={boardTurnIndicatorText} nextText={nextBoardTurnText} /><BoardMessageStack turnToast={turnToast} toast={toast} /><GameBoardSection
+        pieces={pieces}
+        boardItems={boardItems}
+        selectedPieceId={selectedPieceId}
+        activeMovablePiece={activeMovablePiece}
+        selectedGroupPieceIds={selectedGroupPieceIds}
+        movingPieceId={movingPieceId}
+        isMyTurn={isMyTurn}
+        activeSeat={activeSeat}
+        canSeatControlPiece={canSeatControlPiece}
+        onSelectPieceId={setSelectedPieceId}
+        getPieceSideKey={getPieceSideKey}
+        revealedItems={revealedItems}
+        highlightedNodeId={highlightedNodeId}
+        trapNodes={trapNodes}
+        previewNodeIds={previewNodeIds}
+        branchChoice={branchChoice}
+        onBranchChoiceChange={setBranchChoice}
+        captureEffect={captureEffect}
+        trapEffect={trapEffect}
+        trapPlacementNodeIds={trapPlacementNodeIds}
+        onSelectTrapNode={placePendingTrap}
+      /><RollStage rollAnimation={rollAnimation} />{pendingTrapPlacement && <div className="trap-placement-banner" role="status"><strong>함정 설치 위치를 선택하세요</strong><span>{Math.max(0, Math.ceil((pendingTrapPlacement.deadline - trapPlacementClock) / 1000))}초 남음 · 설치 중에는 윷을 던질 수 없습니다.</span></div>}<GameBoardControls
+        roll={roll}
+        activeItemPromptTypes={activeItemPromptTypes}
+        localSeatId={localSeatId}
+        getItemPromptTimeoutMs={getItemPromptTimeoutMs}
+        onUseItem={useItem}
+        onSkipItemPrompt={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); }}
+        showBottomBranchControls={showBottomBranchControls}
+        displayBranchChoice={displayBranchChoice}
+        onBranchChoiceChange={setBranchChoice}
+        canRequestMove={canRequestMove}
+        activeSeatId={activeSeat?.id}
+        activeSeatTurnText={activeSeat ? getSeatDisplayName(activeSeat) : ''}
+        getTurnActionTimeoutMs={getTurnActionTimeoutMs}
+        turnActionTimeoutMs={TURN_ACTION_TIMEOUT_MS}
+        onMoveSelectedPiece={() => moveSelectedPiece()}
+        canRollNow={canRollNow}
+        canSubmitTurnAction={canSubmitTurnAction}
+        onRollYut={rollYut}
+        rollResultHolding={rollResultHolding}
+        pendingTrapPlacement={Boolean(pendingTrapPlacement)}
+        waitingForOnlineTurnOrder={waitingForOnlineTurnOrder}
+        hasActiveTurnOrderIntro={Boolean(activeTurnOrderIntro)}
+      /></BoardPanel>
+      <GameLogPanelView
+        logs={visibleLogs}
+        getLogCardStyle={getLogCardStyle}
+        formatStoredLogSequence={formatStoredLogSequence}
+        renderLogText={renderLogText}
+        onOpenDiagnosticDialog={() => setDiagnosticDialogOpen(true)}
+      />
     </GameScreen>}
   </main>;
 }

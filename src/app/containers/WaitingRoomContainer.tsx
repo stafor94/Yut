@@ -1,0 +1,95 @@
+import type { PieceCount, PlayMode, Seat, Team } from '../appState';
+import { formatRoomRuleText } from '../appUtils';
+import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
+
+type WaitingRoomContainerProps = {
+  canManageRoom: boolean;
+  activeRoomTitle: string;
+  title: string;
+  seats: Seat[];
+  localSeatId: string;
+  playMode: PlayMode;
+  maxPlayers: 2 | 3 | 4;
+  pieceCount: PieceCount;
+  itemMode: boolean;
+  teamBalanced: boolean;
+  teamCounts: Record<Team, number>;
+  allReady: boolean;
+  countdown: number;
+  startStatus?: string;
+  startCountdownStartsAt: number;
+  startCancelDisabled: boolean;
+  getSeatPieceColor: (seat: Seat) => string;
+  onChangeOptions: (params: Partial<{ playMode: PlayMode; maxPlayers: 2 | 3 | 4; pieceCount: PieceCount; itemMode: boolean }>) => void;
+  onKickPlayer: (seat: Seat) => void;
+  onAddAI: (seatId: string) => void;
+  onRemoveAI: (seatId: string) => void;
+  onChangeTeam: (seatId: string, team: Team) => void;
+  onCancelStartCountdown: () => void;
+  onStartGame: () => void;
+  onToggleReady: () => void;
+  onLeaveRoom: () => void;
+};
+
+export function WaitingRoomContainer({
+  canManageRoom,
+  activeRoomTitle,
+  title,
+  seats,
+  localSeatId,
+  playMode,
+  maxPlayers,
+  pieceCount,
+  itemMode,
+  teamBalanced,
+  teamCounts,
+  allReady,
+  countdown,
+  startStatus,
+  startCountdownStartsAt,
+  startCancelDisabled,
+  getSeatPieceColor,
+  onChangeOptions,
+  onKickPlayer,
+  onAddAI,
+  onRemoveAI,
+  onChangeTeam,
+  onCancelStartCountdown,
+  onStartGame,
+  onToggleReady,
+  onLeaveRoom,
+}: WaitingRoomContainerProps) {
+  const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
+  const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
+  const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
+  const startStatusText = allReady ? '시작 가능' : teamStartHint || `${readyMissingCount}명이 더 준비해야 해요.`;
+  const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode);
+
+  return <WaitingRoomScreen canManageRoom={canManageRoom}>
+    <header className="waiting-header">
+      <div>
+        <h2 className="room-title">{activeRoomTitle || title}</h2>
+      </div>
+      <div className={`start-status ${allReady ? 'ready' : 'blocked'}`} role="status">
+        <strong>{startStatusText}</strong>
+        <span>{roomRuleText}</span>
+      </div>
+    </header>
+
+    <div className="waiting-main-grid">
+      <WaitingRoomSettingsPanel isVisible={canManageRoom || playMode === 'team'}>
+        {playMode === 'team' && <div className="team-checklist" aria-label="팀전 시작 조건"><strong>팀 균형</strong><span className={teamCounts.청팀 === 2 ? 'ok' : ''}>청팀 {teamCounts.청팀}/2</span><span className={teamCounts.홍팀 === 2 ? 'ok' : ''}>홍팀 {teamCounts.홍팀}/2</span></div>}
+        {canManageRoom ? <div className="host-room-options compact-options"><fieldset className="radio-group"><legend>진행</legend>{(['individual', 'team'] as PlayMode[]).map((mode) => <label key={mode}><input type="radio" name="playMode" checked={playMode === mode} onChange={() => onChangeOptions({ playMode: mode })} />{mode === 'team' ? '팀전' : '개인전'}</label>)}</fieldset><fieldset className="radio-group"><legend>인원</legend>{([2, 3, 4] as const).map((count) => <label key={count} className={playMode === 'team' && count !== 4 ? 'disabled' : ''} title={playMode === 'team' && count !== 4 ? '팀전은 4인만 가능합니다.' : undefined}><input type="radio" name="maxPlayers" checked={maxPlayers === count} disabled={playMode === 'team' && count !== 4} onChange={() => onChangeOptions({ maxPlayers: count })} />{count}인</label>)}</fieldset><fieldset className="radio-group"><legend>말</legend>{([1, 2, 3, 4] as const).map((count) => <label key={count}><input type="radio" name="pieceCount" checked={pieceCount === count} onChange={() => onChangeOptions({ pieceCount: count })} />{count}개</label>)}</fieldset><fieldset className="radio-group item-mode-group"><legend>아이템</legend>{([true, false] as const).map((enabled) => <label key={String(enabled)}><input type="radio" name="itemMode" checked={itemMode === enabled} onChange={() => onChangeOptions({ itemMode: enabled })} />{enabled ? 'ON' : 'OFF'}</label>)}</fieldset></div> : null}
+      </WaitingRoomSettingsPanel>
+
+      <WaitingRoomSeatList seats={seats} canManageRoom={canManageRoom} localSeatId={localSeatId} playMode={playMode} getSeatPieceColor={getSeatPieceColor} onKickPlayer={onKickPlayer} onAddAI={onAddAI} onRemoveAI={onRemoveAI} onChangeTeam={onChangeTeam} />
+    </div>
+
+    {countdown >= 0 && startStatus === 'requested' && Date.now() >= startCountdownStartsAt && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={onCancelStartCountdown}>취소</button>}</div></div>}
+    {playMode === 'team' && !teamBalanced && <p className="notice warning inline-warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}
+    <footer className="waiting-actions role-actions">
+      {canManageRoom ? <button data-testid="start-game-button" onClick={onStartGame} disabled={!allReady}>게임 시작</button> : <button onClick={onToggleReady} disabled={!myWaitingSeat}>{myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
+      <button className="secondary" onClick={onLeaveRoom}>방 나가기</button>
+    </footer>
+  </WaitingRoomScreen>;
+}
