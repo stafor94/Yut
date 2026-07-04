@@ -2334,7 +2334,7 @@ aside.players,
 .lobby-room-card div,
 .lobby-layout .lobby-room-card div {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) var(--lobby-room-action-width);
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -2361,11 +2361,13 @@ aside.players,
 }
 
 .lobby-room-card .lobby-room-action {
+  grid-column: 2;
+  justify-self: end;
   flex: 0 0 auto;
   box-sizing: border-box;
   min-width: 0;
   min-height: 0;
-  margin-left: auto;
+  margin-left: 0;
   margin-right: -4px;
   inline-size: var(--lobby-room-action-width);
   padding: 7px 0;
