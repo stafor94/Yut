@@ -2819,7 +2819,7 @@ aside.players,
   padding: 5px 9px;
   background: rgba(93, 178, 84, .16);
   color: #2f7d32;
-  font-size: .8rem;
+  font-size: .76rem;
   font-weight: 1000;
   white-space: nowrap;
 }
@@ -3441,13 +3441,13 @@ aside.players,
   .lobby-room-card .lobby-room-content,
   .lobby-layout .lobby-room-card .lobby-room-content {
     display: block;
-    padding-inline-end: calc(var(--lobby-room-action-width) + 14px);
+    padding-inline-end: calc(var(--lobby-room-action-width) + 18px);
   }
 
   .lobby-room-card .lobby-room-side {
     position: absolute;
     inset-block-start: 50%;
-    inset-inline-end: 4px;
+    inset-inline-end: 8px;
     transform: translateY(-50%);
   }
 

@@ -2384,7 +2384,7 @@ export function App() {
   }
   function getLogSeatTokens() {
     return playableSeats
-      .flatMap((seat) => [`${seat.label}-${seat.name}`, getActorLogName(seat), seat.label].filter(Boolean).map((token) => ({ seat, token })))
+      .flatMap((seat) => [`${seat.label}-${seat.name}`, getActorLogName(seat), seat.label, seat.id].filter(Boolean).map((token) => ({ seat, token })))
       .sort((left, right) => right.token.length - left.token.length);
   }
   function getEscapedLogSeatTokens() {
