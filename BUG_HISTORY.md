@@ -67,6 +67,69 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-04 - 온라인 게임 roll 이후 원격 턴 이동 정지
+
+### Symptom
+
+- 온라인 2인 게임에서 상대가 윷을 던진 뒤 말 이동이 완료되지 않아 양쪽 화면이 진행 불능처럼 멈췄다.
+- 새로고침이나 수동 동기화 후에도 서버의 최신 상태가 여전히 `roll` 보유/이동 미완료 상태라 문제가 해소되지 않았다.
+
+### Expected behavior
+
+- 현재 턴 플레이어가 이동을 완료하지 못하더라도 온라인 조율자 클라이언트가 정지 턴을 진단하고, 안전한 경우 authoritative `move_piece` 액션으로 턴 진행을 복구해야 한다.
+
+### Actual behavior
+
+- 일반 이동 타임아웃과 자동 단일 말 이동은 `canRequestMove`에 의존한다.
+- 현재 턴 플레이어의 클라이언트가 이동 제출을 끝내지 못하면 다른 클라이언트는 `not-local-turn` 상태로 대기만 하고, 서버 상태 자체도 roll 이후 sequence에서 멈출 수 있었다.
+
+### Reproduction steps
+
+1. 온라인 2인 게임에서 한 플레이어가 윷을 던져 `roll`이 생긴다.
+2. 해당 플레이어 클라이언트에서 이동 버튼/자동 이동/timeout 이동이 완료되지 않는다.
+3. 다른 플레이어는 `not-local-turn`, `roll-already-exists` 상태로 대기한다.
+4. 새로고침/동기화는 같은 authoritative state를 다시 적용하므로 진행이 재개되지 않는다.
+
+### Suspected root cause
+
+- 이동 완료 안전장치가 로컬 턴의 `canRequestMove` 경로에 묶여 있고, 온라인 조율자가 서버 상태 기준으로 멈춘 턴을 복구하는 경로가 없었다.
+
+### Confirmed root cause
+
+- 현재 턴 플레이어가 아닌 클라이언트는 정상적으로 `not-local-turn`으로 차단된다.
+- 기존 자동 이동/이동 timeout은 현재 턴 클라이언트의 `canRequestMove`가 false이거나 클라이언트가 동작하지 않는 경우 실행되지 않는다.
+- 수동 동기화는 최신 sequence를 적용할 뿐, roll 이후 move sequence가 없는 상태를 새 action으로 복구하지 않는다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 선택 말 fallback 및 이동 버튼 guard를 보정했다.
+  - Why it failed: 현재 턴 클라이언트 자체가 이동 제출을 끝내지 못하는 경우에는 다른 클라이언트가 서버 상태를 복구하지 못했다.
+
+### Do not try again
+
+- `not-local-turn` guard를 무시해서 아무 클라이언트나 로컬 이동하게 하지 않는다.
+- `canRequestMove`만 완화해서 버튼을 억지로 활성화하지 않는다.
+- 새로고침/동기화가 서버에 없는 move sequence를 만들어낸다고 가정하지 않는다.
+- 분기점 방향 선택이 필요한 말을 임의 방향으로 자동 이동하지 않는다.
+
+### Correct fix plan
+
+- debug state에 stalled turn 진단 정보를 추가한다.
+- 다음 재발 분석에서 추가 state를 요구하지 않도록 sync pipeline, action pipeline, turn health를 debug state에 함께 노출한다.
+- 온라인 조율자만 roll 이후 이동 미완료 상태를 감시한다.
+- 수동 동기화도 최신 sequence 적용 후 stalled turn을 판정하고, 조율자이며 안전한 경우 같은 authoritative `move_piece` 복구 경로를 사용한다.
+- 일정 시간 이상 정지했고 이동 후보가 명확하며 분기점 선택이 필요 없는 경우, 조율자가 activeSeat actorId로 authoritative `move_piece` 복구 action을 제출한다.
+- 분기점 선택이 필요한 경우 자동 이동하지 않고 진단 메시지를 남긴다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Static code path inspection
+- [ ] Multi-device online stalled turn recovery checked
+- [x] No unrelated UI changes
+- [x] No new dependency
+
 ## 2026-07-04 - 말 이동 버튼 선택 보정 후 도 이동 멈춤
 
 ### Symptom
