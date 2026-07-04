@@ -34,6 +34,7 @@ type GameBoardProps = {
   onSelectNode?: (nodeId: string) => void;
   boardShaking?: boolean;
   isPieceSelectable?: (piece: BoardPiece) => boolean;
+  getPieceGroupKey?: (piece: BoardPiece) => string;
 };
 
 function getOffBoardPieceStyle(piece: BoardPiece, ownerIndex: number, ownerOrder: number, desktopTop: number, portraitTop: number) {
@@ -48,10 +49,11 @@ function getOffBoardPieceStyle(piece: BoardPiece, ownerIndex: number, ownerOrder
   } as CSSProperties;
 }
 
-function getFinishedPieceStyle(piece: BoardPiece, pieces: BoardPiece[]) {
-  const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
+function getFinishedPieceStyle(piece: BoardPiece, pieces: BoardPiece[], getPieceGroupKey: (piece: BoardPiece) => string) {
+  const pieceGroupKey = getPieceGroupKey(piece);
+  const ownerOrder = Array.from(new Set(pieces.map((candidate) => getPieceGroupKey(candidate)))).findIndex((ownerId) => ownerId === pieceGroupKey);
   const safeOwnerOrder = Math.max(0, ownerOrder);
-  const ownerFinishedPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && candidate.finished);
+  const ownerFinishedPieces = pieces.filter((candidate) => getPieceGroupKey(candidate) === pieceGroupKey && candidate.finished);
   const ownerFinishedIndex = Math.max(0, ownerFinishedPieces.findIndex((candidate) => candidate.id === piece.id));
   const portraitColumn = safeOwnerOrder % 2;
   const portraitRow = Math.floor(safeOwnerOrder / 2);
@@ -66,17 +68,18 @@ function getFinishedPieceStyle(piece: BoardPiece, pieces: BoardPiece[]) {
   } as CSSProperties;
 }
 
-function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = '') {
+function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = '', getPieceGroupKey: (piece: BoardPiece) => string = (candidate) => candidate.ownerId) {
   if (!piece.started && !piece.finished && movingPieceId !== piece.id) {
-    const ownerPieces = pieces.filter((candidate) => candidate.ownerId === piece.ownerId && !candidate.started && !candidate.finished);
+    const pieceGroupKey = getPieceGroupKey(piece);
+    const ownerPieces = pieces.filter((candidate) => getPieceGroupKey(candidate) === pieceGroupKey && !candidate.started && !candidate.finished);
     const ownerIndex = Math.max(0, ownerPieces.findIndex((candidate) => candidate.id === piece.id));
-    const ownerOrder = Array.from(new Set(pieces.map((candidate) => candidate.ownerId))).findIndex((ownerId) => ownerId === piece.ownerId);
+    const ownerOrder = Array.from(new Set(pieces.map((candidate) => getPieceGroupKey(candidate)))).findIndex((ownerId) => ownerId === pieceGroupKey);
     const safeOwnerOrder = Math.max(0, ownerOrder);
     const portraitRow = Math.floor(safeOwnerOrder / 2);
     return getOffBoardPieceStyle(piece, ownerIndex, safeOwnerOrder, 20 + safeOwnerOrder * 15, 34 + portraitRow * 54);
   }
   if (piece.finished) {
-    return getFinishedPieceStyle(piece, pieces);
+    return getFinishedPieceStyle(piece, pieces, getPieceGroupKey);
   }
   const node: BoardNode | undefined = BOARD_NODES.find((candidate) => candidate.id === piece.nodeId) ?? BOARD_NODES[piece.nodeIndex] ?? BOARD_NODES[0];
   const stackedPieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished);
@@ -88,7 +91,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable }: GameBoardProps) {
+export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
   void branchChoice;
   void onBranchChoiceChange;
   void showBranchControls;
@@ -120,7 +123,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         data-testid={`piece-${piece.id}`}
         key={piece.id}
         className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
-        style={getPieceStyle(piece, pieces, movingPieceId)}
+        style={getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey)}
         onClick={() => onSelectPiece(piece.id)}
         disabled={piece.finished || !pieceSelectable}
         aria-label={`${piece.label} 말 선택`}

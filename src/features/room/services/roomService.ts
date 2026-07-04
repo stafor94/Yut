@@ -155,17 +155,24 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
     if (existingPlayer.exists()) {
       const existingData = existingPlayer.data() as RoomPlayer;
       const existingSeatIndex = Number(existingData.seatIndex);
-      const hasValidActiveSeat = !existingData.isSpectator && Number.isInteger(existingSeatIndex) && existingSeatIndex >= 0 && existingSeatIndex < Number(room.maxPlayers);
-      if (existingData.isSpectator || hasValidActiveSeat) {
-        transaction.set(playerRef, { nickname: params.nickname, lastSeen: serverTimestamp() }, { merge: true });
-        if (hasValidActiveSeat) transaction.set(doc(db!, 'rooms', roomId, 'seats', String(existingSeatIndex)), { playerId: params.userId, updatedAt: serverTimestamp() }, { merge: true });
-        transaction.set(roomRef, { emptySince: null }, { merge: true });
-        return { role: existingData.isSpectator ? 'spectator' : 'player', seatIndex: existingData.isSpectator ? null : existingSeatIndex };
-      }
-
       const maxPlayers = room.maxPlayers as 2 | 3 | 4;
       const seatRefs = Array.from({ length: maxPlayers }, (_, index) => doc(db!, 'rooms', roomId, 'seats', String(index)));
       const seatSnapshots = await Promise.all(seatRefs.map((seatRef) => transaction.get(seatRef)));
+      const seatIndexForUser = seatSnapshots.findIndex((seatSnapshot) => seatSnapshot.exists() && String(seatSnapshot.data().playerId ?? '') === params.userId);
+      const restoreSeatIndex = seatIndexForUser >= 0 ? seatIndexForUser : existingSeatIndex;
+      const hasValidActiveSeat = Number.isInteger(restoreSeatIndex) && restoreSeatIndex >= 0 && restoreSeatIndex < maxPlayers && (!existingData.isSpectator || seatIndexForUser >= 0);
+      if (hasValidActiveSeat) {
+        transaction.set(playerRef, { nickname: params.nickname, ready: true, seatIndex: restoreSeatIndex, team: existingData.team ?? (params.playMode === 'team' ? TEAMS[restoreSeatIndex] : '청팀'), isSpectator: false, lastSeen: serverTimestamp() }, { merge: true });
+        transaction.set(seatRefs[restoreSeatIndex], { playerId: params.userId, updatedAt: serverTimestamp() }, { merge: true });
+        transaction.set(roomRef, { emptySince: null }, { merge: true });
+        return { role: 'player', seatIndex: restoreSeatIndex };
+      }
+      if (existingData.isSpectator) {
+        transaction.set(playerRef, { nickname: params.nickname, lastSeen: serverTimestamp() }, { merge: true });
+        transaction.set(roomRef, { emptySince: null }, { merge: true });
+        return { role: 'spectator', seatIndex: null };
+      }
+
       const currentPlayers = seatSnapshots.filter((seatSnapshot) => seatSnapshot.exists()).length;
 
       if (room.status === 'playing') {
@@ -812,6 +819,19 @@ export async function removeRoomPlayer(roomId: string, playerId: string) {
   const playerRef = doc(db, 'rooms', roomId, 'players', playerId);
   const playerSnapshot = await getDoc(playerRef);
   const player = playerSnapshot.exists() ? playerSnapshot.data() as RoomPlayer : null;
+  if (room?.status === 'playing' && player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) {
+    await setDoc(playerRef, {
+      nickname: `${player.nickname || '플레이어'} AI`,
+      ready: true,
+      isAI: true,
+      isSpectator: false,
+      lastSeen: serverTimestamp(),
+    }, { merge: true });
+    await setDoc(doc(db, 'rooms', roomId, 'seats', String(player.seatIndex)), { playerId, updatedAt: serverTimestamp() }, { merge: true });
+    await syncRoomPlayerCount(roomId);
+    await setDoc(roomRef, { emptySince: null }, { merge: true });
+    return;
+  }
   await deleteDoc(playerRef);
   if (player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) await deleteDoc(doc(db, 'rooms', roomId, 'seats', String(player.seatIndex)));
   await syncRoomPlayerCount(roomId);
