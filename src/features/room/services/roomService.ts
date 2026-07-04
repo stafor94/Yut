@@ -466,6 +466,20 @@ export function subscribeGameSequences(roomId: string, afterSequence: number, ca
   }, () => callback([]));
 }
 
+export async function getProcessedGameAction(roomId: string, clientMutationId: string): Promise<{ clientMutationId: string; sequence: number; turnVersion: number; type?: string; actorId?: string } | null> {
+  if (!db || !roomId || !clientMutationId) return null;
+  const snapshot = await getDoc(getClientMutationDocRef(roomId, clientMutationId));
+  if (!snapshot.exists()) return null;
+  const data = snapshot.data();
+  return {
+    clientMutationId,
+    sequence: Number(data.sequence ?? 0),
+    turnVersion: Number(data.turnVersion ?? 0),
+    type: typeof data.type === 'string' ? data.type : undefined,
+    actorId: typeof data.actorId === 'string' ? data.actorId : undefined,
+  };
+}
+
 export async function getGameSequencesSince(roomId: string, afterSequence: number): Promise<GameSequence[]> {
   if (!db || !roomId) return [];
   const snapshot = await getDocs(query(collection(db, 'rooms', roomId, 'sequences'), where('sequence', '>', afterSequence), orderBy('sequence', 'asc')));
@@ -634,7 +648,7 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
   const actorLogName = getActionActorLogName(action);
   const nextLogs = (baseReduction.patch.logs as AuthoritativeLog[] | undefined) ?? ((state.logs as AuthoritativeLog[] | undefined) ?? []);
   const rankNumber = nextRankingSeatIds.indexOf(action.actorId) + 1;
-  const rankLog = makeAuthoritativeLog(nextLogs, `${actorLogName}이(가) ${rankNumber > 0 ? `${rankNumber}위로 ` : ''}완주했습니다.`);
+  const rankLog = makeAuthoritativeLog(nextLogs, `${actorLogName}님이 ${rankNumber > 0 ? `${rankNumber}위로 ` : ''}완주했습니다.`);
 
   return {
     status: 'committed',

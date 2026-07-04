@@ -142,7 +142,7 @@ export function reduceRollCommand(params: { state: EngineState; actorId: string;
       roll: nextRoll,
       rollResultReadyAt,
       shieldedPieceIds: [],
-      logs: [makeLog(state.logs ?? [], `${actorLogName}이(가) ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`), ...(state.logs ?? [])],
+      logs: [makeLog(state.logs ?? [], `${actorLogName}님이 ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`), ...(state.logs ?? [])],
     },
     payload: { activeSeatId: actorId, rollName: nextRoll.name, steps: nextRoll.steps },
   };
@@ -171,17 +171,17 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
 
   if (!movingPiece) {
     if (steps < 0) {
-      pushLog(`${actorLogName}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
+      pushLog(`${actorLogName}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
       return { ok: true, patch: advanceTurnPatch({ lastMovedPieceIds: [] }), payload: { activeSeatId: actorId, pieceId, skipped: true } };
     }
     return reject('MOVABLE_PIECE_REQUIRED');
   }
   if (steps < 0 && !movingPiece.started) {
-    pushLog(`${actorLogName}은(는) 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
+    pushLog(`${actorLogName}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
     return { ok: true, patch: advanceTurnPatch({ lastMovedPieceIds: [] }), payload: { activeSeatId: actorId, pieceId, skipped: true } };
   }
   if (steps === 0) {
-    pushLog(`${actorLogName} 말은 이동할 칸 수가 없어 제자리에 머뭅니다.`);
+    pushLog(`${actorLogName}님의 말은 이동할 칸 수가 없어 제자리에 머뭅니다.`);
     return { ok: true, patch: advanceTurnPatch({ lastMovedPieceIds: [movingPiece.id] }), payload: { activeSeatId: actorId, pieceId, stayed: true } };
   }
 
@@ -225,7 +225,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
     if (shieldedFromTrap) {
       nextShieldedPieceIds = nextShieldedPieceIds.filter((id) => !movingGroupIds.includes(id));
       trapEvent = { nodeId: steppedOnTrap.nodeId, ownerId: steppedOnTrap.ownerId, blockedByShield: true, affectedPieceIds: movingGroupIds };
-      pushLog(`${actorLogName} 말이 방패로 함정을 막았습니다.`);
+      pushLog(`${actorLogName}님의 말이 방패로 함정을 막았습니다.`);
     } else {
       nextPieces.forEach((piece) => {
         if (movingGroupIds.includes(piece.id)) {
@@ -234,7 +234,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
       });
       currentNodeId = 'n01';
       trapEvent = { nodeId: steppedOnTrap.nodeId, ownerId: steppedOnTrap.ownerId, blockedByShield: false, affectedPieceIds: movingGroupIds };
-      pushLog(`${actorLogName} 말이 함정을 밟아 시작점으로 돌아갑니다.`);
+      pushLog(`${actorLogName}님의 말이 함정을 밟아 시작점으로 돌아갑니다.`);
     }
   }
 
@@ -245,7 +245,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
     nextOwnedItems = { ...nextOwnedItems, [actorId]: [...currentItems, landedItem.type] };
     nextBoardItems = nextBoardItems.filter((item) => item.id !== landedItem.id);
     itemEvent = { itemId: landedItem.id, itemType: landedItem.type, nodeId: landedItem.nodeId, ownerId: actorId };
-    pushLog(`${actorLogName}이(가) 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 획득했습니다.`);
+    pushLog(`${actorLogName}님이 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 획득했습니다.`);
   }
 
   if (currentNodeId !== 'finish') {
@@ -269,12 +269,12 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
         counts[ownerId] = (counts[ownerId] ?? 0) + 1;
         return counts;
       }, {});
-      Object.entries(capturedOwnerCounts).forEach(([ownerId, count]) => pushLog(`${actorLogName}이(가) ${ownerId}의 말 ${count}개를 잡았습니다.`));
+      Object.entries(capturedOwnerCounts).forEach(([ownerId, count]) => pushLog(`${actorLogName}님이 ${ownerId}님의 말 ${count}개를 잡았습니다.`));
       pushLog('상대 말을 잡아 한 번 더 던질 수 있습니다.');
     }
   }
 
-  if (finishedMove) pushLog(`${actorLogName} 말이 완주했습니다!`);
+  if (finishedMove) pushLog(`${actorLogName}님의 말이 완주했습니다!`);
   const nextTurnIndex = result.bonus || captured ? Number(state.turnIndex ?? 0) : (Number(state.turnIndex ?? 0) + 1) % state.turnOrderIds.length;
 
   return {
