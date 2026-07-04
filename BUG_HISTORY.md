@@ -67,6 +67,59 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-04 - 로비 방 카드 참여 버튼 우측 정렬 재발
+
+### Symptom
+
+- 로비 방 카드의 `참여` 버튼이 `대기중` 배지처럼 우측 정렬되지 않고 `아이템 OFF` 텍스트 바로 오른쪽에 붙어 보였다.
+
+### Expected behavior
+
+- `참여` 버튼은 방 메타 텍스트 길이와 관계없이 카드 우측 action column에 정렬되어야 한다.
+
+### Actual behavior
+
+- `참여` 버튼이 메타 텍스트와 같은 흐름에 놓여 텍스트 바로 뒤에 붙은 것처럼 배치될 수 있었다.
+
+### Reproduction steps
+
+1. 로비 화면에서 열린 방 카드가 표시된다.
+2. 방 카드 메타 정보가 `아이템 OFF`까지 렌더링된다.
+3. `참여` 버튼 위치를 확인한다.
+
+### Suspected root cause
+
+- `.lobby-room-meta`가 `display: contents`로 풀리면서 메타 텍스트와 버튼이 부모 grid에 배치되지만, 버튼의 grid column/정렬이 명시되지 않아 auto-placement와 버튼 margin/width 조정에 의존했다.
+
+### Confirmed root cause
+
+- `.lobby-room-card div`의 두 번째 column이 `auto`였고 `.lobby-room-action`에 명시적인 `grid-column`/`justify-self`가 없어, 버튼 위치가 카드 우측 고정 column이 아니라 메타 텍스트 다음 auto column처럼 보일 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 버튼의 폭, min-width, margin 계열만 조정한 것으로 추정된다.
+  - Why it failed: grid item이 어느 column에 놓이는지 명시하지 않아 버튼의 기준 위치 자체는 바뀌지 않았다.
+
+### Do not try again
+
+- `.lobby-room-action`의 `width`, `min-width`, `margin-left`만 조정해서 해결하려 하지 않는다.
+- `대기중` 배지와 동일하게 버튼을 absolute positioning으로 덮어씌우지 않는다. 클릭 영역/반응형 충돌 위험이 있다.
+
+### Correct fix plan
+
+- 카드 grid의 action column을 `var(--lobby-room-action-width)`로 명시한다.
+- `참여` 버튼에 `grid-column: 2`와 `justify-self: end`를 지정해 메타 텍스트 길이와 독립적으로 우측 column에 고정한다.
+- 버튼 텍스트, 클릭 동작, 방 참여 로직은 변경하지 않는다.
+
+### Verification checklist
+
+- [x] Issue no longer reproduces by CSS grid placement inspection
+- [x] Related feature still works by build verification
+- [x] No unrelated UI changes
+- [ ] Browser screenshot checked, if applicable
+- [ ] Mobile layout checked, if applicable
+
 ## 2026-07-02 - QA 방 cleanup job 이후 QA 방 잔존
 
 ### Symptom
