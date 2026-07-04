@@ -924,7 +924,7 @@ export function App() {
     const storedRoomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId);
     if (!storedRoomId) return;
     let cancelled = false;
-    setLoadingMessage('새로고침 전 참여 중이던 방을 확인하고 있습니다...');
+    setLoadingMessage('참여 중이던 방을 확인하고 있습니다...');
     void (async () => {
       try {
         const storedRoom = await getRoom(storedRoomId);
@@ -960,7 +960,7 @@ export function App() {
         }
         setScreen(storedRoom.status === 'playing' ? 'game' : 'waitingRoom');
         setLoadingMessage('');
-        setMessage('새로고침 전 참여 중이던 방을 복구했습니다.');
+        setMessage('참여 중이던 방에 다시 입장했습니다.');
       } catch (error) {
         if (cancelled) return;
         window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
