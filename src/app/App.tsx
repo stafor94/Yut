@@ -7,7 +7,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, cleanupStaleRooms, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, heartbeatRoomPlayer, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequence, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cancelRoomGameStart, cleanupStaleRooms, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, heartbeatRoomPlayer, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
@@ -75,6 +75,7 @@ type SequenceStateSnapshot = Partial<{
   rollResultReadyAt: number;
   turnOrderPhase: TurnOrderPhase | null;
   waitingForPlayersReady: boolean;
+  gameSeats: GameSeatSnapshot[];
   startRequestVersion: number;
   turnVersion: number;
   lastSequence: number;
@@ -280,6 +281,47 @@ const seatsWithJoinedPlayer = (players: RoomPlayer[], currentUserId: string, nic
 const spectatorsFromRoomPlayers = (players: RoomPlayer[]): Seat[] => players
   .filter((player) => player.isSpectator)
   .map((player) => ({ id: player.id, label: '관전', name: player.nickname, color: '관전', ready: true, isSpectator: true, team: '청팀' as Team }));
+
+const gameSeatSnapshotsFromSeats = (sourceSeats: Seat[]): GameSeatSnapshot[] => sourceSeats
+  .filter((seat) => !seat.isEmpty && !seat.isSpectator)
+  .map((seat) => ({
+    id: seat.id,
+    label: seat.label,
+    name: seat.name,
+    color: seat.color,
+    team: seat.team,
+    isHost: seat.isHost,
+    isAI: seat.isAI,
+    seatIndex: Number(seat.label.replace('P', '')) - 1,
+  }));
+
+const seatsFromGameSeatSnapshots = (gameSeats: GameSeatSnapshot[], playMode: PlayMode, playerCount: 2 | 3 | 4): Seat[] => {
+  const defaults = createSeats('', playMode, playerCount).map((seat) => ({ ...seat, isHost: false }));
+  return defaults.map((seat, index) => {
+    const gameSeat = gameSeats.find((candidate) => Number(candidate.seatIndex) === index || candidate.label === seat.label);
+    if (!gameSeat) return seat;
+    return {
+      ...seat,
+      id: gameSeat.id,
+      label: gameSeat.label,
+      name: gameSeat.name,
+      color: gameSeat.color,
+      ready: true,
+      isHost: gameSeat.isHost,
+      isAI: gameSeat.isAI,
+      isEmpty: false,
+      team: gameSeat.team,
+    };
+  });
+};
+
+const preserveLockedGameSeats = (currentSeats: Seat[], nextSeats: Seat[]) => nextSeats.map((nextSeat) => {
+  const currentSeat = currentSeats.find((seat) => seat.label === nextSeat.label);
+  if (!currentSeat || currentSeat.isEmpty || currentSeat.isSpectator) return nextSeat;
+  if (!nextSeat.isEmpty && nextSeat.id === currentSeat.id) return { ...currentSeat, ...nextSeat, isEmpty: false };
+  if (!nextSeat.isEmpty && nextSeat.isAI && nextSeat.id === currentSeat.id) return { ...currentSeat, ...nextSeat, id: currentSeat.id, isEmpty: false };
+  return { ...currentSeat, ready: nextSeat.ready || currentSeat.ready, isEmpty: false };
+});
 
 const makePieces = (seats: Seat[], pieceCount: PieceCount, mode: PlayMode = 'individual'): BoardPiece[] => {
   const activeSeats = seats.filter((seat) => !seat.isEmpty);
@@ -1110,6 +1152,7 @@ export function App() {
           const optimisticAISeat = currentSeats.find((seat) => seat.id === nextSeat.id && seat.isAI);
           return optimisticAISeat ? { ...nextSeat, ...optimisticAISeat, isEmpty: false, ready: true, isAI: true } : nextSeat;
         });
+        if (screen === 'game') return preserveLockedGameSeats(currentSeats, seatsWithPendingAI);
         if (!currentUserId || isRoomManager || screen !== 'waitingRoom' || hasCurrentUserInSnapshot) return seatsWithPendingAI;
         if (seatsWithPendingAI.some((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI)) return seatsWithPendingAI;
         const optimisticSeat = currentSeats.find((seat) => seat.id === currentUserId && !seat.isEmpty && !seat.isAI);
@@ -1205,6 +1248,8 @@ export function App() {
     if (updateVersion && stateVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
     if (updateSequence && 'lastSequence' in state) lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
     const nextRoll = (state.roll as YutResult | null | undefined) ?? null;
+    const syncedGameSeats = (state.gameSeats as GameSeatSnapshot[] | undefined) ?? [];
+    if (syncedGameSeats.length) setSeats((currentSeats) => preserveLockedGameSeats(currentSeats, seatsFromGameSeatSnapshots(syncedGameSeats, playMode, maxPlayers)));
     const lastClientMutationId = (state as { lastClientMutationId?: unknown }).lastClientMutationId;
     const previousRoll = currentRollRef.current;
     const syncedPieces = (state.pieces as BoardPiece[] | undefined) ?? piecesRef.current;
@@ -2156,6 +2201,7 @@ export function App() {
     logIdRef.current = 0;
     if (activeRoomId && canManageRoom && startRequestVersion) startedGameRequestVersionsRef.current.add(startRequestVersion);
     const nextPieces = makePieces(playableSeats, pieceCount, playMode);
+    const nextGameSeats = gameSeatSnapshotsFromSeats(playableSeats);
     const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
     const initialTurnOrderPhase = { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 };
     const prepLog = makeLog('모든 플레이어의 게임 화면 진입을 확인하고 있습니다.');
@@ -2200,6 +2246,7 @@ export function App() {
         rollResultReadyAt: 0,
         turnOrderPhase: initialTurnOrderPhase,
         waitingForPlayersReady: true,
+        gameSeats: nextGameSeats,
         startRequestVersion,
       };
       const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: [], initialTurnOrderIds: [], completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: null, turnOrderIntro: null, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: true, startRequestVersion });
