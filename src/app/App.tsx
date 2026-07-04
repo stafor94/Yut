@@ -430,6 +430,7 @@ export function App() {
   const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<Map<string, { type: GameAction['type']; createdAt: number }>>(new Map());
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
+  const localActionCommitQueueRef = useRef(Promise.resolve());
   const sequenceReplayInProgressRef = useRef(false);
   const queuedSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
   const completingTurnOrderIntroRef = useRef<Set<number>>(new Set());
@@ -614,6 +615,8 @@ export function App() {
   const waitingForOnlineTurnOrder = Boolean(screen === 'game' && activeRoomId && !turnOrderIds.length && !turnOrderPhase.active && !activeTurnOrderIntro);
   const trapPlacementActive = Boolean(pendingTrapPlacement);
   const hasPendingGameStateSave = Boolean(activeRoomId && canCoordinateOnlineGame && hostStateSaveKey);
+  const shouldWaitForAuthoritativeTurnSync = Boolean(activeRoomId && screen === 'game' && pendingLocalRemoteActionCount > 0 && !isMyTurn);
+  const effectivePendingLocalRemoteActionCount = shouldWaitForAuthoritativeTurnSync ? pendingLocalRemoteActionCount : 0;
   const turnActionGuardInput = {
     activeSeatId: activeSeat?.id,
     actorId: localSeatId,
@@ -626,7 +629,7 @@ export function App() {
     movingPieceId,
     pendingTrapPlacement: trapPlacementActive,
     pendingGameStateSave: hasPendingGameStateSave,
-    pendingLocalRemoteActionCount,
+    pendingLocalRemoteActionCount: effectivePendingLocalRemoteActionCount,
     processingActionCount: processingActionIdsRef.current.size,
   };
   const rollActionGuardInput = {
@@ -636,7 +639,7 @@ export function App() {
     remoteActionClient: false,
     rollInProgress,
   };
-  const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
+  const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canSubmitTurnAction = canSubmitTurnActionFromEngine(turnActionGuardInput);
   const selectedPieceCanMove = Boolean(roll && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const activeSeatPiecesOnBoard = useMemo(() => activeSeat
@@ -654,7 +657,7 @@ export function App() {
   const canMoveSelectedPiece = Boolean(activeMovablePiece);
   const canRequestMove = Boolean(canSubmitTurnAction && roll && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && canMoveSelectedPiece);
   const canUseMoveButton = canRequestMove;
-  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
+  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
   const visibleBoardTurnSeat = activeSeat && !waitingForOnlineTurnOrder && !turnOrderPhase.active && !activeTurnOrderIntro ? activeSeat : undefined;
   const visibleBoardTurnIndex = visibleBoardTurnSeat ? turnSeats.findIndex((seat) => seat.id === visibleBoardTurnSeat.id) : -1;
@@ -860,6 +863,7 @@ export function App() {
     processingActionIdsRef.current.clear();
     completedActionIdsRef.current.clear();
     processedClientActionIdsRef.current.clear();
+    localActionCommitQueueRef.current = Promise.resolve();
     rollInProgressRef.current = false;
     rollInProgressStartedAtRef.current = 0;
     setRollInProgress(false);
@@ -2580,7 +2584,7 @@ export function App() {
     if (activeRoomId) { void updateRoomPlayer(activeRoomId, playerId, { team }); }
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId ? { ...seat, team } : seat));
   }
-  function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null) {
+  function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean } = {}) {
     if (rollInProgressRef.current || currentRollRef.current) return null;
     rollInProgressRef.current = true;
     rollInProgressStartedAtRef.current = Date.now();
@@ -2594,7 +2598,9 @@ export function App() {
     currentRollRef.current = nextRoll;
     setRoll(nextRoll);
     playRollAnimationOnce(nextRoll, rolled.sticks, animationKey);
-    pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut:${seat.id}:${turnIndex}:${nextRoll.name}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name }, action: sourceAction ?? null };
+    if (options.recordSequence !== false) {
+      pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut:${seat.id}:${turnIndex}:${nextRoll.name}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name }, action: sourceAction ?? null };
+    }
     playSfx('roll');
     if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
     window.setTimeout(() => {
@@ -2635,6 +2641,27 @@ export function App() {
     setLastActionDiagnostic({ type, message: messageText, reasons: [stage, params.status].filter((value): value is string => Boolean(value)), createdAt: entry.createdAt });
   }
 
+  function enqueueAuthoritativeGameAction(
+    roomId: string,
+    action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
+    handleResult: (result: Awaited<ReturnType<typeof commitAuthoritativeGameAction>>) => Promise<void> | void,
+    handleError: (error: unknown) => void,
+    handleFinally: () => void,
+  ) {
+    const runCommit = async () => {
+      try {
+        const result = await commitAuthoritativeGameAction(roomId, action);
+        await handleResult(result);
+      } catch (error) {
+        handleError(error);
+      } finally {
+        handleFinally();
+      }
+    };
+    const queuedCommit = localActionCommitQueueRef.current.then(runCommit, runCommit);
+    localActionCommitQueueRef.current = queuedCommit.catch(() => undefined);
+  }
+
   function rollYut(options: { timedOut?: boolean } = {}) {
     if (screen === 'game' && !activeRoomId) {
       reportTurnActionFailure('roll_yut', '온라인 방 정보가 없어 진행할 수 없습니다.');
@@ -2646,7 +2673,8 @@ export function App() {
     }
     if (!options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
     if (activeRoomId) {
-      const rollPayload = forcedRoll ? { forcedResult: forcedRoll } : {};
+      const localRoll = forcedRoll ?? rollYutResult().result;
+      const rollPayload = { forcedResult: localRoll };
       const actionKey = `${getLocalActionKey('roll_yut', rollPayload)}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
       if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
         reportTurnActionBlocked('roll_yut', ['pending-local-remote-action'], '이미 윷 던지기 요청을 처리 중입니다');
@@ -2654,23 +2682,38 @@ export function App() {
       }
       addPendingLocalRemoteAction(actionKey);
       localClientMutationIdsRef.current.add(actionKey);
+      const action = { type: 'roll_yut' as const, actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) };
+      const optimisticRoll = rollYutFor(activeSeat, localRoll, action, { recordSequence: false });
+      if (!optimisticRoll) {
+        deletePendingLocalRemoteAction(actionKey);
+        localClientMutationIdsRef.current.delete(actionKey);
+        reportTurnActionBlocked('roll_yut', ['roll-in-progress'], '윷 던지기를 진행할 수 없습니다');
+        return;
+      }
 
       const finishPendingRoll = () => {
         deletePendingLocalRemoteAction(actionKey);
-        rollInProgressRef.current = false;
-        rollInProgressStartedAtRef.current = 0;
-        setRollInProgress(false);
       };
 
-      void commitAuthoritativeGameAction(activeRoomId, { type: 'roll_yut', actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) })
-        .then((result) => {
+      enqueueAuthoritativeGameAction(
+        activeRoomId,
+        action,
+        (result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') {
             recordRemoteActionDiagnostic('roll_yut', 'commit-result', result.reason ?? '윷 던지기 처리에 실패했습니다.', { status: result.status, actionKey });
             return;
           }
+          if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+            lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.sequence);
+            if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
+            acknowledgePendingLocalRemoteAction(actionKey);
+          }
           if (result.status === 'committed') {
             const committedRoll = result.patch?.roll as YutResult | null | undefined;
             const committedRollResultReadyAt = normalizeRollResultReadyAt(Number(result.patch?.rollResultReadyAt ?? 0));
+            if (committedRoll && (committedRoll.name !== optimisticRoll.name || committedRoll.steps !== optimisticRoll.steps)) {
+              recordRemoteActionDiagnostic('roll_yut', 'optimistic-mismatch', '서버 윷 결과가 로컬 선반영 결과와 달라 최신 상태를 동기화합니다.', { status: result.status, actionKey });
+            }
             if (committedRoll && !currentRollRef.current) {
               currentRollRef.current = committedRoll;
               setRoll(committedRoll);
@@ -2680,17 +2723,17 @@ export function App() {
               if (committedRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
             }
           }
-        })
-        .catch((error) => recordRemoteActionDiagnostic('roll_yut', 'commit-error', error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.', { actionKey }))
-        .finally(finishPendingRoll);
-      setForcedRoll(null);
+        },
+        (error) => recordRemoteActionDiagnostic('roll_yut', 'commit-error', error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.', { actionKey }),
+        finishPendingRoll,
+      );
       return;
     }
     setShieldedPieceIds([]);
     rollYutFor(activeSeat);
   }
 
-  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice) {
+  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean } = {}) {
     if (winner || movingPieceId || moveInProgressRef.current) return false;
     ensureRollLogExists(seat, result);
     setMoveInProgressState(true);
@@ -2858,7 +2901,7 @@ export function App() {
     clearRoll();
     setMovingPieceId('');
     setMoveInProgressState(false);
-    if (activeRoomId && canCoordinateOnlineGame) {
+    if (activeRoomId && canCoordinateOnlineGame && options.recordSequence !== false) {
       const nextTurnIndex = shouldAdvanceTurn ? (turnIndex + 1) % Math.max(turnSeats.length, 1) : turnIndex;
       const clientMutationId = `move_piece:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${pieceId}:${Date.now()}`;
       pendingSequenceMetaRef.current = {
@@ -2906,8 +2949,17 @@ export function App() {
     const selectedPiece = hasPieceOnBoard ? movablePieces.find((piece) => piece.id === selectedPieceId) : undefined;
     const fallbackPiece = hasPieceOnBoard ? movablePieces[0] : [...movablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0];
     if ((!selectedPiece || !hasPieceOnBoard) && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
+    if (!selectedPiece && !fallbackPiece) {
+      if (steps < 0) {
+        addLog(`${getSeatDisplayName(activeSeat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
+        setBranchChoice('outer');
+        clearRoll();
+        setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+      }
+      return false;
+    }
+    const pieceToMove = selectedPiece ?? fallbackPiece;
     if (activeRoomId) {
-      const pieceToMove = selectedPiece ?? fallbackPiece;
       const payload = {
         pieceId: pieceToMove?.id ?? '',
         extraSteps,
@@ -2924,8 +2976,12 @@ export function App() {
       }
       addPendingLocalRemoteAction(actionKey);
       localClientMutationIdsRef.current.add(actionKey);
-      void commitAuthoritativeGameAction(activeRoomId, { type: 'move_piece', actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) })
-        .then(async (result) => {
+      const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) };
+      void movePiece(pieceToMove?.id ?? selectedPieceId, roll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice), { recordSequence: false });
+      enqueueAuthoritativeGameAction(
+        activeRoomId,
+        action,
+        async (result) => {
           if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
             const localSequence = lastAppliedSequenceRef.current;
             const resultSequence = result.sequence;
@@ -2942,21 +2998,12 @@ export function App() {
           if (result.status === 'rejected' || result.status === 'unsupported') {
             recordRemoteActionDiagnostic('move_piece', 'commit-result', result.reason ?? '말 이동 처리에 실패했습니다.', { status: result.status, actionKey });
           }
-        })
-        .catch((error) => recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey }))
-        .finally(() => deletePendingLocalRemoteAction(actionKey));
+        },
+        (error) => recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey }),
+        () => deletePendingLocalRemoteAction(actionKey),
+      );
       return true;
     }
-    if (!selectedPiece && !fallbackPiece) {
-      if (steps < 0) {
-        addLog(`${getSeatDisplayName(activeSeat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
-        setBranchChoice('outer');
-        clearRoll();
-        setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
-      }
-      return false;
-    }
-    const pieceToMove = selectedPiece ?? fallbackPiece;
     void movePiece(pieceToMove?.id ?? selectedPieceId, roll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice));
     return true;
   }
