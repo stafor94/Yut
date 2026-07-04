@@ -374,6 +374,7 @@ export function App() {
   const [revealedItems, setRevealedItems] = useState<ItemType[]>([]);
   const [selectedPieceId, setSelectedPieceId] = useState('host-piece-1');
   const [turnIndex, setTurnIndex] = useState(0);
+  const turnIndexRef = useRef(0);
   const [turnOrderIds, setTurnOrderIds] = useState<string[]>([]);
   const [initialTurnOrderIds, setInitialTurnOrderIds] = useState<string[]>([]);
   const [completedSeatIds, setCompletedSeatIds] = useState<string[]>([]);
@@ -1206,7 +1207,8 @@ export function App() {
       logIdRef.current = Math.max(logIdRef.current, ...nextLogs.map((log) => Number(log.id) || 0));
       setLogs(nextLogs);
     }
-    setCaptureEffect((state.captureEffect as CaptureEffect | null | undefined) ?? null);
+    const syncedCaptureEffect = (state.captureEffect as CaptureEffect | null | undefined) ?? null;
+    setCaptureEffect(nextTurnIndex !== turnIndexRef.current ? null : syncedCaptureEffect);
     setTrapEffect((state.trapEffect as TrapEffect | null | undefined) ?? null);
     playSyncedEffectSoundOnce(state, lastClientMutationId);
     setGameStartedAt((state.gameStartedAt as number | null | undefined) ?? null);
@@ -1343,6 +1345,7 @@ export function App() {
     }
     if (manualSequenceSyncing) return;
     const localSequence = lastAppliedSequenceRef.current;
+    void showToast('동기화 중...', '최신 게임 상태를 확인하고 있습니다.', '🔄');
     setManualSequenceSyncing(true);
     try {
       const sequences = await measureFirebaseLatency(() => getGameSequencesSince(activeRoomId, localSequence));
@@ -1565,6 +1568,11 @@ export function App() {
     const timer = window.setTimeout(() => setTurnToast((current) => current?.text === nextTurnToast.text ? null : current), 3000);
     return () => window.clearTimeout(timer);
   }, [activeSeat?.id, activeSeat?.label, activeSeat?.name, activeTurnOrderIntro, canRequestMove, canRollNow, lastMovedPieceIds, lastMovedSeatId, roll, screen, turnIndex, winner]);
+
+  useEffect(() => {
+    turnIndexRef.current = turnIndex;
+    setCaptureEffect(null);
+  }, [turnIndex]);
 
   useEffect(() => {
     if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || itemPromptTiming || !activeSeat || !activeSeat.isAI || isMyTurn || roll || movingPieceId || pendingTrapPlacement) return undefined;
@@ -3180,9 +3188,7 @@ export function App() {
       <aside data-testid="players-panel" className="panel players game-players-panel">
         <h2>{activeRoomTitle || title}</h2>
         <p className="game-end-guide">개인전은 내 말 모두, 팀전은 팀 말 모두 완주하면 승리!</p>
-        {playableSeats.map((seat) => {
-          const orderIndex = turnOrderIds.indexOf(seat.id);
-          const orderText = orderIndex >= 0 ? `${orderIndex + 1}번째` : '';
+        {(activeTurnOrderIntro || turnOrderPhase.active ? playableSeats : turnSeats).map((seat) => {
           const statusText = seat.isAI ? 'AI' : '유저';
           const displayName = getPlayerCardName(seat);
           return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeat?.id === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
@@ -3191,7 +3197,6 @@ export function App() {
               <span className="game-player-name">-{displayName}</span>
             </span>
             <span className="player-badges game-player-meta">
-              {orderIndex >= 0 && <small className="turn-order-badge">{orderText}</small>}
               {playMode === 'team' && <small>{seat.team}</small>}
             </span>
             <em className="game-player-status">{statusText}</em>
