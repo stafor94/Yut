@@ -241,11 +241,16 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
   const landedItem = currentNodeId !== 'finish' ? nextBoardItems.find((item) => item.nodeId === currentNodeId) : undefined;
   if (landedItem) {
     const currentItems = [...(nextOwnedItems[actorId] ?? [])];
-    if (currentItems.length >= 1) currentItems.shift();
-    nextOwnedItems = { ...nextOwnedItems, [actorId]: [...currentItems, landedItem.type] };
+    const landedItemTiming = ITEM_DEFINITIONS[landedItem.type].timing;
+    const sameTimingItem = currentItems.find((type) => ITEM_DEFINITIONS[type].timing === landedItemTiming);
     nextBoardItems = nextBoardItems.filter((item) => item.id !== landedItem.id);
-    itemEvent = { itemId: landedItem.id, itemType: landedItem.type, nodeId: landedItem.nodeId, ownerId: actorId };
-    pushLog(`${actorLogName}님이 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 획득했습니다.`);
+    itemEvent = { itemId: landedItem.id, itemType: landedItem.type, nodeId: landedItem.nodeId, ownerId: actorId, keptExisting: Boolean(sameTimingItem), existingItemType: sameTimingItem ?? null };
+    if (sameTimingItem) {
+      pushLog(`${actorLogName}님이 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 발견했지만 같은 사용 조건의 아이템을 유지했습니다.`);
+    } else {
+      nextOwnedItems = { ...nextOwnedItems, [actorId]: [...currentItems, landedItem.type] };
+      pushLog(`${actorLogName}님이 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 획득했습니다.`);
+    }
   }
 
   if (currentNodeId !== 'finish') {

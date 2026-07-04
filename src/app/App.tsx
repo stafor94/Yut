@@ -43,6 +43,7 @@ type TurnOrderIntro = { order: { seatId: string; label: string; name: string; co
 type CaptureEffect = { id: number; pieceIds: string[] };
 type TrapEffect = { id: number; nodeId: string; pieceIds: string[] };
 type PendingTrapPlacement = { ownerId: string; pieceId: string; nodeIds: string[]; deadline: number };
+type PendingItemPickup = { seatId: string; item: ItemType; itemId: string; existingItem: ItemType; deadline: number };
 type TrapNode = { nodeId: string; ownerId: string };
 type SequenceStateSnapshot = Partial<{
   pieces: BoardPiece[];
@@ -198,7 +199,7 @@ const TURN_ACTION_TIMEOUT_MS = 15000;
 const STALE_PENDING_REMOTE_ACTION_MS = 30000;
 const PENALTY_TURN_ACTION_TIMEOUT_MS = 5000;
 const ITEM_PROMPT_TIMEOUT_MS = 10000;
-const MAX_OWNED_ITEMS = 1;
+const ITEM_REPLACE_TIMEOUT_MS = 10000;
 const TRAP_EFFECT_MS = 3000;
 const AI_MOVE_DELAY_MS = ROLL_ANIMATION_MS;
 const NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS = 500;
@@ -360,7 +361,7 @@ export function App() {
   const [startStatus, setStartStatus] = useState<RoomSummary['startStatus']>('idle');
   const [firebaseLatencySamples, setFirebaseLatencySamples] = useState<number[]>([]);
   const [spectators, setSpectators] = useState<Seat[]>([]);
-  const [pendingItemPickup, setPendingItemPickup] = useState<{ seatId: string; item: ItemType; itemId: string } | null>(null);
+  const [pendingItemPickup, setPendingItemPickup] = useState<PendingItemPickup | null>(null);
   const [seats, setSeats] = useState<Seat[]>(() => createSeats('플레이어', 'individual', 4));
   const [pieces, setPieces] = useState<BoardPiece[]>(() => makePieces(createSeats('플레이어', 'individual', 4), 4));
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
@@ -407,6 +408,7 @@ export function App() {
   const [rollLockClock, setRollLockClock] = useState(() => Date.now());
   const [rollResultReadyAt, setRollResultReadyAt] = useState(0);
   const [trapPlacementClock, setTrapPlacementClock] = useState(() => Date.now());
+  const [itemPickupClock, setItemPickupClock] = useState(() => Date.now());
   const [rollInProgress, setRollInProgress] = useState(false);
   const [moveInProgress, setMoveInProgress] = useState(false);
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
@@ -483,6 +485,7 @@ export function App() {
   };
   const lastAnimatedRollKeyRef = useRef('');
   const lastSyncedRollSoundKeyRef = useRef('');
+  const lastSyncedItemEventKeyRef = useRef('');
   const playedSyncedMoveSoundKeysRef = useRef<Set<string>>(new Set());
   const lastSyncedCaptureSoundKeyRef = useRef('');
   const lastSyncedTrapSoundKeyRef = useRef('');
@@ -1304,6 +1307,8 @@ export function App() {
       if (nextNodeId === anchorAfter.nodeId) break;
     }
     setPieces(finalPieces);
+    const itemEvent = payload.itemEvent;
+    if (itemEvent && typeof itemEvent === 'object') showItemPickupEffect(itemEvent as Record<string, unknown>, `sequence:${sequence.sequence}:item`);
     setMovingPieceId('');
     setMoveInProgressState(false);
   }
@@ -1802,6 +1807,18 @@ export function App() {
   }, [pendingTrapPlacement?.deadline]);
 
 
+  useEffect(() => {
+    if (!pendingItemPickup) return undefined;
+    setItemPickupClock(Date.now());
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setItemPickupClock(now);
+      if (now >= pendingItemPickup.deadline) keepPendingItemPickup(pendingItemPickup);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [pendingItemPickup?.deadline]);
+
+
   const getLocalActionKey = (type: GameAction['type'], payload: Record<string, unknown> = {}) => {
     const turnKey = `${lastAppliedSequenceRef.current}:${turnIndex}:${roll ? `${roll.name}:${roll.steps}` : 'ready'}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (type === 'roll_yut') return `${type}:${localSeatId}:${turnKey}`;
@@ -1812,7 +1829,8 @@ export function App() {
   };
 
   function getPlayerCardName(seat: Seat) {
-    return seat.name.replace(new RegExp(`^${seat.label}\\s*-\\s*`), '');
+    const displayName = seat.name.replace(new RegExp(`^${seat.label}\\s*-\\s*`), '');
+    return seat.isAI ? displayName.replace(/\s+AI$/u, '') : displayName;
   }
 
   function getSeatDisplayName(seat: Seat) {
@@ -2422,10 +2440,53 @@ export function App() {
       }, TOAST_MESSAGE_MS);
     });
   }
+  function showItemPickupEffect(event: Record<string, unknown>, effectKey: string) {
+    if (lastSyncedItemEventKeyRef.current === effectKey) return;
+    const itemType = event.itemType as ItemType | undefined;
+    const nodeId = String(event.nodeId ?? '');
+    const ownerId = String(event.ownerId ?? '');
+    const itemId = String(event.itemId ?? '');
+    if (!itemType || !ITEM_DEFINITIONS[itemType]) return;
+    lastSyncedItemEventKeyRef.current = effectKey;
+    const ownerSeat = getSeatById(ownerId);
+    const ownerName = ownerSeat ? getSeatDisplayName(ownerSeat) : '누군가';
+    const item = ITEM_DEFINITIONS[itemType];
+    const existingItemType = event.existingItemType as ItemType | null | undefined;
+    if (ownerId === localSeatId && existingItemType && ITEM_DEFINITIONS[existingItemType] && !ownerSeat?.isAI) {
+      setPendingItemPickup({ seatId: ownerId, item: itemType, itemId, existingItem: existingItemType, deadline: Date.now() + ITEM_REPLACE_TIMEOUT_MS });
+    }
+    setRevealedItems((items) => Array.from(new Set([...items, itemType])));
+    void showToast(`${ownerName}님 아이템 획득`, item.name, item.icon);
+    playSfx('itemPickup');
+    if (nodeId) {
+      setHighlightedNodeId(nodeId);
+      window.setTimeout(() => setHighlightedNodeId((current) => current === nodeId ? '' : current), 1400);
+    }
+  }
   function resolvePendingItemPickup() {
     setPendingItemPickup(null);
     pendingItemPickupResolverRef.current?.();
     pendingItemPickupResolverRef.current = null;
+  }
+  function findItemWithSameTiming(items: ItemType[], item: ItemType) {
+    const timing = ITEM_DEFINITIONS[item].timing;
+    return items.find((type) => ITEM_DEFINITIONS[type].timing === timing);
+  }
+  function keepPendingItemPickup(pickup = pendingItemPickup) {
+    if (!pickup) return;
+    setBoardItems((items) => items.filter((item) => item.id !== pickup.itemId));
+    addLog(`새 아이템 '${ITEM_DEFINITIONS[pickup.item].name}'을 유지하지 않았습니다.`);
+    resolvePendingItemPickup();
+  }
+  function replacePendingItemPickup(pickup = pendingItemPickup) {
+    if (!pickup) return;
+    setOwnedItems((items) => ({
+      ...items,
+      [pickup.seatId]: (items[pickup.seatId] ?? []).map((type) => type === pickup.existingItem ? pickup.item : type),
+    }));
+    setBoardItems((items) => items.filter((item) => item.id !== pickup.itemId));
+    addLog(`아이템 '${ITEM_DEFINITIONS[pickup.existingItem].name}'을 '${ITEM_DEFINITIONS[pickup.item].name}'으로 교체했습니다.`);
+    resolvePendingItemPickup();
   }
   function getUsableHostItems(timing: ItemTiming) {
     if (movingPieceId || winner) return [];
@@ -2435,7 +2496,7 @@ export function App() {
       if (ITEM_DEFINITIONS[type].timing !== timing) return false;
       if (type === 'move_minus_one' && roll?.steps === 1) return false;
       if (type === 'shield') return lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished));
-      if (type === 'trap') return pieces.some((piece) => piece.id === selectedPieceId && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished);
+      if (type === 'trap') return lastMovedSeatId === localSeatId && lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished));
       return true;
     });
   }
@@ -2677,16 +2738,16 @@ export function App() {
     if (landedItem) {
       const itemName = ITEM_DEFINITIONS[landedItem.type].name;
       const currentItems = ownedItems[seat.id] ?? [];
-      if (currentItems.length >= MAX_OWNED_ITEMS && seat.id === localSeatId && !seat.isAI) {
+      const sameTimingItem = findItemWithSameTiming(currentItems, landedItem.type);
+      if (sameTimingItem && seat.id === localSeatId && !seat.isAI) {
         itemPickupWait = new Promise<void>((resolve) => { pendingItemPickupResolverRef.current = resolve; });
-        setPendingItemPickup({ seatId: seat.id, item: landedItem.type, itemId: landedItem.id });
-        addLog(`${getSeatDisplayName(seat)}님이 아이템 '${itemName}'을 발견했습니다. 보유 한도 때문에 교체를 선택해야 합니다.`);
+        setPendingItemPickup({ seatId: seat.id, item: landedItem.type, itemId: landedItem.id, existingItem: sameTimingItem, deadline: Date.now() + ITEM_REPLACE_TIMEOUT_MS });
+        addLog(`${getSeatDisplayName(seat)}님이 아이템 '${itemName}'을 발견했습니다. 같은 사용 조건의 아이템과 교체할지 선택해야 합니다.`);
+      } else if (sameTimingItem) {
+        setBoardItems((items) => items.filter((item) => item.id !== landedItem.id));
+        addLog(`${getSeatDisplayName(seat)}님이 아이템 '${itemName}'을 발견했지만 같은 사용 조건의 아이템을 유지했습니다.`);
       } else {
-        setOwnedItems((items) => {
-          const nextSeatItems = [...(items[seat.id] ?? [])];
-          if (nextSeatItems.length >= MAX_OWNED_ITEMS) nextSeatItems.shift();
-          return { ...items, [seat.id]: [...nextSeatItems, landedItem.type] };
-        });
+        setOwnedItems((items) => ({ ...items, [seat.id]: [...(items[seat.id] ?? []), landedItem.type] }));
         setBoardItems((items) => items.filter((item) => item.id !== landedItem.id));
         addLog(`${getSeatDisplayName(seat)}님이 아이템 '${itemName}'을 획득했습니다.`);
       }
@@ -2993,16 +3054,19 @@ export function App() {
       return;
     }
     if (type === 'trap') {
-      const trapPieceId = actorId === localSeatId ? selectedPieceId : String(remotePayload.pieceId ?? selectedPieceId);
-      const trapPiece = pieces.find((piece) => piece.id === trapPieceId && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished);
-      if (!trapPiece) { addLog('함정은 말판 위에 있는 내 말을 선택한 뒤 설치할 수 있습니다.'); return; }
       if (lastMovedSeatId !== itemOwnerId) { addLog('함정은 내 말이 이동한 직후에 설치할 수 있습니다.'); return; }
-      const nodeIds = getNearbyNodeIds(trapPiece.nodeId, 2).filter((nodeId) => nodeId !== 'n01');
+      const trapPieceId = actorId === localSeatId ? lastMovedPieceIds[0] : String(remotePayload.pieceId ?? lastMovedPieceIds[0] ?? '');
+      const trapPiece = pieces.find((piece) => piece.id === trapPieceId && lastMovedPieceIds.includes(piece.id) && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished);
+      if (!trapPiece) { addLog('함정은 방금 이동한 말이 말판 위에 있을 때 사용할 수 있습니다.'); return; }
+      if (activeRoomId && actorId === localSeatId && pendingSequenceMetaRef.current) {
+        pendingSequenceMetaRef.current = { ...pendingSequenceMetaRef.current, payload: { ...itemActionPayload, pieceId: trapPiece.id } };
+      }
+      const nodeIds = getNearbyNodeIds(trapPiece.nodeId, 1).filter((nodeId) => nodeId !== 'n01');
       if (!nodeIds.length) { addLog('함정을 설치할 수 있는 칸이 없습니다.'); return; }
       submitItemActionIfRemote();
       setItemPromptTiming(null);
       setPendingTrapPlacement({ ownerId: itemOwnerId, pieceId: trapPiece.id, nodeIds, deadline: Date.now() + 10000 });
-      addLog(`${trapPiece.label} 기준 앞뒤 2칸 이내에서 함정을 설치할 칸을 선택하세요.`);
+      addLog(`${trapPiece.label} 기준 1칸 이내에서 함정을 설치할 칸을 선택하세요.`);
     }
   }
 
@@ -3248,7 +3312,7 @@ export function App() {
 
 
 
-    {pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>새 아이템 {ITEM_DEFINITIONS[pendingItemPickup.item].name}을 얻으려면 기존 아이템 하나를 버려야 합니다.</p><div className="inline-item-actions">{(ownedItems[pendingItemPickup.seatId] ?? []).map((type, index) => <button key={`${type}-${index}`} onClick={() => { const pickup = pendingItemPickup; setOwnedItems((items) => { const next = [...(items[pickup.seatId] ?? [])]; next.splice(index, 1, pickup.item); return { ...items, [pickup.seatId]: next }; }); setBoardItems((items) => items.filter((item) => item.id !== pickup.itemId)); addLog(`아이템 '${ITEM_DEFINITIONS[type].name}'을 버리고 '${ITEM_DEFINITIONS[pickup.item].name}'을 획득했습니다.`); resolvePendingItemPickup(); }}>{ITEM_DEFINITIONS[type].name} 버리기</button>)}<button className="secondary" onClick={() => { addLog(`새 아이템 '${ITEM_DEFINITIONS[pendingItemPickup.item].name}'을 획득하지 않았습니다.`); resolvePendingItemPickup(); }}>획득 안 함</button></div></section></div>}
+    {pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>같은 사용 조건의 아이템은 1개만 보유할 수 있습니다. 10초 뒤 자동으로 유지합니다.</p><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${Math.max(0, pendingItemPickup.deadline - itemPickupClock)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="item-replace-preview"><div><strong>기존 아이템</strong><ItemCard type={pendingItemPickup.existingItem} /></div><div><strong>새 아이템</strong><ItemCard type={pendingItemPickup.item} /></div></div><div className="inline-item-actions"><button onClick={() => replacePendingItemPickup()}>교체</button><button className="secondary" onClick={() => keepPendingItemPickup()}>유지</button></div></section></div>}
 
     {endGameDialogOpen && screen === 'game' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setEndGameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="게임 종료 확인" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">게임 종료</p><h2>정말 윷판을 정리할까요?</h2><p>{gameExitDescription}</p><div className="modal-actions"><button className="danger" onClick={finishGame}>게임 종료</button><button className="secondary" onClick={() => setEndGameDialogOpen(false)}>계속하기</button></div></section></div>}
 
