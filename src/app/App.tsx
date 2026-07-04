@@ -45,6 +45,17 @@ type TrapEffect = { id: number; nodeId: string; pieceIds: string[] };
 type PendingTrapPlacement = { ownerId: string; pieceId: string; nodeIds: string[]; deadline: number };
 type PendingItemPickup = { seatId: string; item: ItemType; itemId: string; existingItem: ItemType; deadline: number };
 type TrapNode = { nodeId: string; ownerId: string };
+type StalledTurnSyncResolution =
+  | { status: 'not-stalled'; reason: string; ageMs: number }
+  | { status: 'waiting'; reason: string; ageMs: number; recoveryAfterMs: number }
+  | { status: 'recoverable'; reason: string; ageMs: number; recoveryKey: string; pieceId: string }
+  | { status: 'blocked'; reason: string; ageMs: number; recoveryKey?: string; pieceId?: string };
+type ManualSyncResolution = StalledTurnSyncResolution & {
+  createdAt: number;
+  localSequence: number;
+  latestSequence: number;
+  result: string;
+};
 type SequenceStateSnapshot = Partial<{
   pieces: BoardPiece[];
   turnIndex: number;
@@ -350,6 +361,7 @@ export function App() {
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [manualSequenceSyncing, setManualSequenceSyncing] = useState(false);
+  const [lastManualSyncResolution, setLastManualSyncResolution] = useState<ManualSyncResolution | null>(null);
   const [screen, setScreen] = useState<Screen>('lobby');
   const [activeRoomTitle, setActiveRoomTitle] = useState('');
   const [activeRoomId, setActiveRoomId] = useState('');
@@ -439,6 +451,9 @@ export function App() {
   const rollAnimationTimerRef = useRef<number | null>(null);
   const pendingItemPickupResolverRef = useRef<(() => void) | null>(null);
   const lastSequenceWatchdogAtRef = useRef(0);
+  const stalledTurnWatchKeyRef = useRef('');
+  const stalledTurnStartedAtRef = useRef(0);
+  const stalledTurnRecoveryKeyRef = useRef('');
   const enteredGamePresenceKeyRef = useRef('');
   const startedGameRequestVersionsRef = useRef<Set<number>>(new Set());
 
@@ -659,6 +674,47 @@ export function App() {
   const canUseMoveButton = canRequestMove;
   const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
+  const stalledTurnMovablePieces = useMemo(() => {
+    if (!roll || !activeSeat) return [];
+    const steps = roll.steps;
+    return pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (steps >= 0 || piece.started));
+  }, [activeSeat, pieces, roll]);
+  const stalledTurnFallbackPiece = useMemo(() => {
+    if (!roll || !activeSeat || !stalledTurnMovablePieces.length) return undefined;
+    const hasPieceOnBoard = pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished);
+    return hasPieceOnBoard ? stalledTurnMovablePieces[0] : [...stalledTurnMovablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0];
+  }, [activeSeat, pieces, roll, stalledTurnMovablePieces]);
+  const stalledTurnNeedsBranchChoice = Boolean(stalledTurnFallbackPiece && roll && roll.steps > 0 && stalledTurnFallbackPiece.started && BRANCH_NODE_IDS.includes(stalledTurnFallbackPiece.nodeId as typeof BRANCH_NODE_IDS[number]));
+  const stalledTurnWatchKey = activeRoomId && screen === 'game' && roll && activeSeat
+    ? `${activeRoomId}:${lastAppliedSequenceRef.current}:${turnIndex}:${activeSeat.id}:${roll.name}:${roll.steps}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`
+    : '';
+  const stalledTurnAgeMs = stalledTurnWatchKey && stalledTurnStartedAtRef.current ? Math.max(0, Date.now() - stalledTurnStartedAtRef.current) : 0;
+  const getCurrentStalledTurnSyncAgeMs = () => {
+    if (!stalledTurnWatchKey) return 0;
+    const watchAgeMs = stalledTurnStartedAtRef.current ? Math.max(0, Date.now() - stalledTurnStartedAtRef.current) : 0;
+    const readyAgeMs = effectiveRollResultReadyAt ? Math.max(0, Date.now() - effectiveRollResultReadyAt) : 0;
+    return Math.max(watchAgeMs, readyAgeMs);
+  };
+  const stalledTurnSyncAgeMs = getCurrentStalledTurnSyncAgeMs();
+  const stalledTurnDetected = Boolean(
+    stalledTurnWatchKey
+    && canCoordinateOnlineGame
+    && !winner
+    && !rollResultHolding
+    && !rollAnimation
+    && !movingPieceId
+    && !moveInProgress
+    && !pendingTrapPlacement
+    && stalledTurnMovablePieces.length > 0
+    && stalledTurnSyncAgeMs >= TURN_ACTION_TIMEOUT_MS,
+  );
+  const stalledTurnReason = stalledTurnDetected
+    ? stalledTurnNeedsBranchChoice
+      ? 'branch-choice-required'
+      : canRequestMove
+        ? 'local-turn-awaiting-move'
+        : 'remote-turn-move-not-completed'
+    : '';
   const visibleBoardTurnSeat = activeSeat && !waitingForOnlineTurnOrder && !turnOrderPhase.active && !activeTurnOrderIntro ? activeSeat : undefined;
   const visibleBoardTurnIndex = visibleBoardTurnSeat ? turnSeats.findIndex((seat) => seat.id === visibleBoardTurnSeat.id) : -1;
   const previousBoardTurnSeat = visibleBoardTurnIndex >= 0 && turnSeats.length > 1 ? turnSeats[(visibleBoardTurnIndex - 1 + turnSeats.length) % turnSeats.length] : undefined;
@@ -707,6 +763,67 @@ export function App() {
   const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > Date.now();
   const startCancelDisabled = startCountdownEndsAt > 0 && startCountdownEndsAt - Date.now() <= START_CANCEL_LOCK_MS;
   const allHumansEnteredGame = playableSeats.filter((seat) => !seat.isAI && !seat.isSpectator).every((seat) => seat.enteredStartVersion === startRequestVersion);
+  const pendingSequenceMetaDiagnostic = pendingSequenceMetaRef.current ? {
+    type: pendingSequenceMetaRef.current.type,
+    actorId: pendingSequenceMetaRef.current.actorId,
+    clientMutationId: pendingSequenceMetaRef.current.clientMutationId ?? '',
+    payloadKeys: Object.keys(pendingSequenceMetaRef.current.payload ?? {}),
+    actionType: pendingSequenceMetaRef.current.action?.type ?? '',
+    actionActorId: pendingSequenceMetaRef.current.action?.actorId ?? '',
+    actionPayloadKeys: Object.keys(pendingSequenceMetaRef.current.action?.payload ?? {}),
+  } : null;
+  const actionPipelineDiagnostic = {
+    pendingLocalRemoteActions: Array.from(pendingLocalRemoteActionsRef.current).map((key) => {
+      const meta = pendingLocalRemoteActionMetaRef.current.get(key);
+      return { key, type: meta?.type ?? getPendingLocalRemoteActionType(key), ageMs: meta ? Math.max(0, Date.now() - meta.createdAt) : 0 };
+    }),
+    processingActionIds: Array.from(processingActionIdsRef.current),
+    completedActionIds: Array.from(completedActionIdsRef.current).slice(-20),
+    rejectedRemoteActionKeys: Array.from(rejectedRemoteActionKeysRef.current).slice(-20),
+    localClientMutationIds: Array.from(localClientMutationIdsRef.current).slice(-20),
+  };
+  const syncPipelineDiagnostic = {
+    applyingSyncedState: applyingSyncedStateRef.current,
+    sequenceReplayInProgress: sequenceReplayInProgressRef.current,
+    queuedSyncedStateSequence: Number(queuedSyncedStateRef.current?.lastSequence ?? 0),
+    lastAppliedStateVersion: lastAppliedStateVersionRef.current,
+    lastAppliedSequence: lastAppliedSequenceRef.current,
+    hostStateSaveKey,
+    hasPendingGameStateSave,
+    hostStateSaveRetryTick,
+    pendingSequenceMeta: pendingSequenceMetaDiagnostic,
+    savingStateFingerprint: savingStateFingerprintRef.current ? savingStateFingerprintRef.current.slice(0, 24) : '',
+    lastSavedStateFingerprint: lastSavedStateFingerprintRef.current ? lastSavedStateFingerprintRef.current.slice(0, 24) : '',
+    lastSequenceWatchdogAgeMs: lastSequenceWatchdogAtRef.current ? Math.max(0, Date.now() - lastSequenceWatchdogAtRef.current) : null,
+  };
+  const turnHealthDiagnostic = {
+    activeSeatId: activeSeat?.id ?? '',
+    activeSeatLabel: activeSeat?.label ?? '',
+    localSeatId,
+    currentUserId,
+    onlineGameCoordinatorSeatId,
+    canCoordinateOnlineGame,
+    isMyTurn,
+    canSubmitTurnAction,
+    canRollNow,
+    canRequestMove,
+    turnActionBlockReasons,
+    rollActionBlockReasons,
+    moveActionBlockReasons,
+    liveTurnGuard: liveTurnGuardRef.current,
+  };
+  const getStalledTurnSyncResolution = (): StalledTurnSyncResolution => {
+    const currentAgeMs = getCurrentStalledTurnSyncAgeMs();
+    if (!activeRoomId || screen !== 'game' || !roll || !activeSeat || !stalledTurnWatchKey) return { status: 'not-stalled', reason: 'no-active-roll-turn', ageMs: 0 };
+    if (winner) return { status: 'blocked', reason: 'winner', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
+    if (rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return { status: 'blocked', reason: 'transient-turn-effect', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
+    if (!stalledTurnMovablePieces.length || !stalledTurnFallbackPiece) return { status: 'blocked', reason: 'no-movable-piece', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
+    if (stalledTurnNeedsBranchChoice) return { status: 'blocked', reason: 'branch-choice-required', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
+    if (!canCoordinateOnlineGame) return { status: 'blocked', reason: 'not-coordinator', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
+    if (stalledTurnRecoveryKeyRef.current === stalledTurnWatchKey) return { status: 'blocked', reason: 'already-recovery-requested', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
+    if (currentAgeMs < TURN_ACTION_TIMEOUT_MS) return { status: 'waiting', reason: 'turn-action-timeout-not-reached', ageMs: currentAgeMs, recoveryAfterMs: TURN_ACTION_TIMEOUT_MS };
+    return { status: 'recoverable', reason: 'stalled-roll-move-timeout', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
+  };
 
   useEffect(() => {
     if (screen !== 'game') return;
@@ -749,6 +866,7 @@ export function App() {
     actionErrorDialog,
     lastActionDiagnostic,
     remoteActionDiagnostics,
+    lastManualSyncResolution,
     turnOrderIds,
     initialTurnOrderIds,
     completedSeatIds,
@@ -775,6 +893,9 @@ export function App() {
     turnIndex,
     lastAppliedStateVersion: lastAppliedStateVersionRef.current,
     lastAppliedSequence: lastAppliedSequenceRef.current,
+    syncPipeline: syncPipelineDiagnostic,
+    actionPipeline: actionPipelineDiagnostic,
+    turnHealth: turnHealthDiagnostic,
     pendingLocalRemoteActionCount,
     pendingLocalRemoteActions: Array.from(pendingLocalRemoteActionsRef.current).map((key) => {
       const meta = pendingLocalRemoteActionMetaRef.current.get(key);
@@ -797,6 +918,18 @@ export function App() {
     turnActionBlockReasons,
     rollActionBlockReasons,
     moveActionBlockReasons,
+    stalledTurn: {
+      detected: stalledTurnDetected,
+      reason: stalledTurnReason,
+      ageMs: stalledTurnAgeMs,
+      syncAgeMs: stalledTurnSyncAgeMs,
+      recoveryAfterMs: TURN_ACTION_TIMEOUT_MS,
+      watchKey: stalledTurnWatchKey,
+      needsBranchChoice: stalledTurnNeedsBranchChoice,
+      fallbackPiece: stalledTurnFallbackPiece ? { id: stalledTurnFallbackPiece.id, ownerId: stalledTurnFallbackPiece.ownerId, label: stalledTurnFallbackPiece.label, nodeId: stalledTurnFallbackPiece.nodeId, started: stalledTurnFallbackPiece.started, finished: stalledTurnFallbackPiece.finished } : null,
+      movablePieces: stalledTurnMovablePieces.map((piece) => ({ id: piece.id, ownerId: piece.ownerId, label: piece.label, nodeId: piece.nodeId, started: piece.started, finished: piece.finished })),
+      syncResolution: getStalledTurnSyncResolution(),
+    },
     selectedPieceId,
     selectedPieceCanMove,
     activeSeatPiecesOnBoard,
@@ -815,13 +948,40 @@ export function App() {
     pendingTrapPlacement,
     itemPromptTiming,
     branchChoice,
-  }), [actionErrorDialog, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingGameStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, turnActionTimeoutPenaltyBySeatId, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps]);
+  }), [actionErrorDialog, actionPipelineDiagnostic, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingGameStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, lastManualSyncResolution, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, syncPipelineDiagnostic, turnActionTimeoutPenaltyBySeatId, turnHealthDiagnostic, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps, stalledTurnAgeMs, stalledTurnDetected, stalledTurnFallbackPiece, stalledTurnMovablePieces, stalledTurnNeedsBranchChoice, stalledTurnReason, stalledTurnSyncAgeMs, stalledTurnWatchKey]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
 
   useEffect(() => {
     (window as typeof window & { __YUT_DEBUG_STATE__?: Record<string, unknown> }).__YUT_DEBUG_STATE__ = diagnosticState;
   }, [diagnosticState]);
+
+  useEffect(() => {
+    if (!stalledTurnWatchKey || !roll || !activeSeat || !stalledTurnMovablePieces.length || winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) {
+      stalledTurnWatchKeyRef.current = '';
+      stalledTurnStartedAtRef.current = 0;
+      return undefined;
+    }
+    if (stalledTurnWatchKeyRef.current !== stalledTurnWatchKey) {
+      stalledTurnWatchKeyRef.current = stalledTurnWatchKey;
+      stalledTurnStartedAtRef.current = Date.now();
+    }
+    const resolution = getStalledTurnSyncResolution();
+    if (resolution.status === 'blocked' && resolution.reason === 'branch-choice-required' && resolution.ageMs >= TURN_ACTION_TIMEOUT_MS) {
+      stalledTurnRecoveryKeyRef.current = stalledTurnWatchKey;
+      const messageText = `${getSeatDisplayName(activeSeat)}님의 이동이 멈춘 상태입니다. 분기점 방향 선택이 필요해 자동 복구를 보류했습니다.`;
+      recordRemoteActionDiagnostic('move_piece', 'stalled-turn-branch-choice-required', messageText, { actionKey: stalledTurnWatchKey });
+      setMessage(messageText);
+      return undefined;
+    }
+    if (resolution.status !== 'waiting' && resolution.status !== 'recoverable') return undefined;
+    const delayMs = resolution.status === 'waiting' ? Math.max(0, resolution.recoveryAfterMs - resolution.ageMs) : 0;
+    const timer = window.setTimeout(() => {
+      if (stalledTurnRecoveryKeyRef.current === stalledTurnWatchKey) return;
+      void recoverStalledTurnMove(stalledTurnWatchKey);
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [activeSeat, canCoordinateOnlineGame, movingPieceId, moveInProgress, pendingTrapPlacement, roll, rollAnimation, rollResultHolding, stalledTurnMovablePieces.length, stalledTurnNeedsBranchChoice, stalledTurnSyncAgeMs, stalledTurnWatchKey, winner]);
 
 
   useEffect(() => () => {
@@ -1423,6 +1583,32 @@ export function App() {
         const clearedPending = await reconcilePendingLocalRemoteActions({ forceStaleClear: false });
         if (clearedPending) {
           setMessage(`최신 sequence #${lastAppliedSequenceRef.current} 기준으로 오래된 요청 상태를 정리했습니다.`);
+          return;
+        }
+        const stalledResolution = getStalledTurnSyncResolution();
+        const manualResolution = { ...stalledResolution, createdAt: Date.now(), localSequence, latestSequence, result: stalledResolution.status } satisfies ManualSyncResolution;
+        setLastManualSyncResolution(manualResolution);
+        if (stalledResolution.status === 'recoverable') {
+          setMessage('최신 상태이지만 현재 턴 이동이 멈춘 것으로 보여 자동 복구를 시도합니다.');
+          recordRemoteActionDiagnostic('move_piece', 'manual-sync-stalled-turn-recovery-started', '동기화 중 멈춘 턴을 감지해 자동 복구를 시도합니다.', { actionKey: stalledResolution.recoveryKey });
+          await recoverStalledTurnMove(stalledResolution.recoveryKey, { source: 'manual-sync' });
+          return;
+        }
+        if (stalledResolution.status === 'waiting') {
+          setMessage(`최신 상태이지만 현재 턴 이동 완료를 기다리는 중입니다. (${Math.ceil(Math.max(0, stalledResolution.recoveryAfterMs - stalledResolution.ageMs) / 1000)}초 후 복구 가능)`);
+          return;
+        }
+        if (stalledResolution.status === 'blocked' && stalledResolution.reason !== 'not-coordinator') {
+          const blockedMessage = stalledResolution.reason === 'branch-choice-required'
+            ? '최신 상태이지만 현재 말이 분기점에 있어 방향 선택이 필요합니다. 자동 복구를 보류했습니다.'
+            : stalledResolution.reason === 'no-movable-piece'
+              ? '최신 상태이지만 현재 턴의 이동 후보를 찾지 못했습니다. 진단 정보를 복사해주세요.'
+              : `최신 상태이지만 자동 복구를 보류했습니다: ${stalledResolution.reason}`;
+          setMessage(blockedMessage);
+          return;
+        }
+        if (stalledResolution.status === 'blocked' && stalledResolution.reason === 'not-coordinator') {
+          setMessage('최신 상태이지만 현재 턴 이동이 아직 완료되지 않았습니다. 조율자 기기에서 자동 복구를 시도합니다.');
           return;
         }
         setMessage(`이미 최신 상태입니다. (sequence #${localSequence})`);
@@ -2670,6 +2856,52 @@ export function App() {
     };
     const queuedCommit = localActionCommitQueueRef.current.then(runCommit, runCommit);
     localActionCommitQueueRef.current = queuedCommit.catch(() => undefined);
+  }
+
+  async function recoverStalledTurnMove(recoveryKey: string, options: { source?: string } = {}) {
+    if (!activeRoomId || !canCoordinateOnlineGame || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
+    if (stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
+    if (winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return false;
+    if (stalledTurnNeedsBranchChoice) return false;
+
+    stalledTurnRecoveryKeyRef.current = recoveryKey;
+    const payload = {
+      pieceId: stalledTurnFallbackPiece.id,
+      extraSteps: 0,
+      branchChoice: getEffectiveBranchChoice(stalledTurnFallbackPiece.nodeId, 'outer'),
+      clientActionId: `move_piece_recovery:${recoveryKey}:${stalledTurnFallbackPiece.id}`,
+      recoveredByCoordinator: true,
+      coordinatorSeatId: localSeatId,
+      reason: options.source === 'manual-sync' ? 'manual-sync-stalled-roll-move-timeout' : 'stalled-roll-move-timeout',
+      stalledForMs: getCurrentStalledTurnSyncAgeMs(),
+    };
+    const action = { type: 'move_piece' as const, actorId: activeSeat.id, payload: withActorLogPayload(payload, activeSeat) };
+    recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-started', `${getSeatDisplayName(activeSeat)}님의 멈춘 이동을 자동 복구합니다.`, { actionKey: payload.clientActionId });
+    enqueueAuthoritativeGameAction(
+      activeRoomId,
+      action,
+      async (result) => {
+        if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+          const localSequence = lastAppliedSequenceRef.current;
+          const resultSequence = result.sequence;
+          if (resultSequence > localSequence) {
+            const sequences = await getGameSequencesSince(activeRoomId, localSequence);
+            const latestState = [...sequences]
+              .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
+              .reverse()
+              .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+            if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
+          }
+          recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-committed', '멈춘 턴 이동을 자동 복구했습니다.', { status: result.status, actionKey: payload.clientActionId });
+        }
+        if (result.status === 'rejected' || result.status === 'unsupported') {
+          recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-result', result.reason ?? '멈춘 턴 자동 복구에 실패했습니다.', { status: result.status, actionKey: payload.clientActionId });
+        }
+      },
+      (error) => recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-error', error instanceof Error ? error.message : '멈춘 턴 자동 복구에 실패했습니다.', { actionKey: payload.clientActionId }),
+      () => undefined,
+    );
+    return true;
   }
 
   function rollYut(options: { timedOut?: boolean } = {}) {
