@@ -3425,7 +3425,7 @@ export function App() {
         <div className="lobby-panel-heading">
           <p className="section-kicker">방 참여</p>
         </div>
-        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div><b>{room.title}</b><span className="lobby-room-meta"><span>{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span><button className="lobby-room-action" disabled={isFirebaseConfigured && !currentUser} onClick={() => { void openWaitingRoom(room); }}>{isFirebaseConfigured && !currentUser ? '준비 중' : room.status === 'playing' ? '관전' : '참여'}</button></span></div></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong></div>}</div>
+        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div className="lobby-room-content"><div className="lobby-room-main"><b>{room.title}</b><span className="lobby-room-meta">{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span></div><div className="lobby-room-side"><span className="lobby-room-status">대기중</span><button className="lobby-room-action" disabled={isFirebaseConfigured && !currentUser} onClick={() => { void openWaitingRoom(room); }}>{isFirebaseConfigured && !currentUser ? '준비 중' : room.status === 'playing' ? '관전' : '참여'}</button></div></div></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong></div>}</div>
       </section>
     </section>}
 

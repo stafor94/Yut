@@ -2296,7 +2296,6 @@ aside.players,
 }
 
 .lobby-room-card {
-  --lobby-room-status-width: 62px;
   --lobby-room-action-width: 62px;
   position: relative;
   overflow: hidden;
@@ -2309,41 +2308,28 @@ aside.players,
   transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
-.lobby-room-card::before {
-  content: "대기중";
-  position: absolute;
-  right: 14px;
-  top: 12px;
-  box-sizing: border-box;
-  inline-size: var(--lobby-room-status-width);
-  padding: 5px 0;
-  border-radius: 999px;
-  text-align: center;
-  background: rgba(47, 107, 79, .12);
-  color: #224236;
-  font-size: .78rem;
-  font-weight: 1000;
-}
-
 .lobby-room-card:hover {
   transform: translateY(-3px);
   border-color: rgba(242, 184, 75, .5);
   box-shadow: 0 24px 52px rgba(82, 49, 18, .16);
 }
 
-.lobby-room-card div,
-.lobby-layout .lobby-room-card div {
+.lobby-room-card .lobby-room-content,
+.lobby-layout .lobby-room-card .lobby-room-content {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--lobby-room-action-width);
   column-gap: 16px;
+  align-items: center;
   flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lobby-room-card .lobby-room-main {
   min-width: 0;
 }
 
 .lobby-room-card b {
   display: block;
-  grid-column: 1 / -1;
-  padding-right: 74px;
   color: #2a1e17;
   font-size: 1.14rem;
 }
@@ -2353,17 +2339,33 @@ aside.players,
 }
 
 .lobby-room-card .lobby-room-meta {
-  display: contents;
+  display: block;
+  min-width: 0;
 }
 
-.lobby-room-card .lobby-room-meta > span {
-  min-width: 0;
-  grid-column: 1;
+.lobby-room-card .lobby-room-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  min-width: var(--lobby-room-action-width);
+}
+
+.lobby-room-card .lobby-room-status {
+  box-sizing: border-box;
+  inline-size: var(--lobby-room-action-width);
+  padding: 5px 0;
+  border-radius: 999px;
+  text-align: center;
+  background: rgba(47, 107, 79, .12);
+  color: #224236;
+  font-size: .78rem;
+  font-weight: 1000;
+  line-height: 1;
 }
 
 .lobby-room-card .lobby-room-action {
-  grid-column: 2;
-  justify-self: end;
   flex: 0 0 auto;
   box-sizing: border-box;
   min-width: 0;
@@ -3436,7 +3438,7 @@ aside.players,
     line-height: 1.25;
   }
 
-  .lobby-room-card .lobby-room-meta > span {
+  .lobby-room-card .lobby-room-meta {
     font-size: .92rem;
     line-height: 1.35;
   }

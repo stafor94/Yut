@@ -100,16 +100,21 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 - Attempt 1:
   - What was changed: 버튼의 폭, min-width, margin 계열만 조정한 것으로 추정된다.
   - Why it failed: grid item이 어느 column에 놓이는지 명시하지 않아 버튼의 기준 위치 자체는 바뀌지 않았다.
+- Attempt 2:
+  - What was changed: 기존 `.lobby-room-meta { display: contents; }` 구조에서 카드 grid의 action column과 버튼 `grid-column`/`justify-self`를 지정했다.
+  - Why it failed: `대기중` 배지는 여전히 card absolute pseudo-element이고 `참여` 버튼은 내부 grid item이라, 세로 모드에서 두 요소가 같은 우측 세로 스택에 속한다는 보장이 없었다.
 
 ### Do not try again
 
 - `.lobby-room-action`의 `width`, `min-width`, `margin-left`만 조정해서 해결하려 하지 않는다.
+- 기존 `.lobby-room-meta { display: contents; }` 기반 grid column 조정만 반복하지 않는다.
 - `대기중` 배지와 동일하게 버튼을 absolute positioning으로 덮어씌우지 않는다. 클릭 영역/반응형 충돌 위험이 있다.
 
 ### Correct fix plan
 
-- 카드 grid의 action column을 `var(--lobby-room-action-width)`로 명시한다.
-- `참여` 버튼에 `grid-column: 2`와 `justify-self: end`를 지정해 메타 텍스트 길이와 독립적으로 우측 column에 고정한다.
+- `대기중` 배지를 pseudo-element가 아니라 실제 `.lobby-room-status` 요소로 렌더링한다.
+- `.lobby-room-side` 우측 column을 만들고 `대기중` 배지와 `참여` 버튼을 같은 flex column에 배치한다.
+- `대기중` 배지와 `참여` 버튼에 같은 폭을 적용해 세로 모드에서도 같은 오른쪽 기준선을 공유하게 한다.
 - 버튼 텍스트, 클릭 동작, 방 참여 로직은 변경하지 않는다.
 
 ### Verification checklist
