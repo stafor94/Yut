@@ -106,19 +106,29 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 - Attempt 3:
   - What was changed: 방 카드의 우측 padding만 소폭 줄였다.
   - Why it failed: 세로 모드에서 `.lobby-room-content`가 카드 폭을 확실히 채우고 우측 column을 끝으로 붙이는 보장이 부족해, padding 축소만으로는 배지/버튼의 기준선이 충분히 오른쪽으로 이동하지 않았다.
+- Attempt 4:
+  - What was changed: `.lobby-room-content` 폭과 `.lobby-room-side` 정렬을 보강하고 모바일 우측 padding을 줄였다.
+  - Why it failed: 실제 세로 화면에서 사용자가 지적한 여백은 버튼/배지 column과 카드 오른쪽 시각 경계 사이의 남는 공간이어서, 정렬 보강만으로는 체감 위치가 충분히 오른쪽으로 이동하지 않았다.
+- Attempt 5:
+  - What was changed: 모바일에서 `.join-room-panel` 우측 padding과 `.lobby-room-card` 우측 padding을 함께 줄이고 음수 margin을 제거했다.
+  - Why it failed: 사용자가 표시한 빨간 원 영역은 방 카드 내부의 action column 오른쪽 공간이었고, 부모/카드 padding 축소만으로는 action column 자체가 카드 우측 경계에 고정되지 않았다.
 
 ### Do not try again
 
 - `.lobby-room-action`의 `width`, `min-width`, `margin-left`만 조정해서 해결하려 하지 않는다.
 - 방 카드의 우측 padding만 소폭 조정해서 해결하려 하지 않는다.
+- `.lobby-room-content` 폭/정렬만 보강하고 실제 모바일 우측 column offset을 그대로 두지 않는다.
+- 모바일 우측 여백을 줄이기 위해 `.lobby-room-side`에 음수 margin을 적용하지 않는다.
+- 모바일에서는 action column을 카드 오른쪽 경계에 직접 고정하되, 본문 영역에는 동일한 폭의 우측 여유를 예약해 텍스트와 버튼이 겹치지 않게 한다.
 - 기존 `.lobby-room-meta { display: contents; }` 기반 grid column 조정만 반복하지 않는다.
-- `대기중` 배지와 동일하게 버튼을 absolute positioning으로 덮어씌우지 않는다. 클릭 영역/반응형 충돌 위험이 있다.
+- 본문 영역 우측 공간 예약 없이 버튼만 absolute positioning으로 덮어씌우지 않는다. 클릭 영역/반응형 충돌 위험이 있다.
 
 ### Correct fix plan
 
 - `대기중` 배지를 pseudo-element가 아니라 실제 `.lobby-room-status` 요소로 렌더링한다.
 - `.lobby-room-side` 우측 column을 만들고 `대기중` 배지와 `참여` 버튼을 같은 flex column에 배치한다.
 - `대기중` 배지와 `참여` 버튼에 같은 폭을 적용해 세로 모드에서도 같은 오른쪽 기준선을 공유하게 한다.
+- 모바일에서는 `.lobby-room-side`를 카드 오른쪽 4px 위치에 고정하고, `.lobby-room-content`에 action column 폭만큼 우측 공간을 예약해 빨간 원으로 표시된 카드 내부 우측 여백을 직접 제거한다.
 - 버튼 텍스트, 클릭 동작, 방 참여 로직은 변경하지 않는다.
 
 ### Verification checklist

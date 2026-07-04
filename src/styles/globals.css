@@ -3383,6 +3383,10 @@ aside.players,
     border-radius: 24px;
   }
 
+  .join-room-panel {
+    padding-inline-end: 8px;
+  }
+
   .section-kicker,
   .lobby-shell .section-kicker,
   .waiting-room .section-kicker {
@@ -3432,6 +3436,19 @@ aside.players,
   .lobby-room-card {
     gap: 14px;
     padding: 20px 4px 20px 20px;
+  }
+
+  .lobby-room-card .lobby-room-content,
+  .lobby-layout .lobby-room-card .lobby-room-content {
+    display: block;
+    padding-inline-end: calc(var(--lobby-room-action-width) + 14px);
+  }
+
+  .lobby-room-card .lobby-room-side {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: 4px;
+    transform: translateY(-50%);
   }
 
   .lobby-room-card b,
