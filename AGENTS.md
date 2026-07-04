@@ -10,47 +10,40 @@ The highest priority is to avoid repeated failed fixes, unrelated changes, and s
 
 ---
 
-## Mandatory workflow for every task
+## Standard workflow
 
-For every task, follow this workflow:
+For every task:
 
 1. Read the user's request carefully.
-2. Identify whether the task is:
-   - bug fix
-   - feature implementation
-   - UI adjustment
-   - refactor
-   - documentation
-   - investigation only
+2. Identify the task type: bug fix, feature implementation, UI adjustment, refactor, documentation, or investigation only.
 3. Read all directly relevant files before editing.
 4. Do not modify files until the root cause or implementation target is clear.
-5. Make the smallest safe change possible.
-6. Avoid unrelated changes.
-7. Verify the result using available commands or manual reasoning.
-8. Report exactly what was changed and how it was verified.
+5. Make the smallest safe change possible and avoid unrelated changes.
+6. Verify the result using available commands or manual reasoning.
+7. Report exactly what changed and how it was verified.
 
 ---
 
-## Bug fix rules
+## Bug fix workflow
 
-For bug fixes, always follow this sequence:
+For bug fixes:
 
 1. Reproduce or clearly describe the reported issue.
-2. Identify the exact root cause.
-3. Check BUG_HISTORY.md for previous failed attempts related to the same issue.
-4. Explain why the issue happens.
-5. Make the minimum necessary code change.
-6. Do not change unrelated UI, layout, styling, naming, file structure, or behavior.
-7. Verify the fix.
-8. Report:
-   - root cause
-   - files changed
-   - change summary
-   - verification result
-   - remaining risks
+2. Identify and explain the root cause.
+3. Check `BUG_HISTORY.md` for previous failed attempts related to the same issue.
+4. Make the minimum necessary code change.
+5. Do not change unrelated UI, layout, styling, naming, file structure, or behavior.
+6. Verify the fix.
+7. Report the root cause, files changed, change summary, verification result, and remaining risks.
 
-If the same bug has already failed to be fixed two times, do not attempt another code change immediately.
-Instead, perform investigation only and update the root-cause analysis.
+If the same bug has already failed to be fixed two times:
+
+1. Stop making code changes.
+2. Re-read the relevant files.
+3. Re-check `BUG_HISTORY.md`.
+4. Identify why previous fixes failed.
+5. Propose a new fix plan.
+6. Wait for approval before editing code.
 
 ---
 
@@ -70,20 +63,16 @@ Do not do any of the following unless explicitly requested:
 
 ---
 
+## Mobile / responsive UI checks
 
-## Mobile / responsive UI rules
+For mobile, portrait, viewport, or responsive layout issues, check these before changing spacing values or component CSS:
 
-For mobile, portrait, viewport, or responsive layout issues:
+- Whether `index.html` has a viewport meta tag.
+- Which media query should apply to the reported device or screenshot.
+- Whether the issue is caused by a missing CSS rule, a rule not matching, a later override, or a deployed bundle/cache mismatch.
+- Whether build verification and browser/manual viewport reasoning support the claimed fix.
 
-1. Before changing component CSS, inspect `index.html` and confirm whether a viewport meta tag exists.
-2. Confirm which media query should apply to the reported device or screenshot.
-3. If a mobile screenshot shows that expected responsive rules are not taking effect, do not keep tweaking spacing values. First investigate viewport scaling, CSS cascade order, and whether the deployed page includes the latest bundle.
-4. For layout bugs reported with screenshots, identify whether the issue is:
-   - CSS rule not written
-   - CSS rule written but not matching
-   - CSS rule overridden later
-   - deployed build/cache not updated
-5. Do not claim a mobile UI issue is resolved unless build verification and browser/manual viewport reasoning are reported.
+Do not claim a mobile UI issue is resolved unless build verification and browser/manual viewport reasoning are reported.
 
 ---
 
@@ -106,7 +95,7 @@ Never write "fixed" unless verification was performed.
 
 ## Final response format
 
-Every final response must include only the following sections:
+When code or documentation files were changed, the final response must include only these sections:
 
 ### Root cause
 
@@ -128,6 +117,8 @@ List the command that was run or explain manual verification.
 
 Mention anything that could still fail or needs manual browser testing.
 
+For investigation-only, planning, or question-answering tasks with no file changes, use a natural Markdown format that fits the request. Still cite referenced files and terminal commands when relevant.
+
 ---
 
 ## Merge rule
@@ -140,28 +131,16 @@ If verification was not possible, the final response must explicitly say:
 
 ---
 
-## Repeated failure rule
-
-If the same issue fails twice:
-
-1. Stop making code changes.
-2. Re-read the relevant files.
-3. Re-check BUG_HISTORY.md.
-4. Identify why previous fixes failed.
-5. Propose a new fix plan.
-6. Wait for approval before editing code.
-
----
-
 ## PR 및 GitHub Actions 운영 규칙
 
 이 저장소에서 PR을 생성해야 하는 작업은 다음 규칙을 따른다.
 
 1. PR은 Draft PR이 아니라 일반 PR로 생성한다.
-2. PR 생성 후 가능한 경우 merge까지 진행한다.
-3. merge 후 가장 최근의 GitHub Actions workflow를 확인한다.
-4. workflow 확인은 merge 시점으로부터 3분 뒤에 시작하고, 이후 1분 주기로 최대 6분까지 반복한다.
-5. workflow가 실패하면 실패 이후 가장 최근에 생성된 Issue를 확인한다.
-6. 실패한 workflow와 최신 Issue를 기준으로 원인을 분석한다.
-7. 정확한 원인 파악이 어렵다면 해당 workflow run의 Artifacts를 내려받아 확인한다.
-8. 실패 직후 바로 수정하지 말고, 먼저 원인 분석과 수정 계획을 작성해서 보고한다.
+2. 사용자가 merge를 요청했고 권한, 브랜치 보호 규칙, CI 상태가 허용하는 경우에만 merge를 진행한다.
+3. merge가 불가능하면 이유를 보고하고 가능한 다음 단계를 제안한다.
+4. merge 후 GitHub CLI 또는 API 권한이 있는 경우 가장 최근의 GitHub Actions workflow를 확인한다.
+5. workflow 확인은 merge 시점으로부터 3분 뒤에 시작하고, 이후 1분 주기로 최대 6분까지 반복한다.
+6. workflow가 실패하면 실패 이후 가장 최근에 생성된 Issue를 확인한다.
+7. 실패한 workflow와 최신 Issue를 기준으로 원인을 분석한다.
+8. 정확한 원인 파악이 어렵다면 해당 workflow run의 Artifacts를 내려받아 확인한다.
+9. 실패 직후 바로 수정하지 말고, 먼저 원인 분석과 수정 계획을 작성해서 보고한다.
