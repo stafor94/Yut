@@ -7,172 +7,62 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, cleanupStaleRooms, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, heartbeatRoomPlayer, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, saveGameState, scheduleEmptyRoomDeletion, subscribeGameState, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type GameSequenceType, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
+import { useGameSyncDebugState } from './hooks/useGameSync';
+import { useRoomPresence } from './hooks/useRoomPresence';
+import { useTurnOrderAutoFinish, useTurnOrderClock, useTurnOrderPortraitScroll } from './hooks/useTurnOrderTimers';
+import { GameScreen } from './screens/GameScreen';
+import { LobbyScreen } from './screens/LobbyScreen';
+import { WaitingRoomScreen } from './screens/WaitingRoomScreen';
+import {
+  AI_NAME_BASES,
+  AI_NAME_PREFIXES,
+  NICKNAME_MAX_LENGTH,
+  PLAYER_COLORS,
+  PLAYER_COLOR_LABELS,
+  STORAGE_KEYS,
+  TEAM_COLORS,
+  createSeats,
+  gameSeatSnapshotsFromSeats,
+  getInitialNickname,
+  getStoredBoolean,
+  getStoredNumber,
+  getStoredPlayMode,
+  getStoredText,
+  makeGameStateFingerprint,
+  makePieces,
+  normalizeNickname,
+  preserveLockedGameSeats,
+  seatsFromGameSeatSnapshots,
+  seatsFromRoomPlayers,
+  seatsWithJoinedPlayer,
+  spectatorsFromRoomPlayers,
+  type CaptureEffect,
+  type GameLog,
+  type ManualSyncResolution,
+  type PendingItemPickup,
+  type PendingTrapPlacement,
+  type PieceCount,
+  type PlayMode,
+  type RollAnimation,
+  type Screen,
+  type Seat,
+  type SequenceStateSnapshot,
+  type StalledTurnSyncResolution,
+  type Team,
+  type ToastMessage,
+  type TrapEffect,
+  type TrapNode,
+  type TurnOrderIntro,
+  type TurnOrderPhase,
+  type TurnOrderRoll,
+} from './appState';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
 import '../styles/globals.css';
 
-type Screen = 'lobby' | 'waitingRoom' | 'game';
-type PlayMode = 'individual' | 'team';
-type Team = '청팀' | '홍팀';
-type PieceCount = 1 | 2 | 3 | 4;
-
-type Seat = {
-  id: string;
-  label: string;
-  name: string;
-  color: string;
-  ready: boolean;
-  isHost?: boolean;
-  isAI?: boolean;
-  isEmpty?: boolean;
-  isSpectator?: boolean;
-  enteredGameAt?: number;
-  enteredStartVersion?: number;
-  team: Team;
-};
-
-type GameLog = { id: number; text: string };
-type ToastMessage = { id: number; title: string; description?: string; icon?: string };
-type RollAnimation = { id: number; result: YutResult; sticks: YutStick[]; turnOrder?: boolean };
-type TurnOrderRoll = { seat: Seat; result: YutResult; rollOffRound: number };
-type TurnOrderPhase = { active: boolean; index: number; rolls: TurnOrderRoll[]; deadline: number; readyAt: number };
-type TurnOrderIntro = { order: { seatId: string; label: string; name: string; color: string }[]; visible: boolean; readyAt: number; slotUntil?: number };
-type CaptureEffect = { id: number; pieceIds: string[] };
-type TrapEffect = { id: number; nodeId: string; pieceIds: string[] };
-type PendingTrapPlacement = { ownerId: string; pieceId: string; nodeIds: string[]; deadline: number };
-type PendingItemPickup = { seatId: string; item: ItemType; itemId: string; existingItem: ItemType; deadline: number };
-type TrapNode = { nodeId: string; ownerId: string };
-type StalledTurnSyncResolution =
-  | { status: 'not-stalled'; reason: string; ageMs: number }
-  | { status: 'waiting'; reason: string; ageMs: number; recoveryAfterMs: number }
-  | { status: 'recoverable'; reason: string; ageMs: number; recoveryKey: string; pieceId: string }
-  | { status: 'blocked'; reason: string; ageMs: number; recoveryKey?: string; pieceId?: string };
-type ManualSyncResolution = StalledTurnSyncResolution & {
-  createdAt: number;
-  localSequence: number;
-  latestSequence: number;
-  result: string;
-};
-type SequenceStateSnapshot = Partial<{
-  pieces: BoardPiece[];
-  turnIndex: number;
-  turnOrderIds: string[];
-  initialTurnOrderIds: string[];
-  completedSeatIds: string[];
-  rankingSeatIds: string[];
-  gameEndMode: 'partial_finish' | 'final' | '';
-  lastFinishedSeatId: string;
-  continuationRound: number;
-  roll: YutResult | null;
-  boardItems: BoardItem[];
-  ownedItems: Record<string, ItemType[]>;
-  trapNodes: TrapNode[];
-  shieldedPieceIds: string[];
-  logs: GameLog[];
-  winner: string;
-  captureEffect: CaptureEffect | null;
-  trapEffect: TrapEffect | null;
-  gameStartedAt: number | null;
-  turnOrderIntro: TurnOrderIntro | null;
-  pendingTrapPlacement: PendingTrapPlacement | null;
-  rollLockUntil: number;
-  lastMovedPieceIds: string[];
-  lastMovedSeatId: string;
-  itemPromptTiming: ItemTiming | null;
-  branchChoice: BranchChoice;
-  rollResultReadyAt: number;
-  turnOrderPhase: TurnOrderPhase | null;
-  waitingForPlayersReady: boolean;
-  gameSeats: GameSeatSnapshot[];
-  startRequestVersion: number;
-  turnVersion: number;
-  lastSequence: number;
-}>;
-
-type GameStateFingerprintInput = {
-  pieces: BoardPiece[];
-  turnIndex: number;
-  turnOrderIds: string[];
-  initialTurnOrderIds: string[];
-  completedSeatIds: string[];
-  rankingSeatIds: string[];
-  gameEndMode: 'partial_finish' | 'final' | '';
-  lastFinishedSeatId: string;
-  continuationRound: number;
-  roll: YutResult | null;
-  boardItems: BoardItem[];
-  ownedItems: Record<string, ItemType[]>;
-  trapNodes: TrapNode[];
-  shieldedPieceIds: string[];
-  winner: string;
-  gameStartedAt: number | null;
-  turnOrderIntro: TurnOrderIntro | null;
-  pendingTrapPlacement: PendingTrapPlacement | null;
-  rollLockUntil: number;
-  lastMovedPieceIds: string[];
-  lastMovedSeatId: string;
-  effectiveRollResultReadyAt: number;
-  turnOrderPhase: TurnOrderPhase | null;
-  waitingForPlayersReady: boolean;
-  startRequestVersion: number;
-};
-
-const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JSON.stringify({
-  pieces: state.pieces,
-  turnIndex: state.turnIndex,
-  turnOrderIds: state.turnOrderIds,
-  initialTurnOrderIds: state.initialTurnOrderIds,
-  completedSeatIds: state.completedSeatIds,
-  rankingSeatIds: state.rankingSeatIds,
-  gameEndMode: state.gameEndMode,
-  lastFinishedSeatId: state.lastFinishedSeatId,
-  continuationRound: state.continuationRound,
-  roll: state.roll,
-  boardItems: state.boardItems,
-  ownedItems: state.ownedItems,
-  trapNodes: state.trapNodes,
-  shieldedPieceIds: state.shieldedPieceIds,
-  winner: state.winner,
-  gameStartedAt: state.gameStartedAt,
-  turnOrderIntro: state.turnOrderIntro,
-  pendingTrapPlacement: state.pendingTrapPlacement,
-  rollLockUntil: state.rollLockUntil,
-  lastMovedPieceIds: state.lastMovedPieceIds,
-  lastMovedSeatId: state.lastMovedSeatId,
-  effectiveRollResultReadyAt: state.effectiveRollResultReadyAt,
-  turnOrderPhase: state.turnOrderPhase,
-  waitingForPlayersReady: state.waitingForPlayersReady,
-  startRequestVersion: state.startRequestVersion,
-});
-
-const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
-const PLAYER_COLOR_LABELS = ['빨강', '파랑', '초록', '노랑'];
-const TEAM_COLORS: Record<Team, string> = { 청팀: '#3a78c2', 홍팀: '#d94a38' };
-const ROOM_COLOR_LABELS: Record<string, string> = { red: '빨강', blue: '파랑', green: '초록', yellow: '노랑' };
-const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount', soundEnabled: 'yut-online:soundEnabled', activeRoomId: 'yut-online:activeRoomId', isRoomHost: 'yut-online:isRoomHost' } as const;
-const NICKNAME_MAX_LENGTH = 7;
-const normalizeNickname = (value: string) => value.trim().slice(0, NICKNAME_MAX_LENGTH);
-const getStoredBoolean = (key: string, fallback: boolean) => {
-  if (typeof window === 'undefined') return fallback;
-  const stored = window.localStorage.getItem(key);
-  return stored === null ? fallback : stored === 'true';
-};
-const getStoredNumber = <T extends number>(key: string, fallback: T, allowed: readonly T[]) => {
-  if (typeof window === 'undefined') return fallback;
-  const stored = Number(window.localStorage.getItem(key));
-  return allowed.includes(stored as T) ? stored as T : fallback;
-};
-const getStoredPlayMode = () => {
-  const stored = getStoredText(STORAGE_KEYS.playMode, 'individual');
-  return stored === 'team' ? 'team' : 'individual';
-};
-const getStoredText = (key: string, fallback: string) => {
-  if (typeof window === 'undefined') return fallback;
-  return window.localStorage.getItem(key) || fallback;
-};
 const getTurnOrderSlotRevealDurationMs = (orderLength: number) => {
   if (orderLength <= 0) return 0;
   if (orderLength === 1) return TURN_ORDER_INITIAL_SLOT_SPIN_MS;
@@ -234,140 +124,6 @@ const withSubjectParticle = (text: string) => `${text}${hasFinalConsonant(text) 
 const withAndParticle = (text: string) => `${text}${hasFinalConsonant(text) ? '과' : '와'}`;
 const formatStoredLogSequence = (log: GameLog, displayIndex?: number) => `#${String(displayIndex ?? log.id).padStart(3, '0')}`;
 const formatRoomRuleText = (mode: PlayMode, players: 2 | 3 | 4, pieces: PieceCount, itemsEnabled: boolean) => `${mode === 'team' ? '팀전' : '개인전'} · ${players}인 · ${mode === 'team' ? `팀별 말 ${pieces}개` : `말 ${pieces}개`} · 아이템 ${itemsEnabled ? 'ON' : 'OFF'}`;
-
-const AI_NAME_PREFIXES = ['씩씩한', '재빠른', '느긋한', '영리한', '용감한', '유쾌한', '차분한', '반짝이는', '든든한', '행운의'];
-const AI_NAME_BASES = ['단풍이', '구름이', '호랑이', '두루미', '반달이', '별님이', '솔방울', '바람이', '나무꾼', '달토끼', '해님이', '복주머니'];
-const RANDOM_NICKNAME_PREFIXES = ['민첩한', '행운의', '반짝이는', '용감한', '느긋한', '쾌활한', '든든한', '재빠른'];
-const RANDOM_NICKNAME_BASES = ['토끼', '호랑이', '두루미', '다람쥐', '구름', '단풍', '별님', '솔방울'];
-const makeRandomNickname = () => `${RANDOM_NICKNAME_PREFIXES[Math.floor(Math.random() * RANDOM_NICKNAME_PREFIXES.length)]} ${RANDOM_NICKNAME_BASES[Math.floor(Math.random() * RANDOM_NICKNAME_BASES.length)]}${Math.floor(Math.random() * 90) + 10}`;
-const getInitialNickname = () => normalizeNickname(getStoredText(STORAGE_KEYS.nickname, '') || makeRandomNickname());
-
-const createSeats = (hostName: string, playMode: PlayMode, playerCount: 2 | 3 | 4): Seat[] => {
-  const defaultTeams: Team[] = playMode === 'team' ? ['청팀', '홍팀', '청팀', '홍팀'] : ['청팀', '청팀', '청팀', '청팀'];
-
-  return Array.from({ length: playerCount }, (_, index) => ({
-    id: index === 0 ? 'host' : `slot-${index + 1}`,
-    label: `P${index + 1}`,
-    name: index === 0 ? hostName || '플레이어' : '빈 자리',
-    color: PLAYER_COLOR_LABELS[index] ?? '검정',
-    ready: index === 0,
-    isHost: index === 0,
-    isEmpty: index !== 0,
-    team: defaultTeams[index] ?? '청팀',
-  }));
-};
-
-
-const seatsFromRoomPlayers = (players: RoomPlayer[], playMode: PlayMode, playerCount: 2 | 3 | 4, hostId = ''): Seat[] => {
-  const defaults = createSeats('', playMode, playerCount);
-  const activePlayers = players.filter((player) => !player.isSpectator);
-  return defaults.map((seat, index) => {
-    const player = activePlayers.find((candidate) => candidate.seatIndex === index);
-    if (!player) return hostId ? { ...seat, isHost: false } : seat;
-    return {
-      ...seat,
-      id: player.id,
-      name: player.nickname,
-      color: ROOM_COLOR_LABELS[player.color] ?? player.color,
-      ready: player.ready,
-      isHost: hostId ? player.id === hostId : index === 0,
-      isAI: player.isAI,
-      isEmpty: false,
-      enteredGameAt: player.enteredGameAt,
-      enteredStartVersion: player.enteredStartVersion,
-      team: player.team,
-    };
-  });
-};
-
-
-const seatsWithJoinedPlayer = (players: RoomPlayer[], currentUserId: string, nickname: string, playMode: PlayMode, playerCount: 2 | 3 | 4, joinedSeatIndex: number | null = null): Seat[] => {
-  const seats = seatsFromRoomPlayers(players, playMode, playerCount);
-  if (players.some((player) => player.id === currentUserId)) return seats;
-  const targetSeat = joinedSeatIndex === null ? seats.find((seat) => seat.isEmpty) : seats[joinedSeatIndex];
-  if (!targetSeat) return seats;
-  return seats.map((seat) => seat.id === targetSeat.id ? { ...seat, id: currentUserId, name: nickname, ready: false, isEmpty: false } : seat);
-};
-
-const spectatorsFromRoomPlayers = (players: RoomPlayer[]): Seat[] => players
-  .filter((player) => player.isSpectator)
-  .map((player) => ({ id: player.id, label: '관전', name: player.nickname, color: '관전', ready: true, isSpectator: true, team: '청팀' as Team }));
-
-const gameSeatSnapshotsFromSeats = (sourceSeats: Seat[]): GameSeatSnapshot[] => sourceSeats
-  .filter((seat) => !seat.isEmpty && !seat.isSpectator)
-  .map((seat) => ({
-    id: seat.id,
-    label: seat.label,
-    name: seat.name,
-    color: seat.color,
-    team: seat.team,
-    isHost: seat.isHost,
-    isAI: seat.isAI,
-    seatIndex: Number(seat.label.replace('P', '')) - 1,
-  }));
-
-const seatsFromGameSeatSnapshots = (gameSeats: GameSeatSnapshot[], playMode: PlayMode, playerCount: 2 | 3 | 4): Seat[] => {
-  const defaults = createSeats('', playMode, playerCount).map((seat) => ({ ...seat, isHost: false }));
-  return defaults.map((seat, index) => {
-    const gameSeat = gameSeats.find((candidate) => Number(candidate.seatIndex) === index || candidate.label === seat.label);
-    if (!gameSeat) return seat;
-    return {
-      ...seat,
-      id: gameSeat.id,
-      label: gameSeat.label,
-      name: gameSeat.name,
-      color: gameSeat.color,
-      ready: true,
-      isHost: gameSeat.isHost,
-      isAI: gameSeat.isAI,
-      isEmpty: false,
-      team: gameSeat.team,
-    };
-  });
-};
-
-const preserveLockedGameSeats = (currentSeats: Seat[], nextSeats: Seat[]) => nextSeats.map((nextSeat) => {
-  const currentSeat = currentSeats.find((seat) => seat.label === nextSeat.label);
-  if (!currentSeat || currentSeat.isEmpty || currentSeat.isSpectator) return nextSeat;
-  if (!nextSeat.isEmpty && nextSeat.id === currentSeat.id) return { ...currentSeat, ...nextSeat, isEmpty: false };
-  if (!nextSeat.isEmpty && nextSeat.isAI && nextSeat.id === currentSeat.id) return { ...currentSeat, ...nextSeat, id: currentSeat.id, isEmpty: false };
-  return { ...currentSeat, ready: nextSeat.ready || currentSeat.ready, isEmpty: false };
-});
-
-const makePieces = (seats: Seat[], pieceCount: PieceCount, mode: PlayMode = 'individual'): BoardPiece[] => {
-  const activeSeats = seats.filter((seat) => !seat.isEmpty);
-  if (mode === 'team') {
-    return (['청팀', '홍팀'] as Team[]).flatMap((team) => {
-      const teamSeats = activeSeats.filter((seat) => seat.team === team);
-      return Array.from({ length: pieceCount }, (_, pieceIndex) => {
-        const ownerSeat = teamSeats[pieceIndex % Math.max(teamSeats.length, 1)] ?? teamSeats[0];
-        return {
-          id: `${team}-piece-${pieceIndex + 1}`,
-          ownerId: ownerSeat?.id ?? team,
-          label: `${team === '청팀' ? '청' : '홍'}-${pieceIndex + 1}`,
-          color: TEAM_COLORS[team],
-          nodeIndex: 0,
-          nodeId: 'n01',
-          started: false,
-          finished: false,
-        };
-      });
-    });
-  }
-
-  return activeSeats.flatMap((seat, index) =>
-    Array.from({ length: pieceCount }, (_, pieceIndex) => ({
-      id: `${seat.id}-piece-${pieceIndex + 1}`,
-      ownerId: seat.id,
-      label: `${seat.label}-${pieceIndex + 1}`,
-      color: PLAYER_COLORS[Number(seat.label.replace('P', '')) - 1] ?? '#2a1e17',
-      nodeIndex: 0,
-      nodeId: 'n01',
-      started: false,
-      finished: false,
-    })),
-  );
-};
 
 const getEffectiveBranchChoice = (nodeId: string, branchChoice: BranchChoice) => BRANCH_NODE_IDS.includes(nodeId as typeof BRANCH_NODE_IDS[number]) ? branchChoice : 'outer';
 
@@ -994,9 +750,7 @@ export function App() {
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
 
-  useEffect(() => {
-    (window as typeof window & { __YUT_DEBUG_STATE__?: Record<string, unknown> }).__YUT_DEBUG_STATE__ = diagnosticState;
-  }, [diagnosticState]);
+  useGameSyncDebugState(diagnosticState);
 
   useEffect(() => {
     if (!stalledTurnWatchKey || !roll || !activeSeat || !stalledTurnMovablePieces.length || winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) {
@@ -1203,18 +957,7 @@ export function App() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.pieceCount, String(pieceCount)); }, [pieceCount]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
 
-  useEffect(() => {
-    if (!activeRoomId || !localSeatId) return undefined;
-    void heartbeatRoomPlayer(activeRoomId, localSeatId);
-    const heartbeatTimer = window.setInterval(() => { void heartbeatRoomPlayer(activeRoomId, localSeatId); }, 15000);
-    return () => window.clearInterval(heartbeatTimer);
-  }, [activeRoomId, localSeatId]);
-
-  useEffect(() => {
-    void cleanupStaleRooms(undefined, activeRoomId);
-    const cleanupTimer = window.setInterval(() => { void cleanupStaleRooms(undefined, activeRoomId); }, 30000);
-    return () => window.clearInterval(cleanupTimer);
-  }, [activeRoomId]);
+  useRoomPresence(activeRoomId, localSeatId);
 
   useEffect(() => {
     if (!winner) { lastWinnerSoundRef.current = ''; return; }
@@ -1751,31 +1494,9 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [gameStartedAt, screen, winner]);
 
-  useEffect(() => {
-    if (!turnOrderPhase.active && !activeTurnOrderIntro) return undefined;
-    setTurnOrderClock(Date.now());
-    const timer = window.setInterval(() => setTurnOrderClock(Date.now()), 250);
-    return () => window.clearInterval(timer);
-  }, [activeTurnOrderIntro, turnOrderPhase.active, turnOrderPhase.index, turnOrderPhase.deadline]);
-
-  useEffect(() => {
-    if (screen !== 'game' || !turnOrderPhase.active) return undefined;
-    if (!window.matchMedia('(orientation: portrait)').matches) return undefined;
-    const timer = window.setTimeout(() => {
-      window.scrollBy({ top: 96, behavior: 'smooth' });
-    }, 80);
-    return () => window.clearTimeout(timer);
-  }, [screen, turnOrderPhase.active]);
-
-  useEffect(() => {
-    if (!turnOrderPhase.active || !playableSeats.length) return undefined;
-    const rolledSeatIds = new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id));
-    const allSeatsRolled = playableSeats.every((seat) => rolledSeatIds.has(seat.id));
-    if (!allSeatsRolled) return undefined;
-    const delayMs = Math.max(0, turnOrderPhase.deadline - Date.now());
-    const timer = window.setTimeout(() => finishTurnOrderCeremony(turnOrderPhase.rolls), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [playableSeats, turnOrderPhase]);
+  useTurnOrderClock({ activeTurnOrderIntro, turnOrderPhase, setTurnOrderClock });
+  useTurnOrderPortraitScroll(screen, turnOrderPhase.active);
+  useTurnOrderAutoFinish({ playableSeats, turnOrderPhase, finishTurnOrderCeremony });
 
   useEffect(() => {
     if (!turnOrderIntro) return undefined;
@@ -3700,23 +3421,16 @@ export function App() {
 
     {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>닉네임 수정</h2><p>닉네임은 7글자까지 사용할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
 
-    {screen === 'lobby' && <section className="lobby-layout premium-lobby" aria-label="첫 대기 화면">
-      <section className="panel room-panel create-room-panel">
-        <div className="lobby-panel-heading create-room-heading">
-          <p className="section-kicker">방 만들기</p>
-          <button data-testid="create-room-button" className="primary-cta create-room-heading-button" onClick={handleCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '생성 중...' : '방 만들기'}</button>
-        </div>
-        <div className="form-grid lobby-form">
-          <label>방 제목<input data-testid="room-title-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="방 제목" /></label>
-        </div>
-      </section>
-      <section className="panel room-panel join-room-panel">
-        <div className="lobby-panel-heading">
-          <p className="section-kicker">방 참여</p>
-        </div>
-        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div className="lobby-room-content"><div className="lobby-room-main"><b>{room.title}</b><span className="lobby-room-meta">{room.playMode === 'team' ? '팀전' : '개인전'} · {room.currentPlayers ?? 0}/{room.maxPlayers} · 말 {room.pieceCount ?? 4}개 · {room.itemMode ? '아이템 ON' : '아이템 OFF'}</span></div><div className="lobby-room-side"><span className="lobby-room-status">대기중</span><button className="lobby-room-action" disabled={isFirebaseConfigured && !currentUser} onClick={() => { void openWaitingRoom(room); }}>{isFirebaseConfigured && !currentUser ? '준비 중' : room.status === 'playing' ? '관전' : '참여'}</button></div></div></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong></div>}</div>
-      </section>
-    </section>}
+    {screen === 'lobby' && <LobbyScreen
+      title={title}
+      rooms={rooms}
+      isCreatingRoom={isCreatingRoom}
+      isFirebaseConfigured={isFirebaseConfigured}
+      currentUser={currentUser}
+      onTitleChange={setTitle}
+      onCreateRoom={handleCreateRoom}
+      onOpenWaitingRoom={(room) => { void openWaitingRoom(room); }}
+    />}
 
     {screen === 'waitingRoom' && (() => {
       const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
@@ -3724,7 +3438,7 @@ export function App() {
       const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
       const startStatusText = allReady ? '시작 가능' : teamStartHint || `${readyMissingCount}명이 더 준비해야 해요.`;
       const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode);
-      return <section data-testid="waiting-room" className={`panel waiting-room compact-waiting-room ${canManageRoom ? 'host-view' : 'player-view'}`} aria-label="방 대기 화면">
+      return <WaitingRoomScreen canManageRoom={canManageRoom}>
         <header className="waiting-header">
           <div>
             <h2 className="room-title">{activeRoomTitle || title}</h2>
@@ -3755,7 +3469,7 @@ export function App() {
           {canManageRoom ? <button data-testid="start-game-button" onClick={handleStartGame} disabled={!allReady}>게임 시작</button> : <button onClick={() => { void toggleMyReady(); }} disabled={!myWaitingSeat}>{myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
           <button className="secondary" onClick={leaveRoom}>방 나가기</button>
         </footer>
-      </section>;
+      </WaitingRoomScreen>;
     })()}
 
 
@@ -3767,7 +3481,7 @@ export function App() {
     {endGameDialogOpen && screen === 'game' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setEndGameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="게임 종료 확인" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">게임 종료</p><h2>정말 윷판을 정리할까요?</h2><p>{gameExitDescription}</p><div className="modal-actions"><button className="danger" onClick={finishGame}>게임 종료</button><button className="secondary" onClick={() => setEndGameDialogOpen(false)}>계속하기</button></div></section></div>}
 
 
-    {screen === 'game' && <section data-testid="game-screen" className="game-layout" aria-label="게임 플레이 화면">
+    {screen === 'game' && <GameScreen>
       <aside data-testid="players-panel" className="panel players game-players-panel">
         <h2>{activeRoomTitle || title}</h2>
         <p className="game-end-guide">{formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode)}</p>
@@ -3790,6 +3504,6 @@ export function App() {
       </aside>
       <section className="panel board-panel">{winner && <div data-testid="winner-overlay" className="winner-overlay" role="status" aria-live="assertive"><span>게임 종료</span><strong>{renderWinnerText()}</strong><p>아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p><button onClick={finishGame}>대기화면으로</button>{canShowContinueRaceButton && <button data-testid="continue-race-button" onClick={continueRace}>이어서 진행</button>}</div>}{renderTurnOrderIntroOverlay()}{activeTurnOrderIntro && !activeTurnOrderIntro.visible && <div className="turn-order-lock" role="status" aria-live="polite">잠시 후 게임 시작!</div>}{goldenYutPickerOpen && <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택"><h2>황금 윷 결과 선택</h2><p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p><div>{GOLDEN_YUT_CHOICES.map((choice) => <button key={choice.name} onClick={() => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}>{choice.name}</button>)}</div></div>}<div data-testid="turn-indicator" className="turn-indicator" style={{ color: boardTurnIndicatorColor }}>{shouldShowBoardTurnNeighbors && <span className="turn-neighbor previous-turn">{previousBoardTurnText}</span>}{shouldShowBoardTurnNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}<strong>{boardTurnIndicatorText}</strong>{shouldShowBoardTurnNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}{shouldShowBoardTurnNeighbors && <span className="turn-neighbor next-turn">{nextBoardTurnText}</span>}</div>{(turnToast || toast) && <div className="board-message-stack" aria-live="polite">{turnToast && <div className="turn-toast board-toast" key={turnToast.id} role="status">{turnToast.text}</div>}{toast && <div className="toast-message board-toast" role="status"><strong>{toast.icon} {toast.title}</strong>{toast.description && <span>{toast.description}</span>}</div>}</div>}<GameBoard pieces={pieces} items={boardItems} selectedPieceId={selectedPieceId || activeMovablePiece?.id} selectedPieceIds={selectedGroupPieceIds.length ? selectedGroupPieceIds : activeMovablePiece ? [activeMovablePiece.id] : []} movingPieceId={movingPieceId} onSelectPiece={(pieceId) => { const targetPiece = pieces.find((piece) => piece.id === pieceId); if (!targetPiece || !isMyTurn || !activeSeat || !canSeatControlPiece(activeSeat, targetPiece)) return; setSelectedPieceId(pieceId); }} getPieceGroupKey={getPieceSideKey} revealedItems={revealedItems} highlightedNodeId={highlightedNodeId} trapNodeIds={trapNodes.map((trap) => trap.nodeId)} previewNodeIds={previewNodeIds} branchChoice={branchChoice} onBranchChoiceChange={setBranchChoice} showBranchControls={false} capturedPieceIds={Array.from(new Set([...(captureEffect?.pieceIds ?? []), ...(trapEffect?.pieceIds ?? [])]))} trapEffectNodeId={trapEffect?.nodeId} selectableNodeIds={trapPlacementNodeIds} onSelectNode={placePendingTrap} boardShaking={Boolean(captureEffect)} isPieceSelectable={(piece) => Boolean(isMyTurn && activeSeat && canSeatControlPiece(activeSeat, piece))} />{rollAnimation && <div className="roll-stage" role="status" aria-live="polite"><div className="roll-aura" aria-hidden="true"></div><div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div><div className={`roll-mat ${rollAnimation.result.bonus && !rollAnimation.turnOrder ? 'bonus-roll' : ''}`}><span className="roll-label">{rollAnimation.result.name}</span>{rollAnimation.sticks.map((stick, index) => { const markCount = stick.flat ? stick.marked ? 1 : 0 : 3; return <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${stick.flat ? 'flat' : 'round'} ${stick.marked ? 'marked' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg` } as CSSProperties}><i>{Array.from({ length: markCount }, (_, markIndex) => <span key={`mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark" aria-hidden="true"></span>)}</i></span>; })}</div></div>}{pendingTrapPlacement && <div className="trap-placement-banner" role="status"><strong>함정 설치 위치를 선택하세요</strong><span>{Math.max(0, Math.ceil((pendingTrapPlacement.deadline - trapPlacementClock) / 1000))}초 남음 · 설치 중에는 윷을 던질 수 없습니다.</span></div>}<div className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length ? 'item-prompt-mode' : ''}`}>{activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택"><div><strong>아이템을 사용할까요?</strong></div><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${getItemPromptTimeoutMs(localSeatId)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="inline-item-actions">{activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => useItem(type)}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}<button className="secondary" onClick={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); }}>사용 안 함</button></div></div> : showBottomBranchControls ? <div className="bottom-branch-controls" aria-label="이동 방향 선택"><button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => setBranchChoice('outer')}>바깥길</button><button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => setBranchChoice('shortcut')}>지름길</button>{canRequestMove && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${activeSeat ? getTurnActionTimeoutMs(activeSeat.id) : TURN_ACTION_TIMEOUT_MS}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}<button type="button" className="branch-move-button" onClick={() => moveSelectedPiece()} disabled={!canRequestMove}>선택한 말 이동</button></div> : <>{((!roll && canRollNow) || (roll && canRequestMove)) && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${activeSeat ? getTurnActionTimeoutMs(activeSeat.id) : TURN_ACTION_TIMEOUT_MS}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}<button data-testid={roll ? 'move-piece-button' : canSubmitTurnAction ? 'roll-yut-button' : 'turn-waiting-button'} className={!roll ? 'roll-button' : undefined} onClick={() => roll ? moveSelectedPiece() : rollYut()} disabled={(!canRollNow && !roll) || Boolean(roll && !canRequestMove)}>{roll ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동') : activeSeat && activeSeat.id !== localSeatId ? `${getSeatDisplayName(activeSeat)} 차례` : pendingTrapPlacement ? '함정 설치 대기 중' : waitingForOnlineTurnOrder ? '순서 정하기 대기 중' : activeTurnOrderIntro ? '결과 확인 중' : '윷 던지기'}</button></>}</div></section>
       <aside className="panel side"><div className="log-header"><h2>진행 기록</h2><button type="button" className="diagnostic-button" onClick={() => setDiagnosticDialogOpen(true)} aria-label="게임 상태 진단 열기" title="게임 상태 진단">📄</button></div><div className="log-list">{visibleLogs.map((log, index) => <p key={log.id} style={getLogCardStyle(log.text, visibleLogs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log, visibleLogs.length - index)}</span>{renderLogText(log.text)}</p>)}</div></aside>
-    </section>}
+    </GameScreen>}
   </main>;
 }
