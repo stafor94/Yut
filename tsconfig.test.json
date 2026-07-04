@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": [
+      "ES2020"
+    ],
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "outDir": ".tmp-unit-tests",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src/features/items/logic/items.ts",
+    "src/game-core/board/board.ts",
+    "src/game-core/gameEngine.ts",
+    "src/game-core/roll.ts",
+    "tests/unit/**/*.ts"
+  ]
+}

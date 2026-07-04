@@ -7,20 +7,21 @@
     "test:smoke": "playwright test --project=desktop-chromium tests/smoke tests/lobby",
     "test:game-flow": "playwright test --workers=1 --project=desktop-chromium tests/online tests/game-flow tests/regression",
     "test:mobile": "playwright test --project=mobile-galaxy --project=tablet-ipad tests/mobile",
-    "qa:cleanup-rooms": "node tests/helpers/cleanup-qa-rooms.js"
+    "qa:cleanup-rooms": "node tests/helpers/cleanup-qa-rooms.js",
+    "test:unit": "rm -rf .tmp-unit-tests && tsc -p tsconfig.test.json && node --test .tmp-unit-tests/tests/unit"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "firebase": "latest",
-    "lucide-react": "latest"
+    "@vitejs/plugin-react": "6.0.3",
+    "vite": "8.1.3",
+    "typescript": "6.0.3",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "firebase": "12.15.0",
+    "lucide-react": "1.23.0"
   },
   "devDependencies": {
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@playwright/test": "latest"
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@playwright/test": "1.61.1"
   }
 }

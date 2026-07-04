@@ -1,0 +1,118 @@
+.waiting-room {
+  display: grid;
+  gap: 18px;
+}
+
+.ready-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ready-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 20px;
+  background: #fff3d8;
+  border: 1px solid rgba(42, 30, 23, .08);
+}
+
+.ready-card b,
+.player b {
+  color: var(--red);
+}
+
+.game-player-title {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  font-weight: 900;
+}
+
+.game-player-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-player-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.game-player-status {
+  white-space: nowrap;
+}
+
+.ready-card em {
+  color: var(--green);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.ready-card small {
+  width: max-content;
+  border-radius: 999px;
+  background: rgba(217, 74, 56, .1);
+  color: var(--red);
+  padding: 4px 8px;
+  font-weight: 900;
+}
+
+.ready-card.ai,
+.player.ai {
+  background: repeating-linear-gradient(135deg, #fff3d8, #fff3d8 10px, #f8e5bd 10px, #f8e5bd 20px);
+  border: 1px solid rgba(217, 74, 56, .2);
+}
+
+.waiting-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.countdown-panel {
+  min-height: 46svh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.countdown-panel p,
+.countdown-panel span {
+  margin: 0;
+  font-weight: 900;
+  color: rgba(42, 30, 23, .7);
+}
+
+.countdown-panel strong {
+  display: grid;
+  place-items: center;
+  width: clamp(120px, 18vw, 200px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--red);
+  color: #fff;
+  font-size: clamp(4rem, 11vw, 8rem);
+  box-shadow: 0 24px 60px rgba(217, 74, 56, .24);
+}
+
+.mini-button {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(217, 74, 56, .12);
+  color: var(--red);
+  font-size: .85rem;
+}
+
+.end-game {
+  width: 100%;
+  margin-top: auto;
+}
+

@@ -1,0 +1,106 @@
+.hero-actions {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+}
+
+.lobby-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, .82fr) minmax(360px, 1.18fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.section-kicker {
+  margin: 0 0 8px;
+  color: var(--red);
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 8px;
+  color: rgba(42, 30, 23, .72);
+  font-weight: 900;
+}
+
+.form-grid input,
+.form-grid button {
+  width: 100%;
+}
+
+.lobby-layout .room-panel {
+  margin-top: 0;
+}
+
+.lobby-layout .room-list {
+  grid-template-columns: 1fr;
+}
+
+.lobby-layout .room-card {
+  align-items: stretch;
+  margin: 0;
+}
+
+.lobby-layout .room-card div {
+  display: grid;
+  gap: 6px;
+}
+
+.lobby-layout .room-card span {
+  color: rgba(42, 30, 23, .68);
+  font-weight: 800;
+}
+
+.lobby-layout .room-card button {
+  align-self: center;
+  min-width: 88px;
+}
+
+.game-shell .game-layout {
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .hero-actions {
+    justify-items: stretch;
+  }
+
+  .status-card {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .lobby-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 900px) and (max-height: 900px) {
+  .lobby-shell {
+    overflow: auto;
+  }
+
+  .lobby-shell .room-panel {
+    display: block;
+  }
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+button.secondary {
+  background: #fff3d8;
+  color: #2a1e17;
+  border: 1px solid rgba(42, 30, 23, .12);
+}
+

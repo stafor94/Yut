@@ -12,3 +12,4 @@ screenshots/
 console-log.txt
 qa-failure-summary-*.zip
 qa-failure-summary-*/
+.tmp-unit-tests
