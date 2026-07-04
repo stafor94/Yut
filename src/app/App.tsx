@@ -2723,6 +2723,14 @@ export function App() {
     let finishedMove = false;
     const movePathNodeIds = getMovePathNodeIds(currentNodeId, steps, getEffectiveBranchChoice(currentNodeId, branchOverride));
     for (let step = 0; step < Math.abs(steps); step += 1) {
+      if (steps > 0 && movingPiece.started && currentNodeId === 'n01') {
+        currentNodeId = 'finish';
+        nextNodeIndex = 20;
+        finishedMove = true;
+        setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: true } : piece));
+        await delay(STEP_DELAY_MS);
+        break;
+      }
       const nextNodeId = movePathNodeIds[step];
       if (steps < 0 && nextNodeId === 'n01' && currentNodeId === 'n02') {
         currentNodeId = 'n01';
@@ -2962,7 +2970,7 @@ export function App() {
     if (steps < 0 && !piece.started) return Number.NEGATIVE_INFINITY;
     const pathNodeIds = getMovePathNodeIds(piece.nodeId, steps, getEffectiveBranchChoice(piece.nodeId, aiBranchChoice));
     const landedNodeId = pathNodeIds[pathNodeIds.length - 1] ?? piece.nodeId;
-    const finishes = steps > 0 && pathNodeIds.length < steps;
+    const finishes = steps > 0 && piece.started && pathNodeIds.slice(0, steps - 1).includes('n01');
     const captures = !finishes && pieces.some((target) => !isSameSide(getSeatById(target.ownerId), seat) && target.started && !target.finished && target.nodeId === landedNodeId);
     const stacks = !finishes && piece.started ? pieces.filter((target) => canSeatControlPiece(seat, target) && target.started && !target.finished && target.nodeId === piece.nodeId).length - 1 : 0;
     const startsNewPiece = !piece.started && steps > 0;

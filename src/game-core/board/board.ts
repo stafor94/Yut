@@ -50,8 +50,7 @@ export type RouteContext = 'outer' | 'n06Shortcut' | 'n11Shortcut' | 'centerToN2
 const OUTER_ROUTE = ['n01','n02','n03','n04','n05','n06','n07','n08','n09','n10','n11','n12','n13','n14','n15','n16','n17','n18','n19','n20'];
 const SHORTCUTS: Record<string, string[]> = {
   n06: ['d05','d06','c01','d07','d08','n16','n17','n18','n19','n20'],
-  // The bottom-right corner is the goal when reached from a shortcut/return path.
-  // Do not route back to n01, which is also the visual start point for pieces waiting to enter.
+  // Shortcut/return paths pass through the visual start point before finishing.
   n11: ['d01','d02','c01','d03','d04'],
   c01: ['d03','d04'],
 };
@@ -93,7 +92,9 @@ export function getMovePathNodeIds(startNodeId: string, steps: number, branchCho
     }
 
     const activeRouteIndex = activeRoute?.indexOf(currentNodeId) ?? -1;
-    const nextNodeId = activeRouteIndex >= 0
+    const nextNodeId = currentNodeId === 'n20' || currentNodeId === 'd04'
+      ? 'n01'
+      : activeRouteIndex >= 0
       ? activeRoute?.[activeRouteIndex + 1]
       : getNextBoardNode(getBoardNodeById(currentNodeId), branchChoice)?.id;
     if (!nextNodeId) break;
