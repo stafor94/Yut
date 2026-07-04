@@ -639,10 +639,18 @@ export function App() {
   const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, pendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canSubmitTurnAction = canSubmitTurnActionFromEngine(turnActionGuardInput);
   const selectedPieceCanMove = Boolean(roll && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
-  const fallbackMovablePiece = useMemo(() => roll && activeSeat && isMyTurn
-    ? pieces.find((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (selectedMoveSteps >= 0 || piece.started))
-    : undefined, [activeSeat, isMyTurn, pieces, roll, selectedMoveSteps]);
-  const activeMovablePiece = selectedPieceCanMove ? selectedPiece : fallbackMovablePiece;
+  const activeSeatPiecesOnBoard = useMemo(() => activeSeat
+    ? pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished)
+    : false, [activeSeat, pieces]);
+  const fallbackMovablePiece = useMemo(() => {
+    if (!roll || !activeSeat || !isMyTurn) return undefined;
+    const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (selectedMoveSteps >= 0 || piece.started));
+    if (!activeSeatPiecesOnBoard) {
+      return [...movablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0];
+    }
+    return movablePieces[0];
+  }, [activeSeat, activeSeatPiecesOnBoard, isMyTurn, pieces, roll, selectedMoveSteps]);
+  const activeMovablePiece = !activeSeatPiecesOnBoard ? fallbackMovablePiece : selectedPieceCanMove ? selectedPiece : fallbackMovablePiece;
   const canMoveSelectedPiece = Boolean(activeMovablePiece);
   const canRequestMove = Boolean(canSubmitTurnAction && roll && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && canMoveSelectedPiece);
   const canUseMoveButton = canRequestMove;
@@ -2391,7 +2399,7 @@ export function App() {
     const seat = getLogSeat(text) ?? (shouldInheritPreviousLogColor ? getLogSeat(previousText) : undefined);
     if (!seat) return {};
     const backgroundColor = playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat);
-    return { '--log-card-bg': backgroundColor, '--log-card-color': getReadableLogTextColor(backgroundColor), '--log-card-border': backgroundColor } as CSSProperties;
+    return { '--log-card-bg': backgroundColor, '--log-card-color': seat.label === 'P4' ? '#fffaf0' : getReadableLogTextColor(backgroundColor), '--log-card-border': backgroundColor } as CSSProperties;
   }
   function isTurnOrderSystemLog(text: string) {
     return text.startsWith('순서 정하기:')
@@ -2885,9 +2893,11 @@ export function App() {
       return false;
     }
     if (!options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
-    const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId && canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
-    const fallbackPiece = pieces.find((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
-    if (!selectedPiece && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
+    const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
+    const hasPieceOnBoard = pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished);
+    const selectedPiece = hasPieceOnBoard ? movablePieces.find((piece) => piece.id === selectedPieceId) : undefined;
+    const fallbackPiece = hasPieceOnBoard ? movablePieces[0] : [...movablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0];
+    if ((!selectedPiece || !hasPieceOnBoard) && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
     if (activeRoomId) {
       const pieceToMove = selectedPiece ?? fallbackPiece;
       const payload = {
@@ -3389,7 +3399,7 @@ export function App() {
 
           <section className="ready-list compact-ready-list" aria-label="플레이어 자리">
             {seats.map((seat) => <article className={`ready-card compact-ready-card ${seat.ready && !seat.isEmpty ? 'ready' : ''} ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''} ${seat.id === localSeatId ? 'me' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
-              <div className="seat-row"><b style={{ background: getSeatPieceColor(seat) }}>{seat.label}</b><strong>{seat.name}</strong><span className="seat-status-actions">{canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => { void kickWaitingPlayer(seat); }}>강퇴</button>}{seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}{seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}</span><em>{seat.ready && !seat.isEmpty && !seat.isHost && <span className="seat-ready-label">준비</span>}{seat.isHost ? '방장' : seat.isAI ? 'AI' : '플레이어'}</em></div>
+              <div className="seat-row"><b style={{ background: getSeatPieceColor(seat) }}>{seat.label}</b><strong>{seat.name}</strong><span className="seat-status-actions">{canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => { void kickWaitingPlayer(seat); }}>강퇴</button>}{seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" onClick={() => markPlayerAsAI(seat.id)}>AI 추가</button>}{seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" onClick={() => cancelAISeat(seat.id)}>AI 제거</button>}</span>{seat.ready && !seat.isEmpty && !seat.isHost && <span className="seat-ready-label">준비</span>}<em>{seat.isHost ? '방장' : seat.isAI ? 'AI' : '플레이어'}</em></div>
               {playMode === 'team' && <div className="team-card-selector" role="group" aria-label={`${seat.label} 팀 선택`}>{(['청팀', '홍팀'] as Team[]).map((team) => <button type="button" key={team} className={`team-card-option ${team === seat.team ? 'active' : ''} ${team === '청팀' ? 'blue' : 'red'}`} disabled={!canManageRoom} onClick={() => changeTeam(seat.id, team)}>{team}</button>)}</div>}
             </article>)}
           </section>
