@@ -680,8 +680,8 @@ select {
 }
 
 .item-button { padding: 0; text-align: left; background: transparent; color: inherit; }
-.log-list { display: grid; gap: 8px; }
-.log-list p { margin: 0; padding: 10px 12px; border: 2px solid var(--log-card-border, transparent); border-radius: 14px; background: var(--log-card-bg, #fff3d8); font-weight: 800; color: var(--log-card-color, rgba(42, 30, 23, .72)); align-self: start; box-shadow: 0 8px 18px rgba(42, 30, 23, .1); }
+.log-list { display: grid; gap: 10px; }
+.log-list p { margin: 0; padding: 10px 12px; border: 2px solid var(--log-card-border, transparent); border-radius: 14px; background: var(--log-card-bg, #fff3d8); font-weight: 800; line-height: 1.38; color: var(--log-card-color, rgba(42, 30, 23, .72)); align-self: start; box-shadow: 0 8px 18px rgba(42, 30, 23, .1); }
 .log-list p .log-player-label { color: var(--log-player-color, inherit); }
 .log-sequence { display: inline-block; margin-right: 8px; font-size: .78em; font-weight: 1000; opacity: .78; }
 
