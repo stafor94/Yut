@@ -221,6 +221,7 @@ const hasFinalConsonant = (text: string) => {
 const withSubjectParticle = (text: string) => `${text}${hasFinalConsonant(text) ? '이' : '가'}`;
 const withAndParticle = (text: string) => `${text}${hasFinalConsonant(text) ? '과' : '와'}`;
 const formatStoredLogSequence = (log: GameLog, displayIndex?: number) => `#${String(displayIndex ?? log.id).padStart(3, '0')}`;
+const formatRoomRuleText = (mode: PlayMode, players: 2 | 3 | 4, pieces: PieceCount, itemsEnabled: boolean) => `${mode === 'team' ? '팀전' : '개인전'} · ${players}인 · ${mode === 'team' ? `팀별 말 ${pieces}개` : `말 ${pieces}개`} · 아이템 ${itemsEnabled ? 'ON' : 'OFF'}`;
 
 const AI_NAME_PREFIXES = ['씩씩한', '재빠른', '느긋한', '영리한', '용감한', '유쾌한', '차분한', '반짝이는', '든든한', '행운의'];
 const AI_NAME_BASES = ['단풍이', '구름이', '호랑이', '두루미', '반달이', '별님이', '솔방울', '바람이', '나무꾼', '달토끼', '해님이', '복주머니'];
@@ -1703,11 +1704,14 @@ export function App() {
 
   useEffect(() => {
     if (!roll || !activeSeat || !isMyTurn || movingPieceId || winner || rollResultHolding || pendingTrapPlacement) return;
-    if (activeRoomId && !canRequestMove) return;
     const steps = roll.steps;
     const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (steps >= 0 || piece.started));
     if (movablePieces.length === 0) {
       const timer = window.setTimeout(() => {
+        if (activeRoomId) {
+          void moveSelectedPiece(0, { timedOut: true });
+          return;
+        }
         addLog(steps < 0 ? `${getSeatDisplayName(activeSeat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.` : `${getSeatDisplayName(activeSeat)}님은 이동할 말이 없습니다.`);
         setBranchChoice('outer');
         clearRoll();
@@ -1715,6 +1719,7 @@ export function App() {
       }, NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS);
       return () => window.clearTimeout(timer);
     }
+    if (activeRoomId && !canRequestMove) return;
     const movableGroups = Array.from(new Map(movablePieces.map((piece) => [piece.started ? piece.nodeId : piece.id, piece])).values());
     if (movableGroups.length !== 1 && movableGroups.some((piece) => piece.started)) return;
     const onlyPiece = movableGroups[0];
@@ -2377,7 +2382,8 @@ export function App() {
   }
   function getLogCardStyle(text: string, previousText = ''): CSSProperties {
     if (isTurnOrderSystemLog(text)) return {};
-    const seat = getLogSeat(text) ?? (text.includes('상대 말을 잡아 한 번 더') ? getLogSeat(previousText) : undefined);
+    const shouldInheritPreviousLogColor = text.includes('한 번 더 던질 수 있습니다.');
+    const seat = getLogSeat(text) ?? (shouldInheritPreviousLogColor ? getLogSeat(previousText) : undefined);
     if (!seat) return {};
     const backgroundColor = playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat);
     return { '--log-card-bg': backgroundColor, '--log-card-color': getReadableLogTextColor(backgroundColor), '--log-card-border': backgroundColor } as CSSProperties;
@@ -2416,7 +2422,8 @@ export function App() {
       .replace(/\(-?\d+칸\)/g, '')
       .replace(/이\(가\)/g, '님이')
       .replace(/은\(는\)/g, '님은')
-      .replace(/의(?= 말| 모든| 방금)/g, '님의');
+      .replace(/의(?= 말| 모든| 방금)/g, '님의')
+      .replace(/님님의/g, '님의');
     const shouldColorPlayerTokens = !isTurnOrderSystemLog(text) || text.startsWith('순서:');
     if (!shouldColorPlayerTokens) return displayText;
     const tokenEntries = getEscapedLogSeatTokens();
@@ -2858,13 +2865,14 @@ export function App() {
       reportTurnActionFailure('move_piece', '온라인 방 정보가 없어 진행할 수 없습니다.');
       return false;
     }
-    if (!roll || !activeSeat || !canRequestMove) {
+    const steps = roll && activeSeat ? roll.steps + extraSteps : 0;
+    const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
+    const canPassBackDoWithoutMovablePiece = Boolean(roll && activeSeat && canSubmitTurnAction && steps < 0 && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece)));
+    if (!roll || !activeSeat || (!canRequestMove && !canPassBackDoWithoutMovablePiece)) {
       reportTurnActionBlocked('move_piece', moveActionBlockReasons, '말 이동을 진행할 수 없습니다');
       return false;
     }
     if (!options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
-    const steps = roll.steps + extraSteps;
-    const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
     const selectedPiece = pieces.find((piece) => piece.id === selectedPieceId && canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
     const fallbackPiece = pieces.find((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
     if (!selectedPiece && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
@@ -3273,7 +3281,7 @@ export function App() {
       const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
       const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
       const startStatusText = allReady ? '시작 가능' : teamStartHint || `${readyMissingCount}명이 더 준비해야 해요.`;
-      const roomRuleText = `${playMode === 'team' ? '팀전' : '개인전'} · ${maxPlayers}인 · ${playMode === 'team' ? `팀별 말 ${pieceCount}개` : `말 ${pieceCount}개`} · 아이템 ${itemMode ? 'ON' : 'OFF'}`;
+      const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode);
       return <section data-testid="waiting-room" className={`panel waiting-room compact-waiting-room ${canManageRoom ? 'host-view' : 'player-view'}`} aria-label="방 대기 화면">
         <header className="waiting-header">
           <div>
@@ -3320,7 +3328,7 @@ export function App() {
     {screen === 'game' && <section data-testid="game-screen" className="game-layout" aria-label="게임 플레이 화면">
       <aside data-testid="players-panel" className="panel players game-players-panel">
         <h2>{activeRoomTitle || title}</h2>
-        <p className="game-end-guide">개인전은 내 말 모두, 팀전은 팀 말 모두 완주하면 승리!</p>
+        <p className="game-end-guide">{formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode)}</p>
         {(activeTurnOrderIntro || turnOrderPhase.active ? playableSeats : turnSeats).map((seat) => {
           const statusText = seat.isAI ? 'AI' : '유저';
           const displayName = getPlayerCardName(seat);
