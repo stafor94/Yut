@@ -825,7 +825,7 @@ export async function scheduleEmptyRoomDeletion(roomId: string) {
   window.setTimeout(() => { void deleteRoomIfStillEmpty(roomId, emptySince); }, EMPTY_ROOM_DELETE_DELAY_MS);
 }
 
-export async function removeRoomPlayer(roomId: string, playerId: string) {
+export async function removeRoomPlayer(roomId: string, playerId: string, options: { preservePlayingSeatAsAi?: boolean } = {}) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const roomRef = doc(db, 'rooms', roomId);
   const roomSnapshot = await getDoc(roomRef);
@@ -833,7 +833,8 @@ export async function removeRoomPlayer(roomId: string, playerId: string) {
   const playerRef = doc(db, 'rooms', roomId, 'players', playerId);
   const playerSnapshot = await getDoc(playerRef);
   const player = playerSnapshot.exists() ? playerSnapshot.data() as RoomPlayer : null;
-  if (room?.status === 'playing' && player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) {
+  const preservePlayingSeatAsAi = options.preservePlayingSeatAsAi ?? true;
+  if (preservePlayingSeatAsAi && room?.status === 'playing' && player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) {
     await setDoc(playerRef, {
       nickname: `${player.nickname || '플레이어'} AI`,
       ready: true,
