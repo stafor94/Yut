@@ -40,7 +40,7 @@ type GameBoardProps = {
 function getOffBoardPieceStyle(piece: BoardPiece, ownerIndex: number, ownerOrder: number, desktopTop: number, portraitTop: number) {
   const portraitColumn = ownerOrder % 2;
   return {
-    left: `${112 + ownerIndex * 8}%`,
+    left: `${108 + ownerIndex * 5}%`,
     top: `${desktopTop}%`,
     background: piece.color,
     translate: '-50% -50%',
@@ -59,7 +59,7 @@ function getFinishedPieceStyle(piece: BoardPiece, pieces: BoardPiece[], getPiece
   const portraitRow = Math.floor(safeOwnerOrder / 2);
 
   return {
-    left: `${124 + ownerFinishedIndex * 8}%`,
+    left: `${108 + ownerFinishedIndex * 5}%`,
     top: `${20 + safeOwnerOrder * 15}%`,
     background: piece.color,
     translate: '-50% -50%',
