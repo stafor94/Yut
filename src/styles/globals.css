@@ -2331,7 +2331,8 @@ aside.players,
   box-shadow: 0 24px 52px rgba(82, 49, 18, .16);
 }
 
-.lobby-room-card div {
+.lobby-room-card div,
+.lobby-layout .lobby-room-card div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   flex: 1 1 auto;

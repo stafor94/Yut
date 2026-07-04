@@ -1725,9 +1725,8 @@ export function App() {
       }, NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS);
       return () => window.clearTimeout(timer);
     }
-    if (activeRoomId) return;
     const movableGroups = Array.from(new Map(movablePieces.map((piece) => [piece.started ? piece.nodeId : piece.id, piece])).values());
-    if (movableGroups.length !== 1 && movableGroups.some((piece) => piece.started)) return;
+    if (movableGroups.length !== 1) return;
     const onlyPiece = movableGroups[0];
     const needsBranchChoice = onlyPiece.started && BRANCH_NODE_IDS.includes(onlyPiece.nodeId as typeof BRANCH_NODE_IDS[number]);
     if (needsBranchChoice) return;
@@ -2507,7 +2506,7 @@ export function App() {
     if (timing === 'after_move' && lastMovedSeatId !== localSeatId) return [];
     return (ownedItems[localSeatId] ?? []).filter((type) => {
       if (ITEM_DEFINITIONS[type].timing !== timing) return false;
-      if (type === 'move_minus_one' && roll?.steps === 1) return false;
+      if ((type === 'move_plus_one' || type === 'move_minus_one') && !getPostMoveAdjustmentPiece(getSeatById(localSeatId))) return false;
       if (type === 'shield') return lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished));
       if (type === 'trap') return lastMovedSeatId === localSeatId && lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished));
       return true;
@@ -2759,6 +2758,10 @@ export function App() {
         itemPickupWait = new Promise<void>((resolve) => { pendingItemPickupResolverRef.current = resolve; });
         setPendingItemPickup({ seatId: seat.id, item: landedItem.type, itemId: landedItem.id, existingItem: sameTimingItem, deadline: Date.now() + ITEM_REPLACE_TIMEOUT_MS });
         addLog(`${getSeatDisplayName(seat)}님이 아이템 '${itemName}'을 발견했습니다. 같은 사용 조건의 아이템과 교체할지 선택해야 합니다.`);
+      } else if (sameTimingItem && seat.isAI && getAiItemValue(landedItem.type) > getAiItemValue(sameTimingItem)) {
+        setOwnedItems((items) => ({ ...items, [seat.id]: (items[seat.id] ?? []).map((type) => type === sameTimingItem ? landedItem.type : type) }));
+        setBoardItems((items) => items.filter((item) => item.id !== landedItem.id));
+        addLog(`${getSeatDisplayName(seat)}님이 아이템 '${ITEM_DEFINITIONS[sameTimingItem].name}'을 '${itemName}'으로 교체했습니다.`);
       } else if (sameTimingItem) {
         setBoardItems((items) => items.filter((item) => item.id !== landedItem.id));
         addLog(`${getSeatDisplayName(seat)}님이 아이템 '${itemName}'을 발견했지만 같은 사용 조건의 아이템을 유지했습니다.`);
@@ -2967,6 +2970,57 @@ export function App() {
       .sort((left, right) => right.score - left.score)[0];
   }
 
+  function getPostMoveAdjustmentPiece(seat: Seat | undefined) {
+    if (!seat || lastMovedSeatId !== seat.id) return undefined;
+    return lastMovedPieceIds
+      .map((id) => pieces.find((piece) => piece.id === id && canSeatControlPiece(seat, piece) && piece.started && !piece.finished))
+      .find((piece): piece is BoardPiece => Boolean(piece));
+  }
+
+  function getAiItemValue(type: ItemType) {
+    if (type === 'golden_yut') return 90;
+    if (type === 'reroll') return 75;
+    if (type === 'move_plus_one') return 70;
+    if (type === 'trap') return 62;
+    if (type === 'shield') return 58;
+    if (type === 'move_minus_one') return 45;
+    return 0;
+  }
+
+  function shouldAiUseReroll(seat: Seat, result: YutResult) {
+    const move = chooseAiMove(seat, result);
+    if (!move) return true;
+    return result.steps <= 1 && move.score < 120;
+  }
+
+  function chooseAiGoldenYutResult(seat: Seat) {
+    return [...GOLDEN_YUT_CHOICES]
+      .map((choice) => ({ choice, move: chooseAiMove(seat, choice) }))
+      .map(({ choice, move }) => ({ choice, score: move ? move.score + (choice.bonus ? 40 : 0) : Number.NEGATIVE_INFINITY }))
+      .sort((left, right) => right.score - left.score)[0]?.choice ?? GOLDEN_YUT_CHOICES[GOLDEN_YUT_CHOICES.length - 1];
+  }
+
+  function chooseAiAfterMoveItem(seat: Seat) {
+    const items = ownedItems[seat.id] ?? [];
+    const adjustmentPiece = getPostMoveAdjustmentPiece(seat);
+    const canUseTrapOrShield = Boolean(adjustmentPiece);
+    if (items.includes('move_plus_one') && adjustmentPiece) return 'move_plus_one' as ItemType;
+    if (items.includes('move_minus_one') && adjustmentPiece) {
+      const previousNodeId = getMovePathNodeIds(adjustmentPiece.nodeId, -1, 'outer')[0];
+      if (previousNodeId && previousNodeId !== 'finish') return 'move_minus_one' as ItemType;
+    }
+    if (items.includes('trap') && canUseTrapOrShield) return 'trap' as ItemType;
+    if (items.includes('shield') && canUseTrapOrShield) return 'shield' as ItemType;
+    return null;
+  }
+
+  async function useAiAfterMoveItem(seat: Seat) {
+    const item = chooseAiAfterMoveItem(seat);
+    if (!item) return false;
+    await useItem(item, seat.id);
+    return true;
+  }
+
   async function autoPlayTurn(seat: Seat, actionKey = `${seat.id}:${turnIndex}`) {
     const canContinueAiTurn = () => {
       const guard = liveTurnGuardRef.current;
@@ -2978,8 +3032,20 @@ export function App() {
 
     try {
       if (!canContinueAiTurn()) return;
-      const nextRoll = rollYutFor(seat);
+      let nextRoll: YutResult | null = null;
+      if ((ownedItems[seat.id] ?? []).includes('golden_yut')) {
+        nextRoll = chooseAiGoldenYutResult(seat);
+        setOwnedItems((items) => ({ ...items, [seat.id]: (items[seat.id] ?? []).filter((type, index) => type !== 'golden_yut' || index !== (items[seat.id] ?? []).indexOf('golden_yut')) }));
+        addLog(`${getSeatDisplayName(seat)}님이 황금 윷으로 ${nextRoll.name} 결과를 선택했습니다.`);
+      }
+      nextRoll = rollYutFor(seat, nextRoll) ?? nextRoll;
       if (!nextRoll) return;
+      if ((ownedItems[seat.id] ?? []).includes('reroll') && shouldAiUseReroll(seat, nextRoll)) {
+        await useItem('reroll', seat.id);
+        await delay(500);
+        nextRoll = currentRollRef.current;
+        if (!nextRoll) return;
+      }
       const aiMove = chooseAiMove(seat, nextRoll);
       if (!aiMove) {
         setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
@@ -2990,6 +3056,8 @@ export function App() {
       await delay(AI_MOVE_DELAY_MS);
       if (!canContinueAiTurn()) return;
       await movePiece(aiMove.piece.id, nextRoll, seat, 0, aiMove.branchChoice);
+      if (!canContinueAiTurn()) return;
+      await useAiAfterMoveItem(seat);
     } finally {
       clearCurrentAiActionKey();
     }
@@ -3017,7 +3085,7 @@ export function App() {
     setPendingTrapPlacement(null);
   }
 
-  function useItem(type: ItemType, actorId = localSeatId, remotePayload: Record<string, unknown> = {}) {
+  async function useItem(type: ItemType, actorId = localSeatId, remotePayload: Record<string, unknown> = {}) {
     if (movingPieceId) return;
     const itemOwnerId = actorId;
     const itemOwnerSeat = playableSeats.find((seat) => seat.id === itemOwnerId);
@@ -3052,16 +3120,14 @@ export function App() {
       return;
     }
     if (type === 'move_plus_one' || type === 'move_minus_one') {
-      if (activeSeat?.id !== itemOwnerId || !roll) { addLog('이동 보정 아이템은 내 턴에 윷을 던진 뒤 사용할 수 있습니다.'); return; }
-      if (type === 'move_minus_one' && roll.steps === 1) { addLog('도에서는 한 칸 덜 이동 아이템을 사용할 수 없습니다.'); return; }
+      if (lastMovedSeatId !== itemOwnerId) { addLog('이동 보정 아이템은 내 말이 이동한 직후 사용할 수 있습니다.'); return; }
       submitItemActionIfRemote();
       const itemMoveSteps = type === 'move_plus_one' ? 1 : -1;
-      if (actorId === localSeatId && !moveSelectedPiece(itemMoveSteps)) return;
-      if (actorId !== localSeatId) {
-        const remotePieceId = String(remotePayload.pieceId ?? selectedPieceId);
-        const remoteBranchChoice = (remotePayload.branchChoice as BranchChoice | undefined) ?? branchChoice;
-        void movePiece(remotePieceId, roll, itemOwnerSeat, itemMoveSteps, remoteBranchChoice);
-      }
+      const targetPiece = actorId === localSeatId
+        ? getPostMoveAdjustmentPiece(itemOwnerSeat)
+        : pieces.find((piece) => piece.id === String(remotePayload.pieceId ?? lastMovedPieceIds[0] ?? '') && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished);
+      const moved = targetPiece ? await movePiece(targetPiece.id, { name: '황금 윷', steps: 0, bonus: true }, itemOwnerSeat, itemMoveSteps, getEffectiveBranchChoice(targetPiece.nodeId, (remotePayload.branchChoice as BranchChoice | undefined) ?? branchChoice)) : false;
+      if (!moved) return;
       consumeItem();
       return;
     }
@@ -3085,6 +3151,15 @@ export function App() {
       const nodeIds = getNearbyNodeIds(trapPiece.nodeId, 1).filter((nodeId) => nodeId !== 'n01');
       if (!nodeIds.length) { addLog('함정을 설치할 수 있는 칸이 없습니다.'); return; }
       submitItemActionIfRemote();
+      if (itemOwnerSeat.isAI) {
+        const selectedNodeId = nodeIds
+          .map((nodeId) => ({ nodeId, score: pieces.filter((piece) => !canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished).some((piece) => getMovePathNodeIds(piece.nodeId, 5, 'outer').includes(nodeId)) ? 10 : 0 }))
+          .sort((left, right) => right.score - left.score)[0]?.nodeId ?? nodeIds[0];
+        consumeItem();
+        setTrapNodes((nodes) => [...nodes.filter((trap) => trap.nodeId !== selectedNodeId), { nodeId: selectedNodeId, ownerId: itemOwnerId }]);
+        addLog(`${getSeatDisplayName(itemOwnerSeat)}님이 ${trapPiece.label} 주변 ${selectedNodeId} 칸에 함정을 설치했습니다.`);
+        return;
+      }
       setItemPromptTiming(null);
       setPendingTrapPlacement({ ownerId: itemOwnerId, pieceId: trapPiece.id, nodeIds, deadline: Date.now() + 10000 });
       addLog(`${trapPiece.label} 기준 1칸 이내에서 함정을 설치할 칸을 선택하세요.`);
@@ -3162,7 +3237,7 @@ export function App() {
     window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
     setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
     if (finishedRoomId && finishedSeatId) {
-      void removeRoomPlayer(finishedRoomId, finishedSeatId).catch((error) => {
+      void removeRoomPlayer(finishedRoomId, finishedSeatId, { preservePlayingSeatAsAi: false }).catch((error) => {
         console.warn('게임 종료 후 방 정리에 실패했습니다.', error);
       });
     }
