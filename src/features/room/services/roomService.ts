@@ -17,7 +17,9 @@ const getCreatedAtMillis = (createdAt: unknown) => {
   return 0;
 };
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; enteredGameAt?: number; enteredStartVersion?: number; lastGamePresenceAt?: number; }
-export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; startRequestVersion?: number; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
+export interface RoomSeat { id: string; playerId: string; originalPlayerId?: string; currentPlayerId?: string; nickname?: string; color?: string; team?: RoomPlayer['team']; seatIndex?: number; label?: string; isHost?: boolean; aiActive?: boolean; aiName?: string; status?: 'human' | 'ai_substitute' | 'disconnected' | 'removed'; updatedAt?: unknown; createdAt?: unknown; }
+export type GameSeatSnapshot = { id: string; label: string; name: string; color: string; team: RoomPlayer['team']; isHost?: boolean; isAI?: boolean; seatIndex: number };
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; startRequestVersion?: number; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'game_finished';
@@ -123,7 +125,7 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     createdAt: serverTimestamp(),
   });
   createBatch.set(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
-  createBatch.set(doc(firestore, 'rooms', roomRef.id, 'seats', '0'), { playerId: params.hostId, updatedAt: serverTimestamp() });
+  createBatch.set(doc(firestore, 'rooms', roomRef.id, 'seats', '0'), { playerId: params.hostId, originalPlayerId: params.hostId, currentPlayerId: params.hostId, nickname: params.nickname, color: COLORS[0], team: '청팀', seatIndex: 0, label: 'P1', isHost: true, aiActive: false, status: 'human', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
   if (params.itemMode) {
     spawnInitialBoardItems().forEach((item) => createBatch.set(doc(firestore, 'rooms', roomRef.id, 'boardItems', item.id), item));
   }
@@ -152,18 +154,26 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
     if (room.status === 'finished') throw new Error('이미 종료된 방입니다.');
 
     const existingPlayer = await transaction.get(playerRef);
+    const maxPlayers = room.maxPlayers as 2 | 3 | 4;
+    const seatRefs = Array.from({ length: maxPlayers }, (_, index) => doc(db!, 'rooms', roomId, 'seats', String(index)));
+    const seatSnapshots = await Promise.all(seatRefs.map((seatRef) => transaction.get(seatRef)));
+    const matchingLockedSeatIndex = seatSnapshots.findIndex((seatSnapshot) => {
+      if (!seatSnapshot.exists()) return false;
+      const seat = seatSnapshot.data() as RoomSeat;
+      return String(seat.originalPlayerId ?? seat.playerId ?? '') === params.userId;
+    });
+
     if (existingPlayer.exists()) {
       const existingData = existingPlayer.data() as RoomPlayer;
       const existingSeatIndex = Number(existingData.seatIndex);
-      const maxPlayers = room.maxPlayers as 2 | 3 | 4;
-      const seatRefs = Array.from({ length: maxPlayers }, (_, index) => doc(db!, 'rooms', roomId, 'seats', String(index)));
-      const seatSnapshots = await Promise.all(seatRefs.map((seatRef) => transaction.get(seatRef)));
       const seatIndexForUser = seatSnapshots.findIndex((seatSnapshot) => seatSnapshot.exists() && String(seatSnapshot.data().playerId ?? '') === params.userId);
-      const restoreSeatIndex = seatIndexForUser >= 0 ? seatIndexForUser : existingSeatIndex;
-      const hasValidActiveSeat = Number.isInteger(restoreSeatIndex) && restoreSeatIndex >= 0 && restoreSeatIndex < maxPlayers && (!existingData.isSpectator || seatIndexForUser >= 0);
+      const restoreSeatIndex = matchingLockedSeatIndex >= 0 ? matchingLockedSeatIndex : seatIndexForUser >= 0 ? seatIndexForUser : existingSeatIndex;
+      const hasValidActiveSeat = Number.isInteger(restoreSeatIndex) && restoreSeatIndex >= 0 && restoreSeatIndex < maxPlayers && (!existingData.isSpectator || seatIndexForUser >= 0 || matchingLockedSeatIndex >= 0);
       if (hasValidActiveSeat) {
-        transaction.set(playerRef, { nickname: params.nickname, ready: true, seatIndex: restoreSeatIndex, team: existingData.team ?? (params.playMode === 'team' ? TEAMS[restoreSeatIndex] : '청팀'), isSpectator: false, lastSeen: serverTimestamp() }, { merge: true });
-        transaction.set(seatRefs[restoreSeatIndex], { playerId: params.userId, updatedAt: serverTimestamp() }, { merge: true });
+        const restoredTeam = existingData.team ?? (params.playMode === 'team' ? TEAMS[restoreSeatIndex] : '청팀');
+        const restoredColor = existingData.color ?? COLORS[restoreSeatIndex] ?? 'black';
+        transaction.set(playerRef, { nickname: params.nickname, ready: true, color: restoredColor, seatIndex: restoreSeatIndex, team: restoredTeam, isAI: false, isSpectator: false, lastSeen: serverTimestamp() }, { merge: true });
+        transaction.set(seatRefs[restoreSeatIndex], { playerId: params.userId, originalPlayerId: params.userId, currentPlayerId: params.userId, nickname: params.nickname, color: restoredColor, team: restoredTeam, seatIndex: restoreSeatIndex, label: `P${restoreSeatIndex + 1}`, aiActive: false, aiName: '', status: 'human', updatedAt: serverTimestamp() }, { merge: true });
         transaction.set(roomRef, { emptySince: null }, { merge: true });
         return { role: 'player', seatIndex: restoreSeatIndex };
       }
@@ -193,15 +203,22 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
         joinedAt: existingData.joinedAt ?? serverTimestamp(),
         lastSeen: serverTimestamp(),
       }, { merge: true });
-      transaction.set(seatRefs[seatIndex], { playerId: params.userId, updatedAt: serverTimestamp() });
+      transaction.set(seatRefs[seatIndex], { playerId: params.userId, originalPlayerId: params.userId, currentPlayerId: params.userId, nickname: params.nickname, color: COLORS[seatIndex] ?? 'black', team: params.playMode === 'team' ? TEAMS[seatIndex] : '청팀', seatIndex, label: `P${seatIndex + 1}`, aiActive: false, status: 'human', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
       transaction.set(roomRef, { emptySince: null, currentPlayers: currentPlayers + 1 }, { merge: true });
       return { role: 'player', seatIndex };
     }
 
-    const maxPlayers = room.maxPlayers as 2 | 3 | 4;
-    const seatRefs = Array.from({ length: maxPlayers }, (_, index) => doc(db!, 'rooms', roomId, 'seats', String(index)));
-    const seatSnapshots = await Promise.all(seatRefs.map((seatRef) => transaction.get(seatRef)));
     const currentPlayers = seatSnapshots.filter((seatSnapshot) => seatSnapshot.exists()).length;
+
+    if (matchingLockedSeatIndex >= 0) {
+      const lockedSeat = seatSnapshots[matchingLockedSeatIndex].data() as RoomSeat;
+      const restoredTeam = lockedSeat.team ?? (params.playMode === 'team' ? TEAMS[matchingLockedSeatIndex] : '청팀');
+      const restoredColor = lockedSeat.color ?? COLORS[matchingLockedSeatIndex] ?? 'black';
+      transaction.set(playerRef, { nickname: params.nickname, ready: true, color: restoredColor, seatIndex: matchingLockedSeatIndex, team: restoredTeam, isAI: false, isSpectator: false, joinedAt: serverTimestamp(), lastSeen: serverTimestamp() }, { merge: true });
+      transaction.set(seatRefs[matchingLockedSeatIndex], { playerId: params.userId, originalPlayerId: params.userId, currentPlayerId: params.userId, nickname: params.nickname, color: restoredColor, team: restoredTeam, seatIndex: matchingLockedSeatIndex, label: `P${matchingLockedSeatIndex + 1}`, aiActive: false, aiName: '', status: 'human', updatedAt: serverTimestamp() }, { merge: true });
+      transaction.set(roomRef, { emptySince: null, currentPlayers }, { merge: true });
+      return { role: 'player', seatIndex: matchingLockedSeatIndex };
+    }
 
     if (room.status === 'playing') {
       transaction.set(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: serverTimestamp(), lastSeen: serverTimestamp() }, { merge: true });
@@ -221,7 +238,7 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
       joinedAt: serverTimestamp(),
       lastSeen: serverTimestamp(),
     }, { merge: true });
-    transaction.set(seatRefs[seatIndex], { playerId: params.userId, updatedAt: serverTimestamp() });
+    transaction.set(seatRefs[seatIndex], { playerId: params.userId, originalPlayerId: params.userId, currentPlayerId: params.userId, nickname: params.nickname, color: COLORS[seatIndex] ?? 'black', team: params.playMode === 'team' ? TEAMS[seatIndex] : '청팀', seatIndex, label: `P${seatIndex + 1}`, aiActive: false, status: 'human', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     transaction.set(roomRef, { emptySince: null, currentPlayers: currentPlayers + 1 }, { merge: true });
     return { role: 'player', seatIndex };
   });
@@ -265,10 +282,11 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
           isAI: true,
           lastSeen: serverTimestamp(),
         }, { merge: true });
+        await setDoc(doc(db!, 'rooms', roomDoc.id, 'seats', String(player.seatIndex)), { playerId: playerDoc.id, originalPlayerId: playerDoc.id, currentPlayerId: playerDoc.id, nickname: player.nickname, color: player.color, team: player.team, seatIndex: Number(player.seatIndex), label: `P${Number(player.seatIndex) + 1}`, aiActive: true, aiName: `${player.nickname || '플레이어'} AI`, status: 'ai_substitute', updatedAt: serverTimestamp() }, { merge: true });
         return;
       }
       await deleteDoc(playerDoc.ref);
-      if (!player.isSpectator && Number.isFinite(Number(player.seatIndex))) await deleteDoc(doc(db!, 'rooms', roomDoc.id, 'seats', String(player.seatIndex)));
+      if (!player.isSpectator && Number.isFinite(Number(player.seatIndex))) await setDoc(doc(db!, 'rooms', roomDoc.id, 'seats', String(player.seatIndex)), { playerId: playerDoc.id, originalPlayerId: playerDoc.id, currentPlayerId: playerDoc.id, nickname: player.nickname, color: player.color, team: player.team, seatIndex: Number(player.seatIndex), label: `P${Number(player.seatIndex) + 1}`, aiActive: false, status: 'disconnected', updatedAt: serverTimestamp() }, { merge: true });
     }));
     if (stalePlayers.length) await syncRoomPlayerCount(roomDoc.id);
     if (room.status === 'playing') return;
@@ -797,7 +815,23 @@ export async function updateRoomOptions(roomId: string, params: Partial<Pick<Roo
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   await setDoc(doc(db, 'rooms', roomId, 'players', playerId), params, { merge: true });
-  if (typeof params.seatIndex === 'number' && !params.isSpectator) await setDoc(doc(db, 'rooms', roomId, 'seats', String(params.seatIndex)), { playerId, updatedAt: serverTimestamp() }, { merge: true });
+  if (typeof params.seatIndex === 'number' && !params.isSpectator) {
+    const aiActive = Boolean(params.isAI);
+    await setDoc(doc(db, 'rooms', roomId, 'seats', String(params.seatIndex)), {
+      playerId,
+      originalPlayerId: playerId,
+      currentPlayerId: playerId,
+      ...(params.nickname ? { nickname: params.nickname } : {}),
+      ...(params.color ? { color: params.color } : {}),
+      ...(params.team ? { team: params.team } : {}),
+      seatIndex: params.seatIndex,
+      label: `P${params.seatIndex + 1}`,
+      aiActive,
+      ...(aiActive && params.nickname ? { aiName: params.nickname } : {}),
+      status: aiActive ? 'ai_substitute' : 'human',
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
   await syncRoomPlayerCount(roomId);
 }
 
@@ -834,7 +868,8 @@ export async function removeRoomPlayer(roomId: string, playerId: string, options
   const playerSnapshot = await getDoc(playerRef);
   const player = playerSnapshot.exists() ? playerSnapshot.data() as RoomPlayer : null;
   const preservePlayingSeatAsAi = options.preservePlayingSeatAsAi ?? true;
-  if (preservePlayingSeatAsAi && room?.status === 'playing' && player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) {
+  const shouldPreserveSeatAsAi = preservePlayingSeatAsAi && (room?.status === 'playing' || room?.startStatus === 'entering' || room?.startStatus === 'playing');
+  if (shouldPreserveSeatAsAi && player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) {
     await setDoc(playerRef, {
       nickname: `${player.nickname || '플레이어'} AI`,
       ready: true,
@@ -842,13 +877,27 @@ export async function removeRoomPlayer(roomId: string, playerId: string, options
       isSpectator: false,
       lastSeen: serverTimestamp(),
     }, { merge: true });
-    await setDoc(doc(db, 'rooms', roomId, 'seats', String(player.seatIndex)), { playerId, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(doc(db, 'rooms', roomId, 'seats', String(player.seatIndex)), { playerId, originalPlayerId: playerId, currentPlayerId: playerId, nickname: player.nickname, color: player.color, team: player.team, seatIndex: Number(player.seatIndex), label: `P${Number(player.seatIndex) + 1}`, aiActive: true, aiName: `${player.nickname || '플레이어'} AI`, status: 'ai_substitute', updatedAt: serverTimestamp() }, { merge: true });
     await syncRoomPlayerCount(roomId);
     await setDoc(roomRef, { emptySince: null }, { merge: true });
     return;
   }
   await deleteDoc(playerRef);
-  if (player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) await deleteDoc(doc(db, 'rooms', roomId, 'seats', String(player.seatIndex)));
+  if (player && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) {
+    await setDoc(doc(db, 'rooms', roomId, 'seats', String(player.seatIndex)), {
+      playerId,
+      originalPlayerId: playerId,
+      currentPlayerId: playerId,
+      nickname: player.nickname,
+      color: player.color,
+      team: player.team,
+      seatIndex: Number(player.seatIndex),
+      label: `P${Number(player.seatIndex) + 1}`,
+      aiActive: false,
+      status: 'disconnected',
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  }
   await syncRoomPlayerCount(roomId);
   const remainingPlayersSnapshot = await getDocs(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc')));
   const remainingPlayers = remainingPlayersSnapshot.docs.map((playerDoc) => ({ id: playerDoc.id, ...(playerDoc.data() as Omit<RoomPlayer, 'id'>) }));
