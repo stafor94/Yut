@@ -67,6 +67,63 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-04 - 말 이동 버튼 선택 보정 후 도 이동 멈춤
+
+### Symptom
+
+- 온라인 게임에서 현재 턴 플레이어가 도를 던진 뒤 이동 가능한 말이 있는데도 `선택한 말 이동` 버튼이 비활성 상태로 남아 진행이 멈춘 것으로 보였다.
+
+### Expected behavior
+
+- 윷 결과가 있고 현재 턴 플레이어에게 이동 가능한 말이 있으면, 선택 상태가 비어 있더라도 첫 번째 이동 가능한 말이 선택 표시되고 이동 버튼/자동 이동 경로가 막히지 않아야 한다.
+
+### Actual behavior
+
+- 이전 수정에서 이동 버튼 활성화 기준을 실제 선택 말에만 묶으면서, 선택 보정이 늦거나 실패한 온라인 클라이언트에서 fallback 이동 가능 말이 있어도 `canRequestMove`가 false로 남을 수 있었다.
+
+### Reproduction steps
+
+1. 온라인 게임에서 현재 턴 플레이어가 윷을 던져 `roll`이 생긴다.
+2. 현재 턴 플레이어의 `selectedPieceId`가 비어 있거나 stale 상태가 된다.
+3. 이동 가능한 말은 있지만 선택 보정이 즉시 반영되지 않는다.
+4. 이동 버튼과 자동 이동 guard가 `selected-piece-not-movable` 경로로 막힌다.
+
+### Suspected root cause
+
+- 버튼 활성화 guard와 실제 `moveSelectedPiece()`의 fallback 이동 로직이 서로 달라졌다.
+
+### Confirmed root cause
+
+- 이전 수정은 `activeMovablePiece`를 `selectedPieceCanMove ? selectedPiece : undefined`로 제한했다.
+- 하지만 `moveSelectedPiece()`는 선택 말이 없어도 현재 턴의 fallback 이동 가능 말을 찾아 이동할 수 있는 구조라, UI guard가 실제 이동 가능성을 과하게 막았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 선택 말이 없는 상태에서 버튼이 활성화되지 않도록 `activeMovablePiece`에서 fallback 말을 제거했다.
+  - Why it failed: 선택 보정 state가 반영되기 전에는 fallback 이동 가능 말이 있어도 `canRequestMove`가 false가 되어 이동 버튼/자동 이동 경로가 막힐 수 있었다.
+
+### Do not try again
+
+- `activeMovablePiece`를 실제 선택 말에만 묶어서 fallback 이동 가능성을 UI guard에서 제거하지 않는다.
+- 선택 보정 `useEffect`가 항상 먼저 성공한다고 가정하지 않는다.
+- 진단 정보 없이 `selected-piece-not-movable`만 보고 이동 가능한 말이 없다고 단정하지 않는다.
+
+### Correct fix plan
+
+- `activeMovablePiece`는 선택 말이 유효하면 선택 말을, 아니면 fallback 이동 가능 말을 사용하게 복구한다.
+- fallback 말이 사용되는 경우에도 말판에는 해당 후보가 선택 표시되도록 해서 버튼만 먼저 활성화되어 보이지 않게 한다.
+- 진단 상태에 선택 가능 여부, fallback 후보, active 후보, 현재 턴 이동 후보 목록, 선택 이유를 추가한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Guard/fallback code path inspection
+- [ ] Online mobile multi-device rerun checked
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
+
 ## 2026-07-04 - 로비 방 카드 참여 버튼 우측 정렬 재발
 
 ### Symptom
