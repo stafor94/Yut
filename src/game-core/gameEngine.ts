@@ -194,6 +194,12 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
   let currentNodeIndex = movingPiece.nodeIndex;
   let finishedMove = false;
   for (let step = 0; step < Math.abs(steps); step += 1) {
+    if (steps > 0 && movingPiece.started && currentNodeId === 'n01') {
+      currentNodeId = 'finish';
+      currentNodeIndex = 20;
+      finishedMove = true;
+      break;
+    }
     const nextNodeId = movePathNodeIds[step];
     if (!nextNodeId || (steps < 0 && nextNodeId === 'n01' && currentNodeId === 'n02')) {
       currentNodeId = 'finish';
