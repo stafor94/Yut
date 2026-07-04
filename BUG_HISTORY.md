@@ -103,10 +103,14 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 - Attempt 2:
   - What was changed: 기존 `.lobby-room-meta { display: contents; }` 구조에서 카드 grid의 action column과 버튼 `grid-column`/`justify-self`를 지정했다.
   - Why it failed: `대기중` 배지는 여전히 card absolute pseudo-element이고 `참여` 버튼은 내부 grid item이라, 세로 모드에서 두 요소가 같은 우측 세로 스택에 속한다는 보장이 없었다.
+- Attempt 3:
+  - What was changed: 방 카드의 우측 padding만 소폭 줄였다.
+  - Why it failed: 세로 모드에서 `.lobby-room-content`가 카드 폭을 확실히 채우고 우측 column을 끝으로 붙이는 보장이 부족해, padding 축소만으로는 배지/버튼의 기준선이 충분히 오른쪽으로 이동하지 않았다.
 
 ### Do not try again
 
 - `.lobby-room-action`의 `width`, `min-width`, `margin-left`만 조정해서 해결하려 하지 않는다.
+- 방 카드의 우측 padding만 소폭 조정해서 해결하려 하지 않는다.
 - 기존 `.lobby-room-meta { display: contents; }` 기반 grid column 조정만 반복하지 않는다.
 - `대기중` 배지와 동일하게 버튼을 absolute positioning으로 덮어씌우지 않는다. 클릭 영역/반응형 충돌 위험이 있다.
 
