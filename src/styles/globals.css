@@ -2300,7 +2300,7 @@ aside.players,
   position: relative;
   overflow: hidden;
   margin: 0;
-  padding: 18px;
+  padding: 18px 12px 18px 18px;
   border-radius: 24px;
   background: rgba(255, 248, 234, .82);
   border: 1px solid rgba(122, 74, 38, .1);
@@ -3429,7 +3429,7 @@ aside.players,
 
   .lobby-room-card {
     gap: 14px;
-    padding: 20px;
+    padding: 20px 12px 20px 20px;
   }
 
   .lobby-room-card b,
