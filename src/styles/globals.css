@@ -2300,7 +2300,7 @@ aside.players,
   position: relative;
   overflow: hidden;
   margin: 0;
-  padding: 18px;
+  padding: 18px 8px 18px 18px;
   border-radius: 24px;
   background: rgba(255, 248, 234, .82);
   border: 1px solid rgba(122, 74, 38, .1);
@@ -2321,6 +2321,7 @@ aside.players,
   column-gap: 16px;
   align-items: center;
   flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
 }
 
@@ -2349,6 +2350,7 @@ aside.players,
   align-items: flex-end;
   justify-content: center;
   gap: 8px;
+  justify-self: end;
   min-width: var(--lobby-room-action-width);
 }
 
@@ -3381,6 +3383,10 @@ aside.players,
     border-radius: 24px;
   }
 
+  .join-room-panel {
+    padding-inline-end: 8px;
+  }
+
   .section-kicker,
   .lobby-shell .section-kicker,
   .waiting-room .section-kicker {
@@ -3429,7 +3435,20 @@ aside.players,
 
   .lobby-room-card {
     gap: 14px;
-    padding: 20px;
+    padding: 20px 4px 20px 20px;
+  }
+
+  .lobby-room-card .lobby-room-content,
+  .lobby-layout .lobby-room-card .lobby-room-content {
+    display: block;
+    padding-inline-end: calc(var(--lobby-room-action-width) + 14px);
+  }
+
+  .lobby-room-card .lobby-room-side {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: 4px;
+    transform: translateY(-50%);
   }
 
   .lobby-room-card b,
