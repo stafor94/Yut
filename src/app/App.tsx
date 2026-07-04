@@ -427,6 +427,7 @@ export function App() {
     setMoveInProgress(nextMoveInProgress);
   }
   const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
+  const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<Map<string, { type: GameAction['type']; createdAt: number }>>(new Map());
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
   const sequenceReplayInProgressRef = useRef(false);
@@ -1618,8 +1619,13 @@ export function App() {
 
   useEffect(() => {
     turnIndexRef.current = turnIndex;
+    rejectedRemoteActionKeysRef.current.clear();
     setCaptureEffect(null);
   }, [turnIndex]);
+
+  useEffect(() => {
+    rejectedRemoteActionKeysRef.current.clear();
+  }, [roll?.name, roll?.steps]);
 
   useEffect(() => {
     if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || itemPromptTiming || !activeSeat || !activeSeat.isAI || isMyTurn || roll || movingPieceId || pendingTrapPlacement) return undefined;
@@ -1719,7 +1725,7 @@ export function App() {
       }, NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS);
       return () => window.clearTimeout(timer);
     }
-    if (activeRoomId && !canRequestMove) return;
+    if (activeRoomId) return;
     const movableGroups = Array.from(new Map(movablePieces.map((piece) => [piece.started ? piece.nodeId : piece.id, piece])).values());
     if (movableGroups.length !== 1 && movableGroups.some((piece) => piece.started)) return;
     const onlyPiece = movableGroups[0];
@@ -2615,6 +2621,9 @@ export function App() {
       sequence: lastAppliedSequenceRef.current,
       turnIndex,
     };
+    if ((params.status === 'rejected' || params.status === 'unsupported') && params.actionKey) {
+      rejectedRemoteActionKeysRef.current.add(params.actionKey);
+    }
     setRemoteActionDiagnostics((current) => [entry, ...current].slice(0, 20));
     setLastActionDiagnostic({ type, message: messageText, reasons: [stage, params.status].filter((value): value is string => Boolean(value)), createdAt: entry.createdAt });
   }
@@ -2884,6 +2893,10 @@ export function App() {
         branchChoice: getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice),
       };
       const actionKey = getLocalActionKey('move_piece', payload);
+      if (rejectedRemoteActionKeysRef.current.has(actionKey)) {
+        reportTurnActionBlocked('move_piece', ['previously-rejected-remote-action'], '서버가 같은 말 이동 요청을 이미 거부했습니다. 동기화 후 다시 시도해주세요');
+        return false;
+      }
       if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
         reportTurnActionBlocked('move_piece', ['pending-local-remote-action'], '이미 말 이동 요청을 처리 중입니다');
         return false;
