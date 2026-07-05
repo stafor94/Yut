@@ -259,6 +259,43 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 - [ ] Browser screenshot checked, if applicable
 - [ ] Mobile layout checked, if applicable
 
+## 2026-07-05 - QA cleanup job Transaction too big 실패
+
+### Symptom
+
+- 배포 후 GitHub Actions `Cleanup QA rooms before tests` job의 `Cleanup old QA rooms` 단계가 3회 모두 실패했다.
+- 로그에는 Firestore `INVALID_ARGUMENT: Transaction too big. Decrease transaction size.` 오류가 반복됐다.
+
+### Expected behavior
+
+- QA cleanup job은 기존 QA/비활성 방 문서와 하위 컬렉션 문서를 Firestore 요청 제한 안에서 삭제해야 한다.
+
+### Actual behavior
+
+- `deleteRoomForQa()`가 하위 컬렉션 삭제를 최대 450개 문서 단위의 write batch로 커밋했다.
+- 오래된 QA 방에 누적된 action/sequence 등 하위 문서와 인덱스 항목이 많으면 한 번의 batch commit 크기가 Firestore 제한을 넘어 cleanup job 전체가 실패했다.
+
+### Confirmed root cause
+
+- cleanup 대상 자체는 맞았지만, 하위 컬렉션 삭제 batch 크기가 과도해 Firestore가 `Transaction too big`으로 write stream을 거부했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: cleanup job 재시도와 Firebase 설정 전달 경로를 보강했다.
+  - Why it failed: 설정 누락/일시 실패에는 대응했지만, 실제 삭제 write batch 크기 제한 초과에는 대응하지 못했다.
+
+### Correct fix plan
+
+- QA helper의 방 삭제 batch 크기를 충분히 작게 낮춰 각 commit의 Firestore transaction/write 크기를 제한한다.
+- cleanup 대상 선정이나 앱 동작은 바꾸지 않는다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Unit tests succeed
+- [ ] Merged PR QA cleanup rerun checked
+
 ## 2026-07-02 - QA 방 cleanup job 이후 QA 방 잔존
 
 ### Symptom
