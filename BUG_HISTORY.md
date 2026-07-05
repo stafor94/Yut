@@ -2655,6 +2655,9 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - Attempt 2:
   - What was changed: workflow concurrency와 QA summary 진단을 보강했다.
   - Why it failed: `deploy-pages` job 자체는 여전히 `actions/deploy-pages@v4`와 기본 10분 timeout/환경 설정 없음 상태라, Node 20 deprecation 경고가 남고 GitHub Pages 배포 상태 확인이 지연되는 경우를 충분히 흡수하지 못할 수 있었다.
+- Attempt 3:
+  - What was changed: `actions/deploy-pages@v4`를 `continue-on-error`로 먼저 실행하고 실패 시 20초 후 1회 재시도했다.
+  - Why it failed: 첫 deploy step 실패가 재시도 성공 여부와 관계없이 Actions annotation에 `Deployment failed, try again later.`로 남아 배포 오류처럼 보였고, cleanup job의 일시 실패는 한 번의 실패로 workflow 전체를 실패시켰다.
 
 ### Do not try again
 
@@ -2668,7 +2671,8 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - QA cleanup-before와 Playwright QA jobs는 `deploy-pages` 성공 이후에만 실행되도록 유지한다.
 - workflow concurrency group을 PR 번호가 아니라 base branch/ref 기준으로 묶고 `cancel-in-progress: false`로 설정해 merged PR deploy/QA를 순차 실행한다.
 - QA summary에 개별 job 결과를 전달하고, deploy failure + 빈 Playwright 로그 상황을 명시적으로 원인 추정에 포함한다.
-- deploy job에 `github-pages` environment와 배포 step id를 명시하고, `actions/deploy-pages@v5` 및 더 긴 status polling timeout으로 갱신한다.
+- deploy job은 공식 `actions/deploy-pages@v4`를 유지하되, 실패 annotation이 남는 `continue-on-error` 선행 deploy retry 구조를 쓰지 않는다.
+- deploy 전 짧은 대기 후 단일 deploy step으로 실행하고, cleanup job은 일시적인 Firebase/네트워크 실패를 흡수하도록 제한된 재시도를 둔다.
 
 ### Verification checklist
 
