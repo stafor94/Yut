@@ -2185,8 +2185,15 @@
   }
 
   .lobby-room-card .lobby-room-meta {
-    font-size: .92rem;
-    line-height: 1.35;
+    gap: 6px;
+    line-height: 1;
+  }
+
+  .lobby-room-card .room-rule-badge {
+    min-height: 24px;
+    padding: 5px 9px;
+    font-size: .78rem;
+    line-height: 1;
   }
 
   .lobby-room-card .lobby-room-action {
