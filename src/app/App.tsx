@@ -3266,6 +3266,9 @@ export function App() {
       pendingTrapPlacement={Boolean(pendingTrapPlacement)}
       pieces={pieces}
       playMode={playMode}
+      maxPlayers={maxPlayers}
+      pieceCount={pieceCount}
+      itemMode={itemMode}
       playerPanelSeats={turnSeats}
       previewNodeIds={previewNodeIds}
       previousBoardTurnText={previousBoardTurnText}
@@ -3274,7 +3277,6 @@ export function App() {
       roll={roll}
       rollAnimation={rollAnimation}
       rollResultHolding={rollResultHolding}
-      ruleText={formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode)}
       selectedGroupPieceIds={selectedGroupPieceIds}
       selectedPieceId={selectedPieceId}
       seats={playableSeats}
