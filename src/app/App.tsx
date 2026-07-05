@@ -21,6 +21,7 @@ import { GameScreenView } from './components/GameScreenView';
 import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItemValue, shouldAiUseReroll } from './flows/aiFlow';
 import { createStartCountdownWindow, getStartGameBlockMessage } from './flows/gameStartFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
+import { getOnlineGameCoordinatorSeatId } from './flows/onlineGameCoordinator';
 import {
   buildAlternatingTeamTurnOrder,
   createTurnOrderIntro,
@@ -304,15 +305,15 @@ export function App() {
     return orderedSeats.length ? orderedSeats : playableSeats;
   }, [playableSeats, turnOrderIds]);
   const activeSeat = turnSeats[turnIndex % turnSeats.length];
-  const hostSeatId = (!activeRoomId || screen === 'waitingRoom') ? playableSeats.find((seat) => seat.isHost)?.id ?? (activeRoomHostId || 'host') : '';
-  const localSeatId = activeRoomId ? currentUserId : hostSeatId;
+  const waitingRoomHostSeatId = (!activeRoomId || screen === 'waitingRoom') ? playableSeats.find((seat) => seat.isHost)?.id ?? (activeRoomHostId || 'host') : '';
+  const localSeatId = activeRoomId ? currentUserId : waitingRoomHostSeatId;
   const isSpectator = Boolean(activeRoomId && currentUserId && spectators.some((spectator) => spectator.id === currentUserId));
-  const hasWaitingRoomHostAuthority = Boolean(screen === 'waitingRoom' && currentUserId && (activeRoomHostId === currentUserId || hostSeatId === currentUserId));
+  const hasWaitingRoomHostAuthority = Boolean(screen === 'waitingRoom' && currentUserId && (activeRoomHostId === currentUserId || waitingRoomHostSeatId === currentUserId));
   const isWaitingRoomHost = Boolean(screen === 'waitingRoom' && isRoomHost);
-  const onlineGameRole = !activeRoomId ? 'offline' : isSpectator ? 'spectator' : hasWaitingRoomHostAuthority ? 'host' : 'player';
+  const onlineGameRole = !activeRoomId ? 'offline' : isSpectator ? 'spectator' : hasWaitingRoomHostAuthority ? 'waiting-room-host' : 'player';
   const isRoomManager = hasWaitingRoomHostAuthority || isWaitingRoomHost;
   const isOnlinePlayer = onlineGameRole === 'player';
-  const onlineGameCoordinatorSeatId = playableSeats.find((seat) => !seat.isEmpty && !seat.isAI)?.id ?? '';
+  const onlineGameCoordinatorSeatId = getOnlineGameCoordinatorSeatId(playableSeats);
   const canCoordinateOnlineGame = !activeRoomId || Boolean(isOnlinePlayer && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
   const canManageRoom = isRoomManager;
   const gameExitDescription = activeRoomId ? '현재 방에서 나가 로비로 이동합니다. 모든 사람 플레이어가 나가면 방이 종료됩니다.' : 'AI가 대신 플레이하게 됩니다.';
@@ -392,9 +393,9 @@ export function App() {
   const waitingForOnlineTurnOrder = Boolean(screen === 'game' && activeRoomId && !turnOrderIds.length && !turnOrderPhase.active && !activeTurnOrderIntro);
   const trapPlacementActive = Boolean(pendingTrapPlacement);
   const {
-    hostStateSaveKey,
-    setHostStateSaveKey,
-    hostStateSaveRetryTick,
+    coordinatorStateSaveKey,
+    setCoordinatorStateSaveKey,
+    coordinatorStateSaveRetryTick,
     pendingSequenceMetaRef,
     lastSavedStateFingerprintRef,
     savingStateFingerprintRef,
@@ -439,7 +440,7 @@ export function App() {
     lastAppliedStateVersionRef,
     measureFirebaseLatency,
   });
-  const hasPendingGameStateSave = Boolean(activeRoomId && canCoordinateOnlineGame && hostStateSaveKey);
+  const hasPendingGameStateSave = Boolean(activeRoomId && canCoordinateOnlineGame && coordinatorStateSaveKey);
   const shouldWaitForAuthoritativeTurnSync = Boolean(activeRoomId && screen === 'game' && pendingLocalRemoteActionCount > 0 && !isMyTurn);
   const effectivePendingLocalRemoteActionCount = shouldWaitForAuthoritativeTurnSync ? pendingLocalRemoteActionCount : 0;
   const turnActionGuardInput = {
@@ -598,9 +599,9 @@ export function App() {
     queuedSyncedStateSequence: Number(queuedSyncedStateRef.current?.lastSequence ?? 0),
     lastAppliedStateVersion: lastAppliedStateVersionRef.current,
     lastAppliedSequence: lastAppliedSequenceRef.current,
-    hostStateSaveKey,
+    coordinatorStateSaveKey,
     hasPendingGameStateSave,
-    hostStateSaveRetryTick,
+    coordinatorStateSaveRetryTick,
     pendingSequenceMeta: pendingSequenceMetaDiagnostic,
     savingStateFingerprint: savingStateFingerprintRef.current ? savingStateFingerprintRef.current.slice(0, 24) : '',
     lastSavedStateFingerprint: lastSavedStateFingerprintRef.current ? lastSavedStateFingerprintRef.current.slice(0, 24) : '',
@@ -668,7 +669,7 @@ export function App() {
     canManageRoom,
     currentUserId,
     localSeatId,
-    hostSeatId,
+    waitingRoomHostSeatId,
     allReady,
     teamBalanced,
     displaySeats,
@@ -689,7 +690,7 @@ export function App() {
     roll,
     rollInProgress,
     rollInProgressRef,
-    hostStateSaveKey,
+    coordinatorStateSaveKey,
     hasPendingGameStateSave,
     isRollLocked,
     rollLockUntil,
@@ -753,7 +754,7 @@ export function App() {
     itemPromptTiming,
     branchChoice,
     turnActionTimeoutMs: TURN_ACTION_TIMEOUT_MS,
-  }), [actionErrorDialog, actionPipelineDiagnostic, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingGameStateSave, hostSeatId, hostStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, lastManualSyncResolution, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, syncPipelineDiagnostic, turnActionTimeoutPenaltyBySeatId, turnHealthDiagnostic, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps, stalledTurnAgeMs, stalledTurnDetected, stalledTurnFallbackPiece, stalledTurnMovablePieces, stalledTurnNeedsBranchChoice, stalledTurnReason, stalledTurnSyncAgeMs, stalledTurnWatchKey]);
+  }), [actionErrorDialog, actionPipelineDiagnostic, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingGameStateSave, waitingRoomHostSeatId, coordinatorStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, lastManualSyncResolution, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, syncPipelineDiagnostic, turnActionTimeoutPenaltyBySeatId, turnHealthDiagnostic, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps, stalledTurnAgeMs, stalledTurnDetected, stalledTurnFallbackPiece, stalledTurnMovablePieces, stalledTurnNeedsBranchChoice, stalledTurnReason, stalledTurnSyncAgeMs, stalledTurnWatchKey]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
 
@@ -850,7 +851,7 @@ export function App() {
     localClientMutationIdsRef.current.clear();
     lastSavedStateFingerprintRef.current = '';
     savingStateFingerprintRef.current = '';
-    setHostStateSaveKey('');
+    setCoordinatorStateSaveKey('');
     setTurnActionTimeoutPenaltyBySeatId({});
     setWaitingForPlayersReady(false);
     setStartRequestVersion(0);
@@ -2761,7 +2762,7 @@ export function App() {
         },
         action: null,
       };
-      setHostStateSaveKey((current) => current || clientMutationId);
+      setCoordinatorStateSaveKey((current) => current || clientMutationId);
     }
     return true;
   }
