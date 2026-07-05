@@ -6,7 +6,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
@@ -2048,16 +2048,31 @@ export function App() {
     const { slotUntil, intro: nextTurnOrderIntro } = createTurnOrderIntro(orderedSeats, { getSeatPieceColor, playMode, finalHoldMs: TURN_ORDER_FINAL_HOLD_MS });
     const nextGameStartedAt = nextTurnOrderIntro.readyAt;
     const introLog = makeLog(formatTurnOrderSummary(orderedSeats, getSeatDisplayName));
+    const nextLogs = [introLog, ...logs];
     if (activeRoomId) {
-      pendingSequenceMetaRef.current = {
-        type: 'turn_order_resolved',
+      const clientMutationId = `turn_order_intro:${activeRoomId}:${startRequestVersion}:${nextTurnOrderIntro.readyAt}`;
+      void measureFirebaseLatency(() => resolveTurnOrderIntro(activeRoomId, {
+        turnOrderIds: nextTurnOrderIds,
+        initialTurnOrderIds: nextTurnOrderIds,
+        logs: nextLogs,
+        gameStartedAt: nextGameStartedAt,
+        turnOrderIntro: nextTurnOrderIntro,
+        turnOrderPhase: { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
+        waitingForPlayersReady: false,
+      }, {
         actorId: localSeatId,
-        clientMutationId: `turn_order_intro:${activeRoomId}:${startRequestVersion}:${nextTurnOrderIntro.readyAt}`,
+        clientMutationId,
+        startRequestVersion,
         payload: { startRequestVersion, turnOrderIds: nextTurnOrderIds, slotUntil, readyAt: nextTurnOrderIntro.readyAt },
-      };
+      })).then((result) => {
+        if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
+        if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
+        if (result.status !== 'committed' && result.status !== 'duplicate') setMessage('순서 정하기 결과 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+      }).catch((error) => setMessage(error instanceof Error ? error.message : '순서 정하기 결과 저장에 실패했습니다.'));
     }
-    setLogs((currentLogs) => [introLog, ...currentLogs]);
+    setLogs(nextLogs);
     setTurnOrderIds(nextTurnOrderIds);
+    setInitialTurnOrderIds(nextTurnOrderIds);
     setTurnOrderIntro(nextTurnOrderIntro);
     setWaitingForPlayersReady(false);
     setAuthoritativeWinner('');

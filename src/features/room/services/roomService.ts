@@ -513,6 +513,68 @@ export async function completeTurnOrderIntro(roomId: string, params: { readyAt: 
   });
 }
 
+export async function resolveTurnOrderIntro(roomId: string, patch: GameStatePatch, meta: { actorId: string; startRequestVersion: number; clientMutationId: string; payload?: Record<string, unknown> }): Promise<SaveGameStateResult> {
+  if (!db || !roomId) return { status: 'unavailable' };
+  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
+  const processedActionRef = getClientMutationDocRef(roomId, meta.clientMutationId);
+  return runTransaction(db, async (transaction) => {
+    const processedActionSnapshot = await transaction.get(processedActionRef);
+    const snapshot = await transaction.get(gameStateRef);
+    if (!snapshot.exists()) return { status: 'unavailable' as const };
+    const currentState = snapshot.data() as SyncedGameState;
+    const currentVersion = Number(currentState.turnVersion ?? 0);
+    const currentSequence = Number(currentState.lastSequence ?? 0);
+    if (processedActionSnapshot.exists()) return {
+      status: 'duplicate' as const,
+      turnVersion: Number(processedActionSnapshot.data().turnVersion ?? currentVersion),
+      lastSequence: Number(processedActionSnapshot.data().sequence ?? currentSequence),
+    };
+    if (Number(currentState.startRequestVersion ?? 0) !== meta.startRequestVersion) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
+    if ((currentState.turnOrderIds?.length ?? 0) > 0) {
+      transaction.set(processedActionRef, {
+        clientMutationId: meta.clientMutationId,
+        sequence: currentSequence,
+        turnVersion: currentVersion,
+        type: 'turn_order_resolved',
+        actorId: meta.actorId,
+        createdAt: serverTimestamp(),
+      });
+      return { status: 'duplicate' as const, turnVersion: currentVersion, lastSequence: currentSequence };
+    }
+    const nextVersion = currentVersion + 1;
+    const nextSequence = currentSequence + 1;
+    const stateAfter = { ...currentState, ...patch };
+    const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
+    transaction.set(sequenceRef, {
+      sequence: nextSequence,
+      type: 'turn_order_resolved',
+      actorId: meta.actorId,
+      payload: sanitizeForFirestore(meta.payload ?? {}) as Record<string, unknown>,
+      ...makeSequenceEventFields({ stateBefore: currentState, stateAfter, patch }),
+      expectedPreviousSequence: currentSequence,
+      clientMutationId: meta.clientMutationId,
+      clientCreatedAt: Date.now(),
+      createdAt: serverTimestamp(),
+    });
+    transaction.set(gameStateRef, {
+      ...patch,
+      updatedAt: serverTimestamp(),
+      turnVersion: nextVersion,
+      lastSequence: nextSequence,
+      lastClientMutationId: meta.clientMutationId,
+    }, { merge: true });
+    transaction.set(processedActionRef, {
+      clientMutationId: meta.clientMutationId,
+      sequence: nextSequence,
+      turnVersion: nextVersion,
+      type: 'turn_order_resolved',
+      actorId: meta.actorId,
+      createdAt: serverTimestamp(),
+    });
+    return { status: 'committed' as const, turnVersion: nextVersion, lastSequence: nextSequence };
+  });
+}
+
 export function subscribeGameState(roomId: string, callback: (state: SyncedGameState | null) => void): Unsubscribe {
   if (!db) { callback(null); return () => undefined; }
   return onSnapshot(doc(db, 'rooms', roomId, 'state', 'current'), (snapshot) => callback(snapshot.exists() ? snapshot.data() as SyncedGameState : null));
