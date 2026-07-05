@@ -37,6 +37,13 @@ const ROOM_MAX_AGE_MS = 60 * 60 * 1000;
 
 const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.startsWith(QA_ROOM_TITLE_PREFIX);
 
+const isInactiveRoom = (room: Partial<RoomSummary>, now = Date.now()) => {
+  const createdAt = getCreatedAtMillis(room.createdAt);
+  const expired = Boolean(createdAt && now - createdAt > ROOM_MAX_AGE_MS);
+  const emptyGhost = room.currentPlayers !== undefined && Number(room.currentPlayers) <= 0;
+  return room.status === 'finished' || expired || emptyGhost;
+};
+
 const getTimestampMillis = (value: unknown) => {
   if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
     return value.toMillis();
@@ -81,6 +88,7 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   if (!normalizedTitle) throw new Error('방 제목을 입력해주세요.');
   const roomsRef = collection(firestore, 'rooms');
   const now = Date.now();
+  await cleanupInactiveRooms();
   const existingHostRooms = await getDocs(query(roomsRef, where('hostId', '==', params.hostId)));
   const staleHostRoomRefs = existingHostRooms.docs
     .filter((roomDoc) => ['waiting', 'playing', 'finished'].includes(String(roomDoc.data().status)))
@@ -95,11 +103,9 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   const activeRoomsSnapshot = await getDocs(query(roomsRef, where('status', 'in', ['waiting', 'playing'])));
   const activeRoomDocs = activeRoomsSnapshot.docs.filter((roomDoc) => {
     const room = roomDoc.data() as Omit<RoomSummary, 'id'>;
-    const createdAt = getCreatedAtMillis(room.createdAt);
-    const expired = Boolean(createdAt && now - createdAt > ROOM_MAX_AGE_MS);
-    const emptyGhost = room.currentPlayers !== undefined && Number(room.currentPlayers) <= 0;
-    if (expired || emptyGhost) void deleteRoom(roomDoc.id);
-    return !expired && !emptyGhost;
+    const inactive = isInactiveRoom(room, now);
+    if (inactive) void deleteRoom(roomDoc.id).catch((error) => console.warn('비활성 방 정리에 실패했습니다.', error));
+    return !inactive;
   });
   const activeRooms = activeRoomDocs.map((roomDoc) => roomDoc.data() as Omit<RoomSummary, 'id'>);
   const activeUserRooms = activeRooms.filter((room) => !isQaRoomTitle(room.title));
@@ -295,6 +301,18 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
     });
     if (!remainingHumans.length) await deleteRoom(roomDoc.id);
   }));
+}
+
+export async function cleanupInactiveRooms(protectedRoomId = '') {
+  if (!db) return [];
+  const now = Date.now();
+  const roomsSnapshot = await getDocs(collection(db, 'rooms'));
+  const inactiveRoomDocs = roomsSnapshot.docs.filter((roomDoc) => {
+    if (roomDoc.id === protectedRoomId) return false;
+    return isInactiveRoom(roomDoc.data() as Partial<RoomSummary>, now);
+  });
+  await Promise.all(inactiveRoomDocs.map((roomDoc) => deleteRoom(roomDoc.id)));
+  return inactiveRoomDocs.map((roomDoc) => roomDoc.id);
 }
 
 async function deleteDocumentRefs(refs: DocumentReference[]) {
@@ -550,10 +568,9 @@ export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): 
     const rooms = snapshot.docs
       .map((roomDoc) => ({ id: roomDoc.id, ref: roomDoc.ref, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
       .filter((room) => {
-        const createdAt = getCreatedAtMillis(room.createdAt);
-        const expired = Boolean(createdAt && now - createdAt > ROOM_MAX_AGE_MS);
-        if (expired) void deleteDoc(room.ref);
-        return !expired;
+        const inactive = isInactiveRoom(room, now);
+        if (inactive) void deleteRoom(room.id).catch((error) => console.warn('비활성 방 정리에 실패했습니다.', error));
+        return !inactive;
       })
       .map(({ ref: _ref, ...room }) => room);
     callback(keepNewestRoomPerHost(rooms).slice(0, MAX_ACTIVE_ROOMS));
