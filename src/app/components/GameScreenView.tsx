@@ -90,7 +90,7 @@ type GameScreenViewProps = {
   onMoveSelectedPiece: () => void;
   onOpenEndGameDialog: () => void;
   onOpenDiagnosticDialog: () => void;
-  onRollYut: () => void;
+  onRollYut: (timingPositionPercent?: number) => void;
   rollTimingFeedback: RollTimingZone | null;
   onSelectPieceId: (pieceId: string) => void;
   onSelectTrapNode: (nodeId: string) => void;

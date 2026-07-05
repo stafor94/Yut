@@ -2634,11 +2634,12 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [fallEffect]);
 
-  function getCurrentRollTimingZone() {
-    return getRollTimingZone(getRollTimingPositionPercent(Date.now() - rollTimingStartedAtRef.current));
+  function getCurrentRollTimingZone(positionPercent?: number) {
+    return getRollTimingZone(positionPercent ?? getRollTimingPositionPercent(Date.now() - rollTimingStartedAtRef.current));
   }
 
-  function rollYut(options: { timedOut?: boolean } = {}) {
+  function rollYut(options: { timedOut?: boolean; timingPositionPercent?: number } | number = {}) {
+    const rollOptions = typeof options === 'number' ? { timingPositionPercent: options } : options;
     if (screen === 'game' && !activeRoomId) {
       reportTurnActionFailure('roll_yut', '온라인 방 정보가 없어 진행할 수 없습니다.');
       return;
@@ -2647,8 +2648,8 @@ export function App() {
       reportTurnActionBlocked('roll_yut', rollActionBlockReasons, '윷 던지기를 진행할 수 없습니다');
       return;
     }
-    if (!options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
-    const rollTimingZone = options.timedOut ? 'normal' : getCurrentRollTimingZone();
+    if (!rollOptions.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
+    const rollTimingZone = rollOptions.timedOut ? 'normal' : getCurrentRollTimingZone(rollOptions.timingPositionPercent);
     setRollTimingFeedback(rollTimingZone);
     const fallOccurred = !forcedRoll && shouldFallForTimingZone(rollTimingZone);
     if (activeRoomId) {

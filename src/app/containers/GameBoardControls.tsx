@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import type { BranchChoice } from '../../game-core/board/board';
 import type { RollTimingZone, YutResult } from '../../game-core/roll';
@@ -21,7 +21,7 @@ type GameBoardControlsProps = {
   onMoveSelectedPiece: () => void;
   canRollNow: boolean;
   canSubmitTurnAction: boolean;
-  onRollYut: () => void;
+  onRollYut: (timingPositionPercent?: number) => void;
   rollTimingFeedback: RollTimingZone | null;
   rollResultHolding: boolean;
   pendingTrapPlacement: boolean;
@@ -54,6 +54,25 @@ export function GameBoardControls({
   waitingForOnlineTurnOrder,
   hasActiveTurnOrderIntro,
 }: GameBoardControlsProps) {
+  const rollTimingMeterRef = useRef<HTMLDivElement | null>(null);
+  const rollTimingOrbRef = useRef<HTMLSpanElement | null>(null);
+  const getVisibleRollTimingPositionPercent = () => {
+    const meter = rollTimingMeterRef.current;
+    const orb = rollTimingOrbRef.current;
+    if (!meter || !orb) return undefined;
+    const meterRect = meter.getBoundingClientRect();
+    const orbRect = orb.getBoundingClientRect();
+    if (meterRect.width <= 0) return undefined;
+    const orbCenterX = orbRect.left + orbRect.width / 2;
+    return Math.max(0, Math.min(100, ((orbCenterX - meterRect.left) / meterRect.width) * 100));
+  };
+  const handleRollButtonClick = () => {
+    if (roll) {
+      onMoveSelectedPiece();
+      return;
+    }
+    onRollYut(getVisibleRollTimingPositionPercent());
+  };
   const timerDurationMs = activeSeatId ? getTurnActionTimeoutMs(activeSeatId) : turnActionTimeoutMs;
   const buttonText = roll
     ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동')
@@ -78,8 +97,8 @@ export function GameBoardControls({
     </div> : <>
       {((!roll && canRollNow) || (roll && canRequestMove)) && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
       {rollTimingFeedback && <div className={`roll-timing-feedback ${rollTimingFeedback}`}>{rollTimingFeedback === 'perfect' ? 'Perfect!' : rollTimingFeedback === 'good' ? 'Good!' : 'Normal'}</div>}
-      {!roll && canRollNow && <div className="roll-timing-meter" aria-label="윷 던지기 정확도 막대"><span className="roll-timing-good left" aria-hidden="true"></span><span className="roll-timing-perfect" aria-hidden="true"></span><span className="roll-timing-good right" aria-hidden="true"></span><span className="roll-timing-orb" aria-hidden="true"></span></div>}
-      <button data-testid={roll ? 'move-piece-button' : canSubmitTurnAction ? 'roll-yut-button' : 'turn-waiting-button'} className={!roll ? 'roll-button' : undefined} onClick={() => roll ? onMoveSelectedPiece() : onRollYut()} disabled={(!canRollNow && !roll) || Boolean(roll && !canRequestMove)}>{buttonText}</button>
+      {!roll && canRollNow && <div ref={rollTimingMeterRef} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대"><span className="roll-timing-good left" aria-hidden="true"></span><span className="roll-timing-perfect" aria-hidden="true"></span><span className="roll-timing-good right" aria-hidden="true"></span><span ref={rollTimingOrbRef} className="roll-timing-orb" aria-hidden="true"></span></div>}
+      <button data-testid={roll ? 'move-piece-button' : canSubmitTurnAction ? 'roll-yut-button' : 'turn-waiting-button'} className={!roll ? 'roll-button' : undefined} onClick={handleRollButtonClick} disabled={(!canRollNow && !roll) || Boolean(roll && !canRequestMove)}>{buttonText}</button>
     </>}
   </div>;
 }
