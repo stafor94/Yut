@@ -1,8 +1,8 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { collection, deleteDoc, doc, getDocs, getFirestore, query, where, writeBatch } from 'firebase/firestore';
+import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, getFirestore, query, where, writeBatch } from 'firebase/firestore';
 import { loadFirebaseConfig } from './env.js';
 
-const roomSubcollections = ['actions', 'boardItems', 'players', 'seats', 'state', 'sequences', 'processedActions'];
+const roomSubcollections = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'];
 const inactiveRoomMaxAgeMs = 60 * 60 * 1000;
 const roomDeleteBatchSize = 25;
 let dbPromise;
@@ -40,18 +40,52 @@ export async function findRoomIdByTitle(title) {
   return snapshot.docs[0]?.id ?? null;
 }
 
-export async function deleteRoomForQa(roomId) {
+async function deleteDocumentsInBatches(documentSnapshots) {
+  const db = await getTestDb();
+  if (!db || documentSnapshots.length === 0) return;
+  for (let index = 0; index < documentSnapshots.length; index += roomDeleteBatchSize) {
+    const batch = writeBatch(db);
+    documentSnapshots.slice(index, index + roomDeleteBatchSize).forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
+    await batch.commit();
+  }
+}
+
+async function deleteRoomSubcollectionsForQa(roomId) {
   const db = await getTestDb();
   if (!db || !roomId) return;
   for (const subcollectionName of roomSubcollections) {
     const snapshot = await getDocs(collection(db, 'rooms', roomId, subcollectionName));
-    for (let index = 0; index < snapshot.docs.length; index += roomDeleteBatchSize) {
-      const batch = writeBatch(db);
-      snapshot.docs.slice(index, index + roomDeleteBatchSize).forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
-      await batch.commit();
-    }
+    await deleteDocumentsInBatches(snapshot.docs);
   }
+}
+
+export async function deleteRoomForQa(roomId) {
+  const db = await getTestDb();
+  if (!db || !roomId) return;
+  await deleteRoomSubcollectionsForQa(roomId);
   await deleteDoc(doc(db, 'rooms', roomId));
+}
+
+export async function deleteMissingParentRoomSubcollectionsForQa() {
+  const db = await getTestDb();
+  if (!db) return [];
+  const candidateRoomIds = new Set();
+  for (const subcollectionName of roomSubcollections) {
+    const snapshot = await getDocs(collectionGroup(db, subcollectionName));
+    snapshot.docs.forEach((documentSnapshot) => {
+      const roomDocRef = documentSnapshot.ref.parent.parent;
+      if (roomDocRef?.parent.id === 'rooms') candidateRoomIds.add(roomDocRef.id);
+    });
+  }
+
+  const deletedRoomIds = [];
+  for (const roomId of candidateRoomIds) {
+    const roomSnapshot = await getDoc(doc(db, 'rooms', roomId));
+    if (roomSnapshot.exists()) continue;
+    await deleteRoomSubcollectionsForQa(roomId);
+    deletedRoomIds.push(roomId);
+  }
+  return deletedRoomIds;
 }
 
 export async function deleteInactiveRoomsForQa() {

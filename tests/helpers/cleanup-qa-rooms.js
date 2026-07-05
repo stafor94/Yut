@@ -1,5 +1,5 @@
 import { collection, getDocs } from 'firebase/firestore';
-import { deleteInactiveRoomsForQa, deleteRoomForQa, getTestDb, isInactiveRoom } from './rooms.js';
+import { deleteInactiveRoomsForQa, deleteMissingParentRoomSubcollectionsForQa, deleteRoomForQa, getTestDb, isInactiveRoom } from './rooms.js';
 
 const QA_ROOM_TITLE_PREFIX = 'QA-';
 
@@ -22,8 +22,11 @@ async function cleanupQaRooms() {
   const inactiveRooms = await deleteInactiveRoomsForQa();
   if (inactiveRooms.length > 0) console.log(`비활성 방 ${inactiveRooms.length}개를 정리했습니다.`);
 
+  const orphanRoomIds = await deleteMissingParentRoomSubcollectionsForQa();
+  if (orphanRoomIds.length > 0) console.log(`부모 문서 없는 방 하위 컬렉션 ${orphanRoomIds.length}개를 정리했습니다.`);
+
   if (qaRooms.length === 0) {
-    if (inactiveRooms.length === 0) console.log('정리할 QA/비활성 방이 없습니다.');
+    if (inactiveRooms.length === 0 && orphanRoomIds.length === 0) console.log('정리할 QA/비활성/고아 방 데이터가 없습니다.');
     return;
   }
 

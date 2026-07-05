@@ -278,6 +278,7 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 ### Confirmed root cause
 
 - cleanup 대상 자체는 맞았지만, 하위 컬렉션 삭제 batch 크기가 과도해 Firestore가 `Transaction too big`으로 write stream을 거부했다.
+- 또한 Firestore는 부모 `rooms/{roomId}` 문서를 삭제해도 하위 컬렉션을 자동 삭제하지 않기 때문에, 부모 문서가 이미 사라진 방의 `players`/`processedActions`/중첩 `rooms` 하위 컬렉션은 기존 `rooms` 컬렉션 조회만으로 다시 찾을 수 없었다.
 
 ### Previous failed attempts
 
@@ -288,6 +289,7 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 ### Correct fix plan
 
 - QA helper의 방 삭제 batch 크기를 충분히 작게 낮춰 각 commit의 Firestore transaction/write 크기를 제한한다.
+- 부모 방 문서 삭제 전 알려진 하위 컬렉션을 먼저 지우고, 부모 문서가 없는 orphan 하위 컬렉션은 collection group 조회로 찾아 정리한다.
 - cleanup 대상 선정이나 앱 동작은 바꾸지 않는다.
 
 ### Verification checklist
