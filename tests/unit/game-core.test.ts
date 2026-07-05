@@ -4,6 +4,7 @@ import { getMovePathNodeIds } from '../../src/game-core/board/board';
 import { reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
 import { getRandomItemType } from '../../src/features/items/logic/items';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
+import { getOnlineGameCoordinatorSeatId } from '../../src/app/flows/onlineGameCoordinator';
 
 const makeLog = (logs: EngineLog[], text: string): EngineLog => ({ id: logs.length + 1, text });
 
@@ -35,6 +36,16 @@ test('중앙에서 외곽 선택 시 n16 방향 경로를 사용한다', () => {
 test('아이템 랜덤 선택은 전달된 random 함수를 사용한다', () => {
   assert.equal(getRandomItemType(() => 0), 'reroll');
   assert.equal(getRandomItemType(() => 0.999), 'golden_yut');
+});
+
+test('온라인 게임 조율자는 방장 표시가 아니라 첫 번째 인간 좌석으로 결정된다', () => {
+  const seats = [
+    { id: 'host-user', isHost: true, isAI: true, isEmpty: false },
+    { id: 'player-user', isHost: false, isAI: false, isEmpty: false },
+    { id: 'empty-slot', isHost: false, isAI: false, isEmpty: true },
+  ];
+
+  assert.equal(getOnlineGameCoordinatorSeatId(seats), 'player-user');
 });
 
 test('차례가 아닌 플레이어의 윷 던지기는 거부된다', () => {
