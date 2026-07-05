@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import type { YutResult } from '../../game-core/roll';
+import type { RollTimingZone, YutResult } from '../../game-core/roll';
 import type { ToastMessage } from '../appState';
 
 type WinnerOverlayProps = {
@@ -76,6 +76,7 @@ type RollStageProps = {
     sticks: { flat: boolean; marked?: boolean }[];
     turnOrder?: boolean;
     fallCount?: number;
+    timingZone?: RollTimingZone;
   } | null;
 };
 
@@ -85,6 +86,7 @@ export function RollStage({ rollAnimation }: RollStageProps) {
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
     <div className={`roll-mat ${rollAnimation.result.bonus && !rollAnimation.turnOrder ? 'bonus-roll' : ''} ${rollAnimation.fallCount ? 'fall-roll' : ''}`}>
+      {rollAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${rollAnimation.timingZone}`}>{rollAnimation.timingZone === 'perfect' ? 'Perfect!' : rollAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       <span className="roll-label">{rollAnimation.fallCount ? '낙!' : rollAnimation.result.name}</span>
       {rollAnimation.sticks.map((stick, index) => {
         const markCount = stick.flat ? stick.marked ? 1 : 0 : 3;

@@ -27,6 +27,7 @@ type SyncedGameStateShape = {
   branchChoice?: unknown;
   ownedItems?: unknown;
   fallEffect?: unknown;
+  lastRollTimingZone?: unknown;
 };
 type GameActionShape = { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
 export type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string; patch?: GameStatePatch; payload?: Record<string, unknown> };

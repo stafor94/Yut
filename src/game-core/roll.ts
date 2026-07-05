@@ -59,6 +59,13 @@ export function shouldFallForTimingZone(zone: RollTimingZone, random = Math.rand
   return random() < getFallChanceForTimingZone(zone);
 }
 
+export function chooseAiRollTimingZone(random = Math.random): RollTimingZone {
+  const roll = random();
+  if (roll < 0.3) return 'perfect';
+  if (roll < 0.7) return 'good';
+  return 'normal';
+}
+
 export function rollYutResultWithTiming(zone: RollTimingZone = 'normal', random = Math.random, useBackDo = true) {
   if (zone !== 'perfect') return rollYutResult(random, useBackDo);
   const resultRoll = random();

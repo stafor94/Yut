@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getMovePathNodeIds } from '../../src/game-core/board/board';
-import { getFallChanceForTimingZone, getRollTimingZone, rollYutResultWithTiming } from '../../src/game-core/roll';
+import { chooseAiRollTimingZone, getFallChanceForTimingZone, getRollTimingZone, rollYutResultWithTiming } from '../../src/game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
 import { getRandomItemType } from '../../src/features/items/logic/items';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
@@ -178,6 +178,13 @@ test('윷 던지기 타이밍 구간은 중앙 Perfect와 좌우 Good을 판정�
   assert.equal(getRollTimingZone(40), 'good');
   assert.equal(getRollTimingZone(60), 'good');
   assert.equal(getRollTimingZone(20), 'normal');
+});
+
+test('AI 윷 던지기 타이밍은 30% Perfect, 40% Good, 30% Normal 기준으로 판정한다', () => {
+  assert.equal(chooseAiRollTimingZone(() => 0.29), 'perfect');
+  assert.equal(chooseAiRollTimingZone(() => 0.3), 'good');
+  assert.equal(chooseAiRollTimingZone(() => 0.69), 'good');
+  assert.equal(chooseAiRollTimingZone(() => 0.7), 'normal');
 });
 
 test('타이밍 구간별 낙 확률을 적용한다', () => {
