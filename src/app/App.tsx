@@ -1080,7 +1080,8 @@ export function App() {
       }
       else if (countdown >= 0) setCountdown(-1);
       if (room.status === 'playing') setScreen('game');
-      if (room.status === 'waiting' && screen === 'game' && !winner) {
+      const startFlowStillActive = nextStartStatus === 'requested' || nextStartStatus === 'entering';
+      if (room.status === 'waiting' && screen === 'game' && !winner && !startFlowStillActive) {
         setScreen('waitingRoom');
         setCountdown(-1);
         setItemPromptTiming(null);
