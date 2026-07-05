@@ -186,15 +186,14 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
         transaction.set(roomRef, { emptySince: null }, { merge: true });
         return { role: 'player', seatIndex: restoreSeatIndex };
       }
-      if (existingData.isSpectator) {
-        transaction.set(playerRef, { nickname: params.nickname, lastSeen: serverTimestamp() }, { merge: true });
-        transaction.set(roomRef, { emptySince: null }, { merge: true });
-        return { role: 'spectator', seatIndex: null };
-      }
-
       const currentPlayers = seatSnapshots.filter((seatSnapshot) => seatSnapshot.exists()).length;
 
       if (isRoomInGame(room)) {
+        if (existingData.isSpectator) {
+          transaction.set(playerRef, { nickname: params.nickname, lastSeen: serverTimestamp() }, { merge: true });
+          transaction.set(roomRef, { emptySince: null, currentPlayers }, { merge: true });
+          return { role: 'spectator', seatIndex: null };
+        }
         transaction.set(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: existingData.joinedAt ?? serverTimestamp(), lastSeen: serverTimestamp() }, { merge: true });
         transaction.set(roomRef, { emptySince: null, currentPlayers }, { merge: true });
         return { role: 'spectator', seatIndex: null };
@@ -850,7 +849,11 @@ export async function removeRoomPlayer(roomId: string, playerId: string, options
 
 export async function updateRoomStatus(roomId: string, status: RoomSummary['status']) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
-  await updateDoc(doc(db, 'rooms', roomId), { status, ...(status === 'playing' ? { startCountdownUntil: 0, startStatus: 'playing' } : {}) });
+  await updateDoc(doc(db, 'rooms', roomId), {
+    status,
+    ...(status === 'playing' ? { startCountdownUntil: 0, startStatus: 'playing' } : {}),
+    ...(status === 'waiting' ? { startCountdownUntil: 0, startCountdownStartsAt: 0, startCountdownEndsAt: 0, startStatus: 'idle' } : {}),
+  });
 }
 
 export async function updateRoomStartCountdown(roomId: string, startCountdownUntil: number) {

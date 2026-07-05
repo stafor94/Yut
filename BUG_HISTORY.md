@@ -2961,3 +2961,84 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [ ] Multi-client browser check
 - [x] No unrelated UI redesign
 - [x] No new dependency
+
+
+## 2026-07-05 - Issue #408 온라인 게임 시작 직후 턴 표시 미확정
+
+### Symptom
+
+- Actions run `28743262798`의 `QA game flow` job에서 게임 화면 진입 후 `turn-indicator`가 hidden 상태로 남아 첫 턴 UI 검증이 실패했다.
+- 테스트 timeout만 늘리는 방식은 순서 정하기 결과가 게임 시작 전에 authoritative state로 확정되어야 한다는 실제 요구를 해결하지 못한다.
+
+### Expected behavior
+
+- 방장이 게임 시작을 요청하면 게임 초기 state가 생성될 때 순서 정하기 결과도 함께 Firebase authoritative state에 저장되어야 한다.
+- 각 플레이어는 게임 화면에 들어간 뒤 별도 로컬 순서 확정 경쟁을 하지 않고 Firebase에서 확정된 `turnOrderIds`와 intro를 수신해야 한다.
+
+### Actual behavior
+
+- 기존 온라인 시작 state는 `turnOrderIds: []`, `waitingForPlayersReady: true`로 저장됐다.
+- 게임 화면 진입 후 클라이언트 effect가 모든 사람 플레이어의 진입 presence를 확인한 다음 `resolveTurnOrderIntro()`를 별도로 실행해야 했고, 그 사이 `waitingForOnlineTurnOrder`가 true라 턴 표시가 비어 있을 수 있었다.
+
+### Confirmed root cause
+
+- 온라인 게임 초기화와 초기 순서 확정이 분리되어 있어, `game-screen`은 표시됐지만 authoritative `turnOrderIds`가 아직 없는 중간 상태가 Firebase에 존재했다.
+- 이 중간 상태에서 `boardTurnIndicatorText`가 빈 문자열이 되어 `turn-indicator`가 hidden으로 판정될 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `turn-indicator` assertion timeout과 진단 메시지만 보강했다.
+  - Why it failed: QA 타이밍 완화일 뿐, Firebase 초기 state에 순서가 비어 있는 앱 상태 자체를 제거하지 못했다.
+
+### Do not try again
+
+- `turn-indicator` timeout만 늘려서 앱의 초기 순서 미확정 상태를 덮지 않는다.
+- 여러 클라이언트가 게임 화면 진입 후 각자 순서 확정 트랜잭션을 시도하는 구조에 의존하지 않는다.
+
+### Correct fix plan
+
+- `initializeGameState()`에 전달하는 온라인 초기 state부터 `turnOrderIds`, `initialTurnOrderIds`, `turnOrderIntro`, `gameStartedAt`을 채운다.
+- `waitingForPlayersReady`는 초기 state에서 false로 저장해 게임 화면 진입 후 별도 순서 확정 대기를 만들지 않는다.
+- 게임 종료 후 대기화면 버튼은 온라인 방을 떠나지 않고 같은 방의 대기실로 전환한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Unit tests pass
+- [ ] CI game-flow rerun checked
+- [ ] Multi-client browser check
+
+## 2026-07-05 - 인게임 대기실 복귀 시 준비 배지/재시작 노출
+
+### Symptom
+
+- 게임 종료/복귀 흐름에서 클라이언트가 방 대기실 화면으로 돌아왔지만 방 상태가 아직 인게임이면 플레이어 카드에 `준비` 배지가 보일 수 있었다.
+- 같은 상태에서 방장에게 `게임 시작` 버튼이 다시 활성화될 위험이 있었다.
+- 한 번 관전자로 들어갔던 사용자는 게임이 끝나 방이 다시 waiting 상태가 된 뒤에도 기존 spectator 문서 때문에 플레이어 자리로 재참여하지 못할 수 있었다.
+
+### Expected behavior
+
+- 방이 아직 entering/playing 상태이면 대기실에서도 플레이어 카드는 `게임중`으로 표시되어야 한다.
+- 인게임 상태에서는 새 게임 시작/준비 토글을 막아야 한다.
+- waiting 상태로 돌아온 방에서는 기존 spectator도 빈 좌석이 있으면 플레이어로 다시 참여할 수 있어야 한다.
+
+### Confirmed root cause
+
+- 대기실 UI는 방의 start status를 고려하지 않고 seat.ready만 보고 `준비` 배지를 표시했다.
+- `게임 시작` 버튼 disabled 조건도 `allReady`만 확인해 인게임 상태를 별도로 차단하지 않았다.
+- `joinRoom()`은 기존 player 문서가 spectator이면 room 상태와 관계없이 spectator로 유지하는 분기가 먼저 실행됐다.
+- `updateRoomStatus(roomId, 'waiting')`은 `startStatus`를 idle로 초기화하지 않아, waiting 방이 startStatus playing으로 남아 관전/참여 판정에 영향을 줄 수 있었다.
+
+### Correct fix plan
+
+- WaitingRoomContainer에 인게임 상태를 전달해 `게임중` 상태 문구와 좌석 배지를 표시한다.
+- 인게임 상태에서는 시작/준비 버튼을 비활성화하고 start handler에서도 재시작을 거부한다.
+- room status를 waiting으로 바꿀 때 countdown/startStatus 필드를 idle 상태로 함께 초기화한다.
+- 기존 spectator 문서는 room이 실제 인게임일 때만 spectator로 유지하고, waiting 방에서는 빈 좌석 참여 흐름으로 내려가게 한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Unit tests pass
+- [ ] Multi-client join/spectator browser check
