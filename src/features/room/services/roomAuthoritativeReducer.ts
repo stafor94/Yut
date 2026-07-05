@@ -1,4 +1,4 @@
-import { rollYutResult, type YutResult } from '../../../game-core/roll';
+import { rollYutResultWithTiming, type RollTimingZone, type YutResult } from '../../../game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 import type { BranchChoice } from '../../../game-core/board/board';
 
@@ -26,6 +26,7 @@ type SyncedGameStateShape = {
   pendingTrapPlacement?: unknown;
   branchChoice?: unknown;
   ownedItems?: unknown;
+  fallEffect?: unknown;
 };
 type GameActionShape = { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
 export type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string; patch?: GameStatePatch; payload?: Record<string, unknown> };
@@ -44,7 +45,8 @@ const getNextLogId = (logs: unknown[]) => logs.reduce<number>((maxId, log) => {
 const makeAuthoritativeLog = (logs: unknown[], text: string): AuthoritativeLog => ({ id: getNextLogId(logs), text });
 const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
   const forcedResult = payload?.forcedResult as YutResult | null | undefined;
-  return forcedResult ?? rollYutResult().result;
+  const timingZone = (payload?.rollTimingZone as RollTimingZone | undefined) ?? 'normal';
+  return forcedResult ?? rollYutResultWithTiming(timingZone).result;
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
 const getActionActorLogName = (action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>) => {
@@ -81,6 +83,7 @@ function makeEngineState(state: SyncedGameStateShape): EngineState {
     branchChoice: (state.branchChoice as BranchChoice | undefined) ?? 'outer',
     boardItems: (state.boardItems as EngineState['boardItems'] | undefined) ?? [],
     ownedItems: state.ownedItems as Record<string, never[]> | undefined,
+    fallEffect: state.fallEffect as EngineState['fallEffect'],
   };
 }
 
@@ -98,6 +101,8 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     actorLogName: getActionActorLogName(action),
     rollResultReadyAt: Date.now() + 2600,
     makeLog: makeAuthoritativeLog,
+    fallOccurred: Boolean(action.payload?.fallOccurred),
+    timingZone: action.payload?.rollTimingZone as RollTimingZone | undefined,
   }));
 }
 function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {

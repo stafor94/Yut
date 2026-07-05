@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import type { BranchChoice } from '../../game-core/board/board';
-import type { YutResult } from '../../game-core/roll';
+import type { RollTimingZone, YutResult } from '../../game-core/roll';
 
 type GameBoardControlsProps = {
   roll: YutResult | null;
@@ -22,6 +22,7 @@ type GameBoardControlsProps = {
   canRollNow: boolean;
   canSubmitTurnAction: boolean;
   onRollYut: () => void;
+  rollTimingFeedback: RollTimingZone | null;
   rollResultHolding: boolean;
   pendingTrapPlacement: boolean;
   waitingForOnlineTurnOrder: boolean;
@@ -47,6 +48,7 @@ export function GameBoardControls({
   canRollNow,
   canSubmitTurnAction,
   onRollYut,
+  rollTimingFeedback,
   rollResultHolding,
   pendingTrapPlacement,
   waitingForOnlineTurnOrder,
@@ -75,6 +77,8 @@ export function GameBoardControls({
       <button type="button" className="branch-move-button" onClick={onMoveSelectedPiece} disabled={!canRequestMove}>선택한 말 이동</button>
     </div> : <>
       {((!roll && canRollNow) || (roll && canRequestMove)) && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
+      {!roll && canRollNow && <div className="roll-timing-meter" aria-label="윷 던지기 정확도 막대"><span className="roll-timing-good left" aria-hidden="true"></span><span className="roll-timing-perfect" aria-hidden="true"></span><span className="roll-timing-good right" aria-hidden="true"></span><span className="roll-timing-orb" aria-hidden="true"></span></div>}
+      {!roll && rollTimingFeedback && rollTimingFeedback !== 'normal' && <div className={`roll-timing-feedback ${rollTimingFeedback}`}>{rollTimingFeedback === 'perfect' ? 'Perfect!' : 'Good!'}</div>}
       <button data-testid={roll ? 'move-piece-button' : canSubmitTurnAction ? 'roll-yut-button' : 'turn-waiting-button'} className={!roll ? 'roll-button' : undefined} onClick={() => roll ? onMoveSelectedPiece() : onRollYut()} disabled={(!canRollNow && !roll) || Boolean(roll && !canRequestMove)}>{buttonText}</button>
     </>}
   </div>;

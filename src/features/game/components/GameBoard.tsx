@@ -34,6 +34,7 @@ type GameBoardProps = {
   onSelectNode?: (nodeId: string) => void;
   boardShaking?: boolean;
   isPieceSelectable?: (piece: BoardPiece) => boolean;
+  showFallEffect?: boolean;
   getPieceGroupKey?: (piece: BoardPiece) => string;
 };
 
@@ -93,7 +94,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
+export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
   void branchChoice;
   void onBranchChoiceChange;
   void showBranchControls;
@@ -117,6 +118,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         {trapNodeIds.includes(node.id) ? <span className="trap-marker" aria-label="설치된 함정">🪤</span> : null}
       </button>;
     })}
+    {showFallEffect ? <div className="fall-effect" role="status" aria-live="assertive">낙!</div> : null}
     {pieces.map((piece) => {
       const pieceSelectable = isPieceSelectable?.(piece) !== false;
       const pieceSelected = pieceSelectable && selectedIds.includes(piece.id);

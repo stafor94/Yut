@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getMovePathNodeIds } from '../../src/game-core/board/board';
+import { getFallChanceForTimingZone, getRollTimingZone, rollYutResultWithTiming } from '../../src/game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
 import { getRandomItemType } from '../../src/features/items/logic/items';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
@@ -170,4 +171,40 @@ test('완주 후 이어서 진행은 방장이 아닌 플레이어 actor도 커�
   assert.equal(result.patch?.winner, '');
   assert.equal(result.patch?.gameEndMode, '');
   assert.equal(result.patch?.continuationRound, 1);
+});
+
+test('윷 던지기 타이밍 구간은 중앙 Perfect와 좌우 Good을 판정한다', () => {
+  assert.equal(getRollTimingZone(50), 'perfect');
+  assert.equal(getRollTimingZone(40), 'good');
+  assert.equal(getRollTimingZone(60), 'good');
+  assert.equal(getRollTimingZone(20), 'normal');
+  assert.equal(getFallChanceForTimingZone('perfect'), 0);
+  assert.equal(getFallChanceForTimingZone('good'), 0.2);
+  assert.equal(getFallChanceForTimingZone('normal'), 0.4);
+});
+
+test('Perfect 타이밍은 윷과 모 확률을 각각 5%p 올린다', () => {
+  assert.equal(rollYutResultWithTiming('perfect', () => 0.78).result.name, '윷');
+  assert.equal(rollYutResultWithTiming('perfect', () => 0.9).result.name, '모');
+});
+
+test('낙이 발생한 윷 던지기는 진행 기록을 남기고 턴을 넘긴다', () => {
+  const result = reduceRollCommand({
+    state: baseState(),
+    actorId: 'seat-1',
+    nextRoll: { name: '도', steps: 1 },
+    actorLogName: 'P1',
+    rollResultReadyAt: 123,
+    makeLog,
+    fallOccurred: true,
+    timingZone: 'normal',
+  });
+
+  assert.equal(result.ok, true);
+  const patch = result.patch as { roll: null; turnIndex: number; rollResultReadyAt: number; logs: EngineLog[]; fallEffect: unknown };
+  assert.equal(patch.roll, null);
+  assert.equal(patch.turnIndex, 1);
+  assert.equal(patch.rollResultReadyAt, 0);
+  assert.ok(patch.fallEffect);
+  assert.match(patch.logs[0].text, /낙/);
 });

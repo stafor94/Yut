@@ -1,6 +1,6 @@
 import { BOARD_NODES, getMovePathNodeIds, type BoardItem, type BranchChoice } from './board/board';
 import { ITEM_DEFINITIONS, type ItemType } from '../features/items/logic/items';
-import type { YutResult } from './roll';
+import type { RollTimingZone, YutResult } from './roll';
 
 export type GameCommandType = 'roll_yut' | 'move_piece';
 
@@ -22,6 +22,7 @@ export type GameCommandResult<TPatch extends Record<string, unknown> = Record<st
 export type EngineLog = { id: number; text: string };
 export type EnginePiece = { id: string; ownerId: string; label?: string; nodeIndex: number; nodeId: string; started: boolean; finished: boolean; color?: string };
 export type EngineTrapNode = { nodeId: string; ownerId: string };
+export type EngineFallEffect = { id: number; seatId: string; timingZone?: RollTimingZone };
 export type EngineSeatSide = { id: string; team?: string };
 
 export type EngineState = {
@@ -36,6 +37,7 @@ export type EngineState = {
   pendingTrapPlacement?: unknown | null;
   trapNodes: EngineTrapNode[];
   shieldedPieceIds: string[];
+  fallEffect?: EngineFallEffect | null;
   branchChoice?: BranchChoice;
   boardItems?: BoardItem[];
   ownedItems?: Record<string, ItemType[]>;
@@ -132,19 +134,37 @@ const validateCommonTurnCommand = (state: EngineState, actorId: string, options:
   return null;
 };
 
-export function reduceRollCommand(params: { state: EngineState; actorId: string; nextRoll: YutResult; actorLogName: string; rollResultReadyAt: number; makeLog: (logs: EngineLog[], text: string) => EngineLog }): GameCommandResult {
-  const { state, actorId, nextRoll, actorLogName, rollResultReadyAt, makeLog } = params;
+export function reduceRollCommand(params: { state: EngineState; actorId: string; nextRoll: YutResult; actorLogName: string; rollResultReadyAt: number; makeLog: (logs: EngineLog[], text: string) => EngineLog; fallOccurred?: boolean; timingZone?: RollTimingZone }): GameCommandResult {
+  const { state, actorId, nextRoll, actorLogName, rollResultReadyAt, makeLog, fallOccurred = false, timingZone } = params;
   const blocked = validateCommonTurnCommand(state, actorId, { requireNoRoll: true });
   if (blocked) return blocked;
+  if (fallOccurred) {
+    return {
+      ok: true,
+      patch: {
+        roll: null,
+        rollResultReadyAt: 0,
+        shieldedPieceIds: [],
+        turnIndex: (Number(state.turnIndex ?? 0) + 1) % state.turnOrderIds.length,
+        lastMovedPieceIds: [],
+        lastMovedSeatId: actorId,
+        branchChoice: 'outer',
+        fallEffect: { id: Date.now(), seatId: actorId, timingZone },
+        logs: [makeLog(state.logs ?? [], `${actorLogName}님이 낙이 나와 차례를 넘깁니다.`), ...(state.logs ?? [])],
+      },
+      payload: { activeSeatId: actorId, fallOccurred: true, timingZone },
+    };
+  }
   return {
     ok: true,
     patch: {
       roll: nextRoll,
       rollResultReadyAt,
       shieldedPieceIds: [],
+      fallEffect: null,
       logs: [makeLog(state.logs ?? [], `${actorLogName}님이 ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`), ...(state.logs ?? [])],
     },
-    payload: { activeSeatId: actorId, rollName: nextRoll.name, steps: nextRoll.steps },
+    payload: { activeSeatId: actorId, rollName: nextRoll.name, steps: nextRoll.steps, timingZone },
   };
 }
 

@@ -4,7 +4,7 @@ import type { BoardPiece } from '../features/game/components/GameBoard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
-import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
+import { GOLDEN_YUT_CHOICES, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
 import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
@@ -55,6 +55,7 @@ import {
   seatsWithJoinedPlayer,
   spectatorsFromRoomPlayers,
   type CaptureEffect,
+  type FallEffect,
   type GameLog,
   type ManualSyncResolution,
   type PendingItemPickup,
@@ -200,6 +201,8 @@ export function App() {
   const piecesRef = useRef<BoardPiece[]>([]);
   const [captureEffect, setCaptureEffect] = useState<CaptureEffect | null>(null);
   const [trapEffect, setTrapEffect] = useState<TrapEffect | null>(null);
+  const [fallEffect, setFallEffect] = useState<FallEffect | null>(null);
+  const [rollTimingFeedback, setRollTimingFeedback] = useState<RollTimingZone | null>(null);
   const [pendingTrapPlacement, setPendingTrapPlacement] = useState<PendingTrapPlacement | null>(null);
   const [forcedRoll, setForcedRoll] = useState<YutResult | null>(null);
   const [goldenYutPickerOpen, setGoldenYutPickerOpen] = useState(false);
@@ -217,6 +220,7 @@ export function App() {
   const processedClientActionIdsRef = useRef<Set<string>>(new Set());
   const rollInProgressRef = useRef(false);
   const rollInProgressStartedAtRef = useRef(0);
+  const rollTimingStartedAtRef = useRef(Date.now());
   const moveInProgressRef = useRef(false);
   function setMoveInProgressState(nextMoveInProgress: boolean) {
     moveInProgressRef.current = nextMoveInProgress;
@@ -453,6 +457,7 @@ export function App() {
     logs,
     captureEffect,
     trapEffect,
+    fallEffect,
     lastAppliedSequenceRef,
     lastAppliedStateVersionRef,
     measureFirebaseLatency,
@@ -1234,6 +1239,7 @@ export function App() {
     const syncedCaptureEffect = (state.captureEffect as CaptureEffect | null | undefined) ?? null;
     setCaptureEffect(nextTurnIndex !== turnIndexRef.current ? null : syncedCaptureEffect);
     setTrapEffect((state.trapEffect as TrapEffect | null | undefined) ?? null);
+    setFallEffect((state.fallEffect as FallEffect | null | undefined) ?? null);
     playSyncedEffectSoundOnce(state, lastClientMutationId);
     setGameStartedAt((state.gameStartedAt as number | null | undefined) ?? null);
     setTurnOrderIds((state.turnOrderIds as string[] | undefined) ?? []);
@@ -1280,6 +1286,7 @@ export function App() {
       turnOrderPhase: (state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
       waitingForPlayersReady: Boolean(state.waitingForPlayersReady),
       startRequestVersion: Number(state.startRequestVersion ?? 0),
+      fallEffect: (state.fallEffect as FallEffect | null | undefined) ?? null,
     });
     rollInProgressRef.current = false;
     rollInProgressStartedAtRef.current = 0;
@@ -2091,6 +2098,7 @@ export function App() {
       winner: '',
       captureEffect: null,
       trapEffect: null,
+      fallEffect: null,
       gameStartedAt: null,
       turnOrderIntro: null,
       pendingTrapPlacement: null,
@@ -2173,6 +2181,7 @@ export function App() {
         winner: '',
         captureEffect: null,
         trapEffect: null,
+        fallEffect: null,
         gameStartedAt: nextGameStartedAt,
         turnOrderIntro: nextTurnOrderIntro,
         pendingTrapPlacement: null,
@@ -2460,6 +2469,22 @@ export function App() {
     addLog(`${getSeatDisplayName(seat)}님이 ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
   }
+  function applyLocalFall(seat: Seat, timingZone: RollTimingZone, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean } = {}) {
+    setShieldedPieceIds([]);
+    setRoll(null);
+    currentRollRef.current = null;
+    setRollResultReadyAt(0);
+    setBranchChoice('outer');
+    setLastMovedPieceIds([]);
+    setLastMovedSeatId(seat.id);
+    setFallEffect({ id: Date.now(), seatId: seat.id, timingZone });
+    setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+    addLog(`${getSeatDisplayName(seat)}님이 낙이 나와 차례를 넘깁니다.`);
+    if (options.recordSequence !== false) {
+      pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut_fall:${seat.id}:${turnIndex}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, fallOccurred: true, rollTimingZone: timingZone }, action: sourceAction ?? null };
+    }
+  }
+
   function reportTurnActionBlocked(type: 'roll_yut' | 'move_piece', reasons: string[], fallbackMessage: string) {
     const normalizedReasons = reasons.length ? reasons : ['unknown'];
     const messageText = `${fallbackMessage}: ${normalizedReasons.join(', ')}`;
@@ -2557,6 +2582,26 @@ export function App() {
     return true;
   }
 
+  useEffect(() => {
+    if (canRollNow && !roll) rollTimingStartedAtRef.current = Date.now();
+  }, [canRollNow, roll, turnIndex]);
+
+  useEffect(() => {
+    if (!rollTimingFeedback) return undefined;
+    const timer = window.setTimeout(() => setRollTimingFeedback(null), 1200);
+    return () => window.clearTimeout(timer);
+  }, [rollTimingFeedback]);
+
+  useEffect(() => {
+    if (!fallEffect) return undefined;
+    const timer = window.setTimeout(() => setFallEffect(null), 1400);
+    return () => window.clearTimeout(timer);
+  }, [fallEffect]);
+
+  function getCurrentRollTimingZone() {
+    return getRollTimingZone(getRollTimingPositionPercent(Date.now() - rollTimingStartedAtRef.current));
+  }
+
   function rollYut(options: { timedOut?: boolean } = {}) {
     if (screen === 'game' && !activeRoomId) {
       reportTurnActionFailure('roll_yut', '온라인 방 정보가 없어 진행할 수 없습니다.');
@@ -2567,9 +2612,12 @@ export function App() {
       return;
     }
     if (!options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
+    const rollTimingZone = options.timedOut ? 'normal' : getCurrentRollTimingZone();
+    setRollTimingFeedback(rollTimingZone === 'normal' ? null : rollTimingZone);
+    const fallOccurred = !forcedRoll && shouldFallForTimingZone(rollTimingZone);
     if (activeRoomId) {
-      const localRoll = forcedRoll ?? rollYutResult().result;
-      const rollPayload = { forcedResult: localRoll };
+      const localRoll = forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result;
+      const rollPayload = { forcedResult: localRoll, rollTimingZone, fallOccurred };
       const actionKey = `${getLocalActionKey('roll_yut', rollPayload)}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
       if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
         reportTurnActionBlocked('roll_yut', ['pending-local-remote-action'], '이미 윷 던지기 요청을 처리 중입니다');
@@ -2578,8 +2626,9 @@ export function App() {
       addPendingLocalRemoteAction(actionKey);
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'roll_yut' as const, actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) };
-      const optimisticRoll = rollYutFor(activeSeat, localRoll, action, { recordSequence: false });
-      if (!optimisticRoll) {
+      const optimisticRoll = fallOccurred ? null : rollYutFor(activeSeat, localRoll, action, { recordSequence: false });
+      if (fallOccurred) applyLocalFall(activeSeat, rollTimingZone, action, { recordSequence: false });
+      if (!fallOccurred && !optimisticRoll) {
         deletePendingLocalRemoteAction(actionKey);
         localClientMutationIdsRef.current.delete(actionKey);
         reportTurnActionBlocked('roll_yut', ['roll-in-progress'], '윷 던지기를 진행할 수 없습니다');
@@ -2604,9 +2653,11 @@ export function App() {
             acknowledgePendingLocalRemoteAction(actionKey);
           }
           if (result.status === 'committed') {
+            const committedFallEffect = result.patch?.fallEffect as FallEffect | null | undefined;
+            if (committedFallEffect) setFallEffect(committedFallEffect);
             const committedRoll = result.patch?.roll as YutResult | null | undefined;
             const committedRollResultReadyAt = normalizeRollResultReadyAt(Number(result.patch?.rollResultReadyAt ?? 0));
-            if (committedRoll && (committedRoll.name !== optimisticRoll.name || committedRoll.steps !== optimisticRoll.steps)) {
+            if (committedRoll && optimisticRoll && (committedRoll.name !== optimisticRoll.name || committedRoll.steps !== optimisticRoll.steps)) {
               recordRemoteActionDiagnostic('roll_yut', 'optimistic-mismatch', '서버 윷 결과가 로컬 선반영 결과와 달라 최신 상태를 동기화합니다.', { status: result.status, actionKey });
             }
             if (committedRoll && !currentRollRef.current) {
@@ -2624,8 +2675,12 @@ export function App() {
       );
       return;
     }
+    if (fallOccurred) {
+      applyLocalFall(activeSeat, rollTimingZone);
+      return;
+    }
     setShieldedPieceIds([]);
-    rollYutFor(activeSeat);
+    rollYutFor(activeSeat, forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result);
   }
 
   async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean } = {}) {
@@ -3311,6 +3366,7 @@ export function App() {
       canSeatControlPiece={canSeatControlPiece}
       canSubmitTurnAction={canSubmitTurnAction}
       captureEffect={captureEffect}
+      fallEffect={fallEffect}
       displayBranchChoice={displayBranchChoice}
       finalHoldMs={TURN_ORDER_FINAL_HOLD_MS}
       formatStoredLogSequence={formatStoredLogSequence}
@@ -3374,6 +3430,7 @@ export function App() {
       onOpenEndGameDialog={() => setEndGameDialogOpen(true)}
       onOpenDiagnosticDialog={() => setDiagnosticDialogOpen(true)}
       onRollYut={rollYut}
+      rollTimingFeedback={rollTimingFeedback}
       onSelectPieceId={setSelectedPieceId}
       onSelectTrapNode={placePendingTrap}
       onSkipItemPrompt={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); }}

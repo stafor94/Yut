@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
-import type { YutResult } from '../../game-core/roll';
-import type { CaptureEffect, GameLog, RollAnimation, Seat, ToastMessage, TrapEffect, TrapNode, TurnOrderIntro, TurnOrderPhase } from '../appState';
+import type { RollTimingZone, YutResult } from '../../game-core/roll';
+import type { CaptureEffect, FallEffect, GameLog, RollAnimation, Seat, ToastMessage, TrapEffect, TrapNode, TurnOrderIntro, TurnOrderPhase } from '../appState';
 import { BoardPanel, GameScreen } from '../screens/GameScreen';
 import { GameLogPanelView, GamePlayersPanel } from '../containers/GamePanels';
 import { BoardMessageStack, GoldenYutPicker, RollStage, TurnIndicator, WinnerOverlay } from '../containers/GameBoardOverlays';
@@ -27,6 +27,7 @@ type GameScreenViewProps = {
   canSeatControlPiece: (seat: Seat | undefined, piece: BoardPiece | undefined) => boolean;
   canSubmitTurnAction: boolean;
   captureEffect: CaptureEffect | null;
+  fallEffect: FallEffect | null;
   displayBranchChoice: BranchChoice;
   finalHoldMs: number;
   formatStoredLogSequence: (log: GameLog, displayIndex?: number) => string;
@@ -90,6 +91,7 @@ type GameScreenViewProps = {
   onOpenEndGameDialog: () => void;
   onOpenDiagnosticDialog: () => void;
   onRollYut: () => void;
+  rollTimingFeedback: RollTimingZone | null;
   onSelectPieceId: (pieceId: string) => void;
   onSelectTrapNode: (nodeId: string) => void;
   onSkipItemPrompt: () => void;
@@ -98,7 +100,7 @@ type GameScreenViewProps = {
   renderLogText: (text: string) => ReactNode;
 };
 
-export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, branchChoice, canContinueRace, canRequestMove, canRollNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenDiagnosticDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
+export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, branchChoice, canContinueRace, canRequestMove, canRollNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenDiagnosticDialog, onRollYut, rollTimingFeedback, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   return <GameScreen>
     <GamePlayersPanel
       title={activeRoomTitle || title}
@@ -145,6 +147,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         onBranchChoiceChange={onBranchChoiceChange}
         captureEffect={captureEffect}
         trapEffect={trapEffect}
+        fallEffect={fallEffect}
         trapPlacementNodeIds={trapPlacementNodeIds}
         onSelectTrapNode={onSelectTrapNode}
       />
@@ -169,6 +172,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         canRollNow={canRollNow}
         canSubmitTurnAction={canSubmitTurnAction}
         onRollYut={onRollYut}
+        rollTimingFeedback={rollTimingFeedback}
         rollResultHolding={rollResultHolding}
         pendingTrapPlacement={pendingTrapPlacement}
         waitingForOnlineTurnOrder={waitingForOnlineTurnOrder}

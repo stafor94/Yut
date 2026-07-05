@@ -1,7 +1,7 @@
 import type { BoardPiece } from '../features/game/components/GameBoard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../game-core/board/board';
-import type { YutResult, YutStick } from '../game-core/roll';
+import type { RollTimingZone, YutResult, YutStick } from '../game-core/roll';
 import type { GameSeatSnapshot, RoomPlayer } from '../features/room/services/roomService';
 
 export type Screen = 'lobby' | 'waitingRoom' | 'game';
@@ -32,6 +32,7 @@ export type TurnOrderPhase = { active: boolean; index: number; rolls: TurnOrderR
 export type TurnOrderIntro = { order: { seatId: string; label: string; name: string; color: string }[]; visible: boolean; readyAt: number; slotUntil?: number };
 export type CaptureEffect = { id: number; pieceIds: string[] };
 export type TrapEffect = { id: number; nodeId: string; pieceIds: string[] };
+export type FallEffect = { id: number; seatId: string; timingZone?: RollTimingZone };
 export type PendingTrapPlacement = { ownerId: string; pieceId: string; nodeIds: string[]; deadline: number };
 export type PendingItemPickup = { seatId: string; item: ItemType; itemId: string; existingItem: ItemType; deadline: number };
 export type TrapNode = { nodeId: string; ownerId: string };
@@ -65,6 +66,7 @@ export type SequenceStateSnapshot = Partial<{
   winner: string;
   captureEffect: CaptureEffect | null;
   trapEffect: TrapEffect | null;
+  fallEffect: FallEffect | null;
   gameStartedAt: number | null;
   turnOrderIntro: TurnOrderIntro | null;
   pendingTrapPlacement: PendingTrapPlacement | null;
@@ -108,6 +110,7 @@ export type GameStateFingerprintInput = {
   turnOrderPhase: TurnOrderPhase | null;
   waitingForPlayersReady: boolean;
   startRequestVersion: number;
+  fallEffect?: FallEffect | null;
   logs?: GameLog[];
   gameSeats?: GameSeatSnapshot[];
 };
@@ -138,6 +141,7 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
   turnOrderPhase: state.turnOrderPhase,
   waitingForPlayersReady: state.waitingForPlayersReady,
   startRequestVersion: state.startRequestVersion,
+  fallEffect: state.fallEffect ?? null,
   logs: state.logs ?? [],
   gameSeats: state.gameSeats ?? [],
 });
