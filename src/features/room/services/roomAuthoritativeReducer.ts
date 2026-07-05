@@ -4,7 +4,7 @@ import type { BranchChoice } from '../../../game-core/board/board';
 
 type GameStatePatch = Record<string, unknown>;
 type RoomPlayerTeam = '청팀' | '홍팀';
-type RoomSummaryShape = { playMode: 'individual' | 'team'; pieceCount?: 1 | 2 | 3 | 4 };
+type RoomSummaryShape = { playMode: 'individual' | 'team'; pieceCount?: 1 | 2 | 3 | 4; stackedRollMode?: boolean };
 type SyncedGameStateShape = {
   pieces: unknown[];
   turnIndex: number;
@@ -16,6 +16,9 @@ type SyncedGameStateShape = {
   lastFinishedSeatId?: string;
   continuationRound?: number;
   roll: unknown | null;
+  rollStack?: unknown[];
+  selectedRollStackIndex?: number | null;
+  rollStackClosed?: boolean;
   boardItems?: unknown[];
   trapNodes?: unknown[];
   shieldedPieceIds?: string[];
@@ -93,10 +96,10 @@ function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand
   return { status: 'committed' as const, patch: reduction.patch as GameStatePatch, payload: reduction.payload };
 }
 
-function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>): AuthoritativeReduction {
+function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape): AuthoritativeReduction {
   const nextRoll = getAuthoritativeRoll(action.payload);
-  return toAuthoritativeReduction(reduceRollCommand({
-    state: makeEngineState(state),
+  const baseReduction = toAuthoritativeReduction(reduceRollCommand({
+    state: makeEngineState({ ...state, roll: room.stackedRollMode ? null : state.roll }),
     actorId: action.actorId,
     nextRoll,
     actorLogName: getActionActorLogName(action),
@@ -105,10 +108,31 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     fallOccurred: Boolean(action.payload?.fallOccurred),
     timingZone: action.payload?.rollTimingZone as RollTimingZone | undefined,
   }));
+  if (!isAuthoritativeCommitReduction(baseReduction) || !room.stackedRollMode) return baseReduction;
+  if (action.payload?.fallOccurred) {
+    return { ...baseReduction, patch: { ...baseReduction.patch, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false } };
+  }
+  const currentStack = ((state.rollStack as YutResult[] | undefined) ?? []);
+  const nextStack = [...currentStack, nextRoll];
+  return {
+    ...baseReduction,
+    patch: {
+      ...baseReduction.patch,
+      roll: null,
+      rollStack: nextStack,
+      selectedRollStackIndex: null,
+      rollStackClosed: !nextRoll.bonus,
+    },
+    payload: { ...baseReduction.payload, rollStack: nextStack, rollStackClosed: !nextRoll.bonus },
+  };
 }
 function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
+  const rollStack = ((state.rollStack as YutResult[] | undefined) ?? []);
+  const rollStackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : null;
+  const stackedRoll = room.stackedRollMode && rollStackIndex !== null ? rollStack[rollStackIndex] : null;
+  if (room.stackedRollMode && rollStack.length > 0 && !stackedRoll) return makeActionReject('선택한 이동 스택을 찾을 수 없습니다.');
   const baseReduction = toAuthoritativeReduction(reduceMoveCommand({
-    state: makeEngineState(state),
+    state: makeEngineState(stackedRoll ? { ...state, roll: stackedRoll } : state),
     actorId: action.actorId,
     pieceId: String(action.payload?.pieceId ?? ''),
     branchChoice: (action.payload?.branchChoice as BranchChoice | undefined) ?? 'outer',
@@ -118,6 +142,27 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
     sides,
     makeLog: makeAuthoritativeLog,
   }));
+  if (isAuthoritativeCommitReduction(baseReduction) && room.stackedRollMode && rollStackIndex !== null) {
+    const remainingRollStack = rollStack.filter((_, index) => index !== rollStackIndex);
+    const nextTurnIndex = remainingRollStack.length > 0 ? Number(state.turnIndex ?? 0) : (Number(state.turnIndex ?? 0) + 1) % Math.max((state.turnOrderIds ?? []).length, 1);
+    baseReduction.patch = {
+      ...baseReduction.patch,
+      turnIndex: nextTurnIndex,
+      roll: null,
+      rollStack: remainingRollStack,
+      selectedRollStackIndex: remainingRollStack.length === 1 ? 0 : null,
+      rollStackClosed: remainingRollStack.length > 0,
+      rollResultReadyAt: 0,
+    };
+    baseReduction.payload = {
+      ...baseReduction.payload,
+      rollStackIndex,
+      remainingRollStack,
+      nextTurnIndex,
+      extraTurn: remainingRollStack.length > 0,
+    };
+  }
+
   if (!isAuthoritativeCommitReduction(baseReduction) || room.playMode !== 'individual') return baseReduction;
 
   const nextPieces = (baseReduction.patch.pieces as AuthoritativePiece[] | undefined) ?? (state.pieces as AuthoritativePiece[]);
@@ -203,7 +248,7 @@ function reduceContinueRace(state: SyncedGameStateShape, action: Omit<GameAction
 }
 
 export function reduceAuthoritativeGameAction(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[] = []): AuthoritativeReduction {
-  if (action.type === 'roll_yut') return reduceAuthoritativeRoll(state, action);
+  if (action.type === 'roll_yut') return reduceAuthoritativeRoll(state, action, room);
   if (action.type === 'move_piece') return reduceAuthoritativeMove(state, action, room, sides);
   if (action.type === 'continue_race') return reduceContinueRace(state, action, room);
   return { status: 'unsupported' };

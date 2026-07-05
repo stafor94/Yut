@@ -14,7 +14,7 @@ type LobbyScreenProps = {
 };
 
 export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured, currentUser, onTitleChange, onCreateRoom, onOpenWaitingRoom }: LobbyScreenProps) {
-  const getLobbyRoomBadges = (room: RoomSummary) => getRoomRuleBadges(room.playMode, normalizeMaxPlayers(room.maxPlayers, room.playMode), room.pieceCount ?? 4, room.itemMode);
+  const getLobbyRoomBadges = (room: RoomSummary) => getRoomRuleBadges(room.playMode, normalizeMaxPlayers(room.maxPlayers, room.playMode), room.pieceCount ?? 4, room.itemMode, Boolean(room.stackedRollMode));
 
   return <section className="lobby-layout premium-lobby" aria-label="첫 대기 화면">
     <section className="panel room-panel create-room-panel">
