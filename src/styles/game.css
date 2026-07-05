@@ -595,6 +595,16 @@ select {
   border: 2px solid rgba(122, 74, 38, .42);
 }
 
+.roll-mat.fall-roll {
+  overflow: visible;
+  animation-duration: 2.45s;
+}
+
+.roll-mat.fall-roll .yut-stick.fallen {
+  animation-name: yut-fall-flight;
+  animation-duration: 2.05s;
+}
+
 aside.players,
 .side { display: flex; flex-direction: column; min-height: 0; }
 .side h2 { flex: 0 0 auto; }
@@ -643,6 +653,13 @@ aside.players,
   62% { opacity: 1; transform: translate3d(0, 8px, 0) rotate(var(--stick-land-rotate)); }
   78% { transform: translate3d(0, -18px, 0) rotate(var(--stick-bounce-rotate)); }
   100% { opacity: 1; transform: translate3d(0, 0, 0) rotate(var(--stick-final-rotate)); }
+}
+
+@keyframes yut-fall-flight {
+  0% { opacity: 0; transform: translate3d(0, -220px, 0) rotate(var(--stick-start-rotate)); }
+  42% { opacity: 1; transform: translate3d(0, 8px, 0) rotate(var(--stick-land-rotate)); }
+  58% { transform: translate3d(0, -18px, 0) rotate(var(--stick-bounce-rotate)); }
+  100% { opacity: 1; transform: translate3d(var(--fall-x), var(--fall-y), 0) rotate(var(--fall-rotate)); }
 }
 
 .brand-title {
@@ -850,21 +867,26 @@ aside.players,
 .roll-timing-meter > span:not(.roll-timing-orb) {
   position: absolute;
   top: 0;
+  bottom: 0;
   height: 100%;
+  box-sizing: border-box;
 }
 
-.roll-timing-perfect { left: 45%; width: 10%; background: #8e44ad; }
-.roll-timing-good.left { left: 35%; width: 10%; border-radius: 999px 0 0 999px; background: var(--green); }
-.roll-timing-good.right { left: 55%; width: 10%; border-radius: 0 999px 999px 0; background: var(--green); }
+.roll-timing-perfect { left: 45%; width: 10%; border-radius: 0; background: rgba(142, 68, 173, .5); }
+.roll-timing-good.left { left: 35%; width: 10%; border-radius: 0; background: rgba(47, 107, 79, .5); }
+.roll-timing-good.right { left: 55%; width: 10%; border-radius: 0; background: rgba(47, 107, 79, .5); }
 
 .roll-timing-orb {
   position: absolute;
   top: 50%;
   left: 0;
-  width: 14px;
-  height: 14px;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  aspect-ratio: 1 / 1;
+  border: 2px solid #2a1e17;
   border-radius: 50%;
-  background: #2a1e17;
+  background: #fff;
   box-shadow: 0 3px 8px rgba(42, 30, 23, .28);
   transform: translate(-50%, -50%);
   animation: roll-timing-orb 1s linear infinite alternate;
@@ -880,6 +902,7 @@ aside.players,
 
 .roll-timing-feedback.perfect { color: #8e44ad; }
 .roll-timing-feedback.good { color: var(--green); }
+.roll-timing-feedback.normal { color: #7a4a26; }
 
 .fall-effect {
   position: absolute;
