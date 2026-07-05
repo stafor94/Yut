@@ -1,5 +1,5 @@
 import type { User } from 'firebase/auth';
-import type { RoomSummary } from '../../features/room/services/roomService';
+import { isRoomInGame, type RoomSummary } from '../../features/room/services/roomService';
 import { getRoomRuleBadges, normalizeMaxPlayers } from '../appUtils';
 
 type LobbyScreenProps = {
@@ -30,7 +30,7 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
       <div className="lobby-panel-heading">
         <p className="section-kicker">방 참여</p>
       </div>
-      <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div className="lobby-room-content"><div className="lobby-room-main"><b>{room.title}</b><span className="room-rule-badges lobby-room-meta" aria-label={`방 옵션: ${getLobbyRoomBadges(room).map((badge) => badge.label).join(', ')}`}>{getLobbyRoomBadges(room).map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</span></div><div className="lobby-room-side"><span className="lobby-room-status">대기중</span><button className="lobby-room-action" disabled={isFirebaseConfigured && !currentUser} onClick={() => onOpenWaitingRoom(room)}>{isFirebaseConfigured && !currentUser ? '준비 중' : room.status === 'playing' ? '관전' : '참여'}</button></div></div></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong></div>}</div>
+      <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => <article className="room-card lobby-room-card" key={room.id}><div className="lobby-room-content"><div className="lobby-room-main"><b>{room.title}</b><span className="room-rule-badges lobby-room-meta" aria-label={`방 옵션: ${getLobbyRoomBadges(room).map((badge) => badge.label).join(', ')}`}>{getLobbyRoomBadges(room).map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</span></div><div className="lobby-room-side"><span className="lobby-room-status">{isRoomInGame(room) ? '게임중' : '대기중'}</span><button className="lobby-room-action" disabled={isFirebaseConfigured && !currentUser} onClick={() => onOpenWaitingRoom(room)}>{isFirebaseConfigured && !currentUser ? '준비 중' : isRoomInGame(room) ? '관전' : '참여'}</button></div></div></article>) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong></div>}</div>
     </section>
   </section>;
 }

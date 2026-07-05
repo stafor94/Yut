@@ -51,7 +51,7 @@ export function getRollTimingZone(positionPercent: number): RollTimingZone {
 
 export function getFallChanceForTimingZone(zone: RollTimingZone) {
   if (zone === 'perfect') return 0;
-  if (zone === 'good') return 0.2;
+  if (zone === 'good') return 0.1;
   return 0.4;
 }
 
