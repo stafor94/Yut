@@ -223,7 +223,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
       break;
     }
     const nextNodeId = movePathNodeIds[step];
-    if (!nextNodeId || (steps < 0 && nextNodeId === 'n01' && currentNodeId === 'n02')) {
+    if (!nextNodeId) {
       currentNodeId = 'finish';
       currentNodeIndex = 20;
       finishedMove = true;

@@ -948,20 +948,26 @@ aside.players,
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  min-width: 0;
+  width: 100%;
   font-weight: 800;
 }
 
 .roll-stack-options {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex-wrap: nowrap;
   justify-content: center;
+  min-width: 0;
+  width: 100%;
 }
 
 .roll-stack-options button {
-  min-width: 4.25rem;
-  padding: 0.65rem 0.85rem;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 7rem;
+  padding: 0.5rem 0.65rem;
   border-radius: 999px;
+  font-size: 0.9rem;
+  line-height: 1.1;
 }

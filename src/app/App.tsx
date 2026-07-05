@@ -2892,18 +2892,6 @@ export function App() {
         break;
       }
       const nextNodeId = movePathNodeIds[step];
-      if (steps < 0 && nextNodeId === 'n01' && currentNodeId === 'n02') {
-        currentNodeId = 'n01';
-        nextNodeIndex = 0;
-        setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: false } : piece));
-        await delay(STEP_DELAY_MS);
-        currentNodeId = 'finish';
-        nextNodeIndex = 20;
-        finishedMove = true;
-        setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: true } : piece));
-        await delay(STEP_DELAY_MS);
-        break;
-      }
       if (!nextNodeId) {
         currentNodeId = 'n01';
         nextNodeIndex = 0;
