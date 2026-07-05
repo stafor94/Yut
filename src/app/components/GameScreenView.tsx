@@ -51,6 +51,11 @@ type GameScreenViewProps = {
   maxPlayers: 2 | 3 | 4;
   pieceCount: 1 | 2 | 3 | 4;
   itemMode: boolean;
+  stackedRollMode: boolean;
+  rollStack: YutResult[];
+  selectedRollStackIndex: number | null;
+  rollStackClosed: boolean;
+  onSelectRollStackIndex: (index: number) => void;
   previewNodeIds: string[];
   previousBoardTurnText: string;
   previousBoardTurnColor: string | undefined;
@@ -100,13 +105,14 @@ type GameScreenViewProps = {
   renderLogText: (text: string) => ReactNode;
 };
 
-export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, branchChoice, canContinueRace, canRequestMove, canRollNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenDiagnosticDialog, onRollYut, rollTimingFeedback, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
+export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, branchChoice, canContinueRace, canRequestMove, canRollNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenDiagnosticDialog, onRollYut, rollTimingFeedback, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   return <GameScreen>
     <GamePlayersPanel
       title={activeRoomTitle || title}
       maxPlayers={maxPlayers}
       pieceCount={pieceCount}
       itemMode={itemMode}
+      stackedRollMode={stackedRollMode}
       seats={activeTurnOrderIntro || turnOrderPhase.active ? seats : playerPanelSeats}
       activeSeatId={activeSeat?.id}
       playMode={playMode}
@@ -175,6 +181,11 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         rollTimingFeedback={rollTimingFeedback}
         rollResultHolding={rollResultHolding}
         pendingTrapPlacement={pendingTrapPlacement}
+        stackedRollMode={stackedRollMode}
+        rollStack={rollStack}
+        selectedRollStackIndex={selectedRollStackIndex}
+        rollStackClosed={rollStackClosed}
+        onSelectRollStackIndex={onSelectRollStackIndex}
         waitingForOnlineTurnOrder={waitingForOnlineTurnOrder}
         hasActiveTurnOrderIntro={hasActiveTurnOrderIntro}
       />

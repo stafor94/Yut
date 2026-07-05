@@ -139,6 +139,7 @@ export function App() {
   const [playMode, setPlayMode] = useState<PlayMode>(() => getStoredPlayMode());
   const [maxPlayers, setMaxPlayers] = useState<2 | 3 | 4>(() => getStoredNumber(STORAGE_KEYS.maxPlayers, 4, [2, 3, 4] as const));
   const [itemMode, setItemMode] = useState(() => getStoredBoolean(STORAGE_KEYS.itemMode, true));
+  const [stackedRollMode, setStackedRollMode] = useState(() => getStoredBoolean(STORAGE_KEYS.stackedRollMode, false));
   const [pieceCount, setPieceCount] = useState<PieceCount>(() => getStoredNumber(STORAGE_KEYS.pieceCount, 4, [1, 2, 3, 4] as const));
   const [soundEnabled, setSoundEnabled] = useState(() => getStoredBoolean(STORAGE_KEYS.soundEnabled, true));
   const [message, setMessage] = useState('');
@@ -188,6 +189,9 @@ export function App() {
   const [authoritativeWinner, setAuthoritativeWinner] = useState('');
   const [continuationRound, setContinuationRound] = useState(0);
   const [roll, setRoll] = useState<YutResult | null>(null);
+  const [rollStack, setRollStack] = useState<YutResult[]>([]);
+  const [selectedRollStackIndex, setSelectedRollStackIndex] = useState<number | null>(null);
+  const [rollStackClosed, setRollStackClosed] = useState(false);
   const [movingPieceId, setMovingPieceId] = useState('');
   const [logs, setLogs] = useState<GameLog[]>([]);
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -409,7 +413,8 @@ export function App() {
   const unfinishedRaceSeatIds = raceBaseSeatIds.filter((seatId) => !derivedCompletedSeatIds.includes(seatId));
   const derivedPartialFinish = Boolean(winner && playMode === 'individual' && raceBaseSeatIds.length >= 3 && unfinishedRaceSeatIds.length >= 2);
   const canShowContinueRaceButton = Boolean(activeRoomId && playMode === 'individual' && (gameEndMode === 'partial_finish' || derivedPartialFinish) && unfinishedRaceSeatIds.length >= 2);
-  const selectedMoveSteps = roll?.steps ?? 0;
+  const stackedRollSelectedResult = stackedRollMode && rollStackClosed && rollStack.length ? (typeof selectedRollStackIndex === 'number' ? rollStack[selectedRollStackIndex] : rollStack.length === 1 ? rollStack[0] : null) : null;
+  const selectedMoveSteps = (stackedRollSelectedResult ?? roll)?.steps ?? 0;
   const isRollLocked = rollLockUntil > rollLockClock;
   const effectiveRollResultReadyAt = normalizeRollResultReadyAt(rollResultReadyAt);
   const rollResultHolding = effectiveRollResultReadyAt > rollLockClock;
@@ -440,6 +445,9 @@ export function App() {
     lastFinishedSeatId,
     continuationRound,
     roll,
+    rollStack,
+    selectedRollStackIndex,
+    rollStackClosed,
     boardItems,
     ownedItems,
     trapNodes,
@@ -487,30 +495,30 @@ export function App() {
   };
   const rollActionGuardInput = {
     ...turnActionGuardInput,
-    roll,
+    roll: stackedRollMode && rollStack.length > 0 && !rollStackClosed ? null : roll,
     rollLocked: isRollLocked,
     remoteActionClient: false,
     rollInProgress,
   };
   const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canSubmitTurnAction = canSubmitTurnActionFromEngine(turnActionGuardInput);
-  const selectedPieceCanMove = Boolean(roll && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
+  const selectedPieceCanMove = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const activeSeatPiecesOnBoard = useMemo(() => activeSeat
     ? pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished)
     : false, [activeSeat, pieces]);
   const fallbackMovablePiece = useMemo(() => {
-    if (!roll || !activeSeat || !isMyTurn) return undefined;
+    if (!(roll || stackedRollSelectedResult) || !activeSeat || !isMyTurn) return undefined;
     const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (selectedMoveSteps >= 0 || piece.started));
     if (!activeSeatPiecesOnBoard) {
       return [...movablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0];
     }
     return movablePieces[0];
-  }, [activeSeat, activeSeatPiecesOnBoard, isMyTurn, pieces, roll, selectedMoveSteps]);
+  }, [activeSeat, activeSeatPiecesOnBoard, isMyTurn, pieces, roll, stackedRollSelectedResult, selectedMoveSteps]);
   const activeMovablePiece = selectedPieceCanMove ? selectedPiece : fallbackMovablePiece;
   const canMoveSelectedPiece = Boolean(activeMovablePiece);
-  const canRequestMove = Boolean(canSubmitTurnAction && roll && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && canMoveSelectedPiece);
+  const canRequestMove = Boolean(canSubmitTurnAction && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && canMoveSelectedPiece);
   const canUseMoveButton = canRequestMove;
-  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
+  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
   const stalledTurnMovablePieces = useMemo(() => {
     if (!roll || !activeSeat) return [];
@@ -956,6 +964,7 @@ export function App() {
         setPlayMode(storedRoom.playMode);
         setMaxPlayers(restoredMaxPlayers);
         setItemMode(storedRoom.itemMode);
+        setStackedRollMode(Boolean(storedRoom.stackedRollMode));
         setPieceCount(storedRoom.pieceCount ?? 4);
         if (joinResult?.role === 'player') {
           setSeats(seatsWithJoinedPlayer([], currentUser.uid, nickname, storedRoom.playMode, restoredMaxPlayers, joinResult.seatIndex));
@@ -992,6 +1001,7 @@ export function App() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.playMode, playMode); }, [playMode]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.maxPlayers, String(maxPlayers)); }, [maxPlayers]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.itemMode, String(itemMode)); }, [itemMode]);
+  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.stackedRollMode, String(stackedRollMode)); }, [stackedRollMode]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.pieceCount, String(pieceCount)); }, [pieceCount]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
 
@@ -1031,6 +1041,7 @@ export function App() {
       setPlayMode(room.playMode);
       setMaxPlayers(room.maxPlayers as 2 | 3 | 4);
       setItemMode(room.itemMode);
+      setStackedRollMode(Boolean(room.stackedRollMode));
       setPieceCount(room.pieceCount ?? 4);
       setIsRoomHost((previousIsRoomHost) => hostUserId ? room.hostId === hostUserId : previousIsRoomHost);
       const nextStartVersion = Number(room.startRequestVersion ?? 0);
@@ -1231,6 +1242,9 @@ export function App() {
     else setPieces(syncedPieces);
     setTurnIndex(nextTurnIndex);
     setRoll(nextRoll);
+    setRollStack(((state.rollStack as YutResult[] | undefined) ?? []));
+    setSelectedRollStackIndex(typeof state.selectedRollStackIndex === 'number' ? state.selectedRollStackIndex : null);
+    setRollStackClosed(Boolean(state.rollStackClosed));
     if (state.boardItems) setBoardItems(state.boardItems);
     if (state.ownedItems) setOwnedItems(state.ownedItems as Record<string, ItemType[]>);
     if (state.trapNodes) setTrapNodes(state.trapNodes as TrapNode[]);
@@ -1277,6 +1291,9 @@ export function App() {
       lastFinishedSeatId: String(state.lastFinishedSeatId ?? ''),
       continuationRound: Number(state.continuationRound ?? 0),
       roll: nextRoll,
+      rollStack: (state.rollStack as YutResult[] | undefined) ?? [],
+      selectedRollStackIndex: typeof state.selectedRollStackIndex === 'number' ? state.selectedRollStackIndex : null,
+      rollStackClosed: Boolean(state.rollStackClosed),
       boardItems: (state.boardItems as BoardItem[] | undefined) ?? [],
       ownedItems: (state.ownedItems as Record<string, ItemType[]> | undefined) ?? {},
       trapNodes: (state.trapNodes as TrapNode[] | undefined) ?? [],
@@ -1933,8 +1950,8 @@ export function App() {
       const roomHostId = roomHost.uid;
       await waitForRoomCreationCleanup('중복 방 정리', () => leaveDuplicatePlayerRooms(roomHostId));
       await waitForRoomCreationCleanup('이전 방 정리', () => leavePreviousOnlineRoom());
-      const roomId = await Promise.race([createRoom({ title, hostId: roomHost.uid, nickname, maxPlayers: roomMaxPlayers, itemMode, playMode, pieceCount }), timeout]);
-      await openWaitingRoom({ id: roomId, title, itemMode, maxPlayers: roomMaxPlayers, playMode, pieceCount }, '', true, roomHost);
+      const roomId = await Promise.race([createRoom({ title, hostId: roomHost.uid, nickname, maxPlayers: roomMaxPlayers, itemMode, stackedRollMode, playMode, pieceCount }), timeout]);
+      await openWaitingRoom({ id: roomId, title, itemMode, stackedRollMode, maxPlayers: roomMaxPlayers, playMode, pieceCount }, '', true, roomHost);
     } catch (error) {
       if (isFirebaseConfigured && roomHost && error instanceof Error && error.message === 'CREATE_ROOM_TIMEOUT') {
         setLoadingMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
@@ -1954,7 +1971,7 @@ export function App() {
     }
   }
 
-  async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & Partial<Pick<RoomSummary, 'status' | 'startStatus' | 'hostId'>> & { id?: string }, nextMessage = '', asHost = false, hostUserOverride: User | null = null) {
+  async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'stackedRollMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & { id?: string }, nextMessage = '', asHost = false, hostUserOverride: User | null = null) {
     leavingRoomRef.current = false;
     setLoadingMessage('방으로 이동하는 중입니다...');
     const nextMaxPlayers = room.maxPlayers as 2 | 3 | 4;
@@ -1978,6 +1995,7 @@ export function App() {
       setPlayMode(room.playMode);
       setMaxPlayers(nextMaxPlayers);
       setItemMode(room.itemMode);
+      setStackedRollMode(Boolean(room.stackedRollMode));
       setPieceCount(room.pieceCount ?? 4);
       const nextSeats = createSeats(nickname, room.playMode, nextMaxPlayers);
       if (joinResult?.role === 'player' && joiningUser) {
@@ -2041,7 +2059,7 @@ export function App() {
   function resetGameBoard(nextPieces: BoardPiece[]) {
     setPieces(nextPieces);
     setBoardItems(itemMode ? spawnInitialBoardItems(4, 8) : []);
-    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null);
+    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setRollStack([]); setSelectedRollStackIndex(null); setRollStackClosed(false); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null);
   }
 
   function beginTurnOrderIntro() {
@@ -2120,6 +2138,9 @@ export function App() {
       lastFinishedSeatId: '',
       continuationRound: 0,
       roll: null,
+      rollStack: [],
+      selectedRollStackIndex: null,
+      rollStackClosed: false,
       boardItems: nextBoardItems,
       ownedItems: {},
       trapNodes: [],
@@ -2143,7 +2164,7 @@ export function App() {
       gameSeats: nextGameSeats,
       startRequestVersion,
     };
-    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: [], initialTurnOrderIds: [], completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: null, turnOrderIntro: null, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: true, startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
+    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: [], initialTurnOrderIds: [], completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: null, turnOrderIntro: null, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: true, startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
     savingStateFingerprintRef.current = initialStateFingerprint;
     void measureFirebaseLatency(() => initializeGameState(activeRoomId, initialSyncedState, {
       actorId: localSeatId,
@@ -2246,7 +2267,7 @@ export function App() {
     }
     setPieces(local.nextPieces);
     setBoardItems(local.nextBoardItems);
-    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(local.nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null);
+    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(local.nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setRollStack([]); setSelectedRollStackIndex(null); setRollStackClosed(false); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null);
     setTurnOrderIds(local.nextTurnOrderIds);
     setInitialTurnOrderIds(local.nextTurnOrderIds);
     setCompletedSeatIds([]);
@@ -2501,6 +2522,34 @@ export function App() {
     addLog(`${getSeatDisplayName(seat)}님이 ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
   }
+  function rollYutForStack(seat: Seat, nextRoll: YutResult, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean; timingZone?: RollTimingZone } = {}) {
+    if (rollInProgressRef.current || rollStackClosed || roll) return null;
+    rollInProgressRef.current = true;
+    rollInProgressStartedAtRef.current = Date.now();
+    setRollInProgress(true);
+    const timingZone = options.timingZone;
+    const rollResultReadyAtMs = Date.now() + ROLL_ANIMATION_MS;
+    setForcedRoll(null);
+    setRollResultReadyAt(rollResultReadyAtMs);
+    setLastRollTimingZone(timingZone ?? null);
+    playRollAnimationOnce(nextRoll, makeDisplaySticks(nextRoll), `stack:${turnIndex}:${rollStack.length}:${nextRoll.name}:${rollResultReadyAtMs}`, false, 0, timingZone);
+    setRollStack((current) => [...current, nextRoll]);
+    setSelectedRollStackIndex(null);
+    setRollStackClosed(!nextRoll.bonus);
+    if (options.recordSequence !== false) {
+      pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut_stack:${seat.id}:${turnIndex}:${nextRoll.name}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name, rollTimingZone: timingZone, rollStackMode: true }, action: sourceAction ?? null };
+    }
+    playSfx('roll');
+    if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
+    window.setTimeout(() => {
+      rollInProgressRef.current = false;
+      rollInProgressStartedAtRef.current = 0;
+      setRollInProgress(false);
+    }, ROLL_ANIMATION_MS);
+    addLog(`${getSeatDisplayName(seat)}님이 ${nextRoll.name}(${nextRoll.steps}칸)를 이동 스택에 쌓았습니다.`);
+    return nextRoll;
+  }
+
   function applyLocalFall(seat: Seat, timingZone: RollTimingZone, displayRoll: YutResult, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean } = {}) {
     const fallStartedAt = Date.now();
     const fallCount = Math.floor(Math.random() * 4) + 1;
@@ -2637,6 +2686,22 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [rollTimingFeedback]);
 
+
+  useEffect(() => {
+    if (!stackedRollMode || !rollStackClosed || rollStack.length === 0) return;
+    const nextIndex = rollStack.length === 1 ? 0 : selectedRollStackIndex;
+    if (typeof nextIndex !== 'number' || !rollStack[nextIndex]) {
+      if (roll) clearRoll();
+      return;
+    }
+    if (selectedRollStackIndex !== nextIndex) setSelectedRollStackIndex(nextIndex);
+    if (!roll || roll.name !== rollStack[nextIndex].name || roll.steps !== rollStack[nextIndex].steps) {
+      currentRollRef.current = rollStack[nextIndex];
+      setRoll(rollStack[nextIndex]);
+      setRollResultReadyAt(0);
+    }
+  }, [rollStack, rollStackClosed, roll, selectedRollStackIndex, stackedRollMode]);
+
   useEffect(() => {
     if (!fallEffect) return undefined;
     const timer = window.setTimeout(() => setFallEffect(null), 1400);
@@ -2663,7 +2728,7 @@ export function App() {
     const fallOccurred = !forcedRoll && shouldFallForTimingZone(rollTimingZone);
     if (activeRoomId) {
       const localRoll = forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result;
-      const rollPayload = { forcedResult: localRoll, rollTimingZone, fallOccurred };
+      const rollPayload = { forcedResult: localRoll, rollTimingZone, fallOccurred, stackedRollMode };
       const actionKey = `${getLocalActionKey('roll_yut', rollPayload)}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
       if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
         reportTurnActionBlocked('roll_yut', ['pending-local-remote-action'], '이미 윷 던지기 요청을 처리 중입니다');
@@ -2672,8 +2737,13 @@ export function App() {
       addPendingLocalRemoteAction(actionKey);
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'roll_yut' as const, actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) };
-      const optimisticRoll = fallOccurred ? null : rollYutFor(activeSeat, localRoll, action, { recordSequence: false, timingZone: rollTimingZone });
-      if (fallOccurred) applyLocalFall(activeSeat, rollTimingZone, localRoll, action, { recordSequence: false });
+      const optimisticRoll = fallOccurred ? null : stackedRollMode ? rollYutForStack(activeSeat, localRoll, action, { recordSequence: false, timingZone: rollTimingZone }) : rollYutFor(activeSeat, localRoll, action, { recordSequence: false, timingZone: rollTimingZone });
+      if (fallOccurred) {
+        setRollStack([]);
+        setSelectedRollStackIndex(null);
+        setRollStackClosed(false);
+        applyLocalFall(activeSeat, rollTimingZone, localRoll, action, { recordSequence: false });
+      }
       if (!fallOccurred && !optimisticRoll) {
         deletePendingLocalRemoteAction(actionKey);
         localClientMutationIdsRef.current.delete(actionKey);
@@ -2702,6 +2772,12 @@ export function App() {
             const committedFallEffect = result.patch?.fallEffect as FallEffect | null | undefined;
             if (committedFallEffect) setFallEffect(committedFallEffect);
             const committedRoll = result.patch?.roll as YutResult | null | undefined;
+            const committedRollStack = result.patch?.rollStack as YutResult[] | undefined;
+            if (committedRollStack) {
+              setRollStack(committedRollStack);
+              setSelectedRollStackIndex(typeof result.patch?.selectedRollStackIndex === 'number' ? result.patch.selectedRollStackIndex as number : null);
+              setRollStackClosed(Boolean(result.patch?.rollStackClosed));
+            }
             const committedRollResultReadyAt = normalizeRollResultReadyAt(Number(result.patch?.rollResultReadyAt ?? 0));
             if (committedRoll && optimisticRoll && (committedRoll.name !== optimisticRoll.name || committedRoll.steps !== optimisticRoll.steps)) {
               recordRemoteActionDiagnostic('roll_yut', 'optimistic-mismatch', '서버 윷 결과가 로컬 선반영 결과와 달라 최신 상태를 동기화합니다.', { status: result.status, actionKey });
@@ -2722,14 +2798,19 @@ export function App() {
       return;
     }
     if (fallOccurred) {
+      setRollStack([]);
+      setSelectedRollStackIndex(null);
+      setRollStackClosed(false);
       applyLocalFall(activeSeat, rollTimingZone, forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result);
       return;
     }
     setShieldedPieceIds([]);
-    rollYutFor(activeSeat, forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result, null, { timingZone: rollTimingZone });
+    const localRoll = forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result;
+    if (stackedRollMode) rollYutForStack(activeSeat, localRoll, null, { timingZone: rollTimingZone });
+    else rollYutFor(activeSeat, localRoll, null, { timingZone: rollTimingZone });
   }
 
-  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean } = {}) {
+  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number } = {}) {
     if (winner || movingPieceId || moveInProgressRef.current) return false;
     ensureRollLogExists(seat, result);
     setMoveInProgressState(true);
@@ -2884,8 +2965,12 @@ export function App() {
     if (finishedMove) { addLog(`${getSeatDisplayName(seat)}님의 말이 완주했습니다!`); playSfx('arrive'); }
     const controlledPiecesDone = pieces.filter((piece) => canSeatControlPiece(seat, piece) && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
     if (controlledPiecesDone) addLog(`${playMode === 'team' ? seat.team : getSeatDisplayName(seat)}님의 모든 말이 완주했습니다.`);
+    const consumingStackedRoll = stackedRollMode && typeof options.consumeStackedRollIndex === 'number';
+    const remainingRollStack = consumingStackedRoll ? rollStack.filter((_, index) => index !== options.consumeStackedRollIndex) : rollStack;
     let shouldAdvanceTurn = false;
-    if (result.bonus && captured) addLog(`${withAndParticle(result.name)} 잡기 보너스로 한 번 더 던질 수 있습니다.`);
+    if (consumingStackedRoll) {
+      shouldAdvanceTurn = remainingRollStack.length === 0;
+    } else if (result.bonus && captured) addLog(`${withAndParticle(result.name)} 잡기 보너스로 한 번 더 던질 수 있습니다.`);
     else if (result.bonus) addLog(`${withSubjectParticle(result.name)} 나와 한 번 더 던질 수 있습니다.`);
     else if (captured) addLog('상대 말을 잡아 한 번 더 던질 수 있습니다.');
     else shouldAdvanceTurn = true;
@@ -2895,6 +2980,15 @@ export function App() {
     setLastMovedSeatId(seat.id);
     setBranchChoice('outer');
     clearRoll();
+    if (consumingStackedRoll) {
+      setRollStack(remainingRollStack);
+      setRollStackClosed(remainingRollStack.length > 0);
+      setSelectedRollStackIndex(remainingRollStack.length === 1 ? 0 : null);
+      if (remainingRollStack.length === 1) {
+        currentRollRef.current = remainingRollStack[0];
+        setRoll(remainingRollStack[0]);
+      }
+    }
     setMovingPieceId('');
     setMoveInProgressState(false);
     if (activeRoomId && canCoordinateOnlineGame && options.recordSequence !== false) {
@@ -2917,7 +3011,8 @@ export function App() {
           pathNodeIds: movePathNodeIds,
           movingGroupIds,
           nextTurnIndex,
-          extraTurn: nextTurnIndex === turnIndex,
+          extraTurn: consumingStackedRoll ? remainingRollStack.length > 0 : nextTurnIndex === turnIndex,
+          remainingRollStack,
           extraTurnReasons: [result.bonus ? 'roll_bonus' : '', captured ? 'capture' : ''].filter(Boolean),
         },
         action: null,
@@ -2932,10 +3027,11 @@ export function App() {
       reportTurnActionFailure('move_piece', '온라인 방 정보가 없어 진행할 수 없습니다.');
       return false;
     }
-    const steps = roll && activeSeat ? roll.steps + extraSteps : 0;
+    const effectiveMoveRoll = stackedRollSelectedResult ?? roll;
+    const steps = effectiveMoveRoll && activeSeat ? effectiveMoveRoll.steps + extraSteps : 0;
     const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
-    const canPassBackDoWithoutMovablePiece = Boolean(roll && activeSeat && canSubmitTurnAction && steps < 0 && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece)));
-    if (!roll || !activeSeat || (!canRequestMove && !canPassBackDoWithoutMovablePiece)) {
+    const canPassBackDoWithoutMovablePiece = Boolean(effectiveMoveRoll && activeSeat && canSubmitTurnAction && steps < 0 && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece)));
+    if (!(roll || stackedRollSelectedResult) || !activeSeat || (!canRequestMove && !canPassBackDoWithoutMovablePiece)) {
       reportTurnActionBlocked('move_piece', moveActionBlockReasons, '말 이동을 진행할 수 없습니다');
       return false;
     }
@@ -2955,11 +3051,13 @@ export function App() {
       return false;
     }
     const pieceToMove = selectedPiece ?? fallbackPiece;
+    if (!effectiveMoveRoll) return false;
     if (activeRoomId) {
       const payload = {
         pieceId: pieceToMove?.id ?? '',
         extraSteps,
         branchChoice: getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice),
+        rollStackIndex: stackedRollMode && rollStackClosed ? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null,
       };
       const actionKey = getLocalActionKey('move_piece', payload);
       if (rejectedRemoteActionKeysRef.current.has(actionKey)) {
@@ -2973,7 +3071,7 @@ export function App() {
       addPendingLocalRemoteAction(actionKey);
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) };
-      void movePiece(pieceToMove?.id ?? selectedPieceId, roll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice), { recordSequence: false });
+      void movePiece(pieceToMove?.id ?? selectedPieceId, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice), { recordSequence: false, consumeStackedRollIndex: stackedRollMode && rollStackClosed ? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined });
       enqueueAuthoritativeGameAction(
         activeRoomId,
         action,
@@ -3000,7 +3098,7 @@ export function App() {
       );
       return true;
     }
-    void movePiece(pieceToMove?.id ?? selectedPieceId, roll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice));
+    void movePiece(pieceToMove?.id ?? selectedPieceId, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice));
     return true;
   }
 
@@ -3038,6 +3136,35 @@ export function App() {
         nextRoll = chooseAiGoldenYutResult(seat, getAiMoveContext());
         setOwnedItems((items) => ({ ...items, [seat.id]: (items[seat.id] ?? []).filter((type, index) => type !== 'golden_yut' || index !== (items[seat.id] ?? []).indexOf('golden_yut')) }));
         addLog(`${getSeatDisplayName(seat)}님이 황금 윷으로 ${nextRoll.name} 결과를 선택했습니다.`);
+      }
+      if (stackedRollMode) {
+        const aiRollStack: YutResult[] = [];
+        let pendingForcedRoll = nextRoll;
+        do {
+          const aiTimingZone = chooseAiRollTimingZone();
+          setRollTimingFeedback(aiTimingZone);
+          const stackedRoll = pendingForcedRoll ?? rollYutResultWithTiming(aiTimingZone).result;
+          pendingForcedRoll = null;
+          if (!rollYutForStack(seat, stackedRoll, null, { timingZone: aiTimingZone })) return;
+          aiRollStack.push(stackedRoll);
+          await delay(ROLL_ANIMATION_MS + 120);
+        } while (aiRollStack[aiRollStack.length - 1]?.bonus && canContinueAiTurn());
+        let remainingRolls = [...aiRollStack];
+        while (remainingRolls.length && canContinueAiTurn()) {
+          const rankedMoves = remainingRolls
+            .map((stackRoll, index) => ({ stackRoll, index, move: chooseAiMove(seat, stackRoll, getAiMoveContext()) }))
+            .filter((entry): entry is { stackRoll: YutResult; index: number; move: NonNullable<ReturnType<typeof chooseAiMove>> } => Boolean(entry.move))
+            .sort((left, right) => right.move.score - left.move.score);
+          const selected = rankedMoves[0];
+          if (!selected) break;
+          setSelectedRollStackIndex(selected.index);
+          setBranchChoice(selected.move.branchChoice);
+          await delay(AI_MOVE_DELAY_MS);
+          await movePiece(selected.move.piece.id, selected.stackRoll, seat, 0, selected.move.branchChoice, { consumeStackedRollIndex: selected.index });
+          remainingRolls = remainingRolls.filter((_, index) => index !== selected.index);
+        }
+        if (remainingRolls.length === 0 && canContinueAiTurn()) await useAiAfterMoveItem(seat);
+        return;
       }
       const aiTimingZone = chooseAiRollTimingZone();
       setRollTimingFeedback(aiTimingZone);
@@ -3277,10 +3404,11 @@ export function App() {
       .finally(() => deletePendingLocalRemoteAction(actionKey));
   }
 
-  async function changeWaitingOptions(next: { itemMode?: boolean; pieceCount?: PieceCount; playMode?: PlayMode; maxPlayers?: 2 | 3 | 4 }) {
+  async function changeWaitingOptions(next: { itemMode?: boolean; stackedRollMode?: boolean; pieceCount?: PieceCount; playMode?: PlayMode; maxPlayers?: 2 | 3 | 4 }) {
     const nextPlayMode = next.playMode ?? playMode;
     const nextMaxPlayers = nextPlayMode === 'team' ? 4 : next.maxPlayers ?? maxPlayers;
     const nextItemMode = next.itemMode ?? itemMode;
+    const nextStackedRollMode = next.stackedRollMode ?? stackedRollMode;
     const nextPieceCount = next.pieceCount ?? (next.playMode === 'team' && playMode !== 'team' ? 2 : pieceCount);
     const activePlayerCount = seats.filter((seat) => !seat.isEmpty && !seat.isSpectator).length;
     if (nextMaxPlayers < activePlayerCount) {
@@ -3290,8 +3418,9 @@ export function App() {
     setPlayMode(nextPlayMode);
     setMaxPlayers(nextMaxPlayers);
     setItemMode(nextItemMode);
+    setStackedRollMode(nextStackedRollMode);
     setPieceCount(nextPieceCount);
-    if (canManageRoom && activeRoomId) await updateRoomOptions(activeRoomId, { playMode: nextPlayMode, maxPlayers: nextMaxPlayers, itemMode: nextItemMode, pieceCount: nextPieceCount });
+    if (canManageRoom && activeRoomId) await updateRoomOptions(activeRoomId, { playMode: nextPlayMode, maxPlayers: nextMaxPlayers, itemMode: nextItemMode, stackedRollMode: nextStackedRollMode, pieceCount: nextPieceCount });
   }
 
   function openNicknameDialog() {
@@ -3379,6 +3508,7 @@ export function App() {
       maxPlayers={maxPlayers}
       pieceCount={pieceCount}
       itemMode={itemMode}
+      stackedRollMode={stackedRollMode}
       teamBalanced={teamBalanced}
       teamCounts={teamCounts}
       allReady={allReady}
@@ -3439,6 +3569,11 @@ export function App() {
       maxPlayers={maxPlayers}
       pieceCount={pieceCount}
       itemMode={itemMode}
+      stackedRollMode={stackedRollMode}
+      rollStack={rollStack}
+      selectedRollStackIndex={selectedRollStackIndex}
+      rollStackClosed={rollStackClosed}
+      onSelectRollStackIndex={setSelectedRollStackIndex}
       playerPanelSeats={playerPanelSeats}
       completedSeatIds={completedSeatIds}
       rankingSeatIds={rankingSeatIds}

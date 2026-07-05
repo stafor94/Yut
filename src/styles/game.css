@@ -943,3 +943,25 @@ aside.players,
   transform: translateX(-50%);
   text-shadow: 0 2px 8px rgba(255, 248, 220, .85);
 }
+
+.roll-stack-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-weight: 800;
+}
+
+.roll-stack-options {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.roll-stack-options button {
+  min-width: 4.25rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 999px;
+}

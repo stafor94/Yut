@@ -11,6 +11,7 @@ type GamePlayersPanelProps = {
   maxPlayers: 2 | 3 | 4;
   pieceCount: PieceCount;
   itemMode: boolean;
+  stackedRollMode?: boolean;
   seats: Seat[];
   activeSeatId?: string;
   completedSeatIds: string[];
@@ -29,7 +30,7 @@ export function GamePlayersPanel({
   playMode,
   maxPlayers,
   pieceCount,
-  itemMode,
+  itemMode, stackedRollMode = false,
   seats,
   activeSeatId,
   completedSeatIds,
@@ -42,8 +43,8 @@ export function GamePlayersPanel({
   onUseItem,
   onOpenEndGameDialog,
 }: GamePlayersPanelProps) {
-  const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode);
-  const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode);
+  const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
+  const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
 
   return <PlayersPanel>
     <h2>{title}</h2>

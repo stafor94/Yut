@@ -58,6 +58,9 @@ export type SequenceStateSnapshot = Partial<{
   lastFinishedSeatId: string;
   continuationRound: number;
   roll: YutResult | null;
+  rollStack: YutResult[];
+  selectedRollStackIndex: number | null;
+  rollStackClosed: boolean;
   boardItems: BoardItem[];
   ownedItems: Record<string, ItemType[]>;
   trapNodes: TrapNode[];
@@ -96,6 +99,9 @@ export type GameStateFingerprintInput = {
   lastFinishedSeatId: string;
   continuationRound: number;
   roll: YutResult | null;
+  rollStack: YutResult[];
+  selectedRollStackIndex: number | null;
+  rollStackClosed: boolean;
   boardItems: BoardItem[];
   ownedItems: Record<string, ItemType[]>;
   trapNodes: TrapNode[];
@@ -128,6 +134,9 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
   lastFinishedSeatId: state.lastFinishedSeatId,
   continuationRound: state.continuationRound,
   roll: state.roll,
+  rollStack: state.rollStack,
+  selectedRollStackIndex: state.selectedRollStackIndex,
+  rollStackClosed: state.rollStackClosed,
   boardItems: state.boardItems,
   ownedItems: state.ownedItems,
   trapNodes: state.trapNodes,
@@ -153,7 +162,7 @@ export const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
 export const PLAYER_COLOR_LABELS = ['빨강', '파랑', '초록', '노랑'];
 export const TEAM_COLORS: Record<Team, string> = { 청팀: '#3a78c2', 홍팀: '#d94a38' };
 export const ROOM_COLOR_LABELS: Record<string, string> = { red: '빨강', blue: '파랑', green: '초록', yellow: '노랑' };
-export const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', pieceCount: 'yut-online:pieceCount', soundEnabled: 'yut-online:soundEnabled', activeRoomId: 'yut-online:activeRoomId', isRoomHost: 'yut-online:isRoomHost' } as const;
+export const STORAGE_KEYS = { nickname: 'yut-online:nickname', title: 'yut-online:title', playMode: 'yut-online:playMode', maxPlayers: 'yut-online:maxPlayers', itemMode: 'yut-online:itemMode', stackedRollMode: 'yut-online:stackedRollMode', pieceCount: 'yut-online:pieceCount', soundEnabled: 'yut-online:soundEnabled', activeRoomId: 'yut-online:activeRoomId', isRoomHost: 'yut-online:isRoomHost' } as const;
 export const NICKNAME_MAX_LENGTH = 7;
 export const normalizeNickname = (value: string) => value.trim().slice(0, NICKNAME_MAX_LENGTH);
 export const getStoredBoolean = (key: string, fallback: boolean) => {
