@@ -13,6 +13,8 @@ type GamePlayersPanelProps = {
   itemMode: boolean;
   seats: Seat[];
   activeSeatId?: string;
+  completedSeatIds: string[];
+  rankingSeatIds: string[];
   spectators: Seat[];
   ownedItems: Record<string, ItemType[]>;
   localSeatId: string;
@@ -30,6 +32,8 @@ export function GamePlayersPanel({
   itemMode,
   seats,
   activeSeatId,
+  completedSeatIds,
+  rankingSeatIds,
   spectators,
   ownedItems,
   localSeatId,
@@ -45,7 +49,9 @@ export function GamePlayersPanel({
     <h2>{title}</h2>
     <p className="game-end-guide room-rule-badges game-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</p>
     {seats.map((seat) => {
-      const statusText = seat.isAI ? 'AI' : '유저';
+      const rankIndex = rankingSeatIds.indexOf(seat.id);
+      const finishText = rankIndex >= 0 ? `${rankIndex + 1}위 완주` : completedSeatIds.includes(seat.id) ? '완주' : '';
+      const statusText = finishText || (seat.isAI ? 'AI' : '유저');
       const displayName = getPlayerCardName(seat);
       return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeatId === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
         <span className="game-player-title">
