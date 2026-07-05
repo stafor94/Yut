@@ -66,7 +66,6 @@ import {
 } from './appState';
 import {
   delay,
-  formatRoomRuleText,
   formatStoredLogSequence,
   getEffectiveBranchChoice,
   getMovePreviewNodeIds,
@@ -3430,10 +3429,12 @@ export function App() {
     {screen === 'game' && <GameScreen>
       <GamePlayersPanel
         title={activeRoomTitle || title}
-        ruleText={formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode)}
+        playMode={playMode}
+        maxPlayers={maxPlayers}
+        pieceCount={pieceCount}
+        itemMode={itemMode}
         seats={activeTurnOrderIntro || turnOrderPhase.active ? playableSeats : turnSeats}
         activeSeatId={activeSeat?.id}
-        playMode={playMode}
         spectators={spectators}
         ownedItems={ownedItems}
         localSeatId={localSeatId}

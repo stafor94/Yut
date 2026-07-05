@@ -1,5 +1,5 @@
 import type { PieceCount, PlayMode, Seat, Team } from '../appState';
-import { formatRoomRuleText } from '../appUtils';
+import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
 import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
 
 type WaitingRoomContainerProps = {
@@ -64,6 +64,7 @@ export function WaitingRoomContainer({
   const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
   const startStatusText = allReady ? '시작 가능' : teamStartHint || `${readyMissingCount}명이 더 준비해야 해요.`;
   const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode);
+  const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode);
 
   return <WaitingRoomScreen canManageRoom={canManageRoom}>
     <header className="waiting-header">
@@ -72,7 +73,7 @@ export function WaitingRoomContainer({
       </div>
       <div className={`start-status ${allReady ? 'ready' : 'blocked'}`} role="status">
         <strong>{startStatusText}</strong>
-        <span>{roomRuleText}</span>
+        <span className="room-rule-badges waiting-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</span>
       </div>
     </header>
 
