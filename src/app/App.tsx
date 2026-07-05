@@ -2052,7 +2052,7 @@ export function App() {
     const introLog = makeLog(formatTurnOrderSummary(orderedSeats, getSeatDisplayName));
     const nextLogs = [introLog, ...logs];
     if (activeRoomId) {
-      const clientMutationId = `turn_order_intro:${activeRoomId}:${startRequestVersion}:${nextTurnOrderIntro.readyAt}`;
+      const clientMutationId = `turn_order_intro:${activeRoomId}:${startRequestVersion}`;
       void measureFirebaseLatency(() => resolveTurnOrderIntro(activeRoomId, {
         turnOrderIds: nextTurnOrderIds,
         initialTurnOrderIds: nextTurnOrderIds,
@@ -2071,6 +2071,7 @@ export function App() {
         if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
         if (result.status !== 'committed' && result.status !== 'duplicate') setMessage('순서 정하기 결과 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
       }).catch((error) => setMessage(error instanceof Error ? error.message : '순서 정하기 결과 저장에 실패했습니다.'));
+      return;
     }
     setLogs(nextLogs);
     setTurnOrderIds(nextTurnOrderIds);
