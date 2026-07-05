@@ -3042,3 +3042,55 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Build succeeds
 - [x] Unit tests pass
 - [ ] Multi-client join/spectator browser check
+
+## 2026-07-05 - Issue #411 Deploy Pages 일시 실패 후 QA 스킵
+
+### Symptom
+
+- Issue #411에서 main push QA workflow의 `Deploy Pages` job이 `Deployment failed, try again later.` annotation과 함께 실패했다.
+- `QA smoke`, `QA game flow`, `QA mobile layout`은 배포 실패 때문에 모두 skipped 상태가 됐다.
+- Playwright 로그와 브라우저 콘솔 로그는 생성되지 않았다.
+
+### Expected behavior
+
+- Pages 배포가 GitHub Pages의 일시적인 슬롯/잠금/지연 상황을 더 오래 흡수한 뒤 성공해야 한다.
+- 배포 실패로 QA가 스킵된 경우 Issue 요약은 현재 workflow 동작과 맞는 원인 안내를 남겨야 한다.
+
+### Actual behavior
+
+- workflow는 Pages artifact 업로드 후 20초만 기다리고 `actions/deploy-pages@v4`를 기본 오류 허용 횟수에 가깝게 실행했다.
+- 반복되는 Pages backend 지연/잠금 상황에서 deploy step이 약 31초 만에 실패했고, 후속 QA가 실행되지 않았다.
+- 자동 원인 문구는 이미 제거된 `20초 대기 후 1회 재시도` 구조를 계속 안내했다.
+
+### Confirmed root cause
+
+- 실패 run `28755160524`에서 Build는 성공했고 Deploy Pages만 실패했으며 Playwright job들은 skipped였다.
+- deploy-pages annotation은 앱 빌드나 테스트 문제가 아니라 GitHub Pages 배포 단계의 `Deployment failed, try again later.`였다.
+- 현재 workflow의 20초 사전 대기와 짧은 deploy status/error 허용 설정이 Pages 슬롯 지연을 충분히 흡수하지 못했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: deploy step을 `continue-on-error`로 실행한 뒤 실패 시 20초 후 1회 재시도했다.
+  - Why it failed: 첫 deploy step 실패 annotation이 재시도 성공 여부와 관계없이 Actions에 남아 배포 오류처럼 보였다.
+- Attempt 2:
+  - What was changed: 실패 annotation을 피하기 위해 단일 deploy step으로 되돌리고 20초만 대기했다.
+  - Why it failed: Pages backend 슬롯/잠금/지연이 20초보다 오래 지속되면 단일 deploy step이 빠르게 실패했다.
+
+### Do not try again
+
+- Playwright timeout이나 앱 테스트 코드를 수정해 deploy-only 실패를 해결하려 하지 않는다.
+- 실패 annotation을 남기는 선행 deploy `continue-on-error` 재시도 구조를 반복하지 않는다.
+- 배포 실패 후 QA 3종을 강제로 실행하지 않는다.
+
+### Correct fix plan
+
+- deploy-pages step 전 Pages 배포 슬롯 대기 시간을 늘린다.
+- `actions/deploy-pages@v4`의 timeout, error_count, reporting_interval을 늘려 일시적인 Pages 상태 확인 오류를 더 오래 흡수한다.
+- QA summary의 deploy failure 자동 원인 문구를 현재 workflow 구조와 맞게 수정한다.
+
+### Verification checklist
+
+- [x] Workflow/script syntax check
+- [x] Build succeeds
+- [ ] main push workflow rerun checked
