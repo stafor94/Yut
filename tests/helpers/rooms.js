@@ -23,9 +23,14 @@ export function isOldRoom(room, now = Date.now()) {
   return getRoomAgeMs(room, now) >= oldRoomMaxAgeMs;
 }
 
+export function isMalformedUntitledRoom(room) {
+  const title = typeof room.title === 'string' ? room.title.trim() : '';
+  return !title && !getTimestampMillis(room.createdAt);
+}
+
 export function isInactiveRoom(room, now = Date.now()) {
   const emptyGhost = room.currentPlayers !== undefined && Number(room.currentPlayers) <= 0;
-  return room.status === 'finished' || isOldRoom(room, now) || emptyGhost;
+  return room.status === 'finished' || isOldRoom(room, now) || emptyGhost || isMalformedUntitledRoom(room);
 }
 
 export function summarizeRemainingRoomReason(room, now = Date.now()) {
@@ -34,7 +39,8 @@ export function summarizeRemainingRoomReason(room, now = Date.now()) {
   const ageMs = getRoomAgeMs(room, now);
   const ageMinutes = createdAt ? Math.floor(ageMs / 60000) : null;
 
-  if (!createdAt) reasons.push('createdAt 없음: 2시간 초과 여부를 판단할 수 없음');
+  if (isMalformedUntitledRoom(room)) reasons.push('createdAt과 title이 없어 삭제 대상이지만 남아 있음');
+  else if (!createdAt) reasons.push('createdAt 없음: 2시간 초과 여부를 판단할 수 없음');
   else if (ageMs < oldRoomMaxAgeMs) reasons.push(`생성 후 ${ageMinutes}분 경과: 2시간 미만`);
   else reasons.push(`생성 후 ${ageMinutes}분 경과: 2시간 이상이라 삭제 대상이지만 남아 있음`);
 
