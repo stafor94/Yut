@@ -42,28 +42,36 @@ export async function findRoomIdByTitle(title) {
 
 async function deleteDocumentsInBatches(documentSnapshots) {
   const db = await getTestDb();
-  if (!db || documentSnapshots.length === 0) return;
+  if (!db || documentSnapshots.length === 0) return 0;
+  let deletedCount = 0;
   for (let index = 0; index < documentSnapshots.length; index += roomDeleteBatchSize) {
     const batch = writeBatch(db);
-    documentSnapshots.slice(index, index + roomDeleteBatchSize).forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
+    const batchSnapshots = documentSnapshots.slice(index, index + roomDeleteBatchSize);
+    batchSnapshots.forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
     await batch.commit();
+    deletedCount += batchSnapshots.length;
   }
+  return deletedCount;
 }
 
 async function deleteRoomSubcollectionsForQa(roomId) {
   const db = await getTestDb();
-  if (!db || !roomId) return;
+  const deletedCounts = {};
+  if (!db || !roomId) return deletedCounts;
   for (const subcollectionName of roomSubcollections) {
     const snapshot = await getDocs(collection(db, 'rooms', roomId, subcollectionName));
-    await deleteDocumentsInBatches(snapshot.docs);
+    const deletedCount = await deleteDocumentsInBatches(snapshot.docs);
+    if (deletedCount > 0) deletedCounts[subcollectionName] = deletedCount;
   }
+  return deletedCounts;
 }
 
 export async function deleteRoomForQa(roomId) {
   const db = await getTestDb();
-  if (!db || !roomId) return;
-  await deleteRoomSubcollectionsForQa(roomId);
+  if (!db || !roomId) return {};
+  const deletedCounts = await deleteRoomSubcollectionsForQa(roomId);
   await deleteDoc(doc(db, 'rooms', roomId));
+  return deletedCounts;
 }
 
 export async function deleteMissingParentRoomSubcollectionsForQa() {
@@ -82,8 +90,8 @@ export async function deleteMissingParentRoomSubcollectionsForQa() {
   for (const roomId of candidateRoomIds) {
     const roomSnapshot = await getDoc(doc(db, 'rooms', roomId));
     if (roomSnapshot.exists()) continue;
-    await deleteRoomSubcollectionsForQa(roomId);
-    deletedRoomIds.push(roomId);
+    const deletedCounts = await deleteRoomSubcollectionsForQa(roomId);
+    deletedRoomIds.push({ id: roomId, deletedCounts });
   }
   return deletedRoomIds;
 }
