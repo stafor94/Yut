@@ -1,8 +1,8 @@
 import { doc } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
 
-export const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'seats', 'state', 'sequences', 'processedActions'] as const;
-export const DELETE_BATCH_SIZE = 450;
+export const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'] as const;
+export const DELETE_BATCH_SIZE = 25;
 const SEQUENCE_ID_PAD_LENGTH = 12;
 
 export const makeSequenceDocId = (sequence: number) => String(sequence).padStart(SEQUENCE_ID_PAD_LENGTH, '0');
