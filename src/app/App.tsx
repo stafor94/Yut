@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import type { BoardPiece } from '../features/game/components/GameBoard';
-import { ItemCard } from '../features/items/components/ItemCard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
@@ -14,17 +13,27 @@ import { useGameStatePersistence } from './hooks/useGameStatePersistence';
 import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';
 import { useRoomPresence } from './hooks/useRoomPresence';
 import { useTurnOrderAutoFinish, useTurnOrderClock, useTurnOrderPortraitScroll } from './hooks/useTurnOrderTimers';
-import { BoardPanel, GameScreen } from './screens/GameScreen';
-import { GameLogPanelView, GamePlayersPanel } from './containers/GamePanels';
-import { BoardMessageStack, GoldenYutPicker, RollStage, TurnIndicator, WinnerOverlay } from './containers/GameBoardOverlays';
-import { GameBoardControls } from './containers/GameBoardControls';
-import { GameBoardSection } from './containers/GameBoardSection';
 import { LobbyContainer } from './containers/LobbyContainer';
 import { WaitingRoomContainer } from './containers/WaitingRoomContainer';
+import { AppModals } from './components/AppModals';
+import { AppShellHeader } from './components/AppShellHeader';
+import { GameScreenView } from './components/GameScreenView';
+import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItemValue, shouldAiUseReroll } from './flows/aiFlow';
+import { createStartCountdownWindow, getStartGameBlockMessage } from './flows/gameStartFlow';
+import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
+import {
+  buildAlternatingTeamTurnOrder,
+  createTurnOrderIntro,
+  formatTurnOrderSummary,
+  getTurnOrderFromRolls,
+  getTurnOrderLogTexts,
+  getTurnOrderScore,
+  resolveTurnOrderRolls,
+  shuffleSeatsForGame,
+} from './flows/turnOrderFlow';
 import {
   AI_NAME_BASES,
   AI_NAME_PREFIXES,
-  NICKNAME_MAX_LENGTH,
   PLAYER_COLORS,
   PLAYER_COLOR_LABELS,
   STORAGE_KEYS,
@@ -70,11 +79,9 @@ import {
   formatStoredLogSequence,
   getEffectiveBranchChoice,
   getMovePreviewNodeIds,
-  getTurnOrderSlotRevealDurationMs,
   getTurnOrderStoppedSlotCount,
   normalizeMaxPlayers,
   normalizeRollResultReadyAt,
-  splitMessageBySentence,
   withAndParticle,
   withSubjectParticle,
 } from './appUtils';
@@ -85,8 +92,6 @@ import { makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
 import '../styles/globals.css';
 
 const TURN_DELAY_MS = 650;
-const START_COUNTDOWN_DELAY_MS = 1000;
-const START_COUNTDOWN_MS = 5000;
 const START_CANCEL_LOCK_MS = 2000;
 const SEQUENCE_WATCHDOG_MS = 5000;
 const TURN_ORDER_START_DELAY_MS = 3000;
@@ -1783,6 +1788,13 @@ export function App() {
     return getSeatDisplayName(seat);
   }
 
+  const { getLogCardStyle, renderLogText } = createGameLogPresentation({
+    getSeatDisplayName,
+    getSeatPieceColor,
+    playableSeats,
+    playMode,
+  });
+
   function withActorLogPayload(payload: Record<string, unknown> = {}, seat: Seat | undefined = getSeatById(localSeatId)) {
     return { ...payload, actorLabel: seat?.label ?? '', actorName: seat?.name ?? '', actorLogName: getActorLogName(seat) };
   }
@@ -1911,15 +1923,15 @@ export function App() {
   }
 
   function handleStartGame() {
-    if (!activeRoomId) { setMessage('온라인 방 정보가 없어 게임을 시작할 수 없습니다.'); return; }
-    if (!canManageRoom) { setMessage('방장 정보를 확인하는 중입니다. 잠시 뒤 다시 시도해주세요.'); return; }
+    const blockMessage = getStartGameBlockMessage({ activeRoomId, allReady, canManageRoom, playMode, teamBalanced });
+    if (blockMessage) { setMessage(blockMessage); return; }
     if (!isRoomManager) setIsRoomHost(true);
-    if (!allReady) { setMessage(playMode === 'team' && !teamBalanced ? '팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.' : '아직 준비하지 않은 플레이어가 있습니다.'); return; }
     const requestedAt = Date.now();
-    const localVersion = startRequestVersion + 1;
+    const startCountdownWindow = createStartCountdownWindow(requestedAt, startRequestVersion);
+    const localVersion = startCountdownWindow.localVersion;
     setStartRequestVersion(localVersion);
-    setStartCountdownStartsAt(requestedAt + START_COUNTDOWN_DELAY_MS);
-    setStartCountdownEndsAt(requestedAt + START_COUNTDOWN_DELAY_MS + START_COUNTDOWN_MS);
+    setStartCountdownStartsAt(startCountdownWindow.startsAt);
+    setStartCountdownEndsAt(startCountdownWindow.endsAt);
     setStartStatus('requested');
     setCountdown(-1); setScreen('waitingRoom'); setMessage('');
     void measureFirebaseLatency(() => requestRoomGameStart(activeRoomId, requestedAt)).then((startState) => {
@@ -1939,76 +1951,9 @@ export function App() {
     else setStartCountdownEndsAt(0);
   }
 
-  function getTurnOrderScore(result: YutResult) {
-    if (result.name === '빽도') return 0;
-    return result.steps;
-  }
-
-  function resolveTurnOrderRolls(targetSeats: Seat[], rollOffRound = 1): TurnOrderRoll[] {
-    const firstRolls = targetSeats.map((seat) => ({ ...rollYutResult(undefined, false), seat }));
-    const grouped = firstRolls.reduce<Record<number, typeof firstRolls>>((acc, rollEntry) => {
-      const score = getTurnOrderScore(rollEntry.result);
-      return { ...acc, [score]: [...(acc[score] ?? []), rollEntry] };
-    }, {});
-
-    return Object.entries(grouped)
-      .flatMap(([score, entries]) => {
-        if (entries.length === 1) return [{ seat: entries[0].seat, result: entries[0].result, rollOffRound }];
-        addLog(`${entries.map((entry) => getSeatDisplayName(entry.seat)).join(', ')}님이 ${entries[0].result.name}로 비겨 재윷을 던집니다.`);
-        return resolveTurnOrderRolls(entries.map((entry) => entry.seat), rollOffRound + 1);
-      })
-      .sort((left, right) => getTurnOrderScore(right.result) - getTurnOrderScore(left.result));
-  }
-
-  function getTurnOrderFromRolls(rolls: TurnOrderRoll[]) {
-    const rankedRolls = [...rolls].sort((left, right) => getTurnOrderScore(right.result) - getTurnOrderScore(left.result));
-    const turnOrder = playMode === 'team'
-      ? buildAlternatingTeamTurnOrder(rankedRolls)
-      : rankedRolls.map((entry) => entry.seat);
-    return { rankedRolls, turnOrder };
-  }
-
-  function buildAlternatingTeamTurnOrder(rankedRolls: TurnOrderRoll[]) {
-    const teamRankings = {
-      청팀: rankedRolls.filter((entry) => entry.seat.team === '청팀'),
-      홍팀: rankedRolls.filter((entry) => entry.seat.team === '홍팀'),
-    };
-    const blueTopScore = getTurnOrderScore((teamRankings.청팀[0] ?? rankedRolls[0]).result);
-    const redTopScore = getTurnOrderScore((teamRankings.홍팀[0] ?? rankedRolls[0]).result);
-    const firstTeam: Team = blueTopScore >= redTopScore ? '청팀' : '홍팀';
-    const secondTeam: Team = firstTeam === '청팀' ? '홍팀' : '청팀';
-    const teamQueues: Record<Team, TurnOrderRoll[]> = { 청팀: [...teamRankings.청팀], 홍팀: [...teamRankings.홍팀] };
-    const turnOrder: Seat[] = [];
-    let preferredTeam: Team = firstTeam;
-
-    while (teamQueues.청팀.length || teamQueues.홍팀.length) {
-      const previousTeam = turnOrder[turnOrder.length - 1]?.team;
-      const oppositeTeam = previousTeam === '청팀' ? '홍팀' : '청팀';
-      const nextTeam = previousTeam && teamQueues[oppositeTeam].length ? oppositeTeam : teamQueues[preferredTeam].length ? preferredTeam : secondTeam;
-      const nextRoll = teamQueues[nextTeam].shift();
-      if (!nextRoll) break;
-      turnOrder.push(nextRoll.seat);
-      preferredTeam = nextTeam === firstTeam ? secondTeam : firstTeam;
-    }
-
-    return turnOrder;
-  }
-
-  function formatTurnOrderSummary(turnOrder: Seat[]) {
-    return `순서: ${turnOrder.map((seat) => getSeatDisplayName(seat)).join(' > ')}`;
-  }
-
-  function getTurnOrderLogTexts(rankedRolls: TurnOrderRoll[], turnOrder: Seat[]) {
-    const rollSummary = rankedRolls.map((entry) => `${getSeatDisplayName(entry.seat)} ${entry.result.name}${entry.rollOffRound > 1 ? `(${entry.rollOffRound}차)` : ''}`).join(' · ');
-    return [
-      `순서 정하기: ${rollSummary}`,
-      formatTurnOrderSummary(turnOrder),
-    ];
-  }
-
-  function decideTurnOrder(rolls = resolveTurnOrderRolls(playableSeats)) {
-    const { rankedRolls, turnOrder } = getTurnOrderFromRolls(rolls);
-    addLogs(getTurnOrderLogTexts(rankedRolls, turnOrder));
+  function decideTurnOrder(rolls = resolveTurnOrderRolls(playableSeats, { getSeatDisplayName, onTie: addLog })) {
+    const { rankedRolls, turnOrder } = getTurnOrderFromRolls(rolls, playMode);
+    addLogs(getTurnOrderLogTexts(rankedRolls, turnOrder, getSeatDisplayName));
     setTurnOrderIds(turnOrder.map((seat) => seat.id));
     return turnOrder;
   }
@@ -2019,26 +1964,15 @@ export function App() {
     setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null);
   }
 
-  function shuffleSeatsForGame(targetSeats: Seat[]) {
-    const shuffledSeats = [...targetSeats];
-    for (let index = shuffledSeats.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(Math.random() * (index + 1));
-      [shuffledSeats[index], shuffledSeats[swapIndex]] = [shuffledSeats[swapIndex], shuffledSeats[index]];
-    }
-    return shuffledSeats;
-  }
-
   function beginTurnOrderIntro() {
     const shuffledSeats = shuffleSeatsForGame(playableSeats);
     const orderedSeats = playMode === 'team'
       ? buildAlternatingTeamTurnOrder(shuffledSeats.map((seat) => ({ seat, result: { name: '도', steps: 1, bonus: false }, rollOffRound: 1 })))
       : shuffledSeats;
     const nextTurnOrderIds = orderedSeats.map((seat) => seat.id);
-    const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
-    const slotUntil = Date.now() + getTurnOrderSlotRevealDurationMs(order.length);
-    const nextTurnOrderIntro = { order, visible: true, slotUntil, readyAt: slotUntil + TURN_ORDER_FINAL_HOLD_MS };
+    const { slotUntil, intro: nextTurnOrderIntro } = createTurnOrderIntro(orderedSeats, { getSeatPieceColor, playMode, finalHoldMs: TURN_ORDER_FINAL_HOLD_MS });
     const nextGameStartedAt = nextTurnOrderIntro.readyAt;
-    const introLog = makeLog(formatTurnOrderSummary(orderedSeats));
+    const introLog = makeLog(formatTurnOrderSummary(orderedSeats, getSeatDisplayName));
     if (activeRoomId) {
       pendingSequenceMetaRef.current = {
         type: 'turn_order_resolved',
@@ -2153,17 +2087,15 @@ export function App() {
       .filter((seat) => !rolledSeatIds.has(seat.id))
       .map((seat) => `${getSeatDisplayName(seat)}님이 시간 초과로 자동 순서 정하기 굴림 처리되었습니다.`);
     const completedRolls = completeTurnOrderRolls(sourceRolls);
-    const { rankedRolls, turnOrder: orderedSeats } = getTurnOrderFromRolls(completedRolls);
+    const { rankedRolls, turnOrder: orderedSeats } = getTurnOrderFromRolls(completedRolls, playMode);
     const nextPieces = makePieces(orderedSeats, pieceCount, playMode);
     const nextTurnOrderPhase = { active: false, index: 0, rolls: completedRolls, deadline: 0, readyAt: 0 };
     const nextTurnOrderIds = orderedSeats.map((seat) => seat.id);
     const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
-    const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
-    const slotUntil = Date.now() + getTurnOrderSlotRevealDurationMs(order.length);
-    const nextTurnOrderIntro = { order, visible: true, slotUntil, readyAt: slotUntil + TURN_ORDER_FINAL_HOLD_MS };
+    const { intro: nextTurnOrderIntro } = createTurnOrderIntro(orderedSeats, { getSeatPieceColor, playMode, finalHoldMs: TURN_ORDER_FINAL_HOLD_MS });
     const nextGameStartedAt = nextTurnOrderIntro.readyAt;
-    const finalOrderLog = formatTurnOrderSummary(orderedSeats);
-    const ceremonyLogs = [...timeoutLogTexts, ...getTurnOrderLogTexts(rankedRolls, orderedSeats)].reverse().map((text) => makeLog(text));
+    const finalOrderLog = formatTurnOrderSummary(orderedSeats, getSeatDisplayName);
+    const ceremonyLogs = [...timeoutLogTexts, ...getTurnOrderLogTexts(rankedRolls, orderedSeats, getSeatDisplayName)].reverse().map((text) => makeLog(text));
 
     return {
       local: { completedRolls, orderedSeats, nextPieces, nextBoardItems, nextTurnOrderIds, nextTurnOrderPhase, nextTurnOrderIntro, nextGameStartedAt, finalOrderLog, nextLogs: [...ceremonyLogs, ...currentLogs] },
@@ -2293,45 +2225,6 @@ export function App() {
       return [...uniqueTexts].reverse().map((text) => makeLog(text)).concat(current);
     });
   }
-  function getLogSeatTokens() {
-    return playableSeats
-      .flatMap((seat) => [`${seat.label}-${seat.name}`, getActorLogName(seat), seat.label, seat.id].filter(Boolean).map((token) => ({ seat, token })))
-      .sort((left, right) => right.token.length - left.token.length);
-  }
-  function getEscapedLogSeatTokens() {
-    return getLogSeatTokens().map((entry) => ({ ...entry, escapedToken: entry.token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }));
-  }
-  function getLogSeat(text: string) {
-    const tokenEntries = getEscapedLogSeatTokens();
-    if (tokenEntries.length) {
-      const match = text.match(new RegExp(`(?<![A-Za-z0-9_])(${tokenEntries.map((entry) => entry.escapedToken).join('|')})(?![A-Za-z0-9_])`, 'u'));
-      const matchedSeat = match ? tokenEntries.find((entry) => entry.token === match[1])?.seat : undefined;
-      if (matchedSeat) return matchedSeat;
-    }
-    const labelMatch = text.match(/P([1-4])(?:-|\b)/u);
-    return labelMatch ? playableSeats.find((seat) => seat.label === `P${labelMatch[1]}`) : undefined;
-  }
-  function getReadableLogTextColor(backgroundColor: string) {
-    const hex = backgroundColor.replace('#', '');
-    if (!/^[0-9a-f]{6}$/i.test(hex)) return '#2a1e17';
-    const [red, green, blue] = [0, 2, 4].map((start) => parseInt(hex.slice(start, start + 2), 16));
-    const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
-    return luminance > 0.62 ? '#2a1e17' : '#fffaf0';
-  }
-  function getLogCardStyle(text: string, previousText = ''): CSSProperties {
-    if (isTurnOrderSystemLog(text)) return {};
-    const shouldInheritPreviousLogColor = text.includes('한 번 더 던질 수 있습니다.');
-    const seat = getLogSeat(text) ?? (shouldInheritPreviousLogColor ? getLogSeat(previousText) : undefined);
-    if (!seat) return {};
-    const backgroundColor = playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat);
-    return { '--log-card-bg': backgroundColor, '--log-card-color': seat.label === 'P4' ? '#fffaf0' : getReadableLogTextColor(backgroundColor), '--log-card-border': backgroundColor } as CSSProperties;
-  }
-  function isTurnOrderSystemLog(text: string) {
-    return text.startsWith('순서 정하기:')
-      || text.startsWith('순서:')
-      || text.includes('자동 순서 정하기 굴림')
-      || text.includes('재윷을 던집니다.');
-  }
   async function copyDiagnosticState() {
     try {
       if (navigator.clipboard?.writeText) {
@@ -2354,26 +2247,6 @@ export function App() {
       showToast('복사 실패', '상태값을 복사하지 못했습니다. 내용을 직접 선택해 복사해주세요.', '⚠️');
     }
   }
-
-  function renderLogText(text: string) {
-    const displayText = text
-      .replace(/\(-?\d+칸\)/g, '')
-      .replace(/이\(가\)/g, '님이')
-      .replace(/은\(는\)/g, '님은')
-      .replace(/의(?= 말| 모든| 방금)/g, '님의')
-      .replace(/님님의/g, '님의');
-    const shouldColorPlayerTokens = !isTurnOrderSystemLog(text) || text.startsWith('순서:');
-    if (!shouldColorPlayerTokens) return displayText;
-    const tokenEntries = getEscapedLogSeatTokens();
-    if (!tokenEntries.length) return displayText;
-    return displayText.split(new RegExp(`(?<![A-Za-z0-9_])(${tokenEntries.map((entry) => entry.escapedToken).join('|')})(?![A-Za-z0-9_])`, 'gu')).map((part, index) => {
-      const seat = tokenEntries.find((entry) => entry.token === part)?.seat;
-      if (!seat) return part;
-      const color = playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat);
-      return <span className="log-player-label" style={{ '--log-player-color': color } as CSSProperties} key={`${part}-${index}`}>{getSeatDisplayName(seat)}</span>;
-    });
-  }
-
   function showToast(title: string, description?: string, icon?: string) {
     const nextToast = { id: Date.now(), title, description, icon };
     setToast(nextToast);
@@ -2975,33 +2848,6 @@ export function App() {
     return true;
   }
 
-  function getAiBranchChoice(piece: BoardPiece): BranchChoice {
-    return piece.started && BRANCH_NODE_IDS.includes(piece.nodeId as typeof BRANCH_NODE_IDS[number]) ? 'shortcut' : 'outer';
-  }
-
-  function scoreAiMove(piece: BoardPiece, result: YutResult, seat: Seat, aiBranchChoice: BranchChoice) {
-    const steps = result.steps;
-    if (steps < 0 && !piece.started) return Number.NEGATIVE_INFINITY;
-    const pathNodeIds = getMovePathNodeIds(piece.nodeId, steps, getEffectiveBranchChoice(piece.nodeId, aiBranchChoice));
-    const landedNodeId = pathNodeIds[pathNodeIds.length - 1] ?? piece.nodeId;
-    const finishes = steps > 0 && piece.started && pathNodeIds.slice(0, steps - 1).includes('n01');
-    const captures = !finishes && pieces.some((target) => !isSameSide(getSeatById(target.ownerId), seat) && target.started && !target.finished && target.nodeId === landedNodeId);
-    const stacks = !finishes && piece.started ? pieces.filter((target) => canSeatControlPiece(seat, target) && target.started && !target.finished && target.nodeId === piece.nodeId).length - 1 : 0;
-    const startsNewPiece = !piece.started && steps > 0;
-    const progress = finishes ? 25 : BOARD_NODES.findIndex((node) => node.id === landedNodeId);
-    return (finishes ? 1000 : 0) + (captures ? 400 : 0) + (aiBranchChoice === 'shortcut' ? 80 : 0) + (startsNewPiece ? 60 : 0) + (stacks * 30) + progress - (piece.finished ? 10000 : 0);
-  }
-
-  function chooseAiMove(seat: Seat, result: YutResult) {
-    return pieces
-      .filter((piece) => canSeatControlPiece(seat, piece) && !piece.finished && (result.steps >= 0 || piece.started))
-      .map((piece) => {
-        const aiBranchChoice = getAiBranchChoice(piece);
-        return { piece, branchChoice: aiBranchChoice, score: scoreAiMove(piece, result, seat, aiBranchChoice) };
-      })
-      .sort((left, right) => right.score - left.score)[0];
-  }
-
   function getPostMoveAdjustmentPiece(seat: Seat | undefined) {
     if (!seat || lastMovedSeatId !== seat.id) return undefined;
     return lastMovedPieceIds
@@ -3009,45 +2855,12 @@ export function App() {
       .find((piece): piece is BoardPiece => Boolean(piece));
   }
 
-  function getAiItemValue(type: ItemType) {
-    if (type === 'golden_yut') return 90;
-    if (type === 'reroll') return 75;
-    if (type === 'move_plus_one') return 70;
-    if (type === 'trap') return 62;
-    if (type === 'shield') return 58;
-    if (type === 'move_minus_one') return 45;
-    return 0;
-  }
-
-  function shouldAiUseReroll(seat: Seat, result: YutResult) {
-    const move = chooseAiMove(seat, result);
-    if (!move) return true;
-    return result.steps <= 1 && move.score < 120;
-  }
-
-  function chooseAiGoldenYutResult(seat: Seat) {
-    return [...GOLDEN_YUT_CHOICES]
-      .map((choice) => ({ choice, move: chooseAiMove(seat, choice) }))
-      .map(({ choice, move }) => ({ choice, score: move ? move.score + (choice.bonus ? 40 : 0) : Number.NEGATIVE_INFINITY }))
-      .sort((left, right) => right.score - left.score)[0]?.choice ?? GOLDEN_YUT_CHOICES[GOLDEN_YUT_CHOICES.length - 1];
-  }
-
-  function chooseAiAfterMoveItem(seat: Seat) {
-    const items = ownedItems[seat.id] ?? [];
-    const adjustmentPiece = getPostMoveAdjustmentPiece(seat);
-    const canUseTrapOrShield = Boolean(adjustmentPiece);
-    if (items.includes('move_plus_one') && adjustmentPiece) return 'move_plus_one' as ItemType;
-    if (items.includes('move_minus_one') && adjustmentPiece) {
-      const previousNodeId = getMovePathNodeIds(adjustmentPiece.nodeId, -1, 'outer')[0];
-      if (previousNodeId && previousNodeId !== 'finish') return 'move_minus_one' as ItemType;
-    }
-    if (items.includes('trap') && canUseTrapOrShield) return 'trap' as ItemType;
-    if (items.includes('shield') && canUseTrapOrShield) return 'shield' as ItemType;
-    return null;
+  function getAiMoveContext() {
+    return { canSeatControlPiece, getSeatById, isSameSide, pieces };
   }
 
   async function useAiAfterMoveItem(seat: Seat) {
-    const item = chooseAiAfterMoveItem(seat);
+    const item = chooseAiAfterMoveItem({ adjustmentPiece: getPostMoveAdjustmentPiece(seat), items: ownedItems[seat.id] ?? [] });
     if (!item) return false;
     await useItem(item, seat.id);
     return true;
@@ -3066,19 +2879,19 @@ export function App() {
       if (!canContinueAiTurn()) return;
       let nextRoll: YutResult | null = null;
       if ((ownedItems[seat.id] ?? []).includes('golden_yut')) {
-        nextRoll = chooseAiGoldenYutResult(seat);
+        nextRoll = chooseAiGoldenYutResult(seat, getAiMoveContext());
         setOwnedItems((items) => ({ ...items, [seat.id]: (items[seat.id] ?? []).filter((type, index) => type !== 'golden_yut' || index !== (items[seat.id] ?? []).indexOf('golden_yut')) }));
         addLog(`${getSeatDisplayName(seat)}님이 황금 윷으로 ${nextRoll.name} 결과를 선택했습니다.`);
       }
       nextRoll = rollYutFor(seat, nextRoll) ?? nextRoll;
       if (!nextRoll) return;
-      if ((ownedItems[seat.id] ?? []).includes('reroll') && shouldAiUseReroll(seat, nextRoll)) {
+      if ((ownedItems[seat.id] ?? []).includes('reroll') && shouldAiUseReroll(seat, nextRoll, getAiMoveContext())) {
         await useItem('reroll', seat.id);
         await delay(500);
         nextRoll = currentRollRef.current;
         if (!nextRoll) return;
       }
-      const aiMove = chooseAiMove(seat, nextRoll);
+      const aiMove = chooseAiMove(seat, nextRoll, getAiMoveContext());
       if (!aiMove) {
         setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
         clearRoll();
@@ -3334,49 +3147,48 @@ export function App() {
   }
 
 
-  function renderTurnOrderIntroOverlay() {
-    if (!activeTurnOrderIntro?.visible) return null;
-    const slotUntil = activeTurnOrderIntro.slotUntil ?? activeTurnOrderIntro.readyAt - TURN_ORDER_FINAL_HOLD_MS;
-    const order = activeTurnOrderIntro.order ?? [];
-    const slotRevealDurationMs = getTurnOrderSlotRevealDurationMs(order.length);
-    const slotStartedAt = slotUntil - slotRevealDurationMs;
-    const elapsedRevealMs = Math.max(0, turnOrderClock - slotStartedAt);
-    const stoppedCount = getTurnOrderStoppedSlotCount(order.length, elapsedRevealMs);
-    const isSlotAnimating = stoppedCount < order.length;
-    const slotRows = order.length ? Array.from({ length: order.length * 3 }, (_, rowIndex) => order[rowIndex % order.length]) : [];
-    return <div className="turn-order-ready-overlay slot-machine" role="status" aria-live="assertive">
-      <span>순서 정하기</span>
-      {isSlotAnimating && <strong>순서를 섞는 중...</strong>}
-      <div className="turn-order-slot-list" aria-hidden="true">
-        {order.map((entry, columnIndex) => {
-          const isStopped = columnIndex < stoppedCount;
-          return <div className={`turn-order-slot-window ${isStopped ? 'stopped' : ''}`} key={entry.seatId} style={{ '--slot-index': columnIndex, '--slot-row-count': Math.max(order.length, 1), '--slot-target-row': order.length + columnIndex } as CSSProperties}>
-            <div className="turn-order-slot-reel">
-              {slotRows.map((slotEntry, rowIndex) => {
-                const isTargetRow = rowIndex === order.length + columnIndex;
-                return <span className={`turn-order-slot-card ${isStopped && isTargetRow ? 'final-card' : ''} ${slotEntry.seatId === localSeatId ? 'mine' : ''}`} style={{ color: slotEntry.color, borderColor: slotEntry.color }} key={`${entry.seatId}-${slotEntry.seatId}-${rowIndex}`}>{isTargetRow ? `${columnIndex + 1}. ` : ''}{slotEntry.name}</span>;
-              })}
-            </div>
-          </div>;
-        })}
-      </div>
-    </div>;
-  }
-
   return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
-    <section className="hero panel">
-      <div className="hero-copy" aria-hidden="true"></div>
-      {screen === 'game' && <div data-testid="play-timer" className={`play-time ${winner ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}
-      <div className="hero-actions"><button className="nickname-chip" type="button" onClick={openNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}>👤 {nickname}</button><button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={toggleSoundEnabled} aria-label={`소리 ${soundEnabled ? '끄기' : '켜기'}`}><span className="sound-icon" aria-hidden="true">{soundEnabled ? '🔊' : '🔇'}</span></button><button className={`status-card ${serverStatusTone}`} type="button" onClick={syncLatestSequencesFromBadge} disabled={manualSequenceSyncing || !activeRoomId || screen !== 'game'} aria-label={`서버 상태: ${serverStatus}. 최신 게임 상태 동기화`} title="최신 게임 상태 동기화"><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><span className="status-text">{serverStatus}</span></button></div>
-    </section>
+    <AppShellHeader
+      activeRoomId={activeRoomId}
+      manualSequenceSyncing={manualSequenceSyncing}
+      nickname={nickname}
+      playTimeText={playTimeText}
+      screen={screen}
+      serverStatus={serverStatus}
+      serverStatusTone={serverStatusTone}
+      soundEnabled={soundEnabled}
+      winner={winner}
+      onOpenNicknameDialog={openNicknameDialog}
+      onSyncLatestSequences={syncLatestSequencesFromBadge}
+      onToggleSoundEnabled={toggleSoundEnabled}
+    />
 
-    {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
-
-    {actionErrorDialog && <div className="modal-backdrop" role="presentation" onMouseDown={() => setActionErrorDialog('')}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label="액션 오류" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">오류</p><h2>요청을 처리할 수 없습니다</h2><p>{actionErrorDialog}</p><div className="modal-actions"><button onClick={() => setActionErrorDialog('')}>확인</button></div></section></div>}
-    {roomNoticeDialog && <div className="modal-backdrop" role="presentation" onMouseDown={() => setRoomNoticeDialog(null)}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label={roomNoticeDialog.title} onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">방 알림</p><h2>{roomNoticeDialog.title}</h2><p>{roomNoticeDialog.message}</p><div className="modal-actions"><button onClick={() => setRoomNoticeDialog(null)}>확인</button></div></section></div>}
-    {diagnosticDialogOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setDiagnosticDialogOpen(false)}><section className="diagnostic-modal panel" role="dialog" aria-modal="true" aria-label="게임 상태 분석 요청 데이터" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">분석 요청</p><h2>게임 상태 분석 데이터</h2><p className="diagnostic-description">아래 텍스트를 복사해 시스템에 전달하면 에러 원인 분석에 사용할 수 있습니다.</p><pre className="diagnostic-raw">{diagnosticText}</pre><div className="modal-actions"><button onClick={copyDiagnosticState}>{diagnosticCopied ? '복사 완료' : '복사'}</button><button className="secondary" onClick={() => setDiagnosticDialogOpen(false)}>닫기</button></div></section></div>}
-
-    {nicknameDialogOpen && screen === 'lobby' && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={() => setNicknameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 수정" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">닉네임</p><h2>닉네임 수정</h2><p>닉네임은 7글자까지 사용할 수 있어요.</p><input value={nicknameDraft} onChange={(e) => setNicknameDraft(e.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(e) => { if (e.key === 'Enter') saveNickname(); if (e.key === 'Escape') setNicknameDialogOpen(false); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={() => setNicknameDialogOpen(false)}>취소</button></div></section></div>}
+    <AppModals
+      actionErrorDialog={actionErrorDialog}
+      diagnosticCopied={diagnosticCopied}
+      diagnosticDialogOpen={diagnosticDialogOpen}
+      diagnosticText={diagnosticText}
+      endGameDialogOpen={endGameDialogOpen}
+      gameExitDescription={gameExitDescription}
+      itemPickupClock={itemPickupClock}
+      loadingMessage={loadingMessage}
+      nicknameDialogOpen={nicknameDialogOpen}
+      nicknameDraft={nicknameDraft}
+      pendingItemPickup={pendingItemPickup}
+      roomNoticeDialog={roomNoticeDialog}
+      screen={screen}
+      onClearActionErrorDialog={() => setActionErrorDialog('')}
+      onCloseDiagnosticDialog={() => setDiagnosticDialogOpen(false)}
+      onCloseEndGameDialog={() => setEndGameDialogOpen(false)}
+      onCloseNicknameDialog={() => setNicknameDialogOpen(false)}
+      onClearRoomNoticeDialog={() => setRoomNoticeDialog(null)}
+      onCopyDiagnosticState={copyDiagnosticState}
+      onFinishGame={finishGame}
+      onKeepPendingItemPickup={() => keepPendingItemPickup()}
+      onNicknameDraftChange={setNicknameDraft}
+      onReplacePendingItemPickup={() => replacePendingItemPickup()}
+      onSaveNickname={saveNickname}
+    />
 
     {screen === 'lobby' && <LobbyContainer
       title={title}
@@ -3417,84 +3229,85 @@ export function App() {
       onToggleReady={() => { void toggleMyReady(); }}
       onLeaveRoom={leaveRoom}
     />}
-
-
-
-
-
-    {pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>같은 사용 조건의 아이템은 1개만 보유할 수 있습니다. 10초 뒤 자동으로 유지합니다.</p><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${Math.max(0, pendingItemPickup.deadline - itemPickupClock)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="item-replace-preview"><div><strong>기존 아이템</strong><ItemCard type={pendingItemPickup.existingItem} /></div><div><strong>새 아이템</strong><ItemCard type={pendingItemPickup.item} /></div></div><div className="inline-item-actions"><button onClick={() => replacePendingItemPickup()}>교체</button><button className="secondary" onClick={() => keepPendingItemPickup()}>유지</button></div></section></div>}
-
-    {endGameDialogOpen && screen === 'game' && <div className="modal-backdrop" role="presentation" onMouseDown={() => setEndGameDialogOpen(false)}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="게임 종료 확인" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">게임 종료</p><h2>정말 윷판을 정리할까요?</h2><p>{gameExitDescription}</p><div className="modal-actions"><button className="danger" onClick={finishGame}>게임 종료</button><button className="secondary" onClick={() => setEndGameDialogOpen(false)}>계속하기</button></div></section></div>}
-
-
-    {screen === 'game' && <GameScreen>
-      <GamePlayersPanel
-        title={activeRoomTitle || title}
-        ruleText={formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode)}
-        seats={activeTurnOrderIntro || turnOrderPhase.active ? playableSeats : turnSeats}
-        activeSeatId={activeSeat?.id}
-        playMode={playMode}
-        spectators={spectators}
-        ownedItems={ownedItems}
-        localSeatId={localSeatId}
-        getPlayerCardName={getPlayerCardName}
-        getSeatPieceColor={getSeatPieceColor}
-        onUseItem={useItem}
-        onOpenEndGameDialog={() => setEndGameDialogOpen(true)}
-      />
-      <BoardPanel><WinnerOverlay winner={winner} winnerText={renderWinnerText()} canContinueRace={canShowContinueRaceButton} onFinishGame={finishGame} onContinueRace={continueRace} />{renderTurnOrderIntroOverlay()}{activeTurnOrderIntro && !activeTurnOrderIntro.visible && <div className="turn-order-lock" role="status" aria-live="polite">잠시 후 게임 시작!</div>}<GoldenYutPicker isOpen={goldenYutPickerOpen} choices={GOLDEN_YUT_CHOICES} onSelect={(choice) => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }} /><TurnIndicator color={boardTurnIndicatorColor} showNeighbors={shouldShowBoardTurnNeighbors} previousText={previousBoardTurnText} currentText={boardTurnIndicatorText} nextText={nextBoardTurnText} /><BoardMessageStack turnToast={turnToast} toast={toast} /><GameBoardSection
-        pieces={pieces}
-        boardItems={boardItems}
-        selectedPieceId={selectedPieceId}
-        activeMovablePiece={activeMovablePiece}
-        selectedGroupPieceIds={selectedGroupPieceIds}
-        movingPieceId={movingPieceId}
-        isMyTurn={isMyTurn}
-        activeSeat={activeSeat}
-        canSeatControlPiece={canSeatControlPiece}
-        onSelectPieceId={setSelectedPieceId}
-        getPieceSideKey={getPieceSideKey}
-        revealedItems={revealedItems}
-        highlightedNodeId={highlightedNodeId}
-        trapNodes={trapNodes}
-        previewNodeIds={previewNodeIds}
-        branchChoice={branchChoice}
-        onBranchChoiceChange={setBranchChoice}
-        captureEffect={captureEffect}
-        trapEffect={trapEffect}
-        trapPlacementNodeIds={trapPlacementNodeIds}
-        onSelectTrapNode={placePendingTrap}
-      /><RollStage rollAnimation={rollAnimation} />{pendingTrapPlacement && <div className="trap-placement-banner" role="status"><strong>함정 설치 위치를 선택하세요</strong><span>{Math.max(0, Math.ceil((pendingTrapPlacement.deadline - trapPlacementClock) / 1000))}초 남음 · 설치 중에는 윷을 던질 수 없습니다.</span></div>}<GameBoardControls
-        roll={roll}
-        activeItemPromptTypes={activeItemPromptTypes}
-        localSeatId={localSeatId}
-        getItemPromptTimeoutMs={getItemPromptTimeoutMs}
-        onUseItem={useItem}
-        onSkipItemPrompt={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); }}
-        showBottomBranchControls={showBottomBranchControls}
-        displayBranchChoice={displayBranchChoice}
-        onBranchChoiceChange={setBranchChoice}
-        canRequestMove={canRequestMove}
-        activeSeatId={activeSeat?.id}
-        activeSeatTurnText={activeSeat ? getSeatDisplayName(activeSeat) : ''}
-        getTurnActionTimeoutMs={getTurnActionTimeoutMs}
-        turnActionTimeoutMs={TURN_ACTION_TIMEOUT_MS}
-        onMoveSelectedPiece={() => moveSelectedPiece()}
-        canRollNow={canRollNow}
-        canSubmitTurnAction={canSubmitTurnAction}
-        onRollYut={rollYut}
-        rollResultHolding={rollResultHolding}
-        pendingTrapPlacement={Boolean(pendingTrapPlacement)}
-        waitingForOnlineTurnOrder={waitingForOnlineTurnOrder}
-        hasActiveTurnOrderIntro={Boolean(activeTurnOrderIntro)}
-      /></BoardPanel>
-      <GameLogPanelView
-        logs={visibleLogs}
-        getLogCardStyle={getLogCardStyle}
-        formatStoredLogSequence={formatStoredLogSequence}
-        renderLogText={renderLogText}
-        onOpenDiagnosticDialog={() => setDiagnosticDialogOpen(true)}
-      />
-    </GameScreen>}
+    {screen === 'game' && <GameScreenView
+      activeItemPromptTypes={activeItemPromptTypes}
+      activeMovablePiece={activeMovablePiece}
+      activeRoomTitle={activeRoomTitle}
+      activeSeat={activeSeat}
+      activeSeatTurnText={activeSeat ? getSeatDisplayName(activeSeat) : ''}
+      activeTurnOrderIntro={activeTurnOrderIntro}
+      boardItems={boardItems}
+      boardTurnIndicatorColor={boardTurnIndicatorColor}
+      boardTurnIndicatorText={boardTurnIndicatorText}
+      branchChoice={branchChoice}
+      canContinueRace={canShowContinueRaceButton}
+      canRequestMove={canRequestMove}
+      canRollNow={canRollNow}
+      canSeatControlPiece={canSeatControlPiece}
+      canSubmitTurnAction={canSubmitTurnAction}
+      captureEffect={captureEffect}
+      displayBranchChoice={displayBranchChoice}
+      finalHoldMs={TURN_ORDER_FINAL_HOLD_MS}
+      formatStoredLogSequence={formatStoredLogSequence}
+      getItemPromptTimeoutMs={getItemPromptTimeoutMs}
+      getLogCardStyle={getLogCardStyle}
+      getPieceSideKey={getPieceSideKey}
+      getPlayerCardName={getPlayerCardName}
+      getSeatPieceColor={getSeatPieceColor}
+      getTurnActionTimeoutMs={getTurnActionTimeoutMs}
+      goldenYutChoices={GOLDEN_YUT_CHOICES}
+      goldenYutPickerOpen={goldenYutPickerOpen}
+      hasActiveTurnOrderIntro={Boolean(activeTurnOrderIntro)}
+      highlightedNodeId={highlightedNodeId}
+      isMyTurn={isMyTurn}
+      localSeatId={localSeatId}
+      logs={visibleLogs}
+      movingPieceId={movingPieceId}
+      ownedItems={ownedItems}
+      pendingTrapPlacement={Boolean(pendingTrapPlacement)}
+      pieces={pieces}
+      playMode={playMode}
+      playerPanelSeats={turnSeats}
+      previewNodeIds={previewNodeIds}
+      previousBoardTurnText={previousBoardTurnText}
+      nextBoardTurnText={nextBoardTurnText}
+      revealedItems={revealedItems}
+      roll={roll}
+      rollAnimation={rollAnimation}
+      rollResultHolding={rollResultHolding}
+      ruleText={formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode)}
+      selectedGroupPieceIds={selectedGroupPieceIds}
+      selectedPieceId={selectedPieceId}
+      seats={playableSeats}
+      showBottomBranchControls={showBottomBranchControls}
+      showBoardTurnNeighbors={shouldShowBoardTurnNeighbors}
+      spectators={spectators}
+      title={title}
+      toast={toast}
+      trapEffect={trapEffect}
+      trapNodes={trapNodes}
+      trapPlacementNodeIds={trapPlacementNodeIds}
+      trapPlacementSecondsLeft={Math.max(0, Math.ceil(((pendingTrapPlacement?.deadline ?? 0) - trapPlacementClock) / 1000))}
+      turnActionTimeoutMs={TURN_ACTION_TIMEOUT_MS}
+      turnOrderClock={turnOrderClock}
+      turnOrderPhase={turnOrderPhase}
+      turnToast={turnToast}
+      waitingForOnlineTurnOrder={waitingForOnlineTurnOrder}
+      winner={winner}
+      winnerText={renderWinnerText()}
+      onBranchChoiceChange={setBranchChoice}
+      onContinueRace={continueRace}
+      onFinishGame={finishGame}
+      onGoldenYutSelect={(choice) => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}
+      onMoveSelectedPiece={() => moveSelectedPiece()}
+      onOpenEndGameDialog={() => setEndGameDialogOpen(true)}
+      onOpenDiagnosticDialog={() => setDiagnosticDialogOpen(true)}
+      onRollYut={rollYut}
+      onSelectPieceId={setSelectedPieceId}
+      onSelectTrapNode={placePendingTrap}
+      onSkipItemPrompt={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); }}
+      onUseItem={useItem}
+      renderLogText={renderLogText}
+    />}
   </main>;
 }
