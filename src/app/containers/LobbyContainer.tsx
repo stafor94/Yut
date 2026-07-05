@@ -8,6 +8,7 @@ type LobbyContainerProps = {
   isCreatingRoom: boolean;
   isFirebaseConfigured: boolean;
   currentUser: User | null;
+  resumableRoomId: string;
   onTitleChange: (title: string) => void;
   onCreateRoom: () => void;
   onOpenWaitingRoom: (room: RoomSummary) => Promise<void>;
@@ -19,6 +20,7 @@ export function LobbyContainer({
   isCreatingRoom,
   isFirebaseConfigured,
   currentUser,
+  resumableRoomId,
   onTitleChange,
   onCreateRoom,
   onOpenWaitingRoom,
@@ -29,6 +31,7 @@ export function LobbyContainer({
     isCreatingRoom={isCreatingRoom}
     isFirebaseConfigured={isFirebaseConfigured}
     currentUser={currentUser}
+    resumableRoomId={resumableRoomId}
     onTitleChange={onTitleChange}
     onCreateRoom={onCreateRoom}
     onOpenWaitingRoom={(room) => { void onOpenWaitingRoom(room); }}

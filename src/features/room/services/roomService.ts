@@ -33,15 +33,16 @@ const MAX_ACTIVE_ROOMS = 3;
 const QA_ROOM_TITLE_PREFIX = 'QA-';
 const EMPTY_ROOM_DELETE_DELAY_MS = 30000;
 const STALE_PLAYER_DELETE_MS = 45000;
-const ROOM_MAX_AGE_MS = 60 * 60 * 1000;
+const ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.startsWith(QA_ROOM_TITLE_PREFIX);
 
 const isInactiveRoom = (room: Partial<RoomSummary>, now = Date.now()) => {
   const createdAt = getCreatedAtMillis(room.createdAt);
+  const missingCreatedAt = !createdAt;
   const expired = Boolean(createdAt && now - createdAt > ROOM_MAX_AGE_MS);
   const emptyGhost = room.currentPlayers !== undefined && Number(room.currentPlayers) <= 0;
-  return room.status === 'finished' || expired || emptyGhost;
+  return room.status === 'finished' || missingCreatedAt || expired || emptyGhost;
 };
 
 const getTimestampMillis = (value: unknown) => {
@@ -632,13 +633,13 @@ export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): 
   return onSnapshot(roomsQuery, (snapshot) => {
     const now = Date.now();
     const rooms = snapshot.docs
-      .map((roomDoc) => ({ id: roomDoc.id, ref: roomDoc.ref, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
+      .map((roomDoc) => ({ id: roomDoc.id, ref: roomDoc.ref, hasPendingWrites: roomDoc.metadata.hasPendingWrites, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
       .filter((room) => {
         const inactive = isInactiveRoom(room, now);
-        if (inactive) void deleteRoom(room.id).catch((error) => console.warn('비활성 방 정리에 실패했습니다.', error));
+        if (inactive && !room.hasPendingWrites) void deleteRoom(room.id).catch((error) => console.warn('비활성 방 정리에 실패했습니다.', error));
         return !inactive;
       })
-      .map(({ ref: _ref, ...room }) => room);
+      .map(({ ref: _ref, hasPendingWrites: _hasPendingWrites, ...room }) => room);
     callback(keepNewestRoomPerHost(rooms).slice(0, MAX_ACTIVE_ROOMS));
   }, () => callback([]));
 }

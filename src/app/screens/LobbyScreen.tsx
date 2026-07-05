@@ -8,17 +8,18 @@ type LobbyScreenProps = {
   isCreatingRoom: boolean;
   isFirebaseConfigured: boolean;
   currentUser: User | null;
+  resumableRoomId: string;
   onTitleChange: (title: string) => void;
   onCreateRoom: () => void;
   onOpenWaitingRoom: (room: RoomSummary) => void;
 };
 
-export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured, currentUser, onTitleChange, onCreateRoom, onOpenWaitingRoom }: LobbyScreenProps) {
+export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured, currentUser, resumableRoomId, onTitleChange, onCreateRoom, onOpenWaitingRoom }: LobbyScreenProps) {
   const getLobbyRoomBadges = (room: RoomSummary) => getRoomRuleBadges(room.playMode, normalizeMaxPlayers(room.maxPlayers, room.playMode), room.pieceCount ?? 4, room.itemMode, Boolean(room.stackedRollMode));
   const getRoomActionText = (room: RoomSummary) => {
     if (isFirebaseConfigured && !currentUser) return '준비 중';
     if (!isRoomInGame(room)) return '참여';
-    return currentUser && room.playerIds?.includes(currentUser.uid) ? '참여' : '관전';
+    return currentUser && resumableRoomId === room.id && room.playerIds?.includes(currentUser.uid) ? '참여' : '관전';
   };
 
   return <section className="lobby-layout premium-lobby" aria-label="첫 대기 화면">
