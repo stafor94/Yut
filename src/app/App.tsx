@@ -6,7 +6,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
@@ -123,6 +123,21 @@ const CREATE_ROOM_TIMEOUT_MS = 12000;
 const CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;
 const CREATE_ROOM_RECOVERY_TIMEOUT_MS = 5000;
 const STEP_DELAY_MS = 240;
+
+const getStableTurnOrderScore = (seed: string, seatId: string) => {
+  const value = `${seed}:${seatId}`;
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
+
+const getSeededTurnOrderSeats = (targetSeats: Seat[], seed: string) => [...targetSeats].sort((left, right) => {
+  const scoreDiff = getStableTurnOrderScore(seed, left.id) - getStableTurnOrderScore(seed, right.id);
+  return scoreDiff || left.label.localeCompare(right.label, undefined, { numeric: true });
+});
 
 export function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -335,7 +350,7 @@ export function App() {
   const isOnlinePlayer = onlineGameRole === 'player';
   const onlineGameCoordinatorSeatId = getOnlineGameCoordinatorSeatId(playableSeats);
   const canCoordinateOnlineGame = !activeRoomId || Boolean(isOnlinePlayer && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
-  const canResolveInitialOnlineTurnOrder = canCoordinateOnlineGame || Boolean(activeRoomId && isOnlinePlayer && waitingForPlayersReady);
+  const canResolveInitialOnlineTurnOrder = canCoordinateOnlineGame;
   const canCompleteInitialOnlineTurnOrderIntro = canCoordinateOnlineGame || Boolean(activeRoomId && isOnlinePlayer);
   const canManageRoom = isRoomManager;
   const gameExitDescription = activeRoomId ? '현재 방에서 나가 로비로 이동합니다. 모든 사람 플레이어가 나가면 방이 종료됩니다.' : 'AI가 대신 플레이하게 됩니다.';
@@ -609,6 +624,7 @@ export function App() {
   })();
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedMoveSteps > 0 && activeMovablePiece?.started && BRANCH_NODE_IDS.includes(activeMovablePiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const activeItemPromptTypes = itemPromptTiming && !trapPlacementActive ? getUsableHostItems(itemPromptTiming) : [];
+  const roomInGame = startStatus === 'entering' || startStatus === 'playing';
   const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > Date.now();
   const startCancelDisabled = startCountdownEndsAt > 0 && startCountdownEndsAt - Date.now() <= START_CANCEL_LOCK_MS;
   const optimisticEnteredSeatId = screen === 'game' && localSeatId && !isSpectator ? localSeatId : '';
@@ -1064,6 +1080,14 @@ export function App() {
       }
       else if (countdown >= 0) setCountdown(-1);
       if (room.status === 'playing') setScreen('game');
+      if (room.status === 'waiting' && screen === 'game' && winner) {
+        setScreen('waitingRoom');
+        setCountdown(-1);
+        setItemPromptTiming(null);
+        setTurnOrderIntro(null);
+        setEndGameDialogOpen(false);
+        setMessage('게임이 종료되어 방 대기실로 돌아왔습니다.');
+      }
       if (room.status === 'finished') {
         hostingRoomUserIdRef.current = '';
         activeRoomHostIdRef.current = '';
@@ -1079,7 +1103,7 @@ export function App() {
         setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
       }
     });
-  }, [activeRoomId, currentUserId, countdown]);
+  }, [activeRoomId, currentUserId, countdown, screen, winner]);
 
 
   useEffect(() => {
@@ -2028,6 +2052,7 @@ export function App() {
 
   function handleStartGame() {
     const blockMessage = getStartGameBlockMessage({ activeRoomId, allReady, canManageRoom, playMode, teamBalanced });
+    if (roomInGame) { setMessage('이미 진행 중인 게임이 있어 다시 시작할 수 없습니다.'); return; }
     if (blockMessage) { setMessage(blockMessage); return; }
     if (!isRoomManager) setIsRoomHost(true);
     const requestedAt = Date.now();
@@ -2069,7 +2094,7 @@ export function App() {
   }
 
   function beginTurnOrderIntro() {
-    const shuffledSeats = shuffleSeatsForGame(playableSeats);
+    const shuffledSeats = getSeededTurnOrderSeats(playableSeats, `${activeRoomId}:${startRequestVersion}`);
     const orderedSeats = playMode === 'team'
       ? buildAlternatingTeamTurnOrder(shuffledSeats.map((seat) => ({ seat, result: { name: '도', steps: 1, bonus: false }, rollOffRound: 1 })))
       : shuffledSeats;
@@ -2122,22 +2147,30 @@ export function App() {
     const nextGameSeats = gameSeatSnapshotsFromSeats(playableSeats);
     const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
     const initialTurnOrderPhase = { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 };
-    const prepLog = makeLog('모든 플레이어의 게임 화면 진입을 확인하고 있습니다.');
+    const shuffledSeats = getSeededTurnOrderSeats(playableSeats, `${activeRoomId}:${startRequestVersion}`);
+    const orderedSeats = playMode === 'team'
+      ? buildAlternatingTeamTurnOrder(shuffledSeats.map((seat) => ({ seat, result: { name: '도', steps: 1, bonus: false }, rollOffRound: 1 })))
+      : shuffledSeats;
+    const initialTurnOrderIds = orderedSeats.map((seat) => seat.id);
+    const { intro: initialTurnOrderIntro } = createTurnOrderIntro(orderedSeats, { getSeatPieceColor, playMode, finalHoldMs: TURN_ORDER_FINAL_HOLD_MS });
+    const initialGameStartedAt = initialTurnOrderIntro.readyAt;
+    const prepLog = makeLog(formatTurnOrderSummary(orderedSeats, getSeatDisplayName));
     resetGameBoard(nextPieces);
     setBoardItems(nextBoardItems);
-    setLogs(activeRoomId ? [prepLog] : []);
-    setTurnOrderIds([]);
-    setTurnOrderIntro(null);
+    setLogs([prepLog]);
+    setTurnOrderIds(initialTurnOrderIds);
+    setInitialTurnOrderIds(initialTurnOrderIds);
+    setTurnOrderIntro(initialTurnOrderIntro);
     setTurnOrderPhase(initialTurnOrderPhase);
     setAuthoritativeWinner('');
-    setWaitingForPlayersReady(Boolean(activeRoomId));
-    setGameStartedAt(null);
+    setWaitingForPlayersReady(false);
+    setGameStartedAt(initialGameStartedAt);
     setScreen('game');
     const initialSyncedState = {
       pieces: nextPieces,
       turnIndex: 0,
-      turnOrderIds: [],
-      initialTurnOrderIds: [],
+      turnOrderIds: initialTurnOrderIds,
+      initialTurnOrderIds: initialTurnOrderIds,
       completedSeatIds: [],
       rankingSeatIds: [],
       gameEndMode: '' as const,
@@ -2156,8 +2189,8 @@ export function App() {
       captureEffect: null,
       trapEffect: null,
       fallEffect: null,
-      gameStartedAt: null,
-      turnOrderIntro: null,
+      gameStartedAt: initialGameStartedAt,
+      turnOrderIntro: initialTurnOrderIntro,
       pendingTrapPlacement: null,
       rollLockUntil: 0,
       lastMovedPieceIds: [],
@@ -2166,11 +2199,11 @@ export function App() {
       branchChoice: 'outer',
       rollResultReadyAt: 0,
       turnOrderPhase: initialTurnOrderPhase,
-      waitingForPlayersReady: true,
+      waitingForPlayersReady: false,
       gameSeats: nextGameSeats,
       startRequestVersion,
     };
-    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: [], initialTurnOrderIds: [], completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: null, turnOrderIntro: null, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: true, startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
+    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
     savingStateFingerprintRef.current = initialStateFingerprint;
     void measureFirebaseLatency(() => initializeGameState(activeRoomId, initialSyncedState, {
       actorId: localSeatId,
@@ -3360,22 +3393,26 @@ export function App() {
     const shouldSubstituteAsAi = Boolean(finishedRoomId && finishedSeatId && screen === 'game' && !winner);
     const leavingSeat = shouldSubstituteAsAi ? seats.find((seat) => seat.id === finishedSeatId && !seat.isEmpty && !seat.isAI) : undefined;
     const aiName = leavingSeat ? makeUniqueAIName(seats) : '';
-    hostingRoomUserIdRef.current = '';
-    activeRoomIdRef.current = '';
-    confirmedRoomPlayerRef.current = false;
-    setScreen('lobby');
-    setActiveRoomTitle('');
-    setActiveRoomId('');
-    setIsRoomHost(false);
+    if (!finishedRoomId) {
+      hostingRoomUserIdRef.current = '';
+      activeRoomIdRef.current = '';
+      confirmedRoomPlayerRef.current = false;
+    }
+    setScreen(finishedRoomId ? 'waitingRoom' : 'lobby');
+    if (!finishedRoomId) {
+      setActiveRoomTitle('');
+      setActiveRoomId('');
+      setIsRoomHost(false);
+      window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+      window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+      setSeats(createSeats(nickname, playMode, maxPlayers));
+    }
     setCountdown(-1);
     setTurnOrderIds([]);
     setGameStartedAt(null);
     setItemPromptTiming(null);
-    setSeats(createSeats(nickname, playMode, maxPlayers));
     setEndGameDialogOpen(false);
-    window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-    window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-    setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
+    setMessage(finishedRoomId ? '게임이 종료되어 방 대기실로 돌아왔습니다.' : '게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
     if (finishedRoomId && finishedSeatId) {
       if (shouldSubstituteAsAi && leavingSeat) {
         pendingAiSeatIdsRef.current.add(finishedSeatId);
@@ -3384,8 +3421,8 @@ export function App() {
           .finally(() => pendingAiSeatIdsRef.current.delete(finishedSeatId));
         return;
       }
-      void removeRoomPlayer(finishedRoomId, finishedSeatId, { preservePlayingSeatAsAi: false }).catch((error) => {
-        console.warn('게임 종료 후 방 정리에 실패했습니다.', error);
+      void updateRoomStatus(finishedRoomId, 'waiting').catch((error) => {
+        console.warn('게임 종료 후 방 대기실 전환에 실패했습니다.', error);
       });
     }
   }
@@ -3521,6 +3558,7 @@ export function App() {
       allReady={allReady}
       countdown={countdown}
       startStatus={startStatus}
+      roomInGame={roomInGame}
       startCountdownStartsAt={startCountdownStartsAt}
       startCancelDisabled={startCancelDisabled}
       getSeatPieceColor={getSeatPieceColor}
