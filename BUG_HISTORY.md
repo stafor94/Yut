@@ -2927,3 +2927,37 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] `test:game-flow` script worker 제한 확인
 - [ ] CI merged PR QA rerun checked
 - [x] No unrelated UI changes
+
+## 2026-07-05 - 비방장 플레이어 게임 진입 후 순서 정하기 대기 고착
+
+### Symptom
+
+- 비방장 플레이어가 게임 화면에 진입한 뒤 `waitingForOnlineTurnOrder`가 계속 `true`로 남고 순서 정하기 인트로가 시작되지 않았다.
+- 화면에는 “모든 플레이어의 게임 화면 진입을 확인하고 있습니다.” 로그만 남았다.
+
+### Expected behavior
+
+- 게임 초기 상태가 생성되고 플레이어들이 게임 화면에 들어오면 순서 정하기 결과가 저장되어 모든 클라이언트에 전파되어야 한다.
+
+### Actual behavior
+
+- 순서 정하기 시작 및 인트로 완료 처리가 단일 온라인 코디네이터 클라이언트에만 묶여 있었다.
+- 코디네이터 클라이언트가 해당 대기 상태를 진행하지 못하면 다른 온라인 플레이어는 Firestore 트랜잭션으로 안전하게 처리할 수 있어도 로컬 가드에서 차단되어 계속 대기했다.
+
+### Confirmed root cause
+
+- `waitingForPlayersReady` 상태의 초기 순서 확정은 `resolveTurnOrderIntro` 트랜잭션이 이미 중복 방어를 하지만, UI 효과 가드는 `canCoordinateOnlineGame`만 허용했다.
+- 따라서 비코디네이터 플레이어는 `waitingForOnlineTurnOrder` 상태를 관찰해도 초기 순서 확정이나 만료된 인트로 정리에 참여하지 못했다.
+
+### Fix plan
+
+- 초기 온라인 순서 정하기 대기 상태에서는 현재 온라인 플레이어도 idempotent 트랜잭션을 시도할 수 있도록 별도 권한 가드를 둔다.
+- 순서 인트로 완료 정리도 온라인 플레이어가 중복 방어된 트랜잭션으로 수행할 수 있게 한다.
+- 일반 턴 진행, 이동, 스냅샷 저장 권한은 기존 코디네이터 가드를 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Multi-client browser check
+- [x] No unrelated UI redesign
+- [x] No new dependency
