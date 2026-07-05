@@ -1,6 +1,7 @@
 export type YutResultName = '빽도' | '도' | '개' | '걸' | '윷' | '모' | '황금 윷';
 export type YutResult = { name: YutResultName; steps: number; bonus?: boolean };
 export type YutStick = { flat: boolean; marked: boolean };
+export type RollTimingZone = 'perfect' | 'good' | 'normal';
 
 export const STANDARD_YUT_RESULTS: YutResult[] = [
   { name: '도', steps: 1 },
@@ -32,6 +33,55 @@ export function getYutResultFromSticks(sticks: YutStick[], useBackDo = true): Yu
 export function rollYutResult(random = Math.random, useBackDo = true) {
   const sticks = rollYutSticks(random);
   return { sticks, result: getYutResultFromSticks(sticks, useBackDo) };
+}
+
+export function getRollTimingPositionPercent(elapsedMs: number) {
+  const cycleMs = 1000;
+  const halfCycleMs = cycleMs / 2;
+  const cyclePosition = ((elapsedMs % cycleMs) + cycleMs) % cycleMs;
+  const ratio = cyclePosition <= halfCycleMs ? cyclePosition / halfCycleMs : (cycleMs - cyclePosition) / halfCycleMs;
+  return Math.max(0, Math.min(100, ratio * 100));
+}
+
+export function getRollTimingZone(positionPercent: number): RollTimingZone {
+  if (positionPercent >= 45 && positionPercent <= 55) return 'perfect';
+  if ((positionPercent >= 35 && positionPercent < 45) || (positionPercent > 55 && positionPercent <= 65)) return 'good';
+  return 'normal';
+}
+
+export function getFallChanceForTimingZone(zone: RollTimingZone) {
+  if (zone === 'perfect') return 0;
+  if (zone === 'good') return 0.2;
+  return 0.4;
+}
+
+export function shouldFallForTimingZone(zone: RollTimingZone, random = Math.random) {
+  return random() < getFallChanceForTimingZone(zone);
+}
+
+export function rollYutResultWithTiming(zone: RollTimingZone = 'normal', random = Math.random, useBackDo = true) {
+  if (zone !== 'perfect') return rollYutResult(random, useBackDo);
+  const resultRoll = random();
+  const backDoChance = useBackDo ? 0.0625 : 0;
+  const baseWeights = [
+    { result: { name: '빽도', steps: -1 } as YutResult, weight: backDoChance },
+    { result: { name: '도', steps: 1 } as YutResult, weight: 0.25 - backDoChance },
+    { result: { name: '개', steps: 2 } as YutResult, weight: 0.375 },
+    { result: { name: '걸', steps: 3 } as YutResult, weight: 0.25 },
+  ];
+  const nonBonusBaseTotal = baseWeights.reduce((sum, entry) => sum + entry.weight, 0);
+  const nonBonusTargetTotal = Math.max(0, nonBonusBaseTotal - 0.1);
+  const weights = [
+    ...baseWeights.map((entry) => ({ ...entry, weight: entry.weight * (nonBonusTargetTotal / nonBonusBaseTotal) })),
+    { result: { name: '윷', steps: 4, bonus: true } as YutResult, weight: 0.0625 + 0.05 },
+    { result: { name: '모', steps: 5, bonus: true } as YutResult, weight: 0.0625 + 0.05 },
+  ];
+  let cursor = 0;
+  const result = weights.find((entry) => {
+    cursor += entry.weight;
+    return resultRoll < cursor;
+  })?.result ?? weights[weights.length - 1].result;
+  return { sticks: makeDisplaySticks(result), result };
 }
 
 export function makeDisplaySticks(result: YutResult): YutStick[] {

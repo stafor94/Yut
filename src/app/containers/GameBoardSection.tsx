@@ -1,7 +1,7 @@
 import { GameBoard, type BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
-import type { CaptureEffect, Seat, TrapEffect, TrapNode } from '../appState';
+import type { CaptureEffect, FallEffect, Seat, TrapEffect, TrapNode } from '../appState';
 
 type GameBoardSectionProps = {
   pieces: BoardPiece[];
@@ -23,6 +23,7 @@ type GameBoardSectionProps = {
   onBranchChoiceChange: (choice: BranchChoice) => void;
   captureEffect: CaptureEffect | null;
   trapEffect: TrapEffect | null;
+  fallEffect: FallEffect | null;
   trapPlacementNodeIds: string[];
   onSelectTrapNode: (nodeId: string) => void;
 };
@@ -47,6 +48,7 @@ export function GameBoardSection({
   onBranchChoiceChange,
   captureEffect,
   trapEffect,
+  fallEffect,
   trapPlacementNodeIds,
   onSelectTrapNode,
 }: GameBoardSectionProps) {
@@ -78,6 +80,7 @@ export function GameBoardSection({
     selectableNodeIds={trapPlacementNodeIds}
     onSelectNode={onSelectTrapNode}
     boardShaking={Boolean(captureEffect)}
+    showFallEffect={Boolean(fallEffect)}
     isPieceSelectable={(piece) => Boolean(isMyTurn && activeSeat && canSeatControlPiece(activeSeat, piece))}
   />;
 }
