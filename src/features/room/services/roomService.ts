@@ -148,6 +148,10 @@ async function syncRoomPlayerCount(roomId: string) {
 
 export type JoinRoomResult = { role: 'player' | 'spectator'; seatIndex: number | null };
 
+export function isRoomInGame(room: Pick<RoomSummary, 'status'> & Partial<Pick<RoomSummary, 'startStatus'>>) {
+  return room.status === 'playing' || room.startStatus === 'entering' || room.startStatus === 'playing';
+}
+
 export async function joinRoom(roomId: string, params: { userId: string; nickname: string; playMode: 'individual'|'team'; }): Promise<JoinRoomResult> {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const roomRef = doc(db, 'rooms', roomId);
@@ -190,7 +194,7 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
 
       const currentPlayers = seatSnapshots.filter((seatSnapshot) => seatSnapshot.exists()).length;
 
-      if (room.status === 'playing') {
+      if (isRoomInGame(room)) {
         transaction.set(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: existingData.joinedAt ?? serverTimestamp(), lastSeen: serverTimestamp() }, { merge: true });
         transaction.set(roomRef, { emptySince: null, currentPlayers }, { merge: true });
         return { role: 'spectator', seatIndex: null };
@@ -225,7 +229,7 @@ export async function joinRoom(roomId: string, params: { userId: string; nicknam
       return { role: 'player', seatIndex: matchingLockedSeatIndex };
     }
 
-    if (room.status === 'playing') {
+    if (isRoomInGame(room)) {
       transaction.set(playerRef, { nickname: params.nickname, ready: true, color: 'spectator', seatIndex: 99 + Date.now() % 100000, team: '청팀', isSpectator: true, joinedAt: serverTimestamp(), lastSeen: serverTimestamp() }, { merge: true });
       transaction.set(roomRef, { emptySince: null, currentPlayers }, { merge: true });
       return { role: 'spectator', seatIndex: null };
@@ -280,7 +284,7 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
     });
     await Promise.all(stalePlayers.map(async (playerDoc) => {
       const player = playerDoc.data() as RoomPlayer;
-      if (room.status === 'playing' && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) {
+      if (isRoomInGame(room) && !player.isSpectator && Number.isFinite(Number(player.seatIndex))) {
         await setDoc(playerDoc.ref, {
           nickname: `${player.nickname || '플레이어'} AI`,
           ready: true,
@@ -294,7 +298,7 @@ export async function cleanupStaleRooms(staleMs = STALE_PLAYER_DELETE_MS, protec
       if (!player.isSpectator && Number.isFinite(Number(player.seatIndex))) await setDoc(doc(db!, 'rooms', roomDoc.id, 'seats', String(player.seatIndex)), { playerId: playerDoc.id, originalPlayerId: playerDoc.id, currentPlayerId: playerDoc.id, nickname: player.nickname, color: player.color, team: player.team, seatIndex: Number(player.seatIndex), label: `P${Number(player.seatIndex) + 1}`, aiActive: false, status: 'disconnected', updatedAt: serverTimestamp() }, { merge: true });
     }));
     if (stalePlayers.length) await syncRoomPlayerCount(roomDoc.id);
-    if (room.status === 'playing') return;
+    if (isRoomInGame(room)) return;
     const remainingHumans = playersSnapshot.docs.filter((playerDoc) => {
       if (stalePlayers.some((staleDoc) => staleDoc.id === playerDoc.id)) return false;
       const player = playerDoc.data() as RoomPlayer;
