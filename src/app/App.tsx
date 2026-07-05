@@ -1080,7 +1080,7 @@ export function App() {
       }
       else if (countdown >= 0) setCountdown(-1);
       if (room.status === 'playing') setScreen('game');
-      if (room.status === 'waiting' && screen === 'game' && winner) {
+      if (room.status === 'waiting' && screen === 'game' && !winner) {
         setScreen('waitingRoom');
         setCountdown(-1);
         setItemPromptTiming(null);
@@ -2850,7 +2850,7 @@ export function App() {
     else rollYutFor(activeSeat, localRoll, null, { timingZone: rollTimingZone });
   }
 
-  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number } = {}) {
+  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number; rollStackSnapshot?: YutResult[] } = {}) {
     if (winner || movingPieceId || moveInProgressRef.current) return false;
     ensureRollLogExists(seat, result);
     setMoveInProgressState(true);
@@ -2994,10 +2994,12 @@ export function App() {
     const controlledPiecesDone = pieces.filter((piece) => canSeatControlPiece(seat, piece) && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
     if (controlledPiecesDone) addLog(`${playMode === 'team' ? seat.team : getSeatDisplayName(seat)}님의 모든 말이 완주했습니다.`);
     const consumingStackedRoll = stackedRollMode && typeof options.consumeStackedRollIndex === 'number';
-    const remainingRollStack = consumingStackedRoll ? rollStack.filter((_, index) => index !== options.consumeStackedRollIndex) : rollStack;
+    const sourceRollStack = options.rollStackSnapshot ?? rollStack;
+    const remainingRollStack = consumingStackedRoll ? sourceRollStack.filter((_, index) => index !== options.consumeStackedRollIndex) : sourceRollStack;
     let shouldAdvanceTurn = false;
     if (consumingStackedRoll) {
-      shouldAdvanceTurn = remainingRollStack.length === 0;
+      shouldAdvanceTurn = remainingRollStack.length === 0 && !captured;
+      if (captured) addLog('상대 말을 잡아 한 번 더 던질 수 있습니다.');
     } else if (result.bonus && captured) addLog(`${withAndParticle(result.name)} 잡기 보너스로 한 번 더 던질 수 있습니다.`);
     else if (result.bonus) addLog(`${withSubjectParticle(result.name)} 나와 한 번 더 던질 수 있습니다.`);
     else if (captured) addLog('상대 말을 잡아 한 번 더 던질 수 있습니다.');
@@ -3010,9 +3012,9 @@ export function App() {
     clearRoll();
     if (consumingStackedRoll) {
       setRollStack(remainingRollStack);
-      setRollStackClosed(remainingRollStack.length > 0);
-      setSelectedRollStackIndex(remainingRollStack.length === 1 ? 0 : null);
-      if (remainingRollStack.length === 1) {
+      setRollStackClosed(captured ? false : remainingRollStack.length > 0);
+      setSelectedRollStackIndex(!captured && remainingRollStack.length === 1 ? 0 : null);
+      if (!captured && remainingRollStack.length === 1) {
         currentRollRef.current = remainingRollStack[0];
         setRoll(remainingRollStack[0]);
       }
@@ -3141,6 +3143,13 @@ export function App() {
     return { canSeatControlPiece, getSeatById, isSameSide, pieces };
   }
 
+  function doesAiMoveCapture(seat: Seat, piece: BoardPiece, result: YutResult, aiBranchChoice: BranchChoice) {
+    const pathNodeIds = getMovePathNodeIds(piece.nodeId, result.steps, getEffectiveBranchChoice(piece.nodeId, aiBranchChoice));
+    const landedNodeId = pathNodeIds[pathNodeIds.length - 1] ?? piece.nodeId;
+    const finishes = result.steps > 0 && piece.started && pathNodeIds.slice(0, result.steps - 1).includes('n01');
+    return !finishes && pieces.some((target) => !isSameSide(getSeatById(target.ownerId), seat) && target.started && !target.finished && target.nodeId === landedNodeId);
+  }
+
   async function useAiAfterMoveItem(seat: Seat) {
     const item = chooseAiAfterMoveItem({ adjustmentPiece: getPostMoveAdjustmentPiece(seat), items: ownedItems[seat.id] ?? [] });
     if (!item) return false;
@@ -3167,16 +3176,20 @@ export function App() {
       }
       if (stackedRollMode) {
         const aiRollStack: YutResult[] = [];
-        let pendingForcedRoll = nextRoll;
-        do {
-          const aiTimingZone = chooseAiRollTimingZone();
-          setRollTimingFeedback(aiTimingZone);
-          const stackedRoll = pendingForcedRoll ?? rollYutResultWithTiming(aiTimingZone).result;
-          pendingForcedRoll = null;
-          if (!rollYutForStack(seat, stackedRoll, null, { timingZone: aiTimingZone })) return;
-          aiRollStack.push(stackedRoll);
-          await delay(ROLL_ANIMATION_MS + 120);
-        } while (aiRollStack[aiRollStack.length - 1]?.bonus && canContinueAiTurn());
+        const rollAiStackUntilClosed = async (stack: YutResult[], forcedRoll: YutResult | null = null) => {
+          let pendingForcedRoll = forcedRoll;
+          do {
+            const aiTimingZone = chooseAiRollTimingZone();
+            setRollTimingFeedback(aiTimingZone);
+            const stackedRoll = pendingForcedRoll ?? rollYutResultWithTiming(aiTimingZone).result;
+            pendingForcedRoll = null;
+            if (!rollYutForStack(seat, stackedRoll, null, { timingZone: aiTimingZone })) return false;
+            stack.push(stackedRoll);
+            await delay(ROLL_ANIMATION_MS + 120);
+          } while (stack[stack.length - 1]?.bonus && canContinueAiTurn());
+          return true;
+        };
+        if (!await rollAiStackUntilClosed(aiRollStack, nextRoll)) return;
         let remainingRolls = [...aiRollStack];
         while (remainingRolls.length && canContinueAiTurn()) {
           const rankedMoves = remainingRolls
@@ -3187,9 +3200,11 @@ export function App() {
           if (!selected) break;
           setSelectedRollStackIndex(selected.index);
           setBranchChoice(selected.move.branchChoice);
+          const earnsCaptureRoll = doesAiMoveCapture(seat, selected.move.piece, selected.stackRoll, selected.move.branchChoice);
           await delay(AI_MOVE_DELAY_MS);
-          await movePiece(selected.move.piece.id, selected.stackRoll, seat, 0, selected.move.branchChoice, { consumeStackedRollIndex: selected.index });
+          await movePiece(selected.move.piece.id, selected.stackRoll, seat, 0, selected.move.branchChoice, { consumeStackedRollIndex: selected.index, rollStackSnapshot: remainingRolls });
           remainingRolls = remainingRolls.filter((_, index) => index !== selected.index);
+          if (earnsCaptureRoll && canContinueAiTurn() && !await rollAiStackUntilClosed(remainingRolls)) return;
         }
         if (remainingRolls.length === 0 && canContinueAiTurn()) await useAiAfterMoveItem(seat);
         return;
@@ -3375,43 +3390,48 @@ export function App() {
     }
   }
 
+  function returnToWaitingRoom() {
+    const finishedRoomId = activeRoomId;
+    setScreen(finishedRoomId ? 'waitingRoom' : 'lobby');
+    setCountdown(-1);
+    setItemPromptTiming(null);
+    setEndGameDialogOpen(false);
+    setMessage(finishedRoomId ? '방 대기실로 돌아왔습니다.' : '첫 대기화면으로 돌아왔습니다.');
+    if (finishedRoomId) {
+      void updateRoomStatus(finishedRoomId, 'waiting').catch((error) => {
+        console.warn('완주 후 방 대기실 전환에 실패했습니다.', error);
+      });
+    }
+  }
+
   function finishGame() {
     const finishedRoomId = activeRoomId;
     const finishedSeatId = localSeatId;
     const shouldSubstituteAsAi = Boolean(finishedRoomId && finishedSeatId && screen === 'game' && !winner);
     const leavingSeat = shouldSubstituteAsAi ? seats.find((seat) => seat.id === finishedSeatId && !seat.isEmpty && !seat.isAI) : undefined;
     const aiName = leavingSeat ? makeUniqueAIName(seats) : '';
-    if (!finishedRoomId) {
-      hostingRoomUserIdRef.current = '';
-      activeRoomIdRef.current = '';
-      confirmedRoomPlayerRef.current = false;
-    }
-    setScreen(finishedRoomId ? 'waitingRoom' : 'lobby');
-    if (!finishedRoomId) {
-      setActiveRoomTitle('');
-      setActiveRoomId('');
-      setIsRoomHost(false);
-      window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-      window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-      setSeats(createSeats(nickname, playMode, maxPlayers));
-    }
+    hostingRoomUserIdRef.current = '';
+    activeRoomIdRef.current = '';
+    confirmedRoomPlayerRef.current = false;
+    setScreen('lobby');
+    setActiveRoomTitle('');
+    setActiveRoomId('');
+    setActiveRoomHostId('');
+    setIsRoomHost(false);
+    window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+    window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+    setSeats(createSeats(nickname, playMode, maxPlayers));
     setCountdown(-1);
     setTurnOrderIds([]);
     setGameStartedAt(null);
     setItemPromptTiming(null);
     setEndGameDialogOpen(false);
-    setMessage(finishedRoomId ? '게임이 종료되어 방 대기실로 돌아왔습니다.' : '게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
-    if (finishedRoomId && finishedSeatId) {
-      if (shouldSubstituteAsAi && leavingSeat) {
-        pendingAiSeatIdsRef.current.add(finishedSeatId);
-        void updateRoomPlayer(finishedRoomId, finishedSeatId, getAiRoomPlayerUpdate(leavingSeat, aiName))
-          .catch((error) => console.warn('게임 종료 후 AI 전환에 실패했습니다.', error))
-          .finally(() => pendingAiSeatIdsRef.current.delete(finishedSeatId));
-        return;
-      }
-      void updateRoomStatus(finishedRoomId, 'waiting').catch((error) => {
-        console.warn('게임 종료 후 방 대기실 전환에 실패했습니다.', error);
-      });
+    setMessage('게임을 나와 로비로 이동했습니다.');
+    if (finishedRoomId && finishedSeatId && shouldSubstituteAsAi && leavingSeat) {
+      pendingAiSeatIdsRef.current.add(finishedSeatId);
+      void updateRoomPlayer(finishedRoomId, finishedSeatId, getAiRoomPlayerUpdate(leavingSeat, aiName))
+        .catch((error) => console.warn('게임 종료 후 AI 전환에 실패했습니다.', error))
+        .finally(() => pendingAiSeatIdsRef.current.delete(finishedSeatId));
     }
   }
 
@@ -3430,7 +3450,13 @@ export function App() {
       .then((result) => {
         if (result.status === 'rejected' || result.status === 'unsupported') {
           setMessage(result.reason ?? '이어서 진행 요청을 처리하지 못했습니다.');
+          return;
         }
+        setScreen('game');
+        setMessage('완주하지 못한 플레이어가 이어서 진행합니다.');
+        void updateRoomStatus(activeRoomId, 'playing').catch((error) => {
+          console.warn('이어서 진행 후 게임중 상태 반영에 실패했습니다.', error);
+        });
       })
       .catch((error) => setMessage(error instanceof Error ? error.message : '이어서 진행 요청을 처리하지 못했습니다.'))
       .finally(() => deletePendingLocalRemoteAction(actionKey));
@@ -3640,6 +3666,7 @@ export function App() {
       winnerText={renderWinnerText()}
       onBranchChoiceChange={setBranchChoice}
       onContinueRace={continueRace}
+      onReturnToWaitingRoom={returnToWaitingRoom}
       onFinishGame={finishGame}
       onGoldenYutSelect={(choice) => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}
       onMoveSelectedPiece={() => moveSelectedPiece()}

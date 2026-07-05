@@ -144,14 +144,16 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
   }));
   if (isAuthoritativeCommitReduction(baseReduction) && room.stackedRollMode && rollStackIndex !== null) {
     const remainingRollStack = rollStack.filter((_, index) => index !== rollStackIndex);
-    const nextTurnIndex = remainingRollStack.length > 0 ? Number(state.turnIndex ?? 0) : (Number(state.turnIndex ?? 0) + 1) % Math.max((state.turnOrderIds ?? []).length, 1);
+    const captured = Boolean(baseReduction.payload?.captured);
+    const shouldAdvanceTurn = remainingRollStack.length === 0 && !captured;
+    const nextTurnIndex = shouldAdvanceTurn ? (Number(state.turnIndex ?? 0) + 1) % Math.max((state.turnOrderIds ?? []).length, 1) : Number(state.turnIndex ?? 0);
     baseReduction.patch = {
       ...baseReduction.patch,
       turnIndex: nextTurnIndex,
       roll: null,
       rollStack: remainingRollStack,
-      selectedRollStackIndex: remainingRollStack.length === 1 ? 0 : null,
-      rollStackClosed: remainingRollStack.length > 0,
+      selectedRollStackIndex: !captured && remainingRollStack.length === 1 ? 0 : null,
+      rollStackClosed: captured ? false : remainingRollStack.length > 0,
       rollResultReadyAt: 0,
     };
     baseReduction.payload = {
@@ -159,7 +161,7 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
       rollStackIndex,
       remainingRollStack,
       nextTurnIndex,
-      extraTurn: remainingRollStack.length > 0,
+      extraTurn: !shouldAdvanceTurn,
     };
   }
 
