@@ -789,6 +789,15 @@ aside.players,
   background: rgba(242, 184, 75, .16);
 }
 
+.game-end-guide.room-rule-badges {
+  display: flex;
+  gap: 6px;
+}
+
+.game-end-guide .room-rule-badge {
+  font-size: .76rem;
+}
+
 .board-node.start {
   background: linear-gradient(145deg, #2f6b4f, #224236);
   color: #fff;

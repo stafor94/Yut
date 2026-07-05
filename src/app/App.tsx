@@ -75,7 +75,6 @@ import {
 } from './appState';
 import {
   delay,
-  formatRoomRuleText,
   formatStoredLogSequence,
   getEffectiveBranchChoice,
   getMovePreviewNodeIds,

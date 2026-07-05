@@ -44,7 +44,20 @@ export const hasFinalConsonant = (text: string) => {
 export const withSubjectParticle = (text: string) => `${text}${hasFinalConsonant(text) ? '이' : '가'}`;
 export const withAndParticle = (text: string) => `${text}${hasFinalConsonant(text) ? '과' : '와'}`;
 export const formatStoredLogSequence = (log: GameLog, displayIndex?: number) => `#${String(displayIndex ?? log.id).padStart(3, '0')}`;
-export const formatRoomRuleText = (mode: PlayMode, players: 2 | 3 | 4, pieces: PieceCount, itemsEnabled: boolean) => `${mode === 'team' ? '팀전' : '개인전'} · ${players}인 · ${mode === 'team' ? `팀별 말 ${pieces}개` : `말 ${pieces}개`} · 아이템 ${itemsEnabled ? 'ON' : 'OFF'}`;
+export type RoomRuleBadge = {
+  key: 'mode' | 'players' | 'pieces' | 'items';
+  label: string;
+  tone: string;
+};
+
+export const getRoomRuleBadges = (mode: PlayMode, players: 2 | 3 | 4, pieces: PieceCount, itemsEnabled: boolean): RoomRuleBadge[] => [
+  { key: 'mode', label: mode === 'team' ? '팀전' : '개인전', tone: mode === 'team' ? 'team' : 'individual' },
+  { key: 'players', label: `${players}인`, tone: 'players' },
+  { key: 'pieces', label: mode === 'team' ? `팀별 말 ${pieces}개` : `말 ${pieces}개`, tone: 'pieces' },
+  { key: 'items', label: `아이템 ${itemsEnabled ? 'ON' : 'OFF'}`, tone: itemsEnabled ? 'items-on' : 'items-off' },
+];
+
+export const formatRoomRuleText = (mode: PlayMode, players: 2 | 3 | 4, pieces: PieceCount, itemsEnabled: boolean) => getRoomRuleBadges(mode, players, pieces, itemsEnabled).map((badge) => badge.label).join(' · ');
 
 export const getEffectiveBranchChoice = (nodeId: string, branchChoice: BranchChoice) => BRANCH_NODE_IDS.includes(nodeId as typeof BRANCH_NODE_IDS[number]) ? branchChoice : 'outer';
 
