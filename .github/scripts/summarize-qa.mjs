@@ -124,7 +124,7 @@ const jobResultSummary = [
 ].join('\n');
 
 if (failedOrSkippedJobs.some(([name]) => name === 'Deploy Pages') && playwrightLog.trim().length === 0) {
-  inferredCauses.unshift('`Deploy Pages` job이 실패해 배포 이후 QA job이 실행되지 않았고 Playwright 로그가 생성되지 않았습니다. 현재 workflow는 Pages 배포 실패 시 20초 대기 후 1회만 재시도합니다. 재시도 후에도 실패했다면 GitHub Pages의 일시적인 배포 실패/잠금/지연, Pages 설정, 또는 deploy-pages step annotation을 먼저 확인하세요. Playwright 테스트는 실행되지 않았으므로 테스트 timeout이나 앱 동작 실패로 단정하지 마세요.');
+  inferredCauses.unshift('`Deploy Pages` job이 실패해 배포 이후 QA job이 실행되지 않았고 Playwright 로그가 생성되지 않았습니다. 현재 workflow는 Pages 배포 슬롯 대기 후 단일 deploy-pages step을 더 긴 timeout/오류 허용 횟수로 실행합니다. 그래도 실패했다면 GitHub Pages의 일시적인 배포 실패/잠금/지연, Pages 설정, 또는 deploy-pages step annotation을 먼저 확인하세요. Playwright 테스트는 실행되지 않았으므로 테스트 timeout이나 앱 동작 실패로 단정하지 마세요.');
 }
 
 const failedTestsSummary = [
