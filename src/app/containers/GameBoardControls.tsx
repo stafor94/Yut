@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import type { BranchChoice } from '../../game-core/board/board';
 import type { RollTimingZone, YutResult } from '../../game-core/roll';
@@ -54,6 +54,7 @@ export function GameBoardControls({
   waitingForOnlineTurnOrder,
   hasActiveTurnOrderIntro,
 }: GameBoardControlsProps) {
+  const controlsRef = useRef<HTMLDivElement | null>(null);
   const rollTimingMeterRef = useRef<HTMLDivElement | null>(null);
   const rollTimingOrbRef = useRef<HTMLSpanElement | null>(null);
   const getVisibleRollTimingPositionPercent = () => {
@@ -66,6 +67,15 @@ export function GameBoardControls({
     const orbCenterX = orbRect.left + orbRect.width / 2;
     return Math.max(0, Math.min(100, ((orbCenterX - meterRect.left) / meterRect.width) * 100));
   };
+  useEffect(() => {
+    if (!canRollNow || roll || typeof window === 'undefined') return undefined;
+    if (!window.matchMedia('(orientation: portrait)').matches) return undefined;
+    const timer = window.setTimeout(() => {
+      controlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [activeSeatId, canRollNow, roll]);
+
   const handleRollButtonClick = () => {
     if (roll) {
       onMoveSelectedPiece();
@@ -81,7 +91,7 @@ export function GameBoardControls({
         : waitingForOnlineTurnOrder ? '순서 정하기 대기 중'
           : hasActiveTurnOrderIntro ? '결과 확인 중' : '윷 던지기';
 
-  return <div className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length ? 'item-prompt-mode' : ''}`}>
+  return <div ref={controlsRef} className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length ? 'item-prompt-mode' : ''}`}>
     {activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
       <div><strong>아이템을 사용할까요?</strong></div>
       <div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${getItemPromptTimeoutMs(localSeatId)}ms` } as CSSProperties} aria-hidden="true"><span></span></div>
