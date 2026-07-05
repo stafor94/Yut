@@ -259,6 +259,36 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 - [ ] Browser screenshot checked, if applicable
 - [ ] Mobile layout checked, if applicable
 
+## 2026-07-05 - QA cleanup-after 성공 이후 2시간 초과 rooms 잔존
+
+### Symptom
+
+- Merged PR QA Actions가 성공했는데도 Firestore `rooms` 컬렉션에 여러 문서가 남았다.
+- QA 종료 후 오래된 방은 하위 컬렉션까지 삭제되어야 한다.
+
+### Expected behavior
+
+- `qa-cleanup-after`는 Firebase 설정 누락을 성공으로 숨기지 않는다.
+- 생성 후 2시간이 지난 방은 제목과 활성 상태와 무관하게 하위 컬렉션까지 삭제한다.
+- cleanup 이후 남은 방이 있으면 Actions 로그에 방별 미삭제 사유를 남긴다.
+
+### Confirmed root cause
+
+- cleanup helper가 Firebase 설정을 읽지 못하면 성공 종료할 수 있어 실제 삭제 여부를 Actions 성공 상태만으로 보장하기 어려웠다.
+- cleanup-after 로그에는 cleanup 이후 남은 `rooms` 문서 목록과 방별 미삭제 사유가 없어, 남은 방이 QA 대상인지/2시간 미만인지/삭제 실패인지 구분하기 어려웠다.
+
+### Correct fix plan
+
+- Firebase 설정이 없으면 cleanup job을 실패 처리한다.
+- QA helper의 시간 기준 삭제 대상을 생성 후 2시간 초과 방으로 명확히 하고, 기존 하위 컬렉션 우선 삭제 경로를 그대로 사용한다.
+- `qa-cleanup-after`에서 남은 `rooms` 문서와 미삭제 사유를 요약 출력한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Cleanup helper syntax/import check succeeds
+- [ ] Merged PR QA cleanup rerun checked
+
 ## 2026-07-05 - QA cleanup job Transaction too big 실패
 
 ### Symptom

@@ -3,7 +3,7 @@ import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, getFirest
 import { loadFirebaseConfig } from './env.js';
 
 const roomSubcollections = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'];
-const inactiveRoomMaxAgeMs = 60 * 60 * 1000;
+const oldRoomMaxAgeMs = 2 * 60 * 60 * 1000;
 const roomDeleteBatchSize = 25;
 let dbPromise;
 
@@ -14,11 +14,41 @@ function getTimestampMillis(value) {
   return 0;
 }
 
-export function isInactiveRoom(room, now = Date.now()) {
+function getRoomAgeMs(room, now = Date.now()) {
   const createdAt = getTimestampMillis(room.createdAt);
-  const expired = Boolean(createdAt && now - createdAt > inactiveRoomMaxAgeMs);
+  return createdAt ? now - createdAt : 0;
+}
+
+export function isOldRoom(room, now = Date.now()) {
+  return getRoomAgeMs(room, now) >= oldRoomMaxAgeMs;
+}
+
+export function isInactiveRoom(room, now = Date.now()) {
   const emptyGhost = room.currentPlayers !== undefined && Number(room.currentPlayers) <= 0;
-  return room.status === 'finished' || expired || emptyGhost;
+  return room.status === 'finished' || isOldRoom(room, now) || emptyGhost;
+}
+
+export function summarizeRemainingRoomReason(room, now = Date.now()) {
+  const reasons = [];
+  const createdAt = getTimestampMillis(room.createdAt);
+  const ageMs = getRoomAgeMs(room, now);
+  const ageMinutes = createdAt ? Math.floor(ageMs / 60000) : null;
+
+  if (!createdAt) reasons.push('createdAt 없음: 2시간 초과 여부를 판단할 수 없음');
+  else if (ageMs < oldRoomMaxAgeMs) reasons.push(`생성 후 ${ageMinutes}분 경과: 2시간 미만`);
+  else reasons.push(`생성 후 ${ageMinutes}분 경과: 2시간 이상이라 삭제 대상이지만 남아 있음`);
+
+  if (room.status === 'finished') reasons.push('status=finished라 삭제 대상이지만 남아 있음');
+  else reasons.push(`status=${String(room.status ?? '없음')}`);
+
+  if (room.currentPlayers !== undefined && Number(room.currentPlayers) <= 0) reasons.push(`currentPlayers=${String(room.currentPlayers)}라 삭제 대상이지만 남아 있음`);
+  else reasons.push(`currentPlayers=${String(room.currentPlayers ?? '없음')}`);
+
+  const title = String(room.title ?? '');
+  if (title.startsWith('QA-')) reasons.push('title이 QA-로 시작해 QA 삭제 대상이지만 남아 있음');
+  else reasons.push('title이 QA-로 시작하지 않아 QA 이름 기준 삭제 대상은 아님');
+
+  return reasons.join('; ');
 }
 
 export async function getTestDb() {
@@ -96,7 +126,7 @@ export async function deleteMissingParentRoomSubcollectionsForQa() {
   return deletedRoomIds;
 }
 
-export async function deleteInactiveRoomsForQa() {
+export async function deleteInactiveRoomsForQa(onFailure) {
   const db = await getTestDb();
   if (!db) return [];
   const now = Date.now();
@@ -110,7 +140,12 @@ export async function deleteInactiveRoomsForQa() {
     .filter((room) => isInactiveRoom(room.data, now));
 
   for (const room of inactiveRooms) {
-    await deleteRoomForQa(room.id);
+    try {
+      await deleteRoomForQa(room.id);
+    } catch (error) {
+      if (onFailure) onFailure(room, error);
+      else throw error;
+    }
   }
   return inactiveRooms;
 }
