@@ -108,6 +108,8 @@ export type GameStateFingerprintInput = {
   turnOrderPhase: TurnOrderPhase | null;
   waitingForPlayersReady: boolean;
   startRequestVersion: number;
+  logs?: GameLog[];
+  gameSeats?: GameSeatSnapshot[];
 };
 
 export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JSON.stringify({
@@ -136,6 +138,8 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
   turnOrderPhase: state.turnOrderPhase,
   waitingForPlayersReady: state.waitingForPlayersReady,
   startRequestVersion: state.startRequestVersion,
+  logs: state.logs ?? [],
+  gameSeats: state.gameSeats ?? [],
 });
 
 export const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'];
