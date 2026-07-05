@@ -1,15 +1,18 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { ItemCard } from '../../features/items/components/ItemCard';
 import type { ItemType } from '../../features/items/logic/items';
-import { TEAM_COLORS, type GameLog, type PlayMode, type Seat } from '../appState';
+import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
 import { GameLogPanel, PlayersPanel } from '../screens/GameScreen';
+import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
 
 type GamePlayersPanelProps = {
   title: string;
-  ruleText: string;
+  playMode: PlayMode;
+  maxPlayers: 2 | 3 | 4;
+  pieceCount: PieceCount;
+  itemMode: boolean;
   seats: Seat[];
   activeSeatId?: string;
-  playMode: PlayMode;
   spectators: Seat[];
   ownedItems: Record<string, ItemType[]>;
   localSeatId: string;
@@ -21,10 +24,12 @@ type GamePlayersPanelProps = {
 
 export function GamePlayersPanel({
   title,
-  ruleText,
+  playMode,
+  maxPlayers,
+  pieceCount,
+  itemMode,
   seats,
   activeSeatId,
-  playMode,
   spectators,
   ownedItems,
   localSeatId,
@@ -33,9 +38,12 @@ export function GamePlayersPanel({
   onUseItem,
   onOpenEndGameDialog,
 }: GamePlayersPanelProps) {
+  const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode);
+  const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode);
+
   return <PlayersPanel>
     <h2>{title}</h2>
-    <p className="game-end-guide">{ruleText}</p>
+    <p className="game-end-guide room-rule-badges game-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</p>
     {seats.map((seat) => {
       const statusText = seat.isAI ? 'AI' : '유저';
       const displayName = getPlayerCardName(seat);

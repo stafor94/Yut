@@ -979,6 +979,35 @@
   gap: 14px;
 }
 
+.room-rule-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.room-rule-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(42, 30, 23, .08);
+  font-size: .78rem;
+  font-weight: 1000;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 6px 14px rgba(82, 49, 18, .08);
+}
+
+.room-rule-badge.individual { background: rgba(47, 107, 79, .13); color: #245541; }
+.room-rule-badge.team { background: rgba(58, 120, 194, .14); color: #2f5f9b; }
+.room-rule-badge.players { background: rgba(242, 184, 75, .22); color: #7a4a26; }
+.room-rule-badge.pieces { background: rgba(217, 74, 56, .12); color: #9f2f24; }
+.room-rule-badge.items-on { background: rgba(92, 143, 74, .16); color: #2f6b4f; }
+.room-rule-badge.items-off { background: rgba(42, 30, 23, .1); color: rgba(42, 30, 23, .7); }
+
 .lobby-room-card {
   --lobby-room-action-width: 62px;
   position: relative;
@@ -1024,7 +1053,7 @@
 }
 
 .lobby-room-card .lobby-room-meta {
-  display: block;
+  display: flex;
   min-width: 0;
 }
 
@@ -1394,7 +1423,8 @@
   font-weight: 900;
 }
 .start-status strong { color: var(--red); font-size: clamp(1rem, 2vw, 1.18rem); }
-.start-status span { color: rgba(42, 30, 23, .66); font-size: .92rem; }
+.start-status > span { color: rgba(42, 30, 23, .66); font-size: .92rem; }
+.start-status .room-rule-badge { font-size: .8rem; }
 .start-status.ready { background: rgba(47, 107, 79, .1); border-color: rgba(47, 107, 79, .2); }
 .start-status.ready strong { color: var(--green); }
 
@@ -1495,21 +1525,34 @@
 .seat-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px; min-width: 0; }
 .seat-status-actions { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; min-width: 0; }
 .seat-row b { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 14px; background: #2a1e17; color: #fff; }
-.seat-row em { border-radius: 999px; padding: 5px 9px; background: rgba(47, 107, 79, .1); color: var(--green); font-size: .8rem; font-weight: 1000; font-style: normal; white-space: nowrap; }
-.seat-ready-label {
-  display: inline-grid;
-  place-items: center;
-  border-radius: 999px;
-  padding: 5px 9px;
-  background: rgba(93, 178, 84, .16);
-  color: #2f7d32;
-  font-size: .76rem;
-  font-weight: 1000;
-  white-space: nowrap;
-}
+.seat-row em,
+.seat-ready-label,
 .seat-row .ai-add-button,
 .seat-row .ai-remove-button,
-.seat-row .kick-player-button { width: auto; min-height: 0; padding: 5px 8px; border-radius: 999px; font-size: .76rem; line-height: 1; }
+.seat-row .kick-player-button {
+  display: inline-grid;
+  place-items: center;
+  min-height: 26px;
+  width: auto;
+  min-width: 0;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: .8rem;
+  font-weight: 1000;
+  line-height: 1;
+  white-space: nowrap;
+}
+.seat-row em { background: rgba(47, 107, 79, .1); color: var(--green); font-style: normal; }
+.seat-ready-label {
+  background: rgba(93, 178, 84, .16);
+  color: #2f7d32;
+}
+.seat-row .ai-remove-button {
+  border-color: rgba(217, 74, 56, .2);
+  background: rgba(217, 74, 56, .12);
+  color: var(--red);
+  box-shadow: 0 8px 18px rgba(217, 74, 56, .12);
+}
 .seat-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: clamp(1rem, 2vw, 1.18rem); color: #2a1e17; }
 .compact-ready-card.empty .seat-row em { background: rgba(217, 74, 56, .1); color: var(--red); }
 .compact-ready-card select { width: 100%; padding: 10px 12px; border-radius: 13px; }
