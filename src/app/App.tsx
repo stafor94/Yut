@@ -330,6 +330,8 @@ export function App() {
   const isOnlinePlayer = onlineGameRole === 'player';
   const onlineGameCoordinatorSeatId = getOnlineGameCoordinatorSeatId(playableSeats);
   const canCoordinateOnlineGame = !activeRoomId || Boolean(isOnlinePlayer && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
+  const canResolveInitialOnlineTurnOrder = canCoordinateOnlineGame || Boolean(activeRoomId && isOnlinePlayer && waitingForPlayersReady);
+  const canCompleteInitialOnlineTurnOrderIntro = canCoordinateOnlineGame || Boolean(activeRoomId && isOnlinePlayer);
   const canManageRoom = isRoomManager;
   const gameExitDescription = activeRoomId ? '현재 방에서 나가 로비로 이동합니다. 모든 사람 플레이어가 나가면 방이 종료됩니다.' : 'AI가 대신 플레이하게 됩니다.';
   const isMyTurn = activeSeat?.id === localSeatId && !activeSeat.isAI && !isSpectator;
@@ -1523,7 +1525,7 @@ export function App() {
   }, [turnOrderIntro?.readyAt]);
 
   useEffect(() => {
-    if (!activeRoomId || !canCoordinateOnlineGame || screen !== 'game' || !turnOrderIntro?.readyAt) return undefined;
+    if (!activeRoomId || !canCompleteInitialOnlineTurnOrderIntro || screen !== 'game' || !turnOrderIntro?.readyAt) return undefined;
     const readyAt = turnOrderIntro.readyAt;
     const completeIntro = () => {
       if (completingTurnOrderIntroRef.current.has(readyAt)) return;
@@ -1537,7 +1539,7 @@ export function App() {
     const delayMs = Math.max(0, readyAt - Date.now());
     const timer = window.setTimeout(completeIntro, delayMs);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, canCoordinateOnlineGame, localSeatId, screen, turnOrderIntro?.readyAt]);
+  }, [activeRoomId, canCompleteInitialOnlineTurnOrderIntro, localSeatId, screen, turnOrderIntro?.readyAt]);
 
   useEffect(() => {
     if (rollLockUntil <= Date.now()) return undefined;
@@ -1764,17 +1766,17 @@ export function App() {
   }, [activeRoomId, currentUserId, screen, startRequestVersion]);
 
   useEffect(() => {
-    if (!activeRoomId || !canCoordinateOnlineGame || screen !== 'game' || !waitingForPlayersReady || turnOrderIntro || turnOrderIds.length > 0 || !startRequestVersion || !allHumansEnteredGame) return;
+    if (!activeRoomId || !canResolveInitialOnlineTurnOrder || screen !== 'game' || !waitingForPlayersReady || turnOrderIntro || turnOrderIds.length > 0 || !startRequestVersion || !allHumansEnteredGame) return;
     beginTurnOrderIntro();
-  }, [activeRoomId, allHumansEnteredGame, canCoordinateOnlineGame, screen, startRequestVersion, turnOrderIds.length, turnOrderIntro, waitingForPlayersReady]);
+  }, [activeRoomId, allHumansEnteredGame, canResolveInitialOnlineTurnOrder, screen, startRequestVersion, turnOrderIds.length, turnOrderIntro, waitingForPlayersReady]);
 
   useEffect(() => {
-    if (!activeRoomId || !canCoordinateOnlineGame || screen !== 'game' || !waitingForPlayersReady || turnOrderIntro || turnOrderIds.length > 0 || !startRequestVersion || allHumansEnteredGame || !allReady || !pieces.length) return undefined;
+    if (!activeRoomId || !canResolveInitialOnlineTurnOrder || screen !== 'game' || !waitingForPlayersReady || turnOrderIntro || turnOrderIds.length > 0 || !startRequestVersion || allHumansEnteredGame || !allReady || !pieces.length) return undefined;
     const timer = window.setTimeout(() => {
       if (!allHumansEnteredGame) beginTurnOrderIntro();
     }, TURN_ORDER_PRESENCE_FALLBACK_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, allHumansEnteredGame, allReady, canCoordinateOnlineGame, pieces.length, screen, startRequestVersion, turnOrderIds.length, turnOrderIntro, waitingForPlayersReady]);
+  }, [activeRoomId, allHumansEnteredGame, allReady, canResolveInitialOnlineTurnOrder, pieces.length, screen, startRequestVersion, turnOrderIds.length, turnOrderIntro, waitingForPlayersReady]);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || isMyTurn || winner) return undefined;
