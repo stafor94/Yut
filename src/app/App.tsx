@@ -993,7 +993,7 @@ export function App() {
         } else if (restoredAsHost) {
           setSeats(createSeats(nickname, storedRoom.playMode, restoredMaxPlayers).map((seat) => seat.isHost ? { ...seat, id: currentUser.uid } : seat));
         }
-        setScreen(storedRoom.status === 'playing' ? 'game' : 'waitingRoom');
+        setScreen(isRoomInGame(storedRoom) ? 'game' : 'waitingRoom');
         setLoadingMessage('');
         setMessage('참여 중이던 방에 다시 입장했습니다.');
       } catch (error) {
@@ -1079,9 +1079,10 @@ export function App() {
         setCountdown(now >= nextCountdownStartsAt ? Math.max(1, Math.ceil((nextCountdownEndsAt - now) / 1000)) : -1);
       }
       else if (countdown >= 0) setCountdown(-1);
-      if (room.status === 'playing') setScreen('game');
+      const roomCurrentlyInGame = isRoomInGame(room);
+      if (roomCurrentlyInGame) setScreen('game');
       const startFlowStillActive = nextStartStatus === 'requested' || nextStartStatus === 'entering';
-      if (room.status === 'waiting' && screen === 'game' && !winner && !startFlowStillActive) {
+      if (!roomCurrentlyInGame && room.status === 'waiting' && screen === 'game' && !winner && !startFlowStillActive) {
         setScreen('waitingRoom');
         setCountdown(-1);
         setItemPromptTiming(null);
