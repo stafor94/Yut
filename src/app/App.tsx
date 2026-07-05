@@ -1188,11 +1188,11 @@ export function App() {
     return true;
   }
 
-  function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false) {
+  function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false, fallCount = 0) {
     if (lastAnimatedRollKeyRef.current === key) return;
     lastAnimatedRollKeyRef.current = key;
     if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
-    setRollAnimation({ id: Date.now(), result, sticks, turnOrder });
+    setRollAnimation({ id: Date.now(), result, sticks, turnOrder, fallCount });
     rollAnimationTimerRef.current = window.setTimeout(() => {
       setRollAnimation(null);
       rollAnimationTimerRef.current = null;
@@ -2469,7 +2469,12 @@ export function App() {
     addLog(`${getSeatDisplayName(seat)}님이 ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`);
     return nextRoll;
   }
-  function applyLocalFall(seat: Seat, timingZone: RollTimingZone, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean } = {}) {
+  function applyLocalFall(seat: Seat, timingZone: RollTimingZone, displayRoll: YutResult, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean } = {}) {
+    const fallStartedAt = Date.now();
+    const fallCount = Math.floor(Math.random() * 4) + 1;
+    rollInProgressRef.current = true;
+    rollInProgressStartedAtRef.current = fallStartedAt;
+    setRollInProgress(true);
     setShieldedPieceIds([]);
     setRoll(null);
     currentRollRef.current = null;
@@ -2477,12 +2482,19 @@ export function App() {
     setBranchChoice('outer');
     setLastMovedPieceIds([]);
     setLastMovedSeatId(seat.id);
-    setFallEffect({ id: Date.now(), seatId: seat.id, timingZone });
-    setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
-    addLog(`${getSeatDisplayName(seat)}님이 낙이 나와 차례를 넘깁니다.`);
-    if (options.recordSequence !== false) {
-      pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut_fall:${seat.id}:${turnIndex}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, fallOccurred: true, rollTimingZone: timingZone }, action: sourceAction ?? null };
-    }
+    setFallEffect({ id: fallStartedAt, seatId: seat.id, timingZone });
+    playRollAnimationOnce(displayRoll, makeDisplaySticks(displayRoll), `fall:${seat.id}:${turnIndex}:${fallStartedAt}`, false, fallCount);
+    playSfx('roll');
+    window.setTimeout(() => {
+      rollInProgressRef.current = false;
+      rollInProgressStartedAtRef.current = 0;
+      setRollInProgress(false);
+      setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+      addLog(`${getSeatDisplayName(seat)}님이 낙이 나와 차례를 넘깁니다.`);
+      if (options.recordSequence !== false) {
+        pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut_fall:${seat.id}:${turnIndex}:${fallStartedAt}`, payload: { turnIndex, activeSeatId: seat.id, fallOccurred: true, rollTimingZone: timingZone }, action: sourceAction ?? null };
+      }
+    }, ROLL_ANIMATION_MS);
   }
 
   function reportTurnActionBlocked(type: 'roll_yut' | 'move_piece', reasons: string[], fallbackMessage: string) {
@@ -2613,7 +2625,7 @@ export function App() {
     }
     if (!options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
     const rollTimingZone = options.timedOut ? 'normal' : getCurrentRollTimingZone();
-    setRollTimingFeedback(rollTimingZone === 'normal' ? null : rollTimingZone);
+    setRollTimingFeedback(rollTimingZone);
     const fallOccurred = !forcedRoll && shouldFallForTimingZone(rollTimingZone);
     if (activeRoomId) {
       const localRoll = forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result;
@@ -2627,7 +2639,7 @@ export function App() {
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'roll_yut' as const, actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) };
       const optimisticRoll = fallOccurred ? null : rollYutFor(activeSeat, localRoll, action, { recordSequence: false });
-      if (fallOccurred) applyLocalFall(activeSeat, rollTimingZone, action, { recordSequence: false });
+      if (fallOccurred) applyLocalFall(activeSeat, rollTimingZone, localRoll, action, { recordSequence: false });
       if (!fallOccurred && !optimisticRoll) {
         deletePendingLocalRemoteAction(actionKey);
         localClientMutationIdsRef.current.delete(actionKey);
@@ -2676,7 +2688,7 @@ export function App() {
       return;
     }
     if (fallOccurred) {
-      applyLocalFall(activeSeat, rollTimingZone);
+      applyLocalFall(activeSeat, rollTimingZone, forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result);
       return;
     }
     setShieldedPieceIds([]);

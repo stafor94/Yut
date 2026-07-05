@@ -75,6 +75,7 @@ type RollStageProps = {
     result: YutResult;
     sticks: { flat: boolean; marked?: boolean }[];
     turnOrder?: boolean;
+    fallCount?: number;
   } | null;
 };
 
@@ -83,11 +84,12 @@ export function RollStage({ rollAnimation }: RollStageProps) {
   return <div className="roll-stage" role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
-    <div className={`roll-mat ${rollAnimation.result.bonus && !rollAnimation.turnOrder ? 'bonus-roll' : ''}`}>
-      <span className="roll-label">{rollAnimation.result.name}</span>
+    <div className={`roll-mat ${rollAnimation.result.bonus && !rollAnimation.turnOrder ? 'bonus-roll' : ''} ${rollAnimation.fallCount ? 'fall-roll' : ''}`}>
+      <span className="roll-label">{rollAnimation.fallCount ? '낙!' : rollAnimation.result.name}</span>
       {rollAnimation.sticks.map((stick, index) => {
         const markCount = stick.flat ? stick.marked ? 1 : 0 : 3;
-        return <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${stick.flat ? 'flat' : 'round'} ${stick.marked ? 'marked' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg` } as CSSProperties}><i>{Array.from({ length: markCount }, (_, markIndex) => <span key={`mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark" aria-hidden="true"></span>)}</i></span>;
+        const isFallenStick = Boolean(rollAnimation.fallCount && index < rollAnimation.fallCount);
+        return <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${stick.flat ? 'flat' : 'round'} ${stick.marked ? 'marked' : ''} ${isFallenStick ? 'fallen' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg`, '--fall-x': `${index % 2 === 0 ? -118 - index * 10 : 118 + index * 8}px`, '--fall-y': `${index < 2 ? -34 + index * 22 : 78 - index * 8}px`, '--fall-rotate': `${index % 2 === 0 ? -64 - index * 18 : 62 + index * 16}deg` } as CSSProperties}><i>{Array.from({ length: markCount }, (_, markIndex) => <span key={`mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark" aria-hidden="true"></span>)}</i></span>;
       })}
     </div>
   </div>;
