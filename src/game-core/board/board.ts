@@ -120,7 +120,7 @@ export function getBackwardPathNodeIds(startNodeId: string, steps: number) {
       continue;
     }
     const outerIndex = OUTER_ROUTE.indexOf(currentNodeId);
-    const previousId = outerIndex > 0 ? OUTER_ROUTE[outerIndex - 1] : undefined;
+    const previousId = outerIndex > 0 ? OUTER_ROUTE[outerIndex - 1] : currentNodeId === 'n01' ? 'n20' : undefined;
     if (!previousId) break;
     pathNodeIds.push(previousId);
     currentNodeId = previousId;

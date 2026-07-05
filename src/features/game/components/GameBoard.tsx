@@ -53,17 +53,19 @@ function getFinishedPieceStyle(piece: BoardPiece, pieces: BoardPiece[], getPiece
   const pieceGroupKey = getPieceGroupKey(piece);
   const ownerOrder = Array.from(new Set(pieces.map((candidate) => getPieceGroupKey(candidate)))).findIndex((ownerId) => ownerId === pieceGroupKey);
   const safeOwnerOrder = Math.max(0, ownerOrder);
+  const ownerHomePieces = pieces.filter((candidate) => getPieceGroupKey(candidate) === pieceGroupKey && !candidate.started && !candidate.finished);
   const ownerFinishedPieces = pieces.filter((candidate) => getPieceGroupKey(candidate) === pieceGroupKey && candidate.finished);
   const ownerFinishedIndex = Math.max(0, ownerFinishedPieces.findIndex((candidate) => candidate.id === piece.id));
+  const benchIndex = ownerHomePieces.length + ownerFinishedIndex;
   const portraitColumn = safeOwnerOrder % 2;
   const portraitRow = Math.floor(safeOwnerOrder / 2);
 
   return {
-    left: `${108 + ownerFinishedIndex * 5}%`,
+    left: `${108 + benchIndex * 5}%`,
     top: `${20 + safeOwnerOrder * 15}%`,
     background: piece.color,
     translate: '-50% -50%',
-    '--portrait-bench-left': `${36 + portraitColumn * 48 + ownerFinishedIndex * 8}%`,
+    '--portrait-bench-left': `${16 + portraitColumn * 48 + benchIndex * 8}%`,
     '--portrait-bench-top': `${34 + portraitRow * 54}px`,
   } as CSSProperties;
 }
@@ -82,7 +84,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
     return getFinishedPieceStyle(piece, pieces, getPieceGroupKey);
   }
   const node: BoardNode | undefined = BOARD_NODES.find((candidate) => candidate.id === piece.nodeId) ?? BOARD_NODES[piece.nodeIndex] ?? BOARD_NODES[0];
-  const stackedPieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished);
+  const stackedPieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished && (candidate.started || candidate.id === movingPieceId));
   const stackIndex = Math.max(0, stackedPieces.findIndex((candidate) => candidate.id === piece.id));
   const angle = (Math.PI * 2 * stackIndex) / Math.max(stackedPieces.length, 1);
   const radius = stackedPieces.length > 1 ? 12 : 0;

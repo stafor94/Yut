@@ -33,6 +33,36 @@ test('중앙에서 외곽 선택 시 n16 방향 경로를 사용한다', () => {
   assert.deepEqual(getMovePathNodeIds('c01', 3, 'outer'), ['d07', 'd08', 'n16']);
 });
 
+
+test('출발점의 말은 빽도에서 완주하지 않고 왼쪽 칸으로 이동한다', () => {
+  const state = baseState();
+  state.roll = { name: '빽도', steps: -1 };
+  state.pieces = [
+    { id: 'p1', ownerId: 'seat-1', nodeIndex: 0, nodeId: 'n01', started: true, finished: false },
+    { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+  ];
+
+  const result = reduceMoveCommand({
+    state,
+    actorId: 'seat-1',
+    pieceId: 'p1',
+    branchChoice: 'outer',
+    actorLogName: 'P1',
+    playMode: 'individual',
+    sides: [{ id: 'seat-1' }, { id: 'seat-2' }],
+    makeLog,
+  });
+
+  assert.equal(result.ok, true);
+  const patch = result.patch as { pieces: EngineState['pieces']; turnIndex: number; roll: null };
+  const moved = patch.pieces.find((piece) => piece.id === 'p1');
+  assert.equal(moved?.started, true);
+  assert.equal(moved?.finished, false);
+  assert.equal(moved?.nodeId, 'n20');
+  assert.equal(patch.turnIndex, 1);
+  assert.equal(patch.roll, null);
+});
+
 test('아이템 랜덤 선택은 전달된 random 함수를 사용한다', () => {
   assert.equal(getRandomItemType(() => 0), 'reroll');
   assert.equal(getRandomItemType(() => 0.999), 'golden_yut');
