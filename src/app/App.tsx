@@ -307,6 +307,13 @@ export function App() {
     const orderedSeats = turnOrderIds.map((seatId) => playableSeats.find((seat) => seat.id === seatId)).filter((seat): seat is Seat => Boolean(seat));
     return orderedSeats.length ? orderedSeats : playableSeats;
   }, [playableSeats, turnOrderIds]);
+  const playerPanelSeats = useMemo(() => {
+    const panelOrderIds = initialTurnOrderIds.length ? initialTurnOrderIds : turnOrderIds;
+    if (!panelOrderIds.length) return playableSeats;
+    const orderedSeats = panelOrderIds.map((seatId) => playableSeats.find((seat) => seat.id === seatId)).filter((seat): seat is Seat => Boolean(seat));
+    const remainingSeats = playableSeats.filter((seat) => !panelOrderIds.includes(seat.id));
+    return orderedSeats.length ? [...orderedSeats, ...remainingSeats] : playableSeats;
+  }, [initialTurnOrderIds, playableSeats, turnOrderIds]);
   const activeSeat = turnSeats[turnIndex % turnSeats.length];
   const waitingRoomHostSeatId = (!activeRoomId || screen === 'waitingRoom') ? playableSeats.find((seat) => seat.isHost)?.id ?? (activeRoomHostId || 'host') : '';
   const localSeatId = activeRoomId ? currentUserId : waitingRoomHostSeatId;
@@ -3328,7 +3335,9 @@ export function App() {
       maxPlayers={maxPlayers}
       pieceCount={pieceCount}
       itemMode={itemMode}
-      playerPanelSeats={turnSeats}
+      playerPanelSeats={playerPanelSeats}
+      completedSeatIds={completedSeatIds}
+      rankingSeatIds={rankingSeatIds}
       previewNodeIds={previewNodeIds}
       previousBoardTurnText={previousBoardTurnText}
       previousBoardTurnColor={previousBoardTurnColor}
