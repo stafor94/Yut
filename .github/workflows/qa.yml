@@ -267,6 +267,7 @@ jobs:
             sleep $((attempt * 10))
           done
         env:
+          QA_CLEANUP_REPORT_REMAINING: '1'
           FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
