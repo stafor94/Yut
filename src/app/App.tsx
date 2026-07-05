@@ -98,6 +98,7 @@ const SEQUENCE_WATCHDOG_MS = 5000;
 const TURN_ORDER_START_DELAY_MS = 3000;
 const TURN_ORDER_TIMEOUT_MS = 10000;
 const TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS = 1500;
+const TURN_ORDER_PRESENCE_FALLBACK_MS = 8000;
 const TURN_ORDER_INITIAL_SLOT_SPIN_MS = 3000;
 const TURN_ORDER_SLOT_REVEAL_INTERVAL_MS = 2000;
 const TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS = 1000;
@@ -1766,6 +1767,14 @@ export function App() {
     if (!activeRoomId || !canCoordinateOnlineGame || screen !== 'game' || !waitingForPlayersReady || turnOrderIntro || turnOrderIds.length > 0 || !startRequestVersion || !allHumansEnteredGame) return;
     beginTurnOrderIntro();
   }, [activeRoomId, allHumansEnteredGame, canCoordinateOnlineGame, screen, startRequestVersion, turnOrderIds.length, turnOrderIntro, waitingForPlayersReady]);
+
+  useEffect(() => {
+    if (!activeRoomId || !canCoordinateOnlineGame || screen !== 'game' || !waitingForPlayersReady || turnOrderIntro || turnOrderIds.length > 0 || !startRequestVersion || allHumansEnteredGame || !allReady || !pieces.length) return undefined;
+    const timer = window.setTimeout(() => {
+      if (!allHumansEnteredGame) beginTurnOrderIntro();
+    }, TURN_ORDER_PRESENCE_FALLBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [activeRoomId, allHumansEnteredGame, allReady, canCoordinateOnlineGame, pieces.length, screen, startRequestVersion, turnOrderIds.length, turnOrderIntro, waitingForPlayersReady]);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || isMyTurn || winner) return undefined;

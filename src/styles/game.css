@@ -288,7 +288,6 @@ select {
   }
 
   .game-shell .play-controls button,
-  .game-shell .play-controls span,
   .game-shell .play-controls strong {
     padding-block: 10px;
     font-size: .95rem;
@@ -656,9 +655,9 @@ aside.players,
 }
 
 @keyframes yut-fall-flight {
-  0% { opacity: 0; transform: translate3d(0, -220px, 0) rotate(var(--stick-start-rotate)); }
-  42% { opacity: 1; transform: translate3d(0, 8px, 0) rotate(var(--stick-land-rotate)); }
-  58% { transform: translate3d(0, -18px, 0) rotate(var(--stick-bounce-rotate)); }
+  0% { opacity: 0; transform: translate3d(calc(var(--fall-x) * .35), -220px, 0) rotate(var(--stick-start-rotate)); }
+  36% { opacity: 1; transform: translate3d(calc(var(--fall-x) * .7), -34px, 0) rotate(calc(var(--fall-rotate) * .45)); }
+  68% { opacity: 1; transform: translate3d(calc(var(--fall-x) * .9), calc(var(--fall-y) * .55), 0) rotate(calc(var(--fall-rotate) * .75)); }
   100% { opacity: 1; transform: translate3d(var(--fall-x), var(--fall-y), 0) rotate(var(--fall-rotate)); }
 }
 
@@ -870,6 +869,7 @@ aside.players,
   bottom: 0;
   height: 100%;
   box-sizing: border-box;
+  padding: 0;
 }
 
 .roll-timing-perfect { left: 45%; width: 10%; border-radius: 0; background: rgba(142, 68, 173, .5); }
@@ -884,6 +884,9 @@ aside.players,
   width: 16px;
   height: 16px;
   aspect-ratio: 1 / 1;
+  padding: 0;
+  min-width: 16px;
+  min-height: 16px;
   border: 2px solid #2a1e17;
   border-radius: 50%;
   background: #fff;
