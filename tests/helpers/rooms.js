@@ -4,6 +4,7 @@ import { loadFirebaseConfig } from './env.js';
 
 const roomSubcollections = ['actions', 'boardItems', 'players', 'seats', 'state', 'sequences', 'processedActions'];
 const inactiveRoomMaxAgeMs = 60 * 60 * 1000;
+const roomDeleteBatchSize = 25;
 let dbPromise;
 
 function getTimestampMillis(value) {
@@ -44,9 +45,9 @@ export async function deleteRoomForQa(roomId) {
   if (!db || !roomId) return;
   for (const subcollectionName of roomSubcollections) {
     const snapshot = await getDocs(collection(db, 'rooms', roomId, subcollectionName));
-    for (let index = 0; index < snapshot.docs.length; index += 450) {
+    for (let index = 0; index < snapshot.docs.length; index += roomDeleteBatchSize) {
       const batch = writeBatch(db);
-      snapshot.docs.slice(index, index + 450).forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
+      snapshot.docs.slice(index, index + roomDeleteBatchSize).forEach((documentSnapshot) => batch.delete(documentSnapshot.ref));
       await batch.commit();
     }
   }
