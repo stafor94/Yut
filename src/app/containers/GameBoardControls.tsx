@@ -94,8 +94,9 @@ export function GameBoardControls({
     onRollYut(getVisibleRollTimingPositionPercent());
   };
 
-  const showRollStackPicker = stackedRollMode && rollStackClosed && rollStack.length >= 2 && selectedRollStackIndex === null;
-  const showRollStackMoveButton = stackedRollMode && rollStackClosed && rollStack.length > 0 && !showRollStackPicker;
+  const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;
+  const showRollStackPicker = canShowLocalRollStack && rollStack.length >= 2 && selectedRollStackIndex === null;
+  const showRollStackMoveButton = canShowLocalRollStack && rollStack.length > 0 && !showRollStackPicker;
   const timerDurationMs = activeSeatId ? getTurnActionTimeoutMs(activeSeatId) : turnActionTimeoutMs;
   const buttonText = roll
     ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동')

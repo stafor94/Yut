@@ -6,18 +6,20 @@ type WinnerOverlayProps = {
   winner: string;
   winnerText: ReactNode;
   canContinueRace: boolean;
-  onFinishGame: () => void;
+  onReturnToWaitingRoom: () => void;
+  onExitToLobby: () => void;
   onContinueRace: () => void;
 };
 
-export function WinnerOverlay({ winner, winnerText, canContinueRace, onFinishGame, onContinueRace }: WinnerOverlayProps) {
+export function WinnerOverlay({ winner, winnerText, canContinueRace, onReturnToWaitingRoom, onExitToLobby, onContinueRace }: WinnerOverlayProps) {
   if (!winner) return null;
   return <div data-testid="winner-overlay" className="winner-overlay" role="status" aria-live="assertive">
     <span>게임 종료</span>
     <strong>{winnerText}</strong>
-    <p>아래 버튼으로 대기화면에 돌아갈 수 있습니다.</p>
-    <button onClick={onFinishGame}>대기화면으로</button>
-    {canContinueRace && <button data-testid="continue-race-button" onClick={onContinueRace}>이어서 진행</button>}
+    <p>원하는 다음 행동을 선택하세요.</p>
+    <button onClick={onReturnToWaitingRoom}>대기실로 돌아가기</button>
+    {canContinueRace && <button data-testid="continue-race-button" onClick={onContinueRace}>이어서 진행하기</button>}
+    <button className="secondary" onClick={onExitToLobby}>로비로 나가기</button>
   </div>;
 }
 

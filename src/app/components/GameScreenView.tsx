@@ -91,6 +91,7 @@ type GameScreenViewProps = {
   onBranchChoiceChange: (choice: BranchChoice) => void;
   onContinueRace: () => void;
   onFinishGame: () => void;
+  onReturnToWaitingRoom: () => void;
   onGoldenYutSelect: (choice: YutResult) => void;
   onMoveSelectedPiece: () => void;
   onOpenEndGameDialog: () => void;
@@ -105,7 +106,7 @@ type GameScreenViewProps = {
   renderLogText: (text: string) => ReactNode;
 };
 
-export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, branchChoice, canContinueRace, canRequestMove, canRollNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenDiagnosticDialog, onRollYut, rollTimingFeedback, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
+export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, branchChoice, canContinueRace, canRequestMove, canRollNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenDiagnosticDialog, onRollYut, rollTimingFeedback, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   return <GameScreen>
     <GamePlayersPanel
       title={activeRoomTitle || title}
@@ -127,7 +128,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       onOpenEndGameDialog={onOpenEndGameDialog}
     />
     <BoardPanel>
-      <WinnerOverlay winner={winner} winnerText={winnerText} canContinueRace={canContinueRace} onFinishGame={onFinishGame} onContinueRace={onContinueRace} />
+      <WinnerOverlay winner={winner} winnerText={winnerText} canContinueRace={canContinueRace} onReturnToWaitingRoom={onReturnToWaitingRoom} onExitToLobby={onFinishGame} onContinueRace={onContinueRace} />
       <TurnOrderIntroOverlay activeTurnOrderIntro={activeTurnOrderIntro} localSeatId={localSeatId} turnOrderClock={turnOrderClock} finalHoldMs={finalHoldMs} />
       {activeTurnOrderIntro && !activeTurnOrderIntro.visible && <div className="turn-order-lock" role="status" aria-live="polite">잠시 후 게임 시작!</div>}
       <GoldenYutPicker isOpen={goldenYutPickerOpen} choices={goldenYutChoices} onSelect={onGoldenYutSelect} />
