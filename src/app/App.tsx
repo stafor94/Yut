@@ -4,7 +4,7 @@ import type { BoardPiece } from '../features/game/components/GameBoard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
-import { GOLDEN_YUT_CHOICES, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
+import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
 import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
@@ -204,6 +204,7 @@ export function App() {
   const [trapEffect, setTrapEffect] = useState<TrapEffect | null>(null);
   const [fallEffect, setFallEffect] = useState<FallEffect | null>(null);
   const [rollTimingFeedback, setRollTimingFeedback] = useState<RollTimingZone | null>(null);
+  const [lastRollTimingZone, setLastRollTimingZone] = useState<RollTimingZone | null>(null);
   const [pendingTrapPlacement, setPendingTrapPlacement] = useState<PendingTrapPlacement | null>(null);
   const [forcedRoll, setForcedRoll] = useState<YutResult | null>(null);
   const [goldenYutPickerOpen, setGoldenYutPickerOpen] = useState(false);
@@ -461,6 +462,7 @@ export function App() {
     captureEffect,
     trapEffect,
     fallEffect,
+    lastRollTimingZone,
     lastAppliedSequenceRef,
     lastAppliedStateVersionRef,
     measureFirebaseLatency,
@@ -1191,11 +1193,11 @@ export function App() {
     return true;
   }
 
-  function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false, fallCount = 0) {
+  function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false, fallCount = 0, timingZone?: RollTimingZone | null) {
     if (lastAnimatedRollKeyRef.current === key) return;
     lastAnimatedRollKeyRef.current = key;
     if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
-    setRollAnimation({ id: Date.now(), result, sticks, turnOrder, fallCount });
+    setRollAnimation({ id: Date.now(), result, sticks, turnOrder, fallCount, timingZone: timingZone ?? undefined });
     rollAnimationTimerRef.current = window.setTimeout(() => {
       setRollAnimation(null);
       rollAnimationTimerRef.current = null;
@@ -1221,7 +1223,7 @@ export function App() {
     const nextTurnIndex = Number(state.turnIndex ?? 0);
     if (nextRoll && !currentRollRef.current) {
       const animationKey = `${nextTurnIndex}:${nextRoll.name}:${nextRoll.steps}:${nextRollResultReadyAt}`;
-      playRollAnimationOnce(nextRoll, makeDisplaySticks(nextRoll), animationKey);
+      playRollAnimationOnce(nextRoll, makeDisplaySticks(nextRoll), animationKey, false, 0, (state.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
       playSyncedRollSoundOnce(nextRoll, animationKey, lastClientMutationId);
     }
     currentRollRef.current = nextRoll;
@@ -1243,6 +1245,7 @@ export function App() {
     setCaptureEffect(nextTurnIndex !== turnIndexRef.current ? null : syncedCaptureEffect);
     setTrapEffect((state.trapEffect as TrapEffect | null | undefined) ?? null);
     setFallEffect((state.fallEffect as FallEffect | null | undefined) ?? null);
+    setLastRollTimingZone((state.lastRollTimingZone as RollTimingZone | null | undefined) ?? null);
     playSyncedEffectSoundOnce(state, lastClientMutationId);
     setGameStartedAt((state.gameStartedAt as number | null | undefined) ?? null);
     setTurnOrderIds((state.turnOrderIds as string[] | undefined) ?? []);
@@ -2469,22 +2472,24 @@ export function App() {
     if (activeRoomId) { void updateRoomPlayer(activeRoomId, playerId, { team }); }
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId ? { ...seat, team } : seat));
   }
-  function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean } = {}) {
+  function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean; timingZone?: RollTimingZone } = {}) {
     if (rollInProgressRef.current || currentRollRef.current) return null;
     rollInProgressRef.current = true;
     rollInProgressStartedAtRef.current = Date.now();
     setRollInProgress(true);
-    const rolled = forcedResult ? { result: forcedResult, sticks: makeDisplaySticks(forcedResult) } : rollYutResult();
+    const timingZone = options.timingZone;
+    const rolled = forcedResult ? { result: forcedResult, sticks: makeDisplaySticks(forcedResult) } : timingZone ? rollYutResultWithTiming(timingZone) : rollYutResult();
     const nextRoll = rolled.result;
     const rollResultReadyAtMs = Date.now() + ROLL_ANIMATION_MS;
     const animationKey = `${turnIndex}:${nextRoll.name}:${nextRoll.steps}:${rollResultReadyAtMs}`;
     setForcedRoll(null);
     setRollResultReadyAt(rollResultReadyAtMs);
+    setLastRollTimingZone(timingZone ?? null);
     currentRollRef.current = nextRoll;
     setRoll(nextRoll);
-    playRollAnimationOnce(nextRoll, rolled.sticks, animationKey);
+    playRollAnimationOnce(nextRoll, rolled.sticks, animationKey, false, 0, timingZone);
     if (options.recordSequence !== false) {
-      pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut:${seat.id}:${turnIndex}:${nextRoll.name}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name }, action: sourceAction ?? null };
+      pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut:${seat.id}:${turnIndex}:${nextRoll.name}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name, rollTimingZone: timingZone }, action: sourceAction ?? null };
     }
     playSfx('roll');
     if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
@@ -2510,7 +2515,8 @@ export function App() {
     setLastMovedPieceIds([]);
     setLastMovedSeatId(seat.id);
     setFallEffect({ id: fallStartedAt, seatId: seat.id, timingZone });
-    playRollAnimationOnce(displayRoll, makeDisplaySticks(displayRoll), `fall:${seat.id}:${turnIndex}:${fallStartedAt}`, false, fallCount);
+    setLastRollTimingZone(timingZone);
+    playRollAnimationOnce(displayRoll, makeDisplaySticks(displayRoll), `fall:${seat.id}:${turnIndex}:${fallStartedAt}`, false, fallCount, timingZone);
     playSfx('roll');
     window.setTimeout(() => {
       rollInProgressRef.current = false;
@@ -2666,7 +2672,7 @@ export function App() {
       addPendingLocalRemoteAction(actionKey);
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'roll_yut' as const, actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) };
-      const optimisticRoll = fallOccurred ? null : rollYutFor(activeSeat, localRoll, action, { recordSequence: false });
+      const optimisticRoll = fallOccurred ? null : rollYutFor(activeSeat, localRoll, action, { recordSequence: false, timingZone: rollTimingZone });
       if (fallOccurred) applyLocalFall(activeSeat, rollTimingZone, localRoll, action, { recordSequence: false });
       if (!fallOccurred && !optimisticRoll) {
         deletePendingLocalRemoteAction(actionKey);
@@ -2704,7 +2710,7 @@ export function App() {
               currentRollRef.current = committedRoll;
               setRoll(committedRoll);
               setRollResultReadyAt(committedRollResultReadyAt);
-              playRollAnimationOnce(committedRoll, makeDisplaySticks(committedRoll), `${turnIndex}:${committedRoll.name}:${committedRoll.steps}:${committedRollResultReadyAt}`);
+              playRollAnimationOnce(committedRoll, makeDisplaySticks(committedRoll), `${turnIndex}:${committedRoll.name}:${committedRoll.steps}:${committedRollResultReadyAt}`, false, 0, (result.patch?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
               playSfx('roll');
               if (committedRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
             }
@@ -2720,7 +2726,7 @@ export function App() {
       return;
     }
     setShieldedPieceIds([]);
-    rollYutFor(activeSeat, forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result);
+    rollYutFor(activeSeat, forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result, null, { timingZone: rollTimingZone });
   }
 
   async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean } = {}) {
@@ -3033,7 +3039,9 @@ export function App() {
         setOwnedItems((items) => ({ ...items, [seat.id]: (items[seat.id] ?? []).filter((type, index) => type !== 'golden_yut' || index !== (items[seat.id] ?? []).indexOf('golden_yut')) }));
         addLog(`${getSeatDisplayName(seat)}님이 황금 윷으로 ${nextRoll.name} 결과를 선택했습니다.`);
       }
-      nextRoll = rollYutFor(seat, nextRoll) ?? nextRoll;
+      const aiTimingZone = chooseAiRollTimingZone();
+      setRollTimingFeedback(aiTimingZone);
+      nextRoll = rollYutFor(seat, nextRoll, null, { timingZone: aiTimingZone }) ?? nextRoll;
       if (!nextRoll) return;
       if ((ownedItems[seat.id] ?? []).includes('reroll') && shouldAiUseReroll(seat, nextRoll, getAiMoveContext())) {
         await useItem('reroll', seat.id);

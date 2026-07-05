@@ -26,7 +26,7 @@ export type Seat = {
 
 export type GameLog = { id: number; text: string };
 export type ToastMessage = { id: number; title: string; description?: string; icon?: string };
-export type RollAnimation = { id: number; result: YutResult; sticks: YutStick[]; turnOrder?: boolean; fallCount?: number };
+export type RollAnimation = { id: number; result: YutResult; sticks: YutStick[]; turnOrder?: boolean; fallCount?: number; timingZone?: RollTimingZone };
 export type TurnOrderRoll = { seat: Seat; result: YutResult; rollOffRound: number };
 export type TurnOrderPhase = { active: boolean; index: number; rolls: TurnOrderRoll[]; deadline: number; readyAt: number };
 export type TurnOrderIntro = { order: { seatId: string; label: string; name: string; color: string }[]; visible: boolean; readyAt: number; slotUntil?: number };
@@ -67,6 +67,7 @@ export type SequenceStateSnapshot = Partial<{
   captureEffect: CaptureEffect | null;
   trapEffect: TrapEffect | null;
   fallEffect: FallEffect | null;
+  lastRollTimingZone?: RollTimingZone | null;
   gameStartedAt: number | null;
   turnOrderIntro: TurnOrderIntro | null;
   pendingTrapPlacement: PendingTrapPlacement | null;
@@ -111,6 +112,7 @@ export type GameStateFingerprintInput = {
   waitingForPlayersReady: boolean;
   startRequestVersion: number;
   fallEffect?: FallEffect | null;
+  lastRollTimingZone?: RollTimingZone | null;
   logs?: GameLog[];
   gameSeats?: GameSeatSnapshot[];
 };
@@ -142,6 +144,7 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
   waitingForPlayersReady: state.waitingForPlayersReady,
   startRequestVersion: state.startRequestVersion,
   fallEffect: state.fallEffect ?? null,
+  lastRollTimingZone: state.lastRollTimingZone ?? null,
   logs: state.logs ?? [],
   gameSeats: state.gameSeats ?? [],
 });

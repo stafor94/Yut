@@ -935,3 +935,11 @@ aside.players,
   18% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
   100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
+
+.roll-stage-timing {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-shadow: 0 2px 8px rgba(255, 248, 220, .85);
+}
