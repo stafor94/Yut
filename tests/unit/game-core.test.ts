@@ -5,7 +5,7 @@ import { chooseAiRollTimingZone, getFallChanceForTimingZone, getRollTimingZone, 
 import { reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
 import { getRandomItemType } from '../../src/features/items/logic/items';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
-import { getOnlineGameCoordinatorSeatId } from '../../src/app/flows/onlineGameCoordinator';
+import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from '../../src/app/flows/onlineGameCoordinator';
 
 const makeLog = (logs: EngineLog[], text: string): EngineLog => ({ id: logs.length + 1, text });
 
@@ -77,6 +77,17 @@ test('온라인 게임 조율자는 방장 표시가 아니라 첫 번째 인간
   ];
 
   assert.equal(getOnlineGameCoordinatorSeatId(seats), 'player-user');
+});
+
+
+test('게임 진입 확인은 AI를 기다리지 않고 현재 로컬 사람 좌석을 낙관적으로 진입 처리한다', () => {
+  const seats = [
+    { id: 'host-user', isAI: false, isEmpty: false, enteredStartVersion: 0 },
+    { id: 'ai-user', isAI: true, isEmpty: false, enteredStartVersion: 0 },
+  ];
+
+  assert.equal(haveAllHumanSeatsEnteredGame(seats, 3, 'host-user'), true);
+  assert.deepEqual(getHumanSeatsWaitingForGameEntry(seats, 3, 'host-user'), []);
 });
 
 test('차례가 아닌 플레이어의 윷 던지기는 거부된다', () => {

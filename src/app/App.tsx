@@ -21,7 +21,7 @@ import { GameScreenView } from './components/GameScreenView';
 import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItemValue, shouldAiUseReroll } from './flows/aiFlow';
 import { createStartCountdownWindow, getStartGameBlockMessage } from './flows/gameStartFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
-import { getOnlineGameCoordinatorSeatId } from './flows/onlineGameCoordinator';
+import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
 import {
   buildAlternatingTeamTurnOrder,
   createTurnOrderIntro,
@@ -611,7 +611,9 @@ export function App() {
   const activeItemPromptTypes = itemPromptTiming && !trapPlacementActive ? getUsableHostItems(itemPromptTiming) : [];
   const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > Date.now();
   const startCancelDisabled = startCountdownEndsAt > 0 && startCountdownEndsAt - Date.now() <= START_CANCEL_LOCK_MS;
-  const allHumansEnteredGame = playableSeats.filter((seat) => !seat.isAI && !seat.isSpectator).every((seat) => seat.enteredStartVersion === startRequestVersion);
+  const optimisticEnteredSeatId = screen === 'game' && localSeatId && !isSpectator ? localSeatId : '';
+  const humanSeatsWaitingToEnter = startRequestVersion ? getHumanSeatsWaitingForGameEntry(playableSeats, startRequestVersion, optimisticEnteredSeatId) : [];
+  const allHumansEnteredGame = Boolean(startRequestVersion && haveAllHumanSeatsEnteredGame(playableSeats, startRequestVersion, optimisticEnteredSeatId));
   const pendingSequenceMetaDiagnostic = pendingSequenceMetaRef.current ? {
     type: pendingSequenceMetaRef.current.type,
     actorId: pendingSequenceMetaRef.current.actorId,
@@ -660,6 +662,10 @@ export function App() {
     rollActionBlockReasons,
     moveActionBlockReasons,
     liveTurnGuard: liveTurnGuardRef.current,
+    waitingForPlayersReady,
+    allHumansEnteredGame,
+    humanSeatsWaitingToEnter: humanSeatsWaitingToEnter.map((seat) => ({ id: seat.id, label: seat.label, enteredStartVersion: seat.enteredStartVersion ?? 0 })),
+    startRequestVersion,
   };
   const getStalledTurnSyncResolution = (): StalledTurnSyncResolution => {
     const currentAgeMs = getCurrentStalledTurnSyncAgeMs();
@@ -1853,7 +1859,7 @@ export function App() {
     const turnKey = `${lastAppliedSequenceRef.current}:${turnIndex}:${roll ? `${roll.name}:${roll.steps}` : 'ready'}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (type === 'roll_yut') return `${type}:${localSeatId}:${turnKey}`;
     if (type === 'move_piece') return `${type}:${localSeatId}:${turnKey}:${payload.pieceId ?? ''}:${payload.extraSteps ?? 0}:${payload.branchChoice ?? ''}`;
-    if (type === 'turn_order_roll') return `${type}:${localSeatId}:${turnOrderPhase.index}:${turnOrderPhase.rolls.length}`;
+    if (type === 'turn_order_roll') return `${type}:${payload.actorId ?? localSeatId}:${turnOrderPhase.index}:${turnOrderPhase.rolls.length}`;
     if (type === 'place_trap') return `${type}:${localSeatId}:${pendingTrapPlacement?.pieceId ?? ''}:${payload.nodeId ?? ''}`;
     return `${type}:${localSeatId}:${turnKey}:${payload.itemType ?? ''}:${payload.pieceId ?? ''}`;
   };
@@ -2291,9 +2297,10 @@ export function App() {
     const nextAnimation = { id: Date.now(), result: rolled.result, sticks: rolled.sticks, turnOrder: true };
     const logText = `${getSeatDisplayName(seat)}님이 순서 정하기에서 ${rolled.result.name}(${getTurnOrderScore(rolled.result)}점)를 던졌습니다.`;
 
-    if (activeRoomId && requestedSeatId !== localSeatId && !fromRemote) return;
-    const clientMutationId = getLocalActionKey('turn_order_roll', {});
-    if (activeRoomId && requestedSeatId === localSeatId && !fromRemote) {
+    const canSubmitOnlineTurnOrderRoll = !activeRoomId || fromRemote || requestedSeatId === localSeatId || Boolean(seat.isAI && canCoordinateOnlineGame);
+    if (!canSubmitOnlineTurnOrderRoll) return;
+    const clientMutationId = getLocalActionKey('turn_order_roll', { actorId: requestedSeatId });
+    if (activeRoomId && !fromRemote) {
       pendingSequenceMetaRef.current = { type: 'turn_order_roll', actorId: requestedSeatId, clientMutationId, payload: { rollIndex: turnOrderPhase.rolls.length }, action: { type: 'turn_order_roll', actorId: requestedSeatId, payload: withActorLogPayload({ clientActionId: clientMutationId }, seat) } };
     }
 
