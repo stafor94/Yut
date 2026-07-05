@@ -1,8 +1,33 @@
 import { rollYutResult, type YutResult } from '../../../game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 import type { BranchChoice } from '../../../game-core/board/board';
-import type { GameAction, GameStatePatch, RoomPlayer, RoomSummary, SyncedGameState } from './roomService';
 
+type GameStatePatch = Record<string, unknown>;
+type RoomPlayerTeam = '청팀' | '홍팀';
+type RoomSummaryShape = { playMode: 'individual' | 'team'; pieceCount?: 1 | 2 | 3 | 4 };
+type SyncedGameStateShape = {
+  pieces: unknown[];
+  turnIndex: number;
+  turnOrderIds?: string[];
+  initialTurnOrderIds?: string[];
+  completedSeatIds?: string[];
+  rankingSeatIds?: string[];
+  gameEndMode?: 'partial_finish' | 'final' | '';
+  lastFinishedSeatId?: string;
+  continuationRound?: number;
+  roll: unknown | null;
+  boardItems?: unknown[];
+  trapNodes?: unknown[];
+  shieldedPieceIds?: string[];
+  logs: unknown[];
+  winner: string;
+  turnOrderPhase?: unknown;
+  turnOrderIntro?: unknown;
+  pendingTrapPlacement?: unknown;
+  branchChoice?: unknown;
+  ownedItems?: unknown;
+};
+type GameActionShape = { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
 export type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string; patch?: GameStatePatch; payload?: Record<string, unknown> };
 type AuthoritativeCommitReduction = { status: 'committed'; patch: GameStatePatch; payload: Record<string, unknown> };
 export type AuthoritativeReduction = AuthoritativeCommitReduction | Exclude<AuthoritativeActionResult, { status: 'committed' }>;
@@ -10,7 +35,7 @@ export const isAuthoritativeCommitReduction = (reduction: AuthoritativeReduction
 type AuthoritativePiece = { id: string; ownerId: string; label?: string; nodeIndex: number; nodeId: string; started: boolean; finished: boolean; color?: string };
 type AuthoritativeLog = { id: number; text: string };
 type AuthoritativeTrapNode = { nodeId: string; ownerId: string };
-export type AuthoritativeSeatSide = { id: string; team: RoomPlayer['team'] };
+export type AuthoritativeSeatSide = { id: string; team: RoomPlayerTeam };
 
 const getNextLogId = (logs: unknown[]) => logs.reduce<number>((maxId, log) => {
   if (log && typeof log === 'object' && 'id' in log) return Math.max(maxId, Number((log as { id?: unknown }).id) || 0);
@@ -22,7 +47,7 @@ const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
   return forcedResult ?? rollYutResult().result;
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
-const getActionActorLogName = (action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => {
+const getActionActorLogName = (action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>) => {
   const actorLogName = action.payload?.actorLogName;
   const actorLabel = action.payload?.actorLabel;
   const actorName = action.payload?.actorName;
@@ -40,7 +65,7 @@ const getCompletedIndividualSeatIds = (pieces: AuthoritativePiece[], seatIds: st
 const getUnfinishedSeatIds = (seatIds: string[], completedSeatIds: string[]) => seatIds.filter((seatId) => !completedSeatIds.includes(seatId));
 const appendUnique = (ids: string[], nextIds: string[]) => [...ids, ...nextIds.filter((id) => id && !ids.includes(id))];
 
-function makeEngineState(state: SyncedGameState): EngineState {
+function makeEngineState(state: SyncedGameStateShape): EngineState {
   return {
     pieces: state.pieces as AuthoritativePiece[],
     turnIndex: Number(state.turnIndex ?? 0),
@@ -54,7 +79,7 @@ function makeEngineState(state: SyncedGameState): EngineState {
     trapNodes: (state.trapNodes as AuthoritativeTrapNode[] | undefined) ?? [],
     shieldedPieceIds: state.shieldedPieceIds ?? [],
     branchChoice: (state.branchChoice as BranchChoice | undefined) ?? 'outer',
-    boardItems: state.boardItems ?? [],
+    boardItems: (state.boardItems as EngineState['boardItems'] | undefined) ?? [],
     ownedItems: state.ownedItems as Record<string, never[]> | undefined,
   };
 }
@@ -64,7 +89,7 @@ function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand
   return { status: 'committed' as const, patch: reduction.patch as GameStatePatch, payload: reduction.payload };
 }
 
-function reduceAuthoritativeRoll(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>): AuthoritativeReduction {
+function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>): AuthoritativeReduction {
   const nextRoll = getAuthoritativeRoll(action.payload);
   return toAuthoritativeReduction(reduceRollCommand({
     state: makeEngineState(state),
@@ -75,7 +100,7 @@ function reduceAuthoritativeRoll(state: SyncedGameState, action: Omit<GameAction
     makeLog: makeAuthoritativeLog,
   }));
 }
-function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>, room: Omit<RoomSummary, 'id'>, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
+function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
   const baseReduction = toAuthoritativeReduction(reduceMoveCommand({
     state: makeEngineState(state),
     actorId: action.actorId,
@@ -129,7 +154,7 @@ function reduceAuthoritativeMove(state: SyncedGameState, action: Omit<GameAction
   };
 }
 
-function reduceContinueRace(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>, room: Omit<RoomSummary, 'id'>): AuthoritativeReduction {
+function reduceContinueRace(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape): AuthoritativeReduction {
   if (room.playMode !== 'individual') return makeActionReject('개인전에서만 이어서 진행할 수 있습니다.');
   if (state.gameEndMode !== 'partial_finish') return makeActionReject('이어서 진행할 수 있는 종료 상태가 아닙니다.');
   const activeSeatIds = normalizeSeatIds(state.initialTurnOrderIds?.length ? state.initialTurnOrderIds : state.turnOrderIds);
@@ -171,10 +196,9 @@ function reduceContinueRace(state: SyncedGameState, action: Omit<GameAction, 'id
   };
 }
 
-export function reduceAuthoritativeGameAction(state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>, room: Omit<RoomSummary, 'id'>, sides: AuthoritativeSeatSide[] = []): AuthoritativeReduction {
+export function reduceAuthoritativeGameAction(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[] = []): AuthoritativeReduction {
   if (action.type === 'roll_yut') return reduceAuthoritativeRoll(state, action);
   if (action.type === 'move_piece') return reduceAuthoritativeMove(state, action, room, sides);
   if (action.type === 'continue_race') return reduceContinueRace(state, action, room);
   return { status: 'unsupported' };
 }
-

@@ -375,6 +375,59 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
   });
 }
 
+export async function initializeGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>, meta: { actorId: string; startRequestVersion: number; clientMutationId: string; payload?: Record<string, unknown> }): Promise<SaveGameStateResult> {
+  if (!db || !roomId) return { status: 'unavailable' };
+  const roomRef = doc(db, 'rooms', roomId);
+  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
+  const processedActionRef = getClientMutationDocRef(roomId, meta.clientMutationId);
+  return runTransaction(db, async (transaction) => {
+    const processedActionSnapshot = await transaction.get(processedActionRef);
+    const currentStateSnapshot = await transaction.get(gameStateRef);
+    const roomSnapshot = await transaction.get(roomRef);
+    if (!roomSnapshot.exists()) return { status: 'unavailable' as const };
+    const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
+    const currentRoomStartVersion = Number(room.startRequestVersion ?? 0);
+    if (currentRoomStartVersion !== meta.startRequestVersion) return { status: 'sequence_mismatch' as const, turnVersion: 0, lastSequence: 0 };
+    const currentState = currentStateSnapshot.exists() ? currentStateSnapshot.data() as SyncedGameState : null;
+    const currentVersion = Number(currentState?.turnVersion ?? 0);
+    const currentSequence = Number(currentState?.lastSequence ?? 0);
+    if (processedActionSnapshot.exists()) {
+      transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
+      return {
+        status: 'duplicate' as const,
+        turnVersion: Number(processedActionSnapshot.data().turnVersion ?? currentVersion),
+        lastSequence: Number(processedActionSnapshot.data().sequence ?? currentSequence),
+      };
+    }
+    const alreadyInitializedForVersion = Number(currentState?.startRequestVersion ?? 0) === meta.startRequestVersion
+      && Array.isArray(currentState?.pieces)
+      && currentState.pieces.length > 0;
+    if (alreadyInitializedForVersion) {
+      transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
+      transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, sequence: currentSequence, turnVersion: currentVersion, type: 'game_initialized', actorId: meta.actorId, createdAt: serverTimestamp() });
+      return { status: 'duplicate' as const, turnVersion: currentVersion, lastSequence: currentSequence };
+    }
+    const nextVersion = currentVersion + 1;
+    const nextSequence = currentSequence + 1;
+    const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
+    transaction.set(sequenceRef, {
+      sequence: nextSequence,
+      type: 'game_initialized',
+      actorId: meta.actorId,
+      payload: sanitizeForFirestore(meta.payload ?? { startRequestVersion: meta.startRequestVersion }) as Record<string, unknown>,
+      ...makeSequenceEventFields({ stateBefore: currentState, stateAfter: state }),
+      expectedPreviousSequence: currentSequence,
+      clientMutationId: meta.clientMutationId,
+      clientCreatedAt: Date.now(),
+      createdAt: serverTimestamp(),
+    });
+    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: meta.clientMutationId }, { merge: true });
+    transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
+    transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, sequence: nextSequence, turnVersion: nextVersion, type: 'game_initialized', actorId: meta.actorId, createdAt: serverTimestamp() });
+    return { status: 'committed' as const, turnVersion: nextVersion, lastSequence: nextSequence };
+  });
+}
+
 export async function updateTurnOrderState(roomId: string, patcher: (state: SyncedGameState | null) => GameStatePatch | null) {
   if (!db || !roomId) return null;
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
@@ -761,7 +814,15 @@ export async function cancelRoomGameStart(roomId: string, startRequestVersion: n
 
 export async function markRoomGameEntering(roomId: string, startRequestVersion: number) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
-  await setDoc(doc(db, 'rooms', roomId), { startStatus: 'entering', startRequestVersion, startCountdownUntil: 0 }, { merge: true });
+  const roomRef = doc(db, 'rooms', roomId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(roomRef);
+    if (!snapshot.exists()) return;
+    const room = snapshot.data() as RoomSummary;
+    if (Number(room.startRequestVersion ?? 0) !== startRequestVersion) return;
+    if (room.status === 'playing' || room.startStatus === 'playing') return;
+    transaction.set(roomRef, { startStatus: 'entering', startRequestVersion, startCountdownUntil: 0 }, { merge: true });
+  });
 }
 
 export async function deleteRoom(roomId: string) {

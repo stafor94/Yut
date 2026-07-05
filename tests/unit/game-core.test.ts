@@ -3,6 +3,7 @@ import test from 'node:test';
 import { getMovePathNodeIds } from '../../src/game-core/board/board';
 import { reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
 import { getRandomItemType } from '../../src/features/items/logic/items';
+import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
 
 const makeLog = (logs: EngineLog[], text: string): EngineLog => ({ id: logs.length + 1, text });
 
@@ -89,4 +90,43 @@ test('말 이동 reducer는 시작 전 말을 출발시키고 턴을 넘긴다',
   assert.equal(moved?.nodeId, 'n03');
   assert.equal(patch.turnIndex, 1);
   assert.equal(patch.roll, null);
+});
+
+test('완주 후 이어서 진행은 방장이 아닌 플레이어 actor도 커밋된다', () => {
+  const state = {
+    pieces: [
+      { id: 'p1', ownerId: 'seat-1', nodeIndex: 0, nodeId: 'n01', started: true, finished: true },
+      { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: true, finished: false },
+      { id: 'p3', ownerId: 'seat-3', nodeIndex: 0, nodeId: 'n01', started: true, finished: false },
+    ],
+    turnIndex: 0,
+    turnOrderIds: ['seat-1', 'seat-2', 'seat-3'],
+    initialTurnOrderIds: ['seat-1', 'seat-2', 'seat-3'],
+    completedSeatIds: ['seat-1'],
+    rankingSeatIds: ['seat-1'],
+    gameEndMode: 'partial_finish' as const,
+    lastFinishedSeatId: 'seat-1',
+    continuationRound: 0,
+    roll: null,
+    boardItems: [],
+    ownedItems: {},
+    trapNodes: [],
+    shieldedPieceIds: [],
+    logs: [],
+    winner: 'P1 승리',
+    turnVersion: 1,
+    lastSequence: 1,
+  };
+
+  const result = reduceAuthoritativeGameAction(
+    state,
+    { type: 'continue_race', actorId: 'seat-2', payload: { clientActionId: 'continue-race-non-host' } },
+    { playMode: 'individual', pieceCount: 1 },
+  );
+
+  assert.equal(result.status, 'committed');
+  assert.deepEqual(result.patch?.turnOrderIds, ['seat-2', 'seat-3']);
+  assert.equal(result.patch?.winner, '');
+  assert.equal(result.patch?.gameEndMode, '');
+  assert.equal(result.patch?.continuationRound, 1);
 });

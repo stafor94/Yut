@@ -6,7 +6,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, makeDisplaySticks, rollYutResult, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, saveGameState, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
@@ -1686,7 +1686,7 @@ export function App() {
       const now = Date.now();
       if (now < startCountdownStartsAt) setCountdown(-1);
       else setCountdown(Math.max(0, Math.ceil((startCountdownEndsAt - now) / 1000)));
-      if (isRoomManager && now >= startCountdownEndsAt) {
+      if (now >= startCountdownEndsAt) {
         if (activeRoomId) {
           void measureFirebaseLatency(() => markRoomGameEntering(activeRoomId, startRequestVersion)).catch(() => undefined);
         }
@@ -1696,7 +1696,7 @@ export function App() {
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 250);
     return () => window.clearInterval(timer);
-  }, [activeRoomId, isRoomManager, canManageRoom, countdown, startCountdownActive, startCountdownEndsAt, startCountdownStartsAt, startRequestVersion, startStatus]);
+  }, [activeRoomId, countdown, startCountdownActive, startCountdownEndsAt, startCountdownStartsAt, startRequestVersion, startStatus]);
 
   useEffect(() => {
     if (!activeRoomId || !currentUserId || screen !== 'game' || !startRequestVersion) return;
@@ -1994,9 +1994,9 @@ export function App() {
       setScreen('lobby');
       return;
     }
-    if (activeRoomId && canManageRoom && startRequestVersion && startedGameRequestVersionsRef.current.has(startRequestVersion)) return;
+    if (activeRoomId && startRequestVersion && startedGameRequestVersionsRef.current.has(startRequestVersion)) return;
     logIdRef.current = 0;
-    if (activeRoomId && canManageRoom && startRequestVersion) startedGameRequestVersionsRef.current.add(startRequestVersion);
+    if (activeRoomId && startRequestVersion) startedGameRequestVersionsRef.current.add(startRequestVersion);
     const nextPieces = makePieces(playableSeats, pieceCount, playMode);
     const nextGameSeats = gameSeatSnapshotsFromSeats(playableSeats);
     const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
@@ -2012,61 +2012,57 @@ export function App() {
     setWaitingForPlayersReady(Boolean(activeRoomId));
     setGameStartedAt(null);
     setScreen('game');
-    if (isRoomManager) {
-      const initialSyncedState = {
-        pieces: nextPieces,
-        turnIndex: 0,
-        turnOrderIds: [],
-        initialTurnOrderIds: [],
-        completedSeatIds: [],
-        rankingSeatIds: [],
-        gameEndMode: '' as const,
-        lastFinishedSeatId: '',
-        continuationRound: 0,
-        roll: null,
-        boardItems: nextBoardItems,
-        ownedItems: {},
-        trapNodes: [],
-        shieldedPieceIds: [],
-        logs: [prepLog],
-        winner: '',
-        captureEffect: null,
-        trapEffect: null,
-        gameStartedAt: null,
-        turnOrderIntro: null,
-        pendingTrapPlacement: null,
-        rollLockUntil: 0,
-        lastMovedPieceIds: [],
-        lastMovedSeatId: '',
-        itemPromptTiming: null,
-        branchChoice: 'outer',
-        rollResultReadyAt: 0,
-        turnOrderPhase: initialTurnOrderPhase,
-        waitingForPlayersReady: true,
-        gameSeats: nextGameSeats,
-        startRequestVersion,
-      };
-      const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: [], initialTurnOrderIds: [], completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: null, turnOrderIntro: null, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: true, startRequestVersion });
-      savingStateFingerprintRef.current = initialStateFingerprint;
-      void measureFirebaseLatency(() => saveGameState(activeRoomId, initialSyncedState, {
-        type: 'game_initialized',
-        actorId: localSeatId,
-        clientMutationId: `game_initialized:${activeRoomId}:${startRequestVersion}`,
-        expectedPreviousSequence: 0,
-        payload: { startRequestVersion },
-      })).then((result) => {
-        if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
-        if (result.status === 'committed' || result.status === 'duplicate') {
-          if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
-          lastSavedStateFingerprintRef.current = initialStateFingerprint;
-          return measureFirebaseLatency(() => updateRoomStatus(activeRoomId, 'playing'));
-        }
-        setMessage('게임 상태 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
-        return undefined;
-      }).finally(() => {
-        if (savingStateFingerprintRef.current === initialStateFingerprint) savingStateFingerprintRef.current = '';
-      });
-    }
+    const initialSyncedState = {
+      pieces: nextPieces,
+      turnIndex: 0,
+      turnOrderIds: [],
+      initialTurnOrderIds: [],
+      completedSeatIds: [],
+      rankingSeatIds: [],
+      gameEndMode: '' as const,
+      lastFinishedSeatId: '',
+      continuationRound: 0,
+      roll: null,
+      boardItems: nextBoardItems,
+      ownedItems: {},
+      trapNodes: [],
+      shieldedPieceIds: [],
+      logs: [prepLog],
+      winner: '',
+      captureEffect: null,
+      trapEffect: null,
+      gameStartedAt: null,
+      turnOrderIntro: null,
+      pendingTrapPlacement: null,
+      rollLockUntil: 0,
+      lastMovedPieceIds: [],
+      lastMovedSeatId: '',
+      itemPromptTiming: null,
+      branchChoice: 'outer',
+      rollResultReadyAt: 0,
+      turnOrderPhase: initialTurnOrderPhase,
+      waitingForPlayersReady: true,
+      gameSeats: nextGameSeats,
+      startRequestVersion,
+    };
+    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: [], initialTurnOrderIds: [], completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: null, turnOrderIntro: null, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: true, startRequestVersion });
+    savingStateFingerprintRef.current = initialStateFingerprint;
+    void measureFirebaseLatency(() => initializeGameState(activeRoomId, initialSyncedState, {
+      actorId: localSeatId,
+      startRequestVersion,
+      clientMutationId: `game_initialized:${activeRoomId}:${startRequestVersion}`,
+      payload: { startRequestVersion },
+    })).then((result) => {
+      if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
+      if (result.status === 'committed' || result.status === 'duplicate') {
+        if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
+        lastSavedStateFingerprintRef.current = initialStateFingerprint;
+        return;
+      }
+      setMessage('게임 상태 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+    }).finally(() => {
+      if (savingStateFingerprintRef.current === initialStateFingerprint) savingStateFingerprintRef.current = '';
+    });
   }
 
   function completeTurnOrderRolls(rolls: TurnOrderRoll[]) {
