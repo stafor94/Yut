@@ -119,6 +119,7 @@ const AUTO_SINGLE_MOVE_DELAY_MS = 500;
 const TOAST_MESSAGE_MS = 4000;
 const CREATE_ROOM_TIMEOUT_MS = 12000;
 const CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;
+const CREATE_ROOM_RECOVERY_TIMEOUT_MS = 5000;
 const STEP_DELAY_MS = 240;
 
 export function App() {
@@ -533,6 +534,9 @@ export function App() {
   const formatTurnNeighborText = (seat: Seat | undefined) => seat ? getSeatDisplayName(seat) : '';
   const previousBoardTurnText = formatTurnNeighborText(previousBoardTurnSeat);
   const nextBoardTurnText = formatTurnNeighborText(nextBoardTurnSeat);
+  const getBoardTurnSeatColor = (seat: Seat | undefined) => seat ? (playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat)) : undefined;
+  const previousBoardTurnColor = getBoardTurnSeatColor(previousBoardTurnSeat);
+  const nextBoardTurnColor = getBoardTurnSeatColor(nextBoardTurnSeat);
   const hasCompleteBoardTurnNames = Boolean(visibleBoardTurnSeat?.name.trim() && previousBoardTurnSeat?.name.trim() && nextBoardTurnSeat?.name.trim());
   const shouldShowBoardTurnNeighbors = Boolean(previousBoardTurnText && nextBoardTurnText && hasCompleteBoardTurnNames);
   const boardTurnIndicatorText = winner ? renderWinnerText(true) : visibleBoardTurnSeat ? `${getSeatDisplayName(visibleBoardTurnSeat)} 턴` : '';
@@ -1664,7 +1668,7 @@ export function App() {
     const movableGroups = Array.from(new Map(movablePieces.map((piece) => [piece.started ? piece.nodeId : piece.id, piece])).values());
     if (movableGroups.length !== 1) return;
     const onlyPiece = movableGroups[0];
-    const needsBranchChoice = onlyPiece.started && BRANCH_NODE_IDS.includes(onlyPiece.nodeId as typeof BRANCH_NODE_IDS[number]);
+    const needsBranchChoice = steps > 0 && onlyPiece.started && BRANCH_NODE_IDS.includes(onlyPiece.nodeId as typeof BRANCH_NODE_IDS[number]);
     if (needsBranchChoice) return;
     setSelectedPieceId(onlyPiece.id);
     const timer = window.setTimeout(() => {
@@ -1831,6 +1835,19 @@ export function App() {
     }
   }
 
+
+  function showRoomCreationFailure(messageText: string) {
+    setMessage(messageText);
+    setRoomNoticeDialog({ title: '방 생성에 실패했습니다', message: messageText });
+  }
+
+  async function findCreatedRoomWithTimeout(hostId: string) {
+    return Promise.race([
+      findActiveRoomByHost(hostId),
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), CREATE_ROOM_RECOVERY_TIMEOUT_MS)),
+    ]);
+  }
+
   async function handleCreateRoom() {
     if (!nickname.trim()) { setMessage('닉네임을 먼저 정해주세요.'); return; }
     if (isCreatingRoom) return;
@@ -1858,16 +1875,16 @@ export function App() {
     } catch (error) {
       if (isFirebaseConfigured && roomHost && error instanceof Error && error.message === 'CREATE_ROOM_TIMEOUT') {
         setLoadingMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
-        const recoveredRoom = await findActiveRoomByHost(roomHost.uid);
+        const recoveredRoom = await findCreatedRoomWithTimeout(roomHost.uid);
         if (recoveredRoom) {
           await openWaitingRoom(recoveredRoom, '방 생성은 완료되어 대기실로 이동했습니다.', true, roomHost);
         } else {
           setLoadingMessage('');
-          setMessage('방 만들기 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.');
+          showRoomCreationFailure('방 만들기 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.');
         }
       } else {
         setLoadingMessage('');
-        setMessage(error instanceof Error ? error.message : '방 생성에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
+        showRoomCreationFailure(error instanceof Error ? error.message : '방 생성에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
       }
     } finally {
       setIsCreatingRoom(false);
@@ -3269,7 +3286,9 @@ export function App() {
       playerPanelSeats={turnSeats}
       previewNodeIds={previewNodeIds}
       previousBoardTurnText={previousBoardTurnText}
+      previousBoardTurnColor={previousBoardTurnColor}
       nextBoardTurnText={nextBoardTurnText}
+      nextBoardTurnColor={nextBoardTurnColor}
       revealedItems={revealedItems}
       roll={roll}
       rollAnimation={rollAnimation}

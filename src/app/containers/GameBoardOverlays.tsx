@@ -40,17 +40,19 @@ type TurnIndicatorProps = {
   color?: string;
   showNeighbors: boolean;
   previousText: ReactNode;
+  previousColor?: string;
   currentText: ReactNode;
   nextText: ReactNode;
+  nextColor?: string;
 };
 
-export function TurnIndicator({ color, showNeighbors, previousText, currentText, nextText }: TurnIndicatorProps) {
+export function TurnIndicator({ color, showNeighbors, previousText, previousColor, currentText, nextText, nextColor }: TurnIndicatorProps) {
   return <div data-testid="turn-indicator" className="turn-indicator" style={{ color }}>
-    {showNeighbors && <span className="turn-neighbor previous-turn">{previousText}</span>}
+    {showNeighbors && <span className="turn-neighbor previous-turn" style={{ color: previousColor }}>{previousText}</span>}
     {showNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}
     <strong>{currentText}</strong>
     {showNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}
-    {showNeighbors && <span className="turn-neighbor next-turn">{nextText}</span>}
+    {showNeighbors && <span className="turn-neighbor next-turn" style={{ color: nextColor }}>{nextText}</span>}
   </div>;
 }
 
