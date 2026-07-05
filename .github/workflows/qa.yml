@@ -98,7 +98,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deploy-retry.outputs.page_url || steps.deploy-primary.outputs.page_url }}
+      url: ${{ steps.deploy-pages.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -110,19 +110,10 @@ jobs:
         with:
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist
-      - id: deploy-primary
-        name: Deploy Pages
-        uses: actions/deploy-pages@v4
-        continue-on-error: true
-        with:
-          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
-          timeout: 600000
-      - name: Wait before Deploy Pages retry
-        if: steps.deploy-primary.outcome == 'failure'
+      - name: Wait for Pages deployment slot
         run: sleep 20
-      - id: deploy-retry
-        name: Retry Deploy Pages once
-        if: steps.deploy-primary.outcome == 'failure'
+      - id: deploy-pages
+        name: Deploy Pages
         uses: actions/deploy-pages@v4
         with:
           artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
@@ -139,7 +130,17 @@ jobs:
           node-version: 22
       - run: npm install
       - name: Cleanup old QA rooms
-        run: npm run qa:cleanup-rooms
+        run: |
+          for attempt in 1 2 3; do
+            if npm run qa:cleanup-rooms; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "QA room cleanup failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
         env:
           FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
@@ -254,7 +255,17 @@ jobs:
           node-version: 22
       - run: npm install
       - name: Cleanup created QA rooms
-        run: npm run qa:cleanup-rooms
+        run: |
+          for attempt in 1 2 3; do
+            if npm run qa:cleanup-rooms; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "QA room cleanup failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
         env:
           FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
