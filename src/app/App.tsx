@@ -2587,7 +2587,6 @@ export function App() {
       rollInProgressStartedAtRef.current = 0;
       setRollInProgress(false);
     }, ROLL_ANIMATION_MS);
-    addLog(`${getSeatDisplayName(seat)}님이 ${nextRoll.name}(${nextRoll.steps}칸)를 이동 스택에 쌓았습니다.`);
     return nextRoll;
   }
 
@@ -3141,14 +3140,15 @@ export function App() {
   }
 
   function getAiMoveContext() {
-    return { canSeatControlPiece, getSeatById, isSameSide, pieces };
+    return { canSeatControlPiece, getSeatById, isSameSide, pieces: piecesRef.current };
   }
 
   function doesAiMoveCapture(seat: Seat, piece: BoardPiece, result: YutResult, aiBranchChoice: BranchChoice) {
+    const currentPieces = piecesRef.current;
     const pathNodeIds = getMovePathNodeIds(piece.nodeId, result.steps, getEffectiveBranchChoice(piece.nodeId, aiBranchChoice));
     const landedNodeId = pathNodeIds[pathNodeIds.length - 1] ?? piece.nodeId;
     const finishes = result.steps > 0 && piece.started && pathNodeIds.slice(0, result.steps - 1).includes('n01');
-    return !finishes && pieces.some((target) => !isSameSide(getSeatById(target.ownerId), seat) && target.started && !target.finished && target.nodeId === landedNodeId);
+    return !finishes && currentPieces.some((target) => !isSameSide(getSeatById(target.ownerId), seat) && target.started && !target.finished && target.nodeId === landedNodeId);
   }
 
   async function useAiAfterMoveItem(seat: Seat) {
@@ -3192,22 +3192,33 @@ export function App() {
         };
         if (!await rollAiStackUntilClosed(aiRollStack, nextRoll)) return;
         let remainingRolls = [...aiRollStack];
+        let movedAtLeastOnce = false;
         while (remainingRolls.length && canContinueAiTurn()) {
           const rankedMoves = remainingRolls
             .map((stackRoll, index) => ({ stackRoll, index, move: chooseAiMove(seat, stackRoll, getAiMoveContext()) }))
             .filter((entry): entry is { stackRoll: YutResult; index: number; move: NonNullable<ReturnType<typeof chooseAiMove>> } => Boolean(entry.move))
             .sort((left, right) => right.move.score - left.move.score);
           const selected = rankedMoves[0];
-          if (!selected) break;
+          if (!selected) {
+            const skippedRoll = remainingRolls.shift();
+            if (skippedRoll && skippedRoll.steps < 0) addLog(`${getSeatDisplayName(seat)}님은 판 위에 나온 말이 없어 ${skippedRoll.name}를 이동하지 못합니다.`);
+            setRollStack([...remainingRolls]);
+            setRollStackClosed(remainingRolls.length > 0);
+            setSelectedRollStackIndex(remainingRolls.length === 1 ? 0 : null);
+            if (remainingRolls.length === 0) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+            continue;
+          }
           setSelectedRollStackIndex(selected.index);
           setBranchChoice(selected.move.branchChoice);
           const earnsCaptureRoll = doesAiMoveCapture(seat, selected.move.piece, selected.stackRoll, selected.move.branchChoice);
           await delay(AI_MOVE_DELAY_MS);
-          await movePiece(selected.move.piece.id, selected.stackRoll, seat, 0, selected.move.branchChoice, { consumeStackedRollIndex: selected.index, rollStackSnapshot: remainingRolls });
+          const moved = await movePiece(selected.move.piece.id, selected.stackRoll, seat, 0, selected.move.branchChoice, { consumeStackedRollIndex: selected.index, rollStackSnapshot: remainingRolls });
+          movedAtLeastOnce = movedAtLeastOnce || moved;
+          await delay(0);
           remainingRolls = remainingRolls.filter((_, index) => index !== selected.index);
           if (earnsCaptureRoll && canContinueAiTurn() && !await rollAiStackUntilClosed(remainingRolls)) return;
         }
-        if (remainingRolls.length === 0 && canContinueAiTurn()) await useAiAfterMoveItem(seat);
+        if (remainingRolls.length === 0 && movedAtLeastOnce && canContinueAiTurn()) await useAiAfterMoveItem(seat);
         return;
       }
       const aiTimingZone = chooseAiRollTimingZone();
@@ -3552,6 +3563,7 @@ export function App() {
       isCreatingRoom={isCreatingRoom}
       isFirebaseConfigured={isFirebaseConfigured}
       currentUser={currentUser}
+      resumableRoomId={window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? ''}
       onTitleChange={setTitle}
       onCreateRoom={handleCreateRoom}
       onOpenWaitingRoom={openWaitingRoom}
