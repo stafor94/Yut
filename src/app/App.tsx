@@ -2585,7 +2585,7 @@ export function App() {
   function getUsableHostItems(timing: ItemTiming) {
     if (movingPieceId || winner) return [];
     if (timing === 'after_roll' && (!isMyTurn || !roll)) return [];
-    if (timing === 'after_move' && lastMovedSeatId !== localSeatId) return [];
+    if (timing === 'after_move' && (!isMyTurn || lastMovedSeatId !== localSeatId)) return [];
     return (ownedItems[localSeatId] ?? []).filter((type) => {
       if (ITEM_DEFINITIONS[type].timing !== timing) return false;
       if ((type === 'move_plus_one' || type === 'move_minus_one') && !getPostMoveAdjustmentPiece(getSeatById(localSeatId))) return false;
@@ -3027,7 +3027,7 @@ export function App() {
     else rollYutFor(activeSeat, localRoll, null, { timingZone: rollTimingZone });
   }
 
-  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number; rollStackSnapshot?: YutResult[] } = {}) {
+  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number; rollStackSnapshot?: YutResult[]; consumedItemType?: ItemType } = {}) {
     if (winner || movingPieceId || moveInProgressRef.current) return false;
     ensureRollLogExists(seat, result);
     setMoveInProgressState(true);
@@ -3096,7 +3096,10 @@ export function App() {
     if (landedItem) {
       const itemName = ITEM_DEFINITIONS[landedItem.type].name;
       const currentItems = ownedItems[seat.id] ?? [];
-      const sameTimingItem = findItemWithSameTiming(currentItems, landedItem.type);
+      const currentItemsAfterConsumedItem = options.consumedItemType
+        ? currentItems.filter((type, index) => type !== options.consumedItemType || index !== currentItems.indexOf(options.consumedItemType))
+        : currentItems;
+      const sameTimingItem = findItemWithSameTiming(currentItemsAfterConsumedItem, landedItem.type);
       if (sameTimingItem && seat.id === localSeatId && !seat.isAI) {
         itemPickupWait = new Promise<void>((resolve) => { pendingItemPickupResolverRef.current = resolve; });
         setPendingItemPickup({ seatId: seat.id, item: landedItem.type, itemId: landedItem.id, existingItem: sameTimingItem, deadline: Date.now() + ITEM_REPLACE_TIMEOUT_MS });
@@ -3183,12 +3186,20 @@ export function App() {
     else if (result.bonus) addLog(`${withSubjectParticle(result.name)} 나와 한 번 더 던질 수 있습니다.`);
     else if (captured) addLog('상대 말을 잡아 한 번 더 던질 수 있습니다.');
     else shouldAdvanceTurn = true;
+    const canPromptMoveAdjustmentItem = !shouldAdvanceTurn
+      && seat.id === localSeatId
+      && !seat.isAI
+      && currentNodeId !== 'finish'
+      && movingGroupIds.some((id) => piecesRef.current.some((piece) => piece.id === id && canSeatControlPiece(seat, piece) && piece.started && !piece.finished));
+    const hasMoveAdjustmentItem = (ownedItems[localSeatId] ?? []).some((type) => type === 'move_plus_one' || type === 'move_minus_one')
+      || (!itemPickupWait && landedItem && (landedItem.type === 'move_plus_one' || landedItem.type === 'move_minus_one'));
     if (shouldAdvanceTurn && itemPickupWait) await itemPickupWait;
     if (shouldAdvanceTurn) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
     setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
     setTurnDeadlineKind('roll');
     setLastMovedPieceIds(movingGroupIds);
     setLastMovedSeatId(seat.id);
+    if (canPromptMoveAdjustmentItem && hasMoveAdjustmentItem) setItemPromptTiming('after_move');
     setBranchChoice('outer');
     clearRoll();
     if (consumingStackedRoll) {
@@ -3492,7 +3503,7 @@ export function App() {
       const targetPiece = actorId === localSeatId
         ? getPostMoveAdjustmentPiece(itemOwnerSeat)
         : pieces.find((piece) => piece.id === String(remotePayload.pieceId ?? lastMovedPieceIds[0] ?? '') && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished);
-      const moved = targetPiece ? await movePiece(targetPiece.id, { name: '황금 윷', steps: 0, bonus: true }, itemOwnerSeat, itemMoveSteps, getEffectiveBranchChoice(targetPiece.nodeId, (remotePayload.branchChoice as BranchChoice | undefined) ?? branchChoice)) : false;
+      const moved = targetPiece ? await movePiece(targetPiece.id, { name: '황금 윷', steps: 0, bonus: true }, itemOwnerSeat, itemMoveSteps, getEffectiveBranchChoice(targetPiece.nodeId, (remotePayload.branchChoice as BranchChoice | undefined) ?? branchChoice), { consumedItemType: type }) : false;
       if (!moved) return;
       consumeItem();
       return;

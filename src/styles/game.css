@@ -59,7 +59,7 @@ select {
 
 .floating-board-item {
   position: absolute;
-  top: -34px;
+  top: -31px;
   left: 50%;
   translate: -50% 0;
   display: grid;
@@ -133,8 +133,8 @@ select {
 
 .trap-marker {
   position: absolute;
-  right: -16px;
-  bottom: -16px;
+  right: -10px;
+  bottom: -10px;
   z-index: 5;
   filter: drop-shadow(0 6px 10px rgba(42, 30, 23, .24));
 }
@@ -463,7 +463,7 @@ select {
 .board-node.trap-selectable::after {
   content: "🪤";
   position: absolute;
-  inset: -18px -18px auto auto;
+  inset: -10px -10px auto auto;
   filter: drop-shadow(0 6px 10px rgba(42, 30, 23, .24));
 }
 
