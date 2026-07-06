@@ -92,7 +92,7 @@ import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
 import { makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
 import '../styles/globals.css';
 
-const TURN_DELAY_MS = 650;
+const TURN_DELAY_MS = 1000;
 const START_CANCEL_LOCK_MS = 2000;
 const SEQUENCE_WATCHDOG_MS = 5000;
 const TURN_ORDER_START_DELAY_MS = 3000;
@@ -115,7 +115,7 @@ const PENALTY_TURN_ACTION_TIMEOUT_MS = 5000;
 const ITEM_PROMPT_TIMEOUT_MS = 10000;
 const ITEM_REPLACE_TIMEOUT_MS = 10000;
 const TRAP_EFFECT_MS = 3000;
-const AI_MOVE_DELAY_MS = ROLL_ANIMATION_MS;
+const AI_MOVE_DELAY_MS = 1000;
 const NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS = 500;
 const AUTO_SINGLE_MOVE_DELAY_MS = 500;
 const TOAST_MESSAGE_MS = 4000;
@@ -3027,7 +3027,8 @@ export function App() {
     if (winner || movingPieceId || moveInProgressRef.current) return false;
     ensureRollLogExists(seat, result);
     setMoveInProgressState(true);
-    const movingPiece = pieces.find((piece) => piece.id === pieceId && canSeatControlPiece(seat, piece) && !piece.finished);
+    const currentPieces = piecesRef.current;
+    const movingPiece = currentPieces.find((piece) => piece.id === pieceId && canSeatControlPiece(seat, piece) && !piece.finished);
     if (!movingPiece) { setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1)); clearRoll(); setMoveInProgressState(false); return false; }
     const steps = result.steps + extraSteps;
     if (steps < 0 && !movingPiece.started) {
@@ -3048,7 +3049,7 @@ export function App() {
     }
     setMovingPieceId(pieceId);
     const movingGroupIds = movingPiece.started
-      ? pieces.filter((piece) => canSeatControlPiece(seat, piece) && !piece.finished && piece.started && piece.nodeId === movingPiece.nodeId).map((piece) => piece.id)
+      ? currentPieces.filter((piece) => canSeatControlPiece(seat, piece) && !piece.finished && piece.started && piece.nodeId === movingPiece.nodeId).map((piece) => piece.id)
       : [movingPiece.id];
     if (!movingPiece.started) await delay(STEP_DELAY_MS);
     let nextNodeIndex = movingPiece.nodeIndex;
@@ -3137,7 +3138,7 @@ export function App() {
     }
     let captured = false;
     if (currentNodeId !== 'finish') {
-      const capturablePieces = pieces.filter((piece) => !isSameSide(getSeatById(piece.ownerId), seat) && !piece.finished && piece.started && piece.nodeId === currentNodeId);
+      const capturablePieces = piecesRef.current.filter((piece) => !isSameSide(getSeatById(piece.ownerId), seat) && !piece.finished && piece.started && piece.nodeId === currentNodeId);
       const shieldedCaptures = capturablePieces.filter((piece) => shieldedPieceIds.includes(piece.id));
       captured = capturablePieces.some((piece) => !shieldedPieceIds.includes(piece.id));
       if (shieldedCaptures.length) {
@@ -3164,7 +3165,7 @@ export function App() {
       }
     }
     if (finishedMove) { addLog(`${getSeatDisplayName(seat)}님의 말이 완주했습니다!`); playSfx('arrive'); }
-    const controlledPiecesDone = pieces.filter((piece) => canSeatControlPiece(seat, piece) && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
+    const controlledPiecesDone = piecesRef.current.filter((piece) => canSeatControlPiece(seat, piece) && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
     if (controlledPiecesDone) addLog(`${playMode === 'team' ? seat.team : getSeatDisplayName(seat)}님의 모든 말이 완주했습니다.`);
     const consumingStackedRoll = stackedRollMode && typeof options.consumeStackedRollIndex === 'number';
     const sourceRollStack = options.rollStackSnapshot ?? rollStack;
