@@ -216,6 +216,8 @@ export function App() {
   const [turnOrderPhase, setTurnOrderPhase] = useState<TurnOrderPhase>({ active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
   const [turnOrderIntro, setTurnOrderIntro] = useState<TurnOrderIntro | null>(null);
   const [waitingForPlayersReady, setWaitingForPlayersReady] = useState(false);
+  const [turnDeadlineAt, setTurnDeadlineAt] = useState(0);
+  const [turnDeadlineKind, setTurnDeadlineKind] = useState<'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | ''>('');
   const [turnOrderClock, setTurnOrderClock] = useState(() => Date.now());
   const [rollAnimation, setRollAnimation] = useState<RollAnimation | null>(null);
   const piecesRef = useRef<BoardPiece[]>([]);
@@ -273,6 +275,7 @@ export function App() {
   const stalledTurnRecoveryKeyRef = useRef('');
   const enteredGamePresenceKeyRef = useRef('');
   const startedGameRequestVersionsRef = useRef<Set<number>>(new Set());
+  const timeoutRecoveryKeysRef = useRef<Set<string>>(new Set());
 
   const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? '') => turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : TURN_ACTION_TIMEOUT_MS;
   const getItemPromptTimeoutMs = (seatId = localSeatId) => turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : ITEM_PROMPT_TIMEOUT_MS;
@@ -477,6 +480,8 @@ export function App() {
     effectiveRollResultReadyAt,
     turnOrderPhase,
     waitingForPlayersReady,
+    turnDeadlineAt,
+    turnDeadlineKind,
     startRequestVersion,
     gameSeats: syncedGameSeats,
     localSeatId,
@@ -552,6 +557,7 @@ export function App() {
   const stalledTurnAgeMs = stalledTurnWatchKey && stalledTurnStartedAtRef.current ? Math.max(0, Date.now() - stalledTurnStartedAtRef.current) : 0;
   const getCurrentStalledTurnSyncAgeMs = () => {
     if (!stalledTurnWatchKey) return 0;
+    if (turnDeadlineKind === 'move' && turnDeadlineAt) return Math.max(0, Date.now() - turnDeadlineAt + TURN_ACTION_TIMEOUT_MS);
     const watchAgeMs = stalledTurnStartedAtRef.current ? Math.max(0, Date.now() - stalledTurnStartedAtRef.current) : 0;
     const readyAgeMs = effectiveRollResultReadyAt ? Math.max(0, Date.now() - effectiveRollResultReadyAt) : 0;
     return Math.max(watchAgeMs, readyAgeMs);
@@ -559,7 +565,7 @@ export function App() {
   const stalledTurnSyncAgeMs = getCurrentStalledTurnSyncAgeMs();
   const stalledTurnDetected = Boolean(
     stalledTurnWatchKey
-    && canCoordinateOnlineGame
+    && isOnlinePlayer
     && !winner
     && !rollResultHolding
     && !rollAnimation
@@ -690,7 +696,7 @@ export function App() {
     if (rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return { status: 'blocked', reason: 'transient-turn-effect', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
     if (!stalledTurnMovablePieces.length || !stalledTurnFallbackPiece) return { status: 'blocked', reason: 'no-movable-piece', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
     if (stalledTurnNeedsBranchChoice) return { status: 'blocked', reason: 'branch-choice-required', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
-    if (!canCoordinateOnlineGame) return { status: 'blocked', reason: 'not-coordinator', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
+    if (!isOnlinePlayer) return { status: 'blocked', reason: 'not-online-player', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
     if (stalledTurnRecoveryKeyRef.current === stalledTurnWatchKey) return { status: 'blocked', reason: 'already-recovery-requested', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
     if (currentAgeMs < TURN_ACTION_TIMEOUT_MS) return { status: 'waiting', reason: 'turn-action-timeout-not-reached', ageMs: currentAgeMs, recoveryAfterMs: TURN_ACTION_TIMEOUT_MS };
     return { status: 'recoverable', reason: 'stalled-roll-move-timeout', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
@@ -761,6 +767,8 @@ export function App() {
     turnOrderIntro,
     activeTurnOrderIntro,
     waitingForOnlineTurnOrder,
+    turnDeadlineAt,
+    turnDeadlineKind,
     turnIndex,
     lastAppliedStateVersionRef,
     lastAppliedSequenceRef,
@@ -814,7 +822,7 @@ export function App() {
     itemPromptTiming,
     branchChoice,
     turnActionTimeoutMs: TURN_ACTION_TIMEOUT_MS,
-  }), [actionErrorDialog, actionPipelineDiagnostic, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingGameStateSave, waitingRoomHostSeatId, coordinatorStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, lastManualSyncResolution, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, syncPipelineDiagnostic, turnActionTimeoutPenaltyBySeatId, turnHealthDiagnostic, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps, stalledTurnAgeMs, stalledTurnDetected, stalledTurnFallbackPiece, stalledTurnMovablePieces, stalledTurnNeedsBranchChoice, stalledTurnReason, stalledTurnSyncAgeMs, stalledTurnWatchKey]);
+  }), [actionErrorDialog, actionPipelineDiagnostic, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasPendingGameStateSave, waitingRoomHostSeatId, coordinatorStateSaveKey, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, lastManualSyncResolution, localSeatId, message, moveActionBlockReasons, pendingLocalRemoteActionCount, remoteActionDiagnostics, syncPipelineDiagnostic, turnActionTimeoutPenaltyBySeatId, turnHealthDiagnostic, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnDeadlineAt, turnDeadlineKind, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps, stalledTurnAgeMs, stalledTurnDetected, stalledTurnFallbackPiece, stalledTurnMovablePieces, stalledTurnNeedsBranchChoice, stalledTurnReason, stalledTurnSyncAgeMs, stalledTurnWatchKey]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
 
@@ -845,7 +853,40 @@ export function App() {
       void recoverStalledTurnMove(stalledTurnWatchKey);
     }, delayMs);
     return () => window.clearTimeout(timer);
-  }, [activeSeat, canCoordinateOnlineGame, movingPieceId, moveInProgress, pendingTrapPlacement, roll, rollAnimation, rollResultHolding, stalledTurnMovablePieces.length, stalledTurnNeedsBranchChoice, stalledTurnSyncAgeMs, stalledTurnWatchKey, winner]);
+  }, [activeSeat, isOnlinePlayer, movingPieceId, moveInProgress, pendingTrapPlacement, roll, rollAnimation, rollResultHolding, stalledTurnMovablePieces.length, stalledTurnNeedsBranchChoice, stalledTurnSyncAgeMs, stalledTurnWatchKey, turnDeadlineAt, turnDeadlineKind, winner]);
+
+  useEffect(() => {
+    if (!canSubmitDeadlineRecovery() || !activeRoomId || !activeSeat || roll || turnDeadlineKind !== 'roll' || !turnDeadlineAt) return undefined;
+    const recoveryKey = `${activeRoomId}:${lastAppliedSequenceRef.current}:${turnIndex}:${activeSeat.id}:roll:${turnDeadlineAt}`;
+    const runRecovery = () => {
+      if (Date.now() < turnDeadlineAt || timeoutRecoveryKeysRef.current.has(recoveryKey)) return;
+      void recoverTimedOutRoll(recoveryKey);
+    };
+    const delayMs = Math.max(0, turnDeadlineAt - Date.now());
+    const timer = window.setTimeout(runRecovery, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [activeRoomId, activeSeat?.id, activeTurnOrderIntro, isOnlinePlayer, movingPieceId, moveInProgress, pendingTrapPlacement, roll, rollAnimation, screen, turnDeadlineAt, turnDeadlineKind, turnIndex, turnOrderPhase.active, winner]);
+
+  useEffect(() => {
+    if (!activeRoomId || screen !== 'game') return undefined;
+    const handleResume = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (turnDeadlineKind === 'roll' && turnDeadlineAt && Date.now() >= turnDeadlineAt && activeSeat && !roll) {
+        const recoveryKey = `${activeRoomId}:${lastAppliedSequenceRef.current}:${turnIndex}:${activeSeat.id}:roll:${turnDeadlineAt}`;
+        void recoverTimedOutRoll(recoveryKey, { source: 'page-resume' });
+      }
+      const stalledResolution = getStalledTurnSyncResolution();
+      if (stalledResolution.status === 'recoverable') void recoverStalledTurnMove(stalledResolution.recoveryKey, { source: 'page-resume' });
+    };
+    window.addEventListener('focus', handleResume);
+    window.addEventListener('pageshow', handleResume);
+    document.addEventListener('visibilitychange', handleResume);
+    return () => {
+      window.removeEventListener('focus', handleResume);
+      window.removeEventListener('pageshow', handleResume);
+      document.removeEventListener('visibilitychange', handleResume);
+    };
+  }, [activeRoomId, activeSeat, roll, screen, stalledTurnWatchKey, turnDeadlineAt, turnDeadlineKind, turnIndex]);
 
 
   useEffect(() => () => {
@@ -914,12 +955,15 @@ export function App() {
     setCoordinatorStateSaveKey('');
     setTurnActionTimeoutPenaltyBySeatId({});
     setWaitingForPlayersReady(false);
+    setTurnDeadlineAt(0);
+    setTurnDeadlineKind('');
     setStartRequestVersion(0);
     setStartCountdownStartsAt(0);
     setStartCountdownEndsAt(0);
     setStartStatus('idle');
     enteredGamePresenceKeyRef.current = '';
     startedGameRequestVersionsRef.current.clear();
+    timeoutRecoveryKeysRef.current.clear();
     if (rollAnimationTimerRef.current !== null) {
       window.clearTimeout(rollAnimationTimerRef.current);
       rollAnimationTimerRef.current = null;
@@ -1311,6 +1355,8 @@ export function App() {
     setRollResultReadyAt(nextRollResultReadyAt);
     setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
     setWaitingForPlayersReady(Boolean(state.waitingForPlayersReady));
+    setTurnDeadlineAt(Number(state.turnDeadlineAt ?? 0));
+    setTurnDeadlineKind((state.turnDeadlineKind as typeof turnDeadlineKind | undefined) ?? '');
     if (typeof state.startRequestVersion === 'number') setStartRequestVersion(Number(state.startRequestVersion));
     lastSavedStateFingerprintRef.current = makeGameStateFingerprint({
       pieces: syncedPieces,
@@ -1340,6 +1386,8 @@ export function App() {
       effectiveRollResultReadyAt: nextRollResultReadyAt,
       turnOrderPhase: (state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
       waitingForPlayersReady: Boolean(state.waitingForPlayersReady),
+      turnDeadlineAt: Number(state.turnDeadlineAt ?? 0),
+      turnDeadlineKind: (state.turnDeadlineKind as typeof turnDeadlineKind | undefined) ?? '',
       startRequestVersion: Number(state.startRequestVersion ?? 0),
       fallEffect: (state.fallEffect as FallEffect | null | undefined) ?? null,
     });
@@ -1497,7 +1545,7 @@ export function App() {
           setMessage(`최신 상태이지만 현재 턴 이동 완료를 기다리는 중입니다. (${Math.ceil(Math.max(0, stalledResolution.recoveryAfterMs - stalledResolution.ageMs) / 1000)}초 후 복구 가능)`);
           return;
         }
-        if (stalledResolution.status === 'blocked' && stalledResolution.reason !== 'not-coordinator') {
+        if (stalledResolution.status === 'blocked' && stalledResolution.reason !== 'not-online-player') {
           const blockedMessage = stalledResolution.reason === 'branch-choice-required'
             ? '최신 상태이지만 현재 말이 분기점에 있어 방향 선택이 필요합니다. 자동 복구를 보류했습니다.'
             : stalledResolution.reason === 'no-movable-piece'
@@ -1506,8 +1554,8 @@ export function App() {
           setMessage(blockedMessage);
           return;
         }
-        if (stalledResolution.status === 'blocked' && stalledResolution.reason === 'not-coordinator') {
-          setMessage('최신 상태이지만 현재 턴 이동이 아직 완료되지 않았습니다. 조율자 기기에서 자동 복구를 시도합니다.');
+        if (stalledResolution.status === 'blocked' && stalledResolution.reason === 'not-online-player') {
+          setMessage('최신 상태이지만 현재 턴 이동이 아직 완료되지 않았습니다. 플레이어 기기에서 자동 복구를 시도합니다.');
           return;
         }
         setMessage(`이미 최신 상태입니다. (sequence #${localSequence})`);
@@ -2156,6 +2204,7 @@ export function App() {
     const initialTurnOrderIds = orderedSeats.map((seat) => seat.id);
     const { intro: initialTurnOrderIntro } = createTurnOrderIntro(orderedSeats, { getSeatPieceColor, playMode, finalHoldMs: TURN_ORDER_FINAL_HOLD_MS });
     const initialGameStartedAt = initialTurnOrderIntro.readyAt;
+    const initialTurnDeadlineAt = initialGameStartedAt + TURN_ACTION_TIMEOUT_MS;
     const prepLog = makeLog(formatTurnOrderSummary(orderedSeats, getSeatDisplayName));
     resetGameBoard(nextPieces);
     setBoardItems(nextBoardItems);
@@ -2166,6 +2215,8 @@ export function App() {
     setTurnOrderPhase(initialTurnOrderPhase);
     setAuthoritativeWinner('');
     setWaitingForPlayersReady(false);
+    setTurnDeadlineAt(initialTurnDeadlineAt);
+    setTurnDeadlineKind('roll');
     setGameStartedAt(initialGameStartedAt);
     setScreen('game');
     const initialSyncedState = {
@@ -2202,10 +2253,12 @@ export function App() {
       rollResultReadyAt: 0,
       turnOrderPhase: initialTurnOrderPhase,
       waitingForPlayersReady: false,
+      turnDeadlineAt: initialTurnDeadlineAt,
+      turnDeadlineKind: 'roll' as const,
       gameSeats: nextGameSeats,
       startRequestVersion,
     };
-    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
+    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, turnDeadlineAt: initialTurnDeadlineAt, turnDeadlineKind: 'roll', startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
     savingStateFingerprintRef.current = initialStateFingerprint;
     void measureFirebaseLatency(() => initializeGameState(activeRoomId, initialSyncedState, {
       actorId: localSeatId,
@@ -2547,6 +2600,8 @@ export function App() {
     const animationKey = `${turnIndex}:${nextRoll.name}:${nextRoll.steps}:${rollResultReadyAtMs}`;
     setForcedRoll(null);
     setRollResultReadyAt(rollResultReadyAtMs);
+    setTurnDeadlineAt(rollResultReadyAtMs + TURN_ACTION_TIMEOUT_MS);
+    setTurnDeadlineKind('move');
     setLastRollTimingZone(timingZone ?? null);
     currentRollRef.current = nextRoll;
     setRoll(nextRoll);
@@ -2573,6 +2628,8 @@ export function App() {
     const rollResultReadyAtMs = Date.now() + ROLL_ANIMATION_MS;
     setForcedRoll(null);
     setRollResultReadyAt(rollResultReadyAtMs);
+    setTurnDeadlineAt(rollResultReadyAtMs + TURN_ACTION_TIMEOUT_MS);
+    setTurnDeadlineKind('move');
     setLastRollTimingZone(timingZone ?? null);
     playRollAnimationOnce(nextRoll, makeDisplaySticks(nextRoll), `stack:${turnIndex}:${rollStack.length}:${nextRoll.name}:${rollResultReadyAtMs}`, false, 0, timingZone);
     setRollStack((current) => [...current, nextRoll]);
@@ -2601,6 +2658,8 @@ export function App() {
     setRoll(null);
     currentRollRef.current = null;
     setRollResultReadyAt(0);
+    setTurnDeadlineAt(fallStartedAt + ROLL_ANIMATION_MS + TURN_ACTION_TIMEOUT_MS);
+    setTurnDeadlineKind('roll');
     setBranchChoice('outer');
     setLastMovedPieceIds([]);
     setLastMovedSeatId(seat.id);
@@ -2671,8 +2730,59 @@ export function App() {
     localActionCommitQueueRef.current = queuedCommit.catch(() => undefined);
   }
 
+  function canSubmitDeadlineRecovery() {
+    return Boolean(activeRoomId && screen === 'game' && isOnlinePlayer && !isSpectator && activeSeat && !winner && !activeTurnOrderIntro && !turnOrderPhase.active && !pendingTrapPlacement);
+  }
+
+  async function recoverTimedOutRoll(recoveryKey: string, options: { source?: string } = {}) {
+    if (!canSubmitDeadlineRecovery() || !activeRoomId || !activeSeat || roll || rollInProgress || rollAnimation || movingPieceId || moveInProgress) return false;
+    if (timeoutRecoveryKeysRef.current.has(recoveryKey)) return false;
+    timeoutRecoveryKeysRef.current.add(recoveryKey);
+    const rollTimingZone: RollTimingZone = 'normal';
+    const forcedResult = rollYutResultWithTiming(rollTimingZone).result;
+    const actionKey = `roll_timeout:${recoveryKey}`;
+    const action = {
+      type: 'roll_yut' as const,
+      actorId: activeSeat.id,
+      payload: withActorLogPayload({
+        forcedResult,
+        rollTimingZone,
+        timedOut: true,
+        timeoutRecoveredBy: localSeatId,
+        timeoutSource: options.source ?? 'deadline',
+        clientActionId: actionKey,
+      }, activeSeat),
+    };
+    recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-started', `${getSeatDisplayName(activeSeat)}님의 윷 던지기 제한 시간이 지나 자동 진행합니다.`, { actionKey });
+    enqueueAuthoritativeGameAction(
+      activeRoomId,
+      action,
+      async (result) => {
+        if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+          const localSequence = lastAppliedSequenceRef.current;
+          const resultSequence = result.sequence;
+          if (resultSequence > localSequence) {
+            const sequences = await getGameSequencesSince(activeRoomId, localSequence);
+            const latestState = [...sequences]
+              .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
+              .reverse()
+              .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+            if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
+          }
+          recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-committed', '윷 던지기 제한 시간 초과를 자동 처리했습니다.', { status: result.status, actionKey });
+        }
+        if (result.status === 'rejected' || result.status === 'unsupported') {
+          recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-result', result.reason ?? '윷 던지기 자동 진행에 실패했습니다.', { status: result.status, actionKey });
+        }
+      },
+      (error) => recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-error', error instanceof Error ? error.message : '윷 던지기 자동 진행에 실패했습니다.', { actionKey }),
+      () => undefined,
+    );
+    return true;
+  }
+
   async function recoverStalledTurnMove(recoveryKey: string, options: { source?: string } = {}) {
-    if (!activeRoomId || !canCoordinateOnlineGame || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
+    if (!activeRoomId || !canSubmitDeadlineRecovery() || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
     if (stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
     if (winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return false;
     if (stalledTurnNeedsBranchChoice) return false;
@@ -3007,6 +3117,8 @@ export function App() {
     else shouldAdvanceTurn = true;
     if (shouldAdvanceTurn && itemPickupWait) await itemPickupWait;
     if (shouldAdvanceTurn) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+    setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
+    setTurnDeadlineKind('roll');
     setLastMovedPieceIds(movingGroupIds);
     setLastMovedSeatId(seat.id);
     setBranchChoice('outer');
