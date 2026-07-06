@@ -3094,3 +3094,59 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Workflow/script syntax check
 - [x] Build succeeds
 - [ ] main push workflow rerun checked
+
+## 2026-07-06 - Issue #419 Deploy Pages 슬롯 지연 재발로 QA 스킵
+
+### Symptom
+
+- main push QA workflow에서 `Build app`은 성공했지만 `Deploy Pages` job이 `Deployment failed, try again later.` annotation으로 실패했다.
+- `QA smoke`, `QA game flow`, `QA mobile layout`은 배포 실패 때문에 모두 skipped 상태가 됐다.
+- Playwright 로그와 브라우저 콘솔 로그는 생성되지 않았다.
+
+### Expected behavior
+
+- GitHub Pages 배포 슬롯/백엔드 지연이 60초보다 길어져도 workflow가 충분히 기다린 뒤 배포를 시도해야 한다.
+- deploy-pages 입력값은 action 허용 범위 안에 있어야 하며, 잘못된 timeout 경고를 만들지 않아야 한다.
+
+### Actual behavior
+
+- workflow는 artifact 업로드 후 60초만 기다린 뒤 deploy-pages를 실행했다.
+- 실패 run `28760402569`의 전체 `Deploy Pages` job은 약 1분 20초 만에 실패해, 실제 deploy-pages 단계는 60초 대기 직후 약 20초 만에 `Deployment failed, try again later.`로 종료됐다.
+- `timeout: 900000`은 `actions/deploy-pages@v4` 허용 최대값 600000ms를 초과해 GitHub Actions annotation에 최대값으로 강제 조정되었다는 경고를 남겼다.
+
+### Confirmed root cause
+
+- 실패 원인은 앱 빌드나 Playwright가 아니라 GitHub Pages 배포 단계의 일시적인 배포 슬롯/백엔드 지연이다.
+- 직전 보강의 60초 사전 대기는 이번 run의 Pages 지연을 흡수하기에 부족했다.
+- deploy timeout을 900000ms로 지정한 설정은 action 최대 허용값을 넘어 실제로는 600000ms로 잘렸으므로, 의도한 추가 대기 안정화가 적용되지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: deploy step을 `continue-on-error`로 실행한 뒤 실패 시 20초 후 1회 재시도했다.
+  - Why it failed: 첫 deploy step 실패 annotation이 재시도 성공 여부와 관계없이 Actions에 남아 배포 오류처럼 보였다.
+- Attempt 2:
+  - What was changed: 실패 annotation을 피하기 위해 단일 deploy step으로 되돌리고 20초만 대기했다.
+  - Why it failed: Pages backend 슬롯/잠금/지연이 20초보다 오래 지속되면 단일 deploy step이 빠르게 실패했다.
+- Attempt 3:
+  - What was changed: 단일 deploy step을 유지하고 사전 대기를 60초로 늘렸으며 `timeout: 900000`을 지정했다.
+  - Why it failed: 이번 Pages 지연은 60초보다 길었고, `timeout: 900000`은 action 최대값을 초과해 600000ms로 강제 조정됐다.
+
+### Do not try again
+
+- Playwright timeout이나 앱 테스트 코드를 수정해 deploy-only 실패를 해결하려 하지 않는다.
+- 실패 annotation을 남기는 선행 deploy `continue-on-error` 재시도 구조를 반복하지 않는다.
+- `actions/deploy-pages@v4`의 최대 허용값을 초과하는 timeout을 지정하지 않는다.
+- 배포 실패 후 QA 3종을 강제로 실행하지 않는다.
+
+### Correct fix plan
+
+- deploy-pages step 전 Pages 배포 슬롯 대기 시간을 180초로 늘린다.
+- deploy-pages timeout은 action 허용 최대값인 600000ms로 명시해 잘림 경고를 제거한다.
+- 배포 성공 이후에만 QA job들이 실행되는 의존성은 유지한다.
+
+### Verification checklist
+
+- [x] Workflow syntax/manual inspection
+- [x] Build succeeds
+- [ ] main push workflow rerun checked
