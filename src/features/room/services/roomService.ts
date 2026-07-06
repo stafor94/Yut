@@ -753,6 +753,39 @@ export async function updateRoomOptions(roomId: string, params: Partial<Pick<Roo
   });
 }
 
+export async function claimRoomHostIfMissing(roomId: string, candidatePlayerId: string) {
+  if (!db || !roomId || !candidatePlayerId) return null;
+  const roomRef = doc(db, 'rooms', roomId);
+  const candidateRef = doc(db, 'rooms', roomId, 'players', candidatePlayerId);
+  return runTransaction(db, async (transaction) => {
+    const roomSnapshot = await transaction.get(roomRef);
+    if (!roomSnapshot.exists()) return null;
+    const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
+    if (room.status !== 'waiting') return room.hostId ?? null;
+
+    const currentHostId = room.hostId ?? '';
+    let currentHostSeatIndex: number | null = null;
+    if (currentHostId) {
+      const currentHostSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', currentHostId));
+      const currentHost = currentHostSnapshot.exists() ? currentHostSnapshot.data() as RoomPlayer : null;
+      if (currentHost && !currentHost.isSpectator && !currentHost.isAI) return currentHostId;
+      currentHostSeatIndex = currentHost && Number.isFinite(Number(currentHost.seatIndex)) ? Number(currentHost.seatIndex) : null;
+    }
+
+    const candidateSnapshot = await transaction.get(candidateRef);
+    if (!candidateSnapshot.exists()) return null;
+    const candidate = candidateSnapshot.data() as RoomPlayer;
+    if (candidate.isSpectator || candidate.isAI || !Number.isFinite(Number(candidate.seatIndex))) return null;
+
+    const candidateSeatIndex = Number(candidate.seatIndex);
+    transaction.set(roomRef, { hostId: candidatePlayerId, emptySince: null }, { merge: true });
+    if (currentHostSeatIndex !== null && currentHostSeatIndex !== candidateSeatIndex) transaction.set(doc(db!, 'rooms', roomId, 'seats', String(currentHostSeatIndex)), { isHost: false, updatedAt: serverTimestamp() }, { merge: true });
+    transaction.set(doc(db!, 'rooms', roomId, 'seats', String(candidateSeatIndex)), { isHost: true, updatedAt: serverTimestamp() }, { merge: true });
+    transaction.set(candidateRef, { ready: true, isSpectator: false, lastSeen: serverTimestamp() }, { merge: true });
+    return candidatePlayerId;
+  });
+}
+
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   await setDoc(doc(db, 'rooms', roomId, 'players', playerId), params, { merge: true });
