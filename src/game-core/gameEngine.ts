@@ -1,4 +1,4 @@
-import { BOARD_NODES, getMovePathNodeIds, type BoardItem, type BranchChoice } from './board/board';
+import { BOARD_NODES, getMovePathNodeIdsWithPrevious, type BoardItem, type BranchChoice } from './board/board';
 import { ITEM_DEFINITIONS, type ItemType } from '../features/items/logic/items';
 import type { RollTimingZone, YutResult } from './roll';
 
@@ -20,7 +20,7 @@ export type GameCommandCommit<TPatch extends Record<string, unknown> = Record<st
 export type GameCommandResult<TPatch extends Record<string, unknown> = Record<string, unknown>, TPayload extends Record<string, unknown> = Record<string, unknown>> = GameCommandCommit<TPatch, TPayload> | GameCommandRejection;
 
 export type EngineLog = { id: number; text: string };
-export type EnginePiece = { id: string; ownerId: string; label?: string; nodeIndex: number; nodeId: string; started: boolean; finished: boolean; color?: string };
+export type EnginePiece = { id: string; ownerId: string; label?: string; nodeIndex: number; nodeId: string; started: boolean; finished: boolean; color?: string; previousNodeId?: string };
 export type EngineTrapNode = { nodeId: string; ownerId: string };
 export type EngineFallEffect = { id: number; seatId: string; timingZone?: RollTimingZone };
 export type EngineSeatSide = { id: string; team?: string };
@@ -211,7 +211,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
     ? pieces.filter((piece) => piece.started && !piece.finished && piece.nodeId === movingPiece.nodeId && canControlPiece(actorId, piece, playMode, sides)).map((piece) => piece.id)
     : [movingPiece.id];
   const beforeMovingPieces = pieces.filter((piece) => movingGroupIds.includes(piece.id)).map((piece) => ({ ...piece }));
-  const movePathNodeIds = getMovePathNodeIds(movingPiece.nodeId, steps, branchChoice);
+  const movePathNodeIds = getMovePathNodeIdsWithPrevious(movingPiece.nodeId, steps, branchChoice, movingPiece.previousNodeId);
   let currentNodeId = movingPiece.nodeId;
   let currentNodeIndex = movingPiece.nodeIndex;
   let finishedMove = false;
@@ -234,7 +234,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
   }
 
   const nextPieces = pieces.map((piece) => movingGroupIds.includes(piece.id)
-    ? { ...piece, nodeId: currentNodeId, nodeIndex: currentNodeIndex, started: currentNodeId !== 'finish', finished: currentNodeId === 'finish' }
+    ? { ...piece, nodeId: currentNodeId, nodeIndex: currentNodeIndex, started: currentNodeId !== 'finish', finished: currentNodeId === 'finish', previousNodeId: currentNodeId === 'finish' ? undefined : beforeMovingPieces.find((beforePiece) => beforePiece.id === piece.id)?.nodeId }
     : piece);
   let nextTrapNodes = [...(state.trapNodes ?? [])];
   let nextShieldedPieceIds = [...(state.shieldedPieceIds ?? [])];
@@ -257,7 +257,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
     } else {
       nextPieces.forEach((piece) => {
         if (movingGroupIds.includes(piece.id)) {
-          piece.nodeIndex = 0; piece.nodeId = 'n01'; piece.started = false; piece.finished = false;
+          piece.nodeIndex = 0; piece.nodeId = 'n01'; piece.started = false; piece.finished = false; piece.previousNodeId = undefined;
         }
       });
       currentNodeId = 'n01';
@@ -293,7 +293,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
       captured = true;
       nextPieces.forEach((piece) => {
         if (capturedPieceIds.includes(piece.id)) {
-          piece.nodeIndex = 0; piece.nodeId = 'n01'; piece.started = false; piece.finished = false;
+          piece.nodeIndex = 0; piece.nodeId = 'n01'; piece.started = false; piece.finished = false; piece.previousNodeId = undefined;
         }
       });
       const capturedOwnerCounts = capturedPieceIds.reduce<Record<string, number>>((counts, capturedPieceId) => {

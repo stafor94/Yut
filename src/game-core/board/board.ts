@@ -106,6 +106,18 @@ export function getMovePathNodeIds(startNodeId: string, steps: number, branchCho
   return pathNodeIds;
 }
 
+const CENTER_ADJACENT_NODE_IDS = ['d02', 'd03', 'd06', 'd07'] as const;
+
+export function getMovePathNodeIdsWithPrevious(startNodeId: string, steps: number, branchChoice: BranchChoice = 'outer', previousNodeId?: string) {
+  if (steps >= 0 || startNodeId !== 'c01' || !previousNodeId || !CENTER_ADJACENT_NODE_IDS.includes(previousNodeId as typeof CENTER_ADJACENT_NODE_IDS[number])) {
+    return getMovePathNodeIds(startNodeId, steps, branchChoice);
+  }
+
+  const pathNodeIds = [previousNodeId];
+  if (Math.abs(steps) > 1) pathNodeIds.push(...getBackwardPathNodeIds(previousNodeId, Math.abs(steps) - 1));
+  return pathNodeIds;
+}
+
 export function getBackwardPathNodeIds(startNodeId: string, steps: number) {
   const pathNodeIds: string[] = [];
   let currentNodeId = startNodeId;
