@@ -6,7 +6,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary } from '../features/room/services/roomService';
+import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
@@ -167,6 +167,7 @@ export function App() {
   const [loadingMessage, setLoadingMessage] = useState('');
   const [manualSequenceSyncing, setManualSequenceSyncing] = useState(false);
   const [lastManualSyncResolution, setLastManualSyncResolution] = useState<ManualSyncResolution | null>(null);
+  const [initialGameStateSaveDiagnostic, setInitialGameStateSaveDiagnostic] = useState<{ status: SaveGameStateResult['status'] | 'pending' | 'error' | ''; turnVersion: number; lastSequence: number; startedAt: number; completedAt: number; source: string; message: string; fingerprint: string } | null>(null);
   const [screen, setScreen] = useState<Screen>('lobby');
   const [activeRoomTitle, setActiveRoomTitle] = useState('');
   const [activeRoomId, setActiveRoomId] = useState('');
@@ -672,6 +673,7 @@ export function App() {
     savingStateFingerprint: savingStateFingerprintRef.current ? savingStateFingerprintRef.current.slice(0, 24) : '',
     lastSavedStateFingerprint: lastSavedStateFingerprintRef.current ? lastSavedStateFingerprintRef.current.slice(0, 24) : '',
     lastSequenceWatchdogAgeMs: lastSequenceWatchdogAtRef.current ? Math.max(0, Date.now() - lastSequenceWatchdogAtRef.current) : null,
+    initialGameStateSave: initialGameStateSaveDiagnostic,
   };
   const turnHealthDiagnostic = {
     activeSeatId: activeSeat?.id ?? '',
@@ -2266,20 +2268,73 @@ export function App() {
     };
     const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, turnDeadlineAt: initialTurnDeadlineAt, turnDeadlineKind: 'roll', startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
     savingStateFingerprintRef.current = initialStateFingerprint;
+    const initialGameStateSaveStartedAt = Date.now();
+    setInitialGameStateSaveDiagnostic({
+      status: 'pending',
+      turnVersion: 0,
+      lastSequence: 0,
+      startedAt: initialGameStateSaveStartedAt,
+      completedAt: 0,
+      source: 'initializeGameState',
+      message: '',
+      fingerprint: initialStateFingerprint.slice(0, 24),
+    });
     void measureFirebaseLatency(() => initializeGameState(activeRoomId, initialSyncedState, {
       actorId: localSeatId,
       startRequestVersion,
       clientMutationId: `game_initialized:${activeRoomId}:${startRequestVersion}`,
       payload: { startRequestVersion },
-    })).then((result) => {
-      if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
+    })).then(async (result) => {
+      const lastSequence = Number(result.lastSequence ?? 0);
+      const turnVersion = Number(result.turnVersion ?? 0);
+      const completedAt = Date.now();
+      if (lastSequence) lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, lastSequence);
+      if (turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, turnVersion);
+      setInitialGameStateSaveDiagnostic({
+        status: result.status,
+        turnVersion,
+        lastSequence,
+        startedAt: initialGameStateSaveStartedAt,
+        completedAt,
+        source: 'initializeGameState',
+        message: '',
+        fingerprint: initialStateFingerprint.slice(0, 24),
+      });
       if (result.status === 'committed' || result.status === 'duplicate') {
-        if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
         setAuthoritativeGameStateReady(true);
         lastSavedStateFingerprintRef.current = initialStateFingerprint;
+        savingStateFingerprintRef.current = '';
+        setCoordinatorStateSaveKey('');
         return;
       }
-      setMessage('게임 상태 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+      if (lastSequence > 0) {
+        const sequences = await measureFirebaseLatency(() => getGameSequencesSince(activeRoomId, 0));
+        const latestState = [...sequences]
+          .filter((sequence) => Number(sequence.sequence ?? 0) <= lastSequence)
+          .reverse()
+          .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+        if (latestState) {
+          await replayMissingSequencesThenApply(latestState, 0, lastSequence);
+          setAuthoritativeGameStateReady(true);
+          setInitialGameStateSaveDiagnostic((current) => current ? { ...current, source: `${current.source}:sequence-replay`, message: '초기 저장 불일치 후 최신 sequence를 적용했습니다.' } : current);
+          return;
+        }
+      }
+      setMessage(result.status === 'sequence_mismatch'
+        ? '게임 시작 정보가 갱신되어 최신 게임 상태를 기다리고 있습니다.'
+        : '게임 상태 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+    }).catch((error) => {
+      setInitialGameStateSaveDiagnostic({
+        status: 'error',
+        turnVersion: 0,
+        lastSequence: 0,
+        startedAt: initialGameStateSaveStartedAt,
+        completedAt: Date.now(),
+        source: 'initializeGameState',
+        message: error instanceof Error ? error.message : '게임 상태 저장 중 알 수 없는 오류가 발생했습니다.',
+        fingerprint: initialStateFingerprint.slice(0, 24),
+      });
+      setMessage(error instanceof Error ? error.message : '게임 상태 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }).finally(() => {
       if (savingStateFingerprintRef.current === initialStateFingerprint) savingStateFingerprintRef.current = '';
     });

@@ -409,11 +409,11 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
     const roomSnapshot = await transaction.get(roomRef);
     if (!roomSnapshot.exists()) return { status: 'unavailable' as const };
     const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
-    const currentRoomStartVersion = Number(room.startRequestVersion ?? 0);
-    if (currentRoomStartVersion !== meta.startRequestVersion) return { status: 'sequence_mismatch' as const, turnVersion: 0, lastSequence: 0 };
     const currentState = currentStateSnapshot.exists() ? currentStateSnapshot.data() as SyncedGameState : null;
     const currentVersion = Number(currentState?.turnVersion ?? 0);
     const currentSequence = Number(currentState?.lastSequence ?? 0);
+    const currentRoomStartVersion = Number(room.startRequestVersion ?? 0);
+    if (currentRoomStartVersion !== meta.startRequestVersion) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
     if (processedActionSnapshot.exists()) {
       transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
       return {
