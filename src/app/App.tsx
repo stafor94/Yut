@@ -3318,7 +3318,7 @@ export function App() {
     const effectiveMoveRoll = stackedRollSelectedResult ?? roll;
     const steps = effectiveMoveRoll && activeSeat ? effectiveMoveRoll.steps + extraSteps : 0;
     const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
-    const canPassBackDoWithoutMovablePiece = Boolean(effectiveMoveRoll && activeSeat && canSubmitTurnAction && steps < 0 && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece)));
+    const canPassBackDoWithoutMovablePiece = Boolean(effectiveMoveRoll && activeSeat && canSubmitTurnAction && !rollResultHolding && !rollAnimation && steps < 0 && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece)));
     if (!(roll || stackedRollSelectedResult) || !activeSeat || (!canRequestMove && !canPassBackDoWithoutMovablePiece)) {
       reportTurnActionBlocked('move_piece', moveActionBlockReasons, '말 이동을 진행할 수 없습니다');
       return false;
@@ -3331,6 +3331,65 @@ export function App() {
     if ((!selectedPiece || !hasPieceOnBoard) && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
     if (!selectedPiece && !fallbackPiece) {
       if (steps < 0) {
+        const rollStackIndex = stackedRollMode && rollStackClosed ? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null;
+        const consumeStackedRollIndex = stackedRollMode && rollStackClosed ? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined;
+        if (activeRoomId) {
+          const payload = {
+            pieceId: '',
+            extraSteps,
+            branchChoice: 'outer' as BranchChoice,
+            rollStackIndex,
+          };
+          const actionKey = getLocalActionKey('move_piece', payload);
+          if (rejectedRemoteActionKeysRef.current.has(actionKey)) {
+            reportTurnActionBlocked('move_piece', ['previously-rejected-remote-action'], '서버가 같은 말 이동 요청을 이미 거부했습니다. 동기화 후 다시 시도해주세요');
+            return false;
+          }
+          if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
+            reportTurnActionBlocked('move_piece', ['pending-local-remote-action'], '이미 말 이동 요청을 처리 중입니다');
+            return false;
+          }
+          addPendingLocalRemoteAction(actionKey);
+          localClientMutationIdsRef.current.add(actionKey);
+          const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) };
+          addLog(`${getSeatDisplayName(activeSeat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
+          setBranchChoice('outer');
+          clearRoll();
+          if (typeof consumeStackedRollIndex === 'number') {
+            const remainingRollStack = rollStack.filter((_, index) => index !== consumeStackedRollIndex);
+            setRollStack(remainingRollStack);
+            setRollStackClosed(remainingRollStack.length > 0);
+            setSelectedRollStackIndex(remainingRollStack.length === 1 ? 0 : null);
+            if (remainingRollStack.length === 0) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+          } else {
+            setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+          }
+          enqueueAuthoritativeGameAction(
+            activeRoomId,
+            action,
+            async (result) => {
+              if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+                const localSequence = lastAppliedSequenceRef.current;
+                const resultSequence = result.sequence;
+                if (resultSequence > localSequence) {
+                  const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
+                  const latestState = [...sequences]
+                    .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
+                    .reverse()
+                    .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+                  if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
+                }
+                acknowledgePendingLocalRemoteAction(actionKey);
+              }
+              if (result.status === 'rejected' || result.status === 'unsupported') {
+                recordRemoteActionDiagnostic('move_piece', 'commit-result', result.reason ?? '말 이동 처리에 실패했습니다.', { status: result.status, actionKey });
+              }
+            },
+            (error) => recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey }),
+            () => deletePendingLocalRemoteAction(actionKey),
+          );
+          return true;
+        }
         addLog(`${getSeatDisplayName(activeSeat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
         setBranchChoice('outer');
         clearRoll();
