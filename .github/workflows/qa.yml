@@ -111,13 +111,13 @@ jobs:
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist
       - name: Wait for Pages deployment slot
-        run: sleep 60
+        run: sleep 180
       - id: deploy-pages
         name: Deploy Pages
         uses: actions/deploy-pages@v4
         with:
           artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
-          timeout: 900000
+          timeout: 600000
           error_count: 30
           reporting_interval: 10000
 
