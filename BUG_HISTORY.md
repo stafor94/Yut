@@ -67,6 +67,39 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-06 - 누적 던지기 빽도 스킵 후 자동 복구 거부
+
+### Symptom
+
+- 온라인 게임에서 빽도가 나왔지만 현재 차례 플레이어의 윷판 위에 이동 가능한 말이 없어 빽도 이동 불가 로그가 남았다.
+- 이후 다음 차례 닉네임 아래에 빽도가 남고 게임이 멈췄다.
+- 정지 턴 자동 복구가 `선택한 이동 스택을 찾을 수 없습니다.` 사유로 거부됐다.
+
+### Expected behavior
+
+- 누적 던지기 모드에서도 빽도 스택 결과를 이동할 수 없으면 authoritative `move_piece`로 해당 스택을 소비하고 턴을 정상 진행해야 한다.
+- 정지 턴 복구가 스택 결과를 복구할 때는 서버 reducer가 요구하는 `rollStackIndex`를 함께 제출해야 한다.
+
+### Confirmed root cause
+
+- authoritative 이동 reducer는 누적 던지기 모드에서 `rollStack`이 남아 있으면 payload의 `rollStackIndex`로 선택한 스택 결과를 찾아야 한다.
+- 정지 턴 복구 payload는 `rollStackIndex`를 포함하지 않아 서버에서 `선택한 이동 스택을 찾을 수 없습니다.`로 거부됐다.
+- 복구 key도 스택 index/스택 목록을 포함하지 않아, 한 번 거부된 복구 요청 이후 같은 정지 턴에서 재시도하기 어려웠다.
+
+### Correct fix plan
+
+- 정지 턴 복구 전에 현재 `roll`과 일치하는 누적 던지기 스택 index를 안전하게 산정한다.
+- 선택된 스택 index가 현재 `roll`과 일치하면 그 값을 사용하고, 일치 후보가 하나뿐이면 해당 index를 사용한다.
+- 같은 결과가 여러 개라 모호하면 자동 복구하지 않는다.
+- 복구 payload와 정지 턴 watch key에 스택 식별 정보를 포함한다.
+- 누적 던지기 빽도 스택 스킵이 authoritative reducer에서 커밋되는 단위 테스트를 추가한다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [ ] Multi-client online stacked-roll stalled recovery checked
+
 ## 2026-07-04 - 온라인 게임 roll 이후 원격 턴 이동 정지
 
 ### Symptom

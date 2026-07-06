@@ -437,6 +437,18 @@ export function App() {
   const canShowContinueRaceButton = Boolean(activeRoomId && playMode === 'individual' && (gameEndMode === 'partial_finish' || derivedPartialFinish) && unfinishedRaceSeatIds.length >= 2);
   const stackedRollSelectedResult = stackedRollMode && rollStackClosed && rollStack.length ? (typeof selectedRollStackIndex === 'number' ? rollStack[selectedRollStackIndex] : rollStack.length === 1 ? rollStack[0] : null) : null;
   const selectedMoveSteps = (stackedRollSelectedResult ?? roll)?.steps ?? 0;
+  const stalledTurnRollStackIndex = useMemo(() => {
+    if (!stackedRollMode || !roll || rollStack.length === 0) return null;
+    if (typeof selectedRollStackIndex === 'number') {
+      const selectedStackRoll = rollStack[selectedRollStackIndex];
+      if (selectedStackRoll && selectedStackRoll.name === roll.name && selectedStackRoll.steps === roll.steps) return selectedRollStackIndex;
+    }
+    const matchingIndexes = rollStack
+      .map((stackRoll, index) => stackRoll.name === roll.name && stackRoll.steps === roll.steps ? index : -1)
+      .filter((index) => index >= 0);
+    return matchingIndexes.length === 1 ? matchingIndexes[0] : null;
+  }, [roll, rollStack, selectedRollStackIndex, stackedRollMode]);
+  const stalledTurnRollStackAmbiguous = Boolean(stackedRollMode && roll && rollStack.length > 0 && stalledTurnRollStackIndex === null);
   const isRollLocked = rollLockUntil > rollLockClock;
   const effectiveRollResultReadyAt = normalizeRollResultReadyAt(rollResultReadyAt);
   const rollResultHolding = effectiveRollResultReadyAt > rollLockClock;
@@ -557,7 +569,7 @@ export function App() {
   }, [activeSeat, pieces, roll, stalledTurnMovablePieces]);
   const stalledTurnNeedsBranchChoice = Boolean(stalledTurnFallbackPiece && roll && roll.steps > 0 && stalledTurnFallbackPiece.started && BRANCH_NODE_IDS.includes(stalledTurnFallbackPiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const stalledTurnWatchKey = activeRoomId && screen === 'game' && roll && activeSeat
-    ? `${activeRoomId}:${lastAppliedSequenceRef.current}:${turnIndex}:${activeSeat.id}:${roll.name}:${roll.steps}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`
+    ? `${activeRoomId}:${lastAppliedSequenceRef.current}:${turnIndex}:${activeSeat.id}:${roll.name}:${roll.steps}:stack:${stalledTurnRollStackIndex ?? 'none'}:${rollStack.map((stackRoll) => `${stackRoll.name}:${stackRoll.steps}`).join('|')}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`
     : '';
   const stalledTurnAgeMs = stalledTurnWatchKey && stalledTurnStartedAtRef.current ? Math.max(0, Date.now() - stalledTurnStartedAtRef.current) : 0;
   const getCurrentStalledTurnSyncAgeMs = () => {
@@ -705,6 +717,7 @@ export function App() {
     if (rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return { status: 'blocked', reason: 'transient-turn-effect', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
     if (!stalledTurnMovablePieces.length || !stalledTurnFallbackPiece) return { status: 'blocked', reason: 'no-movable-piece', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
     if (stalledTurnNeedsBranchChoice) return { status: 'blocked', reason: 'branch-choice-required', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
+    if (stalledTurnRollStackAmbiguous) return { status: 'blocked', reason: 'roll-stack-index-ambiguous', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
     if (!isOnlinePlayer) return { status: 'blocked', reason: 'not-online-player', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
     if (stalledTurnRecoveryKeyRef.current === stalledTurnWatchKey) return { status: 'blocked', reason: 'already-recovery-requested', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
     if (currentAgeMs < TURN_ACTION_TIMEOUT_MS) return { status: 'waiting', reason: 'turn-action-timeout-not-reached', ageMs: currentAgeMs, recoveryAfterMs: TURN_ACTION_TIMEOUT_MS };
@@ -2876,13 +2889,14 @@ export function App() {
     if (!activeRoomId || onlineAuthoritativeGameStatePending || !canSubmitDeadlineRecovery() || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
     if (stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
     if (winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return false;
-    if (stalledTurnNeedsBranchChoice) return false;
+    if (stalledTurnNeedsBranchChoice || stalledTurnRollStackAmbiguous) return false;
 
     stalledTurnRecoveryKeyRef.current = recoveryKey;
     const payload = {
       pieceId: stalledTurnFallbackPiece.id,
       extraSteps: 0,
       branchChoice: getEffectiveBranchChoice(stalledTurnFallbackPiece.nodeId, 'outer'),
+      rollStackIndex: stalledTurnRollStackIndex,
       clientActionId: `move_piece_recovery:${recoveryKey}:${stalledTurnFallbackPiece.id}`,
       recoveredByCoordinator: true,
       coordinatorSeatId: localSeatId,
