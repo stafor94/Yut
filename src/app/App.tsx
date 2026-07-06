@@ -177,6 +177,7 @@ export function App() {
   const [startCountdownStartsAt, setStartCountdownStartsAt] = useState(0);
   const [startCountdownEndsAt, setStartCountdownEndsAt] = useState(0);
   const [startStatus, setStartStatus] = useState<RoomSummary['startStatus']>('idle');
+  const [authoritativeGameStateReady, setAuthoritativeGameStateReady] = useState(false);
   const [firebaseLatencySamples, setFirebaseLatencySamples] = useState<number[]>([]);
   const [spectators, setSpectators] = useState<Seat[]>([]);
   const [pendingItemPickup, setPendingItemPickup] = useState<PendingItemPickup | null>(null);
@@ -495,7 +496,8 @@ export function App() {
     lastAppliedStateVersionRef,
     measureFirebaseLatency,
   });
-  const hasPendingGameStateSave = Boolean(activeRoomId && canCoordinateOnlineGame && coordinatorStateSaveKey);
+  const onlineAuthoritativeGameStatePending = Boolean(activeRoomId && screen === 'game' && !authoritativeGameStateReady);
+  const hasPendingGameStateSave = Boolean(activeRoomId && screen === 'game' && (onlineAuthoritativeGameStatePending || (canCoordinateOnlineGame && coordinatorStateSaveKey)));
   const shouldWaitForAuthoritativeTurnSync = Boolean(activeRoomId && screen === 'game' && pendingLocalRemoteActionCount > 0 && !isMyTurn);
   const effectivePendingLocalRemoteActionCount = shouldWaitForAuthoritativeTurnSync ? pendingLocalRemoteActionCount : 0;
   const turnActionGuardInput = {
@@ -663,6 +665,8 @@ export function App() {
     lastAppliedSequence: lastAppliedSequenceRef.current,
     coordinatorStateSaveKey,
     hasPendingGameStateSave,
+    onlineAuthoritativeGameStatePending,
+    authoritativeGameStateReady,
     coordinatorStateSaveRetryTick,
     pendingSequenceMeta: pendingSequenceMetaDiagnostic,
     savingStateFingerprint: savingStateFingerprintRef.current ? savingStateFingerprintRef.current.slice(0, 24) : '',
@@ -935,6 +939,7 @@ export function App() {
     activeRoomHostIdRef.current = '';
     lastAppliedStateVersionRef.current = 0;
     lastAppliedSequenceRef.current = 0;
+    setAuthoritativeGameStateReady(false);
     processingActionIdsRef.current.clear();
     completedActionIdsRef.current.clear();
     processedClientActionIdsRef.current.clear();
@@ -1296,6 +1301,7 @@ export function App() {
     const stateVersion = Number('turnVersion' in state ? state.turnVersion ?? 0 : 0);
     if (updateVersion && stateVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
     if (updateSequence && 'lastSequence' in state) lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
+    if (activeRoomId && screen === 'game' && (stateVersion > 0 || Number((state as { lastSequence?: unknown }).lastSequence ?? 0) > 0)) setAuthoritativeGameStateReady(true);
     const nextRoll = (state.roll as YutResult | null | undefined) ?? null;
     const syncedGameSeats = (state.gameSeats as GameSeatSnapshot[] | undefined) ?? [];
     if (syncedGameSeats.length) setSeats((currentSeats) => preserveLockedGameSeats(currentSeats, seatsFromGameSeatSnapshots(syncedGameSeats, playMode, maxPlayers)));
@@ -2269,6 +2275,7 @@ export function App() {
       if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
       if (result.status === 'committed' || result.status === 'duplicate') {
         if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
+        setAuthoritativeGameStateReady(true);
         lastSavedStateFingerprintRef.current = initialStateFingerprint;
         return;
       }
@@ -2735,7 +2742,7 @@ export function App() {
   }
 
   async function recoverTimedOutRoll(recoveryKey: string, options: { source?: string } = {}) {
-    if (!canSubmitDeadlineRecovery() || !activeRoomId || !activeSeat || roll || rollInProgress || rollAnimation || movingPieceId || moveInProgress) return false;
+    if (!canSubmitDeadlineRecovery() || onlineAuthoritativeGameStatePending || !activeRoomId || !activeSeat || roll || rollInProgress || rollAnimation || movingPieceId || moveInProgress) return false;
     if (timeoutRecoveryKeysRef.current.has(recoveryKey)) return false;
     timeoutRecoveryKeysRef.current.add(recoveryKey);
     const rollTimingZone: RollTimingZone = 'normal';
@@ -2782,7 +2789,7 @@ export function App() {
   }
 
   async function recoverStalledTurnMove(recoveryKey: string, options: { source?: string } = {}) {
-    if (!activeRoomId || !canSubmitDeadlineRecovery() || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
+    if (!activeRoomId || onlineAuthoritativeGameStatePending || !canSubmitDeadlineRecovery() || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
     if (stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
     if (winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return false;
     if (stalledTurnNeedsBranchChoice) return false;
