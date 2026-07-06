@@ -3449,6 +3449,57 @@ export function App() {
     return true;
   }
 
+  function submitAiStackedBackDoSkip(seat: Seat, skippedRoll: YutResult, rollStackIndex: number, remainingRollsAfterSkip: YutResult[]) {
+    addLog(`${getSeatDisplayName(seat)}님은 판 위에 나온 말이 없어 ${skippedRoll.name}를 이동하지 못합니다.`);
+    setBranchChoice('outer');
+    clearRoll();
+    setRollStack([...remainingRollsAfterSkip]);
+    setRollStackClosed(remainingRollsAfterSkip.length > 0);
+    setSelectedRollStackIndex(remainingRollsAfterSkip.length === 1 ? 0 : null);
+    if (remainingRollsAfterSkip.length === 0) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+
+    if (!activeRoomId || !canCoordinateOnlineGame) return true;
+
+    const payload = {
+      pieceId: '',
+      extraSteps: 0,
+      branchChoice: 'outer' as BranchChoice,
+      rollStackIndex,
+    };
+    const remainingRollStackKey = remainingRollsAfterSkip.map((roll) => `${roll.name}:${roll.steps}`).join('|');
+    const actionKey = `move_piece_ai_skip:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStackIndex}:${skippedRoll.name}:${skippedRoll.steps}:${remainingRollStackKey}`;
+    if (rejectedRemoteActionKeysRef.current.has(actionKey) || pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
+
+    addPendingLocalRemoteAction(actionKey);
+    localClientMutationIdsRef.current.add(actionKey);
+    const action = { type: 'move_piece' as const, actorId: seat.id, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, seat) };
+    enqueueAuthoritativeGameAction(
+      activeRoomId,
+      action,
+      async (result) => {
+        if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+          const localSequence = lastAppliedSequenceRef.current;
+          const resultSequence = result.sequence;
+          if (resultSequence > localSequence) {
+            const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
+            const latestState = [...sequences]
+              .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
+              .reverse()
+              .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+            if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
+          }
+          acknowledgePendingLocalRemoteAction(actionKey);
+        }
+        if (result.status === 'rejected' || result.status === 'unsupported') {
+          recordRemoteActionDiagnostic('move_piece', 'ai-backdo-skip-result', result.reason ?? 'AI 빽도 스킵 처리에 실패했습니다.', { status: result.status, actionKey });
+        }
+      },
+      (error) => recordRemoteActionDiagnostic('move_piece', 'ai-backdo-skip-error', error instanceof Error ? error.message : 'AI 빽도 스킵 처리에 실패했습니다.', { actionKey }),
+      () => deletePendingLocalRemoteAction(actionKey),
+    );
+    return true;
+  }
+
   function getPostMoveAdjustmentPiece(seat: Seat | undefined) {
     if (!seat || lastMovedSeatId !== seat.id) return undefined;
     return lastMovedPieceIds
@@ -3518,7 +3569,10 @@ export function App() {
           const selected = rankedMoves[0];
           if (!selected) {
             const skippedRoll = remainingRolls.shift();
-            if (skippedRoll && skippedRoll.steps < 0) addLog(`${getSeatDisplayName(seat)}님은 판 위에 나온 말이 없어 ${skippedRoll.name}를 이동하지 못합니다.`);
+            if (skippedRoll && skippedRoll.steps < 0) {
+              submitAiStackedBackDoSkip(seat, skippedRoll, 0, remainingRolls);
+              continue;
+            }
             setRollStack([...remainingRolls]);
             setRollStackClosed(remainingRolls.length > 0);
             setSelectedRollStackIndex(remainingRolls.length === 1 ? 0 : null);

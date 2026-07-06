@@ -67,6 +67,35 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-06 - AI 누적 던지기 빽도 스킵 로컬 턴 선진행
+
+### Symptom
+
+- 온라인 누적 던지기 게임에서 AI가 빽도를 던진 뒤 사람 차례처럼 표시되지만 윷 던지기 버튼이 비활성화됐다.
+- 진단 상태에서 `hasPendingGameStateSave`가 true로 남고, 사람 차례의 자동 roll timeout recovery가 `지금은 내 차례가 아닙니다.`로 거부됐다.
+
+### Expected behavior
+
+- AI가 누적 던지기 스택에서 이동할 수 없는 빽도를 만나면 서버 authoritative `move_piece`로 해당 스택을 소비하고 다음 턴으로 넘어가야 한다.
+
+### Confirmed root cause
+
+- AI 누적 던지기 루프의 이동 후보 없음 분기가 빽도 스택을 로컬 상태에서만 제거하고 `turnIndex`를 직접 넘겼다.
+- 이 로컬 선진행은 authoritative game state에 `move_piece`로 커밋되지 않아 클라이언트는 다음 사람 턴으로 보이지만 서버는 아직 AI 턴으로 판단할 수 있었다.
+
+### Correct fix plan
+
+- AI no-move 빽도 스킵도 `pieceId: ''`와 `rollStackIndex`를 포함한 authoritative `move_piece` 액션으로 제출한다.
+- 기존 사람 플레이어 빽도 스킵과 같은 서버 reducer 경로를 사용해 rollStack 소비와 턴 전환을 커밋한다.
+- 같은 스택 스킵을 중복 제출하지 않도록 남은 스택 정보를 포함한 안정적인 client action key를 사용한다.
+- 회귀 테스트는 `pieceId: ''` 빽도 스택 스킵이 authoritative reducer에서 커밋되는지 확인한다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [ ] Multi-client online stacked-roll AI backdo skip checked
+
 ## 2026-07-06 - 누적 던지기 빽도 스킵 후 자동 복구 거부
 
 ### Symptom
