@@ -6,7 +6,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
+import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
@@ -319,6 +319,7 @@ export function App() {
   const logIdRef = useRef(0);
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
+  const roomHostClaimKeyRef = useRef('');
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const confirmedRoomPlayerRef = useRef(false);
   const leavingRoomRef = useRef(false);
@@ -1194,6 +1195,29 @@ export function App() {
         setMessage('방장에게 강퇴당했습니다.');
         setRoomNoticeDialog({ title: '방장에게 강퇴당했습니다.', message: '로비로 이동했습니다.' });
         return;
+      }
+      const currentHostPlayer = activeRoomHostId ? players.find((player) => player.id === activeRoomHostId) : undefined;
+      const hasActiveHumanHost = Boolean(currentHostPlayer && !currentHostPlayer.isAI && !currentHostPlayer.isSpectator);
+      const localHumanPlayer = currentUserId ? players.find((player) => player.id === currentUserId && !player.isAI && !player.isSpectator) : undefined;
+      const canClaimMissingHost = Boolean(activeRoomId && screen === 'waitingRoom' && localHumanPlayer && !hasActiveHumanHost);
+      if (canClaimMissingHost) {
+        const candidateHostId = currentUserId;
+        if (!candidateHostId) return;
+        const claimKey = `${activeRoomId}:${activeRoomHostId || 'missing'}:${currentUserId}`;
+        if (roomHostClaimKeyRef.current !== claimKey) {
+          roomHostClaimKeyRef.current = claimKey;
+          void claimRoomHostIfMissing(activeRoomId, candidateHostId)
+            .then((claimedHostId) => {
+              if (claimedHostId !== candidateHostId) return;
+              setActiveRoomHostId(claimedHostId);
+              setIsRoomHost(true);
+              setMessage('방장이 없어 방장 권한을 이어받았습니다.');
+            })
+            .catch((error) => {
+              roomHostClaimKeyRef.current = '';
+              console.warn('방장 승계에 실패했습니다.', error);
+            });
+        }
       }
       players.forEach((player) => {
         if (player.isAI) pendingAiSeatIdsRef.current.delete(player.id);
