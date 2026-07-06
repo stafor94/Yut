@@ -120,6 +120,12 @@ export const makeGameDiagnosticState = ({
     .map((piece: any) => ({ id: piece.id, ownerId: piece.ownerId, label: piece.label, nodeId: piece.nodeId, started: piece.started, finished: piece.finished })) : [],
   moveSelectionReason: selectedPieceCanMove ? 'selected-piece' : fallbackMovablePiece ? (activeSeatPiecesOnBoard ? 'fallback-on-board' : 'fallback-off-board-first') : 'none',
   selectedPiece: selectedPiece ? { id: selectedPiece.id, ownerId: selectedPiece.ownerId, started: selectedPiece.started, finished: selectedPiece.finished, nodeId: selectedPiece.nodeId } : null,
+  logsSummary: {
+    visibleCount: visibleLogs.length,
+    latestVisibleLogId: visibleLogs.reduce((maxId: number, log: any) => Math.max(maxId, Number(log.id) || 0), 0),
+    firstVisibleLogId: Number(visibleLogs[0]?.id ?? 0),
+    lastVisibleLogId: Number(visibleLogs[visibleLogs.length - 1]?.id ?? 0),
+  },
   logs: visibleLogs.map((log: any) => ({ id: log.id, text: log.text })),
   boardItems,
   ownedItems,
