@@ -1725,9 +1725,9 @@ export function App() {
     if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || itemPromptTiming || !activeSeat || !activeSeat.isAI || isMyTurn || roll || movingPieceId || pendingTrapPlacement) return undefined;
     if (!canCoordinateOnlineGame) return undefined;
     const actionKey = `${activeSeat.id}:${turnIndex}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
-    if (aiTurnActionKeyRef.current === actionKey) return undefined;
+    if (aiTurnActionKeyRef.current) return undefined;
     const timer = window.setTimeout(() => {
-      if (aiTurnActionKeyRef.current === actionKey) return;
+      if (aiTurnActionKeyRef.current) return;
       aiTurnActionKeyRef.current = actionKey;
       void autoPlayTurn(activeSeat, actionKey);
     }, TURN_DELAY_MS);
