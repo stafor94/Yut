@@ -82,6 +82,8 @@ export type SequenceStateSnapshot = Partial<{
   rollResultReadyAt: number;
   turnOrderPhase: TurnOrderPhase | null;
   waitingForPlayersReady: boolean;
+  turnDeadlineAt: number;
+  turnDeadlineKind: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
   gameSeats: GameSeatSnapshot[];
   startRequestVersion: number;
   turnVersion: number;
@@ -116,6 +118,8 @@ export type GameStateFingerprintInput = {
   effectiveRollResultReadyAt: number;
   turnOrderPhase: TurnOrderPhase | null;
   waitingForPlayersReady: boolean;
+  turnDeadlineAt?: number;
+  turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
   startRequestVersion: number;
   fallEffect?: FallEffect | null;
   lastRollTimingZone?: RollTimingZone | null;
@@ -151,6 +155,8 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
   effectiveRollResultReadyAt: state.effectiveRollResultReadyAt,
   turnOrderPhase: state.turnOrderPhase,
   waitingForPlayersReady: state.waitingForPlayersReady,
+  turnDeadlineAt: state.turnDeadlineAt ?? 0,
+  turnDeadlineKind: state.turnDeadlineKind ?? '',
   startRequestVersion: state.startRequestVersion,
   fallEffect: state.fallEffect ?? null,
   lastRollTimingZone: state.lastRollTimingZone ?? null,
@@ -316,4 +322,3 @@ export const makePieces = (seats: Seat[], pieceCount: PieceCount, mode: PlayMode
     })),
   );
 };
-

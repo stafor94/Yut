@@ -27,6 +27,8 @@ type SyncedGameStateShape = {
   turnOrderPhase?: unknown;
   turnOrderIntro?: unknown;
   pendingTrapPlacement?: unknown;
+  turnDeadlineAt?: number;
+  turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
   branchChoice?: unknown;
   ownedItems?: unknown;
   fallEffect?: unknown;
@@ -41,6 +43,7 @@ type AuthoritativePiece = { id: string; ownerId: string; label?: string; nodeInd
 type AuthoritativeLog = { id: number; text: string };
 type AuthoritativeTrapNode = { nodeId: string; ownerId: string };
 export type AuthoritativeSeatSide = { id: string; team: RoomPlayerTeam };
+const TURN_ACTION_TIMEOUT_MS = 15000;
 
 const getNextLogId = (logs: unknown[]) => logs.reduce<number>((maxId, log) => {
   if (log && typeof log === 'object' && 'id' in log) return Math.max(maxId, Number((log as { id?: unknown }).id) || 0);
@@ -98,16 +101,30 @@ function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand
 
 function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape): AuthoritativeReduction {
   const nextRoll = getAuthoritativeRoll(action.payload);
+  const now = Date.now();
   const baseReduction = toAuthoritativeReduction(reduceRollCommand({
     state: makeEngineState({ ...state, roll: room.stackedRollMode ? null : state.roll }),
     actorId: action.actorId,
     nextRoll,
     actorLogName: getActionActorLogName(action),
-    rollResultReadyAt: Date.now() + 2600,
+    rollResultReadyAt: now + 2600,
     makeLog: makeAuthoritativeLog,
     fallOccurred: Boolean(action.payload?.fallOccurred),
     timingZone: action.payload?.rollTimingZone as RollTimingZone | undefined,
   }));
+  if (isAuthoritativeCommitReduction(baseReduction)) {
+    const fallOccurred = Boolean(action.payload?.fallOccurred);
+    baseReduction.patch = {
+      ...baseReduction.patch,
+      turnDeadlineAt: fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
+      turnDeadlineKind: fallOccurred ? 'roll' : 'move',
+    };
+    baseReduction.payload = {
+      ...baseReduction.payload,
+      timedOut: Boolean(action.payload?.timedOut),
+      timeoutRecoveredBy: action.payload?.timeoutRecoveredBy ?? null,
+    };
+  }
   if (!isAuthoritativeCommitReduction(baseReduction) || !room.stackedRollMode) return baseReduction;
   if (action.payload?.fallOccurred) {
     return { ...baseReduction, patch: { ...baseReduction.patch, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false } };
@@ -142,6 +159,18 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
     sides,
     makeLog: makeAuthoritativeLog,
   }));
+  if (isAuthoritativeCommitReduction(baseReduction)) {
+    baseReduction.patch = {
+      ...baseReduction.patch,
+      turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
+      turnDeadlineKind: 'roll',
+    };
+    baseReduction.payload = {
+      ...baseReduction.payload,
+      timedOut: Boolean(action.payload?.timedOut),
+      timeoutRecoveredBy: action.payload?.timeoutRecoveredBy ?? null,
+    };
+  }
   if (isAuthoritativeCommitReduction(baseReduction) && room.stackedRollMode && rollStackIndex !== null) {
     const remainingRollStack = rollStack.filter((_, index) => index !== rollStackIndex);
     const captured = Boolean(baseReduction.payload?.captured);
