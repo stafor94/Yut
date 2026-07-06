@@ -337,6 +337,8 @@ async function deleteRoomSubcollections(roomId: string) {
   }
 }
 
+const makeFirestoreStateData = (state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'> | GameStatePatch) => sanitizeForFirestore(state) as Record<string, unknown>;
+
 const makeSequenceEventFields = (params: { stateBefore: SyncedGameState | null; stateAfter: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; patch?: GameStatePatch; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> }) => sanitizeForFirestore({
   eventSchemaVersion: 1,
   action: params.action ?? null,
@@ -385,7 +387,7 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
       clientCreatedAt: meta.clientCreatedAt ?? Date.now(),
       createdAt: serverTimestamp(),
     });
-    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, ...(meta.clientMutationId ? { lastClientMutationId: meta.clientMutationId } : {}) }, { merge: true });
+    transaction.set(gameStateRef, { ...makeFirestoreStateData(state), updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, ...(meta.clientMutationId ? { lastClientMutationId: meta.clientMutationId } : {}) }, { merge: true });
     if (processedActionRef) transaction.set(processedActionRef, {
       clientMutationId: meta.clientMutationId,
       sequence: nextSequence,
@@ -444,7 +446,7 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
       clientCreatedAt: Date.now(),
       createdAt: serverTimestamp(),
     });
-    transaction.set(gameStateRef, { ...state, updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: meta.clientMutationId }, { merge: true });
+    transaction.set(gameStateRef, { ...makeFirestoreStateData(state), updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: meta.clientMutationId }, { merge: true });
     transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
     transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, sequence: nextSequence, turnVersion: nextVersion, type: 'game_initialized', actorId: meta.actorId, createdAt: serverTimestamp() });
     return { status: 'committed' as const, turnVersion: nextVersion, lastSequence: nextSequence };
@@ -461,7 +463,7 @@ export async function updateTurnOrderState(roomId: string, patcher: (state: Sync
     if (!patch) return null;
     const currentVersion = Number(currentState?.turnVersion ?? 0);
     const nextVersion = currentVersion + 1;
-    transaction.set(gameStateRef, { ...patch, updatedAt: serverTimestamp(), turnVersion: nextVersion }, { merge: true });
+    transaction.set(gameStateRef, { ...makeFirestoreStateData(patch), updatedAt: serverTimestamp(), turnVersion: nextVersion }, { merge: true });
     return nextVersion;
   });
 }
@@ -500,7 +502,7 @@ export async function completeTurnOrderIntro(roomId: string, params: { readyAt: 
       createdAt: serverTimestamp(),
     });
     transaction.set(gameStateRef, {
-      ...statePatch,
+      ...makeFirestoreStateData(statePatch),
       updatedAt: serverTimestamp(),
       turnVersion: nextVersion,
       lastSequence: nextSequence,
@@ -562,7 +564,7 @@ export async function resolveTurnOrderIntro(roomId: string, patch: GameStatePatc
       createdAt: serverTimestamp(),
     });
     transaction.set(gameStateRef, {
-      ...patch,
+      ...makeFirestoreStateData(patch),
       updatedAt: serverTimestamp(),
       turnVersion: nextVersion,
       lastSequence: nextSequence,
@@ -717,7 +719,7 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
       clientCreatedAt: Date.now(),
       createdAt: serverTimestamp(),
     });
-    transaction.set(gameStateRef, { ...reduction.patch, updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: clientActionId }, { merge: true });
+    transaction.set(gameStateRef, { ...makeFirestoreStateData(reduction.patch), updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: clientActionId }, { merge: true });
     transaction.set(processedActionRef, { clientMutationId: clientActionId, sequence: nextSequence, turnVersion: nextVersion, type: action.type, actorId: action.actorId, createdAt: serverTimestamp() });
     return { status: 'committed', sequence: nextSequence, turnVersion: nextVersion, patch: reduction.patch, payload: reduction.payload };
   });
