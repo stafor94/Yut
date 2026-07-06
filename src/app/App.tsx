@@ -1454,6 +1454,11 @@ export function App() {
   }
 
   async function replayMissingSequencesThenApply(finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) {
+    const shouldApplyLatestSnapshotWithoutReplay = onlineGameRole === 'spectator' || localSequence <= 0;
+    if (shouldApplyLatestSnapshotWithoutReplay) {
+      applySyncedStateSnapshot(finalState, { allowMoveAnimation: false, updateVersion: true, updateSequence: true });
+      return;
+    }
     if (!activeRoomId || sequenceReplayInProgressRef.current) {
       queuedSyncedStateRef.current = finalState;
       return;
@@ -3596,8 +3601,10 @@ export function App() {
     const finishedRoomId = activeRoomId;
     const finishedSeatId = localSeatId;
     const shouldSubstituteAsAi = Boolean(finishedRoomId && finishedSeatId && screen === 'game' && !winner);
+    const shouldLeaveFinishedRoom = Boolean(finishedRoomId && finishedSeatId && screen === 'game' && winner);
     const leavingSeat = shouldSubstituteAsAi ? seats.find((seat) => seat.id === finishedSeatId && !seat.isEmpty && !seat.isAI) : undefined;
     const aiName = leavingSeat ? makeUniqueAIName(seats) : '';
+    if (shouldLeaveFinishedRoom) leavingRoomRef.current = true;
     hostingRoomUserIdRef.current = '';
     activeRoomIdRef.current = '';
     confirmedRoomPlayerRef.current = false;
@@ -3620,6 +3627,11 @@ export function App() {
       void updateRoomPlayer(finishedRoomId, finishedSeatId, getAiRoomPlayerUpdate(leavingSeat, aiName))
         .catch((error) => console.warn('게임 종료 후 AI 전환에 실패했습니다.', error))
         .finally(() => pendingAiSeatIdsRef.current.delete(finishedSeatId));
+    }
+    if (finishedRoomId && finishedSeatId && shouldLeaveFinishedRoom) {
+      void removeRoomPlayer(finishedRoomId, finishedSeatId, { preservePlayingSeatAsAi: false })
+        .catch((error) => console.warn('완주 후 방 나가기 정리에 실패했습니다.', error))
+        .finally(() => { leavingRoomRef.current = false; });
     }
   }
 
