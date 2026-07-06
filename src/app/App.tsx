@@ -598,6 +598,7 @@ export function App() {
   const hasCompleteBoardTurnNames = Boolean(visibleBoardTurnSeat?.name.trim() && previousBoardTurnSeat?.name.trim() && nextBoardTurnSeat?.name.trim());
   const shouldShowBoardTurnNeighbors = Boolean(previousBoardTurnText && nextBoardTurnText && hasCompleteBoardTurnNames);
   const boardTurnIndicatorText = winner ? renderWinnerText(true) : visibleBoardTurnSeat ? `${getSeatDisplayName(visibleBoardTurnSeat)} 턴` : '';
+  const boardTurnIndicatorRollStack = !winner && visibleBoardTurnSeat && stackedRollMode ? rollStack : [];
   const boardTurnIndicatorColor = winner ? '#1f1a17' : visibleBoardTurnSeat ? (playMode === 'team' ? TEAM_COLORS[visibleBoardTurnSeat.team] : getSeatPieceColor(visibleBoardTurnSeat)) : undefined;
   const moveActionBlockReasons = useMemo(() => [
     ...turnActionBlockReasons,
@@ -1584,11 +1585,9 @@ export function App() {
 
   useGameSyncSubscription({
     activeRoomId,
-    screen,
     lastAppliedSequenceRef,
     lastAppliedStateVersionRef,
     applyingSyncedStateRef,
-    setScreen,
     replayMissingSequencesThenApply,
     applySyncedStateSnapshot,
   });
@@ -3786,6 +3785,7 @@ export function App() {
       boardItems={boardItems}
       boardTurnIndicatorColor={boardTurnIndicatorColor}
       boardTurnIndicatorText={boardTurnIndicatorText}
+      boardTurnIndicatorRollStack={boardTurnIndicatorRollStack}
       branchChoice={branchChoice}
       canContinueRace={canShowContinueRaceButton}
       canRequestMove={canRequestMove}
@@ -3863,7 +3863,6 @@ export function App() {
       onOpenEndGameDialog={() => setEndGameDialogOpen(true)}
       onOpenDiagnosticDialog={() => setDiagnosticDialogOpen(true)}
       onRollYut={rollYut}
-      rollTimingFeedback={rollTimingFeedback}
       onSelectPieceId={setSelectedPieceId}
       onSelectTrapNode={placePendingTrap}
       onSkipItemPrompt={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); }}

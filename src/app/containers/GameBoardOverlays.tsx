@@ -44,15 +44,16 @@ type TurnIndicatorProps = {
   previousText: ReactNode;
   previousColor?: string;
   currentText: ReactNode;
+  currentRollStack: YutResult[];
   nextText: ReactNode;
   nextColor?: string;
 };
 
-export function TurnIndicator({ color, showNeighbors, previousText, previousColor, currentText, nextText, nextColor }: TurnIndicatorProps) {
+export function TurnIndicator({ color, showNeighbors, previousText, previousColor, currentText, currentRollStack, nextText, nextColor }: TurnIndicatorProps) {
   return <div data-testid="turn-indicator" className="turn-indicator" style={{ color }}>
     {showNeighbors && <span className="turn-neighbor previous-turn" style={{ color: previousColor }}>{previousText}</span>}
     {showNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}
-    <strong>{currentText}</strong>
+    <strong className="turn-current"><span>{currentText}</span>{currentRollStack.length > 0 && <span className="turn-roll-stack-badges" aria-label={`남은 이동 스택: ${currentRollStack.map((entry) => entry.name).join(', ')}`}>{currentRollStack.map((entry, index) => <span key={`${entry.name}-${index}`} className="turn-roll-stack-badge">{entry.name}</span>)}</span>}</strong>
     {showNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}
     {showNeighbors && <span className="turn-neighbor next-turn" style={{ color: nextColor }}>{nextText}</span>}
   </div>;
