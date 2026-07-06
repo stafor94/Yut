@@ -1434,6 +1434,9 @@ export function App() {
   }
 
   async function replayMoveSequence(sequence: GameSequence) {
+    const clientMutationId = typeof sequence.clientMutationId === 'string' ? sequence.clientMutationId : '';
+    if (isLocalSyncedMutation(clientMutationId)) return;
+
     const payload = sequence.payload ?? {};
     const finalPieces = (sequence.stateAfter?.pieces as BoardPiece[] | undefined) ?? null;
     const movingGroupIds = Array.isArray(payload.movingGroupIds) ? payload.movingGroupIds.map(String) : [];
