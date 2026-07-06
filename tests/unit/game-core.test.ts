@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getMovePathNodeIds } from '../../src/game-core/board/board';
+import { getMovePathNodeIds, getMovePathNodeIdsWithPrevious } from '../../src/game-core/board/board';
 import { chooseAiRollTimingZone, getFallChanceForTimingZone, getRollTimingZone, rollYutResultWithTiming } from '../../src/game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
 import { getRandomItemType } from '../../src/features/items/logic/items';
@@ -32,6 +32,17 @@ test('말판 지름길 경로는 분기 선택 시 중앙을 경유한다', () =
 
 test('중앙에서 외곽 선택 시 n16 방향 경로를 사용한다', () => {
   assert.deepEqual(getMovePathNodeIds('c01', 3, 'outer'), ['d07', 'd08', 'n16']);
+});
+
+test('중앙에서 빽도는 직전 칸으로 되돌아간다', () => {
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('c01', -1, 'outer', 'd02'), ['d02']);
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('c01', -1, 'outer', 'd03'), ['d03']);
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('c01', -1, 'outer', 'd06'), ['d06']);
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('c01', -1, 'outer', 'd07'), ['d07']);
+});
+
+test('직전 칸 정보가 없으면 중앙 빽도는 기존 역방향 경로를 사용한다', () => {
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('c01', -1, 'outer'), getMovePathNodeIds('c01', -1, 'outer'));
 });
 
 
@@ -93,6 +104,106 @@ test('출발 한 칸 위에서 빽도는 출발로 돌아가며 완주하지 않
   assert.equal(patch.turnIndex, 1);
   assert.equal(patch.roll, null);
   assert.equal(patch.logs.some((log) => log.text.includes('완주')), false);
+});
+
+test('중앙의 말은 빽도에서 저장된 직전 칸으로 이동한다', () => {
+  const state = baseState();
+  state.roll = { name: '빽도', steps: -1 };
+  state.pieces = [
+    { id: 'p1', ownerId: 'seat-1', nodeIndex: 22, nodeId: 'c01', previousNodeId: 'd02', started: true, finished: false },
+    { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+  ];
+
+  const result = reduceMoveCommand({
+    state,
+    actorId: 'seat-1',
+    pieceId: 'p1',
+    branchChoice: 'outer',
+    actorLogName: 'P1',
+    playMode: 'individual',
+    sides: [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+    makeLog,
+  });
+
+  assert.equal(result.ok, true);
+  const patch = result.patch as { pieces: EngineState['pieces']; turnIndex: number; roll: null };
+  const moved = patch.pieces.find((piece) => piece.id === 'p1');
+  assert.equal(moved?.nodeId, 'd02');
+  assert.equal(moved?.previousNodeId, 'c01');
+  assert.equal(patch.turnIndex, 1);
+  assert.equal(patch.roll, null);
+});
+
+test('중앙의 말은 다른 진입 방향에서도 빽도에서 저장된 직전 칸으로 이동한다', () => {
+  const state = baseState();
+  state.roll = { name: '빽도', steps: -1 };
+  state.pieces = [
+    { id: 'p1', ownerId: 'seat-1', nodeIndex: 22, nodeId: 'c01', previousNodeId: 'd06', started: true, finished: false },
+    { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+  ];
+
+  const result = reduceMoveCommand({
+    state,
+    actorId: 'seat-1',
+    pieceId: 'p1',
+    branchChoice: 'outer',
+    actorLogName: 'P1',
+    playMode: 'individual',
+    sides: [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+    makeLog,
+  });
+
+  assert.equal(result.ok, true);
+  const patch = result.patch as { pieces: EngineState['pieces']; turnIndex: number; roll: null };
+  const moved = patch.pieces.find((piece) => piece.id === 'p1');
+  assert.equal(moved?.nodeId, 'd06');
+  assert.equal(moved?.previousNodeId, 'c01');
+  assert.equal(patch.turnIndex, 1);
+  assert.equal(patch.roll, null);
+});
+
+test('중앙보다 한 칸 더 간 위치에서 빽도가 연속으로 나오면 중앙과 직전 칸을 왕복한다', () => {
+  const state = baseState();
+  state.roll = { name: '빽도', steps: -1 };
+  state.pieces = [
+    { id: 'p1', ownerId: 'seat-1', nodeIndex: 23, nodeId: 'd03', previousNodeId: 'c01', started: true, finished: false },
+    { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+  ];
+
+  const firstBackDo = reduceMoveCommand({
+    state,
+    actorId: 'seat-1',
+    pieceId: 'p1',
+    branchChoice: 'outer',
+    actorLogName: 'P1',
+    playMode: 'individual',
+    sides: [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+    makeLog,
+  });
+
+  assert.equal(firstBackDo.ok, true);
+  const firstPatch = firstBackDo.patch as { pieces: EngineState['pieces']; turnIndex: number; roll: null };
+  const firstMoved = firstPatch.pieces.find((piece) => piece.id === 'p1');
+  assert.equal(firstMoved?.nodeId, 'c01');
+  assert.equal(firstMoved?.previousNodeId, 'd03');
+
+  const secondState: EngineState = { ...state, pieces: firstPatch.pieces, roll: { name: '빽도', steps: -1 }, turnIndex: 0 };
+  const secondBackDo = reduceMoveCommand({
+    state: secondState,
+    actorId: 'seat-1',
+    pieceId: 'p1',
+    branchChoice: 'outer',
+    actorLogName: 'P1',
+    playMode: 'individual',
+    sides: [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+    makeLog,
+  });
+
+  assert.equal(secondBackDo.ok, true);
+  const secondPatch = secondBackDo.patch as { pieces: EngineState['pieces']; turnIndex: number; roll: null };
+  const secondMoved = secondPatch.pieces.find((piece) => piece.id === 'p1');
+  assert.equal(secondMoved?.nodeId, 'd03');
+  assert.equal(secondMoved?.previousNodeId, 'c01');
 });
 
 test('아이템 랜덤 선택은 전달된 random 함수를 사용한다', () => {

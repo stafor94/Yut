@@ -12,6 +12,7 @@ export type BoardPiece = {
   nodeId: string;
   started: boolean;
   finished: boolean;
+  previousNodeId?: string;
 };
 
 type GameBoardProps = {

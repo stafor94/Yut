@@ -3,7 +3,7 @@ import type { User } from 'firebase/auth';
 import type { BoardPiece } from '../features/game/components/GameBoard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
-import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
+import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
 import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
@@ -1268,7 +1268,7 @@ export function App() {
     if (!anchorBefore || !anchorAfter || anchorBefore.nodeId === anchorAfter.nodeId) return false;
     setMoveInProgressState(true);
     setMovingPieceId(anchorBefore.id);
-    const movePathNodeIds = getMovePathNodeIds(anchorBefore.nodeId, steps, getEffectiveBranchChoice(anchorBefore.nodeId, syncedBranchChoice));
+    const movePathNodeIds = getMovePathNodeIdsWithPrevious(anchorBefore.nodeId, steps, getEffectiveBranchChoice(anchorBefore.nodeId, syncedBranchChoice), anchorBefore.previousNodeId);
     const animatedPieces = previousPieces.map((piece) => movedPieceIds.includes(piece.id) ? { ...piece, started: true, finished: false } : piece);
     setPieces(animatedPieces);
     let currentNodeId = anchorBefore.nodeId;
@@ -3054,7 +3054,7 @@ export function App() {
     let nextNodeIndex = movingPiece.nodeIndex;
     let currentNodeId = movingPiece.nodeId;
     let finishedMove = false;
-    const movePathNodeIds = getMovePathNodeIds(currentNodeId, steps, getEffectiveBranchChoice(currentNodeId, branchOverride));
+    const movePathNodeIds = getMovePathNodeIdsWithPrevious(currentNodeId, steps, getEffectiveBranchChoice(currentNodeId, branchOverride), movingPiece.previousNodeId);
     for (let step = 0; step < Math.abs(steps); step += 1) {
       if (steps > 0 && movingPiece.started && currentNodeId === 'n01') {
         currentNodeId = 'finish';
@@ -3077,9 +3077,10 @@ export function App() {
         await delay(STEP_DELAY_MS);
         break;
       }
+      const previousNodeId = currentNodeId;
       currentNodeId = nextNodeId;
       nextNodeIndex = BOARD_NODES.findIndex((node) => node.id === nextNodeId);
-      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: false } : piece));
+      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: nextNodeIndex, nodeId: currentNodeId, started: true, finished: false, previousNodeId } : piece));
       playSfx('move');
       await delay(STEP_DELAY_MS);
     }
@@ -3129,7 +3130,7 @@ export function App() {
         playSfx('trap');
         await delay(TRAP_EFFECT_MS);
         setTrapEffect((current) => current?.id === effect.id ? null : current);
-        setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false, finished: false } : piece));
+        setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false, finished: false, previousNodeId: undefined } : piece));
         currentNodeId = 'n01';
         nextNodeIndex = 0;
         await delay(STEP_DELAY_MS);
@@ -3159,7 +3160,7 @@ export function App() {
         setCaptureEffect(effect);
         playSfx('capture');
         await delay(STEP_DELAY_MS * 2);
-        setPieces((currentPieces) => currentPieces.map((piece) => capturedPieceIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false } : piece));
+        setPieces((currentPieces) => currentPieces.map((piece) => capturedPieceIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false, previousNodeId: undefined } : piece));
         window.setTimeout(() => setCaptureEffect((current) => current?.id === effect.id ? null : current), 450);
       }
     }
