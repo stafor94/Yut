@@ -57,6 +57,8 @@ type GameScreenViewProps = {
   selectedRollStackIndex: number | null;
   rollStackClosed: boolean;
   onSelectRollStackIndex: (index: number) => void;
+  onMoveRollStackIndex: (index: number) => void;
+  moveSelectionTimedOut: boolean;
   previewNodeIds: string[];
   previousBoardTurnText: string;
   previousBoardTurnColor: string | undefined;
@@ -97,6 +99,7 @@ type GameScreenViewProps = {
   onMoveSelectedPiece: () => void;
   onOpenEndGameDialog: () => void;
   onOpenDiagnosticDialog: () => void;
+  onOpenSequenceExportDialog: () => void;
   onRollYut: (timingPositionPercent?: number) => void;
   onSelectPieceId: (pieceId: string) => void;
   onSelectTrapNode: (nodeId: string) => void;
@@ -106,7 +109,7 @@ type GameScreenViewProps = {
   renderLogText: (text: string) => ReactNode;
 };
 
-export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenDiagnosticDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
+export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, moveSelectionTimedOut, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenDiagnosticDialog, onOpenSequenceExportDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   return <GameScreen>
     <GamePlayersPanel
       title={activeRoomTitle || title}
@@ -186,6 +189,8 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         selectedRollStackIndex={selectedRollStackIndex}
         rollStackClosed={rollStackClosed}
         onSelectRollStackIndex={onSelectRollStackIndex}
+        onMoveRollStackIndex={onMoveRollStackIndex}
+        moveSelectionTimedOut={moveSelectionTimedOut}
         waitingForOnlineTurnOrder={waitingForOnlineTurnOrder}
         hasActiveTurnOrderIntro={hasActiveTurnOrderIntro}
       />
@@ -196,6 +201,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       formatStoredLogSequence={formatStoredLogSequence}
       renderLogText={renderLogText}
       onOpenDiagnosticDialog={onOpenDiagnosticDialog}
+      onOpenSequenceExportDialog={onOpenSequenceExportDialog}
     />
   </GameScreen>;
 }

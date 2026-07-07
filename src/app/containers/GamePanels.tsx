@@ -75,6 +75,7 @@ type GameLogPanelViewProps = {
   getLogCardStyle: (text: string, nextText?: string) => CSSProperties;
   formatStoredLogSequence: (log: GameLog, displayIndex?: number) => string;
   renderLogText: (text: string) => ReactNode;
+  onOpenSequenceExportDialog: () => void;
   onOpenDiagnosticDialog: () => void;
 };
 
@@ -83,10 +84,11 @@ export function GameLogPanelView({
   getLogCardStyle,
   formatStoredLogSequence,
   renderLogText,
+  onOpenSequenceExportDialog,
   onOpenDiagnosticDialog,
 }: GameLogPanelViewProps) {
   return <GameLogPanel>
-    <div className="log-header"><h2>진행 기록</h2><button type="button" className="diagnostic-button" onClick={onOpenDiagnosticDialog} aria-label="게임 상태 진단 열기" title="게임 상태 진단">📄</button></div>
+    <div className="log-header"><h2>진행 기록</h2><button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스">🧾</button><button type="button" className="diagnostic-button" onClick={onOpenDiagnosticDialog} aria-label="게임 상태 진단 열기" title="게임 상태 진단">📄</button></div>
     <div className="log-list">{logs.map((log, index) => <p key={log.id} style={getLogCardStyle(log.text, logs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log)}</span>{renderLogText(log.text)}</p>)}</div>
   </GameLogPanel>;
 }

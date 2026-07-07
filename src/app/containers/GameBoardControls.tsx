@@ -10,6 +10,8 @@ type GameBoardControlsProps = {
   selectedRollStackIndex: number | null;
   rollStackClosed: boolean;
   onSelectRollStackIndex: (index: number) => void;
+  onMoveRollStackIndex: (index: number) => void;
+  moveSelectionTimedOut: boolean;
   activeItemPromptTypes: ItemType[];
   localSeatId: string;
   getItemPromptTimeoutMs: (seatId?: string) => number;
@@ -40,6 +42,8 @@ export function GameBoardControls({
   selectedRollStackIndex,
   rollStackClosed,
   onSelectRollStackIndex,
+  onMoveRollStackIndex,
+  moveSelectionTimedOut,
   activeItemPromptTypes,
   localSeatId,
   getItemPromptTimeoutMs,
@@ -118,7 +122,7 @@ export function GameBoardControls({
       <button type="button" className="branch-move-button" onClick={onMoveSelectedPiece} disabled={!canRequestMove}>선택한 말 이동</button>
     </div> : <>
       {((!roll && canRollNow) || (roll && canRequestMove)) && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
-      {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => onSelectRollStackIndex(index)}>{entry.name}</button>)}</div></div>}
+      {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index)}>{entry.name}</button>)}</div></div>}
       {!roll && canRollNow && canSubmitTurnAction && !showRollStackPicker && <div ref={rollTimingMeterRef} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대"><span className="roll-timing-good left" aria-hidden="true"></span><span className="roll-timing-perfect" aria-hidden="true"></span><span className="roll-timing-good right" aria-hidden="true"></span><span ref={rollTimingOrbRef} className="roll-timing-orb" aria-hidden="true"></span></div>}
       {!showRollStackPicker && <button data-testid={roll ? 'move-piece-button' : canSubmitTurnAction ? 'roll-yut-button' : 'turn-waiting-button'} className={!roll ? 'roll-button' : undefined} onClick={handleRollButtonClick} disabled={(!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton ? '선택한 말 이동' : buttonText}</button>}
     </>}
