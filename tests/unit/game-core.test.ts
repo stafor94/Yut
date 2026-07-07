@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getMovePathNodeIds, getMovePathNodeIdsWithPrevious } from '../../src/game-core/board/board';
 import { chooseAiRollTimingZone, getFallChanceForTimingZone, getRollTimingZone, rollYutResultWithTiming } from '../../src/game-core/roll';
-import { reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
+import { canRoll, getRollActionBlockReasons, reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
 import { getRandomItemType } from '../../src/features/items/logic/items';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from '../../src/app/flows/onlineGameCoordinator';
@@ -344,6 +344,21 @@ test('타이밍 구간별 낙 확률을 적용한다', () => {
   assert.equal(getFallChanceForTimingZone('perfect'), 0);
   assert.equal(getFallChanceForTimingZone('good'), 0.1);
   assert.equal(getFallChanceForTimingZone('normal'), 0.4);
+});
+
+test('아이템 사용 선택 중에는 윷 던지기를 차단한다', () => {
+  const guardInput = {
+    activeSeatId: 'seat-1',
+    actorId: 'seat-1',
+    roll: null,
+    pendingItemPrompt: true,
+    rollLocked: false,
+    remoteActionClient: false,
+    rollInProgress: false,
+  };
+
+  assert.equal(canRoll(guardInput), false);
+  assert.deepEqual(getRollActionBlockReasons(guardInput), ['pending-item-prompt']);
 });
 
 test('Perfect 타이밍은 윷과 모 확률을 각각 5%p 올린다', () => {

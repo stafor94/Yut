@@ -119,7 +119,6 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         {trapNodeIds.includes(node.id) ? <span className="trap-marker" aria-label="설치된 함정">🪤</span> : null}
       </button>;
     })}
-    {showFallEffect ? <div className="fall-effect" role="status" aria-live="assertive">낙!</div> : null}
     {pieces.map((piece) => {
       const pieceSelectable = isPieceSelectable?.(piece) !== false;
       const pieceSelected = pieceSelectable && selectedIds.includes(piece.id);
