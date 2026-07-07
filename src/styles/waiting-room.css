@@ -143,6 +143,19 @@
   justify-content: flex-start;
 }
 
+.waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-top > .radio-group,
+.waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-toggle > .radio-group {
+  flex: 1 1 0;
+  width: 50%;
+  min-width: 0;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-piece > .radio-group {
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 0;
+}
+
 .waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group {
   --option-count: 2;
   display: grid;
@@ -166,8 +179,9 @@
 
 .waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group legend {
   grid-column: 1 / -1;
-  margin: 0 0 2px;
-  color: rgba(42, 30, 23, .72);
+  margin: 0 0 4px;
+  padding: 0;
+  color: rgba(42, 30, 23, .68);
   font-size: .82rem;
   font-weight: 1000;
   line-height: 1.1;
