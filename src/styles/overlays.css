@@ -3743,7 +3743,7 @@
 .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
   display: grid;
   grid-column: auto;
-  grid-template-columns: minmax(34px, max-content) repeat(var(--option-count, 2), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--option-count, 2), minmax(0, 1fr));
   align-items: center;
   gap: 4px;
   min-width: 0;
@@ -3871,7 +3871,7 @@
   .compact-waiting-room .host-room-options.compact-options .radio-group,
   .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
   .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
-    grid-template-columns: minmax(34px, max-content) repeat(var(--option-count, 2), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--option-count, 2), minmax(0, 1fr));
     gap: 3px;
   }
 
@@ -3884,7 +3884,7 @@
   .compact-waiting-room .host-room-options.compact-options .radio-group,
   .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
   .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
-    grid-template-columns: minmax(32px, max-content) repeat(var(--option-count, 2), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--option-count, 2), minmax(0, 1fr));
     gap: 2px;
   }
 
@@ -3975,7 +3975,7 @@
 .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(5) {
   display: grid;
   grid-column: auto;
-  grid-template-columns: minmax(34px, max-content) repeat(var(--option-count, 2), minmax(0, 1fr));
+  grid-template-columns: repeat(var(--option-count, 2), minmax(0, 1fr));
   align-items: center;
   gap: 4px;
   flex: 1 1 0;
