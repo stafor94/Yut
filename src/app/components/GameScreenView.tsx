@@ -110,6 +110,8 @@ type GameScreenViewProps = {
 };
 
 export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, moveSelectionTimedOut, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenDiagnosticDialog, onOpenSequenceExportDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
+  const playerPanelActiveSeatId = activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder ? undefined : activeSeat?.id;
+
   return <GameScreen>
     <GamePlayersPanel
       title={activeRoomTitle || title}
@@ -118,7 +120,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       itemMode={itemMode}
       stackedRollMode={stackedRollMode}
       seats={activeTurnOrderIntro || turnOrderPhase.active ? seats : playerPanelSeats}
-      activeSeatId={activeSeat?.id}
+      activeSeatId={playerPanelActiveSeatId}
       playMode={playMode}
       completedSeatIds={completedSeatIds}
       rankingSeatIds={rankingSeatIds}

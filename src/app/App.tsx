@@ -276,6 +276,7 @@ export function App() {
   const currentRollRef = useRef<YutResult | null>(null);
   const rollAnimationTimerRef = useRef<number | null>(null);
   const pendingItemPickupResolverRef = useRef<(() => void) | null>(null);
+  const shouldAdvanceTurnAfterItemPromptRef = useRef(false);
   const lastSequenceWatchdogAtRef = useRef(0);
   const stalledTurnWatchKeyRef = useRef('');
   const stalledTurnStartedAtRef = useRef(0);
@@ -1734,6 +1735,7 @@ export function App() {
     const timer = window.setTimeout(() => {
       markTurnActionTimedOut(localSeatId);
       setItemPromptTiming(null);
+      finishPendingAfterMoveTurnAdvance();
     }, timeoutMs);
     return () => window.clearTimeout(timer);
   }, [itemPromptTiming, localSeatId, turnActionTimeoutPenaltyBySeatId]);
@@ -2738,6 +2740,14 @@ export function App() {
       window.setTimeout(() => setHighlightedNodeId((current) => current === nodeId ? '' : current), 1400);
     }
   }
+  function finishPendingAfterMoveTurnAdvance() {
+    if (!shouldAdvanceTurnAfterItemPromptRef.current) return;
+    shouldAdvanceTurnAfterItemPromptRef.current = false;
+    setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+    setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
+    setTurnDeadlineKind('roll');
+  }
+
   function resolvePendingItemPickup() {
     setPendingItemPickup(null);
     pendingItemPickupResolverRef.current?.();
@@ -2769,8 +2779,8 @@ export function App() {
     if (timing === 'after_move' && (!isMyTurn || lastMovedSeatId !== localSeatId)) return [];
     return (ownedItems[localSeatId] ?? []).filter((type) => {
       if (ITEM_DEFINITIONS[type].timing !== timing) return false;
-      if (timing === 'after_move' && type !== 'move_plus_one' && type !== 'move_minus_one') return false;
       if ((type === 'move_plus_one' || type === 'move_minus_one') && !getPostMoveAdjustmentPiece(getSeatById(localSeatId))) return false;
+      if ((type === 'shield' || type === 'trap') && !lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished))) return false;
       return true;
     });
   }
@@ -3418,20 +3428,21 @@ export function App() {
     else if (result.bonus) addLog(`${withSubjectParticle(result.name)} 나와 한 번 더 던질 수 있습니다.`);
     else if (captured) addLog('상대 말을 잡아 한 번 더 던질 수 있습니다.');
     else shouldAdvanceTurn = true;
-    const canPromptMoveAdjustmentItem = !shouldAdvanceTurn
-      && seat.id === localSeatId
+    const canPromptAfterMoveItem = seat.id === localSeatId
       && !seat.isAI
       && currentNodeId !== 'finish'
       && movingGroupIds.some((id) => piecesRef.current.some((piece) => piece.id === id && canSeatControlPiece(seat, piece) && piece.started && !piece.finished));
-    const hasMoveAdjustmentItem = (ownedItems[localSeatId] ?? []).some((type) => type === 'move_plus_one' || type === 'move_minus_one')
-      || (!itemPickupWait && landedItem && (landedItem.type === 'move_plus_one' || landedItem.type === 'move_minus_one'));
+    const hasAfterMoveItem = (ownedItems[localSeatId] ?? []).some((type) => ITEM_DEFINITIONS[type].timing === 'after_move')
+      || (!itemPickupWait && landedItem && ITEM_DEFINITIONS[landedItem.type].timing === 'after_move');
+    const shouldPromptAfterMoveItem = canPromptAfterMoveItem && hasAfterMoveItem;
     if (shouldAdvanceTurn && itemPickupWait) await itemPickupWait;
-    if (shouldAdvanceTurn) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
-    setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
-    setTurnDeadlineKind('roll');
+    if (shouldAdvanceTurn) shouldAdvanceTurnAfterItemPromptRef.current = Boolean(shouldPromptAfterMoveItem);
+    if (shouldAdvanceTurn && !shouldPromptAfterMoveItem) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+    setTurnDeadlineAt(Date.now() + (shouldPromptAfterMoveItem ? getItemPromptTimeoutMs(localSeatId) : TURN_ACTION_TIMEOUT_MS));
+    setTurnDeadlineKind(shouldPromptAfterMoveItem ? 'item_prompt' : 'roll');
     setLastMovedPieceIds(movingGroupIds);
     setLastMovedSeatId(seat.id);
-    if (canPromptMoveAdjustmentItem && hasMoveAdjustmentItem) setItemPromptTiming('after_move');
+    if (shouldPromptAfterMoveItem) setItemPromptTiming('after_move');
     setBranchChoice('outer');
     clearRoll();
     if (consumingStackedRoll) {
@@ -3876,6 +3887,7 @@ export function App() {
     setTrapNodes((nodes) => [...nodes.filter((trap) => trap.nodeId !== nodeId), { nodeId, ownerId: pendingTrapPlacement.ownerId }]);
     addLog(`${getSeatDisplayName(itemOwnerSeat)}님이 ${trapPiece.label} 주변 ${nodeId} 칸에 함정을 설치했습니다.`);
     setPendingTrapPlacement(null);
+    finishPendingAfterMoveTurnAdvance();
   }
 
   async function useItem(type: ItemType, actorId = localSeatId, remotePayload: Record<string, unknown> = {}) {
@@ -3897,6 +3909,7 @@ export function App() {
       pendingSequenceMetaRef.current = { type: 'item_used', actorId, clientMutationId, payload: itemActionPayload, action: { type: 'use_item', actorId, payload: withActorLogPayload({ ...itemActionPayload, clientActionId: clientMutationId }, itemOwnerSeat) } };
     }
     const consumeItem = () => { clearTurnActionTimeoutPenalty(itemOwnerId); playSfx('itemUse'); setItemPromptTiming(null); setPendingTrapPlacement(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
+    const finishAfterMoveItem = () => { if (isAfterMoveItem) finishPendingAfterMoveTurnAdvance(); };
     if (type === 'golden_yut') {
       if (activeSeat?.id !== itemOwnerId || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
       submitItemActionIfRemote();
@@ -3927,6 +3940,7 @@ export function App() {
       const moved = targetPiece ? await movePiece(targetPiece.id, { name: '황금 윷', steps: 0, bonus: true }, itemOwnerSeat, itemMoveSteps, getEffectiveBranchChoice(targetPiece.nodeId, (remotePayload.branchChoice as BranchChoice | undefined) ?? branchChoice), { consumedItemType: type }) : false;
       if (!moved) return;
       consumeItem();
+      finishAfterMoveItem();
       return;
     }
     if (type === 'shield') {
@@ -3936,6 +3950,7 @@ export function App() {
       consumeItem();
       setShieldedPieceIds((ids) => Array.from(new Set([...ids, ...shieldTargets])));
       addLog(`${getSeatDisplayName(itemOwnerSeat)}님의 방금 이동한 말에 방패를 씌웠습니다.`);
+      finishAfterMoveItem();
       return;
     }
     if (type === 'trap') {
@@ -3956,6 +3971,7 @@ export function App() {
         consumeItem();
         setTrapNodes((nodes) => [...nodes.filter((trap) => trap.nodeId !== selectedNodeId), { nodeId: selectedNodeId, ownerId: itemOwnerId }]);
         addLog(`${getSeatDisplayName(itemOwnerSeat)}님이 ${trapPiece.label} 주변 ${selectedNodeId} 칸에 함정을 설치했습니다.`);
+        finishAfterMoveItem();
         return;
       }
       setItemPromptTiming(null);
@@ -4340,7 +4356,7 @@ export function App() {
       onRollYut={rollYut}
       onSelectPieceId={setSelectedPieceId}
       onSelectTrapNode={placePendingTrap}
-      onSkipItemPrompt={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); }}
+      onSkipItemPrompt={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); finishPendingAfterMoveTurnAdvance(); }}
       onUseItem={useItem}
       renderLogText={renderLogText}
     />}
