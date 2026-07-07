@@ -287,6 +287,35 @@ test('말 이동 reducer는 시작 전 말을 출발시키고 턴을 넘긴다',
   assert.equal(patch.roll, null);
 });
 
+test('함정은 아군도 발동시키고 방패로 막을 수 없으며 아이템보다 먼저 처리된다', () => {
+  const state = baseState();
+  state.roll = { name: '개', steps: 2 };
+  state.trapNodes = [{ nodeId: 'n03', ownerId: 'seat-1' }];
+  state.shieldedPieceIds = ['p1'];
+  state.boardItems = [{ id: 'item-1', type: 'reroll', nodeId: 'n03' }];
+
+  const result = reduceMoveCommand({
+    state,
+    actorId: 'seat-1',
+    pieceId: 'p1',
+    branchChoice: 'outer',
+    actorLogName: 'P1',
+    playMode: 'individual',
+    sides: [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+    makeLog,
+  });
+
+  assert.equal(result.ok, true);
+  const patch = result.patch as { pieces: EngineState['pieces']; trapNodes: EngineState['trapNodes']; shieldedPieceIds: string[]; boardItems: NonNullable<EngineState['boardItems']>; ownedItems: NonNullable<EngineState['ownedItems']> };
+  const moved = patch.pieces.find((piece) => piece.id === 'p1');
+  assert.equal(moved?.nodeId, 'n01');
+  assert.equal(moved?.started, false);
+  assert.deepEqual(patch.trapNodes, []);
+  assert.deepEqual(patch.shieldedPieceIds, []);
+  assert.deepEqual(patch.boardItems, [{ id: 'item-1', type: 'reroll', nodeId: 'n03' }]);
+  assert.deepEqual(patch.ownedItems, {});
+});
+
 test('완주 후 이어서 진행은 방장이 아닌 플레이어 actor도 커밋된다', () => {
   const state = {
     pieces: [

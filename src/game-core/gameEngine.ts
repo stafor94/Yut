@@ -248,24 +248,20 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
   let shieldedCapturePieceIds: string[] = [];
   let capturedPieceIds: string[] = [];
 
-  const steppedOnTrap = nextTrapNodes.find((trap) => trap.nodeId === currentNodeId && !isSameSide(trap.ownerId, actorId, playMode, sides));
+  if (finishedMove) pushLog(`${actorLogName}님의 말이 완주했습니다!`);
+
+  const steppedOnTrap = nextTrapNodes.find((trap) => trap.nodeId === currentNodeId);
   if (steppedOnTrap) {
     nextTrapNodes = nextTrapNodes.filter((trap) => trap !== steppedOnTrap);
-    const shieldedFromTrap = movingGroupIds.some((id) => nextShieldedPieceIds.includes(id));
-    if (shieldedFromTrap) {
-      nextShieldedPieceIds = nextShieldedPieceIds.filter((id) => !movingGroupIds.includes(id));
-      trapEvent = { nodeId: steppedOnTrap.nodeId, ownerId: steppedOnTrap.ownerId, blockedByShield: true, affectedPieceIds: movingGroupIds };
-      pushLog(`${actorLogName}님의 말이 방패로 함정을 막았습니다.`);
-    } else {
-      nextPieces.forEach((piece) => {
-        if (movingGroupIds.includes(piece.id)) {
-          piece.nodeIndex = 0; piece.nodeId = 'n01'; piece.started = false; piece.finished = false; piece.previousNodeId = undefined;
-        }
-      });
-      currentNodeId = 'n01';
-      trapEvent = { nodeId: steppedOnTrap.nodeId, ownerId: steppedOnTrap.ownerId, blockedByShield: false, affectedPieceIds: movingGroupIds };
-      pushLog(`${actorLogName}님의 말이 함정을 밟아 시작점으로 돌아갑니다.`);
-    }
+    nextShieldedPieceIds = nextShieldedPieceIds.filter((id) => !movingGroupIds.includes(id));
+    nextPieces.forEach((piece) => {
+      if (movingGroupIds.includes(piece.id)) {
+        piece.nodeIndex = 0; piece.nodeId = 'n01'; piece.started = false; piece.finished = false; piece.previousNodeId = undefined;
+      }
+    });
+    currentNodeId = 'n01';
+    trapEvent = { nodeId: steppedOnTrap.nodeId, ownerId: steppedOnTrap.ownerId, blockedByShield: false, affectedPieceIds: movingGroupIds };
+    pushLog(`${actorLogName}님의 말이 함정을 밟아 시작점으로 돌아갑니다.`);
   }
 
   const landedItem = currentNodeId !== 'finish' ? nextBoardItems.find((item) => item.nodeId === currentNodeId) : undefined;
@@ -309,7 +305,6 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
     }
   }
 
-  if (finishedMove) pushLog(`${actorLogName}님의 말이 완주했습니다!`);
   const nextTurnIndex = result.bonus || captured ? Number(state.turnIndex ?? 0) : (Number(state.turnIndex ?? 0) + 1) % state.turnOrderIds.length;
 
   return {

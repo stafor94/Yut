@@ -21,7 +21,6 @@ type GamePlayersPanelProps = {
   localSeatId: string;
   getPlayerCardName: (seat: Seat) => string;
   getSeatPieceColor: (seat: Seat | undefined) => string;
-  onUseItem: (type: ItemType) => void;
   onOpenEndGameDialog: () => void;
 };
 
@@ -40,7 +39,6 @@ export function GamePlayersPanel({
   localSeatId,
   getPlayerCardName,
   getSeatPieceColor,
-  onUseItem,
   onOpenEndGameDialog,
 }: GamePlayersPanelProps) {
   const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
@@ -65,7 +63,7 @@ export function GamePlayersPanel({
       </div>;
     })}
     {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
-    <div className="player-items"><h2>보유 아이템</h2>{(ownedItems[localSeatId] ?? []).length ? <div className="item-grid">{(ownedItems[localSeatId] ?? []).map((type, index) => <button className="item-button" key={`${type}-${index}`} onClick={() => onUseItem(type)}><ItemCard type={type} /></button>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div>
+    <div className="player-items"><h2>보유 아이템</h2>{(ownedItems[localSeatId] ?? []).length ? <div className="item-grid">{(ownedItems[localSeatId] ?? []).map((type, index) => <div className="item-info" key={`${type}-${index}`}><ItemCard type={type} /></div>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div>
     <button className="secondary end-game" onClick={onOpenEndGameDialog}>게임 종료</button>
   </PlayersPanel>;
 }

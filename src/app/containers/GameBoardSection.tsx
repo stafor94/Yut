@@ -18,6 +18,7 @@ type GameBoardSectionProps = {
   revealedItems: ItemType[];
   highlightedNodeId: string;
   trapNodes: TrapNode[];
+  shieldedPieceIds: string[];
   previewNodeIds: string[];
   branchChoice: BranchChoice;
   onBranchChoiceChange: (choice: BranchChoice) => void;
@@ -43,6 +44,7 @@ export function GameBoardSection({
   revealedItems,
   highlightedNodeId,
   trapNodes,
+  shieldedPieceIds,
   previewNodeIds,
   branchChoice,
   onBranchChoiceChange,
@@ -71,6 +73,7 @@ export function GameBoardSection({
     revealedItems={revealedItems}
     highlightedNodeId={highlightedNodeId}
     trapNodeIds={trapNodeIds}
+    shieldedPieceIds={shieldedPieceIds}
     previewNodeIds={previewNodeIds}
     branchChoice={branchChoice}
     onBranchChoiceChange={onBranchChoiceChange}

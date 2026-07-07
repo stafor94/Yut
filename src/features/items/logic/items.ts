@@ -11,8 +11,8 @@ export const ITEM_TIMING_LABELS: Record<ItemTiming, string> = {
 
 export const ITEM_DEFINITIONS: Record<ItemType, { name: string; timing: ItemTiming; description: string; icon: string }> = {
   reroll: { name: '다시 던지기', timing: 'after_roll', description: '윷 결과를 취소하고 한 번 다시 던집니다.', icon: '🔄' },
-  move_plus_one: { name: '한 칸 더 이동', timing: 'after_move', description: '방금 이동한 말을 1칸 더 이동합니다.', icon: '➕' },
-  move_minus_one: { name: '한 칸 덜 이동', timing: 'after_move', description: '방금 이동한 말을 1칸 뒤로 이동합니다.', icon: '➖' },
+  move_plus_one: { name: '한 칸 더 이동', timing: 'after_roll', description: '윷 결과에 1칸을 더합니다.', icon: '➕' },
+  move_minus_one: { name: '한 칸 덜 이동', timing: 'after_roll', description: '윷 결과에서 1칸을 뺍니다.', icon: '➖' },
   shield: { name: '방패', timing: 'after_move', description: '방금 이동한 말을 다음 내 턴까지 1회 보호합니다.', icon: '🛡️' },
   trap: { name: '함정 설치', timing: 'after_move', description: '방금 이동한 말 기준 1칸 이내 칸에 함정을 설치합니다.', icon: '🪤' },
   golden_yut: { name: '황금 윷', timing: 'before_roll', description: '윷을 던지기 전 원하는 결과를 선택합니다.', icon: '✨' },

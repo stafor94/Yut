@@ -191,7 +191,16 @@ select {
   to { transform: scaleX(0); transform-origin: left center; }
 }
 
-.item-button { padding: 0; text-align: left; background: transparent; color: inherit; }
+.item-button,
+.item-info { padding: 0; text-align: left; background: transparent; color: inherit; }
+.item-info { border-radius: 16px; }
+.piece-token.shielded {
+  border-color: rgba(255, 223, 111, .96);
+  box-shadow:
+    0 0 0 5px rgba(255, 215, 92, .22),
+    0 0 22px rgba(255, 198, 41, .36),
+    0 8px 20px rgba(42, 30, 23, .24);
+}
 .log-list { display: grid; gap: 10px; }
 .log-list p { margin: 0; padding: 10px 12px; border: 2px solid var(--log-card-border, transparent); border-radius: 14px; background: var(--log-card-bg, #fff3d8); font-weight: 800; line-height: 1.38; color: var(--log-card-color, rgba(42, 30, 23, .72)); align-self: start; box-shadow: 0 8px 18px rgba(42, 30, 23, .1); }
 .log-list p .log-player-label { color: var(--log-player-color, inherit); }
