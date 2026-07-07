@@ -3637,3 +3637,245 @@
     font-size: 13px;
   }
 }
+
+
+/* Mobile-first compact waiting room tuning: reduce vertical scroll while keeping tap targets. */
+.lobby-shell:has(.compact-waiting-room) .hero.panel {
+  padding-block: 8px;
+}
+
+.lobby-shell:has(.compact-waiting-room) .hero-actions {
+  gap: 6px;
+}
+
+.lobby-shell:has(.compact-waiting-room) .nickname-chip,
+.lobby-shell:has(.compact-waiting-room) .sound-controls.sound-toggle,
+.lobby-shell:has(.compact-waiting-room) .status-card {
+  height: 36px;
+  min-height: 36px;
+  padding: 7px 9px;
+  font-size: 14px;
+}
+
+.lobby-shell:has(.compact-waiting-room) .nickname-chip {
+  min-width: 0;
+}
+
+.lobby-shell:has(.compact-waiting-room) .nickname-chip > span,
+.lobby-shell:has(.compact-waiting-room) .status-card .status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-waiting-room {
+  gap: 9px;
+  padding: clamp(12px, 3vw, 18px);
+}
+
+.compact-waiting-room .waiting-header {
+  gap: 8px;
+}
+
+.compact-waiting-room .waiting-header .room-title {
+  font-size: clamp(22px, 5.7vw, 32px);
+  line-height: 1.08;
+}
+
+.compact-waiting-room .start-status {
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 16px;
+}
+
+.compact-waiting-room .start-status strong {
+  font-size: clamp(15px, 4vw, 18px);
+  line-height: 1.2;
+}
+
+.compact-waiting-room .waiting-room-rule-badges {
+  gap: 4px;
+}
+
+.compact-waiting-room .room-rule-badge {
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 14px;
+  line-height: 1.1;
+}
+
+.compact-waiting-room .waiting-main-grid {
+  gap: 9px;
+}
+
+.compact-waiting-room .waiting-setup-card {
+  gap: 7px;
+  padding: 8px;
+  border-radius: 18px;
+}
+
+.compact-waiting-room .team-checklist {
+  grid-template-columns: auto repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 13px;
+}
+
+.compact-waiting-room .team-checklist strong {
+  grid-column: auto;
+  text-align: left;
+  font-size: 14px;
+}
+
+.compact-waiting-room .team-checklist span {
+  padding: 4px 6px;
+  font-size: 14px;
+}
+
+.compact-waiting-room .host-room-options.compact-options {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.compact-waiting-room .host-room-options.compact-options .radio-group,
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
+  display: grid;
+  grid-column: auto;
+  grid-template-columns: 48px repeat(var(--option-count, 2), minmax(0, 1fr));
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+}
+
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2) { --option-count: 3; }
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) { --option-count: 4; }
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(4),
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(5) {
+  --option-count: 2;
+}
+
+.compact-waiting-room .host-room-options.compact-options .radio-group legend {
+  margin: 0;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.compact-waiting-room .host-room-options.compact-options .radio-group label {
+  min-height: 36px;
+  padding: 6px 5px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.05;
+}
+
+.compact-ready-list,
+.player-view .compact-ready-list {
+  gap: 7px;
+}
+
+.compact-ready-card,
+.player-view .compact-ready-card {
+  min-height: 0;
+  padding: 8px 9px;
+  border-left-width: 5px;
+  border-radius: 16px;
+}
+
+.compact-ready-card .seat-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "badge name actions" "badge role status";
+  gap: 5px 7px;
+}
+
+.compact-ready-card .seat-row b {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  font-size: 14px;
+}
+
+.compact-ready-card .seat-row strong {
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.compact-ready-card .seat-row em,
+.compact-ready-card .seat-ready-label,
+.compact-ready-card .seat-row .ai-add-button,
+.compact-ready-card .seat-row .ai-remove-button,
+.compact-ready-card .seat-row .kick-player-button {
+  min-height: 24px;
+  padding: 4px 7px;
+  font-size: 12px;
+}
+
+.compact-ready-card .seat-row .ai-add-button {
+  min-height: 32px;
+  padding: 6px 8px;
+}
+
+.waiting-actions.role-actions {
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.start-blocked-hint {
+  padding: 6px 9px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.waiting-actions.role-actions button {
+  min-height: 48px;
+  border-radius: 15px;
+  font-size: 16px;
+}
+
+@media (max-width: 767px) {
+  .lobby-shell:has(.compact-waiting-room) .hero.panel {
+    padding: 8px 10px;
+  }
+
+  .lobby-shell:has(.compact-waiting-room) .nickname-chip,
+  .lobby-shell:has(.compact-waiting-room) .sound-controls.sound-toggle,
+  .lobby-shell:has(.compact-waiting-room) .status-card {
+    height: 34px;
+    min-height: 34px;
+    padding-inline: 8px;
+    font-size: 14px;
+  }
+
+  .compact-waiting-room .host-room-options.compact-options,
+  .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
+  .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compact-waiting-room .host-room-options.compact-options .radio-group,
+  .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
+  .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
+    grid-template-columns: 44px repeat(var(--option-count, 2), minmax(0, 1fr));
+  }
+
+  .waiting-actions.role-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 374px) {
+  .compact-waiting-room .host-room-options.compact-options .radio-group,
+  .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
+  .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
+    grid-template-columns: 38px repeat(var(--option-count, 2), minmax(0, 1fr));
+  }
+
+  .compact-waiting-room .host-room-options.compact-options .radio-group legend,
+  .compact-waiting-room .host-room-options.compact-options .radio-group label {
+    font-size: 14px;
+  }
+}
