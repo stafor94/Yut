@@ -8,6 +8,8 @@ on:
 permissions:
   contents: read
   issues: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: main-branch-qa-${{ github.ref_name || github.ref }}
@@ -262,6 +264,40 @@ jobs:
           path: qa-cleanup-after.log
           if-no-files-found: ignore
           retention-days: 7
+
+  deploy-pages:
+    name: Deploy GitHub Pages
+    needs:
+      - build-and-unit
+      - qa-cleanup-before
+      - qa-basic-flow
+      - qa-online-turn-recovery
+      - qa-stacked-roll-backdo-ai
+      - qa-cleanup-layout-regression
+      - qa-cleanup-after
+    if: github.ref == 'refs/heads/main' && success()
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-and-unit
+
+      - name: Verify dist exists
+        run: |
+          test -d dist
+          ls -la dist
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
 
   summarize-qa-result:
     name: Summarize QA result
