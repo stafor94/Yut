@@ -78,6 +78,16 @@ export async function collectScreenState(page) {
       disabled: Boolean(document.querySelector('[data-testid="continue-race-button"]')?.hasAttribute('disabled')),
       text: document.querySelector('[data-testid="continue-race-button"]')?.textContent?.trim() ?? '',
     },
+    turnOrder: {
+      phaseOverlayVisible: Boolean(document.querySelector('.turn-order-overlay')),
+      introOverlayVisible: Boolean(document.querySelector('.turn-order-ready-overlay')),
+      lockVisible: Boolean(document.querySelector('.turn-order-lock')),
+      text: [
+        document.querySelector('.turn-order-overlay')?.textContent?.trim() ?? '',
+        document.querySelector('.turn-order-ready-overlay')?.textContent?.trim() ?? '',
+        document.querySelector('.turn-order-lock')?.textContent?.trim() ?? '',
+      ].filter(Boolean).join(' | '),
+    },
     pieces: Array.from(document.querySelectorAll('[data-testid^="piece-"]')).map((node) => ({
       testId: node.getAttribute('data-testid'),
       disabled: node.hasAttribute('disabled'),

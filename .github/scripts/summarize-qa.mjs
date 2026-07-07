@@ -90,7 +90,13 @@ const failureBlocks = extractFailureBlocks(playwrightLog);
 const inferredCauses = inferFailureCauses(playwrightLog, consoleLog);
 const qaJobStatus = (process.env.QA_JOB_STATUS ?? '').toLowerCase();
 const jobResults = [
-  ['Build app', process.env.BUILD_JOB_RESULT],
+  ['Build and unit', process.env.BUILD_AND_UNIT_JOB_RESULT ?? process.env.BUILD_JOB_RESULT],
+  ['QA cleanup before', process.env.QA_CLEANUP_BEFORE_JOB_RESULT],
+  ['QA basic flow', process.env.QA_BASIC_FLOW_JOB_RESULT],
+  ['QA online turn recovery', process.env.QA_ONLINE_TURN_RECOVERY_JOB_RESULT],
+  ['QA stacked roll backdo AI', process.env.QA_STACKED_ROLL_BACKDO_AI_JOB_RESULT],
+  ['QA cleanup layout regression', process.env.QA_CLEANUP_LAYOUT_REGRESSION_JOB_RESULT],
+  ['QA cleanup after', process.env.QA_CLEANUP_AFTER_JOB_RESULT],
   ['Deploy Pages', process.env.DEPLOY_PAGES_JOB_RESULT],
   ['QA smoke', process.env.QA_SMOKE_JOB_RESULT],
   ['QA game flow', process.env.QA_GAME_FLOW_JOB_RESULT],
@@ -239,7 +245,7 @@ const successSummary = [
   `- 이벤트: \`${process.env.GITHUB_EVENT_NAME ?? 'unknown'}\``,
   `- 실행 결과: ${runUrl}`,
   '',
-  '빌드와 Playwright Game QA가 모두 성공했습니다.',
+  '빌드, 단위 테스트, BUG_HISTORY 기반 병렬 QA가 모두 성공했습니다.',
   '',
   environment,
   '',
