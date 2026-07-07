@@ -2898,6 +2898,34 @@ export function App() {
     setLastActionDiagnostic({ type, message: messageText, reasons: [stage, params.status].filter((value): value is string => Boolean(value)), createdAt: entry.createdAt });
   }
 
+
+  async function applyAuthoritativeResultSequence(result: Awaited<ReturnType<typeof commitAuthoritativeGameAction>>) {
+    if (!activeRoomId || !(result.status === 'committed' || result.status === 'duplicate') || !result.sequence) return false;
+    const localSequence = lastAppliedSequenceRef.current;
+    const resultSequence = result.sequence;
+    if (resultSequence > localSequence) {
+      const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
+      const latestState = [...sequences]
+        .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
+        .reverse()
+        .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+      if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
+    }
+    lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, resultSequence);
+    if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
+    return true;
+  }
+
+  async function commitQueuedAuthoritativeGameAction(
+    roomId: string,
+    action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
+  ) {
+    const runCommit = () => commitAuthoritativeGameAction(roomId, action);
+    const queuedCommit = localActionCommitQueueRef.current.then(runCommit, runCommit);
+    localActionCommitQueueRef.current = queuedCommit.then(() => undefined, () => undefined);
+    return queuedCommit;
+  }
+
   function enqueueAuthoritativeGameAction(
     roomId: string,
     action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
@@ -3550,16 +3578,60 @@ export function App() {
     return true;
   }
 
-  function submitAiStackedBackDoSkip(seat: Seat, skippedRoll: YutResult, rollStackIndex: number, remainingRollsAfterSkip: YutResult[]) {
-    addLog(`${getSeatDisplayName(seat)}님은 판 위에 나온 말이 없어 ${skippedRoll.name}를 이동하지 못합니다.`);
-    setBranchChoice('outer');
-    clearRoll();
-    setRollStack([...remainingRollsAfterSkip]);
-    setRollStackClosed(remainingRollsAfterSkip.length > 0);
-    setSelectedRollStackIndex(remainingRollsAfterSkip.length === 1 ? 0 : null);
-    if (remainingRollsAfterSkip.length === 0) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+  async function submitAiStackedRoll(seat: Seat, nextRoll: YutResult, timingZone: RollTimingZone | undefined) {
+    if (!activeRoomId || !canCoordinateOnlineGame) {
+      return Boolean(rollYutForStack(seat, nextRoll, null, { timingZone }));
+    }
+    const rollPayload = { forcedResult: nextRoll, rollTimingZone: timingZone, fallOccurred: false, stackedRollMode: true };
+    const actionKey = `roll_yut_ai_stack:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStack.length}:${nextRoll.name}:${nextRoll.steps}:${Date.now()}`;
+    if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
+    const action = { type: 'roll_yut' as const, actorId: seat.id, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, seat) };
+    const optimisticRoll = rollYutForStack(seat, nextRoll, action, { recordSequence: false, timingZone });
+    if (!optimisticRoll) return false;
+    addPendingLocalRemoteAction(actionKey, {
+      type: 'roll_yut',
+      actorId: seat.id,
+      createdSequence: lastAppliedSequenceRef.current,
+      createdTurnIndex: turnIndex,
+      optimisticApplied: true,
+    });
+    localClientMutationIdsRef.current.add(actionKey);
+    try {
+      const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
+      if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+        await applyAuthoritativeResultSequence(result);
+        acknowledgePendingLocalRemoteAction(actionKey);
+        recordRemoteActionDiagnostic('roll_yut', 'ai-stack-roll-committed', 'AI 누적 윷 던지기를 서버 authoritative 상태로 확정했습니다.', { status: result.status, actionKey });
+        return true;
+      }
+      if (result.status === 'rejected' || result.status === 'unsupported') {
+        await handleAuthoritativeActionRejected('roll_yut', 'ai-stack-roll-result', result, {
+          actionKey,
+          fallbackMessage: 'AI 누적 윷 던지기 처리에 실패했습니다.',
+          optimisticApplied: true,
+          resyncMessage: '서버가 AI 누적 윷 던지기를 거부해 최신 authoritative 상태로 재동기화합니다.',
+        });
+      }
+      return false;
+    } catch (error) {
+      recordRemoteActionDiagnostic('roll_yut', 'ai-stack-roll-error', error instanceof Error ? error.message : 'AI 누적 윷 던지기 처리에 실패했습니다.', { actionKey });
+      return false;
+    } finally {
+      deletePendingLocalRemoteAction(actionKey);
+    }
+  }
 
-    if (!activeRoomId || !canCoordinateOnlineGame) return true;
+  async function submitAiStackedBackDoSkip(seat: Seat, skippedRoll: YutResult, rollStackIndex: number, remainingRollsAfterSkip: YutResult[]) {
+    if (!activeRoomId || !canCoordinateOnlineGame) {
+      addLog(`${getSeatDisplayName(seat)}님은 판 위에 나온 말이 없어 ${skippedRoll.name}를 이동하지 못합니다.`);
+      setBranchChoice('outer');
+      clearRoll();
+      setRollStack([...remainingRollsAfterSkip]);
+      setRollStackClosed(remainingRollsAfterSkip.length > 0);
+      setSelectedRollStackIndex(remainingRollsAfterSkip.length === 1 ? 0 : null);
+      if (remainingRollsAfterSkip.length === 0) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+      return true;
+    }
 
     const payload = {
       pieceId: '',
@@ -3576,40 +3648,32 @@ export function App() {
       actorId: seat.id,
       createdSequence: lastAppliedSequenceRef.current,
       createdTurnIndex: turnIndex,
-      optimisticApplied: true,
+      optimisticApplied: false,
     });
     localClientMutationIdsRef.current.add(actionKey);
     const action = { type: 'move_piece' as const, actorId: seat.id, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, seat) };
-    enqueueAuthoritativeGameAction(
-      activeRoomId,
-      action,
-      async (result) => {
-        if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-          const localSequence = lastAppliedSequenceRef.current;
-          const resultSequence = result.sequence;
-          if (resultSequence > localSequence) {
-            const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
-            const latestState = [...sequences]
-              .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
-              .reverse()
-              .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-            if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
-          }
-          acknowledgePendingLocalRemoteAction(actionKey);
-        }
-        if (result.status === 'rejected' || result.status === 'unsupported') {
-          void handleAuthoritativeActionRejected('move_piece', 'ai-backdo-skip-result', result, {
-            actionKey,
-            fallbackMessage: 'AI 빽도 스킵 처리에 실패했습니다.',
-            optimisticApplied: true,
-            resyncMessage: '서버가 AI 빽도 스킵을 거부해 최신 authoritative 상태로 재동기화합니다.',
-          });
-        }
-      },
-      (error) => recordRemoteActionDiagnostic('move_piece', 'ai-backdo-skip-error', error instanceof Error ? error.message : 'AI 빽도 스킵 처리에 실패했습니다.', { actionKey }),
-      () => deletePendingLocalRemoteAction(actionKey),
-    );
-    return true;
+    try {
+      const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
+      if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+        await applyAuthoritativeResultSequence(result);
+        acknowledgePendingLocalRemoteAction(actionKey);
+        recordRemoteActionDiagnostic('move_piece', 'ai-backdo-skip-committed', 'AI 빽도 스킵을 서버 authoritative 상태로 확정했습니다.', { status: result.status, actionKey });
+        return true;
+      }
+      if (result.status === 'rejected' || result.status === 'unsupported') {
+        await handleAuthoritativeActionRejected('move_piece', 'ai-backdo-skip-result', result, {
+          actionKey,
+          fallbackMessage: 'AI 빽도 스킵 처리에 실패했습니다.',
+          resyncMessage: '서버가 AI 빽도 스킵을 거부해 최신 authoritative 상태로 재동기화합니다.',
+        });
+      }
+      return false;
+    } catch (error) {
+      recordRemoteActionDiagnostic('move_piece', 'ai-backdo-skip-error', error instanceof Error ? error.message : 'AI 빽도 스킵 처리에 실패했습니다.', { actionKey });
+      return false;
+    } finally {
+      deletePendingLocalRemoteAction(actionKey);
+    }
   }
 
   function getPostMoveAdjustmentPiece(seat: Seat | undefined) {
@@ -3664,7 +3728,7 @@ export function App() {
             setRollTimingFeedback(aiTimingZone);
             const stackedRoll = pendingForcedRoll ?? rollYutResultWithTiming(aiTimingZone).result;
             pendingForcedRoll = null;
-            if (!rollYutForStack(seat, stackedRoll, null, { timingZone: aiTimingZone })) return false;
+            if (!await submitAiStackedRoll(seat, stackedRoll, aiTimingZone)) return false;
             stack.push(stackedRoll);
             await delay(ROLL_ANIMATION_MS + 120);
           } while (stack[stack.length - 1]?.bonus && canContinueAiTurn());
@@ -3682,7 +3746,7 @@ export function App() {
           if (!selected) {
             const skippedRoll = remainingRolls.shift();
             if (skippedRoll && skippedRoll.steps < 0) {
-              submitAiStackedBackDoSkip(seat, skippedRoll, 0, remainingRolls);
+              if (!await submitAiStackedBackDoSkip(seat, skippedRoll, 0, remainingRolls)) return;
               continue;
             }
             setRollStack([...remainingRolls]);
