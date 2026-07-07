@@ -49,7 +49,7 @@
   margin: 0;
 }
 
-.lobby-layout .room-card div {
+.lobby-layout .room-card > div {
   display: grid;
   gap: 6px;
 }

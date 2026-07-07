@@ -136,7 +136,9 @@
 
 .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-top,
 .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-toggle {
-  justify-content: flex-start;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10%;
 }
 
 .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-piece {
@@ -145,14 +147,16 @@
 
 .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-top > .radio-group,
 .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-toggle > .radio-group {
-  flex: 1 1 0;
-  width: 50%;
+  flex: 0 0 45%;
+  width: 45%;
+  max-width: 45%;
   min-width: 0;
 }
 
 .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-piece > .radio-group {
-  flex: 1 1 100%;
+  flex: 0 0 100%;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -258,6 +262,11 @@
 @media (max-width: 767px) {
   .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row {
     gap: 5px;
+  }
+
+  .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-top,
+  .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-toggle {
+    gap: 10%;
   }
 
   .waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group {
