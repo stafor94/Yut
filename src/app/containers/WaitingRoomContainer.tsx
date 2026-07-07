@@ -67,6 +67,7 @@ export function WaitingRoomContainer({
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
   const startStatusText = roomInGame ? '게임중' : allReady ? '시작 가능' : teamStartHint || `${readyMissingCount}명이 더 준비해야 해요.`;
+  const startBlockedHint = roomInGame ? '이미 게임이 진행 중입니다.' : allReady ? '' : teamStartHint || `${readyMissingCount}명이 더 준비하면 시작할 수 있어요.`;
   const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
   const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
 
@@ -93,6 +94,7 @@ export function WaitingRoomContainer({
     {countdown >= 0 && startStatus === 'requested' && Date.now() >= startCountdownStartsAt && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={onCancelStartCountdown}>취소</button>}</div></div>}
     {playMode === 'team' && !teamBalanced && <p className="notice warning inline-warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}
     <footer className="waiting-actions role-actions">
+      {startBlockedHint ? <p className="start-blocked-hint" role="status">{startBlockedHint}</p> : null}
       {canManageRoom ? <button data-testid="start-game-button" onClick={onStartGame} disabled={roomInGame || !allReady}>게임 시작</button> : <button onClick={onToggleReady} disabled={roomInGame || !myWaitingSeat}>{roomInGame ? '게임중' : myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
       <button className="secondary" onClick={onLeaveRoom}>방 나가기</button>
     </footer>
