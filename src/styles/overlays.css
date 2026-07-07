@@ -3939,3 +3939,105 @@
     align-self: start;
   }
 }
+
+/* Explicit waiting-room option rows: avoid nth-of-type layout drift across devices. */
+.compact-waiting-room .host-room-options.compact-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compact-waiting-room .host-room-options.compact-options .option-row {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.compact-waiting-room .host-room-options.compact-options .option-row-top {
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+}
+
+.compact-waiting-room .host-room-options.compact-options .option-row-piece {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.compact-waiting-room .host-room-options.compact-options .option-row-toggle {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.compact-waiting-room .host-room-options.compact-options .radio-group,
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3),
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(4),
+.compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(5) {
+  display: grid;
+  grid-column: auto;
+  grid-template-columns: minmax(34px, max-content) repeat(var(--option-count, 2), minmax(0, 1fr));
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+}
+
+.compact-waiting-room .host-room-options.compact-options .player-count-group { --option-count: 3; }
+.compact-waiting-room .host-room-options.compact-options .piece-count-group { --option-count: 4; }
+.compact-waiting-room .host-room-options.compact-options .item-mode-group,
+.compact-waiting-room .host-room-options.compact-options .stacked-roll-mode-group { --option-count: 2; }
+
+.compact-waiting-room .host-room-options.compact-options .radio-group label {
+  min-width: 0;
+  min-height: 32px;
+  gap: 2px;
+  margin: 0;
+  padding: 5px 4px;
+}
+
+.waiting-actions.role-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.waiting-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.waiting-action-buttons button {
+  flex: 1 1 160px;
+}
+
+.start-blocked-hint {
+  width: 100%;
+  margin: 0;
+  text-align: left;
+}
+
+.compact-ready-card .seat-row {
+  align-items: center;
+}
+
+.seat-role-badge,
+.empty-seat-badge {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .compact-waiting-room .host-room-options.compact-options .option-row-top,
+  .compact-waiting-room .host-room-options.compact-options .option-row-toggle {
+    grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+    gap: 4px;
+  }
+
+  .compact-waiting-room .host-room-options.compact-options .radio-group,
+  .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(2),
+  .compact-waiting-room .host-room-options.compact-options .radio-group:nth-of-type(3) {
+    gap: 3px;
+  }
+}
