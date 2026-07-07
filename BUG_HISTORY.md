@@ -3304,3 +3304,25 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] Workflow syntax/manual inspection
 - [x] Build succeeds
 - [ ] main push workflow rerun checked
+
+## 2026-07-07 - Actions run 28864416720 unit test runner path failure
+
+### Symptom
+
+- `Build and unit tests` job에서 `Build app` 단계는 성공했지만 `Unit tests` 단계가 시작 전에 실패했다.
+- 실패 로그는 `Cannot find module '/home/runner/work/Yut/Yut/.tmp-unit-tests/tests/unit'`였다.
+
+### Confirmed root cause
+
+- 앱/게임 로직 문제가 아니라 `test:unit` 스크립트가 TypeScript 컴파일 출력 구조와 무관하게 `.tmp-unit-tests/tests/unit` 고정 경로를 `node --test`에 전달한 CI/unit runner 경로 문제였다.
+
+### Correct fix plan
+
+- 컴파일 후 `.tmp-unit-tests` 아래에 실제 생성된 `*.test.js` 파일을 재귀 탐색해 `node --test`에 전달한다.
+- 컴파일된 unit test 파일이 없으면 명확한 메시지와 함께 실패한다.
+
+### Verification checklist
+
+- [x] `npm run test:unit` succeeds
+- [x] `npm run build` succeeds
+- [ ] GitHub Actions rerun checked
