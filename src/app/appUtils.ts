@@ -54,8 +54,8 @@ export const getRoomRuleBadges = (mode: PlayMode, players: 2 | 3 | 4, pieces: Pi
   { key: 'mode', label: mode === 'team' ? '팀전' : '개인전', tone: mode === 'team' ? 'team' : 'individual' },
   { key: 'players', label: `${players}인`, tone: 'players' },
   { key: 'pieces', label: mode === 'team' ? `팀별 말 ${pieces}개` : `말 ${pieces}개`, tone: 'pieces' },
-  { key: 'items', label: `아이템 ${itemsEnabled ? 'ON' : 'OFF'}`, tone: itemsEnabled ? 'items-on' : 'items-off' },
-  { key: 'stackedRoll', label: `누적 ${stackedRollEnabled ? 'ON' : 'OFF'}`, tone: stackedRollEnabled ? 'items-on' : 'items-off' },
+  ...(itemsEnabled ? [{ key: 'items' as const, label: '아이템', tone: 'items-on' }] : []),
+  ...(stackedRollEnabled ? [{ key: 'stackedRoll' as const, label: '누적', tone: 'items-on' }] : []),
 ];
 
 export const formatRoomRuleText = (mode: PlayMode, players: 2 | 3 | 4, pieces: PieceCount, itemsEnabled: boolean, stackedRollEnabled = false) => getRoomRuleBadges(mode, players, pieces, itemsEnabled, stackedRollEnabled).map((badge) => badge.label).join(' · ');
