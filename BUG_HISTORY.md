@@ -67,6 +67,48 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-07 - 온라인 AI 누적 빽도 스킵 optimistic 저장 경합
+
+### Symptom
+
+- 온라인 누적 던지기 게임에서 AI가 빽도를 던진 뒤 화면에는 AI 턴과 빽도 결과가 남고 진행 버튼이 비활성화됐다.
+- 진단 상태에서 `hasPendingGameStateSave`가 true로 남고, 사람 턴 기준 roll timeout recovery가 `지금은 내 차례가 아닙니다.`로 거부됐다.
+
+### Expected behavior
+
+- 온라인 AI 누적 던지기와 빽도 스킵은 서버 authoritative `roll_yut`/`move_piece` sequence 순서대로 확정되어야 한다.
+- AI 빽도 스킵이 서버에 커밋되기 전에 로컬 snapshot 저장이 사람 턴으로 선진행하면 안 된다.
+
+### Confirmed root cause
+
+- AI 누적 던지기 roll은 `pendingSequenceMetaRef` 기반 local snapshot 저장 경로를 사용했다.
+- AI 빽도 스킵은 authoritative `move_piece` action 결과를 받기 전에 로컬에서 `rollStack`을 제거하고 `turnIndex`를 넘겼다.
+- 두 경로가 경합하면 stale optimistic snapshot이 `coordinatorStateSaveKey`로 남아 `saving-game-state` guard를 만들고, 서버는 아직 AI 턴으로 판단해 사람 턴 roll timeout recovery를 거부할 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: AI 빽도 스킵을 `pieceId: ''`, `rollStackIndex`가 있는 authoritative `move_piece` action으로 제출했다.
+  - Why it failed: action 제출 전 로컬 선진행과 AI roll의 snapshot 저장 경로가 남아 있어 stale local state 저장 경합을 막지 못했다.
+
+### Do not try again
+
+- 온라인 AI 누적 roll을 local snapshot 저장만으로 확정하지 않는다.
+- 서버 `move_piece` commit 전에 AI 빽도 스킵의 `turnIndex`/`rollStack`을 로컬에서 먼저 확정하지 않는다.
+
+### Correct fix plan
+
+- 온라인 AI 누적 roll은 `roll_yut` authoritative action으로 제출하고 commit sequence 적용 후 다음 AI 동작을 진행한다.
+- 온라인 AI 빽도 스킵은 로컬 선진행 없이 `move_piece` authoritative action을 제출하고 commit sequence replay로만 상태를 갱신한다.
+- 기존 reducer의 누적 빽도 스킵 회귀 테스트와 빌드로 검증한다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [ ] Multi-client online AI stacked backdo skip checked
+
+
 ## 2026-07-07 - 낙/타임아웃 경합 후 자동 복구 고착
 
 ### Symptom
