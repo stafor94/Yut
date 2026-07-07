@@ -1,7 +1,14 @@
 import { useRef, useState } from 'react';
 import type { GameAction } from '../../features/room/services/roomService';
 
-type PendingRemoteActionMeta = { type: GameAction['type']; createdAt: number };
+export type PendingRemoteActionMeta = {
+  type: GameAction['type'];
+  createdAt: number;
+  createdSequence?: number;
+  createdTurnIndex?: number;
+  actorId?: string;
+  optimisticApplied?: boolean;
+};
 
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
@@ -15,9 +22,14 @@ export function usePendingRemoteActions() {
     const [type] = actionKey.split(':');
     return (type || 'roll_yut') as GameAction['type'];
   };
-  const addPendingLocalRemoteAction = (actionKey: string, type = getPendingLocalRemoteActionType(actionKey)) => {
+  const addPendingLocalRemoteAction = (actionKey: string, meta: Partial<PendingRemoteActionMeta> & { type?: GameAction['type'] } = {}) => {
+    const type = meta.type ?? getPendingLocalRemoteActionType(actionKey);
     pendingLocalRemoteActionsRef.current.add(actionKey);
-    pendingLocalRemoteActionMetaRef.current.set(actionKey, { type, createdAt: Date.now() });
+    pendingLocalRemoteActionMetaRef.current.set(actionKey, {
+      ...meta,
+      type,
+      createdAt: meta.createdAt ?? Date.now(),
+    });
     syncPendingLocalRemoteActionCount();
   };
   const deletePendingLocalRemoteAction = (actionKey: string) => {
