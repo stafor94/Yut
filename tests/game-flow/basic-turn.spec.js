@@ -35,12 +35,24 @@ test.describe('game flow QA', () => {
       await expect(page.getByTestId('game-board')).toBeVisible();
     });
 
-    await runQaStep(testInfo, '첫 턴 조작 가능한 컨트롤 노출 확인', async () => {
+    await runQaStep(testInfo, '순서 정하기 완료 및 첫 턴 진행 가능 상태 확인', async () => {
       await expect.poll(async () => {
         const state = await collectScreenState(page);
-        if (state.rollButton.visible || state.moveButton.visible || state.turnWaitingButton.visible) return 'ready';
+        const debug = state.yutDebug ?? {};
+        const hasTurnOrder = Array.isArray(debug.turnOrderIds) && debug.turnOrderIds.length >= 2;
+        const orderingCleared = !debug.turnOrderPhase?.active && !debug.turnOrderIntro && !state.turnOrder.phaseOverlayVisible && !state.turnOrder.introOverlayVisible && !state.turnOrder.lockVisible;
+        if (hasTurnOrder && orderingCleared) return 'resolved';
         return JSON.stringify(state, null, 2);
-      }, { timeout: 20_000, message: '게임 컨트롤이 보여야 합니다.' }).toBe('ready');
+      }, { timeout: 35_000, message: '순서 정하기가 완료되고 대기/오버레이가 사라져야 합니다.' }).toBe('resolved');
+
+      await expect.poll(async () => {
+        const state = await collectScreenState(page);
+        const actionableRoll = state.rollButton.visible && !state.rollButton.disabled;
+        const actionableMove = state.moveButton.visible && !state.moveButton.disabled;
+        const waitingForOtherTurn = state.turnWaitingButton.visible;
+        if (actionableRoll || actionableMove || waitingForOtherTurn) return 'ready';
+        return JSON.stringify(state, null, 2);
+      }, { timeout: 20_000, message: '순서 정하기 완료 후 첫 턴 조작/대기 UI가 보여야 합니다.' }).toBe('ready');
     });
   });
 });

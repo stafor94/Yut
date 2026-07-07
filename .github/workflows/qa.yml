@@ -1,67 +1,31 @@
-name: Merged PR QA and Deploy
+name: Main Branch QA
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   issues: write
-  pages: write
-  id-token: write
 
 concurrency:
-  group: merged-pr-qa-deploy-${{ github.ref_name || github.ref }}
+  group: main-branch-qa-${{ github.ref_name || github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build app
+  build-and-unit:
+    name: Build and unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+          cache: npm
+      - run: npm ci
       - name: Prepare Firebase environment
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-
-          const rawConfig = process.env.FIREBASE_CONFIG?.trim();
-          const keyMap = {
-            apiKey: 'VITE_FIREBASE_API_KEY',
-            authDomain: 'VITE_FIREBASE_AUTH_DOMAIN',
-            projectId: 'VITE_FIREBASE_PROJECT_ID',
-            storageBucket: 'VITE_FIREBASE_STORAGE_BUCKET',
-            messagingSenderId: 'VITE_FIREBASE_MESSAGING_SENDER_ID',
-            appId: 'VITE_FIREBASE_APP_ID',
-          };
-
-          function parseFirebaseConfig(value) {
-            if (!value) return {};
-
-            const objectText = value.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\})\s*;?/)?.[1] ?? value;
-            const jsonish = objectText
-              .replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3')
-              .replace(/'/g, '"')
-              .replace(/,\s*}/g, '}');
-
-            return JSON.parse(jsonish);
-          }
-
-          const config = parseFirebaseConfig(rawConfig);
-          const lines = [];
-
-          for (const [firebaseKey, envKey] of Object.entries(keyMap)) {
-            const value = process.env[envKey] || config[firebaseKey];
-            if (value) lines.push(`${envKey}=${value}`);
-          }
-
-          fs.writeFileSync('.env.production', `${lines.join('\n')}\n`);
-          console.log(`Wrote ${lines.length} Firebase build variables to .env.production`);
-          NODE
+        run: node .github/scripts/write-firebase-env.mjs
         env:
           FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
@@ -74,107 +38,37 @@ jobs:
         run: |
           set -o pipefail
           npm run build 2>&1 | tee build.log
-      - name: Upload build output
-        uses: actions/upload-artifact@v4
-        with:
-          name: built-app
-          path: dist
-          if-no-files-found: error
-          retention-days: 1
-      - name: Upload build log
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          npm run test:unit 2>&1 | tee unit.log
+      - name: Upload app and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: build.log
+          name: build-and-unit
+          path: |
+            dist
+            build.log
+            unit.log
           if-no-files-found: ignore
           retention-days: 7
 
-  deploy-pages:
-    name: Deploy Pages
-    needs: build
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy_pages_1.outputs.page_url || steps.deploy_pages_2.outputs.page_url || steps.deploy_pages_3.outputs.page_url }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: built-app
-          path: dist
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
-          path: dist
-      - name: Wait for Pages deployment slot
-        run: sleep 180
-      - id: deploy_pages_1
-        name: Deploy Pages (attempt 1)
-        continue-on-error: true
-        uses: actions/deploy-pages@v4
-        with:
-          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
-          timeout: 600000
-          error_count: 30
-          reporting_interval: 10000
-      - name: Wait before Pages deploy retry 1
-        if: steps.deploy_pages_1.outcome == 'failure'
-        run: sleep 60
-      - id: deploy_pages_2
-        name: Deploy Pages (attempt 2)
-        if: steps.deploy_pages_1.outcome == 'failure'
-        continue-on-error: true
-        uses: actions/deploy-pages@v4
-        with:
-          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
-          timeout: 600000
-          error_count: 30
-          reporting_interval: 10000
-      - name: Wait before Pages deploy retry 2
-        if: steps.deploy_pages_1.outcome == 'failure' && steps.deploy_pages_2.outcome == 'failure'
-        run: sleep 60
-      - id: deploy_pages_3
-        name: Deploy Pages (attempt 3)
-        if: steps.deploy_pages_1.outcome == 'failure' && steps.deploy_pages_2.outcome == 'failure'
-        continue-on-error: true
-        uses: actions/deploy-pages@v4
-        with:
-          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
-          timeout: 600000
-          error_count: 30
-          reporting_interval: 10000
-      - name: Check Pages deploy result
-        if: steps.deploy_pages_1.outcome == 'failure' && steps.deploy_pages_2.outcome == 'failure' && steps.deploy_pages_3.outcome == 'failure'
-        run: |
-          echo "Pages deployment failed after 3 attempts." >&2
-          exit 1
-
   qa-cleanup-before:
-    name: Cleanup QA rooms before tests
-    needs: [build, deploy-pages]
+    name: Cleanup before QA
+    needs: build-and-unit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - name: Cleanup old QA rooms
+          cache: npm
+      - run: npm ci
+      - name: Cleanup old QA data
         run: |
-          for attempt in 1 2 3; do
-            if npm run qa:cleanup-rooms; then
-              exit 0
-            fi
-            if [ "$attempt" = "3" ]; then
-              echo "QA room cleanup failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 10))
-          done
+          set -o pipefail
+          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-before.log
         env:
           FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
@@ -183,123 +77,174 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+      - name: Upload cleanup log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-cleanup-before-results
+          path: qa-cleanup-before.log
+          if-no-files-found: ignore
+          retention-days: 7
 
-  qa-smoke:
-    name: QA smoke
-    needs: [build, deploy-pages, qa-cleanup-before]
+  qa-basic-flow:
+    name: QA basic flow
+    needs: [build-and-unit, qa-cleanup-before]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+          cache: npm
+      - run: npm ci
       - uses: actions/download-artifact@v4
         with:
-          name: built-app
-          path: dist
+          name: build-and-unit
       - run: npx playwright install --with-deps
-      - name: Run Playwright smoke QA
+      - name: Run QA
         run: |
           set -o pipefail
-          npm run test:smoke 2>&1 | tee playwright-smoke.log
+          $QA_COMMAND 2>&1 | tee "$QA_LOG"
+        env:
+          QA_COMMAND: npm run test:qa-basic-flow
+          QA_LOG: playwright-qa-basic-flow.log
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
       - name: Upload QA artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-smoke-results
+          name: qa-basic-flow-results
           path: |
             test-results
-            playwright-smoke.log
+            playwright-qa-basic-flow.log
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
 
-  qa-game-flow:
-    name: QA game flow
-    needs: [build, deploy-pages, qa-cleanup-before]
+  qa-online-turn-recovery:
+    name: QA online turn recovery
+    needs: [build-and-unit, qa-cleanup-before]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+          cache: npm
+      - run: npm ci
       - uses: actions/download-artifact@v4
         with:
-          name: built-app
-          path: dist
+          name: build-and-unit
       - run: npx playwright install --with-deps
-      - name: Run Playwright game-flow QA
+      - name: Run online recovery QA
         run: |
           set -o pipefail
-          npm run test:game-flow 2>&1 | tee playwright-game-flow.log
+          npm run test:qa-online-turn-recovery 2>&1 | tee playwright-qa-online-turn-recovery.log
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
       - name: Upload QA artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-game-flow-results
+          name: qa-online-turn-recovery-results
           path: |
             test-results
-            playwright-game-flow.log
+            playwright-qa-online-turn-recovery.log
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
 
-  qa-mobile:
-    name: QA mobile layout
-    needs: [build, deploy-pages, qa-cleanup-before]
+  qa-stacked-roll-backdo-ai:
+    name: QA stacked roll backdo AI
+    needs: [build-and-unit, qa-cleanup-before]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - uses: actions/download-artifact@v4
-        with:
-          name: built-app
-          path: dist
-      - run: npx playwright install --with-deps
-      - name: Run Playwright mobile layout QA
+          cache: npm
+      - run: npm ci
+      - name: Run stacked backdo authoritative QA
         run: |
           set -o pipefail
-          npm run test:mobile 2>&1 | tee playwright-mobile.log
+          npm run test:qa-stacked-roll-backdo-ai 2>&1 | tee qa-stacked-roll-backdo-ai.log
       - name: Upload QA artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-mobile-results
+          name: qa-stacked-roll-backdo-ai-results
+          path: qa-stacked-roll-backdo-ai.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  qa-cleanup-layout-regression:
+    name: QA cleanup and layout regression
+    needs: [build-and-unit, qa-cleanup-before]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-and-unit
+      - run: npx playwright install --with-deps
+      - name: Run cleanup/layout QA
+        run: |
+          set -o pipefail
+          npm run test:qa-cleanup-layout-regression 2>&1 | tee playwright-qa-cleanup-layout-regression.log
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+      - name: Upload QA artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-cleanup-layout-regression-results
           path: |
             test-results
-            playwright-mobile.log
+            playwright-qa-cleanup-layout-regression.log
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
 
   qa-cleanup-after:
-    name: Cleanup QA rooms after tests
+    name: Cleanup after QA
     if: always()
-    needs: [build, qa-smoke, qa-game-flow, qa-mobile]
+    needs: [qa-basic-flow, qa-online-turn-recovery, qa-stacked-roll-backdo-ai, qa-cleanup-layout-regression]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - name: Cleanup created QA rooms
+          cache: npm
+      - run: npm ci
+      - name: Cleanup QA data after tests
         run: |
-          for attempt in 1 2 3; do
-            if npm run qa:cleanup-rooms; then
-              exit 0
-            fi
-            if [ "$attempt" = "3" ]; then
-              echo "QA room cleanup failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 10))
-          done
+          set -o pipefail
+          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-after.log
         env:
           QA_CLEANUP_REPORT_REMAINING: '1'
           FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
@@ -309,11 +254,19 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+      - name: Upload cleanup log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-cleanup-after-results
+          path: qa-cleanup-after.log
+          if-no-files-found: ignore
+          retention-days: 7
 
-  qa-summary:
+  summarize-qa-result:
     name: Summarize QA result
     if: always()
-    needs: [build, deploy-pages, qa-smoke, qa-game-flow, qa-mobile, qa-cleanup-after]
+    needs: [build-and-unit, qa-cleanup-before, qa-basic-flow, qa-online-turn-recovery, qa-stacked-roll-backdo-ai, qa-cleanup-layout-regression, qa-cleanup-after]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -326,42 +279,33 @@ jobs:
           pattern: '*'
           merge-multiple: true
         continue-on-error: true
-      - name: Combine Playwright logs
+      - name: Combine QA logs
         if: always()
         run: |
-          cat playwright-*.log > playwright.log 2>/dev/null || touch playwright.log
-      - name: Prune bulky QA artifacts
-        if: always()
-        run: |
-          rm -rf playwright-report screenshots
-          find test-results -type f \( -name '*.zip' -o -name '*.webm' -o -name '*.mp4' \) -delete 2>/dev/null || true
-          max_bytes=$((50 * 1024 * 1024))
-          current_bytes=$(du -sb test-results *.log console-log.txt 2>/dev/null | awk '{sum += $1} END {print sum + 0}')
-          if [ "$current_bytes" -gt "$max_bytes" ]; then
-            echo "QA artifact candidates are ${current_bytes} bytes, removing test-results to stay below 50MB. Issue body and logs remain."
-            rm -rf test-results
-          fi
-          du -sh test-results *.log console-log.txt 2>/dev/null || true
+          cat playwright-*.log qa-*.log unit.log build.log > playwright.log 2>/dev/null || touch playwright.log
       - name: Summarize QA result
         if: always()
         env:
-          QA_JOB_STATUS: ${{ (needs.build.result == 'success' && needs.deploy-pages.result == 'success' && needs.qa-smoke.result == 'success' && needs.qa-game-flow.result == 'success' && needs.qa-mobile.result == 'success') && 'success' || 'failure' }}
-          BUILD_JOB_RESULT: ${{ needs.build.result }}
-          DEPLOY_PAGES_JOB_RESULT: ${{ needs.deploy-pages.result }}
-          QA_SMOKE_JOB_RESULT: ${{ needs.qa-smoke.result }}
-          QA_GAME_FLOW_JOB_RESULT: ${{ needs.qa-game-flow.result }}
-          QA_MOBILE_JOB_RESULT: ${{ needs.qa-mobile.result }}
+          QA_JOB_STATUS: ${{ (needs.build-and-unit.result == 'success' && needs.qa-cleanup-before.result == 'success' && needs.qa-basic-flow.result == 'success' && needs.qa-online-turn-recovery.result == 'success' && needs.qa-stacked-roll-backdo-ai.result == 'success' && needs.qa-cleanup-layout-regression.result == 'success' && needs.qa-cleanup-after.result == 'success') && 'success' || 'failure' }}
+          BUILD_AND_UNIT_JOB_RESULT: ${{ needs.build-and-unit.result }}
+          QA_CLEANUP_BEFORE_JOB_RESULT: ${{ needs.qa-cleanup-before.result }}
+          QA_BASIC_FLOW_JOB_RESULT: ${{ needs.qa-basic-flow.result }}
+          QA_ONLINE_TURN_RECOVERY_JOB_RESULT: ${{ needs.qa-online-turn-recovery.result }}
+          QA_STACKED_ROLL_BACKDO_AI_JOB_RESULT: ${{ needs.qa-stacked-roll-backdo-ai.result }}
+          QA_CLEANUP_LAYOUT_REGRESSION_JOB_RESULT: ${{ needs.qa-cleanup-layout-regression.result }}
+          QA_CLEANUP_AFTER_JOB_RESULT: ${{ needs.qa-cleanup-after.result }}
         run: |
           node .github/scripts/summarize-qa.mjs
           cat qa-failure-summary.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload QA failure summary
-        if: needs.build.result == 'failure' || needs.deploy-pages.result == 'failure' || needs.qa-smoke.result == 'failure' || needs.qa-game-flow.result == 'failure' || needs.qa-mobile.result == 'failure'
+      - name: Upload QA summary
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: qa-failure-summary
           path: |
             test-results
             build.log
+            unit.log
             playwright.log
             qa-failure-summary.md
             qa-issue-summary.md
@@ -374,58 +318,3 @@ jobs:
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
-      - name: Create issue on QA failure
-        if: needs.build.result == 'failure' || needs.deploy-pages.result == 'failure' || needs.qa-smoke.result == 'failure' || needs.qa-game-flow.result == 'failure' || needs.qa-mobile.result == 'failure'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('node:fs');
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const readFile = (filePath, fallback) => fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : fallback;
-            const truncate = (text, maxLength = 55_000) => {
-              if (text.length <= maxLength) return text;
-              return `${text.slice(0, maxLength)}\n\n... ${text.length - maxLength}자를 생략했습니다. 이슈 본문에는 핵심 로그를 우선 포함했으며, 원본 전체 로그가 필요하면 Actions 아티팩트의 qa-failure-summary.md를 확인해주세요.`;
-            };
-            const summary = truncate(readFile('qa-issue-summary.md', '요약 로그를 생성하지 못했습니다. Actions 실행 로그를 확인해주세요.'));
-            const pullRequest = context.payload.pull_request;
-            const refName = pullRequest ? `${pullRequest.head.ref} → ${pullRequest.base.ref}` : context.ref.replace('refs/heads/', '');
-            const targetLabel = `PR ${pullRequest?.number ?? refName}`;
-            const title = `[Game QA 실패] ${targetLabel}`;
-            const targetLine = pullRequest
-              ? `- PR: #${pullRequest.number} \`${pullRequest.head.ref}\` → \`${pullRequest.base.ref}\``
-              : `- 브랜치: \`${refName}\``;
-            const body = truncate(`## Game QA 실패\n\n` +
-              `${targetLine}\n` +
-              `- 커밋: \`${context.sha.slice(0, 7)}\`\n` +
-              `- Actions 실행: ${runUrl}\n\n` +
-              `빌드 또는 Playwright E2E가 실패했습니다. 이 Issue 본문에 자동 추정 원인, 실패 테스트, 핵심 실패 로그, 콘솔/Playwright 꼬리 로그를 함께 남깁니다. 실패한 테스트의 error-context와 핵심 로그가 필요할 때만 Actions 아티팩트 \`qa-failure-summary\`를 추가로 확인하세요.\n\n` +
-              summary);
-            const query = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "[Game QA 실패] ${targetLabel}"`;
-            try {
-              const { data: searchResult } = await github.rest.search.issuesAndPullRequests({ q: query, per_page: 1 });
-              if (searchResult.items.length > 0) {
-                const issueNumber = searchResult.items[0].number;
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                  body: truncate(`동일 대상에서 Game QA가 다시 실패했습니다.\n\n- 커밋: \`${context.sha.slice(0, 7)}\`\n- Actions 실행: ${runUrl}\n\n${summary}`),
-                });
-                core.notice(`기존 QA 실패 Issue #${issueNumber}에 실패 요약 댓글을 추가했습니다.`);
-              } else {
-                const { data: issue } = await github.rest.issues.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title,
-                  body,
-                });
-                core.notice(`새 QA 실패 Issue #${issue.number}를 생성했습니다.`);
-              }
-            } catch (error) {
-              core.error(`QA 실패 Issue 생성/댓글 추가에 실패했습니다: ${error.message}`);
-              core.summary
-                .addHeading('QA 실패 Issue 연동 실패')
-                .addRaw(`Issue 생성/댓글 추가 중 오류가 발생했습니다.\n\n- 오류: ${error.message}\n- 검색 쿼리: ${query}\n- 실행 URL: ${runUrl}`);
-              await core.summary.write();
-              throw error;
-            }
