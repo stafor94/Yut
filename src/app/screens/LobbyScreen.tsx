@@ -22,7 +22,7 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
     return currentUser && resumableRoomId === room.id && room.playerIds?.includes(currentUser.uid) ? '참여' : '관전';
   };
 
-  return <section className="lobby-layout premium-lobby" aria-label="첫 대기 화면">
+  return <section data-testid="lobby-screen" className="lobby-layout premium-lobby" aria-label="첫 대기 화면">
     <section id="create-room-section" className="panel room-panel create-room-panel">
       <div className="lobby-panel-heading create-room-heading">
         <p className="section-kicker">방 만들기</p>
