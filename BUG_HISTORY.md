@@ -67,6 +67,56 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-07 - 낙/타임아웃 경합 후 자동 복구 고착
+
+### Symptom
+
+- 온라인 게임에서 낙 로그가 남은 뒤 화면에는 다음 AI 차례와 이동 가능한 roll이 남아 있는 것처럼 보였지만 게임이 진행되지 않았다.
+- 정지 턴 자동 복구가 `먼저 윷을 던져주세요.`로 거부된 뒤 `already-recovery-requested` 상태로 같은 턴 복구가 막혔다.
+
+### Expected behavior
+
+- 서버 authoritative 상태와 다른 stale optimistic roll/fall 상태가 남으면 클라이언트가 최신 sequence 상태로 되돌아가야 한다.
+- 자동 복구가 서버 상태 불일치 사유로 거부되면 같은 잘못된 local 상태에 고착되지 않아야 한다.
+
+### Actual behavior
+
+- 늦은 온라인 roll/낙 optimistic state와 roll timeout recovery가 경합하면 클라이언트 local state가 서버 authoritative state와 어긋날 수 있었다.
+- rejected recovery key가 유지되어 최신 state 재동기화 없이 `already-recovery-requested`로 막힐 수 있었다.
+
+### Suspected root cause
+
+- 온라인 roll action rejection과 stalled move recovery rejection에서 stale optimistic state를 authoritative snapshot으로 되돌리는 경로가 부족했다.
+
+### Confirmed root cause
+
+- `move_piece` recovery가 서버에서 `ROLL_REQUIRED`로 거부되어도 recovery key가 그대로 남고 최신 authoritative state를 강제 적용하지 않았다.
+- 온라인 `roll_yut` action이 서버에서 거부되어도 diagnostic만 남기고 optimistic local state를 최신 sequence state로 되돌리지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: roll 이후 이동 미완료를 자동 복구하는 stalled turn recovery를 추가했다.
+  - Why it failed: 복구 대상 local state 자체가 서버 authoritative state와 어긋난 경우 rejected 결과 이후 재동기화/재판정이 부족했다.
+
+### Do not try again
+
+- `ROLL_REQUIRED`를 무시하고 같은 `move_piece` recovery를 반복 제출하지 않는다.
+- stale local `roll`만 믿고 복구 성공 여부를 판단하지 않는다.
+- 온라인 roll rejection을 diagnostic만 남기고 방치하지 않는다.
+
+### Correct fix plan
+
+- 서버 상태 불일치성 rejection이 발생하면 최신 sequence snapshot을 다시 적용한다.
+- stalled move recovery가 상태 불일치로 rejected 되면 recovery key를 해제해 재동기화 후 최신 상태 기준으로 다시 판정한다.
+- 온라인 roll action rejection도 pending local mutation을 정리하고 authoritative 상태로 되돌린다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [ ] Multi-client online timeout/fall race checked
+
 ## 2026-07-06 - AI 누적 던지기 빽도 스킵 로컬 턴 선진행
 
 ### Symptom
