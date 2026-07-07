@@ -116,3 +116,142 @@
   margin-top: auto;
 }
 
+
+/* Waiting-room compact option layout. Keep these selectors scoped so generic game.css rules cannot flatten the JSX rows. */
+.waiting-room.compact-waiting-room .host-room-options.compact-options {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .option-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-top,
+.waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-toggle {
+  justify-content: flex-start;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .option-row-piece {
+  justify-content: flex-start;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group {
+  --option-count: 2;
+  display: grid;
+  grid-template-columns: repeat(var(--option-count), minmax(0, 1fr));
+  align-items: stretch;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .player-count-group {
+  --option-count: 3;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .piece-count-group {
+  --option-count: 4;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group legend {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+  color: rgba(42, 30, 23, .72);
+  font-size: .82rem;
+  font-weight: 1000;
+  line-height: 1.1;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group label,
+.waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group label:has(input:checked) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: .84rem;
+  font-weight: 1000;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group input {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+}
+
+.waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group label.disabled,
+.waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group label:has(input:disabled) {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.waiting-actions.role-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.waiting-action-buttons {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.waiting-action-buttons button {
+  flex: 1 1 0;
+}
+
+.start-blocked-hint {
+  width: 100%;
+  margin: 0;
+}
+
+.seat-role-badge,
+.empty-seat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.empty-seat-badge {
+  align-self: center;
+}
+
+@media (max-width: 767px) {
+  .waiting-room.compact-waiting-room .host-room-options.compact-options .option-row {
+    gap: 5px;
+  }
+
+  .waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group {
+    gap: 4px;
+  }
+
+  .waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group label,
+  .waiting-room.compact-waiting-room .host-room-options.compact-options .radio-group label:has(input:checked) {
+    padding-inline: 7px;
+  }
+}
