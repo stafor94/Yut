@@ -6,7 +6,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
+import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, markRoomGameEntering, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
@@ -166,6 +166,9 @@ export function App() {
   const [remoteActionDiagnostics, setRemoteActionDiagnostics] = useState<Array<{ type: string; stage: string; status?: string; message: string; actionKey?: string; createdAt: number; sequence: number; turnIndex: number }>>([]);
   const [diagnosticDialogOpen, setDiagnosticDialogOpen] = useState(false);
   const [diagnosticCopied, setDiagnosticCopied] = useState(false);
+  const [sequenceExportDialogOpen, setSequenceExportDialogOpen] = useState(false);
+  const [sequenceExportCopied, setSequenceExportCopied] = useState(false);
+  const [sequenceExportText, setSequenceExportText] = useState('');
   const [loadingMessage, setLoadingMessage] = useState('');
   const [manualSequenceSyncing, setManualSequenceSyncing] = useState(false);
   const [lastManualSyncResolution, setLastManualSyncResolution] = useState<ManualSyncResolution | null>(null);
@@ -2647,6 +2650,60 @@ export function App() {
       showToast('복사 실패', '상태값을 복사하지 못했습니다. 내용을 직접 선택해 복사해주세요.', '⚠️');
     }
   }
+
+  async function copyTextToClipboard(text: string) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  }
+
+  async function openSequenceExportDialog() {
+    if (!activeRoomId) {
+      setSequenceExportText(JSON.stringify({ capturedAt: new Date().toISOString(), error: 'active-room-not-found' }, null, 2));
+      setSequenceExportDialogOpen(true);
+      return;
+    }
+    setSequenceExportDialogOpen(true);
+    setSequenceExportText('Firebase에서 최신 상태와 전체 sequence를 불러오는 중입니다...');
+    try {
+      const [latestState, sequences] = await Promise.all([
+        getLatestGameState(activeRoomId),
+        getGameSequencesSince(activeRoomId, 0),
+      ]);
+      setSequenceExportText(JSON.stringify({
+        capturedAt: new Date().toISOString(),
+        roomId: activeRoomId,
+        latestState,
+        sequences,
+      }, null, 2));
+      setSequenceExportCopied(false);
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Firebase sequence 내보내기에 실패했습니다.';
+      setSequenceExportText(JSON.stringify({ capturedAt: new Date().toISOString(), roomId: activeRoomId, error: messageText }, null, 2));
+      showToast('불러오기 실패', messageText, '⚠️');
+    }
+  }
+
+  async function copySequenceExportState() {
+    try {
+      await copyTextToClipboard(sequenceExportText);
+      setSequenceExportCopied(true);
+      window.setTimeout(() => setSequenceExportCopied(false), 1800);
+    } catch {
+      setSequenceExportCopied(false);
+      showToast('복사 실패', 'sequence 내보내기 내용을 직접 선택해 복사해주세요.', '⚠️');
+    }
+  }
   function showToast(title: string, description?: string, icon?: string) {
     const nextToast = { id: Date.now(), title, description, icon };
     setToast(nextToast);
@@ -3068,7 +3125,9 @@ export function App() {
 
   useEffect(() => {
     if (!stackedRollMode || !rollStackClosed || rollStack.length === 0) return;
-    const nextIndex = rollStack.length === 1 ? 0 : selectedRollStackIndex;
+    const firstRoll = rollStack[0];
+    const allRemainingRollsSame = rollStack.length > 1 && firstRoll && rollStack.every((stackRoll) => stackRoll.name === firstRoll.name && stackRoll.steps === firstRoll.steps);
+    const nextIndex = rollStack.length === 1 || allRemainingRollsSame ? 0 : selectedRollStackIndex;
     if (typeof nextIndex !== 'number' || !rollStack[nextIndex]) {
       if (roll) clearRoll();
       return;
@@ -3417,16 +3476,18 @@ export function App() {
     return true;
   }
 
-  function moveSelectedPiece(extraSteps = 0, options: { timedOut?: boolean } = {}) {
+  function moveSelectedPiece(extraSteps = 0, options: { timedOut?: boolean; rollStackIndexOverride?: number } = {}) {
     if (screen === 'game' && !activeRoomId) {
       reportTurnActionFailure('move_piece', '온라인 방 정보가 없어 진행할 수 없습니다.');
       return false;
     }
-    const effectiveMoveRoll = stackedRollSelectedResult ?? roll;
+    const overriddenStackRoll = typeof options.rollStackIndexOverride === 'number' ? rollStack[options.rollStackIndexOverride] : null;
+    const effectiveMoveRoll = overriddenStackRoll ?? stackedRollSelectedResult ?? roll;
     const steps = effectiveMoveRoll && activeSeat ? effectiveMoveRoll.steps + extraSteps : 0;
     const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
     const canPassBackDoWithoutMovablePiece = Boolean(effectiveMoveRoll && activeSeat && canSubmitTurnAction && !rollResultHolding && !rollAnimation && steps < 0 && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece)));
-    if (!(roll || stackedRollSelectedResult) || !activeSeat || (!canRequestMove && !canPassBackDoWithoutMovablePiece)) {
+    const canForceTimedOutStackMove = Boolean(options.timedOut && overriddenStackRoll && activeSeat && canSubmitTurnAction && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId);
+    if (!(roll || stackedRollSelectedResult || overriddenStackRoll) || !activeSeat || (!canRequestMove && !canPassBackDoWithoutMovablePiece && !canForceTimedOutStackMove)) {
       reportTurnActionBlocked('move_piece', moveActionBlockReasons, '말 이동을 진행할 수 없습니다');
       return false;
     }
@@ -3438,8 +3499,8 @@ export function App() {
     if ((!selectedPiece || !hasPieceOnBoard) && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
     if (!selectedPiece && !fallbackPiece) {
       if (steps < 0) {
-        const rollStackIndex = stackedRollMode && rollStackClosed ? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null;
-        const consumeStackedRollIndex = stackedRollMode && rollStackClosed ? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined;
+        const rollStackIndex = stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null;
+        const consumeStackedRollIndex = stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined;
         if (activeRoomId) {
           const payload = {
             pieceId: '',
@@ -3522,7 +3583,7 @@ export function App() {
         pieceId: pieceToMove?.id ?? '',
         extraSteps,
         branchChoice: getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice),
-        rollStackIndex: stackedRollMode && rollStackClosed ? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null,
+        rollStackIndex: stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null,
       };
       const actionKey = getLocalActionKey('move_piece', payload);
       if (rejectedRemoteActionKeysRef.current.has(actionKey)) {
@@ -3542,7 +3603,7 @@ export function App() {
       });
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) };
-      void movePiece(pieceToMove?.id ?? selectedPieceId, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice), { recordSequence: false, consumeStackedRollIndex: stackedRollMode && rollStackClosed ? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined });
+      void movePiece(pieceToMove?.id ?? selectedPieceId, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice), { recordSequence: false, consumeStackedRollIndex: stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined });
       enqueueAuthoritativeGameAction(
         activeRoomId,
         action,
@@ -4117,6 +4178,9 @@ export function App() {
       diagnosticCopied={diagnosticCopied}
       diagnosticDialogOpen={diagnosticDialogOpen}
       diagnosticText={diagnosticText}
+      sequenceExportCopied={sequenceExportCopied}
+      sequenceExportDialogOpen={sequenceExportDialogOpen}
+      sequenceExportText={sequenceExportText}
       endGameDialogOpen={endGameDialogOpen}
       gameExitDescription={gameExitDescription}
       itemPickupClock={itemPickupClock}
@@ -4132,6 +4196,8 @@ export function App() {
       onCloseNicknameDialog={() => setNicknameDialogOpen(false)}
       onClearRoomNoticeDialog={() => setRoomNoticeDialog(null)}
       onCopyDiagnosticState={copyDiagnosticState}
+      onCloseSequenceExportDialog={() => setSequenceExportDialogOpen(false)}
+      onCopySequenceExportState={copySequenceExportState}
       onFinishGame={finishGame}
       onKeepPendingItemPickup={() => keepPendingItemPickup()}
       onNicknameDraftChange={setNicknameDraft}
@@ -4229,6 +4295,8 @@ export function App() {
       selectedRollStackIndex={selectedRollStackIndex}
       rollStackClosed={rollStackClosed}
       onSelectRollStackIndex={setSelectedRollStackIndex}
+      onMoveRollStackIndex={(index) => { setSelectedRollStackIndex(index); moveSelectedPiece(0, { timedOut: true, rollStackIndexOverride: index }); }}
+      moveSelectionTimedOut={Boolean(turnDeadlineKind === 'move' && turnDeadlineAt && playTimeNow >= turnDeadlineAt)}
       playerPanelSeats={playerPanelSeats}
       completedSeatIds={completedSeatIds}
       rankingSeatIds={rankingSeatIds}
@@ -4268,6 +4336,7 @@ export function App() {
       onMoveSelectedPiece={() => moveSelectedPiece()}
       onOpenEndGameDialog={() => setEndGameDialogOpen(true)}
       onOpenDiagnosticDialog={() => setDiagnosticDialogOpen(true)}
+      onOpenSequenceExportDialog={() => { void openSequenceExportDialog(); }}
       onRollYut={rollYut}
       onSelectPieceId={setSelectedPieceId}
       onSelectTrapNode={placePendingTrap}

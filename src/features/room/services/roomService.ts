@@ -614,6 +614,12 @@ export async function getGameSequencesSince(roomId: string, afterSequence: numbe
   return snapshot.docs.map((sequenceDoc) => ({ id: sequenceDoc.id, ...(sequenceDoc.data() as Omit<GameSequence, 'id'>) }));
 }
 
+export async function getLatestGameState(roomId: string): Promise<SyncedGameState | null> {
+  if (!db || !roomId) return null;
+  const snapshot = await getDoc(doc(db, 'rooms', roomId, 'state', 'current'));
+  return snapshot.exists() ? snapshot.data() as SyncedGameState : null;
+}
+
 function keepNewestRoomPerHost(rooms: RoomSummary[]) {
   const latestRoomsByHost = new Map<string, RoomSummary>();
   const roomsWithoutHost: RoomSummary[] = [];
