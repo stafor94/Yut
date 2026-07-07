@@ -4173,7 +4173,7 @@ export function App() {
   }
 
 
-  return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'}`}>
+  return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'} screen-${screen}`}>
     <AppShellHeader
       activeRoomId={activeRoomId}
       manualSequenceSyncing={manualSequenceSyncing}
