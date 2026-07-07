@@ -729,6 +729,7 @@
   aspect-ratio: 1;
   border-radius: 999px;
   background: radial-gradient(circle, rgba(242, 184, 75, .36), rgba(242, 184, 75, 0) 70%);
+  pointer-events: none;
 }
 
 .ready-card:hover {
@@ -3877,5 +3878,47 @@
   .compact-waiting-room .host-room-options.compact-options .radio-group legend,
   .compact-waiting-room .host-room-options.compact-options .radio-group label {
     font-size: 14px;
+  }
+}
+
+/* Keep smartphone room cards aligned by row: status with title, action with option badges. */
+@media (max-width: 767px) {
+  .lobby-room-card .lobby-room-content,
+  .lobby-layout .lobby-room-card .lobby-room-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title status"
+      "meta action";
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 10px;
+  }
+
+  .lobby-room-card .lobby-room-main,
+  .lobby-room-card .lobby-room-side {
+    display: contents;
+  }
+
+  .lobby-room-card b {
+    grid-area: title;
+    min-width: 0;
+  }
+
+  .lobby-room-card .lobby-room-meta {
+    grid-area: meta;
+    min-width: 0;
+  }
+
+  .lobby-room-card .lobby-room-status {
+    grid-area: status;
+    justify-self: end;
+    align-self: start;
+  }
+
+  .lobby-room-card .lobby-room-action {
+    grid-area: action;
+    justify-self: end;
+    align-self: start;
   }
 }
