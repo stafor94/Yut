@@ -1582,6 +1582,33 @@ export function App() {
     '선택한 이동 스택을 찾을 수 없습니다.',
   ].includes(reason));
 
+  async function handleAuthoritativeActionRejected(
+    type: 'roll_yut' | 'move_piece',
+    stage: string,
+    result: Awaited<ReturnType<typeof commitAuthoritativeGameAction>>,
+    params: { actionKey: string; fallbackMessage: string; clearRecoveryKey?: () => void; optimisticApplied?: boolean; resyncMessage?: string },
+  ) {
+    const resultMessage = result.reason ?? params.fallbackMessage;
+    const mismatch = isAuthoritativeStateMismatchReason(result.reason);
+    recordRemoteActionDiagnostic(type, stage, resultMessage, { status: result.status, actionKey: params.actionKey });
+    if (!mismatch) return false;
+
+    params.clearRecoveryKey?.();
+    rejectedRemoteActionKeysRef.current.delete(params.actionKey);
+    deletePendingLocalRemoteAction(params.actionKey);
+    localClientMutationIdsRef.current.delete(params.actionKey);
+    const synced = await syncLatestAuthoritativeState(
+      params.resyncMessage ?? '서버가 요청을 거부해 최신 authoritative 상태로 재동기화합니다.',
+      { diagnosticType: type },
+    );
+    if (!synced && params.optimisticApplied) {
+      const messageText = '서버 상태와 로컬 상태가 달라 최신 상태 동기화가 필요합니다. 수동 동기화를 다시 시도해주세요.';
+      setMessage(messageText);
+      setActionErrorDialog(messageText);
+    }
+    return synced;
+  }
+
   async function reconcilePendingLocalRemoteActions(options: { forceStaleClear?: boolean } = {}) {
     if (!activeRoomId || !pendingLocalRemoteActionsRef.current.size) return false;
     const now = Date.now();
@@ -1608,9 +1635,12 @@ export function App() {
       }
       const ageMs = now - Number(meta?.createdAt ?? now);
       if (options.forceStaleClear || ageMs >= STALE_PENDING_REMOTE_ACTION_MS) {
+        const diagnosticType = (meta?.type ?? getPendingLocalRemoteActionType(actionKey)) === 'roll_yut' ? 'roll_yut' : 'move_piece';
+        if (meta?.optimisticApplied) {
+          await syncLatestAuthoritativeState('오래된 optimistic 요청 잠금을 해제하기 전에 최신 authoritative 상태로 재동기화합니다.', { diagnosticType });
+        }
         deletePendingLocalRemoteAction(actionKey);
         localClientMutationIdsRef.current.delete(actionKey);
-        const diagnosticType = (meta?.type ?? getPendingLocalRemoteActionType(actionKey)) === 'roll_yut' ? 'roll_yut' : 'move_piece';
         recordRemoteActionDiagnostic(diagnosticType, 'stale-pending-cleared', '서버에서 처리 내역을 찾지 못해 오래된 요청 잠금을 해제했습니다.', { actionKey });
         changed = true;
       }
@@ -2931,7 +2961,12 @@ export function App() {
           recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-committed', '윷 던지기 제한 시간 초과를 자동 처리했습니다.', { status: result.status, actionKey });
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
-          recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-result', result.reason ?? '윷 던지기 자동 진행에 실패했습니다.', { status: result.status, actionKey });
+          void handleAuthoritativeActionRejected('roll_yut', 'turn-roll-timeout-recovery-result', result, {
+            actionKey,
+            fallbackMessage: '윷 던지기 자동 진행에 실패했습니다.',
+            clearRecoveryKey: () => timeoutRecoveryKeysRef.current.delete(recoveryKey),
+            resyncMessage: '서버가 윷 던지기 자동 진행을 거부해 최신 authoritative 상태로 재동기화합니다.',
+          });
         }
       },
       (error) => recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-error', error instanceof Error ? error.message : '윷 던지기 자동 진행에 실패했습니다.', { actionKey }),
@@ -2978,12 +3013,12 @@ export function App() {
           recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-committed', '멈춘 턴 이동을 자동 복구했습니다.', { status: result.status, actionKey: payload.clientActionId });
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
-          const resultMessage = result.reason ?? '멈춘 턴 자동 복구에 실패했습니다.';
-          recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-result', resultMessage, { status: result.status, actionKey: payload.clientActionId });
-          if (isAuthoritativeStateMismatchReason(result.reason)) {
-            stalledTurnRecoveryKeyRef.current = '';
-            void syncLatestAuthoritativeState('서버가 멈춘 턴 자동 복구를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
-          }
+          void handleAuthoritativeActionRejected('move_piece', 'stalled-turn-recovery-result', result, {
+            actionKey: payload.clientActionId,
+            fallbackMessage: '멈춘 턴 자동 복구에 실패했습니다.',
+            clearRecoveryKey: () => { stalledTurnRecoveryKeyRef.current = ''; },
+            resyncMessage: '서버가 멈춘 턴 자동 복구를 거부해 최신 authoritative 상태로 재동기화합니다.',
+          });
         }
       },
       (error) => recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-error', error instanceof Error ? error.message : '멈춘 턴 자동 복구에 실패했습니다.', { actionKey: payload.clientActionId }),
@@ -3050,7 +3085,13 @@ export function App() {
         reportTurnActionBlocked('roll_yut', ['pending-local-remote-action'], '이미 윷 던지기 요청을 처리 중입니다');
         return;
       }
-      addPendingLocalRemoteAction(actionKey);
+      addPendingLocalRemoteAction(actionKey, {
+        type: 'roll_yut',
+        actorId: localSeatId,
+        createdSequence: lastAppliedSequenceRef.current,
+        createdTurnIndex: turnIndex,
+        optimisticApplied: true,
+      });
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'roll_yut' as const, actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) };
       const optimisticRoll = fallOccurred ? null : stackedRollMode ? rollYutForStack(activeSeat, localRoll, action, { recordSequence: false, timingZone: rollTimingZone }) : rollYutFor(activeSeat, localRoll, action, { recordSequence: false, timingZone: rollTimingZone });
@@ -3076,12 +3117,12 @@ export function App() {
         action,
         (result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') {
-            const resultMessage = result.reason ?? '윷 던지기 처리에 실패했습니다.';
-            recordRemoteActionDiagnostic('roll_yut', 'commit-result', resultMessage, { status: result.status, actionKey });
-            localClientMutationIdsRef.current.delete(actionKey);
-            if (isAuthoritativeStateMismatchReason(result.reason)) {
-              void syncLatestAuthoritativeState('서버가 윷 던지기 요청을 거부해 최신 authoritative 상태로 되돌립니다.', { diagnosticType: 'roll_yut' });
-            }
+            void handleAuthoritativeActionRejected('roll_yut', 'commit-result', result, {
+              actionKey,
+              fallbackMessage: '윷 던지기 처리에 실패했습니다.',
+              optimisticApplied: true,
+              resyncMessage: '서버가 윷 던지기 요청을 거부해 최신 authoritative 상태로 되돌립니다.',
+            });
             return;
           }
           if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
@@ -3387,7 +3428,13 @@ export function App() {
             reportTurnActionBlocked('move_piece', ['pending-local-remote-action'], '이미 말 이동 요청을 처리 중입니다');
             return false;
           }
-          addPendingLocalRemoteAction(actionKey);
+          addPendingLocalRemoteAction(actionKey, {
+            type: 'move_piece',
+            actorId: localSeatId,
+            createdSequence: lastAppliedSequenceRef.current,
+            createdTurnIndex: turnIndex,
+            optimisticApplied: true,
+          });
           localClientMutationIdsRef.current.add(actionKey);
           const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) };
           addLog(`${getSeatDisplayName(activeSeat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
@@ -3420,7 +3467,12 @@ export function App() {
                 acknowledgePendingLocalRemoteAction(actionKey);
               }
               if (result.status === 'rejected' || result.status === 'unsupported') {
-                recordRemoteActionDiagnostic('move_piece', 'commit-result', result.reason ?? '말 이동 처리에 실패했습니다.', { status: result.status, actionKey });
+                void handleAuthoritativeActionRejected('move_piece', 'commit-result', result, {
+                  actionKey,
+                  fallbackMessage: '말 이동 처리에 실패했습니다.',
+                  optimisticApplied: true,
+                  resyncMessage: '서버가 말 이동 요청을 거부해 최신 authoritative 상태로 재동기화합니다.',
+                });
               }
             },
             (error) => recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey }),
@@ -3453,7 +3505,13 @@ export function App() {
         reportTurnActionBlocked('move_piece', ['pending-local-remote-action'], '이미 말 이동 요청을 처리 중입니다');
         return false;
       }
-      addPendingLocalRemoteAction(actionKey);
+      addPendingLocalRemoteAction(actionKey, {
+        type: 'move_piece',
+        actorId: localSeatId,
+        createdSequence: lastAppliedSequenceRef.current,
+        createdTurnIndex: turnIndex,
+        optimisticApplied: true,
+      });
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) };
       void movePiece(pieceToMove?.id ?? selectedPieceId, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice), { recordSequence: false, consumeStackedRollIndex: stackedRollMode && rollStackClosed ? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined });
@@ -3475,7 +3533,12 @@ export function App() {
             acknowledgePendingLocalRemoteAction(actionKey);
           }
           if (result.status === 'rejected' || result.status === 'unsupported') {
-            recordRemoteActionDiagnostic('move_piece', 'commit-result', result.reason ?? '말 이동 처리에 실패했습니다.', { status: result.status, actionKey });
+            void handleAuthoritativeActionRejected('move_piece', 'commit-result', result, {
+              actionKey,
+              fallbackMessage: '말 이동 처리에 실패했습니다.',
+              optimisticApplied: true,
+              resyncMessage: '서버가 말 이동 요청을 거부해 최신 authoritative 상태로 재동기화합니다.',
+            });
           }
         },
         (error) => recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey }),
@@ -3508,7 +3571,13 @@ export function App() {
     const actionKey = `move_piece_ai_skip:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStackIndex}:${skippedRoll.name}:${skippedRoll.steps}:${remainingRollStackKey}`;
     if (rejectedRemoteActionKeysRef.current.has(actionKey) || pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
 
-    addPendingLocalRemoteAction(actionKey);
+    addPendingLocalRemoteAction(actionKey, {
+      type: 'move_piece',
+      actorId: seat.id,
+      createdSequence: lastAppliedSequenceRef.current,
+      createdTurnIndex: turnIndex,
+      optimisticApplied: true,
+    });
     localClientMutationIdsRef.current.add(actionKey);
     const action = { type: 'move_piece' as const, actorId: seat.id, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, seat) };
     enqueueAuthoritativeGameAction(
@@ -3529,7 +3598,12 @@ export function App() {
           acknowledgePendingLocalRemoteAction(actionKey);
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
-          recordRemoteActionDiagnostic('move_piece', 'ai-backdo-skip-result', result.reason ?? 'AI 빽도 스킵 처리에 실패했습니다.', { status: result.status, actionKey });
+          void handleAuthoritativeActionRejected('move_piece', 'ai-backdo-skip-result', result, {
+            actionKey,
+            fallbackMessage: 'AI 빽도 스킵 처리에 실패했습니다.',
+            optimisticApplied: true,
+            resyncMessage: '서버가 AI 빽도 스킵을 거부해 최신 authoritative 상태로 재동기화합니다.',
+          });
         }
       },
       (error) => recordRemoteActionDiagnostic('move_piece', 'ai-backdo-skip-error', error instanceof Error ? error.message : 'AI 빽도 스킵 처리에 실패했습니다.', { actionKey }),
@@ -3878,21 +3952,44 @@ export function App() {
       return;
     }
     const actionKey = `continue_race:${activeRoomId}:${continuationRound + 1}:${Date.now()}`;
-    addPendingLocalRemoteAction(actionKey);
-    void commitAuthoritativeGameAction(activeRoomId, { type: 'continue_race', actorId: localSeatId, payload: { clientActionId: actionKey } })
-      .then((result) => {
+    addPendingLocalRemoteAction(actionKey, {
+      type: 'continue_race',
+      actorId: localSeatId,
+      createdSequence: lastAppliedSequenceRef.current,
+      createdTurnIndex: turnIndex,
+      optimisticApplied: false,
+    });
+    enqueueAuthoritativeGameAction(
+      activeRoomId,
+      { type: 'continue_race', actorId: localSeatId, payload: { clientActionId: actionKey } },
+      async (result) => {
         if (result.status === 'rejected' || result.status === 'unsupported') {
           setMessage(result.reason ?? '이어서 진행 요청을 처리하지 못했습니다.');
+          void syncLatestAuthoritativeState('서버가 이어서 진행 요청을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
           return;
+        }
+        if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+          const localSequence = lastAppliedSequenceRef.current;
+          const resultSequence = result.sequence;
+          if (resultSequence > localSequence) {
+            const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
+            const latestState = [...sequences]
+              .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
+              .reverse()
+              .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+            if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
+          }
+          acknowledgePendingLocalRemoteAction(actionKey);
         }
         setScreen('game');
         setMessage('완주하지 못한 플레이어가 이어서 진행합니다.');
         void updateRoomStatus(activeRoomId, 'playing').catch((error) => {
           console.warn('이어서 진행 후 게임중 상태 반영에 실패했습니다.', error);
         });
-      })
-      .catch((error) => setMessage(error instanceof Error ? error.message : '이어서 진행 요청을 처리하지 못했습니다.'))
-      .finally(() => deletePendingLocalRemoteAction(actionKey));
+      },
+      (error) => setMessage(error instanceof Error ? error.message : '이어서 진행 요청을 처리하지 못했습니다.'),
+      () => deletePendingLocalRemoteAction(actionKey),
+    );
   }
 
   async function changeWaitingOptions(next: { itemMode?: boolean; stackedRollMode?: boolean; pieceCount?: PieceCount; playMode?: PlayMode; maxPlayers?: 2 | 3 | 4 }) {

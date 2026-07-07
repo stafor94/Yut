@@ -29,7 +29,12 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
       const remoteSequence = Number(state.lastSequence ?? 0);
       const localSequence = lastAppliedSequenceRef.current;
       if (stateVersion && stateVersion <= lastAppliedStateVersionRef.current) {
-        if (remoteSequence > localSequence) void replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence);
+        if (remoteSequence > localSequence) {
+          applyingSyncedStateRef.current = true;
+          void replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence).finally(() => {
+            window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
+          });
+        }
         return;
       }
       applyingSyncedStateRef.current = true;
