@@ -1553,6 +1553,34 @@ export function App() {
     }
   }
 
+
+  async function syncLatestAuthoritativeState(reason: string, options: { allowRollAnimation?: boolean; diagnosticType?: 'roll_yut' | 'move_piece' } = {}) {
+    if (!activeRoomId || screen !== 'game') return false;
+    const localSequence = lastAppliedSequenceRef.current;
+    try {
+      const sequences = await measureFirebaseLatency(() => getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence)));
+      const orderedSequences = sequences
+        .filter((sequence) => Number(sequence.sequence ?? 0) > 0)
+        .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
+      const latestSequence = Math.max(localSequence, ...orderedSequences.map((sequence) => Number(sequence.sequence ?? 0)));
+      const latestState = [...orderedSequences].reverse().find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+      if (!latestState) return false;
+      if (latestSequence > localSequence) await replayMissingSequencesThenApply(latestState, localSequence, latestSequence);
+      else applySyncedStateSnapshot(latestState, { allowMoveAnimation: false, allowRollAnimation: options.allowRollAnimation ?? false, updateVersion: true, updateSequence: true });
+      recordRemoteActionDiagnostic(options.diagnosticType ?? 'move_piece', 'authoritative-resync', reason, { status: 'synced' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const isAuthoritativeStateMismatchReason = (reason?: string) => Boolean(reason && [
+    '먼저 윷을 던져주세요.',
+    '지금은 내 차례가 아닙니다.',
+    '이미 윷을 던졌습니다. 말을 이동해주세요.',
+    '선택한 이동 스택을 찾을 수 없습니다.',
+  ].includes(reason));
+
   async function reconcilePendingLocalRemoteActions(options: { forceStaleClear?: boolean } = {}) {
     if (!activeRoomId || !pendingLocalRemoteActionsRef.current.size) return false;
     const now = Date.now();
@@ -2950,7 +2978,12 @@ export function App() {
           recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-committed', '멈춘 턴 이동을 자동 복구했습니다.', { status: result.status, actionKey: payload.clientActionId });
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
-          recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-result', result.reason ?? '멈춘 턴 자동 복구에 실패했습니다.', { status: result.status, actionKey: payload.clientActionId });
+          const resultMessage = result.reason ?? '멈춘 턴 자동 복구에 실패했습니다.';
+          recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-result', resultMessage, { status: result.status, actionKey: payload.clientActionId });
+          if (isAuthoritativeStateMismatchReason(result.reason)) {
+            stalledTurnRecoveryKeyRef.current = '';
+            void syncLatestAuthoritativeState('서버가 멈춘 턴 자동 복구를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+          }
         }
       },
       (error) => recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-error', error instanceof Error ? error.message : '멈춘 턴 자동 복구에 실패했습니다.', { actionKey: payload.clientActionId }),
@@ -3043,7 +3076,12 @@ export function App() {
         action,
         (result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') {
-            recordRemoteActionDiagnostic('roll_yut', 'commit-result', result.reason ?? '윷 던지기 처리에 실패했습니다.', { status: result.status, actionKey });
+            const resultMessage = result.reason ?? '윷 던지기 처리에 실패했습니다.';
+            recordRemoteActionDiagnostic('roll_yut', 'commit-result', resultMessage, { status: result.status, actionKey });
+            localClientMutationIdsRef.current.delete(actionKey);
+            if (isAuthoritativeStateMismatchReason(result.reason)) {
+              void syncLatestAuthoritativeState('서버가 윷 던지기 요청을 거부해 최신 authoritative 상태로 되돌립니다.', { diagnosticType: 'roll_yut' });
+            }
             return;
           }
           if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
