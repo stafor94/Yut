@@ -3948,21 +3948,24 @@
 }
 
 .compact-waiting-room .host-room-options.compact-options .option-row {
-  display: grid;
+  display: flex;
+  align-items: center;
   gap: 6px;
+  flex-wrap: nowrap;
   min-width: 0;
+  width: 100%;
 }
 
 .compact-waiting-room .host-room-options.compact-options .option-row-top {
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  justify-content: flex-start;
 }
 
 .compact-waiting-room .host-room-options.compact-options .option-row-piece {
-  grid-template-columns: minmax(0, 1fr);
+  justify-content: flex-start;
 }
 
 .compact-waiting-room .host-room-options.compact-options .option-row-toggle {
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  justify-content: flex-start;
 }
 
 .compact-waiting-room .host-room-options.compact-options .radio-group,
@@ -3975,8 +3978,14 @@
   grid-template-columns: minmax(34px, max-content) repeat(var(--option-count, 2), minmax(0, 1fr));
   align-items: center;
   gap: 4px;
+  flex: 1 1 0;
   min-width: 0;
+  margin: 0;
   padding: 0;
+}
+
+.compact-waiting-room .host-room-options.compact-options .piece-count-group {
+  flex-basis: 100%;
 }
 
 .compact-waiting-room .host-room-options.compact-options .player-count-group { --option-count: 3; }
@@ -3989,25 +3998,25 @@
   min-height: 32px;
   gap: 2px;
   margin: 0;
-  padding: 5px 4px;
+  padding: 5px 6px;
+  white-space: nowrap;
 }
 
 .waiting-actions.role-actions {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 8px;
 }
 
 .waiting-action-buttons {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
   width: 100%;
 }
 
 .waiting-action-buttons button {
-  flex: 1 1 160px;
+  flex: 1 1 0;
 }
 
 .start-blocked-hint {
@@ -4028,10 +4037,13 @@
   margin: 0;
 }
 
+.empty-seat-badge {
+  align-self: center;
+}
+
 @media (max-width: 767px) {
   .compact-waiting-room .host-room-options.compact-options .option-row-top,
   .compact-waiting-room .host-room-options.compact-options .option-row-toggle {
-    grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
     gap: 4px;
   }
 
