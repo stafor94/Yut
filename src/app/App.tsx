@@ -2779,7 +2779,6 @@ export function App() {
     if (timing === 'after_move' && (!isMyTurn || lastMovedSeatId !== localSeatId)) return [];
     return (ownedItems[localSeatId] ?? []).filter((type) => {
       if (ITEM_DEFINITIONS[type].timing !== timing) return false;
-      if ((type === 'move_plus_one' || type === 'move_minus_one') && !getPostMoveAdjustmentPiece(getSeatById(localSeatId))) return false;
       if ((type === 'shield' || type === 'trap') && !lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished))) return false;
       return true;
     });
@@ -3332,6 +3331,25 @@ export function App() {
       await delay(STEP_DELAY_MS);
     }
 
+    if (finishedMove) { addLog(`${getSeatDisplayName(seat)}님의 말이 완주했습니다!`); playSfx('arrive'); }
+    const controlledPiecesDone = piecesRef.current.filter((piece) => canSeatControlPiece(seat, piece) && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
+    if (controlledPiecesDone) addLog(`${playMode === 'team' ? seat.team : getSeatDisplayName(seat)}님의 모든 말이 완주했습니다.`);
+
+    const steppedOnTrap = trapNodes.find((trap) => trap.nodeId === currentNodeId);
+    if (steppedOnTrap) {
+      setTrapNodes((nodes) => nodes.filter((trap) => trap !== steppedOnTrap));
+      setShieldedPieceIds((ids) => ids.filter((id) => !movingGroupIds.includes(id)));
+      const effect = { id: Date.now(), nodeId: currentNodeId, pieceIds: movingGroupIds };
+      setTrapEffect(effect);
+      addLog(`${getSeatDisplayName(seat)}님의 말이 함정을 밟아 폭발했습니다. 잠시 후 시작점으로 돌아갑니다.`);
+      playSfx('trap');
+      await delay(TRAP_EFFECT_MS);
+      setTrapEffect((current) => current?.id === effect.id ? null : current);
+      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false, finished: false, previousNodeId: undefined } : piece));
+      currentNodeId = 'n01';
+      nextNodeIndex = 0;
+      await delay(STEP_DELAY_MS);
+    }
     const landedNode = getBoardNodeById(currentNodeId);
     const landedItem = boardItems.find((item) => item.nodeId === landedNode?.id);
     let itemPickupWait: Promise<void> | null = null;
@@ -3365,27 +3383,6 @@ export function App() {
       setHighlightedNodeId(landedNode?.id ?? '');
       window.setTimeout(() => setHighlightedNodeId((current) => current === landedNode?.id ? '' : current), 1400);
     }
-    const steppedOnTrap = trapNodes.find((trap) => trap.nodeId === currentNodeId && !isSameSide(getSeatById(trap.ownerId), seat));
-    if (steppedOnTrap) {
-      setTrapNodes((nodes) => nodes.filter((trap) => trap !== steppedOnTrap));
-      const shieldedFromTrap = movingGroupIds.some((id) => shieldedPieceIds.includes(id));
-      if (shieldedFromTrap) {
-        setShieldedPieceIds((ids) => ids.filter((id) => !movingGroupIds.includes(id)));
-        addLog(`${getSeatDisplayName(seat)}님의 말이 방패로 함정을 막았습니다.`);
-        playSfx('shield');
-      } else {
-        const effect = { id: Date.now(), nodeId: currentNodeId, pieceIds: movingGroupIds };
-        setTrapEffect(effect);
-        addLog(`${getSeatDisplayName(seat)}님의 말이 함정을 밟아 폭발했습니다. 잠시 후 시작점으로 돌아갑니다.`);
-        playSfx('trap');
-        await delay(TRAP_EFFECT_MS);
-        setTrapEffect((current) => current?.id === effect.id ? null : current);
-        setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false, finished: false, previousNodeId: undefined } : piece));
-        currentNodeId = 'n01';
-        nextNodeIndex = 0;
-        await delay(STEP_DELAY_MS);
-      }
-    }
     let captured = false;
     if (currentNodeId !== 'finish') {
       const capturablePieces = piecesRef.current.filter((piece) => !isSameSide(getSeatById(piece.ownerId), seat) && !piece.finished && piece.started && piece.nodeId === currentNodeId);
@@ -3414,9 +3411,6 @@ export function App() {
         window.setTimeout(() => setCaptureEffect((current) => current?.id === effect.id ? null : current), 450);
       }
     }
-    if (finishedMove) { addLog(`${getSeatDisplayName(seat)}님의 말이 완주했습니다!`); playSfx('arrive'); }
-    const controlledPiecesDone = piecesRef.current.filter((piece) => canSeatControlPiece(seat, piece) && piece.id !== pieceId).every((piece) => piece.finished) && finishedMove;
-    if (controlledPiecesDone) addLog(`${playMode === 'team' ? seat.team : getSeatDisplayName(seat)}님의 모든 말이 완주했습니다.`);
     const consumingStackedRoll = stackedRollMode && typeof options.consumeStackedRollIndex === 'number';
     const sourceRollStack = options.rollStackSnapshot ?? rollStack;
     const remainingRollStack = consumingStackedRoll ? sourceRollStack.filter((_, index) => index !== options.consumeStackedRollIndex) : sourceRollStack;
@@ -3901,17 +3895,14 @@ export function App() {
     const clientMutationId = getLocalActionKey('use_item', itemActionPayload);
     const submitItemActionIfRemote = () => undefined;
     const isAfterMoveItem = ITEM_DEFINITIONS[type].timing === 'after_move';
-    if (isAfterMoveItem && activeSeat?.id !== itemOwnerId) {
-      addLog(`${ITEM_DEFINITIONS[type].name}은 방금 이동한 말의 차례가 유지될 때 사용할 수 있습니다.`);
-      return;
-    }
+    if (isAfterMoveItem && activeSeat?.id !== itemOwnerId) return;
     if (activeRoomId && actorId === localSeatId) {
       pendingSequenceMetaRef.current = { type: 'item_used', actorId, clientMutationId, payload: itemActionPayload, action: { type: 'use_item', actorId, payload: withActorLogPayload({ ...itemActionPayload, clientActionId: clientMutationId }, itemOwnerSeat) } };
     }
     const consumeItem = () => { clearTurnActionTimeoutPenalty(itemOwnerId); playSfx('itemUse'); setItemPromptTiming(null); setPendingTrapPlacement(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
     const finishAfterMoveItem = () => { if (isAfterMoveItem) finishPendingAfterMoveTurnAdvance(); };
     if (type === 'golden_yut') {
-      if (activeSeat?.id !== itemOwnerId || roll) { addLog('황금 윷은 내 턴에 윷을 던지기 전에 사용할 수 있습니다.'); return; }
+      if (activeSeat?.id !== itemOwnerId || roll) return;
       submitItemActionIfRemote();
       consumeItem();
       if (actorId === localSeatId) {
@@ -3923,7 +3914,7 @@ export function App() {
       return;
     }
     if (type === 'reroll') {
-      if (activeSeat?.id !== itemOwnerId || !roll) { addLog('다시 던지기는 내 턴에 윷을 던진 뒤 사용할 수 있습니다.'); return; }
+      if (activeSeat?.id !== itemOwnerId || !roll) return;
       submitItemActionIfRemote();
       consumeItem();
       clearRoll();
@@ -3931,21 +3922,23 @@ export function App() {
       return;
     }
     if (type === 'move_plus_one' || type === 'move_minus_one') {
-      if (lastMovedSeatId !== itemOwnerId) { addLog('이동 보정 아이템은 내 말이 이동한 직후 사용할 수 있습니다.'); return; }
+      if (activeSeat?.id !== itemOwnerId || !roll) return;
       submitItemActionIfRemote();
       const itemMoveSteps = type === 'move_plus_one' ? 1 : -1;
-      const targetPiece = actorId === localSeatId
-        ? getPostMoveAdjustmentPiece(itemOwnerSeat)
-        : pieces.find((piece) => piece.id === String(remotePayload.pieceId ?? lastMovedPieceIds[0] ?? '') && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished);
-      const moved = targetPiece ? await movePiece(targetPiece.id, { name: '황금 윷', steps: 0, bonus: true }, itemOwnerSeat, itemMoveSteps, getEffectiveBranchChoice(targetPiece.nodeId, (remotePayload.branchChoice as BranchChoice | undefined) ?? branchChoice), { consumedItemType: type }) : false;
-      if (!moved) return;
+      const nextRoll = { ...roll, steps: roll.steps + itemMoveSteps };
+      currentRollRef.current = nextRoll;
+      setRoll(nextRoll);
       consumeItem();
-      finishAfterMoveItem();
       return;
     }
     if (type === 'shield') {
-      const shieldTargets = lastMovedSeatId === itemOwnerId ? lastMovedPieceIds.filter((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished)) : [];
-      if (!shieldTargets.length) { addLog('방패는 방금 이동한 내 말이 말판 위에 있을 때 사용할 수 있습니다.'); return; }
+      const movedPiece = lastMovedSeatId === itemOwnerId
+        ? pieces.find((piece) => lastMovedPieceIds.includes(piece.id) && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished)
+        : undefined;
+      const shieldTargets = movedPiece
+        ? pieces.filter((piece) => piece.nodeId === movedPiece.nodeId && piece.started && !piece.finished && isSameSide(getSeatById(piece.ownerId), itemOwnerSeat)).map((piece) => piece.id)
+        : [];
+      if (!shieldTargets.length) return;
       submitItemActionIfRemote();
       consumeItem();
       setShieldedPieceIds((ids) => Array.from(new Set([...ids, ...shieldTargets])));
@@ -3954,15 +3947,15 @@ export function App() {
       return;
     }
     if (type === 'trap') {
-      if (lastMovedSeatId !== itemOwnerId) { addLog('함정은 내 말이 이동한 직후에 설치할 수 있습니다.'); return; }
+      if (lastMovedSeatId !== itemOwnerId) return;
       const trapPieceId = actorId === localSeatId ? lastMovedPieceIds[0] : String(remotePayload.pieceId ?? lastMovedPieceIds[0] ?? '');
       const trapPiece = pieces.find((piece) => piece.id === trapPieceId && lastMovedPieceIds.includes(piece.id) && canSeatControlPiece(itemOwnerSeat, piece) && piece.started && !piece.finished);
-      if (!trapPiece) { addLog('함정은 방금 이동한 말이 말판 위에 있을 때 사용할 수 있습니다.'); return; }
+      if (!trapPiece) return;
       if (activeRoomId && actorId === localSeatId && pendingSequenceMetaRef.current) {
         pendingSequenceMetaRef.current = { ...pendingSequenceMetaRef.current, payload: { ...itemActionPayload, pieceId: trapPiece.id } };
       }
       const nodeIds = getNearbyNodeIds(trapPiece.nodeId, 1).filter((nodeId) => nodeId !== 'n01');
-      if (!nodeIds.length) { addLog('함정을 설치할 수 있는 칸이 없습니다.'); return; }
+      if (!nodeIds.length) return;
       submitItemActionIfRemote();
       if (itemOwnerSeat.isAI) {
         const selectedNodeId = nodeIds
@@ -4310,6 +4303,7 @@ export function App() {
       rollStack={rollStack}
       selectedRollStackIndex={selectedRollStackIndex}
       rollStackClosed={rollStackClosed}
+      shieldedPieceIds={shieldedPieceIds}
       onSelectRollStackIndex={setSelectedRollStackIndex}
       onMoveRollStackIndex={(index) => { setSelectedRollStackIndex(index); moveSelectedPiece(0, { timedOut: true, rollStackIndexOverride: index }); }}
       moveSelectionTimedOut={Boolean(turnDeadlineKind === 'move' && turnDeadlineAt && playTimeNow >= turnDeadlineAt)}

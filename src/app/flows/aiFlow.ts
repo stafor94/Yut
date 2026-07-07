@@ -68,11 +68,6 @@ type ChooseAiAfterMoveItemInput = {
 
 export function chooseAiAfterMoveItem({ adjustmentPiece, items }: ChooseAiAfterMoveItemInput) {
   const canUseTrapOrShield = Boolean(adjustmentPiece);
-  if (items.includes('move_plus_one') && adjustmentPiece) return 'move_plus_one' as ItemType;
-  if (items.includes('move_minus_one') && adjustmentPiece) {
-    const previousNodeId = getMovePathNodeIds(adjustmentPiece.nodeId, -1, 'outer')[0];
-    if (previousNodeId && previousNodeId !== 'finish') return 'move_minus_one' as ItemType;
-  }
   if (items.includes('trap') && canUseTrapOrShield) return 'trap' as ItemType;
   if (items.includes('shield') && canUseTrapOrShield) return 'shield' as ItemType;
   return null;

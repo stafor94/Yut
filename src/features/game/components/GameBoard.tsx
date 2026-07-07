@@ -25,6 +25,7 @@ type GameBoardProps = {
   revealedItems: ItemType[];
   highlightedNodeId?: string;
   trapNodeIds?: string[];
+  shieldedPieceIds?: string[];
   previewNodeIds?: string[];
   branchChoice?: BranchChoice;
   onBranchChoiceChange?: (branchChoice: BranchChoice) => void;
@@ -95,7 +96,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
+export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], shieldedPieceIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
   void branchChoice;
   void onBranchChoiceChange;
   void showBranchControls;
@@ -126,7 +127,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         type="button"
         data-testid={`piece-${piece.id}`}
         key={piece.id}
-        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
+        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
         style={getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey)}
         onClick={() => onSelectPiece(piece.id)}
         disabled={piece.finished || !pieceSelectable}
