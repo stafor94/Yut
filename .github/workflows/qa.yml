@@ -90,7 +90,7 @@ jobs:
 
   qa-basic-flow:
     name: QA basic flow
-    needs: [build-and-unit, qa-cleanup-before]
+    needs: [qa-cleanup-before, deploy-pages]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -131,7 +131,7 @@ jobs:
 
   qa-online-turn-recovery:
     name: QA online turn recovery
-    needs: [build-and-unit, qa-cleanup-before]
+    needs: [qa-cleanup-before, deploy-pages]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,7 +170,7 @@ jobs:
 
   qa-stacked-roll-backdo-ai:
     name: QA stacked roll backdo AI
-    needs: [build-and-unit, qa-cleanup-before]
+    needs: [qa-cleanup-before, deploy-pages]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -194,7 +194,7 @@ jobs:
 
   qa-cleanup-layout-regression:
     name: QA cleanup and layout regression
-    needs: [build-and-unit, qa-cleanup-before]
+    needs: [qa-cleanup-before, deploy-pages]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -269,12 +269,6 @@ jobs:
     name: Deploy GitHub Pages
     needs:
       - build-and-unit
-      - qa-cleanup-before
-      - qa-basic-flow
-      - qa-online-turn-recovery
-      - qa-stacked-roll-backdo-ai
-      - qa-cleanup-layout-regression
-      - qa-cleanup-after
     if: github.ref == 'refs/heads/main' && success()
     runs-on: ubuntu-latest
     environment:
@@ -302,7 +296,7 @@ jobs:
   summarize-qa-result:
     name: Summarize QA result
     if: always()
-    needs: [build-and-unit, qa-cleanup-before, qa-basic-flow, qa-online-turn-recovery, qa-stacked-roll-backdo-ai, qa-cleanup-layout-regression, qa-cleanup-after]
+    needs: [build-and-unit, qa-cleanup-before, deploy-pages, qa-basic-flow, qa-online-turn-recovery, qa-stacked-roll-backdo-ai, qa-cleanup-layout-regression]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -322,14 +316,14 @@ jobs:
       - name: Summarize QA result
         if: always()
         env:
-          QA_JOB_STATUS: ${{ (needs.build-and-unit.result == 'success' && needs.qa-cleanup-before.result == 'success' && needs.qa-basic-flow.result == 'success' && needs.qa-online-turn-recovery.result == 'success' && needs.qa-stacked-roll-backdo-ai.result == 'success' && needs.qa-cleanup-layout-regression.result == 'success' && needs.qa-cleanup-after.result == 'success') && 'success' || 'failure' }}
+          QA_JOB_STATUS: ${{ (needs.build-and-unit.result == 'success' && needs.qa-cleanup-before.result == 'success' && needs.deploy-pages.result == 'success' && needs.qa-basic-flow.result == 'success' && needs.qa-online-turn-recovery.result == 'success' && needs.qa-stacked-roll-backdo-ai.result == 'success' && needs.qa-cleanup-layout-regression.result == 'success') && 'success' || 'failure' }}
           BUILD_AND_UNIT_JOB_RESULT: ${{ needs.build-and-unit.result }}
           QA_CLEANUP_BEFORE_JOB_RESULT: ${{ needs.qa-cleanup-before.result }}
           QA_BASIC_FLOW_JOB_RESULT: ${{ needs.qa-basic-flow.result }}
           QA_ONLINE_TURN_RECOVERY_JOB_RESULT: ${{ needs.qa-online-turn-recovery.result }}
           QA_STACKED_ROLL_BACKDO_AI_JOB_RESULT: ${{ needs.qa-stacked-roll-backdo-ai.result }}
           QA_CLEANUP_LAYOUT_REGRESSION_JOB_RESULT: ${{ needs.qa-cleanup-layout-regression.result }}
-          QA_CLEANUP_AFTER_JOB_RESULT: ${{ needs.qa-cleanup-after.result }}
+          DEPLOY_PAGES_JOB_RESULT: ${{ needs.deploy-pages.result }}
         run: |
           node .github/scripts/summarize-qa.mjs
           cat qa-failure-summary.md >> "$GITHUB_STEP_SUMMARY"
