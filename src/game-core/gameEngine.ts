@@ -54,6 +54,7 @@ export type TurnActionGuardInput = {
   waitingForTurnOrder?: boolean;
   movingPieceId?: string;
   pendingTrapPlacement?: boolean;
+  pendingItemPrompt?: boolean;
   pendingGameStateSave?: boolean;
   pendingLocalRemoteActionCount?: number;
   processingActionCount?: number;
@@ -78,6 +79,7 @@ export function getTurnActionBlockReasons(input: TurnActionGuardInput) {
     input.turnOrderIntroActive ? 'turn-order-intro-active' : '',
     input.movingPieceId ? 'moving-piece' : '',
     input.pendingTrapPlacement ? 'pending-trap-placement' : '',
+    input.pendingItemPrompt ? 'pending-item-prompt' : '',
     input.pendingGameStateSave ? 'saving-game-state' : '',
     (input.pendingLocalRemoteActionCount ?? 0) > 0 ? 'pending-local-remote-action' : '',
     (input.processingActionCount ?? 0) > 0 ? 'processing-remote-action' : '',

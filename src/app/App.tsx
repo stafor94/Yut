@@ -516,6 +516,7 @@ export function App() {
   const hasPendingGameStateSave = Boolean(activeRoomId && screen === 'game' && (onlineAuthoritativeGameStatePending || (canCoordinateOnlineGame && coordinatorStateSaveKey)));
   const shouldWaitForAuthoritativeTurnSync = Boolean(activeRoomId && screen === 'game' && pendingLocalRemoteActionCount > 0 && !isMyTurn);
   const effectivePendingLocalRemoteActionCount = shouldWaitForAuthoritativeTurnSync ? pendingLocalRemoteActionCount : 0;
+  const activeItemPromptTypes = itemPromptTiming && !trapPlacementActive ? getUsableHostItems(itemPromptTiming) : [];
   const turnActionGuardInput = {
     activeSeatId: activeSeat?.id,
     actorId: localSeatId,
@@ -527,6 +528,7 @@ export function App() {
     turnOrderIntroActive: Boolean(activeTurnOrderIntro),
     movingPieceId,
     pendingTrapPlacement: trapPlacementActive,
+    pendingItemPrompt: activeItemPromptTypes.length > 0,
     pendingGameStateSave: hasPendingGameStateSave,
     pendingLocalRemoteActionCount: effectivePendingLocalRemoteActionCount,
     processingActionCount: processingActionIdsRef.current.size,
@@ -538,7 +540,7 @@ export function App() {
     remoteActionClient: false,
     rollInProgress,
   };
-  const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
+  const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canSubmitTurnAction = canSubmitTurnActionFromEngine(turnActionGuardInput);
   const selectedPieceCanMove = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const activeSeatPiecesOnBoard = useMemo(() => activeSeat
@@ -556,7 +558,7 @@ export function App() {
   const canMoveSelectedPiece = Boolean(activeMovablePiece);
   const canRequestMove = Boolean(canSubmitTurnAction && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && canMoveSelectedPiece);
   const canUseMoveButton = canRequestMove;
-  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
+  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
   const stalledTurnMovablePieces = useMemo(() => {
     if (!roll || !activeSeat) return [];
@@ -648,7 +650,6 @@ export function App() {
     return `남은 시간 ${Math.max(0, Math.floor((turnOrderPhase.deadline - turnOrderClock) / 1000))}초`;
   })();
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedMoveSteps > 0 && activeMovablePiece?.started && BRANCH_NODE_IDS.includes(activeMovablePiece.nodeId as typeof BRANCH_NODE_IDS[number]));
-  const activeItemPromptTypes = itemPromptTiming && !trapPlacementActive ? getUsableHostItems(itemPromptTiming) : [];
   const roomInGame = startStatus === 'entering' || startStatus === 'playing';
   const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > Date.now();
   const startCancelDisabled = startCountdownEndsAt > 0 && startCountdownEndsAt - Date.now() <= START_CANCEL_LOCK_MS;
@@ -2681,9 +2682,8 @@ export function App() {
     if (timing === 'after_move' && (!isMyTurn || lastMovedSeatId !== localSeatId)) return [];
     return (ownedItems[localSeatId] ?? []).filter((type) => {
       if (ITEM_DEFINITIONS[type].timing !== timing) return false;
+      if (timing === 'after_move' && type !== 'move_plus_one' && type !== 'move_minus_one') return false;
       if ((type === 'move_plus_one' || type === 'move_minus_one') && !getPostMoveAdjustmentPiece(getSeatById(localSeatId))) return false;
-      if (type === 'shield') return lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished));
-      if (type === 'trap') return lastMovedSeatId === localSeatId && lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished));
       return true;
     });
   }
@@ -3689,6 +3689,11 @@ export function App() {
     const itemActionPayload = { itemType: type, pieceId: selectedPieceId, branchChoice };
     const clientMutationId = getLocalActionKey('use_item', itemActionPayload);
     const submitItemActionIfRemote = () => undefined;
+    const isAfterMoveItem = ITEM_DEFINITIONS[type].timing === 'after_move';
+    if (isAfterMoveItem && activeSeat?.id !== itemOwnerId) {
+      addLog(`${ITEM_DEFINITIONS[type].name}은 방금 이동한 말의 차례가 유지될 때 사용할 수 있습니다.`);
+      return;
+    }
     if (activeRoomId && actorId === localSeatId) {
       pendingSequenceMetaRef.current = { type: 'item_used', actorId, clientMutationId, payload: itemActionPayload, action: { type: 'use_item', actorId, payload: withActorLogPayload({ ...itemActionPayload, clientActionId: clientMutationId }, itemOwnerSeat) } };
     }
