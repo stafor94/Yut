@@ -110,6 +110,9 @@ button.secondary {
   --lobby-room-action-width: 76px;
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--lobby-room-action-width);
+  column-gap: 14px;
+  align-items: center;
   overflow: hidden;
   margin: 0;
   padding: 20px;
@@ -127,17 +130,12 @@ button.secondary {
 }
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--lobby-room-action-width);
-  align-items: center;
-  column-gap: 14px;
-  width: 100%;
-  min-width: 0;
-  padding-inline-end: 0;
+  display: contents;
 }
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-main {
   display: grid;
+  grid-column: 1;
   gap: 8px;
   min-width: 0;
 }
@@ -162,6 +160,7 @@ button.secondary {
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-side {
   display: grid;
+  grid-column: 2;
   width: var(--lobby-room-action-width);
   justify-items: stretch;
   align-items: center;
@@ -215,8 +214,7 @@ button.secondary {
     padding: 20px;
   }
 
-  .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
-    grid-template-columns: minmax(0, 1fr) var(--lobby-room-action-width);
+  .premium-lobby.lobby-layout .lobby-room-card {
     column-gap: 12px;
   }
 
@@ -234,7 +232,7 @@ button.secondary {
 }
 
 @media (max-width: 430px) {
-  .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
+  .premium-lobby.lobby-layout .lobby-room-card {
     column-gap: 10px;
   }
 
