@@ -322,7 +322,7 @@ export function App() {
   const activeRoomHostIdRef = useRef('');
   const logIdRef = useRef(0);
   const spectatorIdsRef = useRef<Set<string>>(new Set());
-  const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
+  const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
   const roomHostClaimKeyRef = useRef('');
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const confirmedRoomPlayerRef = useRef(false);
@@ -1254,8 +1254,8 @@ export function App() {
           if (player.isSpectator) return;
           const previous = previousAiStates.get(player.id);
           if (!previous || previous.isSpectator) return;
-          if (!previous.isAI && player.isAI) systemLogTexts.push(`${previous.nickname || player.nickname}님이 나갔습니다. AI가 이어서 플레이합니다.`);
-          if (previous.isAI && !player.isAI) systemLogTexts.push(`${player.nickname}님이 돌아왔습니다. 다시 유저가 플레이합니다.`);
+          if (!previous.isAI && player.isAI && player.isSubstitutedByAI) systemLogTexts.push(`${previous.nickname || player.nickname}님이 나갔습니다. AI가 이어서 플레이합니다.`);
+          if (previous.isSubstitutedByAI && !player.isAI) systemLogTexts.push(`${player.nickname}님이 돌아왔습니다. 다시 유저가 플레이합니다.`);
         });
         if (systemLogTexts.length) {
           addLogs(systemLogTexts);
@@ -1269,7 +1269,7 @@ export function App() {
         }
       }
       spectatorIdsRef.current = new Set(nextSpectators.map((spectator) => spectator.id));
-      roomPlayerAiStatesRef.current = new Map(players.map((player) => [player.id, { isAI: Boolean(player.isAI), isSpectator: Boolean(player.isSpectator), nickname: player.nickname }]));
+      roomPlayerAiStatesRef.current = new Map(players.map((player) => [player.id, { isAI: Boolean(player.isAI), isSubstitutedByAI: Boolean(player.isSubstitutedByAI), isSpectator: Boolean(player.isSpectator), nickname: player.nickname }]));
       setSpectators(nextSpectators);
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
@@ -2805,7 +2805,13 @@ export function App() {
 
   function getAiRoomPlayerUpdate(seat: Seat, aiName: string): Partial<Omit<RoomPlayer, 'id'>> {
     const seatIndex = getSeatIndex(seat);
-    return { nickname: aiName, ready: true, isAI: true, seatIndex, color: ['red', 'blue', 'green', 'yellow'][seatIndex] ?? 'black', team: seat.team };
+    return { nickname: aiName, ready: true, isAI: true, isSubstitutedByAI: false, seatIndex, color: ['red', 'blue', 'green', 'yellow'][seatIndex] ?? 'black', team: seat.team };
+  }
+
+
+  function getSubstitutedRoomPlayerUpdate(seat: Seat): Partial<Omit<RoomPlayer, 'id'>> {
+    const seatIndex = getSeatIndex(seat);
+    return { nickname: seat.name, ready: true, isAI: true, isSubstitutedByAI: true, seatIndex, color: ['red', 'blue', 'green', 'yellow'][seatIndex] ?? 'black', team: seat.team };
   }
 
   function markPlayerAsAI(playerId: string) {
@@ -2822,7 +2828,7 @@ export function App() {
             setSeats((latestSeats) => latestSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
           });
       }
-      return currentSeats.map((seat) => seat.id === playerId ? { ...seat, name: aiName, ready: true, isAI: true, isEmpty: false } : seat);
+      return currentSeats.map((seat) => seat.id === playerId ? { ...seat, name: aiName, ready: true, isAI: true, isSubstitutedByAI: false, isEmpty: false } : seat);
     });
   }
   function cancelAISeat(playerId: string) {
@@ -3999,7 +4005,6 @@ export function App() {
     const wasGameScreen = screen === 'game';
     leavingRoomRef.current = true;
     const leavingSeat = seats.find((seat) => seat.id === leavingSeatId && !seat.isEmpty && !seat.isAI);
-    const aiName = leavingSeat ? makeUniqueAIName(seats) : '';
     if (wasGameScreen && leavingRoomId) addLog(`${nickname}님이 나갔습니다. AI가 이어서 플레이합니다.`);
     hostingRoomUserIdRef.current = '';
     activeRoomIdRef.current = '';
@@ -4015,7 +4020,7 @@ export function App() {
     try {
       if (wasGameScreen && leavingSeat) {
         pendingAiSeatIdsRef.current.add(leavingSeatId);
-        await updateRoomPlayer(leavingRoomId, leavingSeatId, getAiRoomPlayerUpdate(leavingSeat, aiName));
+        await updateRoomPlayer(leavingRoomId, leavingSeatId, getSubstitutedRoomPlayerUpdate(leavingSeat));
         pendingAiSeatIdsRef.current.delete(leavingSeatId);
       } else {
         await removeRoomPlayer(leavingRoomId, leavingSeatId);
@@ -4048,7 +4053,6 @@ export function App() {
     const shouldSubstituteAsAi = Boolean(finishedRoomId && finishedSeatId && screen === 'game' && !winner);
     const shouldLeaveFinishedRoom = Boolean(finishedRoomId && finishedSeatId && screen === 'game' && winner);
     const leavingSeat = shouldSubstituteAsAi ? seats.find((seat) => seat.id === finishedSeatId && !seat.isEmpty && !seat.isAI) : undefined;
-    const aiName = leavingSeat ? makeUniqueAIName(seats) : '';
     if (shouldLeaveFinishedRoom) leavingRoomRef.current = true;
     hostingRoomUserIdRef.current = '';
     activeRoomIdRef.current = '';
@@ -4069,7 +4073,7 @@ export function App() {
     setMessage('게임을 나와 로비로 이동했습니다.');
     if (finishedRoomId && finishedSeatId && shouldSubstituteAsAi && leavingSeat) {
       pendingAiSeatIdsRef.current.add(finishedSeatId);
-      void updateRoomPlayer(finishedRoomId, finishedSeatId, getAiRoomPlayerUpdate(leavingSeat, aiName))
+      void updateRoomPlayer(finishedRoomId, finishedSeatId, getSubstitutedRoomPlayerUpdate(leavingSeat))
         .catch((error) => console.warn('게임 종료 후 AI 전환에 실패했습니다.', error))
         .finally(() => pendingAiSeatIdsRef.current.delete(finishedSeatId));
     }
@@ -4349,7 +4353,6 @@ export function App() {
       onGoldenYutSelect={(choice) => { setForcedRoll(choice); setGoldenYutPickerOpen(false); showToast('황금 윷 설정 완료', `${choice.name} 결과가 예약되었습니다.`, '✨'); }}
       onMoveSelectedPiece={() => moveSelectedPiece()}
       onOpenEndGameDialog={() => setEndGameDialogOpen(true)}
-      onOpenDiagnosticDialog={() => setDiagnosticDialogOpen(true)}
       onOpenSequenceExportDialog={() => { void openSequenceExportDialog(); }}
       onRollYut={rollYut}
       onSelectPieceId={setSelectedPieceId}

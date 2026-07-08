@@ -2701,17 +2701,17 @@
 }
 
 .diagnostic-button {
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
   padding: 0;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #fff3d8;
   color: #7a4a26;
   border: 2px solid rgba(122, 74, 38, .18);
-  box-shadow: 0 8px 18px rgba(42, 30, 23, .1);
+  box-shadow: 0 4px 10px rgba(42, 30, 23, .08);
   font-size: .9rem;
 }
 

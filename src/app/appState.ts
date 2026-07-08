@@ -17,6 +17,7 @@ export type Seat = {
   ready: boolean;
   isHost?: boolean;
   isAI?: boolean;
+  isSubstitutedByAI?: boolean;
   isEmpty?: boolean;
   isSpectator?: boolean;
   enteredGameAt?: number;
@@ -226,6 +227,7 @@ export const seatsFromRoomPlayers = (players: RoomPlayer[], playMode: PlayMode, 
       ready: player.ready,
       isHost: hostId ? player.id === hostId : index === 0,
       isAI: player.isAI,
+      isSubstitutedByAI: player.isSubstitutedByAI,
       isEmpty: false,
       enteredGameAt: player.enteredGameAt,
       enteredStartVersion: player.enteredStartVersion,
@@ -257,6 +259,7 @@ export const gameSeatSnapshotsFromSeats = (sourceSeats: Seat[]): GameSeatSnapsho
     team: seat.team,
     isHost: seat.isHost,
     isAI: seat.isAI,
+    isSubstitutedByAI: seat.isSubstitutedByAI,
     seatIndex: Number(seat.label.replace('P', '')) - 1,
   }));
 
@@ -274,6 +277,7 @@ export const seatsFromGameSeatSnapshots = (gameSeats: GameSeatSnapshot[], playMo
       ready: true,
       isHost: gameSeat.isHost,
       isAI: gameSeat.isAI,
+      isSubstitutedByAI: gameSeat.isSubstitutedByAI,
       isEmpty: false,
       team: gameSeat.team,
     };
