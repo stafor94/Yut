@@ -49,17 +49,17 @@
   margin: 0;
 }
 
-.lobby-layout .room-card > div {
+.lobby-layout .room-card:not(.lobby-room-card) > div {
   display: grid;
   gap: 6px;
 }
 
-.lobby-layout .room-card span {
+.lobby-layout .room-card:not(.lobby-room-card) span {
   color: rgba(42, 30, 23, .68);
   font-weight: 800;
 }
 
-.lobby-layout .room-card button {
+.lobby-layout .room-card:not(.lobby-room-card) button {
   align-self: center;
   min-width: 88px;
 }
@@ -107,7 +107,23 @@ button.secondary {
 
 /* Lobby room cards keep their own two-column layout so waiting-room card rules cannot overlap the room info and action controls. */
 .premium-lobby.lobby-layout .lobby-room-card {
+  --lobby-room-action-width: 62px;
+  position: relative;
+  display: grid;
   overflow: hidden;
+  margin: 0;
+  padding: 18px 8px 18px 18px;
+  border-radius: 24px;
+  background: rgba(255, 248, 234, .82);
+  border: 1px solid rgba(122, 74, 38, .1);
+  box-shadow: 0 16px 34px rgba(82, 49, 18, .1);
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.premium-lobby.lobby-layout .lobby-room-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(242, 184, 75, .5);
+  box-shadow: 0 24px 52px rgba(82, 49, 18, .16);
 }
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
@@ -127,8 +143,11 @@ button.secondary {
 }
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-main > b {
+  display: block;
   min-width: 0;
   overflow: hidden;
+  color: #2a1e17;
+  font-size: 1.14rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -138,6 +157,7 @@ button.secondary {
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
+  color: rgba(42, 30, 23, .64);
 }
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-side {
@@ -151,22 +171,69 @@ button.secondary {
 }
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-status {
+  box-sizing: border-box;
   position: static;
   inline-size: auto;
   min-width: 64px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  text-align: center;
+  background: rgba(47, 107, 79, .12);
+  color: #224236;
+  font-size: .78rem;
+  font-weight: 1000;
+  line-height: 1;
   white-space: nowrap;
 }
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-action {
+  box-sizing: border-box;
   position: static;
   inline-size: auto;
   min-width: 76px;
+  min-height: 32px;
+  margin-left: 0;
+  margin-right: 0;
+  padding: 7px 12px;
+  border-radius: 999px;
+  text-align: center;
+  background: linear-gradient(135deg, #224236, #2f6b4f);
+  box-shadow: 0 10px 20px rgba(34, 66, 54, .16);
+  font-size: .82rem;
+  line-height: 1;
   white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .premium-lobby.lobby-layout .lobby-room-card {
+    padding: 20px 8px 20px 20px;
+  }
+
+  .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    column-gap: 12px;
+  }
+
+  .premium-lobby.lobby-layout .lobby-room-card .lobby-room-main > b {
+    font-size: 1.35rem;
+    line-height: 1.25;
+  }
+
+  .premium-lobby.lobby-layout .lobby-room-card .room-rule-badge {
+    min-height: 24px;
+    padding: 5px 9px;
+    font-size: .78rem;
+    line-height: 1;
+  }
 }
 
 @media (max-width: 430px) {
   .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
     column-gap: 10px;
+  }
+
+  .premium-lobby.lobby-layout .lobby-room-card .lobby-room-side {
+    min-width: 72px;
   }
 
   .premium-lobby.lobby-layout .lobby-room-card .lobby-room-action {
