@@ -1815,8 +1815,8 @@ export function App() {
   }, [roll]);
 
   useEffect(() => {
-    if (screen === 'game' && lastMovedSeatId === localSeatId && !movingPieceId) showItemPrompt('after_move');
-  }, [lastMovedPieceIds, lastMovedSeatId, localSeatId]);
+    if (screen === 'game' && lastMovedSeatId === localSeatId && !movingPieceId && (!stackedRollMode || rollStack.length === 0)) showItemPrompt('after_move');
+  }, [lastMovedPieceIds, lastMovedSeatId, localSeatId, stackedRollMode, rollStack.length]);
 
 
   useEffect(() => {
@@ -3437,7 +3437,7 @@ export function App() {
       && movingGroupIds.some((id) => piecesRef.current.some((piece) => piece.id === id && canSeatControlPiece(seat, piece) && piece.started && !piece.finished));
     const hasAfterMoveItem = (ownedItems[localSeatId] ?? []).some((type) => ITEM_DEFINITIONS[type].timing === 'after_move')
       || (!itemPickupWait && landedItem && ITEM_DEFINITIONS[landedItem.type].timing === 'after_move');
-    const shouldPromptAfterMoveItem = canPromptAfterMoveItem && hasAfterMoveItem;
+    const shouldPromptAfterMoveItem = canPromptAfterMoveItem && hasAfterMoveItem && (!consumingStackedRoll || remainingRollStack.length === 0);
     if (shouldAdvanceTurn && itemPickupWait) await itemPickupWait;
     if (shouldAdvanceTurn) shouldAdvanceTurnAfterItemPromptRef.current = Boolean(shouldPromptAfterMoveItem);
     if (shouldAdvanceTurn && !shouldPromptAfterMoveItem) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
@@ -3878,7 +3878,17 @@ export function App() {
     if (activeRoomId && actorId === localSeatId) {
       const payload = { nodeId, pieceId: pendingTrapPlacement.pieceId };
       const clientMutationId = getLocalActionKey('place_trap', payload);
-      pendingSequenceMetaRef.current = { type: 'trap_placed', actorId, clientMutationId, payload, action: { type: 'place_trap', actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) } };
+      const action = { type: 'place_trap' as const, actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) };
+      addPendingLocalRemoteAction(clientMutationId, { type: 'move_piece', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+      void commitQueuedAuthoritativeGameAction(activeRoomId, action)
+        .then(async (result) => {
+          const applied = await applyAuthoritativeResultSequence(result);
+          if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+            await syncLatestAuthoritativeState(result.reason ?? '서버가 함정 설치를 거부해 최신 authoritative 상태로 재동기화합니다.');
+          }
+        })
+        .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+      return;
     }
     playSfx('itemUse');
     setOwnedItems((items) => {
@@ -3906,8 +3916,20 @@ export function App() {
     const submitItemActionIfRemote = () => undefined;
     const isAfterMoveItem = ITEM_DEFINITIONS[type].timing === 'after_move';
     if (isAfterMoveItem && activeSeat?.id !== itemOwnerId) return;
-    if (activeRoomId && actorId === localSeatId) {
-      pendingSequenceMetaRef.current = { type: 'item_used', actorId, clientMutationId, payload: itemActionPayload, action: { type: 'use_item', actorId, payload: withActorLogPayload({ ...itemActionPayload, clientActionId: clientMutationId }, itemOwnerSeat) } };
+    if (activeRoomId && actorId === localSeatId && (type === 'reroll' || type === 'trap')) {
+      const replacementRoll = type === 'reroll' ? rollYutResultWithTiming('normal').result : undefined;
+      const payload = { ...itemActionPayload, pieceId: type === 'trap' ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, replacementRoll, rollStackIndex: selectedRollStackIndex };
+      const action = { type: 'use_item' as const, actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) };
+      addPendingLocalRemoteAction(clientMutationId, { type: 'roll_yut', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+      void commitQueuedAuthoritativeGameAction(activeRoomId, action)
+        .then(async (result) => {
+          const applied = await applyAuthoritativeResultSequence(result);
+          if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+            await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 사용을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+          }
+        })
+        .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+      return;
     }
     const consumeItem = () => { clearTurnActionTimeoutPenalty(itemOwnerId); playSfx('itemUse'); setItemPromptTiming(null); setPendingTrapPlacement(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
     const finishAfterMoveItem = () => { if (isAfterMoveItem) finishPendingAfterMoveTurnAdvance(); };

@@ -1,6 +1,7 @@
 import { rollYutResultWithTiming, type RollTimingZone, type YutResult } from '../../../game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
-import type { BranchChoice } from '../../../game-core/board/board';
+import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
+import { getNearbyNodeIds, type BranchChoice } from '../../../game-core/board/board';
 
 type GameStatePatch = Record<string, unknown>;
 type RoomPlayerTeam = '청팀' | '홍팀';
@@ -29,7 +30,11 @@ type SyncedGameStateShape = {
   pendingTrapPlacement?: unknown;
   turnDeadlineAt?: number;
   turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
+  itemPromptTiming?: unknown;
+  lastMovedPieceIds?: string[];
+  lastMovedSeatId?: string;
   branchChoice?: unknown;
+  rollResultReadyAt?: number;
   ownedItems?: unknown;
   fallEffect?: unknown;
   lastRollTimingZone?: unknown;
@@ -239,6 +244,123 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
   };
 }
 
+
+const removeOneItem = (ownedItems: unknown, ownerId: string, itemType: ItemType) => {
+  const currentOwnedItems = { ...((ownedItems ?? {}) as Record<string, ItemType[]>) };
+  const currentItems = [...(currentOwnedItems[ownerId] ?? [])];
+  const itemIndex = currentItems.indexOf(itemType);
+  if (itemIndex < 0) return null;
+  currentItems.splice(itemIndex, 1);
+  return { ...currentOwnedItems, [ownerId]: currentItems };
+};
+const getSelectedStackIndex = (state: SyncedGameStateShape) => {
+  if (typeof state.selectedRollStackIndex === 'number') return state.selectedRollStackIndex;
+  const stack = (state.rollStack as YutResult[] | undefined) ?? [];
+  if (!stack.length || !state.roll) return null;
+  const currentRoll = state.roll as YutResult;
+  const index = stack.findIndex((roll) => roll.name === currentRoll.name && roll.steps === currentRoll.steps && Boolean(roll.bonus) === Boolean(currentRoll.bonus));
+  return index >= 0 ? index : null;
+};
+const makeAuthoritativeTrapCandidateNodeIds = (nodeId: string) => getNearbyNodeIds(nodeId, 1).filter((candidateNodeId) => candidateNodeId !== 'n01');
+
+function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape): AuthoritativeReduction {
+  const itemType = action.payload?.itemType as ItemType | undefined;
+  if (!itemType || !ITEM_DEFINITIONS[itemType]) return makeActionReject('사용할 아이템을 찾을 수 없습니다.');
+  if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
+  const nextOwnedItems = removeOneItem(state.ownedItems, action.actorId, itemType);
+  if (!nextOwnedItems) return makeActionReject('보유한 아이템이 없습니다.');
+  const now = Date.now();
+  const logs = (state.logs as AuthoritativeLog[] | undefined) ?? [];
+  const actorLogName = getActionActorLogName(action);
+
+  if (itemType === 'reroll') {
+    const replacementRoll = (action.payload?.replacementRoll as YutResult | undefined) ?? getAuthoritativeRoll(action.payload);
+    if (room.stackedRollMode) {
+      const currentStack = [...(((state.rollStack as YutResult[] | undefined) ?? []))];
+      const stackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : getSelectedStackIndex(state);
+      if (stackIndex === null || stackIndex < 0 || stackIndex >= currentStack.length) return makeActionReject('교체할 이동 스택을 찾을 수 없습니다.');
+      currentStack[stackIndex] = replacementRoll;
+      return {
+        status: 'committed',
+        patch: {
+          ownedItems: nextOwnedItems,
+          roll: replacementRoll,
+          rollStack: currentStack,
+          selectedRollStackIndex: stackIndex,
+          rollStackClosed: !replacementRoll.bonus,
+          rollResultReadyAt: now + 2600,
+          turnDeadlineAt: now + 2600 + TURN_ACTION_TIMEOUT_MS,
+          turnDeadlineKind: 'move',
+          itemPromptTiming: null,
+          logs: [makeAuthoritativeLog(logs, `${actorLogName}님이 다시 던지기로 ${replacementRoll.name}(${replacementRoll.steps}칸)를 다시 냈습니다.`), ...logs],
+        },
+        payload: { activeSeatId: action.actorId, itemType, replacementRoll, rollStack: currentStack, rollStackIndex: stackIndex },
+      };
+    }
+    if (!state.roll) return makeActionReject('교체할 윷 결과가 없습니다.');
+    return {
+      status: 'committed',
+      patch: {
+        ownedItems: nextOwnedItems,
+        roll: replacementRoll,
+        rollResultReadyAt: now + 2600,
+        turnDeadlineAt: now + 2600 + TURN_ACTION_TIMEOUT_MS,
+        turnDeadlineKind: 'move',
+        itemPromptTiming: null,
+        logs: [makeAuthoritativeLog(logs, `${actorLogName}님이 다시 던지기로 ${replacementRoll.name}(${replacementRoll.steps}칸)를 다시 냈습니다.`), ...logs],
+      },
+      payload: { activeSeatId: action.actorId, itemType, replacementRoll },
+    };
+  }
+
+  if (itemType === 'trap') {
+    const lastMovedPieceIds = state.lastMovedPieceIds ?? [];
+    const pieceId = String(action.payload?.pieceId ?? lastMovedPieceIds[0] ?? '');
+    const piece = (state.pieces as AuthoritativePiece[]).find((entry) => entry.id === pieceId && entry.ownerId === action.actorId && entry.started && !entry.finished);
+    if (state.lastMovedSeatId !== action.actorId || !piece || !lastMovedPieceIds.includes(piece.id)) return makeActionReject('함정을 설치할 말을 찾을 수 없습니다.');
+    const nodeIds = makeAuthoritativeTrapCandidateNodeIds(piece.nodeId);
+    if (!nodeIds.length) return makeActionReject('함정을 설치할 수 있는 칸이 없습니다.');
+    return {
+      status: 'committed',
+      patch: {
+        pendingTrapPlacement: { ownerId: action.actorId, pieceId: piece.id, nodeIds, deadline: now + 10000 },
+        itemPromptTiming: null,
+        turnDeadlineAt: now + 10000,
+        turnDeadlineKind: 'trap_placement',
+      },
+      payload: { activeSeatId: action.actorId, itemType, pieceId: piece.id, nodeIds },
+    };
+  }
+
+  return makeActionReject('아직 온라인 authoritative 처리 대상이 아닌 아이템입니다.');
+}
+
+function reducePlaceTrap(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>): AuthoritativeReduction {
+  const placement = state.pendingTrapPlacement as { ownerId?: string; pieceId?: string; nodeIds?: string[] } | null | undefined;
+  const nodeId = String(action.payload?.nodeId ?? '');
+  const pieceId = String(action.payload?.pieceId ?? placement?.pieceId ?? '');
+  if (!placement || placement.ownerId !== action.actorId || placement.pieceId !== pieceId || !placement.nodeIds?.includes(nodeId)) return makeActionReject('함정 설치 위치가 유효하지 않습니다.');
+  const nextOwnedItems = removeOneItem(state.ownedItems, action.actorId, 'trap');
+  if (!nextOwnedItems) return makeActionReject('보유한 함정 아이템이 없습니다.');
+  const piece = (state.pieces as AuthoritativePiece[]).find((entry) => entry.id === pieceId && entry.ownerId === action.actorId && entry.started && !entry.finished);
+  if (!piece) return makeActionReject('함정을 설치할 말을 찾을 수 없습니다.');
+  const logs = (state.logs as AuthoritativeLog[] | undefined) ?? [];
+  const nextTrapNodes = [...(((state.trapNodes as AuthoritativeTrapNode[] | undefined) ?? []).filter((trap) => trap.nodeId !== nodeId)), { nodeId, ownerId: action.actorId }];
+  return {
+    status: 'committed',
+    patch: {
+      ownedItems: nextOwnedItems,
+      trapNodes: nextTrapNodes,
+      pendingTrapPlacement: null,
+      itemPromptTiming: null,
+      turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
+      turnDeadlineKind: 'roll',
+      logs: [makeAuthoritativeLog(logs, `${getActionActorLogName(action)}님이 ${piece.label ?? piece.id} 주변 ${nodeId} 칸에 함정을 설치했습니다.`), ...logs],
+    },
+    payload: { activeSeatId: action.actorId, nodeId, pieceId, trapNodes: nextTrapNodes },
+  };
+}
+
 function reduceContinueRace(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape): AuthoritativeReduction {
   if (room.playMode !== 'individual') return makeActionReject('개인전에서만 이어서 진행할 수 있습니다.');
   if (state.gameEndMode !== 'partial_finish') return makeActionReject('이어서 진행할 수 있는 종료 상태가 아닙니다.');
@@ -285,5 +407,7 @@ export function reduceAuthoritativeGameAction(state: SyncedGameStateShape, actio
   if (action.type === 'roll_yut') return reduceAuthoritativeRoll(state, action, room);
   if (action.type === 'move_piece') return reduceAuthoritativeMove(state, action, room, sides);
   if (action.type === 'continue_race') return reduceContinueRace(state, action, room);
+  if (action.type === 'use_item') return reduceUseItem(state, action, room);
+  if (action.type === 'place_trap') return reducePlaceTrap(state, action);
   return { status: 'unsupported' };
 }
