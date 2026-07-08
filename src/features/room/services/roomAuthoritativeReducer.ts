@@ -31,6 +31,7 @@ type SyncedGameStateShape = {
   turnDeadlineAt?: number;
   turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
   itemPromptTiming?: unknown;
+  pendingAfterMoveTurnIndex?: number;
   lastMovedPieceIds?: string[];
   lastMovedSeatId?: string;
   branchChoice?: unknown;
@@ -47,6 +48,7 @@ export const isAuthoritativeCommitReduction = (reduction: AuthoritativeReduction
 type AuthoritativePiece = { id: string; ownerId: string; label?: string; nodeIndex: number; nodeId: string; started: boolean; finished: boolean; color?: string };
 type AuthoritativeLog = { id: number; text: string };
 type AuthoritativeTrapNode = { nodeId: string; ownerId: string };
+type AuthoritativePendingTrapPlacement = { ownerId?: string; pieceId?: string; nodeIds?: string[]; nextTurnIndex?: number; deadline?: number };
 export type AuthoritativeSeatSide = { id: string; team: RoomPlayerTeam };
 const TURN_ACTION_TIMEOUT_MS = 15000;
 
@@ -78,6 +80,22 @@ const getCompletedIndividualSeatIds = (pieces: AuthoritativePiece[], seatIds: st
 });
 const getUnfinishedSeatIds = (seatIds: string[], completedSeatIds: string[]) => seatIds.filter((seatId) => !completedSeatIds.includes(seatId));
 const appendUnique = (ids: string[], nextIds: string[]) => [...ids, ...nextIds.filter((id) => id && !ids.includes(id))];
+const isSameAuthoritativeSide = (leftId: string, rightId: string, playMode: RoomSummaryShape['playMode'], sides: AuthoritativeSeatSide[]) => {
+  if (playMode !== 'team') return leftId === rightId;
+  const left = sides.find((side) => side.id === leftId);
+  const right = sides.find((side) => side.id === rightId);
+  return Boolean(left && right && left.team === right.team);
+};
+const canActorControlAuthoritativePiece = (actorId: string, piece: AuthoritativePiece | undefined, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]) => Boolean(piece && isSameAuthoritativeSide(actorId, piece.ownerId, room.playMode, sides));
+const getAfterMovePromptPatch = (state: SyncedGameStateShape, basePatch: GameStatePatch, actorId: string, nextTurnIndex: number, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]) => {
+  const nextOwnedItems = (basePatch.ownedItems ?? state.ownedItems ?? {}) as Record<string, ItemType[]>;
+  const lastMovedPieceIds = ((basePatch.lastMovedPieceIds as string[] | undefined) ?? state.lastMovedPieceIds ?? []);
+  const hasAfterMoveItem = (nextOwnedItems[actorId] ?? []).some((type) => ITEM_DEFINITIONS[type]?.timing === 'after_move');
+  const nextPieces = (basePatch.pieces as AuthoritativePiece[] | undefined) ?? (state.pieces as AuthoritativePiece[]);
+  const hasMovedPieceOnBoard = lastMovedPieceIds.some((pieceId) => nextPieces.some((piece) => piece.id === pieceId && piece.started && !piece.finished && canActorControlAuthoritativePiece(actorId, piece, room, sides)));
+  if (!hasAfterMoveItem || !hasMovedPieceOnBoard) return null;
+  return { turnIndex: Number(state.turnIndex ?? 0), turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS, turnDeadlineKind: 'item_prompt' as const, itemPromptTiming: 'after_move' as const, pendingAfterMoveTurnIndex: nextTurnIndex };
+};
 
 function makeEngineState(state: SyncedGameStateShape): EngineState {
   return {
@@ -184,6 +202,7 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
     const captured = Boolean(baseReduction.payload?.captured);
     const shouldAdvanceTurn = remainingRollStack.length === 0 && !captured;
     const nextTurnIndex = shouldAdvanceTurn ? (Number(state.turnIndex ?? 0) + 1) % Math.max((state.turnOrderIds ?? []).length, 1) : Number(state.turnIndex ?? 0);
+    const afterMovePromptPatch = shouldAdvanceTurn ? getAfterMovePromptPatch(state, baseReduction.patch, action.actorId, nextTurnIndex, room, sides) : null;
     baseReduction.patch = {
       ...baseReduction.patch,
       turnIndex: nextTurnIndex,
@@ -192,6 +211,7 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
       selectedRollStackIndex: !captured && remainingRollStack.length === 1 ? 0 : null,
       rollStackClosed: captured ? false : remainingRollStack.length > 0,
       rollResultReadyAt: 0,
+      ...afterMovePromptPatch,
     };
     baseReduction.payload = {
       ...baseReduction.payload,
@@ -200,6 +220,13 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
       nextTurnIndex,
       extraTurn: !shouldAdvanceTurn,
     };
+  }
+
+  if (isAuthoritativeCommitReduction(baseReduction) && !(room.stackedRollMode && rollStackIndex !== null)) {
+    const movedTurnIndex = Number(baseReduction.patch.turnIndex ?? state.turnIndex ?? 0);
+    const didAdvanceTurn = movedTurnIndex !== Number(state.turnIndex ?? 0);
+    const afterMovePromptPatch = didAdvanceTurn ? getAfterMovePromptPatch(state, baseReduction.patch, action.actorId, movedTurnIndex, room, sides) : null;
+    if (afterMovePromptPatch) baseReduction.patch = { ...baseReduction.patch, ...afterMovePromptPatch };
   }
 
   if (!isAuthoritativeCommitReduction(baseReduction) || room.playMode !== 'individual') return baseReduction;
@@ -263,10 +290,13 @@ const getSelectedStackIndex = (state: SyncedGameStateShape) => {
 };
 const makeAuthoritativeTrapCandidateNodeIds = (nodeId: string) => getNearbyNodeIds(nodeId, 1).filter((candidateNodeId) => candidateNodeId !== 'n01');
 
-function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape): AuthoritativeReduction {
+function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
   const itemType = action.payload?.itemType as ItemType | undefined;
   if (!itemType || !ITEM_DEFINITIONS[itemType]) return makeActionReject('사용할 아이템을 찾을 수 없습니다.');
-  if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
+  const itemTiming = ITEM_DEFINITIONS[itemType].timing;
+  if (itemTiming === 'after_move') {
+    if (state.lastMovedSeatId !== action.actorId) return makeActionReject('방금 이동한 플레이어만 사용할 수 있습니다.');
+  } else if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
   const nextOwnedItems = removeOneItem(state.ownedItems, action.actorId, itemType);
   if (!nextOwnedItems) return makeActionReject('보유한 아이템이 없습니다.');
   const now = Date.now();
@@ -316,14 +346,14 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   if (itemType === 'trap') {
     const lastMovedPieceIds = state.lastMovedPieceIds ?? [];
     const pieceId = String(action.payload?.pieceId ?? lastMovedPieceIds[0] ?? '');
-    const piece = (state.pieces as AuthoritativePiece[]).find((entry) => entry.id === pieceId && entry.ownerId === action.actorId && entry.started && !entry.finished);
+    const piece = (state.pieces as AuthoritativePiece[]).find((entry) => entry.id === pieceId && entry.started && !entry.finished && canActorControlAuthoritativePiece(action.actorId, entry, room, sides));
     if (state.lastMovedSeatId !== action.actorId || !piece || !lastMovedPieceIds.includes(piece.id)) return makeActionReject('함정을 설치할 말을 찾을 수 없습니다.');
     const nodeIds = makeAuthoritativeTrapCandidateNodeIds(piece.nodeId);
     if (!nodeIds.length) return makeActionReject('함정을 설치할 수 있는 칸이 없습니다.');
     return {
       status: 'committed',
       patch: {
-        pendingTrapPlacement: { ownerId: action.actorId, pieceId: piece.id, nodeIds, deadline: now + 10000 },
+        pendingTrapPlacement: { ownerId: action.actorId, pieceId: piece.id, nodeIds, nextTurnIndex: Number((state as { pendingAfterMoveTurnIndex?: unknown }).pendingAfterMoveTurnIndex ?? state.turnIndex ?? 0), deadline: now + 10000 },
         itemPromptTiming: null,
         turnDeadlineAt: now + 10000,
         turnDeadlineKind: 'trap_placement',
@@ -335,14 +365,14 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   return makeActionReject('아직 온라인 authoritative 처리 대상이 아닌 아이템입니다.');
 }
 
-function reducePlaceTrap(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>): AuthoritativeReduction {
-  const placement = state.pendingTrapPlacement as { ownerId?: string; pieceId?: string; nodeIds?: string[] } | null | undefined;
+function reducePlaceTrap(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
+  const placement = state.pendingTrapPlacement as AuthoritativePendingTrapPlacement | null | undefined;
   const nodeId = String(action.payload?.nodeId ?? '');
   const pieceId = String(action.payload?.pieceId ?? placement?.pieceId ?? '');
   if (!placement || placement.ownerId !== action.actorId || placement.pieceId !== pieceId || !placement.nodeIds?.includes(nodeId)) return makeActionReject('함정 설치 위치가 유효하지 않습니다.');
   const nextOwnedItems = removeOneItem(state.ownedItems, action.actorId, 'trap');
   if (!nextOwnedItems) return makeActionReject('보유한 함정 아이템이 없습니다.');
-  const piece = (state.pieces as AuthoritativePiece[]).find((entry) => entry.id === pieceId && entry.ownerId === action.actorId && entry.started && !entry.finished);
+  const piece = (state.pieces as AuthoritativePiece[]).find((entry) => entry.id === pieceId && entry.started && !entry.finished && canActorControlAuthoritativePiece(action.actorId, entry, room, sides));
   if (!piece) return makeActionReject('함정을 설치할 말을 찾을 수 없습니다.');
   const logs = (state.logs as AuthoritativeLog[] | undefined) ?? [];
   const nextTrapNodes = [...(((state.trapNodes as AuthoritativeTrapNode[] | undefined) ?? []).filter((trap) => trap.nodeId !== nodeId)), { nodeId, ownerId: action.actorId }];
@@ -353,6 +383,7 @@ function reducePlaceTrap(state: SyncedGameStateShape, action: Omit<GameActionSha
       trapNodes: nextTrapNodes,
       pendingTrapPlacement: null,
       itemPromptTiming: null,
+      turnIndex: typeof placement.nextTurnIndex === 'number' ? placement.nextTurnIndex : Number(state.turnIndex ?? 0),
       turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
       turnDeadlineKind: 'roll',
       logs: [makeAuthoritativeLog(logs, `${getActionActorLogName(action)}님이 ${piece.label ?? piece.id} 주변 ${nodeId} 칸에 함정을 설치했습니다.`), ...logs],
@@ -407,7 +438,7 @@ export function reduceAuthoritativeGameAction(state: SyncedGameStateShape, actio
   if (action.type === 'roll_yut') return reduceAuthoritativeRoll(state, action, room);
   if (action.type === 'move_piece') return reduceAuthoritativeMove(state, action, room, sides);
   if (action.type === 'continue_race') return reduceContinueRace(state, action, room);
-  if (action.type === 'use_item') return reduceUseItem(state, action, room);
-  if (action.type === 'place_trap') return reducePlaceTrap(state, action);
+  if (action.type === 'use_item') return reduceUseItem(state, action, room, sides);
+  if (action.type === 'place_trap') return reducePlaceTrap(state, action, room, sides);
   return { status: 'unsupported' };
 }
