@@ -4381,9 +4381,25 @@ export function App() {
       onSelectTrapNode={placePendingTrap}
       onSkipItemPrompt={() => {
         clearTurnActionTimeoutPenalty(localSeatId);
+        if (activeRoomId) {
+          const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
+          const payload = { skipAfterMoveItem: true };
+          const clientMutationId = getLocalActionKey('use_item', payload);
+          const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
+          shouldAdvanceTurnAfterItemPromptRef.current = false;
+          addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: localSeatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+          void commitQueuedAuthoritativeGameAction(activeRoomId, action)
+            .then(async (result) => {
+              const applied = await applyAuthoritativeResultSequence(result);
+              if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+                await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+              }
+            })
+            .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+          return;
+        }
         setItemPromptTiming(null);
-        if (activeRoomId) shouldAdvanceTurnAfterItemPromptRef.current = false;
-        else finishPendingAfterMoveTurnAdvance();
+        finishPendingAfterMoveTurnAdvance();
       }}
       onUseItem={useItem}
       renderLogText={renderLogText}

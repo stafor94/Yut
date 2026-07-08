@@ -123,6 +123,9 @@ function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand
 }
 
 function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape): AuthoritativeReduction {
+  if (state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') {
+    return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
+  }
   if (room.stackedRollMode && state.rollStackClosed === true) {
     return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
   }
@@ -291,6 +294,25 @@ const getSelectedStackIndex = (state: SyncedGameStateShape) => {
 const makeAuthoritativeTrapCandidateNodeIds = (nodeId: string) => getNearbyNodeIds(nodeId, 1).filter((candidateNodeId) => candidateNodeId !== 'n01');
 
 function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
+  if (action.payload?.skipAfterMoveItem === true) {
+    if (state.itemPromptTiming !== 'after_move' || state.lastMovedSeatId !== action.actorId || typeof state.pendingAfterMoveTurnIndex !== 'number') {
+      return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
+    }
+    const now = Date.now();
+    return {
+      status: 'committed',
+      patch: {
+        itemPromptTiming: null,
+        pendingTrapPlacement: null,
+        turnIndex: state.pendingAfterMoveTurnIndex,
+        pendingAfterMoveTurnIndex: null,
+        turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
+        turnDeadlineKind: 'roll',
+      },
+      payload: { activeSeatId: action.actorId, skippedAfterMoveItem: true },
+    };
+  }
+
   const itemType = action.payload?.itemType as ItemType | undefined;
   if (!itemType || !ITEM_DEFINITIONS[itemType]) return makeActionReject('사용할 아이템을 찾을 수 없습니다.');
   const itemTiming = ITEM_DEFINITIONS[itemType].timing;
@@ -383,6 +405,7 @@ function reducePlaceTrap(state: SyncedGameStateShape, action: Omit<GameActionSha
       trapNodes: nextTrapNodes,
       pendingTrapPlacement: null,
       itemPromptTiming: null,
+      pendingAfterMoveTurnIndex: null,
       turnIndex: typeof placement.nextTurnIndex === 'number' ? placement.nextTurnIndex : Number(state.turnIndex ?? 0),
       turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
       turnDeadlineKind: 'roll',
