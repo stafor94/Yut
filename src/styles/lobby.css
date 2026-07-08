@@ -112,7 +112,7 @@ button.secondary {
   display: grid;
   overflow: hidden;
   margin: 0;
-  padding: 18px 8px 18px 18px;
+  padding: 20px;
   border-radius: 24px;
   background: rgba(255, 248, 234, .82);
   border: 1px solid rgba(122, 74, 38, .1);
@@ -162,10 +162,11 @@ button.secondary {
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-side {
   display: grid;
-  justify-items: center;
+  justify-items: end;
   align-items: center;
   gap: 8px;
   min-width: max-content;
+  justify-self: end;
   position: static;
   transform: none;
 }
@@ -177,6 +178,7 @@ button.secondary {
   min-width: 64px;
   padding: 5px 9px;
   border-radius: 999px;
+  justify-self: end;
   text-align: center;
   background: rgba(47, 107, 79, .12);
   color: #224236;
@@ -196,6 +198,7 @@ button.secondary {
   margin-right: 0;
   padding: 7px 12px;
   border-radius: 999px;
+  justify-self: end;
   text-align: center;
   background: linear-gradient(135deg, #224236, #2f6b4f);
   box-shadow: 0 10px 20px rgba(34, 66, 54, .16);
@@ -206,7 +209,7 @@ button.secondary {
 
 @media (max-width: 767px) {
   .premium-lobby.lobby-layout .lobby-room-card {
-    padding: 20px 8px 20px 20px;
+    padding: 20px;
   }
 
   .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
