@@ -47,18 +47,62 @@ test.describe('mobile layout QA', () => {
         const roomCard = guestPage.locator('.lobby-room-card').filter({ hasText: roomTitle }).first();
         await expect(roomCard).toBeVisible({ timeout: 20_000 });
 
+        const cardBox = await roomCard.boundingBox();
+        const contentBox = await roomCard.locator('.lobby-room-content').boundingBox();
+        const mainBox = await roomCard.locator('.lobby-room-main').boundingBox();
+        const sideBox = await roomCard.locator('.lobby-room-side').boundingBox();
         const titleBox = await roomCard.locator('.lobby-room-main > b').boundingBox();
         const metaBox = await roomCard.locator('.lobby-room-meta').boundingBox();
         const statusBox = await roomCard.locator('.lobby-room-status').boundingBox();
         const actionBox = await roomCard.locator('.lobby-room-action').boundingBox();
-        expect(titleBox, '방 제목 bounding box').not.toBeNull();
-        expect(metaBox, '옵션 배지 bounding box').not.toBeNull();
-        expect(statusBox, '상태 배지 bounding box').not.toBeNull();
-        expect(actionBox, '참여 버튼 bounding box').not.toBeNull();
-        expect(boxesOverlap(titleBox, statusBox), '방 제목은 상태 배지와 겹치면 안 됩니다.').toBe(false);
-        expect(boxesOverlap(titleBox, actionBox), '방 제목은 참여 버튼과 겹치면 안 됩니다.').toBe(false);
-        expect(boxesOverlap(metaBox, statusBox), '옵션 배지는 상태 배지와 겹치면 안 됩니다.').toBe(false);
-        expect(boxesOverlap(metaBox, actionBox), '옵션 배지는 참여 버튼과 겹치면 안 됩니다.').toBe(false);
+        const layoutStyles = await roomCard.evaluate((card) => {
+          const content = card.querySelector('.lobby-room-content');
+          const side = card.querySelector('.lobby-room-side');
+          const status = card.querySelector('.lobby-room-status');
+          const action = card.querySelector('.lobby-room-action');
+          return {
+            cardPaddingLeft: Number.parseFloat(getComputedStyle(card).paddingLeft),
+            cardPaddingRight: Number.parseFloat(getComputedStyle(card).paddingRight),
+            contentColumns: content ? getComputedStyle(content).gridTemplateColumns : '',
+            sideWidth: side ? getComputedStyle(side).width : '',
+            statusWidth: status ? getComputedStyle(status).width : '',
+            actionWidth: action ? getComputedStyle(action).width : '',
+          };
+        });
+
+        try {
+          expect(cardBox, '카드 bounding box').not.toBeNull();
+          expect(contentBox, '카드 content bounding box').not.toBeNull();
+          expect(mainBox, '왼쪽 main column bounding box').not.toBeNull();
+          expect(sideBox, '오른쪽 action column bounding box').not.toBeNull();
+          expect(titleBox, '방 제목 bounding box').not.toBeNull();
+          expect(metaBox, '옵션 배지 bounding box').not.toBeNull();
+          expect(statusBox, '상태 배지 bounding box').not.toBeNull();
+          expect(actionBox, '참여 버튼 bounding box').not.toBeNull();
+          expect(layoutStyles.cardPaddingLeft, '카드 좌우 padding은 동일해야 합니다.').toBe(layoutStyles.cardPaddingRight);
+          expect(layoutStyles.cardPaddingRight, '모바일 카드 오른쪽 padding은 20px이어야 합니다.').toBe(20);
+          expect(layoutStyles.contentColumns, 'content grid는 오른쪽 76px action column을 가져야 합니다.').toContain('76px');
+          expect(layoutStyles.sideWidth, 'side column 폭은 76px이어야 합니다.').toBe('76px');
+          expect(layoutStyles.statusWidth, '대기중 배지는 side column 전체 폭을 사용해야 합니다.').toBe('76px');
+          expect(layoutStyles.actionWidth, '참여 버튼은 side column 전체 폭을 사용해야 합니다.').toBe('76px');
+
+          const cardInnerRight = cardBox.x + cardBox.width - layoutStyles.cardPaddingRight;
+          expect(Math.abs((contentBox.x + contentBox.width) - cardInnerRight), 'content 오른쪽 끝은 카드 오른쪽 padding 안쪽 끝과 같아야 합니다.').toBeLessThanOrEqual(1);
+          expect(Math.abs((sideBox.x + sideBox.width) - cardInnerRight), 'side column은 카드 오른쪽 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
+          expect(Math.abs((statusBox.x + statusBox.width) - cardInnerRight), '대기중 배지는 카드 오른쪽 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
+          expect(Math.abs((actionBox.x + actionBox.width) - cardInnerRight), '참여 버튼은 카드 오른쪽 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
+          expect(mainBox.x + mainBox.width, 'main column은 side column과 겹치면 안 됩니다.').toBeLessThanOrEqual(sideBox.x);
+          expect(boxesOverlap(titleBox, statusBox), '방 제목은 상태 배지와 겹치면 안 됩니다.').toBe(false);
+          expect(boxesOverlap(titleBox, actionBox), '방 제목은 참여 버튼과 겹치면 안 됩니다.').toBe(false);
+          expect(boxesOverlap(metaBox, statusBox), '옵션 배지는 상태 배지와 겹치면 안 됩니다.').toBe(false);
+          expect(boxesOverlap(metaBox, actionBox), '옵션 배지는 참여 버튼과 겹치면 안 됩니다.').toBe(false);
+        } catch (error) {
+          await testInfo.attach('mobile-lobby-room-card-layout-failure', {
+            body: await guestPage.screenshot({ fullPage: true }),
+            contentType: 'image/png',
+          });
+          throw error;
+        }
       } finally {
         await guestContext.close();
         await Promise.allSettled(roomIds.map((roomId) => deleteRoomForQa(roomId)));

@@ -107,7 +107,7 @@ button.secondary {
 
 /* Lobby room cards keep their own two-column layout so waiting-room card rules cannot overlap the room info and action controls. */
 .premium-lobby.lobby-layout .lobby-room-card {
-  --lobby-room-action-width: 62px;
+  --lobby-room-action-width: 76px;
   position: relative;
   display: grid;
   overflow: hidden;
@@ -128,7 +128,7 @@ button.secondary {
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) var(--lobby-room-action-width);
   align-items: center;
   column-gap: 14px;
   width: 100%;
@@ -162,10 +162,11 @@ button.secondary {
 
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-side {
   display: grid;
-  justify-items: end;
+  width: var(--lobby-room-action-width);
+  justify-items: stretch;
   align-items: center;
   gap: 8px;
-  min-width: max-content;
+  min-width: 0;
   justify-self: end;
   position: static;
   transform: none;
@@ -174,11 +175,12 @@ button.secondary {
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-status {
   box-sizing: border-box;
   position: static;
-  inline-size: auto;
-  min-width: 64px;
+  inline-size: 100%;
+  width: 100%;
+  min-width: 0;
   padding: 5px 9px;
   border-radius: 999px;
-  justify-self: end;
+  justify-self: stretch;
   text-align: center;
   background: rgba(47, 107, 79, .12);
   color: #224236;
@@ -191,14 +193,15 @@ button.secondary {
 .premium-lobby.lobby-layout .lobby-room-card .lobby-room-action {
   box-sizing: border-box;
   position: static;
-  inline-size: auto;
-  min-width: 76px;
+  inline-size: 100%;
+  width: 100%;
+  min-width: 0;
   min-height: 32px;
   margin-left: 0;
   margin-right: 0;
   padding: 7px 12px;
   border-radius: 999px;
-  justify-self: end;
+  justify-self: stretch;
   text-align: center;
   background: linear-gradient(135deg, #224236, #2f6b4f);
   box-shadow: 0 10px 20px rgba(34, 66, 54, .16);
@@ -213,7 +216,7 @@ button.secondary {
   }
 
   .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
-    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-template-columns: minmax(0, 1fr) var(--lobby-room-action-width);
     column-gap: 12px;
   }
 
@@ -235,12 +238,7 @@ button.secondary {
     column-gap: 10px;
   }
 
-  .premium-lobby.lobby-layout .lobby-room-card .lobby-room-side {
-    min-width: 72px;
-  }
-
   .premium-lobby.lobby-layout .lobby-room-card .lobby-room-action {
-    min-width: 64px;
     padding-inline: 12px;
   }
 }
