@@ -2779,7 +2779,7 @@ export function App() {
   function getUsableHostItems(timing: ItemTiming) {
     if (movingPieceId || winner) return [];
     if (timing === 'after_roll' && (!isMyTurn || !roll)) return [];
-    if (timing === 'after_move' && (!isMyTurn || lastMovedSeatId !== localSeatId)) return [];
+    if (timing === 'after_move' && lastMovedSeatId !== localSeatId) return [];
     return (ownedItems[localSeatId] ?? []).filter((type) => {
       if (ITEM_DEFINITIONS[type].timing !== timing) return false;
       if ((type === 'shield' || type === 'trap') && !lastMovedPieceIds.some((id) => pieces.some((piece) => piece.id === id && canSeatControlPiece(getSeatById(localSeatId), piece) && piece.started && !piece.finished))) return false;
@@ -3879,7 +3879,7 @@ export function App() {
       const payload = { nodeId, pieceId: pendingTrapPlacement.pieceId };
       const clientMutationId = getLocalActionKey('place_trap', payload);
       const action = { type: 'place_trap' as const, actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) };
-      addPendingLocalRemoteAction(clientMutationId, { type: 'move_piece', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+      addPendingLocalRemoteAction(clientMutationId, { type: 'place_trap', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
         .then(async (result) => {
           const applied = await applyAuthoritativeResultSequence(result);
@@ -3915,12 +3915,12 @@ export function App() {
     const clientMutationId = getLocalActionKey('use_item', itemActionPayload);
     const submitItemActionIfRemote = () => undefined;
     const isAfterMoveItem = ITEM_DEFINITIONS[type].timing === 'after_move';
-    if (isAfterMoveItem && activeSeat?.id !== itemOwnerId) return;
+    if (isAfterMoveItem && lastMovedSeatId !== itemOwnerId) return;
     if (activeRoomId && actorId === localSeatId && (type === 'reroll' || type === 'trap')) {
       const replacementRoll = type === 'reroll' ? rollYutResultWithTiming('normal').result : undefined;
       const payload = { ...itemActionPayload, pieceId: type === 'trap' ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, replacementRoll, rollStackIndex: selectedRollStackIndex };
       const action = { type: 'use_item' as const, actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) };
-      addPendingLocalRemoteAction(clientMutationId, { type: 'roll_yut', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+      addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
         .then(async (result) => {
           const applied = await applyAuthoritativeResultSequence(result);

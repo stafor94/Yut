@@ -607,6 +607,71 @@ test('온라인 누적 다시 던지기는 선택된 이동 스택을 교체하�
   assert.deepEqual((result.patch?.ownedItems as Record<string, string[]>)['seat-1'], []);
 });
 
+
+test('온라인 누적 마지막 이동 후 함정은 lastMovedSeatId 기준으로 허용되고 place_trap 뒤 다음 턴으로 넘어간다', () => {
+  const move = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: [
+        { id: 'p1', ownerId: 'seat-1', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+        { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+      ],
+      ownedItems: { 'seat-1': ['trap'] },
+      roll: null,
+      rollStack: [{ name: '개', steps: 2 }],
+      rollStackClosed: true,
+      logs: [],
+    },
+    { type: 'move_piece', actorId: 'seat-1', payload: { pieceId: 'p1', branchChoice: 'outer', rollStackIndex: 0 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+    [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+  );
+
+  assert.equal(move.status, 'committed');
+  assert.equal(move.patch?.turnIndex, 0);
+  assert.equal(move.patch?.itemPromptTiming, 'after_move');
+  assert.equal(move.patch?.turnDeadlineKind, 'item_prompt');
+
+  const useTrap = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: move.patch?.pieces as EngineState['pieces'],
+      turnIndex: move.patch?.turnIndex as number,
+      ownedItems: { 'seat-1': ['trap'] },
+      lastMovedSeatId: 'seat-1',
+      lastMovedPieceIds: move.patch?.lastMovedPieceIds as string[],
+      itemPromptTiming: move.patch?.itemPromptTiming,
+      pendingAfterMoveTurnIndex: 1,
+      logs: [],
+    } as EngineState & { pendingAfterMoveTurnIndex: number },
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'trap', pieceId: 'p1' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+    [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+  );
+
+  assert.equal(useTrap.status, 'committed');
+  const placement = useTrap.patch?.pendingTrapPlacement as { nodeIds: string[]; nextTurnIndex: number };
+  assert.equal(placement.nextTurnIndex, 1);
+  assert.deepEqual([...placement.nodeIds].sort(), ['n02', 'n04']);
+
+  const placeTrap = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: move.patch?.pieces as EngineState['pieces'],
+      turnIndex: 0,
+      ownedItems: { 'seat-1': ['trap'] },
+      pendingTrapPlacement: placement,
+      logs: [],
+    },
+    { type: 'place_trap', actorId: 'seat-1', payload: { pieceId: 'p1', nodeId: 'n04' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(placeTrap.status, 'committed');
+  assert.equal(placeTrap.patch?.turnIndex, 1);
+  assert.deepEqual(placeTrap.patch?.trapNodes, [{ nodeId: 'n04', ownerId: 'seat-1' }]);
+});
+
 test('온라인 함정 설치는 place_trap에서 아이템을 소비하고 trapNodes를 유지 상태로 커밋한다', () => {
   const useTrap = reduceAuthoritativeGameAction(
     {
