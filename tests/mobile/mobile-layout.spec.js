@@ -48,7 +48,6 @@ test.describe('mobile layout QA', () => {
         await expect(roomCard).toBeVisible({ timeout: 20_000 });
 
         const cardBox = await roomCard.boundingBox();
-        const contentBox = await roomCard.locator('.lobby-room-content').boundingBox();
         const mainBox = await roomCard.locator('.lobby-room-main').boundingBox();
         const sideBox = await roomCard.locator('.lobby-room-side').boundingBox();
         const titleBox = await roomCard.locator('.lobby-room-main > b').boundingBox();
@@ -63,7 +62,8 @@ test.describe('mobile layout QA', () => {
           return {
             cardPaddingLeft: Number.parseFloat(getComputedStyle(card).paddingLeft),
             cardPaddingRight: Number.parseFloat(getComputedStyle(card).paddingRight),
-            contentColumns: content ? getComputedStyle(content).gridTemplateColumns : '',
+            cardColumns: getComputedStyle(card).gridTemplateColumns,
+            contentDisplay: content ? getComputedStyle(content).display : '',
             sideWidth: side ? getComputedStyle(side).width : '',
             statusWidth: status ? getComputedStyle(status).width : '',
             actionWidth: action ? getComputedStyle(action).width : '',
@@ -72,7 +72,6 @@ test.describe('mobile layout QA', () => {
 
         try {
           expect(cardBox, '카드 bounding box').not.toBeNull();
-          expect(contentBox, '카드 content bounding box').not.toBeNull();
           expect(mainBox, '왼쪽 main column bounding box').not.toBeNull();
           expect(sideBox, '오른쪽 action column bounding box').not.toBeNull();
           expect(titleBox, '방 제목 bounding box').not.toBeNull();
@@ -81,13 +80,13 @@ test.describe('mobile layout QA', () => {
           expect(actionBox, '참여 버튼 bounding box').not.toBeNull();
           expect(layoutStyles.cardPaddingLeft, '카드 좌우 padding은 동일해야 합니다.').toBe(layoutStyles.cardPaddingRight);
           expect(layoutStyles.cardPaddingRight, '모바일 카드 오른쪽 padding은 20px이어야 합니다.').toBe(20);
-          expect(layoutStyles.contentColumns, 'content grid는 오른쪽 76px action column을 가져야 합니다.').toContain('76px');
+          expect(layoutStyles.cardColumns, 'card grid는 오른쪽 76px action column을 가져야 합니다.').toContain('76px');
+          expect(layoutStyles.contentDisplay, 'content wrapper는 card grid 배치를 위해 contents로 풀려야 합니다.').toBe('contents');
           expect(layoutStyles.sideWidth, 'side column 폭은 76px이어야 합니다.').toBe('76px');
           expect(layoutStyles.statusWidth, '대기중 배지는 side column 전체 폭을 사용해야 합니다.').toBe('76px');
           expect(layoutStyles.actionWidth, '참여 버튼은 side column 전체 폭을 사용해야 합니다.').toBe('76px');
 
           const cardInnerRight = cardBox.x + cardBox.width - layoutStyles.cardPaddingRight;
-          expect(Math.abs((contentBox.x + contentBox.width) - cardInnerRight), 'content 오른쪽 끝은 카드 오른쪽 padding 안쪽 끝과 같아야 합니다.').toBeLessThanOrEqual(1);
           expect(Math.abs((sideBox.x + sideBox.width) - cardInnerRight), 'side column은 카드 오른쪽 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
           expect(Math.abs((statusBox.x + statusBox.width) - cardInnerRight), '대기중 배지는 카드 오른쪽 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
           expect(Math.abs((actionBox.x + actionBox.width) - cardInnerRight), '참여 버튼은 카드 오른쪽 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
