@@ -1737,10 +1737,11 @@ export function App() {
     const timer = window.setTimeout(() => {
       markTurnActionTimedOut(localSeatId);
       setItemPromptTiming(null);
-      finishPendingAfterMoveTurnAdvance();
+      if (activeRoomId) shouldAdvanceTurnAfterItemPromptRef.current = false;
+      else finishPendingAfterMoveTurnAdvance();
     }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [itemPromptTiming, localSeatId, turnActionTimeoutPenaltyBySeatId]);
+  }, [activeRoomId, itemPromptTiming, localSeatId, turnActionTimeoutPenaltyBySeatId]);
 
   useEffect(() => {
     if (screen !== 'game' || !gameStartedAt) return undefined;
@@ -3883,7 +3884,8 @@ export function App() {
     setTrapNodes((nodes) => [...nodes.filter((trap) => trap.nodeId !== nodeId), { nodeId, ownerId: pendingTrapPlacement.ownerId }]);
     addLog(`${getSeatDisplayName(itemOwnerSeat)}님이 ${trapPiece.label} 주변 ${nodeId} 칸에 함정을 설치했습니다.`);
     setPendingTrapPlacement(null);
-    finishPendingAfterMoveTurnAdvance();
+    if (activeRoomId) shouldAdvanceTurnAfterItemPromptRef.current = false;
+    else finishPendingAfterMoveTurnAdvance();
   }
 
   async function useItem(type: ItemType, actorId = localSeatId, remotePayload: Record<string, unknown> = {}) {
@@ -4352,7 +4354,12 @@ export function App() {
       onRollYut={rollYut}
       onSelectPieceId={setSelectedPieceId}
       onSelectTrapNode={placePendingTrap}
-      onSkipItemPrompt={() => { clearTurnActionTimeoutPenalty(localSeatId); setItemPromptTiming(null); finishPendingAfterMoveTurnAdvance(); }}
+      onSkipItemPrompt={() => {
+        clearTurnActionTimeoutPenalty(localSeatId);
+        setItemPromptTiming(null);
+        if (activeRoomId) shouldAdvanceTurnAfterItemPromptRef.current = false;
+        else finishPendingAfterMoveTurnAdvance();
+      }}
       onUseItem={useItem}
       renderLogText={renderLogText}
     />}
