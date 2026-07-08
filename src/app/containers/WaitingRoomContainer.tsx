@@ -66,7 +66,6 @@ export function WaitingRoomContainer({
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
-  const startStatusText = roomInGame ? '게임중' : allReady ? '시작 가능' : teamStartHint || `${readyMissingCount}명이 더 준비해야 해요.`;
   const startBlockedHint = roomInGame ? '이미 게임이 진행 중입니다.' : allReady ? '' : teamStartHint || `${readyMissingCount}명이 더 준비하면 시작할 수 있어요.`;
   const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
   const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
@@ -76,10 +75,7 @@ export function WaitingRoomContainer({
       <div>
         <h2 className="room-title">{activeRoomTitle || title}</h2>
       </div>
-      <div className={`start-status ${roomInGame ? 'in-game' : allReady ? 'ready' : 'blocked'}`} role="status">
-        <strong>{startStatusText}</strong>
-        <span className="room-rule-badges waiting-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</span>
-      </div>
+      <span className="room-rule-badges waiting-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</span>
     </header>
 
     <div className="waiting-main-grid">
