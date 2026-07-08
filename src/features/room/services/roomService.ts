@@ -719,7 +719,7 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const stateAfter = { ...state, ...reduction.patch };
     transaction.set(sequenceRef, {
       sequence: nextSequence,
-      type: action.type === 'roll_yut' ? 'roll_yut' : action.type === 'continue_race' ? 'race_continued' : 'move_piece_resolved',
+      type: action.type === 'roll_yut' ? 'roll_yut' : action.type === 'continue_race' ? 'race_continued' : action.type === 'use_item' ? 'item_used' : action.type === 'place_trap' ? 'trap_placed' : 'move_piece_resolved',
       actorId: action.actorId,
       payload: sanitizeForFirestore(reduction.payload) as Record<string, unknown>,
       ...makeSequenceEventFields({ stateBefore: state, stateAfter, patch: reduction.patch, action }),

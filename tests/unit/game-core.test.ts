@@ -585,3 +585,109 @@ test('누적 던지기 모드에서 잡기 이동은 남은 스택을 보존한 
   assert.equal(result.payload?.captured, true);
   assert.equal(result.payload?.extraTurn, true);
 });
+
+test('온라인 누적 다시 던지기는 선택된 이동 스택을 교체하고 append하지 않는다', () => {
+  const result = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      roll: { name: '도', steps: 1 },
+      rollStack: [{ name: '도', steps: 1 }, { name: '개', steps: 2 }],
+      selectedRollStackIndex: 0,
+      ownedItems: { 'seat-1': ['reroll'] },
+      logs: [],
+    },
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'reroll', replacementRoll: { name: '걸', steps: 3 }, rollStackIndex: 0 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(result.status, 'committed');
+  assert.deepEqual(result.patch?.rollStack, [{ name: '걸', steps: 3 }, { name: '개', steps: 2 }]);
+  assert.deepEqual(result.patch?.roll, { name: '걸', steps: 3 });
+  assert.equal(result.patch?.selectedRollStackIndex, 0);
+  assert.deepEqual((result.patch?.ownedItems as Record<string, string[]>)['seat-1'], []);
+});
+
+test('온라인 함정 설치는 place_trap에서 아이템을 소비하고 trapNodes를 유지 상태로 커밋한다', () => {
+  const useTrap = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: [
+        { id: 'p1', ownerId: 'seat-1', nodeIndex: 2, nodeId: 'n03', started: true, finished: false },
+        { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+      ],
+      ownedItems: { 'seat-1': ['trap'] },
+      lastMovedSeatId: 'seat-1',
+      lastMovedPieceIds: ['p1'],
+      logs: [],
+    },
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'trap', pieceId: 'p1' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(useTrap.status, 'committed');
+  assert.deepEqual((useTrap.patch?.ownedItems as Record<string, string[]>)?.['seat-1'], undefined);
+  const placement = useTrap.patch?.pendingTrapPlacement as { nodeIds: string[] };
+  assert.deepEqual([...placement.nodeIds].sort(), ['n02', 'n04']);
+
+  const placeTrap = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: [
+        { id: 'p1', ownerId: 'seat-1', nodeIndex: 2, nodeId: 'n03', started: true, finished: false },
+        { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+      ],
+      ownedItems: { 'seat-1': ['trap'] },
+      pendingTrapPlacement: useTrap.patch?.pendingTrapPlacement,
+      logs: [],
+    },
+    { type: 'place_trap', actorId: 'seat-1', payload: { pieceId: 'p1', nodeId: 'n04' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(placeTrap.status, 'committed');
+  assert.deepEqual(placeTrap.patch?.trapNodes, [{ nodeId: 'n04', ownerId: 'seat-1' }]);
+  assert.equal(placeTrap.patch?.pendingTrapPlacement, null);
+  assert.deepEqual((placeTrap.patch?.ownedItems as Record<string, string[]>)['seat-1'], []);
+});
+
+test('설치된 함정은 밟지 않는 이동에는 유지되고 밟은 이동에서만 제거된다', () => {
+  const untouched = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: [
+        { id: 'p1', ownerId: 'seat-1', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+        { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+      ],
+      roll: null,
+      rollStack: [{ name: '도', steps: 1 }],
+      trapNodes: [{ nodeId: 'n04', ownerId: 'seat-2' }],
+      logs: [],
+    },
+    { type: 'move_piece', actorId: 'seat-1', payload: { pieceId: 'p1', branchChoice: 'outer', rollStackIndex: 0 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+    [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+  );
+
+  assert.equal(untouched.status, 'committed');
+  assert.deepEqual(untouched.patch?.trapNodes, [{ nodeId: 'n04', ownerId: 'seat-2' }]);
+
+  const stepped = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: untouched.patch?.pieces as EngineState['pieces'],
+      roll: null,
+      rollStack: [{ name: '개', steps: 2 }],
+      trapNodes: untouched.patch?.trapNodes as EngineState['trapNodes'],
+      logs: [],
+    },
+    { type: 'move_piece', actorId: 'seat-1', payload: { pieceId: 'p1', branchChoice: 'outer', rollStackIndex: 0 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+    [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+  );
+
+  assert.equal(stepped.status, 'committed');
+  assert.deepEqual(stepped.patch?.trapNodes, []);
+  const moved = (stepped.patch?.pieces as EngineState['pieces']).find((piece) => piece.id === 'p1');
+  assert.equal(moved?.nodeId, 'n01');
+  assert.equal(moved?.started, false);
+});
