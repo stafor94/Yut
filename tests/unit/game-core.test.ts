@@ -728,8 +728,10 @@ test('온라인 함정 설치는 place_trap에서 아이템을 소비하고 trap
       ownedItems: { 'seat-1': ['trap'] },
       lastMovedSeatId: 'seat-1',
       lastMovedPieceIds: ['p1'],
+      itemPromptTiming: 'after_move',
+      pendingAfterMoveTurnIndex: 1,
       logs: [],
-    },
+    } as EngineState & { itemPromptTiming: 'after_move'; pendingAfterMoveTurnIndex: number },
     { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'trap', pieceId: 'p1' } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
   );
@@ -758,6 +760,54 @@ test('온라인 함정 설치는 place_trap에서 아이템을 소비하고 trap
   assert.deepEqual(placeTrap.patch?.trapNodes, [{ nodeId: 'n04', ownerId: 'seat-1' }]);
   assert.equal(placeTrap.patch?.pendingTrapPlacement, null);
   assert.deepEqual((placeTrap.patch?.ownedItems as Record<string, string[]>)['seat-1'], []);
+});
+
+
+test('온라인 함정 설치 시간초과 취소는 서버에서 다음 턴으로 진행한다', () => {
+  const state = {
+    ...baseState(),
+    turnIndex: 0,
+    pendingTrapPlacement: { ownerId: 'seat-1', pieceId: 'p1', nodeIds: ['n02'], nextTurnIndex: 1, deadline: 1 },
+    itemPromptTiming: null,
+    pendingAfterMoveTurnIndex: 1,
+    logs: [],
+  } as EngineState & { pendingTrapPlacement: unknown; pendingAfterMoveTurnIndex: number };
+
+  const result = reduceAuthoritativeGameAction(
+    state,
+    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(result.status, 'committed');
+  assert.equal(result.patch?.pendingTrapPlacement, null);
+  assert.equal(result.patch?.itemPromptTiming, null);
+  assert.equal(result.patch?.turnIndex, 1);
+  assert.equal(result.patch?.pendingAfterMoveTurnIndex, null);
+  assert.equal(result.patch?.turnDeadlineKind, 'roll');
+});
+
+test('온라인 after_move 대기가 끝난 stale 함정 use_item은 거부한다', () => {
+  const result = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: [
+        { id: 'p1', ownerId: 'seat-1', nodeIndex: 2, nodeId: 'n03', started: true, finished: false },
+        { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+      ],
+      ownedItems: { 'seat-1': ['trap'] },
+      lastMovedSeatId: 'seat-1',
+      lastMovedPieceIds: ['p1'],
+      itemPromptTiming: null,
+      pendingAfterMoveTurnIndex: undefined,
+      logs: [],
+    },
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'trap', pieceId: 'p1' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason, '아이템 사용 여부를 먼저 선택할 수 없습니다.');
 });
 
 test('설치된 함정은 밟지 않는 이동에는 유지되고 밟은 이동에서만 제거된다', () => {
