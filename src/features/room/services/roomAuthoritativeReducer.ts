@@ -100,6 +100,9 @@ function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand
 }
 
 function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape): AuthoritativeReduction {
+  if (room.stackedRollMode && state.rollStackClosed === true) {
+    return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
+  }
   const nextRoll = getAuthoritativeRoll(action.payload);
   const now = Date.now();
   const baseReduction = toAuthoritativeReduction(reduceRollCommand({
