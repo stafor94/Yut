@@ -134,6 +134,7 @@
 }
 
 .turn-current {
+  position: relative;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -141,12 +142,19 @@
 }
 
 .turn-roll-stack-badges {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 4px;
-  max-width: min(240px, 48vw);
+  width: max-content;
+  max-width: min(240px, calc(100vw - 32px));
   line-height: 1;
+  pointer-events: none;
 }
 
 .turn-roll-stack-badge {
