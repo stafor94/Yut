@@ -586,6 +586,50 @@ test('누적 던지기 모드에서 잡기 이동은 남은 스택을 보존한 
   assert.equal(result.payload?.extraTurn, true);
 });
 
+
+test('온라인 after_move 사용 안 함은 보류된 다음 턴으로 서버 턴을 진행한다', () => {
+  const state = {
+    ...baseState(),
+    turnIndex: 0,
+    lastMovedSeatId: 'seat-1',
+    itemPromptTiming: 'after_move',
+    pendingAfterMoveTurnIndex: 1,
+    pendingTrapPlacement: { ownerId: 'seat-1' },
+    logs: [],
+  } as EngineState & { itemPromptTiming: 'after_move'; pendingAfterMoveTurnIndex: number; pendingTrapPlacement: unknown };
+
+  const result = reduceAuthoritativeGameAction(
+    state,
+    { type: 'use_item', actorId: 'seat-1', payload: { skipAfterMoveItem: true } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(result.status, 'committed');
+  assert.equal(result.patch?.itemPromptTiming, null);
+  assert.equal(result.patch?.pendingTrapPlacement, null);
+  assert.equal(result.patch?.turnIndex, 1);
+  assert.equal(result.patch?.pendingAfterMoveTurnIndex, null);
+  assert.equal(result.patch?.turnDeadlineKind, 'roll');
+});
+
+test('온라인 after_move 선택 대기 중에는 이전 플레이어의 윷 던지기를 거부한다', () => {
+  const result = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      turnIndex: 0,
+      lastMovedSeatId: 'seat-1',
+      itemPromptTiming: 'after_move',
+      pendingAfterMoveTurnIndex: 1,
+      logs: [],
+    } as EngineState & { itemPromptTiming: 'after_move'; pendingAfterMoveTurnIndex: number },
+    { type: 'roll_yut', actorId: 'seat-1', payload: { forcedResult: { name: '도', steps: 1 } } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason, '아이템 사용 여부를 먼저 선택해주세요.');
+});
+
 test('온라인 누적 다시 던지기는 선택된 이동 스택을 교체하고 append하지 않는다', () => {
   const result = reduceAuthoritativeGameAction(
     {
@@ -670,6 +714,7 @@ test('온라인 누적 마지막 이동 후 함정은 lastMovedSeatId 기준으�
   assert.equal(placeTrap.status, 'committed');
   assert.equal(placeTrap.patch?.turnIndex, 1);
   assert.deepEqual(placeTrap.patch?.trapNodes, [{ nodeId: 'n04', ownerId: 'seat-1' }]);
+  assert.equal(placeTrap.patch?.pendingAfterMoveTurnIndex, null);
 });
 
 test('온라인 함정 설치는 place_trap에서 아이템을 소비하고 trapNodes를 유지 상태로 커밋한다', () => {
