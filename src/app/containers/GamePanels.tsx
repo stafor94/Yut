@@ -50,7 +50,7 @@ export function GamePlayersPanel({
     {seats.map((seat) => {
       const rankIndex = rankingSeatIds.indexOf(seat.id);
       const finishText = rankIndex >= 0 ? `${rankIndex + 1}위 완주` : completedSeatIds.includes(seat.id) ? '완주' : '';
-      const statusText = finishText || (seat.isAI ? 'AI' : '유저');
+      const statusText = finishText || (seat.isSubstitutedByAI ? '나감' : seat.isAI ? 'AI' : '유저');
       const displayName = getPlayerCardName(seat);
       return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeatId === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
         <span className="game-player-title">
@@ -74,7 +74,6 @@ type GameLogPanelViewProps = {
   formatStoredLogSequence: (log: GameLog, displayIndex?: number) => string;
   renderLogText: (text: string) => ReactNode;
   onOpenSequenceExportDialog: () => void;
-  onOpenDiagnosticDialog: () => void;
 };
 
 export function GameLogPanelView({
@@ -83,10 +82,9 @@ export function GameLogPanelView({
   formatStoredLogSequence,
   renderLogText,
   onOpenSequenceExportDialog,
-  onOpenDiagnosticDialog,
 }: GameLogPanelViewProps) {
   return <GameLogPanel>
-    <div className="log-header"><h2>진행 기록</h2><button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스">🧾</button><button type="button" className="diagnostic-button" onClick={onOpenDiagnosticDialog} aria-label="게임 상태 진단 열기" title="게임 상태 진단">📄</button></div>
+    <div className="log-header"><h2>진행 기록</h2><button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button></div>
     <div className="log-list">{logs.map((log, index) => <p key={log.id} style={getLogCardStyle(log.text, logs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log)}</span>{renderLogText(log.text)}</p>)}</div>
   </GameLogPanel>;
 }
