@@ -3923,3 +3923,45 @@
     font-size: .78rem;
   }
 }
+
+/* Final mobile lobby room card alignment override. Kept in overlays.css because it is imported after lobby.css. */
+@media (max-width: 767px) {
+  .screen-lobby .premium-lobby.lobby-layout .join-room-panel {
+    padding-inline: 20px;
+  }
+
+  .screen-lobby .premium-lobby.lobby-layout .lobby-room-card {
+    --lobby-room-action-width: 76px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--lobby-room-action-width);
+    column-gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 20px;
+    justify-items: stretch;
+  }
+
+  .screen-lobby .premium-lobby.lobby-layout .lobby-room-card .lobby-room-content {
+    display: contents;
+  }
+
+  .screen-lobby .premium-lobby.lobby-layout .lobby-room-card .lobby-room-main {
+    grid-column: 1;
+    min-width: 0;
+  }
+
+  .screen-lobby .premium-lobby.lobby-layout .lobby-room-card .lobby-room-side {
+    grid-column: 2;
+    width: var(--lobby-room-action-width);
+    justify-self: end;
+    justify-items: stretch;
+    min-width: 0;
+  }
+
+  .screen-lobby .premium-lobby.lobby-layout .lobby-room-card .lobby-room-status,
+  .screen-lobby .premium-lobby.lobby-layout .lobby-room-card .lobby-room-action {
+    width: 100%;
+    min-width: 0;
+    justify-self: stretch;
+  }
+}
