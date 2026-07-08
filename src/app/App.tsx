@@ -2053,7 +2053,26 @@ export function App() {
       const now = Date.now();
       setTrapPlacementClock(now);
       if (now >= pendingTrapPlacement.deadline) {
-        setPendingTrapPlacement(null);
+        if (activeRoomId && pendingTrapPlacement.ownerId === localSeatId) {
+          const ownerSeat = playableSeats.find((seat) => seat.id === pendingTrapPlacement.ownerId);
+          const payload = { cancelTrapPlacement: true };
+          const clientMutationId = getLocalActionKey('use_item', payload);
+          const action = { type: 'use_item' as const, actorId: pendingTrapPlacement.ownerId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, ownerSeat) };
+          shouldAdvanceTurnAfterItemPromptRef.current = false;
+          addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: pendingTrapPlacement.ownerId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+          setPendingTrapPlacement(null);
+          void commitQueuedAuthoritativeGameAction(activeRoomId, action)
+            .then(async (result) => {
+              const applied = await applyAuthoritativeResultSequence(result);
+              if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+                await syncLatestAuthoritativeState(result.reason ?? '서버가 함정 설치 취소를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+              }
+            })
+            .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+        } else {
+          setPendingTrapPlacement(null);
+          finishPendingAfterMoveTurnAdvance();
+        }
         addLog('함정 설치 시간이 만료되었습니다.');
       }
     }, 250);

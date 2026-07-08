@@ -294,6 +294,26 @@ const getSelectedStackIndex = (state: SyncedGameStateShape) => {
 const makeAuthoritativeTrapCandidateNodeIds = (nodeId: string) => getNearbyNodeIds(nodeId, 1).filter((candidateNodeId) => candidateNodeId !== 'n01');
 
 function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
+  if (action.payload?.cancelTrapPlacement === true) {
+    const placement = state.pendingTrapPlacement as AuthoritativePendingTrapPlacement | null | undefined;
+    if (!placement || placement.ownerId !== action.actorId || typeof placement.nextTurnIndex !== 'number') {
+      return makeActionReject('취소할 함정 설치 대기가 없습니다.');
+    }
+    const now = Date.now();
+    return {
+      status: 'committed',
+      patch: {
+        pendingTrapPlacement: null,
+        itemPromptTiming: null,
+        turnIndex: placement.nextTurnIndex,
+        pendingAfterMoveTurnIndex: null,
+        turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
+        turnDeadlineKind: 'roll',
+      },
+      payload: { activeSeatId: action.actorId, canceledTrapPlacement: true },
+    };
+  }
+
   if (action.payload?.skipAfterMoveItem === true) {
     if (state.itemPromptTiming !== 'after_move' || state.lastMovedSeatId !== action.actorId || typeof state.pendingAfterMoveTurnIndex !== 'number') {
       return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
@@ -318,6 +338,7 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   const itemTiming = ITEM_DEFINITIONS[itemType].timing;
   if (itemTiming === 'after_move') {
     if (state.lastMovedSeatId !== action.actorId) return makeActionReject('방금 이동한 플레이어만 사용할 수 있습니다.');
+    if (state.itemPromptTiming !== 'after_move' && typeof state.pendingAfterMoveTurnIndex !== 'number') return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
   } else if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
   const nextOwnedItems = removeOneItem(state.ownedItems, action.actorId, itemType);
   if (!nextOwnedItems) return makeActionReject('보유한 아이템이 없습니다.');
