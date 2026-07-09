@@ -1227,6 +1227,10 @@
   backdrop-filter: blur(2px);
 }
 
+.shell.countdown-active > :not(.countdown-scrim) {
+  filter: blur(2px) brightness(.78);
+}
+
 .countdown-scrim .countdown-overlay {
   position: static;
   translate: none;

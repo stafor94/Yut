@@ -33,6 +33,7 @@ type GameBoardControlsProps = {
   pendingTrapPlacement: boolean;
   waitingForOnlineTurnOrder: boolean;
   hasActiveTurnOrderIntro: boolean;
+  canRollForTurnOrderNow: boolean;
 };
 
 export function GameBoardControls({
@@ -65,6 +66,7 @@ export function GameBoardControls({
   pendingTrapPlacement,
   waitingForOnlineTurnOrder,
   hasActiveTurnOrderIntro,
+  canRollForTurnOrderNow,
 }: GameBoardControlsProps) {
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const rollTimingMeterRef = useRef<HTMLDivElement | null>(null);
@@ -80,13 +82,13 @@ export function GameBoardControls({
     return Math.max(0, Math.min(100, ((orbCenterX - meterRect.left) / meterRect.width) * 100));
   };
   useEffect(() => {
-    if (!canRollNow || roll || typeof window === 'undefined') return undefined;
+    if (!(canRollNow || canRollForTurnOrderNow) || roll || typeof window === 'undefined') return undefined;
     if (!window.matchMedia('(orientation: portrait)').matches) return undefined;
     const timer = window.setTimeout(() => {
       controlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [activeSeatId, canRollNow, roll]);
+  }, [activeSeatId, canRollForTurnOrderNow, canRollNow, roll]);
 
   const handleRollButtonClick = () => {
     if (roll) {
