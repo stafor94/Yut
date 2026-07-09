@@ -662,7 +662,7 @@ export function App() {
   })();
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedMoveSteps > 0 && activeMovablePiece?.started && BRANCH_NODE_IDS.includes(activeMovablePiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const roomInGame = startStatus === 'entering' || startStatus === 'playing';
-  const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > Date.now();
+  const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > 0;
   const startCancelDisabled = startCountdownEndsAt > 0 && startCountdownEndsAt - Date.now() <= START_CANCEL_LOCK_MS;
   const optimisticEnteredSeatId = screen === 'game' && localSeatId && !isSpectator ? localSeatId : '';
   const humanSeatsWaitingToEnter = startRequestVersion ? getHumanSeatsWaitingForGameEntry(playableSeats, startRequestVersion, optimisticEnteredSeatId) : [];
@@ -2008,21 +2008,29 @@ export function App() {
       if (countdown >= 0 && startStatus !== 'requested') setCountdown(-1);
       return undefined;
     }
+    let completed = false;
+    const enterGameOnce = () => {
+      if (completed) return;
+      completed = true;
+      setCountdown(0);
+      if (activeRoomId) {
+        void measureFirebaseLatency(() => markRoomGameEntering(activeRoomId, startRequestVersion)).catch(() => undefined);
+      }
+      startLocalGame();
+    };
     const updateCountdown = () => {
       const now = Date.now();
+      if (now >= startCountdownEndsAt) {
+        enterGameOnce();
+        return;
+      }
       if (now < startCountdownStartsAt) setCountdown(-1);
       else setCountdown(Math.max(0, Math.ceil((startCountdownEndsAt - now) / 1000)));
-      if (now >= startCountdownEndsAt) {
-        if (activeRoomId) {
-          void measureFirebaseLatency(() => markRoomGameEntering(activeRoomId, startRequestVersion)).catch(() => undefined);
-        }
-        startLocalGame();
-      }
     };
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 250);
     return () => window.clearInterval(timer);
-  }, [activeRoomId, countdown, startCountdownActive, startCountdownEndsAt, startCountdownStartsAt, startRequestVersion, startStatus]);
+  }, [activeRoomId, startCountdownActive, startCountdownEndsAt, startCountdownStartsAt, startRequestVersion, startStatus]);
 
   useEffect(() => {
     if (!activeRoomId || !currentUserId || screen !== 'game' || !startRequestVersion) return;
