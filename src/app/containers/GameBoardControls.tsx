@@ -82,13 +82,13 @@ export function GameBoardControls({
     return Math.max(0, Math.min(100, ((orbCenterX - meterRect.left) / meterRect.width) * 100));
   };
   useEffect(() => {
-    if (!(canRollNow || canRollForTurnOrderNow) || roll || typeof window === 'undefined') return undefined;
+    if (!(canRollNow || canRollForTurnOrderNow || hasActiveTurnOrderIntro) || roll || typeof window === 'undefined') return undefined;
     if (!window.matchMedia('(orientation: portrait)').matches) return undefined;
     const timer = window.setTimeout(() => {
       controlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [activeSeatId, canRollForTurnOrderNow, canRollNow, roll]);
+  }, [activeSeatId, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll]);
 
   const handleRollButtonClick = () => {
     if (roll) {
