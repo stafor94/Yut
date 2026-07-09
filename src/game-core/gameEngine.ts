@@ -189,21 +189,23 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
   const pieces = [...state.pieces];
   const movingPiece = pieces.find((piece) => piece.id === pieceId && !piece.finished && canControlPiece(actorId, piece, playMode, sides));
   const steps = result.steps + extraSteps;
+  const movablePieces = pieces.filter((piece) => canControlPiece(actorId, piece, playMode, sides) && !piece.finished && (steps >= 0 || piece.started));
   const nextLogs = [...(state.logs ?? [])];
   const pushLog = (text: string) => nextLogs.unshift(makeLog(nextLogs, text));
   const advanceTurnPatch = (extra: Record<string, unknown>) => ({ roll: null, branchChoice: 'outer', turnIndex: (Number(state.turnIndex ?? 0) + 1) % state.turnOrderIds.length, logs: nextLogs, lastMovedSeatId: actorId, ...extra });
 
   if (!movingPiece) {
-    if (steps < 0) {
+    if (steps < 0 && movablePieces.length === 0) {
       pushLog(`${actorLogName}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
       return { ok: true, patch: advanceTurnPatch({ lastMovedPieceIds: [] }), payload: { activeSeatId: actorId, pieceId, skipped: true } };
     }
     return reject('MOVABLE_PIECE_REQUIRED');
   }
-  if (steps < 0 && !movingPiece.started) {
+  if (steps < 0 && !movingPiece.started && movablePieces.length === 0) {
     pushLog(`${actorLogName}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
     return { ok: true, patch: advanceTurnPatch({ lastMovedPieceIds: [] }), payload: { activeSeatId: actorId, pieceId, skipped: true } };
   }
+  if (steps < 0 && !movingPiece.started) return reject('MOVABLE_PIECE_REQUIRED');
   if (steps === 0) {
     pushLog(`${actorLogName}님의 말은 이동할 칸 수가 없어 제자리에 머뭅니다.`);
     return { ok: true, patch: advanceTurnPatch({ lastMovedPieceIds: [movingPiece.id] }), payload: { activeSeatId: actorId, pieceId, stayed: true } };
