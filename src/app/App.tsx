@@ -237,6 +237,7 @@ export function App() {
   const [forcedRoll, setForcedRoll] = useState<YutResult | null>(null);
   const [goldenYutPickerOpen, setGoldenYutPickerOpen] = useState(false);
   const [itemPromptTiming, setItemPromptTiming] = useState<ItemTiming | null>(null);
+  const resolvedItemPromptKeysRef = useRef<Set<string>>(new Set());
   const [rollLockUntil, setRollLockUntil] = useState(0);
   const [rollLockClock, setRollLockClock] = useState(() => Date.now());
   const [rollResultReadyAt, setRollResultReadyAt] = useState(0);
@@ -442,6 +443,12 @@ export function App() {
   const canShowContinueRaceButton = Boolean(activeRoomId && playMode === 'individual' && (gameEndMode === 'partial_finish' || derivedPartialFinish) && unfinishedRaceSeatIds.length >= 2);
   const stackedRollSelectedResult = stackedRollMode && rollStackClosed && rollStack.length ? (typeof selectedRollStackIndex === 'number' ? rollStack[selectedRollStackIndex] : rollStack.length === 1 ? rollStack[0] : null) : null;
   const selectedMoveSteps = (stackedRollSelectedResult ?? roll)?.steps ?? 0;
+  const makeItemPromptKey = (timing: ItemTiming, promptTurnIndex = turnIndex, promptRollStackIndex = selectedRollStackIndex) => `${promptTurnIndex}:${promptRollStackIndex ?? 'none'}:${timing}`;
+  const markItemPromptResolved = (timing: ItemTiming | null, promptRollStackIndex = selectedRollStackIndex) => {
+    if (!timing) return;
+    resolvedItemPromptKeysRef.current.add(makeItemPromptKey(timing, turnIndex, promptRollStackIndex));
+  };
+
   const stalledTurnRollStackIndex = useMemo(() => {
     if (!stackedRollMode || !roll || rollStack.length === 0) return null;
     if (typeof selectedRollStackIndex === 'number') {
@@ -1415,7 +1422,10 @@ export function App() {
     setRollLockUntil(Number(state.rollLockUntil ?? 0));
     setLastMovedPieceIds((state.lastMovedPieceIds as string[] | undefined) ?? []);
     setLastMovedSeatId(state.lastMovedSeatId ?? '');
-    setItemPromptTiming((state.itemPromptTiming as ItemTiming | null | undefined) ?? null);
+    const syncedItemPromptTiming = (state.itemPromptTiming as ItemTiming | null | undefined) ?? null;
+    const syncedSelectedRollStackIndex = typeof state.selectedRollStackIndex === 'number' ? state.selectedRollStackIndex : null;
+    const syncedItemPromptKey = syncedItemPromptTiming ? makeItemPromptKey(syncedItemPromptTiming, nextTurnIndex, syncedSelectedRollStackIndex) : '';
+    setItemPromptTiming(syncedItemPromptKey && resolvedItemPromptKeysRef.current.has(syncedItemPromptKey) ? null : syncedItemPromptTiming);
     setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
     setRollResultReadyAt(nextRollResultReadyAt);
     setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
@@ -1747,7 +1757,9 @@ export function App() {
       markTurnActionTimedOut(localSeatId);
       if (activeRoomId) {
         const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
-        const payload = promptTiming === 'after_roll' ? { skipAfterRollItem: true, timedOut: true } : { skipAfterMoveItem: true, timedOut: true };
+        const promptRollStackIndex = selectedRollStackIndex;
+        markItemPromptResolved(promptTiming, promptRollStackIndex);
+        const payload = promptTiming === 'after_roll' ? { skipAfterRollItem: true, timedOut: true, rollStackIndex: promptRollStackIndex } : { skipAfterMoveItem: true, timedOut: true };
         const clientMutationId = getLocalActionKey('use_item', payload);
         const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
         shouldAdvanceTurnAfterItemPromptRef.current = false;
@@ -1766,7 +1778,7 @@ export function App() {
       finishPendingAfterMoveTurnAdvance();
     }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, itemPromptTiming, localSeatId, playableSeats, turnActionTimeoutPenaltyBySeatId, turnIndex]);
+  }, [activeRoomId, itemPromptTiming, localSeatId, playableSeats, selectedRollStackIndex, turnActionTimeoutPenaltyBySeatId, turnIndex]);
 
   useEffect(() => {
     if (screen !== 'game' || !gameStartedAt) return undefined;
@@ -2839,7 +2851,7 @@ export function App() {
     });
   }
   function showItemPrompt(timing: ItemTiming) {
-    if (activeRoomId || pendingTrapPlacement) return;
+    if (activeRoomId || pendingTrapPlacement || resolvedItemPromptKeysRef.current.has(makeItemPromptKey(timing))) return;
     if (getUsableHostItems(timing).length) setItemPromptTiming(timing);
   }
   function makeUniqueAIName(currentSeats: Seat[]) {
@@ -3969,6 +3981,7 @@ export function App() {
     const isAfterMoveItem = ITEM_DEFINITIONS[type].timing === 'after_move';
     if (isAfterMoveItem && lastMovedSeatId !== itemOwnerId) return;
     if (activeRoomId && actorId === localSeatId) {
+      markItemPromptResolved(ITEM_DEFINITIONS[type].timing, selectedRollStackIndex);
       setItemPromptTiming(null);
       const replacementRoll = type === 'reroll' ? rollYutResultWithTiming('normal').result : undefined;
       const payload = { ...itemActionPayload, pieceId: (type === 'trap' || type === 'shield') ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, replacementRoll, rollStackIndex: selectedRollStackIndex };
@@ -4438,9 +4451,12 @@ export function App() {
       onSkipItemPrompt={() => {
         clearTurnActionTimeoutPenalty(localSeatId);
         if (activeRoomId) {
+          const promptTiming = itemPromptTiming;
+          const promptRollStackIndex = selectedRollStackIndex;
+          markItemPromptResolved(promptTiming, promptRollStackIndex);
           setItemPromptTiming(null);
           const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
-          const payload = itemPromptTiming === 'after_roll' ? { skipAfterRollItem: true } : { skipAfterMoveItem: true };
+          const payload = promptTiming === 'after_roll' ? { skipAfterRollItem: true, rollStackIndex: promptRollStackIndex } : { skipAfterMoveItem: true };
           const clientMutationId = getLocalActionKey('use_item', payload);
           const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
           shouldAdvanceTurnAfterItemPromptRef.current = false;
@@ -4456,6 +4472,7 @@ export function App() {
           return;
         }
         setItemPromptTiming(null);
+        markItemPromptResolved(itemPromptTiming, selectedRollStackIndex);
         if (itemPromptTiming === 'after_move') finishPendingAfterMoveTurnAdvance();
       }}
       onUseItem={useItem}
