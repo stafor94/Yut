@@ -63,6 +63,9 @@ const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
   return forcedResult ?? rollYutResultWithTiming(timingZone).result;
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
+
+const hasUsableAfterRollItem = (state: SyncedGameStateShape, actorId: string) => ((state.ownedItems as Record<string, ItemType[]> | undefined)?.[actorId] ?? [])
+  .some((type) => ITEM_DEFINITIONS[type]?.timing === 'after_roll');
 const getActionActorLogName = (action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>) => {
   const actorLogName = action.payload?.actorLogName;
   const actorLabel = action.payload?.actorLabel;
@@ -145,8 +148,9 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     const fallOccurred = Boolean(action.payload?.fallOccurred);
     baseReduction.patch = {
       ...baseReduction.patch,
-      turnDeadlineAt: fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: fallOccurred ? 'roll' : 'move',
+      turnDeadlineAt: !fallOccurred && hasUsableAfterRollItem(state, action.actorId) ? now + 2600 + TURN_ACTION_TIMEOUT_MS : fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
+      turnDeadlineKind: !fallOccurred && hasUsableAfterRollItem(state, action.actorId) ? 'item_prompt' : fallOccurred ? 'roll' : 'move',
+      itemPromptTiming: !fallOccurred && hasUsableAfterRollItem(state, action.actorId) ? 'after_roll' : null,
     };
     baseReduction.payload = {
       ...baseReduction.payload,
@@ -173,6 +177,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
   };
 }
 function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
+  if (state.itemPromptTiming === 'after_roll') return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   const rollStack = ((state.rollStack as YutResult[] | undefined) ?? []);
   const rollStackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : null;
   const stackedRoll = room.stackedRollMode && rollStackIndex !== null ? rollStack[rollStackIndex] : null;

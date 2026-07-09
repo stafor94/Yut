@@ -659,6 +659,37 @@ test('누적 던지기 모드에서 잡기 이동은 남은 스택을 보존한 
 
 
 
+test('온라인 윷 던지기 성공 후 after_roll 아이템이 있으면 서버가 아이템 선택 대기를 연다', () => {
+  const result = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      ownedItems: { 'seat-1': ['move_plus_one'] },
+    },
+    { type: 'roll_yut', actorId: 'seat-1', payload: { forcedResult: { name: '도', steps: 1 } } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(result.status, 'committed');
+  assert.equal(result.patch?.itemPromptTiming, 'after_roll');
+  assert.equal(result.patch?.turnDeadlineKind, 'item_prompt');
+});
+
+test('온라인 after_roll 아이템 선택 대기 중에는 말 이동을 거부한다', () => {
+  const result = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      roll: { name: '도', steps: 1 },
+      itemPromptTiming: 'after_roll',
+    } as EngineState & { itemPromptTiming: 'after_roll' },
+    { type: 'move_piece', actorId: 'seat-1', payload: { pieceId: 'p1', branchChoice: 'outer' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason, '아이템 사용 여부를 먼저 선택해주세요.');
+});
+
+
 test('온라인 after_roll 사용 안 함은 윷 결과를 유지하고 이동 단계로 전환한다', () => {
   const roll = { name: '걸', steps: 3 } as const;
   const state = {

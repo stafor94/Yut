@@ -542,6 +542,7 @@ export function App() {
   };
   const rollActionGuardInput = {
     ...turnActionGuardInput,
+    pendingLocalRemoteActionCount: activeRoomId ? pendingLocalRemoteActionCount : effectivePendingLocalRemoteActionCount,
     roll: stackedRollMode && rollStack.length > 0 && !rollStackClosed ? null : roll,
     rollLocked: isRollLocked,
     remoteActionClient: false,
@@ -567,7 +568,7 @@ export function App() {
     && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
   const canRequestMove = Boolean(canSubmitTurnAction && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && (canMoveSelectedPiece || noMovableBackDoRoll));
   const canUseMoveButton = canRequestMove;
-  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
+  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeRoomId, activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
   const stalledTurnMovablePieces = useMemo(() => {
     if (!roll || !activeSeat) return [];
@@ -1835,11 +1836,11 @@ export function App() {
   }, [rollResultReadyAt]);
 
   useEffect(() => {
-    if (screen === 'game' && roll && isMyTurn && !movingPieceId) showItemPrompt('after_roll');
+    if (!activeRoomId && screen === 'game' && roll && isMyTurn && !movingPieceId) showItemPrompt('after_roll');
   }, [roll]);
 
   useEffect(() => {
-    if (screen === 'game' && lastMovedSeatId === localSeatId && !movingPieceId && (!stackedRollMode || rollStack.length === 0)) showItemPrompt('after_move');
+    if (!activeRoomId && screen === 'game' && lastMovedSeatId === localSeatId && !movingPieceId && (!stackedRollMode || rollStack.length === 0)) showItemPrompt('after_move');
   }, [lastMovedPieceIds, lastMovedSeatId, localSeatId, stackedRollMode, rollStack.length]);
 
 
@@ -2821,7 +2822,7 @@ export function App() {
   }
   function getUsableHostItems(timing: ItemTiming) {
     if (movingPieceId || winner) return [];
-    if (timing === 'after_roll' && (!isMyTurn || !roll)) return [];
+    if (timing === 'after_roll' && (!isMyTurn || !(roll || stackedRollSelectedResult || rollStackClosed))) return [];
     if (timing === 'after_move' && lastMovedSeatId !== localSeatId) return [];
     return (ownedItems[localSeatId] ?? []).filter((type) => {
       if (ITEM_DEFINITIONS[type].timing !== timing) return false;
@@ -2830,7 +2831,7 @@ export function App() {
     });
   }
   function showItemPrompt(timing: ItemTiming) {
-    if (pendingTrapPlacement) return;
+    if (activeRoomId || pendingTrapPlacement) return;
     if (getUsableHostItems(timing).length) setItemPromptTiming(timing);
   }
   function makeUniqueAIName(currentSeats: Seat[]) {
@@ -3960,6 +3961,7 @@ export function App() {
     const isAfterMoveItem = ITEM_DEFINITIONS[type].timing === 'after_move';
     if (isAfterMoveItem && lastMovedSeatId !== itemOwnerId) return;
     if (activeRoomId && actorId === localSeatId) {
+      setItemPromptTiming(null);
       const replacementRoll = type === 'reroll' ? rollYutResultWithTiming('normal').result : undefined;
       const payload = { ...itemActionPayload, pieceId: (type === 'trap' || type === 'shield') ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, replacementRoll, rollStackIndex: selectedRollStackIndex };
       const action = { type: 'use_item' as const, actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) };
@@ -4428,6 +4430,7 @@ export function App() {
       onSkipItemPrompt={() => {
         clearTurnActionTimeoutPenalty(localSeatId);
         if (activeRoomId) {
+          setItemPromptTiming(null);
           const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
           const payload = itemPromptTiming === 'after_roll' ? { skipAfterRollItem: true } : { skipAfterMoveItem: true };
           const clientMutationId = getLocalActionKey('use_item', payload);
