@@ -565,6 +565,8 @@ export function App() {
   const canUseMoveButton = canRequestMove;
   const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
+  const noMovableBackDoRoll = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && selectedMoveSteps < 0
+    && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
   const stalledTurnMovablePieces = useMemo(() => {
     if (!roll || !activeSeat) return [];
     const steps = roll.steps;
@@ -626,8 +628,8 @@ export function App() {
     ...turnActionBlockReasons,
     !roll ? 'no-roll' : '',
     rollResultHolding ? 'roll-result-holding' : '',
-    !canMoveSelectedPiece ? 'selected-piece-not-movable' : '',
-  ].filter(Boolean), [canMoveSelectedPiece, roll, rollResultHolding, turnActionBlockReasons]);
+    !canMoveSelectedPiece && !noMovableBackDoRoll ? 'selected-piece-not-movable' : '',
+  ].filter(Boolean), [canMoveSelectedPiece, noMovableBackDoRoll, roll, rollResultHolding, turnActionBlockReasons]);
   const visibleLogs = useMemo(() => [...logs]
     .filter((log) => !(activeTurnOrderIntro && log.text.startsWith('순서:')))
     .sort((left, right) => right.id - left.id), [activeTurnOrderIntro, logs]);
