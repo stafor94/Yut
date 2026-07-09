@@ -738,6 +738,7 @@ test('온라인 누적 다시 던지기는 선택된 이동 스택을 교체하�
       roll: { name: '도', steps: 1 },
       rollStack: [{ name: '도', steps: 1 }, { name: '개', steps: 2 }],
       selectedRollStackIndex: 0,
+      itemPromptTiming: 'after_roll',
       ownedItems: { 'seat-1': ['reroll'] },
       logs: [],
     },
@@ -749,6 +750,72 @@ test('온라인 누적 다시 던지기는 선택된 이동 스택을 교체하�
   assert.deepEqual(result.patch?.rollStack, [{ name: '걸', steps: 3 }, { name: '개', steps: 2 }]);
   assert.deepEqual(result.patch?.roll, { name: '걸', steps: 3 });
   assert.equal(result.patch?.selectedRollStackIndex, 0);
+  assert.deepEqual((result.patch?.ownedItems as Record<string, string[]>)['seat-1'], []);
+});
+
+test('온라인 이동값 변경 아이템은 서버에서 roll과 스택을 함께 갱신한다', () => {
+  const roll = { name: '개', steps: 2 };
+  const result = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      roll,
+      rollStack: [roll],
+      selectedRollStackIndex: 0,
+      itemPromptTiming: 'after_roll',
+      ownedItems: { 'seat-1': ['move_plus_one'] },
+      logs: [],
+    },
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'move_plus_one', rollStackIndex: 0 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(result.status, 'committed');
+  assert.deepEqual(result.patch?.roll, { name: '개', steps: 3 });
+  assert.deepEqual(result.patch?.rollStack, [{ name: '개', steps: 3 }]);
+  assert.equal(result.patch?.itemPromptTiming, null);
+  assert.equal(result.patch?.turnDeadlineKind, 'move');
+  assert.deepEqual((result.patch?.ownedItems as Record<string, string[]>)['seat-1'], []);
+});
+
+test('온라인 방패 아이템은 서버에서 보호 대상과 다음 턴을 확정한다', () => {
+  const result = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: [
+        { id: 'p1', ownerId: 'seat-1', nodeIndex: 2, nodeId: 'n03', started: true, finished: false },
+        { id: 'p2', ownerId: 'seat-1', nodeIndex: 2, nodeId: 'n03', started: true, finished: false },
+        { id: 'p3', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+      ],
+      ownedItems: { 'seat-1': ['shield'] },
+      lastMovedSeatId: 'seat-1',
+      lastMovedPieceIds: ['p1'],
+      itemPromptTiming: 'after_move',
+      pendingAfterMoveTurnIndex: 1,
+      logs: [],
+    } as EngineState & { itemPromptTiming: 'after_move'; pendingAfterMoveTurnIndex: number },
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'shield', pieceId: 'p1' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(result.status, 'committed');
+  assert.deepEqual(result.patch?.shieldedPieceIds, ['p1', 'p2']);
+  assert.equal(result.patch?.turnIndex, 1);
+  assert.equal(result.patch?.pendingAfterMoveTurnIndex, null);
+  assert.equal(result.patch?.turnDeadlineKind, 'roll');
+});
+
+test('온라인 황금 윷 아이템은 서버에서 보유 아이템을 소비한다', () => {
+  const result = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      ownedItems: { 'seat-1': ['golden_yut'] },
+      logs: [],
+    },
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'golden_yut' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(result.status, 'committed');
   assert.deepEqual((result.patch?.ownedItems as Record<string, string[]>)['seat-1'], []);
 });
 

@@ -495,6 +495,8 @@ export function App() {
     gameStartedAt,
     turnOrderIntro,
     pendingTrapPlacement,
+    itemPromptTiming,
+    pendingAfterMoveTurnIndex: null,
     rollLockUntil,
     lastMovedPieceIds,
     lastMovedSeatId,
@@ -1442,6 +1444,8 @@ export function App() {
       gameStartedAt: (state.gameStartedAt as number | null | undefined) ?? null,
       turnOrderIntro: (state.turnOrderIntro as TurnOrderIntro | null | undefined) ?? null,
       pendingTrapPlacement: (state.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? null,
+      itemPromptTiming: (state.itemPromptTiming as ItemTiming | null | undefined) ?? null,
+      pendingAfterMoveTurnIndex: typeof state.pendingAfterMoveTurnIndex === 'number' ? state.pendingAfterMoveTurnIndex : null,
       rollLockUntil: Number(state.rollLockUntil ?? 0),
       lastMovedPieceIds: syncedLastMovedPieceIds,
       lastMovedSeatId: String(state.lastMovedSeatId ?? ''),
@@ -1737,14 +1741,31 @@ export function App() {
   useEffect(() => {
     if (!itemPromptTiming) return undefined;
     const timeoutMs = getItemPromptTimeoutMs(localSeatId);
+    const promptTiming = itemPromptTiming;
     const timer = window.setTimeout(() => {
       markTurnActionTimedOut(localSeatId);
+      if (activeRoomId) {
+        const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
+        const payload = promptTiming === 'after_roll' ? { skipAfterRollItem: true, timedOut: true } : { skipAfterMoveItem: true, timedOut: true };
+        const clientMutationId = getLocalActionKey('use_item', payload);
+        const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
+        shouldAdvanceTurnAfterItemPromptRef.current = false;
+        addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: localSeatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+        void commitQueuedAuthoritativeGameAction(activeRoomId, action)
+          .then(async (result) => {
+            const applied = await applyAuthoritativeResultSequence(result);
+            if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+              await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 선택 시간초과를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+            }
+          })
+          .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+        return;
+      }
       setItemPromptTiming(null);
-      if (activeRoomId) shouldAdvanceTurnAfterItemPromptRef.current = false;
-      else finishPendingAfterMoveTurnAdvance();
+      finishPendingAfterMoveTurnAdvance();
     }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, itemPromptTiming, localSeatId, turnActionTimeoutPenaltyBySeatId]);
+  }, [activeRoomId, itemPromptTiming, localSeatId, playableSeats, turnActionTimeoutPenaltyBySeatId, turnIndex]);
 
   useEffect(() => {
     if (screen !== 'game' || !gameStartedAt) return undefined;
@@ -2424,7 +2445,7 @@ export function App() {
       gameSeats: nextGameSeats,
       startRequestVersion,
     };
-    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, turnDeadlineAt: initialTurnDeadlineAt, turnDeadlineKind: 'roll', startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
+    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, itemPromptTiming: null, pendingAfterMoveTurnIndex: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, turnDeadlineAt: initialTurnDeadlineAt, turnDeadlineKind: 'roll', startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
     savingStateFingerprintRef.current = initialStateFingerprint;
     const initialGameStateSaveStartedAt = Date.now();
     setInitialGameStateSaveDiagnostic({
@@ -3938,9 +3959,9 @@ export function App() {
     const submitItemActionIfRemote = () => undefined;
     const isAfterMoveItem = ITEM_DEFINITIONS[type].timing === 'after_move';
     if (isAfterMoveItem && lastMovedSeatId !== itemOwnerId) return;
-    if (activeRoomId && actorId === localSeatId && (type === 'reroll' || type === 'trap')) {
+    if (activeRoomId && actorId === localSeatId) {
       const replacementRoll = type === 'reroll' ? rollYutResultWithTiming('normal').result : undefined;
-      const payload = { ...itemActionPayload, pieceId: type === 'trap' ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, replacementRoll, rollStackIndex: selectedRollStackIndex };
+      const payload = { ...itemActionPayload, pieceId: (type === 'trap' || type === 'shield') ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, replacementRoll, rollStackIndex: selectedRollStackIndex };
       const action = { type: 'use_item' as const, actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) };
       addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
@@ -3948,6 +3969,11 @@ export function App() {
           const applied = await applyAuthoritativeResultSequence(result);
           if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
             await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 사용을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+            return;
+          }
+          if (applied && type === 'golden_yut') {
+            setGoldenYutPickerOpen(true);
+            addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.');
           }
         })
         .finally(() => deletePendingLocalRemoteAction(clientMutationId));
