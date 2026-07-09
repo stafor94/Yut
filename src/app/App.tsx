@@ -115,7 +115,7 @@ const PENALTY_TURN_ACTION_TIMEOUT_MS = 5000;
 const ITEM_PROMPT_TIMEOUT_MS = 10000;
 const ITEM_REPLACE_TIMEOUT_MS = 10000;
 const TRAP_EFFECT_MS = 3000;
-const AI_MOVE_DELAY_MS = 1000;
+const AI_MOVE_DELAY_MS = 350;
 const NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS = 500;
 const AUTO_SINGLE_MOVE_DELAY_MS = 500;
 const TOAST_MESSAGE_MS = 4000;
@@ -1777,7 +1777,7 @@ export function App() {
   }, [gameStartedAt, screen, winner]);
 
   useTurnOrderClock({ activeTurnOrderIntro, turnOrderPhase, setTurnOrderClock });
-  useTurnOrderPortraitScroll(screen, turnOrderPhase.active);
+  useTurnOrderPortraitScroll(screen, turnOrderPhase.active || Boolean(activeTurnOrderIntro));
   useTurnOrderAutoFinish({ playableSeats, turnOrderPhase, finishTurnOrderCeremony });
 
   useEffect(() => {
