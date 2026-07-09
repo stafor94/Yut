@@ -561,12 +561,12 @@ export function App() {
   }, [activeSeat, activeSeatPiecesOnBoard, isMyTurn, pieces, roll, stackedRollSelectedResult, selectedMoveSteps]);
   const activeMovablePiece = selectedPieceCanMove ? selectedPiece : fallbackMovablePiece;
   const canMoveSelectedPiece = Boolean(activeMovablePiece);
-  const canRequestMove = Boolean(canSubmitTurnAction && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && canMoveSelectedPiece);
+  const noMovableBackDoRoll = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && selectedMoveSteps < 0
+    && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
+  const canRequestMove = Boolean(canSubmitTurnAction && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && (canMoveSelectedPiece || noMovableBackDoRoll));
   const canUseMoveButton = canRequestMove;
   const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
-  const noMovableBackDoRoll = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && selectedMoveSteps < 0
-    && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
   const stalledTurnMovablePieces = useMemo(() => {
     if (!roll || !activeSeat) return [];
     const steps = roll.steps;
@@ -626,15 +626,16 @@ export function App() {
   const boardTurnIndicatorColor = winner ? '#1f1a17' : visibleBoardTurnSeat ? (playMode === 'team' ? TEAM_COLORS[visibleBoardTurnSeat.team] : getSeatPieceColor(visibleBoardTurnSeat)) : undefined;
   const moveActionBlockReasons = useMemo(() => [
     ...turnActionBlockReasons,
-    !roll ? 'no-roll' : '',
+    !(roll || stackedRollSelectedResult) ? 'no-roll' : '',
     rollResultHolding ? 'roll-result-holding' : '',
     !canMoveSelectedPiece && !noMovableBackDoRoll ? 'selected-piece-not-movable' : '',
-  ].filter(Boolean), [canMoveSelectedPiece, noMovableBackDoRoll, roll, rollResultHolding, turnActionBlockReasons]);
+  ].filter(Boolean), [canMoveSelectedPiece, noMovableBackDoRoll, roll, rollResultHolding, stackedRollSelectedResult, turnActionBlockReasons]);
   const visibleLogs = useMemo(() => [...logs]
     .filter((log) => !(activeTurnOrderIntro && log.text.startsWith('순서:')))
     .sort((left, right) => right.id - left.id), [activeTurnOrderIntro, logs]);
   const rolledTurnOrderSeatIds = useMemo(() => new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id)), [turnOrderPhase.rolls]);
   const localTurnOrderSeatRolled = rolledTurnOrderSeatIds.has(localSeatId);
+  const canRollForTurnOrderNow = Boolean(turnOrderPhase.active && turnOrderClock >= turnOrderPhase.readyAt && localSeatId && !localTurnOrderSeatRolled && playableSeats.some((seat) => seat.id === localSeatId && !seat.isAI));
   const isTurnOrderTimedOut = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline && playableSeats.some((seat) => !rolledTurnOrderSeatIds.has(seat.id)));
   const isTurnOrderFallbackDue = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline + TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS);
   const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut && canCoordinateOnlineGame);
@@ -4217,7 +4218,7 @@ export function App() {
   }
 
 
-  return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'} screen-${screen}`}>
+  return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'} screen-${screen} ${startCountdownActive && countdown >= 0 ? 'countdown-active' : ''}`}>
     <AppShellHeader
       activeRoomId={activeRoomId}
       manualSequenceSyncing={manualSequenceSyncing}
@@ -4291,22 +4292,19 @@ export function App() {
       teamBalanced={teamBalanced}
       teamCounts={teamCounts}
       allReady={allReady}
-      countdown={countdown}
-      startStatus={startStatus}
       roomInGame={roomInGame}
-      startCountdownStartsAt={startCountdownStartsAt}
-      startCancelDisabled={startCancelDisabled}
       getSeatPieceColor={getSeatPieceColor}
       onChangeOptions={changeWaitingOptions}
       onKickPlayer={(seat) => { void kickWaitingPlayer(seat); }}
       onAddAI={markPlayerAsAI}
       onRemoveAI={cancelAISeat}
       onChangeTeam={changeTeam}
-      onCancelStartCountdown={cancelStartCountdown}
       onStartGame={handleStartGame}
       onToggleReady={() => { void toggleMyReady(); }}
       onLeaveRoom={leaveRoom}
     />}
+
+    {screen === 'waitingRoom' && countdown >= 0 && startStatus === 'requested' && Date.now() >= startCountdownStartsAt && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={cancelStartCountdown}>취소</button>}</div></div>}
     {screen === 'game' && <GameScreenView
       activeItemPromptTypes={activeItemPromptTypes}
       activeMovablePiece={activeMovablePiece}
@@ -4322,6 +4320,7 @@ export function App() {
       canContinueRace={canShowContinueRaceButton}
       canRequestMove={canRequestMove}
       canRollNow={canRollNow}
+      canRollForTurnOrderNow={canRollForTurnOrderNow}
       canSeatControlPiece={canSeatControlPiece}
       canSubmitTurnAction={canSubmitTurnAction}
       captureEffect={captureEffect}

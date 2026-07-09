@@ -16,18 +16,13 @@ type WaitingRoomContainerProps = {
   teamBalanced: boolean;
   teamCounts: Record<Team, number>;
   allReady: boolean;
-  countdown: number;
-  startStatus?: string;
   roomInGame: boolean;
-  startCountdownStartsAt: number;
-  startCancelDisabled: boolean;
   getSeatPieceColor: (seat: Seat) => string;
   onChangeOptions: (params: Partial<{ playMode: PlayMode; maxPlayers: 2 | 3 | 4; pieceCount: PieceCount; itemMode: boolean; stackedRollMode: boolean }>) => void;
   onKickPlayer: (seat: Seat) => void;
   onAddAI: (seatId: string) => void;
   onRemoveAI: (seatId: string) => void;
   onChangeTeam: (seatId: string, team: Team) => void;
-  onCancelStartCountdown: () => void;
   onStartGame: () => void;
   onToggleReady: () => void;
   onLeaveRoom: () => void;
@@ -47,18 +42,13 @@ export function WaitingRoomContainer({
   teamBalanced,
   teamCounts,
   allReady,
-  countdown,
-  startStatus,
   roomInGame,
-  startCountdownStartsAt,
-  startCancelDisabled,
   getSeatPieceColor,
   onChangeOptions,
   onKickPlayer,
   onAddAI,
   onRemoveAI,
   onChangeTeam,
-  onCancelStartCountdown,
   onStartGame,
   onToggleReady,
   onLeaveRoom,
@@ -99,7 +89,6 @@ export function WaitingRoomContainer({
       <WaitingRoomSeatList seats={seats} roomInGame={roomInGame} canManageRoom={canManageRoom} localSeatId={localSeatId} playMode={playMode} getSeatPieceColor={getSeatPieceColor} onKickPlayer={onKickPlayer} onAddAI={onAddAI} onRemoveAI={onRemoveAI} onChangeTeam={onChangeTeam} />
     </div>
 
-    {countdown >= 0 && startStatus === 'requested' && Date.now() >= startCountdownStartsAt && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={onCancelStartCountdown}>취소</button>}</div></div>}
     {playMode === 'team' && !teamBalanced && <p className="notice warning inline-warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}
     <footer className="waiting-actions role-actions">
       {startBlockedHint ? <p className="start-blocked-hint" role="status">{startBlockedHint}</p> : null}
