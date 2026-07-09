@@ -326,7 +326,15 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   }
 
   if (action.payload?.skipAfterRollItem === true) {
-    if (state.itemPromptTiming !== 'after_roll' || (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId || !state.roll) {
+    const rollStack = ((state.rollStack as YutResult[] | undefined) ?? []);
+    const payloadRollStackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : null;
+    const selectedRollStackIndex = payloadRollStackIndex !== null && payloadRollStackIndex >= 0 && payloadRollStackIndex < rollStack.length
+      ? payloadRollStackIndex
+      : typeof state.selectedRollStackIndex === 'number'
+        ? state.selectedRollStackIndex
+        : null;
+    const hasRollForPrompt = Boolean(state.roll) || (room.stackedRollMode && selectedRollStackIndex !== null && Boolean(rollStack[selectedRollStackIndex]));
+    if (state.itemPromptTiming !== 'after_roll' || (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId || !hasRollForPrompt) {
       return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
     }
     const now = Date.now();
@@ -334,10 +342,15 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
       status: 'committed',
       patch: {
         itemPromptTiming: null,
+        ...(room.stackedRollMode && payloadRollStackIndex !== null && selectedRollStackIndex !== null ? {
+          selectedRollStackIndex,
+          roll: rollStack[selectedRollStackIndex] ?? state.roll ?? null,
+          rollStackClosed: true,
+        } : {}),
         turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
         turnDeadlineKind: 'move',
       },
-      payload: { activeSeatId: action.actorId, skippedAfterRollItem: true },
+      payload: { activeSeatId: action.actorId, skippedAfterRollItem: true, rollStackIndex: selectedRollStackIndex },
     };
   }
 
@@ -388,7 +401,7 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
           roll: replacementRoll,
           rollStack: currentStack,
           selectedRollStackIndex: stackIndex,
-          rollStackClosed: !replacementRoll.bonus,
+          rollStackClosed: true,
           rollResultReadyAt: now + 2600,
           turnDeadlineAt: now + 2600 + TURN_ACTION_TIMEOUT_MS,
           turnDeadlineKind: 'move',
@@ -435,10 +448,11 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
 
   if (itemType === 'move_plus_one' || itemType === 'move_minus_one') {
     const delta = itemType === 'move_plus_one' ? 1 : -1;
-    const nextRoll = getRollWithStepDelta(state.roll, delta);
-    if (!nextRoll) return makeActionReject('변경할 윷 결과가 없습니다.');
     const stackIndex = room.stackedRollMode ? (typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : getSelectedStackIndex(state)) : null;
     const currentStack = [...(((state.rollStack as YutResult[] | undefined) ?? []))];
+    const sourceRoll = room.stackedRollMode && stackIndex !== null && currentStack[stackIndex] ? currentStack[stackIndex] : state.roll;
+    const nextRoll = getRollWithStepDelta(sourceRoll, delta);
+    if (!nextRoll) return makeActionReject('변경할 윷 결과가 없습니다.');
     if (room.stackedRollMode && currentStack.length > 0) {
       if (stackIndex === null || stackIndex < 0 || stackIndex >= currentStack.length) return makeActionReject('변경할 이동 스택을 찾을 수 없습니다.');
       currentStack[stackIndex] = nextRoll;
@@ -448,7 +462,7 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
       patch: {
         ownedItems: nextOwnedItems,
         roll: nextRoll,
-        ...(room.stackedRollMode && currentStack.length > 0 ? { rollStack: currentStack, selectedRollStackIndex: stackIndex } : {}),
+        ...(room.stackedRollMode && currentStack.length > 0 ? { rollStack: currentStack, selectedRollStackIndex: stackIndex, rollStackClosed: true } : {}),
         itemPromptTiming: null,
         turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
         turnDeadlineKind: 'move',

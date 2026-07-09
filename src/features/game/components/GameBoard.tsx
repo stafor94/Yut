@@ -127,7 +127,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         type="button"
         data-testid={`piece-${piece.id}`}
         key={piece.id}
-        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
+        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${piece.started && !piece.finished && capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
         style={getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey)}
         onClick={() => onSelectPiece(piece.id)}
         disabled={piece.finished || !pieceSelectable}
