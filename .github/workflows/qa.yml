@@ -92,6 +92,9 @@ jobs:
     name: QA basic flow
     needs: [qa-cleanup-before, deploy-pages]
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --user 1001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -102,7 +105,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-and-unit
-      - run: npx playwright install --with-deps
       - name: Run QA
         run: |
           set -o pipefail
@@ -133,6 +135,9 @@ jobs:
     name: QA online turn recovery
     needs: [qa-cleanup-before, deploy-pages]
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --user 1001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -143,7 +148,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-and-unit
-      - run: npx playwright install --with-deps
       - name: Run online recovery QA
         run: |
           set -o pipefail
@@ -196,6 +200,9 @@ jobs:
     name: QA cleanup and layout regression
     needs: [qa-cleanup-before, deploy-pages]
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --user 1001
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -206,7 +213,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-and-unit
-      - run: npx playwright install --with-deps
       - name: Run cleanup/layout QA
         run: |
           set -o pipefail
