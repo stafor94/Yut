@@ -314,6 +314,22 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
     };
   }
 
+  if (action.payload?.skipAfterRollItem === true) {
+    if (state.itemPromptTiming !== 'after_roll' || (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId || !state.roll) {
+      return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
+    }
+    const now = Date.now();
+    return {
+      status: 'committed',
+      patch: {
+        itemPromptTiming: null,
+        turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
+        turnDeadlineKind: 'move',
+      },
+      payload: { activeSeatId: action.actorId, skippedAfterRollItem: true },
+    };
+  }
+
   if (action.payload?.skipAfterMoveItem === true) {
     if (state.itemPromptTiming !== 'after_move' || state.lastMovedSeatId !== action.actorId || typeof state.pendingAfterMoveTurnIndex !== 'number') {
       return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');

@@ -4404,7 +4404,7 @@ export function App() {
         clearTurnActionTimeoutPenalty(localSeatId);
         if (activeRoomId) {
           const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
-          const payload = { skipAfterMoveItem: true };
+          const payload = itemPromptTiming === 'after_roll' ? { skipAfterRollItem: true } : { skipAfterMoveItem: true };
           const clientMutationId = getLocalActionKey('use_item', payload);
           const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
           shouldAdvanceTurnAfterItemPromptRef.current = false;
@@ -4420,7 +4420,7 @@ export function App() {
           return;
         }
         setItemPromptTiming(null);
-        finishPendingAfterMoveTurnAdvance();
+        if (itemPromptTiming === 'after_move') finishPendingAfterMoveTurnAdvance();
       }}
       onUseItem={useItem}
       renderLogText={renderLogText}

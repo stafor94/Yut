@@ -658,6 +658,36 @@ test('누적 던지기 모드에서 잡기 이동은 남은 스택을 보존한 
 });
 
 
+
+test('온라인 after_roll 사용 안 함은 윷 결과를 유지하고 이동 단계로 전환한다', () => {
+  const roll = { name: '걸', steps: 3 } as const;
+  const state = {
+    ...baseState(),
+    turnIndex: 0,
+    roll,
+    rollStack: [roll],
+    selectedRollStackIndex: 0,
+    itemPromptTiming: 'after_roll',
+    pendingAfterMoveTurnIndex: 1,
+    logs: [],
+  } as EngineState & { itemPromptTiming: 'after_roll'; rollStack: typeof roll[]; selectedRollStackIndex: number; pendingAfterMoveTurnIndex: number };
+
+  const result = reduceAuthoritativeGameAction(
+    state,
+    { type: 'use_item', actorId: 'seat-1', payload: { skipAfterRollItem: true } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(result.status, 'committed');
+  assert.equal(result.patch?.itemPromptTiming, null);
+  assert.equal(result.patch?.turnDeadlineKind, 'move');
+  assert.equal(result.patch?.turnIndex, undefined);
+  assert.equal(result.patch?.roll, undefined);
+  assert.equal(result.patch?.rollStack, undefined);
+  assert.equal(result.patch?.selectedRollStackIndex, undefined);
+  assert.equal(result.patch?.pendingAfterMoveTurnIndex, undefined);
+});
+
 test('온라인 after_move 사용 안 함은 보류된 다음 턴으로 서버 턴을 진행한다', () => {
   const state = {
     ...baseState(),
