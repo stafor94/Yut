@@ -11,6 +11,7 @@ export type GameErrorCode =
   | 'TURN_ORDER_PHASE_ACTIVE'
   | 'TURN_ORDER_INTRO_ACTIVE'
   | 'PENDING_TRAP_PLACEMENT'
+  | 'PENDING_ITEM_PROMPT'
   | 'ROLL_ALREADY_EXISTS'
   | 'ROLL_REQUIRED'
   | 'MOVABLE_PIECE_REQUIRED';
@@ -111,6 +112,7 @@ export function getGameErrorMessage(code: string) {
     TURN_ORDER_PHASE_ACTIVE: '차례 순서를 정하는 중입니다.',
     TURN_ORDER_INTRO_ACTIVE: '차례 순서 안내가 끝난 뒤 진행해주세요.',
     PENDING_TRAP_PLACEMENT: '함정 설치 선택이 먼저 필요합니다.',
+    PENDING_ITEM_PROMPT: '아이템 사용 여부를 먼저 선택해주세요.',
     ROLL_ALREADY_EXISTS: '이미 윷을 던졌습니다. 말을 이동해주세요.',
     ROLL_REQUIRED: '먼저 윷을 던져주세요.',
     MOVABLE_PIECE_REQUIRED: '이동할 수 있는 말을 선택해주세요.',
@@ -131,6 +133,7 @@ const validateCommonTurnCommand = (state: EngineState, actorId: string, options:
   if (state.turnOrderPhase?.active) return reject('TURN_ORDER_PHASE_ACTIVE');
   if (isTurnOrderIntroActive(state.turnOrderIntro)) return reject('TURN_ORDER_INTRO_ACTIVE');
   if (state.pendingTrapPlacement) return reject('PENDING_TRAP_PLACEMENT');
+  if ((state as { itemPromptTiming?: unknown }).itemPromptTiming === 'after_roll') return reject('PENDING_ITEM_PROMPT');
   if (options.requireNoRoll && state.roll) return reject('ROLL_ALREADY_EXISTS');
   if (options.requireRoll && !state.roll) return reject('ROLL_REQUIRED');
   return null;
