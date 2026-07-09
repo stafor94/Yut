@@ -106,6 +106,7 @@ jobs:
         with:
           name: build-and-unit
       - name: Run QA
+        shell: bash
         run: |
           set -o pipefail
           $QA_COMMAND 2>&1 | tee "$QA_LOG"
@@ -149,6 +150,7 @@ jobs:
         with:
           name: build-and-unit
       - name: Run online recovery QA
+        shell: bash
         run: |
           set -o pipefail
           npm run test:qa-online-turn-recovery 2>&1 | tee playwright-qa-online-turn-recovery.log
@@ -214,6 +216,7 @@ jobs:
         with:
           name: build-and-unit
       - name: Run cleanup/layout QA
+        shell: bash
         run: |
           set -o pipefail
           npm run test:qa-cleanup-layout-regression 2>&1 | tee playwright-qa-cleanup-layout-regression.log
