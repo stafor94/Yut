@@ -277,6 +277,7 @@ export function App() {
   const currentRollRef = useRef<YutResult | null>(null);
   const rollAnimationTimerRef = useRef<number | null>(null);
   const pendingItemPickupResolverRef = useRef<(() => void) | null>(null);
+  const pendingItemPickupRef = useRef<PendingItemPickup | null>(null);
   const shouldAdvanceTurnAfterItemPromptRef = useRef(false);
   const lastSequenceWatchdogAtRef = useRef(0);
   const stalledTurnWatchKeyRef = useRef('');
@@ -542,7 +543,7 @@ export function App() {
     turnOrderIntroActive: Boolean(activeTurnOrderIntro),
     movingPieceId,
     pendingTrapPlacement: trapPlacementActive,
-    pendingItemPrompt: activeItemPromptTypes.length > 0,
+    pendingItemPrompt: Boolean(pendingItemPickup) || activeItemPromptTypes.length > 0,
     pendingGameStateSave: hasPendingGameStateSave,
     pendingLocalRemoteActionCount: effectivePendingLocalRemoteActionCount,
     processingActionCount: processingActionIdsRef.current.size,
@@ -555,7 +556,7 @@ export function App() {
     remoteActionClient: false,
     rollInProgress,
   };
-  const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
+  const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, pendingItemPickup, effectivePendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canSubmitTurnAction = canSubmitTurnActionFromEngine(turnActionGuardInput);
   const selectedPieceCanMove = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
   const activeSeatPiecesOnBoard = useMemo(() => activeSeat
@@ -575,7 +576,7 @@ export function App() {
     && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
   const canRequestMove = Boolean(canSubmitTurnAction && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && (canMoveSelectedPiece || noMovableBackDoRoll));
   const canUseMoveButton = canRequestMove;
-  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeRoomId, activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, effectivePendingLocalRemoteActionCount, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
+  const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeRoomId, activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingItemPickup, effectivePendingLocalRemoteActionCount, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
   const stalledTurnMovablePieces = useMemo(() => {
     if (!roll || !activeSeat) return [];
@@ -588,7 +589,7 @@ export function App() {
     return hasPieceOnBoard ? stalledTurnMovablePieces[0] : [...stalledTurnMovablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0];
   }, [activeSeat, pieces, roll, stalledTurnMovablePieces]);
   const stalledTurnNeedsBranchChoice = Boolean(stalledTurnFallbackPiece && roll && roll.steps > 0 && stalledTurnFallbackPiece.started && BRANCH_NODE_IDS.includes(stalledTurnFallbackPiece.nodeId as typeof BRANCH_NODE_IDS[number]));
-  const stalledTurnWatchKey = activeRoomId && screen === 'game' && roll && activeSeat
+  const stalledTurnWatchKey = activeRoomId && screen === 'game' && !pendingItemPickup && roll && activeSeat
     ? `${activeRoomId}:${lastAppliedSequenceRef.current}:${turnIndex}:${activeSeat.id}:${roll.name}:${roll.steps}:stack:${stalledTurnRollStackIndex ?? 'none'}:${rollStack.map((stackRoll) => `${stackRoll.name}:${stackRoll.steps}`).join('|')}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`
     : '';
   const stalledTurnAgeMs = stalledTurnWatchKey && stalledTurnStartedAtRef.current ? Math.max(0, Date.now() - stalledTurnStartedAtRef.current) : 0;
@@ -608,6 +609,7 @@ export function App() {
     && !rollAnimation
     && !movingPieceId
     && !moveInProgress
+    && !pendingItemPickup
     && !pendingTrapPlacement
     && stalledTurnMovablePieces.length > 0
     && stalledTurnSyncAgeMs >= TURN_ACTION_TIMEOUT_MS,
@@ -941,6 +943,10 @@ export function App() {
   useEffect(() => {
     currentRollRef.current = roll;
   }, [roll]);
+
+  useEffect(() => {
+    pendingItemPickupRef.current = pendingItemPickup;
+  }, [pendingItemPickup]);
 
   useEffect(() => {
     piecesRef.current = pieces;
@@ -1364,7 +1370,14 @@ export function App() {
     if (updateVersion && stateVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
     if (updateSequence && 'lastSequence' in state) lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, Number(state.lastSequence ?? 0));
     if (activeRoomId && (stateVersion > 0 || Number((state as { lastSequence?: unknown }).lastSequence ?? 0) > 0)) setAuthoritativeGameStateReady(true);
-    const nextRoll = (state.roll as YutResult | null | undefined) ?? null;
+    const itemPickupPending = Boolean(pendingItemPickupRef.current);
+    const syncedRoll = (state.roll as YutResult | null | undefined) ?? null;
+    const nextRoll = itemPickupPending ? currentRollRef.current : syncedRoll;
+    const syncedRollStack = ((state.rollStack as YutResult[] | undefined) ?? []);
+    const nextRollStack = itemPickupPending ? rollStack : syncedRollStack;
+    const syncedSelectedRollStackIndex = typeof state.selectedRollStackIndex === 'number' ? state.selectedRollStackIndex : null;
+    const nextSelectedRollStackIndex = itemPickupPending ? selectedRollStackIndex : syncedSelectedRollStackIndex;
+    const nextRollStackClosed = itemPickupPending ? rollStackClosed : Boolean(state.rollStackClosed);
     const syncedGameSeats = (state.gameSeats as GameSeatSnapshot[] | undefined) ?? [];
     if (syncedGameSeats.length) setSeats((currentSeats) => preserveLockedGameSeats(currentSeats, seatsFromGameSeatSnapshots(syncedGameSeats, playMode, maxPlayers)));
     const lastClientMutationId = (state as { lastClientMutationId?: unknown }).lastClientMutationId;
@@ -1390,9 +1403,9 @@ export function App() {
     else setPieces(syncedPieces);
     setTurnIndex(nextTurnIndex);
     setRoll(nextRoll);
-    setRollStack(((state.rollStack as YutResult[] | undefined) ?? []));
-    setSelectedRollStackIndex(typeof state.selectedRollStackIndex === 'number' ? state.selectedRollStackIndex : null);
-    setRollStackClosed(Boolean(state.rollStackClosed));
+    setRollStack(nextRollStack);
+    setSelectedRollStackIndex(nextSelectedRollStackIndex);
+    setRollStackClosed(nextRollStackClosed);
     if (state.boardItems) setBoardItems(state.boardItems);
     if (state.ownedItems) setOwnedItems(state.ownedItems as Record<string, ItemType[]>);
     if (state.trapNodes) setTrapNodes(state.trapNodes as TrapNode[]);
@@ -1423,9 +1436,8 @@ export function App() {
     setLastMovedPieceIds((state.lastMovedPieceIds as string[] | undefined) ?? []);
     setLastMovedSeatId(state.lastMovedSeatId ?? '');
     const syncedItemPromptTiming = (state.itemPromptTiming as ItemTiming | null | undefined) ?? null;
-    const syncedSelectedRollStackIndex = typeof state.selectedRollStackIndex === 'number' ? state.selectedRollStackIndex : null;
     const syncedItemPromptKey = syncedItemPromptTiming ? makeItemPromptKey(syncedItemPromptTiming, nextTurnIndex, syncedSelectedRollStackIndex) : '';
-    setItemPromptTiming(syncedItemPromptKey && resolvedItemPromptKeysRef.current.has(syncedItemPromptKey) ? null : syncedItemPromptTiming);
+    setItemPromptTiming(itemPickupPending || (syncedItemPromptKey && resolvedItemPromptKeysRef.current.has(syncedItemPromptKey)) ? null : syncedItemPromptTiming);
     setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
     setRollResultReadyAt(nextRollResultReadyAt);
     setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
@@ -1444,9 +1456,9 @@ export function App() {
       lastFinishedSeatId: String(state.lastFinishedSeatId ?? ''),
       continuationRound: Number(state.continuationRound ?? 0),
       roll: nextRoll,
-      rollStack: (state.rollStack as YutResult[] | undefined) ?? [],
-      selectedRollStackIndex: typeof state.selectedRollStackIndex === 'number' ? state.selectedRollStackIndex : null,
-      rollStackClosed: Boolean(state.rollStackClosed),
+      rollStack: nextRollStack,
+      selectedRollStackIndex: nextSelectedRollStackIndex,
+      rollStackClosed: nextRollStackClosed,
       boardItems: (state.boardItems as BoardItem[] | undefined) ?? [],
       ownedItems: (state.ownedItems as Record<string, ItemType[]> | undefined) ?? {},
       trapNodes: (state.trapNodes as TrapNode[] | undefined) ?? [],
@@ -1455,7 +1467,7 @@ export function App() {
       gameStartedAt: (state.gameStartedAt as number | null | undefined) ?? null,
       turnOrderIntro: (state.turnOrderIntro as TurnOrderIntro | null | undefined) ?? null,
       pendingTrapPlacement: (state.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? null,
-      itemPromptTiming: (state.itemPromptTiming as ItemTiming | null | undefined) ?? null,
+      itemPromptTiming: itemPickupPending ? null : syncedItemPromptTiming,
       pendingAfterMoveTurnIndex: typeof state.pendingAfterMoveTurnIndex === 'number' ? state.pendingAfterMoveTurnIndex : null,
       rollLockUntil: Number(state.rollLockUntil ?? 0),
       lastMovedPieceIds: syncedLastMovedPieceIds,
@@ -1848,12 +1860,12 @@ export function App() {
   }, [rollResultReadyAt]);
 
   useEffect(() => {
-    if (!activeRoomId && screen === 'game' && roll && isMyTurn && !movingPieceId) showItemPrompt('after_roll');
-  }, [roll]);
+    if (!pendingItemPickup && !activeRoomId && screen === 'game' && roll && isMyTurn && !movingPieceId) showItemPrompt('after_roll');
+  }, [pendingItemPickup, roll]);
 
   useEffect(() => {
-    if (!activeRoomId && screen === 'game' && lastMovedSeatId === localSeatId && !movingPieceId && (!stackedRollMode || rollStack.length === 0)) showItemPrompt('after_move');
-  }, [lastMovedPieceIds, lastMovedSeatId, localSeatId, stackedRollMode, rollStack.length]);
+    if (!pendingItemPickup && !activeRoomId && screen === 'game' && lastMovedSeatId === localSeatId && !movingPieceId && (!stackedRollMode || rollStack.length === 0)) showItemPrompt('after_move');
+  }, [pendingItemPickup, lastMovedPieceIds, lastMovedSeatId, localSeatId, stackedRollMode, rollStack.length]);
 
 
   useEffect(() => {
@@ -1896,7 +1908,7 @@ export function App() {
   }, [roll?.name, roll?.steps]);
 
   useEffect(() => {
-    if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || itemPromptTiming || !activeSeat || !activeSeat.isAI || isMyTurn || roll || movingPieceId || pendingTrapPlacement) return undefined;
+    if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || pendingItemPickup || itemPromptTiming || !activeSeat || !activeSeat.isAI || isMyTurn || roll || movingPieceId || pendingTrapPlacement) return undefined;
     if (!canCoordinateOnlineGame) return undefined;
     const actionKey = `${activeSeat.id}:${turnIndex}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (aiTurnActionKeyRef.current) return undefined;
@@ -1906,7 +1918,7 @@ export function App() {
       void autoPlayTurn(activeSeat, actionKey);
     }, TURN_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, activeTurnOrderIntro, canCoordinateOnlineGame, isMyTurn, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingTrapPlacement, pieces, roll, screen, turnIndex, turnOrderPhase.active, winner]);
+  }, [activeRoomId, activeSeat, activeTurnOrderIntro, canCoordinateOnlineGame, isMyTurn, pendingItemPickup, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingTrapPlacement, pieces, roll, screen, turnIndex, turnOrderPhase.active, winner]);
 
 
   useEffect(() => {
@@ -1967,17 +1979,17 @@ export function App() {
   }, [activeSeat?.id, canRollNow, localSeatId, roll, rollAnimation, screen, turnActionTimeoutPenaltyBySeatId]);
 
   useEffect(() => {
-    if (screen !== 'game' || !canRequestMove || !roll || rollResultHolding || movingPieceId) return undefined;
+    if (screen !== 'game' || pendingItemPickup || !canRequestMove || !roll || rollResultHolding || movingPieceId) return undefined;
     const timeoutMs = getTurnActionTimeoutMs(activeSeat?.id ?? localSeatId);
     const timer = window.setTimeout(() => {
       markTurnActionTimedOut(activeSeat?.id ?? localSeatId);
       void moveSelectedPiece(0, { timedOut: true });
     }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [activeSeat?.id, canRequestMove, localSeatId, movingPieceId, roll, rollResultHolding, screen, selectedPieceId, turnActionTimeoutPenaltyBySeatId]);
+  }, [activeSeat?.id, canRequestMove, localSeatId, movingPieceId, pendingItemPickup, roll, rollResultHolding, screen, selectedPieceId, turnActionTimeoutPenaltyBySeatId]);
 
   useEffect(() => {
-    if (!roll || !activeSeat || !isMyTurn || movingPieceId || winner || rollResultHolding || pendingTrapPlacement) return;
+    if (!roll || pendingItemPickup || !activeSeat || !isMyTurn || movingPieceId || winner || rollResultHolding || pendingTrapPlacement) return;
     const steps = roll.steps;
     const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (steps >= 0 || piece.started));
     if (movablePieces.length === 0) {
@@ -2013,7 +2025,7 @@ export function App() {
       }
     }, AUTO_SINGLE_MOVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, canRequestMove, isMyTurn, movingPieceId, pieces, turnSeats.length, roll, winner, rollResultHolding, pendingTrapPlacement]);
+  }, [activeRoomId, activeSeat, canRequestMove, isMyTurn, movingPieceId, pendingItemPickup, pieces, turnSeats.length, roll, winner, rollResultHolding, pendingTrapPlacement]);
 
   useEffect(() => {
     if (!startCountdownActive) {
@@ -2816,6 +2828,7 @@ export function App() {
   }
 
   function resolvePendingItemPickup() {
+    pendingItemPickupRef.current = null;
     setPendingItemPickup(null);
     pendingItemPickupResolverRef.current?.();
     pendingItemPickupResolverRef.current = null;
@@ -3206,7 +3219,7 @@ export function App() {
 
 
   useEffect(() => {
-    if (!stackedRollMode || !rollStackClosed || rollStack.length === 0) return;
+    if (pendingItemPickup || !stackedRollMode || !rollStackClosed || rollStack.length === 0) return;
     const firstRoll = rollStack[0];
     const allRemainingRollsSame = rollStack.length > 1 && firstRoll && rollStack.every((stackRoll) => stackRoll.name === firstRoll.name && stackRoll.steps === firstRoll.steps);
     const nextIndex = rollStack.length === 1 || allRemainingRollsSame ? 0 : selectedRollStackIndex;
@@ -3220,7 +3233,7 @@ export function App() {
       setRoll(rollStack[nextIndex]);
       setRollResultReadyAt(0);
     }
-  }, [rollStack, rollStackClosed, roll, selectedRollStackIndex, stackedRollMode]);
+  }, [pendingItemPickup, rollStack, rollStackClosed, roll, selectedRollStackIndex, stackedRollMode]);
 
   useEffect(() => {
     if (!fallEffect) return undefined;
@@ -3435,7 +3448,9 @@ export function App() {
       const sameTimingItem = findItemWithSameTiming(currentItemsAfterConsumedItem, landedItem.type);
       if (sameTimingItem && seat.id === localSeatId && !seat.isAI) {
         itemPickupWait = new Promise<void>((resolve) => { pendingItemPickupResolverRef.current = resolve; });
-        setPendingItemPickup({ seatId: seat.id, item: landedItem.type, itemId: landedItem.id, existingItem: sameTimingItem, deadline: Date.now() + ITEM_REPLACE_TIMEOUT_MS });
+        const nextPendingItemPickup = { seatId: seat.id, item: landedItem.type, itemId: landedItem.id, existingItem: sameTimingItem, deadline: Date.now() + ITEM_REPLACE_TIMEOUT_MS };
+        pendingItemPickupRef.current = nextPendingItemPickup;
+        setPendingItemPickup(nextPendingItemPickup);
         addLog(`${getSeatDisplayName(seat)}님이 아이템 '${itemName}'을 발견했습니다. 같은 사용 조건의 아이템과 교체할지 선택해야 합니다.`);
       } else if (sameTimingItem && seat.isAI && getAiItemValue(landedItem.type) > getAiItemValue(sameTimingItem)) {
         setOwnedItems((items) => ({ ...items, [seat.id]: (items[seat.id] ?? []).map((type) => type === sameTimingItem ? landedItem.type : type) }));
@@ -3480,8 +3495,8 @@ export function App() {
         setCaptureEffect(effect);
         playSfx('capture');
         await delay(STEP_DELAY_MS * 2);
+        setCaptureEffect((current) => current?.id === effect.id ? null : current);
         setPieces((currentPieces) => currentPieces.map((piece) => capturedPieceIds.includes(piece.id) ? { ...piece, nodeIndex: 0, nodeId: 'n01', started: false, previousNodeId: undefined } : piece));
-        window.setTimeout(() => setCaptureEffect((current) => current?.id === effect.id ? null : current), 450);
       }
     }
     const consumingStackedRoll = stackedRollMode && typeof options.consumeStackedRollIndex === 'number';
@@ -3502,7 +3517,7 @@ export function App() {
     const hasAfterMoveItem = (ownedItems[localSeatId] ?? []).some((type) => ITEM_DEFINITIONS[type].timing === 'after_move')
       || (!itemPickupWait && landedItem && ITEM_DEFINITIONS[landedItem.type].timing === 'after_move');
     const shouldPromptAfterMoveItem = canPromptAfterMoveItem && hasAfterMoveItem && (!consumingStackedRoll || remainingRollStack.length === 0);
-    if (shouldAdvanceTurn && itemPickupWait) await itemPickupWait;
+    if (itemPickupWait) await itemPickupWait;
     if (shouldAdvanceTurn) shouldAdvanceTurnAfterItemPromptRef.current = Boolean(shouldPromptAfterMoveItem);
     if (shouldAdvanceTurn && !shouldPromptAfterMoveItem) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
     setTurnDeadlineAt(Date.now() + (shouldPromptAfterMoveItem ? getItemPromptTimeoutMs(localSeatId) : TURN_ACTION_TIMEOUT_MS));
@@ -3555,6 +3570,10 @@ export function App() {
   }
 
   function moveSelectedPiece(extraSteps = 0, options: { timedOut?: boolean; rollStackIndexOverride?: number } = {}) {
+    if (pendingItemPickupRef.current) {
+      reportTurnActionBlocked('move_piece', ['pending-item-pickup'], '아이템 교체 선택을 먼저 완료해주세요');
+      return false;
+    }
     if (screen === 'game' && !activeRoomId) {
       reportTurnActionFailure('move_piece', '온라인 방 정보가 없어 진행할 수 없습니다.');
       return false;
@@ -4403,8 +4422,12 @@ export function App() {
       selectedRollStackIndex={selectedRollStackIndex}
       rollStackClosed={rollStackClosed}
       shieldedPieceIds={shieldedPieceIds}
-      onSelectRollStackIndex={setSelectedRollStackIndex}
-      onMoveRollStackIndex={(index) => { setSelectedRollStackIndex(index); moveSelectedPiece(0, { timedOut: true, rollStackIndexOverride: index }); }}
+      onSelectRollStackIndex={(index) => { if (!pendingItemPickupRef.current) setSelectedRollStackIndex(index); }}
+      onMoveRollStackIndex={(index) => {
+        if (pendingItemPickupRef.current) return;
+        setSelectedRollStackIndex(index);
+        moveSelectedPiece(0, { timedOut: true, rollStackIndexOverride: index });
+      }}
       moveSelectionTimedOut={Boolean(turnDeadlineKind === 'move' && turnDeadlineAt && playTimeNow >= turnDeadlineAt)}
       playerPanelSeats={playerPanelSeats}
       completedSeatIds={completedSeatIds}
