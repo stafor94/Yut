@@ -292,6 +292,12 @@ const getSelectedStackIndex = (state: SyncedGameStateShape) => {
   return index >= 0 ? index : null;
 };
 const makeAuthoritativeTrapCandidateNodeIds = (nodeId: string) => getNearbyNodeIds(nodeId, 1).filter((candidateNodeId) => candidateNodeId !== 'n01');
+const getRollWithStepDelta = (roll: unknown, delta: number): YutResult | null => {
+  if (!roll || typeof roll !== 'object') return null;
+  const current = roll as YutResult;
+  if (typeof current.steps !== 'number' || typeof current.name !== 'string') return null;
+  return { ...current, steps: current.steps + delta };
+};
 
 function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
   if (action.payload?.cancelTrapPlacement === true) {
@@ -356,6 +362,7 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
     if (state.lastMovedSeatId !== action.actorId) return makeActionReject('방금 이동한 플레이어만 사용할 수 있습니다.');
     if (state.itemPromptTiming !== 'after_move' && typeof state.pendingAfterMoveTurnIndex !== 'number') return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
   } else if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
+  if (itemTiming === 'after_roll' && state.itemPromptTiming !== 'after_roll') return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
   const nextOwnedItems = removeOneItem(state.ownedItems, action.actorId, itemType);
   if (!nextOwnedItems) return makeActionReject('보유한 아이템이 없습니다.');
   const now = Date.now();
@@ -418,6 +425,68 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
         turnDeadlineKind: 'trap_placement',
       },
       payload: { activeSeatId: action.actorId, itemType, pieceId: piece.id, nodeIds },
+    };
+  }
+
+  if (itemType === 'move_plus_one' || itemType === 'move_minus_one') {
+    const delta = itemType === 'move_plus_one' ? 1 : -1;
+    const nextRoll = getRollWithStepDelta(state.roll, delta);
+    if (!nextRoll) return makeActionReject('변경할 윷 결과가 없습니다.');
+    const stackIndex = room.stackedRollMode ? (typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : getSelectedStackIndex(state)) : null;
+    const currentStack = [...(((state.rollStack as YutResult[] | undefined) ?? []))];
+    if (room.stackedRollMode && currentStack.length > 0) {
+      if (stackIndex === null || stackIndex < 0 || stackIndex >= currentStack.length) return makeActionReject('변경할 이동 스택을 찾을 수 없습니다.');
+      currentStack[stackIndex] = nextRoll;
+    }
+    return {
+      status: 'committed',
+      patch: {
+        ownedItems: nextOwnedItems,
+        roll: nextRoll,
+        ...(room.stackedRollMode && currentStack.length > 0 ? { rollStack: currentStack, selectedRollStackIndex: stackIndex } : {}),
+        itemPromptTiming: null,
+        turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
+        turnDeadlineKind: 'move',
+        logs: [makeAuthoritativeLog(logs, `${actorLogName}님이 ${ITEM_DEFINITIONS[itemType].name} 아이템을 사용했습니다.`), ...logs],
+      },
+      payload: { activeSeatId: action.actorId, itemType, roll: nextRoll, rollStackIndex: stackIndex },
+    };
+  }
+
+  if (itemType === 'shield') {
+    const lastMovedPieceIds = state.lastMovedPieceIds ?? [];
+    const pieces = state.pieces as AuthoritativePiece[];
+    const movedPiece = pieces.find((piece) => lastMovedPieceIds.includes(piece.id) && piece.started && !piece.finished && canActorControlAuthoritativePiece(action.actorId, piece, room, sides));
+    if (!movedPiece) return makeActionReject('방패를 씌울 말을 찾을 수 없습니다.');
+    const shieldTargets = pieces
+      .filter((piece) => piece.nodeId === movedPiece.nodeId && piece.started && !piece.finished && isSameAuthoritativeSide(piece.ownerId, action.actorId, room.playMode, sides))
+      .map((piece) => piece.id);
+    if (!shieldTargets.length) return makeActionReject('방패를 씌울 말을 찾을 수 없습니다.');
+    return {
+      status: 'committed',
+      patch: {
+        ownedItems: nextOwnedItems,
+        shieldedPieceIds: Array.from(new Set([...(state.shieldedPieceIds ?? []), ...shieldTargets])),
+        itemPromptTiming: null,
+        pendingTrapPlacement: null,
+        pendingAfterMoveTurnIndex: null,
+        turnIndex: Number(state.pendingAfterMoveTurnIndex ?? state.turnIndex ?? 0),
+        turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
+        turnDeadlineKind: 'roll',
+        logs: [makeAuthoritativeLog(logs, `${actorLogName}님의 방금 이동한 말에 방패를 씌웠습니다.`), ...logs],
+      },
+      payload: { activeSeatId: action.actorId, itemType, shieldTargets },
+    };
+  }
+
+  if (itemType === 'golden_yut') {
+    return {
+      status: 'committed',
+      patch: {
+        ownedItems: nextOwnedItems,
+        logs: [makeAuthoritativeLog(logs, `${actorLogName}님이 황금 윷을 사용했습니다.`), ...logs],
+      },
+      payload: { activeSeatId: action.actorId, itemType },
     };
   }
 

@@ -75,6 +75,7 @@ export type SequenceStateSnapshot = Partial<{
   gameStartedAt: number | null;
   turnOrderIntro: TurnOrderIntro | null;
   pendingTrapPlacement: PendingTrapPlacement | null;
+  pendingAfterMoveTurnIndex?: number | null;
   rollLockUntil: number;
   lastMovedPieceIds: string[];
   lastMovedSeatId: string;
@@ -113,6 +114,8 @@ export type GameStateFingerprintInput = {
   gameStartedAt: number | null;
   turnOrderIntro: TurnOrderIntro | null;
   pendingTrapPlacement: PendingTrapPlacement | null;
+  itemPromptTiming?: ItemTiming | null;
+  pendingAfterMoveTurnIndex?: number | null;
   rollLockUntil: number;
   lastMovedPieceIds: string[];
   lastMovedSeatId: string;
@@ -150,6 +153,8 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
   gameStartedAt: state.gameStartedAt,
   turnOrderIntro: state.turnOrderIntro,
   pendingTrapPlacement: state.pendingTrapPlacement,
+  itemPromptTiming: state.itemPromptTiming ?? null,
+  pendingAfterMoveTurnIndex: state.pendingAfterMoveTurnIndex ?? null,
   rollLockUntil: state.rollLockUntil,
   lastMovedPieceIds: state.lastMovedPieceIds,
   lastMovedSeatId: state.lastMovedSeatId,
