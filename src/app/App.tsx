@@ -3354,7 +3354,7 @@ export function App() {
     else rollYutFor(activeSeat, localRoll, null, { timingZone: rollTimingZone });
   }
 
-  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number; rollStackSnapshot?: YutResult[]; consumedItemType?: ItemType } = {}) {
+  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number; rollStackSnapshot?: YutResult[]; consumedItemType?: ItemType; deferFinalizationToAuthoritative?: boolean } = {}) {
     if (winner || movingPieceId || moveInProgressRef.current) return false;
     ensureRollLogExists(seat, result);
     setMoveInProgressState(true);
@@ -3518,24 +3518,26 @@ export function App() {
       || (!itemPickupWait && landedItem && ITEM_DEFINITIONS[landedItem.type].timing === 'after_move');
     const shouldPromptAfterMoveItem = canPromptAfterMoveItem && hasAfterMoveItem && (!consumingStackedRoll || remainingRollStack.length === 0);
     if (itemPickupWait) await itemPickupWait;
-    if (shouldAdvanceTurn) shouldAdvanceTurnAfterItemPromptRef.current = Boolean(shouldPromptAfterMoveItem);
-    if (shouldAdvanceTurn && !shouldPromptAfterMoveItem) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
-    setTurnDeadlineAt(Date.now() + (shouldPromptAfterMoveItem ? getItemPromptTimeoutMs(localSeatId) : TURN_ACTION_TIMEOUT_MS));
-    setTurnDeadlineKind(shouldPromptAfterMoveItem ? 'item_prompt' : 'roll');
-    setLastMovedPieceIds(movingGroupIds);
-    setLastMovedSeatId(seat.id);
-    if (shouldPromptAfterMoveItem) setItemPromptTiming('after_move');
-    setBranchChoice('outer');
-    clearRoll();
-    if (consumingStackedRoll) {
-      setRollStack(remainingRollStack);
-      setRollStackClosed(captured ? false : remainingRollStack.length > 0);
-      setSelectedRollStackIndex(!captured && remainingRollStack.length === 1 ? 0 : null);
-      if (!captured && remainingRollStack.length === 1) {
-        currentRollRef.current = remainingRollStack[0];
-        setRoll(remainingRollStack[0]);
+    if (!options.deferFinalizationToAuthoritative) {
+      if (shouldAdvanceTurn) shouldAdvanceTurnAfterItemPromptRef.current = Boolean(shouldPromptAfterMoveItem);
+      if (shouldAdvanceTurn && !shouldPromptAfterMoveItem) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+      setTurnDeadlineAt(Date.now() + (shouldPromptAfterMoveItem ? getItemPromptTimeoutMs(localSeatId) : TURN_ACTION_TIMEOUT_MS));
+      setTurnDeadlineKind(shouldPromptAfterMoveItem ? 'item_prompt' : 'roll');
+      if (shouldPromptAfterMoveItem) setItemPromptTiming('after_move');
+      clearRoll();
+      if (consumingStackedRoll) {
+        setRollStack(remainingRollStack);
+        setRollStackClosed(captured ? false : remainingRollStack.length > 0);
+        setSelectedRollStackIndex(!captured && remainingRollStack.length === 1 ? 0 : null);
+        if (!captured && remainingRollStack.length === 1) {
+          currentRollRef.current = remainingRollStack[0];
+          setRoll(remainingRollStack[0]);
+        }
       }
     }
+    setLastMovedPieceIds(movingGroupIds);
+    setLastMovedSeatId(seat.id);
+    setBranchChoice('outer');
     setMovingPieceId('');
     setMoveInProgressState(false);
     if (activeRoomId && canCoordinateOnlineGame && options.recordSequence !== false) {
@@ -3700,7 +3702,7 @@ export function App() {
       });
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) };
-      void movePiece(pieceToMove?.id ?? selectedPieceId, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice), { recordSequence: false, consumeStackedRollIndex: stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined });
+      void movePiece(pieceToMove?.id ?? selectedPieceId, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice), { recordSequence: false, consumeStackedRollIndex: stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined, deferFinalizationToAuthoritative: true });
       enqueueAuthoritativeGameAction(
         activeRoomId,
         action,
