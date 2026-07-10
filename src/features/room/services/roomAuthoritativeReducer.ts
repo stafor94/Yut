@@ -73,6 +73,15 @@ const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
   return rollYutResultWithTiming(timingZone).result;
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
+const isItemPromptTimeoutRecoveryPayload = (payload: Record<string, unknown> | undefined) => payload?.itemPromptTimeoutRecovery === true;
+const validateItemPromptTimeoutRecovery = (state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>) => {
+  if (!isItemPromptTimeoutRecoveryPayload(action.payload)) return null;
+  if (state.turnDeadlineKind !== 'item_prompt' || typeof state.turnDeadlineAt !== 'number') return '아이템 선택 시간초과 상태가 아닙니다.';
+  if (Date.now() < state.turnDeadlineAt) return '아이템 선택 시간이 아직 남아 있습니다.';
+  const expectedActorId = state.itemPromptTiming === 'after_move' ? state.lastMovedSeatId : (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)];
+  if (!expectedActorId || expectedActorId !== action.actorId) return '아이템 선택 시간초과 대상이 아닙니다.';
+  return null;
+};
 
 const hasUsableBeforeRollItem = (state: SyncedGameStateShape, actorId: string) => ((state.ownedItems as Record<string, ItemType[]> | undefined)?.[actorId] ?? [])
   .some((type) => ITEM_DEFINITIONS[type]?.timing === 'before_roll');
@@ -431,6 +440,8 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   }
 
   if (action.payload?.skipAfterRollItem === true) {
+    const timeoutRecoveryRejection = validateItemPromptTimeoutRecovery(state, action);
+    if (timeoutRecoveryRejection) return makeActionReject(timeoutRecoveryRejection);
     const rollStack = ((state.rollStack as YutResult[] | undefined) ?? []);
     const payloadRollStackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : null;
     const selectedRollStackIndex = payloadRollStackIndex !== null && payloadRollStackIndex >= 0 && payloadRollStackIndex < rollStack.length
@@ -460,6 +471,8 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   }
 
   if (action.payload?.skipBeforeRollItem === true) {
+    const timeoutRecoveryRejection = validateItemPromptTimeoutRecovery(state, action);
+    if (timeoutRecoveryRejection) return makeActionReject(timeoutRecoveryRejection);
     if (state.itemPromptTiming !== 'before_roll' || (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId || state.roll) {
       return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
     }
@@ -476,6 +489,8 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   }
 
   if (action.payload?.skipAfterMoveItem === true) {
+    const timeoutRecoveryRejection = validateItemPromptTimeoutRecovery(state, action);
+    if (timeoutRecoveryRejection) return makeActionReject(timeoutRecoveryRejection);
     if (state.itemPromptTiming !== 'after_move' || state.lastMovedSeatId !== action.actorId || typeof state.pendingAfterMoveTurnIndex !== 'number') {
       return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
     }

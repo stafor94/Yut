@@ -1792,23 +1792,26 @@ export function App() {
 
   useEffect(() => {
     if (!itemPromptTiming) return undefined;
-    const timeoutMs = getItemPromptTimeoutMs(localSeatId);
     const promptTiming = itemPromptTiming;
-    const timer = window.setTimeout(() => {
-      markTurnActionTimedOut(localSeatId);
-      if (activeRoomId) {
-        const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
+    if (activeRoomId) {
+      if (!canCoordinateOnlineGame || turnDeadlineKind !== 'item_prompt' || !turnDeadlineAt) return undefined;
+      const promptActorId = promptTiming === 'after_move' ? lastMovedSeatId : activeSeat?.id;
+      if (!promptActorId) return undefined;
+      const delayMs = Math.max(0, turnDeadlineAt - Date.now());
+      const timer = window.setTimeout(() => {
+        if (Date.now() < turnDeadlineAt) return;
+        markTurnActionTimedOut(promptActorId);
+        const skipSeat = playableSeats.find((seat) => seat.id === promptActorId);
         const promptRollStackIndex = selectedRollStackIndex;
-        markItemPromptResolved(promptTiming, promptRollStackIndex);
         const payload = promptTiming === 'before_roll'
-          ? { skipBeforeRollItem: true, timedOut: true }
+          ? { skipBeforeRollItem: true, timedOut: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: turnDeadlineAt }
           : promptTiming === 'after_roll'
-            ? { skipAfterRollItem: true, timedOut: true, rollStackIndex: promptRollStackIndex }
-            : { skipAfterMoveItem: true, timedOut: true };
-        const clientMutationId = getLocalActionKey('use_item', payload);
-        const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
+            ? { skipAfterRollItem: true, timedOut: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: turnDeadlineAt, rollStackIndex: promptRollStackIndex }
+            : { skipAfterMoveItem: true, timedOut: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: turnDeadlineAt };
+        const clientMutationId = `use_item_timeout_recovery:${activeRoomId}:${promptActorId}:${promptTiming}:${turnDeadlineAt}:${promptRollStackIndex ?? ''}`;
+        const action = { type: 'use_item' as const, actorId: promptActorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
         shouldAdvanceTurnAfterItemPromptRef.current = false;
-        addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: localSeatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+        addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: promptActorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
         void commitQueuedAuthoritativeGameAction(activeRoomId, action)
           .then(async (result) => {
             const applied = await applyAuthoritativeResultSequence(result);
@@ -1817,13 +1820,17 @@ export function App() {
             }
           })
           .finally(() => deletePendingLocalRemoteAction(clientMutationId));
-        return;
-      }
+      }, delayMs);
+      return () => window.clearTimeout(timer);
+    }
+    const timeoutMs = getItemPromptTimeoutMs(localSeatId);
+    const timer = window.setTimeout(() => {
+      markTurnActionTimedOut(localSeatId);
       setItemPromptTiming(null);
       finishPendingAfterMoveTurnAdvance();
     }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, itemPromptTiming, localSeatId, playableSeats, selectedRollStackIndex, turnActionTimeoutPenaltyBySeatId, turnIndex]);
+  }, [activeRoomId, activeSeat?.id, canCoordinateOnlineGame, itemPromptTiming, lastMovedSeatId, localSeatId, playableSeats, selectedRollStackIndex, turnActionTimeoutPenaltyBySeatId, turnDeadlineAt, turnDeadlineKind, turnIndex]);
 
   useEffect(() => {
     if (screen !== 'game' || !gameStartedAt) return undefined;
