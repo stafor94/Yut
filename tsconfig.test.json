@@ -21,6 +21,7 @@
     "src/game-core/board/board.ts",
     "src/game-core/gameEngine.ts",
     "src/game-core/roll.ts",
-    "tests/unit/**/*.ts"
+    "tests/unit/**/*.ts",
+    "src/app/diagnostics/gameDiagnostics.ts"
   ]
 }

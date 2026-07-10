@@ -89,7 +89,7 @@ import {
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
-import { makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
+import { makeBugReportSequenceExport, makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
 import '../styles/globals.css';
 
 const TURN_DELAY_MS = 1000;
@@ -2766,12 +2766,12 @@ export function App() {
         getLatestGameState(activeRoomId),
         getGameSequencesSince(activeRoomId, 0),
       ]);
-      setSequenceExportText(JSON.stringify({
+      setSequenceExportText(JSON.stringify(makeBugReportSequenceExport({
         capturedAt: new Date().toISOString(),
         roomId: activeRoomId,
         latestState,
         sequences,
-      }, null, 2));
+      }), null, 2));
       setSequenceExportCopied(false);
     } catch (error) {
       const messageText = error instanceof Error ? error.message : 'Firebase sequence 내보내기에 실패했습니다.';
