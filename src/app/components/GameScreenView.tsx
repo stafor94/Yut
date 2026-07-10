@@ -112,7 +112,7 @@ type GameScreenViewProps = {
 };
 
 export function GameScreenView({ activeItemPromptTypes, pendingItemPromptChoiceLabel, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canRollForTurnOrderNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, moveSelectionTimedOut, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, shieldedPieceIds, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenSequenceExportDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
-  const playerPanelActiveSeatId = activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder ? undefined : activeSeat?.id;
+  const activeGameSeatId = activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder ? undefined : activeSeat?.id;
 
   return <GameScreen>
     <GamePlayersPanel
@@ -122,7 +122,7 @@ export function GameScreenView({ activeItemPromptTypes, pendingItemPromptChoiceL
       itemMode={itemMode}
       stackedRollMode={stackedRollMode}
       seats={activeTurnOrderIntro || turnOrderPhase.active ? seats : playerPanelSeats}
-      activeSeatId={playerPanelActiveSeatId}
+      activeSeatId={activeGameSeatId}
       playMode={playMode}
       completedSeatIds={completedSeatIds}
       rankingSeatIds={rankingSeatIds}
@@ -179,7 +179,7 @@ export function GameScreenView({ activeItemPromptTypes, pendingItemPromptChoiceL
         displayBranchChoice={displayBranchChoice}
         onBranchChoiceChange={onBranchChoiceChange}
         canRequestMove={canRequestMove}
-        activeSeatId={activeSeat?.id}
+        activeSeatId={activeGameSeatId}
         activeSeatTurnText={activeSeatTurnText}
         getTurnActionTimeoutMs={getTurnActionTimeoutMs}
         turnActionTimeoutMs={turnActionTimeoutMs}
