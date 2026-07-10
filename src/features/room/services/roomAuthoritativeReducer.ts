@@ -2,6 +2,7 @@ import { GOLDEN_YUT_CHOICES, rollYutResultWithTiming, shouldFallForTimingZone, t
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
 import { getNearbyNodeIds, type BranchChoice } from '../../../game-core/board/board';
+import { TURN_ACTION_TIMEOUT_MS, TURN_NETWORK_GRACE_MS } from './roomTiming';
 
 type GameStatePatch = Record<string, unknown>;
 type RoomPlayerTeam = '청팀' | '홍팀';
@@ -53,7 +54,6 @@ type AuthoritativeTrapNode = { nodeId: string; ownerId: string };
 type AuthoritativePendingTrapPlacement = { ownerId?: string; pieceId?: string; nodeIds?: string[]; nextTurnIndex?: number; deadline?: number };
 type AuthoritativePendingItemPickup = { ownerId?: string; itemId?: string; itemType?: ItemType; existingItemType?: ItemType; deadline?: number; nextTurnIndex?: number; resumeItemPromptTiming?: 'after_move' | null; resumePendingAfterMoveTurnIndex?: number | null; resumeTurnDeadlineKind?: 'roll' | 'item_prompt'; };
 export type AuthoritativeSeatSide = { id: string; team: RoomPlayerTeam };
-const TURN_ACTION_TIMEOUT_MS = 15000;
 
 const getNextLogId = (logs: unknown[]) => logs.reduce<number>((maxId, log) => {
   if (log && typeof log === 'object' && 'id' in log) return Math.max(maxId, Number((log as { id?: unknown }).id) || 0);
@@ -75,19 +75,25 @@ const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
 const isItemPromptTimeoutRecoveryPayload = (payload: Record<string, unknown> | undefined) => payload?.itemPromptTimeoutRecovery === true;
 const isTrapPlacementTimeoutRecoveryPayload = (payload: Record<string, unknown> | undefined) => payload?.trapPlacementTimeoutRecovery === true;
+const validateTimeoutDeadline = (state: SyncedGameStateShape, payload: Record<string, unknown> | undefined, expectedKind: SyncedGameStateShape['turnDeadlineKind']) => {
+  if (state.turnDeadlineKind !== expectedKind || typeof state.turnDeadlineAt !== 'number') return '시간초과 상태가 아닙니다.';
+  if (payload?.timeoutDeadlineAt !== state.turnDeadlineAt) return '시간초과 대상 deadline이 아닙니다.';
+  if (Date.now() < state.turnDeadlineAt + TURN_NETWORK_GRACE_MS) return '시간초과 네트워크 유예 시간이 아직 남아 있습니다.';
+  return null;
+};
 const validateTrapPlacementTimeoutRecovery = (state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, placement: AuthoritativePendingTrapPlacement) => {
   if (!isTrapPlacementTimeoutRecoveryPayload(action.payload)) return null;
-  if (state.turnDeadlineKind !== 'trap_placement') return '함정 설치 시간초과 상태가 아닙니다.';
-  if (typeof placement.deadline !== 'number' || action.payload?.placementDeadline !== placement.deadline) return '함정 설치 시간초과 대상이 아닙니다.';
-  if (Date.now() < placement.deadline) return '함정 설치 시간이 아직 남아 있습니다.';
+  const deadlineRejection = validateTimeoutDeadline(state, action.payload, 'trap_placement');
+  if (deadlineRejection) return deadlineRejection;
+  if (typeof placement.deadline !== 'number' || action.payload?.placementDeadline !== placement.deadline || placement.deadline !== state.turnDeadlineAt) return '함정 설치 시간초과 대상이 아닙니다.';
   if (!placement.ownerId || placement.ownerId !== action.actorId) return '함정 설치 시간초과 대상이 아닙니다.';
   if (!placement.pieceId || action.payload?.pieceId !== placement.pieceId) return '함정 설치 시간초과 대상 말이 아닙니다.';
   return null;
 };
 const validateItemPromptTimeoutRecovery = (state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>) => {
   if (!isItemPromptTimeoutRecoveryPayload(action.payload)) return null;
-  if (state.turnDeadlineKind !== 'item_prompt' || typeof state.turnDeadlineAt !== 'number') return '아이템 선택 시간초과 상태가 아닙니다.';
-  if (Date.now() < state.turnDeadlineAt) return '아이템 선택 시간이 아직 남아 있습니다.';
+  const deadlineRejection = validateTimeoutDeadline(state, action.payload, 'item_prompt');
+  if (deadlineRejection) return deadlineRejection;
   const expectedActorId = state.itemPromptTiming === 'after_move' ? state.lastMovedSeatId : (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)];
   if (!expectedActorId || expectedActorId !== action.actorId) return '아이템 선택 시간초과 대상이 아닙니다.';
   return null;
@@ -167,6 +173,10 @@ function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand
 
 function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
   if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
+  if (action.payload?.timeoutRecoveredBy !== undefined || action.payload?.timeoutDeadlineAt !== undefined) {
+    const deadlineRejection = validateTimeoutDeadline(state, action.payload, 'roll');
+    if (deadlineRejection) return makeActionReject(deadlineRejection);
+  }
   if (action.payload?.forcedResult !== undefined || action.payload?.allowForcedResult !== undefined) return makeActionReject('허용되지 않은 윷 결과입니다.');
   const pendingGoldenYutSelection = state.pendingGoldenYutSelection as { actorId?: unknown; deadline?: unknown } | null | undefined;
   if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll' || state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') {
@@ -241,6 +251,10 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
 }
 function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
   if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
+  if (action.payload?.recoveredByCoordinator === true || action.payload?.timeoutRecoveredBy !== undefined || action.payload?.timeoutDeadlineAt !== undefined) {
+    const deadlineRejection = validateTimeoutDeadline(state, action.payload, 'move');
+    if (deadlineRejection) return makeActionReject(deadlineRejection);
+  }
   const payloadExtraSteps = Number(action.payload?.extraSteps ?? 0);
   if (!Number.isFinite(payloadExtraSteps) || payloadExtraSteps !== 0) return makeActionReject('허용되지 않은 추가 이동값입니다.');
   if (state.pendingItemPickup) return makeActionReject('아이템 교체 선택을 먼저 완료해주세요.');

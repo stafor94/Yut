@@ -5,6 +5,7 @@ import { chooseAiRollTimingZone, getFallChanceForTimingZone, getRollTimingZone, 
 import { canRoll, getRollActionBlockReasons, reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
 import { getRandomItemType } from '../../src/features/items/logic/items';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
+import { TURN_NETWORK_GRACE_MS } from '../../src/features/room/services/roomTiming';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from '../../src/app/flows/onlineGameCoordinator';
 
 const makeLog = (logs: EngineLog[], text: string): EngineLog => ({ id: logs.length + 1, text });
@@ -639,8 +640,8 @@ test('온라인 낙 확정은 stateAfter.roll이 null이어도 payload displayRo
 }));
 
 test('누적 던지기 모드는 시간초과 던지기로 이동 대기 상태가 되면 같은 턴 수동 던지기를 거부한다', () => withMockRandom([0.1], () => {
-  const timeoutRoll = reduceAuthoritativeGameAction(
-    { ...baseState(), logs: [] },
+  const timeoutRoll = withMockNow(1000 + TURN_NETWORK_GRACE_MS + 1, () => reduceAuthoritativeGameAction(
+    { ...baseState(), turnDeadlineKind: 'roll', turnDeadlineAt: 1000, logs: [] } as EngineState & { turnDeadlineKind: 'roll'; turnDeadlineAt: number },
     {
       type: 'roll_yut',
       actorId: 'seat-1',
@@ -648,10 +649,11 @@ test('누적 던지기 모드는 시간초과 던지기로 이동 대기 상태�
         rollTimingZone: 'perfect',
         timedOut: true,
         timeoutRecoveredBy: 'roll_timeout',
+        timeoutDeadlineAt: 1000,
       },
     },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
-  );
+  ));
 
   assert.equal(timeoutRoll.status, 'committed');
   assert.deepEqual(timeoutRoll.patch?.rollStack, [{ name: '도', steps: 1 }]);
@@ -931,6 +933,55 @@ test('온라인 after_move 사용 안 함은 보류된 다음 턴으로 서버 �
 });
 
 
+
+test('온라인 roll timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다', () => {
+  const deadline = 1000;
+  const state = { ...baseState(), turnDeadlineKind: 'roll', turnDeadlineAt: deadline, logs: [] } as EngineState & { turnDeadlineKind: 'roll'; turnDeadlineAt: number };
+  const early = withMockNow(deadline + TURN_NETWORK_GRACE_MS - 1, () => reduceAuthoritativeGameAction(
+    state,
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'normal', timedOut: true, timeoutDeadlineAt: deadline } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  ));
+  const staleDeadline = withMockNow(deadline + TURN_NETWORK_GRACE_MS + 1, () => reduceAuthoritativeGameAction(
+    state,
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'normal', timedOut: true, timeoutDeadlineAt: deadline - 1 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  ));
+  const committed = withMockNow(deadline + TURN_NETWORK_GRACE_MS + 1, () => reduceAuthoritativeGameAction(
+    state,
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'normal', timedOut: true, timeoutDeadlineAt: deadline } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  ));
+
+  assert.equal(early.status, 'rejected');
+  assert.equal(staleDeadline.status, 'rejected');
+  assert.equal(committed.status, 'committed');
+});
+
+test('온라인 move timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다', () => {
+  const deadline = 1000;
+  const state = {
+    ...baseState(),
+    roll: { name: '도', steps: 1 },
+    turnDeadlineKind: 'move',
+    turnDeadlineAt: deadline,
+    logs: [],
+  } as EngineState & { turnDeadlineKind: 'move'; turnDeadlineAt: number };
+  const early = withMockNow(deadline + TURN_NETWORK_GRACE_MS - 1, () => reduceAuthoritativeGameAction(
+    state,
+    { type: 'move_piece', actorId: 'seat-1', payload: { pieceId: 'p1', timedOut: true, timeoutDeadlineAt: deadline } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  ));
+  const committed = withMockNow(deadline + TURN_NETWORK_GRACE_MS + 1, () => reduceAuthoritativeGameAction(
+    state,
+    { type: 'move_piece', actorId: 'seat-1', payload: { pieceId: 'p1', timedOut: true, timeoutDeadlineAt: deadline } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  ));
+
+  assert.equal(early.status, 'rejected');
+  assert.equal(committed.status, 'committed');
+});
+
 test('온라인 아이템 timeout 복구는 deadline 전 조기 요청을 거부한다', () => {
   const result = reduceAuthoritativeGameAction(
     {
@@ -940,12 +991,12 @@ test('온라인 아이템 timeout 복구는 deadline 전 조기 요청을 거부
       turnDeadlineKind: 'item_prompt',
       turnDeadlineAt: Date.now() + 10000,
     } as EngineState & { itemPromptTiming: 'after_roll'; turnDeadlineKind: 'item_prompt'; turnDeadlineAt: number },
-    { type: 'use_item', actorId: 'seat-1', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true } },
+    { type: 'use_item', actorId: 'seat-1', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: Date.now() - TURN_NETWORK_GRACE_MS - 1 } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
   );
 
   assert.equal(result.status, 'rejected');
-  assert.equal(result.reason, '아이템 선택 시간이 아직 남아 있습니다.');
+  assert.equal(result.reason, '시간초과 대상 deadline이 아닙니다.');
 });
 
 test('온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치를 거부한다', () => {
@@ -955,9 +1006,9 @@ test('온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치�
       roll: { name: '도', steps: 1 },
       itemPromptTiming: 'after_roll',
       turnDeadlineKind: 'item_prompt',
-      turnDeadlineAt: Date.now() - 1,
+      turnDeadlineAt: Date.now() - TURN_NETWORK_GRACE_MS - 1,
     } as EngineState & { itemPromptTiming: 'after_roll'; turnDeadlineKind: 'item_prompt'; turnDeadlineAt: number },
-    { type: 'use_item', actorId: 'seat-2', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true } },
+    { type: 'use_item', actorId: 'seat-2', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: Date.now() - TURN_NETWORK_GRACE_MS - 1 } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
   );
 
@@ -972,9 +1023,9 @@ test('온라인 coordinator 아이템 deadline 복구는 실제 actor skip으로
       roll: { name: '도', steps: 1 },
       itemPromptTiming: 'after_roll',
       turnDeadlineKind: 'item_prompt',
-      turnDeadlineAt: Date.now() - 1,
+      turnDeadlineAt: Date.now() - TURN_NETWORK_GRACE_MS - 1,
     } as EngineState & { itemPromptTiming: 'after_roll'; turnDeadlineKind: 'item_prompt'; turnDeadlineAt: number },
-    { type: 'use_item', actorId: 'seat-1', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: Date.now() - 1 } },
+    { type: 'use_item', actorId: 'seat-1', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: Date.now() - TURN_NETWORK_GRACE_MS - 1 } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
   );
 
@@ -1253,9 +1304,9 @@ test('온라인 함정 설치 시간초과 취소는 서버에서 다음 턴으�
     logs: [],
   } as EngineState & { pendingTrapPlacement: unknown; pendingAfterMoveTurnIndex: number; turnDeadlineKind: 'trap_placement'; turnDeadlineAt: number };
 
-  const result = withMockNow(1001, () => reduceAuthoritativeGameAction(
+  const result = withMockNow(1000 + TURN_NETWORK_GRACE_MS + 1, () => reduceAuthoritativeGameAction(
     state,
-    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: placement.deadline } },
+    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: placement.deadline, timeoutDeadlineAt: placement.deadline } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
   ));
 
@@ -1277,19 +1328,19 @@ test('온라인 함정 설치 시간초과 취소는 owner·piece·deadline이 �
     logs: [],
   } as EngineState & { pendingTrapPlacement: unknown; turnDeadlineKind: 'trap_placement'; turnDeadlineAt: number };
 
-  const wrongPiece = withMockNow(1001, () => reduceAuthoritativeGameAction(
+  const wrongPiece = withMockNow(1000 + TURN_NETWORK_GRACE_MS + 1, () => reduceAuthoritativeGameAction(
     state,
-    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p2', placementDeadline: placement.deadline } },
+    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p2', placementDeadline: placement.deadline, timeoutDeadlineAt: placement.deadline } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
   ));
-  const wrongDeadline = withMockNow(1001, () => reduceAuthoritativeGameAction(
+  const wrongDeadline = withMockNow(1000 + TURN_NETWORK_GRACE_MS + 1, () => reduceAuthoritativeGameAction(
     state,
-    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: 999 } },
+    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: 999, timeoutDeadlineAt: placement.deadline } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
   ));
-  const wrongOwner = withMockNow(1001, () => reduceAuthoritativeGameAction(
+  const wrongOwner = withMockNow(1000 + TURN_NETWORK_GRACE_MS + 1, () => reduceAuthoritativeGameAction(
     state,
-    { type: 'use_item', actorId: 'seat-2', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: placement.deadline } },
+    { type: 'use_item', actorId: 'seat-2', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: placement.deadline, timeoutDeadlineAt: placement.deadline } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
   ));
 
@@ -1308,12 +1359,12 @@ test('온라인 함정 설치 시간초과 전 위조 취소는 거부한다', (
       turnDeadlineAt: placement.deadline,
       logs: [],
     } as EngineState & { pendingTrapPlacement: unknown; turnDeadlineKind: 'trap_placement'; turnDeadlineAt: number },
-    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: placement.deadline } },
+    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: placement.deadline, timeoutDeadlineAt: placement.deadline } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
   ));
 
   assert.equal(result.status, 'rejected');
-  assert.equal(result.reason, '함정 설치 시간이 아직 남아 있습니다.');
+  assert.equal(result.reason, '시간초과 네트워크 유예 시간이 아직 남아 있습니다.');
 });
 
 test('온라인 after_move 대기가 끝난 stale 함정 use_item은 거부한다', () => {

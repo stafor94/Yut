@@ -5,6 +5,7 @@ import { isAuthoritativeCommitReduction, reduceAuthoritativeGameAction, type Aut
 import { DELETE_BATCH_SIZE, ROOM_SUBCOLLECTIONS, getClientMutationDocRef, makeFirestoreSafeId, makeSequenceDocId, sanitizeForFirestore } from './roomFirestore';
 import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board/board';
 import { type YutResult } from '../../../game-core/roll';
+import { TURN_NETWORK_GRACE_MS } from './roomTiming';
 
 export interface RoomSummary {
   id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; roomConfigVersion?: number;
@@ -58,7 +59,8 @@ const isExpiredItemPromptTimeoutRecoveryAction = (state: SyncedGameState, action
   && action.payload?.itemPromptTimeoutRecovery === true
   && state.turnDeadlineKind === 'item_prompt'
   && typeof state.turnDeadlineAt === 'number'
-  && Date.now() >= state.turnDeadlineAt
+  && action.payload?.timeoutDeadlineAt === state.turnDeadlineAt
+  && Date.now() >= state.turnDeadlineAt + TURN_NETWORK_GRACE_MS
 );
 
 const isExpiredTrapPlacementTimeoutRecoveryAction = (state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => {
@@ -72,7 +74,9 @@ const isExpiredTrapPlacementTimeoutRecoveryAction = (state: SyncedGameState, act
     && action.payload?.pieceId === placement.pieceId
     && typeof placement.deadline === 'number'
     && action.payload?.placementDeadline === placement.deadline
-    && Date.now() >= placement.deadline;
+    && action.payload?.timeoutDeadlineAt === state.turnDeadlineAt
+    && placement.deadline === state.turnDeadlineAt
+    && Date.now() >= placement.deadline + TURN_NETWORK_GRACE_MS;
 };
 
 const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.startsWith(QA_ROOM_TITLE_PREFIX);
