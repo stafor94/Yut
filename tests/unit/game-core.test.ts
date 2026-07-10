@@ -1161,3 +1161,63 @@ test('온라인 after_move 대기 후 사용 안 함은 서버 pendingAfterMoveT
   assert.equal(result.patch?.pendingAfterMoveTurnIndex, null);
   assert.equal(result.patch?.turnDeadlineKind, 'roll');
 });
+
+test('온라인 황금 윷은 사용 후 서버 선택 대기를 기록하고 선택 결과를 그대로 확정한다', () => {
+  const used = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      ownedItems: { 'seat-1': ['golden_yut'] },
+      itemPromptTiming: 'before_roll',
+      logs: [],
+    } as EngineState & { itemPromptTiming: 'before_roll' },
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'golden_yut' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(used.status, 'committed');
+  assert.deepEqual(used.patch?.pendingGoldenYutSelection, { actorId: 'seat-1', deadline: used.patch?.turnDeadlineAt });
+
+  const selected = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      ...used.patch,
+      logs: used.patch?.logs ?? [],
+    } as EngineState & { pendingGoldenYutSelection: unknown },
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'normal', selectedGoldenYutResult: { name: '모', steps: 5, bonus: true } } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(selected.status, 'committed');
+  assert.deepEqual(selected.patch?.roll, { name: '모', steps: 5, bonus: true });
+  assert.equal(selected.patch?.pendingGoldenYutSelection, null);
+});
+
+test('온라인 황금 윷 선택 대기는 다른 actor의 결과 선택을 거부한다', () => {
+  const result = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pendingGoldenYutSelection: { actorId: 'seat-1', deadline: Date.now() + 10000 },
+      logs: [],
+    } as EngineState & { pendingGoldenYutSelection: unknown },
+    { type: 'roll_yut', actorId: 'seat-2', payload: { rollTimingZone: 'normal', selectedGoldenYutResult: { name: '모', steps: 5, bonus: true } } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(result.status, 'rejected');
+});
+
+test('온라인 일반 roll은 황금 윷 선택 결과와 잘못된 입력 시간을 거부한다', () => {
+  const forgedGolden = reduceAuthoritativeGameAction(
+    baseState(),
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'normal', selectedGoldenYutResult: { name: '모', steps: 5, bonus: true } } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+  const badTiming = reduceAuthoritativeGameAction(
+    baseState(),
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'invalid' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(forgedGolden.status, 'rejected');
+  assert.equal(badTiming.status, 'rejected');
+});

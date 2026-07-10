@@ -3267,8 +3267,7 @@ export function App() {
     setRollTimingFeedback(rollTimingZone);
     const fallOccurred = !forcedRoll && shouldFallForTimingZone(rollTimingZone);
     if (activeRoomId) {
-      const localRoll = forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result;
-      const rollPayload = { rollTimingZone, stackedRollMode };
+      const rollPayload = { rollTimingZone, stackedRollMode, ...(forcedRoll ? { selectedGoldenYutResult: forcedRoll } : {}) };
       const actionKey = `${getLocalActionKey('roll_yut', rollPayload)}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
       if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
         reportTurnActionBlocked('roll_yut', ['pending-local-remote-action'], '이미 윷 던지기 요청을 처리 중입니다');
@@ -3279,23 +3278,11 @@ export function App() {
         actorId: localSeatId,
         createdSequence: lastAppliedSequenceRef.current,
         createdTurnIndex: turnIndex,
-        optimisticApplied: true,
+        optimisticApplied: false,
       });
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'roll_yut' as const, actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) };
-      const optimisticRoll = fallOccurred ? null : stackedRollMode ? rollYutForStack(activeSeat, localRoll, action, { recordSequence: false, timingZone: rollTimingZone }) : rollYutFor(activeSeat, localRoll, action, { recordSequence: false, timingZone: rollTimingZone });
-      if (fallOccurred) {
-        setRollStack([]);
-        setSelectedRollStackIndex(null);
-        setRollStackClosed(false);
-        applyLocalFall(activeSeat, rollTimingZone, localRoll, action, { recordSequence: false });
-      }
-      if (!fallOccurred && !optimisticRoll) {
-        deletePendingLocalRemoteAction(actionKey);
-        localClientMutationIdsRef.current.delete(actionKey);
-        reportTurnActionBlocked('roll_yut', ['roll-in-progress'], '윷 던지기를 진행할 수 없습니다');
-        return;
-      }
+      if (forcedRoll) setForcedRoll(null);
 
       const finishPendingRoll = () => {
         deletePendingLocalRemoteAction(actionKey);
@@ -3309,7 +3296,7 @@ export function App() {
             void handleAuthoritativeActionRejected('roll_yut', 'commit-result', result, {
               actionKey,
               fallbackMessage: '윷 던지기 처리에 실패했습니다.',
-              optimisticApplied: true,
+              optimisticApplied: false,
               resyncMessage: '서버가 윷 던지기 요청을 거부해 최신 authoritative 상태로 되돌립니다.',
             });
             return;
@@ -3330,9 +3317,6 @@ export function App() {
               setRollStackClosed(Boolean(result.patch?.rollStackClosed));
             }
             const committedRollResultReadyAt = normalizeRollResultReadyAt(Number(result.patch?.rollResultReadyAt ?? 0));
-            if (committedRoll && optimisticRoll && (committedRoll.name !== optimisticRoll.name || committedRoll.steps !== optimisticRoll.steps)) {
-              recordRemoteActionDiagnostic('roll_yut', 'optimistic-mismatch', '서버 윷 결과가 로컬 선반영 결과와 달라 최신 상태를 동기화합니다.', { status: result.status, actionKey });
-            }
             if (committedRoll && !currentRollRef.current) {
               currentRollRef.current = committedRoll;
               setRoll(committedRoll);
@@ -3750,22 +3734,22 @@ export function App() {
     return true;
   }
 
-  async function submitAiStackedRoll(seat: Seat, nextRoll: YutResult, timingZone: RollTimingZone | undefined) {
+  async function submitAiStackedRoll(seat: Seat, nextRoll: YutResult | null, timingZone: RollTimingZone | undefined, selectedGoldenYutResult?: YutResult | null) {
     if (!activeRoomId || !canCoordinateOnlineGame) {
-      return Boolean(rollYutForStack(seat, nextRoll, null, { timingZone }));
+      const offlineRoll = selectedGoldenYutResult ?? nextRoll;
+      return Boolean(offlineRoll && rollYutForStack(seat, offlineRoll, null, { timingZone }));
     }
-    const rollPayload = { rollTimingZone: timingZone, stackedRollMode: true };
-    const actionKey = `roll_yut_ai_stack:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStack.length}:${nextRoll.name}:${nextRoll.steps}:${Date.now()}`;
+    const rollPayload = { rollTimingZone: timingZone ?? 'normal', stackedRollMode: true, coordinatorSeatId: localSeatId, ...(selectedGoldenYutResult ? { selectedGoldenYutResult } : {}) };
+    const actionRollKey = selectedGoldenYutResult ?? nextRoll;
+    const actionKey = `roll_yut_ai_stack:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStack.length}:${actionRollKey?.name ?? 'server'}:${actionRollKey?.steps ?? 'server'}:${Date.now()}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
     const action = { type: 'roll_yut' as const, actorId: seat.id, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, seat) };
-    const optimisticRoll = rollYutForStack(seat, nextRoll, action, { recordSequence: false, timingZone });
-    if (!optimisticRoll) return false;
     addPendingLocalRemoteAction(actionKey, {
       type: 'roll_yut',
       actorId: seat.id,
       createdSequence: lastAppliedSequenceRef.current,
       createdTurnIndex: turnIndex,
-      optimisticApplied: true,
+      optimisticApplied: false,
     });
     localClientMutationIdsRef.current.add(actionKey);
     try {
@@ -3780,7 +3764,7 @@ export function App() {
         await handleAuthoritativeActionRejected('roll_yut', 'ai-stack-roll-result', result, {
           actionKey,
           fallbackMessage: 'AI 누적 윷 던지기 처리에 실패했습니다.',
-          optimisticApplied: true,
+          optimisticApplied: false,
           resyncMessage: '서버가 AI 누적 윷 던지기를 거부해 최신 authoritative 상태로 재동기화합니다.',
         });
       }
@@ -3810,6 +3794,7 @@ export function App() {
       extraSteps: 0,
       branchChoice: 'outer' as BranchChoice,
       rollStackIndex,
+      coordinatorSeatId: localSeatId,
     };
     const remainingRollStackKey = remainingRollsAfterSkip.map((roll) => `${roll.name}:${roll.steps}`).join('|');
     const actionKey = `move_piece_ai_skip:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStackIndex}:${skippedRoll.name}:${skippedRoll.steps}:${remainingRollStackKey}`;
@@ -3898,9 +3883,10 @@ export function App() {
           do {
             const aiTimingZone = chooseAiRollTimingZone();
             setRollTimingFeedback(aiTimingZone);
-            const stackedRoll = pendingForcedRoll ?? rollYutResultWithTiming(aiTimingZone).result;
+            const selectedGoldenRoll = pendingForcedRoll;
+            const stackedRoll = selectedGoldenRoll ?? rollYutResultWithTiming(aiTimingZone).result;
             pendingForcedRoll = null;
-            if (!await submitAiStackedRoll(seat, stackedRoll, aiTimingZone)) return false;
+            if (!await submitAiStackedRoll(seat, null, aiTimingZone, selectedGoldenRoll)) return false;
             stack.push(stackedRoll);
             await delay(ROLL_ANIMATION_MS + 120);
           } while (stack[stack.length - 1]?.bonus && canContinueAiTurn());

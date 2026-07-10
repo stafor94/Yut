@@ -21,7 +21,7 @@ const getCreatedAtMillis = (createdAt: unknown) => {
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSubstitutedByAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; enteredGameAt?: number; enteredStartVersion?: number; lastGamePresenceAt?: number; playerId?: string; currentPlayerId?: string; originalPlayerId?: string; }
 export interface RoomSeat { id: string; playerId: string; originalPlayerId?: string; currentPlayerId?: string; nickname?: string; color?: string; team?: RoomPlayer['team']; seatIndex?: number; label?: string; isHost?: boolean; aiActive?: boolean; aiName?: string; isSubstitutedByAI?: boolean; status?: 'human' | 'ai_substitute' | 'disconnected' | 'removed'; updatedAt?: unknown; createdAt?: unknown; }
 export type GameSeatSnapshot = { id: string; label: string; name: string; color: string; team: RoomPlayer['team']; isHost?: boolean; isAI?: boolean; isSubstitutedByAI?: boolean; seatIndex: number };
-export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollStack?: unknown[]; selectedRollStackIndex?: number | null; rollStackClosed?: boolean; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; fallEffect?: unknown | null; lastRollTimingZone?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; pendingAfterMoveTurnIndex?: number; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; turnDeadlineAt?: number; turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | ''; startRequestVersion?: number; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollStack?: unknown[]; selectedRollStackIndex?: number | null; rollStackClosed?: boolean; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; fallEffect?: unknown | null; lastRollTimingZone?: unknown | null; pendingGoldenYutSelection?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; pendingAfterMoveTurnIndex?: number; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; turnDeadlineAt?: number; turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | ''; startRequestVersion?: number; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'game_finished';
@@ -37,11 +37,14 @@ const STALE_PLAYER_DELETE_MS = 45000;
 const ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 
-const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null) => {
+const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, action?: Pick<GameAction, 'payload'>) => {
   if (!auth) return true;
-  if (player?.isAI || player?.isSubstitutedByAI) return true;
   const uid = auth.currentUser?.uid;
   if (!uid) return false;
+  if (player?.isAI || player?.isSubstitutedByAI) {
+    const coordinatorSeatId = action?.payload?.coordinatorSeatId ?? action?.payload?.timeoutRecoveredBy ?? action?.payload?.recoveredBy;
+    return uid === room.hostId || coordinatorSeatId === uid;
+  }
   return [playerId, player?.playerId, player?.currentPlayerId, player?.originalPlayerId]
     .some((candidate) => typeof candidate === 'string' && candidate === uid);
 };
@@ -716,7 +719,7 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
     const actorSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', action.actorId));
     const actorPlayer = actorSnapshot.exists() ? actorSnapshot.data() as RoomPlayer : null;
-    if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer)) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
+    if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer, room, action)) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
     const currentVersion = Number(state.turnVersion ?? 0);
     const currentSequence = Number(state.lastSequence ?? 0);
     let actionSides: AuthoritativeSeatSide[] = [];
