@@ -64,7 +64,10 @@ test.describe('BUG_HISTORY regression smoke', () => {
       }, { timeout: 45_000, message: '온라인 sequence replay를 확인할 수 있는 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
 
       await page.getByTestId('roll-yut-button').click();
-      await expect(page.locator('.roll-stage'), `윷 던지기 sequence replay 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('.roll-stage.pending-roll'), `클릭 직후 서버 확정 전 pending 윷 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 500 });
+      await expect(page.locator('.roll-stage.pending-roll .roll-label'), 'pending 단계에서는 결과명을 추측할 수 있는 label을 숨겨야 합니다.').toHaveCount(0);
+      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), `서버 authoritative 윷 결과 label이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), 'authoritative 결과 label은 한 번만 표시되어야 합니다.').toHaveCount(1);
     });
 
     await runQaStep(testInfo, '말 이동 직후 preview 제거 확인', async () => {
