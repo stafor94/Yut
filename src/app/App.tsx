@@ -241,6 +241,7 @@ export function App() {
   const [goldenYutPickerOpen, setGoldenYutPickerOpen] = useState(false);
   const [pendingGoldenYutSelection, setPendingGoldenYutSelection] = useState<{ actorId: string; deadline: number } | null>(null);
   const [itemPromptTiming, setItemPromptTiming] = useState<ItemTiming | null>(null);
+  const [pendingItemPromptChoice, setPendingItemPromptChoice] = useState<{ actionKey: string; timing: ItemTiming; itemType: ItemType | null } | null>(null);
   const [pendingAfterMoveTurnIndex, setPendingAfterMoveTurnIndex] = useState<number | null>(null);
   const resolvedItemPromptKeysRef = useRef<Set<string>>(new Set());
   const [rollLockUntil, setRollLockUntil] = useState(0);
@@ -540,6 +541,12 @@ export function App() {
   const shouldWaitForAuthoritativeTurnSync = Boolean(activeRoomId && screen === 'game' && pendingLocalRemoteActionCount > 0 && !isMyTurn);
   const effectivePendingLocalRemoteActionCount = shouldWaitForAuthoritativeTurnSync ? pendingLocalRemoteActionCount : 0;
   const activeItemPromptTypes = itemPromptTiming && !trapPlacementActive ? getUsableHostItems(itemPromptTiming) : [];
+  const pendingItemPromptChoiceLabel = pendingItemPromptChoice
+    ? pendingItemPromptChoice.itemType
+      ? `${ITEM_DEFINITIONS[pendingItemPromptChoice.itemType].name} 처리 중...`
+      : '사용 안 함 처리 중...'
+    : '';
+  const hasPendingUseItemActionFor = (actorId = localSeatId) => Array.from(pendingLocalRemoteActionMetaRef.current.values()).some((meta) => meta.type === 'use_item' && meta.actorId === actorId && meta.createdTurnIndex === turnIndex);
   const turnActionGuardInput = {
     activeSeatId: activeSeat?.id,
     actorId: localSeatId,
@@ -1952,6 +1959,11 @@ export function App() {
     }, timeoutMs);
     return () => window.clearTimeout(timer);
   }, [activeRoomId, activeSeat?.id, canCoordinateOnlineGame, itemPromptTiming, lastMovedSeatId, localSeatId, pendingLocalRemoteActionCount, playableSeats, selectedRollStackIndex, turnActionTimeoutPenaltyBySeatId, turnDeadlineAt, turnDeadlineKind, turnIndex]);
+
+  useEffect(() => {
+    if (!pendingItemPromptChoice) return;
+    if (!pendingLocalRemoteActionsRef.current.has(pendingItemPromptChoice.actionKey)) setPendingItemPromptChoice(null);
+  }, [pendingItemPromptChoice, pendingLocalRemoteActionCount]);
 
   useEffect(() => {
     if (screen !== 'game' || !gameStartedAt) return undefined;
@@ -4446,16 +4458,18 @@ export function App() {
     const isAfterMoveItem = ITEM_DEFINITIONS[type].timing === 'after_move';
     if (isAfterMoveItem && lastMovedSeatId !== itemOwnerId) return;
     if (activeRoomId && actorId === localSeatId) {
-      markItemPromptResolved(ITEM_DEFINITIONS[type].timing, selectedRollStackIndex);
-      setItemPromptTiming(null);
+      if (hasPendingUseItemActionFor(actorId) || pendingLocalRemoteActionsRef.current.has(clientMutationId)) return;
+      const promptTiming = ITEM_DEFINITIONS[type].timing;
       const payload = { ...itemActionPayload, pieceId: (type === 'trap' || type === 'shield') ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, rollStackIndex: selectedRollStackIndex };
       const action = { type: 'use_item' as const, actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) };
+      setPendingItemPromptChoice({ actionKey: clientMutationId, timing: promptTiming, itemType: type });
       addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
         .then(async (result) => {
           const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
           if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
           if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+            setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
             removeSettledPendingLocalRemoteAction(clientMutationId);
             await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 사용을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
             return;
@@ -4829,6 +4843,7 @@ export function App() {
     {screen === 'waitingRoom' && countdown >= 0 && startStatus === 'requested' && Date.now() >= startCountdownStartsAt && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={cancelStartCountdown}>취소</button>}</div></div>}
     {screen === 'game' && <GameScreenView
       activeItemPromptTypes={activeItemPromptTypes}
+      pendingItemPromptChoiceLabel={pendingItemPromptChoiceLabel}
       activeMovablePiece={activeMovablePiece}
       activeRoomTitle={activeRoomTitle}
       activeSeat={activeSeat}
@@ -4928,9 +4943,8 @@ export function App() {
       onSkipItemPrompt={() => {
         if (activeRoomId) {
           const promptTiming = itemPromptTiming;
+          if (!promptTiming || hasPendingUseItemActionFor(localSeatId)) return;
           const promptRollStackIndex = selectedRollStackIndex;
-          markItemPromptResolved(promptTiming, promptRollStackIndex);
-          setItemPromptTiming(null);
           const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
           const payload = promptTiming === 'before_roll'
             ? { skipBeforeRollItem: true }
@@ -4938,14 +4952,17 @@ export function App() {
               ? { skipAfterRollItem: true, rollStackIndex: promptRollStackIndex }
               : { skipAfterMoveItem: true };
           const clientMutationId = getLocalActionKey('use_item', payload);
+          if (pendingLocalRemoteActionsRef.current.has(clientMutationId)) return;
           const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
           shouldAdvanceTurnAfterItemPromptRef.current = false;
+          setPendingItemPromptChoice({ actionKey: clientMutationId, timing: promptTiming, itemType: null });
           addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: localSeatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
           void commitQueuedAuthoritativeGameAction(activeRoomId, action)
             .then(async (result) => {
               const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
               if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
               if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+                setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
                 removeSettledPendingLocalRemoteAction(clientMutationId);
                 await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
               }
