@@ -85,11 +85,11 @@ export function useGameStatePersistence({
         if (pendingSequenceMetaRef.current?.clientMutationId === pendingSequenceMeta?.clientMutationId) pendingSequenceMetaRef.current = null;
       }
       if (result.status === 'sequence_mismatch') {
-        keepCoordinatorStateSavePending = true;
-        pendingSequenceMetaRef.current = pendingSequenceMeta;
+        pendingSequenceMetaRef.current = null;
         if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
         if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
-        keepCoordinatorStateSavePending = scheduleCoordinatorRetry();
+        if (coordinatorSaveRetryRef.current.timer) window.clearTimeout(coordinatorSaveRetryRef.current.timer);
+        coordinatorSaveRetryRef.current = { roomId: activeRoomId, fingerprint: '', count: 0, timer: 0 };
       }
     }).catch(() => {
       keepCoordinatorStateSavePending = true;

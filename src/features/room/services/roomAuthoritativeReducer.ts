@@ -39,6 +39,7 @@ type SyncedGameStateShape = {
   ownedItems?: unknown;
   fallEffect?: unknown;
   lastRollTimingZone?: unknown;
+  pendingGoldenYutSelection?: unknown;
 };
 type GameActionShape = { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
 export type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string; patch?: GameStatePatch; payload?: Record<string, unknown> };
@@ -57,13 +58,16 @@ const getNextLogId = (logs: unknown[]) => logs.reduce<number>((maxId, log) => {
   return maxId;
 }, 0) + 1;
 const makeAuthoritativeLog = (logs: unknown[], text: string): AuthoritativeLog => ({ id: getNextLogId(logs), text });
+const isValidRollTimingZone = (value: unknown): value is RollTimingZone => value === 'perfect' || value === 'good' || value === 'normal';
 const isValidYutResult = (value: unknown): value is YutResult => {
   if (!value || typeof value !== 'object') return false;
   const result = value as Partial<YutResult>;
   return typeof result.name === 'string' && typeof result.steps === 'number' && result.steps >= -1 && result.steps <= 5;
 };
 const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
-  const timingZone = (payload?.rollTimingZone as RollTimingZone | undefined) ?? 'normal';
+  const selectedGoldenYutResult = payload?.selectedGoldenYutResult;
+  if (isValidYutResult(selectedGoldenYutResult)) return selectedGoldenYutResult;
+  const timingZone = isValidRollTimingZone(payload?.rollTimingZone) ? payload.rollTimingZone : 'normal';
   return rollYutResultWithTiming(timingZone).result;
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
@@ -143,16 +147,23 @@ function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand
 function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
   if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
   if (action.payload?.forcedResult !== undefined || action.payload?.allowForcedResult !== undefined) return makeActionReject('허용되지 않은 윷 결과입니다.');
+  const pendingGoldenYutSelection = state.pendingGoldenYutSelection as { actorId?: unknown; deadline?: unknown } | null | undefined;
   if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll' || state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') {
     return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   }
-  if (!state.roll && hasUsableBeforeRollItem(state, action.actorId)) return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
+  if (!pendingGoldenYutSelection && !state.roll && hasUsableBeforeRollItem(state, action.actorId)) return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   if (room.stackedRollMode && state.rollStackClosed === true) {
     return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
   }
+  const selectedGoldenYutResult = action.payload?.selectedGoldenYutResult;
+  if (pendingGoldenYutSelection) {
+    if (pendingGoldenYutSelection.actorId !== action.actorId) return makeActionReject('황금 윷 결과를 선택할 권한이 없습니다.');
+    if (!isValidYutResult(selectedGoldenYutResult)) return makeActionReject('황금 윷 결과를 선택해주세요.');
+  } else if (selectedGoldenYutResult !== undefined) return makeActionReject('황금 윷 선택 대기 상태가 아닙니다.');
+  const timingZone = action.payload?.rollTimingZone;
+  if (!isValidRollTimingZone(timingZone)) return makeActionReject('허용되지 않은 윷 입력 시간입니다.');
   const nextRoll = getAuthoritativeRoll(action.payload);
-  const timingZone = (action.payload?.rollTimingZone as RollTimingZone | undefined) ?? 'normal';
-  const fallOccurred = shouldFallForTimingZone(timingZone);
+  const fallOccurred = pendingGoldenYutSelection ? false : shouldFallForTimingZone(timingZone);
   const now = Date.now();
   const baseReduction = toAuthoritativeReduction(reduceRollCommand({
     state: makeEngineState({ ...state, roll: room.stackedRollMode ? null : state.roll }),
@@ -173,6 +184,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
       turnDeadlineAt: shouldPromptAfterRoll ? now + 2600 + TURN_ACTION_TIMEOUT_MS : fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
       turnDeadlineKind: shouldPromptAfterRoll ? 'item_prompt' : fallOccurred ? 'roll' : 'move',
       itemPromptTiming: shouldPromptAfterRoll ? 'after_roll' : null,
+      pendingGoldenYutSelection: null,
     };
     baseReduction.payload = {
       ...baseReduction.payload,
@@ -558,11 +570,12 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
       patch: {
         ownedItems: nextOwnedItems,
         itemPromptTiming: null,
+        pendingGoldenYutSelection: { actorId: action.actorId, deadline: now + TURN_ACTION_TIMEOUT_MS },
         turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
         turnDeadlineKind: 'roll',
-        logs: [makeAuthoritativeLog(logs, `${actorLogName}님이 황금 윷을 사용했습니다.`), ...logs],
+        logs: [makeAuthoritativeLog(logs, `${actorLogName}님이 황금 윷을 사용했습니다. 결과 선택을 기다립니다.`), ...logs],
       },
-      payload: { activeSeatId: action.actorId, itemType },
+      payload: { activeSeatId: action.actorId, itemType, pendingGoldenYutSelection: true },
     };
   }
 
