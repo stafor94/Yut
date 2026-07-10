@@ -397,7 +397,6 @@ export function App() {
   const trapPlacementNodeIds = pendingTrapPlacement?.nodeIds ?? [];
   const selectedBranchControlKey = selectedPiece && roll && selectedPiece.started && BRANCH_NODE_IDS.includes(selectedPiece.nodeId as typeof BRANCH_NODE_IDS[number]) ? `${selectedPiece.id}:${selectedPiece.nodeId}:${roll.name}:${roll.steps}` : '';
   const displayBranchChoice: BranchChoice = selectedBranchControlKey && lastBranchControlKeyRef.current !== selectedBranchControlKey ? 'shortcut' : branchChoice;
-  const previewNodeIds = useMemo(() => isMyTurn && !movingPieceId && canSeatControlPiece(activeSeat, selectedPiece) ? getMovePreviewNodeIds(selectedPiece, roll, displayBranchChoice) : [], [activeSeat, displayBranchChoice, isMyTurn, movingPieceId, roll, selectedPiece]);
   const formatPlayTime = (elapsedMs: number) => {
     const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
     const hours = Math.floor(totalSeconds / 3600);
@@ -582,6 +581,7 @@ export function App() {
     && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
   const hasPendingOnlineMoveRequest = Boolean(activeRoomId && pendingLocalRemoteActionCount > 0);
   const canRequestMove = Boolean(canSubmitTurnAction && !hasPendingOnlineMoveRequest && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && (canMoveSelectedPiece || noMovableBackDoRoll));
+  const previewNodeIds = useMemo(() => canRequestMove && canSeatControlPiece(activeSeat, selectedPiece) ? getMovePreviewNodeIds(selectedPiece, roll, displayBranchChoice) : [], [activeSeat, canRequestMove, displayBranchChoice, roll, selectedPiece]);
   const canUseMoveButton = canRequestMove;
   const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeRoomId, activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingItemPickup, effectivePendingLocalRemoteActionCount, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
@@ -1588,19 +1588,23 @@ export function App() {
   }
 
   async function replayMissingSequencesThenApply(finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) {
-    const shouldApplyLatestSnapshotWithoutReplay = onlineGameRole === 'spectator' || localSequence <= 0;
+    const replayStartSequence = localSequence;
+    const replayTargetSequence = remoteSequence;
+    const shouldApplyLatestSnapshotWithoutReplay = onlineGameRole === 'spectator' || replayStartSequence <= 0;
     if (shouldApplyLatestSnapshotWithoutReplay) {
       applySyncedStateSnapshot(finalState, { allowMoveAnimation: false, updateVersion: true, updateSequence: true });
       return;
     }
     if (!activeRoomId || sequenceReplayInProgressRef.current) {
-      queuedSyncedStateRef.current = finalState;
+      const queuedSequence = Number(queuedSyncedStateRef.current?.lastSequence ?? 0);
+      const nextSequence = Number(finalState.lastSequence ?? replayTargetSequence);
+      if (nextSequence > queuedSequence) queuedSyncedStateRef.current = finalState;
       return;
     }
     sequenceReplayInProgressRef.current = true;
     try {
-      const sequences = (await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence)))
-        .filter((sequence) => Number(sequence.sequence ?? 0) > lastAppliedSequenceRef.current && Number(sequence.sequence ?? 0) <= remoteSequence)
+      const sequences = (await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(replayStartSequence)))
+        .filter((sequence) => Number(sequence.sequence ?? 0) > replayStartSequence && Number(sequence.sequence ?? 0) <= replayTargetSequence)
         .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
       for (const sequence of sequences) {
         const sequenceNumber = Number(sequence.sequence ?? 0);
@@ -3186,7 +3190,6 @@ export function App() {
     }
     if (resultSequence > localSequence) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
     else applySyncedStateSnapshot(latestState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true });
-    lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, resultSequence);
     if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
     return latestState ?? null;
   }
@@ -3423,22 +3426,12 @@ export function App() {
           if (result.status === 'committed' || result.status === 'duplicate') {
             const committedFallEffect = (authoritativeState?.fallEffect as FallEffect | null | undefined) ?? (result.patch?.fallEffect as FallEffect | null | undefined);
             if (committedFallEffect) setFallEffect(committedFallEffect);
-            const committedRoll = authoritativeState ? (authoritativeState.roll as YutResult | null | undefined) : (result.patch?.roll as YutResult | null | undefined);
             const committedRollStack = authoritativeState ? (authoritativeState.rollStack as YutResult[] | undefined) : (result.patch?.rollStack as YutResult[] | undefined);
             if (committedRollStack) {
               setRollStack(committedRollStack);
               const committedSelectedRollStackIndex = authoritativeState ? authoritativeState.selectedRollStackIndex : result.patch?.selectedRollStackIndex;
               setSelectedRollStackIndex(typeof committedSelectedRollStackIndex === 'number' ? committedSelectedRollStackIndex : null);
               setRollStackClosed(Boolean(authoritativeState ? authoritativeState.rollStackClosed : result.patch?.rollStackClosed));
-            }
-            const committedRollResultReadyAt = normalizeRollResultReadyAt(Number(authoritativeState?.rollResultReadyAt ?? result.patch?.rollResultReadyAt ?? 0));
-            if (committedRoll && !currentRollRef.current) {
-              currentRollRef.current = committedRoll;
-              setRoll(committedRoll);
-              setRollResultReadyAt(committedRollResultReadyAt);
-              playRollAnimationOnce(committedRoll, makeDisplaySticks(committedRoll), `${turnIndex}:${committedRoll.name}:${committedRoll.steps}:${committedRollResultReadyAt}`, false, 0, (authoritativeState?.lastRollTimingZone as RollTimingZone | null | undefined) ?? (result.patch?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
-              playSfx('roll');
-              if (committedRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
             }
           }
         },
