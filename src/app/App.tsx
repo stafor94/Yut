@@ -3331,16 +3331,7 @@ export function App() {
       action,
       async (result) => {
         if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-          const localSequence = lastAppliedSequenceRef.current;
-          const resultSequence = result.sequence;
-          if (resultSequence > localSequence) {
-            const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
-            const latestState = [...sequences]
-              .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
-              .reverse()
-              .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-            if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
-          }
+          await applyAuthoritativeResultSequence(result);
           recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-committed', '윷 던지기 제한 시간 초과를 자동 처리했습니다.', { status: result.status, actionKey });
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
@@ -3383,16 +3374,7 @@ export function App() {
       action,
       async (result) => {
         if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-          const localSequence = lastAppliedSequenceRef.current;
-          const resultSequence = result.sequence;
-          if (resultSequence > localSequence) {
-            const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
-            const latestState = [...sequences]
-              .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
-              .reverse()
-              .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-            if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
-          }
+          await applyAuthoritativeResultSequence(result);
           recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-committed', '멈춘 턴 이동을 자동 복구했습니다.', { status: result.status, actionKey: payload.clientActionId });
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
@@ -3842,16 +3824,7 @@ export function App() {
             action,
             async (result) => {
               if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-                const localSequence = lastAppliedSequenceRef.current;
-                const resultSequence = result.sequence;
-                if (resultSequence > localSequence) {
-                  const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
-                  const latestState = [...sequences]
-                    .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
-                    .reverse()
-                    .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-                  if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
-                }
+                await applyAuthoritativeResultSequence(result);
                 acknowledgePendingLocalRemoteAction(actionKey);
               }
               if (result.status === 'rejected' || result.status === 'unsupported') {
@@ -3908,16 +3881,7 @@ export function App() {
         action,
         async (result) => {
           if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-            const localSequence = lastAppliedSequenceRef.current;
-            const resultSequence = result.sequence;
-            if (resultSequence > localSequence) {
-              const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
-              const latestState = [...sequences]
-                .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
-                .reverse()
-                .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-              if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
-            }
+            await applyAuthoritativeResultSequence(result);
             acknowledgePendingLocalRemoteAction(actionKey);
           }
           if (result.status === 'rejected' || result.status === 'unsupported') {
