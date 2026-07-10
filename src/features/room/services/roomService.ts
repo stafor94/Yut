@@ -37,13 +37,12 @@ const STALE_PLAYER_DELETE_MS = 45000;
 const ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 
-const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, action?: Pick<GameAction, 'payload'>) => {
+const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, options: { coordinatorPlayerIds?: string[] } = {}) => {
   if (!auth) return true;
   const uid = auth.currentUser?.uid;
   if (!uid) return false;
   if (player?.isAI || player?.isSubstitutedByAI) {
-    const coordinatorSeatId = action?.payload?.coordinatorSeatId ?? action?.payload?.timeoutRecoveredBy ?? action?.payload?.recoveredBy;
-    return uid === room.hostId || coordinatorSeatId === uid;
+    return uid === room.hostId || (options.coordinatorPlayerIds ?? []).includes(uid);
   }
   return [playerId, player?.playerId, player?.currentPlayerId, player?.originalPlayerId]
     .some((candidate) => typeof candidate === 'string' && candidate === uid);
@@ -719,7 +718,19 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
     const actorSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', action.actorId));
     const actorPlayer = actorSnapshot.exists() ? actorSnapshot.data() as RoomPlayer : null;
-    if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer, room, action)) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
+    let coordinatorPlayerIds: string[] = [];
+    if (actorPlayer?.isAI || actorPlayer?.isSubstitutedByAI) {
+      const snapshotSeats = (state.gameSeats ?? []) as GameSeatSnapshot[];
+      const coordinatorSeatId = snapshotSeats.find((seat) => !seat.isAI)?.id ?? '';
+      if (coordinatorSeatId) {
+        const coordinatorSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', coordinatorSeatId));
+        if (coordinatorSnapshot.exists()) {
+          const coordinator = coordinatorSnapshot.data() as RoomPlayer;
+          coordinatorPlayerIds = [coordinatorSeatId, coordinator.playerId, coordinator.currentPlayerId, coordinator.originalPlayerId].filter((candidate): candidate is string => typeof candidate === 'string' && Boolean(candidate));
+        }
+      }
+    }
+    if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer, room, { coordinatorPlayerIds })) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
     const currentVersion = Number(state.turnVersion ?? 0);
     const currentSequence = Number(state.lastSequence ?? 0);
     let actionSides: AuthoritativeSeatSide[] = [];

@@ -75,6 +75,7 @@ export type SequenceStateSnapshot = Partial<{
   gameStartedAt: number | null;
   turnOrderIntro: TurnOrderIntro | null;
   pendingTrapPlacement: PendingTrapPlacement | null;
+  pendingGoldenYutSelection: { actorId: string; deadline: number } | null;
   pendingAfterMoveTurnIndex?: number | null;
   rollLockUntil: number;
   lastMovedPieceIds: string[];
@@ -114,6 +115,7 @@ export type GameStateFingerprintInput = {
   gameStartedAt: number | null;
   turnOrderIntro: TurnOrderIntro | null;
   pendingTrapPlacement: PendingTrapPlacement | null;
+  pendingGoldenYutSelection?: { actorId: string; deadline: number } | null;
   itemPromptTiming?: ItemTiming | null;
   pendingAfterMoveTurnIndex?: number | null;
   rollLockUntil: number;

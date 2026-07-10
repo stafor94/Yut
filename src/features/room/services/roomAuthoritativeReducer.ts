@@ -1,4 +1,4 @@
-import { rollYutResultWithTiming, shouldFallForTimingZone, type RollTimingZone, type YutResult } from '../../../game-core/roll';
+import { GOLDEN_YUT_CHOICES, rollYutResultWithTiming, shouldFallForTimingZone, type RollTimingZone, type YutResult } from '../../../game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
 import { getNearbyNodeIds, type BranchChoice } from '../../../game-core/board/board';
@@ -59,14 +59,14 @@ const getNextLogId = (logs: unknown[]) => logs.reduce<number>((maxId, log) => {
 }, 0) + 1;
 const makeAuthoritativeLog = (logs: unknown[], text: string): AuthoritativeLog => ({ id: getNextLogId(logs), text });
 const isValidRollTimingZone = (value: unknown): value is RollTimingZone => value === 'perfect' || value === 'good' || value === 'normal';
-const isValidYutResult = (value: unknown): value is YutResult => {
+const isAllowedGoldenYutResult = (value: unknown): value is YutResult => {
   if (!value || typeof value !== 'object') return false;
   const result = value as Partial<YutResult>;
-  return typeof result.name === 'string' && typeof result.steps === 'number' && result.steps >= -1 && result.steps <= 5;
+  return GOLDEN_YUT_CHOICES.some((choice) => choice.name === result.name && choice.steps === result.steps && Boolean(choice.bonus) === Boolean(result.bonus));
 };
 const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
   const selectedGoldenYutResult = payload?.selectedGoldenYutResult;
-  if (isValidYutResult(selectedGoldenYutResult)) return selectedGoldenYutResult;
+  if (isAllowedGoldenYutResult(selectedGoldenYutResult)) return selectedGoldenYutResult;
   const timingZone = isValidRollTimingZone(payload?.rollTimingZone) ? payload.rollTimingZone : 'normal';
   return rollYutResultWithTiming(timingZone).result;
 };
@@ -156,13 +156,18 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
   }
   const selectedGoldenYutResult = action.payload?.selectedGoldenYutResult;
+  const pendingGoldenDeadline = Number(pendingGoldenYutSelection?.deadline ?? 0);
+  const pendingGoldenTimedOut = Boolean(pendingGoldenYutSelection && pendingGoldenDeadline > 0 && Date.now() >= pendingGoldenDeadline);
   if (pendingGoldenYutSelection) {
     if (pendingGoldenYutSelection.actorId !== action.actorId) return makeActionReject('황금 윷 결과를 선택할 권한이 없습니다.');
-    if (!isValidYutResult(selectedGoldenYutResult)) return makeActionReject('황금 윷 결과를 선택해주세요.');
+    if (selectedGoldenYutResult !== undefined && !isAllowedGoldenYutResult(selectedGoldenYutResult)) return makeActionReject('허용되지 않은 황금 윷 결과입니다.');
+    if (selectedGoldenYutResult === undefined && !pendingGoldenTimedOut) return makeActionReject('황금 윷 결과를 선택해주세요.');
   } else if (selectedGoldenYutResult !== undefined) return makeActionReject('황금 윷 선택 대기 상태가 아닙니다.');
   const timingZone = action.payload?.rollTimingZone;
   if (!isValidRollTimingZone(timingZone)) return makeActionReject('허용되지 않은 윷 입력 시간입니다.');
-  const nextRoll = getAuthoritativeRoll(action.payload);
+  const nextRoll = pendingGoldenYutSelection && selectedGoldenYutResult === undefined && pendingGoldenTimedOut
+    ? GOLDEN_YUT_CHOICES.find((choice) => choice.name === '도') ?? GOLDEN_YUT_CHOICES[0]
+    : getAuthoritativeRoll(action.payload);
   const fallOccurred = pendingGoldenYutSelection ? false : shouldFallForTimingZone(timingZone);
   const now = Date.now();
   const baseReduction = toAuthoritativeReduction(reduceRollCommand({
