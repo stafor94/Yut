@@ -110,7 +110,8 @@ const TURN_ORDER_ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_GRACE_MS = 1200;
 const ROLL_ANIMATION_MS = 2600;
 const ROLL_STUCK_TIMEOUT_MS = 12000;
-const PENDING_ROLL_MIN_VISIBLE_MS = 450;
+const PENDING_ROLL_MIN_VISIBLE_MS = 850;
+const RESOLVED_FROM_PENDING_ROLL_MS = 2600;
 const STALE_PENDING_REMOTE_ACTION_MS = 30000;
 const AI_AUTHORITATIVE_ACTION_RETRY_LIMIT = 2;
 const AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS = 700;
@@ -283,7 +284,7 @@ export function App() {
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
   const currentRollRef = useRef<YutResult | null>(null);
   const rollAnimationTimerRef = useRef<number | null>(null);
-  const pendingRollAnimationRef = useRef<{ actionKey: string; startedAt: number; resolveTimer: number | null } | null>(null);
+  const pendingRollAnimationRef = useRef<{ actionKey: string; animationId: number; startedAt: number; resolveTimer: number | null } | null>(null);
   const pendingItemPickupResolverRef = useRef<(() => void) | null>(null);
   const pendingItemPickupRef = useRef<PendingItemPickup | null>(null);
   const shouldAdvanceTurnAfterItemPromptRef = useRef(false);
@@ -1414,8 +1415,9 @@ export function App() {
       rollAnimationTimerRef.current = null;
     }
     clearPendingRollAnimation();
-    pendingRollAnimationRef.current = { actionKey, startedAt: Date.now(), resolveTimer: null };
-    setRollAnimation({ id: Date.now(), phase: 'pending', actionKey, sticks: makeDisplaySticks(rollYutResult(undefined, false).result) });
+    const animationId = Date.now();
+    pendingRollAnimationRef.current = { actionKey, animationId, startedAt: animationId, resolveTimer: null };
+    setRollAnimation({ id: animationId, phase: 'pending', actionKey, sticks: makeDisplaySticks(rollYutResult(undefined, false).result) });
   }
 
   function playResolvedRollAnimationAfterPending(result: YutResult, sticks: YutStick[], key: string, actionKey: string, fallCount = 0, timingZone?: RollTimingZone | null) {
@@ -1427,8 +1429,15 @@ export function App() {
     if (pending.resolveTimer !== null) return;
     const remainingMs = Math.max(0, PENDING_ROLL_MIN_VISIBLE_MS - (Date.now() - pending.startedAt));
     pending.resolveTimer = window.setTimeout(() => {
+      if (pendingRollAnimationRef.current?.actionKey !== actionKey) return;
       clearPendingRollAnimation(actionKey);
-      playRollAnimationOnce(result, sticks, key, false, fallCount, timingZone);
+      lastAnimatedRollKeyRef.current = key;
+      if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
+      setRollAnimation({ id: pending.animationId, phase: 'resolved-from-pending', result, sticks, fallCount, timingZone: timingZone ?? undefined });
+      rollAnimationTimerRef.current = window.setTimeout(() => {
+        setRollAnimation(null);
+        rollAnimationTimerRef.current = null;
+      }, RESOLVED_FROM_PENDING_ROLL_MS);
     }, remainingMs);
   }
 
