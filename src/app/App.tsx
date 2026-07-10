@@ -574,7 +574,8 @@ export function App() {
   const canMoveSelectedPiece = Boolean(activeMovablePiece);
   const noMovableBackDoRoll = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && selectedMoveSteps < 0
     && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
-  const canRequestMove = Boolean(canSubmitTurnAction && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && (canMoveSelectedPiece || noMovableBackDoRoll));
+  const hasPendingOnlineMoveRequest = Boolean(activeRoomId && pendingLocalRemoteActionCount > 0);
+  const canRequestMove = Boolean(canSubmitTurnAction && !hasPendingOnlineMoveRequest && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && (canMoveSelectedPiece || noMovableBackDoRoll));
   const canUseMoveButton = canRequestMove;
   const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeRoomId, activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingItemPickup, effectivePendingLocalRemoteActionCount, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
@@ -1771,7 +1772,11 @@ export function App() {
         const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
         const promptRollStackIndex = selectedRollStackIndex;
         markItemPromptResolved(promptTiming, promptRollStackIndex);
-        const payload = promptTiming === 'after_roll' ? { skipAfterRollItem: true, timedOut: true, rollStackIndex: promptRollStackIndex } : { skipAfterMoveItem: true, timedOut: true };
+        const payload = promptTiming === 'before_roll'
+          ? { skipBeforeRollItem: true, timedOut: true }
+          : promptTiming === 'after_roll'
+            ? { skipAfterRollItem: true, timedOut: true, rollStackIndex: promptRollStackIndex }
+            : { skipAfterMoveItem: true, timedOut: true };
         const clientMutationId = getLocalActionKey('use_item', payload);
         const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
         shouldAdvanceTurnAfterItemPromptRef.current = false;
@@ -2855,6 +2860,8 @@ export function App() {
   }
   function getUsableHostItems(timing: ItemTiming) {
     if (movingPieceId || winner) return [];
+    if (timing === 'before_roll' && (!isMyTurn || roll)) return [];
+    if (timing === 'after_roll' && selectedMoveSteps < 0 && !activeSeatPiecesOnBoard) return [];
     if (timing === 'after_roll' && (!isMyTurn || !(roll || stackedRollSelectedResult || rollStackClosed))) return [];
     if (timing === 'after_move' && lastMovedSeatId !== localSeatId) return [];
     return (ownedItems[localSeatId] ?? []).filter((type) => {
@@ -3578,6 +3585,10 @@ export function App() {
     }
     if (screen === 'game' && !activeRoomId) {
       reportTurnActionFailure('move_piece', '온라인 방 정보가 없어 진행할 수 없습니다.');
+      return false;
+    }
+    if (activeRoomId && pendingLocalRemoteActionsRef.current.size > 0) {
+      reportTurnActionBlocked('move_piece', ['pending-local-remote-action'], '이미 말 이동 요청을 처리 중입니다');
       return false;
     }
     const overriddenStackRoll = typeof options.rollStackIndexOverride === 'number' ? rollStack[options.rollStackIndexOverride] : null;
@@ -4481,7 +4492,11 @@ export function App() {
           markItemPromptResolved(promptTiming, promptRollStackIndex);
           setItemPromptTiming(null);
           const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
-          const payload = promptTiming === 'after_roll' ? { skipAfterRollItem: true, rollStackIndex: promptRollStackIndex } : { skipAfterMoveItem: true };
+          const payload = promptTiming === 'before_roll'
+            ? { skipBeforeRollItem: true }
+            : promptTiming === 'after_roll'
+              ? { skipAfterRollItem: true, rollStackIndex: promptRollStackIndex }
+              : { skipAfterMoveItem: true };
           const clientMutationId = getLocalActionKey('use_item', payload);
           const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
           shouldAdvanceTurnAfterItemPromptRef.current = false;
