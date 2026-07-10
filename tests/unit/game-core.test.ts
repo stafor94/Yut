@@ -376,6 +376,88 @@ test('완주 후 이어서 진행은 방장이 아닌 플레이어 actor도 커�
   assert.equal(result.patch?.continuationRound, 1);
 });
 
+test('완주 후 이어서 진행은 이전 누적 던지기와 선택 대기를 다음 순위전에 넘기지 않는다', () => {
+  const now = 1_700_000_000_000;
+  const state = {
+    pieces: [
+      { id: 'p1', ownerId: 'seat-1', nodeIndex: 0, nodeId: 'n01', started: true, finished: true },
+      { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: true, finished: false },
+      { id: 'p3', ownerId: 'seat-3', nodeIndex: 0, nodeId: 'n01', started: true, finished: false },
+    ],
+    turnIndex: 2,
+    turnOrderIds: ['seat-1', 'seat-2', 'seat-3'],
+    initialTurnOrderIds: ['seat-1', 'seat-2', 'seat-3'],
+    completedSeatIds: ['seat-1'],
+    rankingSeatIds: ['seat-1'],
+    gameEndMode: 'partial_finish' as const,
+    lastFinishedSeatId: 'seat-1',
+    continuationRound: 0,
+    roll: { name: '도', steps: 1 },
+    rollStack: [{ name: '윷', steps: 4, bonus: true }, { name: '도', steps: 1 }],
+    selectedRollStackIndex: 1,
+    rollStackClosed: true,
+    rollAnimation: { id: 'old-roll' },
+    rollResultReadyAt: now + 1000,
+    rollLockUntil: now + 2000,
+    branchChoice: 'shortcut',
+    pendingGoldenYutSelection: { actorId: 'seat-1', deadline: now + 3000 },
+    pendingAfterMoveTurnIndex: 1,
+    pendingTrapPlacement: { ownerId: 'seat-1', pieceId: 'p1', nodeIds: ['n02'], nextTurnIndex: 1, deadline: now + 4000 },
+    itemPromptTiming: 'after_move' as const,
+    lastMovedPieceIds: ['p1'],
+    lastMovedSeatId: 'seat-1',
+    lastRollTimingZone: 'perfect' as const,
+    captureEffect: { id: 'capture-old' },
+    trapEffect: { id: 'trap-old' },
+    fallEffect: { id: 'fall-old' },
+    boardItems: [{ id: 'item-1', type: 'reroll', nodeId: 'n03' }],
+    ownedItems: { 'seat-2': ['reroll'] },
+    trapNodes: [{ nodeId: 'n05', ownerId: 'seat-2' }],
+    shieldedPieceIds: ['p2'],
+    logs: [],
+    winner: 'P1 승리',
+    turnVersion: 1,
+    lastSequence: 1,
+  };
+
+  const result = withMockNow(now, () => reduceAuthoritativeGameAction(
+    state,
+    { type: 'continue_race', actorId: 'seat-2', payload: { clientActionId: 'continue-race-reset-turn-state' } },
+    { playMode: 'individual', pieceCount: 1, stackedRollMode: true },
+  ));
+
+  assert.equal(result.status, 'committed');
+  assert.deepEqual(result.patch?.turnOrderIds, ['seat-2', 'seat-3']);
+  assert.equal(result.patch?.turnIndex, 0);
+  assert.equal(result.patch?.roll, null);
+  assert.deepEqual(result.patch?.rollStack, []);
+  assert.equal(result.patch?.selectedRollStackIndex, null);
+  assert.equal(result.patch?.rollStackClosed, false);
+  assert.equal(result.patch?.pendingGoldenYutSelection, null);
+  assert.equal(result.patch?.pendingAfterMoveTurnIndex, null);
+  assert.equal(result.patch?.pendingTrapPlacement, null);
+  assert.equal(result.patch?.itemPromptTiming, null);
+  assert.equal(result.patch?.turnDeadlineAt, now + 15000);
+  assert.equal(result.patch?.turnDeadlineKind, 'roll');
+  assert.equal(result.patch?.rollAnimation, null);
+  assert.equal(result.patch?.rollResultReadyAt, 0);
+  assert.equal(result.patch?.rollLockUntil, 0);
+  assert.equal(result.patch?.branchChoice, 'outer');
+  assert.deepEqual(result.patch?.lastMovedPieceIds, []);
+  assert.equal(result.patch?.lastMovedSeatId, '');
+  assert.equal(result.patch?.lastRollTimingZone, null);
+  assert.equal(result.patch?.captureEffect, null);
+  assert.equal(result.patch?.trapEffect, null);
+  assert.equal(result.patch?.fallEffect, null);
+  assert.equal(result.patch?.boardItems, undefined);
+  assert.equal(result.patch?.ownedItems, undefined);
+  assert.equal(result.patch?.trapNodes, undefined);
+  assert.equal(result.patch?.shieldedPieceIds, undefined);
+  assert.deepEqual(result.patch?.completedSeatIds, ['seat-1']);
+  assert.deepEqual(result.patch?.initialTurnOrderIds, ['seat-1', 'seat-2', 'seat-3']);
+});
+
+
 test('윷 던지기 타이밍 구간은 중앙 Perfect와 좌우 Good을 판정한다', () => {
   assert.equal(getRollTimingZone(50), 'perfect');
   assert.equal(getRollTimingZone(40), 'good');
