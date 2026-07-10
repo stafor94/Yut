@@ -1,5 +1,6 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch, type DocumentReference, type Unsubscribe } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
+import { auth } from '../../../services/firebase/firebaseAuth';
 import { isAuthoritativeCommitReduction, reduceAuthoritativeGameAction, type AuthoritativeActionResult, type AuthoritativeReduction, type AuthoritativeSeatSide } from './roomAuthoritativeReducer';
 import { DELETE_BATCH_SIZE, ROOM_SUBCOLLECTIONS, getClientMutationDocRef, makeFirestoreSafeId, makeSequenceDocId, sanitizeForFirestore } from './roomFirestore';
 import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board/board';
@@ -17,7 +18,7 @@ const getCreatedAtMillis = (createdAt: unknown) => {
   if (typeof createdAt === 'number') return createdAt;
   return 0;
 };
-export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSubstitutedByAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; enteredGameAt?: number; enteredStartVersion?: number; lastGamePresenceAt?: number; }
+export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSubstitutedByAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; enteredGameAt?: number; enteredStartVersion?: number; lastGamePresenceAt?: number; playerId?: string; currentPlayerId?: string; originalPlayerId?: string; }
 export interface RoomSeat { id: string; playerId: string; originalPlayerId?: string; currentPlayerId?: string; nickname?: string; color?: string; team?: RoomPlayer['team']; seatIndex?: number; label?: string; isHost?: boolean; aiActive?: boolean; aiName?: string; isSubstitutedByAI?: boolean; status?: 'human' | 'ai_substitute' | 'disconnected' | 'removed'; updatedAt?: unknown; createdAt?: unknown; }
 export type GameSeatSnapshot = { id: string; label: string; name: string; color: string; team: RoomPlayer['team']; isHost?: boolean; isAI?: boolean; isSubstitutedByAI?: boolean; seatIndex: number };
 export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollStack?: unknown[]; selectedRollStackIndex?: number | null; rollStackClosed?: boolean; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; fallEffect?: unknown | null; lastRollTimingZone?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; pendingAfterMoveTurnIndex?: number; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; turnDeadlineAt?: number; turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | ''; startRequestVersion?: number; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
@@ -34,6 +35,16 @@ const QA_ROOM_TITLE_PREFIX = 'QA-';
 const EMPTY_ROOM_DELETE_DELAY_MS = 30000;
 const STALE_PLAYER_DELETE_MS = 45000;
 const ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+
+const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null) => {
+  if (!auth) return true;
+  if (player?.isAI || player?.isSubstitutedByAI) return true;
+  const uid = auth.currentUser?.uid;
+  if (!uid) return false;
+  return [playerId, player?.playerId, player?.currentPlayerId, player?.originalPlayerId]
+    .some((candidate) => typeof candidate === 'string' && candidate === uid);
+};
 
 const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.startsWith(QA_ROOM_TITLE_PREFIX);
 
@@ -703,6 +714,9 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     if (!roomSnapshot.exists()) return { status: 'rejected', reason: '존재하지 않는 방입니다.' };
     const state = stateSnapshot.data() as SyncedGameState;
     const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
+    const actorSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', action.actorId));
+    const actorPlayer = actorSnapshot.exists() ? actorSnapshot.data() as RoomPlayer : null;
+    if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer)) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
     const currentVersion = Number(state.turnVersion ?? 0);
     const currentSequence = Number(state.lastSequence ?? 0);
     let actionSides: AuthoritativeSeatSide[] = [];

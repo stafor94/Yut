@@ -12,6 +12,9 @@ type PendingSequenceMeta = {
 
 type GameStatePersistenceParams = Record<string, any>;
 
+const MAX_COORDINATOR_SAVE_RETRY_COUNT = 4;
+const COORDINATOR_SAVE_RETRY_BASE_DELAY_MS = 500;
+
 export function useGameStatePersistence({
   activeRoomId, screen, canCoordinateOnlineGame, applyingSyncedStateRef, moveInProgressRef,
   movingPieceId, pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds,
@@ -27,6 +30,18 @@ export function useGameStatePersistence({
   const pendingSequenceMetaRef = useRef<PendingSequenceMeta | null>(null);
   const lastSavedStateFingerprintRef = useRef('');
   const savingStateFingerprintRef = useRef('');
+  const coordinatorSaveRetryRef = useRef<{ roomId: string; fingerprint: string; count: number; timer: number }>({ roomId: '', fingerprint: '', count: 0, timer: 0 });
+
+  useEffect(() => () => {
+    if (coordinatorSaveRetryRef.current.timer) window.clearTimeout(coordinatorSaveRetryRef.current.timer);
+  }, []);
+
+  useEffect(() => {
+    if (!activeRoomId || coordinatorSaveRetryRef.current.roomId !== activeRoomId) {
+      if (coordinatorSaveRetryRef.current.timer) window.clearTimeout(coordinatorSaveRetryRef.current.timer);
+      coordinatorSaveRetryRef.current = { roomId: activeRoomId ?? '', fingerprint: '', count: 0, timer: 0 };
+    }
+  }, [activeRoomId]);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || !canCoordinateOnlineGame || applyingSyncedStateRef.current) return;
@@ -41,12 +56,30 @@ export function useGameStatePersistence({
     const sequenceActorId = pendingSequenceMeta?.actorId ?? localSeatId;
     const sequencePayload = pendingSequenceMeta?.payload ?? { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId };
     const clientMutationId = pendingSequenceMeta?.clientMutationId ?? `${sequenceType}:${sequenceActorId}:${stateFingerprint}`;
+    const scheduleCoordinatorRetry = () => {
+      const previous = coordinatorSaveRetryRef.current.roomId === activeRoomId && coordinatorSaveRetryRef.current.fingerprint === stateFingerprint
+        ? coordinatorSaveRetryRef.current.count
+        : 0;
+      if (previous >= MAX_COORDINATOR_SAVE_RETRY_COUNT) {
+        pendingSequenceMetaRef.current = null;
+        setCoordinatorStateSaveKey('');
+        return false;
+      }
+      const nextCount = previous + 1;
+      const delayMs = COORDINATOR_SAVE_RETRY_BASE_DELAY_MS * (2 ** (nextCount - 1));
+      if (coordinatorSaveRetryRef.current.timer) window.clearTimeout(coordinatorSaveRetryRef.current.timer);
+      const timer = window.setTimeout(() => setCoordinatorStateSaveRetryTick((tick) => tick + 1), delayMs);
+      coordinatorSaveRetryRef.current = { roomId: activeRoomId, fingerprint: stateFingerprint, count: nextCount, timer };
+      return true;
+    };
     let keepCoordinatorStateSavePending = false;
     void measureFirebaseLatency(() => saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, fallEffect, lastRollTimingZone, gameStartedAt, turnOrderIntro, pendingTrapPlacement, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, gameSeats }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, action: pendingSequenceMeta?.action ?? null, expectedPreviousSequence: lastAppliedSequenceRef.current })).then((result: any) => {
       if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.turnVersion) {
         lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
         lastSavedStateFingerprintRef.current = stateFingerprint;
+        if (coordinatorSaveRetryRef.current.timer) window.clearTimeout(coordinatorSaveRetryRef.current.timer);
+        coordinatorSaveRetryRef.current = { roomId: activeRoomId, fingerprint: '', count: 0, timer: 0 };
       }
       if (result.status === 'committed' || result.status === 'duplicate') {
         if (pendingSequenceMetaRef.current?.clientMutationId === pendingSequenceMeta?.clientMutationId) pendingSequenceMetaRef.current = null;
@@ -56,13 +89,13 @@ export function useGameStatePersistence({
         pendingSequenceMetaRef.current = pendingSequenceMeta;
         if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
         if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
-        setCoordinatorStateSaveRetryTick((tick) => tick + 1);
+        keepCoordinatorStateSavePending = scheduleCoordinatorRetry();
       }
     }).catch(() => {
       keepCoordinatorStateSavePending = true;
       pendingSequenceMetaRef.current = pendingSequenceMeta;
       if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
-      setCoordinatorStateSaveRetryTick((tick) => tick + 1);
+      keepCoordinatorStateSavePending = scheduleCoordinatorRetry();
     }).finally(() => {
       if (!keepCoordinatorStateSavePending && savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
       if (!keepCoordinatorStateSavePending) setCoordinatorStateSaveKey((current) => current === stateFingerprint ? '' : current);
