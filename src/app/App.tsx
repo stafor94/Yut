@@ -3177,6 +3177,22 @@ export function App() {
     if (!activeRoomId || !(result.status === 'committed' || result.status === 'duplicate') || !result.sequence) return null;
     const localSequence = lastAppliedSequenceRef.current;
     const resultSequence = result.sequence;
+    if (
+      result.status === 'committed'
+      && resultSequence === localSequence + 1
+      && result.stateAfter
+      && result.sequenceEvent
+    ) {
+      const sequence = result.sequenceEvent;
+      const authoritativeState = result.stateAfter as SequenceStateSnapshot;
+      if (sequence.type === 'roll_yut') await replayRollSequence(sequence);
+      else if (sequence.type === 'move_piece_resolved') await replayMoveSequence(sequence);
+      else if (sequence.stateAfter) applySyncedStateSnapshot(sequence.stateAfter as SequenceStateSnapshot, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
+      acknowledgePendingLocalRemoteAction(sequence.clientMutationId);
+      applySyncedStateSnapshot(authoritativeState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true });
+      if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
+      return authoritativeState;
+    }
     let latestState: SequenceStateSnapshot | undefined;
     const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(Math.min(localSequence, resultSequence - 1)));
     latestState = [...sequences]
