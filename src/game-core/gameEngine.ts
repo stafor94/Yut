@@ -36,6 +36,7 @@ export type EngineState = {
   turnOrderPhase?: { active?: boolean } | null;
   turnOrderIntro?: { readyAt?: unknown } | null;
   pendingTrapPlacement?: unknown | null;
+  pendingItemPickup?: unknown | null;
   trapNodes: EngineTrapNode[];
   shieldedPieceIds: string[];
   fallEffect?: EngineFallEffect | null;
@@ -133,6 +134,7 @@ const validateCommonTurnCommand = (state: EngineState, actorId: string, options:
   if (state.turnOrderPhase?.active) return reject('TURN_ORDER_PHASE_ACTIVE');
   if (isTurnOrderIntroActive(state.turnOrderIntro)) return reject('TURN_ORDER_INTRO_ACTIVE');
   if (state.pendingTrapPlacement) return reject('PENDING_TRAP_PLACEMENT');
+  if ((state as { pendingItemPickup?: unknown }).pendingItemPickup) return reject('PENDING_ITEM_PROMPT');
   if ((state as { itemPromptTiming?: unknown }).itemPromptTiming === 'after_roll') return reject('PENDING_ITEM_PROMPT');
   if (options.requireNoRoll && state.roll) return reject('ROLL_ALREADY_EXISTS');
   if (options.requireRoll && !state.roll) return reject('ROLL_REQUIRED');
@@ -270,14 +272,16 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
   }
 
   const landedItem = currentNodeId !== 'finish' ? nextBoardItems.find((item) => item.nodeId === currentNodeId) : undefined;
+  let pendingSameTimingItem: ItemType | null = null;
   if (landedItem) {
     const currentItems = [...(nextOwnedItems[actorId] ?? [])];
     const landedItemTiming = ITEM_DEFINITIONS[landedItem.type].timing;
     const sameTimingItem = currentItems.find((type) => ITEM_DEFINITIONS[type].timing === landedItemTiming);
+    pendingSameTimingItem = sameTimingItem ?? null;
     nextBoardItems = nextBoardItems.filter((item) => item.id !== landedItem.id);
     itemEvent = { itemId: landedItem.id, itemType: landedItem.type, nodeId: landedItem.nodeId, ownerId: actorId, keptExisting: Boolean(sameTimingItem), existingItemType: sameTimingItem ?? null };
     if (sameTimingItem) {
-      pushLog(`${actorLogName}님이 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 발견했지만 같은 사용 조건의 아이템을 유지했습니다.`);
+      pushLog(`${actorLogName}님이 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 발견했습니다. 같은 사용 조건의 아이템과 교체할지 선택해야 합니다.`);
     } else {
       nextOwnedItems = { ...nextOwnedItems, [actorId]: [...currentItems, landedItem.type] };
       pushLog(`${actorLogName}님이 아이템 '${ITEM_DEFINITIONS[landedItem.type].name}'을 획득했습니다.`);
@@ -327,6 +331,7 @@ export function reduceMoveCommand(params: { state: EngineState; actorId: string;
       lastMovedSeatId: actorId,
       branchChoice: 'outer',
       rollResultReadyAt: 0,
+      pendingItemPickup: landedItem && pendingSameTimingItem ? { ownerId: actorId, itemId: landedItem.id, itemType: landedItem.type, existingItemType: pendingSameTimingItem, deadline: Date.now() + 10000, nextTurnIndex } : null,
     },
     payload: {
       activeSeatId: actorId,
