@@ -275,6 +275,7 @@ export function App() {
     clearPendingLocalRemoteActions,
   } = usePendingRemoteActions();
   const localActionCommitQueueRef = useRef(Promise.resolve());
+  const localActionApplyQueueRef = useRef(Promise.resolve());
   const sequenceReplayInProgressRef = useRef(false);
   const queuedSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
   const completingTurnOrderIntroRef = useRef<Set<number>>(new Set());
@@ -1009,6 +1010,7 @@ export function App() {
     completedActionIdsRef.current.clear();
     processedClientActionIdsRef.current.clear();
     localActionCommitQueueRef.current = Promise.resolve();
+    localActionApplyQueueRef.current = Promise.resolve();
     rollInProgressRef.current = false;
     rollInProgressStartedAtRef.current = 0;
     setRollInProgress(false);
@@ -1922,7 +1924,7 @@ export function App() {
         addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: promptActorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
         void commitQueuedAuthoritativeGameAction(activeRoomId, action)
           .then(async (result) => {
-            const applied = await applyAuthoritativeResultSequence(result);
+            const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
             if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
               await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 선택 시간초과를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
             }
@@ -2284,7 +2286,7 @@ export function App() {
         addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: pendingTrapPlacement.ownerId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
         void commitQueuedAuthoritativeGameAction(activeRoomId, action)
           .then(async (result) => {
-            const applied = await applyAuthoritativeResultSequence(result);
+            const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
             if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
               await syncLatestAuthoritativeState(result.reason ?? '서버가 함정 설치 취소를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
             }
@@ -3285,6 +3287,16 @@ export function App() {
     return queuedCommit;
   }
 
+  function enqueueAuthoritativeResultApplication<T>(roomId: string, applyResult: () => Promise<T> | T): Promise<T | null> {
+    const runApply = async () => {
+      if (activeRoomIdRef.current !== roomId) return null;
+      return await applyResult();
+    };
+    const queuedApply = localActionApplyQueueRef.current.then(runApply, runApply);
+    localActionApplyQueueRef.current = queuedApply.then(() => undefined, () => undefined);
+    return queuedApply;
+  }
+
   function enqueueAuthoritativeGameAction(
     roomId: string,
     action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
@@ -3292,18 +3304,23 @@ export function App() {
     handleError: (error: unknown) => void,
     handleFinally: () => void,
   ) {
-    const runCommit = async () => {
-      try {
-        const result = await commitAuthoritativeGameAction(roomId, action);
-        await handleResult(result);
-      } catch (error) {
-        handleError(error);
-      } finally {
-        handleFinally();
-      }
-    };
-    const queuedCommit = localActionCommitQueueRef.current.then(runCommit, runCommit);
-    localActionCommitQueueRef.current = queuedCommit.catch(() => undefined);
+    void commitQueuedAuthoritativeGameAction(roomId, action)
+      .then((result) => enqueueAuthoritativeResultApplication(roomId, async () => {
+        try {
+          await handleResult(result);
+        } finally {
+          handleFinally();
+        }
+      }))
+      .catch((error) => {
+        void enqueueAuthoritativeResultApplication(roomId, () => {
+          try {
+            handleError(error);
+          } finally {
+            handleFinally();
+          }
+        });
+      });
   }
 
   function canSubmitDeadlineRecovery() {
@@ -3927,7 +3944,7 @@ export function App() {
     try {
       const result = await commitAiAuthoritativeActionWithRecovery(action, actionKey, 'roll_yut', 'AI 누적 윷 던지기 처리에 실패했습니다.');
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-        const authoritativeState = await applyAuthoritativeResultSequence(result);
+        const authoritativeState = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
         acknowledgePendingLocalRemoteAction(actionKey);
         const committedStack = (authoritativeState?.rollStack as YutResult[] | undefined) ?? (result.patch?.rollStack as YutResult[] | undefined) ?? [];
         const committedRoll = committedStack[committedStack.length - 1] ?? (authoritativeState?.roll as YutResult | null | undefined) ?? (result.patch?.roll as YutResult | null | undefined) ?? null;
@@ -3964,7 +3981,7 @@ export function App() {
     try {
       const result = await commitAiAuthoritativeActionWithRecovery(action, actionKey, 'roll_yut', 'AI 윷 던지기 처리에 실패했습니다.');
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-        const authoritativeState = await applyAuthoritativeResultSequence(result);
+        const authoritativeState = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
         acknowledgePendingLocalRemoteAction(actionKey);
         const committedRoll = (authoritativeState?.roll as YutResult | null | undefined) ?? (result.patch?.roll as YutResult | null | undefined) ?? null;
         recordRemoteActionDiagnostic('roll_yut', 'ai-roll-committed', 'AI 윷 던지기를 서버 authoritative 상태로 확정했습니다.', { status: result.status, actionKey });
@@ -4014,7 +4031,7 @@ export function App() {
     try {
       const result = await commitAiAuthoritativeActionWithRecovery(action, actionKey, 'move_piece', 'AI 빽도 스킵 처리에 실패했습니다.');
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-        await applyAuthoritativeResultSequence(result);
+        await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
         acknowledgePendingLocalRemoteAction(actionKey);
         recordRemoteActionDiagnostic('move_piece', 'ai-backdo-skip-committed', 'AI 빽도 스킵을 서버 authoritative 상태로 확정했습니다.', { status: result.status, actionKey });
         return true;
@@ -4066,7 +4083,7 @@ export function App() {
     try {
       const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-        const authoritativeState = await applyAuthoritativeResultSequence(result);
+        const authoritativeState = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
         acknowledgePendingLocalRemoteAction(actionKey);
         return authoritativeState;
       }
@@ -4091,7 +4108,7 @@ export function App() {
     try {
       const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-        await applyAuthoritativeResultSequence(result);
+        await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
         acknowledgePendingLocalRemoteAction(actionKey);
         return true;
       }
@@ -4133,7 +4150,7 @@ export function App() {
     try {
       const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-        const authoritativeState = await applyAuthoritativeResultSequence(result);
+        const authoritativeState = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
         acknowledgePendingLocalRemoteAction(actionKey);
         return authoritativeState;
       }
@@ -4350,7 +4367,7 @@ export function App() {
       addPendingLocalRemoteAction(clientMutationId, { type: 'place_trap', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
         .then(async (result) => {
-          const applied = await applyAuthoritativeResultSequence(result);
+          const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
           if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
             await syncLatestAuthoritativeState(result.reason ?? '서버가 함정 설치를 거부해 최신 authoritative 상태로 재동기화합니다.');
           }
@@ -4392,7 +4409,7 @@ export function App() {
       addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
         .then(async (result) => {
-          const applied = await applyAuthoritativeResultSequence(result);
+          const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
           if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
             await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 사용을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
             return;
@@ -4874,7 +4891,7 @@ export function App() {
           addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: localSeatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
           void commitQueuedAuthoritativeGameAction(activeRoomId, action)
             .then(async (result) => {
-              const applied = await applyAuthoritativeResultSequence(result);
+              const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
               if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
                 await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
               }
