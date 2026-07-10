@@ -1382,8 +1382,8 @@ export function App() {
     const syncedRollStack = ((state.rollStack as YutResult[] | undefined) ?? []);
     const nextRollStack = itemPickupPending ? rollStack : syncedRollStack;
     const syncedSelectedRollStackIndex = typeof state.selectedRollStackIndex === 'number' ? state.selectedRollStackIndex : null;
-    const nextSelectedRollStackIndex = itemPickupPending ? selectedRollStackIndex : syncedSelectedRollStackIndex;
-    const nextRollStackClosed = itemPickupPending ? rollStackClosed : Boolean(state.rollStackClosed);
+    const nextSelectedRollStackIndex = syncedSelectedRollStackIndex;
+    const nextRollStackClosed = Boolean(state.rollStackClosed);
     const syncedGameSeats = (state.gameSeats as GameSeatSnapshot[] | undefined) ?? [];
     if (syncedGameSeats.length) setSeats((currentSeats) => preserveLockedGameSeats(currentSeats, seatsFromGameSeatSnapshots(syncedGameSeats, playMode, maxPlayers)));
     const lastClientMutationId = (state as { lastClientMutationId?: unknown }).lastClientMutationId;
@@ -1927,7 +1927,6 @@ export function App() {
 
   useEffect(() => {
     if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || pendingItemPickup || !activeSeat || !activeSeat.isAI || isMyTurn || movingPieceId || pendingTrapPlacement) return undefined;
-    if (!itemPromptTiming && roll) return undefined;
     if (!canCoordinateOnlineGame) return undefined;
     const actionKey = `${activeSeat.id}:${turnIndex}:${itemPromptTiming ?? 'turn'}:${roll?.name ?? ''}:${roll?.steps ?? ''}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (aiTurnActionKeyRef.current) return undefined;
@@ -3082,10 +3081,13 @@ export function App() {
       .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
       .reverse()
       .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-    if (latestState) {
-      if (resultSequence > localSequence) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
-      else applySyncedStateSnapshot(latestState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true });
+    if (!latestState) {
+      const syncedState = await getLatestGameState(activeRoomId);
+      latestState = syncedState as SequenceStateSnapshot | undefined;
+      if (!latestState) return null;
     }
+    if (resultSequence > localSequence) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
+    else applySyncedStateSnapshot(latestState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true });
     lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, resultSequence);
     if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
     return latestState ?? null;
@@ -4000,6 +4002,26 @@ export function App() {
     try {
       if (!canContinueAiTurn()) return;
       let nextRoll: YutResult | null = null;
+      if (activeRoomId && canCoordinateOnlineGame && itemPromptTiming) {
+        if (itemPromptTiming === 'before_roll') {
+          if ((ownedItems[seat.id] ?? []).includes('golden_yut')) await submitAiUseItem(seat, { itemType: 'golden_yut' });
+          else await submitAiUseItem(seat, { skipBeforeRollItem: true });
+          return;
+        }
+        if (itemPromptTiming === 'after_roll') {
+          const promptRoll = currentRollRef.current ?? roll;
+          const items = ownedItems[seat.id] ?? [];
+          if (promptRoll && items.includes('reroll') && shouldAiUseReroll(seat, promptRoll, getAiMoveContext())) await submitAiUseItem(seat, { itemType: 'reroll', rollStackIndex: selectedRollStackIndex });
+          else if (promptRoll && items.includes('move_plus_one')) await submitAiUseItem(seat, { itemType: 'move_plus_one', rollStackIndex: selectedRollStackIndex });
+          else if (promptRoll && items.includes('move_minus_one')) await submitAiUseItem(seat, { itemType: 'move_minus_one', rollStackIndex: selectedRollStackIndex });
+          else await submitAiUseItem(seat, { skipAfterRollItem: true });
+          return;
+        }
+        if (itemPromptTiming === 'after_move') {
+          await useAiAfterMoveItem(seat);
+          return;
+        }
+      }
       if (itemPromptTiming === 'before_roll') {
         if ((ownedItems[seat.id] ?? []).includes('golden_yut')) {
           nextRoll = chooseAiGoldenYutResult(seat, getAiMoveContext());
@@ -4035,7 +4057,7 @@ export function App() {
         }
       }
       if (stackedRollMode) {
-        const aiRollStack: YutResult[] = [];
+        const aiRollStack: YutResult[] = (activeRoomId && canCoordinateOnlineGame && (rollStackClosed || rollStack.length > 0)) ? [...rollStack] : [];
         const rollAiStackUntilClosed = async (stack: YutResult[], forcedRoll: YutResult | null = null) => {
           let pendingForcedRoll = forcedRoll;
           do {
@@ -4043,14 +4065,14 @@ export function App() {
             setRollTimingFeedback(aiTimingZone);
             const selectedGoldenRoll = pendingForcedRoll;
             pendingForcedRoll = null;
-            const stackedRoll = await submitAiStackedRoll(seat, null, aiTimingZone, selectedGoldenRoll);
+            const stackedRoll = await submitAiStackedRoll(seat, null, aiTimingZone, activeRoomId ? null : selectedGoldenRoll);
             if (!stackedRoll) return false;
             stack.push(stackedRoll);
             await delay(ROLL_ANIMATION_MS + 120);
           } while (stack[stack.length - 1]?.bonus && canContinueAiTurn());
           return true;
         };
-        if (!await rollAiStackUntilClosed(aiRollStack, nextRoll)) return;
+        if (aiRollStack.length === 0 && !await rollAiStackUntilClosed(aiRollStack, nextRoll)) return;
         let remainingRolls = [...aiRollStack];
         let movedAtLeastOnce = false;
         while (remainingRolls.length && canContinueAiTurn()) {
@@ -4087,11 +4109,14 @@ export function App() {
         if (remainingRolls.length === 0 && movedAtLeastOnce && canContinueAiTurn()) await useAiAfterMoveItem(seat);
         return;
       }
-      const aiTimingZone = chooseAiRollTimingZone();
-      setRollTimingFeedback(aiTimingZone);
-      nextRoll = await submitAiRoll(seat, aiTimingZone, nextRoll);
+      if (activeRoomId && canCoordinateOnlineGame && (currentRollRef.current ?? roll)) nextRoll = currentRollRef.current ?? roll;
+      else {
+        const aiTimingZone = chooseAiRollTimingZone();
+        setRollTimingFeedback(aiTimingZone);
+        nextRoll = await submitAiRoll(seat, aiTimingZone, activeRoomId ? undefined : nextRoll);
+      }
       if (!nextRoll) return;
-      if ((ownedItems[seat.id] ?? []).includes('reroll') && shouldAiUseReroll(seat, nextRoll, getAiMoveContext())) {
+      if (!activeRoomId && (ownedItems[seat.id] ?? []).includes('reroll') && shouldAiUseReroll(seat, nextRoll, getAiMoveContext())) {
         await useItem('reroll', seat.id);
         await delay(500);
         nextRoll = currentRollRef.current;
@@ -4099,7 +4124,8 @@ export function App() {
       }
       const aiMove = chooseAiMove(seat, nextRoll, getAiMoveContext());
       if (!aiMove) {
-        if (!activeRoomId) {
+        if (activeRoomId && canCoordinateOnlineGame && nextRoll.steps < 0) await submitAiMovePiece(seat, '', nextRoll, 'outer');
+        else if (!activeRoomId) {
           setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
           clearRoll();
         }
