@@ -155,6 +155,7 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
   gameStartedAt: state.gameStartedAt,
   turnOrderIntro: state.turnOrderIntro,
   pendingTrapPlacement: state.pendingTrapPlacement,
+  pendingGoldenYutSelection: state.pendingGoldenYutSelection ?? null,
   itemPromptTiming: state.itemPromptTiming ?? null,
   pendingAfterMoveTurnIndex: state.pendingAfterMoveTurnIndex ?? null,
   rollLockUntil: state.rollLockUntil,

@@ -1492,6 +1492,7 @@ export function App() {
       turnDeadlineKind: (state.turnDeadlineKind as typeof turnDeadlineKind | undefined) ?? '',
       startRequestVersion: Number(state.startRequestVersion ?? 0),
       fallEffect: (state.fallEffect as FallEffect | null | undefined) ?? null,
+      pendingGoldenYutSelection: nextPendingGoldenYutSelection,
     });
     rollInProgressRef.current = false;
     rollInProgressStartedAtRef.current = 0;
@@ -1925,9 +1926,10 @@ export function App() {
   }, [roll?.name, roll?.steps]);
 
   useEffect(() => {
-    if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || pendingItemPickup || itemPromptTiming || !activeSeat || !activeSeat.isAI || isMyTurn || roll || movingPieceId || pendingTrapPlacement) return undefined;
+    if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || pendingItemPickup || !activeSeat || !activeSeat.isAI || isMyTurn || movingPieceId || pendingTrapPlacement) return undefined;
+    if (!itemPromptTiming && roll) return undefined;
     if (!canCoordinateOnlineGame) return undefined;
-    const actionKey = `${activeSeat.id}:${turnIndex}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
+    const actionKey = `${activeSeat.id}:${turnIndex}:${itemPromptTiming ?? 'turn'}:${roll?.name ?? ''}:${roll?.steps ?? ''}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (aiTurnActionKeyRef.current) return undefined;
     const timer = window.setTimeout(() => {
       if (aiTurnActionKeyRef.current) return;
@@ -3070,21 +3072,23 @@ export function App() {
   }
 
 
-  async function applyAuthoritativeResultSequence(result: Awaited<ReturnType<typeof commitAuthoritativeGameAction>>) {
-    if (!activeRoomId || !(result.status === 'committed' || result.status === 'duplicate') || !result.sequence) return false;
+  async function applyAuthoritativeResultSequence(result: Awaited<ReturnType<typeof commitAuthoritativeGameAction>>): Promise<SequenceStateSnapshot | null> {
+    if (!activeRoomId || !(result.status === 'committed' || result.status === 'duplicate') || !result.sequence) return null;
     const localSequence = lastAppliedSequenceRef.current;
     const resultSequence = result.sequence;
-    if (resultSequence > localSequence) {
-      const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
-      const latestState = [...sequences]
-        .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
-        .reverse()
-        .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-      if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
+    let latestState: SequenceStateSnapshot | undefined;
+    const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(Math.min(localSequence, resultSequence - 1)));
+    latestState = [...sequences]
+      .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
+      .reverse()
+      .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+    if (latestState) {
+      if (resultSequence > localSequence) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
+      else applySyncedStateSnapshot(latestState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true });
     }
     lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, resultSequence);
     if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
-    return true;
+    return latestState ?? null;
   }
 
   async function commitQueuedAuthoritativeGameAction(
@@ -3301,7 +3305,7 @@ export function App() {
       enqueueAuthoritativeGameAction(
         activeRoomId,
         action,
-        (result) => {
+        async (result) => {
           if (result.status === 'rejected' || result.status === 'unsupported') {
             void handleAuthoritativeActionRejected('roll_yut', 'commit-result', result, {
               actionKey,
@@ -3311,27 +3315,27 @@ export function App() {
             });
             return;
           }
+          let authoritativeState: SequenceStateSnapshot | null = null;
           if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-            lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.sequence);
-            if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
+            authoritativeState = await applyAuthoritativeResultSequence(result);
             acknowledgePendingLocalRemoteAction(actionKey);
           }
-          if (result.status === 'committed') {
-            const committedFallEffect = result.patch?.fallEffect as FallEffect | null | undefined;
+          if (result.status === 'committed' || result.status === 'duplicate') {
+            const committedFallEffect = (authoritativeState?.fallEffect as FallEffect | null | undefined) ?? (result.patch?.fallEffect as FallEffect | null | undefined);
             if (committedFallEffect) setFallEffect(committedFallEffect);
-            const committedRoll = result.patch?.roll as YutResult | null | undefined;
-            const committedRollStack = result.patch?.rollStack as YutResult[] | undefined;
+            const committedRoll = (authoritativeState?.roll as YutResult | null | undefined) ?? (result.patch?.roll as YutResult | null | undefined);
+            const committedRollStack = (authoritativeState?.rollStack as YutResult[] | undefined) ?? (result.patch?.rollStack as YutResult[] | undefined);
             if (committedRollStack) {
               setRollStack(committedRollStack);
               setSelectedRollStackIndex(typeof result.patch?.selectedRollStackIndex === 'number' ? result.patch.selectedRollStackIndex as number : null);
               setRollStackClosed(Boolean(result.patch?.rollStackClosed));
             }
-            const committedRollResultReadyAt = normalizeRollResultReadyAt(Number(result.patch?.rollResultReadyAt ?? 0));
+            const committedRollResultReadyAt = normalizeRollResultReadyAt(Number(authoritativeState?.rollResultReadyAt ?? result.patch?.rollResultReadyAt ?? 0));
             if (committedRoll && !currentRollRef.current) {
               currentRollRef.current = committedRoll;
               setRoll(committedRoll);
               setRollResultReadyAt(committedRollResultReadyAt);
-              playRollAnimationOnce(committedRoll, makeDisplaySticks(committedRoll), `${turnIndex}:${committedRoll.name}:${committedRoll.steps}:${committedRollResultReadyAt}`, false, 0, (result.patch?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
+              playRollAnimationOnce(committedRoll, makeDisplaySticks(committedRoll), `${turnIndex}:${committedRoll.name}:${committedRoll.steps}:${committedRollResultReadyAt}`, false, 0, (authoritativeState?.lastRollTimingZone as RollTimingZone | null | undefined) ?? (result.patch?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
               playSfx('roll');
               if (committedRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
             }
@@ -3751,7 +3755,7 @@ export function App() {
     }
     const rollPayload = { rollTimingZone: timingZone ?? 'normal', stackedRollMode: true, coordinatorSeatId: localSeatId, ...(selectedGoldenYutResult ? { selectedGoldenYutResult } : {}) };
     const actionRollKey = selectedGoldenYutResult ?? nextRoll;
-    const actionKey = `roll_yut_ai_stack:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStack.length}:${actionRollKey?.name ?? 'server'}:${actionRollKey?.steps ?? 'server'}:${Date.now()}`;
+    const actionKey = `roll_yut_ai_stack:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStack.length}:${actionRollKey?.name ?? 'server'}:${actionRollKey?.steps ?? 'server'}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return null;
     const action = { type: 'roll_yut' as const, actorId: seat.id, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, seat) };
     addPendingLocalRemoteAction(actionKey, {
@@ -3765,10 +3769,10 @@ export function App() {
     try {
       const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-        await applyAuthoritativeResultSequence(result);
+        const authoritativeState = await applyAuthoritativeResultSequence(result);
         acknowledgePendingLocalRemoteAction(actionKey);
-        const committedStack = (result.patch?.rollStack as YutResult[] | undefined) ?? [];
-        const committedRoll = committedStack[committedStack.length - 1] ?? (result.patch?.roll as YutResult | null | undefined) ?? null;
+        const committedStack = (authoritativeState?.rollStack as YutResult[] | undefined) ?? (result.patch?.rollStack as YutResult[] | undefined) ?? [];
+        const committedRoll = committedStack[committedStack.length - 1] ?? (authoritativeState?.roll as YutResult | null | undefined) ?? (result.patch?.roll as YutResult | null | undefined) ?? null;
         recordRemoteActionDiagnostic('roll_yut', 'ai-stack-roll-committed', 'AI 누적 윷 던지기를 서버 authoritative 상태로 확정했습니다.', { status: result.status, actionKey });
         return committedRoll;
       }
@@ -3796,7 +3800,7 @@ export function App() {
       return rollYutFor(seat, offlineRoll, null, { timingZone }) ?? null;
     }
     const rollPayload = { rollTimingZone: timingZone ?? 'normal', stackedRollMode: false, ...(selectedGoldenYutResult ? { selectedGoldenYutResult } : {}) };
-    const actionKey = `roll_yut_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${selectedGoldenYutResult?.name ?? 'server'}:${selectedGoldenYutResult?.steps ?? 'server'}:${Date.now()}`;
+    const actionKey = `roll_yut_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${selectedGoldenYutResult?.name ?? 'server'}:${selectedGoldenYutResult?.steps ?? 'server'}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return null;
     const action = { type: 'roll_yut' as const, actorId: seat.id, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, seat) };
     addPendingLocalRemoteAction(actionKey, { type: 'roll_yut', actorId: seat.id, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
@@ -3804,9 +3808,9 @@ export function App() {
     try {
       const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-        await applyAuthoritativeResultSequence(result);
+        const authoritativeState = await applyAuthoritativeResultSequence(result);
         acknowledgePendingLocalRemoteAction(actionKey);
-        const committedRoll = (result.patch?.roll as YutResult | null | undefined) ?? null;
+        const committedRoll = (authoritativeState?.roll as YutResult | null | undefined) ?? (result.patch?.roll as YutResult | null | undefined) ?? null;
         recordRemoteActionDiagnostic('roll_yut', 'ai-roll-committed', 'AI 윷 던지기를 서버 authoritative 상태로 확정했습니다.', { status: result.status, actionKey });
         return committedRoll;
       }
@@ -3896,11 +3900,92 @@ export function App() {
     return !finishes && currentPieces.some((target) => !isSameSide(getSeatById(target.ownerId), seat) && target.started && !target.finished && target.nodeId === landedNodeId);
   }
 
+  async function submitAiUseItem(seat: Seat, payload: Record<string, unknown>): Promise<SequenceStateSnapshot | null> {
+    if (!activeRoomId || !canCoordinateOnlineGame) {
+      if (payload.itemType) await useItem(payload.itemType as ItemType, seat.id, payload);
+      return null;
+    }
+    const itemKey = String(payload.itemType ?? (payload.skipBeforeRollItem ? 'skip_before_roll' : payload.skipAfterRollItem ? 'skip_after_roll' : payload.skipAfterMoveItem ? 'skip_after_move' : 'item'));
+    const actionKey = `use_item_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${itemKey}:${payload.pieceId ?? ''}:${payload.rollStackIndex ?? ''}`;
+    if (pendingLocalRemoteActionsRef.current.has(actionKey)) return null;
+    const action = { type: 'use_item' as const, actorId: seat.id, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, seat) };
+    addPendingLocalRemoteAction(actionKey, { type: 'use_item', actorId: seat.id, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+    localClientMutationIdsRef.current.add(actionKey);
+    try {
+      const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
+      if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+        const authoritativeState = await applyAuthoritativeResultSequence(result);
+        acknowledgePendingLocalRemoteAction(actionKey);
+        return authoritativeState;
+      }
+      if (result.status === 'rejected' || result.status === 'unsupported') {
+        await syncLatestAuthoritativeState(result.reason ?? '서버가 AI 아이템 처리를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      }
+      return null;
+    } finally {
+      deletePendingLocalRemoteAction(actionKey);
+    }
+  }
+
+  async function submitAiPlaceTrap(seat: Seat, placement: PendingTrapPlacement): Promise<boolean> {
+    const nodeId = placement.nodeIds[0];
+    if (!nodeId) return false;
+    if (!activeRoomId || !canCoordinateOnlineGame) { placePendingTrap(nodeId, seat.id); return true; }
+    const actionKey = `place_trap_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${placement.pieceId}:${nodeId}`;
+    const action = { type: 'place_trap' as const, actorId: seat.id, payload: withActorLogPayload({ nodeId, pieceId: placement.pieceId, clientActionId: actionKey }, seat) };
+    addPendingLocalRemoteAction(actionKey, { type: 'place_trap', actorId: seat.id, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+    try {
+      const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
+      if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+        await applyAuthoritativeResultSequence(result);
+        acknowledgePendingLocalRemoteAction(actionKey);
+        return true;
+      }
+      if (result.status === 'rejected' || result.status === 'unsupported') await syncLatestAuthoritativeState(result.reason ?? '서버가 AI 함정 설치를 거부해 최신 상태로 재동기화합니다.');
+      return false;
+    } finally {
+      deletePendingLocalRemoteAction(actionKey);
+    }
+  }
+
   async function useAiAfterMoveItem(seat: Seat) {
     const item = chooseAiAfterMoveItem({ adjustmentPiece: getPostMoveAdjustmentPiece(seat), items: ownedItems[seat.id] ?? [] });
-    if (!item) return false;
-    await useItem(item, seat.id);
+    if (!item) {
+      if (activeRoomId && canCoordinateOnlineGame) await submitAiUseItem(seat, { skipAfterMoveItem: true });
+      return false;
+    }
+    const pieceId = lastMovedPieceIds[0] ?? '';
+    const stateAfterUse = await submitAiUseItem(seat, { itemType: item, pieceId });
+    if (item === 'trap') {
+      const placement = (stateAfterUse?.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? pendingTrapPlacement;
+      if (placement) await submitAiPlaceTrap(seat, placement);
+    }
     return true;
+  }
+
+  async function submitAiMovePiece(seat: Seat, pieceId: string, moveRoll: YutResult, aiBranchChoice: BranchChoice, rollStackIndex?: number): Promise<SequenceStateSnapshot | null> {
+    if (!activeRoomId || !canCoordinateOnlineGame) {
+      await movePiece(pieceId, moveRoll, seat, 0, aiBranchChoice, typeof rollStackIndex === 'number' ? { consumeStackedRollIndex: rollStackIndex } : {});
+      return null;
+    }
+    const payload = { pieceId, extraSteps: 0, branchChoice: aiBranchChoice, rollStackIndex: typeof rollStackIndex === 'number' ? rollStackIndex : null, coordinatorSeatId: localSeatId };
+    const actionKey = `move_piece_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${pieceId}:${moveRoll.name}:${moveRoll.steps}:${payload.rollStackIndex ?? ''}:${aiBranchChoice}`;
+    if (pendingLocalRemoteActionsRef.current.has(actionKey)) return null;
+    const action = { type: 'move_piece' as const, actorId: seat.id, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, seat) };
+    addPendingLocalRemoteAction(actionKey, { type: 'move_piece', actorId: seat.id, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+    localClientMutationIdsRef.current.add(actionKey);
+    try {
+      const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
+      if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+        const authoritativeState = await applyAuthoritativeResultSequence(result);
+        acknowledgePendingLocalRemoteAction(actionKey);
+        return authoritativeState;
+      }
+      if (result.status === 'rejected' || result.status === 'unsupported') await syncLatestAuthoritativeState(result.reason ?? '서버가 AI 이동을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+      return null;
+    } finally {
+      deletePendingLocalRemoteAction(actionKey);
+    }
   }
 
   async function autoPlayTurn(seat: Seat, actionKey = `${seat.id}:${turnIndex}`) {
@@ -3915,10 +4000,39 @@ export function App() {
     try {
       if (!canContinueAiTurn()) return;
       let nextRoll: YutResult | null = null;
-      if ((ownedItems[seat.id] ?? []).includes('golden_yut')) {
+      if (itemPromptTiming === 'before_roll') {
+        if ((ownedItems[seat.id] ?? []).includes('golden_yut')) {
+          nextRoll = chooseAiGoldenYutResult(seat, getAiMoveContext());
+          await submitAiUseItem(seat, { itemType: 'golden_yut' });
+        } else {
+          await submitAiUseItem(seat, { skipBeforeRollItem: true });
+        }
+      } else if (itemPromptTiming === 'after_roll') {
+        const promptRoll = currentRollRef.current ?? roll;
+        const items = ownedItems[seat.id] ?? [];
+        if (promptRoll && items.includes('reroll') && shouldAiUseReroll(seat, promptRoll, getAiMoveContext())) {
+          const stateAfterUse = await submitAiUseItem(seat, { itemType: 'reroll', rollStackIndex: selectedRollStackIndex });
+          nextRoll = (stateAfterUse?.roll as YutResult | null | undefined) ?? currentRollRef.current;
+        } else if (promptRoll && items.includes('move_plus_one')) {
+          const stateAfterUse = await submitAiUseItem(seat, { itemType: 'move_plus_one', rollStackIndex: selectedRollStackIndex });
+          nextRoll = (stateAfterUse?.roll as YutResult | null | undefined) ?? currentRollRef.current;
+        } else if (promptRoll && items.includes('move_minus_one')) {
+          const stateAfterUse = await submitAiUseItem(seat, { itemType: 'move_minus_one', rollStackIndex: selectedRollStackIndex });
+          nextRoll = (stateAfterUse?.roll as YutResult | null | undefined) ?? currentRollRef.current;
+        } else {
+          await submitAiUseItem(seat, { skipAfterRollItem: true });
+          nextRoll = promptRoll;
+        }
+      } else if (itemPromptTiming === 'after_move') {
+        await useAiAfterMoveItem(seat);
+        return;
+      } else if ((ownedItems[seat.id] ?? []).includes('golden_yut')) {
         nextRoll = chooseAiGoldenYutResult(seat, getAiMoveContext());
-        setOwnedItems((items) => ({ ...items, [seat.id]: (items[seat.id] ?? []).filter((type, index) => type !== 'golden_yut' || index !== (items[seat.id] ?? []).indexOf('golden_yut')) }));
-        addLog(`${getSeatDisplayName(seat)}님이 황금 윷으로 ${nextRoll.name} 결과를 선택했습니다.`);
+        if (activeRoomId && canCoordinateOnlineGame) await submitAiUseItem(seat, { itemType: 'golden_yut' });
+        else {
+          setOwnedItems((items) => ({ ...items, [seat.id]: (items[seat.id] ?? []).filter((type, index) => type !== 'golden_yut' || index !== (items[seat.id] ?? []).indexOf('golden_yut')) }));
+          addLog(`${getSeatDisplayName(seat)}님이 황금 윷으로 ${nextRoll.name} 결과를 선택했습니다.`);
+        }
       }
       if (stackedRollMode) {
         const aiRollStack: YutResult[] = [];
@@ -3963,7 +4077,8 @@ export function App() {
           setBranchChoice(selected.move.branchChoice);
           const earnsCaptureRoll = doesAiMoveCapture(seat, selected.move.piece, selected.stackRoll, selected.move.branchChoice);
           await delay(AI_MOVE_DELAY_MS);
-          const moved = await movePiece(selected.move.piece.id, selected.stackRoll, seat, 0, selected.move.branchChoice, { consumeStackedRollIndex: selected.index, rollStackSnapshot: remainingRolls });
+          const movedState = await submitAiMovePiece(seat, selected.move.piece.id, selected.stackRoll, selected.move.branchChoice, selected.index);
+          const moved = Boolean(movedState || !activeRoomId);
           movedAtLeastOnce = movedAtLeastOnce || moved;
           await delay(0);
           remainingRolls = remainingRolls.filter((_, index) => index !== selected.index);
@@ -3993,7 +4108,7 @@ export function App() {
       setBranchChoice(aiMove.branchChoice);
       await delay(AI_MOVE_DELAY_MS);
       if (!canContinueAiTurn()) return;
-      await movePiece(aiMove.piece.id, nextRoll, seat, 0, aiMove.branchChoice);
+      await submitAiMovePiece(seat, aiMove.piece.id, nextRoll, aiMove.branchChoice);
       if (!canContinueAiTurn()) return;
       await useAiAfterMoveItem(seat);
     } finally {
