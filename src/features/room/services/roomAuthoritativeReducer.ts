@@ -214,6 +214,9 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     };
     baseReduction.payload = {
       ...baseReduction.payload,
+      displayRoll: nextRoll,
+      fallOccurred,
+      fallCount: fallOccurred ? Math.floor(Math.random() * 4) + 1 : 0,
       timedOut: Boolean(action.payload?.timedOut),
       timeoutRecoveredBy: action.payload?.timeoutRecoveredBy ?? null,
     };
