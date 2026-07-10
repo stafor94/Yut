@@ -64,8 +64,19 @@ const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
 
-const hasUsableAfterRollItem = (state: SyncedGameStateShape, actorId: string) => ((state.ownedItems as Record<string, ItemType[]> | undefined)?.[actorId] ?? [])
-  .some((type) => ITEM_DEFINITIONS[type]?.timing === 'after_roll');
+const hasUsableBeforeRollItem = (state: SyncedGameStateShape, actorId: string) => ((state.ownedItems as Record<string, ItemType[]> | undefined)?.[actorId] ?? [])
+  .some((type) => ITEM_DEFINITIONS[type]?.timing === 'before_roll');
+const hasAuthoritativeMovablePieceForRoll = (state: SyncedGameStateShape, actorId: string, roll: YutResult, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]) => {
+  const pieces = (state.pieces as AuthoritativePiece[] | undefined) ?? [];
+  const steps = roll.steps;
+  return pieces.some((piece) => canActorControlAuthoritativePiece(actorId, piece, room, sides) && !piece.finished && (steps >= 0 || piece.started));
+};
+const hasUsableAfterRollItem = (state: SyncedGameStateShape, actorId: string, roll: YutResult, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]) => {
+  const itemTypes = ((state.ownedItems as Record<string, ItemType[]> | undefined)?.[actorId] ?? []).filter((type) => ITEM_DEFINITIONS[type]?.timing === 'after_roll');
+  if (!itemTypes.length) return false;
+  if (roll.steps < 0 && !hasAuthoritativeMovablePieceForRoll(state, actorId, roll, room, sides)) return false;
+  return true;
+};
 const getActionActorLogName = (action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>) => {
   const actorLogName = action.payload?.actorLogName;
   const actorLabel = action.payload?.actorLabel;
@@ -125,10 +136,11 @@ function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand
   return { status: 'committed' as const, patch: reduction.patch as GameStatePatch, payload: reduction.payload };
 }
 
-function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape): AuthoritativeReduction {
-  if (state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') {
+function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
+  if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll' || state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') {
     return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   }
+  if (!state.roll && hasUsableBeforeRollItem(state, action.actorId)) return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   if (room.stackedRollMode && state.rollStackClosed === true) {
     return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
   }
@@ -146,11 +158,14 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
   }));
   if (isAuthoritativeCommitReduction(baseReduction)) {
     const fallOccurred = Boolean(action.payload?.fallOccurred);
+    const shouldPromptAfterRoll = !fallOccurred
+      && (!room.stackedRollMode || !nextRoll.bonus)
+      && hasUsableAfterRollItem(state, action.actorId, nextRoll, room, sides);
     baseReduction.patch = {
       ...baseReduction.patch,
-      turnDeadlineAt: !fallOccurred && hasUsableAfterRollItem(state, action.actorId) ? now + 2600 + TURN_ACTION_TIMEOUT_MS : fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: !fallOccurred && hasUsableAfterRollItem(state, action.actorId) ? 'item_prompt' : fallOccurred ? 'roll' : 'move',
-      itemPromptTiming: !fallOccurred && hasUsableAfterRollItem(state, action.actorId) ? 'after_roll' : null,
+      turnDeadlineAt: shouldPromptAfterRoll ? now + 2600 + TURN_ACTION_TIMEOUT_MS : fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
+      turnDeadlineKind: shouldPromptAfterRoll ? 'item_prompt' : fallOccurred ? 'roll' : 'move',
+      itemPromptTiming: shouldPromptAfterRoll ? 'after_roll' : null,
     };
     baseReduction.payload = {
       ...baseReduction.payload,
@@ -177,7 +192,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
   };
 }
 function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
-  if (state.itemPromptTiming === 'after_roll') return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
+  if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll') return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   const rollStack = ((state.rollStack as YutResult[] | undefined) ?? []);
   const rollStackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : null;
   const stackedRoll = room.stackedRollMode && rollStackIndex !== null ? rollStack[rollStackIndex] : null;
@@ -194,10 +209,13 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
     makeLog: makeAuthoritativeLog,
   }));
   if (isAuthoritativeCommitReduction(baseReduction)) {
+    const nextActiveSeatId = (state.turnOrderIds ?? [])[Number(baseReduction.patch.turnIndex ?? state.turnIndex ?? 0)];
+    const shouldPromptBeforeRoll = Boolean(nextActiveSeatId && !baseReduction.patch.roll && hasUsableBeforeRollItem({ ...state, ...baseReduction.patch } as SyncedGameStateShape, String(nextActiveSeatId)));
     baseReduction.patch = {
       ...baseReduction.patch,
       turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: 'roll',
+      turnDeadlineKind: shouldPromptBeforeRoll ? 'item_prompt' : 'roll',
+      itemPromptTiming: shouldPromptBeforeRoll ? 'before_roll' : null,
     };
     baseReduction.payload = {
       ...baseReduction.payload,
@@ -219,8 +237,15 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
       selectedRollStackIndex: !captured && remainingRollStack.length === 1 ? 0 : null,
       rollStackClosed: captured ? false : remainingRollStack.length > 0,
       rollResultReadyAt: 0,
+      itemPromptTiming: null,
       ...afterMovePromptPatch,
     };
+    if (!afterMovePromptPatch && shouldAdvanceTurn) {
+      const nextActiveSeatId = (state.turnOrderIds ?? [])[nextTurnIndex];
+      if (nextActiveSeatId && hasUsableBeforeRollItem({ ...state, ...baseReduction.patch } as SyncedGameStateShape, String(nextActiveSeatId))) {
+        baseReduction.patch = { ...baseReduction.patch, turnDeadlineKind: 'item_prompt', itemPromptTiming: 'before_roll' };
+      }
+    }
     baseReduction.payload = {
       ...baseReduction.payload,
       rollStackIndex,
@@ -333,7 +358,7 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
       : typeof state.selectedRollStackIndex === 'number'
         ? state.selectedRollStackIndex
         : null;
-    const hasRollForPrompt = Boolean(state.roll) || (room.stackedRollMode && selectedRollStackIndex !== null && Boolean(rollStack[selectedRollStackIndex]));
+    const hasRollForPrompt = Boolean(state.roll) || (room.stackedRollMode && (selectedRollStackIndex !== null ? Boolean(rollStack[selectedRollStackIndex]) : rollStack.length > 0));
     if (state.itemPromptTiming !== 'after_roll' || (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId || !hasRollForPrompt) {
       return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
     }
@@ -351,6 +376,22 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
         turnDeadlineKind: 'move',
       },
       payload: { activeSeatId: action.actorId, skippedAfterRollItem: true, rollStackIndex: selectedRollStackIndex },
+    };
+  }
+
+  if (action.payload?.skipBeforeRollItem === true) {
+    if (state.itemPromptTiming !== 'before_roll' || (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId || state.roll) {
+      return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
+    }
+    const now = Date.now();
+    return {
+      status: 'committed',
+      patch: {
+        itemPromptTiming: null,
+        turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
+        turnDeadlineKind: 'roll',
+      },
+      payload: { activeSeatId: action.actorId, skippedBeforeRollItem: true },
     };
   }
 
@@ -380,6 +421,7 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
     if (state.lastMovedSeatId !== action.actorId) return makeActionReject('방금 이동한 플레이어만 사용할 수 있습니다.');
     if (state.itemPromptTiming !== 'after_move' && typeof state.pendingAfterMoveTurnIndex !== 'number') return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
   } else if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
+  if (itemTiming === 'before_roll' && state.itemPromptTiming !== 'before_roll') return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
   if (itemTiming === 'after_roll' && state.itemPromptTiming !== 'after_roll') return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
   const nextOwnedItems = removeOneItem(state.ownedItems, action.actorId, itemType);
   if (!nextOwnedItems) return makeActionReject('보유한 아이템이 없습니다.');
@@ -499,10 +541,14 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   }
 
   if (itemType === 'golden_yut') {
+    if (state.roll) return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
     return {
       status: 'committed',
       patch: {
         ownedItems: nextOwnedItems,
+        itemPromptTiming: null,
+        turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
+        turnDeadlineKind: 'roll',
         logs: [makeAuthoritativeLog(logs, `${actorLogName}님이 황금 윷을 사용했습니다.`), ...logs],
       },
       payload: { activeSeatId: action.actorId, itemType },
@@ -583,7 +629,7 @@ function reduceContinueRace(state: SyncedGameStateShape, action: Omit<GameAction
 }
 
 export function reduceAuthoritativeGameAction(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[] = []): AuthoritativeReduction {
-  if (action.type === 'roll_yut') return reduceAuthoritativeRoll(state, action, room);
+  if (action.type === 'roll_yut') return reduceAuthoritativeRoll(state, action, room, sides);
   if (action.type === 'move_piece') return reduceAuthoritativeMove(state, action, room, sides);
   if (action.type === 'continue_race') return reduceContinueRace(state, action, room);
   if (action.type === 'use_item') return reduceUseItem(state, action, room, sides);
