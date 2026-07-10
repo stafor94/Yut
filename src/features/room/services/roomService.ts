@@ -37,16 +37,25 @@ const STALE_PLAYER_DELETE_MS = 45000;
 const ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 
-const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, options: { coordinatorPlayerIds?: string[] } = {}) => {
+const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, options: { coordinatorPlayerIds?: string[]; allowCoordinator?: boolean } = {}) => {
   if (!auth) return true;
   const uid = auth.currentUser?.uid;
   if (!uid) return false;
+  if (options.allowCoordinator && (options.coordinatorPlayerIds ?? []).includes(uid)) return true;
   if (player?.isAI || player?.isSubstitutedByAI) {
     return uid === room.hostId || (options.coordinatorPlayerIds ?? []).includes(uid);
   }
   return [playerId, player?.playerId, player?.currentPlayerId, player?.originalPlayerId]
     .some((candidate) => typeof candidate === 'string' && candidate === uid);
 };
+
+const isExpiredItemPromptTimeoutRecoveryAction = (state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => (
+  action.type === 'use_item'
+  && action.payload?.itemPromptTimeoutRecovery === true
+  && state.turnDeadlineKind === 'item_prompt'
+  && typeof state.turnDeadlineAt === 'number'
+  && Date.now() >= state.turnDeadlineAt
+);
 
 const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.startsWith(QA_ROOM_TITLE_PREFIX);
 
@@ -719,18 +728,17 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const actorSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', action.actorId));
     const actorPlayer = actorSnapshot.exists() ? actorSnapshot.data() as RoomPlayer : null;
     let coordinatorPlayerIds: string[] = [];
-    if (actorPlayer?.isAI || actorPlayer?.isSubstitutedByAI) {
-      const snapshotSeats = (state.gameSeats ?? []) as GameSeatSnapshot[];
-      const coordinatorSeatId = snapshotSeats.find((seat) => !seat.isAI)?.id ?? '';
-      if (coordinatorSeatId) {
-        const coordinatorSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', coordinatorSeatId));
-        if (coordinatorSnapshot.exists()) {
-          const coordinator = coordinatorSnapshot.data() as RoomPlayer;
-          coordinatorPlayerIds = [coordinatorSeatId, coordinator.playerId, coordinator.currentPlayerId, coordinator.originalPlayerId].filter((candidate): candidate is string => typeof candidate === 'string' && Boolean(candidate));
-        }
+    const snapshotSeats = (state.gameSeats ?? []) as GameSeatSnapshot[];
+    const coordinatorSeatId = snapshotSeats.find((seat) => !seat.isAI)?.id ?? '';
+    if (coordinatorSeatId) {
+      const coordinatorSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', coordinatorSeatId));
+      if (coordinatorSnapshot.exists()) {
+        const coordinator = coordinatorSnapshot.data() as RoomPlayer;
+        coordinatorPlayerIds = [coordinatorSeatId, coordinator.playerId, coordinator.currentPlayerId, coordinator.originalPlayerId].filter((candidate): candidate is string => typeof candidate === 'string' && Boolean(candidate));
       }
     }
-    if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer, room, { coordinatorPlayerIds })) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
+    const allowCoordinator = isExpiredItemPromptTimeoutRecoveryAction(state, action);
+    if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer, room, { coordinatorPlayerIds, allowCoordinator })) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
     const currentVersion = Number(state.turnVersion ?? 0);
     const currentSequence = Number(state.lastSequence ?? 0);
     let actionSides: AuthoritativeSeatSide[] = [];
