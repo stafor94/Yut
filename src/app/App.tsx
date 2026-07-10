@@ -114,7 +114,7 @@ const PENDING_ROLL_MIN_VISIBLE_MS = 450;
 const STALE_PENDING_REMOTE_ACTION_MS = 30000;
 const AI_AUTHORITATIVE_ACTION_RETRY_LIMIT = 2;
 const AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS = 700;
-const PENALTY_TURN_ACTION_TIMEOUT_MS = 5000;
+const PENALTY_TURN_ACTION_TIMEOUT_MS = 10000;
 const ITEM_PROMPT_TIMEOUT_MS = 10000;
 const ITEM_REPLACE_TIMEOUT_MS = 10000;
 const TRAP_EFFECT_MS = 3000;
@@ -294,14 +294,14 @@ export function App() {
   const startedGameRequestVersionsRef = useRef<Set<number>>(new Set());
   const timeoutRecoveryKeysRef = useRef<Set<string>>(new Set());
 
-  const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? '') => turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : TURN_ACTION_TIMEOUT_MS;
-  const getItemPromptTimeoutMs = (seatId = localSeatId) => turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : ITEM_PROMPT_TIMEOUT_MS;
+  const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? '') => activeRoomId ? TURN_ACTION_TIMEOUT_MS : turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : TURN_ACTION_TIMEOUT_MS;
+  const getItemPromptTimeoutMs = (seatId = localSeatId) => activeRoomId ? ITEM_PROMPT_TIMEOUT_MS : turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : ITEM_PROMPT_TIMEOUT_MS;
   const markTurnActionTimedOut = (seatId = activeSeat?.id ?? localSeatId) => {
-    if (!seatId) return;
+    if (!seatId || activeRoomId) return;
     setTurnActionTimeoutPenaltyBySeatId((current) => current[seatId] ? current : { ...current, [seatId]: true });
   };
   const clearTurnActionTimeoutPenalty = (seatId = activeSeat?.id ?? localSeatId) => {
-    if (!seatId) return;
+    if (!seatId || activeRoomId) return;
     setTurnActionTimeoutPenaltyBySeatId((current) => current[seatId] ? { ...current, [seatId]: false } : current);
   };
   const recordFirebaseLatency = (elapsedMs: number) => {
@@ -1910,7 +1910,6 @@ export function App() {
       const delayMs = Math.max(0, getTurnRecoveryDeadlineAt(turnDeadlineAt) - Date.now());
       const timer = window.setTimeout(() => {
         if (Date.now() < getTurnRecoveryDeadlineAt(turnDeadlineAt) || hasPendingCurrentTurnAction('use_item', promptActorId)) return;
-        markTurnActionTimedOut(promptActorId);
         const skipSeat = playableSeats.find((seat) => seat.id === promptActorId);
         const promptRollStackIndex = selectedRollStackIndex;
         const payload = promptTiming === 'before_roll'
@@ -3461,7 +3460,7 @@ export function App() {
       reportTurnActionBlocked('roll_yut', rollActionBlockReasons, '윷 던지기를 진행할 수 없습니다');
       return;
     }
-    if (!rollOptions.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
+    if (!activeRoomId && !rollOptions.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
     const rollTimingZone = rollOptions.timedOut ? 'normal' : getCurrentRollTimingZone(rollOptions.timingPositionPercent);
     setRollTimingFeedback(rollTimingZone);
     const fallOccurred = !forcedRoll && shouldFallForTimingZone(rollTimingZone);
@@ -3803,7 +3802,7 @@ export function App() {
       reportTurnActionBlocked('move_piece', moveActionBlockReasons, '말 이동을 진행할 수 없습니다');
       return false;
     }
-    if (!options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
+    if (!activeRoomId && !options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
     const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
     const hasPieceOnBoard = pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished);
     const selectedPiece = hasPieceOnBoard ? movablePieces.find((piece) => piece.id === selectedPieceId) : undefined;
@@ -4873,7 +4872,6 @@ export function App() {
       onSelectPieceId={setSelectedPieceId}
       onSelectTrapNode={placePendingTrap}
       onSkipItemPrompt={() => {
-        clearTurnActionTimeoutPenalty(localSeatId);
         if (activeRoomId) {
           const promptTiming = itemPromptTiming;
           const promptRollStackIndex = selectedRollStackIndex;
@@ -4899,6 +4897,7 @@ export function App() {
             .finally(() => deletePendingLocalRemoteAction(clientMutationId));
           return;
         }
+        clearTurnActionTimeoutPenalty(localSeatId);
         setItemPromptTiming(null);
         markItemPromptResolved(itemPromptTiming, selectedRollStackIndex);
         if (itemPromptTiming === 'after_move') finishPendingAfterMoveTurnAdvance();

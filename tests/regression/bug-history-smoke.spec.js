@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
@@ -158,6 +159,27 @@ test.describe('BUG_HISTORY regression smoke', () => {
         return `positions=${Array.from(observedPositions).join('|')} state=${JSON.stringify(state.yutDebug ?? {}, null, 2)}`;
       }, { timeout: 70_000, intervals: [100, 150, 200, 250], message: 'AI 이동이 최종 위치 순간이동이 아니라 최소 2개 칸 위치를 거쳐야 합니다.' }).toBe('animated');
     });
+  });
+
+  test('timeout 벌칙은 오프라인 로컬 timeout에만 적용된다', async () => {
+    const appSource = readFileSync('src/app/App.tsx', 'utf8');
+
+    expect(appSource).toContain('const PENALTY_TURN_ACTION_TIMEOUT_MS = 10000;');
+    expect(appSource).toContain('const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? \'\') => activeRoomId ? TURN_ACTION_TIMEOUT_MS');
+    expect(appSource).toContain('const getItemPromptTimeoutMs = (seatId = localSeatId) => activeRoomId ? ITEM_PROMPT_TIMEOUT_MS');
+    expect(appSource).toContain('if (!seatId || activeRoomId) return;');
+
+    const onlineItemPromptEffect = appSource.slice(
+      appSource.indexOf('if (activeRoomId) {', appSource.indexOf('if (!itemPromptTiming) return undefined;')),
+      appSource.indexOf('const timeoutMs = getItemPromptTimeoutMs(localSeatId);'),
+    );
+    expect(onlineItemPromptEffect).not.toContain('markTurnActionTimedOut');
+
+    const skipItemPromptHandler = appSource.slice(
+      appSource.indexOf('onSkipItemPrompt={() => {'),
+      appSource.indexOf('onUseItem={useItem}'),
+    );
+    expect(skipItemPromptHandler.indexOf('if (activeRoomId)')).toBeLessThan(skipItemPromptHandler.indexOf('clearTurnActionTimeoutPenalty(localSeatId);'));
   });
 
 });
