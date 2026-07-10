@@ -100,19 +100,19 @@ export function GameBoardControls({
     onRollYut(getVisibleRollTimingPositionPercent());
   };
 
+  const isOpponentTurn = Boolean(activeSeatId && activeSeatId !== localSeatId);
   const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;
   const showRollStackPicker = canShowLocalRollStack && rollStack.length >= 2 && selectedRollStackIndex === null;
   const showRollStackMoveButton = canShowLocalRollStack && rollStack.length > 0 && !showRollStackPicker;
   const timerDurationMs = activeSeatId ? getTurnActionTimeoutMs(activeSeatId) : turnActionTimeoutMs;
-  const buttonText = roll
+  const actionButtonText = roll
     ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동')
-    : activeSeatId && activeSeatId !== localSeatId ? `${activeSeatTurnText} 차례`
-      : pendingTrapPlacement ? '함정 설치 대기 중'
-        : waitingForOnlineTurnOrder ? '순서 정하기 대기 중'
-          : hasActiveTurnOrderIntro ? '결과 확인 중' : '윷 던지기';
+    : pendingTrapPlacement ? '함정 설치 대기 중'
+      : waitingForOnlineTurnOrder ? '순서 정하기 대기 중'
+        : hasActiveTurnOrderIntro ? '결과 확인 중' : '윷 던지기';
 
-  return <div ref={controlsRef} className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length ? 'item-prompt-mode' : ''}`}>
-    {activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
+  return <div ref={controlsRef} className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
+    {isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
       <div><strong>아이템을 사용할까요?</strong></div>
       {pendingItemPromptChoiceLabel ? <div className="inline-item-processing" role="status" aria-live="polite">{pendingItemPromptChoiceLabel}</div> : <>
         <div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${getItemPromptTimeoutMs(localSeatId)}ms` } as CSSProperties} aria-hidden="true"><span></span></div>
@@ -130,7 +130,7 @@ export function GameBoardControls({
       {((!roll && canRollNow) || (roll && canRequestMove)) && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
       {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index)}>{entry.name}</button>)}</div></div>}
       {!roll && canRollNow && canSubmitTurnAction && !showRollStackPicker && <div ref={rollTimingMeterRef} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대"><span className="roll-timing-good left" aria-hidden="true"></span><span className="roll-timing-perfect" aria-hidden="true"></span><span className="roll-timing-good right" aria-hidden="true"></span><span ref={rollTimingOrbRef} className="roll-timing-orb" aria-hidden="true"></span></div>}
-      {!showRollStackPicker && <button data-testid={roll ? 'move-piece-button' : canSubmitTurnAction ? 'roll-yut-button' : 'turn-waiting-button'} className={!roll ? 'roll-button' : undefined} onClick={handleRollButtonClick} disabled={(!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton ? '선택한 말 이동' : buttonText}</button>}
+      {!showRollStackPicker && <button data-testid={roll ? 'move-piece-button' : canSubmitTurnAction ? 'roll-yut-button' : 'turn-waiting-button'} className={!roll ? 'roll-button' : undefined} onClick={handleRollButtonClick} disabled={(!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton ? '선택한 말 이동' : actionButtonText}</button>}
     </>}
   </div>;
 }
