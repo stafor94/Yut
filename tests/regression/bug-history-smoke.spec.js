@@ -83,4 +83,78 @@ test.describe('BUG_HISTORY regression smoke', () => {
     });
   });
 
+  test('host가 대리 제출한 AI 이동은 sequence 경로로 칸별 재생되고 내 이동은 중복 재생되지 않는다', async ({ page, context }, testInfo) => {
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'ai-seq-host'));
+    const roomTitle = makeQaName(testInfo, 'ai-seq-room');
+    await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+
+    const getMovingPieces = () => page.evaluate(() => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      const pieces = Array.isArray(debug.pieces) ? debug.pieces : [];
+      const localSeatId = String(debug.localSeatId ?? '');
+      return Array.from(document.querySelectorAll('[data-testid^="piece-"]'))
+        .map((node) => {
+          const testId = node.getAttribute('data-testid') ?? '';
+          const pieceId = testId.replace(/^piece-/, '');
+          const debugPiece = pieces.find((piece) => piece && typeof piece === 'object' && piece.id === pieceId) ?? {};
+          const rect = node.getBoundingClientRect();
+          return {
+            testId,
+            ownerId: String(debugPiece.ownerId ?? ''),
+            isLocalOwner: Boolean(localSeatId && debugPiece.ownerId === localSeatId),
+            className: node.getAttribute('class') ?? '',
+            left: Math.round(rect.left),
+            top: Math.round(rect.top),
+          };
+        })
+        .filter((piece) => piece.className.includes('moving'));
+    });
+
+    await runQaStep(testInfo, 'host+AI 온라인 게임 시작', async () => {
+      await expectAppShell(page);
+      await page.getByTestId('room-title-input').fill(roomTitle);
+      await page.getByTestId('create-room-button').click();
+      await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+      roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
+      const addAiButton = page.getByTestId('add-ai-P2');
+      if (await addAiButton.isVisible().catch(() => false)) await addAiButton.click();
+      await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await page.getByTestId('start-game-button').click();
+      await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
+    });
+
+    await runQaStep(testInfo, '본인 이동은 optimistic 애니메이션 후 sequence에서 재재생되지 않음', async () => {
+      await expect.poll(async () => {
+        const state = await collectScreenState(page);
+        if (state.rollButton.visible && !state.rollButton.disabled) return 'ready';
+        return JSON.stringify(state, null, 2);
+      }, { timeout: 45_000, message: '본인 이동 검증을 위해 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      await page.getByTestId('roll-yut-button').click();
+      await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
+      await expect.poll(async () => {
+        const state = await collectScreenState(page);
+        if (state.moveButton.visible && !state.moveButton.disabled) return 'ready';
+        return JSON.stringify(state, null, 2);
+      }, { timeout: 20_000, message: '본인 말 이동 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      await page.getByTestId('move-piece-button').click();
+      await expect.poll(async () => (await getMovingPieces()).length, { timeout: 8_000, message: '본인 optimistic 이동 애니메이션이 시작되어야 합니다.' }).toBeGreaterThan(0);
+      await expect.poll(async () => (await getMovingPieces()).length, { timeout: 12_000, message: '본인 optimistic 이동 애니메이션이 종료되어야 합니다.' }).toBe(0);
+      await page.waitForTimeout(1_200);
+      expect(await getMovingPieces(), '서버 sequence 확정 후 본인 말 이동이 다시 재생되면 안 됩니다.').toEqual([]);
+    });
+
+    await runQaStep(testInfo, 'AI 대리 제출 이동은 중간 노드를 거쳐 재생됨', async () => {
+      const observedPositions = new Set();
+      await expect.poll(async () => {
+        const moving = await getMovingPieces();
+        for (const piece of moving) {
+          if (!piece.isLocalOwner) observedPositions.add(`${piece.testId}:${piece.left},${piece.top}`);
+        }
+        if (observedPositions.size >= 2) return 'animated';
+        const state = await collectScreenState(page);
+        return `positions=${Array.from(observedPositions).join('|')} state=${JSON.stringify(state.yutDebug ?? {}, null, 2)}`;
+      }, { timeout: 70_000, intervals: [100, 150, 200, 250], message: 'AI 이동이 최종 위치 순간이동이 아니라 최소 2개 칸 위치를 거쳐야 합니다.' }).toBe('animated');
+    });
+  });
+
 });

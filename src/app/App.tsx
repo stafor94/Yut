@@ -1319,7 +1319,7 @@ export function App() {
   }
 
   function playSyncedMoveSoundOnce(soundKey: string, clientMutationId?: unknown) {
-    if (!soundKey || isLocalSyncedMutation(clientMutationId) || playedSyncedMoveSoundKeysRef.current.has(soundKey)) return false;
+    if (!soundKey || hasOptimisticallyPlayedLocalAction(clientMutationId) || playedSyncedMoveSoundKeysRef.current.has(soundKey)) return false;
     playedSyncedMoveSoundKeysRef.current.add(soundKey);
     if (playedSyncedMoveSoundKeysRef.current.size > 160) playedSyncedMoveSoundKeysRef.current = new Set(Array.from(playedSyncedMoveSoundKeysRef.current).slice(-80));
     playSfx('move');
@@ -1532,7 +1532,7 @@ export function App() {
 
   async function replayMoveSequence(sequence: GameSequence) {
     const clientMutationId = typeof sequence.clientMutationId === 'string' ? sequence.clientMutationId : '';
-    if (isLocalSyncedMutation(clientMutationId)) return;
+    if (hasOptimisticallyPlayedLocalAction(clientMutationId)) return;
 
     const payload = sequence.payload ?? {};
     const finalPieces = (sequence.stateAfter?.pieces as BoardPiece[] | undefined) ?? null;
