@@ -1416,6 +1416,21 @@ export function App() {
     if (state.ownedItems) setOwnedItems(state.ownedItems as Record<string, ItemType[]>);
     if (state.trapNodes) setTrapNodes(state.trapNodes as TrapNode[]);
     setPendingTrapPlacement((state.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? null);
+    const syncedPendingItemPickup = (state as { pendingItemPickup?: { ownerId?: unknown; itemType?: unknown; itemId?: unknown; existingItemType?: unknown; deadline?: unknown } | null }).pendingItemPickup ?? null;
+    if (syncedPendingItemPickup && syncedPendingItemPickup.ownerId === localSeatId && typeof syncedPendingItemPickup.itemType === 'string' && typeof syncedPendingItemPickup.existingItemType === 'string') {
+      const nextPendingItemPickup = {
+        seatId: String(syncedPendingItemPickup.ownerId),
+        item: syncedPendingItemPickup.itemType as ItemType,
+        itemId: String(syncedPendingItemPickup.itemId ?? ''),
+        existingItem: syncedPendingItemPickup.existingItemType as ItemType,
+        deadline: Number(syncedPendingItemPickup.deadline ?? Date.now() + ITEM_REPLACE_TIMEOUT_MS),
+      };
+      pendingItemPickupRef.current = nextPendingItemPickup;
+      setPendingItemPickup(nextPendingItemPickup);
+    } else if (!syncedPendingItemPickup && pendingItemPickupRef.current && activeRoomId) {
+      pendingItemPickupRef.current = null;
+      setPendingItemPickup(null);
+    }
     if (state.shieldedPieceIds) setShieldedPieceIds(state.shieldedPieceIds);
     if (state.logs) {
       const nextLogs = state.logs as GameLog[];
@@ -1449,7 +1464,7 @@ export function App() {
     setLastMovedSeatId(state.lastMovedSeatId ?? '');
     const syncedItemPromptTiming = (state.itemPromptTiming as ItemTiming | null | undefined) ?? null;
     const syncedItemPromptKey = syncedItemPromptTiming ? makeItemPromptKey(syncedItemPromptTiming, nextTurnIndex, syncedSelectedRollStackIndex) : '';
-    setItemPromptTiming(itemPickupPending || (syncedItemPromptKey && resolvedItemPromptKeysRef.current.has(syncedItemPromptKey)) ? null : syncedItemPromptTiming);
+    setItemPromptTiming((syncedItemPromptKey && resolvedItemPromptKeysRef.current.has(syncedItemPromptKey)) ? null : syncedItemPromptTiming);
     setPendingAfterMoveTurnIndex(typeof state.pendingAfterMoveTurnIndex === 'number' ? state.pendingAfterMoveTurnIndex : null);
     setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
     setRollResultReadyAt(nextRollResultReadyAt);
@@ -1480,7 +1495,7 @@ export function App() {
       gameStartedAt: (state.gameStartedAt as number | null | undefined) ?? null,
       turnOrderIntro: (state.turnOrderIntro as TurnOrderIntro | null | undefined) ?? null,
       pendingTrapPlacement: (state.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? null,
-      itemPromptTiming: itemPickupPending ? null : syncedItemPromptTiming,
+      itemPromptTiming: syncedItemPromptTiming,
       pendingAfterMoveTurnIndex: typeof state.pendingAfterMoveTurnIndex === 'number' ? state.pendingAfterMoveTurnIndex : null,
       rollLockUntil: Number(state.rollLockUntil ?? 0),
       lastMovedPieceIds: syncedLastMovedPieceIds,
@@ -2848,6 +2863,24 @@ export function App() {
     setTurnDeadlineKind('roll');
   }
 
+  function submitPendingItemPickupDecision(pickup: PendingItemPickup, decision: 'keep' | 'replace') {
+    if (!activeRoomId) return false;
+    const seat = getSeatById(pickup.seatId);
+    const payload = { decision, itemId: pickup.itemId, itemType: pickup.item, existingItemType: pickup.existingItem };
+    const clientMutationId = getLocalActionKey('item_pickup_decision', payload);
+    const action = { type: 'item_pickup_decision' as const, actorId: pickup.seatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, seat) };
+    addPendingLocalRemoteAction(clientMutationId, { type: 'item_pickup_decision', actorId: pickup.seatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+    void commitQueuedAuthoritativeGameAction(activeRoomId, action)
+      .then((result) => {
+        if (result.status === 'rejected' || result.status === 'unsupported') void syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 교체 선택을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+      })
+      .catch((error) => {
+        recordRemoteActionDiagnostic('move_piece', 'item-pickup-decision-error', error instanceof Error ? error.message : '아이템 교체 선택 처리에 실패했습니다.', { actionKey: clientMutationId });
+        void syncLatestAuthoritativeState('아이템 교체 선택 처리 중 오류가 발생해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+      })
+      .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+    return true;
+  }
   function resolvePendingItemPickup() {
     pendingItemPickupRef.current = null;
     setPendingItemPickup(null);
@@ -2860,12 +2893,20 @@ export function App() {
   }
   function keepPendingItemPickup(pickup = pendingItemPickup) {
     if (!pickup) return;
+    if (activeRoomId && submitPendingItemPickupDecision(pickup, 'keep')) {
+      resolvePendingItemPickup();
+      return;
+    }
     setBoardItems((items) => items.filter((item) => item.id !== pickup.itemId));
     addLog(`새 아이템 '${ITEM_DEFINITIONS[pickup.item].name}'을 유지하지 않았습니다.`);
     resolvePendingItemPickup();
   }
   function replacePendingItemPickup(pickup = pendingItemPickup) {
     if (!pickup) return;
+    if (activeRoomId && submitPendingItemPickupDecision(pickup, 'replace')) {
+      resolvePendingItemPickup();
+      return;
+    }
     setOwnedItems((items) => ({
       ...items,
       [pickup.seatId]: (items[pickup.seatId] ?? []).map((type) => type === pickup.existingItem ? pickup.item : type),

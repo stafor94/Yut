@@ -28,6 +28,7 @@ type SyncedGameStateShape = {
   turnOrderPhase?: unknown;
   turnOrderIntro?: unknown;
   pendingTrapPlacement?: unknown;
+  pendingItemPickup?: unknown;
   turnDeadlineAt?: number;
   turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
   itemPromptTiming?: unknown;
@@ -41,7 +42,7 @@ type SyncedGameStateShape = {
   lastRollTimingZone?: unknown;
   pendingGoldenYutSelection?: unknown;
 };
-type GameActionShape = { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
+type GameActionShape = { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
 export type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string; patch?: GameStatePatch; payload?: Record<string, unknown> };
 type AuthoritativeCommitReduction = { status: 'committed'; patch: GameStatePatch; payload: Record<string, unknown> };
 export type AuthoritativeReduction = AuthoritativeCommitReduction | Exclude<AuthoritativeActionResult, { status: 'committed' }>;
@@ -50,6 +51,7 @@ type AuthoritativePiece = { id: string; ownerId: string; label?: string; nodeInd
 type AuthoritativeLog = { id: number; text: string };
 type AuthoritativeTrapNode = { nodeId: string; ownerId: string };
 type AuthoritativePendingTrapPlacement = { ownerId?: string; pieceId?: string; nodeIds?: string[]; nextTurnIndex?: number; deadline?: number };
+type AuthoritativePendingItemPickup = { ownerId?: string; itemId?: string; itemType?: ItemType; existingItemType?: ItemType; deadline?: number; nextTurnIndex?: number; resumeItemPromptTiming?: 'after_move' | null; resumePendingAfterMoveTurnIndex?: number | null; resumeTurnDeadlineKind?: 'roll' | 'item_prompt'; };
 export type AuthoritativeSeatSide = { id: string; team: RoomPlayerTeam };
 const TURN_ACTION_TIMEOUT_MS = 15000;
 
@@ -219,6 +221,7 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
   if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
   const payloadExtraSteps = Number(action.payload?.extraSteps ?? 0);
   if (!Number.isFinite(payloadExtraSteps) || payloadExtraSteps !== 0) return makeActionReject('허용되지 않은 추가 이동값입니다.');
+  if (state.pendingItemPickup) return makeActionReject('아이템 교체 선택을 먼저 완료해주세요.');
   if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll') return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   const rollStack = ((state.rollStack as YutResult[] | undefined) ?? []);
   const rollStackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : null;
@@ -290,6 +293,20 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
     if (afterMovePromptPatch) baseReduction.patch = { ...baseReduction.patch, ...afterMovePromptPatch };
   }
 
+  if (isAuthoritativeCommitReduction(baseReduction) && baseReduction.patch.pendingItemPickup) {
+    const pendingPickup = baseReduction.patch.pendingItemPickup as AuthoritativePendingItemPickup;
+    const resumeItemPromptTiming = baseReduction.patch.itemPromptTiming === 'after_move' ? 'after_move' : null;
+    baseReduction.patch.pendingItemPickup = {
+      ...pendingPickup,
+      resumeItemPromptTiming,
+      resumePendingAfterMoveTurnIndex: resumeItemPromptTiming ? Number(baseReduction.patch.pendingAfterMoveTurnIndex ?? baseReduction.patch.turnIndex ?? state.turnIndex ?? 0) : null,
+      resumeTurnDeadlineKind: resumeItemPromptTiming ? 'item_prompt' : 'roll',
+    };
+    baseReduction.patch.itemPromptTiming = null;
+    baseReduction.patch.pendingAfterMoveTurnIndex = null;
+    baseReduction.patch.turnDeadlineKind = 'item_prompt';
+  }
+
   if (!isAuthoritativeCommitReduction(baseReduction) || room.playMode !== 'individual') return baseReduction;
 
   const nextPieces = (baseReduction.patch.pieces as AuthoritativePiece[] | undefined) ?? (state.pieces as AuthoritativePiece[]);
@@ -357,7 +374,42 @@ const getRollWithStepDelta = (roll: unknown, delta: number): YutResult | null =>
   return { ...current, steps: current.steps + delta };
 };
 
+function reduceItemPickupDecision(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>): AuthoritativeReduction {
+  const pending = state.pendingItemPickup as AuthoritativePendingItemPickup | null | undefined;
+  if (!pending || pending.ownerId !== action.actorId || !pending.itemType || !pending.existingItemType) return makeActionReject('처리할 아이템 교체 대기가 없습니다.');
+  const decision = action.payload?.decision === 'replace' ? 'replace' : action.payload?.decision === 'keep' ? 'keep' : '';
+  if (!decision) return makeActionReject('아이템 교체 선택이 유효하지 않습니다.');
+  const currentOwnedItems = { ...((state.ownedItems ?? {}) as Record<string, ItemType[]>) };
+  const currentItems = [...(currentOwnedItems[action.actorId] ?? [])];
+  const existingIndex = currentItems.indexOf(pending.existingItemType);
+  if (existingIndex < 0) return makeActionReject('교체할 기존 아이템이 없습니다.');
+  if (decision === 'replace') currentItems[existingIndex] = pending.itemType;
+  const nextOwnedItems = { ...currentOwnedItems, [action.actorId]: currentItems };
+  const logs = (state.logs as AuthoritativeLog[] | undefined) ?? [];
+  const actorLogName = getActionActorLogName(action);
+  const logText = decision === 'replace'
+    ? `${actorLogName}님이 아이템 '${ITEM_DEFINITIONS[pending.existingItemType].name}'을 '${ITEM_DEFINITIONS[pending.itemType].name}'으로 교체했습니다.`
+    : `${actorLogName}님이 새 아이템 '${ITEM_DEFINITIONS[pending.itemType].name}'을 유지하지 않았습니다.`;
+  const resumeAfterMove = pending.resumeItemPromptTiming === 'after_move' && typeof pending.resumePendingAfterMoveTurnIndex === 'number';
+  return {
+    status: 'committed',
+    patch: {
+      ownedItems: nextOwnedItems,
+      pendingItemPickup: null,
+      itemPromptTiming: resumeAfterMove ? 'after_move' : null,
+      pendingAfterMoveTurnIndex: resumeAfterMove ? pending.resumePendingAfterMoveTurnIndex : null,
+      turnIndex: resumeAfterMove ? Number(state.turnIndex ?? 0) : Number(pending.nextTurnIndex ?? state.turnIndex ?? 0),
+      turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
+      turnDeadlineKind: resumeAfterMove ? 'item_prompt' : 'roll',
+      logs: [makeAuthoritativeLog(logs, logText), ...logs],
+    },
+    payload: { activeSeatId: action.actorId, decision, itemType: pending.itemType, existingItemType: pending.existingItemType },
+  };
+}
+
 function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
+  if (state.pendingItemPickup) return makeActionReject('아이템 교체 선택을 먼저 완료해주세요.');
+
   if (action.payload?.cancelTrapPlacement === true) {
     const placement = state.pendingTrapPlacement as AuthoritativePendingTrapPlacement | null | undefined;
     if (!placement || placement.ownerId !== action.actorId || typeof placement.nextTurnIndex !== 'number') {
@@ -663,6 +715,7 @@ export function reduceAuthoritativeGameAction(state: SyncedGameStateShape, actio
   if (action.type === 'move_piece') return reduceAuthoritativeMove(state, action, room, sides);
   if (action.type === 'continue_race') return reduceContinueRace(state, action, room);
   if (action.type === 'use_item') return reduceUseItem(state, action, room, sides);
+  if (action.type === 'item_pickup_decision') return reduceItemPickupDecision(state, action);
   if (action.type === 'place_trap') return reducePlaceTrap(state, action, room, sides);
   return { status: 'unsupported' };
 }
