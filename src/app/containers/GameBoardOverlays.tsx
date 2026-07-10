@@ -75,7 +75,7 @@ export function BoardMessageStack({ turnToast, toast }: BoardMessageStackProps) 
 type RollStageProps = {
   rollAnimation: {
     id: number;
-    phase?: 'pending' | 'resolved';
+    phase?: 'pending' | 'resolved' | 'resolved-from-pending';
     actionKey?: string;
     result?: YutResult;
     sticks: { flat: boolean; marked?: boolean }[];
@@ -88,7 +88,8 @@ type RollStageProps = {
 export function RollStage({ rollAnimation }: RollStageProps) {
   if (!rollAnimation) return null;
   const isPending = rollAnimation.phase === 'pending';
-  return <div className={`roll-stage ${isPending ? 'pending-roll' : 'resolved-roll'}`} role="status" aria-live="polite">
+  const isResolvedFromPending = rollAnimation.phase === 'resolved-from-pending';
+  return <div className={`roll-stage ${isPending ? 'pending-roll' : isResolvedFromPending ? 'resolved-from-pending resolved-roll' : 'resolved-roll'}`} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
     <div className={`roll-mat ${!isPending && rollAnimation.result?.bonus && !rollAnimation.turnOrder ? 'bonus-roll' : ''} ${!isPending && rollAnimation.fallCount ? 'fall-roll' : ''}`}>
