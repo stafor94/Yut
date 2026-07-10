@@ -74,6 +74,16 @@ const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
 const isItemPromptTimeoutRecoveryPayload = (payload: Record<string, unknown> | undefined) => payload?.itemPromptTimeoutRecovery === true;
+const isTrapPlacementTimeoutRecoveryPayload = (payload: Record<string, unknown> | undefined) => payload?.trapPlacementTimeoutRecovery === true;
+const validateTrapPlacementTimeoutRecovery = (state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, placement: AuthoritativePendingTrapPlacement) => {
+  if (!isTrapPlacementTimeoutRecoveryPayload(action.payload)) return null;
+  if (state.turnDeadlineKind !== 'trap_placement') return '함정 설치 시간초과 상태가 아닙니다.';
+  if (typeof placement.deadline !== 'number' || action.payload?.placementDeadline !== placement.deadline) return '함정 설치 시간초과 대상이 아닙니다.';
+  if (Date.now() < placement.deadline) return '함정 설치 시간이 아직 남아 있습니다.';
+  if (!placement.ownerId || placement.ownerId !== action.actorId) return '함정 설치 시간초과 대상이 아닙니다.';
+  if (!placement.pieceId || action.payload?.pieceId !== placement.pieceId) return '함정 설치 시간초과 대상 말이 아닙니다.';
+  return null;
+};
 const validateItemPromptTimeoutRecovery = (state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>) => {
   if (!isItemPromptTimeoutRecoveryPayload(action.payload)) return null;
   if (state.turnDeadlineKind !== 'item_prompt' || typeof state.turnDeadlineAt !== 'number') return '아이템 선택 시간초과 상태가 아닙니다.';
@@ -424,6 +434,8 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
     if (!placement || placement.ownerId !== action.actorId || typeof placement.nextTurnIndex !== 'number') {
       return makeActionReject('취소할 함정 설치 대기가 없습니다.');
     }
+    const timeoutRecoveryRejection = validateTrapPlacementTimeoutRecovery(state, action, placement);
+    if (timeoutRecoveryRejection) return makeActionReject(timeoutRecoveryRejection);
     const now = Date.now();
     return {
       status: 'committed',
@@ -435,7 +447,7 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
         turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
         turnDeadlineKind: 'roll',
       },
-      payload: { activeSeatId: action.actorId, canceledTrapPlacement: true },
+      payload: { activeSeatId: action.actorId, canceledTrapPlacement: true, trapPlacementTimeoutRecovery: isTrapPlacementTimeoutRecoveryPayload(action.payload) },
     };
   }
 
