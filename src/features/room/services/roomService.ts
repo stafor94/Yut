@@ -91,13 +91,18 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   const now = Date.now();
   await cleanupInactiveRooms();
   const existingHostRooms = await getDocs(query(roomsRef, where('hostId', '==', params.hostId)));
+  const activeHostRoom = existingHostRooms.docs.find((roomDoc) => {
+    const room = roomDoc.data() as Partial<RoomSummary>;
+    return isRoomInGame(room as Pick<RoomSummary, 'status'> & Partial<Pick<RoomSummary, 'startStatus'>>) && !isInactiveRoom(room, now);
+  });
+  if (activeHostRoom) throw new Error('이미 진행 중인 방이 있습니다. 기존 방으로 돌아간 뒤 새 방을 만들어주세요.');
   const staleHostRoomRefs = existingHostRooms.docs
-    .filter((roomDoc) => ['waiting', 'playing', 'finished'].includes(String(roomDoc.data().status)))
+    .filter((roomDoc) => {
+      const room = roomDoc.data() as Partial<RoomSummary>;
+      return room.status === 'finished' || (room.status === 'waiting' && isInactiveRoom(room, now));
+    })
     .map((roomDoc) => roomDoc.ref);
   if (staleHostRoomRefs.length) {
-    const cleanupBatch = writeBatch(firestore);
-    staleHostRoomRefs.forEach((roomRef) => cleanupBatch.set(roomRef, { status: 'finished', emptySince: now }, { merge: true }));
-    await cleanupBatch.commit();
     await Promise.all(staleHostRoomRefs.map((roomRef) => deleteRoom(roomRef.id)));
   }
 

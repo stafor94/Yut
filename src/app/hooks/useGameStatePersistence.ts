@@ -37,7 +37,6 @@ export function useGameStatePersistence({
     savingStateFingerprintRef.current = stateFingerprint;
     setCoordinatorStateSaveKey(stateFingerprint);
     const pendingSequenceMeta = pendingSequenceMetaRef.current;
-    pendingSequenceMetaRef.current = null;
     const sequenceType = pendingSequenceMeta?.type ?? (winner && gameEndMode !== 'partial_finish' ? 'game_finished' : lastMovedSeatId === localSeatId ? 'move_piece_resolved' : pendingTrapPlacement?.ownerId === localSeatId ? 'item_used' : 'state_snapshot');
     const sequenceActorId = pendingSequenceMeta?.actorId ?? localSeatId;
     const sequencePayload = pendingSequenceMeta?.payload ?? { turnIndex, activeSeatId: activeSeat?.id ?? '', rollName: roll?.name ?? null, lastMovedPieceIds, lastMovedSeatId };
@@ -49,11 +48,21 @@ export function useGameStatePersistence({
         lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
         lastSavedStateFingerprintRef.current = stateFingerprint;
       }
+      if (result.status === 'committed' || result.status === 'duplicate') {
+        if (pendingSequenceMetaRef.current?.clientMutationId === pendingSequenceMeta?.clientMutationId) pendingSequenceMetaRef.current = null;
+      }
       if (result.status === 'sequence_mismatch') {
         keepCoordinatorStateSavePending = true;
+        pendingSequenceMetaRef.current = pendingSequenceMeta;
+        if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
         if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
         setCoordinatorStateSaveRetryTick((tick) => tick + 1);
       }
+    }).catch(() => {
+      keepCoordinatorStateSavePending = true;
+      pendingSequenceMetaRef.current = pendingSequenceMeta;
+      if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
+      setCoordinatorStateSaveRetryTick((tick) => tick + 1);
     }).finally(() => {
       if (!keepCoordinatorStateSavePending && savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
       if (!keepCoordinatorStateSavePending) setCoordinatorStateSaveKey((current) => current === stateFingerprint ? '' : current);

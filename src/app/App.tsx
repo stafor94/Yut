@@ -237,6 +237,7 @@ export function App() {
   const [forcedRoll, setForcedRoll] = useState<YutResult | null>(null);
   const [goldenYutPickerOpen, setGoldenYutPickerOpen] = useState(false);
   const [itemPromptTiming, setItemPromptTiming] = useState<ItemTiming | null>(null);
+  const [pendingAfterMoveTurnIndex, setPendingAfterMoveTurnIndex] = useState<number | null>(null);
   const resolvedItemPromptKeysRef = useRef<Set<string>>(new Set());
   const [rollLockUntil, setRollLockUntil] = useState(0);
   const [rollLockClock, setRollLockClock] = useState(() => Date.now());
@@ -444,7 +445,7 @@ export function App() {
   const canShowContinueRaceButton = Boolean(activeRoomId && playMode === 'individual' && (gameEndMode === 'partial_finish' || derivedPartialFinish) && unfinishedRaceSeatIds.length >= 2);
   const stackedRollSelectedResult = stackedRollMode && rollStackClosed && rollStack.length ? (typeof selectedRollStackIndex === 'number' ? rollStack[selectedRollStackIndex] : rollStack.length === 1 ? rollStack[0] : null) : null;
   const selectedMoveSteps = (stackedRollSelectedResult ?? roll)?.steps ?? 0;
-  const makeItemPromptKey = (timing: ItemTiming, promptTurnIndex = turnIndex, promptRollStackIndex = selectedRollStackIndex) => `${promptTurnIndex}:${promptRollStackIndex ?? 'none'}:${timing}`;
+  const makeItemPromptKey = (timing: ItemTiming, promptTurnIndex = turnIndex, promptRollStackIndex = selectedRollStackIndex, promptSequence = lastAppliedSequenceRef.current) => `${promptSequence}:${promptTurnIndex}:${promptRollStackIndex ?? 'none'}:${timing}`;
   const markItemPromptResolved = (timing: ItemTiming | null, promptRollStackIndex = selectedRollStackIndex) => {
     if (!timing) return;
     resolvedItemPromptKeysRef.current.add(makeItemPromptKey(timing, turnIndex, promptRollStackIndex));
@@ -504,7 +505,7 @@ export function App() {
     turnOrderIntro,
     pendingTrapPlacement,
     itemPromptTiming,
-    pendingAfterMoveTurnIndex: null,
+    pendingAfterMoveTurnIndex,
     rollLockUntil,
     lastMovedPieceIds,
     lastMovedSeatId,
@@ -1439,6 +1440,7 @@ export function App() {
     const syncedItemPromptTiming = (state.itemPromptTiming as ItemTiming | null | undefined) ?? null;
     const syncedItemPromptKey = syncedItemPromptTiming ? makeItemPromptKey(syncedItemPromptTiming, nextTurnIndex, syncedSelectedRollStackIndex) : '';
     setItemPromptTiming(itemPickupPending || (syncedItemPromptKey && resolvedItemPromptKeysRef.current.has(syncedItemPromptKey)) ? null : syncedItemPromptTiming);
+    setPendingAfterMoveTurnIndex(typeof state.pendingAfterMoveTurnIndex === 'number' ? state.pendingAfterMoveTurnIndex : null);
     setBranchChoice((state.branchChoice as BranchChoice | undefined) ?? 'outer');
     setRollResultReadyAt(nextRollResultReadyAt);
     setTurnOrderPhase((state.turnOrderPhase as TurnOrderPhase | null | undefined) ?? { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 });
@@ -2365,7 +2367,7 @@ export function App() {
   function resetGameBoard(nextPieces: BoardPiece[]) {
     setPieces(nextPieces);
     setBoardItems(itemMode ? spawnInitialBoardItems(4, 8) : []);
-    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setRollStack([]); setSelectedRollStackIndex(null); setRollStackClosed(false); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null);
+    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setRollStack([]); setSelectedRollStackIndex(null); setRollStackClosed(false); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null); setPendingAfterMoveTurnIndex(null); resolvedItemPromptKeysRef.current.clear();
   }
 
   function beginTurnOrderIntro() {
@@ -2640,7 +2642,7 @@ export function App() {
     }
     setPieces(local.nextPieces);
     setBoardItems(local.nextBoardItems);
-    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(local.nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setRollStack([]); setSelectedRollStackIndex(null); setRollStackClosed(false); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null);
+    setOwnedItems({}); setTrapNodes([]); setShieldedPieceIds([]); setLastMovedPieceIds([]); setLastMovedSeatId(''); setRevealedItems([]); setSelectedPieceId(local.nextPieces[0]?.id ?? ''); setMovingPieceId(''); setTurnIndex(0); clearRoll(); setRollStack([]); setSelectedRollStackIndex(null); setRollStackClosed(false); setForcedRoll(null); setGoldenYutPickerOpen(false); setItemPromptTiming(null); setBranchChoice('outer'); setCaptureEffect(null); setTrapEffect(null); setPendingTrapPlacement(null); setPendingAfterMoveTurnIndex(null); resolvedItemPromptKeysRef.current.clear();
     setTurnOrderIds(local.nextTurnOrderIds);
     setInitialTurnOrderIds(local.nextTurnOrderIds);
     setCompletedSeatIds([]);
@@ -3530,7 +3532,7 @@ export function App() {
       if (shouldAdvanceTurn && !shouldPromptAfterMoveItem) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
       setTurnDeadlineAt(Date.now() + (shouldPromptAfterMoveItem ? getItemPromptTimeoutMs(localSeatId) : TURN_ACTION_TIMEOUT_MS));
       setTurnDeadlineKind(shouldPromptAfterMoveItem ? 'item_prompt' : 'roll');
-      if (shouldPromptAfterMoveItem) setItemPromptTiming('after_move');
+      if (shouldPromptAfterMoveItem) { setItemPromptTiming('after_move'); setPendingAfterMoveTurnIndex((turnIndex + 1) % Math.max(turnSeats.length, 1)); }
       clearRoll();
       if (consumingStackedRoll) {
         setRollStack(remainingRollStack);
@@ -3638,16 +3640,6 @@ export function App() {
           const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) };
           addLog(`${getSeatDisplayName(activeSeat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
           setBranchChoice('outer');
-          clearRoll();
-          if (typeof consumeStackedRollIndex === 'number') {
-            const remainingRollStack = rollStack.filter((_, index) => index !== consumeStackedRollIndex);
-            setRollStack(remainingRollStack);
-            setRollStackClosed(remainingRollStack.length > 0);
-            setSelectedRollStackIndex(remainingRollStack.length === 1 ? 0 : null);
-            if (remainingRollStack.length === 0) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
-          } else {
-            setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
-          }
           enqueueAuthoritativeGameAction(
             activeRoomId,
             action,
@@ -3753,7 +3745,7 @@ export function App() {
     if (!activeRoomId || !canCoordinateOnlineGame) {
       return Boolean(rollYutForStack(seat, nextRoll, null, { timingZone }));
     }
-    const rollPayload = { forcedResult: nextRoll, rollTimingZone: timingZone, fallOccurred: false, stackedRollMode: true };
+    const rollPayload = { forcedResult: nextRoll, allowForcedResult: true, rollTimingZone: timingZone, fallOccurred: false, stackedRollMode: true };
     const actionKey = `roll_yut_ai_stack:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStack.length}:${nextRoll.name}:${nextRoll.steps}:${Date.now()}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
     const action = { type: 'roll_yut' as const, actorId: seat.id, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, seat) };
@@ -3920,10 +3912,12 @@ export function App() {
               if (!await submitAiStackedBackDoSkip(seat, skippedRoll, 0, remainingRolls)) return;
               continue;
             }
-            setRollStack([...remainingRolls]);
-            setRollStackClosed(remainingRolls.length > 0);
-            setSelectedRollStackIndex(remainingRolls.length === 1 ? 0 : null);
-            if (remainingRolls.length === 0) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+            if (!activeRoomId) {
+              setRollStack([...remainingRolls]);
+              setRollStackClosed(remainingRolls.length > 0);
+              setSelectedRollStackIndex(remainingRolls.length === 1 ? 0 : null);
+              if (remainingRolls.length === 0) setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+            }
             continue;
           }
           setSelectedRollStackIndex(selected.index);
@@ -3951,8 +3945,10 @@ export function App() {
       }
       const aiMove = chooseAiMove(seat, nextRoll, getAiMoveContext());
       if (!aiMove) {
-        setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
-        clearRoll();
+        if (!activeRoomId) {
+          setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+          clearRoll();
+        }
         return;
       }
       setBranchChoice(aiMove.branchChoice);
