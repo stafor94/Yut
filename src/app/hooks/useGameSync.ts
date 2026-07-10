@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from 'react';
+import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Unsubscribe } from 'firebase/firestore';
 import type { SyncedGameState } from '../../features/room/services/roomService';
 import { subscribeGameState } from '../../features/room/services/roomService';
@@ -21,6 +21,11 @@ type GameSyncSubscriptionParams = {
 };
 
 export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, lastAppliedStateVersionRef, applyingSyncedStateRef, replayMissingSequencesThenApply, applySyncedStateSnapshot, subscribe = subscribeGameState }: GameSyncSubscriptionParams) {
+  const latestCallbacksRef = useRef({ replayMissingSequencesThenApply, applySyncedStateSnapshot });
+  useEffect(() => {
+    latestCallbacksRef.current = { replayMissingSequencesThenApply, applySyncedStateSnapshot };
+  }, [replayMissingSequencesThenApply, applySyncedStateSnapshot]);
+
   useEffect(() => {
     if (!activeRoomId) return undefined;
     return subscribe(activeRoomId, (state) => {
@@ -31,7 +36,7 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
       if (stateVersion && stateVersion <= lastAppliedStateVersionRef.current) {
         if (remoteSequence > localSequence) {
           applyingSyncedStateRef.current = true;
-          void replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence).finally(() => {
+          void latestCallbacksRef.current.replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence).finally(() => {
             window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
           });
         }
@@ -39,11 +44,11 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
       }
       applyingSyncedStateRef.current = true;
       if (remoteSequence > localSequence) {
-        void replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence).finally(() => {
+        void latestCallbacksRef.current.replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence).finally(() => {
           window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
         });
       } else {
-        applySyncedStateSnapshot(state as SequenceStateSnapshot);
+        latestCallbacksRef.current.applySyncedStateSnapshot(state as SequenceStateSnapshot);
         window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
       }
     });
