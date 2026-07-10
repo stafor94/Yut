@@ -20,6 +20,16 @@ const withMockRandom = <T>(values: number[], callback: () => T): T => {
   }
 };
 
+const withMockNow = <T>(now: number, callback: () => T): T => {
+  const originalNow = Date.now;
+  Date.now = () => now;
+  try {
+    return callback();
+  } finally {
+    Date.now = originalNow;
+  }
+};
+
 const baseState = (): EngineState => ({
   pieces: [
     { id: 'p1', ownerId: 'seat-1', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
@@ -1085,20 +1095,23 @@ test('온라인 함정 설치는 place_trap에서 아이템을 소비하고 trap
 
 
 test('온라인 함정 설치 시간초과 취소는 서버에서 다음 턴으로 진행한다', () => {
+  const placement = { ownerId: 'seat-1', pieceId: 'p1', nodeIds: ['n02'], nextTurnIndex: 1, deadline: 1000 };
   const state = {
     ...baseState(),
     turnIndex: 0,
-    pendingTrapPlacement: { ownerId: 'seat-1', pieceId: 'p1', nodeIds: ['n02'], nextTurnIndex: 1, deadline: 1 },
+    pendingTrapPlacement: placement,
     itemPromptTiming: null,
     pendingAfterMoveTurnIndex: 1,
+    turnDeadlineKind: 'trap_placement',
+    turnDeadlineAt: placement.deadline,
     logs: [],
-  } as EngineState & { pendingTrapPlacement: unknown; pendingAfterMoveTurnIndex: number };
+  } as EngineState & { pendingTrapPlacement: unknown; pendingAfterMoveTurnIndex: number; turnDeadlineKind: 'trap_placement'; turnDeadlineAt: number };
 
-  const result = reduceAuthoritativeGameAction(
+  const result = withMockNow(1001, () => reduceAuthoritativeGameAction(
     state,
-    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true } },
+    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: placement.deadline } },
     { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
-  );
+  ));
 
   assert.equal(result.status, 'committed');
   assert.equal(result.patch?.pendingTrapPlacement, null);
@@ -1106,6 +1119,55 @@ test('온라인 함정 설치 시간초과 취소는 서버에서 다음 턴으�
   assert.equal(result.patch?.turnIndex, 1);
   assert.equal(result.patch?.pendingAfterMoveTurnIndex, null);
   assert.equal(result.patch?.turnDeadlineKind, 'roll');
+});
+
+test('온라인 함정 설치 시간초과 취소는 owner·piece·deadline이 일치해야 한다', () => {
+  const placement = { ownerId: 'seat-1', pieceId: 'p1', nodeIds: ['n02'], nextTurnIndex: 1, deadline: 1000 };
+  const state = {
+    ...baseState(),
+    pendingTrapPlacement: placement,
+    turnDeadlineKind: 'trap_placement',
+    turnDeadlineAt: placement.deadline,
+    logs: [],
+  } as EngineState & { pendingTrapPlacement: unknown; turnDeadlineKind: 'trap_placement'; turnDeadlineAt: number };
+
+  const wrongPiece = withMockNow(1001, () => reduceAuthoritativeGameAction(
+    state,
+    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p2', placementDeadline: placement.deadline } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  ));
+  const wrongDeadline = withMockNow(1001, () => reduceAuthoritativeGameAction(
+    state,
+    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: 999 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  ));
+  const wrongOwner = withMockNow(1001, () => reduceAuthoritativeGameAction(
+    state,
+    { type: 'use_item', actorId: 'seat-2', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: placement.deadline } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  ));
+
+  assert.equal(wrongPiece.status, 'rejected');
+  assert.equal(wrongDeadline.status, 'rejected');
+  assert.equal(wrongOwner.status, 'rejected');
+});
+
+test('온라인 함정 설치 시간초과 전 위조 취소는 거부한다', () => {
+  const placement = { ownerId: 'seat-1', pieceId: 'p1', nodeIds: ['n02'], nextTurnIndex: 1, deadline: 1000 };
+  const result = withMockNow(999, () => reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pendingTrapPlacement: placement,
+      turnDeadlineKind: 'trap_placement',
+      turnDeadlineAt: placement.deadline,
+      logs: [],
+    } as EngineState & { pendingTrapPlacement: unknown; turnDeadlineKind: 'trap_placement'; turnDeadlineAt: number },
+    { type: 'use_item', actorId: 'seat-1', payload: { cancelTrapPlacement: true, trapPlacementTimeoutRecovery: true, pieceId: 'p1', placementDeadline: placement.deadline } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  ));
+
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason, '함정 설치 시간이 아직 남아 있습니다.');
 });
 
 test('온라인 after_move 대기가 끝난 stale 함정 use_item은 거부한다', () => {

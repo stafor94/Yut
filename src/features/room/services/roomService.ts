@@ -57,6 +57,20 @@ const isExpiredItemPromptTimeoutRecoveryAction = (state: SyncedGameState, action
   && Date.now() >= state.turnDeadlineAt
 );
 
+const isExpiredTrapPlacementTimeoutRecoveryAction = (state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => {
+  const placement = state.pendingTrapPlacement as { ownerId?: unknown; pieceId?: unknown; deadline?: unknown } | null | undefined;
+  return action.type === 'use_item'
+    && action.payload?.cancelTrapPlacement === true
+    && action.payload?.trapPlacementTimeoutRecovery === true
+    && state.turnDeadlineKind === 'trap_placement'
+    && placement?.ownerId === action.actorId
+    && typeof placement.pieceId === 'string'
+    && action.payload?.pieceId === placement.pieceId
+    && typeof placement.deadline === 'number'
+    && action.payload?.placementDeadline === placement.deadline
+    && Date.now() >= placement.deadline;
+};
+
 const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.startsWith(QA_ROOM_TITLE_PREFIX);
 
 const isInactiveRoom = (room: Partial<RoomSummary>, now = Date.now()) => {
@@ -737,7 +751,7 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
         coordinatorPlayerIds = [coordinatorSeatId, coordinator.playerId, coordinator.currentPlayerId, coordinator.originalPlayerId].filter((candidate): candidate is string => typeof candidate === 'string' && Boolean(candidate));
       }
     }
-    const allowCoordinator = isExpiredItemPromptTimeoutRecoveryAction(state, action);
+    const allowCoordinator = isExpiredItemPromptTimeoutRecoveryAction(state, action) || isExpiredTrapPlacementTimeoutRecoveryAction(state, action);
     if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer, room, { coordinatorPlayerIds, allowCoordinator })) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
     const currentVersion = Number(state.turnVersion ?? 0);
     const currentSequence = Number(state.lastSequence ?? 0);
