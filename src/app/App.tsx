@@ -90,6 +90,7 @@ import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
 import { makeBugReportSequenceExport, makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
+import { TURN_ACTION_TIMEOUT_MS, getTurnRecoveryDeadlineAt } from '../features/room/services/roomTiming';
 import '../styles/globals.css';
 
 const TURN_DELAY_MS = 1000;
@@ -110,7 +111,6 @@ const ROLL_RESULT_HOLD_GRACE_MS = 1200;
 const ROLL_ANIMATION_MS = 2600;
 const ROLL_STUCK_TIMEOUT_MS = 12000;
 const PENDING_ROLL_MIN_VISIBLE_MS = 450;
-const TURN_ACTION_TIMEOUT_MS = 15000;
 const STALE_PENDING_REMOTE_ACTION_MS = 30000;
 const AI_AUTHORITATIVE_ACTION_RETRY_LIMIT = 2;
 const AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS = 700;
@@ -581,6 +581,7 @@ export function App() {
   const canMoveSelectedPiece = Boolean(activeMovablePiece);
   const noMovableBackDoRoll = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && selectedMoveSteps < 0
     && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
+  const hasPendingCurrentTurnAction = (type: GameAction['type'], actorId = activeSeat?.id ?? '') => Array.from(pendingLocalRemoteActionMetaRef.current.values()).some((meta) => meta.type === type && meta.actorId === actorId && meta.createdTurnIndex === turnIndex);
   const hasPendingOnlineMoveRequest = Boolean(activeRoomId && pendingLocalRemoteActionCount > 0);
   const canRequestMove = Boolean(canSubmitTurnAction && !hasPendingOnlineMoveRequest && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && (canMoveSelectedPiece || noMovableBackDoRoll));
   const previewNodeIds = useMemo(() => canRequestMove && canSeatControlPiece(activeSeat, selectedPiece) ? getMovePreviewNodeIds(selectedPiece, roll, displayBranchChoice) : [], [activeSeat, canRequestMove, displayBranchChoice, roll, selectedPiece]);
@@ -604,7 +605,7 @@ export function App() {
   const stalledTurnAgeMs = stalledTurnWatchKey && stalledTurnStartedAtRef.current ? Math.max(0, Date.now() - stalledTurnStartedAtRef.current) : 0;
   const getCurrentStalledTurnSyncAgeMs = () => {
     if (!stalledTurnWatchKey) return 0;
-    if (turnDeadlineKind === 'move' && turnDeadlineAt) return Math.max(0, Date.now() - turnDeadlineAt + TURN_ACTION_TIMEOUT_MS);
+    if (turnDeadlineKind === 'move' && turnDeadlineAt) return Math.max(0, Date.now() - getTurnRecoveryDeadlineAt(turnDeadlineAt) + TURN_ACTION_TIMEOUT_MS);
     const watchAgeMs = stalledTurnStartedAtRef.current ? Math.max(0, Date.now() - stalledTurnStartedAtRef.current) : 0;
     const readyAgeMs = effectiveRollResultReadyAt ? Math.max(0, Date.now() - effectiveRollResultReadyAt) : 0;
     return Math.max(watchAgeMs, readyAgeMs);
@@ -905,28 +906,28 @@ export function App() {
     const delayMs = resolution.status === 'waiting' ? Math.max(0, resolution.recoveryAfterMs - resolution.ageMs) : 0;
     const timer = window.setTimeout(() => {
       if (stalledTurnRecoveryKeyRef.current === stalledTurnWatchKey) return;
-      void recoverStalledTurnMove(stalledTurnWatchKey);
+      if (!hasPendingCurrentTurnAction('move_piece', activeSeat.id)) void recoverStalledTurnMove(stalledTurnWatchKey);
     }, delayMs);
     return () => window.clearTimeout(timer);
-  }, [activeSeat, isOnlinePlayer, movingPieceId, moveInProgress, pendingTrapPlacement, roll, rollAnimation, rollResultHolding, stalledTurnMovablePieces.length, stalledTurnNeedsBranchChoice, stalledTurnSyncAgeMs, stalledTurnWatchKey, turnDeadlineAt, turnDeadlineKind, winner]);
+  }, [activeSeat, isOnlinePlayer, movingPieceId, moveInProgress, pendingTrapPlacement, roll, rollAnimation, rollResultHolding, stalledTurnMovablePieces.length, pendingLocalRemoteActionCount, stalledTurnNeedsBranchChoice, stalledTurnSyncAgeMs, stalledTurnWatchKey, turnDeadlineAt, turnDeadlineKind, winner]);
 
   useEffect(() => {
     if (!canSubmitDeadlineRecovery() || !activeRoomId || !activeSeat || roll || turnDeadlineKind !== 'roll' || !turnDeadlineAt) return undefined;
     const recoveryKey = `${activeRoomId}:${lastAppliedSequenceRef.current}:${turnIndex}:${activeSeat.id}:roll:${turnDeadlineAt}`;
     const runRecovery = () => {
-      if (Date.now() < turnDeadlineAt || timeoutRecoveryKeysRef.current.has(recoveryKey)) return;
+      if (Date.now() < getTurnRecoveryDeadlineAt(turnDeadlineAt) || timeoutRecoveryKeysRef.current.has(recoveryKey) || hasPendingCurrentTurnAction('roll_yut', activeSeat.id)) return;
       void recoverTimedOutRoll(recoveryKey);
     };
-    const delayMs = Math.max(0, turnDeadlineAt - Date.now());
+    const delayMs = Math.max(0, getTurnRecoveryDeadlineAt(turnDeadlineAt) - Date.now());
     const timer = window.setTimeout(runRecovery, delayMs);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat?.id, activeTurnOrderIntro, isOnlinePlayer, movingPieceId, moveInProgress, pendingTrapPlacement, roll, rollAnimation, screen, turnDeadlineAt, turnDeadlineKind, turnIndex, turnOrderPhase.active, winner]);
+  }, [activeRoomId, activeSeat?.id, activeTurnOrderIntro, isOnlinePlayer, movingPieceId, moveInProgress, pendingLocalRemoteActionCount, pendingTrapPlacement, roll, rollAnimation, screen, turnDeadlineAt, turnDeadlineKind, turnIndex, turnOrderPhase.active, winner]);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game') return undefined;
     const handleResume = () => {
       if (document.visibilityState === 'hidden') return;
-      if (turnDeadlineKind === 'roll' && turnDeadlineAt && Date.now() >= turnDeadlineAt && activeSeat && !roll) {
+      if (turnDeadlineKind === 'roll' && turnDeadlineAt && Date.now() >= getTurnRecoveryDeadlineAt(turnDeadlineAt) && activeSeat && !roll && !hasPendingCurrentTurnAction('roll_yut', activeSeat.id)) {
         const recoveryKey = `${activeRoomId}:${lastAppliedSequenceRef.current}:${turnIndex}:${activeSeat.id}:roll:${turnDeadlineAt}`;
         void recoverTimedOutRoll(recoveryKey, { source: 'page-resume' });
       }
@@ -941,7 +942,7 @@ export function App() {
       window.removeEventListener('pageshow', handleResume);
       document.removeEventListener('visibilitychange', handleResume);
     };
-  }, [activeRoomId, activeSeat, roll, screen, stalledTurnWatchKey, turnDeadlineAt, turnDeadlineKind, turnIndex]);
+  }, [activeRoomId, activeSeat, pendingLocalRemoteActionCount, roll, screen, stalledTurnWatchKey, turnDeadlineAt, turnDeadlineKind, turnIndex]);
 
 
   useEffect(() => () => {
@@ -1904,9 +1905,9 @@ export function App() {
       if (!canCoordinateOnlineGame || turnDeadlineKind !== 'item_prompt' || !turnDeadlineAt) return undefined;
       const promptActorId = promptTiming === 'after_move' ? lastMovedSeatId : activeSeat?.id;
       if (!promptActorId) return undefined;
-      const delayMs = Math.max(0, turnDeadlineAt - Date.now());
+      const delayMs = Math.max(0, getTurnRecoveryDeadlineAt(turnDeadlineAt) - Date.now());
       const timer = window.setTimeout(() => {
-        if (Date.now() < turnDeadlineAt) return;
+        if (Date.now() < getTurnRecoveryDeadlineAt(turnDeadlineAt) || hasPendingCurrentTurnAction('use_item', promptActorId)) return;
         markTurnActionTimedOut(promptActorId);
         const skipSeat = playableSeats.find((seat) => seat.id === promptActorId);
         const promptRollStackIndex = selectedRollStackIndex;
@@ -1937,7 +1938,7 @@ export function App() {
       finishPendingAfterMoveTurnAdvance();
     }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat?.id, canCoordinateOnlineGame, itemPromptTiming, lastMovedSeatId, localSeatId, playableSeats, selectedRollStackIndex, turnActionTimeoutPenaltyBySeatId, turnDeadlineAt, turnDeadlineKind, turnIndex]);
+  }, [activeRoomId, activeSeat?.id, canCoordinateOnlineGame, itemPromptTiming, lastMovedSeatId, localSeatId, pendingLocalRemoteActionCount, playableSeats, selectedRollStackIndex, turnActionTimeoutPenaltyBySeatId, turnDeadlineAt, turnDeadlineKind, turnIndex]);
 
   useEffect(() => {
     if (screen !== 'game' || !gameStartedAt) return undefined;
@@ -2117,7 +2118,7 @@ export function App() {
 
 
   useEffect(() => {
-    if (screen !== 'game' || !canRollNow || !activeSeat || activeSeat.id !== localSeatId || roll || rollAnimation) return undefined;
+    if (activeRoomId || screen !== 'game' || !canRollNow || !activeSeat || activeSeat.id !== localSeatId || roll || rollAnimation) return undefined;
     const timeoutMs = getTurnActionTimeoutMs(activeSeat.id);
     const timer = window.setTimeout(() => {
       if (canRollNow && !currentRollRef.current) {
@@ -2126,17 +2127,17 @@ export function App() {
       }
     }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [activeSeat?.id, canRollNow, localSeatId, roll, rollAnimation, screen, turnActionTimeoutPenaltyBySeatId]);
+  }, [activeRoomId, activeSeat?.id, canRollNow, localSeatId, roll, rollAnimation, screen, turnActionTimeoutPenaltyBySeatId]);
 
   useEffect(() => {
-    if (screen !== 'game' || pendingItemPickup || !canRequestMove || !roll || rollResultHolding || movingPieceId) return undefined;
+    if (activeRoomId || screen !== 'game' || pendingItemPickup || !canRequestMove || !roll || rollResultHolding || movingPieceId) return undefined;
     const timeoutMs = getTurnActionTimeoutMs(activeSeat?.id ?? localSeatId);
     const timer = window.setTimeout(() => {
       markTurnActionTimedOut(activeSeat?.id ?? localSeatId);
       void moveSelectedPiece(0, { timedOut: true });
     }, timeoutMs);
     return () => window.clearTimeout(timer);
-  }, [activeSeat?.id, canRequestMove, localSeatId, movingPieceId, pendingItemPickup, roll, rollResultHolding, screen, selectedPieceId, turnActionTimeoutPenaltyBySeatId]);
+  }, [activeRoomId, activeSeat?.id, canRequestMove, localSeatId, movingPieceId, pendingItemPickup, roll, rollResultHolding, screen, selectedPieceId, turnActionTimeoutPenaltyBySeatId]);
 
   useEffect(() => {
     if (!roll || pendingItemPickup || !activeSeat || !isMyTurn || movingPieceId || winner || rollResultHolding || pendingTrapPlacement) return;
@@ -2259,7 +2260,7 @@ export function App() {
     const timer = window.setInterval(() => {
       const now = Date.now();
       setTrapPlacementClock(now);
-      if (now < pendingTrapPlacement.deadline) return;
+      if (now < getTurnRecoveryDeadlineAt(pendingTrapPlacement.deadline)) return;
       if (!activeRoomId) {
         setPendingTrapPlacement(null);
         finishPendingAfterMoveTurnAdvance();
@@ -2274,9 +2275,10 @@ export function App() {
           timeoutRecoveredBy: localSeatId,
           pieceId: pendingTrapPlacement.pieceId,
           placementDeadline: pendingTrapPlacement.deadline,
+          timeoutDeadlineAt: pendingTrapPlacement.deadline,
         };
         const clientMutationId = `trap_placement_timeout:${activeRoomId}:${pendingTrapPlacement.ownerId}:${pendingTrapPlacement.pieceId}:${pendingTrapPlacement.deadline}`;
-        if (pendingLocalRemoteActionsRef.current.has(clientMutationId)) return;
+        if (pendingLocalRemoteActionsRef.current.has(clientMutationId) || hasPendingCurrentTurnAction('place_trap', pendingTrapPlacement.ownerId) || hasPendingCurrentTurnAction('use_item', pendingTrapPlacement.ownerId)) return;
         const action = { type: 'use_item' as const, actorId: pendingTrapPlacement.ownerId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, ownerSeat) };
         shouldAdvanceTurnAfterItemPromptRef.current = false;
         addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: pendingTrapPlacement.ownerId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
@@ -2291,7 +2293,7 @@ export function App() {
       }
     }, 250);
     return () => window.clearInterval(timer);
-  }, [activeRoomId, canCoordinateOnlineGame, localSeatId, pendingTrapPlacement?.deadline, pendingTrapPlacement?.ownerId, pendingTrapPlacement?.pieceId, playableSeats, screen, turnIndex]);
+  }, [activeRoomId, canCoordinateOnlineGame, localSeatId, pendingTrapPlacement?.deadline, pendingTrapPlacement?.ownerId, pendingLocalRemoteActionCount, pendingTrapPlacement?.pieceId, playableSeats, screen, turnIndex]);
 
 
   useEffect(() => {
@@ -3322,6 +3324,7 @@ export function App() {
         timedOut: true,
         timeoutRecoveredBy: localSeatId,
         timeoutSource: options.source ?? 'deadline',
+        timeoutDeadlineAt: turnDeadlineAt,
         clientActionId: actionKey,
       }, activeSeat),
     };
@@ -3366,6 +3369,7 @@ export function App() {
       coordinatorSeatId: localSeatId,
       reason: options.source === 'manual-sync' ? 'manual-sync-stalled-roll-move-timeout' : 'stalled-roll-move-timeout',
       stalledForMs: getCurrentStalledTurnSyncAgeMs(),
+      timeoutDeadlineAt: turnDeadlineAt,
     };
     const action = { type: 'move_piece' as const, actorId: activeSeat.id, payload: withActorLogPayload(payload, activeSeat) };
     recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-started', `${getSeatDisplayName(activeSeat)}님의 멈춘 이동을 자동 복구합니다.`, { actionKey: payload.clientActionId });
