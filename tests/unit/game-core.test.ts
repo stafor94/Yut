@@ -1271,3 +1271,132 @@ test('온라인 일반 roll은 황금 윷 선택 결과와 잘못된 입력 시�
   assert.equal(forgedGolden.status, 'rejected');
   assert.equal(badTiming.status, 'rejected');
 });
+
+test('온라인 AI 누적 추가 던지기는 서버 상태 전환마다 한 action씩 진행된다', () => withMockRandom([0.8, 0.1], () => {
+  const firstRoll = reduceAuthoritativeGameAction(
+    { ...baseState(), logs: [] },
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'perfect', stackedRollMode: true } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(firstRoll.status, 'committed');
+  assert.deepEqual(firstRoll.patch?.rollStack, [{ name: '윷', steps: 4, bonus: true }]);
+  assert.equal(firstRoll.patch?.rollStackClosed, false);
+
+  const secondRoll = reduceAuthoritativeGameAction(
+    { ...baseState(), roll: null, rollStack: firstRoll.patch?.rollStack, rollStackClosed: firstRoll.patch?.rollStackClosed as boolean, logs: [] },
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'perfect', stackedRollMode: true } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+  );
+
+  assert.equal(secondRoll.status, 'committed');
+  assert.deepEqual(secondRoll.patch?.rollStack, [{ name: '윷', steps: 4, bonus: true }, { name: '도', steps: 1 }]);
+  assert.equal(secondRoll.patch?.rollStackClosed, true);
+
+  const move = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      roll: null,
+      rollStack: secondRoll.patch?.rollStack,
+      rollStackClosed: secondRoll.patch?.rollStackClosed as boolean,
+      selectedRollStackIndex: 1,
+      logs: [],
+    },
+    { type: 'move_piece', actorId: 'seat-1', payload: { pieceId: 'p1', branchChoice: 'outer', rollStackIndex: 1 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+    [{ id: 'seat-1', team: '청팀' }, { id: 'seat-2', team: '홍팀' }],
+  );
+
+  assert.equal(move.status, 'committed');
+  assert.deepEqual(move.patch?.rollStack, [{ name: '윷', steps: 4, bonus: true }]);
+  assert.equal(move.patch?.turnIndex, 0);
+}));
+
+test('온라인 AI 일반 roll 후 after_roll 선택이 끝나야 이동 action이 허용된다', () => withMockRandom([0.1], () => {
+  const rollAction = reduceAuthoritativeGameAction(
+    { ...baseState(), ownedItems: { 'seat-1': ['move_plus_one'] }, logs: [] },
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'perfect' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(rollAction.status, 'committed');
+  assert.equal(rollAction.patch?.itemPromptTiming, 'after_roll');
+
+  const blockedMove = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      roll: rollAction.patch?.roll,
+      ownedItems: { 'seat-1': ['move_plus_one'] },
+      itemPromptTiming: 'after_roll',
+      logs: [],
+    } as EngineState & { itemPromptTiming: 'after_roll' },
+    { type: 'move_piece', actorId: 'seat-1', payload: { pieceId: 'p1', branchChoice: 'outer' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(blockedMove.status, 'rejected');
+  assert.equal(blockedMove.reason, '아이템 사용 여부를 먼저 선택해주세요.');
+
+  const skipPrompt = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      roll: rollAction.patch?.roll,
+      ownedItems: { 'seat-1': ['move_plus_one'] },
+      itemPromptTiming: 'after_roll',
+      logs: [],
+    } as EngineState & { itemPromptTiming: 'after_roll' },
+    { type: 'use_item', actorId: 'seat-1', payload: { skipAfterRollItem: true } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(skipPrompt.status, 'committed');
+  assert.equal(skipPrompt.patch?.itemPromptTiming, null);
+  assert.equal(skipPrompt.patch?.turnDeadlineKind, 'move');
+}));
+
+test('온라인 AI 함정은 use_item snapshot 뒤 place_trap action에서 다음 턴으로 진행된다', () => {
+  const useTrap = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: [
+        { id: 'p1', ownerId: 'seat-1', nodeIndex: 2, nodeId: 'n03', started: true, finished: false },
+        { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+      ],
+      ownedItems: { 'seat-1': ['trap'] },
+      lastMovedSeatId: 'seat-1',
+      lastMovedPieceIds: ['p1'],
+      itemPromptTiming: 'after_move',
+      pendingAfterMoveTurnIndex: 1,
+      logs: [],
+    } as EngineState & { itemPromptTiming: 'after_move'; pendingAfterMoveTurnIndex: number },
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'trap', pieceId: 'p1' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(useTrap.status, 'committed');
+  assert.equal(useTrap.patch?.turnIndex, undefined);
+  const pendingPlacement = useTrap.patch?.pendingTrapPlacement as { nextTurnIndex: number } | undefined;
+  assert.equal(pendingPlacement?.nextTurnIndex, 1);
+  assert.equal(Boolean(pendingPlacement), true);
+
+  const placeTrap = reduceAuthoritativeGameAction(
+    {
+      ...baseState(),
+      pieces: [
+        { id: 'p1', ownerId: 'seat-1', nodeIndex: 2, nodeId: 'n03', started: true, finished: false },
+        { id: 'p2', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+      ],
+      ownedItems: { 'seat-1': ['trap'] },
+      pendingTrapPlacement: useTrap.patch?.pendingTrapPlacement,
+      pendingAfterMoveTurnIndex: 1,
+      logs: [],
+    } as EngineState & { pendingAfterMoveTurnIndex: number },
+    { type: 'place_trap', actorId: 'seat-1', payload: { pieceId: 'p1', nodeId: 'n04' } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(placeTrap.status, 'committed');
+  assert.equal(placeTrap.patch?.turnIndex, 1);
+  assert.equal(placeTrap.patch?.pendingTrapPlacement, null);
+  assert.deepEqual(placeTrap.patch?.trapNodes, [{ nodeId: 'n04', ownerId: 'seat-1' }]);
+});
