@@ -20,10 +20,10 @@ export function useGameStatePersistence({
   movingPieceId, pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds,
   rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems,
   ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro,
-  pendingTrapPlacement, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId,
+  pendingTrapPlacement, pendingGoldenYutSelection, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId,
   effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion,
   gameSeats, localSeatId, activeSeat, logs, captureEffect, trapEffect, fallEffect, lastRollTimingZone, lastAppliedSequenceRef,
-  lastAppliedStateVersionRef, measureFirebaseLatency,
+  lastAppliedStateVersionRef, measureFirebaseLatency, onSequenceMismatch,
 }: GameStatePersistenceParams) {
   const [coordinatorStateSaveKey, setCoordinatorStateSaveKey] = useState('');
   const [coordinatorStateSaveRetryTick, setCoordinatorStateSaveRetryTick] = useState(0);
@@ -47,7 +47,7 @@ export function useGameStatePersistence({
     if (!activeRoomId || screen !== 'game' || !canCoordinateOnlineGame || applyingSyncedStateRef.current) return;
     if (!pendingSequenceMetaRef.current) return;
     if (moveInProgressRef.current || movingPieceId) return;
-    const stateFingerprint = makeGameStateFingerprint({ pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, fallEffect, lastRollTimingZone, logs, gameSeats });
+    const stateFingerprint = makeGameStateFingerprint({ pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, pendingGoldenYutSelection, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, fallEffect, lastRollTimingZone, logs, gameSeats });
     if (lastSavedStateFingerprintRef.current === stateFingerprint || savingStateFingerprintRef.current === stateFingerprint) return;
     savingStateFingerprintRef.current = stateFingerprint;
     setCoordinatorStateSaveKey(stateFingerprint);
@@ -73,7 +73,7 @@ export function useGameStatePersistence({
       return true;
     };
     let keepCoordinatorStateSavePending = false;
-    void measureFirebaseLatency(() => saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, fallEffect, lastRollTimingZone, gameStartedAt, turnOrderIntro, pendingTrapPlacement, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, gameSeats }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, action: pendingSequenceMeta?.action ?? null, expectedPreviousSequence: lastAppliedSequenceRef.current })).then((result: any) => {
+    void measureFirebaseLatency(() => saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, fallEffect, lastRollTimingZone, gameStartedAt, turnOrderIntro, pendingTrapPlacement, pendingGoldenYutSelection, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, gameSeats }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, action: pendingSequenceMeta?.action ?? null, expectedPreviousSequence: lastAppliedSequenceRef.current })).then((result: any) => {
       if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.turnVersion) {
         lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
@@ -90,6 +90,7 @@ export function useGameStatePersistence({
         if (savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
         if (coordinatorSaveRetryRef.current.timer) window.clearTimeout(coordinatorSaveRetryRef.current.timer);
         coordinatorSaveRetryRef.current = { roomId: activeRoomId, fingerprint: '', count: 0, timer: 0 };
+        if (typeof onSequenceMismatch === 'function') void onSequenceMismatch(result);
       }
     }).catch(() => {
       keepCoordinatorStateSavePending = true;
@@ -100,7 +101,7 @@ export function useGameStatePersistence({
       if (!keepCoordinatorStateSavePending && savingStateFingerprintRef.current === stateFingerprint) savingStateFingerprintRef.current = '';
       if (!keepCoordinatorStateSavePending) setCoordinatorStateSaveKey((current) => current === stateFingerprint ? '' : current);
     });
-  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, captureEffect, fallEffect, lastRollTimingZone, completedSeatIds, continuationRound, effectiveRollResultReadyAt, gameEndMode, gameStartedAt, canCoordinateOnlineGame, coordinatorStateSaveRetryTick, initialTurnOrderIds, lastFinishedSeatId, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, gameSeats, itemPromptTiming, movingPieceId, ownedItems, pendingAfterMoveTurnIndex, pendingTrapPlacement, pieces, rankingSeatIds, roll, rollStack, selectedRollStackIndex, rollStackClosed, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnDeadlineAt, turnDeadlineKind, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, waitingForPlayersReady, startRequestVersion, winner]);
+  }, [activeRoomId, activeSeat?.id, activeSeat?.isAI, boardItems, captureEffect, fallEffect, lastRollTimingZone, completedSeatIds, continuationRound, effectiveRollResultReadyAt, gameEndMode, gameStartedAt, canCoordinateOnlineGame, coordinatorStateSaveRetryTick, initialTurnOrderIds, lastFinishedSeatId, lastMovedPieceIds, lastMovedSeatId, localSeatId, logs, gameSeats, itemPromptTiming, movingPieceId, ownedItems, pendingAfterMoveTurnIndex, pendingGoldenYutSelection, pendingTrapPlacement, pieces, rankingSeatIds, roll, rollStack, selectedRollStackIndex, rollStackClosed, rollLockUntil, screen, shieldedPieceIds, trapEffect, trapNodes, turnDeadlineAt, turnDeadlineKind, turnIndex, turnOrderIds, turnOrderIntro, turnOrderPhase, waitingForPlayersReady, startRequestVersion, winner, onSequenceMismatch]);
 
   return {
     coordinatorStateSaveKey,
