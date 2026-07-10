@@ -223,6 +223,7 @@ function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameA
   const rollStack = ((state.rollStack as YutResult[] | undefined) ?? []);
   const rollStackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : null;
   const stackedRoll = room.stackedRollMode && rollStackIndex !== null ? rollStack[rollStackIndex] : null;
+  if (room.stackedRollMode && rollStack.length > 0 && state.rollStackClosed === false) return makeActionReject('아직 추가 던지기가 남아 있습니다.');
   if (room.stackedRollMode && rollStack.length > 0 && !stackedRoll) return makeActionReject('선택한 이동 스택을 찾을 수 없습니다.');
   const baseReduction = toAuthoritativeReduction(reduceMoveCommand({
     state: makeEngineState(stackedRoll ? { ...state, roll: stackedRoll } : state),
