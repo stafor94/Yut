@@ -1306,8 +1306,13 @@ export function App() {
     return typeof clientMutationId === 'string' && localClientMutationIdsRef.current.has(clientMutationId);
   }
 
+  function hasOptimisticallyPlayedLocalAction(clientMutationId: unknown) {
+    if (typeof clientMutationId !== 'string' || !clientMutationId) return false;
+    return pendingLocalRemoteActionMetaRef.current.get(clientMutationId)?.optimisticApplied === true;
+  }
+
   function playSyncedRollSoundOnce(result: YutResult, soundKey: string, clientMutationId?: unknown) {
-    if (!soundKey || isLocalSyncedMutation(clientMutationId) || lastSyncedRollSoundKeyRef.current === soundKey) return;
+    if (!soundKey || hasOptimisticallyPlayedLocalAction(clientMutationId) || lastSyncedRollSoundKeyRef.current === soundKey) return;
     lastSyncedRollSoundKeyRef.current = soundKey;
     playSfx('roll');
     if (result.bonus) window.setTimeout(() => playSfx('bonus'), 420);
@@ -1569,17 +1574,14 @@ export function App() {
 
   async function replayRollSequence(sequence: GameSequence) {
     const stateAfter = sequence.stateAfter as SequenceStateSnapshot | undefined;
-    const sequenceRoll = (stateAfter?.roll as YutResult | null | undefined) ?? null;
-    if (!sequenceRoll) {
-      if (stateAfter) applySyncedStateSnapshot(stateAfter, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
-      return;
-    }
+    const payload = sequence.payload ?? {};
+    const sequenceRoll = (stateAfter?.roll as YutResult | null | undefined) ?? (payload.displayRoll as YutResult | null | undefined) ?? null;
     const clientMutationId = typeof sequence.clientMutationId === 'string' ? sequence.clientMutationId : '';
-    const isLocalOptimisticRoll = Boolean(clientMutationId && localClientMutationIdsRef.current.has(clientMutationId));
-    if (!isLocalOptimisticRoll) {
+    if (sequenceRoll && !hasOptimisticallyPlayedLocalAction(clientMutationId)) {
       const readyAt = normalizeRollResultReadyAt(Number(stateAfter?.rollResultReadyAt ?? 0));
       const animationKey = `sequence-roll:${Number(sequence.sequence ?? 0)}:${clientMutationId}:${sequenceRoll.name}:${sequenceRoll.steps}:${readyAt}`;
-      playRollAnimationOnce(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, false, 0, (stateAfter?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
+      const fallCount = Number(payload.fallCount ?? 0);
+      playRollAnimationOnce(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, false, fallCount > 0 ? Math.min(4, Math.max(1, fallCount)) : 0, (stateAfter?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
       playSyncedRollSoundOnce(sequenceRoll, animationKey, clientMutationId);
     }
     if (stateAfter) applySyncedStateSnapshot(stateAfter, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
