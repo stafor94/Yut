@@ -1926,9 +1926,12 @@ export function App() {
   }, [roll?.name, roll?.steps]);
 
   useEffect(() => {
-    if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || pendingItemPickup || !activeSeat || !activeSeat.isAI || isMyTurn || movingPieceId || pendingTrapPlacement) return undefined;
+    const activeAiTrapPlacement = Boolean(pendingTrapPlacement && activeSeat?.isAI && pendingTrapPlacement.ownerId === activeSeat.id);
+    if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || pendingItemPickup || !activeSeat || !activeSeat.isAI || isMyTurn || movingPieceId || (pendingTrapPlacement && !activeAiTrapPlacement)) return undefined;
     if (!canCoordinateOnlineGame) return undefined;
-    const actionKey = `${activeSeat.id}:${turnIndex}:${itemPromptTiming ?? 'turn'}:${roll?.name ?? ''}:${roll?.steps ?? ''}:${pendingGoldenYutSelection?.actorId ?? ''}:${pendingGoldenYutSelection?.deadline ?? ''}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
+    const rollStackKey = rollStack.map((stackRoll) => `${stackRoll.name}:${stackRoll.steps}`).join('|');
+    const trapPlacementKey = pendingTrapPlacement ? `${pendingTrapPlacement.ownerId}:${pendingTrapPlacement.pieceId}:${pendingTrapPlacement.nodeIds.join('|')}:${pendingTrapPlacement.deadline}` : '';
+    const actionKey = `${activeSeat.id}:${turnIndex}:${itemPromptTiming ?? 'turn'}:${roll?.name ?? ''}:${roll?.steps ?? ''}:stack:${rollStackClosed ? 'closed' : 'open'}:${selectedRollStackIndex ?? ''}:${rollStackKey}:trap:${trapPlacementKey}:${pendingGoldenYutSelection?.actorId ?? ''}:${pendingGoldenYutSelection?.deadline ?? ''}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (aiTurnActionKeyRef.current) return undefined;
     const timer = window.setTimeout(() => {
       if (aiTurnActionKeyRef.current) return;
@@ -1936,7 +1939,7 @@ export function App() {
       void autoPlayTurn(activeSeat, actionKey);
     }, TURN_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, activeTurnOrderIntro, canCoordinateOnlineGame, isMyTurn, pendingItemPickup, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingGoldenYutSelection, pendingTrapPlacement, pieces, roll, screen, turnIndex, turnOrderPhase.active, winner]);
+  }, [activeRoomId, activeSeat, activeTurnOrderIntro, canCoordinateOnlineGame, isMyTurn, pendingItemPickup, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingGoldenYutSelection, pendingTrapPlacement, pieces, roll, rollStack, rollStackClosed, screen, selectedRollStackIndex, turnIndex, turnOrderPhase.active, winner]);
 
 
   useEffect(() => {
@@ -3935,8 +3938,10 @@ export function App() {
     if (!nodeId) return false;
     if (!activeRoomId || !canCoordinateOnlineGame) { placePendingTrap(nodeId, seat.id); return true; }
     const actionKey = `place_trap_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${placement.pieceId}:${nodeId}`;
+    if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
     const action = { type: 'place_trap' as const, actorId: seat.id, payload: withActorLogPayload({ nodeId, pieceId: placement.pieceId, clientActionId: actionKey }, seat) };
     addPendingLocalRemoteAction(actionKey, { type: 'place_trap', actorId: seat.id, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+    localClientMutationIdsRef.current.add(actionKey);
     try {
       const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
@@ -3960,6 +3965,7 @@ export function App() {
     }
     const pieceId = lastMovedPieceIds[0] ?? '';
     const stateAfterUse = await submitAiUseItem(seat, { itemType: item, pieceId });
+    if (activeRoomId && canCoordinateOnlineGame) return true;
     if (item === 'trap') {
       const placement = (stateAfterUse?.pendingTrapPlacement as PendingTrapPlacement | null | undefined) ?? pendingTrapPlacement;
       if (placement) await submitAiPlaceTrap(seat, placement);
@@ -3995,7 +4001,8 @@ export function App() {
   async function autoPlayTurn(seat: Seat, actionKey = `${seat.id}:${turnIndex}`) {
     const canContinueAiTurn = () => {
       const guard = liveTurnGuardRef.current;
-      return seat.isAI && guard.activeSeatId === seat.id && !guard.winner && !guard.movingPieceId && !guard.pendingTrapPlacement && !guard.turnOrderActive && !guard.turnOrderIntro;
+      const activeAiTrapPlacement = Boolean(pendingTrapPlacement && pendingTrapPlacement.ownerId === seat.id);
+      return seat.isAI && guard.activeSeatId === seat.id && !guard.winner && !guard.movingPieceId && (!guard.pendingTrapPlacement || activeAiTrapPlacement) && !guard.turnOrderActive && !guard.turnOrderIntro;
     };
     const clearCurrentAiActionKey = () => {
       if (aiTurnActionKeyRef.current === actionKey) aiTurnActionKeyRef.current = '';
@@ -4003,6 +4010,10 @@ export function App() {
 
     try {
       if (!canContinueAiTurn()) return;
+      if (activeRoomId && canCoordinateOnlineGame && pendingTrapPlacement?.ownerId === seat.id) {
+        await submitAiPlaceTrap(seat, pendingTrapPlacement);
+        return;
+      }
       let nextRoll: YutResult | null = null;
       if (activeRoomId && canCoordinateOnlineGame && pendingGoldenYutSelection?.actorId === seat.id) {
         const selectedGoldenRoll = chooseAiGoldenYutResult(seat, getAiMoveContext());
@@ -4151,6 +4162,7 @@ export function App() {
         const aiTimingZone = chooseAiRollTimingZone();
         setRollTimingFeedback(aiTimingZone);
         nextRoll = await submitAiRoll(seat, aiTimingZone, activeRoomId ? undefined : nextRoll);
+        if (activeRoomId && canCoordinateOnlineGame) return;
       }
       if (!nextRoll) return;
       if (!activeRoomId && (ownedItems[seat.id] ?? []).includes('reroll') && shouldAiUseReroll(seat, nextRoll, getAiMoveContext())) {
