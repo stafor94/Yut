@@ -1,4 +1,4 @@
-import { rollYutResultWithTiming, type RollTimingZone, type YutResult } from '../../../game-core/roll';
+import { rollYutResultWithTiming, shouldFallForTimingZone, type RollTimingZone, type YutResult } from '../../../game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
 import { getNearbyNodeIds, type BranchChoice } from '../../../game-core/board/board';
@@ -64,9 +64,7 @@ const isValidYutResult = (value: unknown): value is YutResult => {
 };
 const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
   const timingZone = (payload?.rollTimingZone as RollTimingZone | undefined) ?? 'normal';
-  const forcedResult = payload?.forcedResult;
-  const canUseForcedResult = payload?.allowForcedResult === true || payload?.timedOut === true;
-  return canUseForcedResult && isValidYutResult(forcedResult) ? forcedResult : rollYutResultWithTiming(timingZone).result;
+  return rollYutResultWithTiming(timingZone).result;
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
 
@@ -144,8 +142,7 @@ function toAuthoritativeReduction(reduction: ReturnType<typeof reduceRollCommand
 
 function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
   if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
-  if (action.payload?.forcedResult !== undefined && action.payload?.allowForcedResult !== true && action.payload?.timedOut !== true) return makeActionReject('허용되지 않은 윷 결과입니다.');
-  if (action.payload?.forcedResult !== undefined && !isValidYutResult(action.payload.forcedResult)) return makeActionReject('윷 결과가 유효하지 않습니다.');
+  if (action.payload?.forcedResult !== undefined || action.payload?.allowForcedResult !== undefined) return makeActionReject('허용되지 않은 윷 결과입니다.');
   if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll' || state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') {
     return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   }
@@ -154,6 +151,8 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
   }
   const nextRoll = getAuthoritativeRoll(action.payload);
+  const timingZone = (action.payload?.rollTimingZone as RollTimingZone | undefined) ?? 'normal';
+  const fallOccurred = shouldFallForTimingZone(timingZone);
   const now = Date.now();
   const baseReduction = toAuthoritativeReduction(reduceRollCommand({
     state: makeEngineState({ ...state, roll: room.stackedRollMode ? null : state.roll }),
@@ -162,11 +161,10 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     actorLogName: getActionActorLogName(action),
     rollResultReadyAt: now + 2600,
     makeLog: makeAuthoritativeLog,
-    fallOccurred: Boolean(action.payload?.fallOccurred),
-    timingZone: action.payload?.rollTimingZone as RollTimingZone | undefined,
+    fallOccurred,
+    timingZone,
   }));
   if (isAuthoritativeCommitReduction(baseReduction)) {
-    const fallOccurred = Boolean(action.payload?.fallOccurred);
     const shouldPromptAfterRoll = !fallOccurred
       && (!room.stackedRollMode || !nextRoll.bonus)
       && hasUsableAfterRollItem(state, action.actorId, nextRoll, room, sides);
@@ -183,7 +181,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     };
   }
   if (!isAuthoritativeCommitReduction(baseReduction) || !room.stackedRollMode) return baseReduction;
-  if (action.payload?.fallOccurred) {
+  if (fallOccurred) {
     return { ...baseReduction, patch: { ...baseReduction.patch, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false } };
   }
   const currentStack = ((state.rollStack as YutResult[] | undefined) ?? []);
@@ -442,8 +440,8 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   const actorLogName = getActionActorLogName(action);
 
   if (itemType === 'reroll') {
-    const replacementRoll = isValidYutResult(action.payload?.replacementRoll) ? action.payload.replacementRoll : getAuthoritativeRoll(action.payload);
-    if (!isValidYutResult(replacementRoll)) return makeActionReject('윷 결과가 유효하지 않습니다.');
+    if (action.payload?.replacementRoll !== undefined) return makeActionReject('허용되지 않은 다시 던지기 결과입니다.');
+    const replacementRoll = getAuthoritativeRoll(action.payload);
     if (room.stackedRollMode) {
       const currentStack = [...(((state.rollStack as YutResult[] | undefined) ?? []))];
       const stackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : getSelectedStackIndex(state);

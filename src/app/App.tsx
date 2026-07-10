@@ -3117,13 +3117,11 @@ export function App() {
     if (timeoutRecoveryKeysRef.current.has(recoveryKey)) return false;
     timeoutRecoveryKeysRef.current.add(recoveryKey);
     const rollTimingZone: RollTimingZone = 'normal';
-    const forcedResult = rollYutResultWithTiming(rollTimingZone).result;
     const actionKey = `roll_timeout:${recoveryKey}`;
     const action = {
       type: 'roll_yut' as const,
       actorId: activeSeat.id,
       payload: withActorLogPayload({
-        forcedResult,
         rollTimingZone,
         timedOut: true,
         timeoutRecoveredBy: localSeatId,
@@ -3270,7 +3268,7 @@ export function App() {
     const fallOccurred = !forcedRoll && shouldFallForTimingZone(rollTimingZone);
     if (activeRoomId) {
       const localRoll = forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result;
-      const rollPayload = { forcedResult: localRoll, rollTimingZone, fallOccurred, stackedRollMode };
+      const rollPayload = { rollTimingZone, stackedRollMode };
       const actionKey = `${getLocalActionKey('roll_yut', rollPayload)}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
       if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
         reportTurnActionBlocked('roll_yut', ['pending-local-remote-action'], '이미 윷 던지기 요청을 처리 중입니다');
@@ -3369,21 +3367,32 @@ export function App() {
     setMoveInProgressState(true);
     const currentPieces = piecesRef.current;
     const movingPiece = currentPieces.find((piece) => piece.id === pieceId && canSeatControlPiece(seat, piece) && !piece.finished);
-    if (!movingPiece) { setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1)); clearRoll(); setMoveInProgressState(false); return false; }
+    if (!movingPiece) {
+      if (!options.deferFinalizationToAuthoritative) {
+        setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+        clearRoll();
+      }
+      setMoveInProgressState(false);
+      return false;
+    }
     const steps = result.steps + extraSteps;
     if (steps < 0 && !movingPiece.started) {
       addLog(`${getSeatDisplayName(seat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
       setBranchChoice('outer');
-      clearRoll();
-      setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+      if (!options.deferFinalizationToAuthoritative) {
+        clearRoll();
+        setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+      }
       setMoveInProgressState(false);
       return false;
     }
     if (steps === 0) {
       addLog(`${getSeatDisplayName(seat)}님의 말은 이동할 칸 수가 없어 제자리에 머뭅니다.`);
       setBranchChoice('outer');
-      clearRoll();
-      setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+      if (!options.deferFinalizationToAuthoritative) {
+        clearRoll();
+        setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
+      }
       setMoveInProgressState(false);
       return true;
     }
@@ -3745,7 +3754,7 @@ export function App() {
     if (!activeRoomId || !canCoordinateOnlineGame) {
       return Boolean(rollYutForStack(seat, nextRoll, null, { timingZone }));
     }
-    const rollPayload = { forcedResult: nextRoll, allowForcedResult: true, rollTimingZone: timingZone, fallOccurred: false, stackedRollMode: true };
+    const rollPayload = { rollTimingZone: timingZone, stackedRollMode: true };
     const actionKey = `roll_yut_ai_stack:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStack.length}:${nextRoll.name}:${nextRoll.steps}:${Date.now()}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
     const action = { type: 'roll_yut' as const, actorId: seat.id, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, seat) };
@@ -4011,8 +4020,7 @@ export function App() {
     if (activeRoomId && actorId === localSeatId) {
       markItemPromptResolved(ITEM_DEFINITIONS[type].timing, selectedRollStackIndex);
       setItemPromptTiming(null);
-      const replacementRoll = type === 'reroll' ? rollYutResultWithTiming('normal').result : undefined;
-      const payload = { ...itemActionPayload, pieceId: (type === 'trap' || type === 'shield') ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, replacementRoll, rollStackIndex: selectedRollStackIndex };
+      const payload = { ...itemActionPayload, pieceId: (type === 'trap' || type === 'shield') ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, rollStackIndex: selectedRollStackIndex };
       const action = { type: 'use_item' as const, actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) };
       addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
