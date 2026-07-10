@@ -341,19 +341,34 @@
 .yut-stick {
   width: 30px;
   height: 118px;
-  box-shadow: 0 16px 28px rgba(42, 30, 23, .28);
   animation: yut-flight 1.85s cubic-bezier(.18, .86, .24, 1) both;
   animation-delay: calc(var(--stick-index) * 70ms);
-  backface-visibility: hidden;
   transform: translateZ(0);
+  transform-style: preserve-3d;
+}
+
+.yut-stick-body {
+  box-shadow: 0 16px 28px rgba(42, 30, 23, .28);
 }
 
 .pending-roll .yut-stick {
   animation: yut-pending-flight .9s linear calc(var(--stick-index) * 70ms) infinite both;
 }
 
+.pending-roll .yut-stick-body {
+  animation: yut-pending-face-spin .72s linear calc(var(--stick-index) * -120ms) infinite both;
+}
+
 .resolved-from-pending .yut-stick {
   animation: yut-resolved-from-pending 1.2s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
+}
+
+.resolved-from-pending .yut-stick.flat .yut-stick-body {
+  animation: yut-resolved-stick-flat-spin 1.2s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
+}
+
+.resolved-from-pending .yut-stick.round .yut-stick-body {
+  animation: yut-resolved-stick-round-spin 1.2s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
 }
 
 .resolved-from-pending .roll-label,
@@ -399,6 +414,11 @@
   100% { opacity: 1; transform: translate3d(calc(-42px + var(--stick-index) * 28px), -180px, 0) rotateZ(calc(720deg + var(--stick-index) * 57deg)) scale(.96); }
 }
 
+@keyframes yut-pending-face-spin {
+  0% { transform: rotateY(0deg); }
+  100% { transform: rotateY(360deg); }
+}
+
 @keyframes yut-resolved-from-pending {
   0% { opacity: 1; transform: translate3d(calc(-42px + var(--stick-index) * 28px), -180px, 0) rotateZ(calc(-540deg + var(--stick-index) * 57deg)) scale(.96); }
   34% { opacity: 1; transform: translate3d(calc(38px - var(--stick-index) * 20px), -238px, 0) rotateZ(calc(220deg - var(--stick-index) * 48deg)) scale(1.03); }
@@ -406,6 +426,18 @@
   76% { transform: translate3d(calc(9px - var(--stick-index) * 6px), -24px, 0) rotateZ(calc(var(--stick-land-rotate) + 18deg)) scale(1.01); }
   88% { transform: translate3d(calc(-5px + var(--stick-index) * 3px), -58px, 0) rotateZ(calc(var(--stick-final-rotate) - 12deg)) scale(1.01); }
   100% { opacity: 1; transform: translate3d(0, 0, 0) rotateZ(var(--stick-final-rotate)) scale(1); }
+}
+
+@keyframes yut-resolved-stick-flat-spin {
+  0% { transform: rotateY(calc(720deg + var(--stick-index) * 90deg)); }
+  72% { transform: rotateY(calc(1440deg + var(--stick-index) * 90deg)); }
+  100% { transform: rotateY(0deg); }
+}
+
+@keyframes yut-resolved-stick-round-spin {
+  0% { transform: rotateY(calc(900deg + var(--stick-index) * 90deg)); }
+  72% { transform: rotateY(calc(1620deg + var(--stick-index) * 90deg)); }
+  100% { transform: rotateY(180deg); }
 }
 
 @keyframes resolved-result-reveal {
@@ -425,7 +457,7 @@
   box-shadow: 0 0 0 4px rgba(217, 74, 56, .18), 0 20px 34px rgba(122, 47, 31, .38);
 }
 
-.yut-stick.flat.marked i {
+.yut-stick.flat.marked .yut-stick-flat-face {
   overflow: hidden;
   display: grid;
   place-items: center;

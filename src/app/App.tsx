@@ -1417,7 +1417,7 @@ export function App() {
     clearPendingRollAnimation();
     const animationId = Date.now();
     pendingRollAnimationRef.current = { actionKey, animationId, startedAt: animationId, resolveTimer: null };
-    setRollAnimation({ id: animationId, phase: 'pending', actionKey, sticks: makeDisplaySticks(rollYutResult(undefined, false).result) });
+    setRollAnimation({ id: animationId, phase: 'pending', actionKey, sticks: [{ flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }] });
   }
 
   function playResolvedRollAnimationAfterPending(result: YutResult, sticks: YutStick[], key: string, actionKey: string, fallCount = 0, timingZone?: RollTimingZone | null) {

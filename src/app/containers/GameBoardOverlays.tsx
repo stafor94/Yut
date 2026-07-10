@@ -96,9 +96,16 @@ export function RollStage({ rollAnimation }: RollStageProps) {
       {!isPending && rollAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${rollAnimation.timingZone}`}>{rollAnimation.timingZone === 'perfect' ? 'Perfect!' : rollAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       {!isPending && rollAnimation.result && <span className="roll-label">{rollAnimation.fallCount ? '낙!' : rollAnimation.result.name}</span>}
       {rollAnimation.sticks.map((stick, index) => {
-        const markCount = isPending ? 0 : stick.flat ? stick.marked ? 1 : 0 : 3;
+        const flatMarkCount = isPending ? 0 : stick.flat && stick.marked ? 1 : 0;
+        const roundMarkCount = isPending ? 0 : stick.flat ? 0 : 3;
         const isFallenStick = Boolean(!isPending && rollAnimation.fallCount && index < rollAnimation.fallCount);
-        return <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${stick.flat ? 'flat' : 'round'} ${stick.marked ? 'marked' : ''} ${isFallenStick ? 'fallen' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg`, '--fall-x': `${index % 2 === 0 ? -118 - index * 10 : 118 + index * 8}px`, '--fall-y': `${index < 2 ? -34 + index * 22 : 78 - index * 8}px`, '--fall-rotate': `${index % 2 === 0 ? -64 - index * 18 : 62 + index * 16}deg` } as CSSProperties}><i>{Array.from({ length: markCount }, (_, markIndex) => <span key={`mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark" aria-hidden="true"></span>)}</i></span>;
+        const faceClassName = isPending ? '' : stick.flat ? 'flat' : 'round';
+        return <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${faceClassName} ${stick.marked ? 'marked' : ''} ${isFallenStick ? 'fallen' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg`, '--fall-x': `${index % 2 === 0 ? -118 - index * 10 : 118 + index * 8}px`, '--fall-y': `${index < 2 ? -34 + index * 22 : 78 - index * 8}px`, '--fall-rotate': `${index % 2 === 0 ? -64 - index * 18 : 62 + index * 16}deg` } as CSSProperties}>
+          <span className="yut-stick-body" aria-hidden="true">
+            <i className="yut-stick-flat-face">{Array.from({ length: flatMarkCount }, (_, markIndex) => <span key={`flat-mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark" aria-hidden="true"></span>)}</i>
+            <i className="yut-stick-round-face">{Array.from({ length: roundMarkCount }, (_, markIndex) => <span key={`round-mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark" aria-hidden="true"></span>)}</i>
+          </span>
+        </span>;
       })}
     </div>
   </div>;

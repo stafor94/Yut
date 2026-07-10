@@ -68,11 +68,30 @@ test.describe('BUG_HISTORY regression smoke', () => {
       await expect(page.locator('.roll-stage.pending-roll'), `클릭 직후 서버 확정 전 pending 윷 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 500 });
       await expect(page.locator('.roll-stage.pending-roll .roll-label'), 'pending 단계에서는 결과명을 추측할 수 있는 label을 숨겨야 합니다.').toHaveCount(0);
       await expect(page.locator('.roll-stage.pending-roll .yut-mark'), 'pending 단계에서는 결과 면을 노출하지 않아야 합니다.').toHaveCount(0);
+      await expect(page.locator('.roll-stage.pending-roll .yut-stick-flat-face'), 'pending 단계에서도 앞면 DOM은 4개 모두 렌더되어야 합니다.').toHaveCount(4);
+      await expect(page.locator('.roll-stage.pending-roll .yut-stick-round-face'), 'pending 단계에서도 뒷면 DOM은 4개 모두 렌더되어야 합니다.').toHaveCount(4);
+      const firstPendingBody = page.locator('.roll-stage.pending-roll .yut-stick-body').first();
+      const pendingTransformStart = await firstPendingBody.evaluate((node) => getComputedStyle(node).transform);
+      await page.waitForTimeout(180);
+      await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).transform), {
+        timeout: 1_000,
+        message: 'pending 중 윷 내부 body의 3D transform이 계속 변해야 앞면/뒷면이 번갈아 보입니다.',
+      }).not.toBe(pendingTransformStart);
       await expect(page.locator('.roll-stage.resolved-from-pending'), `서버 결과 도착 시 pending overlay를 전용 resolved-from-pending 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .yut-stick').first().evaluate((node) => getComputedStyle(node).animationName), {
         timeout: 2_000,
         message: 'pending에서 확정된 윷은 전체 yut-flight가 아니라 전용 착지 keyframe을 사용해야 합니다.',
       }).toBe('yut-resolved-from-pending');
+      await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => {
+        const body = node.querySelector('.yut-stick-body');
+        const transform = body ? getComputedStyle(body).transform : '';
+        const matrixValues = transform.match(/matrix3d\(([^)]+)\)/)?.[1]?.split(',').map((value) => Number.parseFloat(value.trim())) ?? [];
+        const cosY = matrixValues.length ? matrixValues[0] : 1;
+        return node.classList.contains('flat') ? cosY > 0.95 : node.classList.contains('round') ? cosY < -0.95 : false;
+      }).every(Boolean)), {
+        timeout: 2_000,
+        message: 'authoritative 결과 후 각 윷은 flat/round 클래스에 맞는 3D 면으로 정지해야 합니다.',
+      }).toBe(true);
       await expect(page.locator('.roll-stage.resolved-roll .roll-label'), `서버 authoritative 윷 결과 label이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       await expect(page.locator('.roll-stage.resolved-roll .roll-label'), 'authoritative 결과 label은 한 번만 표시되어야 합니다.').toHaveCount(1);
     });
