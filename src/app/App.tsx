@@ -111,7 +111,7 @@ const ROLL_RESULT_HOLD_GRACE_MS = 1200;
 const ROLL_ANIMATION_MS = 2600;
 const ROLL_STUCK_TIMEOUT_MS = 12000;
 const PENDING_ROLL_MIN_VISIBLE_MS = 850;
-const RESOLVED_FROM_PENDING_ROLL_MS = 2600;
+const RESOLVED_FROM_PENDING_ROLL_MS = 3800;
 const STALE_PENDING_REMOTE_ACTION_MS = 30000;
 const AI_AUTHORITATIVE_ACTION_RETRY_LIMIT = 2;
 const AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS = 700;
@@ -1636,6 +1636,13 @@ export function App() {
     setMoveInProgressState(false);
   }
 
+  function getAuthoritativeRollTimingZone(payload: Record<string, unknown>, stateAfter?: SequenceStateSnapshot): RollTimingZone | undefined {
+    const payloadTimingZone = payload.timingZone ?? payload.rollTimingZone;
+    if (payloadTimingZone === 'perfect' || payloadTimingZone === 'good' || payloadTimingZone === 'normal') return payloadTimingZone;
+    const snapshotTimingZone = stateAfter?.lastRollTimingZone;
+    return snapshotTimingZone === 'perfect' || snapshotTimingZone === 'good' || snapshotTimingZone === 'normal' ? snapshotTimingZone : undefined;
+  }
+
   async function replayRollSequence(sequence: GameSequence) {
     const stateAfter = sequence.stateAfter as SequenceStateSnapshot | undefined;
     const payload = sequence.payload ?? {};
@@ -1647,13 +1654,14 @@ export function App() {
       const animationKey = `sequence-roll:${Number(sequence.sequence ?? 0)}:${clientMutationId}:${sequenceRoll.name}:${sequenceRoll.steps}:${readyAt}`;
       const fallCount = Number(payload.fallCount ?? 0);
       const resolvedFallCount = fallCount > 0 ? Math.min(4, Math.max(1, fallCount)) : 0;
+      const authoritativeTimingZone = getAuthoritativeRollTimingZone(payload, stateAfter);
       if (isCurrentPendingRoll) {
-        playResolvedRollAnimationAfterPending(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, clientMutationId, resolvedFallCount, (stateAfter?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
+        playResolvedRollAnimationAfterPending(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, clientMutationId, resolvedFallCount, authoritativeTimingZone);
         rollInProgressRef.current = false;
         rollInProgressStartedAtRef.current = 0;
         setRollInProgress(false);
       } else {
-        playRollAnimationOnce(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, false, resolvedFallCount, (stateAfter?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
+        playRollAnimationOnce(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, false, resolvedFallCount, authoritativeTimingZone);
         playSyncedRollSoundOnce(sequenceRoll, animationKey, clientMutationId);
       }
     }

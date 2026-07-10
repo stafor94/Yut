@@ -70,7 +70,20 @@ test.describe('BUG_HISTORY regression smoke', () => {
       await expect(page.locator('.roll-stage.pending-roll .yut-mark'), 'pending 단계에서는 결과 면을 노출하지 않아야 합니다.').toHaveCount(0);
       await expect(page.locator('.roll-stage.pending-roll .yut-stick-flat-face'), 'pending 단계에서도 앞면 DOM은 4개 모두 렌더되어야 합니다.').toHaveCount(4);
       await expect(page.locator('.roll-stage.pending-roll .yut-stick-round-face'), 'pending 단계에서도 뒷면 DOM은 4개 모두 렌더되어야 합니다.').toHaveCount(4);
+      const firstPendingStick = page.locator('.roll-stage.pending-roll .yut-stick').first();
       const firstPendingBody = page.locator('.roll-stage.pending-roll .yut-stick-body').first();
+      await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationDuration), {
+        timeout: 1_000,
+        message: 'pending 윷 외부 회전은 과속 방지를 위해 1.5초 주기를 사용해야 합니다.',
+      }).toBe('1.5s');
+      await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationDuration), {
+        timeout: 1_000,
+        message: 'pending 윷 양면 회전은 과속 방지를 위해 1.2초 주기를 사용해야 합니다.',
+      }).toBe('1.2s');
+      await expect.poll(async () => page.locator('.roll-stage.pending-roll .roll-aura').evaluate((node) => getComputedStyle(node).animationDuration), {
+        timeout: 1_000,
+        message: 'pending aura 반복은 1.6초 주기로 늦춰져야 합니다.',
+      }).toBe('1.6s');
       const pendingTransformStart = await firstPendingBody.evaluate((node) => getComputedStyle(node).transform);
       await page.waitForTimeout(180);
       await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).transform), {
@@ -92,8 +105,12 @@ test.describe('BUG_HISTORY regression smoke', () => {
         timeout: 2_000,
         message: 'authoritative 결과 후 각 윷은 flat/round 클래스에 맞는 3D 면으로 정지해야 합니다.',
       }).toBe(true);
+      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '서버 authoritative 타이밍 등급이 확정 결과와 함께 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 5_000 });
       await expect(page.locator('.roll-stage.resolved-roll .roll-label'), `서버 authoritative 윷 결과 label이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       await expect(page.locator('.roll-stage.resolved-roll .roll-label'), 'authoritative 결과 label은 한 번만 표시되어야 합니다.').toHaveCount(1);
+      await page.waitForTimeout(1_200);
+      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '타이밍 등급은 표시된 뒤 1.2초 후에도 유지되어야 합니다.').toBeVisible();
+      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), '윷 결과명은 표시된 뒤 1.2초 후에도 유지되어야 합니다.').toBeVisible();
     });
 
     await runQaStep(testInfo, '말 이동 직후 preview 제거 확인', async () => {
