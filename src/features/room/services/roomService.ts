@@ -25,8 +25,12 @@ export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrd
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'item_pickup_decided' | 'game_finished';
-export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; eventSchemaVersion?: number; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; patch?: GameStatePatch | null; stateBefore?: SyncedGameState | null; stateAfter?: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
+export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; eventSchemaVersion?: number; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; patch?: GameStatePatch | null; stateBefore?: SyncedGameState | null; stateAfter?: Omit<SyncedGameState, 'updatedAt'>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
 export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; clientMutationId?: string; clientCreatedAt?: number; expectedPreviousSequence?: number };
+export type CommitAuthoritativeGameActionResult = AuthoritativeActionResult & {
+  stateAfter?: Omit<SyncedGameState, 'updatedAt'>;
+  sequenceEvent?: GameSequence;
+};
 
 const COLORS = ['red', 'blue', 'green', 'yellow'];
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
@@ -383,7 +387,7 @@ async function deleteRoomSubcollections(roomId: string) {
 
 const makeFirestoreStateData = (state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'> | GameStatePatch) => sanitizeForFirestore(state) as Record<string, unknown>;
 
-const makeSequenceEventFields = (params: { stateBefore: SyncedGameState | null; stateAfter: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; patch?: GameStatePatch; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> }) => sanitizeForFirestore({
+const makeSequenceEventFields = (params: { stateBefore: SyncedGameState | null; stateAfter: Omit<SyncedGameState, 'updatedAt'> | Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; patch?: GameStatePatch; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> }) => sanitizeForFirestore({
   eventSchemaVersion: 1,
   action: params.action ?? null,
   patch: params.patch ?? null,
@@ -723,14 +727,14 @@ export async function submitGameAction(roomId: string, action: Omit<GameAction, 
   await addDoc(collection(db, 'rooms', roomId, 'actions'), actionPayload);
 }
 
-export async function commitAuthoritativeGameAction(roomId: string, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>): Promise<AuthoritativeActionResult> {
+export async function commitAuthoritativeGameAction(roomId: string, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>): Promise<CommitAuthoritativeGameActionResult> {
   if (!db || !roomId) return { status: 'rejected', reason: 'Firebase 환경변수가 설정되지 않았습니다.' };
   const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : `${action.type}:${action.actorId}:${Date.now()}`;
   const processedActionRef = getClientMutationDocRef(roomId, clientActionId);
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
   const roomRef = doc(db, 'rooms', roomId);
 
-  return runTransaction(db, async (transaction): Promise<AuthoritativeActionResult> => {
+  return runTransaction(db, async (transaction): Promise<CommitAuthoritativeGameActionResult> => {
     const processedActionSnapshot = await transaction.get(processedActionRef);
     if (processedActionSnapshot.exists()) return { status: 'duplicate', sequence: Number(processedActionSnapshot.data().sequence ?? 0), turnVersion: Number(processedActionSnapshot.data().turnVersion ?? 0) };
     const stateSnapshot = await transaction.get(gameStateRef);
@@ -771,8 +775,15 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const nextVersion = currentVersion + 1;
     const nextSequence = currentSequence + 1;
     const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
-    const stateAfter = { ...state, ...reduction.patch };
-    transaction.set(sequenceRef, {
+    const stateAfter = {
+      ...state,
+      ...reduction.patch,
+      turnVersion: nextVersion,
+      lastSequence: nextSequence,
+      lastClientMutationId: clientActionId,
+    };
+    const sequenceEvent: GameSequence = {
+      id: makeSequenceDocId(nextSequence),
       sequence: nextSequence,
       type: action.type === 'roll_yut' ? 'roll_yut' : action.type === 'continue_race' ? 'race_continued' : action.type === 'use_item' ? 'item_used' : action.type === 'place_trap' ? 'trap_placed' : action.type === 'item_pickup_decision' ? 'item_pickup_decided' : 'move_piece_resolved',
       actorId: action.actorId,
@@ -782,10 +793,12 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
       clientMutationId: clientActionId,
       clientCreatedAt: Date.now(),
       createdAt: serverTimestamp(),
-    });
+    };
+    const { id: _sequenceEventId, ...sequenceEventData } = sequenceEvent;
+    transaction.set(sequenceRef, sequenceEventData);
     transaction.set(gameStateRef, { ...makeFirestoreStateData(reduction.patch), updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: clientActionId }, { merge: true });
     transaction.set(processedActionRef, { clientMutationId: clientActionId, sequence: nextSequence, turnVersion: nextVersion, type: action.type, actorId: action.actorId, createdAt: serverTimestamp() });
-    return { status: 'committed', sequence: nextSequence, turnVersion: nextVersion, patch: reduction.patch, payload: reduction.payload };
+    return { status: 'committed', sequence: nextSequence, turnVersion: nextVersion, patch: reduction.patch, payload: reduction.payload, stateAfter, sequenceEvent };
   });
 }
 
