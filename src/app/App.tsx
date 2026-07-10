@@ -111,6 +111,8 @@ const ROLL_ANIMATION_MS = 2600;
 const ROLL_STUCK_TIMEOUT_MS = 12000;
 const TURN_ACTION_TIMEOUT_MS = 15000;
 const STALE_PENDING_REMOTE_ACTION_MS = 30000;
+const AI_AUTHORITATIVE_ACTION_RETRY_LIMIT = 2;
+const AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS = 700;
 const PENALTY_TURN_ACTION_TIMEOUT_MS = 5000;
 const ITEM_PROMPT_TIMEOUT_MS = 10000;
 const ITEM_REPLACE_TIMEOUT_MS = 10000;
@@ -1672,6 +1674,42 @@ export function App() {
       setActionErrorDialog(messageText);
     }
     return synced;
+  }
+
+  async function applyProcessedAuthoritativeAction(actionKey: string) {
+    if (!activeRoomId) return null;
+    const processedAction = await measureFirebaseLatency(() => getProcessedGameAction(activeRoomId, actionKey));
+    if (!processedAction?.sequence) return null;
+    const authoritativeState = await applyAuthoritativeResultSequence({
+      status: 'duplicate',
+      sequence: processedAction.sequence,
+      turnVersion: processedAction.turnVersion,
+    });
+    acknowledgePendingLocalRemoteAction(actionKey);
+    return authoritativeState;
+  }
+
+  async function commitAiAuthoritativeActionWithRecovery(
+    action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
+    actionKey: string,
+    diagnosticType: 'roll_yut' | 'move_piece',
+    errorMessage: string,
+  ) {
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt <= AI_AUTHORITATIVE_ACTION_RETRY_LIMIT; attempt += 1) {
+      try {
+        return await commitQueuedAuthoritativeGameAction(activeRoomId!, action);
+      } catch (error) {
+        lastError = error;
+        recordRemoteActionDiagnostic(diagnosticType, `ai-authoritative-commit-error-${attempt + 1}`, error instanceof Error ? error.message : errorMessage, { actionKey });
+        const recoveredState = await applyProcessedAuthoritativeAction(actionKey).catch(() => null);
+        if (recoveredState) {
+          return { status: 'duplicate' as const, sequence: lastAppliedSequenceRef.current };
+        }
+        if (attempt < AI_AUTHORITATIVE_ACTION_RETRY_LIMIT) await delay(AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS * (attempt + 1));
+      }
+    }
+    throw lastError ?? new Error(errorMessage);
   }
 
   async function reconcilePendingLocalRemoteActions(options: { forceStaleClear?: boolean } = {}) {
@@ -3828,7 +3866,7 @@ export function App() {
     });
     localClientMutationIdsRef.current.add(actionKey);
     try {
-      const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
+      const result = await commitAiAuthoritativeActionWithRecovery(action, actionKey, 'roll_yut', 'AI 누적 윷 던지기 처리에 실패했습니다.');
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
         const authoritativeState = await applyAuthoritativeResultSequence(result);
         acknowledgePendingLocalRemoteAction(actionKey);
@@ -3849,8 +3887,6 @@ export function App() {
     } catch (error) {
       recordRemoteActionDiagnostic('roll_yut', 'ai-stack-roll-error', error instanceof Error ? error.message : 'AI 누적 윷 던지기 처리에 실패했습니다.', { actionKey });
       return null;
-    } finally {
-      deletePendingLocalRemoteAction(actionKey);
     }
   }
 
@@ -3867,7 +3903,7 @@ export function App() {
     addPendingLocalRemoteAction(actionKey, { type: 'roll_yut', actorId: seat.id, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
     localClientMutationIdsRef.current.add(actionKey);
     try {
-      const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
+      const result = await commitAiAuthoritativeActionWithRecovery(action, actionKey, 'roll_yut', 'AI 윷 던지기 처리에 실패했습니다.');
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
         const authoritativeState = await applyAuthoritativeResultSequence(result);
         acknowledgePendingLocalRemoteAction(actionKey);
@@ -3882,8 +3918,6 @@ export function App() {
     } catch (error) {
       recordRemoteActionDiagnostic('roll_yut', 'ai-roll-error', error instanceof Error ? error.message : 'AI 윷 던지기 처리에 실패했습니다.', { actionKey });
       return null;
-    } finally {
-      deletePendingLocalRemoteAction(actionKey);
     }
   }
   async function submitAiStackedBackDoSkip(seat: Seat, skippedRoll: YutResult, rollStackIndex: number, remainingRollsAfterSkip: YutResult[]) {
@@ -3919,7 +3953,7 @@ export function App() {
     localClientMutationIdsRef.current.add(actionKey);
     const action = { type: 'move_piece' as const, actorId: seat.id, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, seat) };
     try {
-      const result = await commitQueuedAuthoritativeGameAction(activeRoomId, action);
+      const result = await commitAiAuthoritativeActionWithRecovery(action, actionKey, 'move_piece', 'AI 빽도 스킵 처리에 실패했습니다.');
       if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
         await applyAuthoritativeResultSequence(result);
         acknowledgePendingLocalRemoteAction(actionKey);
@@ -3937,8 +3971,6 @@ export function App() {
     } catch (error) {
       recordRemoteActionDiagnostic('move_piece', 'ai-backdo-skip-error', error instanceof Error ? error.message : 'AI 빽도 스킵 처리에 실패했습니다.', { actionKey });
       return false;
-    } finally {
-      deletePendingLocalRemoteAction(actionKey);
     }
   }
 
