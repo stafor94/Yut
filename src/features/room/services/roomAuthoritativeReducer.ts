@@ -201,6 +201,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     : getAuthoritativeRoll(action.payload);
   const fallOccurred = pendingGoldenYutSelection ? false : shouldFallForTimingZone(timingZone);
   const now = Date.now();
+  let shouldPromptAfterRoll = false;
   const baseReduction = toAuthoritativeReduction(reduceRollCommand({
     state: makeEngineState({ ...state, roll: room.stackedRollMode ? null : state.roll }),
     actorId: action.actorId,
@@ -212,7 +213,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     timingZone,
   }));
   if (isAuthoritativeCommitReduction(baseReduction)) {
-    const shouldPromptAfterRoll = !fallOccurred
+    shouldPromptAfterRoll = !fallOccurred
       && (!room.stackedRollMode || !nextRoll.bonus)
       && hasUsableAfterRollItem(state, action.actorId, nextRoll, room, sides);
     baseReduction.patch = {
@@ -243,7 +244,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
       ...baseReduction.patch,
       roll: null,
       rollStack: nextStack,
-      selectedRollStackIndex: null,
+      selectedRollStackIndex: shouldPromptAfterRoll ? nextStack.length - 1 : null,
       rollStackClosed: !nextRoll.bonus,
     },
     payload: { ...baseReduction.payload, rollStack: nextStack, rollStackClosed: !nextRoll.bonus },
