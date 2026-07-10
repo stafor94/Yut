@@ -91,10 +91,22 @@ test.describe('BUG_HISTORY regression smoke', () => {
         message: 'pending 중 윷 내부 body의 3D transform이 계속 변해야 앞면/뒷면이 번갈아 보입니다.',
       }).not.toBe(pendingTransformStart);
       await expect(page.locator('.roll-stage.resolved-from-pending'), `서버 결과 도착 시 pending overlay를 전용 resolved-from-pending 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
-      await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .yut-stick').first().evaluate((node) => getComputedStyle(node).animationName), {
+      await expect.poll(async () => {
+        const sticks = await page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
+          className: node.getAttribute('class') ?? '',
+          animationName: getComputedStyle(node).animationName,
+        })));
+        if (sticks.length !== 4) return `sticks=${JSON.stringify(sticks)}`;
+
+        const invalidStick = sticks.find((stick) => {
+          const isFallen = stick.className.split(/\s+/).includes('fallen');
+          return stick.animationName !== (isFallen ? 'yut-fall-flight' : 'yut-resolved-from-pending');
+        });
+        return invalidStick ? `sticks=${JSON.stringify(sticks)}` : 'ready';
+      }, {
         timeout: 2_000,
-        message: 'pending에서 확정된 윷은 전체 yut-flight가 아니라 전용 착지 keyframe을 사용해야 합니다.',
-      }).toBe('yut-resolved-from-pending');
+        message: 'pending에서 확정된 윷은 낙 윷만 yut-fall-flight를 유지하고 나머지는 전용 착지 keyframe을 사용해야 합니다.',
+      }).toBe('ready');
       await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => {
         const body = node.querySelector('.yut-stick-body');
         const transform = body ? getComputedStyle(body).transform : '';
