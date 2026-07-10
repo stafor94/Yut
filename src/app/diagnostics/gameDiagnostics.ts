@@ -1,5 +1,105 @@
 type DiagnosticParams = Record<string, any>;
 
+type ExportRecord = Record<string, unknown>;
+type BugReportSequenceExport = { capturedAt: string; roomId: string; latestState: ExportRecord | null; sequences: ExportRecord[] };
+
+const BUG_REPORT_STATE_KEYS = [
+  'turnIndex', 'turnOrderIds', 'initialTurnOrderIds', 'turnVersion', 'lastSequence', 'lastClientMutationId',
+  'roll', 'rollStack', 'selectedRollStackIndex', 'rollStackClosed', 'pieces', 'gameSeats', 'ownedItems',
+  'boardItems', 'trapNodes', 'shieldedPieceIds', 'pendingTrapPlacement', 'itemPromptTiming',
+  'pendingAfterMoveTurnIndex', 'branchChoice', 'turnOrderPhase', 'turnOrderIntro', 'turnDeadlineAt',
+  'turnDeadlineKind', 'rollLockUntil', 'rollResultReadyAt', 'lastMovedPieceIds', 'lastMovedSeatId',
+  'winner', 'completedSeatIds', 'rankingSeatIds', 'gameEndMode',
+] as const;
+
+const BUG_REPORT_SEQUENCE_KEYS = [
+  'sequence', 'type', 'actorId', 'action', 'payload', 'patch', 'clientMutationId', 'clientCreatedAt', 'createdAt',
+] as const;
+
+const BUG_REPORT_RECENT_SEQUENCE_LIMIT = 30;
+
+function isPlainObject(value: unknown): value is ExportRecord {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function sanitizeExportValue(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== 'object') return value;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof (value as { toDate?: unknown }).toDate === 'function') {
+    const date = (value as { toDate: () => Date }).toDate();
+    return date instanceof Date && !Number.isNaN(date.getTime()) ? date.toISOString() : undefined;
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeExportValue).filter((entry) => entry !== undefined);
+  }
+  return Object.fromEntries(
+    Object.entries(value as ExportRecord)
+      .filter(([key]) => key !== 'logs' && !/effect|animation/i.test(key))
+      .map(([key, entry]) => [key, sanitizeExportValue(entry)])
+      .filter(([, entry]) => entry !== undefined),
+  );
+}
+
+function pickDefined(source: unknown, keys: readonly string[]): ExportRecord | undefined {
+  if (!isPlainObject(source)) return undefined;
+  const result: ExportRecord = {};
+  for (const key of keys) {
+    const value = sanitizeExportValue(source[key]);
+    if (value !== undefined) result[key] = value;
+  }
+  return result;
+}
+
+function sanitizePieces(value: unknown): unknown {
+  if (!Array.isArray(value)) return sanitizeExportValue(value);
+  return value.map((piece) => pickDefined(piece, ['id', 'ownerId', 'nodeId', 'started', 'finished']) ?? {}).filter((piece) => Object.keys(piece).length > 0);
+}
+
+function sanitizeGameSeats(value: unknown): unknown {
+  if (!Array.isArray(value)) return sanitizeExportValue(value);
+  return value.map((seat) => pickDefined(seat, ['id', 'name', 'isAI', 'isSubstitutedByAI']) ?? {}).filter((seat) => Object.keys(seat).length > 0);
+}
+
+function sanitizeBoardItems(value: unknown): unknown {
+  if (!Array.isArray(value)) return sanitizeExportValue(value);
+  return value.map((item) => pickDefined(item, ['id', 'type', 'nodeId']) ?? {}).filter((item) => Object.keys(item).length > 0);
+}
+
+export function makeBugReportGameStateSnapshot(state: unknown): ExportRecord | null {
+  const result = pickDefined(state, BUG_REPORT_STATE_KEYS);
+  if (!result) return null;
+  if ('pieces' in result) result.pieces = sanitizePieces((state as ExportRecord).pieces);
+  if ('gameSeats' in result) result.gameSeats = sanitizeGameSeats((state as ExportRecord).gameSeats);
+  if ('boardItems' in result) result.boardItems = sanitizeBoardItems((state as ExportRecord).boardItems);
+  return result;
+}
+
+function makeBugReportSequence(sequence: unknown): ExportRecord | null {
+  const result = pickDefined(sequence, BUG_REPORT_SEQUENCE_KEYS);
+  if (!result) return null;
+  if ('patch' in result) result.patch = makeBugReportGameStateSnapshot((sequence as ExportRecord).patch);
+  return result;
+}
+
+export function makeBugReportSequenceExport(params: { capturedAt: string; roomId: string; latestState: unknown; sequences: unknown[] }): BugReportSequenceExport {
+  const recentSequences = [...params.sequences]
+    .filter((sequence) => isPlainObject(sequence))
+    .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
+    .slice(-BUG_REPORT_RECENT_SEQUENCE_LIMIT)
+    .map(makeBugReportSequence)
+    .filter((sequence): sequence is ExportRecord => Boolean(sequence));
+
+  return {
+    capturedAt: params.capturedAt,
+    roomId: params.roomId,
+    latestState: makeBugReportGameStateSnapshot(params.latestState),
+    sequences: recentSequences,
+  };
+}
+
+
+
 export const makeGameDiagnosticState = ({
   screen, activeRoomId, isWaitingRoomHost, onlineGameRole, isRoomManager, isOnlinePlayer,
   onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, currentUserId, localSeatId,
