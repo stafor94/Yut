@@ -231,7 +231,7 @@
 
 .roll-stage {
   background: radial-gradient(circle, rgba(242, 184, 75, .24), rgba(217, 74, 56, .12) 38%, rgba(42, 30, 23, .26) 72%, transparent 100%);
-  animation: roll-stage-flash 2.6s ease both;
+  animation: roll-stage-flash 3.8s ease both;
   contain: layout paint;
   transform: translateZ(0);
 }
@@ -241,11 +241,11 @@
 }
 
 .roll-stage.pending-roll .roll-aura {
-  animation: roll-aura-spin 1.1s linear infinite;
+  animation: roll-aura-spin 1.6s linear infinite;
 }
 
 .roll-stage.pending-roll .roll-impact-burst span {
-  animation: roll-spark 1.1s ease-out calc(var(--spark-index) * 18ms) infinite;
+  animation: roll-spark 1.6s ease-out calc(var(--spark-index) * 18ms) infinite;
 }
 
 .roll-aura {
@@ -302,7 +302,7 @@
 
 @keyframes roll-stage-flash {
   0% { opacity: 0; }
-  10%, 82% { opacity: 1; }
+  10%, 92% { opacity: 1; }
   100% { opacity: 0; }
 }
 
@@ -333,7 +333,7 @@
   box-shadow: 0 34px 90px rgba(42, 30, 23, .46), 0 0 0 10px rgba(242, 184, 75, .18);
   transform-style: preserve-3d;
   perspective: 900px;
-  animation-duration: 2.6s;
+  animation-duration: 3.8s;
   will-change: transform, opacity;
   backface-visibility: hidden;
 }
@@ -352,39 +352,44 @@
 }
 
 .pending-roll .yut-stick {
-  animation: yut-pending-flight .9s linear calc(var(--stick-index) * 70ms) infinite both;
+  animation: yut-pending-flight 1.5s linear calc(var(--stick-index) * 70ms) infinite both;
 }
 
 .pending-roll .yut-stick-body {
-  animation: yut-pending-face-spin .72s linear calc(var(--stick-index) * -120ms) infinite both;
+  animation: yut-pending-face-spin 1.2s linear calc(var(--stick-index) * -120ms) infinite both;
 }
 
 .resolved-from-pending .yut-stick {
-  animation: yut-resolved-from-pending 1.2s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
+  animation: yut-resolved-from-pending 1.5s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
 }
 
 .resolved-from-pending .yut-stick.flat .yut-stick-body {
-  animation: yut-resolved-stick-flat-spin 1.2s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
+  animation: yut-resolved-stick-flat-spin 1.5s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
 }
 
 .resolved-from-pending .yut-stick.round .yut-stick-body {
-  animation: yut-resolved-stick-round-spin 1.2s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
+  animation: yut-resolved-stick-round-spin 1.5s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
 }
 
 .resolved-from-pending .roll-label,
 .resolved-from-pending .roll-stage-timing {
   opacity: 0;
-  animation: resolved-result-reveal 2.2s ease both;
+  animation: resolved-result-reveal 3.7s ease both;
 }
 
 .resolved-from-pending .roll-impact-burst span {
   animation-delay: calc(1.05s + var(--spark-index) * 18ms);
 }
 
+.roll-stage-timing {
+  z-index: 4;
+}
+
 .roll-label {
   top: 16px;
   min-width: 112px;
   font-size: 1.75rem;
+  z-index: 3;
   box-shadow: 0 12px 24px rgba(42, 30, 23, .28);
   animation: roll-label-pulse 2.4s ease both;
 }
@@ -441,9 +446,9 @@
 }
 
 @keyframes resolved-result-reveal {
-  0%, 58% { opacity: 0; transform: scale(.9); }
-  72% { opacity: 1; transform: scale(1.12); }
-  100% { opacity: 1; transform: scale(.96); }
+  0%, 35% { opacity: 0; transform: scale(.9); }
+  41% { opacity: 1; transform: scale(1.12); }
+  47%, 100% { opacity: 1; transform: scale(.96); }
 }
 
 @keyframes roll-label-pulse {
