@@ -109,6 +109,7 @@ const TURN_ORDER_ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_GRACE_MS = 1200;
 const ROLL_ANIMATION_MS = 2600;
 const ROLL_STUCK_TIMEOUT_MS = 12000;
+const PENDING_ROLL_MIN_VISIBLE_MS = 450;
 const TURN_ACTION_TIMEOUT_MS = 15000;
 const STALE_PENDING_REMOTE_ACTION_MS = 30000;
 const AI_AUTHORITATIVE_ACTION_RETRY_LIMIT = 2;
@@ -280,6 +281,7 @@ export function App() {
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
   const currentRollRef = useRef<YutResult | null>(null);
   const rollAnimationTimerRef = useRef<number | null>(null);
+  const pendingRollAnimationRef = useRef<{ actionKey: string; startedAt: number; resolveTimer: number | null } | null>(null);
   const pendingItemPickupResolverRef = useRef<(() => void) | null>(null);
   const pendingItemPickupRef = useRef<PendingItemPickup | null>(null);
   const shouldAdvanceTurnAfterItemPromptRef = useRef(false);
@@ -946,6 +948,7 @@ export function App() {
     remoteActionRetryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     remoteActionRetryTimersRef.current.clear();
     if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
+    clearPendingRollAnimation();
   }, []);
 
   useEffect(() => {
@@ -966,8 +969,15 @@ export function App() {
       if (currentRollRef.current || !rollInProgressRef.current) return;
       rollInProgressRef.current = false;
       rollInProgressStartedAtRef.current = 0;
+      clearPendingRollAnimation();
+      if (rollAnimationTimerRef.current !== null) {
+        window.clearTimeout(rollAnimationTimerRef.current);
+        rollAnimationTimerRef.current = null;
+      }
+      setRollAnimation(null);
       clearPendingLocalRemoteActions();
       setRollInProgress(false);
+      void syncLatestAuthoritativeState('윷 던지기 요청이 오래 완료되지 않아 pending 연출을 정리하고 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
     }, ROLL_STUCK_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
   }, [roll, rollInProgress]);
@@ -980,6 +990,7 @@ export function App() {
       window.clearTimeout(rollAnimationTimerRef.current);
       rollAnimationTimerRef.current = null;
     }
+    clearPendingRollAnimation();
     setRollAnimation(null);
     setRollInProgress(false);
     setRoll(null);
@@ -1026,6 +1037,7 @@ export function App() {
       window.clearTimeout(rollAnimationTimerRef.current);
       rollAnimationTimerRef.current = null;
     }
+    clearPendingRollAnimation();
     setRollAnimation(null);
     if (activeRoomId) window.localStorage.setItem(STORAGE_KEYS.activeRoomId, activeRoomId);
     else if (previousActiveRoomId) window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
@@ -1377,6 +1389,37 @@ export function App() {
     }, turnOrder ? TURN_ORDER_ROLL_ANIMATION_MS : ROLL_ANIMATION_MS);
   }
 
+  function clearPendingRollAnimation(actionKey?: string) {
+    const pending = pendingRollAnimationRef.current;
+    if (actionKey && pending?.actionKey !== actionKey) return;
+    if (pending?.resolveTimer != null) window.clearTimeout(pending.resolveTimer);
+    pendingRollAnimationRef.current = null;
+  }
+
+  function startPendingRollAnimation(actionKey: string) {
+    if (rollAnimationTimerRef.current !== null) {
+      window.clearTimeout(rollAnimationTimerRef.current);
+      rollAnimationTimerRef.current = null;
+    }
+    clearPendingRollAnimation();
+    pendingRollAnimationRef.current = { actionKey, startedAt: Date.now(), resolveTimer: null };
+    setRollAnimation({ id: Date.now(), phase: 'pending', actionKey, sticks: makeDisplaySticks(rollYutResult(undefined, false).result) });
+  }
+
+  function playResolvedRollAnimationAfterPending(result: YutResult, sticks: YutStick[], key: string, actionKey: string, fallCount = 0, timingZone?: RollTimingZone | null) {
+    const pending = pendingRollAnimationRef.current;
+    if (pending?.actionKey !== actionKey) {
+      playRollAnimationOnce(result, sticks, key, false, fallCount, timingZone);
+      return;
+    }
+    if (pending.resolveTimer !== null) return;
+    const remainingMs = Math.max(0, PENDING_ROLL_MIN_VISIBLE_MS - (Date.now() - pending.startedAt));
+    pending.resolveTimer = window.setTimeout(() => {
+      clearPendingRollAnimation(actionKey);
+      playRollAnimationOnce(result, sticks, key, false, fallCount, timingZone);
+    }, remainingMs);
+  }
+
   const applySyncedStateSnapshot = (state: SequenceStateSnapshot, options: { allowMoveAnimation?: boolean; allowRollAnimation?: boolean; updateVersion?: boolean; updateSequence?: boolean } = {}) => {
     const { allowMoveAnimation = true, allowRollAnimation = true, updateVersion = true, updateSequence = true } = options;
     const stateVersion = Number('turnVersion' in state ? state.turnVersion ?? 0 : 0);
@@ -1577,12 +1620,21 @@ export function App() {
     const payload = sequence.payload ?? {};
     const sequenceRoll = (stateAfter?.roll as YutResult | null | undefined) ?? (payload.displayRoll as YutResult | null | undefined) ?? null;
     const clientMutationId = typeof sequence.clientMutationId === 'string' ? sequence.clientMutationId : '';
+    const isCurrentPendingRoll = Boolean(clientMutationId && pendingRollAnimationRef.current?.actionKey === clientMutationId);
     if (sequenceRoll && !hasOptimisticallyPlayedLocalAction(clientMutationId)) {
       const readyAt = normalizeRollResultReadyAt(Number(stateAfter?.rollResultReadyAt ?? 0));
       const animationKey = `sequence-roll:${Number(sequence.sequence ?? 0)}:${clientMutationId}:${sequenceRoll.name}:${sequenceRoll.steps}:${readyAt}`;
       const fallCount = Number(payload.fallCount ?? 0);
-      playRollAnimationOnce(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, false, fallCount > 0 ? Math.min(4, Math.max(1, fallCount)) : 0, (stateAfter?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
-      playSyncedRollSoundOnce(sequenceRoll, animationKey, clientMutationId);
+      const resolvedFallCount = fallCount > 0 ? Math.min(4, Math.max(1, fallCount)) : 0;
+      if (isCurrentPendingRoll) {
+        playResolvedRollAnimationAfterPending(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, clientMutationId, resolvedFallCount, (stateAfter?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
+        rollInProgressRef.current = false;
+        rollInProgressStartedAtRef.current = 0;
+        setRollInProgress(false);
+      } else {
+        playRollAnimationOnce(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, false, resolvedFallCount, (stateAfter?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
+        playSyncedRollSoundOnce(sequenceRoll, animationKey, clientMutationId);
+      }
     }
     if (stateAfter) applySyncedStateSnapshot(stateAfter, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
   }
@@ -1664,6 +1716,17 @@ export function App() {
     const resultMessage = result.reason ?? params.fallbackMessage;
     const mismatch = isAuthoritativeStateMismatchReason(result.reason);
     recordRemoteActionDiagnostic(type, stage, resultMessage, { status: result.status, actionKey: params.actionKey });
+    if (type === 'roll_yut') {
+      clearPendingRollAnimation(params.actionKey);
+      if (rollAnimationTimerRef.current !== null) {
+        window.clearTimeout(rollAnimationTimerRef.current);
+        rollAnimationTimerRef.current = null;
+      }
+      setRollAnimation(null);
+      rollInProgressRef.current = false;
+      rollInProgressStartedAtRef.current = 0;
+      setRollInProgress(false);
+    }
     if (!mismatch) return false;
 
     params.clearRecoveryKey?.();
@@ -3416,6 +3479,11 @@ export function App() {
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'roll_yut' as const, actorId: localSeatId, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, activeSeat) };
       if (forcedRoll) setForcedRoll(null);
+      rollInProgressRef.current = true;
+      rollInProgressStartedAtRef.current = Date.now();
+      setRollInProgress(true);
+      startPendingRollAnimation(actionKey);
+      playSfx('roll');
 
       const finishPendingRoll = () => {
         deletePendingLocalRemoteAction(actionKey);
@@ -3451,7 +3519,19 @@ export function App() {
             }
           }
         },
-        (error) => recordRemoteActionDiagnostic('roll_yut', 'commit-error', error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.', { actionKey }),
+        (error) => {
+          clearPendingRollAnimation(actionKey);
+          if (rollAnimationTimerRef.current !== null) {
+            window.clearTimeout(rollAnimationTimerRef.current);
+            rollAnimationTimerRef.current = null;
+          }
+          setRollAnimation(null);
+          rollInProgressRef.current = false;
+          rollInProgressStartedAtRef.current = 0;
+          setRollInProgress(false);
+          recordRemoteActionDiagnostic('roll_yut', 'commit-error', error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.', { actionKey });
+          void syncLatestAuthoritativeState('윷 던지기 요청 오류로 pending 연출을 정리하고 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+        },
         finishPendingRoll,
       );
       return;
