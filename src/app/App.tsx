@@ -1948,6 +1948,7 @@ export function App() {
     applyingSyncedStateRef,
     replayMissingSequencesThenApply,
     applySyncedStateSnapshot,
+    enqueueAuthoritativeResultApplication: (applyResult) => enqueueAuthoritativeResultApplication(activeRoomId, applyResult),
   });
 
   useEffect(() => {
