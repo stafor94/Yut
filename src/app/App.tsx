@@ -977,9 +977,11 @@ export function App() {
         rollAnimationTimerRef.current = null;
       }
       setRollAnimation(null);
-      clearPendingLocalRemoteActions();
       setRollInProgress(false);
-      void syncLatestAuthoritativeState('윷 던지기 요청이 오래 완료되지 않아 pending 연출을 정리하고 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      void (async () => {
+        await reconcilePendingLocalRemoteActions({ forceStaleClear: false });
+        await syncLatestAuthoritativeState('윷 던지기 요청이 오래 완료되지 않아 pending 연출을 정리하고 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      })();
     }, ROLL_STUCK_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
   }, [roll, rollInProgress]);
@@ -1730,12 +1732,12 @@ export function App() {
       rollInProgressStartedAtRef.current = 0;
       setRollInProgress(false);
     }
-    if (!mismatch) return false;
-
-    params.clearRecoveryKey?.();
     rejectedRemoteActionKeysRef.current.delete(params.actionKey);
     deletePendingLocalRemoteAction(params.actionKey);
     localClientMutationIdsRef.current.delete(params.actionKey);
+    if (!mismatch) return false;
+
+    params.clearRecoveryKey?.();
     const synced = await syncLatestAuthoritativeState(
       params.resyncMessage ?? '서버가 요청을 거부해 최신 authoritative 상태로 재동기화합니다.',
       { diagnosticType: type },
@@ -1747,6 +1749,11 @@ export function App() {
     }
     return synced;
   }
+
+  const removeSettledPendingLocalRemoteAction = (actionKey: string) => {
+    deletePendingLocalRemoteAction(actionKey);
+    localClientMutationIdsRef.current.delete(actionKey);
+  };
 
   async function applyProcessedAuthoritativeAction(actionKey: string) {
     if (!activeRoomId) return null;
@@ -1924,11 +1931,16 @@ export function App() {
         void commitQueuedAuthoritativeGameAction(activeRoomId, action)
           .then(async (result) => {
             const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
+            if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
             if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+              removeSettledPendingLocalRemoteAction(clientMutationId);
               await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 선택 시간초과를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
             }
           })
-          .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+          .catch((error) => {
+            recordRemoteActionDiagnostic('roll_yut', 'timeout-recovery-error', error instanceof Error ? error.message : '아이템 선택 시간초과 처리에 실패했습니다.', { actionKey: clientMutationId });
+            void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('아이템 선택 시간초과 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }));
+          });
       }, delayMs);
       return () => window.clearTimeout(timer);
     }
@@ -2286,11 +2298,16 @@ export function App() {
         void commitQueuedAuthoritativeGameAction(activeRoomId, action)
           .then(async (result) => {
             const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
+            if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
             if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+              removeSettledPendingLocalRemoteAction(clientMutationId);
               await syncLatestAuthoritativeState(result.reason ?? '서버가 함정 설치 취소를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
             }
           })
-          .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+          .catch((error) => {
+            recordRemoteActionDiagnostic('roll_yut', 'trap-placement-timeout-error', error instanceof Error ? error.message : '함정 설치 취소 처리에 실패했습니다.', { actionKey: clientMutationId });
+            void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('함정 설치 취소 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }));
+          });
       }
     }, 250);
     return () => window.clearInterval(timer);
@@ -2996,13 +3013,16 @@ export function App() {
     addPendingLocalRemoteAction(clientMutationId, { type: 'item_pickup_decision', actorId: pickup.seatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
     void commitQueuedAuthoritativeGameAction(activeRoomId, action)
       .then((result) => {
-        if (result.status === 'rejected' || result.status === 'unsupported') void syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 교체 선택을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+        if (result.status === 'committed' || result.status === 'duplicate') acknowledgePendingLocalRemoteAction(clientMutationId);
+        if (result.status === 'rejected' || result.status === 'unsupported') {
+          removeSettledPendingLocalRemoteAction(clientMutationId);
+          void syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 교체 선택을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+        }
       })
       .catch((error) => {
         recordRemoteActionDiagnostic('move_piece', 'item-pickup-decision-error', error instanceof Error ? error.message : '아이템 교체 선택 처리에 실패했습니다.', { actionKey: clientMutationId });
-        void syncLatestAuthoritativeState('아이템 교체 선택 처리 중 오류가 발생해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
-      })
-      .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+        void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('아이템 교체 선택 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' }));
+      });
     return true;
   }
   function resolvePendingItemPickup() {
@@ -3487,9 +3507,7 @@ export function App() {
       startPendingRollAnimation(actionKey);
       playSfx('roll');
 
-      const finishPendingRoll = () => {
-        deletePendingLocalRemoteAction(actionKey);
-      };
+      const finishPendingRoll = () => undefined;
 
       enqueueAuthoritativeGameAction(
         activeRoomId,
@@ -3532,7 +3550,7 @@ export function App() {
           rollInProgressStartedAtRef.current = 0;
           setRollInProgress(false);
           recordRemoteActionDiagnostic('roll_yut', 'commit-error', error instanceof Error ? error.message : '윷 던지기 처리에 실패했습니다.', { actionKey });
-          void syncLatestAuthoritativeState('윷 던지기 요청 오류로 pending 연출을 정리하고 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+          void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('윷 던지기 요청 오류로 pending 연출을 정리하고 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }));
         },
         finishPendingRoll,
       );
@@ -3856,8 +3874,11 @@ export function App() {
                 });
               }
             },
-            (error) => recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey }),
-            () => deletePendingLocalRemoteAction(actionKey),
+            (error) => {
+              recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey });
+              void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('말 이동 요청 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' }));
+            },
+            () => undefined,
           );
           return true;
         }
@@ -3913,8 +3934,11 @@ export function App() {
             });
           }
         },
-        (error) => recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey }),
-        () => deletePendingLocalRemoteAction(actionKey),
+        (error) => {
+          recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey });
+          void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('말 이동 요청 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' }));
+        },
+        () => undefined,
       );
       return true;
     }
@@ -4087,11 +4111,15 @@ export function App() {
         return authoritativeState;
       }
       if (result.status === 'rejected' || result.status === 'unsupported') {
+        removeSettledPendingLocalRemoteAction(actionKey);
         await syncLatestAuthoritativeState(result.reason ?? '서버가 AI 아이템 처리를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
       }
       return null;
-    } finally {
-      deletePendingLocalRemoteAction(actionKey);
+    } catch (error) {
+      recordRemoteActionDiagnostic('roll_yut', 'ai-use-item-error', error instanceof Error ? error.message : 'AI 아이템 처리에 실패했습니다.', { actionKey });
+      await reconcilePendingLocalRemoteActions({ forceStaleClear: false });
+      await syncLatestAuthoritativeState('AI 아이템 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      return null;
     }
   }
 
@@ -4111,10 +4139,16 @@ export function App() {
         acknowledgePendingLocalRemoteAction(actionKey);
         return true;
       }
-      if (result.status === 'rejected' || result.status === 'unsupported') await syncLatestAuthoritativeState(result.reason ?? '서버가 AI 함정 설치를 거부해 최신 상태로 재동기화합니다.');
+      if (result.status === 'rejected' || result.status === 'unsupported') {
+        removeSettledPendingLocalRemoteAction(actionKey);
+        await syncLatestAuthoritativeState(result.reason ?? '서버가 AI 함정 설치를 거부해 최신 상태로 재동기화합니다.');
+      }
       return false;
-    } finally {
-      deletePendingLocalRemoteAction(actionKey);
+    } catch (error) {
+      recordRemoteActionDiagnostic('roll_yut', 'ai-place-trap-error', error instanceof Error ? error.message : 'AI 함정 설치에 실패했습니다.', { actionKey });
+      await reconcilePendingLocalRemoteActions({ forceStaleClear: false });
+      await syncLatestAuthoritativeState('AI 함정 설치 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      return false;
     }
   }
 
@@ -4153,10 +4187,16 @@ export function App() {
         acknowledgePendingLocalRemoteAction(actionKey);
         return authoritativeState;
       }
-      if (result.status === 'rejected' || result.status === 'unsupported') await syncLatestAuthoritativeState(result.reason ?? '서버가 AI 이동을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+      if (result.status === 'rejected' || result.status === 'unsupported') {
+        removeSettledPendingLocalRemoteAction(actionKey);
+        await syncLatestAuthoritativeState(result.reason ?? '서버가 AI 이동을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+      }
       return null;
-    } finally {
-      deletePendingLocalRemoteAction(actionKey);
+    } catch (error) {
+      recordRemoteActionDiagnostic('move_piece', 'ai-move-piece-error', error instanceof Error ? error.message : 'AI 이동 처리에 실패했습니다.', { actionKey });
+      await reconcilePendingLocalRemoteActions({ forceStaleClear: false });
+      await syncLatestAuthoritativeState('AI 이동 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+      return null;
     }
   }
 
@@ -4367,11 +4407,16 @@ export function App() {
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
         .then(async (result) => {
           const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
+          if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
           if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+            removeSettledPendingLocalRemoteAction(clientMutationId);
             await syncLatestAuthoritativeState(result.reason ?? '서버가 함정 설치를 거부해 최신 authoritative 상태로 재동기화합니다.');
           }
         })
-        .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+        .catch((error) => {
+          recordRemoteActionDiagnostic('roll_yut', 'place-trap-error', error instanceof Error ? error.message : '함정 설치 처리에 실패했습니다.', { actionKey: clientMutationId });
+          void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('함정 설치 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }));
+        });
       return;
     }
     playSfx('itemUse');
@@ -4409,7 +4454,9 @@ export function App() {
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
         .then(async (result) => {
           const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
+          if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
           if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+            removeSettledPendingLocalRemoteAction(clientMutationId);
             await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 사용을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
             return;
           }
@@ -4418,7 +4465,10 @@ export function App() {
             addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.');
           }
         })
-        .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+        .catch((error) => {
+          recordRemoteActionDiagnostic('roll_yut', 'use-item-error', error instanceof Error ? error.message : '아이템 사용 처리에 실패했습니다.', { actionKey: clientMutationId });
+          void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('아이템 사용 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }));
+        });
       return;
     }
     const consumeItem = () => { clearTurnActionTimeoutPenalty(itemOwnerId); playSfx('itemUse'); setItemPromptTiming(null); setPendingTrapPlacement(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
@@ -4619,6 +4669,7 @@ export function App() {
       async (result) => {
         if (result.status === 'rejected' || result.status === 'unsupported') {
           setMessage(result.reason ?? '이어서 진행 요청을 처리하지 못했습니다.');
+          removeSettledPendingLocalRemoteAction(actionKey);
           void syncLatestAuthoritativeState('서버가 이어서 진행 요청을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
           return;
         }
@@ -4641,8 +4692,11 @@ export function App() {
           console.warn('이어서 진행 후 게임중 상태 반영에 실패했습니다.', error);
         });
       },
-      (error) => setMessage(error instanceof Error ? error.message : '이어서 진행 요청을 처리하지 못했습니다.'),
-      () => deletePendingLocalRemoteAction(actionKey),
+      (error) => {
+        setMessage(error instanceof Error ? error.message : '이어서 진행 요청을 처리하지 못했습니다.');
+        void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('이어서 진행 요청 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' }));
+      },
+      () => undefined,
     );
   }
 
@@ -4890,11 +4944,16 @@ export function App() {
           void commitQueuedAuthoritativeGameAction(activeRoomId, action)
             .then(async (result) => {
               const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
+              if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
               if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+                removeSettledPendingLocalRemoteAction(clientMutationId);
                 await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
               }
             })
-            .finally(() => deletePendingLocalRemoteAction(clientMutationId));
+            .catch((error) => {
+              recordRemoteActionDiagnostic('roll_yut', 'skip-item-prompt-error', error instanceof Error ? error.message : '아이템 건너뛰기 처리에 실패했습니다.', { actionKey: clientMutationId });
+              void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('아이템 건너뛰기 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }));
+            });
           return;
         }
         clearTurnActionTimeoutPenalty(localSeatId);
