@@ -42,15 +42,16 @@ const STALE_PLAYER_DELETE_MS = 45000;
 const ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 
-const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, options: { coordinatorPlayerIds?: string[]; allowCoordinator?: boolean } = {}) => {
+const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, options: { coordinatorPlayerIds?: string[]; allowCoordinator?: boolean; actorIsAiControlled?: boolean } = {}) => {
   if (!auth) return true;
   const uid = auth.currentUser?.uid;
   if (!uid) return false;
+  if (uid === playerId) return true;
   if (options.allowCoordinator && (options.coordinatorPlayerIds ?? []).includes(uid)) return true;
-  if (player?.isAI || player?.isSubstitutedByAI) {
+  if (options.actorIsAiControlled || player?.isAI || player?.isSubstitutedByAI) {
     return uid === room.hostId || (options.coordinatorPlayerIds ?? []).includes(uid);
   }
-  return [playerId, player?.playerId, player?.currentPlayerId, player?.originalPlayerId]
+  return [player?.playerId, player?.currentPlayerId, player?.originalPlayerId]
     .some((candidate) => typeof candidate === 'string' && candidate === uid);
 };
 
@@ -747,32 +748,57 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     if (!roomSnapshot.exists()) return { status: 'rejected', reason: '존재하지 않는 방입니다.' };
     const state = stateSnapshot.data() as SyncedGameState;
     const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
-    const actorSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', action.actorId));
-    const actorPlayer = actorSnapshot.exists() ? actorSnapshot.data() as RoomPlayer : null;
-    let coordinatorPlayerIds: string[] = [];
+    const uid = auth?.currentUser?.uid ?? '';
+    const playerSnapshotCache = new Map<string, Awaited<ReturnType<typeof transaction.get>>>();
+    const getPlayerSnapshot = async (playerId: string) => {
+      const cached = playerSnapshotCache.get(playerId);
+      if (cached) return cached;
+      const playerSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', playerId));
+      playerSnapshotCache.set(playerId, playerSnapshot);
+      return playerSnapshot;
+    };
     const snapshotSeats = (state.gameSeats ?? []) as GameSeatSnapshot[];
+    const actorSeat = snapshotSeats.find((seat) => seat.id === action.actorId);
+    const actorIsAiControlled = Boolean(actorSeat?.isAI || actorSeat?.isSubstitutedByAI);
     const coordinatorSeatId = snapshotSeats.find((seat) => !seat.isAI)?.id ?? '';
-    if (coordinatorSeatId) {
-      const coordinatorSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', coordinatorSeatId));
+    const allowCoordinator = isExpiredItemPromptTimeoutRecoveryAction(state, action) || isExpiredTrapPlacementTimeoutRecoveryAction(state, action);
+    const coordinatorPlayerIds = coordinatorSeatId ? [coordinatorSeatId] : [];
+    let actorPlayer: RoomPlayer | null = null;
+    if (auth && uid && uid !== action.actorId && !(actorIsAiControlled && (uid === room.hostId || uid === coordinatorSeatId))) {
+      const actorSnapshot = await getPlayerSnapshot(action.actorId);
+      actorPlayer = actorSnapshot.exists() ? actorSnapshot.data() as RoomPlayer : null;
+    }
+    if (coordinatorSeatId && uid !== coordinatorSeatId && (allowCoordinator || (actorIsAiControlled && uid !== room.hostId))) {
+      const coordinatorSnapshot = await getPlayerSnapshot(coordinatorSeatId);
       if (coordinatorSnapshot.exists()) {
         const coordinator = coordinatorSnapshot.data() as RoomPlayer;
-        coordinatorPlayerIds = [coordinatorSeatId, coordinator.playerId, coordinator.currentPlayerId, coordinator.originalPlayerId].filter((candidate): candidate is string => typeof candidate === 'string' && Boolean(candidate));
+        coordinatorPlayerIds.push(...[coordinator.playerId, coordinator.currentPlayerId, coordinator.originalPlayerId].filter((candidate): candidate is string => typeof candidate === 'string' && Boolean(candidate)));
       }
     }
-    const allowCoordinator = isExpiredItemPromptTimeoutRecoveryAction(state, action) || isExpiredTrapPlacementTimeoutRecoveryAction(state, action);
-    if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer, room, { coordinatorPlayerIds, allowCoordinator })) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
+    if (!canAuthenticatedUserActForPlayer(action.actorId, actorPlayer, room, { coordinatorPlayerIds, allowCoordinator, actorIsAiControlled })) return { status: 'rejected', reason: '액션 권한을 확인할 수 없습니다.' };
     const currentVersion = Number(state.turnVersion ?? 0);
     const currentSequence = Number(state.lastSequence ?? 0);
     let actionSides: AuthoritativeSeatSide[] = [];
     if (action.type === 'move_piece' || action.type === 'use_item' || action.type === 'place_trap' || action.type === 'item_pickup_decision') {
       const turnOrderIds = state.turnOrderIds ?? [];
-      const transactionSides = await Promise.all(turnOrderIds.map(async (playerId) => {
-        const playerSnapshot = await transaction.get(doc(db!, 'rooms', roomId, 'players', playerId));
-        if (!playerSnapshot.exists()) return null;
-        const player = playerSnapshot.data() as RoomPlayer;
-        return { id: playerId, team: player.team } satisfies AuthoritativeSeatSide;
-      }));
-      actionSides = transactionSides.filter((entry): entry is AuthoritativeSeatSide => Boolean(entry));
+      const gameSeatById = new Map(snapshotSeats.map((seat) => [seat.id, seat]));
+      const isValidTeam = (team: unknown): team is RoomPlayer['team'] => team === '청팀' || team === '홍팀';
+      const snapshotSides = turnOrderIds.map((playerId) => {
+        const seat = gameSeatById.get(playerId);
+        if (!seat || !isValidTeam(seat.team)) return null;
+        return { id: playerId, team: seat.team } satisfies AuthoritativeSeatSide;
+      });
+      if (snapshotSides.every((entry) => Boolean(entry))) {
+        actionSides = snapshotSides as AuthoritativeSeatSide[];
+      } else {
+        const transactionSides = await Promise.all(turnOrderIds.map(async (playerId) => {
+          const playerSnapshot = await getPlayerSnapshot(playerId);
+          if (!playerSnapshot.exists()) return null;
+          const player = playerSnapshot.data() as RoomPlayer;
+          return { id: playerId, team: player.team } satisfies AuthoritativeSeatSide;
+        }));
+        actionSides = transactionSides.filter((entry): entry is AuthoritativeSeatSide => Boolean(entry));
+      }
     }
     const reduction: AuthoritativeReduction = reduceAuthoritativeGameAction(state, action, room, actionSides);
     if (!isAuthoritativeCommitReduction(reduction)) return reduction;
