@@ -176,7 +176,7 @@ jobs:
 
   qa-stacked-roll-backdo-ai:
     name: QA stacked roll backdo AI
-    needs: qa-cleanup-layout-regression
+    needs: [qa-cleanup-before, deploy-pages]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
