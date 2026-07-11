@@ -1,0 +1,75 @@
+name: Apply online turn recovery QA patch
+
+on:
+  push:
+    branches:
+      - agent/fix-online-turn-recovery-race
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-online-turn-recovery-race
+          fetch-depth: 0
+
+      - name: Apply focused QA race fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/regression/bug-history-smoke.spec.js')
+          text = path.read_text(encoding='utf-8')
+
+          readiness = """      }, { timeout: 45_000, message: '본인 이동 검증을 위해 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      await page.getByTestId('roll-yut-button').click();
+"""
+          readiness_replacement = """      }, { timeout: 45_000, message: '본인 이동 검증을 위해 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      const stateBeforeLocalRoll = await collectScreenState(page);
+      const mutationIdsBeforeLocalRoll = stateBeforeLocalRoll.yutDebug?.actionPipeline?.localClientMutationIds;
+      if (Array.isArray(mutationIdsBeforeLocalRoll)) {
+        for (const mutationId of mutationIdsBeforeLocalRoll) {
+          if (typeof mutationId === 'string' && mutationId.startsWith('move_piece_ai:')) knownAiMoveMutationIds.add(mutationId);
+        }
+      }
+      await page.getByTestId('roll-yut-button').click();
+"""
+          critical_window = """      const stateBeforeLocalMove = await collectScreenState(page);
+      const mutationIdsBeforeLocalMove = stateBeforeLocalMove.yutDebug?.actionPipeline?.localClientMutationIds;
+      if (Array.isArray(mutationIdsBeforeLocalMove)) {
+        for (const mutationId of mutationIdsBeforeLocalMove) {
+          if (typeof mutationId === 'string' && mutationId.startsWith('move_piece_ai:')) knownAiMoveMutationIds.add(mutationId);
+        }
+      }
+      await page.getByTestId('move-piece-button').click();
+"""
+          critical_window_replacement = """      await page.getByTestId('move-piece-button').click();
+"""
+
+          if readiness not in text:
+            raise SystemExit('roll readiness insertion point not found')
+          if critical_window not in text:
+            raise SystemExit('move critical-window block not found')
+
+          text = text.replace(readiness, readiness_replacement, 1)
+          text = text.replace(critical_window, critical_window_replacement, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify syntax and focused diff
+        run: |
+          node --check tests/regression/bug-history-smoke.spec.js
+          git diff --check
+          git diff -- tests/regression/bug-history-smoke.spec.js
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/regression/bug-history-smoke.spec.js
+          git commit -m "Stabilize online turn recovery QA"
+          git push origin HEAD:agent/fix-online-turn-recovery-race
