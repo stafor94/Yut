@@ -58,6 +58,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
     });
 
     await runQaStep(testInfo, '내 차례 윷 던지기 animation 확인', async () => {
+      await page.setViewportSize({ width: 412, height: 915 });
       await expect.poll(async () => {
         const state = await collectScreenState(page);
         if (state.rollButton.visible && !state.rollButton.disabled) return 'ready';
@@ -153,13 +154,25 @@ test.describe('BUG_HISTORY regression smoke', () => {
       if (!timingBox || !matBox) return;
       const centerDeltaPx = Math.abs((timingBox.x + timingBox.width / 2) - (matBox.x + matBox.width / 2));
       expect(centerDeltaPx, `타이밍 등급과 윷 매트의 가로 중심 오차는 2px 이내여야 합니다. 실제: ${centerDeltaPx}px`).toBeLessThanOrEqual(2);
-      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), `서버 authoritative 윷 결과 label이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
-      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), 'authoritative 결과 label은 한 번만 표시되어야 합니다.').toHaveCount(1);
+      const resolvedLabel = page.locator('.roll-stage.resolved-from-pending .roll-label');
+      await expect(resolvedLabel, `서버 authoritative 윷 결과 label이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
+      await expect(resolvedLabel, 'authoritative 결과 label은 한 번만 표시되어야 합니다.').toHaveCount(1);
+      await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .yut-stick, .roll-stage.resolved-from-pending .yut-stick-body').evaluateAll((nodes) => {
+        if (nodes.length !== 8) return `nodes=${nodes.length}`;
+        const unfinished = nodes.map((node) => ({
+          className: node.getAttribute('class') ?? '',
+          states: node.getAnimations().map((animation) => animation.playState),
+        })).filter((entry) => entry.states.some((state) => state !== 'finished'));
+        return unfinished.length ? JSON.stringify(unfinished) : 'finished';
+      }), {
+        timeout: 1_000,
+        message: '결과 label이 보이는 순간 모든 yut-stick과 yut-stick-body 애니메이션은 finished 상태여야 합니다.',
+      }).toBe('finished');
       const timingTextAfterReveal = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').innerText();
-      const labelTextAfterReveal = await page.locator('.roll-stage.resolved-roll .roll-label').innerText();
+      const labelTextAfterReveal = await resolvedLabel.innerText();
       await page.waitForTimeout(1_800);
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '타이밍 등급은 표시된 뒤 약 1.8초 후에도 유지되어야 합니다.').toHaveText(timingTextAfterReveal);
-      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), '윷 결과명은 표시된 뒤 약 1.8초 후에도 유지되어야 합니다.').toHaveText(labelTextAfterReveal);
+      await expect(resolvedLabel, '윷 결과명은 표시된 뒤 약 1.8초 후에도 유지되어야 합니다.').toHaveText(labelTextAfterReveal);
       const elapsedResolvedMs = Date.now() - resolvedFromPendingStartedAt;
       expect(elapsedResolvedMs, '결과 표시 유지 검증 후에도 resolved-from-pending 종료 기한이 남아 있어야 합니다.').toBeLessThan(4_700);
       await expect(page.locator('.roll-stage'), '확정 전 pending과 확정 후 overlay는 resolved-from-pending 시작 후 4.7초 이내 정상 종료되어야 합니다.').toBeHidden({ timeout: 4_700 - elapsedResolvedMs });
