@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomSequencesForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
+import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomSequencesForQa, rememberRoomIdFromPage, updateRoomForQa } from '../helpers/rooms.js';
 
 test.describe('game flow QA', () => {
   let roomId;
@@ -25,6 +25,16 @@ test.describe('game flow QA', () => {
       await page.getByTestId('create-room-button').click();
       await expect(page.getByTestId('waiting-room'), `대기실 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
+      const expiredStartsAt = Date.now() - 10_000;
+      await updateRoomForQa(roomId, {
+        startRequestVersion: 7,
+        startRequestedAt: expiredStartsAt - 1_000,
+        startRequestId: 'expired-requested-for-qa',
+        startCountdownStartsAt: expiredStartsAt,
+        startCountdownEndsAt: expiredStartsAt + 1_000,
+        startCountdownUntil: expiredStartsAt + 1_000,
+        startStatus: 'requested',
+      });
     });
 
     await runQaStep(testInfo, 'AI 추가 후 게임 시작', async () => {
@@ -54,9 +64,9 @@ test.describe('game flow QA', () => {
         };
       }, { timeout: 1_000, message: '서버 시작 응답 전에는 로컬 버전/카운트다운을 선반영하지 않고 pending만 유지해야 합니다.' }).toEqual({
         pending: true,
-        localVersion: 0,
-        roomVersion: 0,
-        roomStatus: 'idle',
+        localVersion: 7,
+        roomVersion: 7,
+        roomStatus: 'requested',
         overlayVisible: false,
       });
       await expect(startButton, '시작 요청 timeout 후 같은 ID로 재시도할 수 있도록 버튼이 다시 활성화되어야 합니다.').toBeEnabled({ timeout: 2_500 });
@@ -69,7 +79,7 @@ test.describe('game flow QA', () => {
           status: String(room?.startStatus ?? ''),
           requestIdPresent: typeof room?.startRequestId === 'string' && room.startRequestId.length > 0,
         };
-      }, { timeout: 5_000, message: 'timeout 후 재클릭하고 기존 요청이 늦게 완료돼도 서버 시작 요청은 한 번만 반영되어야 합니다.' }).toEqual({ version: 1, status: 'requested', requestIdPresent: true });
+      }, { timeout: 5_000, message: 'timeout 후 재클릭하고 기존 요청이 늦게 완료돼도 서버 시작 요청은 한 번만 반영되어야 합니다.' }).toEqual({ version: 8, status: 'requested', requestIdPresent: true });
       await expect(page.getByTestId('app-shell')).toHaveClass(/countdown-active/, { timeout: 5_000 });
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 5_000 });

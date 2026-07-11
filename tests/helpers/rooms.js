@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, getFirestore, query, where, writeBatch } from 'firebase/firestore';
+import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, getFirestore, query, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { loadFirebaseConfig } from './env.js';
 
 const roomSubcollections = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'];
@@ -81,6 +81,14 @@ export async function getRoomForQa(roomId) {
   if (!db || !roomId) return null;
   const snapshot = await getDoc(doc(db, 'rooms', roomId));
   return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+}
+
+
+export async function updateRoomForQa(roomId, patch) {
+  const db = await getTestDb();
+  if (!db || !roomId) return false;
+  await updateDoc(doc(db, 'rooms', roomId), patch);
+  return true;
 }
 
 export async function getRoomSequencesForQa(roomId) {

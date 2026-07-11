@@ -1022,9 +1022,11 @@ export async function requestRoomGameStart(roomId: string, requestedAt: number, 
       startCountdownStartsAt: Number(room.startCountdownStartsAt ?? 0),
       startCountdownEndsAt: Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0),
       startRequestId: room.startRequestId ?? '',
+      startStatus: currentStatus,
     };
-    const hasAuthoritativeStart = currentStatus === 'requested' || currentStatus === 'entering' || currentStatus === 'playing';
-    if ((requestId && currentStartState.startRequestId === requestId) || hasAuthoritativeStart) return currentStartState;
+    const hasActiveStart = currentStatus === 'entering' || currentStatus === 'playing';
+    const hasReusableRequestedStart = currentStatus === 'requested' && currentStartState.startCountdownEndsAt > requestedAt;
+    if ((requestId && currentStartState.startRequestId === requestId && (hasActiveStart || hasReusableRequestedStart)) || hasActiveStart || hasReusableRequestedStart) return currentStartState;
     const nextVersion = currentStartState.startRequestVersion + 1;
     const startsAt = requestedAt + 1000;
     const endsAt = startsAt + 5000;
@@ -1038,7 +1040,7 @@ export async function requestRoomGameStart(roomId: string, requestedAt: number, 
       startCancelledAt: null,
       startStatus: 'requested',
     }, { merge: true });
-    return { startRequestVersion: nextVersion, startRequestedAt: requestedAt, startCountdownStartsAt: startsAt, startCountdownEndsAt: endsAt, startRequestId: requestId };
+    return { startRequestVersion: nextVersion, startRequestedAt: requestedAt, startCountdownStartsAt: startsAt, startCountdownEndsAt: endsAt, startRequestId: requestId, startStatus: 'requested' as const };
   });
 }
 
@@ -1065,7 +1067,7 @@ export async function markRoomGameEntering(roomId: string, startRequestVersion: 
     if (!snapshot.exists()) return;
     const room = snapshot.data() as RoomSummary;
     if (Number(room.startRequestVersion ?? 0) !== startRequestVersion) return;
-    if (room.status === 'playing' || room.startStatus === 'playing') return;
+    if (room.status === 'playing' || room.startStatus !== 'requested') return;
     transaction.set(roomRef, { startStatus: 'entering', startRequestVersion, startCountdownUntil: 0 }, { merge: true });
   });
 }
