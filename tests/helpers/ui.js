@@ -122,3 +122,26 @@ export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', p
     window.localStorage.setItem('yut-online:pieceCount', values.pieceCount);
   }, { nickname, maxPlayers, playMode, itemMode, pieceCount });
 }
+
+export async function createRoomFromLobby(page, roomTitle) {
+  await expectAppShell(page);
+  await page.getByTestId('room-title-input').fill(roomTitle);
+  await page.getByTestId('create-room-button').click();
+  await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+}
+
+export async function joinRoomFromLobby(page, roomTitle) {
+  await expectAppShell(page);
+  await waitForBlockingOverlayToDisappear(page);
+  const roomCard = page.locator('.lobby-room-card').filter({ hasText: roomTitle }).first();
+  await expect(roomCard).toBeVisible({ timeout: 25_000 });
+  const joinButton = roomCard.locator('.lobby-room-action');
+  await expect(joinButton).toBeEnabled({ timeout: 10_000 });
+  await joinButton.click();
+  await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+}
+
+export async function markGuestReady(page) {
+  const readyButton = page.getByRole('button', { name: '준비 완료' });
+  if (await readyButton.isVisible().catch(() => false)) await readyButton.click();
+}

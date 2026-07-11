@@ -83,6 +83,13 @@ export async function getRoomForQa(roomId) {
   return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
 }
 
+export async function getRoomStateForQa(roomId) {
+  const db = await getTestDb();
+  if (!db || !roomId) return null;
+  const snapshot = await getDoc(doc(db, 'rooms', roomId, 'state', 'current'));
+  return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+}
+
 
 export async function updateRoomForQa(roomId, patch) {
   const db = await getTestDb();
