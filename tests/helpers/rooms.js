@@ -98,6 +98,20 @@ export async function getRoomSequencesForQa(roomId) {
   return snapshot.docs.map((documentSnapshot) => ({ id: documentSnapshot.id, ...documentSnapshot.data() }));
 }
 
+export async function getRoomPlayersForQa(roomId) {
+  const db = await getTestDb();
+  if (!db || !roomId) return [];
+  const snapshot = await getDocs(collection(db, 'rooms', roomId, 'players'));
+  return snapshot.docs.map((documentSnapshot) => ({ id: documentSnapshot.id, ...documentSnapshot.data() }));
+}
+
+export async function getRoomSeatsForQa(roomId) {
+  const db = await getTestDb();
+  if (!db || !roomId) return [];
+  const snapshot = await getDocs(collection(db, 'rooms', roomId, 'seats'));
+  return snapshot.docs.map((documentSnapshot) => ({ id: documentSnapshot.id, ...documentSnapshot.data() }));
+}
+
 async function deleteDocumentsInBatches(documentSnapshots) {
   const db = await getTestDb();
   if (!db || documentSnapshots.length === 0) return 0;

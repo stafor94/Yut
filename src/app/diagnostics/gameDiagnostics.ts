@@ -103,7 +103,7 @@ export function makeBugReportSequenceExport(params: { capturedAt: string; roomId
 export const makeGameDiagnosticState = ({
   screen, activeRoomId, isWaitingRoomHost, onlineGameRole, isRoomManager, isOnlinePlayer,
   onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, currentUserId, localSeatId,
-  waitingRoomHostSeatId, allReady, teamBalanced, displaySeats, message, actionErrorDialog,
+  waitingRoomHostSeatId, allReady, pendingAiSeatCount, teamBalanced, displaySeats, message, actionErrorDialog,
   lastActionDiagnostic, remoteActionDiagnostics, lastManualSyncResolution, turnOrderIds,
   initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId,
   continuationRound, unfinishedRaceSeatIds, canShowContinueRaceButton, roll, rollInProgress,
@@ -136,6 +136,7 @@ export const makeGameDiagnosticState = ({
   localSeatId,
   waitingRoomHostSeatId,
   allReady,
+  pendingAiSeatCount,
   teamBalanced,
   seats: displaySeats.map((seat: any) => ({ id: seat.id, label: seat.label, ready: seat.ready, isAI: seat.isAI, isEmpty: seat.isEmpty, isHost: seat.isHost, team: seat.team })),
   message,

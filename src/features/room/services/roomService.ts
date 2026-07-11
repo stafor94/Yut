@@ -41,6 +41,18 @@ const EMPTY_ROOM_DELETE_DELAY_MS = 30000;
 const STALE_PLAYER_DELETE_MS = 45000;
 const ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
+const getQaDelayAfterRoomPlayerSaveMs = () => {
+  if (typeof window === 'undefined') return 0;
+  const value = Number((window as typeof window & { __YUT_QA_DELAY_AFTER_ROOM_PLAYER_SAVE_MS__?: unknown }).__YUT_QA_DELAY_AFTER_ROOM_PLAYER_SAVE_MS__ ?? 0);
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+};
+
+const waitForQaDelayAfterRoomPlayerSave = async () => {
+  const delayMs = getQaDelayAfterRoomPlayerSaveMs();
+  if (delayMs <= 0) return;
+  await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+};
+
 
 const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, options: { coordinatorPlayerIds?: string[]; allowCoordinator?: boolean; actorIsAiControlled?: boolean } = {}) => {
   if (!auth) return true;
@@ -904,6 +916,7 @@ export async function claimRoomHostIfMissing(roomId: string, candidatePlayerId: 
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   await setDoc(doc(db, 'rooms', roomId, 'players', playerId), params, { merge: true });
+  await waitForQaDelayAfterRoomPlayerSave();
   if (typeof params.seatIndex === 'number' && !params.isSpectator) {
     const aiActive = Boolean(params.isAI);
     await setDoc(doc(db, 'rooms', roomId, 'seats', String(params.seatIndex)), {

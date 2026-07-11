@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomSequencesForQa, rememberRoomIdFromPage, updateRoomForQa } from '../helpers/rooms.js';
+import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomPlayersForQa, getRoomSeatsForQa, getRoomSequencesForQa, rememberRoomIdFromPage, updateRoomForQa } from '../helpers/rooms.js';
 
 test.describe('game flow QA', () => {
   let roomId;
@@ -17,6 +17,7 @@ test.describe('game flow QA', () => {
     await context.addInitScript(() => {
       window.__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__ = 2500;
       window.__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__ = 2500;
+      window.__YUT_QA_DELAY_AFTER_ROOM_PLAYER_SAVE_MS__ = 2500;
     });
 
     await runQaStep(testInfo, '방 생성', async () => {
@@ -40,6 +41,30 @@ test.describe('game flow QA', () => {
     await runQaStep(testInfo, 'AI 추가 후 게임 시작', async () => {
       const addAiButton = page.getByTestId('add-ai-P2');
       if (await addAiButton.isVisible().catch(() => false)) await addAiButton.click();
+      await expect(page.getByTestId('start-game-button'), 'AI player 문서만 먼저 반영되고 seat/room 후속 갱신이 지연되는 동안 시작 버튼은 비활성 상태여야 합니다.').toBeDisabled({ timeout: 1_000 });
+      await expect.poll(async () => {
+        const state = await collectScreenState(page);
+        const room = await getRoomForQa(roomId);
+        const players = await getRoomPlayersForQa(roomId);
+        const seats = await getRoomSeatsForQa(roomId);
+        const aiPlayer = players.find((player) => player.seatIndex === 1 && player.isAI);
+        const aiSeat = seats.find((seat) => Number(seat.seatIndex ?? seat.id) === 1);
+        return {
+          playerAiVisible: Boolean(aiPlayer),
+          seatAiActive: Boolean(aiSeat?.aiActive),
+          roomCurrentPlayers: Number(room?.currentPlayers ?? 0),
+          pendingAiSeatCount: Number(state.yutDebug?.pendingAiSeatCount ?? 0),
+          allReady: Boolean(state.yutDebug?.allReady),
+          startDisabled: Boolean(state.startButton.disabled),
+        };
+      }, { timeout: 2_000, message: 'player.isAI snapshot을 받아도 pending AI 상태와 시작 버튼 비활성 상태가 유지되어야 합니다.' }).toEqual({
+        playerAiVisible: true,
+        seatAiActive: false,
+        roomCurrentPlayers: 1,
+        pendingAiSeatCount: 1,
+        allReady: false,
+        startDisabled: true,
+      });
       await expect(page.getByTestId('start-game-button'), `시작 버튼 상태: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeEnabled({ timeout: 15_000 });
       const startButton = page.getByTestId('start-game-button');
       await startButton.click();
