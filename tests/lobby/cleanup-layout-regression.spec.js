@@ -35,8 +35,10 @@ test.describe('cleanup/layout regression QA', () => {
 
     await runQaStep(testInfo, '격리된 게스트 context에서 로비 방 카드 action column 정렬 확인', async () => {
       const lobbyHostContext = await browser.newContext();
+      const extraHostContext = await browser.newContext();
       const lobbyGuestContext = await browser.newContext();
       await primeLobbyStorage(lobbyHostContext, { nickname: lobbyHostNickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+      await primeLobbyStorage(extraHostContext, { nickname: normalizeQaNickname(makeQaName(testInfo, 'extra-host')), maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
       await primeLobbyStorage(lobbyGuestContext, { nickname: lobbyGuestNickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
       try {
@@ -47,6 +49,14 @@ test.describe('cleanup/layout regression QA', () => {
         await expect(lobbyHostPage.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
         const lobbyRoomId = await rememberRoomIdFromPage(lobbyHostPage) ?? await findRoomIdByTitle(lobbyRoomTitle);
         if (lobbyRoomId) roomIds.push(lobbyRoomId);
+
+        const extraHostPage = await extraHostContext.newPage();
+        await expectAppShell(extraHostPage);
+        await extraHostPage.getByTestId('room-title-input').fill(makeQaName(testInfo, 'extra-room'));
+        await extraHostPage.getByTestId('create-room-button').click();
+        await expect(extraHostPage.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+        const extraRoomId = await rememberRoomIdFromPage(extraHostPage);
+        if (extraRoomId) roomIds.push(extraRoomId);
 
         const lobbyGuestPage = await lobbyGuestContext.newPage();
         await expectAppShell(lobbyGuestPage);
@@ -66,6 +76,7 @@ test.describe('cleanup/layout regression QA', () => {
         await expect(lobbyGuestPage.getByTestId('waiting-room')).toBeVisible({ timeout: 20_000 });
       } finally {
         await lobbyGuestContext.close();
+        await extraHostContext.close();
         await lobbyHostContext.close();
       }
     });

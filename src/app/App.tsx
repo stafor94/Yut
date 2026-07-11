@@ -2547,7 +2547,6 @@ export function App() {
       ]) : roomUser;
       if (!asHost && room.id && isFirebaseConfigured && !joiningUser) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
       if (joiningUser) rememberUser(joiningUser);
-      if (!asHost && joiningUser && room.id) await leaveDuplicatePlayerRooms(joiningUser.uid, room.id);
       await leavePreviousOnlineRoom(room.id ?? '');
       const joinResult = !asHost && room.id && joiningUser ? await joinRoom(room.id, { userId: joiningUser.uid, nickname, playMode: room.playMode }) : null;
       setActiveRoomId(room.id ?? '');
@@ -2570,6 +2569,11 @@ export function App() {
       setScreen(room.id && !asHost && 'status' in room && isRoomInGame(room as RoomSummary) ? 'game' : 'waitingRoom');
       setLoadingMessage('');
       setMessage(nextMessage);
+      if (!asHost && joiningUser && room.id) {
+        void leaveDuplicatePlayerRooms(joiningUser.uid, room.id).catch((cleanupError) => {
+          console.warn('중복 방 정리에 실패했습니다. 대상 방 입장은 유지합니다.', cleanupError);
+        });
+      }
     } catch (error) {
       hostingRoomUserIdRef.current = '';
       setActiveRoomId('');
