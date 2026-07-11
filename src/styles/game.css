@@ -799,6 +799,25 @@ aside.players,
 .countdown-overlay span { font-weight: 900; color: var(--green); }
 .countdown-overlay strong { font-size: 2.4rem; line-height: 1; color: var(--red); }
 
+.countdown-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(42, 30, 23, .38);
+  backdrop-filter: blur(2px);
+}
+
+.shell.countdown-active > :not(.countdown-scrim) {
+  filter: blur(2px) brightness(.78);
+}
+
+.countdown-scrim .countdown-overlay {
+  position: static;
+  translate: none;
+}
+
 .toast-message {
   top: 50%;
   translate: -50% -50%;

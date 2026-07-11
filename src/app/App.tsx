@@ -128,6 +128,12 @@ const CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;
 const CREATE_ROOM_RECOVERY_TIMEOUT_MS = 5000;
 const STEP_DELAY_MS = 240;
 
+const getQaMarkRoomGameEnteringDelayMs = () => {
+  if (typeof window === 'undefined') return 0;
+  const value = Number((window as typeof window & { __YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__?: unknown }).__YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__ ?? 0);
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+};
+
 const getSequenceRefetchAfter = (sequence: number) => Math.max(0, sequence - 2);
 
 const getStableTurnOrderScore = (seed: string, seatId: string) => {
@@ -2289,7 +2295,11 @@ export function App() {
       setStartStatus('entering');
       setCountdown(-1);
       if (activeRoomId) {
-        void measureFirebaseLatency(() => markRoomGameEntering(activeRoomId, startRequestVersion)).catch(() => undefined);
+        const markEnteringDelayMs = getQaMarkRoomGameEnteringDelayMs();
+        void measureFirebaseLatency(async () => {
+          if (markEnteringDelayMs > 0) await delay(markEnteringDelayMs);
+          await markRoomGameEntering(activeRoomId, startRequestVersion);
+        }).catch(() => undefined);
       }
       startLocalGame();
     };
