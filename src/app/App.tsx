@@ -187,6 +187,7 @@ export function App() {
   const [startCountdownStartsAt, setStartCountdownStartsAt] = useState(0);
   const [startCountdownEndsAt, setStartCountdownEndsAt] = useState(0);
   const [startStatus, setStartStatus] = useState<RoomSummary['startStatus']>('idle');
+  const [pendingAiSeatCount, setPendingAiSeatCount] = useState(0);
   const [authoritativeGameStateReady, setAuthoritativeGameStateReady] = useState(false);
   const [firebaseLatencySamples, setFirebaseLatencySamples] = useState<number[]>([]);
   const [spectators, setSpectators] = useState<Seat[]>([]);
@@ -336,9 +337,25 @@ export function App() {
   const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
   const roomHostClaimKeyRef = useRef('');
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
+  const startRequestVersionRef = useRef(0);
+  const startStatusRef = useRef<RoomSummary['startStatus']>('idle');
   const confirmedRoomPlayerRef = useRef(false);
   const leavingRoomRef = useRef(false);
   const hostingRoomUserIdRef = useRef('');
+
+  function syncPendingAiSeatCount() {
+    setPendingAiSeatCount(pendingAiSeatIdsRef.current.size);
+  }
+  function addPendingAiSeat(seatId: string) {
+    if (!seatId) return;
+    pendingAiSeatIdsRef.current.add(seatId);
+    syncPendingAiSeatCount();
+  }
+  function clearPendingAiSeat(seatId: string) {
+    if (!seatId || !pendingAiSeatIdsRef.current.delete(seatId)) return;
+    syncPendingAiSeatCount();
+  }
+
   const rooms = useRooms();
   const currentUser = userRef.current ?? user;
   const currentUserId = currentUser?.uid ?? '';
@@ -349,7 +366,7 @@ export function App() {
   const syncedGameSeats = useMemo(() => gameSeatSnapshotsFromSeats(playableSeats), [playableSeats]);
   const teamCounts = useMemo(() => playableSeats.reduce<Record<Team, number>>((acc, seat) => ({ ...acc, [seat.team]: acc[seat.team] + 1 }), { 청팀: 0, 홍팀: 0 }), [playableSeats]);
   const teamBalanced = playMode === 'individual' || (maxPlayers === 4 && teamCounts.청팀 === 2 && teamCounts.홍팀 === 2);
-  const allReady = seats.every((seat) => !seat.isEmpty && (seat.ready || seat.isAI)) && teamBalanced;
+  const allReady = pendingAiSeatCount === 0 && seats.every((seat) => !seat.isEmpty && (seat.ready || seat.isAI)) && teamBalanced;
   const turnSeats = useMemo(() => {
     if (!turnOrderIds.length) return playableSeats;
     const orderedSeats = turnOrderIds.map((seatId) => playableSeats.find((seat) => seat.id === seatId)).filter((seat): seat is Seat => Boolean(seat));
@@ -1039,9 +1056,11 @@ export function App() {
     setWaitingForPlayersReady(false);
     setTurnDeadlineAt(0);
     setTurnDeadlineKind('');
+    startRequestVersionRef.current = 0;
     setStartRequestVersion(0);
     setStartCountdownStartsAt(0);
     setStartCountdownEndsAt(0);
+    startStatusRef.current = 'idle';
     setStartStatus('idle');
     enteredGamePresenceKeyRef.current = '';
     startedGameRequestVersionsRef.current.clear();
@@ -1156,6 +1175,9 @@ export function App() {
 
   useRoomPresence(activeRoomId, localSeatId);
 
+  useEffect(() => { startRequestVersionRef.current = startRequestVersion; }, [startRequestVersion]);
+  useEffect(() => { startStatusRef.current = startStatus; }, [startStatus]);
+
   useEffect(() => {
     if (!winner) { lastWinnerSoundRef.current = ''; return; }
     if (lastWinnerSoundRef.current === winner) return;
@@ -1197,18 +1219,28 @@ export function App() {
       const nextCountdownStartsAt = Number(room.startCountdownStartsAt ?? 0);
       const nextCountdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
       const nextStartStatus = room.startStatus ?? (nextCountdownEndsAt > Date.now() ? 'requested' : 'idle');
-      setStartRequestVersion(nextStartVersion);
-      setStartCountdownStartsAt(nextCountdownStartsAt);
-      setStartCountdownEndsAt(nextCountdownEndsAt);
-      setStartStatus(nextStartStatus);
-      if (nextStartStatus === 'requested' && nextCountdownEndsAt > Date.now()) {
-        const now = Date.now();
-        setCountdown(now >= nextCountdownStartsAt ? Math.max(1, Math.ceil((nextCountdownEndsAt - now) / 1000)) : -1);
+      const currentStartVersion = startRequestVersionRef.current;
+      const currentStartStatus = startStatusRef.current;
+      const isOlderStartSnapshot = nextStartVersion < currentStartVersion;
+      const isStaleIdleForLocalRequest = nextStartVersion === currentStartVersion && currentStartStatus === 'requested' && nextStartStatus === 'idle';
+      const shouldApplyStartSnapshot = !isOlderStartSnapshot && !isStaleIdleForLocalRequest;
+      const effectiveStartStatus = shouldApplyStartSnapshot ? nextStartStatus : currentStartStatus;
+      if (shouldApplyStartSnapshot) {
+        startRequestVersionRef.current = nextStartVersion;
+        startStatusRef.current = nextStartStatus;
+        setStartRequestVersion(nextStartVersion);
+        setStartCountdownStartsAt(nextCountdownStartsAt);
+        setStartCountdownEndsAt(nextCountdownEndsAt);
+        setStartStatus(nextStartStatus);
+        if (nextStartStatus === 'requested' && nextCountdownEndsAt > Date.now()) {
+          const now = Date.now();
+          setCountdown(now >= nextCountdownStartsAt ? Math.max(1, Math.ceil((nextCountdownEndsAt - now) / 1000)) : -1);
+        }
+        else setCountdown((current) => current >= 0 ? -1 : current);
       }
-      else if (countdown >= 0) setCountdown(-1);
-      const roomCurrentlyInGame = isRoomInGame(room);
+      const roomCurrentlyInGame = (effectiveStartStatus === 'entering' || effectiveStartStatus === 'playing') || (shouldApplyStartSnapshot && isRoomInGame(room));
       if (roomCurrentlyInGame) setScreen('game');
-      const startFlowStillActive = nextStartStatus === 'requested' || nextStartStatus === 'entering';
+      const startFlowStillActive = effectiveStartStatus === 'requested' || effectiveStartStatus === 'entering';
       if (!roomCurrentlyInGame && room.status === 'waiting' && screen === 'game' && !winner && !startFlowStillActive) {
         setScreen('waitingRoom');
         setCountdown(-1);
@@ -1232,7 +1264,7 @@ export function App() {
         setMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
       }
     });
-  }, [activeRoomId, currentUserId, countdown, screen, winner]);
+  }, [activeRoomId, currentUserId, screen, winner]);
 
 
   useEffect(() => {
@@ -1279,7 +1311,7 @@ export function App() {
         }
       }
       players.forEach((player) => {
-        if (player.isAI) pendingAiSeatIdsRef.current.delete(player.id);
+        if (player.isAI) clearPendingAiSeat(player.id);
       });
       setSeats((currentSeats) => {
         const seatsWithPendingAI = nextSeats.map((nextSeat) => {
@@ -2551,6 +2583,7 @@ export function App() {
   }
 
   function handleStartGame() {
+    if (pendingAiSeatCount > 0) { setMessage('AI 추가를 완료하는 중입니다.'); return; }
     const blockMessage = getStartGameBlockMessage({ activeRoomId, allReady, canManageRoom, playMode, teamBalanced });
     if (roomInGame) { setMessage('이미 진행 중인 게임이 있어 다시 시작할 수 없습니다.'); return; }
     if (blockMessage) { setMessage(blockMessage); return; }
@@ -2558,12 +2591,16 @@ export function App() {
     const requestedAt = Date.now();
     const startCountdownWindow = createStartCountdownWindow(requestedAt, startRequestVersion);
     const localVersion = startCountdownWindow.localVersion;
+    startRequestVersionRef.current = localVersion;
+    startStatusRef.current = 'requested';
     setStartRequestVersion(localVersion);
     setStartCountdownStartsAt(startCountdownWindow.startsAt);
     setStartCountdownEndsAt(startCountdownWindow.endsAt);
     setStartStatus('requested');
     setCountdown(-1); setScreen('waitingRoom'); setMessage('');
     void measureFirebaseLatency(() => requestRoomGameStart(activeRoomId, requestedAt)).then((startState) => {
+      startRequestVersionRef.current = startState.startRequestVersion;
+      startStatusRef.current = 'requested';
       setStartRequestVersion(startState.startRequestVersion);
       setStartCountdownStartsAt(startState.startCountdownStartsAt);
       setStartCountdownEndsAt(startState.startCountdownEndsAt);
@@ -2574,6 +2611,7 @@ export function App() {
   function cancelStartCountdown() {
     if (startCancelDisabled) return;
     setCountdown(-1);
+    startStatusRef.current = 'cancelled';
     setStartStatus('cancelled');
     setMessage('시작이 취소되었습니다.');
     if (activeRoomId) void measureFirebaseLatency(() => cancelRoomGameStart(activeRoomId, startRequestVersion, Date.now()));
@@ -3157,10 +3195,10 @@ export function App() {
       const aiName = makeUniqueAIName(currentSeats);
       const targetSeat = currentSeats.find((seat) => seat.id === playerId);
       if (activeRoomId && targetSeat) {
-        pendingAiSeatIdsRef.current.add(playerId);
+        addPendingAiSeat(playerId);
         void updateRoomPlayer(activeRoomId, playerId, getAiRoomPlayerUpdate(targetSeat, aiName))
           .catch((error) => {
-            pendingAiSeatIdsRef.current.delete(playerId);
+            clearPendingAiSeat(playerId);
             console.warn('AI 추가에 실패했습니다.', error);
             setMessage('AI 추가에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
             setSeats((latestSeats) => latestSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
@@ -3170,7 +3208,7 @@ export function App() {
     });
   }
   function cancelAISeat(playerId: string) {
-    pendingAiSeatIdsRef.current.delete(playerId);
+    clearPendingAiSeat(playerId);
     if (activeRoomId) { void removeRoomPlayer(activeRoomId, playerId); }
     setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
   }
@@ -4639,14 +4677,14 @@ export function App() {
     }
     try {
       if (wasGameScreen && leavingSeat) {
-        pendingAiSeatIdsRef.current.add(leavingSeatId);
+        addPendingAiSeat(leavingSeatId);
         await updateRoomPlayer(leavingRoomId, leavingSeatId, getSubstitutedRoomPlayerUpdate(leavingSeat));
-        pendingAiSeatIdsRef.current.delete(leavingSeatId);
+        clearPendingAiSeat(leavingSeatId);
       } else {
         await removeRoomPlayer(leavingRoomId, leavingSeatId);
       }
     } catch (error) {
-      pendingAiSeatIdsRef.current.delete(leavingSeatId);
+      clearPendingAiSeat(leavingSeatId);
       console.warn('방 나가기 정리에 실패했습니다.', error);
     } finally {
       leavingRoomRef.current = false;
@@ -4692,10 +4730,10 @@ export function App() {
     setEndGameDialogOpen(false);
     setMessage('게임을 나와 로비로 이동했습니다.');
     if (finishedRoomId && finishedSeatId && shouldSubstituteAsAi && leavingSeat) {
-      pendingAiSeatIdsRef.current.add(finishedSeatId);
+      addPendingAiSeat(finishedSeatId);
       void updateRoomPlayer(finishedRoomId, finishedSeatId, getSubstitutedRoomPlayerUpdate(leavingSeat))
         .catch((error) => console.warn('게임 종료 후 AI 전환에 실패했습니다.', error))
-        .finally(() => pendingAiSeatIdsRef.current.delete(finishedSeatId));
+        .finally(() => clearPendingAiSeat(finishedSeatId));
     }
     if (finishedRoomId && finishedSeatId && shouldLeaveFinishedRoom) {
       void removeRoomPlayer(finishedRoomId, finishedSeatId, { preservePlayingSeatAsAi: false })
