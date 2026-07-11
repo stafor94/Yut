@@ -2285,7 +2285,9 @@ export function App() {
     const enterGameOnce = () => {
       if (completed) return;
       completed = true;
-      setCountdown(0);
+      startStatusRef.current = 'entering';
+      setStartStatus('entering');
+      setCountdown(-1);
       if (activeRoomId) {
         void measureFirebaseLatency(() => markRoomGameEntering(activeRoomId, startRequestVersion)).catch(() => undefined);
       }
@@ -4840,7 +4842,9 @@ export function App() {
   }
 
 
-  return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'} screen-${screen} ${startCountdownActive && countdown >= 0 ? 'countdown-active' : ''}`}>
+  const showStartCountdownOverlay = screen === 'waitingRoom' && startStatus === 'requested' && countdown >= 0 && Date.now() >= startCountdownStartsAt;
+
+  return <main data-testid="app-shell" className={`shell ${screen === 'game' ? 'game-shell' : 'lobby-shell'} screen-${screen} ${showStartCountdownOverlay ? 'countdown-active' : ''}`}>
     <AppShellHeader
       activeRoomId={activeRoomId}
       manualSequenceSyncing={manualSequenceSyncing}
@@ -4926,7 +4930,7 @@ export function App() {
       onLeaveRoom={leaveRoom}
     />}
 
-    {screen === 'waitingRoom' && countdown >= 0 && startStatus === 'requested' && Date.now() >= startCountdownStartsAt && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={cancelStartCountdown}>취소</button>}</div></div>}
+    {showStartCountdownOverlay && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={cancelStartCountdown}>취소</button>}</div></div>}
     {screen === 'game' && <GameScreenView
       activeItemPromptTypes={activeItemPromptTypes}
       pendingItemPromptChoiceLabel={pendingItemPromptChoiceLabel}
