@@ -216,11 +216,13 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     shouldPromptAfterRoll = !fallOccurred
       && (!room.stackedRollMode || !nextRoll.bonus)
       && hasUsableAfterRollItem(state, action.actorId, nextRoll, room, sides);
+    const nextActiveSeatIdAfterFall = fallOccurred ? (state.turnOrderIds ?? [])[Number(baseReduction.patch.turnIndex ?? state.turnIndex ?? 0)] : null;
+    const shouldPromptBeforeRollAfterFall = Boolean(nextActiveSeatIdAfterFall && hasUsableBeforeRollItem({ ...state, ...baseReduction.patch } as SyncedGameStateShape, String(nextActiveSeatIdAfterFall)));
     baseReduction.patch = {
       ...baseReduction.patch,
       turnDeadlineAt: shouldPromptAfterRoll ? now + 2600 + TURN_ACTION_TIMEOUT_MS : fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: shouldPromptAfterRoll ? 'item_prompt' : fallOccurred ? 'roll' : 'move',
-      itemPromptTiming: shouldPromptAfterRoll ? 'after_roll' : null,
+      turnDeadlineKind: shouldPromptAfterRoll || shouldPromptBeforeRollAfterFall ? 'item_prompt' : fallOccurred ? 'roll' : 'move',
+      itemPromptTiming: shouldPromptAfterRoll ? 'after_roll' : shouldPromptBeforeRollAfterFall ? 'before_roll' : null,
       pendingGoldenYutSelection: null,
     };
     baseReduction.payload = {
