@@ -720,8 +720,8 @@ export function App() {
   })();
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedMoveSteps > 0 && activeMovablePiece?.started && BRANCH_NODE_IDS.includes(activeMovablePiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const roomInGame = startStatus === 'entering' || startStatus === 'playing';
-  const startFlowBusy = startRequestPending || startStatus === 'requested' || roomInGame;
-  const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > 0;
+  const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > Date.now();
+  const startFlowBusy = startRequestPending || startCountdownActive || roomInGame;
   const startCancelDisabled = startCountdownEndsAt > 0 && startCountdownEndsAt - Date.now() <= START_CANCEL_LOCK_MS;
   const optimisticEnteredSeatId = screen === 'game' && localSeatId && !isSpectator ? localSeatId : '';
   const humanSeatsWaitingToEnter = startRequestVersion ? getHumanSeatsWaitingForGameEntry(playableSeats, startRequestVersion, optimisticEnteredSeatId) : [];
@@ -1196,22 +1196,23 @@ export function App() {
   useEffect(() => { startRequestVersionRef.current = startRequestVersion; }, [startRequestVersion]);
   useEffect(() => { startStatusRef.current = startStatus; }, [startStatus]);
 
-  const applyAuthoritativeStartRequest = (startState: Pick<RoomSummary, 'startRequestVersion' | 'startRequestedAt' | 'startCountdownStartsAt' | 'startCountdownEndsAt' | 'startRequestId'>, requestId = pendingStartRequestIdRef.current) => {
+  const applyAuthoritativeStartRequest = (startState: Pick<RoomSummary, 'startRequestVersion' | 'startRequestedAt' | 'startCountdownStartsAt' | 'startCountdownEndsAt' | 'startRequestId' | 'startStatus'>, requestId = pendingStartRequestIdRef.current) => {
+    if (!requestId || pendingStartRequestIdRef.current !== requestId) return false;
     const authoritativeRequestId = startState.startRequestId ?? '';
-    if (requestId && authoritativeRequestId && authoritativeRequestId !== requestId) return false;
+    if (authoritativeRequestId !== requestId) return false;
     const authoritativeVersion = Number(startState.startRequestVersion ?? 0);
     if (!authoritativeVersion) return false;
+    const authoritativeStatus = startState.startStatus ?? 'idle';
     pendingStartRequestIdRef.current = '';
     startRequestInFlightRef.current = false;
     setStartRequestPending(false);
     startRequestVersionRef.current = authoritativeVersion;
-    startStatusRef.current = 'requested';
+    startStatusRef.current = authoritativeStatus;
     setStartRequestVersion(authoritativeVersion);
     setStartCountdownStartsAt(Number(startState.startCountdownStartsAt ?? 0));
     setStartCountdownEndsAt(Number(startState.startCountdownEndsAt ?? 0));
-    setStartStatus('requested');
+    setStartStatus(authoritativeStatus);
     setCountdown(-1);
-    setScreen('waitingRoom');
     return true;
   };
 
@@ -1260,33 +1261,25 @@ export function App() {
       const nextCountdownStartsAt = Number(room.startCountdownStartsAt ?? 0);
       const nextCountdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
       const nextStartStatus = room.startStatus ?? (nextCountdownEndsAt > Date.now() ? 'requested' : 'idle');
-      const currentStartVersion = startRequestVersionRef.current;
-      const currentStartStatus = startStatusRef.current;
-      const isOlderStartSnapshot = nextStartVersion < currentStartVersion;
-      const isStaleIdleForLocalRequest = nextStartVersion === currentStartVersion && currentStartStatus === 'requested' && nextStartStatus === 'idle';
-      const shouldApplyStartSnapshot = !isOlderStartSnapshot && !isStaleIdleForLocalRequest;
-      const effectiveStartStatus = shouldApplyStartSnapshot ? nextStartStatus : currentStartStatus;
-      if (shouldApplyStartSnapshot) {
-        if (pendingStartRequestIdRef.current && nextStartRequestId === pendingStartRequestIdRef.current && nextStartVersion > 0 && (nextStartStatus === 'requested' || nextStartStatus === 'entering' || nextStartStatus === 'playing')) {
-          pendingStartRequestIdRef.current = '';
-          startRequestInFlightRef.current = false;
-          setStartRequestPending(false);
-        }
-        startRequestVersionRef.current = nextStartVersion;
-        startStatusRef.current = nextStartStatus;
-        setStartRequestVersion(nextStartVersion);
-        setStartCountdownStartsAt(nextCountdownStartsAt);
-        setStartCountdownEndsAt(nextCountdownEndsAt);
-        setStartStatus(nextStartStatus);
-        if (nextStartStatus === 'requested' && nextCountdownEndsAt > Date.now()) {
-          const now = Date.now();
-          setCountdown(now >= nextCountdownStartsAt ? Math.max(1, Math.ceil((nextCountdownEndsAt - now) / 1000)) : -1);
-        }
-        else setCountdown((current) => current >= 0 ? -1 : current);
+      if (pendingStartRequestIdRef.current && nextStartRequestId === pendingStartRequestIdRef.current && nextStartVersion > 0 && (nextStartStatus === 'requested' || nextStartStatus === 'entering' || nextStartStatus === 'playing')) {
+        pendingStartRequestIdRef.current = '';
+        startRequestInFlightRef.current = false;
+        setStartRequestPending(false);
       }
-      const roomCurrentlyInGame = (effectiveStartStatus === 'entering' || effectiveStartStatus === 'playing') || (shouldApplyStartSnapshot && isRoomInGame(room));
+      startRequestVersionRef.current = nextStartVersion;
+      startStatusRef.current = nextStartStatus;
+      setStartRequestVersion(nextStartVersion);
+      setStartCountdownStartsAt(nextCountdownStartsAt);
+      setStartCountdownEndsAt(nextCountdownEndsAt);
+      setStartStatus(nextStartStatus);
+      if (nextStartStatus === 'requested' && nextCountdownEndsAt > Date.now()) {
+        const now = Date.now();
+        setCountdown(now >= nextCountdownStartsAt ? Math.max(1, Math.ceil((nextCountdownEndsAt - now) / 1000)) : -1);
+      }
+      else setCountdown((current) => current >= 0 ? -1 : current);
+      const roomCurrentlyInGame = (nextStartStatus === 'entering' || nextStartStatus === 'playing') || isRoomInGame(room);
       if (roomCurrentlyInGame) setScreen('game');
-      const startFlowStillActive = effectiveStartStatus === 'requested' || effectiveStartStatus === 'entering';
+      const startFlowStillActive = nextStartStatus === 'requested' || nextStartStatus === 'entering';
       if (!roomCurrentlyInGame && room.status === 'waiting' && screen === 'game' && !winner && !startFlowStillActive) {
         setScreen('waitingRoom');
         setCountdown(-1);
@@ -2677,11 +2670,6 @@ export function App() {
       delay(START_REQUEST_TIMEOUT_MS).then(() => 'timeout' as const),
     ]).then(async (result) => {
       if (result !== 'timeout' || pendingStartRequestIdRef.current !== requestId) return;
-      const room = await getRoom(activeRoomId).catch(() => null);
-      if (room?.startRequestId === requestId && Number(room.startRequestVersion ?? 0) > 0) {
-        applyAuthoritativeStartRequest(room, requestId);
-        return;
-      }
       startRequestInFlightRef.current = false;
       setStartRequestPending(false);
     });
