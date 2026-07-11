@@ -127,6 +127,7 @@ const CREATE_ROOM_TIMEOUT_MS = 12000;
 const CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;
 const CREATE_ROOM_RECOVERY_TIMEOUT_MS = 5000;
 const STEP_DELAY_MS = 240;
+const START_REQUEST_TIMEOUT_MS = 1500;
 
 const getQaDelayMs = (key: '__YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__' | '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__') => {
   if (typeof window === 'undefined') return 0;
@@ -306,6 +307,7 @@ export function App() {
   const enteredGamePresenceKeyRef = useRef('');
   const startedGameRequestVersionsRef = useRef<Set<number>>(new Set());
   const startRequestInFlightRef = useRef(false);
+  const pendingStartRequestIdRef = useRef('');
   const timeoutRecoveryKeysRef = useRef<Set<string>>(new Set());
 
   const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? '') => activeRoomId ? TURN_ACTION_TIMEOUT_MS : turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : TURN_ACTION_TIMEOUT_MS;
@@ -1070,6 +1072,9 @@ export function App() {
     setTurnDeadlineAt(0);
     setTurnDeadlineKind('');
     startRequestVersionRef.current = 0;
+    pendingStartRequestIdRef.current = '';
+    startRequestInFlightRef.current = false;
+    setStartRequestPending(false);
     setStartRequestVersion(0);
     setStartCountdownStartsAt(0);
     setStartCountdownEndsAt(0);
@@ -1191,6 +1196,25 @@ export function App() {
   useEffect(() => { startRequestVersionRef.current = startRequestVersion; }, [startRequestVersion]);
   useEffect(() => { startStatusRef.current = startStatus; }, [startStatus]);
 
+  const applyAuthoritativeStartRequest = (startState: Pick<RoomSummary, 'startRequestVersion' | 'startRequestedAt' | 'startCountdownStartsAt' | 'startCountdownEndsAt' | 'startRequestId'>, requestId = pendingStartRequestIdRef.current) => {
+    const authoritativeRequestId = startState.startRequestId ?? '';
+    if (requestId && authoritativeRequestId && authoritativeRequestId !== requestId) return false;
+    const authoritativeVersion = Number(startState.startRequestVersion ?? 0);
+    if (!authoritativeVersion) return false;
+    pendingStartRequestIdRef.current = '';
+    startRequestInFlightRef.current = false;
+    setStartRequestPending(false);
+    startRequestVersionRef.current = authoritativeVersion;
+    startStatusRef.current = 'requested';
+    setStartRequestVersion(authoritativeVersion);
+    setStartCountdownStartsAt(Number(startState.startCountdownStartsAt ?? 0));
+    setStartCountdownEndsAt(Number(startState.startCountdownEndsAt ?? 0));
+    setStartStatus('requested');
+    setCountdown(-1);
+    setScreen('waitingRoom');
+    return true;
+  };
+
   useEffect(() => {
     if (!winner) { lastWinnerSoundRef.current = ''; return; }
     if (lastWinnerSoundRef.current === winner) return;
@@ -1204,6 +1228,9 @@ export function App() {
     return subscribeRoom(subscribedRoomId, (room: RoomSummary | null) => {
       if (activeRoomIdRef.current !== subscribedRoomId) return;
       if (!room) {
+        pendingStartRequestIdRef.current = '';
+        startRequestInFlightRef.current = false;
+        setStartRequestPending(false);
         hostingRoomUserIdRef.current = '';
         activeRoomHostIdRef.current = '';
         setScreen('lobby');
@@ -1229,6 +1256,7 @@ export function App() {
       setPieceCount(room.pieceCount ?? 4);
       setIsRoomHost((previousIsRoomHost) => hostUserId ? room.hostId === hostUserId : previousIsRoomHost);
       const nextStartVersion = Number(room.startRequestVersion ?? 0);
+      const nextStartRequestId = room.startRequestId ?? '';
       const nextCountdownStartsAt = Number(room.startCountdownStartsAt ?? 0);
       const nextCountdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
       const nextStartStatus = room.startStatus ?? (nextCountdownEndsAt > Date.now() ? 'requested' : 'idle');
@@ -1239,6 +1267,11 @@ export function App() {
       const shouldApplyStartSnapshot = !isOlderStartSnapshot && !isStaleIdleForLocalRequest;
       const effectiveStartStatus = shouldApplyStartSnapshot ? nextStartStatus : currentStartStatus;
       if (shouldApplyStartSnapshot) {
+        if (pendingStartRequestIdRef.current && nextStartRequestId === pendingStartRequestIdRef.current && nextStartVersion > 0 && (nextStartStatus === 'requested' || nextStartStatus === 'entering' || nextStartStatus === 'playing')) {
+          pendingStartRequestIdRef.current = '';
+          startRequestInFlightRef.current = false;
+          setStartRequestPending(false);
+        }
         startRequestVersionRef.current = nextStartVersion;
         startStatusRef.current = nextStartStatus;
         setStartRequestVersion(nextStartVersion);
@@ -2613,34 +2646,53 @@ export function App() {
     if (roomInGame) { setMessage('이미 진행 중인 게임이 있어 다시 시작할 수 없습니다.'); return; }
     if (blockMessage) { setMessage(blockMessage); return; }
     if (!isRoomManager) setIsRoomHost(true);
+    const requestId = pendingStartRequestIdRef.current || (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}:${Math.random().toString(36).slice(2)}`);
+    pendingStartRequestIdRef.current = requestId;
     startRequestInFlightRef.current = true;
     setStartRequestPending(true);
     setMessage('');
     const requestedAt = Date.now();
-    try {
+    const requestPromise = measureFirebaseLatency(async () => {
       const requestDelayMs = getQaRequestRoomGameStartDelayMs();
-      const startState = await measureFirebaseLatency(async () => {
-        if (requestDelayMs > 0) await delay(requestDelayMs);
-        return requestRoomGameStart(activeRoomId, requestedAt);
+      if (requestDelayMs > 0) await delay(requestDelayMs);
+      return requestRoomGameStart(activeRoomId, requestedAt, requestId);
+    });
+    requestPromise
+      .then((startState) => applyAuthoritativeStartRequest(startState, requestId))
+      .catch((error) => {
+        if (pendingStartRequestIdRef.current !== requestId) return;
+        pendingStartRequestIdRef.current = '';
+        startRequestInFlightRef.current = false;
+        setStartRequestPending(false);
+        setMessage(error instanceof Error ? error.message : '게임 시작 요청에 실패했습니다.');
+      })
+      .finally(() => {
+        if (pendingStartRequestIdRef.current !== requestId) return;
+        startRequestInFlightRef.current = false;
+        setStartRequestPending(false);
       });
-      startRequestVersionRef.current = startState.startRequestVersion;
-      startStatusRef.current = 'requested';
-      setStartRequestVersion(startState.startRequestVersion);
-      setStartCountdownStartsAt(startState.startCountdownStartsAt);
-      setStartCountdownEndsAt(startState.startCountdownEndsAt);
-      setStartStatus('requested');
-      setCountdown(-1);
-      setScreen('waitingRoom');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '게임 시작 요청에 실패했습니다.');
-    } finally {
+
+    await Promise.race([
+      requestPromise.then(() => 'completed' as const).catch(() => 'completed' as const),
+      delay(START_REQUEST_TIMEOUT_MS).then(() => 'timeout' as const),
+    ]).then(async (result) => {
+      if (result !== 'timeout' || pendingStartRequestIdRef.current !== requestId) return;
+      const room = await getRoom(activeRoomId).catch(() => null);
+      if (room?.startRequestId === requestId && Number(room.startRequestVersion ?? 0) > 0) {
+        applyAuthoritativeStartRequest(room, requestId);
+        return;
+      }
       startRequestInFlightRef.current = false;
       setStartRequestPending(false);
-    }
+    });
   }
+
 
   function cancelStartCountdown() {
     if (startCancelDisabled) return;
+    pendingStartRequestIdRef.current = '';
+    startRequestInFlightRef.current = false;
+    setStartRequestPending(false);
     setCountdown(-1);
     startStatusRef.current = 'cancelled';
     setStartStatus('cancelled');
@@ -3236,11 +3288,11 @@ export function App() {
         addPendingAiSeat(playerId);
         void updateRoomPlayer(activeRoomId, playerId, getAiRoomPlayerUpdate(targetSeat, aiName))
           .catch((error) => {
-            clearPendingAiSeat(playerId);
             console.warn('AI 추가에 실패했습니다.', error);
             setMessage('AI 추가에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
             setSeats((latestSeats) => latestSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
-          });
+          })
+          .finally(() => clearPendingAiSeat(playerId));
       }
       return currentSeats.map((seat) => seat.id === playerId ? { ...seat, name: aiName, ready: true, isAI: true, isSubstitutedByAI: false, isEmpty: false } : seat);
     });
