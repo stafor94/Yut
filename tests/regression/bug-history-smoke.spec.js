@@ -43,6 +43,9 @@ test.describe('BUG_HISTORY regression smoke', () => {
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'seq-host'));
     const roomTitle = makeQaName(testInfo, 'seq-room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    await context.addInitScript(() => {
+      window.__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__ = 3500;
+    });
 
     await runQaStep(testInfo, 'AI 게임 시작', async () => {
       await expectAppShell(page);
