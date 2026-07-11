@@ -16,6 +16,7 @@ test.describe('game flow QA', () => {
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
     await context.addInitScript(() => {
       window.__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__ = 2500;
+      window.__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__ = 2500;
     });
 
     await runQaStep(testInfo, '방 생성', async () => {
@@ -80,6 +81,21 @@ test.describe('game flow QA', () => {
         };
       }, { timeout: 5_000, message: 'timeout 후 재클릭하고 기존 요청이 늦게 완료돼도 서버 시작 요청은 한 번만 반영되어야 합니다.' }).toEqual({ version: 8, status: 'requested', requestIdPresent: true });
       await expect(page.getByTestId('app-shell')).toHaveClass(/countdown-active/, { timeout: 5_000 });
+      await expect.poll(async () => {
+        const state = await collectScreenState(page);
+        const sequences = await getRoomSequencesForQa(roomId);
+        return {
+          waitingVisible: state.visibleScreens.waitingRoom,
+          gameVisible: state.visibleScreens.game,
+          initializedSequenceCount: sequences.filter((sequence) => sequence.type === 'game_initialized').length,
+          initialEntryPending: Boolean(state.yutDebug?.initialGameEntryPending),
+        };
+      }, { timeout: 2_000, message: '초기 state/current 생성 전에는 대기실을 유지해야 합니다.' }).toEqual({
+        waitingVisible: true,
+        gameVisible: false,
+        initializedSequenceCount: 0,
+        initialEntryPending: true,
+      });
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 5_000 });
       await expect(page.locator('.countdown-scrim')).toHaveCount(0);

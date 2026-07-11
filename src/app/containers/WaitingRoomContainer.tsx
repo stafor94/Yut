@@ -18,6 +18,7 @@ type WaitingRoomContainerProps = {
   allReady: boolean;
   roomInGame: boolean;
   startFlowBusy: boolean;
+  initialGameEntryPending: boolean;
   getSeatPieceColor: (seat: Seat) => string;
   onChangeOptions: (params: Partial<{ playMode: PlayMode; maxPlayers: 2 | 3 | 4; pieceCount: PieceCount; itemMode: boolean; stackedRollMode: boolean }>) => void;
   onKickPlayer: (seat: Seat) => void;
@@ -45,6 +46,7 @@ export function WaitingRoomContainer({
   allReady,
   roomInGame,
   startFlowBusy,
+  initialGameEntryPending,
   getSeatPieceColor,
   onChangeOptions,
   onKickPlayer,
@@ -58,7 +60,7 @@ export function WaitingRoomContainer({
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
-  const startBlockedHint = roomInGame ? '이미 게임이 진행 중입니다.' : startFlowBusy ? '게임 시작 요청을 처리하고 있습니다.' : allReady ? '' : teamStartHint || `${readyMissingCount}명이 더 준비하면 시작할 수 있어요.`;
+  const startBlockedHint = initialGameEntryPending ? '게임 상태를 준비하고 있습니다.' : roomInGame ? '이미 게임이 진행 중입니다.' : startFlowBusy ? '게임 시작 요청을 처리하고 있습니다.' : allReady ? '' : teamStartHint || `${readyMissingCount}명이 더 준비하면 시작할 수 있어요.`;
   const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
   const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
 
