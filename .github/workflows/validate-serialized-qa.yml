@@ -107,21 +107,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: serialized-qa-build
-      - id: basic
-        name: QA basic flow
-        continue-on-error: true
+      - name: QA basic flow
         run: |
           set -o pipefail
           npm run test:qa-basic-flow 2>&1 | tee playwright-qa-basic-flow.log
-      - id: online
-        name: QA online turn recovery
-        continue-on-error: true
+      - name: QA online turn recovery
         run: |
           set -o pipefail
           npm run test:qa-online-turn-recovery 2>&1 | tee playwright-qa-online-turn-recovery.log
-      - id: layout
-        name: QA cleanup and layout regression
-        continue-on-error: true
+      - name: QA cleanup and layout regression
         run: |
           set -o pipefail
           npm run test:qa-cleanup-layout-regression 2>&1 | tee playwright-qa-cleanup-layout-regression.log
@@ -136,17 +130,6 @@ jobs:
             test-results
           if-no-files-found: ignore
           retention-days: 2
-      - name: Require every browser QA suite to pass
-        if: always()
-        env:
-          BASIC_OUTCOME: ${{ steps.basic.outcome }}
-          ONLINE_OUTCOME: ${{ steps.online.outcome }}
-          LAYOUT_OUTCOME: ${{ steps.layout.outcome }}
-        run: |
-          printf 'basic=%s\nonline=%s\nlayout=%s\n' "$BASIC_OUTCOME" "$ONLINE_OUTCOME" "$LAYOUT_OUTCOME"
-          test "$BASIC_OUTCOME" = success
-          test "$ONLINE_OUTCOME" = success
-          test "$LAYOUT_OUTCOME" = success
 
   stacked-backdo:
     name: QA stacked roll backdo AI
