@@ -64,7 +64,7 @@ test.describe('game flow QA', () => {
         const state = await collectScreenState(page);
         return {
           overlayVisible: await page.getByTestId('start-countdown-overlay').isVisible().catch(() => false),
-          initialEntryPending: Boolean(state.yutDebug?.syncPipeline?.initialGameEntryPending),
+          initialEntryPending: Boolean(state.yutDebug?.turnHealth?.initialGameEntryPending),
         };
       }, { timeout: 2_000, message: '카운트다운 표시 중에는 아직 초기 게임 진입 pending을 켜지 않아야 합니다.' }).toEqual({
         overlayVisible: true,
@@ -80,7 +80,7 @@ test.describe('game flow QA', () => {
           gameVisible: state.visibleScreens.game,
           hasCurrentState: Boolean(roomState),
           initializedSequenceCount: sequences.filter((sequence) => sequence.type === 'game_initialized').length,
-          initialEntryPending: Boolean(state.yutDebug?.syncPipeline?.initialGameEntryPending),
+          initialEntryPending: Boolean(state.yutDebug?.turnHealth?.initialGameEntryPending),
         };
       }, { timeout: 2_500, message: '카운트다운 종료 후 초기화 지연 중에는 pending만 켜고 대기실/state 없음 상태를 유지해야 합니다.' }).toEqual({
         waitingVisible: true,
