@@ -50,9 +50,41 @@ jobs:
             unit.log
           retention-days: 2
 
-  validate:
-    name: Serialized Firebase QA
+  cleanup-before:
+    name: Cleanup before QA
     needs: build-and-unit
+    runs-on: ubuntu-latest
+    env:
+      FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+      VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Cleanup old QA data
+        run: |
+          set -o pipefail
+          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-before.log
+      - name: Upload cleanup log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: serialized-qa-cleanup-before
+          path: qa-cleanup-before.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+  browser-qa:
+    name: Serialized Firebase browser QA
+    needs: [build-and-unit, cleanup-before]
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
@@ -75,10 +107,6 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: serialized-qa-build
-      - name: Cleanup before QA
-        run: |
-          set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-before.log
       - id: basic
         name: QA basic flow
         continue-on-error: true
@@ -97,41 +125,83 @@ jobs:
         run: |
           set -o pipefail
           npm run test:qa-cleanup-layout-regression 2>&1 | tee playwright-qa-cleanup-layout-regression.log
-      - id: stacked
-        name: QA stacked roll backdo AI
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          npm run test:qa-stacked-roll-backdo-ai 2>&1 | tee qa-stacked-roll-backdo-ai.log
-      - name: Cleanup after QA
-        if: always()
-        env:
-          QA_CLEANUP_REPORT_REMAINING: '1'
-        run: |
-          set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-after.log
-      - name: Upload validation artifacts
+      - name: Upload browser QA artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: serialized-qa-validation
+          name: serialized-browser-qa-validation
           path: |
             playwright-*.log
-            qa-*.log
             console-log.txt
             test-results
           if-no-files-found: ignore
           retention-days: 2
-      - name: Require every QA suite to pass
+      - name: Require every browser QA suite to pass
         if: always()
         env:
           BASIC_OUTCOME: ${{ steps.basic.outcome }}
           ONLINE_OUTCOME: ${{ steps.online.outcome }}
           LAYOUT_OUTCOME: ${{ steps.layout.outcome }}
-          STACKED_OUTCOME: ${{ steps.stacked.outcome }}
         run: |
-          printf 'basic=%s\nonline=%s\nlayout=%s\nstacked=%s\n' "$BASIC_OUTCOME" "$ONLINE_OUTCOME" "$LAYOUT_OUTCOME" "$STACKED_OUTCOME"
+          printf 'basic=%s\nonline=%s\nlayout=%s\n' "$BASIC_OUTCOME" "$ONLINE_OUTCOME" "$LAYOUT_OUTCOME"
           test "$BASIC_OUTCOME" = success
           test "$ONLINE_OUTCOME" = success
           test "$LAYOUT_OUTCOME" = success
-          test "$STACKED_OUTCOME" = success
+
+  stacked-backdo:
+    name: QA stacked roll backdo AI
+    needs: cleanup-before
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run stacked backdo authoritative QA
+        run: |
+          set -o pipefail
+          npm run test:qa-stacked-roll-backdo-ai 2>&1 | tee qa-stacked-roll-backdo-ai.log
+      - name: Upload stacked QA log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: serialized-stacked-qa-validation
+          path: qa-stacked-roll-backdo-ai.log
+          if-no-files-found: ignore
+          retention-days: 2
+
+  cleanup-after:
+    name: Cleanup after QA
+    if: always()
+    needs: [browser-qa, stacked-backdo]
+    runs-on: ubuntu-latest
+    env:
+      QA_CLEANUP_REPORT_REMAINING: '1'
+      FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+      VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Cleanup QA data after tests
+        run: |
+          set -o pipefail
+          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-after.log
+      - name: Upload cleanup log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: serialized-qa-cleanup-after
+          path: qa-cleanup-after.log
+          if-no-files-found: ignore
+          retention-days: 2
