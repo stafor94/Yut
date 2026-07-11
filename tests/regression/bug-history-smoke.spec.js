@@ -300,6 +300,13 @@ test.describe('BUG_HISTORY regression smoke', () => {
         if (state.rollButton.visible && !state.rollButton.disabled) return 'ready';
         return JSON.stringify(state, null, 2);
       }, { timeout: 45_000, message: '본인 이동 검증을 위해 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      const stateBeforeLocalRoll = await collectScreenState(page);
+      const mutationIdsBeforeLocalRoll = stateBeforeLocalRoll.yutDebug?.actionPipeline?.localClientMutationIds;
+      if (Array.isArray(mutationIdsBeforeLocalRoll)) {
+        for (const mutationId of mutationIdsBeforeLocalRoll) {
+          if (typeof mutationId === 'string' && mutationId.startsWith('move_piece_ai:')) knownAiMoveMutationIds.add(mutationId);
+        }
+      }
       await page.getByTestId('roll-yut-button').click();
       await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
       await expect.poll(async () => {
@@ -307,13 +314,6 @@ test.describe('BUG_HISTORY regression smoke', () => {
         if (state.moveButton.visible && !state.moveButton.disabled) return 'ready';
         return JSON.stringify(state, null, 2);
       }, { timeout: 20_000, message: '본인 말 이동 버튼이 활성화되어야 합니다.' }).toBe('ready');
-      const stateBeforeLocalMove = await collectScreenState(page);
-      const mutationIdsBeforeLocalMove = stateBeforeLocalMove.yutDebug?.actionPipeline?.localClientMutationIds;
-      if (Array.isArray(mutationIdsBeforeLocalMove)) {
-        for (const mutationId of mutationIdsBeforeLocalMove) {
-          if (typeof mutationId === 'string' && mutationId.startsWith('move_piece_ai:')) knownAiMoveMutationIds.add(mutationId);
-        }
-      }
       await page.getByTestId('move-piece-button').click();
       await expect.poll(async () => (await getMovingPieces()).length, { timeout: 8_000, message: '본인 optimistic 이동 애니메이션이 시작되어야 합니다.' }).toBeGreaterThan(0);
       await expect.poll(async () => (await getMovingPieces()).length, { timeout: 12_000, message: '본인 optimistic 이동 애니메이션이 종료되어야 합니다.' }).toBe(0);
