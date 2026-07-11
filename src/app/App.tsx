@@ -2294,7 +2294,8 @@ export function App() {
 
   useEffect(() => {
     const activeAiTrapPlacement = Boolean(pendingTrapPlacement && activeSeat?.isAI && pendingTrapPlacement.ownerId === activeSeat.id);
-    if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || pendingItemPickup || !activeSeat || !activeSeat.isAI || isMyTurn || movingPieceId || (pendingTrapPlacement && !activeAiTrapPlacement)) return undefined;
+    const pendingResolvedRollAnimation = rollAnimation?.phase === 'landing' || rollAnimation?.phase === 'result-hold';
+    if (screen !== 'game' || winner || turnOrderPhase.active || activeTurnOrderIntro || pendingItemPickup || pendingResolvedRollAnimation || !activeSeat || !activeSeat.isAI || isMyTurn || movingPieceId || (pendingTrapPlacement && !activeAiTrapPlacement)) return undefined;
     if (!canCoordinateOnlineGame) return undefined;
     const rollStackKey = rollStack.map((stackRoll) => `${stackRoll.name}:${stackRoll.steps}`).join('|');
     const trapPlacementKey = pendingTrapPlacement ? `${pendingTrapPlacement.ownerId}:${pendingTrapPlacement.pieceId}:${pendingTrapPlacement.nodeIds.join('|')}:${pendingTrapPlacement.deadline}` : '';
@@ -2306,7 +2307,7 @@ export function App() {
       void autoPlayTurn(activeSeat, actionKey);
     }, TURN_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, activeTurnOrderIntro, canCoordinateOnlineGame, isMyTurn, pendingItemPickup, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingGoldenYutSelection, pendingTrapPlacement, pieces, roll, rollStack, rollStackClosed, screen, selectedRollStackIndex, turnIndex, turnOrderPhase.active, winner]);
+  }, [activeRoomId, activeSeat, activeTurnOrderIntro, canCoordinateOnlineGame, isMyTurn, pendingItemPickup, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingGoldenYutSelection, pendingTrapPlacement, pieces, roll, rollAnimation?.phase, rollStack, rollStackClosed, screen, selectedRollStackIndex, turnIndex, turnOrderPhase.active, winner]);
 
 
   useEffect(() => {

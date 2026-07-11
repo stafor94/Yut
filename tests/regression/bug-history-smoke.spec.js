@@ -47,6 +47,33 @@ test.describe('BUG_HISTORY regression smoke', () => {
       window.__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__ = 3500;
     });
 
+    const clickSequenceRollAtPerfect = () => page.evaluate(() => new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      const sample = () => {
+        const meter = document.querySelector('.roll-timing-meter');
+        const orb = document.querySelector('.roll-timing-orb');
+        const button = document.querySelector('[data-testid=\"roll-yut-button\"]');
+        if (meter && orb && button instanceof HTMLButtonElement && !button.disabled) {
+          const meterRect = meter.getBoundingClientRect();
+          const orbRect = orb.getBoundingClientRect();
+          const positionPercent = meterRect.width > 0
+            ? ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100
+            : -1;
+          if (positionPercent >= 47 && positionPercent <= 53) {
+            button.click();
+            resolve(positionPercent);
+            return;
+          }
+        }
+        if (performance.now() - startedAt > 8_000) {
+          reject(new Error('8초 동안 Perfect 구간에서 윷 던지기 버튼을 클릭하지 못했습니다.'));
+          return;
+        }
+        requestAnimationFrame(sample);
+      };
+      sample();
+    }));
+
     await runQaStep(testInfo, 'AI 게임 시작', async () => {
       await expectAppShell(page);
       await page.getByTestId('room-title-input').fill(roomTitle);
@@ -68,7 +95,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
         return JSON.stringify(state, null, 2);
       }, { timeout: 45_000, message: '온라인 sequence replay를 확인할 수 있는 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
 
-      await page.getByTestId('roll-yut-button').click();
+      await clickSequenceRollAtPerfect();
       await expect(page.locator('.roll-stage.pending-roll'), `클릭 직후 서버 확정 전 pending 윷 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 500 });
       await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), '클릭 후 500ms 이내 pending 단계에서는 클라이언트에서 확정한 타이밍 등급만 즉시 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 500 });
       await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), 'pending 타이밍 등급은 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
@@ -148,15 +175,30 @@ test.describe('BUG_HISTORY regression smoke', () => {
         timeout: 1_000,
         message: 'pending 중 윷 내부 body의 3D transform이 계속 변해야 앞면/뒷면이 번갈아 보입니다.',
       }).not.toBe(pendingTransformStart);
-      await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll, .roll-stage.resolved-from-pending.result-hold-roll'), `서버 결과 도착 시 pending overlay를 같은 팝업의 landing/result-hold 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
-      if (await page.locator('.roll-stage.resolved-from-pending.landing-roll').isVisible().catch(() => false)) {
-        await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll .roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
-      }
-      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
-      await expect(resultHoldStage, '착지 후 같은 팝업이 result-hold 단계로 전환되어야 합니다.').toBeVisible({ timeout: 2_500 });
-      const resultHoldStartedAt = Date.now();
+      const landingStage = page.locator('.roll-stage.resolved-from-pending.landing-roll');
+      await expect(landingStage, `서버 결과 도착 시 pending overlay를 같은 팝업의 landing 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
+      await expect(landingStage.locator('.roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
+      await page.evaluate(() => {
+        window.__YUT_QA_RESULT_HOLD_OBSERVER__?.disconnect();
+        const timing = { startedAt: 0, endedAt: 0 };
+        window.__YUT_QA_RESULT_HOLD_TIMING__ = timing;
+        let observer;
+        const sample = () => {
+          const visible = Boolean(document.querySelector('.roll-stage.resolved-from-pending.result-hold-roll'));
+          const now = performance.now();
+          if (visible && timing.startedAt === 0) timing.startedAt = now;
+          if (!visible && timing.startedAt > 0 && timing.endedAt === 0) {
+            timing.endedAt = now;
+            observer?.disconnect();
+          }
+        };
+        observer = new MutationObserver(sample);
+        window.__YUT_QA_RESULT_HOLD_OBSERVER__ = observer;
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+        sample();
+      });
       await expect.poll(async () => {
-        const sticks = await page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
+        const sticks = await landingStage.locator('.yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
           className: node.getAttribute('class') ?? '',
           animationName: getComputedStyle(node).animationName,
         })));
@@ -168,9 +210,20 @@ test.describe('BUG_HISTORY regression smoke', () => {
         });
         return invalidStick ? `sticks=${JSON.stringify(sticks)}` : 'ready';
       }, {
-        timeout: 2_000,
-        message: 'pending에서 확정된 윷은 낙 윷만 yut-fall-flight를 유지하고 나머지는 전용 착지 keyframe을 사용해야 합니다.',
+        timeout: 1_000,
+        message: 'landing 단계에서는 낙 윷만 yut-fall-flight를 사용하고 나머지는 전용 착지 keyframe을 사용해야 합니다.',
       }).toBe('ready');
+
+      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
+      await expect(resultHoldStage, '착지 후 같은 팝업이 result-hold 단계로 전환되어야 합니다.').toBeVisible({ timeout: 2_500 });
+      await expect.poll(async () => resultHoldStage.locator('.yut-stick, .yut-stick-body').evaluateAll((nodes) => {
+        if (nodes.length !== 8) return `nodes=${nodes.length}`;
+        const runningNodes = nodes.filter((node) => getComputedStyle(node).animationName !== 'none');
+        return runningNodes.length ? runningNodes.map((node) => `${node.getAttribute('class') ?? ''}:${getComputedStyle(node).animationName}`).join('|') : 'stopped';
+      }), {
+        timeout: 500,
+        message: 'result-hold 단계에서는 모든 윷과 내부 body가 animation:none으로 최종 자세에 고정되어야 합니다.',
+      }).toBe('stopped');
       await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => {
         const body = node.querySelector('.yut-stick-body');
         const transform = body ? getComputedStyle(body).transform : '';
@@ -231,22 +284,46 @@ test.describe('BUG_HISTORY regression smoke', () => {
       } else {
         expect(resolvedMatClasses, '도/개/걸 결과는 bonus-roll을 적용하지 않아야 합니다.').not.toContain('bonus-roll');
       }
-      const resultHoldElapsedMs = Date.now() - resultHoldStartedAt;
-      if (resultHoldElapsedMs < 1_800) await page.waitForTimeout(1_800 - resultHoldElapsedMs);
-      await expect(resultHoldStage, 'result-hold 시작 후 1.8초 동안 같은 팝업이 유지되어야 합니다.').toBeVisible({ timeout: 500 });
-      await expect(resultHoldStage.locator('.roll-stage-timing'), '타이밍 등급은 result-hold 시작 후 1.8초에도 유지되어야 합니다.').toHaveText(timingTextAfterReveal, { timeout: 500 });
-      await expect(resultHoldStage.locator('.roll-label'), '윷 결과명은 result-hold 시작 후 1.8초에도 유지되어야 합니다.').toHaveText(labelTextAfterReveal, { timeout: 500 });
-      const resultHoldCloseTimeoutMs = Math.max(500, resultHoldStartedAt + 3_200 - Date.now());
-      await expect(page.locator('.roll-stage'), 'result-hold 팝업은 시작 후 3.2초 이내 종료되어야 합니다.').toBeHidden({ timeout: resultHoldCloseTimeoutMs });
+      await expect(page.locator('.roll-stage'), 'result-hold 팝업은 정상적으로 종료되어야 합니다.').toBeHidden({ timeout: 4_000 });
+      await expect.poll(() => page.evaluate(() => window.__YUT_QA_RESULT_HOLD_TIMING__?.endedAt ?? 0), {
+        timeout: 500,
+        message: 'result-hold의 실제 시작·종료 시각이 브라우저에서 기록되어야 합니다.',
+      }).toBeGreaterThan(0);
+      const resultHoldTiming = await page.evaluate(() => {
+        window.__YUT_QA_RESULT_HOLD_OBSERVER__?.disconnect();
+        return window.__YUT_QA_RESULT_HOLD_TIMING__ ?? { startedAt: 0, endedAt: 0 };
+      });
+      const resultHoldDurationMs = resultHoldTiming.endedAt - resultHoldTiming.startedAt;
+      expect(resultHoldTiming.startedAt, 'result-hold 시작 시각이 기록되어야 합니다.').toBeGreaterThan(0);
+      expect(resultHoldDurationMs, `result-hold는 실제 브라우저 시각 기준 최소 1.8초 유지되어야 합니다. 실제: ${resultHoldDurationMs}ms`).toBeGreaterThanOrEqual(1_800);
+      expect(resultHoldDurationMs, `result-hold는 실제 브라우저 시각 기준 3.2초 이내 종료되어야 합니다. 실제: ${resultHoldDurationMs}ms`).toBeLessThanOrEqual(3_200);
     });
 
     await runQaStep(testInfo, '말 이동 직후 preview 제거 확인', async () => {
       await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
-      await expect.poll(async () => {
-        const state = await collectScreenState(page);
-        if (state.moveButton.visible && !state.moveButton.disabled) return 'ready';
-        return JSON.stringify(state, null, 2);
-      }, { timeout: 20_000, message: '윷 결과 적용 후 선택한 말 이동 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      let moveReady = false;
+      for (let attempt = 0; attempt < 5 && !moveReady; attempt += 1) {
+        let nextAction = '';
+        await expect.poll(async () => {
+          const state = await collectScreenState(page);
+          if (state.moveButton.visible && !state.moveButton.disabled) {
+            nextAction = 'move';
+            return 'ready';
+          }
+          if (state.rollButton.visible && !state.rollButton.disabled) {
+            nextAction = 'roll';
+            return 'ready';
+          }
+          return JSON.stringify(state, null, 2);
+        }, { timeout: 45_000, message: '윷 결과가 이동 가능 상태가 되거나 이동 불가 빽도 후 다음 던지기 차례로 복귀해야 합니다.' }).toBe('ready');
+        if (nextAction === 'move') {
+          moveReady = true;
+          break;
+        }
+        await clickSequenceRollAtPerfect();
+        await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
+      }
+      expect(moveReady, 'Perfect 구간에서 반복 던진 뒤 말 이동 버튼이 활성화되어야 합니다.').toBe(true);
 
       await page.getByTestId('move-piece-button').click();
       await expect.poll(async () => page.locator('.board-node.route-preview').count(), {
@@ -257,6 +334,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
   });
 
   test('host가 대리 제출한 AI 이동은 sequence 경로로 칸별 재생되고 내 이동은 중복 재생되지 않는다', async ({ page, context }, testInfo) => {
+    testInfo.setTimeout(150_000);
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'ai-seq-host'));
     const roomTitle = makeQaName(testInfo, 'ai-seq-room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
@@ -284,6 +362,92 @@ test.describe('BUG_HISTORY regression smoke', () => {
         .filter((piece) => piece.className.includes('moving'));
     });
 
+    const startAiMoveObservation = () => page.evaluate(() => {
+      if (window.__YUT_QA_AI_MOVE_OBSERVER__) window.clearInterval(window.__YUT_QA_AI_MOVE_OBSERVER__);
+      window.__YUT_QA_AI_MOVE_OBSERVATIONS__ = {};
+      window.__YUT_QA_AI_MOVE_OBSERVER__ = window.setInterval(() => {
+        const debug = window.__YUT_DEBUG_STATE__ ?? {};
+        const pieces = Array.isArray(debug.pieces) ? debug.pieces : [];
+        const localSeatId = String(debug.localSeatId ?? '');
+        const mutationIds = debug.actionPipeline?.localClientMutationIds;
+        const latestAiMoveMutationId = Array.isArray(mutationIds)
+          ? [...mutationIds].reverse().find((mutationId) => typeof mutationId === 'string' && mutationId.startsWith('move_piece_ai:')) ?? ''
+          : '';
+        if (!latestAiMoveMutationId) return;
+
+        const observations = window.__YUT_QA_AI_MOVE_OBSERVATIONS__;
+        const observed = Array.isArray(observations[latestAiMoveMutationId]) ? observations[latestAiMoveMutationId] : [];
+        for (const node of document.querySelectorAll('[data-testid^="piece-"]')) {
+          const className = node.getAttribute('class') ?? '';
+          if (!className.includes('moving')) continue;
+          const testId = node.getAttribute('data-testid') ?? '';
+          const pieceId = testId.replace(/^piece-/, '');
+          const debugPiece = pieces.find((piece) => piece && typeof piece === 'object' && piece.id === pieceId) ?? {};
+          if (localSeatId && debugPiece.ownerId === localSeatId) continue;
+          const rect = node.getBoundingClientRect();
+          const position = `${testId}:${Math.round(rect.left)},${Math.round(rect.top)}`;
+          if (!observed.includes(position)) observed.push(position);
+        }
+        observations[latestAiMoveMutationId] = observed;
+      }, 40);
+    });
+
+    const getObservedAiMovePositions = (mutationId) => page.evaluate((targetMutationId) => {
+      const observations = window.__YUT_QA_AI_MOVE_OBSERVATIONS__ ?? {};
+      const positions = observations[targetMutationId];
+      return Array.isArray(positions) ? [...positions] : [];
+    }, mutationId);
+
+    const clickRollAtPerfect = () => page.evaluate(() => new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      const sample = () => {
+        const meter = document.querySelector('.roll-timing-meter');
+        const orb = document.querySelector('.roll-timing-orb');
+        const button = document.querySelector('[data-testid="roll-yut-button"]');
+        if (meter && orb && button instanceof HTMLButtonElement && !button.disabled) {
+          const meterRect = meter.getBoundingClientRect();
+          const orbRect = orb.getBoundingClientRect();
+          const positionPercent = meterRect.width > 0
+            ? ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100
+            : -1;
+          if (positionPercent >= 47 && positionPercent <= 53) {
+            button.click();
+            resolve(positionPercent);
+            return;
+          }
+        }
+        if (performance.now() - startedAt > 8_000) {
+          reject(new Error('8초 동안 Perfect 구간에서 윷 던지기 버튼을 클릭하지 못했습니다.'));
+          return;
+        }
+        requestAnimationFrame(sample);
+      };
+      sample();
+    }));
+
+    const clickMoveWhenReadyOrWaitForRetry = () => page.evaluate(() => new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      const sample = () => {
+        const moveButton = document.querySelector('[data-testid="move-piece-button"]');
+        if (moveButton instanceof HTMLButtonElement && !moveButton.disabled) {
+          moveButton.click();
+          resolve('move-clicked');
+          return;
+        }
+        const rollButton = document.querySelector('[data-testid="roll-yut-button"]');
+        if (rollButton instanceof HTMLButtonElement && !rollButton.disabled) {
+          resolve('retry');
+          return;
+        }
+        if (performance.now() - startedAt > 45_000) {
+          reject(new Error('이동 버튼 활성화 또는 이동 불가 결과 후 다음 윷 던지기 차례 복귀를 확인하지 못했습니다.'));
+          return;
+        }
+        requestAnimationFrame(sample);
+      };
+      sample();
+    }));
+
     await runQaStep(testInfo, 'host+AI 온라인 게임 시작', async () => {
       await expectAppShell(page);
       await page.getByTestId('room-title-input').fill(roomTitle);
@@ -310,14 +474,20 @@ test.describe('BUG_HISTORY regression smoke', () => {
           if (typeof mutationId === 'string' && mutationId.startsWith('move_piece_ai:')) knownAiMoveMutationIds.add(mutationId);
         }
       }
-      await page.getByTestId('roll-yut-button').click();
-      await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
-      await expect.poll(async () => {
-        const state = await collectScreenState(page);
-        if (state.moveButton.visible && !state.moveButton.disabled) return 'ready';
-        return JSON.stringify(state, null, 2);
-      }, { timeout: 20_000, message: '본인 말 이동 버튼이 활성화되어야 합니다.' }).toBe('ready');
-      await page.getByTestId('move-piece-button').click();
+      await startAiMoveObservation();
+      let localMoveReady = false;
+      for (let attempt = 0; attempt < 5 && !localMoveReady; attempt += 1) {
+        await expect.poll(async () => {
+          const state = await collectScreenState(page);
+          if (state.rollButton.visible && !state.rollButton.disabled) return 'ready';
+          return JSON.stringify(state, null, 2);
+        }, { timeout: 45_000, message: `본인 이동 검증용 ${attempt + 1}번째 윷 던지기 차례가 활성화되어야 합니다.` }).toBe('ready');
+        await clickRollAtPerfect();
+        await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
+        const rollOutcome = await clickMoveWhenReadyOrWaitForRetry();
+        localMoveReady = rollOutcome === 'move-clicked';
+      }
+      expect(localMoveReady, 'Perfect 구간에서 반복 던진 뒤 활성화된 본인 말 이동 버튼을 실제로 클릭해야 합니다.').toBe(true);
       await expect.poll(async () => (await getMovingPieces()).length, { timeout: 8_000, message: '본인 optimistic 이동 애니메이션이 시작되어야 합니다.' }).toBeGreaterThan(0);
       await expect.poll(async () => (await getMovingPieces()).length, { timeout: 12_000, message: '본인 optimistic 이동 애니메이션이 종료되어야 합니다.' }).toBe(0);
       await page.waitForTimeout(1_200);
@@ -325,13 +495,9 @@ test.describe('BUG_HISTORY regression smoke', () => {
     });
 
     await runQaStep(testInfo, 'AI 대리 제출 이동은 authoritative 이동 칸 수에 맞게 재생됨', async () => {
-      const observedPositions = new Set();
-      await expect.poll(async () => {
-        const moving = await getMovingPieces();
-        for (const piece of moving) {
-          if (!piece.isLocalOwner) observedPositions.add(`${piece.testId}:${piece.left},${piece.top}`);
-        }
-
+      const deadline = Date.now() + 70_000;
+      let lastDiagnostic = 'AI 이동 mutation 대기 중';
+      while (Date.now() < deadline) {
         const state = await collectScreenState(page);
         const mutationIds = state.yutDebug?.actionPipeline?.localClientMutationIds;
         const latestAiMoveMutationId = Array.isArray(mutationIds)
@@ -339,21 +505,57 @@ test.describe('BUG_HISTORY regression smoke', () => {
             typeof mutationId === 'string'
             && mutationId.startsWith('move_piece_ai:')
             && !knownAiMoveMutationIds.has(mutationId)
+            && Boolean(mutationId.split(':')[4])
           )) ?? ''
           : '';
         const aiMoveSteps = Number(latestAiMoveMutationId.split(':')[6]);
         const requiredPositions = Number.isFinite(aiMoveSteps)
           ? Math.min(2, Math.max(1, Math.abs(aiMoveSteps)))
           : 2;
+        const observedPositions = latestAiMoveMutationId ? await getObservedAiMovePositions(latestAiMoveMutationId) : [];
+        if (latestAiMoveMutationId && observedPositions.length >= requiredPositions) return;
 
-        if (latestAiMoveMutationId && observedPositions.size >= requiredPositions) return 'animated';
-        return `requiredPositions=${requiredPositions} aiMoveSteps=${Number.isFinite(aiMoveSteps) ? aiMoveSteps : 'unknown'} mutation=${latestAiMoveMutationId || 'pending'} positions=${Array.from(observedPositions).join('|')} state=${JSON.stringify(state.yutDebug ?? {}, null, 2)}`;
-      }, {
-        timeout: 70_000,
-        intervals: [100, 150, 200, 250],
-        message: 'AI 이동은 1칸이면 moving 상태가 관찰되고, 2칸 이상이면 최소 2개 칸 위치를 거쳐야 합니다.',
-      }).toBe('animated');
+        lastDiagnostic = `requiredPositions=${requiredPositions} aiMoveSteps=${Number.isFinite(aiMoveSteps) ? aiMoveSteps : 'unknown'} mutation=${latestAiMoveMutationId || 'pending'} positions=${observedPositions.join('|')} state=${JSON.stringify(state.yutDebug ?? {}, null, 2)}`;
+        const branchControls = page.locator('.bottom-branch-controls');
+        if (await branchControls.isVisible().catch(() => false)) {
+          await branchControls.getByRole('button', { name: '바깥길' }).click();
+          const branchMoveButton = branchControls.locator('.branch-move-button');
+          await expect(branchMoveButton, '분기 방향 선택 후 이동 버튼이 활성화되어야 합니다.').toBeEnabled({ timeout: 2_000 });
+          await branchMoveButton.click();
+          await expect.poll(async () => (await getMovingPieces()).filter((piece) => piece.isLocalOwner).length, {
+            timeout: 8_000,
+            message: '분기점 추가 턴의 로컬 말 이동 애니메이션이 시작되어야 합니다.',
+          }).toBeGreaterThan(0);
+          await expect.poll(async () => (await getMovingPieces()).filter((piece) => piece.isLocalOwner).length, {
+            timeout: 12_000,
+            message: '분기점 추가 턴의 로컬 말 이동 애니메이션이 종료되어야 합니다.',
+          }).toBe(0);
+          continue;
+        }
+        if (state.rollButton.visible && !state.rollButton.disabled) {
+          await clickRollAtPerfect();
+          await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
+          continue;
+        }
+        if (state.moveButton.visible && !state.moveButton.disabled) {
+          const outcome = await clickMoveWhenReadyOrWaitForRetry();
+          if (outcome === 'move-clicked') {
+            await expect.poll(async () => (await getMovingPieces()).filter((piece) => piece.isLocalOwner).length, {
+              timeout: 8_000,
+              message: '추가 턴의 로컬 말 이동 애니메이션이 시작되어야 합니다.',
+            }).toBeGreaterThan(0);
+            await expect.poll(async () => (await getMovingPieces()).filter((piece) => piece.isLocalOwner).length, {
+              timeout: 12_000,
+              message: '추가 턴의 로컬 말 이동 애니메이션이 종료되어야 합니다.',
+            }).toBe(0);
+          }
+          continue;
+        }
+        await page.waitForTimeout(100);
+      }
+      expect(lastDiagnostic, '추가 던지기·잡기 보너스를 처리한 뒤 실제 AI 칸별 이동이 관찰되어야 합니다.').toBe('animated');
     });
+
   });
 
   test('timeout 벌칙은 오프라인 로컬 timeout에만 적용된다', async () => {
