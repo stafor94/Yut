@@ -59,8 +59,10 @@ test.describe('roll mat surface regression', () => {
           borderTopStyle: style.borderTopStyle,
           boxShadow: style.boxShadow,
           opacity: style.opacity,
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
+          layoutWidth: node.offsetWidth,
+          layoutHeight: node.offsetHeight,
+          visualWidth: Math.round(rect.width),
+          visualHeight: Math.round(rect.height),
         };
       });
 
@@ -70,8 +72,10 @@ test.describe('roll mat surface regression', () => {
       expect(pendingSurface.borderTopStyle).toBe('solid');
       expect(pendingSurface.boxShadow).not.toBe('none');
       expect(pendingSurface.opacity).toBe('1');
-      expect(pendingSurface.width).toBeGreaterThan(0);
-      expect(pendingSurface.height).toBeGreaterThan(0);
+      expect(pendingSurface.layoutWidth).toBeGreaterThan(0);
+      expect(pendingSurface.layoutHeight).toBeGreaterThan(0);
+      expect(pendingSurface.visualWidth).toBeGreaterThan(0);
+      expect(pendingSurface.visualHeight).toBeGreaterThan(0);
 
       await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll, .roll-stage.resolved-from-pending.result-hold-roll')).toBeVisible({ timeout: 8_000 });
       await expect.poll(() => page.evaluate(() => (
@@ -88,8 +92,10 @@ test.describe('roll mat surface regression', () => {
       expect(resolvedSurface.borderTopStyle).toBe('solid');
       expect(resolvedSurface.boxShadow).not.toBe('none');
       expect(resolvedSurface.opacity).toBe('1');
-      expect(resolvedSurface.width).toBe(pendingSurface.width);
-      expect(resolvedSurface.height).toBe(pendingSurface.height);
+      expect(resolvedSurface.layoutWidth).toBe(pendingSurface.layoutWidth);
+      expect(resolvedSurface.layoutHeight).toBe(pendingSurface.layoutHeight);
+      expect(resolvedSurface.visualWidth).toBeGreaterThan(0);
+      expect(resolvedSurface.visualHeight).toBeGreaterThan(0);
 
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-label')).toBeVisible({ timeout: 5_000 });
       await expect(surface).toBeVisible();
@@ -98,6 +104,10 @@ test.describe('roll mat surface regression', () => {
       expect(heldSurface.borderTopWidth).toBe('10px');
       expect(heldSurface.boxShadow).not.toBe('none');
       expect(heldSurface.opacity).toBe('1');
+      expect(heldSurface.layoutWidth).toBe(pendingSurface.layoutWidth);
+      expect(heldSurface.layoutHeight).toBe(pendingSurface.layoutHeight);
+      expect(heldSurface.visualWidth).toBeGreaterThan(0);
+      expect(heldSurface.visualHeight).toBeGreaterThan(0);
     });
   });
 });

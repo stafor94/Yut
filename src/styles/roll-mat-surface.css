@@ -47,3 +47,30 @@
 .roll-stage.resolved-from-pending .roll-mat-surface {
   opacity: 1;
 }
+
+.roll-stage.resolved-from-pending .yut-stick,
+.roll-stage.resolved-from-pending .yut-stick.flat .yut-stick-body,
+.roll-stage.resolved-from-pending .yut-stick.round .yut-stick-body,
+.roll-stage.resolved-from-pending .roll-mat.fall-roll .yut-stick.fallen {
+  animation-duration: 1.4s;
+}
+
+.roll-stage.resolved-from-pending.result-hold-roll .yut-stick {
+  animation: none;
+  opacity: 1;
+  transform: translate3d(0, 0, 0) rotateZ(var(--stick-final-rotate));
+}
+
+.roll-stage.resolved-from-pending.result-hold-roll .yut-stick.fallen {
+  transform: translate3d(var(--fall-x), var(--fall-y), 0) rotateZ(var(--fall-rotate));
+}
+
+.roll-stage.resolved-from-pending.result-hold-roll .yut-stick.flat .yut-stick-body {
+  animation: none;
+  transform: rotateY(0deg);
+}
+
+.roll-stage.resolved-from-pending.result-hold-roll .yut-stick.round .yut-stick-body {
+  animation: none;
+  transform: rotateY(180deg);
+}
