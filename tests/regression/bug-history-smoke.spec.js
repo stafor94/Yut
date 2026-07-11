@@ -47,6 +47,33 @@ test.describe('BUG_HISTORY regression smoke', () => {
       window.__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__ = 3500;
     });
 
+    const clickSequenceRollAtPerfect = () => page.evaluate(() => new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      const sample = () => {
+        const meter = document.querySelector('.roll-timing-meter');
+        const orb = document.querySelector('.roll-timing-orb');
+        const button = document.querySelector('[data-testid=\"roll-yut-button\"]');
+        if (meter && orb && button instanceof HTMLButtonElement && !button.disabled) {
+          const meterRect = meter.getBoundingClientRect();
+          const orbRect = orb.getBoundingClientRect();
+          const positionPercent = meterRect.width > 0
+            ? ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100
+            : -1;
+          if (positionPercent >= 47 && positionPercent <= 53) {
+            button.click();
+            resolve(positionPercent);
+            return;
+          }
+        }
+        if (performance.now() - startedAt > 8_000) {
+          reject(new Error('8초 동안 Perfect 구간에서 윷 던지기 버튼을 클릭하지 못했습니다.'));
+          return;
+        }
+        requestAnimationFrame(sample);
+      };
+      sample();
+    }));
+
     await runQaStep(testInfo, 'AI 게임 시작', async () => {
       await expectAppShell(page);
       await page.getByTestId('room-title-input').fill(roomTitle);
@@ -68,7 +95,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
         return JSON.stringify(state, null, 2);
       }, { timeout: 45_000, message: '온라인 sequence replay를 확인할 수 있는 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
 
-      await page.getByTestId('roll-yut-button').click();
+      await clickSequenceRollAtPerfect();
       await expect(page.locator('.roll-stage.pending-roll'), `클릭 직후 서버 확정 전 pending 윷 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 500 });
       await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), '클릭 후 500ms 이내 pending 단계에서는 클라이언트에서 확정한 타이밍 등급만 즉시 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 500 });
       await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), 'pending 타이밍 등급은 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
@@ -274,11 +301,29 @@ test.describe('BUG_HISTORY regression smoke', () => {
 
     await runQaStep(testInfo, '말 이동 직후 preview 제거 확인', async () => {
       await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
-      await expect.poll(async () => {
-        const state = await collectScreenState(page);
-        if (state.moveButton.visible && !state.moveButton.disabled) return 'ready';
-        return JSON.stringify(state, null, 2);
-      }, { timeout: 20_000, message: '윷 결과 적용 후 선택한 말 이동 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      let moveReady = false;
+      for (let attempt = 0; attempt < 5 && !moveReady; attempt += 1) {
+        let nextAction = '';
+        await expect.poll(async () => {
+          const state = await collectScreenState(page);
+          if (state.moveButton.visible && !state.moveButton.disabled) {
+            nextAction = 'move';
+            return 'ready';
+          }
+          if (state.rollButton.visible && !state.rollButton.disabled) {
+            nextAction = 'roll';
+            return 'ready';
+          }
+          return JSON.stringify(state, null, 2);
+        }, { timeout: 45_000, message: '윷 결과가 이동 가능 상태가 되거나 이동 불가 빽도 후 다음 던지기 차례로 복귀해야 합니다.' }).toBe('ready');
+        if (nextAction === 'move') {
+          moveReady = true;
+          break;
+        }
+        await clickSequenceRollAtPerfect();
+        await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
+      }
+      expect(moveReady, 'Perfect 구간에서 반복 던진 뒤 말 이동 버튼이 활성화되어야 합니다.').toBe(true);
 
       await page.getByTestId('move-piece-button').click();
       await expect.poll(async () => page.locator('.board-node.route-preview').count(), {
