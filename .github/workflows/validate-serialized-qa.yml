@@ -3,6 +3,8 @@ name: Validate Serialized QA
 on:
   push:
     branches: [agent/serialize-main-qa-firebase]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
