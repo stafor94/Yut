@@ -257,6 +257,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'ai-seq-host'));
     const roomTitle = makeQaName(testInfo, 'ai-seq-room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    const knownAiMoveMutationIds = new Set();
 
     const getMovingPieces = () => page.evaluate(() => {
       const debug = window.__YUT_DEBUG_STATE__ ?? {};
@@ -306,6 +307,13 @@ test.describe('BUG_HISTORY regression smoke', () => {
         if (state.moveButton.visible && !state.moveButton.disabled) return 'ready';
         return JSON.stringify(state, null, 2);
       }, { timeout: 20_000, message: '본인 말 이동 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      const stateBeforeLocalMove = await collectScreenState(page);
+      const mutationIdsBeforeLocalMove = stateBeforeLocalMove.yutDebug?.actionPipeline?.localClientMutationIds;
+      if (Array.isArray(mutationIdsBeforeLocalMove)) {
+        for (const mutationId of mutationIdsBeforeLocalMove) {
+          if (typeof mutationId === 'string' && mutationId.startsWith('move_piece_ai:')) knownAiMoveMutationIds.add(mutationId);
+        }
+      }
       await page.getByTestId('move-piece-button').click();
       await expect.poll(async () => (await getMovingPieces()).length, { timeout: 8_000, message: '본인 optimistic 이동 애니메이션이 시작되어야 합니다.' }).toBeGreaterThan(0);
       await expect.poll(async () => (await getMovingPieces()).length, { timeout: 12_000, message: '본인 optimistic 이동 애니메이션이 종료되어야 합니다.' }).toBe(0);
@@ -313,17 +321,35 @@ test.describe('BUG_HISTORY regression smoke', () => {
       expect(await getMovingPieces(), '서버 sequence 확정 후 본인 말 이동이 다시 재생되면 안 됩니다.').toEqual([]);
     });
 
-    await runQaStep(testInfo, 'AI 대리 제출 이동은 중간 노드를 거쳐 재생됨', async () => {
+    await runQaStep(testInfo, 'AI 대리 제출 이동은 authoritative 이동 칸 수에 맞게 재생됨', async () => {
       const observedPositions = new Set();
       await expect.poll(async () => {
         const moving = await getMovingPieces();
         for (const piece of moving) {
           if (!piece.isLocalOwner) observedPositions.add(`${piece.testId}:${piece.left},${piece.top}`);
         }
-        if (observedPositions.size >= 2) return 'animated';
+
         const state = await collectScreenState(page);
-        return `positions=${Array.from(observedPositions).join('|')} state=${JSON.stringify(state.yutDebug ?? {}, null, 2)}`;
-      }, { timeout: 70_000, intervals: [100, 150, 200, 250], message: 'AI 이동이 최종 위치 순간이동이 아니라 최소 2개 칸 위치를 거쳐야 합니다.' }).toBe('animated');
+        const mutationIds = state.yutDebug?.actionPipeline?.localClientMutationIds;
+        const latestAiMoveMutationId = Array.isArray(mutationIds)
+          ? [...mutationIds].reverse().find((mutationId) => (
+            typeof mutationId === 'string'
+            && mutationId.startsWith('move_piece_ai:')
+            && !knownAiMoveMutationIds.has(mutationId)
+          )) ?? ''
+          : '';
+        const aiMoveSteps = Number(latestAiMoveMutationId.split(':')[6]);
+        const requiredPositions = Number.isFinite(aiMoveSteps)
+          ? Math.min(2, Math.max(1, Math.abs(aiMoveSteps)))
+          : 2;
+
+        if (latestAiMoveMutationId && observedPositions.size >= requiredPositions) return 'animated';
+        return `requiredPositions=${requiredPositions} aiMoveSteps=${Number.isFinite(aiMoveSteps) ? aiMoveSteps : 'unknown'} mutation=${latestAiMoveMutationId || 'pending'} positions=${Array.from(observedPositions).join('|')} state=${JSON.stringify(state.yutDebug ?? {}, null, 2)}`;
+      }, {
+        timeout: 70_000,
+        intervals: [100, 150, 200, 250],
+        message: 'AI 이동은 1칸이면 moving 상태가 관찰되고, 2칸 이상이면 최소 2개 칸 위치를 거쳐야 합니다.',
+      }).toBe('animated');
     });
   });
 
