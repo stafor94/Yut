@@ -516,6 +516,22 @@ test.describe('BUG_HISTORY regression smoke', () => {
         if (latestAiMoveMutationId && observedPositions.length >= requiredPositions) return;
 
         lastDiagnostic = `requiredPositions=${requiredPositions} aiMoveSteps=${Number.isFinite(aiMoveSteps) ? aiMoveSteps : 'unknown'} mutation=${latestAiMoveMutationId || 'pending'} positions=${observedPositions.join('|')} state=${JSON.stringify(state.yutDebug ?? {}, null, 2)}`;
+        const branchControls = page.locator('.bottom-branch-controls');
+        if (await branchControls.isVisible().catch(() => false)) {
+          await branchControls.getByRole('button', { name: '바깥길' }).click();
+          const branchMoveButton = branchControls.locator('.branch-move-button');
+          await expect(branchMoveButton, '분기 방향 선택 후 이동 버튼이 활성화되어야 합니다.').toBeEnabled({ timeout: 2_000 });
+          await branchMoveButton.click();
+          await expect.poll(async () => (await getMovingPieces()).filter((piece) => piece.isLocalOwner).length, {
+            timeout: 8_000,
+            message: '분기점 추가 턴의 로컬 말 이동 애니메이션이 시작되어야 합니다.',
+          }).toBeGreaterThan(0);
+          await expect.poll(async () => (await getMovingPieces()).filter((piece) => piece.isLocalOwner).length, {
+            timeout: 12_000,
+            message: '분기점 추가 턴의 로컬 말 이동 애니메이션이 종료되어야 합니다.',
+          }).toBe(0);
+          continue;
+        }
         if (state.rollButton.visible && !state.rollButton.disabled) {
           await clickRollAtPerfect();
           await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
