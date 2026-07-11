@@ -379,6 +379,29 @@ test.describe('BUG_HISTORY regression smoke', () => {
       sample();
     }));
 
+    const clickMoveWhenReadyOrWaitForRetry = () => page.evaluate(() => new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      const sample = () => {
+        const moveButton = document.querySelector('[data-testid="move-piece-button"]');
+        if (moveButton instanceof HTMLButtonElement && !moveButton.disabled) {
+          moveButton.click();
+          resolve('move-clicked');
+          return;
+        }
+        const rollButton = document.querySelector('[data-testid="roll-yut-button"]');
+        if (rollButton instanceof HTMLButtonElement && !rollButton.disabled) {
+          resolve('retry');
+          return;
+        }
+        if (performance.now() - startedAt > 45_000) {
+          reject(new Error('이동 버튼 활성화 또는 이동 불가 결과 후 다음 윷 던지기 차례 복귀를 확인하지 못했습니다.'));
+          return;
+        }
+        requestAnimationFrame(sample);
+      };
+      sample();
+    }));
+
     await runQaStep(testInfo, 'host+AI 온라인 게임 시작', async () => {
       await expectAppShell(page);
       await page.getByTestId('room-title-input').fill(roomTitle);
@@ -415,23 +438,10 @@ test.describe('BUG_HISTORY regression smoke', () => {
         }, { timeout: 45_000, message: `본인 이동 검증용 ${attempt + 1}번째 윷 던지기 차례가 활성화되어야 합니다.` }).toBe('ready');
         await clickRollAtPerfect();
         await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
-        let rollOutcome = '';
-        await expect.poll(async () => {
-          const state = await collectScreenState(page);
-          if (state.moveButton.visible && !state.moveButton.disabled) {
-            rollOutcome = 'move';
-            return 'settled';
-          }
-          if (state.rollButton.visible && !state.rollButton.disabled) {
-            rollOutcome = 'retry';
-            return 'settled';
-          }
-          return JSON.stringify(state, null, 2);
-        }, { timeout: 45_000, message: 'Perfect 윷 결과가 이동 가능 상태가 되거나 이동 불가 빽도 후 다음 차례로 정상 복귀해야 합니다.' }).toBe('settled');
-        localMoveReady = rollOutcome === 'move';
+        const rollOutcome = await clickMoveWhenReadyOrWaitForRetry();
+        localMoveReady = rollOutcome === 'move-clicked';
       }
-      expect(localMoveReady, 'Perfect 구간에서 반복 던진 뒤 본인 말 이동 버튼이 활성화되어야 합니다.').toBe(true);
-      await page.getByTestId('move-piece-button').click();
+      expect(localMoveReady, 'Perfect 구간에서 반복 던진 뒤 활성화된 본인 말 이동 버튼을 실제로 클릭해야 합니다.').toBe(true);
       await expect.poll(async () => (await getMovingPieces()).length, { timeout: 8_000, message: '본인 optimistic 이동 애니메이션이 시작되어야 합니다.' }).toBeGreaterThan(0);
       await expect.poll(async () => (await getMovingPieces()).length, { timeout: 12_000, message: '본인 optimistic 이동 애니메이션이 종료되어야 합니다.' }).toBe(0);
       await page.waitForTimeout(1_200);
