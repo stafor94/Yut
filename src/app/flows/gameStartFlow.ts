@@ -1,6 +1,3 @@
-const START_COUNTDOWN_DELAY_MS = 1000;
-const START_COUNTDOWN_MS = 5000;
-
 type GetStartGameBlockMessageInput = {
   activeRoomId: string;
   allReady: boolean;
@@ -16,10 +13,3 @@ export function getStartGameBlockMessage({ activeRoomId, allReady, canManageRoom
   return '';
 }
 
-export function createStartCountdownWindow(requestedAt: number, startRequestVersion: number) {
-  return {
-    localVersion: startRequestVersion + 1,
-    startsAt: requestedAt + START_COUNTDOWN_DELAY_MS,
-    endsAt: requestedAt + START_COUNTDOWN_DELAY_MS + START_COUNTDOWN_MS,
-  };
-}

@@ -17,6 +17,7 @@ type WaitingRoomContainerProps = {
   teamCounts: Record<Team, number>;
   allReady: boolean;
   roomInGame: boolean;
+  startFlowBusy: boolean;
   getSeatPieceColor: (seat: Seat) => string;
   onChangeOptions: (params: Partial<{ playMode: PlayMode; maxPlayers: 2 | 3 | 4; pieceCount: PieceCount; itemMode: boolean; stackedRollMode: boolean }>) => void;
   onKickPlayer: (seat: Seat) => void;
@@ -43,6 +44,7 @@ export function WaitingRoomContainer({
   teamCounts,
   allReady,
   roomInGame,
+  startFlowBusy,
   getSeatPieceColor,
   onChangeOptions,
   onKickPlayer,
@@ -56,7 +58,7 @@ export function WaitingRoomContainer({
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const teamStartHint = playMode === 'team' && !teamBalanced ? `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.` : '';
-  const startBlockedHint = roomInGame ? '이미 게임이 진행 중입니다.' : allReady ? '' : teamStartHint || `${readyMissingCount}명이 더 준비하면 시작할 수 있어요.`;
+  const startBlockedHint = roomInGame ? '이미 게임이 진행 중입니다.' : startFlowBusy ? '게임 시작 요청을 처리하고 있습니다.' : allReady ? '' : teamStartHint || `${readyMissingCount}명이 더 준비하면 시작할 수 있어요.`;
   const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
   const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
 
@@ -93,7 +95,7 @@ export function WaitingRoomContainer({
     <footer className="waiting-actions role-actions">
       {startBlockedHint ? <p className="start-blocked-hint" role="status">{startBlockedHint}</p> : null}
       <div className="waiting-action-buttons">
-        {canManageRoom ? <button data-testid="start-game-button" onClick={onStartGame} disabled={roomInGame || !allReady}>게임 시작</button> : <button onClick={onToggleReady} disabled={roomInGame || !myWaitingSeat}>{roomInGame ? '게임중' : myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
+        {canManageRoom ? <button data-testid="start-game-button" onClick={onStartGame} disabled={startFlowBusy || !allReady}>게임 시작</button> : <button onClick={onToggleReady} disabled={roomInGame || !myWaitingSeat}>{roomInGame ? '게임중' : myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
         <button className="secondary" onClick={onLeaveRoom}>방 나가기</button>
       </div>
     </footer>
