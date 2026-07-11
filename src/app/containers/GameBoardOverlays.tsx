@@ -100,7 +100,7 @@ export function RollStage({ rollAnimation }: RollStageProps) {
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
     <div className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && rollAnimation.fallCount ? 'fall-roll' : ''}`}>
       {rollAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${rollAnimation.timingZone}`}>{rollAnimation.timingZone === 'perfect' ? 'Perfect!' : rollAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
-      {shouldShowResult && result && <span className="roll-label">{rollAnimation.fallCount ? '낙!' : result.name}</span>}
+      {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{rollAnimation.fallCount ? '낙!' : result.name}</span>}
       {rollAnimation.sticks.map((stick, index) => {
         const flatMarkCount = isPreResult ? 0 : stick.flat && stick.marked ? 1 : 0;
         const roundMarkCount = isPreResult ? 0 : stick.flat ? 0 : 3;
