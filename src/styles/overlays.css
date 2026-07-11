@@ -1360,25 +1360,6 @@
   line-height: 1;
 }
 
-.countdown-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  background: rgba(42, 30, 23, .38);
-  backdrop-filter: blur(2px);
-}
-
-.shell.countdown-active > :not(.countdown-scrim) {
-  filter: blur(2px) brightness(.78);
-}
-
-.countdown-scrim .countdown-overlay {
-  position: static;
-  translate: none;
-}
-
 @media (max-width: 900px) {
   .host-room-options {
     grid-template-columns: 1fr 1fr;

@@ -14,6 +14,9 @@ test.describe('game flow QA', () => {
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'host'));
     const roomTitle = makeQaName(testInfo, 'room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    await context.addInitScript(() => {
+      window.__YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__ = 3500;
+    });
 
     await runQaStep(testInfo, '방 생성', async () => {
       await expectAppShell(page);
@@ -34,6 +37,20 @@ test.describe('game flow QA', () => {
       await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 5_000 });
       await expect(page.locator('.countdown-scrim')).toHaveCount(0);
       await expect(page.getByTestId('app-shell')).not.toHaveClass(/countdown-active/);
+      await expect.poll(async () => {
+        const state = await collectScreenState(page);
+        return {
+          gameVisible: state.visibleScreens.game,
+          countdownActive: /(?:^|\s)countdown-active(?:\s|$)/.test(await page.getByTestId('app-shell').getAttribute('class') ?? ''),
+          scrimCount: await page.locator('.countdown-scrim').count(),
+          overlayVisible: await page.getByTestId('start-countdown-overlay').isVisible().catch(() => false),
+        };
+      }, { timeout: 2_000, message: 'markRoomGameEntering 지연 중에도 게임 화면에는 카운트다운 흐림/팝업이 남지 않아야 합니다.' }).toEqual({
+        gameVisible: true,
+        countdownActive: false,
+        scrimCount: 0,
+        overlayVisible: false,
+      });
       await expect(page.getByTestId('players-panel')).toContainText(hostName);
       await expect(page.getByTestId('turn-indicator')).toBeVisible();
       await expect(page.getByTestId('game-board')).toBeVisible();
