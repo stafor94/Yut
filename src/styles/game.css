@@ -580,6 +580,9 @@ select {
   --stick-land-rotate: 28deg;
   --stick-bounce-rotate: 12deg;
   --stick-final-rotate: -8deg;
+  --stick-depth: 8px;
+  --stick-face-z: 4px;
+  --stick-depth-offset: -4px;
   width: 24px;
   height: 98px;
   border-radius: 999px;
@@ -587,6 +590,7 @@ select {
   transform-style: preserve-3d;
   perspective: 700px;
   will-change: transform, opacity;
+  filter: drop-shadow(0 12px 18px rgba(42, 30, 23, .24));
   animation: yut-flight 1.35s cubic-bezier(.2, .8, .2, 1) both;
   animation-delay: calc(var(--stick-index) * 80ms);
 }
@@ -603,6 +607,8 @@ select {
 
 .yut-stick.round .yut-stick-body { transform: rotateY(180deg); }
 
+.yut-stick-body::before,
+.yut-stick-body::after,
 .yut-stick i,
 .yut-stick-flat-face,
 .yut-stick-round-face {
@@ -615,14 +621,42 @@ select {
   backface-visibility: hidden;
 }
 
+.yut-stick-body::before,
+.yut-stick-body::after {
+  content: "";
+  top: 6px;
+  bottom: 6px;
+  width: var(--stick-depth);
+  height: auto;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6f3b1d, #d8a05a 48%, #f0c27a 50%, #8a4d25);
+}
+
+.yut-stick-body::before {
+  left: 0;
+  right: auto;
+  transform-origin: left center;
+  transform: translateX(0) translateZ(var(--stick-depth-offset)) rotateY(90deg);
+}
+
+.yut-stick-body::after {
+  left: auto;
+  right: 0;
+  transform-origin: right center;
+  transform: translateX(0) translateZ(var(--stick-depth-offset)) rotateY(90deg);
+}
+
 .yut-stick-flat-face {
   background: linear-gradient(#fff8ea, #f1d8a9);
   border: 2px solid rgba(122, 74, 38, .42);
+  box-shadow: inset 0 2px 8px rgba(255, 255, 255, .68), inset 0 -8px 14px rgba(122, 74, 38, .18);
+  transform: translateZ(var(--stick-face-z));
 }
 
 .yut-stick-round-face {
   background: linear-gradient(90deg, #6f3b1d, #c48948, #6f3b1d);
-  transform: rotateY(180deg);
+  box-shadow: inset 0 4px 10px rgba(255, 232, 180, .22), inset 0 -10px 16px rgba(57, 25, 10, .32);
+  transform: rotateY(180deg) translateZ(var(--stick-face-z));
 }
 
 .roll-mat.fall-roll {

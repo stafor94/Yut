@@ -339,6 +339,9 @@
 }
 
 .yut-stick {
+  --stick-depth: 10px;
+  --stick-face-z: 5px;
+  --stick-depth-offset: -5px;
   width: 30px;
   height: 118px;
   animation: yut-flight 1.85s cubic-bezier(.18, .86, .24, 1) both;
@@ -347,8 +350,8 @@
   transform-style: preserve-3d;
 }
 
-.yut-stick-body {
-  box-shadow: 0 16px 28px rgba(42, 30, 23, .28);
+.yut-stick {
+  filter: drop-shadow(0 16px 28px rgba(42, 30, 23, .28));
 }
 
 .pending-roll .yut-stick {
