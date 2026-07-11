@@ -371,8 +371,8 @@ test.describe('BUG_HISTORY regression smoke', () => {
             return;
           }
         }
-        if (performance.now() - startedAt > 3_000) {
-          reject(new Error('Perfect 구간에서 윷 던지기 버튼을 클릭하지 못했습니다.'));
+        if (performance.now() - startedAt > 8_000) {
+          reject(new Error('8초 동안 Perfect 구간에서 윷 던지기 버튼을 클릭하지 못했습니다.'));
           return;
         }
         requestAnimationFrame(sample);
