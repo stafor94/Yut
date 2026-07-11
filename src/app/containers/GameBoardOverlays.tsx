@@ -92,12 +92,13 @@ export function RollStage({ rollAnimation }: RollStageProps) {
   const isResultHold = rollAnimation.phase === 'result-hold';
   const result = rollAnimation.result;
   const shouldShowResult = !isPreResult && !isLanding && Boolean(result);
-  const isBonusResult = shouldShowResult && !rollAnimation.turnOrder && !rollAnimation.fallCount && (result?.name === '윷' || result?.name === '모');
+  const hasResolvedResult = (isLanding || isResultHold || shouldShowResult) && Boolean(result);
+  const isBonusResult = hasResolvedResult && !rollAnimation.turnOrder && !rollAnimation.fallCount && (result?.name === '윷' || result?.name === '모');
   const phaseClass = isPreResult ? `pending-roll ${rollAnimation.phase === 'extra-spin' ? 'extra-spin-roll' : 'primary-roll'}` : isLanding || isResultHold ? `resolved-from-pending resolved-roll ${isLanding ? 'landing-roll' : 'result-hold-roll'}` : 'resolved-roll';
   return <div className={`roll-stage ${phaseClass}`} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
-    <div className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${shouldShowResult && rollAnimation.fallCount ? 'fall-roll' : ''}`}>
+    <div className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && rollAnimation.fallCount ? 'fall-roll' : ''}`}>
       {rollAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${rollAnimation.timingZone}`}>{rollAnimation.timingZone === 'perfect' ? 'Perfect!' : rollAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       {shouldShowResult && result && <span className="roll-label">{rollAnimation.fallCount ? '낙!' : result.name}</span>}
       {rollAnimation.sticks.map((stick, index) => {

@@ -146,6 +146,9 @@ test.describe('BUG_HISTORY regression smoke', () => {
         message: 'pending 중 윷 내부 body의 3D transform이 계속 변해야 앞면/뒷면이 번갈아 보입니다.',
       }).not.toBe(pendingTransformStart);
       await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll, .roll-stage.resolved-from-pending.result-hold-roll'), `서버 결과 도착 시 pending overlay를 같은 팝업의 landing/result-hold 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
+      if (await page.locator('.roll-stage.resolved-from-pending.landing-roll').isVisible().catch(() => false)) {
+        await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll .roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
+      }
       const resolvedFromPendingStartedAt = Date.now();
       await expect.poll(async () => {
         const sticks = await page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
@@ -205,6 +208,15 @@ test.describe('BUG_HISTORY regression smoke', () => {
       expect(postResultTurnStackText.length, '결과명 표시 순간부터 상단 이동 스택이 최신 상태로 공개되어야 합니다.').toBeGreaterThanOrEqual(preResultTurnStackText.length);
       const resolvedMatClassName = await page.locator('.roll-stage.resolved-from-pending .roll-mat').getAttribute('class');
       const resolvedMatClasses = (resolvedMatClassName ?? '').split(/\s+/);
+      if (resolvedMatClasses.includes('bonus-roll') || resolvedMatClasses.includes('fall-roll')) {
+        await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .roll-mat').evaluate((node) => {
+          const style = getComputedStyle(node);
+          return `${style.animationName}/${style.opacity}/${style.transform}`;
+        }), {
+          timeout: 1_000,
+          message: 'pending에서 확정된 bonus/fall 매트는 class 추가 후에도 팝업 재시작 animation 없이 고정되어야 합니다.',
+        }).toBe('none/1/matrix(1, 0, 0, 1, 0, 0)');
+      }
       if (labelTextAfterReveal === '낙!') {
         expect(resolvedMatClasses, '낙 결과는 fall-roll만 적용하고 내부 display result가 윷/모여도 bonus-roll을 적용하지 않아야 합니다.').toContain('fall-roll');
         expect(resolvedMatClasses, '낙 결과는 bonus-roll을 절대 적용하지 않아야 합니다.').not.toContain('bonus-roll');
