@@ -15,7 +15,6 @@ test.describe('game flow QA', () => {
     const roomTitle = makeQaName(testInfo, 'room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
     await context.addInitScript(() => {
-      window.__YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__ = 3500;
       window.__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__ = 2500;
     });
 
@@ -93,7 +92,7 @@ test.describe('game flow QA', () => {
           scrimCount: await page.locator('.countdown-scrim').count(),
           overlayVisible: await page.getByTestId('start-countdown-overlay').isVisible().catch(() => false),
         };
-      }, { timeout: 2_000, message: 'markRoomGameEntering 지연 중에도 게임 화면에는 카운트다운 흐림/팝업이 남지 않아야 합니다.' }).toEqual({
+      }, { timeout: 2_000, message: '초기 게임 상태 저장 후 게임 화면에는 카운트다운 흐림/팝업이 남지 않아야 합니다.' }).toEqual({
         gameVisible: true,
         countdownActive: false,
         scrimCount: 0,
@@ -124,9 +123,11 @@ test.describe('game flow QA', () => {
         const actionableMove = state.moveButton.visible && !state.moveButton.disabled;
         const waitingForOtherTurn = state.turnWaitingButton.visible;
         const saveCommitted = initialSave.status === 'committed' || initialSave.status === 'duplicate';
+        const initializedSequences = sequences.filter((sequence) => sequence.type === 'game_initialized');
+        const singleInitialization = initializedSequences.length === 1;
         const sequenceApplied = Number(debug.syncPipeline?.lastAppliedSequence ?? debug.lastAppliedSequence ?? 0) >= 1 && Number(initialSave.lastSequence ?? latestSequence) >= 1;
-        if (saveCommitted && sequenceApplied && (actionableRoll || actionableMove || waitingForOtherTurn)) return 'ready';
-        return JSON.stringify({ state, latestSequence }, null, 2);
+        if (saveCommitted && sequenceApplied && singleInitialization && (actionableRoll || actionableMove || waitingForOtherTurn)) return 'ready';
+        return JSON.stringify({ state, latestSequence, initializedSequenceCount: initializedSequences.length }, null, 2);
       }, { timeout: 20_000, message: '초기 state/sequences 저장 후 첫 턴 조작/대기 UI가 보여야 합니다.' }).toBe('ready');
     });
   });
