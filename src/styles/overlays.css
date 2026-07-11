@@ -240,6 +240,10 @@
   animation: none;
 }
 
+.roll-stage.resolved-from-pending {
+  animation: resolved-from-pending-stage-hold 5s ease both;
+}
+
 .roll-stage.pending-roll .roll-aura {
   animation: roll-aura-spin 1.6s linear infinite;
 }
@@ -362,6 +366,10 @@
   animation: yut-pending-face-spin 1.2s linear calc(var(--stick-index) * -120ms) infinite both;
 }
 
+.resolved-from-pending .roll-mat {
+  animation: resolved-from-pending-mat-hold 5s ease both;
+}
+
 .resolved-from-pending .yut-stick {
   animation: yut-resolved-from-pending 1.5s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
 }
@@ -377,7 +385,7 @@
 .resolved-from-pending .roll-label,
 .resolved-from-pending .roll-stage-timing {
   opacity: 0;
-  animation: resolved-result-reveal 3.7s ease both;
+  animation: resolved-from-pending-result-hold 5s ease both;
 }
 
 .resolved-from-pending .roll-impact-burst span {
@@ -452,6 +460,27 @@
   0%, 35% { opacity: 0; transform: scale(.9); }
   41% { opacity: 1; transform: scale(1.12); }
   47%, 100% { opacity: 1; transform: scale(.96); }
+}
+
+@keyframes resolved-from-pending-stage-hold {
+  0% { opacity: 0; }
+  4%, 94% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes resolved-from-pending-mat-hold {
+  0% { opacity: 0; transform: translate3d(0, 30px, 0) scale(.72) rotate(-5deg); }
+  12% { opacity: 1; transform: translate3d(0, 0, 0) scale(1.04) rotate(1deg); }
+  22% { opacity: 1; transform: translate3d(0, 0, 0) scale(.99) rotate(-.5deg); }
+  30%, 94% { opacity: 1; transform: scale(1) rotate(0); }
+  100% { opacity: 0; transform: translate3d(0, 16px, 0) scale(.94) rotate(2deg); }
+}
+
+@keyframes resolved-from-pending-result-hold {
+  0%, 30% { opacity: 0; transform: scale(.9); }
+  35% { opacity: 1; transform: scale(1.12); }
+  40%, 94% { opacity: 1; transform: scale(.96); }
+  100% { opacity: 0; transform: scale(.94); }
 }
 
 @keyframes roll-label-pulse {
@@ -629,7 +658,7 @@
 }
 
 .resolved-from-pending .roll-mat.bonus-roll .roll-label {
-  animation-name: resolved-result-reveal;
+  animation-name: resolved-from-pending-result-hold;
 }
 
 @keyframes bonus-mat-pop {

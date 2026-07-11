@@ -147,9 +147,12 @@ test.describe('BUG_HISTORY regression smoke', () => {
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '서버 authoritative 타이밍 등급이 확정 결과와 함께 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 5_000 });
       await expect(page.locator('.roll-stage.resolved-roll .roll-label'), `서버 authoritative 윷 결과 label이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       await expect(page.locator('.roll-stage.resolved-roll .roll-label'), 'authoritative 결과 label은 한 번만 표시되어야 합니다.').toHaveCount(1);
-      await page.waitForTimeout(1_200);
-      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '타이밍 등급은 표시된 뒤 1.2초 후에도 유지되어야 합니다.').toBeVisible();
-      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), '윷 결과명은 표시된 뒤 1.2초 후에도 유지되어야 합니다.').toBeVisible();
+      const timingTextAfterReveal = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').innerText();
+      const labelTextAfterReveal = await page.locator('.roll-stage.resolved-roll .roll-label').innerText();
+      await page.waitForTimeout(2_500);
+      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '타이밍 등급은 표시된 뒤 2.5초 후에도 유지되어야 합니다.').toHaveText(timingTextAfterReveal);
+      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), '윷 결과명은 표시된 뒤 2.5초 후에도 유지되어야 합니다.').toHaveText(labelTextAfterReveal);
+      await expect(page.locator('.roll-stage'), '확정 전 pending과 확정 후 overlay는 5.5초 안에 정상 종료되어야 합니다.').toBeHidden({ timeout: 5_500 });
     });
 
     await runQaStep(testInfo, '말 이동 직후 preview 제거 확인', async () => {
