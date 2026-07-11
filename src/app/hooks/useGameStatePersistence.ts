@@ -21,7 +21,7 @@ export function useGameStatePersistence({
   rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems,
   ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro,
   pendingTrapPlacement, pendingGoldenYutSelection, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId,
-  effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion,
+  effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, startRequestId,
   gameSeats, localSeatId, activeSeat, logs, captureEffect, trapEffect, fallEffect, lastRollTimingZone, lastAppliedSequenceRef,
   lastAppliedStateVersionRef, measureFirebaseLatency, onSequenceMismatch,
 }: GameStatePersistenceParams) {
@@ -47,7 +47,7 @@ export function useGameStatePersistence({
     if (!activeRoomId || screen !== 'game' || !canCoordinateOnlineGame || applyingSyncedStateRef.current) return;
     if (!pendingSequenceMetaRef.current) return;
     if (moveInProgressRef.current || movingPieceId) return;
-    const stateFingerprint = makeGameStateFingerprint({ pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, pendingGoldenYutSelection, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, fallEffect, lastRollTimingZone, logs, gameSeats });
+    const stateFingerprint = makeGameStateFingerprint({ pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems, ownedItems, trapNodes, shieldedPieceIds, winner, gameStartedAt, turnOrderIntro, pendingTrapPlacement, pendingGoldenYutSelection, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, startRequestId, fallEffect, lastRollTimingZone, logs, gameSeats });
     if (lastSavedStateFingerprintRef.current === stateFingerprint || savingStateFingerprintRef.current === stateFingerprint) return;
     savingStateFingerprintRef.current = stateFingerprint;
     setCoordinatorStateSaveKey(stateFingerprint);
@@ -73,7 +73,7 @@ export function useGameStatePersistence({
       return true;
     };
     let keepCoordinatorStateSavePending = false;
-    void measureFirebaseLatency(() => saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, fallEffect, lastRollTimingZone, gameStartedAt, turnOrderIntro, pendingTrapPlacement, pendingGoldenYutSelection, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, gameSeats }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, action: pendingSequenceMeta?.action ?? null, expectedPreviousSequence: lastAppliedSequenceRef.current })).then((result: any) => {
+    void measureFirebaseLatency(() => saveGameState(activeRoomId, { pieces, turnIndex, turnOrderIds, initialTurnOrderIds, completedSeatIds, rankingSeatIds, gameEndMode, lastFinishedSeatId, continuationRound, roll, rollStack, selectedRollStackIndex, rollStackClosed, boardItems, ownedItems, trapNodes, shieldedPieceIds, logs, winner, captureEffect, trapEffect, fallEffect, lastRollTimingZone, gameStartedAt, turnOrderIntro, pendingTrapPlacement, pendingGoldenYutSelection, itemPromptTiming, pendingAfterMoveTurnIndex, rollLockUntil, lastMovedPieceIds, lastMovedSeatId, rollResultReadyAt: effectiveRollResultReadyAt, turnOrderPhase, waitingForPlayersReady, turnDeadlineAt, turnDeadlineKind, startRequestVersion, startRequestId, gameSeats }, { type: sequenceType, actorId: sequenceActorId, clientMutationId, payload: sequencePayload, action: pendingSequenceMeta?.action ?? null, expectedPreviousSequence: lastAppliedSequenceRef.current })).then((result: any) => {
       if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
       if ((result.status === 'committed' || result.status === 'duplicate') && result.turnVersion) {
         lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
