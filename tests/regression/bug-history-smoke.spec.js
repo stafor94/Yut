@@ -84,6 +84,33 @@ test.describe('BUG_HISTORY regression smoke', () => {
         timeout: 1_000,
         message: 'pending aura 반복은 1.6초 주기로 늦춰져야 합니다.',
       }).toBe('1.6s');
+      await expect.poll(async () => firstPendingStick.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return `${style.getPropertyValue('--stick-depth').trim()}/${style.getPropertyValue('--stick-face-z').trim()}/${style.getPropertyValue('--stick-depth-offset').trim()}`;
+      }), {
+        timeout: 1_000,
+        message: '확대 pending 윷은 overlay 전용 3D 두께 변수를 사용해야 합니다.',
+      }).toBe('10px/5px/-5px');
+      await expect.poll(async () => firstPendingBody.evaluate((node) => {
+        const before = getComputedStyle(node, '::before');
+        const after = getComputedStyle(node, '::after');
+        return `${before.width}/${after.width}/${before.top}/${before.bottom}`;
+      }), {
+        timeout: 1_000,
+        message: 'pending 윷 옆면 pseudo-element가 실제 overlay 두께값으로 렌더되어야 합니다.',
+      }).toBe('10px/10px/6px/6px');
+      await expect.poll(async () => firstPendingBody.evaluate((node) => {
+        const flat = node.querySelector('.yut-stick-flat-face');
+        const round = node.querySelector('.yut-stick-round-face');
+        const readTranslateZ = (target) => {
+          const values = getComputedStyle(target).transform.match(/matrix3d\(([^)]+)\)/)?.[1]?.split(',').map((value) => Number.parseFloat(value.trim())) ?? [];
+          return values.length ? Math.round(values[14]) : null;
+        };
+        return `${readTranslateZ(flat)}/${readTranslateZ(round)}`;
+      }), {
+        timeout: 1_000,
+        message: 'pending 윷 앞·뒷면은 같은 절댓값의 Z 두께 위치로 분리되어야 합니다.',
+      }).toBe('5/-5');
       const pendingTransformStart = await firstPendingBody.evaluate((node) => getComputedStyle(node).transform);
       await page.waitForTimeout(180);
       await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).transform), {
