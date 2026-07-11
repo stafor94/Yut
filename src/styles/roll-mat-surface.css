@@ -1,0 +1,49 @@
+.roll-stage .roll-mat {
+  grid-template-columns: 1fr;
+  gap: 0;
+  padding: 84px 54px 48px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform-style: flat;
+  perspective: none;
+  backface-visibility: visible;
+  isolation: isolate;
+}
+
+.roll-stage .roll-mat-surface {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  border: 10px solid #7a4a26;
+  border-radius: 28px;
+  background: radial-gradient(circle, #fff7df, #d39a58);
+  box-shadow: 0 34px 90px rgba(42, 30, 23, .46), 0 0 0 10px rgba(242, 184, 75, .18);
+  pointer-events: none;
+}
+
+.roll-stage .roll-sticks-layer {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 54px);
+  gap: 18px;
+  place-items: center;
+  transform-style: preserve-3d;
+  perspective: 900px;
+}
+
+.roll-stage .roll-mat.bonus-roll {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.roll-stage .roll-mat.bonus-roll .roll-mat-surface {
+  border-color: #f2b84b;
+  box-shadow: 0 38px 100px rgba(217, 74, 56, .5), 0 0 0 16px rgba(242, 184, 75, .24), 0 0 80px rgba(242, 184, 75, .62);
+}
+
+.roll-stage.resolved-from-pending .roll-mat-surface {
+  opacity: 1;
+}
