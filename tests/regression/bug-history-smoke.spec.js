@@ -148,15 +148,11 @@ test.describe('BUG_HISTORY regression smoke', () => {
         timeout: 1_000,
         message: 'pending 중 윷 내부 body의 3D transform이 계속 변해야 앞면/뒷면이 번갈아 보입니다.',
       }).not.toBe(pendingTransformStart);
-      await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll, .roll-stage.resolved-from-pending.result-hold-roll'), `서버 결과 도착 시 pending overlay를 같은 팝업의 landing/result-hold 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
-      if (await page.locator('.roll-stage.resolved-from-pending.landing-roll').isVisible().catch(() => false)) {
-        await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll .roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
-      }
-      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
-      await expect(resultHoldStage, '착지 후 같은 팝업이 result-hold 단계로 전환되어야 합니다.').toBeVisible({ timeout: 2_500 });
-      const resultHoldStartedAt = Date.now();
+      const landingStage = page.locator('.roll-stage.resolved-from-pending.landing-roll');
+      await expect(landingStage, `서버 결과 도착 시 pending overlay를 같은 팝업의 landing 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
+      await expect(landingStage.locator('.roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
       await expect.poll(async () => {
-        const sticks = await page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
+        const sticks = await landingStage.locator('.yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
           className: node.getAttribute('class') ?? '',
           animationName: getComputedStyle(node).animationName,
         })));
@@ -168,9 +164,21 @@ test.describe('BUG_HISTORY regression smoke', () => {
         });
         return invalidStick ? `sticks=${JSON.stringify(sticks)}` : 'ready';
       }, {
-        timeout: 2_000,
-        message: 'pending에서 확정된 윷은 낙 윷만 yut-fall-flight를 유지하고 나머지는 전용 착지 keyframe을 사용해야 합니다.',
+        timeout: 1_000,
+        message: 'landing 단계에서는 낙 윷만 yut-fall-flight를 사용하고 나머지는 전용 착지 keyframe을 사용해야 합니다.',
       }).toBe('ready');
+
+      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
+      await expect(resultHoldStage, '착지 후 같은 팝업이 result-hold 단계로 전환되어야 합니다.').toBeVisible({ timeout: 2_500 });
+      const resultHoldStartedAt = Date.now();
+      await expect.poll(async () => resultHoldStage.locator('.yut-stick, .yut-stick-body').evaluateAll((nodes) => {
+        if (nodes.length !== 8) return `nodes=${nodes.length}`;
+        const runningNodes = nodes.filter((node) => getComputedStyle(node).animationName !== 'none');
+        return runningNodes.length ? runningNodes.map((node) => `${node.getAttribute('class') ?? ''}:${getComputedStyle(node).animationName}`).join('|') : 'stopped';
+      }), {
+        timeout: 500,
+        message: 'result-hold 단계에서는 모든 윷과 내부 body가 animation:none으로 최종 자세에 고정되어야 합니다.',
+      }).toBe('stopped');
       await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => {
         const body = node.querySelector('.yut-stick-body');
         const transform = body ? getComputedStyle(body).transform : '';
@@ -284,6 +292,42 @@ test.describe('BUG_HISTORY regression smoke', () => {
         .filter((piece) => piece.className.includes('moving'));
     });
 
+    const startAiMoveObservation = () => page.evaluate(() => {
+      if (window.__YUT_QA_AI_MOVE_OBSERVER__) window.clearInterval(window.__YUT_QA_AI_MOVE_OBSERVER__);
+      window.__YUT_QA_AI_MOVE_OBSERVATIONS__ = {};
+      window.__YUT_QA_AI_MOVE_OBSERVER__ = window.setInterval(() => {
+        const debug = window.__YUT_DEBUG_STATE__ ?? {};
+        const pieces = Array.isArray(debug.pieces) ? debug.pieces : [];
+        const localSeatId = String(debug.localSeatId ?? '');
+        const mutationIds = debug.actionPipeline?.localClientMutationIds;
+        const latestAiMoveMutationId = Array.isArray(mutationIds)
+          ? [...mutationIds].reverse().find((mutationId) => typeof mutationId === 'string' && mutationId.startsWith('move_piece_ai:')) ?? ''
+          : '';
+        if (!latestAiMoveMutationId) return;
+
+        const observations = window.__YUT_QA_AI_MOVE_OBSERVATIONS__;
+        const observed = Array.isArray(observations[latestAiMoveMutationId]) ? observations[latestAiMoveMutationId] : [];
+        for (const node of document.querySelectorAll('[data-testid^="piece-"]')) {
+          const className = node.getAttribute('class') ?? '';
+          if (!className.includes('moving')) continue;
+          const testId = node.getAttribute('data-testid') ?? '';
+          const pieceId = testId.replace(/^piece-/, '');
+          const debugPiece = pieces.find((piece) => piece && typeof piece === 'object' && piece.id === pieceId) ?? {};
+          if (localSeatId && debugPiece.ownerId === localSeatId) continue;
+          const rect = node.getBoundingClientRect();
+          const position = `${testId}:${Math.round(rect.left)},${Math.round(rect.top)}`;
+          if (!observed.includes(position)) observed.push(position);
+        }
+        observations[latestAiMoveMutationId] = observed;
+      }, 40);
+    });
+
+    const getObservedAiMovePositions = (mutationId) => page.evaluate((targetMutationId) => {
+      const observations = window.__YUT_QA_AI_MOVE_OBSERVATIONS__ ?? {};
+      const positions = observations[targetMutationId];
+      return Array.isArray(positions) ? [...positions] : [];
+    }, mutationId);
+
     await runQaStep(testInfo, 'host+AI 온라인 게임 시작', async () => {
       await expectAppShell(page);
       await page.getByTestId('room-title-input').fill(roomTitle);
@@ -310,6 +354,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
           if (typeof mutationId === 'string' && mutationId.startsWith('move_piece_ai:')) knownAiMoveMutationIds.add(mutationId);
         }
       }
+      await startAiMoveObservation();
       await page.getByTestId('roll-yut-button').click();
       await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
       await expect.poll(async () => {
@@ -325,13 +370,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
     });
 
     await runQaStep(testInfo, 'AI 대리 제출 이동은 authoritative 이동 칸 수에 맞게 재생됨', async () => {
-      const observedPositions = new Set();
       await expect.poll(async () => {
-        const moving = await getMovingPieces();
-        for (const piece of moving) {
-          if (!piece.isLocalOwner) observedPositions.add(`${piece.testId}:${piece.left},${piece.top}`);
-        }
-
         const state = await collectScreenState(page);
         const mutationIds = state.yutDebug?.actionPipeline?.localClientMutationIds;
         const latestAiMoveMutationId = Array.isArray(mutationIds)
@@ -345,9 +384,10 @@ test.describe('BUG_HISTORY regression smoke', () => {
         const requiredPositions = Number.isFinite(aiMoveSteps)
           ? Math.min(2, Math.max(1, Math.abs(aiMoveSteps)))
           : 2;
+        const observedPositions = latestAiMoveMutationId ? await getObservedAiMovePositions(latestAiMoveMutationId) : [];
 
-        if (latestAiMoveMutationId && observedPositions.size >= requiredPositions) return 'animated';
-        return `requiredPositions=${requiredPositions} aiMoveSteps=${Number.isFinite(aiMoveSteps) ? aiMoveSteps : 'unknown'} mutation=${latestAiMoveMutationId || 'pending'} positions=${Array.from(observedPositions).join('|')} state=${JSON.stringify(state.yutDebug ?? {}, null, 2)}`;
+        if (latestAiMoveMutationId && observedPositions.length >= requiredPositions) return 'animated';
+        return `requiredPositions=${requiredPositions} aiMoveSteps=${Number.isFinite(aiMoveSteps) ? aiMoveSteps : 'unknown'} mutation=${latestAiMoveMutationId || 'pending'} positions=${observedPositions.join('|')} state=${JSON.stringify(state.yutDebug ?? {}, null, 2)}`;
       }, {
         timeout: 70_000,
         intervals: [100, 150, 200, 250],
