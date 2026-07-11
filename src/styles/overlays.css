@@ -241,7 +241,7 @@
 }
 
 .roll-stage.resolved-from-pending {
-  animation: resolved-from-pending-stage-hold 4.2s ease both;
+  animation: none;
 }
 
 .roll-stage.pending-roll .roll-aura {
@@ -359,15 +359,25 @@
 }
 
 .pending-roll .yut-stick {
-  animation: yut-pending-flight .45s cubic-bezier(.22, .82, .28, 1) calc(var(--stick-index) * 50ms) both;
+  animation: yut-pending-primary-flight 2s cubic-bezier(.22, .82, .28, 1) calc(var(--stick-index) * 50ms) both;
 }
 
 .pending-roll .yut-stick-body {
-  animation: yut-pending-face-spin 2.1s ease-in-out calc(.45s + var(--stick-index) * 50ms) infinite both;
+  animation: yut-pending-primary-face-spin 2s ease-in-out calc(var(--stick-index) * 50ms) both;
+}
+
+.pending-roll.extra-spin-roll .yut-stick {
+  animation: yut-pending-extra-spin-flight 1s linear both;
+}
+
+.pending-roll.extra-spin-roll .yut-stick-body {
+  animation: yut-pending-extra-face-spin 1s linear infinite both;
 }
 
 .resolved-from-pending .roll-mat {
-  animation: resolved-from-pending-mat-hold 4.2s ease both;
+  animation: none;
+  opacity: 1;
+  transform: scale(1) rotate(0);
 }
 
 .resolved-from-pending .yut-stick {
@@ -383,12 +393,12 @@
 }
 
 .resolved-from-pending .roll-label {
-  opacity: 0;
-  animation: resolved-from-pending-result-hold 4.2s ease both;
+  opacity: 1;
+  animation: resolved-from-pending-result-hold 2.7s ease both;
 }
 
 .resolved-from-pending .roll-impact-burst span {
-  animation-delay: calc(1.62s + var(--spark-index) * 18ms);
+  animation-delay: calc(var(--spark-index) * 18ms);
 }
 
 .roll-stage-timing {
@@ -431,17 +441,26 @@
   100% { opacity: 1; transform: translate3d(0, 0, 0) rotateZ(calc(-8deg + var(--stick-index) * 12deg)) scale(1); }
 }
 
-@keyframes yut-pending-flight {
+@keyframes yut-pending-primary-flight {
   0% { opacity: 1; filter: drop-shadow(0 3px 9px rgba(42, 30, 23, .12)); transform: translate3d(calc(-10px + var(--stick-index) * 7px), calc(120px + var(--stick-index) * 12px), 0) rotateZ(calc(-28deg + var(--stick-index) * 11deg)) scale(.92); }
-  58% { opacity: 1; filter: drop-shadow(0 8px 14px rgba(42, 30, 23, .16)); transform: translate3d(calc(-16px + var(--stick-index) * 11px), -152px, 0) rotateZ(calc(100deg - var(--stick-index) * 23deg)) scale(1); }
   100% { opacity: 1; filter: drop-shadow(0 5px 11px rgba(42, 30, 23, .14)); transform: translate3d(calc(-48px + var(--stick-index) * 32px), calc(-240px + var(--stick-index) * 6px), 0) rotateZ(calc(-20deg + var(--stick-index) * 16deg)) scale(.98); }
 }
 
-@keyframes yut-pending-face-spin {
-  0%, 100% { transform: translateY(0) rotateX(8deg) rotateY(0deg) rotateZ(0deg); }
-  24% { transform: translateY(-12px) rotateX(74deg) rotateY(92deg) rotateZ(-10deg); }
-  50% { transform: translateY(7px) rotateX(156deg) rotateY(180deg) rotateZ(8deg); }
-  76% { transform: translateY(12px) rotateX(238deg) rotateY(272deg) rotateZ(-6deg); }
+@keyframes yut-pending-primary-face-spin {
+  0% { transform: translateY(0) rotateX(8deg) rotateY(0deg) rotateZ(0deg); }
+  25% { transform: translateY(-12px) rotateX(188deg) rotateY(180deg) rotateZ(-6deg); }
+  50% { transform: translateY(0) rotateX(368deg) rotateY(360deg) rotateZ(0deg); }
+  75% { transform: translateY(-8px) rotateX(548deg) rotateY(540deg) rotateZ(5deg); }
+  100% { transform: translateY(0) rotateX(728deg) rotateY(720deg) rotateZ(0deg); }
+}
+
+@keyframes yut-pending-extra-spin-flight {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 5px 11px rgba(42, 30, 23, .14)); transform: translate3d(calc(-48px + var(--stick-index) * 32px), calc(-240px + var(--stick-index) * 6px), 0) rotateZ(calc(-20deg + var(--stick-index) * 16deg)) scale(.98); }
+}
+
+@keyframes yut-pending-extra-face-spin {
+  0% { transform: translateY(0) rotateX(8deg) rotateY(0deg) rotateZ(0deg); }
+  100% { transform: translateY(0) rotateX(368deg) rotateY(360deg) rotateZ(0deg); }
 }
 
 @keyframes yut-resolved-from-pending {
@@ -490,9 +509,8 @@
 }
 
 @keyframes resolved-from-pending-result-hold {
-  0%, 48% { opacity: 0; transform: scale(.9); }
-  51% { opacity: 1; transform: scale(1.12); }
-  56%, 94% { opacity: 1; transform: scale(.96); }
+  0% { opacity: 1; transform: scale(1.12); }
+  12%, 92% { opacity: 1; transform: scale(.96); }
   100% { opacity: 0; transform: scale(.94); }
 }
 
@@ -671,7 +689,7 @@
 }
 
 .resolved-from-pending .roll-mat.bonus-roll .roll-label {
-  animation: resolved-from-pending-result-hold 4.2s ease both;
+  animation: resolved-from-pending-result-hold 2.7s ease both;
 }
 
 @keyframes bonus-mat-pop {

@@ -70,6 +70,8 @@ test.describe('BUG_HISTORY regression smoke', () => {
       await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), '클릭 후 500ms 이내 pending 단계에서는 클라이언트에서 확정한 타이밍 등급만 즉시 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 500 });
       await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), 'pending 타이밍 등급은 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
       const pendingTimingText = await page.locator('.roll-stage.pending-roll .roll-stage-timing').innerText();
+      const preResultGameText = await page.getByTestId('game-screen').innerText();
+      const preResultTurnStackText = await page.locator('[data-testid="turn-indicator"]').innerText();
       await expect(page.locator('.roll-stage.pending-roll .roll-label'), 'pending 단계에서는 결과명을 추측할 수 있는 label을 숨겨야 합니다.').toHaveCount(0);
       await expect(page.locator('.roll-stage.pending-roll .yut-mark'), 'pending 단계에서는 결과 면을 노출하지 않아야 합니다.').toHaveCount(0);
       await expect(page.locator('.roll-stage.pending-roll .yut-stick-flat-face'), 'pending 단계에서도 앞면 DOM은 4개 모두 렌더되어야 합니다.').toHaveCount(4);
@@ -78,20 +80,20 @@ test.describe('BUG_HISTORY regression smoke', () => {
       const firstPendingBody = page.locator('.roll-stage.pending-roll .yut-stick-body').first();
       await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationDuration), {
         timeout: 1_000,
-        message: 'pending 외부 윷은 0.45초 동안 한 번만 아래에서 정점까지 상승해야 합니다.',
-      }).toBe('0.45s');
+        message: 'primary 외부 윷은 2초 동안 천천히 정점까지 상승해야 합니다.',
+      }).toBe('2s');
       await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationDuration), {
         timeout: 1_000,
-        message: 'pending body는 상승 종료 뒤 2.1초 주기로 슬로모션 회전해야 합니다.',
-      }).toBe('2.1s');
+        message: 'primary body는 2초 동안 정확히 720도 회전해야 합니다.',
+      }).toBe('2s');
       await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationIterationCount), {
         timeout: 1_000,
         message: 'pending 외부 윷 비행은 무한 반복이 아니라 한 번만 실행되어야 합니다.',
       }).toBe('1');
       await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationDelay), {
         timeout: 1_000,
-        message: 'pending body 슬로모션은 첫 윷 상승이 끝난 뒤 시작해야 합니다.',
-      }).toBe('0.45s');
+        message: 'primary body 회전은 상승과 동시에 시작해야 합니다.',
+      }).toBe('0s');
       await expect.poll(async () => page.locator('.roll-stage.pending-roll .roll-aura').evaluate((node) => getComputedStyle(node).animationDuration), {
         timeout: 1_000,
         message: 'pending aura 반복은 1.6초 주기로 늦춰져야 합니다.',
@@ -128,16 +130,22 @@ test.describe('BUG_HISTORY regression smoke', () => {
       const pendingStickTransformAtPeak = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
       expect(pendingStickTransformAtPeak, 'pending 외부 윷은 아래 시작점에서 정점 좌표로 한 번 상승해야 합니다.').not.toBe(pendingStickTransformAtStart);
       await page.waitForTimeout(2_050);
-      await expect(page.locator('.roll-stage.pending-roll'), 'pending 최소 표시 시간 동안 외부 윷이 정점에 머물러야 합니다.').toBeVisible();
-      const pendingStickTransformAfterHold = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
-      expect(pendingStickTransformAfterHold, 'pending 외부 윷은 2초 이상 정점에 고정되고 아래 시작점으로 리셋되면 안 됩니다.').toBe(pendingStickTransformAtPeak);
+      await expect(page.locator('.roll-stage.pending-roll.extra-spin-roll'), '서버 결과가 아직 없으면 1초 extra-spin을 이어가야 합니다.').toBeVisible({ timeout: 2_000 });
+      await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationDuration), {
+        timeout: 1_000,
+        message: 'extra-spin 외부 윷은 1초 회전 단위를 사용해야 합니다.',
+      }).toBe('1s');
+      await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationIterationCount), {
+        timeout: 1_000,
+        message: 'extra-spin body는 결과 도착 전까지 정점 정지 없이 반복 회전해야 합니다.',
+      }).toBe('infinite');
       const pendingTransformStart = await firstPendingBody.evaluate((node) => getComputedStyle(node).transform);
       await page.waitForTimeout(180);
       await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).transform), {
         timeout: 1_000,
         message: 'pending 중 윷 내부 body의 3D transform이 계속 변해야 앞면/뒷면이 번갈아 보입니다.',
       }).not.toBe(pendingTransformStart);
-      await expect(page.locator('.roll-stage.resolved-from-pending'), `서버 결과 도착 시 pending overlay를 전용 resolved-from-pending 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll, .roll-stage.resolved-from-pending.result-hold-roll'), `서버 결과 도착 시 pending overlay를 같은 팝업의 landing/result-hold 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       const resolvedFromPendingStartedAt = Date.now();
       await expect.poll(async () => {
         const sticks = await page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
@@ -191,6 +199,10 @@ test.describe('BUG_HISTORY regression smoke', () => {
       }).toBe('finished');
       const timingTextAfterReveal = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').innerText();
       const labelTextAfterReveal = await resolvedLabel.innerText();
+      const postResultGameText = await page.getByTestId('game-screen').innerText();
+      const postResultTurnStackText = await page.locator('[data-testid="turn-indicator"]').innerText();
+      expect(postResultGameText.length, '결과명 표시 순간부터 최신 진행 기록이 공개되어 게임 화면 텍스트가 갱신되어야 합니다.').toBeGreaterThanOrEqual(preResultGameText.length);
+      expect(postResultTurnStackText.length, '결과명 표시 순간부터 상단 이동 스택이 최신 상태로 공개되어야 합니다.').toBeGreaterThanOrEqual(preResultTurnStackText.length);
       const resolvedMatClassName = await page.locator('.roll-stage.resolved-from-pending .roll-mat').getAttribute('class');
       const resolvedMatClasses = (resolvedMatClassName ?? '').split(/\s+/);
       if (labelTextAfterReveal === '낙!') {
