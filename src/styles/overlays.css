@@ -692,6 +692,14 @@
   animation: resolved-from-pending-result-hold 2.7s ease both;
 }
 
+
+.resolved-from-pending .roll-mat.bonus-roll,
+.resolved-from-pending .roll-mat.fall-roll {
+  animation: none;
+  opacity: 1;
+  transform: scale(1);
+}
+
 @keyframes bonus-mat-pop {
   0% { opacity: 0; transform: translate3d(0, 36px, 0) scale(.62) rotate(-7deg); filter: saturate(1); }
   12% { opacity: 1; transform: translate3d(0, 0, 0) scale(1.14) rotate(2deg); filter: saturate(1.4); }
