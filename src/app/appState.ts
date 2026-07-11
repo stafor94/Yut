@@ -131,6 +131,7 @@ export type GameStateFingerprintInput = {
   turnDeadlineAt?: number;
   turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
   startRequestVersion: number;
+  startRequestId?: string;
   fallEffect?: FallEffect | null;
   lastRollTimingZone?: RollTimingZone | null;
   logs?: GameLog[];
@@ -171,6 +172,7 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
   turnDeadlineAt: state.turnDeadlineAt ?? 0,
   turnDeadlineKind: state.turnDeadlineKind ?? '',
   startRequestVersion: state.startRequestVersion,
+  startRequestId: state.startRequestId ?? '',
   fallEffect: state.fallEffect ?? null,
   lastRollTimingZone: state.lastRollTimingZone ?? null,
   logs: state.logs ?? [],

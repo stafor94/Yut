@@ -22,7 +22,7 @@ const getCreatedAtMillis = (createdAt: unknown) => {
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSubstitutedByAI?: boolean; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; enteredGameAt?: number; enteredStartVersion?: number; lastGamePresenceAt?: number; playerId?: string; currentPlayerId?: string; originalPlayerId?: string; }
 export interface RoomSeat { id: string; playerId: string; originalPlayerId?: string; currentPlayerId?: string; nickname?: string; color?: string; team?: RoomPlayer['team']; seatIndex?: number; label?: string; isHost?: boolean; aiActive?: boolean; aiName?: string; isSubstitutedByAI?: boolean; status?: 'human' | 'ai_substitute' | 'disconnected' | 'removed'; updatedAt?: unknown; createdAt?: unknown; }
 export type GameSeatSnapshot = { id: string; label: string; name: string; color: string; team: RoomPlayer['team']; isHost?: boolean; isAI?: boolean; isSubstitutedByAI?: boolean; seatIndex: number };
-export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollStack?: unknown[]; selectedRollStackIndex?: number | null; rollStackClosed?: boolean; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; fallEffect?: unknown | null; lastRollTimingZone?: unknown | null; pendingGoldenYutSelection?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; pendingItemPickup?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; pendingAfterMoveTurnIndex?: number; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; turnDeadlineAt?: number; turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | ''; startRequestVersion?: number; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollStack?: unknown[]; selectedRollStackIndex?: number | null; rollStackClosed?: boolean; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; fallEffect?: unknown | null; lastRollTimingZone?: unknown | null; pendingGoldenYutSelection?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; pendingItemPickup?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; pendingAfterMoveTurnIndex?: number; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; turnDeadlineAt?: number; turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | ''; startRequestVersion?: number; startRequestId?: string; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'item_pickup_decided' | 'game_finished';
@@ -454,7 +454,7 @@ export async function saveGameState(roomId: string, state: Omit<SyncedGameState,
   });
 }
 
-export async function initializeGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>, meta: { actorId: string; startRequestVersion: number; clientMutationId: string; payload?: Record<string, unknown> }): Promise<SaveGameStateResult> {
+export async function initializeGameState(roomId: string, state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>, meta: { actorId: string; startRequestVersion: number; startRequestId: string; initializedAt: number; clientMutationId: string; payload?: Record<string, unknown> }): Promise<SaveGameStateResult> {
   if (!db || !roomId) return { status: 'unavailable' };
   const roomRef = doc(db, 'rooms', roomId);
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
@@ -469,9 +469,14 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
     const currentVersion = Number(currentState?.turnVersion ?? 0);
     const currentSequence = Number(currentState?.lastSequence ?? 0);
     const currentRoomStartVersion = Number(room.startRequestVersion ?? 0);
-    if (currentRoomStartVersion !== meta.startRequestVersion) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
+    const currentRoomStartRequestId = room.startRequestId ?? '';
+    const countdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
+    const startCancelledAt = Number(room.startCancelledAt ?? 0);
+    const requestIsCurrent = currentRoomStartVersion === meta.startRequestVersion && currentRoomStartRequestId === meta.startRequestId;
+    if (!requestIsCurrent) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
     if (processedActionSnapshot.exists()) {
-      transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
+      const processed = processedActionSnapshot.data();
+      if (Number(processed.startRequestVersion ?? 0) !== meta.startRequestVersion || String(processed.startRequestId ?? '') !== meta.startRequestId) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
       return {
         status: 'duplicate' as const,
         turnVersion: Number(processedActionSnapshot.data().turnVersion ?? currentVersion),
@@ -479,13 +484,15 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
       };
     }
     const alreadyInitializedForVersion = Number(currentState?.startRequestVersion ?? 0) === meta.startRequestVersion
+      && String(currentState?.startRequestId ?? '') === meta.startRequestId
       && Array.isArray(currentState?.pieces)
       && currentState.pieces.length > 0;
     if (alreadyInitializedForVersion) {
-      transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
-      transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, sequence: currentSequence, turnVersion: currentVersion, type: 'game_initialized', actorId: meta.actorId, createdAt: serverTimestamp() });
+      transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, startRequestVersion: meta.startRequestVersion, startRequestId: meta.startRequestId, sequence: currentSequence, turnVersion: currentVersion, type: 'game_initialized', actorId: meta.actorId, createdAt: serverTimestamp() });
       return { status: 'duplicate' as const, turnVersion: currentVersion, lastSequence: currentSequence };
     }
+    const requestIsReady = room.status === 'waiting' && room.startStatus === 'requested' && countdownEndsAt > 0 && Date.now() >= countdownEndsAt && (!startCancelledAt || startCancelledAt < Number(room.startRequestedAt ?? 0));
+    if (!requestIsReady) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
     const nextVersion = currentVersion + 1;
     const nextSequence = currentSequence + 1;
     const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
@@ -493,7 +500,7 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
       sequence: nextSequence,
       type: 'game_initialized',
       actorId: meta.actorId,
-      payload: sanitizeForFirestore(meta.payload ?? { startRequestVersion: meta.startRequestVersion }) as Record<string, unknown>,
+      payload: sanitizeForFirestore(meta.payload ?? { startRequestVersion: meta.startRequestVersion, startRequestId: meta.startRequestId, initializedAt: meta.initializedAt }) as Record<string, unknown>,
       ...makeSequenceEventFields({ stateBefore: currentState, stateAfter: state }),
       expectedPreviousSequence: currentSequence,
       clientMutationId: meta.clientMutationId,
@@ -502,7 +509,7 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
     });
     transaction.set(gameStateRef, { ...makeFirestoreStateData(state), updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: meta.clientMutationId }, { merge: true });
     transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
-    transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, sequence: nextSequence, turnVersion: nextVersion, type: 'game_initialized', actorId: meta.actorId, createdAt: serverTimestamp() });
+    transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, startRequestVersion: meta.startRequestVersion, startRequestId: meta.startRequestId, sequence: nextSequence, turnVersion: nextVersion, type: 'game_initialized', actorId: meta.actorId, createdAt: serverTimestamp() });
     return { status: 'committed' as const, turnVersion: nextVersion, lastSequence: nextSequence };
   });
 }
@@ -1056,19 +1063,6 @@ export async function cancelRoomGameStart(roomId: string, startRequestVersion: n
     if (currentVersion !== startRequestVersion || room.startStatus !== 'requested' || countdownEndsAt - cancelledAt <= 2000) return false;
     transaction.set(roomRef, { startCancelledAt: cancelledAt, startStatus: 'cancelled', startCountdownUntil: 0 }, { merge: true });
     return true;
-  });
-}
-
-export async function markRoomGameEntering(roomId: string, startRequestVersion: number) {
-  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
-  const roomRef = doc(db, 'rooms', roomId);
-  await runTransaction(db, async (transaction) => {
-    const snapshot = await transaction.get(roomRef);
-    if (!snapshot.exists()) return;
-    const room = snapshot.data() as RoomSummary;
-    if (Number(room.startRequestVersion ?? 0) !== startRequestVersion) return;
-    if (room.status === 'playing' || room.startStatus !== 'requested') return;
-    transaction.set(roomRef, { startStatus: 'entering', startRequestVersion, startCountdownUntil: 0 }, { merge: true });
   });
 }
 
