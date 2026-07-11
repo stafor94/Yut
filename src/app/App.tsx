@@ -110,8 +110,10 @@ const TURN_ORDER_ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_GRACE_MS = 1200;
 const ROLL_ANIMATION_MS = 2600;
 const ROLL_STUCK_TIMEOUT_MS = 12000;
-const PENDING_ROLL_MIN_VISIBLE_MS = 3200;
-const RESOLVED_FROM_PENDING_ROLL_MS = 4200;
+const PENDING_ROLL_PRIMARY_MS = 2000;
+const PENDING_ROLL_EXTRA_SPIN_MS = 1000;
+const PENDING_ROLL_LANDING_MS = 1500;
+const PENDING_ROLL_RESULT_HOLD_MS = 2700;
 const STALE_PENDING_REMOTE_ACTION_MS = 30000;
 const AI_AUTHORITATIVE_ACTION_RETRY_LIMIT = 2;
 const AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS = 700;
@@ -298,7 +300,7 @@ export function App() {
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
   const currentRollRef = useRef<YutResult | null>(null);
   const rollAnimationTimerRef = useRef<number | null>(null);
-  const pendingRollAnimationRef = useRef<{ actionKey: string; animationId: number; startedAt: number; resolveTimer: number | null; timingZone?: RollTimingZone } | null>(null);
+  const pendingRollAnimationRef = useRef<{ actionKey: string; animationId: number; startedAt: number; resolveTimer: number | null; closeTimer: number | null; timingZone?: RollTimingZone; result?: YutResult; sticks?: YutStick[]; fallCount?: number; animationKey?: string; preservedLogIds: Set<number>; preservedRollStack: YutResult[] } | null>(null);
   const pendingItemPickupResolverRef = useRef<(() => void) | null>(null);
   const pendingItemPickupRef = useRef<PendingItemPickup | null>(null);
   const shouldAdvanceTurnAfterItemPromptRef = useRef(false);
@@ -689,7 +691,9 @@ export function App() {
   const hasCompleteBoardTurnNames = Boolean(visibleBoardTurnSeat?.name.trim() && previousBoardTurnSeat?.name.trim() && nextBoardTurnSeat?.name.trim());
   const shouldShowBoardTurnNeighbors = Boolean(previousBoardTurnText && nextBoardTurnText && hasCompleteBoardTurnNames);
   const boardTurnIndicatorText = winner ? renderWinnerText(true) : visibleBoardTurnSeat ? `${getSeatDisplayName(visibleBoardTurnSeat)} 턴` : '';
-  const boardTurnIndicatorRollStack = !winner && visibleBoardTurnSeat && stackedRollMode ? rollStack : [];
+  const shouldHidePendingRollResultState = rollAnimation?.phase === 'primary' || rollAnimation?.phase === 'extra-spin' || rollAnimation?.phase === 'landing';
+  const displayedRollStack = shouldHidePendingRollResultState ? pendingRollAnimationRef.current?.preservedRollStack ?? rollStack : rollStack;
+  const boardTurnIndicatorRollStack = !winner && visibleBoardTurnSeat && stackedRollMode ? displayedRollStack : [];
   const boardTurnIndicatorColor = winner ? '#1f1a17' : visibleBoardTurnSeat ? (playMode === 'team' ? TEAM_COLORS[visibleBoardTurnSeat.team] : getSeatPieceColor(visibleBoardTurnSeat)) : undefined;
   const moveActionBlockReasons = useMemo(() => [
     ...turnActionBlockReasons,
@@ -697,9 +701,13 @@ export function App() {
     rollResultHolding ? 'roll-result-holding' : '',
     !canMoveSelectedPiece && !noMovableBackDoRoll ? 'selected-piece-not-movable' : '',
   ].filter(Boolean), [canMoveSelectedPiece, noMovableBackDoRoll, roll, rollResultHolding, stackedRollSelectedResult, turnActionBlockReasons]);
-  const visibleLogs = useMemo(() => [...logs]
-    .filter((log) => !(activeTurnOrderIntro && log.text.startsWith('순서:')))
-    .sort((left, right) => right.id - left.id), [activeTurnOrderIntro, logs]);
+  const visibleLogs = useMemo(() => {
+    const preservedLogIds = shouldHidePendingRollResultState ? pendingRollAnimationRef.current?.preservedLogIds : null;
+    return [...logs]
+      .filter((log) => !(activeTurnOrderIntro && log.text.startsWith('순서:')))
+      .filter((log) => !preservedLogIds || preservedLogIds.has(log.id))
+      .sort((left, right) => right.id - left.id);
+  }, [activeTurnOrderIntro, logs, shouldHidePendingRollResultState]);
   const rolledTurnOrderSeatIds = useMemo(() => new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id)), [turnOrderPhase.rolls]);
   const localTurnOrderSeatRolled = rolledTurnOrderSeatIds.has(localSeatId);
   const canRollForTurnOrderNow = Boolean(turnOrderPhase.active && turnOrderClock >= turnOrderPhase.readyAt && localSeatId && !localTurnOrderSeatRolled && playableSeats.some((seat) => seat.id === localSeatId && !seat.isAI));
@@ -1511,7 +1519,19 @@ export function App() {
     const pending = pendingRollAnimationRef.current;
     if (actionKey && pending?.actionKey !== actionKey) return;
     if (pending?.resolveTimer != null) window.clearTimeout(pending.resolveTimer);
+    if (pending?.closeTimer != null) window.clearTimeout(pending.closeTimer);
     pendingRollAnimationRef.current = null;
+  }
+
+  function schedulePendingExtraSpin(actionKey: string) {
+    const pending = pendingRollAnimationRef.current;
+    if (!pending || pending.actionKey !== actionKey) return;
+    pending.resolveTimer = null;
+    if (pending.result && pending.sticks && pending.animationKey) {
+      playResolvedRollAnimationAfterPending(pending.result, pending.sticks, pending.animationKey, actionKey, pending.fallCount ?? 0, pending.timingZone);
+      return;
+    }
+    setRollAnimation((current) => current?.id === pending.animationId ? { id: pending.animationId, phase: 'extra-spin', actionKey, timingZone: pending.timingZone, sticks: current.sticks } : current);
   }
 
   function startPendingRollAnimation(actionKey: string, timingZone?: RollTimingZone) {
@@ -1521,8 +1541,29 @@ export function App() {
     }
     clearPendingRollAnimation();
     const animationId = Date.now();
-    pendingRollAnimationRef.current = { actionKey, animationId, startedAt: animationId, resolveTimer: null, timingZone };
-    setRollAnimation({ id: animationId, phase: 'pending', actionKey, timingZone, sticks: [{ flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }] });
+    const sticks = [{ flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }];
+    pendingRollAnimationRef.current = { actionKey, animationId, startedAt: animationId, resolveTimer: null, closeTimer: null, timingZone, preservedLogIds: new Set(logs.map((log) => log.id)), preservedRollStack: [...rollStack] };
+    setRollAnimation({ id: animationId, phase: 'primary', actionKey, timingZone, sticks });
+    pendingRollAnimationRef.current.resolveTimer = window.setTimeout(() => schedulePendingExtraSpin(actionKey), PENDING_ROLL_PRIMARY_MS);
+  }
+
+  function enterPendingLanding(actionKey: string) {
+    const pending = pendingRollAnimationRef.current;
+    if (!pending || pending.actionKey !== actionKey || !pending.result || !pending.sticks || !pending.animationKey) return;
+    lastAnimatedRollKeyRef.current = pending.animationKey;
+    if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
+    setRollAnimation({ id: pending.animationId, phase: 'landing', actionKey, result: pending.result, sticks: pending.sticks, fallCount: pending.fallCount ?? 0, timingZone: pending.timingZone });
+    pending.resolveTimer = window.setTimeout(() => {
+      const latest = pendingRollAnimationRef.current;
+      if (!latest || latest.actionKey !== actionKey || !latest.result || !latest.sticks) return;
+      setRollAnimation({ id: latest.animationId, phase: 'result-hold', actionKey, result: latest.result, sticks: latest.sticks, fallCount: latest.fallCount ?? 0, timingZone: latest.timingZone });
+      latest.closeTimer = window.setTimeout(() => {
+        if (pendingRollAnimationRef.current?.actionKey !== actionKey) return;
+        clearPendingRollAnimation(actionKey);
+        setRollAnimation(null);
+        rollAnimationTimerRef.current = null;
+      }, PENDING_ROLL_RESULT_HOLD_MS);
+    }, PENDING_ROLL_LANDING_MS);
   }
 
   function playResolvedRollAnimationAfterPending(result: YutResult, sticks: YutStick[], key: string, actionKey: string, fallCount = 0, timingZone?: RollTimingZone | null) {
@@ -1531,19 +1572,16 @@ export function App() {
       playRollAnimationOnce(result, sticks, key, false, fallCount, timingZone);
       return;
     }
+    pending.result = result;
+    pending.sticks = sticks;
+    pending.fallCount = fallCount;
+    pending.animationKey = key;
+    pending.timingZone = timingZone ?? pending.timingZone;
     if (pending.resolveTimer !== null) return;
-    const remainingMs = Math.max(0, PENDING_ROLL_MIN_VISIBLE_MS - (Date.now() - pending.startedAt));
-    pending.resolveTimer = window.setTimeout(() => {
-      if (pendingRollAnimationRef.current?.actionKey !== actionKey) return;
-      clearPendingRollAnimation(actionKey);
-      lastAnimatedRollKeyRef.current = key;
-      if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
-      setRollAnimation({ id: pending.animationId, phase: 'resolved-from-pending', result, sticks, fallCount, timingZone: timingZone ?? undefined });
-      rollAnimationTimerRef.current = window.setTimeout(() => {
-        setRollAnimation(null);
-        rollAnimationTimerRef.current = null;
-      }, RESOLVED_FROM_PENDING_ROLL_MS);
-    }, remainingMs);
+    const elapsed = Date.now() - pending.startedAt;
+    const afterPrimary = Math.max(0, elapsed - PENDING_ROLL_PRIMARY_MS);
+    const untilSpinEnd = PENDING_ROLL_EXTRA_SPIN_MS - (afterPrimary % PENDING_ROLL_EXTRA_SPIN_MS);
+    pending.resolveTimer = window.setTimeout(() => enterPendingLanding(actionKey), untilSpinEnd === PENDING_ROLL_EXTRA_SPIN_MS ? 0 : untilSpinEnd);
   }
 
   const applySyncedStateSnapshot = (state: SequenceStateSnapshot, options: { allowMoveAnimation?: boolean; allowRollAnimation?: boolean; updateVersion?: boolean; updateSequence?: boolean } = {}) => {
