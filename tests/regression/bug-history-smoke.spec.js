@@ -75,12 +75,20 @@ test.describe('BUG_HISTORY regression smoke', () => {
       const firstPendingBody = page.locator('.roll-stage.pending-roll .yut-stick-body').first();
       await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationDuration), {
         timeout: 1_000,
-        message: 'pending 윷 외부 회전은 과속 방지를 위해 1.5초 주기를 사용해야 합니다.',
-      }).toBe('1.5s');
+        message: 'pending 외부 윷은 0.45초 동안 한 번만 아래에서 정점까지 상승해야 합니다.',
+      }).toBe('0.45s');
       await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationDuration), {
         timeout: 1_000,
-        message: 'pending 윷 양면 회전은 과속 방지를 위해 1.2초 주기를 사용해야 합니다.',
-      }).toBe('1.2s');
+        message: 'pending body는 상승 종료 뒤 2.1초 주기로 슬로모션 회전해야 합니다.',
+      }).toBe('2.1s');
+      await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationIterationCount), {
+        timeout: 1_000,
+        message: 'pending 외부 윷 비행은 무한 반복이 아니라 한 번만 실행되어야 합니다.',
+      }).toBe('1');
+      await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationDelay), {
+        timeout: 1_000,
+        message: 'pending body 슬로모션은 첫 윷 상승이 끝난 뒤 시작해야 합니다.',
+      }).toBe('0.45s');
       await expect.poll(async () => page.locator('.roll-stage.pending-roll .roll-aura').evaluate((node) => getComputedStyle(node).animationDuration), {
         timeout: 1_000,
         message: 'pending aura 반복은 1.6초 주기로 늦춰져야 합니다.',
@@ -112,6 +120,14 @@ test.describe('BUG_HISTORY regression smoke', () => {
         timeout: 1_000,
         message: 'pending 윷 앞·뒷면은 같은 절댓값의 Z 두께 위치로 분리되어야 합니다.',
       }).toBe('5/-5');
+      const pendingStickTransformAtStart = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
+      await page.waitForTimeout(700);
+      const pendingStickTransformAtPeak = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
+      expect(pendingStickTransformAtPeak, 'pending 외부 윷은 아래 시작점에서 정점 좌표로 한 번 상승해야 합니다.').not.toBe(pendingStickTransformAtStart);
+      await page.waitForTimeout(2_050);
+      await expect(page.locator('.roll-stage.pending-roll'), 'pending 최소 표시 시간 동안 외부 윷이 정점에 머물러야 합니다.').toBeVisible();
+      const pendingStickTransformAfterHold = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
+      expect(pendingStickTransformAfterHold, 'pending 외부 윷은 2초 이상 정점에 고정되고 아래 시작점으로 리셋되면 안 됩니다.').toBe(pendingStickTransformAtPeak);
       const pendingTransformStart = await firstPendingBody.evaluate((node) => getComputedStyle(node).transform);
       await page.waitForTimeout(180);
       await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).transform), {
