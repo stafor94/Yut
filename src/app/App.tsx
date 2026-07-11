@@ -19,7 +19,7 @@ import { AppModals } from './components/AppModals';
 import { AppShellHeader } from './components/AppShellHeader';
 import { GameScreenView } from './components/GameScreenView';
 import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItemValue, shouldAiUseReroll } from './flows/aiFlow';
-import { createStartCountdownWindow, getStartGameBlockMessage } from './flows/gameStartFlow';
+import { getStartGameBlockMessage } from './flows/gameStartFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
 import {
@@ -128,11 +128,14 @@ const CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;
 const CREATE_ROOM_RECOVERY_TIMEOUT_MS = 5000;
 const STEP_DELAY_MS = 240;
 
-const getQaMarkRoomGameEnteringDelayMs = () => {
+const getQaDelayMs = (key: '__YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__' | '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__') => {
   if (typeof window === 'undefined') return 0;
-  const value = Number((window as typeof window & { __YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__?: unknown }).__YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__ ?? 0);
+  const value = Number((window as typeof window & Record<typeof key, unknown>)[key] ?? 0);
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 };
+
+const getQaMarkRoomGameEnteringDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__');
+const getQaRequestRoomGameStartDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__');
 
 const getSequenceRefetchAfter = (sequence: number) => Math.max(0, sequence - 2);
 
@@ -193,6 +196,7 @@ export function App() {
   const [startCountdownStartsAt, setStartCountdownStartsAt] = useState(0);
   const [startCountdownEndsAt, setStartCountdownEndsAt] = useState(0);
   const [startStatus, setStartStatus] = useState<RoomSummary['startStatus']>('idle');
+  const [startRequestPending, setStartRequestPending] = useState(false);
   const [pendingAiSeatCount, setPendingAiSeatCount] = useState(0);
   const [authoritativeGameStateReady, setAuthoritativeGameStateReady] = useState(false);
   const [firebaseLatencySamples, setFirebaseLatencySamples] = useState<number[]>([]);
@@ -301,6 +305,7 @@ export function App() {
   const stalledTurnRecoveryKeyRef = useRef('');
   const enteredGamePresenceKeyRef = useRef('');
   const startedGameRequestVersionsRef = useRef<Set<number>>(new Set());
+  const startRequestInFlightRef = useRef(false);
   const timeoutRecoveryKeysRef = useRef<Set<string>>(new Set());
 
   const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? '') => activeRoomId ? TURN_ACTION_TIMEOUT_MS : turnActionTimeoutPenaltyBySeatId[seatId] ? PENALTY_TURN_ACTION_TIMEOUT_MS : TURN_ACTION_TIMEOUT_MS;
@@ -713,6 +718,7 @@ export function App() {
   })();
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedMoveSteps > 0 && activeMovablePiece?.started && BRANCH_NODE_IDS.includes(activeMovablePiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const roomInGame = startStatus === 'entering' || startStatus === 'playing';
+  const startFlowBusy = startRequestPending || startStatus === 'requested' || roomInGame;
   const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > 0;
   const startCancelDisabled = startCountdownEndsAt > 0 && startCountdownEndsAt - Date.now() <= START_CANCEL_LOCK_MS;
   const optimisticEnteredSeatId = screen === 'game' && localSeatId && !isSpectator ? localSeatId : '';
@@ -774,6 +780,7 @@ export function App() {
     allHumansEnteredGame,
     humanSeatsWaitingToEnter: humanSeatsWaitingToEnter.map((seat) => ({ id: seat.id, label: seat.label, enteredStartVersion: seat.enteredStartVersion ?? 0 })),
     startRequestVersion,
+    startRequestPending,
   };
   const getStalledTurnSyncResolution = (): StalledTurnSyncResolution => {
     const currentAgeMs = getCurrentStalledTurnSyncAgeMs();
@@ -2289,6 +2296,7 @@ export function App() {
     }
     let completed = false;
     const enterGameOnce = () => {
+      const confirmedStartRequestVersion = startRequestVersion;
       if (completed) return;
       completed = true;
       startStatusRef.current = 'entering';
@@ -2298,10 +2306,10 @@ export function App() {
         const markEnteringDelayMs = getQaMarkRoomGameEnteringDelayMs();
         void measureFirebaseLatency(async () => {
           if (markEnteringDelayMs > 0) await delay(markEnteringDelayMs);
-          await markRoomGameEntering(activeRoomId, startRequestVersion);
+          await markRoomGameEntering(activeRoomId, confirmedStartRequestVersion);
         }).catch(() => undefined);
       }
-      startLocalGame();
+      startLocalGame(confirmedStartRequestVersion);
     };
     const updateCountdown = () => {
       const now = Date.now();
@@ -2598,30 +2606,37 @@ export function App() {
     }
   }
 
-  function handleStartGame() {
+  async function handleStartGame() {
+    if (startRequestInFlightRef.current || startFlowBusy) return;
     if (pendingAiSeatCount > 0) { setMessage('AI 추가를 완료하는 중입니다.'); return; }
     const blockMessage = getStartGameBlockMessage({ activeRoomId, allReady, canManageRoom, playMode, teamBalanced });
     if (roomInGame) { setMessage('이미 진행 중인 게임이 있어 다시 시작할 수 없습니다.'); return; }
     if (blockMessage) { setMessage(blockMessage); return; }
     if (!isRoomManager) setIsRoomHost(true);
+    startRequestInFlightRef.current = true;
+    setStartRequestPending(true);
+    setMessage('');
     const requestedAt = Date.now();
-    const startCountdownWindow = createStartCountdownWindow(requestedAt, startRequestVersion);
-    const localVersion = startCountdownWindow.localVersion;
-    startRequestVersionRef.current = localVersion;
-    startStatusRef.current = 'requested';
-    setStartRequestVersion(localVersion);
-    setStartCountdownStartsAt(startCountdownWindow.startsAt);
-    setStartCountdownEndsAt(startCountdownWindow.endsAt);
-    setStartStatus('requested');
-    setCountdown(-1); setScreen('waitingRoom'); setMessage('');
-    void measureFirebaseLatency(() => requestRoomGameStart(activeRoomId, requestedAt)).then((startState) => {
+    try {
+      const requestDelayMs = getQaRequestRoomGameStartDelayMs();
+      const startState = await measureFirebaseLatency(async () => {
+        if (requestDelayMs > 0) await delay(requestDelayMs);
+        return requestRoomGameStart(activeRoomId, requestedAt);
+      });
       startRequestVersionRef.current = startState.startRequestVersion;
       startStatusRef.current = 'requested';
       setStartRequestVersion(startState.startRequestVersion);
       setStartCountdownStartsAt(startState.startCountdownStartsAt);
       setStartCountdownEndsAt(startState.startCountdownEndsAt);
       setStartStatus('requested');
-    }).catch((error) => setMessage(error instanceof Error ? error.message : '게임 시작 요청에 실패했습니다.'));
+      setCountdown(-1);
+      setScreen('waitingRoom');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '게임 시작 요청에 실패했습니다.');
+    } finally {
+      startRequestInFlightRef.current = false;
+      setStartRequestPending(false);
+    }
   }
 
   function cancelStartCountdown() {
@@ -2688,20 +2703,25 @@ export function App() {
     setGameStartedAt(nextGameStartedAt);
   }
 
-  function startLocalGame() {
+  function startLocalGame(confirmedStartRequestVersion: number) {
     if (!activeRoomId) {
       setMessage('온라인 방 정보가 없어 게임을 시작할 수 없습니다.');
       setScreen('lobby');
       return;
     }
-    if (activeRoomId && startRequestVersion && startedGameRequestVersionsRef.current.has(startRequestVersion)) return;
+    if (!confirmedStartRequestVersion) {
+      setMessage('게임 시작 버전을 확인할 수 없어 최신 시작 정보를 기다리고 있습니다.');
+      setScreen('waitingRoom');
+      return;
+    }
+    if (activeRoomId && startedGameRequestVersionsRef.current.has(confirmedStartRequestVersion)) return;
     logIdRef.current = 0;
-    if (activeRoomId && startRequestVersion) startedGameRequestVersionsRef.current.add(startRequestVersion);
+    if (activeRoomId) startedGameRequestVersionsRef.current.add(confirmedStartRequestVersion);
     const nextPieces = makePieces(playableSeats, pieceCount, playMode);
     const nextGameSeats = gameSeatSnapshotsFromSeats(playableSeats);
     const nextBoardItems = itemMode ? spawnInitialBoardItems(4, 8) : [];
     const initialTurnOrderPhase = { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 };
-    const shuffledSeats = getSeededTurnOrderSeats(playableSeats, `${activeRoomId}:${startRequestVersion}`);
+    const shuffledSeats = getSeededTurnOrderSeats(playableSeats, `${activeRoomId}:${confirmedStartRequestVersion}`);
     const orderedSeats = playMode === 'team'
       ? buildAlternatingTeamTurnOrder(shuffledSeats.map((seat) => ({ seat, result: { name: '도', steps: 1, bonus: false }, rollOffRound: 1 })))
       : shuffledSeats;
@@ -2760,9 +2780,9 @@ export function App() {
       turnDeadlineAt: initialTurnDeadlineAt,
       turnDeadlineKind: 'roll' as const,
       gameSeats: nextGameSeats,
-      startRequestVersion,
+      startRequestVersion: confirmedStartRequestVersion,
     };
-    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, itemPromptTiming: null, pendingAfterMoveTurnIndex: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, turnDeadlineAt: initialTurnDeadlineAt, turnDeadlineKind: 'roll', startRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
+    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, itemPromptTiming: null, pendingAfterMoveTurnIndex: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, turnDeadlineAt: initialTurnDeadlineAt, turnDeadlineKind: 'roll', startRequestVersion: confirmedStartRequestVersion, logs: [prepLog], gameSeats: nextGameSeats });
     savingStateFingerprintRef.current = initialStateFingerprint;
     const initialGameStateSaveStartedAt = Date.now();
     setInitialGameStateSaveDiagnostic({
@@ -2777,9 +2797,9 @@ export function App() {
     });
     void measureFirebaseLatency(() => initializeGameState(activeRoomId, initialSyncedState, {
       actorId: localSeatId,
-      startRequestVersion,
-      clientMutationId: `game_initialized:${activeRoomId}:${startRequestVersion}`,
-      payload: { startRequestVersion },
+      startRequestVersion: confirmedStartRequestVersion,
+      clientMutationId: `game_initialized:${activeRoomId}:${confirmedStartRequestVersion}`,
+      payload: { startRequestVersion: confirmedStartRequestVersion },
     })).then(async (result) => {
       const lastSequence = Number(result.lastSequence ?? 0);
       const turnVersion = Number(result.turnVersion ?? 0);
@@ -2803,6 +2823,7 @@ export function App() {
         setCoordinatorStateSaveKey('');
         return;
       }
+      startedGameRequestVersionsRef.current.delete(confirmedStartRequestVersion);
       if (lastSequence > 0) {
         const sequences = await measureFirebaseLatency(() => getGameSequencesSince(activeRoomId, 0));
         const latestState = [...sequences]
@@ -2830,6 +2851,7 @@ export function App() {
         message: error instanceof Error ? error.message : '게임 상태 저장 중 알 수 없는 오류가 발생했습니다.',
         fingerprint: initialStateFingerprint.slice(0, 24),
       });
+      startedGameRequestVersionsRef.current.delete(confirmedStartRequestVersion);
       setMessage(error instanceof Error ? error.message : '게임 상태 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }).finally(() => {
       if (savingStateFingerprintRef.current === initialStateFingerprint) savingStateFingerprintRef.current = '';
@@ -4929,6 +4951,7 @@ export function App() {
       teamCounts={teamCounts}
       allReady={allReady}
       roomInGame={roomInGame}
+      startFlowBusy={startFlowBusy}
       getSeatPieceColor={getSeatPieceColor}
       onChangeOptions={changeWaitingOptions}
       onKickPlayer={(seat) => { void kickWaitingPlayer(seat); }}

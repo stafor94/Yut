@@ -76,6 +76,20 @@ export async function findRoomIdByTitle(title) {
   return snapshot.docs[0]?.id ?? null;
 }
 
+export async function getRoomForQa(roomId) {
+  const db = await getTestDb();
+  if (!db || !roomId) return null;
+  const snapshot = await getDoc(doc(db, 'rooms', roomId));
+  return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+}
+
+export async function getRoomSequencesForQa(roomId) {
+  const db = await getTestDb();
+  if (!db || !roomId) return [];
+  const snapshot = await getDocs(collection(db, 'rooms', roomId, 'sequences'));
+  return snapshot.docs.map((documentSnapshot) => ({ id: documentSnapshot.id, ...documentSnapshot.data() }));
+}
+
 async function deleteDocumentsInBatches(documentSnapshots) {
   const db = await getTestDb();
   if (!db || documentSnapshots.length === 0) return 0;

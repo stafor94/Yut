@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
+import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomSequencesForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 test.describe('game flow QA', () => {
   let roomId;
@@ -16,6 +16,7 @@ test.describe('game flow QA', () => {
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
     await context.addInitScript(() => {
       window.__YUT_QA_DELAY_MARK_ROOM_GAME_ENTERING_MS__ = 3500;
+      window.__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__ = 2500;
     });
 
     await runQaStep(testInfo, '방 생성', async () => {
@@ -30,8 +31,42 @@ test.describe('game flow QA', () => {
       const addAiButton = page.getByTestId('add-ai-P2');
       if (await addAiButton.isVisible().catch(() => false)) await addAiButton.click();
       await expect(page.getByTestId('start-game-button'), `시작 버튼 상태: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeEnabled({ timeout: 15_000 });
-      await page.getByTestId('start-game-button').click();
+      const startButton = page.getByTestId('start-game-button');
+      await startButton.click();
+      await page.evaluate(() => {
+        const button = document.querySelector('[data-testid="start-game-button"]');
+        if (button instanceof HTMLButtonElement) {
+          button.click();
+          button.click();
+        }
+      });
+      await expect(startButton).toBeDisabled({ timeout: 1_000 });
+      await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 1_000 });
+      await expect.poll(async () => {
+        const state = await collectScreenState(page);
+        const room = await getRoomForQa(roomId);
+        return {
+          pending: Boolean(state.yutDebug?.turnHealth?.startRequestPending ?? state.yutDebug?.startRequestPending),
+          localVersion: Number(state.yutDebug?.startRequestVersion ?? 0),
+          roomVersion: Number(room?.startRequestVersion ?? 0),
+          roomStatus: String(room?.startStatus ?? 'idle'),
+          overlayVisible: await page.getByTestId('start-countdown-overlay').isVisible().catch(() => false),
+        };
+      }, { timeout: 1_500, message: '서버 시작 응답 전에는 로컬 버전/카운트다운을 선반영하지 않고 pending만 유지해야 합니다.' }).toEqual({
+        pending: true,
+        localVersion: 0,
+        roomVersion: 0,
+        roomStatus: 'idle',
+        overlayVisible: false,
+      });
       await expect(page.getByTestId('start-countdown-overlay')).toBeVisible({ timeout: 5_000 });
+      await expect.poll(async () => {
+        const room = await getRoomForQa(roomId);
+        return {
+          version: Number(room?.startRequestVersion ?? 0),
+          status: String(room?.startStatus ?? ''),
+        };
+      }, { timeout: 5_000, message: '빠른 중복 클릭에도 서버 시작 요청은 한 번만 반영되어야 합니다.' }).toEqual({ version: 1, status: 'requested' });
       await expect(page.getByTestId('app-shell')).toHaveClass(/countdown-active/, { timeout: 5_000 });
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 5_000 });
@@ -68,12 +103,18 @@ test.describe('game flow QA', () => {
 
       await expect.poll(async () => {
         const state = await collectScreenState(page);
+        const debug = state.yutDebug ?? {};
+        const initialSave = debug.syncPipeline?.initialGameStateSave ?? {};
+        const sequences = await getRoomSequencesForQa(roomId);
+        const latestSequence = Math.max(0, ...sequences.map((sequence) => Number(sequence.sequence ?? sequence.id ?? 0)));
         const actionableRoll = state.rollButton.visible && !state.rollButton.disabled;
         const actionableMove = state.moveButton.visible && !state.moveButton.disabled;
         const waitingForOtherTurn = state.turnWaitingButton.visible;
-        if (actionableRoll || actionableMove || waitingForOtherTurn) return 'ready';
-        return JSON.stringify(state, null, 2);
-      }, { timeout: 20_000, message: '순서 정하기 완료 후 첫 턴 조작/대기 UI가 보여야 합니다.' }).toBe('ready');
+        const saveCommitted = initialSave.status === 'committed' || initialSave.status === 'duplicate';
+        const sequenceApplied = Number(debug.syncPipeline?.lastAppliedSequence ?? debug.lastAppliedSequence ?? 0) >= 1 && Number(initialSave.lastSequence ?? latestSequence) >= 1;
+        if (saveCommitted && sequenceApplied && (actionableRoll || actionableMove || waitingForOtherTurn)) return 'ready';
+        return JSON.stringify({ state, latestSequence }, null, 2);
+      }, { timeout: 20_000, message: '초기 state/sequences 저장 후 첫 턴 조작/대기 UI가 보여야 합니다.' }).toBe('ready');
     });
   });
 });
