@@ -28,7 +28,7 @@ export type Seat = {
 export type GameLog = { id: number; text: string };
 export type ToastMessage = { id: number; title: string; description?: string; icon?: string };
 export type RollAnimation =
-  | { id: number; phase: 'pending'; actionKey: string; sticks: YutStick[] }
+  | { id: number; phase: 'pending'; actionKey: string; sticks: YutStick[]; timingZone?: RollTimingZone }
   | { id: number; phase?: 'resolved' | 'resolved-from-pending'; result: YutResult; sticks: YutStick[]; turnOrder?: boolean; fallCount?: number; timingZone?: RollTimingZone };
 export type TurnOrderRoll = { seat: Seat; result: YutResult; rollOffRound: number };
 export type TurnOrderPhase = { active: boolean; index: number; rolls: TurnOrderRoll[]; deadline: number; readyAt: number };

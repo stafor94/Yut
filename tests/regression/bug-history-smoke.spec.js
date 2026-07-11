@@ -67,6 +67,9 @@ test.describe('BUG_HISTORY regression smoke', () => {
 
       await page.getByTestId('roll-yut-button').click();
       await expect(page.locator('.roll-stage.pending-roll'), `클릭 직후 서버 확정 전 pending 윷 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 500 });
+      await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), '클릭 후 500ms 이내 pending 단계에서는 클라이언트에서 확정한 타이밍 등급만 즉시 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 500 });
+      await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), 'pending 타이밍 등급은 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
+      const pendingTimingText = await page.locator('.roll-stage.pending-roll .roll-stage-timing').innerText();
       await expect(page.locator('.roll-stage.pending-roll .roll-label'), 'pending 단계에서는 결과명을 추측할 수 있는 label을 숨겨야 합니다.').toHaveCount(0);
       await expect(page.locator('.roll-stage.pending-roll .yut-mark'), 'pending 단계에서는 결과 면을 노출하지 않아야 합니다.').toHaveCount(0);
       await expect(page.locator('.roll-stage.pending-roll .yut-stick-flat-face'), 'pending 단계에서도 앞면 DOM은 4개 모두 렌더되어야 합니다.').toHaveCount(4);
@@ -163,6 +166,8 @@ test.describe('BUG_HISTORY regression smoke', () => {
         message: 'authoritative 결과 후 각 윷은 flat/round 클래스에 맞는 3D 면으로 정지해야 합니다.',
       }).toBe(true);
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '서버 authoritative 타이밍 등급이 확정 결과와 함께 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 5_000 });
+      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), 'pending부터 resolved 전환까지 같은 타이밍 등급이 유지되어야 합니다.').toHaveText(pendingTimingText);
+      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), 'resolved 타이밍 등급도 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
       const timingBox = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').boundingBox();
       const matBox = await page.locator('.roll-stage.resolved-from-pending .roll-mat').boundingBox();
       expect(timingBox, '타이밍 등급 boundingBox를 확인할 수 있어야 합니다.').not.toBeNull();
@@ -186,6 +191,17 @@ test.describe('BUG_HISTORY regression smoke', () => {
       }).toBe('finished');
       const timingTextAfterReveal = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').innerText();
       const labelTextAfterReveal = await resolvedLabel.innerText();
+      const resolvedMatClassName = await page.locator('.roll-stage.resolved-from-pending .roll-mat').getAttribute('class');
+      const resolvedMatClasses = (resolvedMatClassName ?? '').split(/\s+/);
+      if (labelTextAfterReveal === '낙!') {
+        expect(resolvedMatClasses, '낙 결과는 fall-roll만 적용하고 내부 display result가 윷/모여도 bonus-roll을 적용하지 않아야 합니다.').toContain('fall-roll');
+        expect(resolvedMatClasses, '낙 결과는 bonus-roll을 절대 적용하지 않아야 합니다.').not.toContain('bonus-roll');
+      } else if (labelTextAfterReveal === '윷' || labelTextAfterReveal === '모') {
+        expect(resolvedMatClasses, '정상 윷/모 결과만 bonus-roll을 적용해야 합니다.').toContain('bonus-roll');
+        expect(resolvedMatClasses, '정상 윷/모 결과는 fall-roll을 적용하지 않아야 합니다.').not.toContain('fall-roll');
+      } else {
+        expect(resolvedMatClasses, '도/개/걸 결과는 bonus-roll을 적용하지 않아야 합니다.').not.toContain('bonus-roll');
+      }
       await page.waitForTimeout(1_800);
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '타이밍 등급은 표시된 뒤 약 1.8초 후에도 유지되어야 합니다.').toHaveText(timingTextAfterReveal);
       await expect(resolvedLabel, '윷 결과명은 표시된 뒤 약 1.8초 후에도 유지되어야 합니다.').toHaveText(labelTextAfterReveal);
