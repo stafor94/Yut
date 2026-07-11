@@ -134,7 +134,7 @@ jobs:
 
   qa-online-turn-recovery:
     name: QA online turn recovery
-    needs: [qa-cleanup-before, deploy-pages]
+    needs: qa-basic-flow
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
@@ -176,7 +176,7 @@ jobs:
 
   qa-stacked-roll-backdo-ai:
     name: QA stacked roll backdo AI
-    needs: [qa-cleanup-before, deploy-pages]
+    needs: qa-cleanup-layout-regression
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -200,7 +200,7 @@ jobs:
 
   qa-cleanup-layout-regression:
     name: QA cleanup and layout regression
-    needs: [qa-cleanup-before, deploy-pages]
+    needs: qa-online-turn-recovery
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
