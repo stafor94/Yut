@@ -152,7 +152,9 @@ test.describe('BUG_HISTORY regression smoke', () => {
       if (await page.locator('.roll-stage.resolved-from-pending.landing-roll').isVisible().catch(() => false)) {
         await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll .roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
       }
-      const resolvedFromPendingStartedAt = Date.now();
+      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
+      await expect(resultHoldStage, '착지 후 같은 팝업이 result-hold 단계로 전환되어야 합니다.').toBeVisible({ timeout: 2_500 });
+      const resultHoldStartedAt = Date.now();
       await expect.poll(async () => {
         const sticks = await page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
           className: node.getAttribute('class') ?? '',
@@ -229,12 +231,13 @@ test.describe('BUG_HISTORY regression smoke', () => {
       } else {
         expect(resolvedMatClasses, '도/개/걸 결과는 bonus-roll을 적용하지 않아야 합니다.').not.toContain('bonus-roll');
       }
-      await page.waitForTimeout(1_800);
-      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '타이밍 등급은 표시된 뒤 약 1.8초 후에도 유지되어야 합니다.').toHaveText(timingTextAfterReveal);
-      await expect(resolvedLabel, '윷 결과명은 표시된 뒤 약 1.8초 후에도 유지되어야 합니다.').toHaveText(labelTextAfterReveal);
-      const elapsedResolvedMs = Date.now() - resolvedFromPendingStartedAt;
-      expect(elapsedResolvedMs, '결과 표시 유지 검증 후에도 resolved-from-pending 종료 기한이 남아 있어야 합니다.').toBeLessThan(4_700);
-      await expect(page.locator('.roll-stage'), '확정 전 pending과 확정 후 overlay는 resolved-from-pending 시작 후 4.7초 이내 정상 종료되어야 합니다.').toBeHidden({ timeout: 4_700 - elapsedResolvedMs });
+      const resultHoldElapsedMs = Date.now() - resultHoldStartedAt;
+      if (resultHoldElapsedMs < 1_800) await page.waitForTimeout(1_800 - resultHoldElapsedMs);
+      await expect(resultHoldStage, 'result-hold 시작 후 1.8초 동안 같은 팝업이 유지되어야 합니다.').toBeVisible({ timeout: 500 });
+      await expect(resultHoldStage.locator('.roll-stage-timing'), '타이밍 등급은 result-hold 시작 후 1.8초에도 유지되어야 합니다.').toHaveText(timingTextAfterReveal, { timeout: 500 });
+      await expect(resultHoldStage.locator('.roll-label'), '윷 결과명은 result-hold 시작 후 1.8초에도 유지되어야 합니다.').toHaveText(labelTextAfterReveal, { timeout: 500 });
+      const resultHoldCloseTimeoutMs = Math.max(500, resultHoldStartedAt + 3_200 - Date.now());
+      await expect(page.locator('.roll-stage'), 'result-hold 팝업은 시작 후 3.2초 이내 종료되어야 합니다.').toBeHidden({ timeout: resultHoldCloseTimeoutMs });
     });
 
     await runQaStep(testInfo, '말 이동 직후 preview 제거 확인', async () => {
