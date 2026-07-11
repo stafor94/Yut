@@ -8,7 +8,7 @@ import { type YutResult } from '../../../game-core/roll';
 import { TURN_NETWORK_GRACE_MS } from './roomTiming';
 
 export interface RoomSummary {
-  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; roomConfigVersion?: number;
+  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; startRequestId?: string; roomConfigVersion?: number;
 }
 
 const getCreatedAtMillis = (createdAt: unknown) => {
@@ -1008,26 +1008,37 @@ export async function updateRoomStartCountdown(roomId: string, startCountdownUnt
   await updateDoc(doc(db, 'rooms', roomId), { startCountdownUntil });
 }
 
-export async function requestRoomGameStart(roomId: string, requestedAt: number) {
+export async function requestRoomGameStart(roomId: string, requestedAt: number, requestId: string) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const roomRef = doc(db, 'rooms', roomId);
   return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(roomRef);
     if (!snapshot.exists()) throw new Error('존재하지 않는 방입니다.');
     const room = snapshot.data() as RoomSummary;
-    const nextVersion = Number(room.startRequestVersion ?? 0) + 1;
+    const currentStatus = room.startStatus ?? 'idle';
+    const currentStartState = {
+      startRequestVersion: Number(room.startRequestVersion ?? 0),
+      startRequestedAt: Number(room.startRequestedAt ?? 0),
+      startCountdownStartsAt: Number(room.startCountdownStartsAt ?? 0),
+      startCountdownEndsAt: Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0),
+      startRequestId: room.startRequestId ?? '',
+    };
+    const hasAuthoritativeStart = currentStatus === 'requested' || currentStatus === 'entering' || currentStatus === 'playing';
+    if ((requestId && currentStartState.startRequestId === requestId) || hasAuthoritativeStart) return currentStartState;
+    const nextVersion = currentStartState.startRequestVersion + 1;
     const startsAt = requestedAt + 1000;
     const endsAt = startsAt + 5000;
     transaction.set(roomRef, {
       startRequestVersion: nextVersion,
       startRequestedAt: requestedAt,
+      startRequestId: requestId,
       startCountdownStartsAt: startsAt,
       startCountdownEndsAt: endsAt,
       startCountdownUntil: endsAt,
       startCancelledAt: null,
       startStatus: 'requested',
     }, { merge: true });
-    return { startRequestVersion: nextVersion, startRequestedAt: requestedAt, startCountdownStartsAt: startsAt, startCountdownEndsAt: endsAt };
+    return { startRequestVersion: nextVersion, startRequestedAt: requestedAt, startCountdownStartsAt: startsAt, startCountdownEndsAt: endsAt, startRequestId: requestId };
   });
 }
 

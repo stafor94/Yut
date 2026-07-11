@@ -52,21 +52,24 @@ test.describe('game flow QA', () => {
           roomStatus: String(room?.startStatus ?? 'idle'),
           overlayVisible: await page.getByTestId('start-countdown-overlay').isVisible().catch(() => false),
         };
-      }, { timeout: 1_500, message: '서버 시작 응답 전에는 로컬 버전/카운트다운을 선반영하지 않고 pending만 유지해야 합니다.' }).toEqual({
+      }, { timeout: 1_000, message: '서버 시작 응답 전에는 로컬 버전/카운트다운을 선반영하지 않고 pending만 유지해야 합니다.' }).toEqual({
         pending: true,
         localVersion: 0,
         roomVersion: 0,
         roomStatus: 'idle',
         overlayVisible: false,
       });
+      await expect(startButton, '시작 요청 timeout 후 같은 ID로 재시도할 수 있도록 버튼이 다시 활성화되어야 합니다.').toBeEnabled({ timeout: 2_500 });
+      await startButton.click();
       await expect(page.getByTestId('start-countdown-overlay')).toBeVisible({ timeout: 5_000 });
       await expect.poll(async () => {
         const room = await getRoomForQa(roomId);
         return {
           version: Number(room?.startRequestVersion ?? 0),
           status: String(room?.startStatus ?? ''),
+          requestIdPresent: typeof room?.startRequestId === 'string' && room.startRequestId.length > 0,
         };
-      }, { timeout: 5_000, message: '빠른 중복 클릭에도 서버 시작 요청은 한 번만 반영되어야 합니다.' }).toEqual({ version: 1, status: 'requested' });
+      }, { timeout: 5_000, message: 'timeout 후 재클릭하고 기존 요청이 늦게 완료돼도 서버 시작 요청은 한 번만 반영되어야 합니다.' }).toEqual({ version: 1, status: 'requested', requestIdPresent: true });
       await expect(page.getByTestId('app-shell')).toHaveClass(/countdown-active/, { timeout: 5_000 });
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 5_000 });
