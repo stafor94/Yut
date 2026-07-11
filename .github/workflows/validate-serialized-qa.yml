@@ -108,14 +108,17 @@ jobs:
         with:
           name: serialized-qa-build
       - name: QA basic flow
+        shell: bash
         run: |
           set -o pipefail
           npm run test:qa-basic-flow 2>&1 | tee playwright-qa-basic-flow.log
       - name: QA online turn recovery
+        shell: bash
         run: |
           set -o pipefail
           npm run test:qa-online-turn-recovery 2>&1 | tee playwright-qa-online-turn-recovery.log
       - name: QA cleanup and layout regression
+        shell: bash
         run: |
           set -o pipefail
           npm run test:qa-cleanup-layout-regression 2>&1 | tee playwright-qa-cleanup-layout-regression.log
