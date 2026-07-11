@@ -118,6 +118,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
         message: 'pending 중 윷 내부 body의 3D transform이 계속 변해야 앞면/뒷면이 번갈아 보입니다.',
       }).not.toBe(pendingTransformStart);
       await expect(page.locator('.roll-stage.resolved-from-pending'), `서버 결과 도착 시 pending overlay를 전용 resolved-from-pending 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
+      const resolvedFromPendingStartedAt = Date.now();
       await expect.poll(async () => {
         const sticks = await page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
           className: node.getAttribute('class') ?? '',
@@ -145,14 +146,23 @@ test.describe('BUG_HISTORY regression smoke', () => {
         message: 'authoritative 결과 후 각 윷은 flat/round 클래스에 맞는 3D 면으로 정지해야 합니다.',
       }).toBe(true);
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '서버 authoritative 타이밍 등급이 확정 결과와 함께 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 5_000 });
+      const timingBox = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').boundingBox();
+      const matBox = await page.locator('.roll-stage.resolved-from-pending .roll-mat').boundingBox();
+      expect(timingBox, '타이밍 등급 boundingBox를 확인할 수 있어야 합니다.').not.toBeNull();
+      expect(matBox, '윷 매트 boundingBox를 확인할 수 있어야 합니다.').not.toBeNull();
+      if (!timingBox || !matBox) return;
+      const centerDeltaPx = Math.abs((timingBox.x + timingBox.width / 2) - (matBox.x + matBox.width / 2));
+      expect(centerDeltaPx, `타이밍 등급과 윷 매트의 가로 중심 오차는 2px 이내여야 합니다. 실제: ${centerDeltaPx}px`).toBeLessThanOrEqual(2);
       await expect(page.locator('.roll-stage.resolved-roll .roll-label'), `서버 authoritative 윷 결과 label이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       await expect(page.locator('.roll-stage.resolved-roll .roll-label'), 'authoritative 결과 label은 한 번만 표시되어야 합니다.').toHaveCount(1);
       const timingTextAfterReveal = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').innerText();
       const labelTextAfterReveal = await page.locator('.roll-stage.resolved-roll .roll-label').innerText();
-      await page.waitForTimeout(2_500);
-      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '타이밍 등급은 표시된 뒤 2.5초 후에도 유지되어야 합니다.').toHaveText(timingTextAfterReveal);
-      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), '윷 결과명은 표시된 뒤 2.5초 후에도 유지되어야 합니다.').toHaveText(labelTextAfterReveal);
-      await expect(page.locator('.roll-stage'), '확정 전 pending과 확정 후 overlay는 5.5초 안에 정상 종료되어야 합니다.').toBeHidden({ timeout: 5_500 });
+      await page.waitForTimeout(1_800);
+      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '타이밍 등급은 표시된 뒤 약 1.8초 후에도 유지되어야 합니다.').toHaveText(timingTextAfterReveal);
+      await expect(page.locator('.roll-stage.resolved-roll .roll-label'), '윷 결과명은 표시된 뒤 약 1.8초 후에도 유지되어야 합니다.').toHaveText(labelTextAfterReveal);
+      const elapsedResolvedMs = Date.now() - resolvedFromPendingStartedAt;
+      expect(elapsedResolvedMs, '결과 표시 유지 검증 후에도 resolved-from-pending 종료 기한이 남아 있어야 합니다.').toBeLessThan(4_700);
+      await expect(page.locator('.roll-stage'), '확정 전 pending과 확정 후 overlay는 resolved-from-pending 시작 후 4.7초 이내 정상 종료되어야 합니다.').toBeHidden({ timeout: 4_700 - elapsedResolvedMs });
     });
 
     await runQaStep(testInfo, '말 이동 직후 preview 제거 확인', async () => {
