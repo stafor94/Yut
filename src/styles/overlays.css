@@ -382,8 +382,7 @@
   animation: yut-resolved-stick-round-spin 1.5s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
 }
 
-.resolved-from-pending .roll-label,
-.resolved-from-pending .roll-stage-timing {
+.resolved-from-pending .roll-label {
   opacity: 0;
   animation: resolved-from-pending-result-hold 4.2s ease both;
 }

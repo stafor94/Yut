@@ -89,12 +89,14 @@ export function RollStage({ rollAnimation }: RollStageProps) {
   if (!rollAnimation) return null;
   const isPending = rollAnimation.phase === 'pending';
   const isResolvedFromPending = rollAnimation.phase === 'resolved-from-pending';
+  const result = rollAnimation.result;
+  const isBonusResult = !isPending && !rollAnimation.turnOrder && !rollAnimation.fallCount && (result?.name === '윷' || result?.name === '모');
   return <div className={`roll-stage ${isPending ? 'pending-roll' : isResolvedFromPending ? 'resolved-from-pending resolved-roll' : 'resolved-roll'}`} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
-    <div className={`roll-mat ${!isPending && rollAnimation.result?.bonus && !rollAnimation.turnOrder ? 'bonus-roll' : ''} ${!isPending && rollAnimation.fallCount ? 'fall-roll' : ''}`}>
-      {!isPending && rollAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${rollAnimation.timingZone}`}>{rollAnimation.timingZone === 'perfect' ? 'Perfect!' : rollAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
-      {!isPending && rollAnimation.result && <span className="roll-label">{rollAnimation.fallCount ? '낙!' : rollAnimation.result.name}</span>}
+    <div className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${!isPending && rollAnimation.fallCount ? 'fall-roll' : ''}`}>
+      {rollAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${rollAnimation.timingZone}`}>{rollAnimation.timingZone === 'perfect' ? 'Perfect!' : rollAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
+      {!isPending && result && <span className="roll-label">{rollAnimation.fallCount ? '낙!' : result.name}</span>}
       {rollAnimation.sticks.map((stick, index) => {
         const flatMarkCount = isPending ? 0 : stick.flat && stick.marked ? 1 : 0;
         const roundMarkCount = isPending ? 0 : stick.flat ? 0 : 3;

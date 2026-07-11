@@ -284,7 +284,7 @@ export function App() {
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
   const currentRollRef = useRef<YutResult | null>(null);
   const rollAnimationTimerRef = useRef<number | null>(null);
-  const pendingRollAnimationRef = useRef<{ actionKey: string; animationId: number; startedAt: number; resolveTimer: number | null } | null>(null);
+  const pendingRollAnimationRef = useRef<{ actionKey: string; animationId: number; startedAt: number; resolveTimer: number | null; timingZone?: RollTimingZone } | null>(null);
   const pendingItemPickupResolverRef = useRef<(() => void) | null>(null);
   const pendingItemPickupRef = useRef<PendingItemPickup | null>(null);
   const shouldAdvanceTurnAfterItemPromptRef = useRef(false);
@@ -1409,15 +1409,15 @@ export function App() {
     pendingRollAnimationRef.current = null;
   }
 
-  function startPendingRollAnimation(actionKey: string) {
+  function startPendingRollAnimation(actionKey: string, timingZone?: RollTimingZone) {
     if (rollAnimationTimerRef.current !== null) {
       window.clearTimeout(rollAnimationTimerRef.current);
       rollAnimationTimerRef.current = null;
     }
     clearPendingRollAnimation();
     const animationId = Date.now();
-    pendingRollAnimationRef.current = { actionKey, animationId, startedAt: animationId, resolveTimer: null };
-    setRollAnimation({ id: animationId, phase: 'pending', actionKey, sticks: [{ flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }] });
+    pendingRollAnimationRef.current = { actionKey, animationId, startedAt: animationId, resolveTimer: null, timingZone };
+    setRollAnimation({ id: animationId, phase: 'pending', actionKey, timingZone, sticks: [{ flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }] });
   }
 
   function playResolvedRollAnimationAfterPending(result: YutResult, sticks: YutStick[], key: string, actionKey: string, fallCount = 0, timingZone?: RollTimingZone | null) {
@@ -3557,7 +3557,7 @@ export function App() {
       rollInProgressRef.current = true;
       rollInProgressStartedAtRef.current = Date.now();
       setRollInProgress(true);
-      startPendingRollAnimation(actionKey);
+      startPendingRollAnimation(actionKey, rollTimingZone);
       playSfx('roll');
 
       const finishPendingRoll = () => undefined;
