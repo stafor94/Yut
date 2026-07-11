@@ -131,7 +131,7 @@ const CREATE_ROOM_RECOVERY_TIMEOUT_MS = 5000;
 const STEP_DELAY_MS = 240;
 const START_REQUEST_TIMEOUT_MS = 1500;
 
-const getQaDelayMs = (key: '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__' | '__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__') => {
+const getQaDelayMs = (key: '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__' | '__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__' | '__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__') => {
   if (typeof window === 'undefined') return 0;
   const value = Number((window as typeof window & Record<typeof key, unknown>)[key] ?? 0);
   return Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -139,6 +139,7 @@ const getQaDelayMs = (key: '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__' | '__YU
 
 const getQaRequestRoomGameStartDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__');
 const getQaInitializeGameStateDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__');
+const getQaRollYutActionDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__');
 
 const getSequenceRefetchAfter = (sequence: number) => Math.max(0, sequence - 2);
 
@@ -737,6 +738,7 @@ export function App() {
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedMoveSteps > 0 && activeMovablePiece?.started && BRANCH_NODE_IDS.includes(activeMovablePiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const roomInGame = startStatus === 'entering' || startStatus === 'playing';
   const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > Date.now();
+  const startCountdownEffectActive = startStatus === 'requested' && startCountdownEndsAt > 0 && (startCountdownEndsAt > Date.now() || countdown >= 0);
   const startFlowBusy = startRequestPending || startCountdownActive || initialGameEntryPending || roomInGame;
   const startCancelDisabled = startCountdownEndsAt > 0 && startCountdownEndsAt - Date.now() <= START_CANCEL_LOCK_MS;
   const optimisticEnteredSeatId = screen === 'game' && localSeatId && !isSpectator ? localSeatId : '';
@@ -2414,7 +2416,7 @@ export function App() {
   }, [activeRoomId, activeSeat, canRequestMove, isMyTurn, movingPieceId, pendingItemPickup, pieces, turnSeats.length, roll, winner, rollResultHolding, pendingTrapPlacement]);
 
   useEffect(() => {
-    if (!startCountdownActive) {
+    if (!startCountdownEffectActive) {
       if (countdown >= 0 && startStatus !== 'requested') setCountdown(-1);
       return undefined;
     }
@@ -2440,7 +2442,7 @@ export function App() {
     updateCountdown();
     const timer = window.setInterval(updateCountdown, 250);
     return () => window.clearInterval(timer);
-  }, [isInitialGameCoordinator, startCountdownActive, startCountdownEndsAt, startCountdownStartsAt, startRequestId, startRequestVersion, startStatus]);
+  }, [isInitialGameCoordinator, startCountdownEffectActive, startCountdownEndsAt, startCountdownStartsAt, startRequestId, startRequestVersion, startStatus]);
 
   useEffect(() => {
     if (!activeRoomId || !currentUserId || screen !== 'game' || !startRequestVersion) return;
@@ -3766,8 +3768,7 @@ export function App() {
       playSfx('roll');
 
       const finishPendingRoll = () => undefined;
-
-      enqueueAuthoritativeGameAction(
+      const commitRollAction = () => enqueueAuthoritativeGameAction(
         activeRoomId,
         action,
         async (result) => {
@@ -3812,6 +3813,9 @@ export function App() {
         },
         finishPendingRoll,
       );
+      const qaRollYutActionDelayMs = getQaRollYutActionDelayMs();
+      if (qaRollYutActionDelayMs > 0) window.setTimeout(commitRollAction, qaRollYutActionDelayMs);
+      else commitRollAction();
       return;
     }
     if (fallOccurred) {

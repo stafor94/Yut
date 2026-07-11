@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomPlayersForQa, getRoomSeatsForQa, getRoomSequencesForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
+import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomPlayersForQa, getRoomSeatsForQa, getRoomSequencesForQa, getRoomStateForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 test.describe('game flow QA', () => {
   let roomId;
@@ -62,16 +62,30 @@ test.describe('game flow QA', () => {
       await expect(page.getByTestId('app-shell')).toHaveClass(/countdown-active/, { timeout: 5_000 });
       await expect.poll(async () => {
         const state = await collectScreenState(page);
+        return {
+          overlayVisible: await page.getByTestId('start-countdown-overlay').isVisible().catch(() => false),
+          initialEntryPending: Boolean(state.yutDebug?.initialGameEntryPending),
+        };
+      }, { timeout: 2_000, message: '카운트다운 표시 중에는 아직 초기 게임 진입 pending을 켜지 않아야 합니다.' }).toEqual({
+        overlayVisible: true,
+        initialEntryPending: false,
+      });
+      await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 5_000 });
+      await expect.poll(async () => {
+        const state = await collectScreenState(page);
+        const roomState = await getRoomStateForQa(roomId);
         const sequences = await getRoomSequencesForQa(roomId);
         return {
           waitingVisible: state.visibleScreens.waitingRoom,
           gameVisible: state.visibleScreens.game,
+          hasCurrentState: Boolean(roomState),
           initializedSequenceCount: sequences.filter((sequence) => sequence.type === 'game_initialized').length,
           initialEntryPending: Boolean(state.yutDebug?.initialGameEntryPending),
         };
-      }, { timeout: 2_000, message: '초기 state/current 생성 전에는 대기실을 유지해야 합니다.' }).toEqual({
+      }, { timeout: 2_500, message: '카운트다운 종료 후 초기화 지연 중에는 pending만 켜고 대기실/state 없음 상태를 유지해야 합니다.' }).toEqual({
         waitingVisible: true,
         gameVisible: false,
+        hasCurrentState: false,
         initializedSequenceCount: 0,
         initialEntryPending: true,
       });
