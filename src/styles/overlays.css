@@ -241,7 +241,7 @@
 }
 
 .roll-stage.resolved-from-pending {
-  animation: resolved-from-pending-stage-hold 5s ease both;
+  animation: resolved-from-pending-stage-hold 4.2s ease both;
 }
 
 .roll-stage.pending-roll .roll-aura {
@@ -367,7 +367,7 @@
 }
 
 .resolved-from-pending .roll-mat {
-  animation: resolved-from-pending-mat-hold 5s ease both;
+  animation: resolved-from-pending-mat-hold 4.2s ease both;
 }
 
 .resolved-from-pending .yut-stick {
@@ -385,7 +385,7 @@
 .resolved-from-pending .roll-label,
 .resolved-from-pending .roll-stage-timing {
   opacity: 0;
-  animation: resolved-from-pending-result-hold 5s ease both;
+  animation: resolved-from-pending-result-hold 4.2s ease both;
 }
 
 .resolved-from-pending .roll-impact-burst span {
@@ -393,6 +393,15 @@
 }
 
 .roll-stage-timing {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  translate: -50% 0;
+  transform: none;
+  grid-column: auto;
+  justify-self: auto;
+  width: max-content;
+  text-align: center;
   z-index: 4;
 }
 
