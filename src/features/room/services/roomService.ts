@@ -121,6 +121,7 @@ export async function leaveDuplicatePlayerRooms(playerId: string, keepRoomId = '
   const sortedMemberships = [...memberships].sort((left, right) => right.joinedAt - left.joinedAt);
   const selectedKeepRoomId = keepRoomId || sortedMemberships[0]?.room.id || '';
   const roomsToLeave = memberships.filter((membership) => membership.room.id !== selectedKeepRoomId);
+  if (!roomsToLeave.length) return [];
   await Promise.all(roomsToLeave.map(async ({ room }) => {
     await removeRoomPlayer(room.id, playerId);
   }));
