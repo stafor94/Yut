@@ -1,8 +1,6 @@
 name: Validate Serialized QA
 
 on:
-  push:
-    branches: [agent/serialize-main-qa-firebase]
   pull_request:
     branches: [main]
 
@@ -10,12 +8,51 @@ permissions:
   contents: read
 
 concurrency:
-  group: validate-serialized-qa-${{ github.ref_name || github.ref }}
+  group: validate-serialized-qa-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  build-and-unit:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Prepare Firebase environment
+        run: node .github/scripts/write-firebase-env.mjs
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+      - name: Build app
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build.log
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          npm run test:unit 2>&1 | tee unit.log
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: serialized-qa-build
+          path: |
+            dist
+            build.log
+            unit.log
+          retention-days: 2
+
   validate:
-    name: Build, unit and serialized Firebase QA
+    name: Serialized Firebase QA
+    needs: build-and-unit
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
@@ -35,16 +72,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Prepare Firebase environment
-        run: node .github/scripts/write-firebase-env.mjs
-      - name: Build app
-        run: |
-          set -o pipefail
-          npm run build 2>&1 | tee build.log
-      - name: Unit tests
-        run: |
-          set -o pipefail
-          npm run test:unit 2>&1 | tee unit.log
+      - uses: actions/download-artifact@v4
+        with:
+          name: serialized-qa-build
       - name: Cleanup before QA
         run: |
           set -o pipefail
@@ -86,8 +116,6 @@ jobs:
         with:
           name: serialized-qa-validation
           path: |
-            build.log
-            unit.log
             playwright-*.log
             qa-*.log
             console-log.txt
