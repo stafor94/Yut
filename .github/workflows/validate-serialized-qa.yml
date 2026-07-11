@@ -1,0 +1,107 @@
+name: Validate Serialized QA
+
+on:
+  push:
+    branches: [agent/serialize-main-qa-firebase]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-serialized-qa-${{ github.ref_name || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build, unit and serialized Firebase QA
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --user 1001
+    env:
+      FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+      VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+      VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+      VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+      VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+      VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+      VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Prepare Firebase environment
+        run: node .github/scripts/write-firebase-env.mjs
+      - name: Build app
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build.log
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          npm run test:unit 2>&1 | tee unit.log
+      - name: Cleanup before QA
+        run: |
+          set -o pipefail
+          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-before.log
+      - id: basic
+        name: QA basic flow
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:qa-basic-flow 2>&1 | tee playwright-qa-basic-flow.log
+      - id: online
+        name: QA online turn recovery
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:qa-online-turn-recovery 2>&1 | tee playwright-qa-online-turn-recovery.log
+      - id: layout
+        name: QA cleanup and layout regression
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:qa-cleanup-layout-regression 2>&1 | tee playwright-qa-cleanup-layout-regression.log
+      - id: stacked
+        name: QA stacked roll backdo AI
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:qa-stacked-roll-backdo-ai 2>&1 | tee qa-stacked-roll-backdo-ai.log
+      - name: Cleanup after QA
+        if: always()
+        env:
+          QA_CLEANUP_REPORT_REMAINING: '1'
+        run: |
+          set -o pipefail
+          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-after.log
+      - name: Upload validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: serialized-qa-validation
+          path: |
+            build.log
+            unit.log
+            playwright-*.log
+            qa-*.log
+            console-log.txt
+            test-results
+          if-no-files-found: ignore
+          retention-days: 2
+      - name: Require every QA suite to pass
+        if: always()
+        env:
+          BASIC_OUTCOME: ${{ steps.basic.outcome }}
+          ONLINE_OUTCOME: ${{ steps.online.outcome }}
+          LAYOUT_OUTCOME: ${{ steps.layout.outcome }}
+          STACKED_OUTCOME: ${{ steps.stacked.outcome }}
+        run: |
+          printf 'basic=%s\nonline=%s\nlayout=%s\nstacked=%s\n' "$BASIC_OUTCOME" "$ONLINE_OUTCOME" "$LAYOUT_OUTCOME" "$STACKED_OUTCOME"
+          test "$BASIC_OUTCOME" = success
+          test "$ONLINE_OUTCOME" = success
+          test "$LAYOUT_OUTCOME" = success
+          test "$STACKED_OUTCOME" = success
