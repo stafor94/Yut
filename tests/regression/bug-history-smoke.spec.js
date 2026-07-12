@@ -47,32 +47,52 @@ test.describe('BUG_HISTORY regression smoke', () => {
       window.__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__ = 3500;
     });
 
-    const clickSequenceRollAtPerfect = () => page.evaluate(() => new Promise((resolve, reject) => {
-      const startedAt = performance.now();
-      const sample = () => {
-        const meter = document.querySelector('.roll-timing-meter');
-        const orb = document.querySelector('.roll-timing-orb');
-        const button = document.querySelector('[data-testid=\"roll-yut-button\"]');
-        if (meter && orb && button instanceof HTMLButtonElement && !button.disabled) {
-          const meterRect = meter.getBoundingClientRect();
-          const orbRect = orb.getBoundingClientRect();
-          const positionPercent = meterRect.width > 0
-            ? ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100
-            : -1;
-          if (positionPercent >= 47 && positionPercent <= 53) {
+    const clickSequenceRollAtPerfect = async () => {
+      const deadline = Date.now() + 8_000;
+      while (Date.now() < deadline) {
+        try {
+          const result = await page.evaluate(() => {
+            const meter = document.querySelector('.roll-timing-meter');
+            const orb = document.querySelector('.roll-timing-orb');
+            const button = document.querySelector('[data-testid="roll-yut-button"]');
+            if (!meter || !orb || !(button instanceof HTMLButtonElement) || button.disabled) return { clicked: false, positionPercent: -1 };
+            const meterRect = meter.getBoundingClientRect();
+            const orbRect = orb.getBoundingClientRect();
+            const positionPercent = meterRect.width > 0
+              ? ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100
+              : -1;
+            if (positionPercent < 47 || positionPercent > 53) return { clicked: false, positionPercent };
+
+            window.__YUT_QA_RESULT_HOLD_OBSERVER__?.disconnect();
+            const timing = { startedAt: 0, endedAt: 0 };
+            window.__YUT_QA_RESULT_HOLD_TIMING__ = timing;
+            let observer;
+            const sample = () => {
+              const visible = Boolean(document.querySelector('.roll-stage.resolved-from-pending.result-hold-roll'));
+              const now = performance.now();
+              if (visible && timing.startedAt === 0) timing.startedAt = now;
+              if (!visible && timing.startedAt > 0 && timing.endedAt === 0) {
+                timing.endedAt = now;
+                observer?.disconnect();
+              }
+            };
+            observer = new MutationObserver(sample);
+            window.__YUT_QA_RESULT_HOLD_OBSERVER__ = observer;
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+            sample();
             button.click();
-            resolve(positionPercent);
-            return;
-          }
+            return { clicked: true, positionPercent };
+          });
+          if (result.clicked) return result.positionPercent;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (!/Execution context was destroyed|Cannot find context|Target page, context or browser has been closed/u.test(message)) throw error;
+          await page.waitForLoadState('domcontentloaded').catch(() => undefined);
         }
-        if (performance.now() - startedAt > 8_000) {
-          reject(new Error('8초 동안 Perfect 구간에서 윷 던지기 버튼을 클릭하지 못했습니다.'));
-          return;
-        }
-        requestAnimationFrame(sample);
-      };
-      sample();
-    }));
+        await page.waitForTimeout(16);
+      }
+      throw new Error('8초 동안 Perfect 구간에서 윷 던지기 버튼을 클릭하지 못했습니다.');
+    };
 
     await runQaStep(testInfo, 'AI 게임 시작', async () => {
       await expectAppShell(page);
@@ -95,25 +115,6 @@ test.describe('BUG_HISTORY regression smoke', () => {
         return JSON.stringify(state, null, 2);
       }, { timeout: 45_000, message: '온라인 sequence replay를 확인할 수 있는 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
 
-      await page.evaluate(() => {
-        window.__YUT_QA_RESULT_HOLD_OBSERVER__?.disconnect();
-        const timing = { startedAt: 0, endedAt: 0 };
-        window.__YUT_QA_RESULT_HOLD_TIMING__ = timing;
-        let observer;
-        const sample = () => {
-          const visible = Boolean(document.querySelector('.roll-stage.resolved-from-pending.result-hold-roll'));
-          const now = performance.now();
-          if (visible && timing.startedAt === 0) timing.startedAt = now;
-          if (!visible && timing.startedAt > 0 && timing.endedAt === 0) {
-            timing.endedAt = now;
-            observer?.disconnect();
-          }
-        };
-        observer = new MutationObserver(sample);
-        window.__YUT_QA_RESULT_HOLD_OBSERVER__ = observer;
-        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-        sample();
-      });
       await clickSequenceRollAtPerfect();
       await expect(page.locator('.roll-stage.pending-roll'), `클릭 직후 서버 확정 전 pending 윷 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 500 });
       await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), '클릭 후 500ms 이내 pending 단계에서는 클라이언트에서 확정한 타이밍 등급만 즉시 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 500 });
@@ -300,7 +301,6 @@ test.describe('BUG_HISTORY regression smoke', () => {
     const startAiMoveObservation = () => page.evaluate(() => {
       if (window.__YUT_QA_AI_MOVE_OBSERVER__) window.clearInterval(window.__YUT_QA_AI_MOVE_OBSERVER__);
       window.__YUT_QA_AI_MOVE_OBSERVATIONS__ = {};
-      window.__YUT_QA_LOCAL_MOVE_SEEN__ = false;
       window.__YUT_QA_AI_MOVE_OBSERVER__ = window.setInterval(() => {
         const debug = window.__YUT_DEBUG_STATE__ ?? {};
         const pieces = Array.isArray(debug.pieces) ? debug.pieces : [];
@@ -319,10 +319,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
           const testId = node.getAttribute('data-testid') ?? '';
           const pieceId = testId.replace(/^piece-/, '');
           const debugPiece = pieces.find((piece) => piece && typeof piece === 'object' && piece.id === pieceId) ?? {};
-          if (localSeatId && debugPiece.ownerId === localSeatId) {
-            window.__YUT_QA_LOCAL_MOVE_SEEN__ = true;
-            continue;
-          }
+          if (localSeatId && debugPiece.ownerId === localSeatId) continue;
           const rect = node.getBoundingClientRect();
           const position = `${testId}:${Math.round(rect.left)},${Math.round(rect.top)}`;
           if (!observed.includes(position)) observed.push(position);
@@ -369,7 +366,27 @@ test.describe('BUG_HISTORY regression smoke', () => {
       const sample = () => {
         const moveButton = document.querySelector('[data-testid="move-piece-button"]');
         if (moveButton instanceof HTMLButtonElement && !moveButton.disabled) {
+          window.__YUT_QA_LOCAL_MOVE_OBSERVER__?.disconnect();
+          if (window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__) window.clearTimeout(window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__);
+          window.__YUT_QA_LOCAL_MOVE_SEEN__ = false;
+          const selectedTestIds = new Set(Array.from(document.querySelectorAll('[data-testid^="piece-"].selected'))
+            .map((node) => node.getAttribute('data-testid') ?? '')
+            .filter(Boolean));
+          const scan = () => {
+            const movingSelectedPiece = Array.from(document.querySelectorAll('[data-testid^="piece-"].moving'))
+              .some((node) => selectedTestIds.has(node.getAttribute('data-testid') ?? ''));
+            if (!movingSelectedPiece) return;
+            window.__YUT_QA_LOCAL_MOVE_SEEN__ = true;
+            window.__YUT_QA_LOCAL_MOVE_OBSERVER__?.disconnect();
+          };
+          const observer = new MutationObserver(scan);
+          window.__YUT_QA_LOCAL_MOVE_OBSERVER__ = observer;
+          observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+          window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__ = window.setTimeout(() => observer.disconnect(), 3_000);
           moveButton.click();
+          scan();
+          queueMicrotask(scan);
+          requestAnimationFrame(scan);
           resolve('move-clicked');
           return;
         }
