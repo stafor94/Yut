@@ -614,14 +614,11 @@ export function App() {
   const hasAuthoritativeSequence = lastAppliedSequenceRef.current > 0 || lastAppliedStateVersionRef.current > 0;
   const onlineAuthoritativeGameStatePending = Boolean(activeRoomId && screen === 'game' && !authoritativeGameStateReady && !hasAuthoritativeSequence);
   const hasPendingGameStateSave = Boolean(activeRoomId && screen === 'game' && (onlineAuthoritativeGameStatePending || (canCoordinateOnlineGame && coordinatorStateSaveKey)));
-  const shouldWaitForAuthoritativeTurnSync = Boolean(activeRoomId && screen === 'game' && pendingLocalRemoteActionCount > 0 && !isMyTurn);
-  const effectivePendingLocalRemoteActionCount = shouldWaitForAuthoritativeTurnSync ? pendingLocalRemoteActionCount : 0;
+  const pendingBlockingRemoteActionCount = Array.from(pendingLocalRemoteActionMetaRef.current.values())
+    .filter((meta) => !(meta.type === 'use_item' && meta.optimisticApplied)).length;
+  const shouldWaitForAuthoritativeTurnSync = Boolean(activeRoomId && screen === 'game' && pendingBlockingRemoteActionCount > 0 && !isMyTurn);
+  const effectivePendingLocalRemoteActionCount = shouldWaitForAuthoritativeTurnSync ? pendingBlockingRemoteActionCount : 0;
   const activeItemPromptTypes = itemPromptTiming && !trapPlacementActive ? getUsableHostItems(itemPromptTiming) : [];
-  const pendingItemPromptChoiceLabel = pendingItemPromptChoice
-    ? pendingItemPromptChoice.itemType
-      ? `${ITEM_DEFINITIONS[pendingItemPromptChoice.itemType].name} 처리 중...`
-      : '사용 안 함 처리 중...'
-    : '';
   const hasPendingUseItemActionFor = (actorId = localSeatId) => Array.from(pendingLocalRemoteActionMetaRef.current.values()).some((meta) => meta.type === 'use_item' && meta.actorId === actorId && meta.createdTurnIndex === turnIndex);
   const turnActionGuardInput = {
     activeSeatId: activeSeat?.id,
@@ -641,7 +638,7 @@ export function App() {
   };
   const rollActionGuardInput = {
     ...turnActionGuardInput,
-    pendingLocalRemoteActionCount: activeRoomId ? pendingLocalRemoteActionCount : effectivePendingLocalRemoteActionCount,
+    pendingLocalRemoteActionCount: activeRoomId ? pendingBlockingRemoteActionCount : effectivePendingLocalRemoteActionCount,
     roll: stackedRollMode && rollStack.length > 0 && !rollStackClosed ? null : roll,
     rollLocked: isRollLocked,
     remoteActionClient: false,
@@ -669,7 +666,7 @@ export function App() {
   const noMovableBackDoRoll = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && selectedMoveSteps < 0
     && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
   const hasPendingCurrentTurnAction = (type: GameAction['type'], actorId = activeSeat?.id ?? '') => Array.from(pendingLocalRemoteActionMetaRef.current.values()).some((meta) => meta.type === type && meta.actorId === actorId && meta.createdTurnIndex === turnIndex);
-  const hasPendingOnlineMoveRequest = Boolean(activeRoomId && pendingLocalRemoteActionCount > 0);
+  const hasPendingOnlineMoveRequest = Boolean(activeRoomId && pendingBlockingRemoteActionCount > 0);
   const canRequestMove = Boolean(canSubmitTurnAction && !hasPendingOnlineMoveRequest && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && (canMoveSelectedPiece || noMovableBackDoRoll));
   const previewNodeIds = useMemo(() => canRequestMove && canSeatControlPiece(activeSeat, selectedPiece) ? getMovePreviewNodeIds(selectedPiece, roll, displayBranchChoice) : [], [activeSeat, canRequestMove, displayBranchChoice, roll, selectedPiece]);
   const canUseMoveButton = canRequestMove;
@@ -1944,28 +1941,6 @@ export function App() {
     if (stateAfter) applySyncedStateSnapshot(stateAfter, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
   }
 
-  async function replayRerollItemSequence(sequence: GameSequence) {
-    const stateAfter = applySequenceEvent({ ...currentSequenceStateRef.current, lastSequence: Number(sequence.sequence ?? 1) - 1 }, sequence) as SequenceStateSnapshot | null | undefined;
-    const payload = sequence.payload ?? {};
-    const replacementRoll = payload.replacementRoll as YutResult | null | undefined;
-    const clientMutationId = typeof sequence.clientMutationId === 'string' ? sequence.clientMutationId : '';
-    const isCurrentPendingRoll = Boolean(clientMutationId && pendingRollAnimationRef.current?.actionKey === clientMutationId);
-    if (replacementRoll) {
-      const readyAt = normalizeRollResultReadyAt(Number(stateAfter?.rollResultReadyAt ?? 0));
-      const animationKey = `sequence-reroll:${Number(sequence.sequence ?? 0)}:${clientMutationId}:${replacementRoll.name}:${replacementRoll.steps}:${readyAt}`;
-      if (isCurrentPendingRoll) {
-        playResolvedRollAnimationAfterPending(replacementRoll, makeDisplaySticks(replacementRoll), animationKey, clientMutationId, 0, (stateAfter?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
-        rollInProgressRef.current = false;
-        rollInProgressStartedAtRef.current = 0;
-        setRollInProgress(false);
-      } else {
-        playRollAnimationOnce(replacementRoll, makeDisplaySticks(replacementRoll), animationKey, false, 0, (stateAfter?.lastRollTimingZone as RollTimingZone | null | undefined) ?? undefined);
-        playSyncedRollSoundOnce(replacementRoll, animationKey, clientMutationId);
-      }
-    }
-    if (stateAfter) applySyncedStateSnapshot(stateAfter, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
-  }
-
   async function replayMissingSequencesThenApply(finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) {
     const replayStartSequence = localSequence;
     const replayTargetSequence = remoteSequence;
@@ -1988,8 +1963,7 @@ export function App() {
       for (const sequence of sequences) {
         const sequenceNumber = Number(sequence.sequence ?? 0);
         if (!sequenceNumber || sequenceNumber <= lastAppliedSequenceRef.current) continue;
-        if (sequence.type === 'item_used' && sequence.payload?.itemType === 'reroll') await replayRerollItemSequence(sequence);
-        else if (sequence.type === 'roll_yut') await replayRollSequence(sequence);
+        if (sequence.type === 'roll_yut') await replayRollSequence(sequence);
         else if (sequence.type === 'move_piece_resolved') await replayMoveSequence(sequence);
         else {
           const nextState = applySequenceEvent({ ...currentSequenceStateRef.current, lastSequence: sequenceNumber - 1 }, sequence);
@@ -4908,7 +4882,7 @@ export function App() {
     if (!activeItems.includes(type)) return;
     const itemActionPayload = { itemType: type, pieceId: selectedPieceId, branchChoice };
     const clientMutationId = getLocalActionKey('use_item', itemActionPayload);
-    const submitItemActionIfRemote = () => undefined;
+    let submitItemActionIfRemote = () => undefined;
     const isAfterMoveItem = ITEM_DEFINITIONS[type].timing === 'after_move';
     if (isAfterMoveItem && lastMovedSeatId !== itemOwnerId) return;
     if (activeRoomId && actorId === localSeatId) {
@@ -4916,46 +4890,40 @@ export function App() {
       const promptTiming = ITEM_DEFINITIONS[type].timing;
       const payload = { ...itemActionPayload, pieceId: (type === 'trap' || type === 'shield') ? (lastMovedPieceIds[0] ?? selectedPieceId) : selectedPieceId, rollStackIndex: selectedRollStackIndex };
       const action = { type: 'use_item' as const, actorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, itemOwnerSeat) };
-      if (type === 'reroll') startPendingRollAnimation(clientMutationId);
-      setPendingItemPromptChoice({ actionKey: clientMutationId, timing: promptTiming, itemType: type });
-      addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
-      void commitQueuedAuthoritativeGameAction(activeRoomId, action)
-        .then(async (result) => {
-          const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
-          if (result.status === 'committed' || result.status === 'duplicate') acknowledgePendingLocalRemoteAction(clientMutationId);
-          if (result.status === 'rejected' || result.status === 'unsupported') {
-            setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
-            if (type === 'reroll') clearPendingRollAnimation(clientMutationId);
-            removeSettledPendingLocalRemoteAction(clientMutationId);
-            await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 사용을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
-            return;
-          }
-          if (applied && type === 'golden_yut') {
-            setGoldenYutPickerOpen(true);
-            addLog('황금 윷을 사용했습니다. 다음 윷 결과를 선택하세요.');
-          }
-        })
-        .catch((error) => {
-          recordRemoteActionDiagnostic('roll_yut', 'use-item-error', error instanceof Error ? error.message : '아이템 사용 처리에 실패했습니다.', { actionKey: clientMutationId });
-          void applyProcessedAuthoritativeAction(clientMutationId)
-            .then((processedState) => {
-              if (processedState) {
+      submitItemActionIfRemote = () => {
+        markItemPromptResolved(promptTiming, selectedRollStackIndex);
+        setItemPromptTiming(null);
+        setPendingItemPromptChoice({ actionKey: clientMutationId, timing: promptTiming, itemType: type });
+        addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: true });
+        void commitQueuedAuthoritativeGameAction(activeRoomId, action)
+          .then(async (result) => {
+            await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
+            if (result.status === 'committed' || result.status === 'duplicate') acknowledgePendingLocalRemoteAction(clientMutationId);
+            if (result.status === 'rejected' || result.status === 'unsupported') {
+              setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
+              removeSettledPendingLocalRemoteAction(clientMutationId);
+              await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 사용을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+            }
+          })
+          .catch((error) => {
+            recordRemoteActionDiagnostic('roll_yut', 'use-item-error', error instanceof Error ? error.message : '아이템 사용 처리에 실패했습니다.', { actionKey: clientMutationId });
+            void applyProcessedAuthoritativeAction(clientMutationId)
+              .then((processedState) => {
+                if (processedState) {
+                  setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
+                  return null;
+                }
                 setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
-                return null;
-              }
-              setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
-              if (type === 'reroll') clearPendingRollAnimation(clientMutationId);
-              removeSettledPendingLocalRemoteAction(clientMutationId);
-              return syncLatestAuthoritativeState('아이템 사용 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
-            })
-            .catch(() => {
-              setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
-              if (type === 'reroll') clearPendingRollAnimation(clientMutationId);
-              removeSettledPendingLocalRemoteAction(clientMutationId);
-              void syncLatestAuthoritativeState('아이템 사용 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
-            });
-        });
-      return;
+                removeSettledPendingLocalRemoteAction(clientMutationId);
+                return syncLatestAuthoritativeState('아이템 사용 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+              })
+              .catch(() => {
+                setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
+                removeSettledPendingLocalRemoteAction(clientMutationId);
+                void syncLatestAuthoritativeState('아이템 사용 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+              });
+          });
+      };
     }
     const consumeItem = () => { clearTurnActionTimeoutPenalty(itemOwnerId); playSfx('itemUse'); setItemPromptTiming(null); setPendingTrapPlacement(null); setOwnedItems((items) => { const nextSeatItems = [...(items[itemOwnerId] ?? [])]; nextSeatItems.splice(nextSeatItems.indexOf(type), 1); return { ...items, [itemOwnerId]: nextSeatItems }; }); };
     const finishAfterMoveItem = () => { if (isAfterMoveItem) finishPendingAfterMoveTurnAdvance(); };
@@ -4973,10 +4941,18 @@ export function App() {
     }
     if (type === 'reroll') {
       if (activeSeat?.id !== itemOwnerId || !roll) return;
+      const rerollStackIndex = typeof selectedRollStackIndex === 'number' ? selectedRollStackIndex : Math.max(0, rollStack.length - 1);
       submitItemActionIfRemote();
       consumeItem();
       clearRoll();
-      window.setTimeout(() => rollYutFor(itemOwnerSeat), 450);
+      if (stackedRollMode) {
+        setRollStack((current) => current.filter((_, index) => index !== rerollStackIndex));
+        setSelectedRollStackIndex(null);
+        setRollStackClosed(false);
+      }
+      setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
+      setTurnDeadlineKind('roll');
+      addLog(`${getSeatDisplayName(itemOwnerSeat)}님이 다시 던지기 아이템을 사용했습니다. 다시 윷을 던져주세요.`);
       return;
     }
     if (type === 'move_plus_one' || type === 'move_minus_one') {
@@ -5316,7 +5292,6 @@ export function App() {
     {showStartCountdownOverlay && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" className="countdown-overlay" role="status"><span>{Date.now() < startCountdownStartsAt ? '게임 시작 준비' : '게임 시작'}</span><strong>{countdown}</strong>{canManageRoom && <button data-testid="cancel-start-button" className="secondary mini-button" disabled={startCancelDisabled} onClick={cancelStartCountdown}>취소</button>}</div></div>}
     {screen === 'game' && <GameScreenView
       activeItemPromptTypes={activeItemPromptTypes}
-      pendingItemPromptChoiceLabel={pendingItemPromptChoiceLabel}
       activeMovablePiece={activeMovablePiece}
       activeRoomTitle={activeRoomTitle}
       activeSeat={activeSeat}
@@ -5428,13 +5403,22 @@ export function App() {
           if (pendingLocalRemoteActionsRef.current.has(clientMutationId)) return;
           const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
           shouldAdvanceTurnAfterItemPromptRef.current = false;
+          markItemPromptResolved(promptTiming, promptRollStackIndex);
+          setItemPromptTiming(null);
+          if (promptTiming === 'before_roll') {
+            setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
+            setTurnDeadlineKind('roll');
+          } else if (promptTiming === 'after_roll') {
+            setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
+            setTurnDeadlineKind('move');
+          } else finishPendingAfterMoveTurnAdvance();
           setPendingItemPromptChoice({ actionKey: clientMutationId, timing: promptTiming, itemType: null });
-          addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: localSeatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
+          addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: localSeatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: true });
           void commitQueuedAuthoritativeGameAction(activeRoomId, action)
             .then(async (result) => {
-              const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
-              if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
-              if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+              await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
+              if (result.status === 'committed' || result.status === 'duplicate') acknowledgePendingLocalRemoteAction(clientMutationId);
+              if (result.status === 'rejected' || result.status === 'unsupported') {
                 setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
                 removeSettledPendingLocalRemoteAction(clientMutationId);
                 await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
@@ -5442,7 +5426,9 @@ export function App() {
             })
             .catch((error) => {
               recordRemoteActionDiagnostic('roll_yut', 'skip-item-prompt-error', error instanceof Error ? error.message : '아이템 건너뛰기 처리에 실패했습니다.', { actionKey: clientMutationId });
-              void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('아이템 건너뛰기 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }));
+              void applyProcessedAuthoritativeAction(clientMutationId)
+                .then((processedState) => processedState ? null : syncLatestAuthoritativeState('아이템 건너뛰기 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }))
+                .catch(() => { void syncLatestAuthoritativeState('아이템 건너뛰기 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }); });
             });
           return;
         }

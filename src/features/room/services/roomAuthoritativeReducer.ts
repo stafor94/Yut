@@ -42,6 +42,7 @@ type SyncedGameStateShape = {
   fallEffect?: unknown;
   lastRollTimingZone?: unknown;
   pendingGoldenYutSelection?: unknown;
+  pendingRerollStackIndex?: number | null;
 };
 type GameActionShape = { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
 export type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string; patch?: GameStatePatch; payload?: Record<string, unknown> };
@@ -189,11 +190,13 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
   if (clientFallOccurred === true && (typeof clientFallCount !== 'number' || clientFallCount < 1)) return makeActionReject('낙 결과에는 떨어진 윷 개수가 필요합니다.');
   if (clientFallOccurred === false && clientFallCount !== undefined && clientFallCount !== 0) return makeActionReject('정상 결과의 낙 개수는 0이어야 합니다.');
   const pendingGoldenYutSelection = state.pendingGoldenYutSelection as { actorId?: unknown; deadline?: unknown } | null | undefined;
+  const pendingRerollStackIndex = typeof state.pendingRerollStackIndex === 'number' ? state.pendingRerollStackIndex : null;
+  const pendingReroll = pendingRerollStackIndex !== null;
   if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll' || state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') {
     return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   }
-  if (!pendingGoldenYutSelection && !state.roll && hasUsableBeforeRollItem(state, action.actorId)) return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
-  if (room.stackedRollMode && state.rollStackClosed === true) {
+  if (!pendingGoldenYutSelection && !pendingReroll && !state.roll && hasUsableBeforeRollItem(state, action.actorId)) return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
+  if (room.stackedRollMode && state.rollStackClosed === true && !pendingReroll) {
     return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
   }
   const selectedGoldenYutResult = action.payload?.selectedGoldenYutResult;

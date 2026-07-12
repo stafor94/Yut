@@ -135,8 +135,11 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         style={getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey)}
         onClick={() => onSelectPiece(piece.id)}
         disabled={piece.finished || !pieceSelectable}
-        aria-label={`${piece.label} 말 선택`}
-      >{piece.finished ? '완' : piece.label}</button>;
+        aria-label={`${piece.label} 말 선택${shieldedPieceIds.includes(piece.id) ? ', 방패 적용됨' : ''}`}
+      >
+        {piece.finished ? '완' : piece.label}
+        {shieldedPieceIds.includes(piece.id) && !piece.finished ? <span className="piece-shield-badge" aria-label="방패 적용됨">🛡️</span> : null}
+      </button>;
     })}
   </div>;
 }
