@@ -125,7 +125,7 @@ export function GameBoardControls({
       <button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => onBranchChoiceChange('outer')}>바깥길</button>
       <button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => onBranchChoiceChange('shortcut')}>지름길</button>
       {canRequestMove && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
-      <button type="button" className="branch-move-button" onClick={onMoveSelectedPiece} disabled={!canRequestMove}>선택한 말 이동</button>
+      <button type="button" data-testid="move-piece-button" className="branch-move-button" onClick={onMoveSelectedPiece} disabled={!canRequestMove}>선택한 말 이동</button>
     </div> : <>
       {((!roll && canRollNow) || (roll && canRequestMove)) && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
       {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index)}>{entry.name}</button>)}</div></div>}
