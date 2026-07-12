@@ -1,0 +1,110 @@
+name: Validate Phase 5 QA Isolation PR
+
+on:
+  pull_request:
+    branches: [agent/lobby-room-listener-lifecycle]
+    types: [synchronize]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: validate-phase5-qa-isolation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate production build and emulator QA
+    if: github.head_ref == 'agent/isolate-qa-firebase-emulator'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      QA_RUN_ID: pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/isolate-qa-firebase-emulator
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Apply exact phase 5 patch
+        run: python scripts/apply-phase5-qa-isolation.py
+      - run: npm ci
+      - name: Production unit tests
+        run: npm run test:unit
+      - name: Production build without Firebase secrets
+        run: npm run build
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Prepare isolated QA Firebase environment
+        run: node .github/scripts/write-qa-firebase-env.mjs
+      - name: Reject production Firebase configuration
+        run: node .github/scripts/verify-qa-emulator-config.mjs
+      - name: Build QA app
+        run: npm run build:qa
+      - name: Run full QA suite inside Firebase emulators
+        run: |
+          set -o pipefail
+          npx --yes firebase-tools@latest emulators:exec \
+            --config firebase.qa.json \
+            --project "$QA_PROJECT_ID" \
+            --only auth,firestore \
+            "npm run qa:emulator-suite" 2>&1 | tee phase5-emulator-validation.log
+      - name: Verify isolation markers
+        run: |
+          grep -q "cancel-in-progress: true" .github/workflows/qa.yml
+          grep -q "qa-firebase-emulator:" .github/workflows/qa.yml
+          grep -q "QA_RUN_ID" tests/helpers/cleanup-qa-rooms.js
+          grep -q "where('qaRunId', '==', qaRunId)" tests/helpers/cleanup-qa-rooms.js
+          if grep -q "collectionGroup" tests/helpers/rooms.js; then exit 1; fi
+          if sed -n '/qa-firebase-emulator:/,/qa-stacked-roll-backdo-ai:/p' .github/workflows/qa.yml | grep -q "secrets\.FIREBASE\|vars\.FIREBASE\|VITE_FIREBASE_PROJECT_ID.*secrets"; then exit 1; fi
+          grep -q "build-and-unit:" .github/workflows/qa.yml
+          grep -q "deploy-pages:" .github/workflows/qa.yml
+      - name: Remove temporary validation files and commit
+        run: |
+          rm .github/workflows/validate-phase5-qa-isolation-pr.yml
+          rm scripts/apply-phase5-qa-isolation.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "test: isolate GitHub Actions QA with Firebase emulators"
+          git push origin HEAD:agent/isolate-qa-firebase-emulator
+      - name: Comment success
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '## Phase 5 Firebase emulator validation',
+                `- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '- Production unit tests: **success**',
+                '- Production build: **success**',
+                '- QA emulator build guard: **success**',
+                '- Auth and Firestore emulator suite: **success**',
+                '- Run-scoped cleanup with zero remaining rooms: **success**',
+                '- Production Firebase secrets in QA job: **none**',
+              ].join('\n'),
+            });
+      - name: Comment failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## Phase 5 Firebase emulator validation failed\n- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n- The validated phase 5 product commit was not pushed.`,
+            });
