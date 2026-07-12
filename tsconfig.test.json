@@ -20,6 +20,7 @@
     "src/features/room/hooks/roomListSubscription.ts",
     "src/features/room/services/roomAuthoritativeReducer.ts",
     "src/features/room/services/roomPresenceCleanupPolicy.ts",
+    "src/features/room/services/roomPresenceGeneration.ts",
     "src/game-core/board/board.ts",
     "src/game-core/gameEngine.ts",
     "src/game-core/roll.ts",
