@@ -1,0 +1,370 @@
+name: Apply Room Creation Phase 1
+
+on:
+  push:
+    branches: [agent/fix-room-creation-critical-path]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-room-creation-critical-path
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply focused room creation changes
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          app_path = Path('src/app/App.tsx')
+          app = app_path.read_text()
+
+          old_import = "deleteRoom, findActiveRoomByHost, getGameSequencesSince"
+          assert app.count(old_import) == 1, app.count(old_import)
+          app = app.replace(old_import, "deleteRoom, getGameSequencesSince")
+
+          import_anchor = "import { getStartGameBlockMessage } from './flows/gameStartFlow';\n"
+          helper_import = "import { RoomCreationTimeoutError, createRoomRequestIdentity, isMatchingCreatedRoom, withOperationTimeout } from './flows/roomCreationFlow';\n"
+          assert app.count(import_anchor) == 1
+          app = app.replace(import_anchor, import_anchor + helper_import)
+
+          constants_old = "const CREATE_ROOM_TIMEOUT_MS = 12000;\nconst CREATE_ROOM_CLEANUP_TIMEOUT_MS = 5000;\nconst CREATE_ROOM_RECOVERY_TIMEOUT_MS = 5000;"
+          constants_new = "const CREATE_ROOM_AUTH_TIMEOUT_MS = 12000;\nconst CREATE_ROOM_COMMIT_TIMEOUT_MS = 12000;\nconst CREATE_ROOM_RECOVERY_TIMEOUT_MS = 5000;"
+          assert app.count(constants_old) == 1
+          app = app.replace(constants_old, constants_new)
+
+          state_anchor = "  const [isCreatingRoom, setIsCreatingRoom] = useState(false);\n"
+          state_new = state_anchor + "  const pendingRoomCreationRef = useRef<{ roomId: string; createRequestId: string; title: string } | null>(null);\n"
+          assert app.count(state_anchor) == 1
+          app = app.replace(state_anchor, state_new)
+
+          cleanup_start = app.index("  async function waitForRoomCreationCleanup(")
+          cleanup_end = app.index("  async function leavePreviousOnlineRoom", cleanup_start)
+          app = app[:cleanup_start] + app[cleanup_end:]
+
+          finally_old = """    } finally {
+      if (activeRoomIdRef.current === previousRoomId) setActiveRoomId('');
+      window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+      window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+    }
+"""
+          finally_new = """    } finally {
+      const activeRoomIsPrevious = !activeRoomIdRef.current || activeRoomIdRef.current === previousRoomId;
+      if (activeRoomIdRef.current === previousRoomId) setActiveRoomId('');
+      if (window.localStorage.getItem(STORAGE_KEYS.activeRoomId) === previousRoomId) window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+      if (activeRoomIsPrevious) window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+    }
+"""
+          assert app.count(finally_old) == 1, app.count(finally_old)
+          app = app.replace(finally_old, finally_new)
+
+          creation_start = app.index("  async function findCreatedRoomWithTimeout(")
+          creation_end = app.index("  async function openWaitingRoom", creation_start)
+          creation_new = """  async function findCreatedRoomWithTimeout(request: { roomId: string; createRequestId: string }, hostId: string) {
+    try {
+      const room = await withOperationTimeout(getRoom(request.roomId), CREATE_ROOM_RECOVERY_TIMEOUT_MS, 'recover');
+      return isMatchingCreatedRoom(room, { ...request, hostId }) ? room : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function handleCreateRoom() {
+    const normalizedTitle = title.trim();
+    if (!nickname.trim()) { setMessage('닉네임을 먼저 정해주세요.'); return; }
+    if (isCreatingRoom) return;
+    setIsCreatingRoom(true);
+    setMessage('');
+    setLoadingMessage(isFirebaseConfigured && !currentUser ? '입장 준비를 마친 뒤 방을 만드는 중입니다...' : '방을 만드는 중입니다. 잠시만 기다려주세요...');
+    let roomHost = userRef.current ?? currentUser;
+    const existingRequest = pendingRoomCreationRef.current;
+    const request = existingRequest?.title === normalizedTitle
+      ? existingRequest
+      : { ...createRoomRequestIdentity(typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`), title: normalizedTitle };
+    pendingRoomCreationRef.current = request;
+    try {
+      const roomMaxPlayers = normalizeMaxPlayers(maxPlayers, playMode);
+      if (roomMaxPlayers !== maxPlayers) setMaxPlayers(roomMaxPlayers);
+      if (!isFirebaseConfigured) {
+        pendingRoomCreationRef.current = null;
+        setLoadingMessage('');
+        setMessage('Firebase 연결 정보가 없어 온라인 방을 만들 수 없습니다.');
+        return;
+      }
+      roomHost = roomHost ?? await withOperationTimeout(signInAsGuest(), CREATE_ROOM_AUTH_TIMEOUT_MS, 'auth');
+      if (!roomHost) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
+      rememberUser(roomHost);
+      const roomId = await withOperationTimeout(createRoom({
+        title: normalizedTitle,
+        hostId: roomHost.uid,
+        nickname,
+        maxPlayers: roomMaxPlayers,
+        itemMode,
+        stackedRollMode,
+        playMode,
+        pieceCount,
+        roomId: request.roomId,
+        createRequestId: request.createRequestId,
+      }), CREATE_ROOM_COMMIT_TIMEOUT_MS, 'create');
+      pendingRoomCreationRef.current = null;
+      await openWaitingRoom({ id: roomId, title: normalizedTitle, itemMode, stackedRollMode, maxPlayers: roomMaxPlayers, playMode, pieceCount }, '', true, roomHost);
+    } catch (error) {
+      if (isFirebaseConfigured && roomHost && error instanceof RoomCreationTimeoutError && error.operation === 'create') {
+        setLoadingMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
+        const recoveredRoom = await findCreatedRoomWithTimeout(request, roomHost.uid);
+        if (recoveredRoom) {
+          pendingRoomCreationRef.current = null;
+          await openWaitingRoom(recoveredRoom, '방 생성은 완료되어 대기실로 이동했습니다.', true, roomHost);
+        } else {
+          setLoadingMessage('');
+          showRoomCreationFailure('방 만들기 응답이 지연되고 있습니다. 같은 요청으로 다시 확인할 수 있으니 잠시 뒤 방 만들기를 다시 눌러주세요.');
+        }
+      } else {
+        pendingRoomCreationRef.current = null;
+        setLoadingMessage('');
+        const messageText = error instanceof RoomCreationTimeoutError && error.operation === 'auth'
+          ? '입장 준비 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.'
+          : error instanceof Error ? error.message : '방 생성에 실패했습니다. 잠시 뒤 다시 시도해주세요.';
+        showRoomCreationFailure(messageText);
+      }
+    } finally {
+      setIsCreatingRoom(false);
+    }
+  }
+
+"""
+          app = app[:creation_start] + creation_new + app[creation_end:]
+
+          cleanup_call_old = "      await leavePreviousOnlineRoom(room.id ?? '');\n      const joinResult ="
+          cleanup_call_new = "      const previousRoomCleanup = leavePreviousOnlineRoom(room.id ?? '');\n      if (asHost) void previousRoomCleanup;\n      else await previousRoomCleanup;\n      const joinResult ="
+          assert app.count(cleanup_call_old) == 1
+          app = app.replace(cleanup_call_old, cleanup_call_new)
+
+          post_open_anchor = "      setMessage(nextMessage);\n      if (!asHost && joiningUser && room.id) {"
+          post_open_new = """      setMessage(nextMessage);
+      if (asHost && roomUser && room.id) {
+        void leaveDuplicatePlayerRooms(roomUser.uid, room.id).catch((cleanupError) => {
+          console.warn('새 방 입장 후 중복 방 정리에 실패했습니다. 현재 방은 유지합니다.', cleanupError);
+        });
+      }
+      if (!asHost && joiningUser && room.id) {"""
+          assert app.count(post_open_anchor) == 1
+          app = app.replace(post_open_anchor, post_open_new)
+
+          assert 'findActiveRoomByHost' not in app
+          assert 'waitForRoomCreationCleanup' not in app
+          assert 'CREATE_ROOM_CLEANUP_TIMEOUT_MS' not in app
+          app_path.write_text(app)
+
+          service_path = Path('src/features/room/services/roomService.ts')
+          service = service_path.read_text()
+          summary_old = "presenceCleanupLeaseUpdatedAt?: unknown; qaRunId?: string;"
+          summary_new = "presenceCleanupLeaseUpdatedAt?: unknown; qaRunId?: string; createRequestId?: string;"
+          assert service.count(summary_old) == 1
+          service = service.replace(summary_old, summary_new)
+
+          create_start = service.index('export async function createRoom(')
+          create_end = service.index('\n\n\nasync function syncRoomPlayerCount', create_start)
+          create_new = """export async function createRoom(params: { title: string; hostId: string; nickname: string; maxPlayers: 2|3|4; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual'|'team'; pieceCount: 1|2|3|4; password?: string; roomId?: string; createRequestId?: string; }) {
+  if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  const firestore = db;
+  const normalizedTitle = params.title.trim();
+  if (!normalizedTitle) throw new Error('방 제목을 입력해주세요.');
+  const roomsRef = collection(firestore, 'rooms');
+  const roomRef = params.roomId ? doc(roomsRef, params.roomId) : doc(roomsRef);
+  const now = Date.now();
+
+  if (params.roomId && params.createRequestId) {
+    const requestedRoomSnapshot = await getDoc(roomRef);
+    if (requestedRoomSnapshot.exists()) {
+      const requestedRoom = requestedRoomSnapshot.data() as Omit<RoomSummary, 'id'>;
+      if (requestedRoom.hostId === params.hostId && requestedRoom.createRequestId === params.createRequestId) return roomRef.id;
+      throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
+    }
+  }
+
+  const existingHostRooms = await getDocs(query(roomsRef, where('hostId', '==', params.hostId)));
+  const activeHostRoom = existingHostRooms.docs.find((roomDoc) => {
+    const room = roomDoc.data() as Partial<RoomSummary>;
+    return isRoomInGame(room as Pick<RoomSummary, 'status'> & Partial<Pick<RoomSummary, 'startStatus'>>) && !isInactiveRoom(room, now);
+  });
+  if (activeHostRoom) throw new Error('이미 진행 중인 방이 있습니다. 기존 방으로 돌아간 뒤 새 방을 만들어주세요.');
+  const staleHostRoomIds = existingHostRooms.docs
+    .filter((roomDoc) => {
+      const room = roomDoc.data() as Partial<RoomSummary>;
+      return room.status === 'finished' || (room.status === 'waiting' && isInactiveRoom(room, now));
+    })
+    .map((roomDoc) => roomDoc.id);
+
+  const activeRoomsSnapshot = await getDocs(query(roomsRef, where('status', 'in', ['waiting', 'playing'])));
+  const inactiveRoomIds: string[] = [];
+  const activeRoomDocs = activeRoomsSnapshot.docs.filter((roomDoc) => {
+    const inactive = isInactiveRoom(roomDoc.data() as Omit<RoomSummary, 'id'>, now);
+    if (inactive) inactiveRoomIds.push(roomDoc.id);
+    return !inactive;
+  });
+  const activeRooms = activeRoomDocs.map((roomDoc) => roomDoc.data() as Omit<RoomSummary, 'id'>);
+  const activeUserRooms = activeRooms.filter((room) => !isQaRoomTitle(room.title));
+  if (!isQaRoomTitle(normalizedTitle) && activeUserRooms.length >= MAX_ACTIVE_ROOMS) throw new Error('방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.');
+  if (activeRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error('이미 존재하는 방 제목입니다. 다른 제목을 입력해주세요.');
+
+  const createBatch = writeBatch(firestore);
+  createBatch.set(roomRef, {
+    title: normalizedTitle,
+    hostId: params.hostId,
+    maxPlayers: params.maxPlayers,
+    itemMode: params.itemMode,
+    stackedRollMode: Boolean(params.stackedRollMode),
+    playMode: params.playMode,
+    pieceCount: params.pieceCount,
+    hasPassword: Boolean(params.password),
+    passwordHint: params.password ? '설정됨' : '',
+    status: 'waiting',
+    emptySince: null,
+    currentPlayers: 1,
+    createdAt: serverTimestamp(),
+    ...(params.createRequestId ? { createRequestId: params.createRequestId } : {}),
+    ...(QA_RUN_ID ? { qaRunId: QA_RUN_ID } : {}),
+  });
+  createBatch.set(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
+  createBatch.set(doc(firestore, 'rooms', roomRef.id, 'seats', '0'), { playerId: params.hostId, originalPlayerId: params.hostId, currentPlayerId: params.hostId, nickname: params.nickname, color: COLORS[0], team: '청팀', seatIndex: 0, label: 'P1', isHost: true, aiActive: false, status: 'human', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  if (params.itemMode) {
+    spawnInitialBoardItems().forEach((item) => createBatch.set(doc(firestore, 'rooms', roomRef.id, 'boardItems', item.id), item));
+  }
+  await createBatch.commit();
+
+  const staleRoomIds = Array.from(new Set([...staleHostRoomIds, ...inactiveRoomIds])).filter((roomId) => roomId !== roomRef.id);
+  if (staleRoomIds.length) {
+    void Promise.all(staleRoomIds.map((roomId) => deleteRoom(roomId))).catch((error) => {
+      console.warn('방 생성 후 비활성 방 정리에 실패했습니다.', error);
+    });
+  }
+  return roomRef.id;
+}"""
+          service = service[:create_start] + create_new + service[create_end:]
+          assert 'await cleanupInactiveRooms();' not in service[create_start:create_start + len(create_new)]
+          service_path.write_text(service)
+
+          helper_path = Path('src/app/flows/roomCreationFlow.ts')
+          helper_path.write_text("""export type RoomCreationOperation = 'auth' | 'create' | 'recover';
+
+export class RoomCreationTimeoutError extends Error {
+  constructor(public readonly operation: RoomCreationOperation) {
+    super(`${operation} operation timed out`);
+    this.name = 'RoomCreationTimeoutError';
+  }
+}
+
+export function withOperationTimeout<T>(operationPromise: Promise<T>, timeoutMs: number, operation: RoomCreationOperation): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new RoomCreationTimeoutError(operation)), Math.max(0, timeoutMs));
+  });
+  return Promise.race([operationPromise, timeoutPromise]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  });
+}
+
+export function createRoomRequestIdentity(rawToken: string) {
+  const normalizedToken = rawToken.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80) || `${Date.now()}`;
+  return {
+    roomId: `room-${normalizedToken}`,
+    createRequestId: normalizedToken,
+  };
+}
+
+export function isMatchingCreatedRoom(
+  room: { id?: string; hostId?: string; createRequestId?: string } | null | undefined,
+  request: { roomId: string; hostId: string; createRequestId: string },
+) {
+  return Boolean(room && room.id === request.roomId && room.hostId === request.hostId && room.createRequestId === request.createRequestId);
+}
+""")
+
+          test_path = Path('tests/unit/roomCreationFlow.test.ts')
+          test_path.write_text("""import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  RoomCreationTimeoutError,
+  createRoomRequestIdentity,
+  isMatchingCreatedRoom,
+  withOperationTimeout,
+} from '../../src/app/flows/roomCreationFlow.js';
+
+const delay = (delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+
+test('로그인과 방 생성 timeout은 각 작업마다 독립적으로 새로 시작한다', async () => {
+  await withOperationTimeout(delay(8), 30, 'auth');
+  await withOperationTimeout(delay(20), 30, 'create');
+});
+
+test('작업 제한 시간이 지나면 작업 종류가 포함된 timeout 오류를 반환한다', async () => {
+  await assert.rejects(
+    withOperationTimeout(new Promise<void>(() => undefined), 5, 'create'),
+    (error: unknown) => error instanceof RoomCreationTimeoutError && error.operation === 'create',
+  );
+});
+
+test('동일 생성 요청은 같은 room id와 create request id를 사용한다', () => {
+  assert.deepEqual(createRoomRequestIdentity('abc-123'), {
+    roomId: 'room-abc-123',
+    createRequestId: 'abc-123',
+  });
+  assert.deepEqual(createRoomRequestIdentity('a:b/c'), {
+    roomId: 'room-abc',
+    createRequestId: 'abc',
+  });
+});
+
+test('timeout 복구는 정확히 같은 room, host, request만 허용한다', () => {
+  const request = { roomId: 'room-request-1', hostId: 'host-1', createRequestId: 'request-1' };
+  assert.equal(isMatchingCreatedRoom({ id: 'room-request-1', hostId: 'host-1', createRequestId: 'request-1' }, request), true);
+  assert.equal(isMatchingCreatedRoom({ id: 'room-request-2', hostId: 'host-1', createRequestId: 'request-1' }, request), false);
+  assert.equal(isMatchingCreatedRoom({ id: 'room-request-1', hostId: 'host-2', createRequestId: 'request-1' }, request), false);
+  assert.equal(isMatchingCreatedRoom({ id: 'room-request-1', hostId: 'host-1', createRequestId: 'request-2' }, request), false);
+});
+""")
+
+          tsconfig_path = Path('tsconfig.test.json')
+          tsconfig = tsconfig_path.read_text()
+          anchor = '    "src/app/hooks/sequenceRecoveryWatchdog.ts",\n'
+          addition = anchor + '    "src/app/flows/roomCreationFlow.ts",\n'
+          assert tsconfig.count(anchor) == 1
+          tsconfig = tsconfig.replace(anchor, addition)
+          tsconfig_path.write_text(tsconfig)
+          PY
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Production build
+        run: npm run build
+      - name: QA build
+        run: |
+          node .github/scripts/write-qa-firebase-env.mjs
+          node .github/scripts/verify-qa-emulator-config.mjs
+          npm run build:qa
+      - name: Verify focused diff
+        run: |
+          grep -q "createRequestId" src/features/room/services/roomService.ts
+          grep -q "withOperationTimeout" src/app/App.tsx
+          grep -q "pendingRoomCreationRef" src/app/App.tsx
+          if grep -q "await cleanupInactiveRooms();" src/features/room/services/roomService.ts; then exit 1; fi
+          if grep -q "findActiveRoomByHost" src/app/App.tsx; then exit 1; fi
+          git diff --check
+      - name: Commit validated product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx src/app/flows/roomCreationFlow.ts src/features/room/services/roomService.ts tests/unit/roomCreationFlow.test.ts tsconfig.test.json
+          git commit -m "fix: make room creation timeout-safe and idempotent"
+          git push origin HEAD:agent/fix-room-creation-critical-path
