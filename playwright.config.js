@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const isCi = Boolean(process.env.CI);
+const remoteBaseUrl = String(process.env.PLAYWRIGHT_BASE_URL ?? '').trim();
+const baseURL = remoteBaseUrl || 'http://127.0.0.1:4173';
 
 export default defineConfig({
   testDir: './tests',
@@ -10,14 +12,14 @@ export default defineConfig({
   reporter: isCi ? [['list']] : [['html', { outputFolder: 'playwright-report', open: 'never' }], ['list']],
   outputDir: 'test-results',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL,
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
     screenshot: 'only-on-failure',
     video: isCi ? 'off' : 'retain-on-failure',
-    trace: isCi ? 'off' : 'retain-on-failure',
+    trace: 'retain-on-failure',
   },
-  webServer: {
+  webServer: remoteBaseUrl ? undefined : {
     command: 'npm run preview -- --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
