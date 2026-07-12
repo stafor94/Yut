@@ -8,7 +8,14 @@
 ## .patch-error
 ```text
 Traceback (most recent call last):
-  File "/home/runner/work/Yut/Yut/scripts/fix-qa-playwright-shell.py", line 48, in <module>
-    raise RuntimeError(f'{job_id}: Bash defaults missing after patch')
-RuntimeError: qa-online-flow: Bash defaults missing after patch
+  File "/home/runner/work/Yut/Yut/scripts/fix-qa-playwright-shell-v2.py", line 16, in <module>
+    text = path.read_text(encoding='utf-8')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pathlib.py", line 1029, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pathlib.py", line 1015, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '.github/workflows/qa.yml'
 ```
