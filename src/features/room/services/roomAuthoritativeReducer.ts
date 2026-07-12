@@ -1,7 +1,7 @@
 import { GOLDEN_YUT_CHOICES, rollYutResultWithTiming, shouldFallForTimingZone, type RollTimingZone, type YutResult } from '../../../game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
-import { getNearbyNodeIds, type BranchChoice } from '../../../game-core/board/board';
+import { getAdjacentBoardNodeIds, type BranchChoice } from '../../../game-core/board/board';
 import { TURN_ACTION_TIMEOUT_MS, TURN_NETWORK_GRACE_MS } from './roomTiming';
 
 type GameStatePatch = Record<string, unknown>;
@@ -405,7 +405,9 @@ const getSelectedStackIndex = (state: SyncedGameStateShape) => {
   const index = stack.findIndex((roll) => roll.name === currentRoll.name && roll.steps === currentRoll.steps && Boolean(roll.bonus) === Boolean(currentRoll.bonus));
   return index >= 0 ? index : null;
 };
-const makeAuthoritativeTrapCandidateNodeIds = (nodeId: string) => getNearbyNodeIds(nodeId, 1).filter((candidateNodeId) => candidateNodeId !== 'n01');
+const isOccupiedTrapNode = (pieces: AuthoritativePiece[], nodeId: string) => pieces.some((piece) => piece.nodeId === nodeId && piece.started && !piece.finished);
+const makeAuthoritativeTrapCandidateNodeIds = (nodeId: string, pieces: AuthoritativePiece[]) => getAdjacentBoardNodeIds(nodeId)
+  .filter((candidateNodeId) => candidateNodeId !== 'n01' && !isOccupiedTrapNode(pieces, candidateNodeId));
 const getRollWithStepDelta = (roll: unknown, delta: number): YutResult | null => {
   if (!roll || typeof roll !== 'object') return null;
   const current = roll as YutResult;
@@ -602,7 +604,7 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
     const pieceId = String(action.payload?.pieceId ?? lastMovedPieceIds[0] ?? '');
     const piece = (state.pieces as AuthoritativePiece[]).find((entry) => entry.id === pieceId && entry.started && !entry.finished && canActorControlAuthoritativePiece(action.actorId, entry, room, sides));
     if (state.lastMovedSeatId !== action.actorId || !piece || !lastMovedPieceIds.includes(piece.id)) return makeActionReject('함정을 설치할 말을 찾을 수 없습니다.');
-    const nodeIds = makeAuthoritativeTrapCandidateNodeIds(piece.nodeId);
+    const nodeIds = makeAuthoritativeTrapCandidateNodeIds(piece.nodeId, state.pieces as AuthoritativePiece[]);
     if (!nodeIds.length) return makeActionReject('함정을 설치할 수 있는 칸이 없습니다.');
     return {
       status: 'committed',
@@ -692,6 +694,8 @@ function reducePlaceTrap(state: SyncedGameStateShape, action: Omit<GameActionSha
   const nodeId = String(action.payload?.nodeId ?? '');
   const pieceId = String(action.payload?.pieceId ?? placement?.pieceId ?? '');
   if (!placement || placement.ownerId !== action.actorId || placement.pieceId !== pieceId || !placement.nodeIds?.includes(nodeId)) return makeActionReject('함정 설치 위치가 유효하지 않습니다.');
+  const statePieces = state.pieces as AuthoritativePiece[];
+  if (isOccupiedTrapNode(statePieces, nodeId)) return makeActionReject('말이 있는 칸에는 함정을 설치할 수 없습니다.');
   const nextOwnedItems = removeOneItem(state.ownedItems, action.actorId, 'trap');
   if (!nextOwnedItems) return makeActionReject('보유한 함정 아이템이 없습니다.');
   const piece = (state.pieces as AuthoritativePiece[]).find((entry) => entry.id === pieceId && entry.started && !entry.finished && canActorControlAuthoritativePiece(action.actorId, entry, room, sides));

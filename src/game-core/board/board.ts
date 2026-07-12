@@ -140,6 +140,18 @@ export function getBackwardPathNodeIds(startNodeId: string, steps: number) {
   return pathNodeIds;
 }
 
+const ADJACENT_BOARD_NODE_IDS: Record<string, string[]> = {
+  n06: ['n05', 'n07', 'd05'],
+  n11: ['n10', 'n12', 'd01'],
+  c01: ['d02', 'd03', 'd06', 'd07'],
+  n16: ['n15', 'n17', 'd08'],
+};
+
+export function getAdjacentBoardNodeIds(nodeId: string) {
+  if (ADJACENT_BOARD_NODE_IDS[nodeId]) return [...ADJACENT_BOARD_NODE_IDS[nodeId]];
+  return getNearbyNodeIds(nodeId, 1);
+}
+
 export function getNearbyNodeIds(nodeId: string, range: number) {
   const forward = getMovePathNodeIds(nodeId, range);
   const backward = getBackwardPathNodeIds(nodeId, range);
