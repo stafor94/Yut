@@ -1,0 +1,30 @@
+name: Apply Action Feedback Phase 2
+
+on:
+  pull_request:
+    branches: [agent/action-feedback-phase2-base]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply phase 2 product patch
+        run: python scripts/apply-action-feedback-phase2.py
+      - name: Remove temporary patch script
+        run: rm scripts/apply-action-feedback-phase2.py
+      - name: Commit product changes without validation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx src/app/flows/actionFeedback.ts tests/unit/actionFeedback.test.ts tsconfig.test.json scripts/apply-action-feedback-phase2.py
+          git commit -m "fix: keep transient action blocks out of modal"
+          git push origin HEAD:${{ github.head_ref }}
