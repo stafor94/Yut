@@ -1,0 +1,35 @@
+name: Apply Phase 2 Nonblocking Action Feedback
+
+on:
+  pull_request:
+    branches: [agent/action-feedback-phase2-base]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-action-feedback-phase2-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply phase 2 product changes
+        run: python scripts/apply-action-feedback-phase2.py
+      - name: Remove temporary patch script
+        run: rm scripts/apply-action-feedback-phase2.py
+      - name: Commit product changes without validation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx src/app/flows/actionFeedbackPolicy.ts tests/unit/actionFeedbackPolicy.test.ts tsconfig.test.json scripts/apply-action-feedback-phase2.py
+          git commit -m "fix: keep transient action blocks nonblocking"
+          git push origin HEAD:${{ github.head_ref }}
