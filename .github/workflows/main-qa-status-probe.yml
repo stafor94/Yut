@@ -1,0 +1,38 @@
+name: Main QA status probe
+
+on:
+  push:
+    branches:
+      - agent/main-qa-status-probe
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  probe:
+    if: github.event.head_commit.message == 'trigger main QA status probe'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/main-qa-status-probe
+      - name: Query workflow runs for merged main SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: 556d3635c6086c4774963f7840b6926cefbb0845
+        run: |
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=20" \
+            > .github/main-qa-status.json
+          python -m json.tool .github/main-qa-status.json > .github/main-qa-status.pretty.json
+      - name: Commit status snapshot
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/main-qa-status.json .github/main-qa-status.pretty.json
+          git commit -m 'record main QA status'
+          git push origin HEAD:agent/main-qa-status-probe
