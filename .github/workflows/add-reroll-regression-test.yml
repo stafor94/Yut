@@ -1,0 +1,72 @@
+name: Add reroll regression test
+
+on:
+  push:
+    branches:
+      - fix/optimistic-item-actions-reroll-shield-ui
+
+permissions:
+  contents: write
+
+jobs:
+  add-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply test and validate
+        shell: bash
+        run: |
+          set +e
+          python scripts/add-reroll-regression-test.py
+          PATCH_STATUS="$(cat .patch-status 2>/dev/null)"
+          NPM_CI_STATUS=99
+          UNIT_STATUS=99
+          BUILD_STATUS=99
+
+          if [ "$PATCH_STATUS" = "ok" ]; then
+            npm ci > .npm-ci.log 2>&1
+            NPM_CI_STATUS=$?
+            if [ $NPM_CI_STATUS -eq 0 ]; then
+              npm run test:unit > .unit-test.log 2>&1
+              UNIT_STATUS=$?
+              npm run build > .build.log 2>&1
+              BUILD_STATUS=$?
+            fi
+          fi
+
+          if [ "$PATCH_STATUS" = "ok" ] && [ $NPM_CI_STATUS -eq 0 ] && [ $UNIT_STATUS -eq 0 ] && [ $BUILD_STATUS -eq 0 ]; then
+            rm -f TEST_UPDATE_RESULT.md
+            COMMIT_MESSAGE="일반 모드 다시 던지기 회귀 테스트 추가"
+          else
+            {
+              echo "# Test update result"
+              echo
+              echo "- patch: $PATCH_STATUS"
+              echo "- npm ci: $NPM_CI_STATUS"
+              echo "- unit: $UNIT_STATUS"
+              echo "- build: $BUILD_STATUS"
+              for LOG in .patch-error .npm-ci.log .unit-test.log .build.log; do
+                if [ -f "$LOG" ]; then
+                  echo
+                  echo "## $LOG"
+                  echo '```text'
+                  tail -n 200 "$LOG"
+                  echo '```'
+                fi
+              done
+            } > TEST_UPDATE_RESULT.md
+            COMMIT_MESSAGE="일반 모드 다시 던지기 검증 결과 기록"
+          fi
+
+          rm -f .patch-status .patch-error .npm-ci.log .unit-test.log .build.log
+          rm -f scripts/add-reroll-regression-test.py
+          rm -f .github/workflows/add-reroll-regression-test.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "$COMMIT_MESSAGE"
+          git push
