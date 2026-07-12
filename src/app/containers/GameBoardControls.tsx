@@ -13,7 +13,6 @@ type GameBoardControlsProps = {
   onMoveRollStackIndex: (index: number) => void;
   moveSelectionTimedOut: boolean;
   activeItemPromptTypes: ItemType[];
-  pendingItemPromptChoiceLabel: string;
   localSeatId: string;
   getItemPromptTimeoutMs: (seatId?: string) => number;
   onUseItem: (type: ItemType) => void;
@@ -47,7 +46,6 @@ export function GameBoardControls({
   onMoveRollStackIndex,
   moveSelectionTimedOut,
   activeItemPromptTypes,
-  pendingItemPromptChoiceLabel,
   localSeatId,
   getItemPromptTimeoutMs,
   onUseItem,
@@ -114,13 +112,11 @@ export function GameBoardControls({
   return <div ref={controlsRef} className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
     {isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
       <div><strong>아이템을 사용할까요?</strong></div>
-      {pendingItemPromptChoiceLabel ? <div className="inline-item-processing" role="status" aria-live="polite">{pendingItemPromptChoiceLabel}</div> : <>
-        <div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${getItemPromptTimeoutMs(localSeatId)}ms` } as CSSProperties} aria-hidden="true"><span></span></div>
-        <div className="inline-item-actions">
-          {activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => onUseItem(type)}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}
-          <button className="secondary" onClick={onSkipItemPrompt}>사용 안 함</button>
-        </div>
-      </>}
+      <div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${getItemPromptTimeoutMs(localSeatId)}ms` } as CSSProperties} aria-hidden="true"><span></span></div>
+      <div className="inline-item-actions">
+        {activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => onUseItem(type)}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}
+        <button className="secondary" onClick={onSkipItemPrompt}>사용 안 함</button>
+      </div>
     </div> : showBottomBranchControls ? <div className="bottom-branch-controls" aria-label="이동 방향 선택">
       <button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => onBranchChoiceChange('outer')}>바깥길</button>
       <button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => onBranchChoiceChange('shortcut')}>지름길</button>
