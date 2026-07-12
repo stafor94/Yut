@@ -38,13 +38,15 @@ jobs:
           java-version: '21'
       - name: Apply exact phase 5 patch
         run: python scripts/apply-phase5-qa-isolation.py
+      - name: Add WebKit to QA browser installation
+        run: python scripts/patch-phase5-webkit.py
       - run: npm ci
       - name: Production unit tests
         run: npm run test:unit
       - name: Production build without Firebase secrets
         run: npm run build
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
       - name: Prepare isolated QA Firebase environment
         run: node .github/scripts/write-qa-firebase-env.mjs
       - name: Reject production Firebase configuration
@@ -65,6 +67,7 @@ jobs:
         run: |
           grep -q "cancel-in-progress: true" .github/workflows/qa.yml
           grep -q "qa-firebase-emulator:" .github/workflows/qa.yml
+          grep -q "playwright install --with-deps chromium webkit" .github/workflows/qa.yml
           grep -q "QA_RUN_ID" tests/helpers/cleanup-qa-rooms.js
           grep -q "where('qaRunId', '==', qaRunId)" tests/helpers/cleanup-qa-rooms.js
           if grep -q "collectionGroup" tests/helpers/rooms.js; then exit 1; fi
@@ -116,6 +119,7 @@ jobs:
         run: |
           rm .github/workflows/validate-phase5-qa-isolation-pr.yml
           rm scripts/apply-phase5-qa-isolation.py
+          rm scripts/patch-phase5-webkit.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
@@ -137,6 +141,7 @@ jobs:
                 '- Production build: **success**',
                 '- QA emulator build guard: **success**',
                 '- Auth and Firestore emulator suite: **success**',
+                '- Chromium and WebKit Playwright coverage: **success**',
                 '- Run-scoped cleanup with zero remaining rooms: **success**',
                 '- Production Firebase secrets in QA job: **none**',
               ].join('\n'),
