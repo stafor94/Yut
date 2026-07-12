@@ -1,0 +1,30 @@
+name: Apply Presence Recovery Phase 4
+
+on:
+  pull_request:
+    branches: [agent/presence-recovery-phase4-base]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Apply phase 4 product changes
+        run: python scripts/apply-presence-recovery-phase4.py
+      - name: Remove temporary patch script
+        run: rm scripts/apply-presence-recovery-phase4.py
+      - name: Commit product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx src/features/room/services/roomService.ts src/features/room/services/roomPresenceGeneration.ts tests/unit/roomPresenceGeneration.test.ts tsconfig.test.json scripts/apply-presence-recovery-phase4.py
+          git commit -m "fix: version AI substitution and reconnect recovery"
+          git push origin HEAD:${{ github.head_ref }}
