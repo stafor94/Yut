@@ -80,6 +80,9 @@ jobs:
     needs: deploy-pages
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
       options: --user 1001
@@ -130,6 +133,9 @@ jobs:
     needs: deploy-pages
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
       options: --user 1001
@@ -176,6 +182,9 @@ jobs:
     needs: deploy-pages
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
       options: --user 1001
@@ -222,6 +231,9 @@ jobs:
     needs: deploy-pages
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
       options: --user 1001
