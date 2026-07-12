@@ -1,7 +1,11 @@
-import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
+import { connectFirestoreEmulator, getFirestore, initializeFirestore } from 'firebase/firestore';
 import { firebaseApp, isFirebaseEmulatorMode } from './firebaseApp';
 
-export const db = firebaseApp ? getFirestore(firebaseApp) : null;
+export const db = firebaseApp
+  ? isFirebaseEmulatorMode
+    ? initializeFirestore(firebaseApp, { experimentalForceLongPolling: true })
+    : getFirestore(firebaseApp)
+  : null;
 
 if (db && isFirebaseEmulatorMode) {
   const host = String(import.meta.env.VITE_FIRESTORE_EMULATOR_HOST ?? '127.0.0.1');
