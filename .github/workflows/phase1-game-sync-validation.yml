@@ -1,0 +1,76 @@
+name: Phase 1 Game Sync Validation
+
+on:
+  push:
+    branches: [agent/stabilize-game-sync-listener]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase1-game-sync-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-unit:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Prepare Firebase environment
+        run: node .github/scripts/write-firebase-env.mjs
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+      - name: Build app
+        run: npm run build
+      - name: Unit tests
+        run: npm run test:unit
+
+  online-recovery:
+    name: Online recovery QA
+    needs: build-and-unit
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --user 1001
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Prepare Firebase environment
+        run: node .github/scripts/write-firebase-env.mjs
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
+      - name: Cleanup QA rooms before test
+        run: npm run qa:cleanup-rooms
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+      - name: Run online recovery QA
+        run: npm run test:qa-online-turn-recovery
+      - name: Cleanup QA rooms after test
+        if: always()
+        run: npm run qa:cleanup-rooms
+        env:
+          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
