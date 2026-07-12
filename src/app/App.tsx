@@ -12,6 +12,7 @@ import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameS
 import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
 import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';
+import { usePresenceRecovery } from './hooks/usePresenceRecovery';
 import { useRoomPresence } from './hooks/useRoomPresence';
 import { useTurnOrderAutoFinish, useTurnOrderClock, useTurnOrderPortraitScroll } from './hooks/useTurnOrderTimers';
 import { LobbyContainer } from './containers/LobbyContainer';
@@ -378,7 +379,6 @@ export function App() {
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
   const roomHostClaimKeyRef = useRef('');
-  const presenceRestoreKeyRef = useRef('');
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const startRequestVersionRef = useRef(0);
   const startRequestIdRef = useRef('');
@@ -1245,6 +1245,15 @@ export function App() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
 
   useRoomPresence(activeRoomId, localSeatId, { canCleanup: canOwnRoomPresenceCleanup });
+  const { handlePresencePlayerSnapshot } = usePresenceRecovery({
+    activeRoomId,
+    screen,
+    currentUserId,
+    nickname,
+    playMode,
+    leavingRoomRef,
+    onRestored: () => setMessage('연결이 복구되어 원래 좌석으로 다시 참여했습니다.'),
+  });
 
   useEffect(() => { startRequestVersionRef.current = startRequestVersion; }, [startRequestVersion]);
   useEffect(() => { startStatusRef.current = startStatus; }, [startStatus]);
@@ -1407,24 +1416,7 @@ export function App() {
         setRoomNoticeDialog({ title: '방장에게 강퇴당했습니다.', message: '로비로 이동했습니다.' });
         return;
       }
-      const substitutedLocalPlayer = localPresencePlayer && localPresencePlayer.isAI && localPresencePlayer.isSubstitutedByAI && !localPresencePlayer.isSpectator ? localPresencePlayer : undefined;
-      if (substitutedLocalPlayer && activeRoomId && screen === 'game' && !leavingRoomRef.current) {
-        const restoreKey = `${activeRoomId}:${currentUserId}:${substitutedLocalPlayer.seatIndex}`;
-        if (presenceRestoreKeyRef.current !== restoreKey) {
-          presenceRestoreKeyRef.current = restoreKey;
-          void joinRoom(activeRoomId, { userId: currentUserId!, nickname: substitutedLocalPlayer.nickname || nickname, playMode })
-            .then((result) => {
-              if (result.role !== 'player') {
-                presenceRestoreKeyRef.current = '';
-                return;
-              }
-              setMessage('연결이 복구되어 원래 좌석으로 다시 참여했습니다.');
-            })
-            .catch(() => { presenceRestoreKeyRef.current = ''; });
-        }
-      } else if (!substitutedLocalPlayer) {
-        presenceRestoreKeyRef.current = '';
-      }
+      handlePresencePlayerSnapshot(localPresencePlayer);
       const currentHostPlayer = activeRoomHostId ? players.find((player) => player.id === activeRoomHostId) : undefined;
       const hasActiveHumanHost = Boolean(currentHostPlayer && !currentHostPlayer.isAI && !currentHostPlayer.isSpectator);
       const localHumanPlayer = currentUserId ? players.find((player) => player.id === currentUserId && !player.isAI && !player.isSpectator) : undefined;
@@ -1492,7 +1484,7 @@ export function App() {
       setSpectators(nextSpectators);
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
-  }, [activeRoomHostId, activeRoomId, canCoordinateOnlineGame, currentUserId, isRoomManager, localSeatId, maxPlayers, playMode, screen]);
+  }, [activeRoomHostId, activeRoomId, canCoordinateOnlineGame, currentUserId, handlePresencePlayerSnapshot, isRoomManager, localSeatId, maxPlayers, playMode, screen]);
 
   function isLocalSyncedMutation(clientMutationId: unknown) {
     return typeof clientMutationId === 'string' && localClientMutationIdsRef.current.has(clientMutationId);
