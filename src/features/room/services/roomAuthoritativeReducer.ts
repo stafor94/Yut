@@ -69,6 +69,8 @@ const isAllowedGoldenYutResult = (value: unknown): value is YutResult => {
 const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
   const selectedGoldenYutResult = payload?.selectedGoldenYutResult;
   if (isAllowedGoldenYutResult(selectedGoldenYutResult)) return selectedGoldenYutResult;
+  const clientRollResult = payload?.clientRollResult;
+  if (isAllowedGoldenYutResult(clientRollResult)) return clientRollResult;
   const timingZone = isValidRollTimingZone(payload?.rollTimingZone) ? payload.rollTimingZone : 'normal';
   return rollYutResultWithTiming(timingZone).result;
 };
@@ -178,6 +180,14 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
     if (deadlineRejection) return makeActionReject(deadlineRejection);
   }
   if (action.payload?.forcedResult !== undefined || action.payload?.allowForcedResult !== undefined) return makeActionReject('허용되지 않은 윷 결과입니다.');
+  const clientRollResult = action.payload?.clientRollResult;
+  if (clientRollResult !== undefined && !isAllowedGoldenYutResult(clientRollResult)) return makeActionReject('클라이언트 윷 결과가 유효하지 않습니다.');
+  const clientFallOccurred = action.payload?.clientFallOccurred;
+  if (clientFallOccurred !== undefined && typeof clientFallOccurred !== 'boolean') return makeActionReject('클라이언트 낙 결과가 유효하지 않습니다.');
+  const clientFallCount = action.payload?.clientFallCount;
+  if (clientFallCount !== undefined && (typeof clientFallCount !== 'number' || !Number.isInteger(clientFallCount) || clientFallCount < 0 || clientFallCount > 4)) return makeActionReject('클라이언트 낙 개수가 유효하지 않습니다.');
+  if (clientFallOccurred === true && (typeof clientFallCount !== 'number' || clientFallCount < 1)) return makeActionReject('낙 결과에는 떨어진 윷 개수가 필요합니다.');
+  if (clientFallOccurred === false && clientFallCount !== undefined && clientFallCount !== 0) return makeActionReject('정상 결과의 낙 개수는 0이어야 합니다.');
   const pendingGoldenYutSelection = state.pendingGoldenYutSelection as { actorId?: unknown; deadline?: unknown } | null | undefined;
   if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll' || state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') {
     return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
@@ -196,10 +206,19 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
   } else if (selectedGoldenYutResult !== undefined) return makeActionReject('황금 윷 선택 대기 상태가 아닙니다.');
   const timingZone = action.payload?.rollTimingZone;
   if (!isValidRollTimingZone(timingZone)) return makeActionReject('허용되지 않은 윷 입력 시간입니다.');
+  if (pendingGoldenYutSelection && clientFallOccurred === true) return makeActionReject('황금 윷은 낙이 될 수 없습니다.');
+  if (timingZone === 'perfect' && clientFallOccurred === true) return makeActionReject('Perfect 결과는 낙이 될 수 없습니다.');
   const nextRoll = pendingGoldenYutSelection && selectedGoldenYutResult === undefined && pendingGoldenTimedOut
     ? GOLDEN_YUT_CHOICES.find((choice) => choice.name === '도') ?? GOLDEN_YUT_CHOICES[0]
     : getAuthoritativeRoll(action.payload);
-  const fallOccurred = pendingGoldenYutSelection ? false : shouldFallForTimingZone(timingZone);
+  const fallOccurred = pendingGoldenYutSelection
+    ? false
+    : typeof clientFallOccurred === 'boolean'
+      ? clientFallOccurred
+      : shouldFallForTimingZone(timingZone);
+  const fallCount = fallOccurred
+    ? typeof clientFallCount === 'number' ? clientFallCount : Math.floor(Math.random() * 4) + 1
+    : 0;
   const now = Date.now();
   let shouldPromptAfterRoll = false;
   const baseReduction = toAuthoritativeReduction(reduceRollCommand({
@@ -229,7 +248,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
       ...baseReduction.payload,
       displayRoll: nextRoll,
       fallOccurred,
-      fallCount: fallOccurred ? Math.floor(Math.random() * 4) + 1 : 0,
+      fallCount,
       timedOut: Boolean(action.payload?.timedOut),
       timeoutRecoveredBy: action.payload?.timeoutRecoveredBy ?? null,
     };

@@ -120,10 +120,10 @@ const TURN_ORDER_ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_GRACE_MS = 1200;
 const ROLL_ANIMATION_MS = 2600;
 const ROLL_STUCK_TIMEOUT_MS = 12000;
-const PENDING_ROLL_PRIMARY_MS = 2000;
+const PENDING_ROLL_PRIMARY_MS = 1200;
 const PENDING_ROLL_EXTRA_SPIN_MS = 1000;
-const PENDING_ROLL_LANDING_MS = 1650;
-const PENDING_ROLL_RESULT_HOLD_MS = 2700;
+const PENDING_ROLL_LANDING_MS = 1000;
+const PENDING_ROLL_RESULT_HOLD_MS = ROLL_ANIMATION_MS;
 const STALE_PENDING_REMOTE_ACTION_MS = 30000;
 const AI_AUTHORITATIVE_ACTION_RETRY_LIMIT = 2;
 const AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS = 700;
@@ -315,7 +315,7 @@ export function App() {
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
   const currentRollRef = useRef<YutResult | null>(null);
   const rollAnimationTimerRef = useRef<number | null>(null);
-  const pendingRollAnimationRef = useRef<{ actionKey: string; animationId: number; startedAt: number; resolveTimer: number | null; closeTimer: number | null; timingZone?: RollTimingZone; result?: YutResult; sticks?: YutStick[]; fallCount?: number; animationKey?: string; preservedLogIds: Set<number>; preservedRollStack: YutResult[]; preservedSelectedRollStackIndex: number | null; preservedRollStackClosed: boolean; phase: 'primary' | 'extra-spin' | 'landing' | 'result-hold' } | null>(null);
+  const pendingRollAnimationRef = useRef<{ actionKey: string; animationId: number; startedAt: number; resolveTimer: number | null; closeTimer: number | null; timingZone?: RollTimingZone; result?: YutResult; sticks?: YutStick[]; fallCount?: number; animationKey?: string; authoritativeResolved: boolean; preservedLogIds: Set<number>; preservedRollStack: YutResult[]; preservedSelectedRollStackIndex: number | null; preservedRollStackClosed: boolean; phase: 'primary' | 'extra-spin' | 'landing' | 'result-hold' | 'completed' } | null>(null);
   const pendingItemPickupResolverRef = useRef<(() => void) | null>(null);
   const pendingItemPickupRef = useRef<PendingItemPickup | null>(null);
   const shouldAdvanceTurnAfterItemPromptRef = useRef(false);
@@ -1610,16 +1610,33 @@ export function App() {
     pending.resolveTimer = window.setTimeout(() => schedulePendingExtraSpin(actionKey), PENDING_ROLL_EXTRA_SPIN_MS);
   }
 
-  function startPendingRollAnimation(actionKey: string, timingZone?: RollTimingZone) {
+  function startPendingRollAnimation(actionKey: string, timingZone?: RollTimingZone, clientConfirmed?: { result: YutResult; sticks: YutStick[]; fallCount: number }) {
     if (rollAnimationTimerRef.current !== null) {
       window.clearTimeout(rollAnimationTimerRef.current);
       rollAnimationTimerRef.current = null;
     }
     clearPendingRollAnimation();
     const animationId = Date.now();
-    const sticks = [{ flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }];
-    pendingRollAnimationRef.current = { actionKey, animationId, startedAt: animationId, resolveTimer: null, closeTimer: null, timingZone, preservedLogIds: new Set(logs.map((log) => log.id)), preservedRollStack: [...rollStack], preservedSelectedRollStackIndex: selectedRollStackIndex, preservedRollStackClosed: rollStackClosed, phase: 'primary' };
-    setRollAnimation({ id: animationId, phase: 'primary', actionKey, timingZone, sticks });
+    const pendingSticks = [{ flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }, { flat: true, marked: false }];
+    pendingRollAnimationRef.current = {
+      actionKey,
+      animationId,
+      startedAt: animationId,
+      resolveTimer: null,
+      closeTimer: null,
+      timingZone,
+      result: clientConfirmed?.result,
+      sticks: clientConfirmed?.sticks,
+      fallCount: clientConfirmed?.fallCount,
+      animationKey: clientConfirmed ? `client-confirmed-roll:${actionKey}` : undefined,
+      authoritativeResolved: false,
+      preservedLogIds: new Set(logs.map((log) => log.id)),
+      preservedRollStack: [...rollStack],
+      preservedSelectedRollStackIndex: selectedRollStackIndex,
+      preservedRollStackClosed: rollStackClosed,
+      phase: 'primary',
+    };
+    setRollAnimation({ id: animationId, phase: 'primary', actionKey, timingZone, sticks: pendingSticks });
     pendingRollAnimationRef.current.resolveTimer = window.setTimeout(() => schedulePendingExtraSpin(actionKey), PENDING_ROLL_PRIMARY_MS);
   }
 
@@ -1636,10 +1653,13 @@ export function App() {
       latest.phase = 'result-hold';
       setRollAnimation({ id: latest.animationId, phase: 'result-hold', actionKey, result: latest.result, sticks: latest.sticks, fallCount: latest.fallCount ?? 0, timingZone: latest.timingZone });
       latest.closeTimer = window.setTimeout(() => {
-        if (pendingRollAnimationRef.current?.actionKey !== actionKey) return;
-        clearPendingRollAnimation(actionKey);
+        const activePending = pendingRollAnimationRef.current;
+        if (!activePending || activePending.actionKey !== actionKey) return;
+        activePending.closeTimer = null;
         setRollAnimation(null);
         rollAnimationTimerRef.current = null;
+        if (activePending.authoritativeResolved) clearPendingRollAnimation(actionKey);
+        else activePending.phase = 'completed';
       }, PENDING_ROLL_RESULT_HOLD_MS);
     }, PENDING_ROLL_LANDING_MS);
   }
@@ -1655,6 +1675,12 @@ export function App() {
     pending.fallCount = fallCount;
     pending.animationKey = key;
     pending.timingZone = timingZone ?? pending.timingZone;
+    pending.authoritativeResolved = true;
+    if (pending.phase === 'completed') {
+      lastAnimatedRollKeyRef.current = key;
+      clearPendingRollAnimation(actionKey);
+      return;
+    }
     if (pending.phase === 'landing' || pending.phase === 'result-hold') return;
     if (pending.resolveTimer !== null) return;
     const elapsed = Date.now() - pending.startedAt;
@@ -3888,9 +3914,18 @@ export function App() {
     if (!activeRoomId && !rollOptions.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
     const rollTimingZone = rollOptions.timedOut ? 'normal' : getCurrentRollTimingZone(rollOptions.timingPositionPercent);
     setRollTimingFeedback(rollTimingZone);
+    const clientRollResult = forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result;
     const fallOccurred = !forcedRoll && shouldFallForTimingZone(rollTimingZone);
+    const fallCount = fallOccurred ? Math.floor(Math.random() * 4) + 1 : 0;
     if (activeRoomId) {
-      const rollPayload = { rollTimingZone, stackedRollMode, ...(forcedRoll ? { selectedGoldenYutResult: forcedRoll } : {}) };
+      const rollPayload = {
+        rollTimingZone,
+        stackedRollMode,
+        clientRollResult,
+        clientFallOccurred: fallOccurred,
+        clientFallCount: fallCount,
+        ...(forcedRoll ? { selectedGoldenYutResult: forcedRoll } : {}),
+      };
       const actionKey = `${getLocalActionKey('roll_yut', rollPayload)}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
       if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
         reportTurnActionBlocked('roll_yut', ['pending-local-remote-action'], '이미 윷 던지기 요청을 처리 중입니다');
@@ -3909,8 +3944,6 @@ export function App() {
       rollInProgressRef.current = true;
       rollInProgressStartedAtRef.current = Date.now();
       setRollInProgress(true);
-      startPendingRollAnimation(actionKey, rollTimingZone);
-      playSfx('roll');
 
       const finishPendingRoll = () => undefined;
       const commitRollAction = () => enqueueAuthoritativeGameAction(
@@ -3958,20 +3991,33 @@ export function App() {
         },
         finishPendingRoll,
       );
+      const startClientConfirmedAnimation = () => {
+        startPendingRollAnimation(actionKey, rollTimingZone, {
+          result: clientRollResult,
+          sticks: makeDisplaySticks(clientRollResult),
+          fallCount,
+        });
+        playSfx('roll');
+      };
       const qaRollYutActionDelayMs = getQaRollYutActionDelayMs();
-      if (qaRollYutActionDelayMs > 0) window.setTimeout(commitRollAction, qaRollYutActionDelayMs);
-      else commitRollAction();
+      if (qaRollYutActionDelayMs > 0) {
+        window.setTimeout(commitRollAction, qaRollYutActionDelayMs);
+        startClientConfirmedAnimation();
+      } else {
+        commitRollAction();
+        queueMicrotask(startClientConfirmedAnimation);
+      }
       return;
     }
     if (fallOccurred) {
       setRollStack([]);
       setSelectedRollStackIndex(null);
       setRollStackClosed(false);
-      applyLocalFall(activeSeat, rollTimingZone, forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result);
+      applyLocalFall(activeSeat, rollTimingZone, clientRollResult);
       return;
     }
     setShieldedPieceIds([]);
-    const localRoll = forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result;
+    const localRoll = clientRollResult;
     if (stackedRollMode) rollYutForStack(activeSeat, localRoll, null, { timingZone: rollTimingZone });
     else rollYutFor(activeSeat, localRoll, null, { timingZone: rollTimingZone });
   }
