@@ -29,9 +29,11 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply focused room creation changes
-        run: python scripts/apply-room-creation-phase1.py
-      - name: Remove temporary patch script
-        run: rm scripts/apply-room-creation-phase1.py
+        run: |
+          python scripts/apply-room-creation-phase1.py
+          python scripts/fix-room-creation-phase1-build.py
+      - name: Remove temporary patch scripts
+        run: rm scripts/apply-room-creation-phase1.py scripts/fix-room-creation-phase1-build.py
       - run: npm ci
       - name: Unit tests
         run: npm run test:unit
@@ -66,11 +68,12 @@ jobs:
           grep -q "pendingRoomCreationRef" src/app/App.tsx
           if grep -q "await cleanupInactiveRooms();" src/features/room/services/roomService.ts; then exit 1; fi
           if grep -q "findActiveRoomByHost" src/app/App.tsx; then exit 1; fi
+          if grep -q "CREATE_ROOM_TIMEOUT_MS" src/app/App.tsx; then exit 1; fi
           git diff --check
       - name: Commit validated product changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/app/App.tsx src/app/flows/roomCreationFlow.ts src/features/room/services/roomService.ts tests/unit/roomCreationFlow.test.ts tsconfig.test.json scripts/apply-room-creation-phase1.py
+          git add src/app/App.tsx src/app/flows/roomCreationFlow.ts src/features/room/services/roomService.ts tests/unit/roomCreationFlow.test.ts tsconfig.test.json scripts/apply-room-creation-phase1.py scripts/fix-room-creation-phase1-build.py
           git commit -m "fix: make room creation timeout-safe and idempotent"
           git push origin HEAD:${{ github.head_ref }}
