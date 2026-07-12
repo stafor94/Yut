@@ -3,6 +3,11 @@ import type { Unsubscribe } from 'firebase/firestore';
 import type { SyncedGameState } from '../../features/room/services/roomService';
 import { subscribeGameState } from '../../features/room/services/roomService';
 import type { SequenceStateSnapshot } from '../appState';
+import {
+  createGameSyncSubscriptionController,
+  type GameSyncRuntime,
+  type GameSyncSubscriptionController,
+} from './gameSyncSubscription';
 
 export function useGameSyncDebugState(diagnosticState: Record<string, unknown>) {
   useEffect(() => {
@@ -22,32 +27,34 @@ type GameSyncSubscriptionParams = {
 };
 
 export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, lastAppliedStateVersionRef, applyingSyncedStateRef, replayMissingSequencesThenApply, applySyncedStateSnapshot, enqueueAuthoritativeResultApplication, subscribe = subscribeGameState }: GameSyncSubscriptionParams) {
-  const latestCallbacksRef = useRef({ replayMissingSequencesThenApply, applySyncedStateSnapshot });
-  useEffect(() => {
-    latestCallbacksRef.current = { replayMissingSequencesThenApply, applySyncedStateSnapshot };
-  }, [replayMissingSequencesThenApply, applySyncedStateSnapshot]);
+  const subscribeRef = useRef(subscribe);
+  subscribeRef.current = subscribe;
+
+  const controllerRef = useRef<GameSyncSubscriptionController<SyncedGameState> | null>(null);
+  if (!controllerRef.current) controllerRef.current = createGameSyncSubscriptionController<SyncedGameState>();
+
+  const runtimeRef = useRef<GameSyncRuntime<SyncedGameState> | null>(null);
+  runtimeRef.current = {
+    activeRoomId,
+    lastAppliedSequenceRef,
+    lastAppliedStateVersionRef,
+    applyingSyncedStateRef,
+    replayMissingSequencesThenApply: (state, localSequence, remoteSequence) => replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence),
+    applySyncedStateSnapshot: (state) => applySyncedStateSnapshot(state as SequenceStateSnapshot),
+    enqueueAuthoritativeResultApplication,
+    scheduleApplyingReset: (reset) => { window.setTimeout(reset, 0); },
+  };
+  controllerRef.current.updateRuntime(runtimeRef.current);
 
   useEffect(() => {
-    if (!activeRoomId) return undefined;
-    return subscribe(activeRoomId, (state) => {
-      if (!state) return;
-      void enqueueAuthoritativeResultApplication(async () => {
-        const stateVersion = Number(state.turnVersion ?? 0);
-        const remoteSequence = Number(state.lastSequence ?? 0);
-        const localSequence = lastAppliedSequenceRef.current;
-        const localStateVersion = lastAppliedStateVersionRef.current;
-        if (stateVersion && stateVersion <= localStateVersion && remoteSequence <= localSequence) return;
-        applyingSyncedStateRef.current = true;
-        try {
-          if (remoteSequence > localSequence) {
-            await latestCallbacksRef.current.replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence);
-          } else {
-            latestCallbacksRef.current.applySyncedStateSnapshot(state as SequenceStateSnapshot);
-          }
-        } finally {
-          window.setTimeout(() => { applyingSyncedStateRef.current = false; }, 0);
-        }
-      });
-    });
-  }, [activeRoomId, lastAppliedSequenceRef, lastAppliedStateVersionRef, applyingSyncedStateRef, enqueueAuthoritativeResultApplication, subscribe]);
+    const controller = controllerRef.current;
+    const runtime = runtimeRef.current;
+    if (!controller || !runtime) return;
+    controller.updateRuntime(runtime);
+    controller.syncRoom(activeRoomId, subscribeRef.current);
+  }, [activeRoomId]);
+
+  useEffect(() => () => {
+    controllerRef.current?.dispose();
+  }, []);
 }
