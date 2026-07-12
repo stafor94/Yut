@@ -327,7 +327,7 @@ export function App() {
       onCheckStarted: () => { lastSequenceWatchdogAtRef.current = Date.now(); },
     });
   }
-  const turnRecoveryInFlightRef = useRef(false);
+  const turnRecoveryInFlightRef = useRef<{ roomId: string; token: string } | null>(null);
   const stalledTurnWatchKeyRef = useRef('');
   const stalledTurnStartedAtRef = useRef(0);
   const stalledTurnRecoveryKeyRef = useRef('');
@@ -2504,7 +2504,7 @@ export function App() {
       applyingSyncedState: applyingSyncedStateRef.current,
       manualSequenceSyncing,
       hasPendingRemoteActions: pendingLocalRemoteActionsRef.current.size > 0,
-      turnRecoveryInFlight: turnRecoveryInFlightRef.current,
+      turnRecoveryInFlight: turnRecoveryInFlightRef.current?.roomId === roomId,
     })) return 'deferred';
 
     const localSequence = lastAppliedSequenceRef.current;
@@ -2516,8 +2516,9 @@ export function App() {
         .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
       const latestSequence = Math.max(localSequence, ...orderedSequences.map((sequence) => Number(sequence.sequence ?? 0)));
       const latestState = [...orderedSequences].reverse().find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-      if (latestSequence <= localSequence || !latestState) return 'unchanged';
-      await replayMissingSequencesThenApply(latestState, localSequence, latestSequence);
+      const currentLocalSequence = lastAppliedSequenceRef.current;
+      if (latestSequence <= currentLocalSequence || !latestState) return 'unchanged';
+      await replayMissingSequencesThenApply(latestState, currentLocalSequence, latestSequence);
       return 'changed';
     } catch {
       return 'failed';
@@ -3664,8 +3665,9 @@ export function App() {
 
   async function recoverTimedOutRoll(recoveryKey: string, options: { source?: string } = {}) {
     if (!canSubmitDeadlineRecovery() || onlineAuthoritativeGameStatePending || !activeRoomId || !activeSeat || roll || rollInProgress || rollAnimation || movingPieceId || moveInProgress) return false;
-    if (turnRecoveryInFlightRef.current || timeoutRecoveryKeysRef.current.has(recoveryKey)) return false;
-    turnRecoveryInFlightRef.current = true;
+    const recoveryToken = `${activeRoomId}:roll:${recoveryKey}`;
+    if (turnRecoveryInFlightRef.current?.roomId === activeRoomId || timeoutRecoveryKeysRef.current.has(recoveryKey)) return false;
+    turnRecoveryInFlightRef.current = { roomId: activeRoomId, token: recoveryToken };
     timeoutRecoveryKeysRef.current.add(recoveryKey);
     const rollTimingZone: RollTimingZone = 'normal';
     const actionKey = `roll_timeout:${recoveryKey}`;
@@ -3700,18 +3702,19 @@ export function App() {
         }
       },
       (error) => recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-error', error instanceof Error ? error.message : '윷 던지기 자동 진행에 실패했습니다.', { actionKey }),
-      () => { turnRecoveryInFlightRef.current = false; },
+      () => { if (turnRecoveryInFlightRef.current?.token === recoveryToken) turnRecoveryInFlightRef.current = null; },
     );
     return true;
   }
 
   async function recoverStalledTurnMove(recoveryKey: string, options: { source?: string } = {}) {
     if (!activeRoomId || onlineAuthoritativeGameStatePending || !canSubmitDeadlineRecovery() || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
-    if (turnRecoveryInFlightRef.current || stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
+    const recoveryToken = `${activeRoomId}:move:${recoveryKey}`;
+    if (turnRecoveryInFlightRef.current?.roomId === activeRoomId || stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
     if (winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return false;
     if (stalledTurnNeedsBranchChoice || stalledTurnRollStackAmbiguous) return false;
 
-    turnRecoveryInFlightRef.current = true;
+    turnRecoveryInFlightRef.current = { roomId: activeRoomId, token: recoveryToken };
     stalledTurnRecoveryKeyRef.current = recoveryKey;
     const payload = {
       pieceId: stalledTurnFallbackPiece.id,
@@ -3745,7 +3748,7 @@ export function App() {
         }
       },
       (error) => recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-error', error instanceof Error ? error.message : '멈춘 턴 자동 복구에 실패했습니다.', { actionKey: payload.clientActionId }),
-      () => { turnRecoveryInFlightRef.current = false; },
+      () => { if (turnRecoveryInFlightRef.current?.token === recoveryToken) turnRecoveryInFlightRef.current = null; },
     );
     return true;
   }
