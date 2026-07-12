@@ -1,0 +1,43 @@
+226-2026-07-12T23:08:20.5606066Z ##[command]/usr/bin/docker exec  772318ecb25879ef78e0107249166ce56db8cb2b6b42adf2867389d752d9505f sh -c "cat /etc/*release | grep ^ID"
+227-2026-07-12T23:08:20.8212343Z Found in cache @ /__t/node/22.23.1/x64
+228-2026-07-12T23:08:20.8217650Z (node:148) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+229-2026-07-12T23:08:20.8219135Z (Use `node --trace-deprecation ...` to show where the warning was created)
+230-2026-07-12T23:08:20.8221269Z ##[group]Environment details
+231-2026-07-12T23:08:21.2003500Z node: v22.23.1
+232-2026-07-12T23:08:21.2003922Z npm: 10.9.8
+233-2026-07-12T23:08:21.2004271Z yarn: 1.22.22
+234-2026-07-12T23:08:21.2005569Z ##[endgroup]
+235-2026-07-12T23:08:21.2021233Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+236-2026-07-12T23:08:21.3278359Z /github/home/.npm
+237-2026-07-12T23:08:21.5595650Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+238:2026-07-12T23:08:21.5714874Z (node:148) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+239-2026-07-12T23:08:22.8182344Z Received 16777216 of 67268862 (24.9%), 16.0 MBs/sec
+240-2026-07-12T23:08:23.2469885Z Received 67268862 of 67268862 (100.0%), 44.8 MBs/sec
+241-2026-07-12T23:08:23.2471344Z Cache Size: ~64 MB (67268862 B)
+242-2026-07-12T23:08:23.2585927Z [command]/usr/bin/tar -xf /__w/_temp/156d75d6-615c-4b03-9ed9-0761efbdb06b/cache.tgz -P -C /__w/Yut/Yut -z
+243-2026-07-12T23:08:23.6349430Z Cache restored successfully
+244-2026-07-12T23:08:23.6394392Z Cache restored from key: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+245-2026-07-12T23:08:23.6581963Z ##[group]Run python scripts/update-threejs-roll-regression-test.py
+246-2026-07-12T23:08:23.6582568Z [36;1mpython scripts/update-threejs-roll-regression-test.py[0m
+247-2026-07-12T23:08:23.6587149Z shell: bash --noprofile --norc -e -o pipefail {0}
+248-2026-07-12T23:08:23.6587483Z env:
+249-2026-07-12T23:08:23.6587756Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+250-2026-07-12T23:08:23.6588145Z   QA_RUN_ID: gh-29212833991-1-threejs-roll-regression
+251-2026-07-12T23:08:23.6588459Z   QA_ROLE: roll-movement
+252-2026-07-12T23:08:23.6588696Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+253-2026-07-12T23:08:23.6588961Z   QA_CLEANUP_REPORT_REMAINING: 1
+254-2026-07-12T23:08:23.6589222Z ##[endgroup]
+255-2026-07-12T23:08:23.7189868Z /__w/_temp/468c5452-c8dd-411f-b72a-b806241f83fe.sh: line 1: python: command not found
+256:2026-07-12T23:08:23.7222944Z ##[error]Process completed with exit code 127.
+257-2026-07-12T23:08:23.7344863Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+258-2026-07-12T23:08:23.7346136Z Post job cleanup.
+259-2026-07-12T23:08:23.7353478Z ##[command]/usr/bin/docker exec  772318ecb25879ef78e0107249166ce56db8cb2b6b42adf2867389d752d9505f sh -c "cat /etc/*release | grep ^ID"
+260-2026-07-12T23:08:23.9313609Z [command]/usr/bin/git version
+261-2026-07-12T23:08:23.9358674Z git version 2.43.0
+262-2026-07-12T23:08:23.9416867Z Temporarily overriding HOME='/__w/_temp/ed5b65ea-5533-4264-881c-b2aec810ca7e' before making global git config changes
+263-2026-07-12T23:08:23.9418369Z Adding repository directory to the temporary git global config as a safe directory
+264-2026-07-12T23:08:23.9436866Z [command]/usr/bin/git config --global --add safe.directory /__w/Yut/Yut
+265-2026-07-12T23:08:23.9496100Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+266-2026-07-12T23:08:23.9533347Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+267-2026-07-12T23:08:23.9807898Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+268-2026-07-12T23:08:23.9837792Z http.https://github.com/.extraheader
