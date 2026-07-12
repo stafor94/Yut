@@ -9,7 +9,7 @@ import { TURN_NETWORK_GRACE_MS } from './roomTiming';
 import { decideRoomPresenceCleanupLease, getRoomPresenceCleanupAction, isEligiblePresenceCleanupCandidate, isStaleHumanPresencePlayer, ROOM_PRESENCE_CLEANUP_LEASE_MS, ROOM_PRESENCE_STALE_MS } from './roomPresenceCleanupPolicy';
 
 export interface RoomSummary {
-  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; startRequestId?: string; roomConfigVersion?: number; presenceCleanupLeaseOwnerId?: string; presenceCleanupLeaseExpiresAt?: number; presenceCleanupLeaseVersion?: number; presenceCleanupLeaseUpdatedAt?: unknown; qaRunId?: string;
+  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; startRequestId?: string; roomConfigVersion?: number; presenceCleanupLeaseOwnerId?: string; presenceCleanupLeaseExpiresAt?: number; presenceCleanupLeaseVersion?: number; presenceCleanupLeaseUpdatedAt?: unknown; qaRunId?: string; createRequestId?: string;
 }
 
 const getCreatedAtMillis = (createdAt: unknown) => {
@@ -141,35 +141,42 @@ export async function leaveDuplicatePlayerRooms(playerId: string, keepRoomId = '
   return roomsToLeave.map(({ room }) => room.id);
 }
 
-export async function createRoom(params: { title: string; hostId: string; nickname: string; maxPlayers: 2|3|4; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual'|'team'; pieceCount: 1|2|3|4; password?: string; }) {
+export async function createRoom(params: { title: string; hostId: string; nickname: string; maxPlayers: 2|3|4; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual'|'team'; pieceCount: 1|2|3|4; password?: string; roomId?: string; createRequestId?: string; }) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const firestore = db;
   const normalizedTitle = params.title.trim();
   if (!normalizedTitle) throw new Error('방 제목을 입력해주세요.');
   const roomsRef = collection(firestore, 'rooms');
+  const roomRef = params.roomId ? doc(roomsRef, params.roomId) : doc(roomsRef);
   const now = Date.now();
-  await cleanupInactiveRooms();
+
+  if (params.roomId && params.createRequestId) {
+    const requestedRoomSnapshot = await getDoc(roomRef);
+    if (requestedRoomSnapshot.exists()) {
+      const requestedRoom = requestedRoomSnapshot.data() as Omit<RoomSummary, 'id'>;
+      if (requestedRoom.hostId === params.hostId && requestedRoom.createRequestId === params.createRequestId) return roomRef.id;
+      throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
+    }
+  }
+
   const existingHostRooms = await getDocs(query(roomsRef, where('hostId', '==', params.hostId)));
   const activeHostRoom = existingHostRooms.docs.find((roomDoc) => {
     const room = roomDoc.data() as Partial<RoomSummary>;
     return isRoomInGame(room as Pick<RoomSummary, 'status'> & Partial<Pick<RoomSummary, 'startStatus'>>) && !isInactiveRoom(room, now);
   });
   if (activeHostRoom) throw new Error('이미 진행 중인 방이 있습니다. 기존 방으로 돌아간 뒤 새 방을 만들어주세요.');
-  const staleHostRoomRefs = existingHostRooms.docs
+  const staleHostRoomIds = existingHostRooms.docs
     .filter((roomDoc) => {
       const room = roomDoc.data() as Partial<RoomSummary>;
       return room.status === 'finished' || (room.status === 'waiting' && isInactiveRoom(room, now));
     })
-    .map((roomDoc) => roomDoc.ref);
-  if (staleHostRoomRefs.length) {
-    await Promise.all(staleHostRoomRefs.map((roomRef) => deleteRoom(roomRef.id)));
-  }
+    .map((roomDoc) => roomDoc.id);
 
   const activeRoomsSnapshot = await getDocs(query(roomsRef, where('status', 'in', ['waiting', 'playing'])));
+  const inactiveRoomIds: string[] = [];
   const activeRoomDocs = activeRoomsSnapshot.docs.filter((roomDoc) => {
-    const room = roomDoc.data() as Omit<RoomSummary, 'id'>;
-    const inactive = isInactiveRoom(room, now);
-    if (inactive) void deleteRoom(roomDoc.id).catch((error) => console.warn('비활성 방 정리에 실패했습니다.', error));
+    const inactive = isInactiveRoom(roomDoc.data() as Omit<RoomSummary, 'id'>, now);
+    if (inactive) inactiveRoomIds.push(roomDoc.id);
     return !inactive;
   });
   const activeRooms = activeRoomDocs.map((roomDoc) => roomDoc.data() as Omit<RoomSummary, 'id'>);
@@ -177,7 +184,6 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   if (!isQaRoomTitle(normalizedTitle) && activeUserRooms.length >= MAX_ACTIVE_ROOMS) throw new Error('방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.');
   if (activeRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error('이미 존재하는 방 제목입니다. 다른 제목을 입력해주세요.');
 
-  const roomRef = doc(roomsRef);
   const createBatch = writeBatch(firestore);
   createBatch.set(roomRef, {
     title: normalizedTitle,
@@ -193,6 +199,7 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     emptySince: null,
     currentPlayers: 1,
     createdAt: serverTimestamp(),
+    ...(params.createRequestId ? { createRequestId: params.createRequestId } : {}),
     ...(QA_RUN_ID ? { qaRunId: QA_RUN_ID } : {}),
   });
   createBatch.set(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
@@ -201,6 +208,13 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     spawnInitialBoardItems().forEach((item) => createBatch.set(doc(firestore, 'rooms', roomRef.id, 'boardItems', item.id), item));
   }
   await createBatch.commit();
+
+  const staleRoomIds = Array.from(new Set([...staleHostRoomIds, ...inactiveRoomIds])).filter((roomId) => roomId !== roomRef.id);
+  if (staleRoomIds.length) {
+    void Promise.all(staleRoomIds.map((roomId) => deleteRoom(roomId))).catch((error) => {
+      console.warn('방 생성 후 비활성 방 정리에 실패했습니다.', error);
+    });
+  }
   return roomRef.id;
 }
 
