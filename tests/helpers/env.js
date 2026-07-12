@@ -28,7 +28,7 @@ function parseFirebaseConfig(value) {
 
 export async function loadFileEnv() {
   const values = {};
-  for (const fileName of ['.env.production', '.env.local', '.env']) {
+  for (const fileName of ['.env.qa', '.env.production', '.env.local', '.env']) {
     const filePath = path.join(process.cwd(), fileName);
     const content = await fs.readFile(filePath, 'utf8').catch(() => '');
     for (const line of content.split('\n')) {
@@ -66,11 +66,21 @@ function formatQaTimestamp(date = new Date()) {
   return `${year}.${month}.${day}_${hours}${minutes}${seconds}`;
 }
 
+function normalizeQaRunId(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(-18);
+}
+
 export const QA_NICKNAME_MAX_LENGTH = 7;
 
 export function makeQaName(testInfo, suffix) {
   const project = testInfo.project.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'project';
-  return `QA-${formatQaTimestamp()}-${project}-${suffix}`;
+  const runId = normalizeQaRunId(process.env.QA_RUN_ID);
+  const runPrefix = runId ? `${runId}-` : '';
+  return `QA-${runPrefix}${formatQaTimestamp()}-${project}-${suffix}`;
 }
 
 export function normalizeQaNickname(value) {
