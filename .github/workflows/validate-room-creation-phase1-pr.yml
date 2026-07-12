@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 concurrency:
@@ -35,7 +36,24 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
       - name: Production build
-        run: npm run build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          set -o pipefail
+          npm run build 2>&1 | tee production-build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo '## Room creation phase 1 build failure'
+              echo
+              echo '```text'
+              tail -n 120 production-build.log
+              echo '```'
+            } > production-build-comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file production-build-comment.md
+            exit "$status"
+          fi
       - name: QA build
         run: |
           node .github/scripts/write-qa-firebase-env.mjs
