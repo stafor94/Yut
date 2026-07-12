@@ -9,7 +9,7 @@ import { TURN_NETWORK_GRACE_MS } from './roomTiming';
 import { decideRoomPresenceCleanupLease, getRoomPresenceCleanupAction, isEligiblePresenceCleanupCandidate, isStaleHumanPresencePlayer, ROOM_PRESENCE_CLEANUP_LEASE_MS, ROOM_PRESENCE_STALE_MS } from './roomPresenceCleanupPolicy';
 
 export interface RoomSummary {
-  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; startRequestId?: string; roomConfigVersion?: number; presenceCleanupLeaseOwnerId?: string; presenceCleanupLeaseExpiresAt?: number; presenceCleanupLeaseVersion?: number; presenceCleanupLeaseUpdatedAt?: unknown;
+  id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; startRequestId?: string; roomConfigVersion?: number; presenceCleanupLeaseOwnerId?: string; presenceCleanupLeaseExpiresAt?: number; presenceCleanupLeaseVersion?: number; presenceCleanupLeaseUpdatedAt?: unknown; qaRunId?: string;
 }
 
 const getCreatedAtMillis = (createdAt: unknown) => {
@@ -38,6 +38,7 @@ const COLORS = ['red', 'blue', 'green', 'yellow'];
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 const MAX_ACTIVE_ROOMS = 3;
 const QA_ROOM_TITLE_PREFIX = 'QA-';
+const QA_RUN_ID = String(import.meta.env.VITE_QA_RUN_ID ?? '').trim();
 const EMPTY_ROOM_DELETE_DELAY_MS = 30000;
 const ROOM_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
@@ -192,6 +193,7 @@ export async function createRoom(params: { title: string; hostId: string; nickna
     emptySince: null,
     currentPlayers: 1,
     createdAt: serverTimestamp(),
+    ...(QA_RUN_ID ? { qaRunId: QA_RUN_ID } : {}),
   });
   createBatch.set(doc(firestore, 'rooms', roomRef.id, 'players', params.hostId), { nickname: params.nickname, ready: true, color: COLORS[0], seatIndex: 0, team: '청팀', joinedAt: serverTimestamp(), lastSeen: serverTimestamp() });
   createBatch.set(doc(firestore, 'rooms', roomRef.id, 'seats', '0'), { playerId: params.hostId, originalPlayerId: params.hostId, currentPlayerId: params.hostId, nickname: params.nickname, color: COLORS[0], team: '청팀', seatIndex: 0, label: 'P1', isHost: true, aiActive: false, status: 'human', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
