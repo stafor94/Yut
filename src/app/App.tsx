@@ -21,6 +21,7 @@ import { AppShellHeader } from './components/AppShellHeader';
 import { GameScreenView } from './components/GameScreenView';
 import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItemValue, shouldAiUseReroll } from './flows/aiFlow';
 import { getStartGameBlockMessage } from './flows/gameStartFlow';
+import { classifyTurnActionFeedback, shouldClearActionErrorDialog, shouldOpenTurnActionErrorDialog } from './flows/actionFeedback';
 import { RoomCreationTimeoutError, createRoomRequestIdentity, isMatchingCreatedRoom, isRoomTransitionInProgress, withOperationTimeout } from './flows/roomCreationFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
@@ -183,6 +184,7 @@ export function App() {
   const [soundEnabled, setSoundEnabled] = useState(() => getStoredBoolean(STORAGE_KEYS.soundEnabled, true));
   const [message, setMessage] = useState('');
   const [actionErrorDialog, setActionErrorDialog] = useState('');
+  const actionErrorDialogContextRef = useRef({ roomId: '', sequence: 0, turnIndex: 0 });
   const [roomNoticeDialog, setRoomNoticeDialog] = useState<{ title: string; message: string } | null>(null);
   const [lastActionDiagnostic, setLastActionDiagnostic] = useState<{ type: string; message: string; reasons: string[]; createdAt: number } | null>(null);
   const [remoteActionDiagnostics, setRemoteActionDiagnostics] = useState<Array<{ type: string; stage: string; status?: string; message: string; actionKey?: string; createdAt: number; sequence: number; turnIndex: number }>>([]);
@@ -370,6 +372,18 @@ export function App() {
   const applyingSyncedStateRef = useRef(false);
   const lastAppliedStateVersionRef = useRef(0);
   const lastAppliedSequenceRef = useRef(0);
+  useEffect(() => {
+    if (!actionErrorDialog) return;
+    const shouldClear = shouldClearActionErrorDialog({
+      dialogOpenedRoomId: actionErrorDialogContextRef.current.roomId,
+      currentRoomId: activeRoomId,
+      dialogOpenedSequence: actionErrorDialogContextRef.current.sequence,
+      currentSequence: lastAppliedSequenceRef.current,
+      dialogOpenedTurnIndex: actionErrorDialogContextRef.current.turnIndex,
+      currentTurnIndex: turnIndex,
+    });
+    if (shouldClear) setActionErrorDialog('');
+  }, [actionErrorDialog, activeRoomId, pendingLocalRemoteActionCount, turnIndex]);
   const lastWinnerSoundRef = useRef('');
   const lastBranchControlKeyRef = useRef('');
   const aiTurnActionKeyRef = useRef('');
@@ -2015,7 +2029,7 @@ export function App() {
     if (!synced && params.optimisticApplied) {
       const messageText = '서버 상태와 로컬 상태가 달라 최신 상태 동기화가 필요합니다. 수동 동기화를 다시 시도해주세요.';
       setMessage(messageText);
-      setActionErrorDialog(messageText);
+      openCriticalActionErrorDialog(messageText);
     }
     return synced;
   }
@@ -3589,17 +3603,27 @@ export function App() {
     }, ROLL_ANIMATION_MS);
   }
 
-  function reportTurnActionBlocked(type: 'roll_yut' | 'move_piece', reasons: string[], fallbackMessage: string) {
-    const normalizedReasons = reasons.length ? reasons : ['unknown'];
-    const messageText = `${fallbackMessage}: ${normalizedReasons.join(', ')}`;
-    setLastActionDiagnostic({ type, message: messageText, reasons: normalizedReasons, createdAt: Date.now() });
-    setMessage(messageText);
+  function openCriticalActionErrorDialog(messageText: string) {
+    actionErrorDialogContextRef.current = {
+      roomId: activeRoomId,
+      sequence: lastAppliedSequenceRef.current,
+      turnIndex,
+    };
     setActionErrorDialog(messageText);
   }
-  function reportTurnActionFailure(type: 'roll_yut' | 'move_piece', messageText: string, reasons: string[] = []) {
-    setLastActionDiagnostic({ type, message: messageText, reasons, createdAt: Date.now() });
+
+  function reportTurnActionBlocked(type: 'roll_yut' | 'move_piece', reasons: string[], fallbackMessage: string) {
+    const normalizedReasons = reasons.length ? reasons : ['unknown'];
+    const feedbackLevel = classifyTurnActionFeedback(normalizedReasons);
+    const messageText = `${fallbackMessage}: ${normalizedReasons.join(', ')}`;
+    setLastActionDiagnostic({ type, message: messageText, reasons: [...normalizedReasons, `feedback:${feedbackLevel}`], createdAt: Date.now() });
     setMessage(messageText);
-    setActionErrorDialog(messageText);
+  }
+  function reportTurnActionFailure(type: 'roll_yut' | 'move_piece', messageText: string, reasons: string[] = []) {
+    const feedbackLevel = classifyTurnActionFeedback(reasons);
+    setLastActionDiagnostic({ type, message: messageText, reasons: [...reasons, `feedback:${feedbackLevel}`], createdAt: Date.now() });
+    setMessage(messageText);
+    if (shouldOpenTurnActionErrorDialog('failure', reasons)) openCriticalActionErrorDialog(messageText);
   }
   function recordRemoteActionDiagnostic(type: 'roll_yut' | 'move_piece', stage: string, messageText: string, params: { status?: string; actionKey?: string } = {}) {
     const entry = {
