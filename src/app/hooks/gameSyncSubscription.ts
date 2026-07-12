@@ -54,22 +54,38 @@ const normalizeSnapshotValue = (value: unknown, seen: WeakSet<object>): unknown 
 
 const stableSnapshotString = (state: unknown) => JSON.stringify(normalizeSnapshotValue(state, new WeakSet<object>()));
 
+const hashSnapshotString = (value: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
 export function getGameSyncSnapshotApplyKey(state: GameSyncSnapshotIdentity) {
   const stateVersion = toFiniteNumber(state.turnVersion);
   const sequence = toFiniteNumber(state.lastSequence);
   if (stateVersion > 0) return `version:${stateVersion}:sequence:${sequence}`;
 
   const mutationId = typeof state.lastClientMutationId === 'string' ? state.lastClientMutationId : '';
-  return `legacy:sequence:${sequence}:mutation:${mutationId}:payload:${stableSnapshotString(state)}`;
+  return `legacy:sequence:${sequence}:mutation:${mutationId}:payload:${hashSnapshotString(stableSnapshotString(state))}`;
 }
 
 export function createGameSyncSubscriptionController<TState extends GameSyncSnapshotIdentity>(): GameSyncSubscriptionController<TState> {
   let runtime: GameSyncRuntime<TState> | null = null;
   let subscribedRoomId = '';
   let unsubscribe: (() => void) | null = null;
-  let lastAppliedSnapshotKey = '';
   let applyingOperationCount = 0;
+  const appliedSnapshotKeys = new Set<string>();
   const pendingSnapshotKeys = new Set<string>();
+
+  const rememberAppliedSnapshotKey = (snapshotKey: string) => {
+    appliedSnapshotKeys.add(snapshotKey);
+    if (appliedSnapshotKeys.size <= 64) return;
+    const oldestKey = appliedSnapshotKeys.values().next().value;
+    if (typeof oldestKey === 'string') appliedSnapshotKeys.delete(oldestKey);
+  };
 
   const isCurrentRoom = (roomId: string) => Boolean(roomId && subscribedRoomId === roomId && runtime?.activeRoomId === roomId);
 
@@ -77,7 +93,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
     if (!state || !isCurrentRoom(roomId)) return;
     const snapshotKey = getGameSyncSnapshotApplyKey(state);
     const scopedSnapshotKey = `${roomId}:${snapshotKey}`;
-    if (lastAppliedSnapshotKey === snapshotKey || pendingSnapshotKeys.has(scopedSnapshotKey)) return;
+    if (appliedSnapshotKeys.has(snapshotKey) || pendingSnapshotKeys.has(scopedSnapshotKey)) return;
     pendingSnapshotKeys.add(scopedSnapshotKey);
 
     try {
@@ -92,7 +108,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
         const localSequence = latestRuntime.lastAppliedSequenceRef.current;
         const localStateVersion = latestRuntime.lastAppliedStateVersionRef.current;
         if (stateVersion > 0 && stateVersion <= localStateVersion && remoteSequence <= localSequence) {
-          lastAppliedSnapshotKey = snapshotKey;
+          rememberAppliedSnapshotKey(snapshotKey);
           return;
         }
 
@@ -105,7 +121,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
           } else {
             latestRuntime.applySyncedStateSnapshot(state);
           }
-          if (isCurrentRoom(roomId)) lastAppliedSnapshotKey = snapshotKey;
+          if (isCurrentRoom(roomId)) rememberAppliedSnapshotKey(snapshotKey);
         } finally {
           latestRuntime.scheduleApplyingReset(() => {
             applyingOperationCount = Math.max(0, applyingOperationCount - 1);
@@ -128,7 +144,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
       unsubscribe?.();
       unsubscribe = null;
       subscribedRoomId = roomId;
-      lastAppliedSnapshotKey = '';
+      appliedSnapshotKeys.clear();
       pendingSnapshotKeys.clear();
       if (!roomId) return;
       unsubscribe = subscribe(roomId, (state) => {
@@ -139,7 +155,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
       unsubscribe?.();
       unsubscribe = null;
       subscribedRoomId = '';
-      lastAppliedSnapshotKey = '';
+      appliedSnapshotKeys.clear();
       pendingSnapshotKeys.clear();
       applyingOperationCount = 0;
       if (runtime) runtime.applyingSyncedStateRef.current = false;
