@@ -13,11 +13,25 @@ if (auth && isFirebaseEmulatorMode) {
 
 let guestSignInPromise: Promise<User | null> | null = null;
 
+const normalizeGuestSignInError = (error: unknown) => {
+  const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+  if (code === 'auth/operation-not-allowed') {
+    return new Error('Firebase Anonymous Authentication이 비활성화되어 있습니다. yut-online 프로젝트의 Authentication > Sign-in method에서 익명 로그인을 활성화해주세요.');
+  }
+  if (code === 'auth/network-request-failed') {
+    return new Error('Firebase 인증 서버에 연결하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.');
+  }
+  return error instanceof Error ? error : new Error('익명 로그인에 실패했습니다.');
+};
+
 export async function signInAsGuest() {
   if (!auth) return null;
   if (!guestSignInPromise) {
     guestSignInPromise = signInAnonymously(auth)
       .then((result) => result.user)
+      .catch((error) => {
+        throw normalizeGuestSignInError(error);
+      })
       .finally(() => {
         guestSignInPromise = null;
       });

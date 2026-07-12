@@ -1,0 +1,179 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function roomPath(roomId) {
+      return /databases/$(database)/documents/rooms/$(roomId);
+    }
+
+    function playerPath(roomId, playerId) {
+      return /databases/$(database)/documents/rooms/$(roomId)/players/$(playerId);
+    }
+
+    function roomExists(roomId) {
+      return exists(roomPath(roomId));
+    }
+
+    function roomExistsAfter(roomId) {
+      return existsAfter(roomPath(roomId));
+    }
+
+    function isRoomHost(roomId) {
+      return signedIn()
+        && roomExists(roomId)
+        && get(roomPath(roomId)).data.hostId == request.auth.uid;
+    }
+
+    function isRoomHostAfter(roomId) {
+      return signedIn()
+        && roomExistsAfter(roomId)
+        && getAfter(roomPath(roomId)).data.hostId == request.auth.uid;
+    }
+
+    function isRoomMember(roomId) {
+      return signedIn() && exists(playerPath(roomId, request.auth.uid));
+    }
+
+    function isRoomMemberAfter(roomId) {
+      return signedIn() && existsAfter(playerPath(roomId, request.auth.uid));
+    }
+
+    function isActiveRoomMember(roomId) {
+      return isRoomMember(roomId)
+        && get(playerPath(roomId, request.auth.uid)).data.isSpectator != true;
+    }
+
+    function isActiveRoomMemberAfter(roomId) {
+      return isRoomMemberAfter(roomId)
+        && getAfter(playerPath(roomId, request.auth.uid)).data.isSpectator != true;
+    }
+
+    function canReadRoomData(roomId) {
+      return isRoomMember(roomId);
+    }
+
+    function canWriteRoomData(roomId) {
+      return isActiveRoomMember(roomId)
+        || isActiveRoomMemberAfter(roomId)
+        || isRoomHost(roomId)
+        || isRoomHostAfter(roomId);
+    }
+
+    function isCleanupEligibleRoom(roomId) {
+      let room = get(roomPath(roomId)).data;
+      return roomExists(roomId)
+        && (
+          room.status == 'finished'
+          || room.currentPlayers <= 0
+          || (room.createdAt is timestamp && request.time > room.createdAt + duration.value(2, 'h'))
+        );
+    }
+
+    function deletingWithParentRoom(roomId) {
+      return signedIn() && roomExists(roomId) && !roomExistsAfter(roomId);
+    }
+
+    function canDeleteRoomData(roomId) {
+      return canWriteRoomData(roomId)
+        || isCleanupEligibleRoom(roomId)
+        || deletingWithParentRoom(roomId);
+    }
+
+    match /rooms/{roomId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.status == 'waiting'
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.maxPlayers in [2, 3, 4]
+        && request.resource.data.playMode in ['individual', 'team']
+        && request.resource.data.pieceCount in [1, 2, 3, 4];
+
+      allow update: if canWriteRoomData(roomId);
+      allow delete: if canWriteRoomData(roomId) || isCleanupEligibleRoom(roomId);
+
+      match /players/{playerId} {
+        allow read: if signedIn();
+
+        allow create: if signedIn()
+          && (
+            playerId == request.auth.uid
+            || isRoomHostAfter(roomId)
+            || isActiveRoomMemberAfter(roomId)
+          );
+
+        allow update: if signedIn()
+          && (
+            playerId == request.auth.uid
+            || canWriteRoomData(roomId)
+          );
+
+        allow delete: if signedIn()
+          && (
+            playerId == request.auth.uid
+            || canDeleteRoomData(roomId)
+          );
+      }
+
+      match /seats/{seatId} {
+        allow read: if signedIn();
+        allow create, update: if canWriteRoomData(roomId);
+        allow delete: if canDeleteRoomData(roomId);
+      }
+
+      match /state/{stateId} {
+        allow read: if canReadRoomData(roomId);
+        allow create, update: if canWriteRoomData(roomId);
+        allow delete: if canDeleteRoomData(roomId);
+      }
+
+      match /actions/{actionId} {
+        allow read: if canReadRoomData(roomId);
+        allow create: if canWriteRoomData(roomId)
+          && request.resource.data.actorId is string;
+        allow update: if canWriteRoomData(roomId);
+        allow delete: if canDeleteRoomData(roomId);
+      }
+
+      match /processedActions/{actionId} {
+        allow read: if canReadRoomData(roomId);
+        allow create, update: if canWriteRoomData(roomId);
+        allow delete: if canDeleteRoomData(roomId);
+      }
+
+      match /sequences/{sequenceId} {
+        allow read: if canReadRoomData(roomId);
+        allow create: if canWriteRoomData(roomId)
+          && request.resource.data.sequence is int
+          && request.resource.data.actorId is string;
+        allow update: if canWriteRoomData(roomId);
+        allow delete: if canDeleteRoomData(roomId);
+      }
+
+      match /boardItems/{itemId} {
+        allow read: if canReadRoomData(roomId);
+        allow create, update: if canWriteRoomData(roomId);
+        allow delete: if canDeleteRoomData(roomId);
+      }
+
+      match /rooms/{nestedRoomId} {
+        allow read: if canReadRoomData(roomId);
+        allow create, update: if canWriteRoomData(roomId);
+        allow delete: if canDeleteRoomData(roomId);
+      }
+
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
