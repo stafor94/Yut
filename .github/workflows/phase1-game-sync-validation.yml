@@ -1,4 +1,4 @@
-name: Phase 1 Game Sync Validation
+name: Phase 1 Online Recovery Diagnostic
 
 on:
   push:
@@ -14,50 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-unit:
-    name: Build and unit tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Prepare Firebase environment
-        run: node .github/scripts/write-firebase-env.mjs
-        env:
-          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
-      - name: Build app
-        run: |
-          set -o pipefail
-          npm run build 2>&1 | tee build.log
-      - name: Unit tests
-        run: |
-          set -o pipefail
-          npm run test:unit 2>&1 | tee unit.log
-      - name: Upload build and unit results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase1-build-and-unit
-          path: |
-            dist
-            build.log
-            unit.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-  online-recovery:
-    name: Online recovery QA
-    needs: build-and-unit
+  online-recovery-diagnostic:
+    name: Online recovery QA diagnostic
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
@@ -78,48 +36,45 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: phase1-build-and-unit
+      - name: Prepare Firebase environment
+        run: node .github/scripts/write-firebase-env.mjs
+      - name: Build app
+        run: npm run build
       - name: Cleanup QA rooms before test
         run: npm run qa:cleanup-rooms
-      - name: Run online recovery QA
+      - name: Run online recovery QA with captured log
         id: qa
+        continue-on-error: true
         run: |
           set -o pipefail
           npm run test:qa-online-turn-recovery 2>&1 | tee playwright-qa-online-turn-recovery.log
       - name: Cleanup QA rooms after test
         if: always()
         run: npm run qa:cleanup-rooms
-      - name: Upload online recovery results
+      - name: Comment exact failure tail
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase1-online-recovery-results
-          path: |
-            test-results
-            playwright-qa-online-turn-recovery.log
-            console-log.txt
-          if-no-files-found: ignore
-          retention-days: 7
-
-  report:
-    name: Report validation result
-    if: always()
-    needs: [build-and-unit, online-recovery]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Comment validation result
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_RESULT: ${{ needs.build-and-unit.result }}
-          ONLINE_RESULT: ${{ needs.online-recovery.result }}
         run: |
-          body=$(printf '%s\n' \
-            '<!-- phase1-game-sync-final-validation:${{ github.sha }} -->' \
-            '## Phase 1 final validation' \
-            '- Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
-            '- Head SHA: ${{ github.sha }}' \
-            "- Build and unit tests: **${BUILD_RESULT}**" \
-            "- Online recovery QA: **${ONLINE_RESULT}**")
-          gh pr comment 559 --repo "${{ github.repository }}" --body "$body"
+          {
+            echo '<!-- phase1-online-recovery-exact-log:${{ github.sha }} -->'
+            echo '## Phase 1 online recovery exact log'
+            echo '- Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            echo '- Head SHA: ${{ github.sha }}'
+            echo '- QA outcome: **${{ steps.qa.outcome }}**'
+            echo
+            echo '<details><summary>Last 220 log lines</summary>'
+            echo
+            echo '```text'
+            if [ -f playwright-qa-online-turn-recovery.log ]; then
+              tail -n 220 playwright-qa-online-turn-recovery.log
+            else
+              echo 'playwright-qa-online-turn-recovery.log was not created'
+            fi
+            echo '```'
+            echo '</details>'
+          } > phase1-online-recovery-comment.md
+          gh pr comment 559 --repo "${{ github.repository }}" --body-file phase1-online-recovery-comment.md
+      - name: Fail when QA failed
+        if: steps.qa.outcome == 'failure'
+        run: exit 1
