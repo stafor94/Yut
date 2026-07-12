@@ -1,0 +1,175 @@
+179-2026-07-12T23:01:31.1183869Z ##[command]/usr/bin/docker exec  df8f4ceb57c9c46ef0b03fd6ee8c9c1908a330e5b67043416b1cdeadaa3d0265 sh -c "cat /etc/*release | grep ^ID"
+180-2026-07-12T23:01:31.3138577Z Found in cache @ /__t/node/22.23.1/x64
+181-2026-07-12T23:01:31.3141038Z (node:146) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+182-2026-07-12T23:01:31.3141943Z (Use `node --trace-deprecation ...` to show where the warning was created)
+183-2026-07-12T23:01:31.3143797Z ##[group]Environment details
+184-2026-07-12T23:01:32.8872457Z node: v22.23.1
+185-2026-07-12T23:01:32.8872749Z npm: 10.9.8
+186-2026-07-12T23:01:32.8875642Z yarn: 1.22.22
+187-2026-07-12T23:01:32.8876848Z ##[endgroup]
+188-2026-07-12T23:01:32.8886307Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+189-2026-07-12T23:01:32.9996128Z /github/home/.npm
+190-2026-07-12T23:01:33.1050822Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+191:2026-07-12T23:01:33.1138933Z (node:146) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+192:2026-07-12T23:01:33.9324782Z Received 67268862 of 67268862 (100.0%), 90.9 MBs/sec
+193-2026-07-12T23:01:33.9325585Z Cache Size: ~64 MB (67268862 B)
+194-2026-07-12T23:01:33.9347248Z [command]/usr/bin/tar -xf /__w/_temp/3bd7bc8a-d166-41d8-9efb-c3b67ef2c0c1/cache.tgz -P -C /__w/Yut/Yut -z
+195-2026-07-12T23:01:34.2339677Z Cache restored successfully
+196-2026-07-12T23:01:34.2376670Z Cache restored from key: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+197-2026-07-12T23:01:34.2554107Z ##[group]Run npm ci
+198-2026-07-12T23:01:34.2554342Z [36;1mnpm ci[0m
+199-2026-07-12T23:01:34.2557944Z shell: bash --noprofile --norc -e -o pipefail {0}
+200-2026-07-12T23:01:34.2558217Z env:
+201-2026-07-12T23:01:34.2558451Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+202-2026-07-12T23:01:34.2558743Z   QA_RUN_ID: gh-29212576556-1-roll-movement
+203-2026-07-12T23:01:34.2558977Z   QA_ROLE: roll-movement
+204-2026-07-12T23:01:34.2559173Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+--
+211-2026-07-12T23:01:38.8250769Z 
+212-2026-07-12T23:01:38.8250950Z found 0 vulnerabilities
+213-2026-07-12T23:01:38.8604863Z ##[group]Run node .github/scripts/write-firebase-env.mjs
+214-2026-07-12T23:01:38.8605240Z [36;1mnode .github/scripts/write-firebase-env.mjs[0m
+215-2026-07-12T23:01:38.8605683Z shell: bash --noprofile --norc -e -o pipefail {0}
+216-2026-07-12T23:01:38.8605923Z env:
+217-2026-07-12T23:01:38.8606136Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+218-2026-07-12T23:01:38.8606408Z   QA_RUN_ID: gh-29212576556-1-roll-movement
+219-2026-07-12T23:01:38.8606635Z   QA_ROLE: roll-movement
+220-2026-07-12T23:01:38.8606833Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+221-2026-07-12T23:01:38.8607041Z ##[endgroup]
+222-2026-07-12T23:01:38.9270070Z Wrote canonical production Firebase config: project=yut-online, appId=1:925785463331:web:73ac57a5f7f8527455ef96
+223:2026-07-12T23:01:38.9343393Z ##[group]Run curl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null
+224:2026-07-12T23:01:38.9344071Z [36;1mcurl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null[0m
+225-2026-07-12T23:01:38.9344656Z shell: bash --noprofile --norc -e -o pipefail {0}
+226-2026-07-12T23:01:38.9344897Z env:
+227-2026-07-12T23:01:38.9345115Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+228-2026-07-12T23:01:38.9345394Z   QA_RUN_ID: gh-29212576556-1-roll-movement
+229-2026-07-12T23:01:38.9345622Z   QA_ROLE: roll-movement
+230-2026-07-12T23:01:38.9345818Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+231-2026-07-12T23:01:38.9346021Z ##[endgroup]
+232:2026-07-12T23:01:38.9831329Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+233-2026-07-12T23:01:38.9832118Z                                  Dload  Upload   Total   Spent    Left  Speed
+234-2026-07-12T23:01:38.9832431Z 
+235-2026-07-12T23:01:39.0684256Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+236-2026-07-12T23:01:39.0685125Z 100   249  100   249    0     0   2913      0 --:--:-- --:--:-- --:--:--  2929
+237-2026-07-12T23:01:39.0765324Z ##[group]Run set -o pipefail
+238-2026-07-12T23:01:39.0765583Z [36;1mset -o pipefail[0m
+239:2026-07-12T23:01:39.0766031Z [36;1mnpm run test:qa-online-turn-recovery -- --output=test-results/roll-movement 2>&1 | tee playwright-qa-roll-movement.log[0m
+240-2026-07-12T23:01:39.0766644Z shell: bash --noprofile --norc -e -o pipefail {0}
+241-2026-07-12T23:01:39.0766883Z env:
+242-2026-07-12T23:01:39.0767101Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+243-2026-07-12T23:01:39.0767552Z   QA_RUN_ID: gh-29212576556-1-roll-movement
+244-2026-07-12T23:01:39.0767797Z   QA_ROLE: roll-movement
+245-2026-07-12T23:01:39.0768007Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+246-2026-07-12T23:01:39.0768214Z ##[endgroup]
+247-2026-07-12T23:01:39.2045675Z 
+248-2026-07-12T23:01:39.2046611Z > test:qa-online-turn-recovery
+249:2026-07-12T23:01:39.2048534Z > playwright test --workers=1 --project=desktop-chromium tests/regression/bug-history-smoke.spec.js tests/regression/roll-mat-surface.spec.js --output=test-results/roll-movement
+250-2026-07-12T23:01:39.2049512Z 
+251-2026-07-12T23:01:39.9852667Z 
+252-2026-07-12T23:01:39.9853429Z Running 5 tests using 1 worker
+253-2026-07-12T23:01:39.9868290Z 
+254-2026-07-12T23:01:51.8343372Z   ✓  1 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:14:7 › BUG_HISTORY regression smoke › 게임 시작 직후 윷 던지기/대기 버튼 상태가 고착되지 않는다 (11.3s)
+255-2026-07-12T23:02:31.3081456Z   ✘  2 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:42:7 › BUG_HISTORY regression smoke › 온라인 윷 던지기는 sequence replay 애니메이션을 표시하고 이동 직후 경로 preview를 숨긴다 (38.8s)
+256-2026-07-12T23:02:58.9466559Z   ✓  3 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:326:7 › BUG_HISTORY regression smoke › host가 대리 제출한 AI 이동은 sequence 경로로 칸별 재생되고 내 이동은 중복 재생되지 않는다 (27.1s)
+257:2026-07-12T23:02:59.8661881Z   ✓  4 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:551:7 › BUG_HISTORY regression smoke › timeout 벌칙은 오프라인 로컬 timeout에만 적용된다 (907ms)
+258-2026-07-12T23:03:22.7520803Z   ✓  5 [desktop-chromium] › tests/regression/roll-mat-surface.spec.js:13:7 › roll mat surface regression › pending부터 결과 유지까지 같은 2D 매트 표면을 계속 표시한다 (22.9s)
+259-2026-07-12T23:03:22.8118637Z 
+260-2026-07-12T23:03:22.8130526Z 
+261-2026-07-12T23:03:22.8134331Z   1) [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:42:7 › BUG_HISTORY regression smoke › 온라인 윷 던지기는 sequence replay 애니메이션을 표시하고 이동 직후 경로 preview를 숨긴다 
+262-2026-07-12T23:03:22.8135168Z 
+263:2026-07-12T23:03:22.8135466Z     TimeoutError: locator.evaluate: Timeout 15000ms exceeded.
+264-2026-07-12T23:03:22.8135916Z     Call log:
+265:2026-07-12T23:03:22.8136430Z       - waiting for locator('.roll-stage.pending-roll .yut-stick').first()
+266-2026-07-12T23:03:22.8136797Z 
+267-2026-07-12T23:03:22.8136804Z 
+268-2026-07-12T23:03:22.8137593Z       158 |       const pendingStickTransformAtStart = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
+269:2026-07-12T23:03:22.8138424Z       159 |       await page.waitForTimeout(700);
+270-2026-07-12T23:03:22.8139345Z     > 160 |       const pendingStickTransformAtPeak = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
+271-2026-07-12T23:03:22.8140174Z           |                                                                   ^
+272:2026-07-12T23:03:22.8141260Z       161 |       expect(pendingStickTransformAtPeak, 'pending 외부 윷은 아래 시작점에서 정점 좌표로 한 번 상승해야 합니다.').not.toBe(pendingStickTransformAtStart);
+273:2026-07-12T23:03:22.8142037Z       162 |       await page.waitForTimeout(550);
+274:2026-07-12T23:03:22.8143187Z       163 |       await expect(page.locator('.roll-stage.pending-roll.extra-spin-roll'), '클라이언트 선확정 결과는 Firebase 응답을 기다리는 extra-spin으로 넘어가면 안 됩니다.').toHaveCount(0);
+275-2026-07-12T23:03:22.8144189Z         at /__w/Yut/Yut/tests/regression/bug-history-smoke.spec.js:160:67
+276-2026-07-12T23:03:22.8144812Z         at actionWithLogging (/__w/Yut/Yut/tests/helpers/ui.js:19:20)
+277-2026-07-12T23:03:22.8145373Z         at runQaStep (/__w/Yut/Yut/tests/helpers/ui.js:14:28)
+278-2026-07-12T23:03:22.8145892Z         at /__w/Yut/Yut/tests/regression/bug-history-smoke.spec.js:90:5
+279-2026-07-12T23:03:22.8146100Z 
+280-2026-07-12T23:03:22.8146671Z     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+281:2026-07-12T23:03:22.8148141Z     test-results/roll-movement/regression-bug-history-smo-61972--표시하고-이동-직후-경로-preview를-숨긴다-desktop-chromium/test-failed-1.png
+282-2026-07-12T23:03:22.8150078Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+283-2026-07-12T23:03:22.8150489Z 
+284:2026-07-12T23:03:22.8151298Z     Error Context: test-results/roll-movement/regression-bug-history-smo-61972--표시하고-이동-직후-경로-preview를-숨긴다-desktop-chromium/error-context.md
+285-2026-07-12T23:03:22.8151729Z 
+286-2026-07-12T23:03:22.8152121Z     attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+287:2026-07-12T23:03:22.8152812Z     test-results/roll-movement/regression-bug-history-smo-61972--표시하고-이동-직후-경로-preview를-숨긴다-desktop-chromium/trace.zip
+288-2026-07-12T23:03:22.8153274Z     Usage:
+289-2026-07-12T23:03:22.8153368Z 
+290:2026-07-12T23:03:22.8153879Z         npx playwright show-trace test-results/roll-movement/regression-bug-history-smo-61972--표시하고-이동-직후-경로-preview를-숨긴다-desktop-chromium/trace.zip
+291-2026-07-12T23:03:22.8154327Z 
+292-2026-07-12T23:03:22.8154669Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+293-2026-07-12T23:03:22.8154897Z 
+294:2026-07-12T23:03:22.8154978Z   1 failed
+295-2026-07-12T23:03:22.8155656Z     [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:42:7 › BUG_HISTORY regression smoke › 온라인 윷 던지기는 sequence replay 애니메이션을 표시하고 이동 직후 경로 preview를 숨긴다 
+296-2026-07-12T23:03:22.8156173Z   4 passed (1.7m)
+297:2026-07-12T23:03:22.8347168Z ##[error]Process completed with exit code 1.
+298-2026-07-12T23:03:22.8385857Z ##[group]Run set -o pipefail
+299-2026-07-12T23:03:22.8386115Z [36;1mset -o pipefail[0m
+300-2026-07-12T23:03:22.8386399Z [36;1mnpm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-roll-movement.log[0m
+301-2026-07-12T23:03:22.8387322Z shell: bash --noprofile --norc -e -o pipefail {0}
+302-2026-07-12T23:03:22.8387779Z env:
+303-2026-07-12T23:03:22.8387996Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+304-2026-07-12T23:03:22.8388273Z   QA_RUN_ID: gh-29212576556-1-roll-movement
+305-2026-07-12T23:03:22.8388498Z   QA_ROLE: roll-movement
+306-2026-07-12T23:03:22.8388692Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+307-2026-07-12T23:03:22.8388895Z ##[endgroup]
+308-2026-07-12T23:03:22.9671769Z 
+309-2026-07-12T23:03:22.9672340Z > qa:cleanup-rooms
+310-2026-07-12T23:03:22.9672779Z > node tests/helpers/cleanup-qa-rooms.js
+311-2026-07-12T23:03:22.9672971Z 
+312-2026-07-12T23:03:23.0966330Z (node:492) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///__w/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+313-2026-07-12T23:03:23.0968254Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+314-2026-07-12T23:03:23.0969455Z To eliminate this warning, add "type": "module" to /__w/Yut/Yut/package.json.
+315-2026-07-12T23:03:23.0970446Z (Use `node --trace-warnings ...` to show where the warning was created)
+316-2026-07-12T23:03:23.6245644Z QA cleanup mode=current-run, namespace=gh-29212576556-1-roll-movement, workflowPrefix=없음, rooms=0
+317-2026-07-12T23:03:23.7026262Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+318-2026-07-12T23:03:23.7027231Z ##[group]Run actions/upload-artifact@v4
+319-2026-07-12T23:03:23.7027649Z with:
+320-2026-07-12T23:03:23.7027827Z   name: qa-roll-movement-results
+321:2026-07-12T23:03:23.7028211Z   path: test-results
+322-playwright-qa-roll-movement.log
+323-qa-cleanup-roll-movement.log
+324-console-log.txt
+325-
+326-2026-07-12T23:03:23.7028601Z   if-no-files-found: ignore
+327-2026-07-12T23:03:23.7028802Z   retention-days: 7
+328-2026-07-12T23:03:23.7028995Z   compression-level: 6
+329-2026-07-12T23:03:23.7029171Z   overwrite: false
+330-2026-07-12T23:03:23.7029346Z   include-hidden-files: false
+331-2026-07-12T23:03:23.7029536Z env:
+332-2026-07-12T23:03:23.7029761Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+333-2026-07-12T23:03:23.7030033Z   QA_RUN_ID: gh-29212576556-1-roll-movement
+334-2026-07-12T23:03:23.7030254Z   QA_ROLE: roll-movement
+335-2026-07-12T23:03:23.7030448Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+336-2026-07-12T23:03:23.7030648Z ##[endgroup]
+337-2026-07-12T23:03:23.7033761Z ##[command]/usr/bin/docker exec  df8f4ceb57c9c46ef0b03fd6ee8c9c1908a330e5b67043416b1cdeadaa3d0265 sh -c "cat /etc/*release | grep ^ID"
+338-2026-07-12T23:03:23.9096517Z (node:512) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+339-2026-07-12T23:03:23.9097787Z (Use `node --trace-deprecation ...` to show where the warning was created)
+340-2026-07-12T23:03:23.9191664Z Multiple search paths detected. Calculating the least common ancestor of all paths
+341-2026-07-12T23:03:23.9194699Z The least common ancestor is /__w/Yut/Yut. This will be the root directory of the artifact
+342-2026-07-12T23:03:23.9195585Z With the provided path, there will be 6 files uploaded
+343-2026-07-12T23:03:23.9196547Z Artifact name is valid!
+344-2026-07-12T23:03:23.9197073Z Root directory input is valid!
+345-2026-07-12T23:03:24.0926215Z Beginning upload of artifact content to blob storage
+346:2026-07-12T23:03:24.3191524Z (node:512) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+347-2026-07-12T23:03:24.6649998Z Uploaded bytes 8388608
+348-2026-07-12T23:03:24.8903033Z Uploaded bytes 15862547
+349-2026-07-12T23:03:24.9203992Z Finished uploading artifact content to blob storage!
+350-2026-07-12T23:03:24.9205235Z SHA256 digest of uploaded artifact zip is 9f9e8f33cac85023be6084a391abc53df2910079a6867e273ded239da9861413
+351-2026-07-12T23:03:24.9208919Z Finalizing artifact upload
+352-2026-07-12T23:03:25.0874855Z Artifact qa-roll-movement-results.zip successfully finalized. Artifact ID 8265617715
+353-2026-07-12T23:03:25.0875962Z Artifact qa-roll-movement-results has been successfully uploaded! Final size is 15862547 bytes. Artifact ID is 8265617715
+354-2026-07-12T23:03:25.0881539Z Artifact download URL: https://github.com/stafor94/Yut/actions/runs/29212576556/artifacts/8265617715
+355-2026-07-12T23:03:25.1070861Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+356-2026-07-12T23:03:25.1071816Z Post job cleanup.
+357-2026-07-12T23:03:25.1078301Z ##[command]/usr/bin/docker exec  df8f4ceb57c9c46ef0b03fd6ee8c9c1908a330e5b67043416b1cdeadaa3d0265 sh -c "cat /etc/*release | grep ^ID"
+358-2026-07-12T23:03:25.2578284Z [command]/usr/bin/git version
