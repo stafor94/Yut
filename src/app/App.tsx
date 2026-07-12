@@ -22,6 +22,7 @@ import { GameScreenView } from './components/GameScreenView';
 import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItemValue, shouldAiUseReroll } from './flows/aiFlow';
 import { getStartGameBlockMessage } from './flows/gameStartFlow';
 import { classifyTurnActionFeedback, shouldClearActionErrorDialog, shouldOpenTurnActionErrorDialog } from './flows/actionFeedback';
+import { ROOM_PLAYER_MISSING_GRACE_MS, getPresenceRestoreKey, shouldApplyPresenceRestoreResult } from './flows/presenceRecovery';
 import { RoomCreationTimeoutError, createRoomRequestIdentity, isMatchingCreatedRoom, isRoomTransitionInProgress, withOperationTimeout } from './flows/roomCreationFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
@@ -389,12 +390,15 @@ export function App() {
   const aiTurnActionKeyRef = useRef('');
   const liveTurnGuardRef = useRef({ activeSeatId: '', winner: '', movingPieceId: '', pendingTrapPlacement: false, turnOrderActive: false, turnOrderIntro: false });
   const activeRoomIdRef = useRef('');
+  const screenRef = useRef<Screen>('lobby');
+  const onlineGameCoordinatorSeatIdRef = useRef('');
   const activeRoomHostIdRef = useRef('');
   const logIdRef = useRef(0);
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
   const roomHostClaimKeyRef = useRef('');
   const presenceRestoreKeyRef = useRef('');
+  const missingRoomPlayerTimerRef = useRef<number | null>(null);
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const startRequestVersionRef = useRef(0);
   const startRequestIdRef = useRef('');
@@ -448,7 +452,8 @@ export function App() {
   const onlineGameRole = !activeRoomId ? 'offline' : isSpectator ? 'spectator' : hasWaitingRoomHostAuthority ? 'waiting-room-host' : 'player';
   const isRoomManager = hasWaitingRoomHostAuthority || isWaitingRoomHost;
   const isOnlinePlayer = onlineGameRole === 'player';
-  const onlineGameCoordinatorSeatId = getOnlineGameCoordinatorSeatId(playableSeats);
+  const onlineGameCoordinatorSeatId = getOnlineGameCoordinatorSeatId(playableSeats, onlineGameCoordinatorSeatIdRef.current);
+  onlineGameCoordinatorSeatIdRef.current = onlineGameCoordinatorSeatId;
   const isInitialGameCoordinator = !activeRoomId || Boolean(!isSpectator && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
   const canCoordinateOnlineGame = !activeRoomId || Boolean(isOnlinePlayer && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
   const canOwnRoomPresenceCleanup = Boolean(activeRoomId && presenceCleanupEligibility.roomId === activeRoomId && presenceCleanupEligibility.eligible);
@@ -1053,6 +1058,7 @@ export function App() {
     remoteActionRetryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     remoteActionRetryTimersRef.current.clear();
     if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
+    if (missingRoomPlayerTimerRef.current !== null) window.clearTimeout(missingRoomPlayerTimerRef.current);
     clearPendingRollAnimation();
   }, []);
 
@@ -1104,15 +1110,23 @@ export function App() {
     setRollResultReadyAt(0);
   };
 
+  useEffect(() => { screenRef.current = screen; }, [screen]);
+
   useEffect(() => {
     const previousActiveRoomId = activeRoomIdRef.current;
     activeRoomIdRef.current = activeRoomId;
+    onlineGameCoordinatorSeatIdRef.current = '';
     activeRoomHostIdRef.current = '';
     lastAppliedStateVersionRef.current = 0;
     lastAppliedSequenceRef.current = 0;
     lastSequenceWatchdogAtRef.current = 0;
     setAuthoritativeGameStateReady(false);
     setInitialGameEntryPending(false);
+    presenceRestoreKeyRef.current = '';
+    if (missingRoomPlayerTimerRef.current !== null) {
+      window.clearTimeout(missingRoomPlayerTimerRef.current);
+      missingRoomPlayerTimerRef.current = null;
+    }
     appliedGameStartKeyRef.current = '';
     processingActionIdsRef.current.clear();
     completedActionIdsRef.current.clear();
@@ -1206,10 +1220,7 @@ export function App() {
 
         const restoredAsHost = storedRoom.hostId === currentUser.uid;
         const restoredMaxPlayers = storedRoom.maxPlayers as 2 | 3 | 4;
-        const joinResult = restoredAsHost ? null : await joinRoom(storedRoom.id, { userId: currentUser.uid, nickname, playMode: storedRoom.playMode });
-        if (restoredAsHost) {
-          await updateRoomPlayer(storedRoom.id, currentUser.uid, { nickname, ready: true, color: 'red', seatIndex: 0, team: '청팀', isSpectator: false });
-        }
+        const joinResult = await joinRoom(storedRoom.id, { userId: currentUser.uid, nickname, playMode: storedRoom.playMode });
         if (cancelled) return;
 
         setActiveRoomId(storedRoom.id);
@@ -1221,10 +1232,8 @@ export function App() {
         setItemMode(storedRoom.itemMode);
         setStackedRollMode(Boolean(storedRoom.stackedRollMode));
         setPieceCount(storedRoom.pieceCount ?? 4);
-        if (joinResult?.role === 'player') {
+        if (joinResult.role === 'player') {
           setSeats(seatsWithJoinedPlayer([], currentUser.uid, nickname, storedRoom.playMode, restoredMaxPlayers, joinResult.seatIndex));
-        } else if (restoredAsHost) {
-          setSeats(createSeats(nickname, storedRoom.playMode, restoredMaxPlayers).map((seat) => seat.isHost ? { ...seat, id: currentUser.uid } : seat));
         }
         setScreen(isRoomInGame(storedRoom) ? 'game' : 'waitingRoom');
         setLoadingMessage('');
@@ -1411,32 +1420,62 @@ export function App() {
       setPresenceCleanupEligibility((current) => current.roomId === activeRoomId && current.eligible === nextPresenceCleanupEligible
         ? current
         : { roomId: activeRoomId, eligible: nextPresenceCleanupEligible });
-      if (hasCurrentUserInSnapshot) confirmedRoomPlayerRef.current = true;
-      if (currentUserId && !leavingRoomRef.current && !isRoomManager && screen === 'waitingRoom' && confirmedRoomPlayerRef.current && !hasCurrentUserInSnapshot) {
-        confirmedRoomPlayerRef.current = false;
-        setScreen('lobby');
-        setActiveRoomId('');
-        setActiveRoomTitle('');
-        setIsRoomHost(false);
-        setCountdown(-1);
-        setMessage('방장에게 강퇴당했습니다.');
-        setRoomNoticeDialog({ title: '방장에게 강퇴당했습니다.', message: '로비로 이동했습니다.' });
-        return;
+      if (hasCurrentUserInSnapshot) {
+        confirmedRoomPlayerRef.current = true;
+        if (missingRoomPlayerTimerRef.current !== null) {
+          window.clearTimeout(missingRoomPlayerTimerRef.current);
+          missingRoomPlayerTimerRef.current = null;
+        }
+      }
+      if (currentUserId && !leavingRoomRef.current && !isRoomManager && screen === 'waitingRoom' && confirmedRoomPlayerRef.current && !hasCurrentUserInSnapshot && missingRoomPlayerTimerRef.current === null) {
+        const missingRoomId = activeRoomId;
+        const missingUserId = currentUserId;
+        missingRoomPlayerTimerRef.current = window.setTimeout(() => {
+          missingRoomPlayerTimerRef.current = null;
+          if (activeRoomIdRef.current !== missingRoomId || leavingRoomRef.current || (userRef.current ?? currentUser)?.uid !== missingUserId || !confirmedRoomPlayerRef.current) return;
+          confirmedRoomPlayerRef.current = false;
+          setScreen('lobby');
+          setActiveRoomId('');
+          setActiveRoomTitle('');
+          setIsRoomHost(false);
+          setCountdown(-1);
+          setMessage('방장에게 강퇴당했습니다.');
+          setRoomNoticeDialog({ title: '방장에게 강퇴당했습니다.', message: '로비로 이동했습니다.' });
+        }, ROOM_PLAYER_MISSING_GRACE_MS);
       }
       const substitutedLocalPlayer = localPresencePlayer && localPresencePlayer.isAI && localPresencePlayer.isSubstitutedByAI && !localPresencePlayer.isSpectator ? localPresencePlayer : undefined;
       if (substitutedLocalPlayer && activeRoomId && screen === 'game' && !leavingRoomRef.current) {
-        const restoreKey = `${activeRoomId}:${currentUserId}:${substitutedLocalPlayer.seatIndex}`;
+        const expectedPresenceEpoch = Number(substitutedLocalPlayer.presenceEpoch ?? 0);
+        const restoreKey = getPresenceRestoreKey(activeRoomId, currentUserId ?? '', substitutedLocalPlayer.seatIndex, expectedPresenceEpoch);
         if (presenceRestoreKeyRef.current !== restoreKey) {
           presenceRestoreKeyRef.current = restoreKey;
-          void joinRoom(activeRoomId, { userId: currentUserId!, nickname: substitutedLocalPlayer.nickname || nickname, playMode })
+          const restoreRoomId = activeRoomId;
+          const restoreUserId = currentUserId ?? '';
+          void joinRoom(restoreRoomId, {
+            userId: restoreUserId,
+            nickname: substitutedLocalPlayer.nickname || nickname,
+            playMode,
+            expectedPresenceEpoch,
+          })
             .then((result) => {
-              if (result.role !== 'player') {
-                presenceRestoreKeyRef.current = '';
+              if (!shouldApplyPresenceRestoreResult({
+                requestedRoomId: restoreRoomId,
+                currentRoomId: activeRoomIdRef.current,
+                requestedUserId: restoreUserId,
+                currentUserId: (userRef.current ?? currentUser)?.uid ?? '',
+                requestedPresenceEpoch: expectedPresenceEpoch,
+                restoredPresenceEpoch: result.presenceEpoch,
+                role: result.role,
+                screen: screenRef.current,
+              })) {
+                if (presenceRestoreKeyRef.current === restoreKey) presenceRestoreKeyRef.current = '';
                 return;
               }
               setMessage('연결이 복구되어 원래 좌석으로 다시 참여했습니다.');
             })
-            .catch(() => { presenceRestoreKeyRef.current = ''; });
+            .catch(() => {
+              if (presenceRestoreKeyRef.current === restoreKey) presenceRestoreKeyRef.current = '';
+            });
         }
       } else if (!substitutedLocalPlayer) {
         presenceRestoreKeyRef.current = '';

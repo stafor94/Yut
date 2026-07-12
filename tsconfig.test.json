@@ -26,6 +26,8 @@
     "src/app/hooks/gameSyncSubscription.ts",
     "src/app/hooks/sequenceRecoveryWatchdog.ts",
     "src/app/flows/roomCreationFlow.ts",
+    "src/app/flows/presenceRecovery.ts",
+    "src/app/flows/onlineGameCoordinator.ts",
     "src/app/flows/actionFeedback.ts",
     "tests/unit/**/*.ts",
     "src/app/diagnostics/gameDiagnostics.ts"
