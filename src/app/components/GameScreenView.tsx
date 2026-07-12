@@ -132,12 +132,13 @@ export function GameScreenView({ activeItemPromptTypes, pendingItemPromptChoiceL
       playStoredSoundEffect('roll');
     }
 
+    const resolvedAnimation = rollAnimation as RollAnimation & { result?: YutResult; fallCount?: number; turnOrder?: boolean };
     const rollSoundState = {
       phase: rollAnimation.phase,
-      resultName: rollAnimation.result?.name,
-      fallCount: rollAnimation.fallCount,
+      resultName: resolvedAnimation.result?.name,
+      fallCount: resolvedAnimation.fallCount,
       timingZone: rollAnimation.timingZone,
-      turnOrder: rollAnimation.turnOrder,
+      turnOrder: resolvedAnimation.turnOrder,
     };
     const perfectKey = shouldPlayPerfectRollSound(rollSoundState) ? `${animationId}:perfect` : '';
     if (perfectKey && lastPerfectRollKeyRef.current !== perfectKey) {
@@ -146,7 +147,7 @@ export function GameScreenView({ activeItemPromptTypes, pendingItemPromptChoiceL
     }
 
     const outcomeEffect = getRollOutcomeSoundEffect(rollSoundState);
-    const outcomeKey = outcomeEffect ? `${animationId}:${outcomeEffect}:${rollAnimation.result?.name ?? ''}:${rollAnimation.fallCount ?? 0}` : '';
+    const outcomeKey = outcomeEffect ? `${animationId}:${outcomeEffect}:${resolvedAnimation.result?.name ?? ''}:${resolvedAnimation.fallCount ?? 0}` : '';
     if (outcomeKey && lastRollOutcomeKeyRef.current !== outcomeKey) {
       lastRollOutcomeKeyRef.current = outcomeKey;
       const delayMs = rollAnimation.phase ? 0 : 420;
