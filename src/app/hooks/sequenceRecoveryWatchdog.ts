@@ -6,6 +6,24 @@ export type SequenceRecoveryScheduler = {
   clearTimeout: (timerId: number) => void;
 };
 
+export type SequenceRecoveryConflictState = {
+  sequenceReplayInProgress: boolean;
+  moveInProgress: boolean;
+  applyingSyncedState: boolean;
+  manualSequenceSyncing: boolean;
+  hasPendingRemoteActions: boolean;
+  turnRecoveryInFlight: boolean;
+};
+
+export function shouldDeferSequenceRecovery(state: SequenceRecoveryConflictState) {
+  return state.sequenceReplayInProgress
+    || state.moveInProgress
+    || state.applyingSyncedState
+    || state.manualSequenceSyncing
+    || state.hasPendingRemoteActions
+    || state.turnRecoveryInFlight;
+}
+
 export type SequenceRecoveryWatchdogController = {
   update: (state: { active: boolean; key: string }) => void;
   notifySnapshot: () => void;
@@ -37,7 +55,7 @@ export function createSequenceRecoveryWatchdog({
   let timerId: number | null = null;
   let inFlight = false;
   let attemptCount = 0;
-  let cycleStartedAt = 0;
+  let cycleStartedAt: number | null = null;
   let generation = 0;
   let pendingDelayMs: number | null = null;
 
@@ -64,7 +82,7 @@ export function createSequenceRecoveryWatchdog({
       pendingDelayMs = delayMs;
       return;
     }
-    if (!cycleStartedAt) cycleStartedAt = scheduler.now();
+    if (cycleStartedAt === null) cycleStartedAt = scheduler.now();
     const elapsedMs = Math.max(0, scheduler.now() - cycleStartedAt);
     if (attemptCount >= maxAttempts || elapsedMs + delayMs > maxTotalMs) return;
     timerId = scheduler.setTimeout(() => {
@@ -76,7 +94,7 @@ export function createSequenceRecoveryWatchdog({
   const runScheduledCheck = async () => {
     if (!active || inFlight) return false;
     clearScheduled();
-    if (!cycleStartedAt) resetCycle();
+    if (cycleStartedAt === null) resetCycle();
     const checkGeneration = generation;
     inFlight = true;
     pendingDelayMs = null;
@@ -122,7 +140,7 @@ export function createSequenceRecoveryWatchdog({
     pendingDelayMs = null;
     clearScheduled();
     attemptCount = 0;
-    cycleStartedAt = 0;
+    cycleStartedAt = null;
   };
 
   return {
