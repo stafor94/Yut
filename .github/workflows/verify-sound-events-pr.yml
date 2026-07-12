@@ -1,6 +1,9 @@
 name: Verify sound event changes
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - agent/guarantee-game-event-sounds
