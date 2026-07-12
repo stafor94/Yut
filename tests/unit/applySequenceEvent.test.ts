@@ -1,9 +1,35 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { applySequenceEvent, applySequenceEvents } from '../../src/app/hooks/applySequenceEvent.js';
-type GameSequence = { id: string; sequence: number; type: string; actorId: string; payload?: Record<string, unknown>; schemaVersion?: 1 | 2; eventSchemaVersion?: number; patch?: Record<string, unknown> | null; logEntries?: unknown[]; stateAfter?: Record<string, unknown> | null };
-type SyncedGameState = Record<string, unknown> & { logs: unknown[]; lastSequence?: number; turnVersion?: number };
-type SequenceStateSnapshot = Record<string, unknown> & { logs?: unknown[]; lastSequence?: number; turnIndex?: number };
+
+type GameSequence = {
+  id: string;
+  sequence: number;
+  type: string;
+  actorId: string;
+  payload?: Record<string, unknown>;
+  schemaVersion?: 1 | 2;
+  eventSchemaVersion?: number;
+  clientMutationId?: string;
+  patch?: Record<string, unknown> | null;
+  logEntries?: unknown[];
+  stateAfter?: Record<string, unknown> | null;
+};
+
+type SyncedGameState = Record<string, unknown> & {
+  logs: unknown[];
+  lastSequence?: number;
+  turnVersion?: number;
+  lastClientMutationId?: string;
+};
+
+type SequenceStateSnapshot = Record<string, unknown> & {
+  logs?: unknown[];
+  lastSequence?: number;
+  turnVersion?: number;
+  lastClientMutationId?: string;
+  turnIndex?: number;
+};
 
 const baseState = (overrides: Partial<SyncedGameState> = {}): SyncedGameState => ({
   pieces: [{ id: 'p1', nodeId: 'start' }],
@@ -17,6 +43,7 @@ const baseState = (overrides: Partial<SyncedGameState> = {}): SyncedGameState =>
   winner: '',
   turnVersion: 1,
   lastSequence: 1,
+  lastClientMutationId: 'previous-action',
   ...overrides,
 });
 
@@ -30,26 +57,40 @@ const sequence = (overrides: Partial<GameSequence>): GameSequence => ({
 });
 
 test('v1 sequence는 stateAfter snapshot을 그대로 적용한다', () => {
-  const stateAfter = baseState({ turnIndex: 1, lastSequence: 2, logs: [{ id: 2, text: '새 로그' }] });
+  const stateAfter = baseState({ turnIndex: 1, lastSequence: 2, turnVersion: 4, logs: [{ id: 2, text: '새 로그' }] });
   const result = applySequenceEvent(baseState() as any, sequence({ sequence: 2, eventSchemaVersion: 1, stateAfter }));
   assert.equal(result?.turnIndex, 1);
+  assert.equal(result?.turnVersion, 4);
   assert.deepEqual(result?.logs, [{ id: 2, text: '새 로그' }]);
   assert.equal(result?.lastSequence, 2);
 });
 
-test('v2 sequence는 patch와 logEntries를 직전 state에 적용하고 중복 sequence는 무시한다', () => {
+test('v2 sequence는 patch와 메타데이터를 직전 state에 적용하고 중복 sequence는 무시한다', () => {
   const before = baseState();
   const event = sequence({
     sequence: 2,
     schemaVersion: 2,
+    clientMutationId: 'move-piece-2',
     patch: { turnIndex: 1, pieces: [{ id: 'p1', nodeId: 'n2' }] },
     logEntries: [{ id: 2, text: '새 로그' }],
   });
   const result = applySequenceEvent(before as any, event);
   assert.equal(result?.turnIndex, 1);
+  assert.equal(result?.turnVersion, 2);
+  assert.equal(result?.lastClientMutationId, 'move-piece-2');
   assert.deepEqual(result?.pieces, [{ id: 'p1', nodeId: 'n2' }]);
   assert.deepEqual(result?.logs, [{ id: 2, text: '새 로그' }, { id: 1, text: '기존 로그' }]);
   assert.equal(applySequenceEvent(result as any, event), result);
+});
+
+test('v2 patch에 turnVersion이 명시되면 파생값보다 우선하고 mutation id가 없으면 기존 값을 유지한다', () => {
+  const result = applySequenceEvent(baseState({ turnVersion: 7 }) as any, sequence({
+    sequence: 2,
+    schemaVersion: 2,
+    patch: { turnIndex: 1, turnVersion: 11 },
+  }));
+  assert.equal(result?.turnVersion, 11);
+  assert.equal(result?.lastClientMutationId, 'previous-action');
 });
 
 test('sequence gap이나 기준 state 부재 시 v2 patch를 임의 적용하지 않는다', () => {
@@ -57,19 +98,55 @@ test('sequence gap이나 기준 state 부재 시 v2 patch를 임의 적용하지
   assert.equal(applySequenceEvent(baseState({ lastSequence: 0 }) as any, sequence({ sequence: 2, schemaVersion: 2, patch: { turnIndex: 1 } })), null);
 });
 
-test('200개 연속 v2 event 적용 결과가 각 authoritative after-state와 동일하다', () => {
+test('문자열 id와 id 없는 로그도 서로 다른 항목으로 보존하고 중복만 제거한다', () => {
+  const before = baseState({ logs: [{ id: 'existing', text: '기존' }, { text: 'id 없음 1' }] });
+  const result = applySequenceEvent(before as any, sequence({
+    sequence: 2,
+    schemaVersion: 2,
+    patch: {},
+    logEntries: [
+      { id: 'new', text: '신규' },
+      { text: 'id 없음 2' },
+      { text: 'id 없음 2' },
+      { id: 'existing', text: '기존' },
+    ],
+  }));
+  assert.deepEqual(result?.logs, [
+    { id: 'new', text: '신규' },
+    { text: 'id 없음 2' },
+    { id: 'existing', text: '기존' },
+    { text: 'id 없음 1' },
+  ]);
+});
+
+test('연속 v2 event는 입력 순서와 무관하게 authoritative 버전과 state를 복원한다', () => {
   let before: SequenceStateSnapshot = baseState() as any;
   const events: GameSequence[] = [];
   for (let index = 0; index < 200; index += 1) {
-    const after = { ...before, turnIndex: index + 1, lastSequence: index + 2, logs: [{ id: index + 2, text: `로그 ${index + 2}` }, ...(before.logs ?? [])].slice(0, 200) };
-    events.push(sequence({ sequence: index + 2, schemaVersion: 2, patch: { turnIndex: after.turnIndex }, logEntries: [{ id: index + 2, text: `로그 ${index + 2}` }] }));
+    const nextSequence = index + 2;
+    const mutationId = `action-${nextSequence}`;
+    const after = {
+      ...before,
+      turnIndex: index + 1,
+      turnVersion: index + 2,
+      lastSequence: nextSequence,
+      lastClientMutationId: mutationId,
+      logs: [{ id: nextSequence, text: `로그 ${nextSequence}` }, ...(before.logs ?? [])].slice(0, 200),
+    };
+    events.push(sequence({
+      sequence: nextSequence,
+      schemaVersion: 2,
+      clientMutationId: mutationId,
+      patch: { turnIndex: after.turnIndex },
+      logEntries: [{ id: nextSequence, text: `로그 ${nextSequence}` }],
+    }));
     before = after;
-    const replayed = applySequenceEvents(baseState() as any, events);
+    const replayed = applySequenceEvents(baseState() as any, [...events].reverse());
     assert.deepEqual(replayed, after);
   }
 });
 
-test('신규 sequence writer는 v2 schemaVersion을 쓰고 stateBefore/stateAfter를 저장하지 않는 compact helper를 사용한다', async () => {
+test('신규 sequence writer는 v2 필드만 기록하도록 구성되어 있다', async () => {
   const source = await import('node:fs/promises').then((fs) => fs.readFile('src/features/room/services/roomService.ts', 'utf8'));
   const helperStart = source.indexOf('export const makeSequenceEventFields');
   const helperEnd = source.indexOf('const isTurnOrderIntroActive', helperStart);
