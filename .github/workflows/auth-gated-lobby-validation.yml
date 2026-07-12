@@ -44,17 +44,10 @@ jobs:
 
           path = Path('src/app/App.tsx')
           text = path.read_text()
-          old = """  const rooms = useRooms({ enabled: screen === 'lobby' });
-  const currentUser = userRef.current ?? user;
-  const currentUserId = currentUser?.uid ?? '';
-"""
-          new = """  const currentUser = userRef.current ?? user;
-  const currentUserId = currentUser?.uid ?? '';
-  const rooms = useRooms({ enabled: screen === 'lobby' && Boolean(currentUser) });
-"""
+          old = "  const rooms = useRooms({ enabled: screen === 'lobby' });\n  const currentUser = userRef.current ?? user;\n  const currentUserId = currentUser?.uid ?? '';\n"
+          new = "  const currentUser = userRef.current ?? user;\n  const currentUserId = currentUser?.uid ?? '';\n  const rooms = useRooms({ enabled: screen === 'lobby' && Boolean(currentUser) });\n"
           if old in text:
-              text = text.replace(old, new, 1)
-              path.write_text(text)
+              path.write_text(text.replace(old, new, 1))
           elif new not in text:
               raise SystemExit('auth-gated room subscription block was not found')
           PY
