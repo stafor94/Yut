@@ -3,5 +3,6 @@
 @import './lobby.css';
 @import './waiting-room.css';
 @import './game.css';
+@import './move-preview.css';
 @import './overlays.css';
 @import './roll-mat-surface.css';

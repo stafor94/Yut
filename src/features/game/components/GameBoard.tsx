@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { BoardItem, BoardNode, BranchChoice } from '../../../game-core/board/board';
-import { BOARD_NODES } from '../../../game-core/board/board';
+import { BOARD_NODES, FINISH_NODE_ID } from '../../../game-core/board/board';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
 
 export type BoardPiece = {
@@ -102,6 +102,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
   void showBranchControls;
 
   const selectedIds = selectedPieceIds ?? (selectedPieceId ? [selectedPieceId] : []);
+  const previewFinishes = previewNodeIds.includes(FINISH_NODE_ID);
 
   return <div data-testid="game-board" className={`board ${boardShaking ? 'capture-shake' : ''}`} aria-label="윷놀이 말판">
     <svg className="board-route-lines" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
@@ -112,11 +113,14 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
     {BOARD_NODES.map((node) => {
       const item = items.find((boardItem) => boardItem.nodeId === node.id);
       const selectable = selectableNodeIds.includes(node.id);
-      return <button type="button" key={node.id} data-testid={`board-node-${node.id}`} className={`board-node ${node.kind} ${highlightedNodeId === node.id ? 'item-collected' : ''} ${previewNodeIds.includes(node.id) ? 'route-preview' : ''} ${selectable ? 'trap-selectable' : ''} ${trapEffectNodeId === node.id ? 'trap-exploding' : ''}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={node.id} onClick={() => selectable && onSelectNode?.(node.id)} disabled={!selectable}>
+      const previewIndex = previewNodeIds.indexOf(node.id);
+      const isPreviewNode = previewIndex >= 0;
+      const isFinishPreview = previewFinishes && node.id === 'n01';
+      return <button type="button" key={node.id} data-testid={`board-node-${node.id}`} className={`board-node ${node.kind} ${highlightedNodeId === node.id ? 'item-collected' : ''} ${isPreviewNode ? 'route-preview' : ''} ${selectable ? 'trap-selectable' : ''} ${trapEffectNodeId === node.id ? 'trap-exploding' : ''}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} title={node.id} onClick={() => selectable && onSelectNode?.(node.id)} disabled={!selectable}>
         {item ? <span className="floating-board-item" aria-label="말판 아이템">
           <span className="item-orb" aria-hidden="true">{ITEM_DEFINITIONS[item.type].icon}</span>
         </span> : null}
-        {previewNodeIds.includes(node.id) ? <span className="route-preview-marker" aria-label="이동 예정 칸">{previewNodeIds.indexOf(node.id) + 1}</span> : null}
+        {isPreviewNode ? <span className={`route-preview-marker ${isFinishPreview ? 'finish' : ''}`} aria-label={isFinishPreview ? '완주 예정' : '이동 예정 칸'}>{isFinishPreview ? '완주' : previewIndex + 1}</span> : null}
         {trapNodeIds.includes(node.id) ? <span className="trap-marker" aria-label="설치된 함정">🪤</span> : null}
       </button>;
     })}

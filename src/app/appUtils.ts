@@ -1,5 +1,5 @@
 import type { BoardPiece } from '../features/game/components/GameBoard';
-import { BRANCH_NODE_IDS, getMovePathNodeIds, type BranchChoice } from '../game-core/board/board';
+import { BRANCH_NODE_IDS, FINISH_NODE_ID, getMovePathNodeIdsWithPrevious, type BranchChoice } from '../game-core/board/board';
 import type { YutResult } from '../game-core/roll';
 import type { GameLog, PieceCount, PlayMode } from './appState';
 
@@ -65,5 +65,10 @@ export const getEffectiveBranchChoice = (nodeId: string, branchChoice: BranchCho
 export const getMovePreviewNodeIds = (piece: BoardPiece | undefined, result: YutResult | null, branchChoice: BranchChoice) => {
   if (!piece || !result || piece.finished) return [];
   if (result.steps < 0 && !piece.started) return [];
-  return getMovePathNodeIds(piece.nodeId, result.steps, getEffectiveBranchChoice(piece.nodeId, branchChoice));
+  const pathNodeIds = getMovePathNodeIdsWithPrevious(piece.nodeId, result.steps, getEffectiveBranchChoice(piece.nodeId, branchChoice), piece.previousNodeId);
+  if (!piece.started || result.steps <= 0) return pathNodeIds;
+  if (piece.nodeId === 'n01') return ['n01', FINISH_NODE_ID];
+  return pathNodeIds[pathNodeIds.length - 1] === 'n01' && pathNodeIds.length < result.steps
+    ? [...pathNodeIds, FINISH_NODE_ID]
+    : pathNodeIds;
 };

@@ -46,6 +46,7 @@ export const BOARD_NODES: BoardNode[] = [
 export type BranchChoice = 'outer' | 'shortcut';
 export type PieceStatus = 'home' | 'onBoard' | 'finished';
 export type RouteContext = 'outer' | 'n06Shortcut' | 'n11Shortcut' | 'centerToN20' | 'centerToN16';
+export const FINISH_NODE_ID = 'finish';
 
 const OUTER_ROUTE = ['n01','n02','n03','n04','n05','n06','n07','n08','n09','n10','n11','n12','n13','n14','n15','n16','n17','n18','n19','n20'];
 const SHORTCUTS: Record<string, string[]> = {
@@ -101,6 +102,7 @@ export function getMovePathNodeIds(startNodeId: string, steps: number, branchCho
 
     pathNodeIds.push(nextNodeId);
     currentNodeId = nextNodeId;
+    if (nextNodeId === 'n01') break;
   }
 
   return pathNodeIds;
@@ -109,6 +111,7 @@ export function getMovePathNodeIds(startNodeId: string, steps: number, branchCho
 const CENTER_ADJACENT_NODE_IDS = ['d02', 'd03', 'd06', 'd07'] as const;
 
 export function getMovePathNodeIdsWithPrevious(startNodeId: string, steps: number, branchChoice: BranchChoice = 'outer', previousNodeId?: string) {
+  if (steps > 0 && startNodeId === 'n01' && previousNodeId) return [FINISH_NODE_ID];
   if (steps >= 0 || startNodeId !== 'c01' || !previousNodeId || !CENTER_ADJACENT_NODE_IDS.includes(previousNodeId as typeof CENTER_ADJACENT_NODE_IDS[number])) {
     return getMovePathNodeIds(startNodeId, steps, branchChoice);
   }
