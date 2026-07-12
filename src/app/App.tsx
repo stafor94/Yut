@@ -400,7 +400,7 @@ export function App() {
     syncPendingAiSeatCount();
   }
 
-  const rooms = useRooms();
+  const rooms = useRooms({ enabled: screen === 'lobby' });
   const currentUser = userRef.current ?? user;
   const currentUserId = currentUser?.uid ?? '';
   const serverStatus = manualSequenceSyncing ? '동기화 중...' : isFirebaseConfigured ? (currentUser ? '온라인' : '연결 중') : '연결 정보 확인 필요';
