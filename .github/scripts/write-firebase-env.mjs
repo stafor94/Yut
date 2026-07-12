@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 
-const rawConfig = process.env.FIREBASE_CONFIG?.trim();
 const keyMap = {
   apiKey: 'VITE_FIREBASE_API_KEY',
   authDomain: 'VITE_FIREBASE_AUTH_DOMAIN',
@@ -10,21 +9,12 @@ const keyMap = {
   appId: 'VITE_FIREBASE_APP_ID',
 };
 
-function parseFirebaseConfig(value) {
-  if (!value) return {};
-  const objectText = value.match(/firebaseConfig\s*=\s*(\{[\s\S]*?\})\s*;?/)?.[1] ?? value;
-  const jsonish = objectText
-    .replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3')
-    .replace(/'/g, '"')
-    .replace(/,\s*}/g, '}');
-  return JSON.parse(jsonish);
-}
+const config = JSON.parse(fs.readFileSync('firebase.production.json', 'utf8'));
+const missingKeys = Object.keys(keyMap).filter((key) => !String(config[key] ?? '').trim());
+if (missingKeys.length) throw new Error(`firebase.production.json 필수 값이 없습니다: ${missingKeys.join(', ')}`);
+if (config.projectId !== 'yut-online') throw new Error(`예상하지 못한 production Firebase projectId: ${config.projectId}`);
+if (config.appId !== '1:925785463331:web:73ac57a5f7f8527455ef96') throw new Error(`예상하지 못한 production Firebase appId: ${config.appId}`);
 
-const config = parseFirebaseConfig(rawConfig);
-const lines = [];
-for (const [firebaseKey, envKey] of Object.entries(keyMap)) {
-  const value = process.env[envKey] || config[firebaseKey];
-  if (value) lines.push(`${envKey}=${value}`);
-}
+const lines = Object.entries(keyMap).map(([firebaseKey, envKey]) => `${envKey}=${config[firebaseKey]}`);
 fs.writeFileSync('.env.production', `${lines.join('\n')}\n`);
-console.log(`Wrote ${lines.length} Firebase build variables to .env.production`);
+console.log(`Wrote canonical production Firebase config: project=${config.projectId}, appId=${config.appId}`);
