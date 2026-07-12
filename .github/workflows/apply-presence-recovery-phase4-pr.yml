@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
   apply:
@@ -19,8 +21,23 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Apply phase 4 product changes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python scripts/apply-presence-recovery-phase4.py
+          set +e
+          python scripts/apply-presence-recovery-phase4.py > patch-output.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            {
+              echo '## Phase 4 patch application failed'
+              echo
+              echo '```text'
+              cat patch-output.log
+              echo '```'
+            } > patch-comment.md
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file patch-comment.md
+            exit "$status"
+          fi
           rm scripts/apply-presence-recovery-phase4.py
       - name: Commit product changes without verification
         run: |
