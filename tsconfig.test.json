@@ -25,6 +25,7 @@
     "src/game-core/roll.ts",
     "src/app/hooks/gameSyncSubscription.ts",
     "src/app/hooks/sequenceRecoveryWatchdog.ts",
+    "src/app/flows/roomCreationFlow.ts",
     "tests/unit/**/*.ts",
     "src/app/diagnostics/gameDiagnostics.ts"
   ]
