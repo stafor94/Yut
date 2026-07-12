@@ -1,0 +1,58 @@
+name: Validate Room Creation Phase 1 PR
+
+on:
+  pull_request:
+    branches: [agent/fix-room-creation-critical-path]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: validate-room-creation-phase1-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply focused room creation changes
+        run: python scripts/apply-room-creation-phase1.py
+      - name: Remove temporary patch script
+        run: rm scripts/apply-room-creation-phase1.py
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Production build
+        run: npm run build
+      - name: QA build
+        run: |
+          node .github/scripts/write-qa-firebase-env.mjs
+          node .github/scripts/verify-qa-emulator-config.mjs
+          npm run build:qa
+      - name: Verify focused diff
+        run: |
+          grep -q "createRequestId" src/features/room/services/roomService.ts
+          grep -q "withOperationTimeout" src/app/App.tsx
+          grep -q "pendingRoomCreationRef" src/app/App.tsx
+          if grep -q "await cleanupInactiveRooms();" src/features/room/services/roomService.ts; then exit 1; fi
+          if grep -q "findActiveRoomByHost" src/app/App.tsx; then exit 1; fi
+          git diff --check
+      - name: Commit validated product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx src/app/flows/roomCreationFlow.ts src/features/room/services/roomService.ts tests/unit/roomCreationFlow.test.ts tsconfig.test.json scripts/apply-room-creation-phase1.py
+          git commit -m "fix: make room creation timeout-safe and idempotent"
+          git push origin HEAD:${{ github.head_ref }}
