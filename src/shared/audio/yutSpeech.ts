@@ -7,6 +7,7 @@ const SPEECH_VOLUME = 1;
 
 const spokenByElement = new WeakMap<Element, SpokenYutResult>();
 let observer: MutationObserver | null = null;
+let bindingScheduled = false;
 
 const getKoreanVoice = () => {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return undefined;
@@ -38,8 +39,8 @@ const speakVisibleResultOnce = (isEnabled: () => boolean) => {
   speakResult(result);
 };
 
-export const bindYutResultSpeech = (isEnabled: () => boolean) => {
-  if (typeof document === 'undefined' || typeof MutationObserver === 'undefined' || observer) return;
+const startObserving = (isEnabled: () => boolean) => {
+  if (!document.body || observer) return;
   const check = () => speakVisibleResultOnce(isEnabled);
   observer = new MutationObserver(check);
   observer.observe(document.body, {
@@ -51,4 +52,18 @@ export const bindYutResultSpeech = (isEnabled: () => boolean) => {
   });
   window.speechSynthesis?.addEventListener?.('voiceschanged', check);
   check();
+};
+
+export const bindYutResultSpeech = (isEnabled: () => boolean) => {
+  if (typeof window === 'undefined' || typeof document === 'undefined' || typeof MutationObserver === 'undefined' || observer) return;
+  if (document.body) {
+    startObserving(isEnabled);
+    return;
+  }
+  if (bindingScheduled) return;
+  bindingScheduled = true;
+  document.addEventListener('DOMContentLoaded', () => {
+    bindingScheduled = false;
+    startObserving(isEnabled);
+  }, { once: true });
 };
