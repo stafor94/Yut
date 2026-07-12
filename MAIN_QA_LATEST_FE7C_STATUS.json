@@ -1,0 +1,508 @@
+{
+  "run": {
+    "id": 29212576556,
+    "run_number": 544,
+    "name": "Main Branch QA",
+    "event": "push",
+    "status": "in_progress",
+    "conclusion": null,
+    "head_sha": "fe7c3761040aa5e0fbd4e5ab1893ebdfa4b69efa",
+    "html_url": "https://github.com/stafor94/Yut/actions/runs/29212576556",
+    "created_at": "2026-07-12T22:59:55Z",
+    "updated_at": "2026-07-12T23:01:00Z"
+  },
+  "jobs": [
+    {
+      "id": 86702711865,
+      "name": "Build and unit tests",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-07-12T23:00:13Z",
+      "completed_at": "2026-07-12T23:00:36Z",
+      "html_url": "https://github.com/stafor94/Yut/actions/runs/29212576556/job/86702711865",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Prepare canonical production Firebase environment",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Build app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Unit tests",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Upload app and logs",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 8
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 15
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 16
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 17
+        }
+      ]
+    },
+    {
+      "id": 86702749867,
+      "name": "Deploy GitHub Pages",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-07-12T23:00:40Z",
+      "completed_at": "2026-07-12T23:00:55Z",
+      "html_url": "https://github.com/stafor94/Yut/actions/runs/29212576556/job/86702749867",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Run actions/download-artifact@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Verify dist exists",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/configure-pages@v5",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run actions/upload-pages-artifact@v3",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Run actions/deploy-pages@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        }
+      ]
+    },
+    {
+      "id": 86702780497,
+      "name": "QA online flow",
+      "status": "in_progress",
+      "conclusion": null,
+      "started_at": "2026-07-12T23:00:59Z",
+      "completed_at": null,
+      "html_url": "https://github.com/stafor94/Yut/actions/runs/29212576556/job/86702780497",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Initialize containers",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Prepare production Firebase helper environment",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Wait for deployed app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Run online start and authority QA",
+          "status": "in_progress",
+          "conclusion": null,
+          "number": 8
+        },
+        {
+          "name": "Run room lifecycle QA",
+          "status": "pending",
+          "conclusion": null,
+          "number": 9
+        },
+        {
+          "name": "Cleanup online-flow QA rooms",
+          "status": "pending",
+          "conclusion": null,
+          "number": 10
+        },
+        {
+          "name": "Upload online-flow artifacts",
+          "status": "pending",
+          "conclusion": null,
+          "number": 11
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "pending",
+          "conclusion": null,
+          "number": 20
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "pending",
+          "conclusion": null,
+          "number": 21
+        },
+        {
+          "name": "Stop containers",
+          "status": "pending",
+          "conclusion": null,
+          "number": 22
+        }
+      ]
+    },
+    {
+      "id": 86702780498,
+      "name": "QA roll and movement",
+      "status": "in_progress",
+      "conclusion": null,
+      "started_at": "2026-07-12T23:00:57Z",
+      "completed_at": null,
+      "html_url": "https://github.com/stafor94/Yut/actions/runs/29212576556/job/86702780498",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Initialize containers",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Prepare production Firebase helper environment",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Wait for deployed app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Run roll, turn recovery and movement QA",
+          "status": "in_progress",
+          "conclusion": null,
+          "number": 8
+        },
+        {
+          "name": "Cleanup roll-movement QA rooms",
+          "status": "pending",
+          "conclusion": null,
+          "number": 9
+        },
+        {
+          "name": "Upload roll-movement artifacts",
+          "status": "pending",
+          "conclusion": null,
+          "number": 10
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "pending",
+          "conclusion": null,
+          "number": 18
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "pending",
+          "conclusion": null,
+          "number": 19
+        },
+        {
+          "name": "Stop containers",
+          "status": "pending",
+          "conclusion": null,
+          "number": 20
+        }
+      ]
+    },
+    {
+      "id": 86702780503,
+      "name": "QA mobile and tablet layout",
+      "status": "in_progress",
+      "conclusion": null,
+      "started_at": "2026-07-12T23:00:58Z",
+      "completed_at": null,
+      "html_url": "https://github.com/stafor94/Yut/actions/runs/29212576556/job/86702780503",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Initialize containers",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Prepare production Firebase helper environment",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Wait for deployed app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Run Galaxy and iPad layout QA",
+          "status": "in_progress",
+          "conclusion": null,
+          "number": 8
+        },
+        {
+          "name": "Cleanup mobile-layout QA rooms",
+          "status": "pending",
+          "conclusion": null,
+          "number": 9
+        },
+        {
+          "name": "Upload mobile-layout artifacts",
+          "status": "pending",
+          "conclusion": null,
+          "number": 10
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "pending",
+          "conclusion": null,
+          "number": 18
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "pending",
+          "conclusion": null,
+          "number": 19
+        },
+        {
+          "name": "Stop containers",
+          "status": "pending",
+          "conclusion": null,
+          "number": 20
+        }
+      ]
+    },
+    {
+      "id": 86702780505,
+      "name": "QA desktop lobby",
+      "status": "in_progress",
+      "conclusion": null,
+      "started_at": "2026-07-12T23:00:57Z",
+      "completed_at": null,
+      "html_url": "https://github.com/stafor94/Yut/actions/runs/29212576556/job/86702780505",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Initialize containers",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "Run actions/setup-node@v4",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Run npm ci",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Prepare production Firebase helper environment",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Wait for deployed app",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        },
+        {
+          "name": "Run desktop lobby QA",
+          "status": "in_progress",
+          "conclusion": null,
+          "number": 8
+        },
+        {
+          "name": "Cleanup desktop-lobby QA rooms",
+          "status": "pending",
+          "conclusion": null,
+          "number": 9
+        },
+        {
+          "name": "Upload desktop-lobby artifacts",
+          "status": "pending",
+          "conclusion": null,
+          "number": 10
+        },
+        {
+          "name": "Post Run actions/setup-node@v4",
+          "status": "pending",
+          "conclusion": null,
+          "number": 18
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "pending",
+          "conclusion": null,
+          "number": 19
+        },
+        {
+          "name": "Stop containers",
+          "status": "pending",
+          "conclusion": null,
+          "number": 20
+        }
+      ]
+    }
+  ]
+}
