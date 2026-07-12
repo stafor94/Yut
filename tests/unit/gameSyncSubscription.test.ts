@@ -10,6 +10,7 @@ import {
 type TestSnapshot = GameSyncSnapshotIdentity & { value?: string };
 
 const flushController = () => new Promise<void>((resolve) => setImmediate(resolve));
+const missingEmitter = () => { throw new Error('구독 callback이 등록되지 않았습니다.'); };
 
 const createRuntime = (
   roomId: string,
@@ -77,7 +78,7 @@ test('동일 snapshot은 한 번만 적용하고 새 sequence는 즉시 replay�
   const controller = createGameSyncSubscriptionController<TestSnapshot>();
   const refs = { sequence: { current: 0 }, version: { current: 0 }, applying: { current: false } };
   const counters = { replay: 0, apply: 0, enqueue: 0 };
-  let emit: ((state: TestSnapshot | null) => void) | null = null;
+  let emit: (state: TestSnapshot | null) => void = missingEmitter;
 
   controller.updateRuntime(createRuntime('room-a', counters, refs));
   controller.syncRoom('room-a', (_roomId, callback) => {
@@ -85,18 +86,18 @@ test('동일 snapshot은 한 번만 적용하고 새 sequence는 즉시 replay�
     return () => undefined;
   });
 
-  emit?.({ turnVersion: 1, lastSequence: 1, value: 'first' });
-  emit?.({ turnVersion: 1, lastSequence: 1, value: 'first' });
+  emit({ turnVersion: 1, lastSequence: 1, value: 'first' });
+  emit({ turnVersion: 1, lastSequence: 1, value: 'first' });
   await flushController();
   assert.equal(counters.replay, 1);
   assert.equal(counters.enqueue, 1);
 
-  emit?.({ turnVersion: 1, lastSequence: 1, value: 'first' });
+  emit({ turnVersion: 1, lastSequence: 1, value: 'first' });
   await flushController();
   assert.equal(counters.replay, 1);
   assert.equal(counters.enqueue, 1);
 
-  emit?.({ turnVersion: 2, lastSequence: 2, value: 'second' });
+  emit({ turnVersion: 2, lastSequence: 2, value: 'second' });
   await flushController();
   assert.equal(counters.replay, 2);
   assert.equal(refs.sequence.current, 2);
@@ -108,7 +109,7 @@ test('turnVersion이 없는 legacy snapshot도 안정적인 payload key로 중�
   const controller = createGameSyncSubscriptionController<TestSnapshot>();
   const refs = { sequence: { current: 0 }, version: { current: 0 }, applying: { current: false } };
   const counters = { replay: 0, apply: 0, enqueue: 0 };
-  let emit: ((state: TestSnapshot | null) => void) | null = null;
+  let emit: (state: TestSnapshot | null) => void = missingEmitter;
 
   controller.updateRuntime(createRuntime('room-a', counters, refs));
   controller.syncRoom('room-a', (_roomId, callback) => {
@@ -122,12 +123,12 @@ test('turnVersion이 없는 legacy snapshot도 안정적인 payload key로 중�
     updatedAt: { toMillis: () => 1000 },
     value,
   });
-  emit?.(makeLegacySnapshot('same'));
-  emit?.(makeLegacySnapshot('same'));
+  emit(makeLegacySnapshot('same'));
+  emit(makeLegacySnapshot('same'));
   await flushController();
   assert.equal(counters.apply, 1);
 
-  emit?.(makeLegacySnapshot('changed'));
+  emit(makeLegacySnapshot('changed'));
   await flushController();
   assert.equal(counters.apply, 2);
   assert.notEqual(getGameSyncSnapshotApplyKey(makeLegacySnapshot('same')), getGameSyncSnapshotApplyKey(makeLegacySnapshot('changed')));
