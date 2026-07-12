@@ -19,6 +19,9 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      QA_RUN_ID: pr-${{ github.event.pull_request.number }}-${{ github.run_id }}
+      QA_PROJECT_ID: demo-yut-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
