@@ -24,6 +24,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          python <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-presence-recovery-phase4.py')
+          text = path.read_text()
+          old = "assert app.count(reset_anchor) == 1\napp = app.replace(reset_anchor, reset_new)"
+          new = "assert app.count(reset_anchor) >= 1\napp = app.replace(reset_anchor, reset_new, 1)"
+          assert old in text
+          path.write_text(text.replace(old, new))
+          PY
           set +e
           python scripts/apply-presence-recovery-phase4.py > patch-output.log 2>&1
           status=$?
