@@ -134,3 +134,5 @@ test('재시도 식별자는 방 제목뿐 아니라 전체 생성 설정을 반
 });
 """
 test_path.write_text(test_text)
+
+# validation-trigger-v2
