@@ -1,0 +1,90 @@
+name: Auth-gated lobby validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.event.pull_request.head.ref == 'agent/auth-gated-lobby-room-subscription'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      QA_RUN_ID: auth-gated-${{ github.run_id }}-${{ github.run_attempt }}
+      QA_PROJECT_ID: demo-yut-auth-gated-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/auth-gated-lobby-room-subscription
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Apply auth-gated room subscription fix
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('src/app/App.tsx')
+          text = path.read_text()
+          old = """  const rooms = useRooms({ enabled: screen === 'lobby' });
+  const currentUser = userRef.current ?? user;
+  const currentUserId = currentUser?.uid ?? '';
+"""
+          new = """  const currentUser = userRef.current ?? user;
+  const currentUserId = currentUser?.uid ?? '';
+  const rooms = useRooms({ enabled: screen === 'lobby' && Boolean(currentUser) });
+"""
+          if old in text:
+              text = text.replace(old, new, 1)
+              path.write_text(text)
+          elif new not in text:
+              raise SystemExit('auth-gated room subscription block was not found')
+          PY
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Production build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Prepare isolated QA Firebase environment
+        run: node .github/scripts/write-qa-firebase-env.mjs
+      - name: Verify emulator configuration
+        run: node .github/scripts/verify-qa-emulator-config.mjs
+      - name: Build isolated QA app
+        run: npm run build:qa
+      - name: Run full Firebase emulator QA suite
+        run: |
+          npx --yes firebase-tools@latest emulators:exec \
+            --config firebase.qa.json \
+            --project "$QA_PROJECT_ID" \
+            --only auth,firestore \
+            "npm run qa:emulator-suite"
+      - name: Commit verified product change
+        shell: bash
+        run: |
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/app/App.tsx
+          if git diff --cached --quiet; then
+            echo 'No product change to commit.'
+            exit 0
+          fi
+          git commit -m '인증 완료 후 로비 방 목록 구독 시작'
+          git push origin HEAD:agent/auth-gated-lobby-room-subscription
