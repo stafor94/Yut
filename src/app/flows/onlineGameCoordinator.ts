@@ -4,8 +4,14 @@ type OnlineGameCoordinatorSeat = {
   isEmpty?: boolean;
 };
 
-export const getOnlineGameCoordinatorSeatId = (seats: OnlineGameCoordinatorSeat[]) =>
-  seats.find((seat) => !seat.isEmpty && !seat.isAI)?.id ?? '';
+const isEligibleOnlineGameCoordinator = (seat: OnlineGameCoordinatorSeat) => !seat.isEmpty && !seat.isAI;
+
+export const getOnlineGameCoordinatorSeatId = (seats: OnlineGameCoordinatorSeat[], preferredCoordinatorSeatId = '') => {
+  if (preferredCoordinatorSeatId && seats.some((seat) => seat.id === preferredCoordinatorSeatId && isEligibleOnlineGameCoordinator(seat))) {
+    return preferredCoordinatorSeatId;
+  }
+  return seats.find(isEligibleOnlineGameCoordinator)?.id ?? '';
+};
 
 export const getHumanSeatsWaitingForGameEntry = <TSeat extends OnlineGameCoordinatorSeat & { isSpectator?: boolean; enteredStartVersion?: number }>(seats: TSeat[], startRequestVersion: number, optimisticEnteredSeatId = '') =>
   seats.filter((seat) => !seat.isEmpty && !seat.isAI && !seat.isSpectator && seat.enteredStartVersion !== startRequestVersion && seat.id !== optimisticEnteredSeatId);
