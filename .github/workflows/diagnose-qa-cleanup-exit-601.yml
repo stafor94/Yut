@@ -1,0 +1,53 @@
+name: Diagnose QA cleanup exit 601
+
+on:
+  push:
+    branches:
+      - probe/main-qa-601-snapshot
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      QA_RUN_ID: gh-29211715793-1-cleanup-diagnostic
+      QA_ROLE: cleanup-diagnostic
+      QA_ALLOW_PRODUCTION_FIREBASE: '1'
+      QA_CLEANUP_REPORT_REMAINING: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node .github/scripts/write-firebase-env.mjs
+      - name: Run cleanup with external timeout
+        shell: bash
+        run: |
+          set +e
+          STARTED_AT="$(date -u +%FT%TZ)"
+          timeout 45s npm run qa:cleanup-rooms > QA_CLEANUP_EXIT_601.log 2>&1
+          STATUS=$?
+          FINISHED_AT="$(date -u +%FT%TZ)"
+          {
+            echo
+            echo "started_at=$STARTED_AT"
+            echo "finished_at=$FINISHED_AT"
+            echo "exit_status=$STATUS"
+          } >> QA_CLEANUP_EXIT_601.log
+          exit 0
+      - name: Commit diagnostic
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add QA_CLEANUP_EXIT_601.log
+          git commit -m "QA cleanup 종료 지연 진단 기록"
+          git push
