@@ -4945,11 +4945,9 @@ export function App() {
       submitItemActionIfRemote();
       consumeItem();
       clearRoll();
-      if (stackedRollMode) {
-        setRollStack((current) => current.filter((_, index) => index !== rerollStackIndex));
-        setSelectedRollStackIndex(null);
-        setRollStackClosed(false);
-      }
+      if (stackedRollMode) setRollStack((current) => current.filter((_, index) => index !== rerollStackIndex));
+      setSelectedRollStackIndex(stackedRollMode ? rerollStackIndex : -1);
+      setRollStackClosed(false);
       setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
       setTurnDeadlineKind('roll');
       addLog(`${getSeatDisplayName(itemOwnerSeat)}님이 다시 던지기 아이템을 사용했습니다. 다시 윷을 던져주세요.`);
