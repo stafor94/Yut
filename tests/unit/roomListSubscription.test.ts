@@ -48,6 +48,8 @@ function createHarness() {
   };
 }
 
+const getLatestPublishedRooms = (published: TestRoom[][]) => published[published.length - 1];
+
 test('로비 controller는 start 전에는 구독하지 않고 중복 start에도 한 번만 구독한다', () => {
   const harness = createHarness();
   assert.equal(harness.roomSubscribeCount, 0);
@@ -80,7 +82,7 @@ test('활성 방마다 players listener를 한 번만 만들고 기존 currentPl
   ]);
   harness.emitPlayers('room-b', [{ id: 'human-b' }, { id: 'human-c' }]);
 
-  const latest = harness.published.at(-1) ?? [];
+  const latest = getLatestPublishedRooms(harness.published) ?? [];
   assert.deepEqual(latest.map((room) => ({ id: room.id, count: room.currentPlayers, ids: room.playerIds })), [
     { id: 'room-a', count: 1, ids: ['human-a'] },
     { id: 'room-b', count: 2, ids: ['human-b', 'human-c'] },
@@ -96,7 +98,7 @@ test('사람 플레이어가 없는 방은 목록에서 숨기지만 listener ca
     { id: 'ai-a', isAI: true },
   ]);
 
-  assert.deepEqual(harness.published.at(-1), []);
+  assert.deepEqual(getLatestPublishedRooms(harness.published), []);
 });
 
 test('방이 목록에서 사라지면 해당 players listener만 해제하고 늦은 callback은 무시한다', () => {
@@ -142,10 +144,10 @@ test('로비 복귀에 해당하는 재시작은 즉시 새 active rooms listene
   harness.controller.start();
   harness.emitRooms([{ id: 'room-a', title: 'A' }]);
   harness.emitPlayers('room-a', [{ id: 'human-a' }]);
-  const retainedRooms = harness.published.at(-1);
+  const retainedRooms = getLatestPublishedRooms(harness.published);
 
   harness.controller.stop();
-  assert.equal(harness.published.at(-1), retainedRooms);
+  assert.equal(getLatestPublishedRooms(harness.published), retainedRooms);
 
   harness.controller.start();
   assert.equal(harness.roomSubscribeCount, 2);
