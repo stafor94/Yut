@@ -57,15 +57,38 @@ export function summarizeRemainingRoomReason(room, now = Date.now()) {
   return reasons.join('; ');
 }
 
+function getQaRunId() {
+  return String(process.env.QA_RUN_ID ?? '').trim();
+}
+
+function getQaRole() {
+  return String(process.env.QA_ROLE ?? '').trim();
+}
+
+function assertProductionQaAccess(config, qaRunId, emulatorEndpoint) {
+  if (!qaRunId || emulatorEndpoint) return;
+  if (process.env.QA_ALLOW_PRODUCTION_FIREBASE !== '1') {
+    throw new Error('운영 Firebase QA는 QA_ALLOW_PRODUCTION_FIREBASE=1이 필요합니다.');
+  }
+  if (config.projectId !== 'yut-online') {
+    throw new Error(`운영 QA helper의 projectId가 yut-online이 아닙니다: ${String(config.projectId ?? '')}`);
+  }
+  if (!/^gh-\d+-\d+-[a-z0-9-]+$/u.test(qaRunId)) {
+    throw new Error(`운영 QA_RUN_ID 형식이 올바르지 않습니다: ${qaRunId}`);
+  }
+}
+
 export async function getTestDb() {
   if (!dbPromise) {
     dbPromise = (async () => {
       const config = await loadFirebaseConfig();
       if (!config) return null;
-      const qaRunId = String(process.env.QA_RUN_ID ?? '').trim();
+      const qaRunId = getQaRunId();
       const emulatorEndpoint = String(process.env.FIRESTORE_EMULATOR_HOST ?? '').trim();
-      if (qaRunId && !emulatorEndpoint) throw new Error('QA helper는 FIRESTORE_EMULATOR_HOST 없이 실행할 수 없습니다.');
-      if (qaRunId && !String(config.projectId ?? '').startsWith('demo-')) throw new Error(`QA helper가 운영 projectId를 거부했습니다: ${String(config.projectId ?? '')}`);
+      assertProductionQaAccess(config, qaRunId, emulatorEndpoint);
+      if (qaRunId && emulatorEndpoint && !String(config.projectId ?? '').startsWith('demo-')) {
+        throw new Error(`Emulator QA helper가 demo projectId를 요구합니다: ${String(config.projectId ?? '')}`);
+      }
       const appName = qaRunId ? `qa-${qaRunId}`.slice(0, 40) : 'qa-helper';
       const app = getApps().find((candidate) => candidate.name === appName) ?? initializeApp(config, appName);
       const firestore = getFirestore(app);
@@ -81,11 +104,23 @@ export async function getTestDb() {
   return dbPromise;
 }
 
+export async function markRoomForQa(roomId) {
+  const db = await getTestDb();
+  const qaRunId = getQaRunId();
+  if (!db || !roomId || !qaRunId) return false;
+  await updateDoc(doc(db, 'rooms', roomId), {
+    isQaRoom: true,
+    qaRunId,
+    qaRole: getQaRole(),
+    qaCreatedAt: serverTimestamp(),
+  });
+  return true;
+}
 
 export async function createLobbyRoomFixtureForQa({ title, hostNickname, maxPlayers = 2, itemMode = false, stackedRollMode = false, playMode = 'individual', pieceCount = 4 } = {}) {
   const db = await getTestDb();
   if (!db) throw new Error('Firebase 설정이 없어 QA fixture 방을 생성할 수 없습니다.');
-  const qaRunId = String(process.env.QA_RUN_ID ?? '').trim();
+  const qaRunId = getQaRunId();
   if (!qaRunId) throw new Error('QA_RUN_ID 없이 QA fixture 방을 생성할 수 없습니다.');
   const normalizedTitle = String(title ?? '').trim();
   if (!normalizedTitle) throw new Error('QA fixture 방 제목이 필요합니다.');
@@ -106,7 +141,10 @@ export async function createLobbyRoomFixtureForQa({ title, hostNickname, maxPlay
     currentPlayers: 1,
     createdAt: fixtureTimestamp,
     emptySince: null,
+    isQaRoom: true,
     qaRunId,
+    qaRole: getQaRole(),
+    qaCreatedAt: fixtureTimestamp,
   });
   batch.set(doc(db, 'rooms', roomRef.id, 'players', hostId), {
     nickname,
@@ -144,7 +182,9 @@ export async function findRoomIdByTitle(title) {
   const db = await getTestDb();
   if (!db) return null;
   const snapshot = await getDocs(query(collection(db, 'rooms'), where('title', '==', title)));
-  return snapshot.docs[0]?.id ?? null;
+  const roomId = snapshot.docs[0]?.id ?? null;
+  if (roomId) await markRoomForQa(roomId);
+  return roomId;
 }
 
 export async function getRoomForQa(roomId) {
@@ -160,7 +200,6 @@ export async function getRoomStateForQa(roomId) {
   const snapshot = await getDoc(doc(db, 'rooms', roomId, 'state', 'current'));
   return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
 }
-
 
 export async function updateRoomForQa(roomId, patch) {
   const db = await getTestDb();
@@ -224,8 +263,8 @@ export async function deleteRoomForQa(roomId) {
   return deletedCounts;
 }
 
-
 export async function rememberRoomIdFromPage(page) {
   const roomId = await page.evaluate(() => String(window.__YUT_DEBUG_STATE__?.activeRoomId ?? ''));
+  if (roomId) await markRoomForQa(roomId);
   return roomId || null;
 }
