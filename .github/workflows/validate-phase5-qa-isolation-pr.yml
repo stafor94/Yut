@@ -52,6 +52,8 @@ jobs:
       - name: Build QA app
         run: npm run build:qa
       - name: Run full QA suite inside Firebase emulators
+        id: emulator
+        continue-on-error: true
         run: |
           set -o pipefail
           npx --yes firebase-tools@latest emulators:exec \
@@ -69,7 +71,48 @@ jobs:
           if sed -n '/qa-firebase-emulator:/,/qa-stacked-roll-backdo-ai:/p' .github/workflows/qa.yml | grep -q "secrets\.FIREBASE\|vars\.FIREBASE\|VITE_FIREBASE_PROJECT_ID.*secrets"; then exit 1; fi
           grep -q "build-and-unit:" .github/workflows/qa.yml
           grep -q "deploy-pages:" .github/workflows/qa.yml
+      - name: Upload emulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase5-emulator-diagnostics
+          path: |
+            phase5-emulator-validation.log
+            playwright-*.log
+            qa-*.log
+            test-results
+            firestore-debug.log
+            firebase-debug.log
+            console-log.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Comment emulator failure details
+        if: steps.emulator.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Phase 5 Firebase emulator diagnostic'
+            echo '- Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            echo '- Project: `${{ env.QA_PROJECT_ID }}`'
+            echo '- Namespace: `${{ env.QA_RUN_ID }}`'
+            echo '- Emulator suite: **failure**'
+            for file in qa-emulator-guard.log playwright-qa-firebase-isolation.log playwright-qa-basic-flow.log playwright-qa-online-turn-recovery.log playwright-qa-cleanup-layout-regression.log qa-cleanup-after.log phase5-emulator-validation.log; do
+              echo
+              echo "<details><summary>${file}</summary>"
+              echo
+              echo '```text'
+              if [ -f "$file" ]; then tail -n 100 "$file"; else echo 'log file not created'; fi
+              echo '```'
+              echo '</details>'
+            done
+          } > phase5-diagnostic-comment.md
+          gh pr comment 563 --repo "${{ github.repository }}" --body-file phase5-diagnostic-comment.md
+      - name: Fail when emulator suite failed
+        if: steps.emulator.outcome == 'failure'
+        run: exit 1
       - name: Remove temporary validation files and commit
+        if: steps.emulator.outcome == 'success'
         run: |
           rm .github/workflows/validate-phase5-qa-isolation-pr.yml
           rm scripts/apply-phase5-qa-isolation.py
@@ -79,6 +122,7 @@ jobs:
           git commit -m "test: isolate GitHub Actions QA with Firebase emulators"
           git push origin HEAD:agent/isolate-qa-firebase-emulator
       - name: Comment success
+        if: steps.emulator.outcome == 'success'
         uses: actions/github-script@v7
         with:
           script: |
@@ -96,15 +140,4 @@ jobs:
                 '- Run-scoped cleanup with zero remaining rooms: **success**',
                 '- Production Firebase secrets in QA job: **none**',
               ].join('\n'),
-            });
-      - name: Comment failure
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `## Phase 5 Firebase emulator validation failed\n- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n- The validated phase 5 product commit was not pushed.`,
             });
