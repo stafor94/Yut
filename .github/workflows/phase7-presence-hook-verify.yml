@@ -1,0 +1,97 @@
+name: Phase 7 Presence Hook Verify
+
+on:
+  push:
+    branches:
+      - agent/presence-recovery-hook-phase7
+
+permissions:
+  contents: write
+
+jobs:
+  refactor-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/presence-recovery-hook-phase7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Extract presence recovery from App
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/app/App.tsx')
+          source = path.read_text()
+          replacements = [
+            (
+              "import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';\nimport { useRoomPresence } from './hooks/useRoomPresence';",
+              "import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';\nimport { usePresenceRecovery } from './hooks/usePresenceRecovery';\nimport { useRoomPresence } from './hooks/useRoomPresence';",
+            ),
+            (
+              "import { ROOM_PLAYER_MISSING_GRACE_MS, getPresenceRestoreKey, shouldApplyPresenceRestoreResult } from './flows/presenceRecovery';",
+              "import { ROOM_PLAYER_MISSING_GRACE_MS } from './flows/presenceRecovery';",
+            ),
+            (
+              "  const roomHostClaimKeyRef = useRef('');\n  const presenceRestoreKeyRef = useRef('');\n  const missingRoomPlayerTimerRef = useRef<number | null>(null);",
+              "  const roomHostClaimKeyRef = useRef('');\n  const missingRoomPlayerTimerRef = useRef<number | null>(null);",
+            ),
+            (
+              "    setAuthoritativeGameStateReady(false);\n    setInitialGameEntryPending(false);\n    presenceRestoreKeyRef.current = '';\n    if (missingRoomPlayerTimerRef.current !== null) {",
+              "    setAuthoritativeGameStateReady(false);\n    setInitialGameEntryPending(false);\n    if (missingRoomPlayerTimerRef.current !== null) {",
+            ),
+            (
+              "  useRoomPresence(activeRoomId, localSeatId, { canCleanup: canOwnRoomPresenceCleanup });\n\n  useEffect(() => { startRequestVersionRef.current = startRequestVersion; }, [startRequestVersion]);",
+              "  useRoomPresence(activeRoomId, localSeatId, { canCleanup: canOwnRoomPresenceCleanup });\n  const { handlePresencePlayerSnapshot } = usePresenceRecovery({\n    activeRoomId,\n    screen,\n    currentUserId,\n    nickname,\n    playMode,\n    leavingRoomRef,\n    onRestored: () => setMessage('연결이 복구되어 원래 좌석으로 다시 참여했습니다.'),\n  });\n\n  useEffect(() => { startRequestVersionRef.current = startRequestVersion; }, [startRequestVersion]);",
+            ),
+            (
+              "      const substitutedLocalPlayer = localPresencePlayer && localPresencePlayer.isAI && localPresencePlayer.isSubstitutedByAI && !localPresencePlayer.isSpectator ? localPresencePlayer : undefined;\n      if (substitutedLocalPlayer && activeRoomId && screen === 'game' && !leavingRoomRef.current) {\n        const expectedPresenceEpoch = Number(substitutedLocalPlayer.presenceEpoch ?? 0);\n        const restoreKey = getPresenceRestoreKey(activeRoomId, currentUserId ?? '', substitutedLocalPlayer.seatIndex, expectedPresenceEpoch);\n        if (presenceRestoreKeyRef.current !== restoreKey) {\n          presenceRestoreKeyRef.current = restoreKey;\n          const restoreRoomId = activeRoomId;\n          const restoreUserId = currentUserId ?? '';\n          void joinRoom(restoreRoomId, {\n            userId: restoreUserId,\n            nickname: substitutedLocalPlayer.nickname || nickname,\n            playMode,\n            expectedPresenceEpoch,\n          })\n            .then((result) => {\n              if (!shouldApplyPresenceRestoreResult({\n                requestedRoomId: restoreRoomId,\n                currentRoomId: activeRoomIdRef.current,\n                requestedUserId: restoreUserId,\n                currentUserId: (userRef.current ?? currentUser)?.uid ?? '',\n                requestedPresenceEpoch: expectedPresenceEpoch,\n                restoredPresenceEpoch: result.presenceEpoch,\n                role: result.role,\n                screen: screenRef.current,\n              })) {\n                if (presenceRestoreKeyRef.current === restoreKey) presenceRestoreKeyRef.current = '';\n                return;\n              }\n              setMessage('연결이 복구되어 원래 좌석으로 다시 참여했습니다.');\n            })\n            .catch(() => {\n              if (presenceRestoreKeyRef.current === restoreKey) presenceRestoreKeyRef.current = '';\n            });\n        }\n      } else if (!substitutedLocalPlayer) {\n        presenceRestoreKeyRef.current = '';\n      }",
+              "      handlePresencePlayerSnapshot(localPresencePlayer);",
+            ),
+            (
+              "  }, [activeRoomHostId, activeRoomId, canCoordinateOnlineGame, currentUserId, isRoomManager, localSeatId, maxPlayers, playMode, screen]);",
+              "  }, [activeRoomHostId, activeRoomId, canCoordinateOnlineGame, currentUserId, handlePresencePlayerSnapshot, isRoomManager, localSeatId, maxPlayers, playMode, screen]);",
+            ),
+          ]
+
+          changed = False
+          for old, new in replacements:
+            if new in source:
+              continue
+            count = source.count(old)
+            if count != 1:
+              raise SystemExit(f'expected one App replacement, found {count}: {old[:100]!r}')
+            source = source.replace(old, new, 1)
+            changed = True
+
+          if changed:
+            path.write_text(source)
+          PY
+      - name: Verify authoritative epoch contract remains
+        run: |
+          grep -q "expectedPresenceEpoch" src/app/hooks/usePresenceRecovery.ts
+          grep -q "shouldApplyPresenceRestoreResult" src/app/hooks/usePresenceRecovery.ts
+          grep -q "handlePresencePlayerSnapshot(localPresencePlayer)" src/app/App.tsx
+          ! grep -q "presenceGeneration" src/app/hooks/usePresenceRecovery.ts
+          ! grep -q "presenceRestoreKeyRef" src/app/App.tsx
+      - run: npm ci
+      - name: Prepare production Firebase environment
+        run: node .github/scripts/write-firebase-env.mjs
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Build
+        run: npm run build
+      - name: Commit verified App refactor
+        run: |
+          if git diff --quiet -- src/app/App.tsx; then
+            echo "No App refactor to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx
+          git commit -m "refactor: connect presence epoch recovery hook"
+          git push origin HEAD:agent/presence-recovery-hook-phase7
