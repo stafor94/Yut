@@ -821,13 +821,8 @@ export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): 
   return onSnapshot(roomsQuery, (snapshot) => {
     const now = Date.now();
     const rooms = snapshot.docs
-      .map((roomDoc) => ({ id: roomDoc.id, ref: roomDoc.ref, hasPendingWrites: roomDoc.metadata.hasPendingWrites, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
-      .filter((room) => {
-        const inactive = isInactiveRoom(room, now);
-        if (inactive && !room.hasPendingWrites) void deleteRoom(room.id).catch((error) => console.warn('비활성 방 정리에 실패했습니다.', error));
-        return !inactive;
-      })
-      .map(({ ref: _ref, hasPendingWrites: _hasPendingWrites, ...room }) => room);
+      .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
+      .filter((room) => !isInactiveRoom(room, now));
     callback(keepNewestRoomPerHost(rooms).slice(0, MAX_ACTIVE_ROOMS));
   }, () => callback([]));
 }
