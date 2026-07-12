@@ -9,7 +9,7 @@ import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollA
 import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
-import { createSequenceRecoveryWatchdog, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
+import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
 import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';
 import { useRoomPresence } from './hooks/useRoomPresence';
@@ -2498,14 +2498,14 @@ export function App() {
   sequenceRecoveryCheckRef.current = async (): Promise<SequenceRecoveryCheckResult> => {
     const roomId = activeRoomId;
     if (!roomId || activeRoomIdRef.current !== roomId || screen !== 'game' || isMyTurn || winner) return 'deferred';
-    if (
-      sequenceReplayInProgressRef.current
-      || moveInProgressRef.current
-      || applyingSyncedStateRef.current
-      || manualSequenceSyncing
-      || pendingLocalRemoteActionsRef.current.size > 0
-      || turnRecoveryInFlightRef.current
-    ) return 'deferred';
+    if (shouldDeferSequenceRecovery({
+      sequenceReplayInProgress: sequenceReplayInProgressRef.current,
+      moveInProgress: moveInProgressRef.current,
+      applyingSyncedState: applyingSyncedStateRef.current,
+      manualSequenceSyncing,
+      hasPendingRemoteActions: pendingLocalRemoteActionsRef.current.size > 0,
+      turnRecoveryInFlight: turnRecoveryInFlightRef.current,
+    })) return 'deferred';
 
     const localSequence = lastAppliedSequenceRef.current;
     try {
@@ -3691,7 +3691,7 @@ export function App() {
           recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-committed', '윷 던지기 제한 시간 초과를 자동 처리했습니다.', { status: result.status, actionKey });
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
-          void handleAuthoritativeActionRejected('roll_yut', 'turn-roll-timeout-recovery-result', result, {
+          await handleAuthoritativeActionRejected('roll_yut', 'turn-roll-timeout-recovery-result', result, {
             actionKey,
             fallbackMessage: '윷 던지기 자동 진행에 실패했습니다.',
             clearRecoveryKey: () => timeoutRecoveryKeysRef.current.delete(recoveryKey),
@@ -3736,7 +3736,7 @@ export function App() {
           recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-committed', '멈춘 턴 이동을 자동 복구했습니다.', { status: result.status, actionKey: payload.clientActionId });
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
-          void handleAuthoritativeActionRejected('move_piece', 'stalled-turn-recovery-result', result, {
+          await handleAuthoritativeActionRejected('move_piece', 'stalled-turn-recovery-result', result, {
             actionKey: payload.clientActionId,
             fallbackMessage: '멈춘 턴 자동 복구에 실패했습니다.',
             clearRecoveryKey: () => { stalledTurnRecoveryKeyRef.current = ''; },
