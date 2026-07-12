@@ -103,13 +103,13 @@ export async function collectScreenState(page) {
   }));
 }
 
-
 export async function waitForBlockingOverlayToDisappear(page, { timeout = 20_000 } = {}) {
   await expect(page.locator('.loading-modal-backdrop')).toBeHidden({ timeout });
 }
 
 export async function expectAppShell(page) {
-  await page.goto('/');
+  const targetUrl = String(process.env.PLAYWRIGHT_BASE_URL ?? '').trim() || '/';
+  await page.goto(targetUrl);
   await expect(page.getByTestId('app-shell')).toBeVisible({ timeout: 15_000 });
 }
 
