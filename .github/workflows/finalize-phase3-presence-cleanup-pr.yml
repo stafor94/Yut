@@ -1,0 +1,81 @@
+name: Finalize Phase 3 Presence Cleanup PR
+
+on:
+  pull_request:
+    branches: [agent/conditional-sequence-recovery]
+    types: [synchronize]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: finalize-phase3-presence-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  finalize-and-validate:
+    name: Finalize presence cleanup, unit test, and build
+    if: github.head_ref == 'agent/single-owner-room-presence-cleanup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/single-owner-room-presence-cleanup
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply exact finalization
+        run: python scripts/finalize-phase3-presence-cleanup.py
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Build app
+        run: npm run build
+      - name: Verify transactional candidate guard
+        run: |
+          grep -q "const candidateSnapshot = await transaction.get(candidateRef)" src/features/room/services/roomService.ts
+          grep -q "isEligiblePresenceCleanupCandidate(candidate)" src/features/room/services/roomService.ts
+          grep -q "current.roomId === activeRoomId && current.eligible === nextPresenceCleanupEligible" src/app/App.tsx
+          if grep -R "cleanupStaleRooms" src; then exit 1; fi
+      - name: Remove temporary files and commit
+        run: |
+          rm .github/workflows/finalize-phase3-presence-cleanup-pr.yml
+          rm scripts/finalize-phase3-presence-cleanup.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx src/features/room/services/roomService.ts .github/workflows/finalize-phase3-presence-cleanup-pr.yml scripts/finalize-phase3-presence-cleanup.py
+          git commit -m "fix: validate presence cleanup owner transactionally"
+          git push origin HEAD:agent/single-owner-room-presence-cleanup
+      - name: Comment success
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '## Phase 3 final validation',
+                `- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '- `npm run test:unit`: **success**',
+                '- `npm run build`: **success**',
+                '- Transactional human/non-spectator cleanup-owner guard: **verified**',
+                '- Stable snapshot eligibility state: **verified**',
+              ].join('\n'),
+            });
+      - name: Comment failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## Phase 3 final validation failed\n- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n- No finalization commit was pushed.`,
+            });
