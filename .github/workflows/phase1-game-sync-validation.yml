@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: read
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: phase1-game-sync-validation-${{ github.ref }}
@@ -74,3 +76,26 @@ jobs:
         run: npm run qa:cleanup-rooms
         env:
           FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
+
+  report:
+    name: Report validation result
+    if: always()
+    needs: [build-and-unit, online-recovery]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment validation result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RESULT: ${{ needs.build-and-unit.result }}
+          ONLINE_RESULT: ${{ needs.online-recovery.result }}
+        run: |
+          body=$(cat <<EOF
+          <!-- phase1-game-sync-validation:${{ github.sha }} -->
+          ## Phase 1 game sync validation
+          - Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - Head SHA: `${{ github.sha }}`
+          - Build and unit tests: **${BUILD_RESULT}**
+          - Online recovery QA: **${ONLINE_RESULT}**
+          EOF
+          )
+          gh pr comment 559 --repo "${{ github.repository }}" --body "$body"
