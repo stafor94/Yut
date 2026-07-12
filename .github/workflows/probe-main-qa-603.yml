@@ -1,0 +1,49 @@
+name: Probe Main Branch QA 603
+
+on:
+  push:
+    branches:
+      - probe/main-qa-603
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  probe:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      TARGET_SHA: 2cb593623763a93ce9798c3ec52061d9d8b0248e
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Query final Main Branch QA
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=""
+          for attempt in $(seq 1 30); do
+            RUNS="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f head_sha="$TARGET_SHA" -f event=push -f per_page=20)"
+            RUN_ID="$(jq -r '.workflow_runs[] | select(.name == "Main Branch QA") | .id' <<<"$RUNS" | head -n1)"
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then break; fi
+            sleep 5
+          done
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            jq -n --arg sha "$TARGET_SHA" '{error:"Main Branch QA run not found",head_sha:$sha}' > MAIN_QA_603_STATUS.json
+          else
+            RUN="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")"
+            JOBS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100")"
+            jq -n --argjson run "$RUN" --argjson jobs "$JOBS" '{run:{id:$run.id,run_number:$run.run_number,name:$run.name,event:$run.event,status:$run.status,conclusion:$run.conclusion,head_sha:$run.head_sha,html_url:$run.html_url,created_at:$run.created_at,updated_at:$run.updated_at},jobs:[$jobs.jobs[]|{id,name,status,conclusion,started_at,completed_at,html_url,steps:[.steps[]?|{name,status,conclusion,number}]}]}' > MAIN_QA_603_STATUS.json
+          fi
+      - name: Commit status
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MAIN_QA_603_STATUS.json
+          git commit -m "최종 Main Branch QA #603 현재 상태 기록"
+          git push
