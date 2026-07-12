@@ -1,17 +1,54 @@
 import { useEffect } from 'react';
-import { cleanupStaleRooms, heartbeatRoomPlayer } from '../../features/room/services/roomService';
+import {
+  cleanupCurrentRoomPresence,
+  heartbeatRoomPlayer,
+  releaseRoomPresenceCleanupLease,
+} from '../../features/room/services/roomService';
+import {
+  ROOM_PRESENCE_CLEANUP_INTERVAL_MS,
+} from '../../features/room/services/roomPresenceCleanupPolicy';
 
-export function useRoomPresence(activeRoomId: string, localSeatId: string) {
+export function useRoomPresence(activeRoomId: string, localSeatId: string, options: { canCleanup?: boolean } = {}) {
+  const canCleanup = Boolean(options.canCleanup);
+
   useEffect(() => {
     if (!activeRoomId || !localSeatId) return undefined;
-    void heartbeatRoomPlayer(activeRoomId, localSeatId);
-    const heartbeatTimer = window.setInterval(() => { void heartbeatRoomPlayer(activeRoomId, localSeatId); }, 15000);
-    return () => window.clearInterval(heartbeatTimer);
-  }, [activeRoomId, localSeatId]);
+    let disposed = false;
+    let cycleInFlight = false;
 
-  useEffect(() => {
-    void cleanupStaleRooms(undefined, activeRoomId);
-    const cleanupTimer = window.setInterval(() => { void cleanupStaleRooms(undefined, activeRoomId); }, 30000);
-    return () => window.clearInterval(cleanupTimer);
-  }, [activeRoomId]);
+    const runPresenceCycle = async () => {
+      if (disposed || cycleInFlight) return;
+      cycleInFlight = true;
+      try {
+        const heartbeatSucceeded = await heartbeatRoomPlayer(activeRoomId, localSeatId);
+        if (!disposed && heartbeatSucceeded && canCleanup) {
+          await cleanupCurrentRoomPresence(activeRoomId, localSeatId);
+        }
+      } catch {
+        // 다음 presence 주기에 다시 시도한다.
+      } finally {
+        cycleInFlight = false;
+      }
+    };
+
+    const handleResume = () => { void runPresenceCycle(); };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void runPresenceCycle();
+    };
+
+    void runPresenceCycle();
+    const presenceTimer = window.setInterval(() => { void runPresenceCycle(); }, ROOM_PRESENCE_CLEANUP_INTERVAL_MS);
+    window.addEventListener('focus', handleResume);
+    window.addEventListener('pageshow', handleResume);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(presenceTimer);
+      window.removeEventListener('focus', handleResume);
+      window.removeEventListener('pageshow', handleResume);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (canCleanup) void releaseRoomPresenceCleanupLease(activeRoomId, localSeatId);
+    };
+  }, [activeRoomId, canCleanup, localSeatId]);
 }

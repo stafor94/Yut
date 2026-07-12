@@ -211,6 +211,7 @@ export function App() {
   const [authoritativeGameStateReady, setAuthoritativeGameStateReady] = useState(false);
   const [firebaseLatencySamples, setFirebaseLatencySamples] = useState<number[]>([]);
   const [spectators, setSpectators] = useState<Seat[]>([]);
+  const [presenceCleanupEligibility, setPresenceCleanupEligibility] = useState({ roomId: '', eligible: false });
   const [pendingItemPickup, setPendingItemPickup] = useState<PendingItemPickup | null>(null);
   const [seats, setSeats] = useState<Seat[]>(() => createSeats('플레이어', 'individual', 4));
   const [pieces, setPieces] = useState<BoardPiece[]>(() => makePieces(createSeats('플레이어', 'individual', 4), 4));
@@ -377,6 +378,7 @@ export function App() {
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
   const roomHostClaimKeyRef = useRef('');
+  const presenceRestoreKeyRef = useRef('');
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const startRequestVersionRef = useRef(0);
   const startRequestIdRef = useRef('');
@@ -433,6 +435,7 @@ export function App() {
   const onlineGameCoordinatorSeatId = getOnlineGameCoordinatorSeatId(playableSeats);
   const isInitialGameCoordinator = !activeRoomId || Boolean(!isSpectator && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
   const canCoordinateOnlineGame = !activeRoomId || Boolean(isOnlinePlayer && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
+  const canOwnRoomPresenceCleanup = Boolean(activeRoomId && presenceCleanupEligibility.roomId === activeRoomId && presenceCleanupEligibility.eligible);
   const canResolveInitialOnlineTurnOrder = canCoordinateOnlineGame;
   const canCompleteInitialOnlineTurnOrderIntro = canCoordinateOnlineGame || Boolean(activeRoomId && isOnlinePlayer);
   const canManageRoom = isRoomManager;
@@ -1241,7 +1244,7 @@ export function App() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.pieceCount, String(pieceCount)); }, [pieceCount]);
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
 
-  useRoomPresence(activeRoomId, localSeatId);
+  useRoomPresence(activeRoomId, localSeatId, { canCleanup: canOwnRoomPresenceCleanup });
 
   useEffect(() => { startRequestVersionRef.current = startRequestVersion; }, [startRequestVersion]);
   useEffect(() => { startStatusRef.current = startStatus; }, [startStatus]);
@@ -1386,7 +1389,12 @@ export function App() {
     return subscribeRoomPlayers(activeRoomId, (players) => {
       const nextSeats = seatsFromRoomPlayers(players, playMode, maxPlayers, activeRoomHostId);
       const currentUserId = (userRef.current ?? currentUser)?.uid;
-      const hasCurrentUserInSnapshot = Boolean(currentUserId && players.some((player) => player.id === currentUserId && !player.isSpectator));
+      const localPresencePlayer = currentUserId ? players.find((player) => player.id === currentUserId) : undefined;
+      const hasCurrentUserInSnapshot = Boolean(localPresencePlayer && !localPresencePlayer.isSpectator);
+      const nextPresenceCleanupEligible = Boolean(localPresencePlayer && !localPresencePlayer.isAI && !localPresencePlayer.isSpectator);
+      setPresenceCleanupEligibility((current) => current.roomId === activeRoomId && current.eligible === nextPresenceCleanupEligible
+        ? current
+        : { roomId: activeRoomId, eligible: nextPresenceCleanupEligible });
       if (hasCurrentUserInSnapshot) confirmedRoomPlayerRef.current = true;
       if (currentUserId && !leavingRoomRef.current && !isRoomManager && screen === 'waitingRoom' && confirmedRoomPlayerRef.current && !hasCurrentUserInSnapshot) {
         confirmedRoomPlayerRef.current = false;
@@ -1398,6 +1406,24 @@ export function App() {
         setMessage('방장에게 강퇴당했습니다.');
         setRoomNoticeDialog({ title: '방장에게 강퇴당했습니다.', message: '로비로 이동했습니다.' });
         return;
+      }
+      const substitutedLocalPlayer = localPresencePlayer && localPresencePlayer.isAI && localPresencePlayer.isSubstitutedByAI && !localPresencePlayer.isSpectator ? localPresencePlayer : undefined;
+      if (substitutedLocalPlayer && activeRoomId && screen === 'game' && !leavingRoomRef.current) {
+        const restoreKey = `${activeRoomId}:${currentUserId}:${substitutedLocalPlayer.seatIndex}`;
+        if (presenceRestoreKeyRef.current !== restoreKey) {
+          presenceRestoreKeyRef.current = restoreKey;
+          void joinRoom(activeRoomId, { userId: currentUserId!, nickname: substitutedLocalPlayer.nickname || nickname, playMode })
+            .then((result) => {
+              if (result.role !== 'player') {
+                presenceRestoreKeyRef.current = '';
+                return;
+              }
+              setMessage('연결이 복구되어 원래 좌석으로 다시 참여했습니다.');
+            })
+            .catch(() => { presenceRestoreKeyRef.current = ''; });
+        }
+      } else if (!substitutedLocalPlayer) {
+        presenceRestoreKeyRef.current = '';
       }
       const currentHostPlayer = activeRoomHostId ? players.find((player) => player.id === activeRoomHostId) : undefined;
       const hasActiveHumanHost = Boolean(currentHostPlayer && !currentHostPlayer.isAI && !currentHostPlayer.isSpectator);
