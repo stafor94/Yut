@@ -177,31 +177,31 @@
         },
         {
           "name": "Run npm ci",
-          "status": "in_progress",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 5
         },
         {
           "name": "Prepare production Firebase helper environment",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 6
         },
         {
           "name": "Wait for deployed app",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 7
         },
         {
           "name": "Run desktop lobby QA",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 8
         },
         {
           "name": "Cleanup desktop-lobby QA rooms",
-          "status": "pending",
+          "status": "in_progress",
           "conclusion": null,
           "number": 9
         },
@@ -266,31 +266,31 @@
         },
         {
           "name": "Run npm ci",
-          "status": "in_progress",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 5
         },
         {
           "name": "Prepare production Firebase helper environment",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 6
         },
         {
           "name": "Wait for deployed app",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 7
         },
         {
           "name": "Run Galaxy and iPad layout QA",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 8
         },
         {
           "name": "Cleanup mobile-layout QA rooms",
-          "status": "pending",
+          "status": "in_progress",
           "conclusion": null,
           "number": 9
         },
@@ -355,37 +355,37 @@
         },
         {
           "name": "Run npm ci",
-          "status": "in_progress",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 5
         },
         {
           "name": "Prepare production Firebase helper environment",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 6
         },
         {
           "name": "Wait for deployed app",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 7
         },
         {
           "name": "Run online start and authority QA",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 8
         },
         {
           "name": "Run room lifecycle QA",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 9
         },
         {
           "name": "Cleanup online-flow QA rooms",
-          "status": "pending",
+          "status": "in_progress",
           "conclusion": null,
           "number": 10
         },
@@ -450,31 +450,31 @@
         },
         {
           "name": "Run npm ci",
-          "status": "in_progress",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 5
         },
         {
           "name": "Prepare production Firebase helper environment",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 6
         },
         {
           "name": "Wait for deployed app",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "success",
           "number": 7
         },
         {
           "name": "Run roll, turn recovery and movement QA",
-          "status": "pending",
-          "conclusion": null,
+          "status": "completed",
+          "conclusion": "failure",
           "number": 8
         },
         {
           "name": "Cleanup roll-movement QA rooms",
-          "status": "pending",
+          "status": "in_progress",
           "conclusion": null,
           "number": 9
         },
