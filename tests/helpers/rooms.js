@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, query, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { loadFirebaseConfig } from './env.js';
 
 const roomSubcollections = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'];
@@ -79,6 +79,60 @@ export async function getTestDb() {
     })();
   }
   return dbPromise;
+}
+
+
+export async function createLobbyRoomFixtureForQa({ title, hostNickname, maxPlayers = 2, itemMode = false, stackedRollMode = false, playMode = 'individual', pieceCount = 4 } = {}) {
+  const db = await getTestDb();
+  if (!db) throw new Error('Firebase 설정이 없어 QA fixture 방을 생성할 수 없습니다.');
+  const qaRunId = String(process.env.QA_RUN_ID ?? '').trim();
+  if (!qaRunId) throw new Error('QA_RUN_ID 없이 QA fixture 방을 생성할 수 없습니다.');
+  const normalizedTitle = String(title ?? '').trim();
+  if (!normalizedTitle) throw new Error('QA fixture 방 제목이 필요합니다.');
+  const hostId = `qa-fixture-host-${qaRunId}-${Math.random().toString(36).slice(2, 10)}`;
+  const nickname = String(hostNickname ?? 'QA Host').trim() || 'QA Host';
+  const roomRef = doc(collection(db, 'rooms'));
+  const batch = writeBatch(db);
+  batch.set(roomRef, {
+    title: normalizedTitle,
+    hostId,
+    status: 'waiting',
+    maxPlayers,
+    itemMode: Boolean(itemMode),
+    stackedRollMode: Boolean(stackedRollMode),
+    playMode,
+    pieceCount,
+    currentPlayers: 1,
+    createdAt: serverTimestamp(),
+    emptySince: null,
+    qaRunId,
+  });
+  batch.set(doc(db, 'rooms', roomRef.id, 'players', hostId), {
+    nickname,
+    ready: true,
+    color: '#2563eb',
+    seatIndex: 0,
+    team: '청팀',
+    joinedAt: serverTimestamp(),
+    lastSeen: serverTimestamp(),
+  });
+  batch.set(doc(db, 'rooms', roomRef.id, 'seats', '0'), {
+    playerId: hostId,
+    originalPlayerId: hostId,
+    currentPlayerId: hostId,
+    nickname,
+    color: '#2563eb',
+    team: '청팀',
+    seatIndex: 0,
+    label: 'P1',
+    isHost: true,
+    aiActive: false,
+    status: 'human',
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  await batch.commit();
+  return roomRef.id;
 }
 
 export async function findRoomIdByTitle(title) {
