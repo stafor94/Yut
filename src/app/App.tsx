@@ -1824,17 +1824,22 @@ export function App() {
 
     const payload = sequence.payload ?? {};
     const stateAfter = applySequenceEvent({ ...currentSequenceStateRef.current, lastSequence: Number(sequence.sequence ?? 1) - 1 }, sequence) as SequenceStateSnapshot | null;
+    const applyReplayedMoveState = () => {
+      if (stateAfter) applySyncedStateSnapshot(stateAfter, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
+    };
     const finalPieces = (stateAfter?.pieces as BoardPiece[] | undefined) ?? null;
     const movingGroupIds = Array.isArray(payload.movingGroupIds) ? payload.movingGroupIds.map(String) : [];
     const pathNodeIds = Array.isArray(payload.pathNodeIds) ? payload.pathNodeIds.map(String).filter(Boolean) : [];
     if (!finalPieces || !movingGroupIds.length || !pathNodeIds.length) {
       if (finalPieces) setPieces(finalPieces);
+      applyReplayedMoveState();
       return;
     }
     if (moveInProgressRef.current) {
       const moveFinished = await waitForCurrentMoveToFinish((pathNodeIds.length + 6) * STEP_DELAY_MS);
       if (!moveFinished) {
         setPieces(finalPieces);
+        applyReplayedMoveState();
         return;
       }
     }
@@ -1842,6 +1847,7 @@ export function App() {
     const anchorAfter = finalPieces.find((piece) => piece.id === movingGroupIds[0]);
     if (!anchorBefore || !anchorAfter || anchorBefore.nodeId === anchorAfter.nodeId) {
       setPieces(finalPieces);
+      applyReplayedMoveState();
       return;
     }
     setMoveInProgressState(true);
@@ -1855,6 +1861,7 @@ export function App() {
       if (nextNodeId === anchorAfter.nodeId) break;
     }
     setPieces(finalPieces);
+    applyReplayedMoveState();
     const itemEvent = payload.itemEvent;
     if (itemEvent && typeof itemEvent === 'object') showItemPickupEffect(itemEvent as Record<string, unknown>, `sequence:${sequence.sequence}:item`);
     setMovingPieceId('');
