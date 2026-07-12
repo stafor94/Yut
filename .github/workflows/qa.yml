@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: main-branch-qa-${{ github.ref_name || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-and-unit:
@@ -56,127 +56,61 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  qa-cleanup-before:
-    name: Cleanup before QA
+  qa-firebase-emulator:
+    name: QA Firebase emulator suite
     needs: build-and-unit
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+      QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - run: npm ci
-      - name: Cleanup old QA data
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Prepare isolated QA Firebase environment
+        run: node .github/scripts/write-qa-firebase-env.mjs
+      - name: Reject production Firebase configuration
+        run: node .github/scripts/verify-qa-emulator-config.mjs
+      - name: Build isolated QA app
         run: |
           set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-before.log
-        env:
-          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
-      - name: Upload cleanup log
+          npm run build:qa 2>&1 | tee qa-build.log
+      - name: Run Playwright against Auth and Firestore emulators
+        run: |
+          set -o pipefail
+          npx --yes firebase-tools@latest emulators:exec \
+            --config firebase.qa.json \
+            --project "$QA_PROJECT_ID" \
+            --only auth,firestore \
+            "npm run qa:emulator-suite" 2>&1 | tee qa-emulator-suite.log
+      - name: Upload emulator QA artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-cleanup-before-results
-          path: qa-cleanup-before.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-  qa-basic-flow:
-    name: QA basic flow
-    needs: [qa-cleanup-before, deploy-pages]
-    runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
-      options: --user 1001
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: build-and-unit
-      - name: Run QA
-        shell: bash
-        run: |
-          set -o pipefail
-          $QA_COMMAND 2>&1 | tee "$QA_LOG"
-        env:
-          QA_COMMAND: npm run test:qa-basic-flow
-          QA_LOG: playwright-qa-basic-flow.log
-          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
-      - name: Upload QA artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-basic-flow-results
+          name: qa-firebase-emulator-results
           path: |
             test-results
-            playwright-qa-basic-flow.log
-            console-log.txt
-          if-no-files-found: ignore
-          retention-days: 7
-
-  qa-online-turn-recovery:
-    name: QA online turn recovery
-    needs: [qa-cleanup-before, deploy-pages]
-    runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
-      options: --user 1001
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: build-and-unit
-      - name: Run online recovery QA
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run test:qa-online-turn-recovery 2>&1 | tee playwright-qa-online-turn-recovery.log
-        env:
-          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
-      - name: Upload QA artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-online-turn-recovery-results
-          path: |
-            test-results
-            playwright-qa-online-turn-recovery.log
+            playwright-*.log
+            qa-*.log
+            firestore-debug.log
+            firebase-debug.log
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
 
   qa-stacked-roll-backdo-ai:
     name: QA stacked roll backdo AI
-    needs: [qa-cleanup-before, deploy-pages]
+    needs: build-and-unit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -198,86 +132,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  qa-cleanup-layout-regression:
-    name: QA cleanup and layout regression
-    needs: [qa-cleanup-before, deploy-pages]
-    runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
-      options: --user 1001
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: build-and-unit
-      - name: Run cleanup/layout QA
-        shell: bash
-        run: |
-          set -o pipefail
-          npm run test:qa-cleanup-layout-regression 2>&1 | tee playwright-qa-cleanup-layout-regression.log
-        env:
-          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
-      - name: Upload QA artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-cleanup-layout-regression-results
-          path: |
-            test-results
-            playwright-qa-cleanup-layout-regression.log
-            console-log.txt
-          if-no-files-found: ignore
-          retention-days: 7
-
-  qa-cleanup-after:
-    name: Cleanup after QA
-    if: always()
-    needs: [qa-basic-flow, qa-online-turn-recovery, qa-stacked-roll-backdo-ai, qa-cleanup-layout-regression]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Cleanup QA data after tests
-        run: |
-          set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-after.log
-        env:
-          QA_CLEANUP_REPORT_REMAINING: '1'
-          FIREBASE_CONFIG: ${{ secrets.FIREBASE || vars.FIREBASE }}
-          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || vars.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || vars.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || vars.VITE_FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || vars.VITE_FIREBASE_STORAGE_BUCKET }}
-          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
-          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || vars.VITE_FIREBASE_APP_ID }}
-      - name: Upload cleanup log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-cleanup-after-results
-          path: qa-cleanup-after.log
-          if-no-files-found: ignore
-          retention-days: 7
-
   deploy-pages:
     name: Deploy GitHub Pages
-    needs:
-      - build-and-unit
+    needs: build-and-unit
     if: github.ref == 'refs/heads/main' && success()
     runs-on: ubuntu-latest
     environment:
@@ -287,25 +144,21 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: build-and-unit
-
       - name: Verify dist exists
         run: |
           test -d dist
           ls -la dist
-
       - uses: actions/configure-pages@v5
-
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
-
       - id: deployment
         uses: actions/deploy-pages@v4
 
   summarize-qa-result:
     name: Summarize QA result
     if: always()
-    needs: [build-and-unit, qa-cleanup-before, deploy-pages, qa-basic-flow, qa-online-turn-recovery, qa-stacked-roll-backdo-ai, qa-cleanup-layout-regression]
+    needs: [build-and-unit, qa-firebase-emulator, qa-stacked-roll-backdo-ai, deploy-pages]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -325,13 +178,10 @@ jobs:
       - name: Summarize QA result
         if: always()
         env:
-          QA_JOB_STATUS: ${{ (needs.build-and-unit.result == 'success' && needs.qa-cleanup-before.result == 'success' && needs.deploy-pages.result == 'success' && needs.qa-basic-flow.result == 'success' && needs.qa-online-turn-recovery.result == 'success' && needs.qa-stacked-roll-backdo-ai.result == 'success' && needs.qa-cleanup-layout-regression.result == 'success') && 'success' || 'failure' }}
+          QA_JOB_STATUS: ${{ (needs.build-and-unit.result == 'success' && needs.qa-firebase-emulator.result == 'success' && needs.qa-stacked-roll-backdo-ai.result == 'success' && needs.deploy-pages.result == 'success') && 'success' || 'failure' }}
           BUILD_AND_UNIT_JOB_RESULT: ${{ needs.build-and-unit.result }}
-          QA_CLEANUP_BEFORE_JOB_RESULT: ${{ needs.qa-cleanup-before.result }}
-          QA_BASIC_FLOW_JOB_RESULT: ${{ needs.qa-basic-flow.result }}
-          QA_ONLINE_TURN_RECOVERY_JOB_RESULT: ${{ needs.qa-online-turn-recovery.result }}
+          QA_EMULATOR_JOB_RESULT: ${{ needs.qa-firebase-emulator.result }}
           QA_STACKED_ROLL_BACKDO_AI_JOB_RESULT: ${{ needs.qa-stacked-roll-backdo-ai.result }}
-          QA_CLEANUP_LAYOUT_REGRESSION_JOB_RESULT: ${{ needs.qa-cleanup-layout-regression.result }}
           DEPLOY_PAGES_JOB_RESULT: ${{ needs.deploy-pages.result }}
         run: |
           node .github/scripts/summarize-qa.mjs

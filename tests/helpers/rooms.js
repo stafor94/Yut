@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { collection, collectionGroup, deleteDoc, doc, getDoc, getDocs, getFirestore, query, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, query, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { loadFirebaseConfig } from './env.js';
 
 const roomSubcollections = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'];
@@ -62,8 +62,20 @@ export async function getTestDb() {
     dbPromise = (async () => {
       const config = await loadFirebaseConfig();
       if (!config) return null;
-      const app = getApps().find((candidate) => candidate.name === 'qa-cleanup') ?? initializeApp(config, 'qa-cleanup');
-      return getFirestore(app);
+      const qaRunId = String(process.env.QA_RUN_ID ?? '').trim();
+      const emulatorEndpoint = String(process.env.FIRESTORE_EMULATOR_HOST ?? '').trim();
+      if (qaRunId && !emulatorEndpoint) throw new Error('QA helper는 FIRESTORE_EMULATOR_HOST 없이 실행할 수 없습니다.');
+      if (qaRunId && !String(config.projectId ?? '').startsWith('demo-')) throw new Error(`QA helper가 운영 projectId를 거부했습니다: ${String(config.projectId ?? '')}`);
+      const appName = qaRunId ? `qa-${qaRunId}`.slice(0, 40) : 'qa-helper';
+      const app = getApps().find((candidate) => candidate.name === appName) ?? initializeApp(config, appName);
+      const firestore = getFirestore(app);
+      if (emulatorEndpoint) {
+        const [host, rawPort] = emulatorEndpoint.split(':');
+        const port = Number(rawPort);
+        if (!['127.0.0.1', 'localhost'].includes(host) || !Number.isInteger(port) || port <= 0) throw new Error(`잘못된 Firestore emulator endpoint: ${emulatorEndpoint}`);
+        connectFirestoreEmulator(firestore, host, port);
+      }
+      return firestore;
     })();
   }
   return dbPromise;
@@ -153,51 +165,6 @@ export async function deleteRoomForQa(roomId) {
   return deletedCounts;
 }
 
-export async function deleteMissingParentRoomSubcollectionsForQa() {
-  const db = await getTestDb();
-  if (!db) return [];
-  const candidateRoomIds = new Set();
-  for (const subcollectionName of roomSubcollections) {
-    const snapshot = await getDocs(collectionGroup(db, subcollectionName));
-    snapshot.docs.forEach((documentSnapshot) => {
-      const roomDocRef = documentSnapshot.ref.parent.parent;
-      if (roomDocRef?.parent.id === 'rooms') candidateRoomIds.add(roomDocRef.id);
-    });
-  }
-
-  const deletedRoomIds = [];
-  for (const roomId of candidateRoomIds) {
-    const roomSnapshot = await getDoc(doc(db, 'rooms', roomId));
-    if (roomSnapshot.exists()) continue;
-    const deletedCounts = await deleteRoomSubcollectionsForQa(roomId);
-    deletedRoomIds.push({ id: roomId, deletedCounts });
-  }
-  return deletedRoomIds;
-}
-
-export async function deleteInactiveRoomsForQa(onFailure) {
-  const db = await getTestDb();
-  if (!db) return [];
-  const now = Date.now();
-  const snapshot = await getDocs(collection(db, 'rooms'));
-  const inactiveRooms = snapshot.docs
-    .map((documentSnapshot) => ({
-      id: documentSnapshot.id,
-      title: String(documentSnapshot.data().title ?? ''),
-      data: documentSnapshot.data(),
-    }))
-    .filter((room) => isInactiveRoom(room.data, now));
-
-  for (const room of inactiveRooms) {
-    try {
-      await deleteRoomForQa(room.id);
-    } catch (error) {
-      if (onFailure) onFailure(room, error);
-      else throw error;
-    }
-  }
-  return inactiveRooms;
-}
 
 export async function rememberRoomIdFromPage(page) {
   const roomId = await page.evaluate(() => String(window.__YUT_DEBUG_STATE__?.activeRoomId ?? ''));
