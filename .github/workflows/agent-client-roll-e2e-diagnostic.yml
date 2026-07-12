@@ -1,0 +1,57 @@
+name: Agent client roll diagnostic validation
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  client-roll-emulator:
+    if: github.event.pull_request.head.ref == 'agent/client-confirmed-roll-timing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      QA_RUN_ID: client-roll-${{ github.run_id }}-${{ github.run_attempt }}
+      QA_PROJECT_ID: demo-yut-client-roll-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/client-confirmed-roll-timing
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node .github/scripts/write-qa-firebase-env.mjs
+      - run: node .github/scripts/verify-qa-emulator-config.mjs
+      - run: npm run build:qa
+      - name: Run delayed client-confirmed roll regression
+        shell: bash
+        run: |
+          set -o pipefail
+          npx --yes firebase-tools@latest emulators:exec \
+            --config firebase.qa.json \
+            --project "$QA_PROJECT_ID" \
+            --only auth,firestore \
+            "npx playwright test --workers=1 --project=desktop-chromium tests/regression/bug-history-smoke.spec.js --grep '온라인 윷 던지기는 sequence replay'" 2>&1 | tee client-roll-e2e.log
+      - name: Upload diagnostic results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-roll-e2e-diagnostic
+          path: |
+            client-roll-e2e.log
+            test-results
+            playwright-*.log
+            firestore-debug.log
+            firebase-debug.log
+          if-no-files-found: ignore
+          retention-days: 2
