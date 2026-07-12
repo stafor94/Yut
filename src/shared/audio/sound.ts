@@ -1,4 +1,4 @@
-export type SoundEffect = 'countdown' | 'countdownStart' | 'roll' | 'bonus' | 'move' | 'arrive' | 'stack' | 'capture' | 'itemPickup' | 'itemUse' | 'trap' | 'shield' | 'win' | 'toast';
+export type SoundEffect = 'countdown' | 'countdownStart' | 'roll' | 'bonus' | 'perfect' | 'fall' | 'move' | 'arrive' | 'stack' | 'capture' | 'itemPickup' | 'itemUse' | 'trap' | 'shield' | 'win' | 'toast';
 
 const SOUND_ENABLED_STORAGE_KEY = 'yut-online:soundEnabled';
 const SOUND_EFFECT_VOLUME = 0.38;
@@ -129,6 +129,17 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
       case 'bonus':
         [392, 523, 659, 784, 1047].forEach((frequency, index) => playTone(context, frequency, now + index * 0.06, 0.18, safeVolume * 0.72, 'triangle'));
         playNoise(context, now + 0.03, 0.2, safeVolume * 0.18, 1800);
+        break;
+      case 'perfect':
+        [659, 880, 1047, 1319].forEach((frequency, index) => playTone(context, frequency, now + index * 0.045, 0.24, safeVolume * 0.82, index % 2 === 0 ? 'triangle' : 'sine'));
+        playTone(context, 1568, now + 0.16, 0.32, safeVolume * 0.58, 'sine');
+        playNoise(context, now + 0.02, 0.24, safeVolume * 0.2, 2400);
+        break;
+      case 'fall':
+        playTone(context, 294, now, 0.16, safeVolume * 0.7, 'sawtooth');
+        playTone(context, 196, now + 0.08, 0.2, safeVolume * 0.82, 'sawtooth');
+        playTone(context, 131, now + 0.19, 0.28, safeVolume * 0.9, 'triangle');
+        playNoise(context, now + 0.04, 0.22, safeVolume * 0.42, 360);
         break;
       case 'move':
         playTone(context, 260, now, 0.055, safeVolume * 0.32, 'triangle');
