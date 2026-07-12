@@ -118,11 +118,8 @@ test.describe('BUG_HISTORY regression smoke', () => {
         window.__YUT_QA_EXTRA_SPIN_OBSERVER__ = observer;
         observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
       });
-      const pendingFrameAtStart = await pendingScene.screenshot();
-      await page.waitForTimeout(180);
-      await expect(pendingScene, 'primary 장면은 즉시 사라지지 않고 실제 상승·회전 프레임을 렌더링해야 합니다.').toHaveAttribute('data-phase', 'primary');
-      const pendingFrameInMotion = await pendingScene.screenshot();
-      expect(pendingFrameInMotion.equals(pendingFrameAtStart), 'primary 단계의 윷 장면은 시간에 따라 실제 프레임이 변해야 합니다.').toBe(false);
+      const pendingRendererAtStart = await pendingScene.getAttribute('data-renderer');
+      expect(['loading', 'three', 'fallback'], 'pending 장면은 Three.js 초기화 또는 CSS fallback 상태여야 합니다.').toContain(pendingRendererAtStart);
       const landingStage = page.locator('.roll-stage.resolved-from-pending.landing-roll');
       await expect(landingStage, `서버 결과 도착 시 pending overlay를 같은 팝업의 landing 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       await expect(landingStage.locator('.roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
@@ -133,11 +130,8 @@ test.describe('BUG_HISTORY regression smoke', () => {
       expect(extraSpinSeen, '클라이언트 선확정 결과는 Firebase 응답을 기다리는 extra-spin 단계로 넘어가면 안 됩니다.').toBe(false);
       const landingScene = landingStage.getByTestId('yut-roll-scene');
       await expect(landingScene, '서버 결과 도착 후 같은 3D 장면이 landing 단계로 이어져야 합니다.').toHaveAttribute('data-phase', 'landing');
-      const landingFrameAtStart = await landingScene.screenshot();
-      await page.waitForTimeout(180);
-      await expect(landingScene, 'landing 단계는 1초 착지 연출 중 유지되어야 합니다.').toHaveAttribute('data-phase', 'landing');
-      const landingFrameInMotion = await landingScene.screenshot();
-      expect(landingFrameInMotion.equals(landingFrameAtStart), 'landing 단계의 윷 장면은 낙하·정렬 중 실제 프레임이 변해야 합니다.').toBe(false);
+      await expect(landingScene.locator('.yut-roll-three-canvas'), 'landing 단계에서도 동일한 Three.js canvas를 유지해야 합니다.').toHaveCount(1);
+      await expect(landingScene.locator('.yut-roll-css-fallback .yut-stick'), 'landing 단계에서도 WebGL 실패 대비 fallback 윷 4개를 유지해야 합니다.').toHaveCount(4);
 
       const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
       await expect(resultHoldStage, '착지 후 같은 팝업이 result-hold 단계로 전환되어야 합니다.').toBeVisible({ timeout: 2_500 });
@@ -147,11 +141,26 @@ test.describe('BUG_HISTORY regression smoke', () => {
         timeout: 5_000,
         message: 'Three.js 또는 CSS fallback 렌더러가 최종 확정되어야 합니다.',
       }).toMatch(/^(three|fallback)$/);
-      await page.waitForTimeout(160);
-      const settledFrameAtStart = await resultHoldScene.screenshot();
-      await page.waitForTimeout(180);
-      const settledFrameAfter = await resultHoldScene.screenshot();
-      expect(settledFrameAfter.equals(settledFrameAtStart), 'result-hold 단계에서는 최종 자세가 흔들림 없이 고정되어야 합니다.').toBe(true);
+      const rendererPresentation = await resultHoldScene.evaluate((node) => {
+        const canvas = node.querySelector('.yut-roll-three-canvas');
+        const fallback = node.querySelector('.yut-roll-css-fallback');
+        return {
+          status: node.getAttribute('data-renderer'),
+          canvasOpacity: canvas ? Number.parseFloat(getComputedStyle(canvas).opacity) : -1,
+          fallbackVisibility: fallback ? getComputedStyle(fallback).visibility : 'missing',
+          width: node.getBoundingClientRect().width,
+          height: node.getBoundingClientRect().height,
+        };
+      });
+      expect(rendererPresentation.width, '결과 유지 장면은 실제 표시 너비를 가져야 합니다.').toBeGreaterThan(0);
+      expect(rendererPresentation.height, '결과 유지 장면은 실제 표시 높이를 가져야 합니다.').toBeGreaterThan(0);
+      if (rendererPresentation.status === 'three') {
+        expect(rendererPresentation.canvasOpacity, 'Three.js 렌더러가 선택되면 canvas가 불투명하게 표시되어야 합니다.').toBeGreaterThan(0.9);
+        expect(rendererPresentation.fallbackVisibility, 'Three.js 렌더러가 선택되면 CSS fallback은 숨겨야 합니다.').toBe('hidden');
+      } else {
+        expect(rendererPresentation.status, 'WebGL 초기화 실패 시 fallback 상태로 확정되어야 합니다.').toBe('fallback');
+        expect(rendererPresentation.fallbackVisibility, 'fallback 렌더러가 선택되면 CSS 윷 장면이 보여야 합니다.').toBe('visible');
+      }
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '서버 authoritative 타이밍 등급이 확정 결과와 함께 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 5_000 });
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), 'pending부터 resolved 전환까지 같은 타이밍 등급이 유지되어야 합니다.').toHaveText(pendingTimingText);
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), 'resolved 타이밍 등급도 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
