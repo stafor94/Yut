@@ -1,0 +1,56 @@
+name: Probe merged Main Branch QA 599b
+
+on:
+  push:
+    branches:
+      - probe/main-qa-599b
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TARGET_SHA: 8bc0d277b04e42e287cb0a30f6a26371feebd745
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect Main Branch QA result
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=""
+          for attempt in $(seq 1 20); do
+            RUNS="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f head_sha="$TARGET_SHA" -f event=push -f per_page=20)"
+            RUN_ID="$(jq -r '.workflow_runs[] | select(.name == "Main Branch QA") | .id' <<<"$RUNS" | head -n1)"
+            if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then break; fi
+            sleep 5
+          done
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            jq -n --arg sha "$TARGET_SHA" '{error:"Main Branch QA run not found", head_sha:$sha}' > MAIN_QA_599.json
+          else
+            for attempt in $(seq 1 75); do
+              RUN="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")"
+              [ "$(jq -r '.status' <<<"$RUN")" = completed ] && break
+              sleep 8
+            done
+            RUN="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}")"
+            JOBS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs?per_page=100")"
+            jq -n --argjson run "$RUN" --argjson jobs "$JOBS" '{run:{id:$run.id,run_number:$run.run_number,name:$run.name,event:$run.event,status:$run.status,conclusion:$run.conclusion,head_sha:$run.head_sha,html_url:$run.html_url,created_at:$run.created_at,updated_at:$run.updated_at},jobs:[$jobs.jobs[]|{id,name,status,conclusion,started_at,completed_at,html_url,steps:[.steps[]?|{name,status,conclusion,number}]}]}' > MAIN_QA_599.json
+          fi
+
+      - name: Commit result
+        shell: bash
+        run: |
+          rm -f .github/workflows/probe-main-qa-599b.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MAIN_QA_599.json .github/workflows/probe-main-qa-599b.yml
+          git commit -m "병합 SHA Main Branch QA 상태 파일 기록"
+          git push
