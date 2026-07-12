@@ -2,12 +2,26 @@ import { normalizeSpokenYutResult, type SpokenYutResult } from '../../app/flows/
 
 const KOREAN_LANGUAGE = 'ko-KR';
 const PREFERRED_VOICE_NAME = '한국어 대한민국';
-const SPEECH_RATE = 1;
-const SPEECH_PITCH = 1;
 const SPEECH_VOLUME = 0.9;
 const VOICE_LOAD_GRACE_MS = 1000;
 const VOICE_RETRY_DELAY_MS = 160;
 const SPEAK_AFTER_CANCEL_DELAY_MS = 30;
+
+type YutSpeechStyle = {
+  text: string;
+  rate: number;
+  pitch: number;
+};
+
+const SPEECH_STYLE: Record<SpokenYutResult, YutSpeechStyle> = {
+  도: { text: '도!', rate: 1, pitch: 1.05 },
+  개: { text: '개!', rate: 1, pitch: 1.05 },
+  걸: { text: '걸!', rate: 0.95, pitch: 1.08 },
+  윷: { text: '윷!', rate: 0.85, pitch: 1.2 },
+  모: { text: '모!', rate: 0.85, pitch: 1.2 },
+  빽도: { text: '빽도!', rate: 0.9, pitch: 0.95 },
+  낙: { text: '낙…', rate: 0.8, pitch: 0.8 },
+};
 
 const spokenByElement = new WeakMap<Element, SpokenYutResult>();
 const queuedByElement = new WeakMap<Element, SpokenYutResult>();
@@ -59,10 +73,11 @@ const speakResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () 
   }
 
   const voice = getKoreanVoice(voices);
-  const utterance = new SpeechSynthesisUtterance(result);
+  const speechStyle = SPEECH_STYLE[result];
+  const utterance = new SpeechSynthesisUtterance(speechStyle.text);
   utterance.lang = voice?.lang || KOREAN_LANGUAGE;
-  utterance.rate = SPEECH_RATE;
-  utterance.pitch = SPEECH_PITCH;
+  utterance.rate = speechStyle.rate;
+  utterance.pitch = speechStyle.pitch;
   utterance.volume = SPEECH_VOLUME;
   if (voice) utterance.voice = voice;
 
