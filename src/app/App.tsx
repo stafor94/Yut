@@ -28,6 +28,7 @@ import { ROOM_PLAYER_MISSING_GRACE_MS } from './flows/presenceRecovery';
 import { RoomCreationTimeoutError, createRoomRequestIdentity, isMatchingCreatedRoom, isRoomTransitionInProgress, withOperationTimeout } from './flows/roomCreationFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
+import { calculatePieceSelection } from './flows/pieceSelection';
 import {
   buildAlternatingTeamTurnOrder,
   createTurnOrderIntro,
@@ -472,19 +473,6 @@ export function App() {
   const getPieceSideKey = (piece: BoardPiece) => playMode === 'team' ? getSeatById(piece.ownerId)?.team ?? piece.ownerId : piece.ownerId;
   const canSeatControlPiece = (seat: Seat | undefined, piece: BoardPiece | undefined) => Boolean(seat && piece && isSameSide(getSeatById(piece.ownerId), seat));
   const selectedPiece = useMemo(() => pieces.find((piece) => piece.id === selectedPieceId), [pieces, selectedPieceId]);
-  const selectedGroupPieceIds = useMemo(() => {
-    const offBoardSelectionIds = roll && activeSeat && isMyTurn && roll.steps >= 0 && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished)
-      ? pieces
-          .filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.started && !piece.finished)
-          .map((piece) => piece.id)
-      : [];
-    if (offBoardSelectionIds.length) return offBoardSelectionIds;
-    if (!selectedPiece || !selectedPiece.started || selectedPiece.finished) return selectedPiece && !selectedPiece.finished ? [selectedPiece.id] : [];
-    const selectedOwnerSeat = getSeatById(selectedPiece.ownerId);
-    return pieces
-      .filter((piece) => piece.started && !piece.finished && piece.nodeId === selectedPiece.nodeId && isSameSide(getSeatById(piece.ownerId), selectedOwnerSeat))
-      .map((piece) => piece.id);
-  }, [activeSeat, isMyTurn, pieces, playMode, playableSeats, roll, selectedPiece]);
   const trapPlacementNodeIds = pendingTrapPlacement?.nodeIds ?? [];
   const selectedBranchControlKey = selectedPiece && roll && selectedPiece.started && BRANCH_NODE_IDS.includes(selectedPiece.nodeId as typeof BRANCH_NODE_IDS[number]) ? `${selectedPiece.id}:${selectedPiece.nodeId}:${roll.name}:${roll.steps}` : '';
   const displayBranchChoice: BranchChoice = selectedBranchControlKey && lastBranchControlKeyRef.current !== selectedBranchControlKey ? 'shortcut' : branchChoice;
@@ -661,19 +649,22 @@ export function App() {
   };
   const turnActionBlockReasons = useMemo(() => getTurnActionBlockReasons(turnActionGuardInput), [activeSeat?.id, activeSeat?.isAI, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isSpectator, localSeatId, movingPieceId, pendingItemPickup, effectivePendingLocalRemoteActionCount, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
   const canSubmitTurnAction = canSubmitTurnActionFromEngine(turnActionGuardInput);
-  const selectedPieceCanMove = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && canSeatControlPiece(activeSeat, selectedPiece) && !selectedPiece?.finished && (selectedMoveSteps >= 0 || selectedPiece?.started));
+  const pieceSelection = useMemo(() => calculatePieceSelection({
+    pieces,
+    selectedPieceId,
+    hasMoveRoll: Boolean(roll || stackedRollSelectedResult),
+    isLocalTurn: Boolean(activeSeat && isMyTurn),
+    moveSteps: selectedMoveSteps,
+    canControlPiece: (piece) => canSeatControlPiece(activeSeat, piece),
+    isSameSidePiece: (piece, selected) => isSameSide(getSeatById(piece.ownerId), getSeatById(selected.ownerId)),
+  }), [activeSeat, getSeatById, isMyTurn, isSameSide, pieces, roll, selectedMoveSteps, selectedPieceId, stackedRollSelectedResult]);
+  const selectedGroupPieceIds = pieceSelection.selectedGroupPieceIds;
+  const selectedPieceCanMove = pieceSelection.selectedPieceCanMove;
   const activeSeatPiecesOnBoard = useMemo(() => activeSeat
     ? pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished)
     : false, [activeSeat, pieces]);
-  const fallbackMovablePiece = useMemo(() => {
-    if (!(roll || stackedRollSelectedResult) || !activeSeat || !isMyTurn) return undefined;
-    const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && (selectedMoveSteps >= 0 || piece.started));
-    if (!activeSeatPiecesOnBoard) {
-      return [...movablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0];
-    }
-    return movablePieces[0];
-  }, [activeSeat, activeSeatPiecesOnBoard, isMyTurn, pieces, roll, stackedRollSelectedResult, selectedMoveSteps]);
-  const activeMovablePiece = selectedPieceCanMove ? selectedPiece : fallbackMovablePiece;
+  const fallbackMovablePiece = selectedPieceCanMove ? undefined : pieceSelection.pieceToMove;
+  const activeMovablePiece = pieceSelection.pieceToMove;
   const canMoveSelectedPiece = Boolean(activeMovablePiece);
   const noMovableBackDoRoll = Boolean((roll || stackedRollSelectedResult) && activeSeat && isMyTurn && selectedMoveSteps < 0
     && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && piece.started));
@@ -4237,12 +4228,18 @@ export function App() {
       return false;
     }
     if (!activeRoomId && !options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
-    const movablePieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece));
-    const hasPieceOnBoard = pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished);
-    const selectedPiece = hasPieceOnBoard ? movablePieces.find((piece) => piece.id === selectedPieceId) : undefined;
-    const fallbackPiece = hasPieceOnBoard ? movablePieces[0] : [...movablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0];
-    if ((!selectedPiece || !hasPieceOnBoard) && fallbackPiece) setSelectedPieceId(fallbackPiece.id);
-    if (!selectedPiece && !fallbackPiece) {
+    const moveSelection = calculatePieceSelection({
+      pieces,
+      selectedPieceId,
+      hasMoveRoll: Boolean(effectiveMoveRoll),
+      isLocalTurn: true,
+      moveSteps: steps,
+      canControlPiece: (piece) => canSeatControlPiece(activeSeat, piece),
+      isSameSidePiece: (piece, selected) => isSameSide(getSeatById(piece.ownerId), getSeatById(selected.ownerId)),
+    });
+    const pieceToMove = moveSelection.pieceToMove;
+    if (pieceToMove) setSelectedPieceId(pieceToMove.id);
+    if (!pieceToMove) {
       if (steps < 0) {
         const rollStackIndex = stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null;
         const consumeStackedRollIndex = stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined;
@@ -4305,13 +4302,12 @@ export function App() {
       }
       return false;
     }
-    const pieceToMove = selectedPiece ?? fallbackPiece;
     if (!effectiveMoveRoll) return false;
     if (activeRoomId) {
       const payload = {
-        pieceId: pieceToMove?.id ?? '',
+        pieceId: pieceToMove.id,
         extraSteps,
-        branchChoice: getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice),
+        branchChoice: getEffectiveBranchChoice(pieceToMove.nodeId, displayBranchChoice),
         rollStackIndex: stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null,
       };
       const actionKey = getLocalActionKey('move_piece', payload);
@@ -4332,7 +4328,7 @@ export function App() {
       });
       localClientMutationIdsRef.current.add(actionKey);
       const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, activeSeat) };
-      void movePiece(pieceToMove?.id ?? selectedPieceId, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice), { recordSequence: false, consumeStackedRollIndex: stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined, deferFinalizationToAuthoritative: true });
+      void movePiece(pieceToMove.id, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove.nodeId, displayBranchChoice), { recordSequence: false, consumeStackedRollIndex: stackedRollMode && rollStackClosed ? options.rollStackIndexOverride ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined, deferFinalizationToAuthoritative: true });
       enqueueAuthoritativeGameAction(
         activeRoomId,
         action,
@@ -4358,7 +4354,7 @@ export function App() {
       );
       return true;
     }
-    void movePiece(pieceToMove?.id ?? selectedPieceId, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove?.nodeId ?? '', displayBranchChoice));
+    void movePiece(pieceToMove.id, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove.nodeId, displayBranchChoice));
     return true;
   }
 
