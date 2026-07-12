@@ -6,7 +6,7 @@ import { DELETE_BATCH_SIZE, ROOM_SUBCOLLECTIONS, getClientMutationDocRef, makeFi
 import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board/board';
 import { type YutResult } from '../../../game-core/roll';
 import { TURN_NETWORK_GRACE_MS } from './roomTiming';
-import { decideRoomPresenceCleanupLease, getRoomPresenceCleanupAction, ROOM_PRESENCE_CLEANUP_LEASE_MS, ROOM_PRESENCE_STALE_MS } from './roomPresenceCleanupPolicy';
+import { decideRoomPresenceCleanupLease, getRoomPresenceCleanupAction, isStaleHumanPresencePlayer, ROOM_PRESENCE_CLEANUP_LEASE_MS, ROOM_PRESENCE_STALE_MS } from './roomPresenceCleanupPolicy';
 
 export interface RoomSummary {
   id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; startRequestId?: string; roomConfigVersion?: number; presenceCleanupLeaseOwnerId?: string; presenceCleanupLeaseExpiresAt?: number; presenceCleanupLeaseVersion?: number; presenceCleanupLeaseUpdatedAt?: unknown;
@@ -371,16 +371,8 @@ export async function cleanupCurrentRoomPresence(
 
   const playersSnapshot = await getDocs(collection(db, 'rooms', roomId, 'players'));
   const cleanupCandidates = playersSnapshot.docs
-    .map((playerSnapshot) => ({
-      id: playerSnapshot.id,
-      action: getRoomPresenceCleanupAction(
-        { ...(playersSnapshot.metadata.hasPendingWrites ? {} : {}), status: 'waiting' },
-        { id: playerSnapshot.id, ...(playerSnapshot.data() as Omit<RoomPlayer, 'id'>) },
-        requestedAt,
-        staleMs,
-      ),
-    }))
-    .filter((candidate) => candidate.action !== 'skip');
+    .map((playerSnapshot) => ({ id: playerSnapshot.id, ...(playerSnapshot.data() as Omit<RoomPlayer, 'id'>) }))
+    .filter((player) => isStaleHumanPresencePlayer(player, requestedAt, staleMs));
 
   const cleanedResults = await Promise.all(cleanupCandidates.map(async (candidate) => runTransaction(db!, async (transaction) => {
     const cleanupRoomSnapshot = await transaction.get(roomRef);
