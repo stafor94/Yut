@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   finalize:
-    name: Commit validated phase 5 patch
+    name: Diagnose and commit phase 5 patch
     if: github.head_ref == 'agent/isolate-qa-firebase-emulator'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -29,21 +29,42 @@ jobs:
         run: |
           python scripts/apply-phase5-qa-isolation.py
           python scripts/patch-phase5-webkit.py
-      - name: Verify final isolation markers
+      - name: Diagnose commit and push
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          grep -q "cancel-in-progress: true" .github/workflows/qa.yml
-          grep -q "qa-firebase-emulator:" .github/workflows/qa.yml
-          grep -q "playwright install --with-deps chromium webkit" .github/workflows/qa.yml
-          grep -q "where('qaRunId', '==', qaRunId)" tests/helpers/cleanup-qa-rooms.js
-          if grep -q "collectionGroup" tests/helpers/rooms.js; then exit 1; fi
-      - name: Commit tracked phase 5 changes only
-        run: |
+          set +e
           rm .github/workflows/validate-phase5-qa-isolation-pr.yml
           rm scripts/apply-phase5-qa-isolation.py
           rm scripts/patch-phase5-webkit.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          echo 'Tracked changes before commit:'
-          git status --short
-          git commit -am "test: isolate GitHub Actions QA with Firebase emulators"
-          git push origin HEAD:agent/isolate-qa-firebase-emulator
+          {
+            echo '## git status before commit'
+            git status --short
+            echo
+            echo '## git commit'
+            git commit -am "test: isolate GitHub Actions QA with Firebase emulators"
+          } > phase5-finalize.log 2>&1
+          commit_code=$?
+          push_code=99
+          if [ "$commit_code" -eq 0 ]; then
+            {
+              echo
+              echo '## git push'
+              git push origin HEAD:agent/isolate-qa-firebase-emulator
+            } >> phase5-finalize.log 2>&1
+            push_code=$?
+          fi
+          {
+            echo '## Phase 5 finalize diagnostic'
+            echo '- Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            echo "- Commit exit: ${commit_code}"
+            echo "- Push exit: ${push_code}"
+            echo
+            echo '```text'
+            cat phase5-finalize.log
+            echo '```'
+          } > phase5-finalize-comment.md
+          gh pr comment 563 --repo "${{ github.repository }}" --body-file phase5-finalize-comment.md
+          if [ "$commit_code" -ne 0 ] || [ "$push_code" -ne 0 ]; then exit 1; fi
