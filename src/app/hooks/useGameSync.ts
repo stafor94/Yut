@@ -3,7 +3,11 @@ import type { Unsubscribe } from 'firebase/firestore';
 import type { SyncedGameState } from '../../features/room/services/roomService';
 import { subscribeGameState } from '../../features/room/services/roomService';
 import type { SequenceStateSnapshot } from '../appState';
-import { createGameSyncSubscriptionController, type GameSyncSubscriptionController } from './gameSyncSubscription';
+import {
+  createGameSyncSubscriptionController,
+  type GameSyncRuntime,
+  type GameSyncSubscriptionController,
+} from './gameSyncSubscription';
 
 export function useGameSyncDebugState(diagnosticState: Record<string, unknown>) {
   useEffect(() => {
@@ -28,7 +32,9 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
 
   const controllerRef = useRef<GameSyncSubscriptionController<SyncedGameState> | null>(null);
   if (!controllerRef.current) controllerRef.current = createGameSyncSubscriptionController<SyncedGameState>();
-  controllerRef.current.updateRuntime({
+
+  const runtimeRef = useRef<GameSyncRuntime<SyncedGameState> | null>(null);
+  runtimeRef.current = {
     activeRoomId,
     lastAppliedSequenceRef,
     lastAppliedStateVersionRef,
@@ -37,10 +43,15 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
     applySyncedStateSnapshot: (state) => applySyncedStateSnapshot(state as SequenceStateSnapshot),
     enqueueAuthoritativeResultApplication,
     scheduleApplyingReset: (reset) => { window.setTimeout(reset, 0); },
-  });
+  };
+  controllerRef.current.updateRuntime(runtimeRef.current);
 
   useEffect(() => {
-    controllerRef.current?.syncRoom(activeRoomId, subscribeRef.current);
+    const controller = controllerRef.current;
+    const runtime = runtimeRef.current;
+    if (!controller || !runtime) return;
+    controller.updateRuntime(runtime);
+    controller.syncRoom(activeRoomId, subscribeRef.current);
   }, [activeRoomId]);
 
   useEffect(() => () => {
