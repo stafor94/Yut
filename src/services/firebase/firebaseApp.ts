@@ -1,6 +1,10 @@
-import { initializeApp, type FirebaseApp } from 'firebase/app';
+import { initializeApp, type FirebaseApp, type FirebaseOptions } from 'firebase/app';
+import productionFirebaseConfig from '../../../firebase.production.json';
 
-const firebaseConfig = {
+export const isFirebaseEmulatorMode = import.meta.env.VITE_FIREBASE_EMULATOR_MODE === '1';
+export const firebaseQaRunId = String(import.meta.env.VITE_QA_RUN_ID ?? '').trim();
+
+const emulatorFirebaseConfig: FirebaseOptions = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -9,8 +13,10 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-export const isFirebaseEmulatorMode = import.meta.env.VITE_FIREBASE_EMULATOR_MODE === '1';
-export const firebaseQaRunId = String(import.meta.env.VITE_QA_RUN_ID ?? '').trim();
+const firebaseConfig: FirebaseOptions = isFirebaseEmulatorMode
+  ? emulatorFirebaseConfig
+  : productionFirebaseConfig;
+
 export const firebaseProjectId = String(firebaseConfig.projectId ?? '').trim();
 
 if (isFirebaseEmulatorMode) {
