@@ -52,7 +52,7 @@
 .roll-stage.resolved-from-pending .yut-stick.flat .yut-stick-body,
 .roll-stage.resolved-from-pending .yut-stick.round .yut-stick-body,
 .roll-stage.resolved-from-pending .roll-mat.fall-roll .yut-stick.fallen {
-  animation-duration: 1.4s;
+  animation-duration: 1s;
 }
 
 .roll-stage.resolved-from-pending.result-hold-roll .yut-stick {
