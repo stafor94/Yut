@@ -1,0 +1,95 @@
+---
+1554: 2026-07-12T14:48:32.3698683Z 
+1555: 2026-07-12T14:48:33.7033551Z 
+1556: 2026-07-12T14:48:33.7034660Z Running 2 tests using 1 worker
+1557: 2026-07-12T14:48:33.7047823Z 
+1558: 2026-07-12T14:48:37.3305859Z   ✓  1 [desktop-chromium] › tests/lobby/cleanup-layout-regression.spec.js:17:7 › cleanup/layout regression QA › 대기실과 로비 주요 버튼은 force click 없이 클릭 가능하고 로비 action column 정렬을 유지한다 (3.0s)
+1559: 2026-07-12T14:48:37.6500991Z   ✓  2 [desktop-chromium] › tests/lobby/lobby-options.spec.js:6:7 › lobby QA › 로비 저장 옵션이 현재 화면에 반영된다 (299ms)
+1560: 2026-07-12T14:48:37.7101126Z 
+1561: 2026-07-12T14:48:37.7108947Z   2 passed (4.8s)
+1562: 2026-07-12T14:48:37.7411897Z 
+1563: 2026-07-12T14:48:37.7412531Z ===== QA mobile layout =====
+1564: 2026-07-12T14:48:37.8337144Z 
+1565: 2026-07-12T14:48:37.8338164Z > test:qa-mobile-layout
+1566: 2026-07-12T14:48:37.8339616Z > playwright test --workers=1 --project=mobile-galaxy --project=tablet-ipad tests/mobile/mobile-layout.spec.js --output=test-results/mobile-layout
+1567: 2026-07-12T14:48:37.8340583Z 
+1568: 2026-07-12T14:48:39.1227141Z 
+1569: 2026-07-12T14:48:39.1228044Z Running 4 tests using 1 worker
+1570: 2026-07-12T14:48:39.1241977Z 
+1571: 2026-07-12T14:48:40.4319437Z   ✓  1 [mobile-galaxy] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 (687ms)
+1572: 2026-07-12T14:48:41.6363902Z   ✓  2 [mobile-galaxy] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 (1.2s)
+1573: 2026-07-12T14:48:42.2261413Z   ✘  3 [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 (3ms)
+1574: 2026-07-12T14:48:42.7749923Z   ✘  4 [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 (3ms)
+1575: 2026-07-12T14:48:42.8031568Z 
+1576: 2026-07-12T14:48:42.8051653Z 
+1577: 2026-07-12T14:48:42.8053711Z   1) [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 
+1578: 2026-07-12T14:48:42.8054560Z 
+1579: 2026-07-12T14:48:42.8055368Z     Error: browserType.launch: Executable doesn't exist at /home/runner/.cache/ms-playwright/webkit-2311/pw_run.sh
+1580: 2026-07-12T14:48:42.8056141Z     ╔════════════════════════════════════════════════════════════╗
+1581: 2026-07-12T14:48:42.8056656Z     ║ Looks like Playwright was just installed or updated.       ║
+1582: 2026-07-12T14:48:42.8057516Z     ║ Please run the following command to download new browsers: ║
+1583: 2026-07-12T14:48:42.8058061Z     ║                                                            ║
+1584: 2026-07-12T14:48:42.8058490Z     ║     npx playwright install                                 ║
+1585: 2026-07-12T14:48:42.8058930Z     ║                                                            ║
+1586: 2026-07-12T14:48:42.8059372Z     ║ <3 Playwright Team                                         ║
+1587: 2026-07-12T14:48:42.8059847Z     ╚════════════════════════════════════════════════════════════╝
+1588: 2026-07-12T14:48:42.8060065Z 
+1589: 2026-07-12T14:48:42.8060906Z     Error Context: test-results/mobile-layout/mobile-mobile-layout-mobil-a8364-일-태블릿-뷰포트에서-로비-핵심-탭-대상이-보인다-tablet-ipad/error-context.md
+1590: 2026-07-12T14:48:42.8061450Z 
+1591: 2026-07-12T14:48:42.8062162Z   2) [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 
+1592: 2026-07-12T14:48:42.8062758Z 
+1593: 2026-07-12T14:48:42.8063415Z     Error: browserType.launch: Executable doesn't exist at /home/runner/.cache/ms-playwright/webkit-2311/pw_run.sh
+1594: 2026-07-12T14:48:42.8064999Z     ╔════════════════════════════════════════════════════════════╗
+1595: 2026-07-12T14:48:42.8065618Z     ║ Looks like Playwright was just installed or updated.       ║
+1596: 2026-07-12T14:48:42.8066250Z     ║ Please run the following command to download new browsers: ║
+1597: 2026-07-12T14:48:42.8066712Z     ║                                                            ║
+1598: 2026-07-12T14:48:42.8067151Z     ║     npx playwright install                                 ║
+1599: 2026-07-12T14:48:42.8067587Z     ║                                                            ║
+1600: 2026-07-12T14:48:42.8068037Z     ║ <3 Playwright Team                                         ║
+1601: 2026-07-12T14:48:42.8068534Z     ╚════════════════════════════════════════════════════════════╝
+1602: 2026-07-12T14:48:42.8068767Z 
+1603: 2026-07-12T14:48:42.8069396Z     Error Context: test-results/mobile-layout/mobile-mobile-layout-mobil-98cdc-모바일-로비-방-카드의-좌우-영역이-겹치지-않는다-tablet-ipad/error-context.md
+1604: 2026-07-12T14:48:42.8069919Z 
+1605: 2026-07-12T14:48:42.8070016Z   2 failed
+1606: 2026-07-12T14:48:42.8070620Z     [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 
+1607: 2026-07-12T14:48:42.8071464Z     [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 
+1608: 2026-07-12T14:48:42.8071947Z   2 passed (4.5s)
+1609: 2026-07-12T14:48:42.8288226Z 
+1610: 2026-07-12T14:48:42.8288774Z ===== Cleanup current QA namespace after tests =====
+1611: 2026-07-12T14:48:42.9722567Z (node:5384) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+1612: 2026-07-12T14:48:42.9724770Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+1613: 2026-07-12T14:48:42.9726052Z To eliminate this warning, add "type": "module" to /home/runner/work/Yut/Yut/package.json.
+1614: 2026-07-12T14:48:42.9727030Z (Use `node --trace-warnings ...` to show where the warning was created)
+1615: 2026-07-12T14:48:43.0690850Z QA cleanup namespace=auth-gated-29196810420-1, rooms=0
+1616: 2026-07-12T14:48:43.0743845Z cleanup-after namespace=auth-gated-29196810420-1, remaining=0
+1617: 2026-07-12T14:49:43.0912322Z QA emulator suite failed: QA mobile layout (exit 1)
+1618: 2026-07-12T14:49:43.1017467Z [33m[1m⚠ [22m[39m Script exited unsuccessfully (code 1)
+1619: 2026-07-12T14:49:43.6031953Z [36m[1mi  emulators:[22m[39m Shutting down emulators.
+1620: 2026-07-12T14:49:43.6035289Z [36m[1mi  firestore:[22m[39m Stopping Firestore Emulator
+1621: 2026-07-12T14:49:43.9450303Z [36m[1mi  auth:[22m[39m Stopping Authentication Emulator
+1622: 2026-07-12T14:49:43.9454091Z [36m[1mi  hub:[22m[39m Stopping emulator hub
+1623: 2026-07-12T14:49:43.9458078Z [36m[1mi  logging:[22m[39m Stopping Logging Emulator
+1624: 2026-07-12T14:49:43.9491380Z 
+1625: 2026-07-12T14:49:43.9492411Z [1m[31mError:[39m[22m Script "[1mnpm run qa:emulator-suite[22m" exited with code 1
+1626: 2026-07-12T14:49:44.2516810Z ##[error]Process completed with exit code 1.
+1627: 2026-07-12T14:49:44.2628587Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+1628: 2026-07-12T14:49:44.2629732Z Post job cleanup.
+1629: 2026-07-12T14:49:44.3946025Z (node:5413) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+1630: 2026-07-12T14:49:44.3947161Z (Use `node --trace-deprecation ...` to show where the warning was created)
+1631: 2026-07-12T14:49:44.4154660Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+1632: 2026-07-12T14:49:44.4155885Z Post job cleanup.
+1633: 2026-07-12T14:49:44.5115911Z [command]/usr/bin/git version
+1634: 2026-07-12T14:49:44.5144742Z git version 2.54.0
+1635: 2026-07-12T14:49:44.5168092Z Temporarily overriding HOME='/home/runner/work/_temp/8cf35c70-b953-4de3-a599-839b43455726' before making global git config changes
+1636: 2026-07-12T14:49:44.5169893Z Adding repository directory to the temporary git global config as a safe directory
+1637: 2026-07-12T14:49:44.5175370Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Yut/Yut
+1638: 2026-07-12T14:49:44.5214731Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+1639: 2026-07-12T14:49:44.5254598Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+1640: 2026-07-12T14:49:44.5546628Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+1641: 2026-07-12T14:49:44.5578089Z http.https://github.com/.extraheader
+1642: 2026-07-12T14:49:44.5590328Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+1643: 2026-07-12T14:49:44.5627950Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+1644: 2026-07-12T14:49:44.5958200Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+1645: 2026-07-12T14:49:44.6002793Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+1646: 2026-07-12T14:49:44.6538224Z Cleaning up orphan processes
+1647: 2026-07-12T14:49:44.6875509Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-java@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
