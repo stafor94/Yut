@@ -31,10 +31,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Apply room transition race fix
-        run: python scripts/fix-room-transition-race.py
+      - name: Apply complete request identity fix
+        run: python scripts/fix-room-creation-request-identity.py
       - name: Remove temporary patch script
-        run: rm scripts/fix-room-transition-race.py
+        run: rm scripts/fix-room-creation-request-identity.py
       - run: npm ci
       - name: Unit tests
         run: npm run test:unit
@@ -47,13 +47,14 @@ jobs:
           npm run build:qa
       - name: Verify focused diff
         run: |
-          grep -q "isRoomTransitionInProgress" src/app/App.tsx
-          grep -q "transitioningToNextRoom" src/app/App.tsx
+          grep -q "createRoomRequestKey" src/app/App.tsx
+          grep -q "concurrentlyCommittedRoom" src/features/room/services/roomService.ts
+          grep -q "전체 생성 설정" tests/unit/roomCreationFlow.test.ts
           git diff --check
       - name: Commit validated product changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/app/App.tsx src/app/flows/roomCreationFlow.ts tests/unit/roomCreationFlow.test.ts scripts/fix-room-transition-race.py
-          git commit -m "fix: keep new room state during background cleanup"
+          git add src/app/App.tsx src/app/flows/roomCreationFlow.ts src/features/room/services/roomService.ts tests/unit/roomCreationFlow.test.ts scripts/fix-room-creation-request-identity.py
+          git commit -m "fix: key room creation retries by complete request"
           git push origin HEAD:${{ github.head_ref }}
