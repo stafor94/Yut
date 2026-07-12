@@ -1,0 +1,19 @@
+name: Force cancel stuck Main Branch QA 542
+
+on:
+  push:
+    branches:
+      - probe/main-qa-602-status
+
+permissions:
+  actions: write
+
+jobs:
+  force-cancel:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Force cancel old run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/29211715793/force-cancel"
