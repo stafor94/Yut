@@ -2,12 +2,15 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "build:qa": "tsc -b && vite build --mode qa",
     "preview": "vite preview --host 0.0.0.0",
     "test:e2e": "npm run build && playwright test",
     "test:smoke": "playwright test --project=desktop-chromium tests/smoke tests/lobby",
     "test:game-flow": "playwright test --workers=1 --project=desktop-chromium tests/online tests/game-flow tests/regression",
     "test:mobile": "playwright test --project=mobile-galaxy --project=tablet-ipad tests/mobile",
     "qa:cleanup-rooms": "node tests/helpers/cleanup-qa-rooms.js",
+    "qa:verify-emulator": "node .github/scripts/verify-qa-emulator-config.mjs --runtime",
+    "qa:emulator-suite": "node tests/helpers/run-qa-emulator-suite.mjs",
     "test:unit": "rm -rf .tmp-unit-tests && tsc -p tsconfig.test.json && node scripts/run-unit-tests.mjs",
     "test:qa-basic-flow": "playwright test --workers=1 --project=desktop-chromium tests/game-flow/basic-turn.spec.js tests/game-flow/game-start-authority.spec.js",
     "test:qa-online-turn-recovery": "playwright test --workers=1 --project=desktop-chromium tests/online/room-lifecycle.spec.js tests/regression/bug-history-smoke.spec.js tests/regression/roll-mat-surface.spec.js",
@@ -25,7 +28,7 @@
   },
   "devDependencies": {
     "@types/react": "19.2.17",
-    "@types/react-dom": "19.2.3",
+    "@types/react-dom": "19.2.17",
     "@playwright/test": "1.61.1"
   }
 }
