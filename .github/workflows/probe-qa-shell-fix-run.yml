@@ -1,0 +1,37 @@
+name: Probe QA shell fix validation run
+
+on:
+  push:
+    branches:
+      - probe/main-qa-599-snapshot
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: 205fb0aa41c2ed7d400084b221bf0e0994357e44
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Query validation workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNS="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f head_sha="$TARGET_SHA" -f per_page=20)"
+          jq '{runs:[.workflow_runs[]|{id,name,status,conclusion,head_sha,html_url,created_at,updated_at}]}' <<<"$RUNS" > QA_SHELL_FIX_RUNS.json
+      - name: Commit query result
+        shell: bash
+        run: |
+          rm -f .github/workflows/probe-qa-shell-fix-run.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add QA_SHELL_FIX_RUNS.json .github/workflows/probe-qa-shell-fix-run.yml
+          git commit -m "QA 셸 수정 검증 run 상태 기록"
+          git push
