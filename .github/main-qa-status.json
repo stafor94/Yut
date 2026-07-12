@@ -2,27 +2,49 @@
   "total_count": 1,
   "workflow_runs": [
     {
-      "id": 29195944736,
-      "name": "Main Branch QA",
-      "node_id": "WFR_kwLOTGaMUc8AAAAGzDbDIA",
-      "head_branch": "main",
-      "head_sha": "556d3635c6086c4774963f7840b6926cefbb0845",
-      "path": ".github/workflows/qa.yml",
-      "display_title": "클라이언트 선확정 윷 결과와 애니메이션 시간 단축 (#591)",
-      "run_number": 528,
+      "id": 29196710941,
+      "name": ".github/workflows/auth-gated-lobby-validation.yml",
+      "node_id": "WFR_kwLOTGaMUc8AAAAGzEJ0HQ",
+      "head_branch": "agent/auth-gated-lobby-room-subscription",
+      "head_sha": "0f356302cc58bc568ee96fd2646933ec8092e7a8",
+      "path": ".github/workflows/auth-gated-lobby-validation.yml",
+      "display_title": "trigger auth-gated lobby validation again",
+      "run_number": 4,
       "event": "push",
-      "status": "in_progress",
-      "conclusion": null,
-      "workflow_id": 303431782,
-      "check_suite_id": 78998050679,
-      "check_suite_node_id": "CS_kwDOTGaMUc8AAAASZKaXdw",
-      "url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29195944736",
-      "html_url": "https://github.com/stafor94/Yut/actions/runs/29195944736",
+      "status": "completed",
+      "conclusion": "failure",
+      "workflow_id": 311738922,
+      "check_suite_id": 79000053870,
+      "check_suite_node_id": "CS_kwDOTGaMUc8AAAASZMUobg",
+      "url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29196710941",
+      "html_url": "https://github.com/stafor94/Yut/actions/runs/29196710941",
       "pull_requests": [
-
+        {
+          "url": "https://api.github.com/repos/stafor94/Yut/pulls/593",
+          "id": 4039253263,
+          "number": 593,
+          "head": {
+            "ref": "agent/auth-gated-lobby-room-subscription",
+            "sha": "0f356302cc58bc568ee96fd2646933ec8092e7a8",
+            "repo": {
+              "id": 1281789009,
+              "url": "https://api.github.com/repos/stafor94/Yut",
+              "name": "Yut"
+            }
+          },
+          "base": {
+            "ref": "main",
+            "sha": "556d3635c6086c4774963f7840b6926cefbb0845",
+            "repo": {
+              "id": 1281789009,
+              "url": "https://api.github.com/repos/stafor94/Yut",
+              "name": "Yut"
+            }
+          }
+        }
       ],
-      "created_at": "2026-07-12T14:16:36Z",
-      "updated_at": "2026-07-12T14:17:11Z",
+      "created_at": "2026-07-12T14:40:44Z",
+      "updated_at": "2026-07-12T14:40:44Z",
       "actor": {
         "login": "stafor94",
         "id": 25046933,
@@ -48,7 +70,7 @@
       "referenced_workflows": [
 
       ],
-      "run_started_at": "2026-07-12T14:16:36Z",
+      "run_started_at": "2026-07-12T14:40:44Z",
       "triggering_actor": {
         "login": "stafor94",
         "id": 25046933,
@@ -70,26 +92,26 @@
         "user_view_type": "public",
         "site_admin": false
       },
-      "jobs_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29195944736/jobs",
-      "logs_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29195944736/logs",
-      "check_suite_url": "https://api.github.com/repos/stafor94/Yut/check-suites/78998050679",
-      "artifacts_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29195944736/artifacts",
-      "cancel_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29195944736/cancel",
-      "rerun_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29195944736/rerun",
+      "jobs_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29196710941/jobs",
+      "logs_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29196710941/logs",
+      "check_suite_url": "https://api.github.com/repos/stafor94/Yut/check-suites/79000053870",
+      "artifacts_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29196710941/artifacts",
+      "cancel_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29196710941/cancel",
+      "rerun_url": "https://api.github.com/repos/stafor94/Yut/actions/runs/29196710941/rerun",
       "previous_attempt_url": null,
-      "workflow_url": "https://api.github.com/repos/stafor94/Yut/actions/workflows/303431782",
+      "workflow_url": "https://api.github.com/repos/stafor94/Yut/actions/workflows/311738922",
       "head_commit": {
-        "id": "556d3635c6086c4774963f7840b6926cefbb0845",
-        "tree_id": "5d155b8ebecde68bc98ce6b950f8708f617724fd",
-        "message": "클라이언트 선확정 윷 결과와 애니메이션 시간 단축 (#591)\n\n내 턴 윷 결과를 클라이언트에서 선확정해 Firestore에 전달하고, 최초 회전 1.2초·착지 1초·결과 유지 2.6초로 단축합니다.",
-        "timestamp": "2026-07-12T14:16:33Z",
+        "id": "0f356302cc58bc568ee96fd2646933ec8092e7a8",
+        "tree_id": "f930fa07a74259c77503984f3c50e0ce1e525c18",
+        "message": "trigger auth-gated lobby validation again",
+        "timestamp": "2026-07-12T14:40:42Z",
         "author": {
           "name": "stafor94",
           "email": "stafor@naver.com"
         },
         "committer": {
-          "name": "GitHub",
-          "email": "noreply@github.com"
+          "name": "stafor94",
+          "email": "stafor@naver.com"
         }
       },
       "repository": {
