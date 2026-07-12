@@ -1391,10 +1391,10 @@ export function App() {
       const currentUserId = (userRef.current ?? currentUser)?.uid;
       const localPresencePlayer = currentUserId ? players.find((player) => player.id === currentUserId) : undefined;
       const hasCurrentUserInSnapshot = Boolean(localPresencePlayer && !localPresencePlayer.isSpectator);
-      setPresenceCleanupEligibility({
-        roomId: activeRoomId,
-        eligible: Boolean(localPresencePlayer && !localPresencePlayer.isAI && !localPresencePlayer.isSpectator),
-      });
+      const nextPresenceCleanupEligible = Boolean(localPresencePlayer && !localPresencePlayer.isAI && !localPresencePlayer.isSpectator);
+      setPresenceCleanupEligibility((current) => current.roomId === activeRoomId && current.eligible === nextPresenceCleanupEligible
+        ? current
+        : { roomId: activeRoomId, eligible: nextPresenceCleanupEligible });
       if (hasCurrentUserInSnapshot) confirmedRoomPlayerRef.current = true;
       if (currentUserId && !leavingRoomRef.current && !isRoomManager && screen === 'waitingRoom' && confirmedRoomPlayerRef.current && !hasCurrentUserInSnapshot) {
         confirmedRoomPlayerRef.current = false;

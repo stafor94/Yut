@@ -6,7 +6,7 @@ import { DELETE_BATCH_SIZE, ROOM_SUBCOLLECTIONS, getClientMutationDocRef, makeFi
 import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board/board';
 import { type YutResult } from '../../../game-core/roll';
 import { TURN_NETWORK_GRACE_MS } from './roomTiming';
-import { decideRoomPresenceCleanupLease, getRoomPresenceCleanupAction, isStaleHumanPresencePlayer, ROOM_PRESENCE_CLEANUP_LEASE_MS, ROOM_PRESENCE_STALE_MS } from './roomPresenceCleanupPolicy';
+import { decideRoomPresenceCleanupLease, getRoomPresenceCleanupAction, isEligiblePresenceCleanupCandidate, isStaleHumanPresencePlayer, ROOM_PRESENCE_CLEANUP_LEASE_MS, ROOM_PRESENCE_STALE_MS } from './roomPresenceCleanupPolicy';
 
 export interface RoomSummary {
   id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; startRequestId?: string; roomConfigVersion?: number; presenceCleanupLeaseOwnerId?: string; presenceCleanupLeaseExpiresAt?: number; presenceCleanupLeaseVersion?: number; presenceCleanupLeaseUpdatedAt?: unknown;
@@ -351,10 +351,27 @@ export async function cleanupCurrentRoomPresence(
   const staleMs = options.staleMs ?? ROOM_PRESENCE_STALE_MS;
   const leaseMs = options.leaseMs ?? ROOM_PRESENCE_CLEANUP_LEASE_MS;
   const roomRef = doc(db, 'rooms', roomId);
+  const candidateRef = doc(db, 'rooms', roomId, 'players', candidatePlayerId);
   const leaseDecision = await runTransaction(db, async (transaction) => {
     const roomSnapshot = await transaction.get(roomRef);
     if (!roomSnapshot.exists()) return { status: 'inactive' as const, ownerId: '', expiresAt: 0 };
+    const candidateSnapshot = await transaction.get(candidateRef);
     const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
+    const currentOwnerId = room.presenceCleanupLeaseOwnerId ?? '';
+    const currentExpiresAt = Number(room.presenceCleanupLeaseExpiresAt ?? 0);
+    const candidate = candidateSnapshot.exists()
+      ? { id: candidateSnapshot.id, ...(candidateSnapshot.data() as Omit<RoomPlayer, 'id'>) }
+      : null;
+    if (!isEligiblePresenceCleanupCandidate(candidate)) {
+      if (currentOwnerId === candidatePlayerId) {
+        transaction.set(roomRef, {
+          presenceCleanupLeaseOwnerId: '',
+          presenceCleanupLeaseExpiresAt: 0,
+          presenceCleanupLeaseUpdatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+      return { status: 'inactive' as const, ownerId: currentOwnerId, expiresAt: currentExpiresAt };
+    }
     const decision = decideRoomPresenceCleanupLease(room, candidatePlayerId, requestedAt, leaseMs);
     if (decision.status === 'acquire' || decision.status === 'renew') {
       transaction.set(roomRef, {
