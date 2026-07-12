@@ -1,0 +1,370 @@
+===== movement (86700520134) =====
+184-2026-07-12T22:33:25.4105549Z ##[group]Environment details
+185-2026-07-12T22:33:25.7906739Z node: v22.23.1
+186-2026-07-12T22:33:25.7907042Z npm: 10.9.8
+187-2026-07-12T22:33:25.7907237Z yarn: 1.22.22
+188-2026-07-12T22:33:25.7907714Z ##[endgroup]
+189-2026-07-12T22:33:25.7924389Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+190-2026-07-12T22:33:25.9059113Z /github/home/.npm
+191-2026-07-12T22:33:26.1033387Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+192:2026-07-12T22:33:26.1218289Z (node:147) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+193-2026-07-12T22:33:27.3231822Z Received 37748736 of 67268862 (56.1%), 36.0 MBs/sec
+194-2026-07-12T22:33:27.5657885Z Received 67268862 of 67268862 (100.0%), 51.6 MBs/sec
+195-2026-07-12T22:33:27.5659666Z Cache Size: ~64 MB (67268862 B)
+196-2026-07-12T22:33:27.5765039Z [command]/usr/bin/tar -xf /__w/_temp/9ff581ca-53d8-43c9-a4cf-9c9b45c75973/cache.tgz -P -C /__w/Yut/Yut -z
+197-2026-07-12T22:33:27.9648448Z Cache restored successfully
+198-2026-07-12T22:33:27.9689484Z Cache restored from key: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+199-2026-07-12T22:33:27.9860747Z ##[group]Run npm ci
+200-2026-07-12T22:33:27.9861029Z [36;1mnpm ci[0m
+--
+217-2026-07-12T22:33:33.8855631Z shell: bash --noprofile --norc -e -o pipefail {0}
+218-2026-07-12T22:33:33.8855943Z env:
+219-2026-07-12T22:33:33.8856211Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+220-2026-07-12T22:33:33.8856561Z   QA_RUN_ID: gh-29211715793-1-roll-movement
+221-2026-07-12T22:33:33.8856853Z   QA_ROLE: roll-movement
+222-2026-07-12T22:33:33.8857101Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+223-2026-07-12T22:33:33.8857354Z ##[endgroup]
+224-2026-07-12T22:33:33.9661897Z Wrote canonical production Firebase config: project=yut-online, appId=1:925785463331:web:73ac57a5f7f8527455ef96
+225:2026-07-12T22:33:33.9748285Z ##[group]Run curl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null
+226:2026-07-12T22:33:33.9749138Z [36;1mcurl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null[0m
+227-2026-07-12T22:33:33.9749875Z shell: bash --noprofile --norc -e -o pipefail {0}
+228-2026-07-12T22:33:33.9750175Z env:
+229-2026-07-12T22:33:33.9750433Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+230-2026-07-12T22:33:33.9750779Z   QA_RUN_ID: gh-29211715793-1-roll-movement
+231-2026-07-12T22:33:33.9751061Z   QA_ROLE: roll-movement
+232-2026-07-12T22:33:33.9751301Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+233-2026-07-12T22:33:33.9751548Z ##[endgroup]
+234-2026-07-12T22:33:34.0322377Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+--
+251-2026-07-12T22:33:34.3290533Z > playwright test --workers=1 --project=desktop-chromium tests/regression/bug-history-smoke.spec.js tests/regression/roll-mat-surface.spec.js --output=test-results/roll-movement
+252-2026-07-12T22:33:34.3291310Z 
+253-2026-07-12T22:33:35.4303527Z 
+254-2026-07-12T22:33:35.4304670Z Running 5 tests using 1 worker
+255-2026-07-12T22:33:35.4332902Z 
+256-2026-07-12T22:33:48.6599182Z   ✓  1 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:14:7 › BUG_HISTORY regression smoke › 게임 시작 직후 윷 던지기/대기 버튼 상태가 고착되지 않는다 (12.5s)
+257-2026-07-12T22:34:49.0128123Z   ✘  2 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:42:7 › BUG_HISTORY regression smoke › 온라인 윷 던지기는 sequence replay 애니메이션을 표시하고 이동 직후 경로 preview를 숨긴다 (59.0s)
+258-2026-07-12T22:35:51.4084263Z   ✓  3 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:326:7 › BUG_HISTORY regression smoke › host가 대리 제출한 AI 이동은 sequence 경로로 칸별 재생되고 내 이동은 중복 재생되지 않는다 (1.0m)
+259:2026-07-12T22:35:52.4831713Z   ✓  4 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:551:7 › BUG_HISTORY regression smoke › timeout 벌칙은 오프라인 로컬 timeout에만 적용된다 (1.1s)
+260-2026-07-12T22:36:15.6567566Z   ✓  5 [desktop-chromium] › tests/regression/roll-mat-surface.spec.js:13:7 › roll mat surface regression › pending부터 결과 유지까지 같은 2D 매트 표면을 계속 표시한다 (23.2s)
+261-2026-07-12T22:36:15.7554068Z 
+262-2026-07-12T22:36:15.7560410Z 
+263-2026-07-12T22:36:15.7565089Z   1) [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:42:7 › BUG_HISTORY regression smoke › 온라인 윷 던지기는 sequence replay 애니메이션을 표시하고 이동 직후 경로 preview를 숨긴다 
+264-2026-07-12T22:36:15.7566180Z 
+265:2026-07-12T22:36:15.7566526Z     TimeoutError: locator.click: Timeout 15000ms exceeded.
+266-2026-07-12T22:36:15.7567091Z     Call log:
+267-2026-07-12T22:36:15.7567591Z       - waiting for getByTestId('move-piece-button')
+268-2026-07-12T22:36:15.7568624Z         - locator resolved to <button data-testid="move-piece-button">선택한 말 이동</button>
+269-2026-07-12T22:36:15.7569377Z       - attempting click action
+270-2026-07-12T22:36:15.7570037Z         - waiting for element to be visible, enabled and stable
+271-2026-07-12T22:36:15.7570620Z         - element is not stable
+272-2026-07-12T22:36:15.7571037Z       - retrying click action
+273-2026-07-12T22:36:15.7571617Z         - waiting for element to be visible, enabled and stable
+--
+281-2026-07-12T22:36:15.7576566Z         7 × waiting for element to be visible, enabled and stable
+282-2026-07-12T22:36:15.7602929Z           - element is not enabled
+283-2026-07-12T22:36:15.7618795Z         - retrying click action
+284-2026-07-12T22:36:15.7626102Z           - waiting 500ms
+285-2026-07-12T22:36:15.7627295Z         - waiting for element to be visible, enabled and stable
+286-2026-07-12T22:36:15.7628010Z       - element was detached from the DOM, retrying
+287-2026-07-12T22:36:15.7628363Z 
+288-2026-07-12T22:36:15.7628372Z 
+289:2026-07-12T22:36:15.7629426Z       316 |       expect(moveReady, 'Perfect 구간에서 반복 던진 뒤 말 이동 버튼이 활성화되어야 합니다.').toBe(true);
+290-2026-07-12T22:36:15.7630120Z       317 |
+291-2026-07-12T22:36:15.7630643Z     > 318 |       await page.getByTestId('move-piece-button').click();
+292-2026-07-12T22:36:15.7631319Z           |                                                   ^
+293-2026-07-12T22:36:15.7632428Z       319 |       await expect.poll(async () => page.locator('.board-node.route-preview').count(), {
+294:2026-07-12T22:36:15.7633223Z       320 |         timeout: 2_000,
+295-2026-07-12T22:36:15.7634055Z       321 |         message: '로컬 이동 애니메이션 종료 후 서버 확정 대기 중에는 예상 이동 경로가 없어야 합니다.',
+296-2026-07-12T22:36:15.7634915Z         at /__w/Yut/Yut/tests/regression/bug-history-smoke.spec.js:318:51
+297-2026-07-12T22:36:15.7635792Z         at actionWithLogging (/__w/Yut/Yut/tests/helpers/ui.js:19:20)
+298-2026-07-12T22:36:15.7636570Z         at runQaStep (/__w/Yut/Yut/tests/helpers/ui.js:14:28)
+299-2026-07-12T22:36:15.7637354Z         at /__w/Yut/Yut/tests/regression/bug-history-smoke.spec.js:292:5
+300-2026-07-12T22:36:15.7637845Z 
+301-2026-07-12T22:36:15.7638566Z     attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+302:2026-07-12T22:36:15.7640186Z     test-results/roll-movement/regression-bug-history-smo-61972--표시하고-이동-직후-경로-preview를-숨긴다-desktop-chromium/test-failed-1.png
+303-2026-07-12T22:36:15.7641110Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+304-2026-07-12T22:36:15.7641400Z 
+305:2026-07-12T22:36:15.7642057Z     Error Context: test-results/roll-movement/regression-bug-history-smo-61972--표시하고-이동-직후-경로-preview를-숨긴다-desktop-chromium/error-context.md
+306-2026-07-12T22:36:15.7643036Z 
+307-2026-07-12T22:36:15.7643478Z     attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+308-2026-07-12T22:36:15.7644981Z     test-results/roll-movement/regression-bug-history-smo-61972--표시하고-이동-직후-경로-preview를-숨긴다-desktop-chromium/trace.zip
+309-2026-07-12T22:36:15.7645573Z     Usage:
+310-2026-07-12T22:36:15.7645681Z 
+311-2026-07-12T22:36:15.7646408Z         npx playwright show-trace test-results/roll-movement/regression-bug-history-smo-61972--표시하고-이동-직후-경로-preview를-숨긴다-desktop-chromium/trace.zip
+312-2026-07-12T22:36:15.7647184Z 
+313-2026-07-12T22:36:15.7647870Z     ────────────────────────────────────────────────────────────────────────────────────────────────
+314-2026-07-12T22:36:15.7648352Z 
+315:2026-07-12T22:36:15.7648490Z   1 failed
+316-2026-07-12T22:36:15.7649904Z     [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:42:7 › BUG_HISTORY regression smoke › 온라인 윷 던지기는 sequence replay 애니메이션을 표시하고 이동 직후 경로 preview를 숨긴다 
+317-2026-07-12T22:36:15.7651032Z   4 passed (2.7m)
+318:2026-07-12T22:36:15.7876090Z ##[error]Process completed with exit code 1.
+319-2026-07-12T22:36:15.7923906Z ##[group]Run set -o pipefail
+320-2026-07-12T22:36:15.7924245Z [36;1mset -o pipefail[0m
+321:2026-07-12T22:36:15.7924624Z [36;1mnpm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-roll-movement.log[0m
+322-2026-07-12T22:36:15.7925263Z shell: bash --noprofile --norc -e -o pipefail {0}
+323-2026-07-12T22:36:15.7925558Z env:
+324-2026-07-12T22:36:15.7925811Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+325-2026-07-12T22:36:15.7926148Z   QA_RUN_ID: gh-29211715793-1-roll-movement
+326-2026-07-12T22:36:15.7926426Z   QA_ROLE: roll-movement
+327-2026-07-12T22:36:15.7926666Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+328-2026-07-12T22:36:15.7926909Z ##[endgroup]
+329-2026-07-12T22:36:15.9456568Z 
+330:2026-07-12T22:36:15.9457324Z > qa:cleanup-rooms
+331:2026-07-12T22:36:15.9458021Z > node tests/helpers/cleanup-qa-rooms.js
+332-2026-07-12T22:36:15.9458418Z 
+333:2026-07-12T22:36:16.1064736Z (node:495) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///__w/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+334-2026-07-12T22:36:16.1066259Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+335-2026-07-12T22:36:16.1067008Z To eliminate this warning, add "type": "module" to /__w/Yut/Yut/package.json.
+336-2026-07-12T22:36:16.1067642Z (Use `node --trace-warnings ...` to show where the warning was created)
+337:2026-07-12T22:36:16.7478377Z QA cleanup mode=current-run, namespace=gh-29211715793-1-roll-movement, workflowPrefix=없음, rooms=0
+338:2026-07-12T22:45:24.1450678Z context canceled
+339:2026-07-12T22:45:24.1639022Z ##[error]The runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled.
+340:2026-07-12T22:45:24.1678289Z ##[error]Process completed with exit code 1.
+341-2026-07-12T22:45:24.2224429Z Cleaning up orphan processes
+342-2026-07-12T22:45:24.4503156Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+
+===== desktop (86700520124) =====
+185-2026-07-12T22:33:27.5247979Z ##[group]Environment details
+186-2026-07-12T22:33:31.0896115Z node: v22.23.1
+187-2026-07-12T22:33:31.0896801Z npm: 10.9.8
+188-2026-07-12T22:33:31.0897130Z yarn: 1.22.22
+189-2026-07-12T22:33:31.0898183Z ##[endgroup]
+190-2026-07-12T22:33:31.0914801Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+191-2026-07-12T22:33:31.4304409Z /github/home/.npm
+192-2026-07-12T22:33:31.5524095Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+193:2026-07-12T22:33:31.5678888Z (node:146) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+194-2026-07-12T22:33:32.5510167Z Received 67268862 of 67268862 (100.0%), 74.0 MBs/sec
+195-2026-07-12T22:33:32.5511039Z Cache Size: ~64 MB (67268862 B)
+196-2026-07-12T22:33:32.5571718Z [command]/usr/bin/tar -xf /__w/_temp/58c32c2c-7f63-4de0-8fc5-96a5cba31f59/cache.tgz -P -C /__w/Yut/Yut -z
+197-2026-07-12T22:33:32.9351046Z Cache restored successfully
+198-2026-07-12T22:33:32.9393131Z Cache restored from key: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+199-2026-07-12T22:33:32.9596838Z ##[group]Run npm ci
+200-2026-07-12T22:33:32.9597182Z [36;1mnpm ci[0m
+201-2026-07-12T22:33:32.9601362Z shell: bash --noprofile --norc -e -o pipefail {0}
+--
+217-2026-07-12T22:33:40.3413897Z shell: bash --noprofile --norc -e -o pipefail {0}
+218-2026-07-12T22:33:40.3414198Z env:
+219-2026-07-12T22:33:40.3414452Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+220-2026-07-12T22:33:40.3414791Z   QA_RUN_ID: gh-29211715793-1-lobby-desktop
+221-2026-07-12T22:33:40.3415072Z   QA_ROLE: lobby-desktop
+222-2026-07-12T22:33:40.3415313Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+223-2026-07-12T22:33:40.3415560Z ##[endgroup]
+224-2026-07-12T22:33:40.4201295Z Wrote canonical production Firebase config: project=yut-online, appId=1:925785463331:web:73ac57a5f7f8527455ef96
+225:2026-07-12T22:33:40.4291304Z ##[group]Run curl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null
+226:2026-07-12T22:33:40.4292183Z [36;1mcurl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null[0m
+227-2026-07-12T22:33:40.4292907Z shell: bash --noprofile --norc -e -o pipefail {0}
+228-2026-07-12T22:33:40.4293210Z env:
+229-2026-07-12T22:33:40.4293468Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+230-2026-07-12T22:33:40.4293814Z   QA_RUN_ID: gh-29211715793-1-lobby-desktop
+231-2026-07-12T22:33:40.4294093Z   QA_ROLE: lobby-desktop
+232-2026-07-12T22:33:40.4294333Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+233-2026-07-12T22:33:40.4294577Z ##[endgroup]
+234-2026-07-12T22:33:40.4889946Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+235-2026-07-12T22:33:40.4895951Z                                  Dload  Upload   Total   Spent    Left  Speed
+236-2026-07-12T22:33:40.4896412Z 
+237-2026-07-12T22:33:40.5352861Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+238-2026-07-12T22:33:40.5353466Z 100   249  100   249    0     0   5524      0 --:--:-- --:--:-- --:--:--  5659
+239-2026-07-12T22:33:40.5470353Z ##[group]Run set -o pipefail
+240-2026-07-12T22:33:40.5470989Z [36;1mset -o pipefail[0m
+241:2026-07-12T22:33:40.5472096Z [36;1mnpm run test:qa-cleanup-layout-regression -- --output=test-results/lobby-desktop 2>&1 | tee playwright-qa-lobby-desktop.log[0m
+242-2026-07-12T22:33:40.5473521Z shell: bash --noprofile --norc -e -o pipefail {0}
+243-2026-07-12T22:33:40.5474058Z env:
+244-2026-07-12T22:33:40.5474522Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+245-2026-07-12T22:33:40.5475168Z   QA_RUN_ID: gh-29211715793-1-lobby-desktop
+246-2026-07-12T22:33:40.5475666Z   QA_ROLE: lobby-desktop
+247-2026-07-12T22:33:40.5476093Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+248-2026-07-12T22:33:40.5476818Z ##[endgroup]
+249-2026-07-12T22:33:40.7257549Z 
+250:2026-07-12T22:33:40.7258204Z > test:qa-cleanup-layout-regression
+251-2026-07-12T22:33:40.7259378Z > playwright test --workers=1 --project=desktop-chromium tests/lobby --output=test-results/lobby-desktop
+252-2026-07-12T22:33:40.7260099Z 
+253-2026-07-12T22:33:41.7657462Z 
+254-2026-07-12T22:33:41.7658555Z Running 2 tests using 1 worker
+255-2026-07-12T22:33:41.7677499Z 
+256:2026-07-12T22:33:50.9416505Z   ✓  1 [desktop-chromium] › tests/lobby/cleanup-layout-regression.spec.js:17:7 › cleanup/layout regression QA › 대기실과 로비 주요 버튼은 force click 없이 클릭 가능하고 로비 action column 정렬을 유지한다 (8.5s)
+257-2026-07-12T22:33:51.3500752Z   ✓  2 [desktop-chromium] › tests/lobby/lobby-options.spec.js:6:7 › lobby QA › 로비 저장 옵션이 현재 화면에 반영된다 (395ms)
+258-2026-07-12T22:33:51.4065812Z 
+259-2026-07-12T22:33:51.4072439Z   2 passed (10.0s)
+260-2026-07-12T22:33:51.4336111Z ##[group]Run set -o pipefail
+261-2026-07-12T22:33:51.4336452Z [36;1mset -o pipefail[0m
+262:2026-07-12T22:33:51.4337152Z [36;1mnpm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-lobby-desktop.log[0m
+263-2026-07-12T22:33:51.4337837Z shell: bash --noprofile --norc -e -o pipefail {0}
+264-2026-07-12T22:33:51.4338345Z env:
+265-2026-07-12T22:33:51.4338607Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+266-2026-07-12T22:33:51.4338971Z   QA_RUN_ID: gh-29211715793-1-lobby-desktop
+267-2026-07-12T22:33:51.4339253Z   QA_ROLE: lobby-desktop
+268-2026-07-12T22:33:51.4339493Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+269-2026-07-12T22:33:51.4339744Z ##[endgroup]
+270-2026-07-12T22:33:51.5899711Z 
+271:2026-07-12T22:33:51.5900778Z > qa:cleanup-rooms
+272:2026-07-12T22:33:51.5901516Z > node tests/helpers/cleanup-qa-rooms.js
+273-2026-07-12T22:33:51.5901915Z 
+274:2026-07-12T22:33:51.7731146Z (node:431) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///__w/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+275-2026-07-12T22:33:51.7733181Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+276-2026-07-12T22:33:51.7734468Z To eliminate this warning, add "type": "module" to /__w/Yut/Yut/package.json.
+277-2026-07-12T22:33:51.7735425Z (Use `node --trace-warnings ...` to show where the warning was created)
+278:2026-07-12T22:33:52.3719990Z QA cleanup mode=current-run, namespace=gh-29211715793-1-lobby-desktop, workflowPrefix=없음, rooms=0
+279:2026-07-12T22:45:26.7117777Z context canceled
+280:2026-07-12T22:45:26.7132228Z ##[error]The runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled.
+281:2026-07-12T22:45:26.7179836Z ##[error]Process completed with exit code 1.
+282-2026-07-12T22:45:26.7402413Z Cleaning up orphan processes
+283-2026-07-12T22:45:26.9453239Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+
+===== online (86700520132) =====
+184-2026-07-12T22:33:25.4337528Z ##[group]Environment details
+185-2026-07-12T22:33:27.4915839Z node: v22.23.1
+186-2026-07-12T22:33:27.4916474Z npm: 10.9.8
+187-2026-07-12T22:33:27.4916756Z yarn: 1.22.22
+188-2026-07-12T22:33:27.4918337Z ##[endgroup]
+189-2026-07-12T22:33:27.4934676Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+190-2026-07-12T22:33:27.7230203Z /github/home/.npm
+191-2026-07-12T22:33:27.8332030Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+192:2026-07-12T22:33:27.8470749Z (node:146) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+193-2026-07-12T22:33:28.6915455Z Received 67268862 of 67268862 (100.0%), 87.8 MBs/sec
+194-2026-07-12T22:33:28.6916081Z Cache Size: ~64 MB (67268862 B)
+195-2026-07-12T22:33:28.6937805Z [command]/usr/bin/tar -xf /__w/_temp/a6fcd523-213c-4a23-a369-3fb37dba384a/cache.tgz -P -C /__w/Yut/Yut -z
+196-2026-07-12T22:33:29.0724615Z Cache restored successfully
+197-2026-07-12T22:33:29.0780330Z Cache restored from key: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+198-2026-07-12T22:33:29.0989481Z ##[group]Run npm ci
+199-2026-07-12T22:33:29.0989807Z [36;1mnpm ci[0m
+200-2026-07-12T22:33:29.0993979Z shell: bash --noprofile --norc -e -o pipefail {0}
+--
+216-2026-07-12T22:33:35.9466352Z shell: bash --noprofile --norc -e -o pipefail {0}
+217-2026-07-12T22:33:35.9466661Z env:
+218-2026-07-12T22:33:35.9466926Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+219-2026-07-12T22:33:35.9467272Z   QA_RUN_ID: gh-29211715793-1-online-flow
+220-2026-07-12T22:33:35.9467549Z   QA_ROLE: online-flow
+221-2026-07-12T22:33:35.9467781Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+222-2026-07-12T22:33:35.9468048Z ##[endgroup]
+223-2026-07-12T22:33:36.0316368Z Wrote canonical production Firebase config: project=yut-online, appId=1:925785463331:web:73ac57a5f7f8527455ef96
+224:2026-07-12T22:33:36.0416144Z ##[group]Run curl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null
+225:2026-07-12T22:33:36.0417067Z [36;1mcurl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null[0m
+226-2026-07-12T22:33:36.0417813Z shell: bash --noprofile --norc -e -o pipefail {0}
+227-2026-07-12T22:33:36.0418123Z env:
+228-2026-07-12T22:33:36.0418387Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+229-2026-07-12T22:33:36.0419118Z   QA_RUN_ID: gh-29211715793-1-online-flow
+230-2026-07-12T22:33:36.0419401Z   QA_ROLE: online-flow
+231-2026-07-12T22:33:36.0419631Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+232-2026-07-12T22:33:36.0419888Z ##[endgroup]
+233-2026-07-12T22:33:36.1067105Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+--
+249-2026-07-12T22:33:36.4290099Z > test:qa-basic-flow
+250-2026-07-12T22:33:36.4292203Z > playwright test --workers=1 --project=desktop-chromium tests/game-flow/basic-turn.spec.js tests/game-flow/game-start-authority.spec.js --output=test-results/online-basic
+251-2026-07-12T22:33:36.4293559Z 
+252-2026-07-12T22:33:37.4618237Z 
+253-2026-07-12T22:33:37.4619275Z Running 6 tests using 1 worker
+254-2026-07-12T22:33:37.4638246Z 
+255-2026-07-12T22:33:57.6439428Z   ✓  1 [desktop-chromium] › tests/game-flow/basic-turn.spec.js:13:7 › game flow QA › AI를 추가한 2인 방에서 게임 화면 진입과 첫 턴 조작 UI를 검증한다 (19.4s)
+256-2026-07-12T22:34:12.4472951Z   ✓  2 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:37:7 › game start authority QA › 게스트 동시 접속에서는 초기 state 저장 후에만 양쪽 화면이 game으로 전환된다 (14.8s)
+257:2026-07-12T22:34:19.8523886Z   ✓  3 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:83:7 › game start authority QA › 빠른 3회 클릭과 timeout 재클릭은 동일 requestId로 한 번만 version을 증가시킨다 (7.4s)
+258:2026-07-12T22:34:26.9186875Z   ✓  4 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:111:7 › game start authority QA › timeout 재클릭 후 카운트다운 취소 시 늦은 응답이 와도 초기화되지 않는다 (7.1s)
+259:2026-07-12T22:34:37.4587963Z   ✓  5 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:131:7 › game start authority QA › 초기화 지연 중 cancelled 또는 다른 requestId로 바뀌면 transaction이 거절되고 게임 화면에 진입하지 않는다 (10.5s)
+260-2026-07-12T22:34:42.5609887Z   ✓  6 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:155:7 › game start authority QA › 만료된 requested 상태에서 새 시작은 새 version과 countdown을 실제 room 문서에 만든다 (5.1s)
+261-2026-07-12T22:34:42.6405452Z 
+262-2026-07-12T22:34:42.6412241Z   6 passed (1.1m)
+263-2026-07-12T22:34:42.6684519Z ##[group]Run set -o pipefail
+264-2026-07-12T22:34:42.6684844Z [36;1mset -o pipefail[0m
+265-2026-07-12T22:34:42.6685397Z [36;1mnpm run test:qa-room-lifecycle -- --output=test-results/room-lifecycle 2>&1 | tee playwright-qa-room-lifecycle.log[0m
+266-2026-07-12T22:34:42.6686285Z shell: bash --noprofile --norc -e -o pipefail {0}
+267-2026-07-12T22:34:42.6686595Z env:
+--
+277-2026-07-12T22:34:43.6073521Z 
+278-2026-07-12T22:34:43.6074327Z Running 1 test using 1 worker
+279-2026-07-12T22:34:43.6091752Z 
+280-2026-07-12T22:34:46.6656167Z   ✓  1 [desktop-chromium] › tests/online/room-lifecycle.spec.js:13:7 › online room QA › 방 생성 후 대기실에 진입한다 (2.4s)
+281-2026-07-12T22:34:46.7196981Z 
+282-2026-07-12T22:34:46.7204736Z   1 passed (3.3s)
+283-2026-07-12T22:34:46.7515398Z ##[group]Run set -o pipefail
+284-2026-07-12T22:34:46.7515724Z [36;1mset -o pipefail[0m
+285:2026-07-12T22:34:46.7516084Z [36;1mnpm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-online-flow.log[0m
+286-2026-07-12T22:34:46.7516732Z shell: bash --noprofile --norc -e -o pipefail {0}
+287-2026-07-12T22:34:46.7517056Z env:
+288-2026-07-12T22:34:46.7517315Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+289-2026-07-12T22:34:46.7517651Z   QA_RUN_ID: gh-29211715793-1-online-flow
+290-2026-07-12T22:34:46.7517925Z   QA_ROLE: online-flow
+291-2026-07-12T22:34:46.7518158Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+292-2026-07-12T22:34:46.7518407Z ##[endgroup]
+293-2026-07-12T22:34:46.9152651Z 
+294:2026-07-12T22:34:46.9153216Z > qa:cleanup-rooms
+295:2026-07-12T22:34:46.9153887Z > node tests/helpers/cleanup-qa-rooms.js
+296-2026-07-12T22:34:46.9154202Z 
+297:2026-07-12T22:34:47.0993471Z (node:644) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///__w/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+298-2026-07-12T22:34:47.0995740Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+299-2026-07-12T22:34:47.0997088Z To eliminate this warning, add "type": "module" to /__w/Yut/Yut/package.json.
+300-2026-07-12T22:34:47.0998714Z (Use `node --trace-warnings ...` to show where the warning was created)
+301:2026-07-12T22:34:47.6767605Z QA cleanup mode=current-run, namespace=gh-29211715793-1-online-flow, workflowPrefix=없음, rooms=0
+302:2026-07-12T22:45:25.6065737Z context canceled
+303:2026-07-12T22:45:25.6094799Z ##[error]The runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled.
+304:2026-07-12T22:45:25.6150413Z ##[error]Process completed with exit code 1.
+305-2026-07-12T22:45:25.6407371Z Cleaning up orphan processes
+306-2026-07-12T22:45:25.9945750Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+
+===== mobile (86700520127) =====
+185-2026-07-12T22:33:25.2561358Z ##[group]Environment details
+186-2026-07-12T22:33:27.9197100Z node: v22.23.1
+187-2026-07-12T22:33:27.9197978Z npm: 10.9.8
+188-2026-07-12T22:33:27.9198755Z yarn: 1.22.22
+189-2026-07-12T22:33:27.9200121Z ##[endgroup]
+190-2026-07-12T22:33:27.9217276Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+191-2026-07-12T22:33:28.2284903Z /github/home/.npm
+192-2026-07-12T22:33:28.3294167Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+193:2026-07-12T22:33:28.3445359Z (node:146) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+194-2026-07-12T22:33:28.7935219Z Received 67268862 of 67268862 (100.0%), 157.2 MBs/sec
+195-2026-07-12T22:33:28.7935961Z Cache Size: ~64 MB (67268862 B)
+196-2026-07-12T22:33:28.7955970Z [command]/usr/bin/tar -xf /__w/_temp/d35d1153-a0db-45f4-8e47-5ed2b65940aa/cache.tgz -P -C /__w/Yut/Yut -z
+197-2026-07-12T22:33:29.1506797Z Cache restored successfully
+198-2026-07-12T22:33:29.1543478Z Cache restored from key: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+199-2026-07-12T22:33:29.1818832Z ##[group]Run npm ci
+200-2026-07-12T22:33:29.1819151Z [36;1mnpm ci[0m
+201-2026-07-12T22:33:29.1823891Z shell: bash --noprofile --norc -e -o pipefail {0}
+--
+217-2026-07-12T22:33:36.5355054Z shell: bash --noprofile --norc -e -o pipefail {0}
+218-2026-07-12T22:33:36.5355366Z env:
+219-2026-07-12T22:33:36.5355785Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+220-2026-07-12T22:33:36.5356227Z   QA_RUN_ID: gh-29211715793-1-mobile-layout
+221-2026-07-12T22:33:36.5356518Z   QA_ROLE: mobile-layout
+222-2026-07-12T22:33:36.5356761Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+223-2026-07-12T22:33:36.5357160Z ##[endgroup]
+224-2026-07-12T22:33:36.6233563Z Wrote canonical production Firebase config: project=yut-online, appId=1:925785463331:web:73ac57a5f7f8527455ef96
+225:2026-07-12T22:33:36.6356293Z ##[group]Run curl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null
+226:2026-07-12T22:33:36.6357237Z [36;1mcurl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null[0m
+227-2026-07-12T22:33:36.6358092Z shell: bash --noprofile --norc -e -o pipefail {0}
+228-2026-07-12T22:33:36.6358404Z env:
+229-2026-07-12T22:33:36.6358666Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+230-2026-07-12T22:33:36.6359019Z   QA_RUN_ID: gh-29211715793-1-mobile-layout
+231-2026-07-12T22:33:36.6359312Z   QA_ROLE: mobile-layout
+232-2026-07-12T22:33:36.6359558Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+233-2026-07-12T22:33:36.6359819Z ##[endgroup]
+234-2026-07-12T22:33:36.6977271Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+--
+256-2026-07-12T22:33:39.6256333Z   ✓  1 [mobile-galaxy] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 (914ms)
+257-2026-07-12T22:33:43.0534080Z   ✓  2 [mobile-galaxy] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 (3.4s)
+258-2026-07-12T22:33:45.4052429Z   ✓  3 [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 (1.3s)
+259-2026-07-12T22:33:50.0659470Z   ✓  4 [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 (4.6s)
+260-2026-07-12T22:34:08.4038750Z 
+261-2026-07-12T22:34:08.4050212Z   4 passed (30.8s)
+262-2026-07-12T22:34:08.4352236Z ##[group]Run set -o pipefail
+263-2026-07-12T22:34:08.4352751Z [36;1mset -o pipefail[0m
+264:2026-07-12T22:34:08.4353334Z [36;1mnpm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-mobile-layout.log[0m
+265-2026-07-12T22:34:08.4354346Z shell: bash --noprofile --norc -e -o pipefail {0}
+266-2026-07-12T22:34:08.4354851Z env:
+267-2026-07-12T22:34:08.4355272Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+268-2026-07-12T22:34:08.4355860Z   QA_RUN_ID: gh-29211715793-1-mobile-layout
+269-2026-07-12T22:34:08.4356351Z   QA_ROLE: mobile-layout
+270-2026-07-12T22:34:08.4356757Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+271-2026-07-12T22:34:08.4357192Z ##[endgroup]
+272-2026-07-12T22:34:08.6024808Z 
+273:2026-07-12T22:34:08.6025543Z > qa:cleanup-rooms
+274:2026-07-12T22:34:08.6026149Z > node tests/helpers/cleanup-qa-rooms.js
+275-2026-07-12T22:34:08.6026549Z 
+276:2026-07-12T22:34:08.7928475Z (node:536) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///__w/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+277-2026-07-12T22:34:08.7930510Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+278-2026-07-12T22:34:08.7932263Z To eliminate this warning, add "type": "module" to /__w/Yut/Yut/package.json.
+279-2026-07-12T22:34:08.7933370Z (Use `node --trace-warnings ...` to show where the warning was created)
+280:2026-07-12T22:34:09.3064901Z QA cleanup mode=current-run, namespace=gh-29211715793-1-mobile-layout, workflowPrefix=없음, rooms=0
+281:2026-07-12T22:45:24.2493820Z context canceled
+282:2026-07-12T22:45:24.2708291Z ##[error]The runner has received a shutdown signal. This can happen when the runner service is stopped, or a manually started runner is canceled.
+283:2026-07-12T22:45:24.2840606Z ##[error]Process completed with exit code 1.
+284-2026-07-12T22:45:24.3275999Z Cleaning up orphan processes
+285-2026-07-12T22:45:24.5594560Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+
