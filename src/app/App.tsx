@@ -3,7 +3,7 @@ import type { User } from 'firebase/auth';
 import type { BoardPiece } from '../features/game/components/GameBoard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
-import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
+import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getAdjacentBoardNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
 import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
@@ -4810,11 +4810,19 @@ export function App() {
     }
   }
 
+  const isTrapNodeOccupied = (nodeId: string) => pieces.some((piece) => piece.nodeId === nodeId && piece.started && !piece.finished);
+  const getTrapCandidateNodeIds = (nodeId: string) => getAdjacentBoardNodeIds(nodeId).filter((candidateNodeId) => candidateNodeId !== 'n01' && !isTrapNodeOccupied(candidateNodeId));
+
   function placePendingTrap(nodeId: string, actorId = localSeatId) {
     if (!pendingTrapPlacement || !pendingTrapPlacement.nodeIds.includes(nodeId)) return;
     const itemOwnerSeat = playableSeats.find((seat) => seat.id === pendingTrapPlacement.ownerId);
     const trapPiece = pieces.find((piece) => piece.id === pendingTrapPlacement.pieceId);
     if (!itemOwnerSeat || !trapPiece) { setPendingTrapPlacement(null); return; }
+    if (isTrapNodeOccupied(nodeId)) {
+      setMessage('말이 있는 칸에는 함정을 설치할 수 없습니다.');
+      openCriticalActionErrorDialog('말이 있는 칸에는 함정을 설치할 수 없습니다.');
+      return;
+    }
     if (activeRoomId && actorId === localSeatId) {
       const payload = { nodeId, pieceId: pendingTrapPlacement.pieceId };
       const clientMutationId = getLocalActionKey('place_trap', payload);
@@ -4823,8 +4831,8 @@ export function App() {
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
         .then(async (result) => {
           const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
-          if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
-          if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+          if (result.status === 'committed' || result.status === 'duplicate') acknowledgePendingLocalRemoteAction(clientMutationId);
+          if (result.status === 'rejected' || result.status === 'unsupported') {
             removeSettledPendingLocalRemoteAction(clientMutationId);
             await syncLatestAuthoritativeState(result.reason ?? '서버가 함정 설치를 거부해 최신 authoritative 상태로 재동기화합니다.');
           }
@@ -4872,8 +4880,8 @@ export function App() {
       void commitQueuedAuthoritativeGameAction(activeRoomId, action)
         .then(async (result) => {
           const applied = await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
-          if (applied && (result.status === 'committed' || result.status === 'duplicate')) acknowledgePendingLocalRemoteAction(clientMutationId);
-          if (!applied && (result.status === 'rejected' || result.status === 'unsupported')) {
+          if (result.status === 'committed' || result.status === 'duplicate') acknowledgePendingLocalRemoteAction(clientMutationId);
+          if (result.status === 'rejected' || result.status === 'unsupported') {
             setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
             if (type === 'reroll') clearPendingRollAnimation(clientMutationId);
             removeSettledPendingLocalRemoteAction(clientMutationId);
@@ -4887,8 +4895,23 @@ export function App() {
         })
         .catch((error) => {
           recordRemoteActionDiagnostic('roll_yut', 'use-item-error', error instanceof Error ? error.message : '아이템 사용 처리에 실패했습니다.', { actionKey: clientMutationId });
-          if (type === 'reroll') clearPendingRollAnimation(clientMutationId);
-          void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('아이템 사용 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }));
+          void applyProcessedAuthoritativeAction(clientMutationId)
+            .then((processedState) => {
+              if (processedState) {
+                setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
+                return null;
+              }
+              setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
+              if (type === 'reroll') clearPendingRollAnimation(clientMutationId);
+              removeSettledPendingLocalRemoteAction(clientMutationId);
+              return syncLatestAuthoritativeState('아이템 사용 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+            })
+            .catch(() => {
+              setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
+              if (type === 'reroll') clearPendingRollAnimation(clientMutationId);
+              removeSettledPendingLocalRemoteAction(clientMutationId);
+              void syncLatestAuthoritativeState('아이템 사용 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+            });
         });
       return;
     }
@@ -4947,7 +4970,7 @@ export function App() {
       if (activeRoomId && actorId === localSeatId && pendingSequenceMetaRef.current) {
         pendingSequenceMetaRef.current = { ...pendingSequenceMetaRef.current, payload: { ...itemActionPayload, pieceId: trapPiece.id } };
       }
-      const nodeIds = getNearbyNodeIds(trapPiece.nodeId, 1).filter((nodeId) => nodeId !== 'n01');
+      const nodeIds = getTrapCandidateNodeIds(trapPiece.nodeId);
       if (!nodeIds.length) return;
       submitItemActionIfRemote();
       if (itemOwnerSeat.isAI) {

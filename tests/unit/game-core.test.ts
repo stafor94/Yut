@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getMovePathNodeIds, getMovePathNodeIdsWithPrevious } from '../../src/game-core/board/board';
+import { getAdjacentBoardNodeIds, getMovePathNodeIds, getMovePathNodeIdsWithPrevious } from '../../src/game-core/board/board';
 import { chooseAiRollTimingZone, getFallChanceForTimingZone, getRollTimingZone, rollYutResultWithTiming } from '../../src/game-core/roll';
 import { canRoll, getRollActionBlockReasons, reduceMoveCommand, reduceRollCommand, type EngineLog, type EngineState } from '../../src/game-core/gameEngine';
 import { getRandomItemType } from '../../src/features/items/logic/items';
@@ -47,6 +47,16 @@ const baseState = (): EngineState => ({
   branchChoice: 'outer',
   boardItems: [],
   ownedItems: {},
+});
+
+
+test('함정 설치 후보는 실제 말판 1칸 인접 노드를 방향과 무관하게 반환한다', () => {
+  assert.deepEqual(getAdjacentBoardNodeIds('n03').sort(), ['n02', 'n04']);
+  assert.deepEqual(getAdjacentBoardNodeIds('d06').sort(), ['c01', 'd05']);
+  assert.deepEqual(getAdjacentBoardNodeIds('n06').sort(), ['d05', 'n05', 'n07']);
+  assert.deepEqual(getAdjacentBoardNodeIds('n11').sort(), ['d01', 'n10', 'n12']);
+  assert.deepEqual(getAdjacentBoardNodeIds('n16').sort(), ['d08', 'n15', 'n17']);
+  assert.deepEqual(getAdjacentBoardNodeIds('c01').sort(), ['d02', 'd03', 'd06', 'd07']);
 });
 
 test('말판 지름길 경로는 분기 선택 시 중앙을 경유한다', () => {
@@ -1269,6 +1279,71 @@ test('온라인 빽도에서 판 위 말이 없으면 after_roll 아이템 선�
   assert.equal(result.patch?.turnDeadlineKind, 'move');
 }));
 
+
+
+test('온라인 함정 후보는 시작점과 모든 점유 칸을 제외한다', () => {
+  const state = {
+    ...baseState(),
+    pieces: [
+      { id: 'p1', ownerId: 'seat-1', nodeIndex: 5, nodeId: 'n06', started: true, finished: false },
+      { id: 'p2', ownerId: 'seat-2', nodeIndex: 6, nodeId: 'n07', started: true, finished: false },
+      { id: 'p3', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: true, finished: false },
+    ],
+    lastMovedSeatId: 'seat-1',
+    lastMovedPieceIds: ['p1'],
+    itemPromptTiming: 'after_move' as const,
+    pendingAfterMoveTurnIndex: 1,
+    ownedItems: { 'seat-1': ['trap'] },
+    logs: [],
+  } as EngineState & { itemPromptTiming: 'after_move'; pendingAfterMoveTurnIndex: number };
+
+  const result = reduceAuthoritativeGameAction(
+    state,
+    { type: 'use_item', actorId: 'seat-1', payload: { itemType: 'trap', pieceId: 'p1' } },
+    { playMode: 'individual', pieceCount: 4 },
+  );
+
+  assert.equal(result.status, 'committed');
+  assert.deepEqual(result.patch?.pendingTrapPlacement, {
+    ownerId: 'seat-1',
+    pieceId: 'p1',
+    nodeIds: ['n05', 'd05'],
+    nextTurnIndex: 1,
+    deadline: (result.patch?.pendingTrapPlacement as { deadline: number }).deadline,
+  });
+});
+
+test('온라인 함정 설치는 후보 생성 뒤 점유된 칸이면 소비와 턴 진행 없이 거부한다', () => {
+  const state = {
+    ...baseState(),
+    pieces: [
+      { id: 'p1', ownerId: 'seat-1', nodeIndex: 5, nodeId: 'n06', started: true, finished: false },
+      { id: 'p2', ownerId: 'seat-2', nodeIndex: 4, nodeId: 'n05', started: true, finished: false },
+    ],
+    turnIndex: 0,
+    pendingTrapPlacement: { ownerId: 'seat-1', pieceId: 'p1', nodeIds: ['n05', 'n07', 'd05'], nextTurnIndex: 1, deadline: 1000 },
+    itemPromptTiming: null,
+    ownedItems: { 'seat-1': ['trap'] },
+    trapNodes: [{ nodeId: 'n03', ownerId: 'seat-2' }],
+    turnDeadlineAt: 1000,
+    turnDeadlineKind: 'trap_placement' as const,
+    logs: [],
+  } as EngineState & { pendingTrapPlacement: unknown; turnDeadlineKind: 'trap_placement'; turnDeadlineAt: number };
+
+  const result = reduceAuthoritativeGameAction(
+    state,
+    { type: 'place_trap', actorId: 'seat-1', payload: { pieceId: 'p1', nodeId: 'n05' } },
+    { playMode: 'individual', pieceCount: 4 },
+  );
+
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.reason, '말이 있는 칸에는 함정을 설치할 수 없습니다.');
+  assert.equal(result.patch, undefined);
+  assert.deepEqual(state.ownedItems, { 'seat-1': ['trap'] });
+  assert.deepEqual(state.trapNodes, [{ nodeId: 'n03', ownerId: 'seat-2' }]);
+  assert.equal(state.turnIndex, 0);
+  assert.equal(state.turnDeadlineAt, 1000);
+});
 
 test('온라인 누적 마지막 이동 후 함정은 lastMovedSeatId 기준으로 허용되고 place_trap 뒤 다음 턴으로 넘어간다', () => {
   const move = reduceAuthoritativeGameAction(
