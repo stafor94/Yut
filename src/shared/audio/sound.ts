@@ -189,6 +189,7 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
   play();
 };
 
-export const playStoredSoundEffect = (effect: SoundEffect) => {
+export const playStoredSoundEffect = (effect: SoundEffect | null) => {
+  if (!effect) return;
   playSoundEffect(effect, isStoredSoundEnabled());
 };
