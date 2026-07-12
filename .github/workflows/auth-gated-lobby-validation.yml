@@ -1,6 +1,9 @@
 name: Auth-gated lobby validation
 
 on:
+  push:
+    branches:
+      - agent/auth-gated-lobby-room-subscription
   pull_request:
     branches:
       - main
@@ -14,7 +17,7 @@ permissions:
 
 jobs:
   verify:
-    if: github.event.pull_request.head.ref == 'agent/auth-gated-lobby-room-subscription'
+    if: github.ref_name == 'agent/auth-gated-lobby-room-subscription' || github.event.pull_request.head.ref == 'agent/auth-gated-lobby-room-subscription'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
