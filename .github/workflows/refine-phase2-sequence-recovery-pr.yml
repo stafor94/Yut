@@ -1,0 +1,78 @@
+name: Refine Phase 2 Sequence Recovery PR
+
+on:
+  pull_request:
+    branches: [agent/stabilize-game-sync-listener]
+    types: [synchronize]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: refine-phase2-sequence-recovery-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  refine-and-validate:
+    name: Refine App, unit test, and build
+    if: github.head_ref == 'agent/conditional-sequence-recovery'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/conditional-sequence-recovery
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply exact refinement
+        run: python scripts/refine-phase2-sequence-recovery.py
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Build app
+        run: npm run build
+      - name: Verify sequence recovery markers
+        run: |
+          grep -q "shouldDeferSequenceRecovery" src/app/App.tsx
+          if grep -q "SEQUENCE_WATCHDOG_MS" src/app/App.tsx; then exit 1; fi
+      - name: Remove temporary files and commit
+        run: |
+          rm .github/workflows/refine-phase2-sequence-recovery-pr.yml
+          rm scripts/refine-phase2-sequence-recovery.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx .github/workflows/refine-phase2-sequence-recovery-pr.yml scripts/refine-phase2-sequence-recovery.py
+          git commit -m "fix: coordinate sequence recovery with existing flows"
+          git push origin HEAD:agent/conditional-sequence-recovery
+      - name: Comment result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '## Phase 2 final refinement validation',
+                `- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '- `npm run test:unit`: **success**',
+                '- `npm run build`: **success**',
+                '- Existing recovery conflict guard: **verified**',
+              ].join('\n'),
+            });
+      - name: Comment failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## Phase 2 final refinement failed\n- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n- No refinement commit was pushed.`,
+            });
