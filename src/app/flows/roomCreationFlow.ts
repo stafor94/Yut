@@ -25,6 +25,10 @@ export function createRoomRequestIdentity(rawToken: string) {
   };
 }
 
+export function isRoomTransitionInProgress(previousRoomId: string, nextRoomId: string) {
+  return Boolean(nextRoomId && nextRoomId !== previousRoomId);
+}
+
 export function isMatchingCreatedRoom(
   room: { id?: string; hostId?: string; createRequestId?: string } | null | undefined,
   request: { roomId: string; hostId: string; createRequestId: string },

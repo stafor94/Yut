@@ -4,6 +4,7 @@ import {
   RoomCreationTimeoutError,
   createRoomRequestIdentity,
   isMatchingCreatedRoom,
+  isRoomTransitionInProgress,
   withOperationTimeout,
 } from '../../src/app/flows/roomCreationFlow.js';
 
@@ -38,4 +39,11 @@ test('timeout 복구는 정확히 같은 room, host, request만 허용한다', (
   assert.equal(isMatchingCreatedRoom({ id: 'room-request-2', hostId: 'host-1', createRequestId: 'request-1' }, request), false);
   assert.equal(isMatchingCreatedRoom({ id: 'room-request-1', hostId: 'host-2', createRequestId: 'request-1' }, request), false);
   assert.equal(isMatchingCreatedRoom({ id: 'room-request-1', hostId: 'host-1', createRequestId: 'request-2' }, request), false);
+});
+
+
+test('다른 방으로 전환 중인 background cleanup은 새 방 화면 상태를 지우지 않는다', () => {
+  assert.equal(isRoomTransitionInProgress('room-old', 'room-new'), true);
+  assert.equal(isRoomTransitionInProgress('room-old', ''), false);
+  assert.equal(isRoomTransitionInProgress('room-old', 'room-old'), false);
 });

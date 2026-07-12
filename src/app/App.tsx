@@ -21,7 +21,7 @@ import { AppShellHeader } from './components/AppShellHeader';
 import { GameScreenView } from './components/GameScreenView';
 import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItemValue, shouldAiUseReroll } from './flows/aiFlow';
 import { getStartGameBlockMessage } from './flows/gameStartFlow';
-import { RoomCreationTimeoutError, createRoomRequestIdentity, isMatchingCreatedRoom, withOperationTimeout } from './flows/roomCreationFlow';
+import { RoomCreationTimeoutError, createRoomRequestIdentity, isMatchingCreatedRoom, isRoomTransitionInProgress, withOperationTimeout } from './flows/roomCreationFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
 import {
@@ -2680,10 +2680,11 @@ export function App() {
     } catch (error) {
       console.warn('이전 방 정리에 실패했습니다.', error);
     } finally {
+      const transitioningToNextRoom = isRoomTransitionInProgress(previousRoomId, nextRoomId);
       const activeRoomIsPrevious = !activeRoomIdRef.current || activeRoomIdRef.current === previousRoomId;
-      if (activeRoomIdRef.current === previousRoomId) setActiveRoomId('');
+      if (!transitioningToNextRoom && activeRoomIdRef.current === previousRoomId) setActiveRoomId('');
       if (window.localStorage.getItem(STORAGE_KEYS.activeRoomId) === previousRoomId) window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-      if (activeRoomIsPrevious) window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+      if (!transitioningToNextRoom && activeRoomIsPrevious) window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
     }
   }
 
