@@ -1,7 +1,11 @@
-export type SoundEffect = 'roll' | 'bonus' | 'move' | 'arrive' | 'capture' | 'itemPickup' | 'itemUse' | 'trap' | 'shield' | 'win' | 'toast';
+export type SoundEffect = 'countdown' | 'countdownStart' | 'roll' | 'bonus' | 'move' | 'arrive' | 'stack' | 'capture' | 'itemPickup' | 'itemUse' | 'trap' | 'shield' | 'win' | 'toast';
+
+const SOUND_ENABLED_STORAGE_KEY = 'yut-online:soundEnabled';
+const SOUND_EFFECT_VOLUME = 0.38;
 
 let audioContext: AudioContext | null = null;
-let lastPlayedAt = 0;
+let soundUnlockBound = false;
+const lastPlayedEffectAt = new Map<SoundEffect, number>();
 
 const getAudioContext = () => {
   if (typeof window === 'undefined') return null;
@@ -10,6 +14,34 @@ const getAudioContext = () => {
   if (!audioContext) audioContext = new AudioContextConstructor();
   return audioContext;
 };
+
+const unbindSoundUnlock = (unlock: () => void) => {
+  if (typeof window === 'undefined') return;
+  window.removeEventListener('pointerdown', unlock);
+  window.removeEventListener('touchstart', unlock);
+  window.removeEventListener('keydown', unlock);
+};
+
+const bindSoundUnlock = () => {
+  if (typeof window === 'undefined' || soundUnlockBound) return;
+  soundUnlockBound = true;
+  const unlock = () => {
+    const context = getAudioContext();
+    if (!context) return;
+    if (context.state === 'running') {
+      unbindSoundUnlock(unlock);
+      return;
+    }
+    void context.resume().then(() => {
+      if (context.state === 'running') unbindSoundUnlock(unlock);
+    }).catch(() => undefined);
+  };
+  window.addEventListener('pointerdown', unlock, { passive: true });
+  window.addEventListener('touchstart', unlock, { passive: true });
+  window.addEventListener('keydown', unlock);
+};
+
+bindSoundUnlock();
 
 const nowWithOffset = (context: AudioContext, offset = 0) => context.currentTime + offset;
 
@@ -57,7 +89,16 @@ const playNoise = (context: AudioContext, start: number, duration: number, volum
   source.stop(start + duration + 0.03);
 };
 
-const SOUND_EFFECT_VOLUME = 0.38;
+const getEffectDedupeWindow = (effect: SoundEffect) => {
+  if (effect === 'move') return 0.08;
+  if (effect === 'countdown' || effect === 'countdownStart') return 0.15;
+  return 0.18;
+};
+
+export const isStoredSoundEnabled = () => {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(SOUND_ENABLED_STORAGE_KEY) !== 'false';
+};
 
 export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
   if (!enabled) return;
@@ -68,10 +109,18 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
     if (context.state === 'suspended') return;
     const safeVolume = SOUND_EFFECT_VOLUME;
     const now = context.currentTime;
-    if (now - lastPlayedAt < 0.035 && effect === 'move') return;
-    lastPlayedAt = now;
+    const lastPlayedAt = lastPlayedEffectAt.get(effect) ?? -Infinity;
+    if (now - lastPlayedAt < getEffectDedupeWindow(effect)) return;
+    lastPlayedEffectAt.set(effect, now);
 
     switch (effect) {
+      case 'countdown':
+        playTone(context, 660, now, 0.12, safeVolume * 0.72, 'triangle');
+        playTone(context, 880, now + 0.035, 0.08, safeVolume * 0.38, 'sine');
+        break;
+      case 'countdownStart':
+        [523, 659, 784].forEach((frequency, index) => playTone(context, frequency, now + index * 0.055, 0.2, safeVolume * 0.72, 'triangle'));
+        break;
       case 'roll':
         playNoise(context, nowWithOffset(context), 0.16, safeVolume, 650);
         playTone(context, 170, nowWithOffset(context, 0.08), 0.14, safeVolume, 'triangle');
@@ -88,6 +137,11 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
       case 'arrive':
         playTone(context, 420, now, 0.08, safeVolume * 0.7, 'triangle');
         playTone(context, 560, now + 0.06, 0.11, safeVolume * 0.55, 'triangle');
+        break;
+      case 'stack':
+        playTone(context, 294, now, 0.1, safeVolume * 0.62, 'triangle');
+        playTone(context, 440, now + 0.045, 0.14, safeVolume * 0.68, 'triangle');
+        playNoise(context, now + 0.015, 0.08, safeVolume * 0.16, 780);
         break;
       case 'capture':
         playNoise(context, now, 0.12, safeVolume, 1200);
@@ -124,4 +178,8 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
     return;
   }
   play();
+};
+
+export const playStoredSoundEffect = (effect: SoundEffect) => {
+  playSoundEffect(effect, isStoredSoundEnabled());
 };
