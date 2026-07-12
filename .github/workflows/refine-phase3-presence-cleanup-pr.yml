@@ -1,0 +1,80 @@
+name: Refine Phase 3 Presence Cleanup PR
+
+on:
+  pull_request:
+    branches: [agent/conditional-sequence-recovery]
+    types: [synchronize]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: refine-phase3-presence-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  refine-and-validate:
+    name: Refine presence cleanup, unit test, and build
+    if: github.head_ref == 'agent/single-owner-room-presence-cleanup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/single-owner-room-presence-cleanup
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply exact refinement
+        run: python scripts/refine-phase3-presence-cleanup.py
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Build app
+        run: npm run build
+      - name: Verify snapshot-backed eligibility
+        run: |
+          grep -q "presenceCleanupEligibility.roomId === activeRoomId" src/app/App.tsx
+          grep -q "isStaleHumanPresencePlayer(player, requestedAt, staleMs)" src/features/room/services/roomService.ts
+          if grep -q "playersSnapshot.metadata.hasPendingWrites" src/features/room/services/roomService.ts; then exit 1; fi
+      - name: Remove temporary files and commit
+        run: |
+          rm .github/workflows/refine-phase3-presence-cleanup-pr.yml
+          rm scripts/refine-phase3-presence-cleanup.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx src/features/room/services/roomService.ts .github/workflows/refine-phase3-presence-cleanup-pr.yml scripts/refine-phase3-presence-cleanup.py
+          git commit -m "fix: derive presence cleanup eligibility from room snapshot"
+          git push origin HEAD:agent/single-owner-room-presence-cleanup
+      - name: Comment success
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '## Phase 3 refinement validation',
+                `- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '- `npm run test:unit`: **success**',
+                '- `npm run build`: **success**',
+                '- Cleanup eligibility from current room player snapshot: **verified**',
+                '- Stale candidate filter without synthetic room state: **verified**',
+              ].join('\n'),
+            });
+      - name: Comment failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## Phase 3 refinement failed\n- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n- No refinement commit was pushed.`,
+            });
