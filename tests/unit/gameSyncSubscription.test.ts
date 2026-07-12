@@ -74,6 +74,35 @@ test('같은 방의 재렌더는 listener를 다시 만들지 않고 방 변경 
   assert.deepEqual(unsubscribedRooms, ['room-a', 'room-b']);
 });
 
+test('Strict Mode cleanup 뒤 runtime을 재주입하면 listener 처리가 정상 재개된다', async () => {
+  const controller = createGameSyncSubscriptionController<TestSnapshot>();
+  const refs = { sequence: { current: 0 }, version: { current: 0 }, applying: { current: false } };
+  const counters = { replay: 0, apply: 0, enqueue: 0 };
+  const subscribedRooms: string[] = [];
+  const unsubscribedRooms: string[] = [];
+  let emit: (state: TestSnapshot | null) => void = missingEmitter;
+  const subscribe = (roomId: string, callback: (state: TestSnapshot | null) => void) => {
+    subscribedRooms.push(roomId);
+    emit = callback;
+    return () => { unsubscribedRooms.push(roomId); };
+  };
+  const runtime = createRuntime('room-a', counters, refs);
+
+  controller.updateRuntime(runtime);
+  controller.syncRoom('room-a', subscribe);
+  controller.dispose();
+  controller.updateRuntime(runtime);
+  controller.syncRoom('room-a', subscribe);
+
+  emit({ turnVersion: 1, lastSequence: 1, value: 'after-strict-cleanup' });
+  await flushController();
+
+  assert.deepEqual(subscribedRooms, ['room-a', 'room-a']);
+  assert.deepEqual(unsubscribedRooms, ['room-a']);
+  assert.equal(counters.replay, 1);
+  assert.equal(counters.enqueue, 1);
+});
+
 test('동일 snapshot은 한 번만 적용하고 새 sequence는 즉시 replay한다', async () => {
   const controller = createGameSyncSubscriptionController<TestSnapshot>();
   const refs = { sequence: { current: 0 }, version: { current: 0 }, applying: { current: false } };
