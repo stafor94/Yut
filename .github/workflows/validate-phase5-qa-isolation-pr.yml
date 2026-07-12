@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
 
 concurrency:
   group: finalize-phase5-qa-isolation-${{ github.event.pull_request.number }}
@@ -16,7 +14,7 @@ concurrency:
 
 jobs:
   finalize:
-    name: Diagnose and commit phase 5 patch
+    name: Commit validated non-workflow phase 5 files
     if: github.head_ref == 'agent/isolate-qa-firebase-emulator'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -25,46 +23,44 @@ jobs:
         with:
           ref: agent/isolate-qa-firebase-emulator
           fetch-depth: 0
+      - name: Check whether finalization is still needed
+        id: guard
+        run: |
+          if [ -f scripts/apply-phase5-qa-isolation.py ] && [ -f scripts/patch-phase5-webkit.py ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Phase 5 non-workflow files are already finalized."
+          fi
       - name: Apply validated phase 5 files
+        if: steps.guard.outputs.run == 'true'
         run: |
           python scripts/apply-phase5-qa-isolation.py
           python scripts/patch-phase5-webkit.py
-      - name: Diagnose commit and push
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify final isolation markers
+        if: steps.guard.outputs.run == 'true'
         run: |
-          set +e
-          rm .github/workflows/validate-phase5-qa-isolation-pr.yml
+          grep -q "cancel-in-progress: true" .github/workflows/qa.yml
+          grep -q "qa-firebase-emulator:" .github/workflows/qa.yml
+          grep -q "playwright install --with-deps chromium webkit" .github/workflows/qa.yml
+          grep -q "where('qaRunId', '==', qaRunId)" tests/helpers/cleanup-qa-rooms.js
+          if grep -q "collectionGroup" tests/helpers/rooms.js; then exit 1; fi
+      - name: Commit non-workflow changes only
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          git checkout -- .github/workflows/qa.yml
           rm scripts/apply-phase5-qa-isolation.py
           rm scripts/patch-phase5-webkit.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          {
-            echo '## git status before commit'
-            git status --short
-            echo
-            echo '## git commit'
-            git commit -am "test: isolate GitHub Actions QA with Firebase emulators"
-          } > phase5-finalize.log 2>&1
-          commit_code=$?
-          push_code=99
-          if [ "$commit_code" -eq 0 ]; then
-            {
-              echo
-              echo '## git push'
-              git push origin HEAD:agent/isolate-qa-firebase-emulator
-            } >> phase5-finalize.log 2>&1
-            push_code=$?
-          fi
-          {
-            echo '## Phase 5 finalize diagnostic'
-            echo '- Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-            echo "- Commit exit: ${commit_code}"
-            echo "- Push exit: ${push_code}"
-            echo
-            echo '```text'
-            cat phase5-finalize.log
-            echo '```'
-          } > phase5-finalize-comment.md
-          gh pr comment 563 --repo "${{ github.repository }}" --body-file phase5-finalize-comment.md
-          if [ "$commit_code" -ne 0 ] || [ "$push_code" -ne 0 ]; then exit 1; fi
+          git add \
+            .github/scripts/summarize-qa.mjs \
+            src/features/room/services/roomService.ts \
+            tests/helpers/rooms.js \
+            tests/helpers/cleanup-qa-rooms.js \
+            scripts/apply-phase5-qa-isolation.py \
+            scripts/patch-phase5-webkit.py
+          echo 'Staged non-workflow changes:'
+          git diff --cached --name-only
+          git commit -m "test: finalize Firebase emulator QA support"
+          git push origin HEAD:agent/isolate-qa-firebase-emulator
