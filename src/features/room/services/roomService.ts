@@ -24,10 +24,10 @@ export interface RoomPlayer { id: string; nickname: string; ready: boolean; colo
 export interface RoomSeat { id: string; playerId: string; originalPlayerId?: string; currentPlayerId?: string; nickname?: string; color?: string; team?: RoomPlayer['team']; seatIndex?: number; label?: string; isHost?: boolean; aiActive?: boolean; aiName?: string; isSubstitutedByAI?: boolean; status?: 'human' | 'ai_substitute' | 'disconnected' | 'removed'; updatedAt?: unknown; createdAt?: unknown; }
 export type GameSeatSnapshot = { id: string; label: string; name: string; color: string; team: RoomPlayer['team']; isHost?: boolean; isAI?: boolean; isSubstitutedByAI?: boolean; seatIndex: number };
 export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollStack?: unknown[]; selectedRollStackIndex?: number | null; rollStackClosed?: boolean; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; fallEffect?: unknown | null; lastRollTimingZone?: unknown | null; pendingGoldenYutSelection?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; pendingItemPickup?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; pendingAfterMoveTurnIndex?: number; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; turnDeadlineAt?: number; turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | ''; startRequestVersion?: number; startRequestId?: string; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
-export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>>;
+export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt'>>;
 export interface GameAction { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
 export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_roll' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'item_pickup_decided' | 'game_finished';
-export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; eventSchemaVersion?: number; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; patch?: GameStatePatch | null; stateBefore?: SyncedGameState | null; stateAfter?: Omit<SyncedGameState, 'updatedAt'>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
+export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; schemaVersion?: 1 | 2; eventSchemaVersion?: number; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; patch?: GameStatePatch | null; logEntries?: unknown[]; stateBefore?: SyncedGameState | null; stateAfter?: Omit<SyncedGameState, 'updatedAt'>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
 export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; clientMutationId?: string; clientCreatedAt?: number; expectedPreviousSequence?: number };
 export type CommitAuthoritativeGameActionResult = AuthoritativeActionResult & {
   stateAfter?: Omit<SyncedGameState, 'updatedAt'>;
@@ -514,13 +514,40 @@ async function deleteRoomSubcollections(roomId: string) {
 
 const makeFirestoreStateData = (state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'> | GameStatePatch) => sanitizeForFirestore(state) as Record<string, unknown>;
 
-const makeSequenceEventFields = (params: { stateBefore: SyncedGameState | null; stateAfter: Omit<SyncedGameState, 'updatedAt'> | Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>; patch?: GameStatePatch; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> }) => sanitizeForFirestore({
-  eventSchemaVersion: 1,
-  action: params.action ?? null,
-  patch: params.patch ?? null,
-  stateBefore: params.stateBefore,
-  stateAfter: params.stateAfter,
-}) as Pick<GameSequence, 'eventSchemaVersion' | 'action' | 'patch' | 'stateBefore' | 'stateAfter'>;
+
+const stableSequenceValue = (value: unknown) => JSON.stringify(value ?? null);
+
+const getCompactLogEntries = (beforeLogs: unknown, afterLogs: unknown) => {
+  if (!Array.isArray(afterLogs)) return [];
+  if (!Array.isArray(beforeLogs)) return afterLogs;
+  const beforeKeys = new Set(beforeLogs.map((log) => stableSequenceValue(log)));
+  return afterLogs.filter((log) => !beforeKeys.has(stableSequenceValue(log)));
+};
+
+const makeTopLevelPatch = (stateBefore: Partial<SyncedGameState> | null, stateAfter: Partial<SyncedGameState>) => {
+  const patch: GameStatePatch = {};
+  for (const key of Object.keys(stateAfter) as Array<keyof SyncedGameState>) {
+    if (key === 'updatedAt' || key === 'logs') continue;
+    if (!stateBefore || stableSequenceValue(stateBefore[key]) !== stableSequenceValue(stateAfter[key])) {
+      (patch as Partial<Record<keyof SyncedGameState, unknown>>)[key] = stateAfter[key];
+    }
+  }
+  return patch;
+};
+
+export const makeSequenceEventFields = (params: { stateBefore: SyncedGameState | null; stateAfter: Partial<SyncedGameState>; patch?: GameStatePatch; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> }) => {
+  const patch = { ...(params.patch ?? makeTopLevelPatch(params.stateBefore, params.stateAfter)) };
+  delete (patch as Partial<Record<keyof SyncedGameState, unknown>>).logs;
+  delete (patch as Partial<Record<keyof SyncedGameState, unknown>>).updatedAt;
+  const logEntries = getCompactLogEntries(params.stateBefore?.logs, params.stateAfter.logs);
+  return sanitizeForFirestore({
+    schemaVersion: 2,
+    eventSchemaVersion: 2,
+    action: params.action ?? null,
+    patch,
+    logEntries,
+  }) as Pick<GameSequence, 'schemaVersion' | 'eventSchemaVersion' | 'action' | 'patch' | 'logEntries'>;
+};
 
 const isTurnOrderIntroActive = (intro: unknown, now = Date.now()) => {
   if (!intro || typeof intro !== 'object' || !('readyAt' in intro)) return false;
