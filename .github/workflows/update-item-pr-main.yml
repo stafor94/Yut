@@ -1,0 +1,74 @@
+name: Update item PR from main
+
+on:
+  push:
+    branches:
+      - fix/optimistic-item-actions-reroll-shield-ui
+
+permissions:
+  contents: write
+
+jobs:
+  update-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge latest main and validate
+        shell: bash
+        run: |
+          set +e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git merge origin/main --no-edit > .merge.log 2>&1
+          MERGE_STATUS=$?
+          NPM_CI_STATUS=99
+          UNIT_STATUS=99
+          BUILD_STATUS=99
+
+          if [ $MERGE_STATUS -eq 0 ]; then
+            npm ci > .npm-ci.log 2>&1
+            NPM_CI_STATUS=$?
+            if [ $NPM_CI_STATUS -eq 0 ]; then
+              npm run test:unit > .unit-test.log 2>&1
+              UNIT_STATUS=$?
+              npm run build > .build.log 2>&1
+              BUILD_STATUS=$?
+            fi
+          else
+            git merge --abort
+          fi
+
+          if [ $MERGE_STATUS -eq 0 ] && [ $NPM_CI_STATUS -eq 0 ] && [ $UNIT_STATUS -eq 0 ] && [ $BUILD_STATUS -eq 0 ]; then
+            rm -f MAIN_UPDATE_RESULT.md
+            COMMIT_MESSAGE="최신 main 반영 후 아이템 흐름 재검증"
+          else
+            {
+              echo "# Main update result"
+              echo
+              echo "- merge: $MERGE_STATUS"
+              echo "- npm ci: $NPM_CI_STATUS"
+              echo "- unit: $UNIT_STATUS"
+              echo "- build: $BUILD_STATUS"
+              for LOG in .merge.log .npm-ci.log .unit-test.log .build.log; do
+                if [ -f "$LOG" ]; then
+                  echo
+                  echo "## $LOG"
+                  echo '```text'
+                  tail -n 200 "$LOG"
+                  echo '```'
+                fi
+              done
+            } > MAIN_UPDATE_RESULT.md
+            COMMIT_MESSAGE="최신 main 반영 검증 결과 기록"
+          fi
+
+          rm -f .merge.log .npm-ci.log .unit-test.log .build.log
+          rm -f .github/workflows/update-item-pr-main.yml
+          git add -A
+          git commit -m "$COMMIT_MESSAGE"
+          git push
