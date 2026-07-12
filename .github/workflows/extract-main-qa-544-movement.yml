@@ -1,0 +1,46 @@
+name: Extract Main Branch QA 544 movement failure
+
+on:
+  push:
+    branches:
+      - probe/main-qa-latest-fe7c-status
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  extract:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      JOB_ID: 86702780498
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download movement job log
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs" \
+            -o movement.raw
+          if file movement.raw | grep -qi 'zip archive'; then unzip -p movement.raw > movement.log; else cp movement.raw movement.log; fi
+          {
+            grep -nEi -C 12 'failed|failure|error|expect\(|timeout|timed out|locator|received|expected|test-results|trace.zip' movement.log | tail -n 420 || tail -n 320 movement.log
+          } > MAIN_QA_544_MOVEMENT_ERROR.log
+      - name: Commit extracted error
+        shell: bash
+        run: |
+          rm -f movement.raw movement.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add MAIN_QA_544_MOVEMENT_ERROR.log
+          git commit -m "Main Branch QA #544 이동 실패 원문 기록"
+          git push
