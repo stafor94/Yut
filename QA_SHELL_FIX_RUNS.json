@@ -1,0 +1,14 @@
+{
+  "runs": [
+    {
+      "id": 29211445246,
+      "name": "Apply QA Playwright Bash shell fix v2",
+      "status": "completed",
+      "conclusion": "failure",
+      "head_sha": "205fb0aa41c2ed7d400084b221bf0e0994357e44",
+      "html_url": "https://github.com/stafor94/Yut/actions/runs/29211445246",
+      "created_at": "2026-07-12T22:23:36Z",
+      "updated_at": "2026-07-12T22:24:00Z"
+    }
+  ]
+}
