@@ -6,7 +6,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getNearbyNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
+import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
@@ -25,6 +25,7 @@ import { classifyTurnActionFeedback, shouldClearActionErrorDialog, shouldOpenTur
 import { RoomCreationTimeoutError, createRoomRequestIdentity, isMatchingCreatedRoom, isRoomTransitionInProgress, withOperationTimeout } from './flows/roomCreationFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
+import { getPresenceRecoveryKey, isPresenceRestoreAttemptCurrent } from './flows/presenceRecovery';
 import {
   buildAlternatingTeamTurnOrder,
   createTurnOrderIntro,
@@ -395,6 +396,7 @@ export function App() {
   const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
   const roomHostClaimKeyRef = useRef('');
   const presenceRestoreKeyRef = useRef('');
+  const presenceRestoreAttemptRef = useRef(0);
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const startRequestVersionRef = useRef(0);
   const startRequestIdRef = useRef('');
@@ -1149,6 +1151,8 @@ export function App() {
     startStatusRef.current = 'idle';
     setStartStatus('idle');
     enteredGamePresenceKeyRef.current = '';
+    presenceRestoreAttemptRef.current += 1;
+    presenceRestoreKeyRef.current = '';
     startedGameRequestVersionsRef.current.clear();
     appliedGameStartKeyRef.current = '';
     timeoutRecoveryKeysRef.current.clear();
@@ -1206,11 +1210,8 @@ export function App() {
 
         const restoredAsHost = storedRoom.hostId === currentUser.uid;
         const restoredMaxPlayers = storedRoom.maxPlayers as 2 | 3 | 4;
-        const joinResult = restoredAsHost ? null : await joinRoom(storedRoom.id, { userId: currentUser.uid, nickname, playMode: storedRoom.playMode });
-        if (restoredAsHost) {
-          await updateRoomPlayer(storedRoom.id, currentUser.uid, { nickname, ready: true, color: 'red', seatIndex: 0, team: '청팀', isSpectator: false });
-        }
-        if (cancelled) return;
+        const joinResult = await joinRoom(storedRoom.id, { userId: currentUser.uid, nickname, playMode: storedRoom.playMode });
+        if (cancelled || userRef.current?.uid !== currentUser.uid) return;
 
         setActiveRoomId(storedRoom.id);
         setIsRoomHost(restoredAsHost);
@@ -1221,7 +1222,7 @@ export function App() {
         setItemMode(storedRoom.itemMode);
         setStackedRollMode(Boolean(storedRoom.stackedRollMode));
         setPieceCount(storedRoom.pieceCount ?? 4);
-        if (joinResult?.role === 'player') {
+        if (joinResult.role === 'player') {
           setSeats(seatsWithJoinedPlayer([], currentUser.uid, nickname, storedRoom.playMode, restoredMaxPlayers, joinResult.seatIndex));
         } else if (restoredAsHost) {
           setSeats(createSeats(nickname, storedRoom.playMode, restoredMaxPlayers).map((seat) => seat.isHost ? { ...seat, id: currentUser.uid } : seat));
@@ -1424,21 +1425,50 @@ export function App() {
         return;
       }
       const substitutedLocalPlayer = localPresencePlayer && localPresencePlayer.isAI && localPresencePlayer.isSubstitutedByAI && !localPresencePlayer.isSpectator ? localPresencePlayer : undefined;
-      if (substitutedLocalPlayer && activeRoomId && screen === 'game' && !leavingRoomRef.current) {
-        const restoreKey = `${activeRoomId}:${currentUserId}:${substitutedLocalPlayer.seatIndex}`;
+      if (substitutedLocalPlayer && activeRoomId && currentUserId && screen === 'game' && !leavingRoomRef.current) {
+        const presenceVersion = Number(substitutedLocalPlayer.presenceVersion ?? 0);
+        const restoreKey = getPresenceRecoveryKey(activeRoomId, currentUserId, substitutedLocalPlayer.seatIndex, presenceVersion);
         if (presenceRestoreKeyRef.current !== restoreKey) {
+          const restoreAttempt = presenceRestoreAttemptRef.current + 1;
+          presenceRestoreAttemptRef.current = restoreAttempt;
           presenceRestoreKeyRef.current = restoreKey;
-          void joinRoom(activeRoomId, { userId: currentUserId!, nickname: substitutedLocalPlayer.nickname || nickname, playMode })
+          const restoreRoomId = activeRoomId;
+          const restoreUserId = currentUserId;
+          void joinRoom(restoreRoomId, {
+            userId: restoreUserId,
+            nickname: substitutedLocalPlayer.nickname || nickname,
+            playMode,
+            expectedPresenceVersion: presenceVersion,
+          })
             .then((result) => {
+              const attemptIsCurrent = isPresenceRestoreAttemptCurrent({
+                attempt: restoreAttempt,
+                currentAttempt: presenceRestoreAttemptRef.current,
+                restoreKey,
+                currentRestoreKey: presenceRestoreKeyRef.current,
+                roomId: restoreRoomId,
+                currentRoomId: activeRoomIdRef.current,
+                userId: restoreUserId,
+                currentUserId: userRef.current?.uid ?? '',
+              });
+              if (!attemptIsCurrent) return;
+              if (result.role === 'stale') {
+                presenceRestoreKeyRef.current = '';
+                setMessage('연결 상태가 갱신되어 최신 좌석 상태를 다시 확인하고 있습니다.');
+                return;
+              }
               if (result.role !== 'player') {
                 presenceRestoreKeyRef.current = '';
                 return;
               }
               setMessage('연결이 복구되어 원래 좌석으로 다시 참여했습니다.');
             })
-            .catch(() => { presenceRestoreKeyRef.current = ''; });
+            .catch(() => {
+              if (presenceRestoreAttemptRef.current === restoreAttempt && presenceRestoreKeyRef.current === restoreKey) presenceRestoreKeyRef.current = '';
+            });
         }
       } else if (!substitutedLocalPlayer) {
+        presenceRestoreAttemptRef.current += 1;
         presenceRestoreKeyRef.current = '';
       }
       const currentHostPlayer = activeRoomHostId ? players.find((player) => player.id === activeRoomHostId) : undefined;
