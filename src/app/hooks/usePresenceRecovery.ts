@@ -15,6 +15,11 @@ export type PresenceRecoveryOptions = {
 
 type PresenceRecoveryContext = Pick<PresenceRecoveryOptions, 'activeRoomId' | 'screen' | 'currentUserId' | 'nickname' | 'playMode'>;
 
+const normalizePresenceEpoch = (value: unknown) => {
+  const epoch = Number(value ?? 0);
+  return Number.isFinite(epoch) && epoch >= 0 ? Math.floor(epoch) : 0;
+};
+
 export function usePresenceRecovery({
   activeRoomId,
   screen,
@@ -48,9 +53,14 @@ export function usePresenceRecovery({
     }
 
     const context = contextRef.current;
-    if (!context.activeRoomId || !context.currentUserId || context.screen !== 'game' || leavingRoomRef.current) return;
+    if (!context.activeRoomId || !context.currentUserId || context.screen !== 'game') return;
+    if (leavingRoomRef.current) {
+      restoreKeyRef.current = '';
+      requestVersionRef.current += 1;
+      return;
+    }
 
-    const expectedPresenceEpoch = Number(substitutedPlayer.presenceEpoch ?? 0);
+    const expectedPresenceEpoch = normalizePresenceEpoch(substitutedPlayer.presenceEpoch);
     const restoreKey = getPresenceRestoreKey(context.activeRoomId, context.currentUserId, substitutedPlayer.seatIndex, expectedPresenceEpoch);
     if (restoreKeyRef.current === restoreKey) return;
 
@@ -68,6 +78,10 @@ export function usePresenceRecovery({
     })
       .then((result) => {
         if (restoreKeyRef.current !== restoreKey || requestVersionRef.current !== requestVersion) return;
+        if (leavingRoomRef.current) {
+          restoreKeyRef.current = '';
+          return;
+        }
         const latestContext = contextRef.current;
         if (!shouldApplyPresenceRestoreResult({
           requestedRoomId,
