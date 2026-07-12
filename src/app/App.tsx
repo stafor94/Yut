@@ -9,6 +9,7 @@ import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollA
 import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, findActiveRoomByHost, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
+import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
 import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';
 import { useRoomPresence } from './hooks/useRoomPresence';
@@ -95,7 +96,10 @@ import '../styles/globals.css';
 
 const TURN_DELAY_MS = 1000;
 const START_CANCEL_LOCK_MS = 2000;
-const SEQUENCE_WATCHDOG_MS = 5000;
+const SEQUENCE_RECOVERY_INITIAL_DELAY_MS = 5000;
+const SEQUENCE_RECOVERY_RETRY_DELAYS_MS = [5000, 10000, 20000] as const;
+const SEQUENCE_RECOVERY_MAX_ATTEMPTS = 4;
+const SEQUENCE_RECOVERY_MAX_TOTAL_MS = 40000;
 const TURN_ORDER_START_DELAY_MS = 3000;
 const TURN_ORDER_TIMEOUT_MS = 10000;
 const TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS = 1500;
@@ -306,6 +310,24 @@ export function App() {
   const pendingItemPickupRef = useRef<PendingItemPickup | null>(null);
   const shouldAdvanceTurnAfterItemPromptRef = useRef(false);
   const lastSequenceWatchdogAtRef = useRef(0);
+  const sequenceRecoveryCheckRef = useRef<() => Promise<SequenceRecoveryCheckResult>>(async () => 'deferred');
+  const sequenceRecoveryWatchdogRef = useRef<SequenceRecoveryWatchdogController | null>(null);
+  if (!sequenceRecoveryWatchdogRef.current) {
+    sequenceRecoveryWatchdogRef.current = createSequenceRecoveryWatchdog({
+      runCheck: () => sequenceRecoveryCheckRef.current(),
+      scheduler: {
+        now: () => Date.now(),
+        setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+        clearTimeout: (timerId) => window.clearTimeout(timerId),
+      },
+      initialDelayMs: SEQUENCE_RECOVERY_INITIAL_DELAY_MS,
+      retryDelaysMs: SEQUENCE_RECOVERY_RETRY_DELAYS_MS,
+      maxAttempts: SEQUENCE_RECOVERY_MAX_ATTEMPTS,
+      maxTotalMs: SEQUENCE_RECOVERY_MAX_TOTAL_MS,
+      onCheckStarted: () => { lastSequenceWatchdogAtRef.current = Date.now(); },
+    });
+  }
+  const turnRecoveryInFlightRef = useRef<{ roomId: string; token: string } | null>(null);
   const stalledTurnWatchKeyRef = useRef('');
   const stalledTurnStartedAtRef = useRef(0);
   const stalledTurnRecoveryKeyRef = useRef('');
@@ -995,6 +1017,7 @@ export function App() {
       }
       const stalledResolution = getStalledTurnSyncResolution();
       if (stalledResolution.status === 'recoverable') void recoverStalledTurnMove(stalledResolution.recoveryKey, { source: 'page-resume' });
+      void sequenceRecoveryWatchdogRef.current?.triggerNow();
     };
     window.addEventListener('focus', handleResume);
     window.addEventListener('pageshow', handleResume);
@@ -1068,6 +1091,7 @@ export function App() {
     activeRoomHostIdRef.current = '';
     lastAppliedStateVersionRef.current = 0;
     lastAppliedSequenceRef.current = 0;
+    lastSequenceWatchdogAtRef.current = 0;
     setAuthoritativeGameStateReady(false);
     setInitialGameEntryPending(false);
     appliedGameStartKeyRef.current = '';
@@ -2120,6 +2144,9 @@ export function App() {
     replayMissingSequencesThenApply,
     applySyncedStateSnapshot,
     enqueueAuthoritativeResultApplication: (applyResult) => enqueueAuthoritativeResultApplication(activeRoomId, applyResult),
+    onSnapshotReceived: () => {
+      sequenceRecoveryWatchdogRef.current?.notifySnapshot();
+    },
   });
 
   useEffect(() => {
@@ -2468,27 +2495,56 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [activeRoomId, allHumansEnteredGame, allReady, canResolveInitialOnlineTurnOrder, pieces.length, screen, startRequestVersion, turnOrderIds.length, turnOrderIntro, waitingForPlayersReady]);
 
+  sequenceRecoveryCheckRef.current = async (): Promise<SequenceRecoveryCheckResult> => {
+    const roomId = activeRoomId;
+    if (!roomId || activeRoomIdRef.current !== roomId || screen !== 'game' || isMyTurn || winner) return 'deferred';
+    if (shouldDeferSequenceRecovery({
+      sequenceReplayInProgress: sequenceReplayInProgressRef.current,
+      moveInProgress: moveInProgressRef.current,
+      applyingSyncedState: applyingSyncedStateRef.current,
+      manualSequenceSyncing,
+      hasPendingRemoteActions: pendingLocalRemoteActionsRef.current.size > 0,
+      turnRecoveryInFlight: turnRecoveryInFlightRef.current?.roomId === roomId,
+    })) return 'deferred';
+
+    const localSequence = lastAppliedSequenceRef.current;
+    try {
+      const sequences = await measureFirebaseLatency(() => getGameSequencesSince(roomId, getSequenceRefetchAfter(localSequence)));
+      if (activeRoomIdRef.current !== roomId) return 'deferred';
+      const orderedSequences = sequences
+        .filter((sequence) => Number(sequence.sequence ?? 0) > 0)
+        .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
+      const latestSequence = Math.max(localSequence, ...orderedSequences.map((sequence) => Number(sequence.sequence ?? 0)));
+      const latestState = [...orderedSequences].reverse().find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+      const currentLocalSequence = lastAppliedSequenceRef.current;
+      if (latestSequence <= currentLocalSequence || !latestState) return 'unchanged';
+      await replayMissingSequencesThenApply(latestState, currentLocalSequence, latestSequence);
+      return 'changed';
+    } catch {
+      return 'failed';
+    }
+  };
+
+  const sequenceRecoveryWatchKey = activeRoomId && screen === 'game' && !isMyTurn && !winner
+    ? `${activeRoomId}:${turnIndex}:${activeSeat?.id ?? 'none'}:${turnOrderIds.join(',')}:${roll?.name ?? 'ready'}:${roll?.steps ?? ''}:${turnDeadlineKind}:${turnDeadlineAt}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`
+    : '';
+
   useEffect(() => {
-    if (!activeRoomId || screen !== 'game' || isMyTurn || winner) return undefined;
-    const timer = window.setInterval(() => {
-      const now = Date.now();
-      if (sequenceReplayInProgressRef.current || moveInProgressRef.current || now - lastSequenceWatchdogAtRef.current < SEQUENCE_WATCHDOG_MS) return;
-      lastSequenceWatchdogAtRef.current = now;
-      const localSequence = lastAppliedSequenceRef.current;
-      void measureFirebaseLatency(() => getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence))).then((sequences) => {
-        const latestSequence = Math.max(0, ...sequences.map((sequence) => Number(sequence.sequence ?? 0)));
-        const latestState = [...sequences].reverse().find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-        if (latestSequence > localSequence && latestState) void replayMissingSequencesThenApply(latestState, localSequence, latestSequence);
-      }).catch(() => undefined);
-    }, SEQUENCE_WATCHDOG_MS);
-    return () => window.clearInterval(timer);
-  }, [activeRoomId, isMyTurn, screen, winner]);
+    sequenceRecoveryWatchdogRef.current?.update({
+      active: Boolean(sequenceRecoveryWatchKey),
+      key: sequenceRecoveryWatchKey,
+    });
+  }, [sequenceRecoveryWatchKey]);
+
+  useEffect(() => () => {
+    sequenceRecoveryWatchdogRef.current?.dispose();
+  }, []);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || pendingLocalRemoteActionCount <= 0) return undefined;
     const timer = window.setInterval(() => {
       void reconcilePendingLocalRemoteActions().catch(() => undefined);
-    }, SEQUENCE_WATCHDOG_MS);
+    }, SEQUENCE_RECOVERY_INITIAL_DELAY_MS);
     return () => window.clearInterval(timer);
   }, [activeRoomId, pendingLocalRemoteActionCount, screen]);
 
@@ -3609,7 +3665,9 @@ export function App() {
 
   async function recoverTimedOutRoll(recoveryKey: string, options: { source?: string } = {}) {
     if (!canSubmitDeadlineRecovery() || onlineAuthoritativeGameStatePending || !activeRoomId || !activeSeat || roll || rollInProgress || rollAnimation || movingPieceId || moveInProgress) return false;
-    if (timeoutRecoveryKeysRef.current.has(recoveryKey)) return false;
+    const recoveryToken = `${activeRoomId}:roll:${recoveryKey}`;
+    if (turnRecoveryInFlightRef.current?.roomId === activeRoomId || timeoutRecoveryKeysRef.current.has(recoveryKey)) return false;
+    turnRecoveryInFlightRef.current = { roomId: activeRoomId, token: recoveryToken };
     timeoutRecoveryKeysRef.current.add(recoveryKey);
     const rollTimingZone: RollTimingZone = 'normal';
     const actionKey = `roll_timeout:${recoveryKey}`;
@@ -3635,7 +3693,7 @@ export function App() {
           recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-committed', '윷 던지기 제한 시간 초과를 자동 처리했습니다.', { status: result.status, actionKey });
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
-          void handleAuthoritativeActionRejected('roll_yut', 'turn-roll-timeout-recovery-result', result, {
+          await handleAuthoritativeActionRejected('roll_yut', 'turn-roll-timeout-recovery-result', result, {
             actionKey,
             fallbackMessage: '윷 던지기 자동 진행에 실패했습니다.',
             clearRecoveryKey: () => timeoutRecoveryKeysRef.current.delete(recoveryKey),
@@ -3644,17 +3702,19 @@ export function App() {
         }
       },
       (error) => recordRemoteActionDiagnostic('roll_yut', 'turn-roll-timeout-recovery-error', error instanceof Error ? error.message : '윷 던지기 자동 진행에 실패했습니다.', { actionKey }),
-      () => undefined,
+      () => { if (turnRecoveryInFlightRef.current?.token === recoveryToken) turnRecoveryInFlightRef.current = null; },
     );
     return true;
   }
 
   async function recoverStalledTurnMove(recoveryKey: string, options: { source?: string } = {}) {
     if (!activeRoomId || onlineAuthoritativeGameStatePending || !canSubmitDeadlineRecovery() || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
-    if (stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
+    const recoveryToken = `${activeRoomId}:move:${recoveryKey}`;
+    if (turnRecoveryInFlightRef.current?.roomId === activeRoomId || stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
     if (winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return false;
     if (stalledTurnNeedsBranchChoice || stalledTurnRollStackAmbiguous) return false;
 
+    turnRecoveryInFlightRef.current = { roomId: activeRoomId, token: recoveryToken };
     stalledTurnRecoveryKeyRef.current = recoveryKey;
     const payload = {
       pieceId: stalledTurnFallbackPiece.id,
@@ -3679,7 +3739,7 @@ export function App() {
           recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-committed', '멈춘 턴 이동을 자동 복구했습니다.', { status: result.status, actionKey: payload.clientActionId });
         }
         if (result.status === 'rejected' || result.status === 'unsupported') {
-          void handleAuthoritativeActionRejected('move_piece', 'stalled-turn-recovery-result', result, {
+          await handleAuthoritativeActionRejected('move_piece', 'stalled-turn-recovery-result', result, {
             actionKey: payload.clientActionId,
             fallbackMessage: '멈춘 턴 자동 복구에 실패했습니다.',
             clearRecoveryKey: () => { stalledTurnRecoveryKeyRef.current = ''; },
@@ -3688,7 +3748,7 @@ export function App() {
         }
       },
       (error) => recordRemoteActionDiagnostic('move_piece', 'stalled-turn-recovery-error', error instanceof Error ? error.message : '멈춘 턴 자동 복구에 실패했습니다.', { actionKey: payload.clientActionId }),
-      () => undefined,
+      () => { if (turnRecoveryInFlightRef.current?.token === recoveryToken) turnRecoveryInFlightRef.current = null; },
     );
     return true;
   }

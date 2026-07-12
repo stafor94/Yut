@@ -23,10 +23,11 @@ type GameSyncSubscriptionParams = {
   replayMissingSequencesThenApply: (finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) => Promise<void>;
   applySyncedStateSnapshot: (state: SequenceStateSnapshot) => void;
   enqueueAuthoritativeResultApplication: (applyResult: () => Promise<void> | void) => Promise<void | null>;
+  onSnapshotReceived?: (state: SequenceStateSnapshot) => void;
   subscribe?: (roomId: string, callback: (state: SyncedGameState | null) => void) => Unsubscribe;
 };
 
-export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, lastAppliedStateVersionRef, applyingSyncedStateRef, replayMissingSequencesThenApply, applySyncedStateSnapshot, enqueueAuthoritativeResultApplication, subscribe = subscribeGameState }: GameSyncSubscriptionParams) {
+export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, lastAppliedStateVersionRef, applyingSyncedStateRef, replayMissingSequencesThenApply, applySyncedStateSnapshot, enqueueAuthoritativeResultApplication, onSnapshotReceived, subscribe = subscribeGameState }: GameSyncSubscriptionParams) {
   const subscribeRef = useRef(subscribe);
   subscribeRef.current = subscribe;
 
@@ -42,6 +43,7 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
     replayMissingSequencesThenApply: (state, localSequence, remoteSequence) => replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence),
     applySyncedStateSnapshot: (state) => applySyncedStateSnapshot(state as SequenceStateSnapshot),
     enqueueAuthoritativeResultApplication,
+    onSnapshotReceived: onSnapshotReceived ? (state) => onSnapshotReceived(state as SequenceStateSnapshot) : undefined,
     scheduleApplyingReset: (reset) => { window.setTimeout(reset, 0); },
   };
   controllerRef.current.updateRuntime(runtimeRef.current);

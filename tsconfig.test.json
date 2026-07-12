@@ -22,6 +22,7 @@
     "src/game-core/gameEngine.ts",
     "src/game-core/roll.ts",
     "src/app/hooks/gameSyncSubscription.ts",
+    "src/app/hooks/sequenceRecoveryWatchdog.ts",
     "tests/unit/**/*.ts",
     "src/app/diagnostics/gameDiagnostics.ts"
   ]
