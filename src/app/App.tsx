@@ -13,6 +13,7 @@ import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEv
 import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
 import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';
+import { usePresenceRecovery } from './hooks/usePresenceRecovery';
 import { useRoomPresence } from './hooks/useRoomPresence';
 import { useTurnOrderAutoFinish, useTurnOrderClock, useTurnOrderPortraitScroll } from './hooks/useTurnOrderTimers';
 import { LobbyContainer } from './containers/LobbyContainer';
@@ -23,7 +24,7 @@ import { GameScreenView } from './components/GameScreenView';
 import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItemValue, shouldAiUseReroll } from './flows/aiFlow';
 import { getStartGameBlockMessage } from './flows/gameStartFlow';
 import { classifyTurnActionFeedback, shouldClearActionErrorDialog, shouldOpenTurnActionErrorDialog } from './flows/actionFeedback';
-import { ROOM_PLAYER_MISSING_GRACE_MS, getPresenceRestoreKey, shouldApplyPresenceRestoreResult } from './flows/presenceRecovery';
+import { ROOM_PLAYER_MISSING_GRACE_MS } from './flows/presenceRecovery';
 import { RoomCreationTimeoutError, createRoomRequestIdentity, isMatchingCreatedRoom, isRoomTransitionInProgress, withOperationTimeout } from './flows/roomCreationFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
@@ -399,7 +400,6 @@ export function App() {
   const spectatorIdsRef = useRef<Set<string>>(new Set());
   const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
   const roomHostClaimKeyRef = useRef('');
-  const presenceRestoreKeyRef = useRef('');
   const missingRoomPlayerTimerRef = useRef<number | null>(null);
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const startRequestVersionRef = useRef(0);
@@ -1124,7 +1124,6 @@ export function App() {
     lastSequenceWatchdogAtRef.current = 0;
     setAuthoritativeGameStateReady(false);
     setInitialGameEntryPending(false);
-    presenceRestoreKeyRef.current = '';
     if (missingRoomPlayerTimerRef.current !== null) {
       window.clearTimeout(missingRoomPlayerTimerRef.current);
       missingRoomPlayerTimerRef.current = null;
@@ -1272,6 +1271,15 @@ export function App() {
   useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
 
   useRoomPresence(activeRoomId, localSeatId, { canCleanup: canOwnRoomPresenceCleanup });
+  const { handlePresencePlayerSnapshot } = usePresenceRecovery({
+    activeRoomId,
+    screen,
+    currentUserId,
+    nickname,
+    playMode,
+    leavingRoomRef,
+    onRestored: () => setMessage('연결이 복구되어 원래 좌석으로 다시 참여했습니다.'),
+  });
 
   useEffect(() => { startRequestVersionRef.current = startRequestVersion; }, [startRequestVersion]);
   useEffect(() => { startStatusRef.current = startStatus; }, [startStatus]);
@@ -1445,43 +1453,7 @@ export function App() {
           setRoomNoticeDialog({ title: '방장에게 강퇴당했습니다.', message: '로비로 이동했습니다.' });
         }, ROOM_PLAYER_MISSING_GRACE_MS);
       }
-      const substitutedLocalPlayer = localPresencePlayer && localPresencePlayer.isAI && localPresencePlayer.isSubstitutedByAI && !localPresencePlayer.isSpectator ? localPresencePlayer : undefined;
-      if (substitutedLocalPlayer && activeRoomId && screen === 'game' && !leavingRoomRef.current) {
-        const expectedPresenceEpoch = Number(substitutedLocalPlayer.presenceEpoch ?? 0);
-        const restoreKey = getPresenceRestoreKey(activeRoomId, currentUserId ?? '', substitutedLocalPlayer.seatIndex, expectedPresenceEpoch);
-        if (presenceRestoreKeyRef.current !== restoreKey) {
-          presenceRestoreKeyRef.current = restoreKey;
-          const restoreRoomId = activeRoomId;
-          const restoreUserId = currentUserId ?? '';
-          void joinRoom(restoreRoomId, {
-            userId: restoreUserId,
-            nickname: substitutedLocalPlayer.nickname || nickname,
-            playMode,
-            expectedPresenceEpoch,
-          })
-            .then((result) => {
-              if (!shouldApplyPresenceRestoreResult({
-                requestedRoomId: restoreRoomId,
-                currentRoomId: activeRoomIdRef.current,
-                requestedUserId: restoreUserId,
-                currentUserId: (userRef.current ?? currentUser)?.uid ?? '',
-                requestedPresenceEpoch: expectedPresenceEpoch,
-                restoredPresenceEpoch: result.presenceEpoch,
-                role: result.role,
-                screen: screenRef.current,
-              })) {
-                if (presenceRestoreKeyRef.current === restoreKey) presenceRestoreKeyRef.current = '';
-                return;
-              }
-              setMessage('연결이 복구되어 원래 좌석으로 다시 참여했습니다.');
-            })
-            .catch(() => {
-              if (presenceRestoreKeyRef.current === restoreKey) presenceRestoreKeyRef.current = '';
-            });
-        }
-      } else if (!substitutedLocalPlayer) {
-        presenceRestoreKeyRef.current = '';
-      }
+      handlePresencePlayerSnapshot(localPresencePlayer);
       const currentHostPlayer = activeRoomHostId ? players.find((player) => player.id === activeRoomHostId) : undefined;
       const hasActiveHumanHost = Boolean(currentHostPlayer && !currentHostPlayer.isAI && !currentHostPlayer.isSpectator);
       const localHumanPlayer = currentUserId ? players.find((player) => player.id === currentUserId && !player.isAI && !player.isSpectator) : undefined;
@@ -1549,7 +1521,7 @@ export function App() {
       setSpectators(nextSpectators);
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
-  }, [activeRoomHostId, activeRoomId, canCoordinateOnlineGame, currentUserId, isRoomManager, localSeatId, maxPlayers, playMode, screen]);
+  }, [activeRoomHostId, activeRoomId, canCoordinateOnlineGame, currentUserId, handlePresencePlayerSnapshot, isRoomManager, localSeatId, maxPlayers, playMode, screen]);
 
   function isLocalSyncedMutation(clientMutationId: unknown) {
     return typeof clientMutationId === 'string' && localClientMutationIdsRef.current.has(clientMutationId);
