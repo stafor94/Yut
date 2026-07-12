@@ -95,6 +95,25 @@ test.describe('BUG_HISTORY regression smoke', () => {
         return JSON.stringify(state, null, 2);
       }, { timeout: 45_000, message: '온라인 sequence replay를 확인할 수 있는 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
 
+      await page.evaluate(() => {
+        window.__YUT_QA_RESULT_HOLD_OBSERVER__?.disconnect();
+        const timing = { startedAt: 0, endedAt: 0 };
+        window.__YUT_QA_RESULT_HOLD_TIMING__ = timing;
+        let observer;
+        const sample = () => {
+          const visible = Boolean(document.querySelector('.roll-stage.resolved-from-pending.result-hold-roll'));
+          const now = performance.now();
+          if (visible && timing.startedAt === 0) timing.startedAt = now;
+          if (!visible && timing.startedAt > 0 && timing.endedAt === 0) {
+            timing.endedAt = now;
+            observer?.disconnect();
+          }
+        };
+        observer = new MutationObserver(sample);
+        window.__YUT_QA_RESULT_HOLD_OBSERVER__ = observer;
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+        sample();
+      });
       await clickSequenceRollAtPerfect();
       await expect(page.locator('.roll-stage.pending-roll'), `클릭 직후 서버 확정 전 pending 윷 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 500 });
       await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), '클릭 후 500ms 이내 pending 단계에서는 클라이언트에서 확정한 타이밍 등급만 즉시 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 500 });
@@ -281,6 +300,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
     const startAiMoveObservation = () => page.evaluate(() => {
       if (window.__YUT_QA_AI_MOVE_OBSERVER__) window.clearInterval(window.__YUT_QA_AI_MOVE_OBSERVER__);
       window.__YUT_QA_AI_MOVE_OBSERVATIONS__ = {};
+      window.__YUT_QA_LOCAL_MOVE_SEEN__ = false;
       window.__YUT_QA_AI_MOVE_OBSERVER__ = window.setInterval(() => {
         const debug = window.__YUT_DEBUG_STATE__ ?? {};
         const pieces = Array.isArray(debug.pieces) ? debug.pieces : [];
@@ -299,7 +319,10 @@ test.describe('BUG_HISTORY regression smoke', () => {
           const testId = node.getAttribute('data-testid') ?? '';
           const pieceId = testId.replace(/^piece-/, '');
           const debugPiece = pieces.find((piece) => piece && typeof piece === 'object' && piece.id === pieceId) ?? {};
-          if (localSeatId && debugPiece.ownerId === localSeatId) continue;
+          if (localSeatId && debugPiece.ownerId === localSeatId) {
+            window.__YUT_QA_LOCAL_MOVE_SEEN__ = true;
+            continue;
+          }
           const rect = node.getBoundingClientRect();
           const position = `${testId}:${Math.round(rect.left)},${Math.round(rect.top)}`;
           if (!observed.includes(position)) observed.push(position);
@@ -404,7 +427,10 @@ test.describe('BUG_HISTORY regression smoke', () => {
         localMoveReady = rollOutcome === 'move-clicked';
       }
       expect(localMoveReady, 'Perfect 구간에서 반복 던진 뒤 활성화된 본인 말 이동 버튼을 실제로 클릭해야 합니다.').toBe(true);
-      await expect.poll(async () => (await getMovingPieces()).length, { timeout: 8_000, message: '본인 optimistic 이동 애니메이션이 시작되어야 합니다.' }).toBeGreaterThan(0);
+      await expect.poll(() => page.evaluate(() => Boolean(window.__YUT_QA_LOCAL_MOVE_SEEN__)), {
+        timeout: 8_000,
+        message: '본인 optimistic 이동 애니메이션이 한 번 이상 관찰되어야 합니다.',
+      }).toBe(true);
       await expect.poll(async () => (await getMovingPieces()).length, { timeout: 12_000, message: '본인 optimistic 이동 애니메이션이 종료되어야 합니다.' }).toBe(0);
       await page.waitForTimeout(1_200);
       expect(await getMovingPieces(), '서버 sequence 확정 후 본인 말 이동이 다시 재생되면 안 됩니다.').toEqual([]);
