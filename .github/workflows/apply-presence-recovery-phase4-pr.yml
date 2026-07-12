@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
 
 jobs:
   apply:
@@ -21,37 +19,13 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Apply phase 4 product changes
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          python <<'PY'
-          from pathlib import Path
-          path = Path('scripts/apply-presence-recovery-phase4.py')
-          text = path.read_text()
-          old = "assert app.count(reset_anchor) == 1\napp = app.replace(reset_anchor, reset_new)"
-          new = "assert app.count(reset_anchor) >= 1\napp = app.replace(reset_anchor, reset_new, 1)"
-          assert old in text
-          path.write_text(text.replace(old, new))
-          PY
-          set +e
-          python scripts/apply-presence-recovery-phase4.py > patch-output.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            {
-              echo '## Phase 4 patch application failed'
-              echo
-              echo '```text'
-              cat patch-output.log
-              echo '```'
-            } > patch-comment.md
-            gh pr comment "${{ github.event.pull_request.number }}" --body-file patch-comment.md
-            exit "$status"
-          fi
+          python scripts/apply-presence-recovery-phase4.py
           rm scripts/apply-presence-recovery-phase4.py
       - name: Commit product changes without verification
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/app/App.tsx src/app/flows/presenceRecovery.ts src/features/room/services/roomService.ts tests/unit/presenceRecovery.test.ts tsconfig.test.json scripts/apply-presence-recovery-phase4.py
-          git commit -m "fix: version AI substitution and reconnect recovery"
+          git add src/app/App.tsx src/app/flows/presenceRecoveryFlow.ts src/features/room/services/roomService.ts tests/unit/presenceRecoveryFlow.test.ts tsconfig.test.json scripts/apply-presence-recovery-phase4.py
+          git commit -m "fix: guard AI substitution recovery generations"
           git push origin HEAD:${{ github.head_ref }}
