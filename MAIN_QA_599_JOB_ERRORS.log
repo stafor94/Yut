@@ -1,0 +1,292 @@
+===== online (86698708730) =====
+16-2026-07-12T22:11:23.6082236Z Image: ubuntu-24.04
+17-2026-07-12T22:11:23.6083222Z Version: 20260705.232.1
+18-2026-07-12T22:11:23.6085740Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260705.232/images/ubuntu/Ubuntu2404-Readme.md
+19-2026-07-12T22:11:23.6088441Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260705.232
+20-2026-07-12T22:11:23.6090205Z ##[endgroup]
+21:2026-07-12T22:11:23.6092302Z ##[group]GITHUB_TOKEN Permissions
+22-2026-07-12T22:11:23.6095485Z Contents: read
+23-2026-07-12T22:11:23.6096533Z Issues: write
+24-2026-07-12T22:11:23.6097574Z Metadata: read
+25-2026-07-12T22:11:23.6098472Z Pages: write
+26-2026-07-12T22:11:23.6099771Z ##[endgroup]
+--
+188-2026-07-12T22:11:50.8786390Z yarn: 1.22.22
+189-2026-07-12T22:11:50.8786919Z ##[endgroup]
+190-2026-07-12T22:11:50.8806008Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+191-2026-07-12T22:11:50.9982682Z /github/home/.npm
+192-2026-07-12T22:11:51.0654959Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+193:2026-07-12T22:11:51.0807871Z (node:146) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+194-2026-07-12T22:11:51.5612516Z Received 67268862 of 67268862 (100.0%), 145.5 MBs/sec
+195-2026-07-12T22:11:51.5613649Z Cache Size: ~64 MB (67268862 B)
+196-2026-07-12T22:11:51.5632658Z [command]/usr/bin/tar -xf /__w/_temp/d8533632-5c0a-47b9-992c-42fabecac65a/cache.tgz -P -C /__w/Yut/Yut -z
+197-2026-07-12T22:11:51.9372920Z Cache restored successfully
+198-2026-07-12T22:11:51.9409429Z Cache restored from key: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+--
+220-2026-07-12T22:11:57.8644845Z   QA_RUN_ID: gh-29211032409-1-online-flow
+221-2026-07-12T22:11:57.8645129Z   QA_ROLE: online-flow
+222-2026-07-12T22:11:57.8645364Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+223-2026-07-12T22:11:57.8645622Z ##[endgroup]
+224-2026-07-12T22:11:57.9415530Z Wrote canonical production Firebase config: project=yut-online, appId=1:925785463331:web:73ac57a5f7f8527455ef96
+225:2026-07-12T22:11:57.9499676Z ##[group]Run curl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null
+226:2026-07-12T22:11:57.9500582Z [36;1mcurl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null[0m
+227-2026-07-12T22:11:57.9501262Z shell: sh -e {0}
+228-2026-07-12T22:11:57.9501465Z env:
+229-2026-07-12T22:11:57.9501724Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+230-2026-07-12T22:11:57.9502089Z   QA_RUN_ID: gh-29211032409-1-online-flow
+231-2026-07-12T22:11:57.9502372Z   QA_ROLE: online-flow
+--
+234-2026-07-12T22:11:58.0060522Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+235-2026-07-12T22:11:58.0061806Z                                  Dload  Upload   Total   Spent    Left  Speed
+236-2026-07-12T22:11:58.0062281Z 
+237-2026-07-12T22:11:58.0841487Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+238-2026-07-12T22:11:58.0842870Z 100   249  100   249    0     0   3184      0 --:--:-- --:--:-- --:--:--  3192
+239:2026-07-12T22:11:58.0954974Z ##[group]Run set -o pipefail
+240:2026-07-12T22:11:58.0955301Z [36;1mset -o pipefail[0m
+241-2026-07-12T22:11:58.0955822Z [36;1mnpm run test:qa-basic-flow -- --output=test-results/online-basic 2>&1 | tee playwright-qa-online-basic.log[0m
+242-2026-07-12T22:11:58.0956446Z shell: sh -e {0}
+243-2026-07-12T22:11:58.0956647Z env:
+244-2026-07-12T22:11:58.0956903Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+245-2026-07-12T22:11:58.0957242Z   QA_RUN_ID: gh-29211032409-1-online-flow
+246-2026-07-12T22:11:58.0957517Z   QA_ROLE: online-flow
+247-2026-07-12T22:11:58.0957756Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+248-2026-07-12T22:11:58.0957999Z ##[endgroup]
+249:2026-07-12T22:11:58.1581034Z /__w/_temp/fe06a31d-89e5-4339-81dc-6e1c7ac1c793.sh: 1: set: Illegal option -o pipefail
+250:2026-07-12T22:11:58.1608500Z ##[error]Process completed with exit code 2.
+251:2026-07-12T22:11:58.1660093Z ##[group]Run set -o pipefail
+252:2026-07-12T22:11:58.1660416Z [36;1mset -o pipefail[0m
+253-2026-07-12T22:11:58.1660766Z [36;1mnpm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-online-flow.log[0m
+254-2026-07-12T22:11:58.1661250Z shell: sh -e {0}
+255-2026-07-12T22:11:58.1661445Z env:
+256-2026-07-12T22:11:58.1661692Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+257-2026-07-12T22:11:58.1662034Z   QA_RUN_ID: gh-29211032409-1-online-flow
+258-2026-07-12T22:11:58.1662300Z   QA_ROLE: online-flow
+259-2026-07-12T22:11:58.1662520Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+260-2026-07-12T22:11:58.1662763Z ##[endgroup]
+261:2026-07-12T22:11:58.2178155Z /__w/_temp/2a71f041-5ff8-4d72-a33a-88c0df6dd8fe.sh: 1: set: Illegal option -o pipefail
+262:2026-07-12T22:11:58.2215239Z ##[error]Process completed with exit code 2.
+263-2026-07-12T22:11:58.2260190Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+264-2026-07-12T22:11:58.2261634Z ##[group]Run actions/upload-artifact@v4
+265-2026-07-12T22:11:58.2261900Z with:
+266-2026-07-12T22:11:58.2262108Z   name: qa-online-flow-results
+267-2026-07-12T22:11:58.2262577Z   path: test-results
+
+===== movement (86698708746) =====
+16-2026-07-12T22:11:24.1477663Z Image: ubuntu-24.04
+17-2026-07-12T22:11:24.1478407Z Version: 20260705.232.1
+18-2026-07-12T22:11:24.1479759Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260705.232/images/ubuntu/Ubuntu2404-Readme.md
+19-2026-07-12T22:11:24.1481052Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260705.232
+20-2026-07-12T22:11:24.1481824Z ##[endgroup]
+21:2026-07-12T22:11:24.1482861Z ##[group]GITHUB_TOKEN Permissions
+22-2026-07-12T22:11:24.1484915Z Contents: read
+23-2026-07-12T22:11:24.1485387Z Issues: write
+24-2026-07-12T22:11:24.1485895Z Metadata: read
+25-2026-07-12T22:11:24.1486348Z Pages: write
+26-2026-07-12T22:11:24.1486830Z ##[endgroup]
+--
+188-2026-07-12T22:11:58.5504748Z yarn: 1.22.22
+189-2026-07-12T22:11:58.5505841Z ##[endgroup]
+190-2026-07-12T22:11:58.5519111Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+191-2026-07-12T22:11:58.6545654Z /github/home/.npm
+192-2026-07-12T22:11:58.8738593Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+193:2026-07-12T22:11:58.8831566Z (node:146) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+194-2026-07-12T22:12:00.1077523Z Received 37908734 of 67268862 (56.4%), 36.2 MBs/sec
+195-2026-07-12T22:12:00.2954209Z Received 67268862 of 67268862 (100.0%), 54.0 MBs/sec
+196-2026-07-12T22:12:00.2954944Z Cache Size: ~64 MB (67268862 B)
+197-2026-07-12T22:12:00.2976896Z [command]/usr/bin/tar -xf /__w/_temp/12c6c948-a464-4096-99bc-8d4097922600/cache.tgz -P -C /__w/Yut/Yut -z
+198-2026-07-12T22:12:00.6563849Z Cache restored successfully
+--
+221-2026-07-12T22:12:04.6580521Z   QA_RUN_ID: gh-29211032409-1-roll-movement
+222-2026-07-12T22:12:04.6580865Z   QA_ROLE: roll-movement
+223-2026-07-12T22:12:04.6581153Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+224-2026-07-12T22:12:04.6581498Z ##[endgroup]
+225-2026-07-12T22:12:04.7240597Z Wrote canonical production Firebase config: project=yut-online, appId=1:925785463331:web:73ac57a5f7f8527455ef96
+226:2026-07-12T22:12:04.7301055Z ##[group]Run curl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null
+227:2026-07-12T22:12:04.7301786Z [36;1mcurl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null[0m
+228-2026-07-12T22:12:04.7302333Z shell: sh -e {0}
+229-2026-07-12T22:12:04.7302606Z env:
+230-2026-07-12T22:12:04.7302930Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+231-2026-07-12T22:12:04.7303336Z   QA_RUN_ID: gh-29211032409-1-roll-movement
+232-2026-07-12T22:12:04.7303648Z   QA_ROLE: roll-movement
+--
+235-2026-07-12T22:12:04.7779264Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+236-2026-07-12T22:12:04.7780413Z                                  Dload  Upload   Total   Spent    Left  Speed
+237-2026-07-12T22:12:04.7780990Z 
+238-2026-07-12T22:12:04.9557977Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+239-2026-07-12T22:12:04.9558875Z 100   249  100   249    0     0   1397      0 --:--:-- --:--:-- --:--:--  1398
+240:2026-07-12T22:12:04.9622909Z ##[group]Run set -o pipefail
+241:2026-07-12T22:12:04.9623300Z [36;1mset -o pipefail[0m
+242-2026-07-12T22:12:04.9623825Z [36;1mnpm run test:qa-online-turn-recovery -- --output=test-results/roll-movement 2>&1 | tee playwright-qa-roll-movement.log[0m
+243-2026-07-12T22:12:04.9624699Z shell: sh -e {0}
+244-2026-07-12T22:12:04.9624981Z env:
+245-2026-07-12T22:12:04.9625279Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+246-2026-07-12T22:12:04.9625672Z   QA_RUN_ID: gh-29211032409-1-roll-movement
+247-2026-07-12T22:12:04.9625982Z   QA_ROLE: roll-movement
+248-2026-07-12T22:12:04.9626283Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+249-2026-07-12T22:12:04.9626609Z ##[endgroup]
+250:2026-07-12T22:12:05.0103087Z /__w/_temp/6c53be88-5067-4c21-acd1-727d7de824a7.sh: 1: set: Illegal option -o pipefail
+251:2026-07-12T22:12:05.0135892Z ##[error]Process completed with exit code 2.
+252:2026-07-12T22:12:05.0175768Z ##[group]Run set -o pipefail
+253:2026-07-12T22:12:05.0176111Z [36;1mset -o pipefail[0m
+254-2026-07-12T22:12:05.0176521Z [36;1mnpm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-roll-movement.log[0m
+255-2026-07-12T22:12:05.0177075Z shell: sh -e {0}
+256-2026-07-12T22:12:05.0177335Z env:
+257-2026-07-12T22:12:05.0177641Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+258-2026-07-12T22:12:05.0178024Z   QA_RUN_ID: gh-29211032409-1-roll-movement
+259-2026-07-12T22:12:05.0178341Z   QA_ROLE: roll-movement
+260-2026-07-12T22:12:05.0178686Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+261-2026-07-12T22:12:05.0178974Z ##[endgroup]
+262:2026-07-12T22:12:05.0605701Z /__w/_temp/ca303e6f-d314-400e-b49d-3ec1c480497f.sh: 1: set: Illegal option -o pipefail
+263:2026-07-12T22:12:05.0624932Z ##[error]Process completed with exit code 2.
+264-2026-07-12T22:12:05.0665231Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+265-2026-07-12T22:12:05.0666432Z ##[group]Run actions/upload-artifact@v4
+266-2026-07-12T22:12:05.0666779Z with:
+267-2026-07-12T22:12:05.0667051Z   name: qa-roll-movement-results
+268-2026-07-12T22:12:05.0667553Z   path: test-results
+
+===== desktop (86698708748) =====
+16-2026-07-12T22:11:23.3426534Z Image: ubuntu-24.04
+17-2026-07-12T22:11:23.3427468Z Version: 20260705.232.1
+18-2026-07-12T22:11:23.3429600Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260705.232/images/ubuntu/Ubuntu2404-Readme.md
+19-2026-07-12T22:11:23.3432224Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260705.232
+20-2026-07-12T22:11:23.3434302Z ##[endgroup]
+21:2026-07-12T22:11:23.3436506Z ##[group]GITHUB_TOKEN Permissions
+22-2026-07-12T22:11:23.3439436Z Contents: read
+23-2026-07-12T22:11:23.3440328Z Issues: write
+24-2026-07-12T22:11:23.3441291Z Metadata: read
+25-2026-07-12T22:11:23.3442193Z Pages: write
+26-2026-07-12T22:11:23.3443393Z ##[endgroup]
+--
+188-2026-07-12T22:11:51.1344464Z yarn: 1.22.22
+189-2026-07-12T22:11:51.1345789Z ##[endgroup]
+190-2026-07-12T22:11:51.1361286Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+191-2026-07-12T22:11:51.2614421Z /github/home/.npm
+192-2026-07-12T22:11:51.3329557Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+193:2026-07-12T22:11:51.3444635Z (node:146) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+194-2026-07-12T22:11:51.7631700Z Received 67268862 of 67268862 (100.0%), 169.7 MBs/sec
+195-2026-07-12T22:11:51.7632568Z Cache Size: ~64 MB (67268862 B)
+196-2026-07-12T22:11:51.7653325Z [command]/usr/bin/tar -xf /__w/_temp/621de323-cdbc-4fab-b035-738e60707318/cache.tgz -P -C /__w/Yut/Yut -z
+197-2026-07-12T22:11:52.1389039Z Cache restored successfully
+198-2026-07-12T22:11:52.1425750Z Cache restored from key: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+--
+220-2026-07-12T22:11:57.9799529Z   QA_RUN_ID: gh-29211032409-1-lobby-desktop
+221-2026-07-12T22:11:57.9799841Z   QA_ROLE: lobby-desktop
+222-2026-07-12T22:11:57.9800104Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+223-2026-07-12T22:11:57.9800382Z ##[endgroup]
+224-2026-07-12T22:11:58.0599242Z Wrote canonical production Firebase config: project=yut-online, appId=1:925785463331:web:73ac57a5f7f8527455ef96
+225:2026-07-12T22:11:58.0691143Z ##[group]Run curl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null
+226:2026-07-12T22:11:58.0692106Z [36;1mcurl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null[0m
+227-2026-07-12T22:11:58.0692823Z shell: sh -e {0}
+228-2026-07-12T22:11:58.0693034Z env:
+229-2026-07-12T22:11:58.0693694Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+230-2026-07-12T22:11:58.0694103Z   QA_RUN_ID: gh-29211032409-1-lobby-desktop
+231-2026-07-12T22:11:58.0694410Z   QA_ROLE: lobby-desktop
+--
+234-2026-07-12T22:11:58.1273748Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+235-2026-07-12T22:11:58.1274904Z                                  Dload  Upload   Total   Spent    Left  Speed
+236-2026-07-12T22:11:58.1275429Z 
+237-2026-07-12T22:11:58.2364790Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+238-2026-07-12T22:11:58.2365844Z 100   249  100   249    0     0   2277      0 --:--:-- --:--:-- --:--:--  2284
+239:2026-07-12T22:11:58.2464863Z ##[group]Run set -o pipefail
+240:2026-07-12T22:11:58.2465213Z [36;1mset -o pipefail[0m
+241-2026-07-12T22:11:58.2465814Z [36;1mnpm run test:qa-cleanup-layout-regression -- --output=test-results/lobby-desktop 2>&1 | tee playwright-qa-lobby-desktop.log[0m
+242-2026-07-12T22:11:58.2466545Z shell: sh -e {0}
+243-2026-07-12T22:11:58.2466741Z env:
+244-2026-07-12T22:11:58.2467003Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+245-2026-07-12T22:11:58.2467357Z   QA_RUN_ID: gh-29211032409-1-lobby-desktop
+246-2026-07-12T22:11:58.2467640Z   QA_ROLE: lobby-desktop
+247-2026-07-12T22:11:58.2467878Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+248-2026-07-12T22:11:58.2468122Z ##[endgroup]
+249:2026-07-12T22:11:58.2984417Z /__w/_temp/c4632da8-1d45-46b8-af54-b4376ea80250.sh: 1: set: Illegal option -o pipefail
+250:2026-07-12T22:11:58.3031029Z ##[error]Process completed with exit code 2.
+251:2026-07-12T22:11:58.3088510Z ##[group]Run set -o pipefail
+252:2026-07-12T22:11:58.3088844Z [36;1mset -o pipefail[0m
+253-2026-07-12T22:11:58.3089210Z [36;1mnpm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-lobby-desktop.log[0m
+254-2026-07-12T22:11:58.3089693Z shell: sh -e {0}
+255-2026-07-12T22:11:58.3089888Z env:
+256-2026-07-12T22:11:58.3090147Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+257-2026-07-12T22:11:58.3090495Z   QA_RUN_ID: gh-29211032409-1-lobby-desktop
+258-2026-07-12T22:11:58.3090786Z   QA_ROLE: lobby-desktop
+259-2026-07-12T22:11:58.3091023Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+260-2026-07-12T22:11:58.3091275Z ##[endgroup]
+261:2026-07-12T22:11:58.3604052Z /__w/_temp/6d0fd93d-72c6-4370-957b-60020794c721.sh: 1: set: Illegal option -o pipefail
+262:2026-07-12T22:11:58.3630322Z ##[error]Process completed with exit code 2.
+263-2026-07-12T22:11:58.3677981Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+264-2026-07-12T22:11:58.3679446Z ##[group]Run actions/upload-artifact@v4
+265-2026-07-12T22:11:58.3679711Z with:
+266-2026-07-12T22:11:58.3679914Z   name: qa-lobby-desktop-results
+267-2026-07-12T22:11:58.3680403Z   path: test-results
+
+===== mobile (86698708769) =====
+16-2026-07-12T22:11:23.9801923Z Image: ubuntu-24.04
+17-2026-07-12T22:11:23.9802450Z Version: 20260705.232.1
+18-2026-07-12T22:11:23.9803436Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260705.232/images/ubuntu/Ubuntu2404-Readme.md
+19-2026-07-12T22:11:23.9804874Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260705.232
+20-2026-07-12T22:11:23.9805619Z ##[endgroup]
+21:2026-07-12T22:11:23.9806653Z ##[group]GITHUB_TOKEN Permissions
+22-2026-07-12T22:11:23.9808469Z Contents: read
+23-2026-07-12T22:11:23.9809062Z Issues: write
+24-2026-07-12T22:11:23.9809521Z Metadata: read
+25-2026-07-12T22:11:23.9810001Z Pages: write
+26-2026-07-12T22:11:23.9810462Z ##[endgroup]
+--
+188-2026-07-12T22:12:01.2133225Z yarn: 1.22.22
+189-2026-07-12T22:12:01.2134334Z ##[endgroup]
+190-2026-07-12T22:12:01.2145376Z [command]/__t/node/22.23.1/x64/bin/npm config get cache
+191-2026-07-12T22:12:01.3280788Z /github/home/.npm
+192-2026-07-12T22:12:01.5258727Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+193:2026-07-12T22:12:01.5377188Z (node:146) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+194-2026-07-12T22:12:02.7586862Z Received 29360128 of 67268862 (43.6%), 28.0 MBs/sec
+195-2026-07-12T22:12:02.9843054Z Received 67268862 of 67268862 (100.0%), 52.3 MBs/sec
+196-2026-07-12T22:12:02.9843835Z Cache Size: ~64 MB (67268862 B)
+197-2026-07-12T22:12:02.9932605Z [command]/usr/bin/tar -xf /__w/_temp/448e880a-83c2-4478-b724-7de1e82b05f7/cache.tgz -P -C /__w/Yut/Yut -z
+198-2026-07-12T22:12:03.2930521Z Cache restored successfully
+--
+221-2026-07-12T22:12:08.1222716Z   QA_RUN_ID: gh-29211032409-1-mobile-layout
+222-2026-07-12T22:12:08.1222944Z   QA_ROLE: mobile-layout
+223-2026-07-12T22:12:08.1223137Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+224-2026-07-12T22:12:08.1223344Z ##[endgroup]
+225-2026-07-12T22:12:08.2495135Z Wrote canonical production Firebase config: project=yut-online, appId=1:925785463331:web:73ac57a5f7f8527455ef96
+226:2026-07-12T22:12:08.2570750Z ##[group]Run curl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null
+227:2026-07-12T22:12:08.2571436Z [36;1mcurl --fail --location --retry 10 --retry-delay 3 --retry-all-errors "$PLAYWRIGHT_BASE_URL" --output /dev/null[0m
+228-2026-07-12T22:12:08.2571972Z shell: sh -e {0}
+229-2026-07-12T22:12:08.2572136Z env:
+230-2026-07-12T22:12:08.2572353Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+231-2026-07-12T22:12:08.2572630Z   QA_RUN_ID: gh-29211032409-1-mobile-layout
+232-2026-07-12T22:12:08.2572854Z   QA_ROLE: mobile-layout
+--
+235-2026-07-12T22:12:08.3069504Z   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+236-2026-07-12T22:12:08.3073394Z                                  Dload  Upload   Total   Spent    Left  Speed
+237-2026-07-12T22:12:08.3073660Z 
+238-2026-07-12T22:12:08.4617693Z   0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+239-2026-07-12T22:12:08.4618285Z 100   249  100   249    0     0   1605      0 --:--:-- --:--:-- --:--:--  1606
+240:2026-07-12T22:12:08.4723129Z ##[group]Run set -o pipefail
+241:2026-07-12T22:12:08.4723385Z [36;1mset -o pipefail[0m
+242-2026-07-12T22:12:08.4723795Z [36;1mnpm run test:qa-mobile-layout -- --output=test-results/mobile-layout 2>&1 | tee playwright-qa-mobile-layout.log[0m
+243-2026-07-12T22:12:08.4724487Z shell: sh -e {0}
+244-2026-07-12T22:12:08.4724654Z env:
+245-2026-07-12T22:12:08.4724862Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+246-2026-07-12T22:12:08.4725133Z   QA_RUN_ID: gh-29211032409-1-mobile-layout
+247-2026-07-12T22:12:08.4725363Z   QA_ROLE: mobile-layout
+248-2026-07-12T22:12:08.4725556Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+249-2026-07-12T22:12:08.4725757Z ##[endgroup]
+250:2026-07-12T22:12:08.5158859Z /__w/_temp/d2b44463-74f6-44db-9c95-142e1cd04c9d.sh: 1: set: Illegal option -o pipefail
+251:2026-07-12T22:12:08.5191399Z ##[error]Process completed with exit code 2.
+252:2026-07-12T22:12:08.5230020Z ##[group]Run set -o pipefail
+253:2026-07-12T22:12:08.5230279Z [36;1mset -o pipefail[0m
+254-2026-07-12T22:12:08.5230564Z [36;1mnpm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-mobile-layout.log[0m
+255-2026-07-12T22:12:08.5230953Z shell: sh -e {0}
+256-2026-07-12T22:12:08.5231123Z env:
+257-2026-07-12T22:12:08.5231333Z   PLAYWRIGHT_BASE_URL: https://stafor94.github.io/Yut/
+258-2026-07-12T22:12:08.5231616Z   QA_RUN_ID: gh-29211032409-1-mobile-layout
+259-2026-07-12T22:12:08.5231851Z   QA_ROLE: mobile-layout
+260-2026-07-12T22:12:08.5232052Z   QA_ALLOW_PRODUCTION_FIREBASE: 1
+261-2026-07-12T22:12:08.5232260Z ##[endgroup]
+262:2026-07-12T22:12:08.5666399Z /__w/_temp/e6910386-b4a7-42ec-91f3-e30805961d7a.sh: 1: set: Illegal option -o pipefail
+263:2026-07-12T22:12:08.5690035Z ##[error]Process completed with exit code 2.
+264-2026-07-12T22:12:08.5726468Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+265-2026-07-12T22:12:08.5727581Z ##[group]Run actions/upload-artifact@v4
+266-2026-07-12T22:12:08.5727799Z with:
+267-2026-07-12T22:12:08.5727971Z   name: qa-mobile-layout-results
+268-2026-07-12T22:12:08.5728343Z   path: test-results
+
