@@ -1,0 +1,82 @@
+name: Apply Phase 4 Lobby Listeners PR
+
+on:
+  pull_request:
+    branches: [agent/single-owner-room-presence-cleanup]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: apply-phase4-lobby-listeners-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply-and-validate:
+    name: Patch lobby listeners, unit test, and build
+    if: github.head_ref == 'agent/lobby-room-listener-lifecycle'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/lobby-room-listener-lifecycle
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply exact phase 4 patch
+        run: python scripts/apply-phase4-lobby-listeners.py
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Build app
+        run: npm run build
+      - name: Verify listener lifecycle markers
+        run: |
+          grep -q "useRooms({ enabled: screen === 'lobby' })" src/app/App.tsx
+          grep -q "if (!enabled) return undefined" src/features/room/hooks/useRooms.ts
+          grep -q "createRoomListSubscriptionController" src/features/room/hooks/useRooms.ts
+          if grep -q "deleteRoom(room.id)" src/features/room/hooks/useRooms.ts; then exit 1; fi
+          if sed -n '/export function subscribeActiveRooms/,/export function subscribeRoom/p' src/features/room/services/roomService.ts | grep -q "deleteRoom"; then exit 1; fi
+      - name: Remove temporary files and commit validated patch
+        run: |
+          rm .github/workflows/apply-phase4-lobby-listeners-pr.yml
+          rm scripts/apply-phase4-lobby-listeners.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src tests tsconfig.test.json .github/workflows/apply-phase4-lobby-listeners-pr.yml scripts/apply-phase4-lobby-listeners.py
+          git commit -m "feat: limit room list listeners to lobby"
+          git push origin HEAD:agent/lobby-room-listener-lifecycle
+      - name: Comment success
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: [
+                '## Phase 4 validation',
+                `- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '- `npm run test:unit`: **success**',
+                '- `npm run build`: **success**',
+                '- Lobby-only room list subscription: **verified**',
+                '- Listener callback room deletion: **removed**',
+              ].join('\n'),
+            });
+      - name: Comment failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## Phase 4 validation failed\n- Run: https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n- No validated product patch was pushed.`,
+            });
