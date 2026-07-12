@@ -1,0 +1,26 @@
+name: PR 581 Verification
+
+on:
+  push:
+    branches:
+      - codex/-branch-6-sequence
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Prepare production Firebase environment
+        run: node .github/scripts/write-firebase-env.mjs
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Build
+        run: npm run build
