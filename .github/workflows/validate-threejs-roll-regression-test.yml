@@ -33,6 +33,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Apply regression test update
         run: python scripts/update-threejs-roll-regression-test.py
       - name: Validate patch, unit, build and deployed movement QA
