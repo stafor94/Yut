@@ -1,0 +1,37 @@
+name: Probe Three.js regression validation status v3
+
+on:
+  push:
+    branches:
+      - probe/threejs-validation-status-v3
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  probe:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      TARGET_SHA: cf21ba10565f0bcdaf8cf1f2a132a3702268912a
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Query validation status
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNS="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f head_sha="$TARGET_SHA" -f per_page=20)"
+          jq '{runs:[.workflow_runs[]|{id,name,event,status,conclusion,head_sha,html_url,created_at,updated_at}]}' <<<"$RUNS" > THREEJS_VALIDATION_STATUS_V3.json
+      - name: Commit status
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add THREEJS_VALIDATION_STATUS_V3.json
+          git commit -m "Three.js 상태 전이 회귀 검증 상태 기록"
+          git push
