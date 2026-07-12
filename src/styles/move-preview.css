@@ -1,0 +1,9 @@
+.route-preview-marker.finish {
+  width: auto;
+  min-width: 38px;
+  padding: 0 7px;
+  background: var(--green);
+  color: #fff;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(38, 139, 92, .38);
+}
