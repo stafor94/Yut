@@ -100,6 +100,12 @@ test('동일 snapshot은 한 번만 적용하고 새 sequence는 즉시 replay�
   emit({ turnVersion: 2, lastSequence: 2, value: 'second' });
   await flushController();
   assert.equal(counters.replay, 2);
+  assert.equal(counters.enqueue, 2);
+
+  emit({ turnVersion: 1, lastSequence: 1, value: 'first' });
+  await flushController();
+  assert.equal(counters.replay, 2);
+  assert.equal(counters.enqueue, 2);
   assert.equal(refs.sequence.current, 2);
   assert.equal(refs.version.current, 2);
   assert.equal(refs.applying.current, false);
