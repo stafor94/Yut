@@ -1,19 +1,23 @@
 import { normalizeSpokenYutResult, type SpokenYutResult } from '../../app/flows/rollSpeech';
 
 const KOREAN_LANGUAGE = 'ko-KR';
-const SPEECH_RATE = 0.7;
+const PREFERRED_VOICE_NAME = '한국어 대한민국';
+const SPEECH_RATE = 1;
 const SPEECH_PITCH = 1;
-const SPEECH_VOLUME = 1;
+const SPEECH_VOLUME = 0.9;
 
 const spokenByElement = new WeakMap<Element, SpokenYutResult>();
 let observer: MutationObserver | null = null;
 let bindingScheduled = false;
 
+const isKoreanVoice = (voice: SpeechSynthesisVoice) => voice.lang.toLowerCase().replace('_', '-').startsWith('ko');
+
 const getKoreanVoice = () => {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return undefined;
   const voices = window.speechSynthesis.getVoices();
-  return voices.find((voice) => voice.lang.toLowerCase().startsWith('ko') && voice.localService)
-    ?? voices.find((voice) => voice.lang.toLowerCase().startsWith('ko'));
+  return voices.find((voice) => voice.name === PREFERRED_VOICE_NAME && isKoreanVoice(voice))
+    ?? voices.find((voice) => isKoreanVoice(voice) && voice.localService)
+    ?? voices.find(isKoreanVoice);
 };
 
 const speakResult = (result: SpokenYutResult) => {
