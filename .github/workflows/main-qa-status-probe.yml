@@ -17,10 +17,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/main-qa-status-probe
-      - name: Query workflow runs for merged main SHA
+      - name: Query workflow runs for target SHA
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: 556d3635c6086c4774963f7840b6926cefbb0845
+          TARGET_SHA: 0f356302cc58bc568ee96fd2646933ec8092e7a8
         run: |
           curl --fail --silent --show-error \
             -H "Authorization: Bearer $GH_TOKEN" \
