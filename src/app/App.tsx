@@ -423,9 +423,9 @@ export function App() {
     syncPendingAiSeatCount();
   }
 
-  const rooms = useRooms({ enabled: screen === 'lobby' });
   const currentUser = userRef.current ?? user;
   const currentUserId = currentUser?.uid ?? '';
+  const rooms = useRooms({ enabled: screen === 'lobby' && Boolean(currentUser) });
   const serverStatus = manualSequenceSyncing ? '동기화 중...' : isFirebaseConfigured ? (currentUser ? '온라인' : '연결 중') : '연결 정보 확인 필요';
   const serverStatusTone = isFirebaseConfigured ? (currentUser ? 'online' : 'pending') : 'offline';
   const displaySeats = useMemo(() => screen === 'game' ? seats.map((seat) => ({ ...seat, isHost: false })) : seats, [screen, seats]);
