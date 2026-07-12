@@ -56,8 +56,8 @@ jobs:
         run: npm run test:unit
       - name: Production build
         run: npm run build
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
       - name: Prepare isolated QA Firebase environment
         run: node .github/scripts/write-qa-firebase-env.mjs
       - name: Verify emulator configuration
