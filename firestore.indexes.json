@@ -1,0 +1,75 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "actions",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "state",
+      "fieldPath": "pieces",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "state",
+      "fieldPath": "rollStack",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "state",
+      "fieldPath": "boardItems",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "state",
+      "fieldPath": "ownedItems",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "state",
+      "fieldPath": "trapNodes",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "state",
+      "fieldPath": "shieldedPieceIds",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "state",
+      "fieldPath": "logs",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "state",
+      "fieldPath": "gameSeats",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sequences",
+      "fieldPath": "payload",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sequences",
+      "fieldPath": "action",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sequences",
+      "fieldPath": "patch",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sequences",
+      "fieldPath": "stateBefore",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sequences",
+      "fieldPath": "stateAfter",
+      "indexes": []
+    }
+  ]
+}
