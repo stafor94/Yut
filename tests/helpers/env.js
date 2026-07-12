@@ -71,7 +71,7 @@ function normalizeQaRunId(value) {
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(-18);
+    .slice(0, 48);
 }
 
 export const QA_NICKNAME_MAX_LENGTH = 7;
