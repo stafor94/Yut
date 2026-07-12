@@ -103,127 +103,55 @@ test.describe('BUG_HISTORY regression smoke', () => {
       const preResultGameText = await page.getByTestId('game-screen').innerText();
       const preResultTurnStackText = await page.locator('[data-testid="turn-indicator"]').innerText();
       await expect(page.locator('.roll-stage.pending-roll .roll-label'), 'pending 단계에서는 결과명을 추측할 수 있는 label을 숨겨야 합니다.').toHaveCount(0);
-      await expect(page.locator('.roll-stage.pending-roll .yut-mark'), 'pending 단계에서는 결과 면을 노출하지 않아야 합니다.').toHaveCount(0);
-      await expect(page.locator('.roll-stage.pending-roll .yut-stick-flat-face'), 'pending 단계에서도 앞면 DOM은 4개 모두 렌더되어야 합니다.').toHaveCount(4);
-      await expect(page.locator('.roll-stage.pending-roll .yut-stick-round-face'), 'pending 단계에서도 뒷면 DOM은 4개 모두 렌더되어야 합니다.').toHaveCount(4);
-      const firstPendingStick = page.locator('.roll-stage.pending-roll .yut-stick').first();
-      const firstPendingBody = page.locator('.roll-stage.pending-roll .yut-stick-body').first();
-      await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationDuration), {
-        timeout: 1_000,
-        message: 'primary 외부 윷은 1.2초 동안 정점까지 상승해야 합니다.',
-      }).toBe('1.2s');
-      await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationDuration), {
-        timeout: 1_000,
-        message: 'primary body는 1.2초 동안 정확히 720도 회전해야 합니다.',
-      }).toBe('1.2s');
-      await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationIterationCount), {
-        timeout: 1_000,
-        message: 'pending 외부 윷 비행은 무한 반복이 아니라 한 번만 실행되어야 합니다.',
-      }).toBe('1');
-      await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationDelay), {
-        timeout: 1_000,
-        message: 'primary body 회전은 상승과 동시에 시작해야 합니다.',
-      }).toBe('0s');
-      await expect.poll(async () => page.locator('.roll-stage.pending-roll .roll-aura').evaluate((node) => getComputedStyle(node).animationDuration), {
-        timeout: 1_000,
-        message: 'pending aura 반복은 1.6초 주기로 늦춰져야 합니다.',
-      }).toBe('1.6s');
-      await expect.poll(async () => firstPendingStick.evaluate((node) => {
-        const style = getComputedStyle(node);
-        return `${style.getPropertyValue('--stick-depth').trim()}/${style.getPropertyValue('--stick-face-z').trim()}/${style.getPropertyValue('--stick-depth-offset').trim()}`;
-      }), {
-        timeout: 1_000,
-        message: '확대 pending 윷은 overlay 전용 3D 두께 변수를 사용해야 합니다.',
-      }).toBe('10px/5px/-5px');
-      await expect.poll(async () => firstPendingBody.evaluate((node) => {
-        const before = getComputedStyle(node, '::before');
-        const after = getComputedStyle(node, '::after');
-        return `${before.width}/${after.width}/${before.top}/${before.bottom}`;
-      }), {
-        timeout: 1_000,
-        message: 'pending 윷 옆면 pseudo-element가 실제 overlay 두께값으로 렌더되어야 합니다.',
-      }).toBe('10px/10px/6px/6px');
-      await expect.poll(async () => firstPendingBody.evaluate((node) => {
-        const flat = node.querySelector('.yut-stick-flat-face');
-        const round = node.querySelector('.yut-stick-round-face');
-        const readTranslateZ = (target) => {
-          const values = getComputedStyle(target).transform.match(/matrix3d\(([^)]+)\)/)?.[1]?.split(',').map((value) => Number.parseFloat(value.trim())) ?? [];
-          return values.length ? Math.round(values[14]) : null;
-        };
-        return `${readTranslateZ(flat)}/${readTranslateZ(round)}`;
-      }), {
-        timeout: 1_000,
-        message: 'pending 윷 앞·뒷면은 같은 절댓값의 Z 두께 위치로 분리되어야 합니다.',
-      }).toBe('5/-5');
-      const pendingStickTransformAtStart = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
-      await page.waitForTimeout(700);
-      const pendingStickTransformAtPeak = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
-      expect(pendingStickTransformAtPeak, 'pending 외부 윷은 아래 시작점에서 정점 좌표로 한 번 상승해야 합니다.').not.toBe(pendingStickTransformAtStart);
-      await page.waitForTimeout(550);
-      await expect(page.locator('.roll-stage.pending-roll.extra-spin-roll'), '클라이언트 선확정 결과는 Firebase 응답을 기다리는 extra-spin으로 넘어가면 안 됩니다.').toHaveCount(0);
+      const pendingScene = page.locator('.roll-stage.pending-roll [data-testid="yut-roll-scene"]');
+      await expect(pendingScene, 'pending 단계에서는 새 Three.js 윷 장면 컨테이너가 표시되어야 합니다.').toBeVisible({ timeout: 500 });
+      await expect(pendingScene, '클라이언트 윷 던지기는 primary 상승·회전 단계에서 시작해야 합니다.').toHaveAttribute('data-phase', 'primary');
+      await expect(pendingScene.locator('.yut-roll-three-canvas'), 'Three.js 렌더러용 canvas는 한 개만 유지되어야 합니다.').toHaveCount(1);
+      await expect(pendingScene.locator('.yut-roll-css-fallback .yut-stick'), 'WebGL 초기화 전이나 실패 시 사용할 CSS fallback 윷 4개를 유지해야 합니다.').toHaveCount(4);
+      await expect(pendingScene.locator('.yut-mark'), 'pending 단계에서는 결과 면 표시를 숨겨야 합니다.').toHaveCount(0);
+      await page.evaluate(() => {
+        window.__YUT_QA_EXTRA_SPIN_OBSERVER__?.disconnect();
+        window.__YUT_QA_EXTRA_SPIN_SEEN__ = Boolean(document.querySelector('.roll-stage.pending-roll.extra-spin-roll'));
+        const observer = new MutationObserver(() => {
+          if (document.querySelector('.roll-stage.pending-roll.extra-spin-roll')) window.__YUT_QA_EXTRA_SPIN_SEEN__ = true;
+        });
+        window.__YUT_QA_EXTRA_SPIN_OBSERVER__ = observer;
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      });
+      const pendingFrameAtStart = await pendingScene.screenshot();
+      await page.waitForTimeout(180);
+      await expect(pendingScene, 'primary 장면은 즉시 사라지지 않고 실제 상승·회전 프레임을 렌더링해야 합니다.').toHaveAttribute('data-phase', 'primary');
+      const pendingFrameInMotion = await pendingScene.screenshot();
+      expect(pendingFrameInMotion.equals(pendingFrameAtStart), 'primary 단계의 윷 장면은 시간에 따라 실제 프레임이 변해야 합니다.').toBe(false);
       const landingStage = page.locator('.roll-stage.resolved-from-pending.landing-roll');
       await expect(landingStage, `서버 결과 도착 시 pending overlay를 같은 팝업의 landing 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       await expect(landingStage.locator('.roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
-      await expect.poll(async () => landingStage.locator('.yut-stick').first().evaluate((node) => getComputedStyle(node).animationDuration), {
-        timeout: 1_000,
-        message: '클라이언트 선확정 결과의 착지 애니메이션은 1초여야 합니다.',
-      }).toBe('1s');
-      await page.evaluate(() => {
-        window.__YUT_QA_RESULT_HOLD_OBSERVER__?.disconnect();
-        const timing = { startedAt: 0, endedAt: 0 };
-        window.__YUT_QA_RESULT_HOLD_TIMING__ = timing;
-        let observer;
-        const sample = () => {
-          const visible = Boolean(document.querySelector('.roll-stage.resolved-from-pending.result-hold-roll'));
-          const now = performance.now();
-          if (visible && timing.startedAt === 0) timing.startedAt = now;
-          if (!visible && timing.startedAt > 0 && timing.endedAt === 0) {
-            timing.endedAt = now;
-            observer?.disconnect();
-          }
-        };
-        observer = new MutationObserver(sample);
-        window.__YUT_QA_RESULT_HOLD_OBSERVER__ = observer;
-        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-        sample();
+      const extraSpinSeen = await page.evaluate(() => {
+        window.__YUT_QA_EXTRA_SPIN_OBSERVER__?.disconnect();
+        return Boolean(window.__YUT_QA_EXTRA_SPIN_SEEN__);
       });
-      await expect.poll(async () => {
-        const sticks = await landingStage.locator('.yut-stick').evaluateAll((nodes) => nodes.map((node) => ({
-          className: node.getAttribute('class') ?? '',
-          animationName: getComputedStyle(node).animationName,
-        })));
-        if (sticks.length !== 4) return `sticks=${JSON.stringify(sticks)}`;
-
-        const invalidStick = sticks.find((stick) => {
-          const isFallen = stick.className.split(/\s+/).includes('fallen');
-          return stick.animationName !== (isFallen ? 'yut-fall-flight' : 'yut-resolved-from-pending');
-        });
-        return invalidStick ? `sticks=${JSON.stringify(sticks)}` : 'ready';
-      }, {
-        timeout: 1_000,
-        message: 'landing 단계에서는 낙 윷만 yut-fall-flight를 사용하고 나머지는 전용 착지 keyframe을 사용해야 합니다.',
-      }).toBe('ready');
+      expect(extraSpinSeen, '클라이언트 선확정 결과는 Firebase 응답을 기다리는 extra-spin 단계로 넘어가면 안 됩니다.').toBe(false);
+      const landingScene = landingStage.getByTestId('yut-roll-scene');
+      await expect(landingScene, '서버 결과 도착 후 같은 3D 장면이 landing 단계로 이어져야 합니다.').toHaveAttribute('data-phase', 'landing');
+      const landingFrameAtStart = await landingScene.screenshot();
+      await page.waitForTimeout(180);
+      await expect(landingScene, 'landing 단계는 1초 착지 연출 중 유지되어야 합니다.').toHaveAttribute('data-phase', 'landing');
+      const landingFrameInMotion = await landingScene.screenshot();
+      expect(landingFrameInMotion.equals(landingFrameAtStart), 'landing 단계의 윷 장면은 낙하·정렬 중 실제 프레임이 변해야 합니다.').toBe(false);
 
       const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
       await expect(resultHoldStage, '착지 후 같은 팝업이 result-hold 단계로 전환되어야 합니다.').toBeVisible({ timeout: 2_500 });
-      await expect.poll(async () => resultHoldStage.locator('.yut-stick, .yut-stick-body').evaluateAll((nodes) => {
-        if (nodes.length !== 8) return `nodes=${nodes.length}`;
-        const runningNodes = nodes.filter((node) => getComputedStyle(node).animationName !== 'none');
-        return runningNodes.length ? runningNodes.map((node) => `${node.getAttribute('class') ?? ''}:${getComputedStyle(node).animationName}`).join('|') : 'stopped';
-      }), {
-        timeout: 500,
-        message: 'result-hold 단계에서는 모든 윷과 내부 body가 animation:none으로 최종 자세에 고정되어야 합니다.',
-      }).toBe('stopped');
-      await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .yut-stick').evaluateAll((nodes) => nodes.map((node) => {
-        const body = node.querySelector('.yut-stick-body');
-        const transform = body ? getComputedStyle(body).transform : '';
-        const matrixValues = transform.match(/matrix3d\(([^)]+)\)/)?.[1]?.split(',').map((value) => Number.parseFloat(value.trim())) ?? [];
-        const cosY = matrixValues.length ? matrixValues[0] : 1;
-        return node.classList.contains('flat') ? cosY > 0.95 : node.classList.contains('round') ? cosY < -0.95 : false;
-      }).every(Boolean)), {
-        timeout: 2_000,
-        message: 'authoritative 결과 후 각 윷은 flat/round 클래스에 맞는 3D 면으로 정지해야 합니다.',
-      }).toBe(true);
+      const resultHoldScene = resultHoldStage.getByTestId('yut-roll-scene');
+      await expect(resultHoldScene, '착지 완료 후 동일한 3D 장면이 result-hold 단계로 전환되어야 합니다.').toHaveAttribute('data-phase', 'result-hold');
+      await expect.poll(async () => resultHoldScene.getAttribute('data-renderer'), {
+        timeout: 5_000,
+        message: 'Three.js 또는 CSS fallback 렌더러가 최종 확정되어야 합니다.',
+      }).toMatch(/^(three|fallback)$/);
+      await page.waitForTimeout(160);
+      const settledFrameAtStart = await resultHoldScene.screenshot();
+      await page.waitForTimeout(180);
+      const settledFrameAfter = await resultHoldScene.screenshot();
+      expect(settledFrameAfter.equals(settledFrameAtStart), 'result-hold 단계에서는 최종 자세가 흔들림 없이 고정되어야 합니다.').toBe(true);
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '서버 authoritative 타이밍 등급이 확정 결과와 함께 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 5_000 });
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), 'pending부터 resolved 전환까지 같은 타이밍 등급이 유지되어야 합니다.').toHaveText(pendingTimingText);
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), 'resolved 타이밍 등급도 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
@@ -237,17 +165,6 @@ test.describe('BUG_HISTORY regression smoke', () => {
       const resolvedLabel = page.locator('.roll-stage.resolved-from-pending .roll-label');
       await expect(resolvedLabel, `서버 authoritative 윷 결과 label이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       await expect(resolvedLabel, 'authoritative 결과 label은 한 번만 표시되어야 합니다.').toHaveCount(1);
-      await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .yut-stick, .roll-stage.resolved-from-pending .yut-stick-body').evaluateAll((nodes) => {
-        if (nodes.length !== 8) return `nodes=${nodes.length}`;
-        const unfinished = nodes.map((node) => ({
-          className: node.getAttribute('class') ?? '',
-          states: node.getAnimations().map((animation) => animation.playState),
-        })).filter((entry) => entry.states.some((state) => state !== 'finished'));
-        return unfinished.length ? JSON.stringify(unfinished) : 'finished';
-      }), {
-        timeout: 1_000,
-        message: '결과 label이 보이는 순간 모든 yut-stick과 yut-stick-body 애니메이션은 finished 상태여야 합니다.',
-      }).toBe('finished');
       const timingTextAfterReveal = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').innerText();
       const labelTextAfterReveal = await resolvedLabel.innerText();
       const postResultGameText = await page.getByTestId('game-screen').innerText();
