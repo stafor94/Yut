@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { Timestamp, collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { loadFirebaseConfig } from './env.js';
 
 const roomSubcollections = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'];
@@ -92,6 +92,7 @@ export async function createLobbyRoomFixtureForQa({ title, hostNickname, maxPlay
   const hostId = `qa-fixture-host-${qaRunId}-${Math.random().toString(36).slice(2, 10)}`;
   const nickname = String(hostNickname ?? 'QA Host').trim() || 'QA Host';
   const roomRef = doc(collection(db, 'rooms'));
+  const fixtureTimestamp = Timestamp.now();
   const batch = writeBatch(db);
   batch.set(roomRef, {
     title: normalizedTitle,
@@ -103,7 +104,7 @@ export async function createLobbyRoomFixtureForQa({ title, hostNickname, maxPlay
     playMode,
     pieceCount,
     currentPlayers: 1,
-    createdAt: serverTimestamp(),
+    createdAt: fixtureTimestamp,
     emptySince: null,
     qaRunId,
   });
@@ -113,8 +114,8 @@ export async function createLobbyRoomFixtureForQa({ title, hostNickname, maxPlay
     color: '#2563eb',
     seatIndex: 0,
     team: '청팀',
-    joinedAt: serverTimestamp(),
-    lastSeen: serverTimestamp(),
+    joinedAt: fixtureTimestamp,
+    lastSeen: fixtureTimestamp,
   });
   batch.set(doc(db, 'rooms', roomRef.id, 'seats', '0'), {
     playerId: hostId,
@@ -128,10 +129,14 @@ export async function createLobbyRoomFixtureForQa({ title, hostNickname, maxPlay
     isHost: true,
     aiActive: false,
     status: 'human',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    createdAt: fixtureTimestamp,
+    updatedAt: fixtureTimestamp,
   });
   await batch.commit();
+  const committedRoom = await getDoc(roomRef);
+  if (!committedRoom.exists() || !getTimestampMillis(committedRoom.data().createdAt)) {
+    throw new Error(`QA fixture 방이 조회 가능한 상태로 저장되지 않았습니다: ${roomRef.id}`);
+  }
   return roomRef.id;
 }
 
