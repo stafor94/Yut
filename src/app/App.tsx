@@ -9,6 +9,7 @@ import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollA
 import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
+import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
 import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
 import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';
@@ -307,6 +308,7 @@ export function App() {
   const localActionApplyQueueRef = useRef(Promise.resolve());
   const sequenceReplayInProgressRef = useRef(false);
   const queuedSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
+  const currentSequenceStateRef = useRef<SequenceStateSnapshot | null>(null);
   const completingTurnOrderIntroRef = useRef<Set<number>>(new Set());
   const remoteActionRetryTimersRef = useRef<Map<string, number>>(new Map());
   const currentRollRef = useRef<YutResult | null>(null);
@@ -1699,6 +1701,7 @@ export function App() {
   }
 
   const applySyncedStateSnapshot = (state: SequenceStateSnapshot, options: { allowMoveAnimation?: boolean; allowRollAnimation?: boolean; updateVersion?: boolean; updateSequence?: boolean } = {}) => {
+    currentSequenceStateRef.current = state;
     const { allowMoveAnimation = true, allowRollAnimation = true, updateVersion = true, updateSequence = true } = options;
     const stateStartRequestVersion = Number(state.startRequestVersion ?? 0);
     const stateStartRequestId = String((state as { startRequestId?: unknown }).startRequestId ?? '');
@@ -1875,17 +1878,23 @@ export function App() {
     if (hasOptimisticallyPlayedLocalAction(clientMutationId)) return;
 
     const payload = sequence.payload ?? {};
-    const finalPieces = (sequence.stateAfter?.pieces as BoardPiece[] | undefined) ?? null;
+    const stateAfter = applySequenceEvent({ ...currentSequenceStateRef.current, lastSequence: Number(sequence.sequence ?? 1) - 1 }, sequence) as SequenceStateSnapshot | null;
+    const applyReplayedMoveState = () => {
+      if (stateAfter) applySyncedStateSnapshot(stateAfter, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
+    };
+    const finalPieces = (stateAfter?.pieces as BoardPiece[] | undefined) ?? null;
     const movingGroupIds = Array.isArray(payload.movingGroupIds) ? payload.movingGroupIds.map(String) : [];
     const pathNodeIds = Array.isArray(payload.pathNodeIds) ? payload.pathNodeIds.map(String).filter(Boolean) : [];
     if (!finalPieces || !movingGroupIds.length || !pathNodeIds.length) {
       if (finalPieces) setPieces(finalPieces);
+      applyReplayedMoveState();
       return;
     }
     if (moveInProgressRef.current) {
       const moveFinished = await waitForCurrentMoveToFinish((pathNodeIds.length + 6) * STEP_DELAY_MS);
       if (!moveFinished) {
         setPieces(finalPieces);
+        applyReplayedMoveState();
         return;
       }
     }
@@ -1893,6 +1902,7 @@ export function App() {
     const anchorAfter = finalPieces.find((piece) => piece.id === movingGroupIds[0]);
     if (!anchorBefore || !anchorAfter || anchorBefore.nodeId === anchorAfter.nodeId) {
       setPieces(finalPieces);
+      applyReplayedMoveState();
       return;
     }
     setMoveInProgressState(true);
@@ -1906,6 +1916,7 @@ export function App() {
       if (nextNodeId === anchorAfter.nodeId) break;
     }
     setPieces(finalPieces);
+    applyReplayedMoveState();
     const itemEvent = payload.itemEvent;
     if (itemEvent && typeof itemEvent === 'object') showItemPickupEffect(itemEvent as Record<string, unknown>, `sequence:${sequence.sequence}:item`);
     setMovingPieceId('');
@@ -1920,7 +1931,7 @@ export function App() {
   }
 
   async function replayRollSequence(sequence: GameSequence) {
-    const stateAfter = sequence.stateAfter as SequenceStateSnapshot | undefined;
+    const stateAfter = applySequenceEvent({ ...currentSequenceStateRef.current, lastSequence: Number(sequence.sequence ?? 1) - 1 }, sequence) as SequenceStateSnapshot | null | undefined;
     const payload = sequence.payload ?? {};
     const sequenceRoll = (stateAfter?.roll as YutResult | null | undefined) ?? (payload.displayRoll as YutResult | null | undefined) ?? null;
     const clientMutationId = typeof sequence.clientMutationId === 'string' ? sequence.clientMutationId : '';
@@ -1930,7 +1941,7 @@ export function App() {
       const animationKey = `sequence-roll:${Number(sequence.sequence ?? 0)}:${clientMutationId}:${sequenceRoll.name}:${sequenceRoll.steps}:${readyAt}`;
       const fallCount = Number(payload.fallCount ?? 0);
       const resolvedFallCount = fallCount > 0 ? Math.min(4, Math.max(1, fallCount)) : 0;
-      const authoritativeTimingZone = getAuthoritativeRollTimingZone(payload, stateAfter);
+      const authoritativeTimingZone = getAuthoritativeRollTimingZone(payload, stateAfter ?? undefined);
       if (isCurrentPendingRoll) {
         playResolvedRollAnimationAfterPending(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, clientMutationId, resolvedFallCount, authoritativeTimingZone);
         rollInProgressRef.current = false;
@@ -1945,7 +1956,7 @@ export function App() {
   }
 
   async function replayRerollItemSequence(sequence: GameSequence) {
-    const stateAfter = sequence.stateAfter as SequenceStateSnapshot | undefined;
+    const stateAfter = applySequenceEvent({ ...currentSequenceStateRef.current, lastSequence: Number(sequence.sequence ?? 1) - 1 }, sequence) as SequenceStateSnapshot | null | undefined;
     const payload = sequence.payload ?? {};
     const replacementRoll = payload.replacementRoll as YutResult | null | undefined;
     const clientMutationId = typeof sequence.clientMutationId === 'string' ? sequence.clientMutationId : '';
@@ -1991,11 +2002,15 @@ export function App() {
         if (sequence.type === 'item_used' && sequence.payload?.itemType === 'reroll') await replayRerollItemSequence(sequence);
         else if (sequence.type === 'roll_yut') await replayRollSequence(sequence);
         else if (sequence.type === 'move_piece_resolved') await replayMoveSequence(sequence);
-        else if (sequence.stateAfter) applySyncedStateSnapshot(sequence.stateAfter as SequenceStateSnapshot, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
+        else {
+          const nextState = applySequenceEvent({ ...currentSequenceStateRef.current, lastSequence: sequenceNumber - 1 }, sequence);
+          if (nextState) applySyncedStateSnapshot(nextState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
+        }
         acknowledgePendingLocalRemoteAction(sequence.clientMutationId);
         lastAppliedSequenceRef.current = sequenceNumber;
       }
-      applySyncedStateSnapshot(finalState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true });
+      const replayedState = applySequenceEvents({ ...currentSequenceStateRef.current, lastSequence: replayStartSequence }, sequences);
+      applySyncedStateSnapshot(replayedState ?? finalState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true });
     } catch {
       applySyncedStateSnapshot(finalState, { allowMoveAnimation: false, allowRollAnimation: true, updateVersion: true, updateSequence: true });
     } finally {
@@ -2017,8 +2032,13 @@ export function App() {
         .filter((sequence) => Number(sequence.sequence ?? 0) > 0)
         .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
       const latestSequence = Math.max(localSequence, ...orderedSequences.map((sequence) => Number(sequence.sequence ?? 0)));
-      const latestState = [...orderedSequences].reverse().find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
-      if (!latestState) return false;
+      const latestState = applySequenceEvents({ ...currentSequenceStateRef.current, lastSequence: localSequence }, orderedSequences) ?? ([...orderedSequences].reverse().find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined);
+      if (!latestState) {
+        const snapshot = await getLatestGameState(activeRoomId);
+        if (!snapshot) return false;
+        applySyncedStateSnapshot(snapshot as SequenceStateSnapshot, { allowMoveAnimation: false, allowRollAnimation: options.allowRollAnimation ?? false, updateVersion: true, updateSequence: true });
+        return true;
+      }
       if (latestSequence > localSequence) await replayMissingSequencesThenApply(latestState, localSequence, latestSequence);
       else applySyncedStateSnapshot(latestState, { allowMoveAnimation: false, allowRollAnimation: options.allowRollAnimation ?? false, updateVersion: true, updateSequence: true });
       recordRemoteActionDiagnostic(options.diagnosticType ?? 'move_piece', 'authoritative-resync', reason, { status: 'synced' });
@@ -2128,10 +2148,7 @@ export function App() {
         const localSequence = lastAppliedSequenceRef.current;
         if (processedAction.sequence > localSequence) {
           const sequences = await measureFirebaseLatency(() => getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence)));
-          const latestState = [...sequences]
-            .filter((sequence) => Number(sequence.sequence ?? 0) <= processedAction.sequence)
-            .reverse()
-            .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+          const latestState = applySequenceEvents({ ...currentSequenceStateRef.current, lastSequence: localSequence }, sequences.filter((sequence) => Number(sequence.sequence ?? 0) <= processedAction.sequence)) ?? undefined;
           if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, processedAction.sequence);
         }
         acknowledgePendingLocalRemoteAction(actionKey);
@@ -2168,7 +2185,7 @@ export function App() {
         .filter((sequence) => Number(sequence.sequence ?? 0) > localSequence)
         .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
       const latestSequence = Math.max(localSequence, ...orderedSequences.map((sequence) => Number(sequence.sequence ?? 0)));
-      const latestState = [...orderedSequences].reverse().find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+      const latestState = applySequenceEvents({ ...currentSequenceStateRef.current, lastSequence: localSequence }, orderedSequences) ?? undefined;
       if (!orderedSequences.length || latestSequence <= localSequence) {
         const clearedPending = await reconcilePendingLocalRemoteActions({ forceStaleClear: false });
         if (clearedPending) {
@@ -2596,7 +2613,7 @@ export function App() {
         .filter((sequence) => Number(sequence.sequence ?? 0) > 0)
         .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
       const latestSequence = Math.max(localSequence, ...orderedSequences.map((sequence) => Number(sequence.sequence ?? 0)));
-      const latestState = [...orderedSequences].reverse().find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+      const latestState = applySequenceEvents({ ...currentSequenceStateRef.current, lastSequence: localSequence }, orderedSequences) ?? undefined;
       const currentLocalSequence = lastAppliedSequenceRef.current;
       if (latestSequence <= currentLocalSequence || !latestState) return 'unchanged';
       await replayMissingSequencesThenApply(latestState, currentLocalSequence, latestSequence);
@@ -3110,10 +3127,7 @@ export function App() {
       startedGameRequestVersionsRef.current.delete(startRequestKey);
       if (lastSequence > 0) {
         const sequences = await measureFirebaseLatency(() => getGameSequencesSince(activeRoomId, 0));
-        const latestState = [...sequences]
-          .filter((sequence) => Number(sequence.sequence ?? 0) <= lastSequence)
-          .reverse()
-          .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+        const latestState = applySequenceEvents({ lastSequence: 0 }, sequences.filter((sequence) => Number(sequence.sequence ?? 0) <= lastSequence)) ?? (await measureFirebaseLatency(() => getLatestGameState(activeRoomId)) as SequenceStateSnapshot | null) ?? undefined;
         if (latestState) {
           await replayMissingSequencesThenApply(latestState, 0, lastSequence);
           setInitialGameStateSaveDiagnostic((current) => current ? { ...current, source: `${current.source}:sequence-replay`, message: '초기 저장 불일치 후 최신 sequence를 적용했습니다.' } : current);
@@ -3697,7 +3711,10 @@ export function App() {
       const authoritativeState = result.stateAfter as SequenceStateSnapshot;
       if (sequence.type === 'roll_yut') await replayRollSequence(sequence);
       else if (sequence.type === 'move_piece_resolved') await replayMoveSequence(sequence);
-      else if (sequence.stateAfter) applySyncedStateSnapshot(sequence.stateAfter as SequenceStateSnapshot, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
+      else {
+        const nextState = applySequenceEvent({ ...currentSequenceStateRef.current, lastSequence: localSequence }, sequence);
+        if (nextState) applySyncedStateSnapshot(nextState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: false, updateSequence: false });
+      }
       acknowledgePendingLocalRemoteAction(sequence.clientMutationId);
       applySyncedStateSnapshot(authoritativeState, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true });
       if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
@@ -3705,10 +3722,7 @@ export function App() {
     }
     let latestState: SequenceStateSnapshot | undefined;
     const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(Math.min(localSequence, resultSequence - 1)));
-    latestState = [...sequences]
-      .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
-      .reverse()
-      .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+    latestState = applySequenceEvents({ ...currentSequenceStateRef.current, lastSequence: Math.min(localSequence, resultSequence - 1) }, sequences.filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)) ?? undefined;
     if (!latestState) {
       const syncedState = await getLatestGameState(activeRoomId);
       latestState = syncedState as SequenceStateSnapshot | undefined;
@@ -5113,10 +5127,7 @@ export function App() {
           const resultSequence = result.sequence;
           if (resultSequence > localSequence) {
             const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
-            const latestState = [...sequences]
-              .filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)
-              .reverse()
-              .find((sequence) => sequence.stateAfter)?.stateAfter as SequenceStateSnapshot | undefined;
+            const latestState = applySequenceEvents({ ...currentSequenceStateRef.current, lastSequence: localSequence }, sequences.filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)) ?? undefined;
             if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
           }
           acknowledgePendingLocalRemoteAction(actionKey);
