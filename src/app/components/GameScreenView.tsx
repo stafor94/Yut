@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
+import { playStoredSoundEffect } from '../../shared/audio/sound';
 import type { CaptureEffect, FallEffect, GameLog, RollAnimation, Seat, ToastMessage, TrapEffect, TrapNode, TurnOrderIntro, TurnOrderPhase } from '../appState';
 import { BoardPanel, GameScreen } from '../screens/GameScreen';
 import { GameLogPanelView, GamePlayersPanel } from '../containers/GamePanels';
@@ -112,7 +113,75 @@ type GameScreenViewProps = {
 };
 
 export function GameScreenView({ activeItemPromptTypes, pendingItemPromptChoiceLabel, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canRollForTurnOrderNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, moveSelectionTimedOut, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, shieldedPieceIds, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenSequenceExportDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
+  const lastRollAnimationIdRef = useRef('');
+  const lastBonusRollKeyRef = useRef('');
+  const lastMovingPieceIdRef = useRef('');
+  const lastCaptureEffectIdRef = useRef('');
+  const lastRevealedItemsKeyRef = useRef('');
+  const stackCountsInitializedRef = useRef(false);
+  const previousStackCountsRef = useRef<Map<string, number>>(new Map());
   const activeGameSeatId = activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder ? undefined : activeSeat?.id;
+
+  useEffect(() => {
+    if (!rollAnimation) return;
+    const animationId = String(rollAnimation.id);
+    if (lastRollAnimationIdRef.current !== animationId) {
+      lastRollAnimationIdRef.current = animationId;
+      playStoredSoundEffect('roll');
+    }
+    const bonusKey = rollAnimation.result?.bonus ? `${animationId}:${rollAnimation.result.name}:${rollAnimation.result.steps}` : '';
+    if (bonusKey && lastBonusRollKeyRef.current !== bonusKey) {
+      lastBonusRollKeyRef.current = bonusKey;
+      window.setTimeout(() => playStoredSoundEffect('bonus'), 420);
+    }
+  }, [rollAnimation]);
+
+  useEffect(() => {
+    if (!movingPieceId) {
+      lastMovingPieceIdRef.current = '';
+      return;
+    }
+    if (lastMovingPieceIdRef.current === movingPieceId) return;
+    lastMovingPieceIdRef.current = movingPieceId;
+    playStoredSoundEffect('move');
+  }, [movingPieceId]);
+
+  useEffect(() => {
+    const captureEffectId = captureEffect?.id ? String(captureEffect.id) : '';
+    if (!captureEffectId || lastCaptureEffectIdRef.current === captureEffectId) return;
+    lastCaptureEffectIdRef.current = captureEffectId;
+    playStoredSoundEffect('capture');
+  }, [captureEffect]);
+
+  useEffect(() => {
+    const revealedItemsKey = revealedItems.join('|');
+    if (!revealedItemsKey) {
+      lastRevealedItemsKeyRef.current = '';
+      return;
+    }
+    if (lastRevealedItemsKeyRef.current === revealedItemsKey) return;
+    lastRevealedItemsKeyRef.current = revealedItemsKey;
+    playStoredSoundEffect('itemPickup');
+  }, [revealedItems]);
+
+  useEffect(() => {
+    const nextStackCounts = new Map<string, number>();
+    pieces.forEach((piece) => {
+      if (!piece.started || piece.finished || !piece.nodeId || piece.nodeId === 'finish') return;
+      const stackKey = `${getPieceSideKey(piece)}:${piece.nodeId}`;
+      nextStackCounts.set(stackKey, (nextStackCounts.get(stackKey) ?? 0) + 1);
+    });
+
+    if (!stackCountsInitializedRef.current) {
+      stackCountsInitializedRef.current = true;
+      previousStackCountsRef.current = nextStackCounts;
+      return;
+    }
+
+    const stackedNow = Array.from(nextStackCounts.entries()).some(([stackKey, count]) => count >= 2 && count > (previousStackCountsRef.current.get(stackKey) ?? 0));
+    previousStackCountsRef.current = nextStackCounts;
+    if (stackedNow) window.setTimeout(() => playStoredSoundEffect('stack'), 120);
+  }, [getPieceSideKey, pieces]);
 
   return <GameScreen>
     <GamePlayersPanel
