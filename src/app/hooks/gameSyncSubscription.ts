@@ -9,6 +9,7 @@ export type GameSyncRuntime<TState> = {
   applySyncedStateSnapshot: (state: TState) => void;
   enqueueAuthoritativeResultApplication: (applyResult: () => Promise<void> | void) => Promise<void | null>;
   scheduleApplyingReset: (reset: () => void) => void;
+  onSnapshotReceived?: (state: TState) => void;
 };
 
 export type GameStateSubscriber<TState> = (
@@ -91,6 +92,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
 
   const handleSnapshot = async (roomId: string, state: TState | null) => {
     if (!state || !isCurrentRoom(roomId)) return;
+    runtime?.onSnapshotReceived?.(state);
     const snapshotKey = getGameSyncSnapshotApplyKey(state);
     const scopedSnapshotKey = `${roomId}:${snapshotKey}`;
     if (appliedSnapshotKeys.has(snapshotKey) || pendingSnapshotKeys.has(scopedSnapshotKey)) return;
