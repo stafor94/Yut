@@ -106,7 +106,9 @@ async function cleanupQaRooms() {
   if (failures.length || remainingRooms.length) throw new Error(`QA cleanup incomplete: failures=${failures.length}, remaining=${remainingRooms.length}`);
 }
 
-cleanupQaRooms().catch((error) => {
-  console.error('QA 방 정리에 실패했습니다.', error);
-  process.exitCode = 1;
-});
+cleanupQaRooms()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error('QA 방 정리에 실패했습니다.', error);
+    process.exit(1);
+  });
