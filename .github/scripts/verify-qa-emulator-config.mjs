@@ -11,6 +11,17 @@ function parseEnvFile(filePath) {
   return values;
 }
 
+function parseInjectedFirebaseProjectId(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw);
+    return String(parsed.projectId ?? parsed.project_id ?? '').trim();
+  } catch {
+    return '';
+  }
+}
+
 function assertLoopbackHost(value, label) {
   if (!['127.0.0.1', 'localhost'].includes(value)) throw new Error(`${label}는 loopback host여야 합니다: ${value}`);
 }
@@ -49,7 +60,13 @@ assertLoopbackHost(authUrl.hostname, 'Auth emulator');
 if (!Number.isInteger(firestorePort) || firestorePort <= 0) throw new Error(`잘못된 Firestore emulator port: ${firestorePort}`);
 
 for (const key of ['FIREBASE_CONFIG', 'FIREBASE']) {
-  if (String(process.env[key] ?? '').trim()) throw new Error(`${key} 운영 설정은 QA job에 전달하면 안 됩니다.`);
+  const rawValue = String(process.env[key] ?? '').trim();
+  if (!rawValue) continue;
+  const injectedProjectId = parseInjectedFirebaseProjectId(rawValue);
+  if (injectedProjectId !== projectId || !injectedProjectId.startsWith('demo-')) {
+    throw new Error(`${key}에서 운영 Firebase 설정 유입을 감지했습니다: ${injectedProjectId || 'projectId 해석 실패'}`);
+  }
+  console.log(`${key} contains emulator-generated demo config for ${injectedProjectId}.`);
 }
 const injectedProjectId = String(process.env.VITE_FIREBASE_PROJECT_ID ?? '').trim();
 if (injectedProjectId && injectedProjectId !== projectId) throw new Error(`환경 projectId와 .env.qa projectId가 다릅니다: ${injectedProjectId}`);
