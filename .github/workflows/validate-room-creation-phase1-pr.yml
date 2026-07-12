@@ -1,0 +1,59 @@
+name: Validate Room Creation Phase 1 PR
+
+on:
+  pull_request:
+    branches: [agent/fix-room-creation-critical-path]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: validate-room-creation-phase1-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      QA_RUN_ID: pr-${{ github.event.pull_request.number }}-${{ github.run_id }}
+      QA_PROJECT_ID: demo-yut-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply room transition race fix
+        run: python scripts/fix-room-transition-race.py
+      - name: Remove temporary patch script
+        run: rm scripts/fix-room-transition-race.py
+      - run: npm ci
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Production build
+        run: npm run build
+      - name: QA build
+        run: |
+          node .github/scripts/write-qa-firebase-env.mjs
+          node .github/scripts/verify-qa-emulator-config.mjs
+          npm run build:qa
+      - name: Verify focused diff
+        run: |
+          grep -q "isRoomTransitionInProgress" src/app/App.tsx
+          grep -q "transitioningToNextRoom" src/app/App.tsx
+          git diff --check
+      - name: Commit validated product changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/App.tsx src/app/flows/roomCreationFlow.ts tests/unit/roomCreationFlow.test.ts scripts/fix-room-transition-race.py
+          git commit -m "fix: keep new room state during background cleanup"
+          git push origin HEAD:${{ github.head_ref }}
