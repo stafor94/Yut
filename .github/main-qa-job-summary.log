@@ -1,0 +1,420 @@
+2026-07-12T14:43:55.3244713Z [36;1mtext = path.read_text()[0m
+2026-07-12T14:43:55.3245826Z [36;1mold = "  const rooms = useRooms({ enabled: screen === 'lobby' });\n  const currentUser = userRef.current ?? user;\n  const currentUserId = currentUser?.uid ?? '';\n"[0m
+2026-07-12T14:43:55.3247725Z [36;1mnew = "  const currentUser = userRef.current ?? user;\n  const currentUserId = currentUser?.uid ?? '';\n  const rooms = useRooms({ enabled: screen === 'lobby' && Boolean(currentUser) });\n"[0m
+2026-07-12T14:43:55.3248958Z [36;1mif old in text:[0m
+2026-07-12T14:43:55.3249411Z [36;1m    path.write_text(text.replace(old, new, 1))[0m
+2026-07-12T14:43:55.3249939Z [36;1melif new not in text:[0m
+2026-07-12T14:43:55.3250589Z [36;1m    raise SystemExit('auth-gated room subscription block was not found')[0m
+2026-07-12T14:43:55.3251231Z [36;1mPY[0m
+2026-07-12T14:43:55.3456979Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-07-12T14:43:55.3457631Z env:
+2026-07-12T14:43:55.3458003Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:43:55.3458398Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:43:55.3458831Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:43:55.3459327Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:43:55.3459725Z ##[endgroup]
+2026-07-12T14:43:55.3866713Z ##[group]Run npm ci
+2026-07-12T14:43:55.3866982Z [36;1mnpm ci[0m
+2026-07-12T14:43:55.3902669Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:43:55.3902942Z env:
+2026-07-12T14:43:55.3903168Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:43:55.3903493Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:43:55.3903918Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:43:55.3904589Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:43:55.3904981Z ##[endgroup]
+2026-07-12T14:44:01.3758615Z 
+2026-07-12T14:44:01.3759516Z added 115 packages, and audited 116 packages in 6s
+2026-07-12T14:44:01.3760102Z 
+2026-07-12T14:44:01.3760281Z 12 packages are looking for funding
+2026-07-12T14:44:01.3760606Z   run `npm fund` for details
+2026-07-12T14:44:01.3771119Z 
+2026-07-12T14:44:01.3771283Z found 0 vulnerabilities
+2026-07-12T14:44:01.4496341Z ##[group]Run npm run test:unit
+2026-07-12T14:44:01.4496657Z [36;1mnpm run test:unit[0m
+2026-07-12T14:44:01.4530985Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:44:01.4531244Z env:
+2026-07-12T14:44:01.4531470Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:44:01.4531792Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:44:01.4532212Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:01.4532719Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+--
+2026-07-12T14:44:03.5310980Z   type: 'test'
+2026-07-12T14:44:03.5311319Z   ...
+2026-07-12T14:44:03.5311972Z # Subtest: 차례와 입력 안내 사유도 전체 화면 오류 modal을 열지 않는다
+2026-07-12T14:44:03.5312792Z ok 2 - 차례와 입력 안내 사유도 전체 화면 오류 modal을 열지 않는다
+2026-07-12T14:44:03.5313294Z   ---
+2026-07-12T14:44:03.5313661Z   duration_ms: 0.20795
+2026-07-12T14:44:03.5314057Z   type: 'test'
+2026-07-12T14:44:03.5314624Z   ...
+2026-07-12T14:44:03.5315174Z # Subtest: 실제 failure만 치명적 modal 대상이다
+2026-07-12T14:44:03.5315898Z ok 3 - 실제 failure만 치명적 modal 대상이다
+2026-07-12T14:44:03.5316485Z   ---
+2026-07-12T14:44:03.5316836Z   duration_ms: 0.253678
+2026-07-12T14:44:03.5317238Z   type: 'test'
+2026-07-12T14:44:03.5317576Z   ...
+2026-07-12T14:44:03.5318297Z # Subtest: 방, sequence, turn이 전진하면 남은 오류 modal을 해제한다
+2026-07-12T14:44:03.5319147Z ok 4 - 방, sequence, turn이 전진하면 남은 오류 modal을 해제한다
+2026-07-12T14:44:03.5338611Z   ---
+2026-07-12T14:44:03.5339364Z   duration_ms: 0.272777
+2026-07-12T14:44:03.5340027Z   type: 'test'
+2026-07-12T14:44:03.5340552Z   ...
+2026-07-12T14:44:03.7542037Z # Subtest: v1 sequence는 stateAfter snapshot을 그대로 적용한다
+2026-07-12T14:44:03.7555242Z ok 5 - v1 sequence는 stateAfter snapshot을 그대로 적용한다
+2026-07-12T14:44:03.7578009Z   ---
+2026-07-12T14:44:03.7578804Z   duration_ms: 1.430924
+2026-07-12T14:44:03.7579222Z   type: 'test'
+2026-07-12T14:44:03.7579559Z   ...
+2026-07-12T14:44:03.7580481Z # Subtest: v2 sequence는 patch와 메타데이터를 직전 state에 적용하고 중복 sequence는 무시한다
+2026-07-12T14:44:03.7581488Z ok 6 - v2 sequence는 patch와 메타데이터를 직전 state에 적용하고 중복 sequence는 무시한다
+2026-07-12T14:44:03.7582033Z   ---
+2026-07-12T14:44:03.7582334Z   duration_ms: 0.357233
+2026-07-12T14:44:03.7582677Z   type: 'test'
+2026-07-12T14:44:03.7582996Z   ...
+2026-07-12T14:44:03.7583830Z # Subtest: v2 patch에 turnVersion이 명시되면 파생값보다 우선하고 mutation id가 없으면 기존 값을 유지한다
+2026-07-12T14:44:03.7585075Z ok 7 - v2 patch에 turnVersion이 명시되면 파생값보다 우선하고 mutation id가 없으면 기존 값을 유지한다
+2026-07-12T14:44:03.7585693Z   ---
+2026-07-12T14:44:03.7586012Z   duration_ms: 0.293958
+2026-07-12T14:44:03.7586354Z   type: 'test'
+2026-07-12T14:44:03.7586646Z   ...
+2026-07-12T14:44:03.7587269Z # Subtest: sequence gap이나 기준 state 부재 시 v2 patch를 임의 적용하지 않는다
+2026-07-12T14:44:03.7588112Z ok 8 - sequence gap이나 기준 state 부재 시 v2 patch를 임의 적용하지 않는다
+--
+2026-07-12T14:44:03.8203578Z   type: 'test'
+2026-07-12T14:44:03.8203893Z   ...
+2026-07-12T14:44:03.8204735Z # Subtest: 온라인 after_move 사용 안 함은 보류된 다음 턴으로 서버 턴을 진행한다
+2026-07-12T14:44:03.8210100Z ok 58 - 온라인 after_move 사용 안 함은 보류된 다음 턴으로 서버 턴을 진행한다
+2026-07-12T14:44:03.8210622Z   ---
+2026-07-12T14:44:03.8210949Z   duration_ms: 0.211445
+2026-07-12T14:44:03.8211318Z   type: 'test'
+2026-07-12T14:44:03.8211645Z   ...
+2026-07-12T14:44:03.8212385Z # Subtest: 온라인 roll timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다
+2026-07-12T14:44:03.8213346Z ok 59 - 온라인 roll timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다
+2026-07-12T14:44:03.8213894Z   ---
+2026-07-12T14:44:03.8214421Z   duration_ms: 0.379606
+2026-07-12T14:44:03.8214792Z   type: 'test'
+2026-07-12T14:44:03.8215159Z   ...
+2026-07-12T14:44:03.8215890Z # Subtest: 온라인 move timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다
+2026-07-12T14:44:03.8216879Z ok 60 - 온라인 move timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다
+2026-07-12T14:44:03.8217404Z   ---
+2026-07-12T14:44:03.8217739Z   duration_ms: 0.365555
+2026-07-12T14:44:03.8218111Z   type: 'test'
+2026-07-12T14:44:03.8218423Z   ...
+2026-07-12T14:44:03.8219026Z # Subtest: 온라인 아이템 timeout 복구는 deadline 전 조기 요청을 거부한다
+2026-07-12T14:44:03.8219776Z ok 61 - 온라인 아이템 timeout 복구는 deadline 전 조기 요청을 거부한다
+2026-07-12T14:44:03.8220260Z   ---
+2026-07-12T14:44:03.8220574Z   duration_ms: 0.187059
+2026-07-12T14:44:03.8220933Z   type: 'test'
+2026-07-12T14:44:03.8221250Z   ...
+2026-07-12T14:44:03.8221864Z # Subtest: 온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치를 거부한다
+2026-07-12T14:44:03.8222616Z ok 62 - 온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치를 거부한다
+2026-07-12T14:44:03.8223057Z   ---
+2026-07-12T14:44:03.8223357Z   duration_ms: 0.168802
+2026-07-12T14:44:03.8223710Z   type: 'test'
+2026-07-12T14:44:03.8224015Z   ...
+2026-07-12T14:44:03.8243083Z # Subtest: 온라인 coordinator 아이템 deadline 복구는 실제 actor skip으로 다음 단계에 진입한다
+2026-07-12T14:44:03.8244429Z ok 63 - 온라인 coordinator 아이템 deadline 복구는 실제 actor skip으로 다음 단계에 진입한다
+2026-07-12T14:44:03.8245001Z   ---
+2026-07-12T14:44:03.8245356Z   duration_ms: 0.178036
+2026-07-12T14:44:03.8245720Z   type: 'test'
+2026-07-12T14:44:03.8246064Z   ...
+2026-07-12T14:44:03.8246734Z # Subtest: 온라인 after_move 선택 대기 중에는 이전 플레이어의 윷 던지기를 거부한다
+2026-07-12T14:44:03.8247551Z ok 64 - 온라인 after_move 선택 대기 중에는 이전 플레이어의 윷 던지기를 거부한다
+2026-07-12T14:44:03.8248020Z   ---
+2026-07-12T14:44:03.8248355Z   duration_ms: 0.149102
+2026-07-12T14:44:03.8248714Z   type: 'test'
+2026-07-12T14:44:03.8249027Z   ...
+2026-07-12T14:44:03.8249663Z # Subtest: 온라인 누적 마지막 윷 이후 after_roll 팝업은 방금 추가한 스택을 선택한다
+2026-07-12T14:44:03.8250460Z ok 65 - 온라인 누적 마지막 윷 이후 after_roll 팝업은 방금 추가한 스택을 선택한다
+2026-07-12T14:44:03.8250932Z   ---
+2026-07-12T14:44:03.8251251Z   duration_ms: 0.323082
+2026-07-12T14:44:03.8251626Z   type: 'test'
+2026-07-12T14:44:03.8251939Z   ...
+2026-07-12T14:44:03.8252576Z # Subtest: 온라인 누적 다시 던지기는 선택된 이동 스택을 교체하고 append하지 않는다
+2026-07-12T14:44:03.8254337Z ok 66 - 온라인 누적 다시 던지기는 선택된 이동 스택을 교체하고 append하지 않는다
+2026-07-12T14:44:03.8254821Z   ---
+2026-07-12T14:44:03.8255148Z   duration_ms: 0.433346
+2026-07-12T14:44:03.8255758Z   type: 'test'
+2026-07-12T14:44:03.8256095Z   ...
+2026-07-12T14:44:03.8256938Z # Subtest: 온라인 누적 다시 던지기는 payload가 없으면 authoritative 선택 스택을 교체하고 아이템 1개만 소비한다
+2026-07-12T14:44:03.8258004Z ok 67 - 온라인 누적 다시 던지기는 payload가 없으면 authoritative 선택 스택을 교체하고 아이템 1개만 소비한다
+--
+2026-07-12T14:44:03.8918933Z   type: 'test'
+2026-07-12T14:44:03.8919486Z   ...
+2026-07-12T14:44:03.8925999Z # Subtest: 지원하지 않는 결과 문구는 읽지 않는다
+2026-07-12T14:44:03.8930607Z ok 120 - 지원하지 않는 결과 문구는 읽지 않는다
+2026-07-12T14:44:03.8931531Z   ---
+2026-07-12T14:44:03.8932075Z   duration_ms: 0.225316
+2026-07-12T14:44:03.8932685Z   type: 'test'
+2026-07-12T14:44:03.8933237Z   ...
+2026-07-12T14:44:03.9300380Z # Subtest: 로그인과 방 생성 timeout은 각 작업마다 독립적으로 새로 시작한다
+2026-07-12T14:44:03.9304984Z ok 121 - 로그인과 방 생성 timeout은 각 작업마다 독립적으로 새로 시작한다
+2026-07-12T14:44:03.9305891Z   ---
+2026-07-12T14:44:03.9306257Z   duration_ms: 29.532091
+2026-07-12T14:44:03.9306676Z   type: 'test'
+2026-07-12T14:44:03.9307001Z   ...
+2026-07-12T14:44:03.9376706Z # Subtest: 작업 제한 시간이 지나면 작업 종류가 포함된 timeout 오류를 반환한다
+2026-07-12T14:44:03.9380794Z ok 122 - 작업 제한 시간이 지나면 작업 종류가 포함된 timeout 오류를 반환한다
+2026-07-12T14:44:03.9381704Z   ---
+2026-07-12T14:44:03.9382325Z   duration_ms: 6.250209
+2026-07-12T14:44:03.9382906Z   type: 'test'
+2026-07-12T14:44:03.9383432Z   ...
+2026-07-12T14:44:03.9385138Z # Subtest: 동일 생성 요청은 같은 room id와 create request id를 사용한다
+2026-07-12T14:44:03.9388394Z ok 123 - 동일 생성 요청은 같은 room id와 create request id를 사용한다
+2026-07-12T14:44:03.9389123Z   ---
+2026-07-12T14:44:03.9389655Z   duration_ms: 1.161933
+2026-07-12T14:44:03.9390247Z   type: 'test'
+2026-07-12T14:44:03.9390773Z   ...
+2026-07-12T14:44:03.9397244Z # Subtest: timeout 복구는 정확히 같은 room, host, request만 허용한다
+2026-07-12T14:44:03.9400343Z ok 124 - timeout 복구는 정확히 같은 room, host, request만 허용한다
+2026-07-12T14:44:03.9401575Z   ---
+2026-07-12T14:44:03.9402161Z   duration_ms: 0.302321
+2026-07-12T14:44:03.9402739Z   type: 'test'
+2026-07-12T14:44:03.9403262Z   ...
+2026-07-12T14:44:03.9409443Z # Subtest: 다른 방으로 전환 중인 background cleanup은 새 방 화면 상태를 지우지 않는다
+2026-07-12T14:44:03.9412303Z ok 125 - 다른 방으로 전환 중인 background cleanup은 새 방 화면 상태를 지우지 않는다
+2026-07-12T14:44:03.9444670Z   ---
+2026-07-12T14:44:03.9448138Z   duration_ms: 0.30819
+2026-07-12T14:44:03.9448844Z   type: 'test'
+2026-07-12T14:44:03.9449402Z   ...
+2026-07-12T14:44:03.9519697Z # Subtest: 로비 controller는 start 전에는 구독하지 않고 중복 start에도 한 번만 구독한다
+2026-07-12T14:44:03.9520992Z ok 126 - 로비 controller는 start 전에는 구독하지 않고 중복 start에도 한 번만 구독한다
+2026-07-12T14:44:03.9521881Z   ---
+2026-07-12T14:44:03.9522512Z   duration_ms: 1.098247
+2026-07-12T14:44:03.9523104Z   type: 'test'
+2026-07-12T14:44:03.9523651Z   ...
+2026-07-12T14:44:03.9524945Z # Subtest: 활성 방마다 players listener를 한 번만 만들고 기존 currentPlayers 계산을 유지한다
+2026-07-12T14:44:03.9526291Z ok 127 - 활성 방마다 players listener를 한 번만 만들고 기존 currentPlayers 계산을 유지한다
+2026-07-12T14:44:03.9527246Z   ---
+2026-07-12T14:44:03.9527815Z   duration_ms: 1.020942
+2026-07-12T14:44:03.9528424Z   type: 'test'
+2026-07-12T14:44:03.9528972Z   ...
+2026-07-12T14:44:03.9529945Z # Subtest: 사람 플레이어가 없는 방은 목록에서 숨기지만 listener callback에서 삭제 작업을 만들지 않는다
+2026-07-12T14:44:03.9536304Z ok 128 - 사람 플레이어가 없는 방은 목록에서 숨기지만 listener callback에서 삭제 작업을 만들지 않는다
+2026-07-12T14:44:03.9537094Z   ---
+2026-07-12T14:44:03.9537737Z   duration_ms: 0.178726
+2026-07-12T14:44:03.9538138Z   type: 'test'
+2026-07-12T14:44:03.9538472Z   ...
+2026-07-12T14:44:03.9539273Z # Subtest: 방이 목록에서 사라지면 해당 players listener만 해제하고 늦은 callback은 무시한다
+2026-07-12T14:44:03.9540367Z ok 129 - 방이 목록에서 사라지면 해당 players listener만 해제하고 늦은 callback은 무시한다
+--
+2026-07-12T14:44:03.9721557Z   ---
+2026-07-12T14:44:03.9721770Z   duration_ms: 0.533055
+2026-07-12T14:44:03.9722009Z   type: 'test'
+2026-07-12T14:44:03.9722216Z   ...
+2026-07-12T14:44:03.9745099Z 1..146
+2026-07-12T14:44:03.9745469Z # tests 146
+2026-07-12T14:44:03.9745776Z # suites 0
+2026-07-12T14:44:03.9746078Z # pass 146
+2026-07-12T14:44:03.9746382Z # fail 0
+2026-07-12T14:44:03.9746684Z # cancelled 0
+2026-07-12T14:44:03.9747021Z # skipped 0
+2026-07-12T14:44:03.9747326Z # todo 0
+2026-07-12T14:44:03.9747678Z # duration_ms 518.984983
+2026-07-12T14:44:03.9918272Z ##[group]Run npm run build
+2026-07-12T14:44:03.9918596Z [36;1mnpm run build[0m
+2026-07-12T14:44:03.9953262Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:44:03.9953532Z env:
+2026-07-12T14:44:03.9953758Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:44:03.9954084Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:44:03.9954683Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:03.9955174Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:03.9955561Z ##[endgroup]
+2026-07-12T14:44:04.0919400Z 
+2026-07-12T14:44:04.0919634Z > build
+2026-07-12T14:44:04.0920008Z > tsc -b && vite build
+2026-07-12T14:44:04.0920252Z 
+2026-07-12T14:44:10.9786043Z [36mvite v8.1.3 [32mbuilding client environment for production...[36m[39m
+2026-07-12T14:44:10.9875402Z [2K
+2026-07-12T14:44:11.2193993Z transforming...✓ 88 modules transformed.
+2026-07-12T14:44:11.2801386Z rendering chunks...
+2026-07-12T14:44:11.4065243Z computing gzip size...
+2026-07-12T14:44:11.4242840Z dist/index.html                     0.24 kB │ gzip:   0.19 kB
+2026-07-12T14:44:11.4243695Z dist/assets/index-02A_khSq.css    114.71 kB │ gzip:  21.46 kB
+2026-07-12T14:44:11.4244630Z dist/assets/index-CzaGbd1H.js   1,048.38 kB │ gzip: 310.29 kB
+2026-07-12T14:44:11.4244982Z 
+2026-07-12T14:44:11.4251770Z [33m[plugin builtin:vite-reporter] 
+2026-07-12T14:44:11.4252354Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-07-12T14:44:11.4252864Z - Using dynamic import() to code-split the application
+2026-07-12T14:44:11.4253681Z - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+--
+2026-07-12T14:44:36.6739083Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:36.6739572Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:36.6739954Z ##[endgroup]
+2026-07-12T14:44:47.3773695Z npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+2026-07-12T14:44:47.8125209Z npm warn deprecated json-ptr@3.1.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+2026-07-12T14:44:48.1385964Z npm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+2026-07-12T14:44:48.2425912Z npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+2026-07-12T14:44:54.1354746Z [36m[1mi  emulators:[22m[39m Starting emulators: auth, firestore
+2026-07-12T14:44:54.1356187Z [36m[1mi  emulators:[22m[39m Detected demo project ID "demo-yut-auth-gated-29196810420-1", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.
+2026-07-12T14:44:54.1461414Z [33m[1m⚠ [22m[39m It appears you are running in a CI environment. You can avoid downloading the Firestore Emulator repeatedly by caching the /home/runner/.cache/firebase/emulators directory.
+2026-07-12T14:44:54.1463305Z [36m[1mi  firestore:[22m[39m downloading cloud-firestore-emulator-v1.21.0.jar...
+2026-07-12T14:44:55.1495907Z 
+2026-07-12T14:44:55.5283470Z [36m[1mi  firestore:[22m[39m Firestore Emulator logging to [1mfirestore-debug.log[22m
+2026-07-12T14:44:58.3416311Z [32m[1m✔  firestore:[22m[39m Firestore Emulator was started in standard edition.
+2026-07-12T14:44:58.3435594Z [32m[1m✔  firestore:[22m[39m Firestore Emulator UI websocket is running on 9150.
+2026-07-12T14:45:03.5973753Z [36m[1mi [22m[39m Running script: [1mnpm run qa:emulator-suite[22m
+2026-07-12T14:45:03.6965240Z 
+2026-07-12T14:45:03.6965837Z > qa:emulator-suite
+2026-07-12T14:45:03.6966390Z > node tests/helpers/run-qa-emulator-suite.mjs
+2026-07-12T14:45:03.6966638Z 
+2026-07-12T14:45:03.7267629Z 
+2026-07-12T14:45:03.7268166Z ===== Verify emulator runtime =====
+2026-07-12T14:45:03.7615591Z FIREBASE_CONFIG contains emulator-generated demo config for demo-yut-auth-gated-29196810420-1.
+2026-07-12T14:45:03.7618146Z QA Firebase config guard passed: project=demo-yut-auth-gated-29196810420-1, run=auth-gated-29196810420-1
+2026-07-12T14:45:03.7619238Z Expected Firestore emulator endpoint: 127.0.0.1:8080
+2026-07-12T14:45:03.7619979Z Expected Auth emulator endpoint: http://127.0.0.1:9099
+2026-07-12T14:45:03.7644599Z QA Firebase emulator runtime endpoints are reachable.
+2026-07-12T14:45:03.7702057Z 
+2026-07-12T14:45:03.7702393Z ===== Cleanup current QA namespace before tests =====
+2026-07-12T14:45:03.9178048Z (node:3544) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+2026-07-12T14:45:03.9180353Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+2026-07-12T14:45:03.9181766Z To eliminate this warning, add "type": "module" to /home/runner/work/Yut/Yut/package.json.
+2026-07-12T14:45:03.9182834Z (Use `node --trace-warnings ...` to show where the warning was created)
+2026-07-12T14:45:05.1718510Z QA cleanup namespace=auth-gated-29196810420-1, rooms=0
+2026-07-12T14:46:05.2033887Z 
+2026-07-12T14:46:05.2034587Z ===== Browser Firebase isolation guard =====
+2026-07-12T14:46:06.6699381Z 
+2026-07-12T14:46:06.6700100Z Running 1 test using 1 worker
+2026-07-12T14:46:06.6714357Z 
+--
+2026-07-12T14:46:07.8628397Z > test:qa-basic-flow
+2026-07-12T14:46:07.8630394Z > playwright test --workers=1 --project=desktop-chromium tests/game-flow/basic-turn.spec.js tests/game-flow/game-start-authority.spec.js --output=test-results/basic-flow
+2026-07-12T14:46:07.8652247Z 
+2026-07-12T14:46:09.3218251Z 
+2026-07-12T14:46:09.3218860Z Running 6 tests using 1 worker
+2026-07-12T14:46:09.3231636Z 
+2026-07-12T14:46:26.5510430Z   ✓  1 [desktop-chromium] › tests/game-flow/basic-turn.spec.js:13:7 › game flow QA › AI를 추가한 2인 방에서 게임 화면 진입과 첫 턴 조작 UI를 검증한다 (16.6s)
+2026-07-12T14:46:37.1205727Z   ✓  2 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:37:7 › game start authority QA › 게스트 동시 접속에서는 초기 state 저장 후에만 양쪽 화면이 game으로 전환된다 (10.5s)
+2026-07-12T14:46:41.3201497Z   ✓  3 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:83:7 › game start authority QA › 빠른 3회 클릭과 timeout 재클릭은 동일 requestId로 한 번만 version을 증가시킨다 (4.2s)
+2026-07-12T14:46:45.4839658Z   ✓  4 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:111:7 › game start authority QA › timeout 재클릭 후 카운트다운 취소 시 늦은 응답이 와도 초기화되지 않는다 (4.2s)
+2026-07-12T14:46:50.8927472Z   ✓  5 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:131:7 › game start authority QA › 초기화 지연 중 cancelled 또는 다른 requestId로 바뀌면 transaction이 거절되고 게임 화면에 진입하지 않는다 (5.4s)
+2026-07-12T14:46:52.3471532Z   ✓  6 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:155:7 › game start authority QA › 만료된 requested 상태에서 새 시작은 새 version과 countdown을 실제 room 문서에 만든다 (1.4s)
+2026-07-12T14:46:52.4019025Z 
+2026-07-12T14:46:52.4024626Z   6 passed (44.0s)
+2026-07-12T14:46:52.4207928Z 
+2026-07-12T14:46:52.4208334Z ===== QA room lifecycle =====
+2026-07-12T14:46:52.5139323Z 
+2026-07-12T14:46:52.5139867Z > test:qa-room-lifecycle
+2026-07-12T14:46:52.5140672Z > playwright test --workers=1 --project=desktop-chromium tests/online/room-lifecycle.spec.js --output=test-results/room-lifecycle
+2026-07-12T14:46:52.5141212Z 
+2026-07-12T14:46:53.7839181Z 
+2026-07-12T14:46:53.7839966Z Running 1 test using 1 worker
+2026-07-12T14:46:53.7852065Z 
+2026-07-12T14:46:55.5219513Z   ✓  1 [desktop-chromium] › tests/online/room-lifecycle.spec.js:13:7 › online room QA › 방 생성 후 대기실에 진입한다 (1.1s)
+2026-07-12T14:46:55.5743151Z 
+2026-07-12T14:46:55.5749799Z   1 passed (2.6s)
+2026-07-12T14:46:55.5954114Z 
+2026-07-12T14:46:55.5954781Z ===== QA online turn recovery =====
+2026-07-12T14:46:55.6888187Z 
+2026-07-12T14:46:55.6889066Z > test:qa-online-turn-recovery
+2026-07-12T14:46:55.6892656Z > playwright test --workers=1 --project=desktop-chromium tests/regression/bug-history-smoke.spec.js tests/regression/roll-mat-surface.spec.js --output=test-results/online-turn-recovery
+2026-07-12T14:46:55.6893806Z 
+2026-07-12T14:46:57.1304928Z 
+2026-07-12T14:46:57.1305684Z Running 5 tests using 1 worker
+2026-07-12T14:46:57.1314641Z 
+2026-07-12T14:47:05.2036397Z   ✓  1 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:14:7 › BUG_HISTORY regression smoke › 게임 시작 직후 윷 던지기/대기 버튼 상태가 고착되지 않는다 (7.4s)
+2026-07-12T14:47:41.2340147Z   ✓  2 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:42:7 › BUG_HISTORY regression smoke › 온라인 윷 던지기는 sequence replay 애니메이션을 표시하고 이동 직후 경로 preview를 숨긴다 (36.0s)
+2026-07-12T14:48:15.9796421Z   ✓  3 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:326:7 › BUG_HISTORY regression smoke › host가 대리 제출한 AI 이동은 sequence 경로로 칸별 재생되고 내 이동은 중복 재생되지 않는다 (34.7s)
+2026-07-12T14:48:16.0400933Z   ✓  4 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:551:7 › BUG_HISTORY regression smoke › timeout 벌칙은 오프라인 로컬 timeout에만 적용된다 (52ms)
+2026-07-12T14:48:32.2007936Z   ✓  5 [desktop-chromium] › tests/regression/roll-mat-surface.spec.js:13:7 › roll mat surface regression › pending부터 결과 유지까지 같은 2D 매트 표면을 계속 표시한다 (16.1s)
+2026-07-12T14:48:32.2556747Z 
+2026-07-12T14:48:32.2561799Z   5 passed (1.6m)
+2026-07-12T14:48:32.2766591Z 
+2026-07-12T14:48:32.2767146Z ===== QA desktop lobby regression =====
+2026-07-12T14:48:32.3695867Z 
+2026-07-12T14:48:32.3696750Z > test:qa-cleanup-layout-regression
+2026-07-12T14:48:32.3697978Z > playwright test --workers=1 --project=desktop-chromium tests/lobby --output=test-results/lobby-regression
+2026-07-12T14:48:32.3698683Z 
+2026-07-12T14:48:33.7033551Z 
+2026-07-12T14:48:33.7034660Z Running 2 tests using 1 worker
+2026-07-12T14:48:33.7047823Z 
+2026-07-12T14:48:37.3305859Z   ✓  1 [desktop-chromium] › tests/lobby/cleanup-layout-regression.spec.js:17:7 › cleanup/layout regression QA › 대기실과 로비 주요 버튼은 force click 없이 클릭 가능하고 로비 action column 정렬을 유지한다 (3.0s)
+2026-07-12T14:48:37.6500991Z   ✓  2 [desktop-chromium] › tests/lobby/lobby-options.spec.js:6:7 › lobby QA › 로비 저장 옵션이 현재 화면에 반영된다 (299ms)
+2026-07-12T14:48:37.7101126Z 
+2026-07-12T14:48:37.7108947Z   2 passed (4.8s)
+2026-07-12T14:48:37.7411897Z 
+2026-07-12T14:48:37.7412531Z ===== QA mobile layout =====
+2026-07-12T14:48:37.8337144Z 
+2026-07-12T14:48:37.8338164Z > test:qa-mobile-layout
+2026-07-12T14:48:37.8339616Z > playwright test --workers=1 --project=mobile-galaxy --project=tablet-ipad tests/mobile/mobile-layout.spec.js --output=test-results/mobile-layout
+2026-07-12T14:48:37.8340583Z 
+2026-07-12T14:48:39.1227141Z 
+2026-07-12T14:48:39.1228044Z Running 4 tests using 1 worker
+2026-07-12T14:48:39.1241977Z 
+2026-07-12T14:48:40.4319437Z   ✓  1 [mobile-galaxy] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 (687ms)
+2026-07-12T14:48:41.6363902Z   ✓  2 [mobile-galaxy] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 (1.2s)
+2026-07-12T14:48:42.2261413Z   ✘  3 [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 (3ms)
+2026-07-12T14:48:42.7749923Z   ✘  4 [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 (3ms)
+2026-07-12T14:48:42.8031568Z 
+2026-07-12T14:48:42.8051653Z 
+2026-07-12T14:48:42.8053711Z   1) [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 
+2026-07-12T14:48:42.8054560Z 
+2026-07-12T14:48:42.8055368Z     Error: browserType.launch: Executable doesn't exist at /home/runner/.cache/ms-playwright/webkit-2311/pw_run.sh
+2026-07-12T14:48:42.8056141Z     ╔════════════════════════════════════════════════════════════╗
+2026-07-12T14:48:42.8056656Z     ║ Looks like Playwright was just installed or updated.       ║
+2026-07-12T14:48:42.8057516Z     ║ Please run the following command to download new browsers: ║
+2026-07-12T14:48:42.8058061Z     ║                                                            ║
+2026-07-12T14:48:42.8058490Z     ║     npx playwright install                                 ║
+2026-07-12T14:48:42.8058930Z     ║                                                            ║
+2026-07-12T14:48:42.8059372Z     ║ <3 Playwright Team                                         ║
+2026-07-12T14:48:42.8059847Z     ╚════════════════════════════════════════════════════════════╝
+2026-07-12T14:48:42.8060065Z 
+2026-07-12T14:48:42.8060906Z     Error Context: test-results/mobile-layout/mobile-mobile-layout-mobil-a8364-일-태블릿-뷰포트에서-로비-핵심-탭-대상이-보인다-tablet-ipad/error-context.md
+2026-07-12T14:48:42.8061450Z 
+2026-07-12T14:48:42.8062162Z   2) [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 
+2026-07-12T14:48:42.8062758Z 
+2026-07-12T14:48:42.8063415Z     Error: browserType.launch: Executable doesn't exist at /home/runner/.cache/ms-playwright/webkit-2311/pw_run.sh
+2026-07-12T14:48:42.8064999Z     ╔════════════════════════════════════════════════════════════╗
+2026-07-12T14:48:42.8065618Z     ║ Looks like Playwright was just installed or updated.       ║
+2026-07-12T14:48:42.8066250Z     ║ Please run the following command to download new browsers: ║
+2026-07-12T14:48:42.8066712Z     ║                                                            ║
+2026-07-12T14:48:42.8067151Z     ║     npx playwright install                                 ║
+2026-07-12T14:48:42.8067587Z     ║                                                            ║
+2026-07-12T14:48:42.8068037Z     ║ <3 Playwright Team                                         ║
+2026-07-12T14:48:42.8068534Z     ╚════════════════════════════════════════════════════════════╝
+2026-07-12T14:48:42.8068767Z 
+2026-07-12T14:48:42.8069396Z     Error Context: test-results/mobile-layout/mobile-mobile-layout-mobil-98cdc-모바일-로비-방-카드의-좌우-영역이-겹치지-않는다-tablet-ipad/error-context.md
+2026-07-12T14:48:42.8069919Z 
+2026-07-12T14:48:42.8070016Z   2 failed
+2026-07-12T14:48:42.8070620Z     [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 
+2026-07-12T14:48:42.8071464Z     [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 
+2026-07-12T14:48:42.8071947Z   2 passed (4.5s)
+2026-07-12T14:48:42.8288226Z 
+2026-07-12T14:48:42.8288774Z ===== Cleanup current QA namespace after tests =====
+2026-07-12T14:48:42.9722567Z (node:5384) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+2026-07-12T14:48:42.9724770Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+2026-07-12T14:48:42.9726052Z To eliminate this warning, add "type": "module" to /home/runner/work/Yut/Yut/package.json.
+2026-07-12T14:48:42.9727030Z (Use `node --trace-warnings ...` to show where the warning was created)
+2026-07-12T14:48:43.0690850Z QA cleanup namespace=auth-gated-29196810420-1, rooms=0
+2026-07-12T14:48:43.0743845Z cleanup-after namespace=auth-gated-29196810420-1, remaining=0
+2026-07-12T14:49:43.0912322Z QA emulator suite failed: QA mobile layout (exit 1)
+2026-07-12T14:49:43.1017467Z [33m[1m⚠ [22m[39m Script exited unsuccessfully (code 1)
+2026-07-12T14:49:43.6031953Z [36m[1mi  emulators:[22m[39m Shutting down emulators.
+2026-07-12T14:49:43.6035289Z [36m[1mi  firestore:[22m[39m Stopping Firestore Emulator
+2026-07-12T14:49:43.9450303Z [36m[1mi  auth:[22m[39m Stopping Authentication Emulator
+2026-07-12T14:49:43.9454091Z [36m[1mi  hub:[22m[39m Stopping emulator hub
+2026-07-12T14:49:43.9458078Z [36m[1mi  logging:[22m[39m Stopping Logging Emulator
+2026-07-12T14:49:43.9491380Z 
+2026-07-12T14:49:43.9492411Z [1m[31mError:[39m[22m Script "[1mnpm run qa:emulator-suite[22m" exited with code 1
+2026-07-12T14:49:44.2516810Z ##[error]Process completed with exit code 1.
+2026-07-12T14:49:44.2628587Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-12T14:49:44.2629732Z Post job cleanup.
+2026-07-12T14:49:44.3946025Z (node:5413) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-07-12T14:49:44.3947161Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-07-12T14:49:44.4154660Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-12T14:49:44.4155885Z Post job cleanup.
+2026-07-12T14:49:44.5115911Z [command]/usr/bin/git version
+2026-07-12T14:49:44.5144742Z git version 2.54.0
+2026-07-12T14:49:44.5168092Z Temporarily overriding HOME='/home/runner/work/_temp/8cf35c70-b953-4de3-a599-839b43455726' before making global git config changes
+2026-07-12T14:49:44.5169893Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-12T14:49:44.5175370Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Yut/Yut
+2026-07-12T14:49:44.5214731Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-12T14:49:44.5254598Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-12T14:49:44.5546628Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-12T14:49:44.5578089Z http.https://github.com/.extraheader
+2026-07-12T14:49:44.5590328Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-07-12T14:49:44.5627950Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-12T14:49:44.5958200Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-12T14:49:44.6002793Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-12T14:49:44.6538224Z Cleaning up orphan processes
+2026-07-12T14:49:44.6875509Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-java@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

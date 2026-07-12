@@ -1,0 +1,1647 @@
+﻿2026-07-12T14:43:48.3346224Z Current runner version: '2.335.1'
+2026-07-12T14:43:48.3371037Z ##[group]Runner Image Provisioner
+2026-07-12T14:43:48.3372008Z Hosted Compute Agent
+2026-07-12T14:43:48.3372622Z Version: 20260624.560
+2026-07-12T14:43:48.3373334Z Commit: 925d229a51159bc391ae97e54a2dd1fe20af789d
+2026-07-12T14:43:48.3374106Z Build Date: 2026-06-24T18:26:47Z
+2026-07-12T14:43:48.3375172Z Worker ID: {23d0cf8f-82ec-49c5-a974-def109dd03bc}
+2026-07-12T14:43:48.3376010Z Azure Region: northcentralus
+2026-07-12T14:43:48.3376640Z ##[endgroup]
+2026-07-12T14:43:48.3378058Z ##[group]Operating System
+2026-07-12T14:43:48.3378785Z Ubuntu
+2026-07-12T14:43:48.3379321Z 24.04.4
+2026-07-12T14:43:48.3379923Z LTS
+2026-07-12T14:43:48.3380472Z ##[endgroup]
+2026-07-12T14:43:48.3381031Z ##[group]Runner Image
+2026-07-12T14:43:48.3381706Z Image: ubuntu-24.04
+2026-07-12T14:43:48.3382295Z Version: 20260705.232.1
+2026-07-12T14:43:48.3383672Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20260705.232/images/ubuntu/Ubuntu2404-Readme.md
+2026-07-12T14:43:48.3385572Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20260705.232
+2026-07-12T14:43:48.3386637Z ##[endgroup]
+2026-07-12T14:43:48.3387812Z ##[group]GITHUB_TOKEN Permissions
+2026-07-12T14:43:48.3389791Z Contents: write
+2026-07-12T14:43:48.3390404Z Metadata: read
+2026-07-12T14:43:48.3390957Z ##[endgroup]
+2026-07-12T14:43:48.3393527Z Secret source: Actions
+2026-07-12T14:43:48.3394676Z Prepare workflow directory
+2026-07-12T14:43:48.3940614Z Prepare all required actions
+2026-07-12T14:43:48.3978345Z Getting action download info
+2026-07-12T14:43:48.6205253Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2026-07-12T14:43:48.6931021Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-07-12T14:43:48.7801045Z Download action repository 'actions/setup-java@v4' (SHA:c1e323688fd81a25caa38c78aa6df2d33d3e20d9)
+2026-07-12T14:43:49.4959862Z Complete job name: verify
+2026-07-12T14:43:49.5698057Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-12T14:43:49.5707562Z ##[group]Run actions/checkout@v4
+2026-07-12T14:43:49.5708298Z with:
+2026-07-12T14:43:49.5708808Z   ref: agent/auth-gated-lobby-room-subscription
+2026-07-12T14:43:49.5709490Z   fetch-depth: 0
+2026-07-12T14:43:49.5709956Z   repository: stafor94/Yut
+2026-07-12T14:43:49.5714750Z   token: ***
+2026-07-12T14:43:49.5715207Z   ssh-strict: true
+2026-07-12T14:43:49.5715671Z   ssh-user: git
+2026-07-12T14:43:49.5716135Z   persist-credentials: true
+2026-07-12T14:43:49.5716660Z   clean: true
+2026-07-12T14:43:49.5717126Z   sparse-checkout-cone-mode: true
+2026-07-12T14:43:49.5717700Z   fetch-tags: false
+2026-07-12T14:43:49.5718169Z   show-progress: true
+2026-07-12T14:43:49.5718740Z   lfs: false
+2026-07-12T14:43:49.5719167Z   submodules: false
+2026-07-12T14:43:49.5719636Z   set-safe-directory: true
+2026-07-12T14:43:49.5720322Z env:
+2026-07-12T14:43:49.5720750Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:43:49.5721498Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:43:49.5722342Z ##[endgroup]
+2026-07-12T14:43:49.6722586Z Syncing repository: stafor94/Yut
+2026-07-12T14:43:49.6725578Z ##[group]Getting Git version info
+2026-07-12T14:43:49.6726685Z Working directory is '/home/runner/work/Yut/Yut'
+2026-07-12T14:43:49.6728293Z [command]/usr/bin/git version
+2026-07-12T14:43:49.6773102Z git version 2.54.0
+2026-07-12T14:43:49.6794597Z ##[endgroup]
+2026-07-12T14:43:49.6809757Z Temporarily overriding HOME='/home/runner/work/_temp/8bb645c4-fd32-46a1-8e8a-36c82173210d' before making global git config changes
+2026-07-12T14:43:49.6812393Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-12T14:43:49.6814765Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Yut/Yut
+2026-07-12T14:43:49.6869116Z Deleting the contents of '/home/runner/work/Yut/Yut'
+2026-07-12T14:43:49.6878331Z ##[group]Initializing the repository
+2026-07-12T14:43:49.6883679Z [command]/usr/bin/git init /home/runner/work/Yut/Yut
+2026-07-12T14:43:49.6997160Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-07-12T14:43:49.6999072Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-07-12T14:43:49.7001107Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-07-12T14:43:49.7002749Z hint: call:
+2026-07-12T14:43:49.7003453Z hint:
+2026-07-12T14:43:49.7004380Z hint: 	git config --global init.defaultBranch <name>
+2026-07-12T14:43:49.7005131Z hint:
+2026-07-12T14:43:49.7005810Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-07-12T14:43:49.7007323Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-07-12T14:43:49.7008447Z hint:
+2026-07-12T14:43:49.7008927Z hint: 	git branch -m <name>
+2026-07-12T14:43:49.7009465Z hint:
+2026-07-12T14:43:49.7010192Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-07-12T14:43:49.7011339Z Initialized empty Git repository in /home/runner/work/Yut/Yut/.git/
+2026-07-12T14:43:49.7013456Z [command]/usr/bin/git remote add origin https://github.com/stafor94/Yut
+2026-07-12T14:43:49.7061749Z ##[endgroup]
+2026-07-12T14:43:49.7063160Z ##[group]Disabling automatic garbage collection
+2026-07-12T14:43:49.7065153Z [command]/usr/bin/git config --local gc.auto 0
+2026-07-12T14:43:49.7098292Z ##[endgroup]
+2026-07-12T14:43:49.7099449Z ##[group]Setting up auth
+2026-07-12T14:43:49.7107157Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-12T14:43:49.7143854Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-12T14:43:49.7521228Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-12T14:43:49.7566297Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-12T14:43:49.7808528Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-12T14:43:49.7848174Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-12T14:43:49.8094491Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-07-12T14:43:49.8135186Z ##[endgroup]
+2026-07-12T14:43:49.8136051Z ##[group]Fetching the repository
+2026-07-12T14:43:49.8145650Z [command]/usr/bin/git -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-07-12T14:43:50.5048341Z From https://github.com/stafor94/Yut
+2026-07-12T14:43:50.5050611Z  * [new branch]      agent/action-feedback-phase2-base -> origin/agent/action-feedback-phase2-base
+2026-07-12T14:43:50.5053513Z  * [new branch]      agent/action-feedback-phase2-product -> origin/agent/action-feedback-phase2-product
+2026-07-12T14:43:50.5056656Z  * [new branch]      agent/auth-gated-lobby-room-subscription -> origin/agent/auth-gated-lobby-room-subscription
+2026-07-12T14:43:50.5059818Z  * [new branch]      agent/conditional-sequence-recovery-clean -> origin/agent/conditional-sequence-recovery-clean
+2026-07-12T14:43:50.5063098Z  * [new branch]      agent/correct-production-firebase-app-id -> origin/agent/correct-production-firebase-app-id
+2026-07-12T14:43:50.5067123Z  * [new branch]      agent/correct-production-firebase-app-id-clean -> origin/agent/correct-production-firebase-app-id-clean
+2026-07-12T14:43:50.5071086Z  * [new branch]      agent/correct-production-firebase-app-id-final -> origin/agent/correct-production-firebase-app-id-final
+2026-07-12T14:43:50.5075510Z  * [new branch]      agent/correct-production-firebase-app-id-prod -> origin/agent/correct-production-firebase-app-id-prod
+2026-07-12T14:43:50.5079334Z  * [new branch]      agent/correct-production-firebase-app-id-release -> origin/agent/correct-production-firebase-app-id-release
+2026-07-12T14:43:50.5083152Z  * [new branch]      agent/correct-production-firebase-app-id-temp -> origin/agent/correct-production-firebase-app-id-temp
+2026-07-12T14:43:50.5087031Z  * [new branch]      agent/correct-production-firebase-app-id-work -> origin/agent/correct-production-firebase-app-id-work
+2026-07-12T14:43:50.5090695Z  * [new branch]      agent/correct-production-firebase-app-id2 -> origin/agent/correct-production-firebase-app-id2
+2026-07-12T14:43:50.5093662Z  * [new branch]      agent/firebase-app-id-corrected -> origin/agent/firebase-app-id-corrected
+2026-07-12T14:43:50.5096727Z  * [new branch]      agent/firebase-app-id-corrected-final -> origin/agent/firebase-app-id-corrected-final
+2026-07-12T14:43:50.5099748Z  * [new branch]      agent/firebase-app-id-corrected-v2 -> origin/agent/firebase-app-id-corrected-v2
+2026-07-12T14:43:50.5102476Z  * [new branch]      agent/firebase-app-id-corrected-v3 -> origin/agent/firebase-app-id-corrected-v3
+2026-07-12T14:43:50.5105463Z  * [new branch]      agent/fix-null-roll-sound-build-copy -> origin/agent/fix-null-roll-sound-build-copy
+2026-07-12T14:43:50.5108312Z  * [new branch]      agent/fix-room-creation-critical-path -> origin/agent/fix-room-creation-critical-path
+2026-07-12T14:43:50.5111471Z  * [new branch]      agent/fix-room-creation-critical-path-final -> origin/agent/fix-room-creation-critical-path-final
+2026-07-12T14:43:50.5116263Z  * [new branch]      agent/fix-room-creation-request-identity-verify -> origin/agent/fix-room-creation-request-identity-verify
+2026-07-12T14:43:50.5120097Z  * [new branch]      agent/fix-room-transition-race-verify -> origin/agent/fix-room-transition-race-verify
+2026-07-12T14:43:50.5123252Z  * [new branch]      agent/fix-tts-retry-and-qa-room-fixture -> origin/agent/fix-tts-retry-and-qa-room-fixture
+2026-07-12T14:43:50.5126296Z  * [new branch]      agent/main-qa-status-probe -> origin/agent/main-qa-status-probe
+2026-07-12T14:43:50.5128909Z  * [new branch]      agent/nonblocking-action-feedback -> origin/agent/nonblocking-action-feedback
+2026-07-12T14:43:50.5131892Z  * [new branch]      agent/presence-recovery-phase4-apply -> origin/agent/presence-recovery-phase4-apply
+2026-07-12T14:43:50.5135118Z  * [new branch]      agent/presence-recovery-phase4-base -> origin/agent/presence-recovery-phase4-base
+2026-07-12T14:43:50.5138149Z  * [new branch]      agent/presence-recovery-phase4-final -> origin/agent/presence-recovery-phase4-final
+2026-07-12T14:43:50.5142537Z  * [new branch]      agent/presence-recovery-phase4-product -> origin/agent/presence-recovery-phase4-product
+2026-07-12T14:43:50.5145845Z  * [new branch]      agent/room-creation-phase1-final -> origin/agent/room-creation-phase1-final
+2026-07-12T14:43:50.5149586Z  * [new branch]      agent/serialize-main-qa-firebase -> origin/agent/serialize-main-qa-firebase
+2026-07-12T14:43:50.5153451Z  * [new branch]      agent/validate-room-creation-config-base -> origin/agent/validate-room-creation-config-base
+2026-07-12T14:43:50.5158241Z  * [new branch]      codex/app.tsx-presence-hook -> origin/codex/app.tsx-presence-hook
+2026-07-12T14:43:50.5162432Z  * [new branch]      codex/fix-game-item-prompt-logic -> origin/codex/fix-game-item-prompt-logic
+2026-07-12T14:43:50.5166722Z  * [new branch]      fix/actions-29152130609-ai-move-qa -> origin/fix/actions-29152130609-ai-move-qa
+2026-07-12T14:43:50.5170281Z  * [new branch]      main       -> origin/main
+2026-07-12T14:43:50.5175822Z ##[endgroup]
+2026-07-12T14:43:50.5178383Z ##[group]Determining the checkout info
+2026-07-12T14:43:50.5181498Z [command]/usr/bin/git branch --list --remote origin/agent/auth-gated-lobby-room-subscription
+2026-07-12T14:43:50.5193742Z   origin/agent/auth-gated-lobby-room-subscription
+2026-07-12T14:43:50.5205559Z ##[endgroup]
+2026-07-12T14:43:50.5207538Z [command]/usr/bin/git sparse-checkout disable
+2026-07-12T14:43:50.5259343Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-07-12T14:43:50.5306179Z ##[group]Checking out the ref
+2026-07-12T14:43:50.5318394Z [command]/usr/bin/git checkout --progress --force -B agent/auth-gated-lobby-room-subscription refs/remotes/origin/agent/auth-gated-lobby-room-subscription
+2026-07-12T14:43:50.5501549Z Switched to a new branch 'agent/auth-gated-lobby-room-subscription'
+2026-07-12T14:43:50.5506372Z branch 'agent/auth-gated-lobby-room-subscription' set up to track 'origin/agent/auth-gated-lobby-room-subscription'.
+2026-07-12T14:43:50.5512241Z ##[endgroup]
+2026-07-12T14:43:50.5557539Z [command]/usr/bin/git log -1 --format=%H
+2026-07-12T14:43:50.5589503Z 434271a08459d1acdabb91257025499f2d21df97
+2026-07-12T14:43:50.5937219Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-12T14:43:50.5942385Z ##[group]Run actions/setup-node@v4
+2026-07-12T14:43:50.5943467Z with:
+2026-07-12T14:43:50.5944468Z   node-version: 22
+2026-07-12T14:43:50.5945353Z   cache: npm
+2026-07-12T14:43:50.5946203Z   always-auth: false
+2026-07-12T14:43:50.5947126Z   check-latest: false
+2026-07-12T14:43:50.5955562Z   token: ***
+2026-07-12T14:43:50.5956413Z env:
+2026-07-12T14:43:50.5957278Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:43:50.5958505Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:43:50.5959751Z ##[endgroup]
+2026-07-12T14:43:50.7378938Z Found in cache @ /opt/hostedtoolcache/node/22.23.1/x64
+2026-07-12T14:43:50.7382313Z ##[group]Environment details
+2026-07-12T14:43:50.7386826Z (node:2320) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-07-12T14:43:50.7390701Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-07-12T14:43:53.8187341Z node: v22.23.1
+2026-07-12T14:43:53.8187778Z npm: 10.9.8
+2026-07-12T14:43:53.8188104Z yarn: 1.22.22
+2026-07-12T14:43:53.8189208Z ##[endgroup]
+2026-07-12T14:43:53.8212044Z [command]/opt/hostedtoolcache/node/22.23.1/x64/bin/npm config get cache
+2026-07-12T14:43:54.1408207Z /home/runner/.npm
+2026-07-12T14:43:54.2715107Z Cache hit for: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+2026-07-12T14:43:54.2809430Z (node:2320) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-07-12T14:43:54.9878799Z Received 67237890 of 67237890 (100.0%), 102.6 MBs/sec
+2026-07-12T14:43:54.9879353Z Cache Size: ~64 MB (67237890 B)
+2026-07-12T14:43:54.9906141Z [command]/usr/bin/tar -xf /home/runner/work/_temp/e4fea56f-fd40-45bc-8e77-3f455fbc4293/cache.tzst -P -C /home/runner/work/Yut/Yut --use-compress-program unzstd
+2026-07-12T14:43:55.1016047Z Cache restored successfully
+2026-07-12T14:43:55.1051144Z Cache restored from key: node-cache-Linux-x64-npm-df4a8608bd3bdf43ddcf63a20f9646c7b98c46a0888410358efef093a9ca7f71
+2026-07-12T14:43:55.1338712Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-12T14:43:55.1339951Z ##[group]Run actions/setup-java@v4
+2026-07-12T14:43:55.1340233Z with:
+2026-07-12T14:43:55.1340452Z   distribution: temurin
+2026-07-12T14:43:55.1340688Z   java-version: 21
+2026-07-12T14:43:55.1340912Z   java-package: jdk
+2026-07-12T14:43:55.1341330Z   check-latest: false
+2026-07-12T14:43:55.1341557Z   server-id: github
+2026-07-12T14:43:55.1341781Z   server-username: GITHUB_ACTOR
+2026-07-12T14:43:55.1342045Z   server-password: GITHUB_TOKEN
+2026-07-12T14:43:55.1342307Z   overwrite-settings: true
+2026-07-12T14:43:55.1342548Z   job-status: success
+2026-07-12T14:43:55.1345118Z   token: ***
+2026-07-12T14:43:55.1345334Z env:
+2026-07-12T14:43:55.1345591Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:43:55.1345922Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:43:55.1346251Z ##[endgroup]
+2026-07-12T14:43:55.2927325Z ##[group]Installed distributions
+2026-07-12T14:43:55.2990653Z Resolved Java 21.0.11+10 from tool-cache
+2026-07-12T14:43:55.2991129Z Setting Java 21.0.11+10 as the default
+2026-07-12T14:43:55.2993240Z (node:2368) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-07-12T14:43:55.2994033Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-07-12T14:43:55.2997215Z Creating toolchains.xml for JDK version 21 from temurin
+2026-07-12T14:43:55.3066606Z Writing to /home/runner/.m2/toolchains.xml
+2026-07-12T14:43:55.3066968Z 
+2026-07-12T14:43:55.3067159Z Java configuration:
+2026-07-12T14:43:55.3067553Z   Distribution: temurin
+2026-07-12T14:43:55.3069951Z   Version: 21.0.11+10
+2026-07-12T14:43:55.3070603Z   Path: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:43:55.3071055Z 
+2026-07-12T14:43:55.3072229Z ##[endgroup]
+2026-07-12T14:43:55.3076492Z Creating settings.xml with server-id: github
+2026-07-12T14:43:55.3098375Z Writing to /home/runner/.m2/settings.xml
+2026-07-12T14:43:55.3242307Z ##[group]Run python3 <<'PY'
+2026-07-12T14:43:55.3242829Z [36;1mpython3 <<'PY'[0m
+2026-07-12T14:43:55.3243243Z [36;1mfrom pathlib import Path[0m
+2026-07-12T14:43:55.3243668Z [36;1m[0m
+2026-07-12T14:43:55.3244011Z [36;1mpath = Path('src/app/App.tsx')[0m
+2026-07-12T14:43:55.3244713Z [36;1mtext = path.read_text()[0m
+2026-07-12T14:43:55.3245826Z [36;1mold = "  const rooms = useRooms({ enabled: screen === 'lobby' });\n  const currentUser = userRef.current ?? user;\n  const currentUserId = currentUser?.uid ?? '';\n"[0m
+2026-07-12T14:43:55.3247725Z [36;1mnew = "  const currentUser = userRef.current ?? user;\n  const currentUserId = currentUser?.uid ?? '';\n  const rooms = useRooms({ enabled: screen === 'lobby' && Boolean(currentUser) });\n"[0m
+2026-07-12T14:43:55.3248958Z [36;1mif old in text:[0m
+2026-07-12T14:43:55.3249411Z [36;1m    path.write_text(text.replace(old, new, 1))[0m
+2026-07-12T14:43:55.3249939Z [36;1melif new not in text:[0m
+2026-07-12T14:43:55.3250589Z [36;1m    raise SystemExit('auth-gated room subscription block was not found')[0m
+2026-07-12T14:43:55.3251231Z [36;1mPY[0m
+2026-07-12T14:43:55.3456979Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-07-12T14:43:55.3457631Z env:
+2026-07-12T14:43:55.3458003Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:43:55.3458398Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:43:55.3458831Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:43:55.3459327Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:43:55.3459725Z ##[endgroup]
+2026-07-12T14:43:55.3866713Z ##[group]Run npm ci
+2026-07-12T14:43:55.3866982Z [36;1mnpm ci[0m
+2026-07-12T14:43:55.3902669Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:43:55.3902942Z env:
+2026-07-12T14:43:55.3903168Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:43:55.3903493Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:43:55.3903918Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:43:55.3904589Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:43:55.3904981Z ##[endgroup]
+2026-07-12T14:44:01.3758615Z 
+2026-07-12T14:44:01.3759516Z added 115 packages, and audited 116 packages in 6s
+2026-07-12T14:44:01.3760102Z 
+2026-07-12T14:44:01.3760281Z 12 packages are looking for funding
+2026-07-12T14:44:01.3760606Z   run `npm fund` for details
+2026-07-12T14:44:01.3771119Z 
+2026-07-12T14:44:01.3771283Z found 0 vulnerabilities
+2026-07-12T14:44:01.4496341Z ##[group]Run npm run test:unit
+2026-07-12T14:44:01.4496657Z [36;1mnpm run test:unit[0m
+2026-07-12T14:44:01.4530985Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:44:01.4531244Z env:
+2026-07-12T14:44:01.4531470Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:44:01.4531792Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:44:01.4532212Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:01.4532719Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:01.4533107Z ##[endgroup]
+2026-07-12T14:44:01.5562591Z 
+2026-07-12T14:44:01.5562934Z > test:unit
+2026-07-12T14:44:01.5563527Z > rm -rf .tmp-unit-tests && tsc -p tsconfig.test.json && node scripts/run-unit-tests.mjs
+2026-07-12T14:44:01.5563935Z 
+2026-07-12T14:44:03.4865994Z TAP version 13
+2026-07-12T14:44:03.5286126Z # Subtest: pending local action과 애니메이션 진행은 정상 대기 상태다
+2026-07-12T14:44:03.5287275Z ok 1 - pending local action과 애니메이션 진행은 정상 대기 상태다
+2026-07-12T14:44:03.5310130Z   ---
+2026-07-12T14:44:03.5310550Z   duration_ms: 1.227841
+2026-07-12T14:44:03.5310980Z   type: 'test'
+2026-07-12T14:44:03.5311319Z   ...
+2026-07-12T14:44:03.5311972Z # Subtest: 차례와 입력 안내 사유도 전체 화면 오류 modal을 열지 않는다
+2026-07-12T14:44:03.5312792Z ok 2 - 차례와 입력 안내 사유도 전체 화면 오류 modal을 열지 않는다
+2026-07-12T14:44:03.5313294Z   ---
+2026-07-12T14:44:03.5313661Z   duration_ms: 0.20795
+2026-07-12T14:44:03.5314057Z   type: 'test'
+2026-07-12T14:44:03.5314624Z   ...
+2026-07-12T14:44:03.5315174Z # Subtest: 실제 failure만 치명적 modal 대상이다
+2026-07-12T14:44:03.5315898Z ok 3 - 실제 failure만 치명적 modal 대상이다
+2026-07-12T14:44:03.5316485Z   ---
+2026-07-12T14:44:03.5316836Z   duration_ms: 0.253678
+2026-07-12T14:44:03.5317238Z   type: 'test'
+2026-07-12T14:44:03.5317576Z   ...
+2026-07-12T14:44:03.5318297Z # Subtest: 방, sequence, turn이 전진하면 남은 오류 modal을 해제한다
+2026-07-12T14:44:03.5319147Z ok 4 - 방, sequence, turn이 전진하면 남은 오류 modal을 해제한다
+2026-07-12T14:44:03.5338611Z   ---
+2026-07-12T14:44:03.5339364Z   duration_ms: 0.272777
+2026-07-12T14:44:03.5340027Z   type: 'test'
+2026-07-12T14:44:03.5340552Z   ...
+2026-07-12T14:44:03.7542037Z # Subtest: v1 sequence는 stateAfter snapshot을 그대로 적용한다
+2026-07-12T14:44:03.7555242Z ok 5 - v1 sequence는 stateAfter snapshot을 그대로 적용한다
+2026-07-12T14:44:03.7578009Z   ---
+2026-07-12T14:44:03.7578804Z   duration_ms: 1.430924
+2026-07-12T14:44:03.7579222Z   type: 'test'
+2026-07-12T14:44:03.7579559Z   ...
+2026-07-12T14:44:03.7580481Z # Subtest: v2 sequence는 patch와 메타데이터를 직전 state에 적용하고 중복 sequence는 무시한다
+2026-07-12T14:44:03.7581488Z ok 6 - v2 sequence는 patch와 메타데이터를 직전 state에 적용하고 중복 sequence는 무시한다
+2026-07-12T14:44:03.7582033Z   ---
+2026-07-12T14:44:03.7582334Z   duration_ms: 0.357233
+2026-07-12T14:44:03.7582677Z   type: 'test'
+2026-07-12T14:44:03.7582996Z   ...
+2026-07-12T14:44:03.7583830Z # Subtest: v2 patch에 turnVersion이 명시되면 파생값보다 우선하고 mutation id가 없으면 기존 값을 유지한다
+2026-07-12T14:44:03.7585075Z ok 7 - v2 patch에 turnVersion이 명시되면 파생값보다 우선하고 mutation id가 없으면 기존 값을 유지한다
+2026-07-12T14:44:03.7585693Z   ---
+2026-07-12T14:44:03.7586012Z   duration_ms: 0.293958
+2026-07-12T14:44:03.7586354Z   type: 'test'
+2026-07-12T14:44:03.7586646Z   ...
+2026-07-12T14:44:03.7587269Z # Subtest: sequence gap이나 기준 state 부재 시 v2 patch를 임의 적용하지 않는다
+2026-07-12T14:44:03.7588112Z ok 8 - sequence gap이나 기준 state 부재 시 v2 patch를 임의 적용하지 않는다
+2026-07-12T14:44:03.7588612Z   ---
+2026-07-12T14:44:03.7588921Z   duration_ms: 0.213118
+2026-07-12T14:44:03.7589277Z   type: 'test'
+2026-07-12T14:44:03.7589616Z   ...
+2026-07-12T14:44:03.7591073Z # Subtest: 문자열 id와 id 없는 로그도 서로 다른 항목으로 보존하고 중복만 제거한다
+2026-07-12T14:44:03.7592362Z ok 9 - 문자열 id와 id 없는 로그도 서로 다른 항목으로 보존하고 중복만 제거한다
+2026-07-12T14:44:03.7592856Z   ---
+2026-07-12T14:44:03.7593169Z   duration_ms: 0.361559
+2026-07-12T14:44:03.7594962Z   type: 'test'
+2026-07-12T14:44:03.7597215Z   ...
+2026-07-12T14:44:03.7599114Z # Subtest: 연속 v2 event는 입력 순서와 무관하게 authoritative 버전과 state를 복원한다
+2026-07-12T14:44:03.7600744Z ok 10 - 연속 v2 event는 입력 순서와 무관하게 authoritative 버전과 state를 복원한다
+2026-07-12T14:44:03.7602867Z   ---
+2026-07-12T14:44:03.7603231Z   duration_ms: 222.115008
+2026-07-12T14:44:03.7605745Z   type: 'test'
+2026-07-12T14:44:03.7606867Z   ...
+2026-07-12T14:44:03.7645333Z # Subtest: 신규 sequence writer는 v2 필드만 기록하도록 구성되어 있다
+2026-07-12T14:44:03.7655648Z ok 11 - 신규 sequence writer는 v2 필드만 기록하도록 구성되어 있다
+2026-07-12T14:44:03.7665488Z   ---
+2026-07-12T14:44:03.7666100Z   duration_ms: 15.018197
+2026-07-12T14:44:03.7666829Z   type: 'test'
+2026-07-12T14:44:03.7667653Z   ...
+2026-07-12T14:44:03.7773803Z # Subtest: 온라인 윷 던지기는 클라이언트가 선확정한 정상 결과를 그대로 커밋한다
+2026-07-12T14:44:03.7805262Z ok 12 - 온라인 윷 던지기는 클라이언트가 선확정한 정상 결과를 그대로 커밋한다
+2026-07-12T14:44:03.7830051Z   ---
+2026-07-12T14:44:03.7830684Z   duration_ms: 2.407199
+2026-07-12T14:44:03.7831271Z   type: 'test'
+2026-07-12T14:44:03.7831811Z   ...
+2026-07-12T14:44:03.7832729Z # Subtest: 온라인 낙은 클라이언트가 선확정한 표시 결과와 낙 개수를 그대로 사용한다
+2026-07-12T14:44:03.7833689Z ok 13 - 온라인 낙은 클라이언트가 선확정한 표시 결과와 낙 개수를 그대로 사용한다
+2026-07-12T14:44:03.7834885Z   ---
+2026-07-12T14:44:03.7835445Z   duration_ms: 0.353628
+2026-07-12T14:44:03.7836003Z   type: 'test'
+2026-07-12T14:44:03.7836518Z   ...
+2026-07-12T14:44:03.7837242Z # Subtest: 형식이 잘못된 클라이언트 윷 결과는 거부한다
+2026-07-12T14:44:03.7838045Z ok 14 - 형식이 잘못된 클라이언트 윷 결과는 거부한다
+2026-07-12T14:44:03.7838653Z   ---
+2026-07-12T14:44:03.7839149Z   duration_ms: 0.177875
+2026-07-12T14:44:03.7839693Z   type: 'test'
+2026-07-12T14:44:03.7840203Z   ...
+2026-07-12T14:44:03.7840969Z # Subtest: 버그 리포트 sequence 내보내기는 최근 30개와 허용 필드만 포함한다
+2026-07-12T14:44:03.7841900Z ok 15 - 버그 리포트 sequence 내보내기는 최근 30개와 허용 필드만 포함한다
+2026-07-12T14:44:03.7842545Z   ---
+2026-07-12T14:44:03.7843063Z   duration_ms: 5.760985
+2026-07-12T14:44:03.7843622Z   type: 'test'
+2026-07-12T14:44:03.7844439Z   ...
+2026-07-12T14:44:03.7845338Z # Subtest: 함정 설치 후보는 실제 말판 1칸 인접 노드를 방향과 무관하게 반환한다
+2026-07-12T14:44:03.7846310Z ok 16 - 함정 설치 후보는 실제 말판 1칸 인접 노드를 방향과 무관하게 반환한다
+2026-07-12T14:44:03.7846943Z   ---
+2026-07-12T14:44:03.7847444Z   duration_ms: 2.950449
+2026-07-12T14:44:03.7848006Z   type: 'test'
+2026-07-12T14:44:03.7848532Z   ...
+2026-07-12T14:44:03.7849215Z # Subtest: 말판 지름길 경로는 분기 선택 시 중앙을 경유한다
+2026-07-12T14:44:03.7850001Z ok 17 - 말판 지름길 경로는 분기 선택 시 중앙을 경유한다
+2026-07-12T14:44:03.7850589Z   ---
+2026-07-12T14:44:03.7851081Z   duration_ms: 0.303432
+2026-07-12T14:44:03.7851613Z   type: 'test'
+2026-07-12T14:44:03.7852111Z   ...
+2026-07-12T14:44:03.7852808Z # Subtest: 중앙에서 외곽 선택 시 n16 방향 경로를 사용한다
+2026-07-12T14:44:03.7853594Z ok 18 - 중앙에서 외곽 선택 시 n16 방향 경로를 사용한다
+2026-07-12T14:44:03.7857047Z   ---
+2026-07-12T14:44:03.7857614Z   duration_ms: 0.212347
+2026-07-12T14:44:03.7858206Z   type: 'test'
+2026-07-12T14:44:03.7858731Z   ...
+2026-07-12T14:44:03.7859447Z # Subtest: 중앙에서 빽도는 직전 칸으로 되돌아간다
+2026-07-12T14:44:03.7865920Z ok 19 - 중앙에서 빽도는 직전 칸으로 되돌아간다
+2026-07-12T14:44:03.7866632Z   ---
+2026-07-12T14:44:03.7867618Z   duration_ms: 0.36257
+2026-07-12T14:44:03.7868214Z   type: 'test'
+2026-07-12T14:44:03.7868718Z   ...
+2026-07-12T14:44:03.7869525Z # Subtest: 직전 칸 정보가 없으면 중앙 빽도는 기존 역방향 경로를 사용한다
+2026-07-12T14:44:03.7870638Z ok 20 - 직전 칸 정보가 없으면 중앙 빽도는 기존 역방향 경로를 사용한다
+2026-07-12T14:44:03.7871267Z   ---
+2026-07-12T14:44:03.7871765Z   duration_ms: 0.280228
+2026-07-12T14:44:03.7872311Z   type: 'test'
+2026-07-12T14:44:03.7872804Z   ...
+2026-07-12T14:44:03.7873555Z # Subtest: 출발점의 말은 빽도에서 완주하지 않고 왼쪽 칸으로 이동한다
+2026-07-12T14:44:03.7874553Z ok 21 - 출발점의 말은 빽도에서 완주하지 않고 왼쪽 칸으로 이동한다
+2026-07-12T14:44:03.7875244Z   ---
+2026-07-12T14:44:03.7875741Z   duration_ms: 1.304676
+2026-07-12T14:44:03.7876305Z   type: 'test'
+2026-07-12T14:44:03.7877861Z   ...
+2026-07-12T14:44:03.7878749Z # Subtest: 출발 한 칸 위에서 빽도는 출발로 돌아가며 완주하지 않는다
+2026-07-12T14:44:03.7879676Z ok 22 - 출발 한 칸 위에서 빽도는 출발로 돌아가며 완주하지 않는다
+2026-07-12T14:44:03.7880293Z   ---
+2026-07-12T14:44:03.7880769Z   duration_ms: 0.466396
+2026-07-12T14:44:03.7881293Z   type: 'test'
+2026-07-12T14:44:03.7881892Z   ...
+2026-07-12T14:44:03.7882610Z # Subtest: 중앙의 말은 빽도에서 저장된 직전 칸으로 이동한다
+2026-07-12T14:44:03.7883367Z ok 23 - 중앙의 말은 빽도에서 저장된 직전 칸으로 이동한다
+2026-07-12T14:44:03.7883922Z   ---
+2026-07-12T14:44:03.7884591Z   duration_ms: 0.307438
+2026-07-12T14:44:03.7885109Z   type: 'test'
+2026-07-12T14:44:03.7885585Z   ...
+2026-07-12T14:44:03.7886320Z # Subtest: 중앙의 말은 다른 진입 방향에서도 빽도에서 저장된 직전 칸으로 이동한다
+2026-07-12T14:44:03.7887205Z ok 24 - 중앙의 말은 다른 진입 방향에서도 빽도에서 저장된 직전 칸으로 이동한다
+2026-07-12T14:44:03.7887805Z   ---
+2026-07-12T14:44:03.7888276Z   duration_ms: 0.544893
+2026-07-12T14:44:03.7888796Z   type: 'test'
+2026-07-12T14:44:03.7889278Z   ...
+2026-07-12T14:44:03.7890053Z # Subtest: 중앙보다 한 칸 더 간 위치에서 빽도가 연속으로 나오면 중앙과 직전 칸을 왕복한다
+2026-07-12T14:44:03.7891004Z ok 25 - 중앙보다 한 칸 더 간 위치에서 빽도가 연속으로 나오면 중앙과 직전 칸을 왕복한다
+2026-07-12T14:44:03.7891616Z   ---
+2026-07-12T14:44:03.7892101Z   duration_ms: 0.856077
+2026-07-12T14:44:03.7892616Z   type: 'test'
+2026-07-12T14:44:03.7893160Z   ...
+2026-07-12T14:44:03.7893826Z # Subtest: 아이템 랜덤 선택은 전달된 random 함수를 사용한다
+2026-07-12T14:44:03.7894861Z ok 26 - 아이템 랜덤 선택은 전달된 random 함수를 사용한다
+2026-07-12T14:44:03.7895477Z   ---
+2026-07-12T14:44:03.7895973Z   duration_ms: 0.262902
+2026-07-12T14:44:03.7896546Z   type: 'test'
+2026-07-12T14:44:03.7897046Z   ...
+2026-07-12T14:44:03.7897820Z # Subtest: 온라인 게임 조율자는 방장 표시가 아니라 첫 번째 인간 좌석으로 결정된다
+2026-07-12T14:44:03.7898740Z ok 27 - 온라인 게임 조율자는 방장 표시가 아니라 첫 번째 인간 좌석으로 결정된다
+2026-07-12T14:44:03.7899369Z   ---
+2026-07-12T14:44:03.7899857Z   duration_ms: 0.181371
+2026-07-12T14:44:03.7900387Z   type: 'test'
+2026-07-12T14:44:03.7900870Z   ...
+2026-07-12T14:44:03.7901718Z # Subtest: 게임 진입 확인은 AI를 기다리지 않고 현재 로컬 사람 좌석을 낙관적으로 진입 처리한다
+2026-07-12T14:44:03.7902727Z ok 28 - 게임 진입 확인은 AI를 기다리지 않고 현재 로컬 사람 좌석을 낙관적으로 진입 처리한다
+2026-07-12T14:44:03.7903370Z   ---
+2026-07-12T14:44:03.7903861Z   duration_ms: 0.218155
+2026-07-12T14:44:03.7904566Z   type: 'test'
+2026-07-12T14:44:03.7905076Z   ...
+2026-07-12T14:44:03.7905753Z # Subtest: 차례가 아닌 플레이어의 윷 던지기는 거부된다
+2026-07-12T14:44:03.7906471Z ok 29 - 차례가 아닌 플레이어의 윷 던지기는 거부된다
+2026-07-12T14:44:03.7907378Z   ---
+2026-07-12T14:44:03.7907901Z   duration_ms: 0.30862
+2026-07-12T14:44:03.7908442Z   type: 'test'
+2026-07-12T14:44:03.7908920Z   ...
+2026-07-12T14:44:03.7909918Z # Subtest: 정상 윷 던지기는 roll과 로그 패치를 만든다
+2026-07-12T14:44:03.7910792Z ok 30 - 정상 윷 던지기는 roll과 로그 패치를 만든다
+2026-07-12T14:44:03.7911544Z   ---
+2026-07-12T14:44:03.7912090Z   duration_ms: 0.283293
+2026-07-12T14:44:03.7912655Z   type: 'test'
+2026-07-12T14:44:03.7913165Z   ...
+2026-07-12T14:44:03.7913936Z # Subtest: 말 이동 reducer는 시작 전 말을 출발시키고 턴을 넘긴다
+2026-07-12T14:44:03.7915056Z ok 31 - 말 이동 reducer는 시작 전 말을 출발시키고 턴을 넘긴다
+2026-07-12T14:44:03.7931656Z   ---
+2026-07-12T14:44:03.7954896Z   duration_ms: 0.591092
+2026-07-12T14:44:03.7977264Z   type: 'test'
+2026-07-12T14:44:03.7977822Z   ...
+2026-07-12T14:44:03.7978802Z # Subtest: 함정은 아군도 발동시키고 방패로 막을 수 없으며 아이템보다 먼저 처리된다
+2026-07-12T14:44:03.7980045Z ok 32 - 함정은 아군도 발동시키고 방패로 막을 수 없으며 아이템보다 먼저 처리된다
+2026-07-12T14:44:03.7988602Z   ---
+2026-07-12T14:44:03.7989205Z   duration_ms: 0.49627
+2026-07-12T14:44:03.7989777Z   type: 'test'
+2026-07-12T14:44:03.7990302Z   ...
+2026-07-12T14:44:03.7991143Z # Subtest: 완주 후 이어서 진행은 방장이 아닌 플레이어 actor도 커밋된다
+2026-07-12T14:44:03.7992093Z ok 33 - 완주 후 이어서 진행은 방장이 아닌 플레이어 actor도 커밋된다
+2026-07-12T14:44:03.7992792Z   ---
+2026-07-12T14:44:03.7993316Z   duration_ms: 0.506155
+2026-07-12T14:44:03.7993878Z   type: 'test'
+2026-07-12T14:44:03.7994552Z   ...
+2026-07-12T14:44:03.7995400Z # Subtest: 완주 후 이어서 진행은 이전 누적 던지기와 선택 대기를 다음 순위전에 넘기지 않는다
+2026-07-12T14:44:03.7996435Z ok 34 - 완주 후 이어서 진행은 이전 누적 던지기와 선택 대기를 다음 순위전에 넘기지 않는다
+2026-07-12T14:44:03.7997095Z   ---
+2026-07-12T14:44:03.7997593Z   duration_ms: 0.505764
+2026-07-12T14:44:03.7998146Z   type: 'test'
+2026-07-12T14:44:03.7998650Z   ...
+2026-07-12T14:44:03.7999426Z # Subtest: 윷 던지기 타이밍 구간은 중앙 Perfect와 좌우 Good을 판정한다
+2026-07-12T14:44:03.8000329Z ok 35 - 윷 던지기 타이밍 구간은 중앙 Perfect와 좌우 Good을 판정한다
+2026-07-12T14:44:03.8000968Z   ---
+2026-07-12T14:44:03.8001502Z   duration_ms: 0.134951
+2026-07-12T14:44:03.8002079Z   type: 'test'
+2026-07-12T14:44:03.8002576Z   ...
+2026-07-12T14:44:03.8003458Z # Subtest: AI 윷 던지기 타이밍은 30% Perfect, 40% Good, 30% Normal 기준으로 판정한다
+2026-07-12T14:44:03.8004766Z ok 36 - AI 윷 던지기 타이밍은 30% Perfect, 40% Good, 30% Normal 기준으로 판정한다
+2026-07-12T14:44:03.8005469Z   ---
+2026-07-12T14:44:03.8005966Z   duration_ms: 0.1543
+2026-07-12T14:44:03.8006494Z   type: 'test'
+2026-07-12T14:44:03.8006999Z   ...
+2026-07-12T14:44:03.8007618Z # Subtest: 타이밍 구간별 낙 확률을 적용한다
+2026-07-12T14:44:03.8008348Z ok 37 - 타이밍 구간별 낙 확률을 적용한다
+2026-07-12T14:44:03.8008901Z   ---
+2026-07-12T14:44:03.8009387Z   duration_ms: 0.115292
+2026-07-12T14:44:03.8009924Z   type: 'test'
+2026-07-12T14:44:03.8010422Z   ...
+2026-07-12T14:44:03.8011094Z # Subtest: 아이템 사용 선택 중에는 윷 던지기를 차단한다
+2026-07-12T14:44:03.8011858Z ok 38 - 아이템 사용 선택 중에는 윷 던지기를 차단한다
+2026-07-12T14:44:03.8012415Z   ---
+2026-07-12T14:44:03.8012906Z   duration_ms: 0.229983
+2026-07-12T14:44:03.8013432Z   type: 'test'
+2026-07-12T14:44:03.8013927Z   ...
+2026-07-12T14:44:03.8015282Z # Subtest: Perfect 타이밍은 윷과 모 확률을 각각 5%p 올린다
+2026-07-12T14:44:03.8016146Z ok 39 - Perfect 타이밍은 윷과 모 확률을 각각 5%p 올린다
+2026-07-12T14:44:03.8016762Z   ---
+2026-07-12T14:44:03.8017254Z   duration_ms: 0.433827
+2026-07-12T14:44:03.8018019Z   type: 'test'
+2026-07-12T14:44:03.8018542Z   ...
+2026-07-12T14:44:03.8019256Z # Subtest: 낙이 발생한 윷 던지기는 진행 기록을 남기고 턴을 넘긴다
+2026-07-12T14:44:03.8020089Z ok 40 - 낙이 발생한 윷 던지기는 진행 기록을 남기고 턴을 넘긴다
+2026-07-12T14:44:03.8020688Z   ---
+2026-07-12T14:44:03.8021180Z   duration_ms: 0.278255
+2026-07-12T14:44:03.8021716Z   type: 'test'
+2026-07-12T14:44:03.8022197Z   ...
+2026-07-12T14:44:03.8022929Z # Subtest: 잡기 이동은 일반 모드에서 턴을 유지하고 추가 던지기를 허용한다
+2026-07-12T14:44:03.8023801Z ok 41 - 잡기 이동은 일반 모드에서 턴을 유지하고 추가 던지기를 허용한다
+2026-07-12T14:44:03.8024625Z   ---
+2026-07-12T14:44:03.8025110Z   duration_ms: 0.417142
+2026-07-12T14:44:03.8025637Z   type: 'test'
+2026-07-12T14:44:03.8026126Z   ...
+2026-07-12T14:44:03.8026943Z # Subtest: 누적 던지기 모드는 윷/모 결과를 이동 스택에 쌓고 비보너스에서 선택 상태로 전환한다
+2026-07-12T14:44:03.8027948Z ok 42 - 누적 던지기 모드는 윷/모 결과를 이동 스택에 쌓고 비보너스에서 선택 상태로 전환한다
+2026-07-12T14:44:03.8028724Z   ---
+2026-07-12T14:44:03.8029248Z   duration_ms: 1.090806
+2026-07-12T14:44:03.8029773Z   type: 'test'
+2026-07-12T14:44:03.8030283Z   ...
+2026-07-12T14:44:03.8031110Z # Subtest: 온라인 일반 던지기 확정 payload는 서버 재생용 표시 결과와 낙 정보를 포함한다
+2026-07-12T14:44:03.8032105Z ok 43 - 온라인 일반 던지기 확정 payload는 서버 재생용 표시 결과와 낙 정보를 포함한다
+2026-07-12T14:44:03.8032744Z   ---
+2026-07-12T14:44:03.8033227Z   duration_ms: 0.272977
+2026-07-12T14:44:03.8033756Z   type: 'test'
+2026-07-12T14:44:03.8034513Z   ...
+2026-07-12T14:44:03.8035473Z # Subtest: 온라인 상대·AI 던지기도 optimistic 없이 서버 sequence에서 한 번 재생할 표시 결과를 남긴다
+2026-07-12T14:44:03.8036625Z ok 44 - 온라인 상대·AI 던지기도 optimistic 없이 서버 sequence에서 한 번 재생할 표시 결과를 남긴다
+2026-07-12T14:44:03.8037339Z   ---
+2026-07-12T14:44:03.8037832Z   duration_ms: 0.275791
+2026-07-12T14:44:03.8038373Z   type: 'test'
+2026-07-12T14:44:03.8038934Z   ...
+2026-07-12T14:44:03.8040025Z # Subtest: 온라인 모아던지기 연속 결과는 stateAfter.roll이 없어도 payload displayRoll로 재생할 수 있게 남긴다
+2026-07-12T14:44:03.8041374Z ok 45 - 온라인 모아던지기 연속 결과는 stateAfter.roll이 없어도 payload displayRoll로 재생할 수 있게 남긴다
+2026-07-12T14:44:03.8042152Z   ---
+2026-07-12T14:44:03.8042648Z   duration_ms: 0.417703
+2026-07-12T14:44:03.8043224Z   type: 'test'
+2026-07-12T14:44:03.8043725Z   ...
+2026-07-12T14:44:03.8044907Z # Subtest: 온라인 낙 확정은 stateAfter.roll이 null이어도 payload displayRoll과 1~4 fallCount를 남긴다
+2026-07-12T14:44:03.8046300Z ok 46 - 온라인 낙 확정은 stateAfter.roll이 null이어도 payload displayRoll과 1~4 fallCount를 남긴다
+2026-07-12T14:44:03.8047103Z   ---
+2026-07-12T14:44:03.8047607Z   duration_ms: 0.534296
+2026-07-12T14:44:03.8048132Z   type: 'test'
+2026-07-12T14:44:03.8048610Z   ...
+2026-07-12T14:44:03.8049448Z # Subtest: 누적 던지기 모드는 시간초과 던지기로 이동 대기 상태가 되면 같은 턴 수동 던지기를 거부한다
+2026-07-12T14:44:03.8050464Z ok 47 - 누적 던지기 모드는 시간초과 던지기로 이동 대기 상태가 되면 같은 턴 수동 던지기를 거부한다
+2026-07-12T14:44:03.8111512Z   ---
+2026-07-12T14:44:03.8147710Z   duration_ms: 0.618893
+2026-07-12T14:44:03.8149016Z   type: 'test'
+2026-07-12T14:44:03.8165267Z   ...
+2026-07-12T14:44:03.8166244Z # Subtest: 누적 이동 스택을 소비하면 남은 스택이 있을 때 턴을 유지하고 선택 대기 상태를 갱신한다
+2026-07-12T14:44:03.8167390Z ok 48 - 누적 이동 스택을 소비하면 남은 스택이 있을 때 턴을 유지하고 선택 대기 상태를 갱신한다
+2026-07-12T14:44:03.8168331Z   ---
+2026-07-12T14:44:03.8168875Z   duration_ms: 0.77792
+2026-07-12T14:44:03.8169382Z   type: 'test'
+2026-07-12T14:44:03.8169891Z   ...
+2026-07-12T14:44:03.8170609Z # Subtest: 온라인 누적 이동은 열린 보너스 스택을 바로 소비하지 못한다
+2026-07-12T14:44:03.8171475Z ok 49 - 온라인 누적 이동은 열린 보너스 스택을 바로 소비하지 못한다
+2026-07-12T14:44:03.8172023Z   ---
+2026-07-12T14:44:03.8172509Z   duration_ms: 0.156293
+2026-07-12T14:44:03.8173000Z   type: 'test'
+2026-07-12T14:44:03.8173502Z   ...
+2026-07-12T14:44:03.8175393Z # Subtest: 누적 던지기 모드에서 출발 전 말의 빽도 스택은 이동 없이 소비하고 턴을 넘긴다
+2026-07-12T14:44:03.8176506Z ok 50 - 누적 던지기 모드에서 출발 전 말의 빽도 스택은 이동 없이 소비하고 턴을 넘긴다
+2026-07-12T14:44:03.8177103Z   ---
+2026-07-12T14:44:03.8177563Z   duration_ms: 0.548868
+2026-07-12T14:44:03.8177997Z   type: 'test'
+2026-07-12T14:44:03.8178429Z   ...
+2026-07-12T14:44:03.8179180Z # Subtest: 누적 던지기 모드에서 빽도 뒤 도가 남으면 빽도만 소비하고 도 이동 상태를 유지한다
+2026-07-12T14:44:03.8180245Z ok 51 - 누적 던지기 모드에서 빽도 뒤 도가 남으면 빽도만 소비하고 도 이동 상태를 유지한다
+2026-07-12T14:44:03.8180827Z   ---
+2026-07-12T14:44:03.8181324Z   duration_ms: 0.27496
+2026-07-12T14:44:03.8181792Z   type: 'test'
+2026-07-12T14:44:03.8182280Z   ...
+2026-07-12T14:44:03.8183047Z # Subtest: 누적 던지기 모드에서 도 뒤 빽도는 빽도만 소비하고 도 이동 상태를 유지한다
+2026-07-12T14:44:03.8183969Z ok 52 - 누적 던지기 모드에서 도 뒤 빽도는 빽도만 소비하고 도 이동 상태를 유지한다
+2026-07-12T14:44:03.8184762Z   ---
+2026-07-12T14:44:03.8185229Z   duration_ms: 0.256793
+2026-07-12T14:44:03.8185730Z   type: 'test'
+2026-07-12T14:44:03.8186253Z   ...
+2026-07-12T14:44:03.8187031Z # Subtest: 빽도에서 이동 가능한 말이 있으면 잘못 선택한 출발 전 말은 에러로 거부한다
+2026-07-12T14:44:03.8188000Z ok 53 - 빽도에서 이동 가능한 말이 있으면 잘못 선택한 출발 전 말은 에러로 거부한다
+2026-07-12T14:44:03.8188602Z   ---
+2026-07-12T14:44:03.8189074Z   duration_ms: 0.175392
+2026-07-12T14:44:03.8189538Z   type: 'test'
+2026-07-12T14:44:03.8189999Z   ...
+2026-07-12T14:44:03.8190805Z # Subtest: 누적 던지기 모드에서 잡기 이동은 남은 스택을 보존한 채 추가 던지기 상태로 전환한다
+2026-07-12T14:44:03.8191893Z ok 54 - 누적 던지기 모드에서 잡기 이동은 남은 스택을 보존한 채 추가 던지기 상태로 전환한다
+2026-07-12T14:44:03.8192495Z   ---
+2026-07-12T14:44:03.8192967Z   duration_ms: 0.326457
+2026-07-12T14:44:03.8193475Z   type: 'test'
+2026-07-12T14:44:03.8193926Z   ...
+2026-07-12T14:44:03.8195278Z # Subtest: 온라인 윷 던지기 성공 후 after_roll 아이템이 있으면 서버가 아이템 선택 대기를 연다
+2026-07-12T14:44:03.8196229Z ok 55 - 온라인 윷 던지기 성공 후 after_roll 아이템이 있으면 서버가 아이템 선택 대기를 연다
+2026-07-12T14:44:03.8196722Z   ---
+2026-07-12T14:44:03.8197048Z   duration_ms: 0.473796
+2026-07-12T14:44:03.8197412Z   type: 'test'
+2026-07-12T14:44:03.8197753Z   ...
+2026-07-12T14:44:03.8198363Z # Subtest: 온라인 after_roll 아이템 선택 대기 중에는 말 이동을 거부한다
+2026-07-12T14:44:03.8199087Z ok 56 - 온라인 after_roll 아이템 선택 대기 중에는 말 이동을 거부한다
+2026-07-12T14:44:03.8199530Z   ---
+2026-07-12T14:44:03.8199840Z   duration_ms: 0.151676
+2026-07-12T14:44:03.8200205Z   type: 'test'
+2026-07-12T14:44:03.8200520Z   ...
+2026-07-12T14:44:03.8201146Z # Subtest: 온라인 after_roll 사용 안 함은 윷 결과를 유지하고 이동 단계로 전환한다
+2026-07-12T14:44:03.8202219Z ok 57 - 온라인 after_roll 사용 안 함은 윷 결과를 유지하고 이동 단계로 전환한다
+2026-07-12T14:44:03.8202666Z   ---
+2026-07-12T14:44:03.8202992Z   duration_ms: 0.819772
+2026-07-12T14:44:03.8203578Z   type: 'test'
+2026-07-12T14:44:03.8203893Z   ...
+2026-07-12T14:44:03.8204735Z # Subtest: 온라인 after_move 사용 안 함은 보류된 다음 턴으로 서버 턴을 진행한다
+2026-07-12T14:44:03.8210100Z ok 58 - 온라인 after_move 사용 안 함은 보류된 다음 턴으로 서버 턴을 진행한다
+2026-07-12T14:44:03.8210622Z   ---
+2026-07-12T14:44:03.8210949Z   duration_ms: 0.211445
+2026-07-12T14:44:03.8211318Z   type: 'test'
+2026-07-12T14:44:03.8211645Z   ...
+2026-07-12T14:44:03.8212385Z # Subtest: 온라인 roll timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다
+2026-07-12T14:44:03.8213346Z ok 59 - 온라인 roll timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다
+2026-07-12T14:44:03.8213894Z   ---
+2026-07-12T14:44:03.8214421Z   duration_ms: 0.379606
+2026-07-12T14:44:03.8214792Z   type: 'test'
+2026-07-12T14:44:03.8215159Z   ...
+2026-07-12T14:44:03.8215890Z # Subtest: 온라인 move timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다
+2026-07-12T14:44:03.8216879Z ok 60 - 온라인 move timeout 복구는 deadline+grace 이후 deadline 일치 시만 커밋한다
+2026-07-12T14:44:03.8217404Z   ---
+2026-07-12T14:44:03.8217739Z   duration_ms: 0.365555
+2026-07-12T14:44:03.8218111Z   type: 'test'
+2026-07-12T14:44:03.8218423Z   ...
+2026-07-12T14:44:03.8219026Z # Subtest: 온라인 아이템 timeout 복구는 deadline 전 조기 요청을 거부한다
+2026-07-12T14:44:03.8219776Z ok 61 - 온라인 아이템 timeout 복구는 deadline 전 조기 요청을 거부한다
+2026-07-12T14:44:03.8220260Z   ---
+2026-07-12T14:44:03.8220574Z   duration_ms: 0.187059
+2026-07-12T14:44:03.8220933Z   type: 'test'
+2026-07-12T14:44:03.8221250Z   ...
+2026-07-12T14:44:03.8221864Z # Subtest: 온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치를 거부한다
+2026-07-12T14:44:03.8222616Z ok 62 - 온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치를 거부한다
+2026-07-12T14:44:03.8223057Z   ---
+2026-07-12T14:44:03.8223357Z   duration_ms: 0.168802
+2026-07-12T14:44:03.8223710Z   type: 'test'
+2026-07-12T14:44:03.8224015Z   ...
+2026-07-12T14:44:03.8243083Z # Subtest: 온라인 coordinator 아이템 deadline 복구는 실제 actor skip으로 다음 단계에 진입한다
+2026-07-12T14:44:03.8244429Z ok 63 - 온라인 coordinator 아이템 deadline 복구는 실제 actor skip으로 다음 단계에 진입한다
+2026-07-12T14:44:03.8245001Z   ---
+2026-07-12T14:44:03.8245356Z   duration_ms: 0.178036
+2026-07-12T14:44:03.8245720Z   type: 'test'
+2026-07-12T14:44:03.8246064Z   ...
+2026-07-12T14:44:03.8246734Z # Subtest: 온라인 after_move 선택 대기 중에는 이전 플레이어의 윷 던지기를 거부한다
+2026-07-12T14:44:03.8247551Z ok 64 - 온라인 after_move 선택 대기 중에는 이전 플레이어의 윷 던지기를 거부한다
+2026-07-12T14:44:03.8248020Z   ---
+2026-07-12T14:44:03.8248355Z   duration_ms: 0.149102
+2026-07-12T14:44:03.8248714Z   type: 'test'
+2026-07-12T14:44:03.8249027Z   ...
+2026-07-12T14:44:03.8249663Z # Subtest: 온라인 누적 마지막 윷 이후 after_roll 팝업은 방금 추가한 스택을 선택한다
+2026-07-12T14:44:03.8250460Z ok 65 - 온라인 누적 마지막 윷 이후 after_roll 팝업은 방금 추가한 스택을 선택한다
+2026-07-12T14:44:03.8250932Z   ---
+2026-07-12T14:44:03.8251251Z   duration_ms: 0.323082
+2026-07-12T14:44:03.8251626Z   type: 'test'
+2026-07-12T14:44:03.8251939Z   ...
+2026-07-12T14:44:03.8252576Z # Subtest: 온라인 누적 다시 던지기는 선택된 이동 스택을 교체하고 append하지 않는다
+2026-07-12T14:44:03.8254337Z ok 66 - 온라인 누적 다시 던지기는 선택된 이동 스택을 교체하고 append하지 않는다
+2026-07-12T14:44:03.8254821Z   ---
+2026-07-12T14:44:03.8255148Z   duration_ms: 0.433346
+2026-07-12T14:44:03.8255758Z   type: 'test'
+2026-07-12T14:44:03.8256095Z   ...
+2026-07-12T14:44:03.8256938Z # Subtest: 온라인 누적 다시 던지기는 payload가 없으면 authoritative 선택 스택을 교체하고 아이템 1개만 소비한다
+2026-07-12T14:44:03.8258004Z ok 67 - 온라인 누적 다시 던지기는 payload가 없으면 authoritative 선택 스택을 교체하고 아이템 1개만 소비한다
+2026-07-12T14:44:03.8258569Z   ---
+2026-07-12T14:44:03.8258886Z   duration_ms: 0.358214
+2026-07-12T14:44:03.8259263Z   type: 'test'
+2026-07-12T14:44:03.8259576Z   ...
+2026-07-12T14:44:03.8260199Z # Subtest: 온라인 이동값 변경 아이템은 서버에서 roll과 스택을 함께 갱신한다
+2026-07-12T14:44:03.8260938Z ok 68 - 온라인 이동값 변경 아이템은 서버에서 roll과 스택을 함께 갱신한다
+2026-07-12T14:44:03.8261380Z   ---
+2026-07-12T14:44:03.8261705Z   duration_ms: 0.302151
+2026-07-12T14:44:03.8262067Z   type: 'test'
+2026-07-12T14:44:03.8262385Z   ...
+2026-07-12T14:44:03.8263004Z # Subtest: 온라인 방패 아이템은 서버에서 보호 대상과 다음 턴을 확정한다
+2026-07-12T14:44:03.8263691Z ok 69 - 온라인 방패 아이템은 서버에서 보호 대상과 다음 턴을 확정한다
+2026-07-12T14:44:03.8265168Z   ---
+2026-07-12T14:44:03.8274125Z   duration_ms: 0.309781
+2026-07-12T14:44:03.8295332Z   type: 'test'
+2026-07-12T14:44:03.8333410Z   ...
+2026-07-12T14:44:03.8375544Z # Subtest: 온라인 황금 윷 아이템은 서버에서 보유 아이템을 소비한다
+2026-07-12T14:44:03.8377626Z ok 70 - 온라인 황금 윷 아이템은 서버에서 보유 아이템을 소비한다
+2026-07-12T14:44:03.8394875Z   ---
+2026-07-12T14:44:03.8412410Z   duration_ms: 0.245627
+2026-07-12T14:44:03.8451582Z   type: 'test'
+2026-07-12T14:44:03.8454895Z   ...
+2026-07-12T14:44:03.8485557Z # Subtest: 온라인 before_roll 아이템 선택 대기 중에는 윷 던지기를 거부한다
+2026-07-12T14:44:03.8487742Z ok 71 - 온라인 before_roll 아이템 선택 대기 중에는 윷 던지기를 거부한다
+2026-07-12T14:44:03.8514661Z   ---
+2026-07-12T14:44:03.8515272Z   duration_ms: 0.215271
+2026-07-12T14:44:03.8544451Z   type: 'test'
+2026-07-12T14:44:03.8545057Z   ...
+2026-07-12T14:44:03.8546067Z # Subtest: 온라인 누적 AI 낙 후 다음 플레이어가 황금 윷을 보유하면 before_roll 선택 대기를 연다
+2026-07-12T14:44:03.8547277Z ok 72 - 온라인 누적 AI 낙 후 다음 플레이어가 황금 윷을 보유하면 before_roll 선택 대기를 연다
+2026-07-12T14:44:03.8547986Z   ---
+2026-07-12T14:44:03.8548496Z   duration_ms: 0.333908
+2026-07-12T14:44:03.8549085Z   type: 'test'
+2026-07-12T14:44:03.8549598Z   ...
+2026-07-12T14:44:03.8550464Z # Subtest: 온라인 누적 낙 후 다음 플레이어에게 before_roll 아이템이 없으면 roll 상태를 유지한다
+2026-07-12T14:44:03.8551542Z ok 73 - 온라인 누적 낙 후 다음 플레이어에게 before_roll 아이템이 없으면 roll 상태를 유지한다
+2026-07-12T14:44:03.8552378Z   ---
+2026-07-12T14:44:03.8552889Z   duration_ms: 0.258476
+2026-07-12T14:44:03.8553615Z   type: 'test'
+2026-07-12T14:44:03.8554110Z   ...
+2026-07-12T14:44:03.8555133Z # Subtest: 온라인 빽도에서 판 위 말이 없으면 after_roll 아이템 선택 대기를 열지 않는다
+2026-07-12T14:44:03.8556135Z ok 74 - 온라인 빽도에서 판 위 말이 없으면 after_roll 아이템 선택 대기를 열지 않는다
+2026-07-12T14:44:03.8556783Z   ---
+2026-07-12T14:44:03.8557279Z   duration_ms: 0.394468
+2026-07-12T14:44:03.8557819Z   type: 'test'
+2026-07-12T14:44:03.8558328Z   ...
+2026-07-12T14:44:03.8559028Z # Subtest: 온라인 함정 후보는 시작점과 모든 점유 칸을 제외한다
+2026-07-12T14:44:03.8560545Z ok 75 - 온라인 함정 후보는 시작점과 모든 점유 칸을 제외한다
+2026-07-12T14:44:03.8561134Z   ---
+2026-07-12T14:44:03.8561631Z   duration_ms: 0.396241
+2026-07-12T14:44:03.8562167Z   type: 'test'
+2026-07-12T14:44:03.8562869Z   ...
+2026-07-12T14:44:03.8563684Z # Subtest: 온라인 함정 설치는 후보 생성 뒤 점유된 칸이면 소비와 턴 진행 없이 거부한다
+2026-07-12T14:44:03.8564805Z ok 76 - 온라인 함정 설치는 후보 생성 뒤 점유된 칸이면 소비와 턴 진행 없이 거부한다
+2026-07-12T14:44:03.8565447Z   ---
+2026-07-12T14:44:03.8565940Z   duration_ms: 0.436561
+2026-07-12T14:44:03.8566479Z   type: 'test'
+2026-07-12T14:44:03.8566979Z   ...
+2026-07-12T14:44:03.8567947Z # Subtest: 온라인 누적 마지막 이동 후 함정은 lastMovedSeatId 기준으로 허용되고 place_trap 뒤 다음 턴으로 넘어간다
+2026-07-12T14:44:03.8569218Z ok 77 - 온라인 누적 마지막 이동 후 함정은 lastMovedSeatId 기준으로 허용되고 place_trap 뒤 다음 턴으로 넘어간다
+2026-07-12T14:44:03.8569963Z   ---
+2026-07-12T14:44:03.8570460Z   duration_ms: 0.547527
+2026-07-12T14:44:03.8570999Z   type: 'test'
+2026-07-12T14:44:03.8571490Z   ...
+2026-07-12T14:44:03.8572392Z # Subtest: 온라인 함정 설치는 place_trap에서 아이템을 소비하고 trapNodes를 유지 상태로 커밋한다
+2026-07-12T14:44:03.8573554Z ok 78 - 온라인 함정 설치는 place_trap에서 아이템을 소비하고 trapNodes를 유지 상태로 커밋한다
+2026-07-12T14:44:03.8574413Z   ---
+2026-07-12T14:44:03.8574956Z   duration_ms: 0.353107
+2026-07-12T14:44:03.8575514Z   type: 'test'
+2026-07-12T14:44:03.8576055Z   ...
+2026-07-12T14:44:03.8576947Z # Subtest: 온라인 함정 설치 시간초과 취소는 서버에서 다음 턴으로 진행한다
+2026-07-12T14:44:03.8577805Z ok 79 - 온라인 함정 설치 시간초과 취소는 서버에서 다음 턴으로 진행한다
+2026-07-12T14:44:03.8578398Z   ---
+2026-07-12T14:44:03.8578897Z   duration_ms: 0.339857
+2026-07-12T14:44:03.8579409Z   type: 'test'
+2026-07-12T14:44:03.8579895Z   ...
+2026-07-12T14:44:03.8580742Z # Subtest: 온라인 함정 설치 시간초과 취소는 owner·piece·deadline이 일치해야 한다
+2026-07-12T14:44:03.8581755Z ok 80 - 온라인 함정 설치 시간초과 취소는 owner·piece·deadline이 일치해야 한다
+2026-07-12T14:44:03.8582407Z   ---
+2026-07-12T14:44:03.8582884Z   duration_ms: 0.296182
+2026-07-12T14:44:03.8583393Z   type: 'test'
+2026-07-12T14:44:03.8583864Z   ...
+2026-07-12T14:44:03.8584866Z # Subtest: 온라인 함정 설치 시간초과 전 위조 취소는 거부한다
+2026-07-12T14:44:03.8585697Z ok 81 - 온라인 함정 설치 시간초과 전 위조 취소는 거부한다
+2026-07-12T14:44:03.8586295Z   ---
+2026-07-12T14:44:03.8586801Z   duration_ms: 0.180439
+2026-07-12T14:44:03.8587332Z   type: 'test'
+2026-07-12T14:44:03.8587845Z   ...
+2026-07-12T14:44:03.8588811Z # Subtest: 온라인 after_move 대기가 끝난 stale 함정 use_item은 거부한다
+2026-07-12T14:44:03.8589838Z ok 82 - 온라인 after_move 대기가 끝난 stale 함정 use_item은 거부한다
+2026-07-12T14:44:03.8590483Z   ---
+2026-07-12T14:44:03.8590956Z   duration_ms: 0.168892
+2026-07-12T14:44:03.8591465Z   type: 'test'
+2026-07-12T14:44:03.8591929Z   ...
+2026-07-12T14:44:03.8592647Z # Subtest: 설치된 함정은 밟지 않는 이동에는 유지되고 밟은 이동에서만 제거된다
+2026-07-12T14:44:03.8593511Z ok 83 - 설치된 함정은 밟지 않는 이동에는 유지되고 밟은 이동에서만 제거된다
+2026-07-12T14:44:03.8594105Z   ---
+2026-07-12T14:44:03.8594752Z   duration_ms: 0.461007
+2026-07-12T14:44:03.8595262Z   type: 'test'
+2026-07-12T14:44:03.8595735Z   ...
+2026-07-12T14:44:03.8596439Z # Subtest: 온라인 일반 roll은 클라이언트 forcedResult를 거부한다
+2026-07-12T14:44:03.8597291Z ok 84 - 온라인 일반 roll은 클라이언트 forcedResult를 거부한다
+2026-07-12T14:44:03.8597931Z   ---
+2026-07-12T14:44:03.8598409Z   duration_ms: 0.148161
+2026-07-12T14:44:03.8598917Z   type: 'test'
+2026-07-12T14:44:03.8599386Z   ...
+2026-07-12T14:44:03.8600140Z # Subtest: 온라인 다시 던지기는 클라이언트 replacementRoll을 거부한다
+2026-07-12T14:44:03.8601196Z ok 85 - 온라인 다시 던지기는 클라이언트 replacementRoll을 거부한다
+2026-07-12T14:44:03.8601816Z   ---
+2026-07-12T14:44:03.8602281Z   duration_ms: 0.184885
+2026-07-12T14:44:03.8602786Z   type: 'test'
+2026-07-12T14:44:03.8603261Z   ...
+2026-07-12T14:44:03.8603952Z # Subtest: 온라인 move는 클라이언트 extraSteps 조작을 거부한다
+2026-07-12T14:44:03.8604946Z ok 86 - 온라인 move는 클라이언트 extraSteps 조작을 거부한다
+2026-07-12T14:44:03.8605578Z   ---
+2026-07-12T14:44:03.8606083Z   duration_ms: 0.149082
+2026-07-12T14:44:03.8606647Z   type: 'test'
+2026-07-12T14:44:03.8607182Z   ...
+2026-07-12T14:44:03.8608306Z # Subtest: 온라인 after_move 대기 후 사용 안 함은 서버 pendingAfterMoveTurnIndex로 다음 턴 전환한다
+2026-07-12T14:44:03.8609817Z ok 87 - 온라인 after_move 대기 후 사용 안 함은 서버 pendingAfterMoveTurnIndex로 다음 턴 전환한다
+2026-07-12T14:44:03.8611212Z   ---
+2026-07-12T14:44:03.8612204Z   duration_ms: 0.161531
+2026-07-12T14:44:03.8612902Z   type: 'test'
+2026-07-12T14:44:03.8613511Z   ...
+2026-07-12T14:44:03.8615002Z # Subtest: 온라인 황금 윷은 사용 후 서버 선택 대기를 기록하고 선택 결과를 그대로 확정한다
+2026-07-12T14:44:03.8616245Z ok 88 - 온라인 황금 윷은 사용 후 서버 선택 대기를 기록하고 선택 결과를 그대로 확정한다
+2026-07-12T14:44:03.8617161Z   ---
+2026-07-12T14:44:03.8617891Z   duration_ms: 0.647345
+2026-07-12T14:44:03.8635699Z   type: 'test'
+2026-07-12T14:44:03.8636224Z   ...
+2026-07-12T14:44:03.8636993Z # Subtest: 온라인 황금 윷 선택 대기는 다른 actor의 결과 선택을 거부한다
+2026-07-12T14:44:03.8638041Z ok 89 - 온라인 황금 윷 선택 대기는 다른 actor의 결과 선택을 거부한다
+2026-07-12T14:44:03.8638607Z   ---
+2026-07-12T14:44:03.8638929Z   duration_ms: 0.169673
+2026-07-12T14:44:03.8639301Z   type: 'test'
+2026-07-12T14:44:03.8639638Z   ...
+2026-07-12T14:44:03.8640276Z # Subtest: 온라인 황금 윷 결과는 허용 목록의 name/steps/bonus 조합만 허용한다
+2026-07-12T14:44:03.8641077Z ok 90 - 온라인 황금 윷 결과는 허용 목록의 name/steps/bonus 조합만 허용한다
+2026-07-12T14:44:03.8641579Z   ---
+2026-07-12T14:44:03.8641891Z   duration_ms: 0.169723
+2026-07-12T14:44:03.8642241Z   type: 'test'
+2026-07-12T14:44:03.8642557Z   ...
+2026-07-12T14:44:03.8643171Z # Subtest: 온라인 황금 윷 선택 deadline 만료 시 서버 기본 결과로 자동 확정한다
+2026-07-12T14:44:03.8643904Z ok 91 - 온라인 황금 윷 선택 deadline 만료 시 서버 기본 결과로 자동 확정한다
+2026-07-12T14:44:03.8644597Z   ---
+2026-07-12T14:44:03.8644902Z   duration_ms: 0.228491
+2026-07-12T14:44:03.8645256Z   type: 'test'
+2026-07-12T14:44:03.8645557Z   ...
+2026-07-12T14:44:03.8646135Z # Subtest: 온라인 일반 roll은 황금 윷 선택 결과와 잘못된 입력 시간을 거부한다
+2026-07-12T14:44:03.8646840Z ok 92 - 온라인 일반 roll은 황금 윷 선택 결과와 잘못된 입력 시간을 거부한다
+2026-07-12T14:44:03.8647293Z   ---
+2026-07-12T14:44:03.8647616Z   duration_ms: 0.148421
+2026-07-12T14:44:03.8647967Z   type: 'test'
+2026-07-12T14:44:03.8648276Z   ...
+2026-07-12T14:44:03.8648880Z # Subtest: 온라인 AI 누적 추가 던지기는 서버 상태 전환마다 한 action씩 진행된다
+2026-07-12T14:44:03.8649638Z ok 93 - 온라인 AI 누적 추가 던지기는 서버 상태 전환마다 한 action씩 진행된다
+2026-07-12T14:44:03.8650101Z   ---
+2026-07-12T14:44:03.8650441Z   duration_ms: 0.608597
+2026-07-12T14:44:03.8650785Z   type: 'test'
+2026-07-12T14:44:03.8651088Z   ...
+2026-07-12T14:44:03.8651735Z # Subtest: 온라인 AI 일반 roll 후 after_roll 선택이 끝나야 이동 action이 허용된다
+2026-07-12T14:44:03.8652586Z ok 94 - 온라인 AI 일반 roll 후 after_roll 선택이 끝나야 이동 action이 허용된다
+2026-07-12T14:44:03.8653068Z   ---
+2026-07-12T14:44:03.8653371Z   duration_ms: 0.403512
+2026-07-12T14:44:03.8653714Z   type: 'test'
+2026-07-12T14:44:03.8654027Z   ...
+2026-07-12T14:44:03.8654892Z # Subtest: 온라인 AI 함정은 use_item snapshot 뒤 place_trap action에서 다음 턴으로 진행된다
+2026-07-12T14:44:03.8655846Z ok 95 - 온라인 AI 함정은 use_item snapshot 뒤 place_trap action에서 다음 턴으로 진행된다
+2026-07-12T14:44:03.8656376Z   ---
+2026-07-12T14:44:03.8656682Z   duration_ms: 0.980452
+2026-07-12T14:44:03.8657041Z   type: 'test'
+2026-07-12T14:44:03.8657344Z   ...
+2026-07-12T14:44:03.8657924Z # Subtest: 온라인 같은 시점 아이템 발견은 교체 대기를 저장하고 기존 아이템을 보존한다
+2026-07-12T14:44:03.8658644Z ok 96 - 온라인 같은 시점 아이템 발견은 교체 대기를 저장하고 기존 아이템을 보존한다
+2026-07-12T14:44:03.8659089Z   ---
+2026-07-12T14:44:03.8659665Z   duration_ms: 0.433507
+2026-07-12T14:44:03.8660013Z   type: 'test'
+2026-07-12T14:44:03.8660316Z   ...
+2026-07-12T14:44:03.8660895Z # Subtest: 온라인 아이템 교체 유지 선택은 기존 아이템을 보존하고 다음 턴을 재개한다
+2026-07-12T14:44:03.8661768Z ok 97 - 온라인 아이템 교체 유지 선택은 기존 아이템을 보존하고 다음 턴을 재개한다
+2026-07-12T14:44:03.8662207Z   ---
+2026-07-12T14:44:03.8662505Z   duration_ms: 0.419105
+2026-07-12T14:44:03.8662863Z   type: 'test'
+2026-07-12T14:44:03.8663204Z   ...
+2026-07-12T14:44:03.8663919Z # Subtest: 온라인 아이템 교체 선택은 기존 아이템 한 개를 신규 아이템으로 바꾸고 after_move를 복원한다
+2026-07-12T14:44:03.8665273Z ok 98 - 온라인 아이템 교체 선택은 기존 아이템 한 개를 신규 아이템으로 바꾸고 after_move를 복원한다
+2026-07-12T14:44:03.8665771Z   ---
+2026-07-12T14:44:03.8666080Z   duration_ms: 0.225236
+2026-07-12T14:44:03.8666427Z   type: 'test'
+2026-07-12T14:44:03.8666738Z   ...
+2026-07-12T14:44:03.8667494Z # Subtest: 온라인 다시 던지기 item_used replay는 pending 확정 경로와 원격 1회 애니메이션 경로를 분리한다
+2026-07-12T14:44:03.8668500Z ok 99 - 온라인 다시 던지기 item_used replay는 pending 확정 경로와 원격 1회 애니메이션 경로를 분리한다
+2026-07-12T14:44:03.8669091Z   ---
+2026-07-12T14:44:03.8669416Z   duration_ms: 3.550384
+2026-07-12T14:44:03.8669773Z   type: 'test'
+2026-07-12T14:44:03.8670091Z   ...
+2026-07-12T14:44:03.8670896Z # Subtest: 중복 snapshot도 listener activity callback은 매번 호출하지만 상태 적용은 한 번만 한다
+2026-07-12T14:44:03.8671949Z ok 100 - 중복 snapshot도 listener activity callback은 매번 호출하지만 상태 적용은 한 번만 한다
+2026-07-12T14:44:03.8672541Z   ---
+2026-07-12T14:44:03.8672849Z   duration_ms: 4.141765
+2026-07-12T14:44:03.8673254Z   type: 'test'
+2026-07-12T14:44:03.8673561Z   ...
+2026-07-12T14:44:03.8674308Z # Subtest: 같은 방의 재렌더는 listener를 다시 만들지 않고 방 변경 때만 교체한다
+2026-07-12T14:44:03.8675064Z ok 101 - 같은 방의 재렌더는 listener를 다시 만들지 않고 방 변경 때만 교체한다
+2026-07-12T14:44:03.8675536Z   ---
+2026-07-12T14:44:03.8675843Z   duration_ms: 2.212359
+2026-07-12T14:44:03.8676207Z   type: 'test'
+2026-07-12T14:44:03.8676525Z   ...
+2026-07-12T14:44:03.8677206Z # Subtest: Strict Mode cleanup 뒤 runtime을 재주입하면 listener 처리가 정상 재개된다
+2026-07-12T14:44:03.8678182Z ok 102 - Strict Mode cleanup 뒤 runtime을 재주입하면 listener 처리가 정상 재개된다
+2026-07-12T14:44:03.8678808Z   ---
+2026-07-12T14:44:03.8679125Z   duration_ms: 5.940817
+2026-07-12T14:44:03.8679501Z   type: 'test'
+2026-07-12T14:44:03.8679818Z   ...
+2026-07-12T14:44:03.8680477Z # Subtest: 동일 snapshot은 한 번만 적용하고 새 sequence는 즉시 replay한다
+2026-07-12T14:44:03.8681304Z ok 103 - 동일 snapshot은 한 번만 적용하고 새 sequence는 즉시 replay한다
+2026-07-12T14:44:03.8681796Z   ---
+2026-07-12T14:44:03.8682116Z   duration_ms: 1.200279
+2026-07-12T14:44:03.8682468Z   type: 'test'
+2026-07-12T14:44:03.8682776Z   ...
+2026-07-12T14:44:03.8683532Z # Subtest: turnVersion이 없는 legacy snapshot도 안정적인 payload key로 중복 적용을 막는다
+2026-07-12T14:44:03.8684686Z ok 104 - turnVersion이 없는 legacy snapshot도 안정적인 payload key로 중복 적용을 막는다
+2026-07-12T14:44:03.8685252Z   ---
+2026-07-12T14:44:03.8685543Z   duration_ms: 1.42162
+2026-07-12T14:44:03.8685885Z   type: 'test'
+2026-07-12T14:44:03.8686197Z   ...
+2026-07-12T14:44:03.8686923Z # Subtest: 기존 coordinator가 계속 human이면 재접속한 앞 좌석보다 기존 coordinator를 유지한다
+2026-07-12T14:44:03.8688176Z ok 105 - 기존 coordinator가 계속 human이면 재접속한 앞 좌석보다 기존 coordinator를 유지한다
+2026-07-12T14:44:03.8688729Z   ---
+2026-07-12T14:44:03.8689040Z   duration_ms: 1.081102
+2026-07-12T14:44:03.8689578Z   type: 'test'
+2026-07-12T14:44:03.8689910Z   ...
+2026-07-12T14:44:03.8690485Z # Subtest: 기존 coordinator가 AI로 대체되면 다음 human에게 승계한다
+2026-07-12T14:44:03.8691225Z ok 106 - 기존 coordinator가 AI로 대체되면 다음 human에게 승계한다
+2026-07-12T14:44:03.8691694Z   ---
+2026-07-12T14:44:03.8692005Z   duration_ms: 0.16122
+2026-07-12T14:44:03.8692378Z   type: 'test'
+2026-07-12T14:44:03.8692679Z   ...
+2026-07-12T14:44:03.8693438Z # Subtest: 판 위 말이 있어도 높은 번호 출발 전 말을 누르면 제어 가능한 출발 전 말 전체를 선택 표시한다
+2026-07-12T14:44:03.8694535Z ok 107 - 판 위 말이 있어도 높은 번호 출발 전 말을 누르면 제어 가능한 출발 전 말 전체를 선택 표시한다
+2026-07-12T14:44:03.8695010Z   ---
+2026-07-12T14:44:03.8695322Z   duration_ms: 15.9029
+2026-07-12T14:44:03.8695656Z   type: 'test'
+2026-07-12T14:44:03.8695953Z   ...
+2026-07-12T14:44:03.8696570Z # Subtest: 출발 전 말 그룹의 실제 이동 대상은 항상 label 숫자 오름차순 첫 번째 말이다
+2026-07-12T14:44:03.8697378Z ok 108 - 출발 전 말 그룹의 실제 이동 대상은 항상 label 숫자 오름차순 첫 번째 말이다
+2026-07-12T14:44:03.8697850Z   ---
+2026-07-12T14:44:03.8698154Z   duration_ms: 0.283092
+2026-07-12T14:44:03.8698500Z   type: 'test'
+2026-07-12T14:44:03.8698823Z   ...
+2026-07-12T14:44:03.8699341Z # Subtest: 상대편 말과 완주 말은 출발 전 선택 그룹에서 제외한다
+2026-07-12T14:44:03.8699960Z ok 109 - 상대편 말과 완주 말은 출발 전 선택 그룹에서 제외한다
+2026-07-12T14:44:03.8700363Z   ---
+2026-07-12T14:44:03.8700675Z   duration_ms: 0.432014
+2026-07-12T14:44:03.8701030Z   type: 'test'
+2026-07-12T14:44:03.8701349Z   ...
+2026-07-12T14:44:03.8702079Z # Subtest: 판 위 업힌 말 선택은 같은 위치의 같은 편 전체를 유지하고 빽도는 출발 전 말을 이동 대상으로 고르지 않는다
+2026-07-12T14:44:03.8703004Z ok 110 - 판 위 업힌 말 선택은 같은 위치의 같은 편 전체를 유지하고 빽도는 출발 전 말을 이동 대상으로 고르지 않는다
+2026-07-12T14:44:03.8703499Z   ---
+2026-07-12T14:44:03.8703805Z   duration_ms: 0.277403
+2026-07-12T14:44:03.8704304Z   type: 'test'
+2026-07-12T14:44:03.8704771Z   ...
+2026-07-12T14:44:03.8705281Z # Subtest: AI 대체 세대가 달라지면 복구 요청 key도 달라진다
+2026-07-12T14:44:03.8705939Z ok 111 - AI 대체 세대가 달라지면 복구 요청 key도 달라진다
+2026-07-12T14:44:03.8706345Z   ---
+2026-07-12T14:44:03.8706661Z   duration_ms: 1.446056
+2026-07-12T14:44:03.8707009Z   type: 'test'
+2026-07-12T14:44:03.8707317Z   ...
+2026-07-12T14:44:03.8708032Z # Subtest: 같은 방과 사용자에서 더 새로운 presence epoch로 player 복구된 경우만 결과를 적용한다
+2026-07-12T14:44:03.8709017Z ok 112 - 같은 방과 사용자에서 더 새로운 presence epoch로 player 복구된 경우만 결과를 적용한다
+2026-07-12T14:44:03.8709526Z   ---
+2026-07-12T14:44:03.8709836Z   duration_ms: 0.323272
+2026-07-12T14:44:03.8710248Z   type: 'test'
+2026-07-12T14:44:03.8710564Z   ...
+2026-07-12T14:44:03.8711073Z # Subtest: 윷과 모는 결과가 노출된 뒤 긍정 효과음을 선택한다
+2026-07-12T14:44:03.8711676Z ok 113 - 윷과 모는 결과가 노출된 뒤 긍정 효과음을 선택한다
+2026-07-12T14:44:03.8712076Z   ---
+2026-07-12T14:44:03.8712380Z   duration_ms: 1.47523
+2026-07-12T14:44:03.8712730Z   type: 'test'
+2026-07-12T14:44:03.8713050Z   ...
+2026-07-12T14:44:03.8713523Z # Subtest: 낙은 윷이나 모 결과보다 부정 효과음을 우선한다
+2026-07-12T14:44:03.8714105Z ok 114 - 낙은 윷이나 모 결과보다 부정 효과음을 우선한다
+2026-07-12T14:44:03.8714913Z   ---
+2026-07-12T14:44:03.8715216Z   duration_ms: 0.220789
+2026-07-12T14:44:03.8715572Z   type: 'test'
+2026-07-12T14:44:03.8715872Z   ...
+2026-07-12T14:44:03.8716365Z # Subtest: 회전과 낙하 중에는 결과 효과음을 재생하지 않는다
+2026-07-12T14:44:03.8717124Z ok 115 - 회전과 낙하 중에는 결과 효과음을 재생하지 않는다
+2026-07-12T14:44:03.8717518Z   ---
+2026-07-12T14:44:03.8717834Z   duration_ms: 0.206398
+2026-07-12T14:44:03.8718183Z   type: 'test'
+2026-07-12T14:44:03.8718493Z   ...
+2026-07-12T14:44:03.8719001Z # Subtest: 순서 정하기 굴림에는 게임 결과 전용음을 적용하지 않는다
+2026-07-12T14:44:03.8719649Z ok 116 - 순서 정하기 굴림에는 게임 결과 전용음을 적용하지 않는다
+2026-07-12T14:44:03.8720058Z   ---
+2026-07-12T14:44:03.8720357Z   duration_ms: 0.245757
+2026-07-12T14:44:03.8720701Z   type: 'test'
+2026-07-12T14:44:03.8721002Z   ...
+2026-07-12T14:44:03.8721526Z # Subtest: Perfect는 일반 굴림에서만 최상위 효과음을 사용한다
+2026-07-12T14:44:03.8722160Z ok 117 - Perfect는 일반 굴림에서만 최상위 효과음을 사용한다
+2026-07-12T14:44:03.8722562Z   ---
+2026-07-12T14:44:03.8722853Z   duration_ms: 0.198326
+2026-07-12T14:44:03.8723188Z   type: 'test'
+2026-07-12T14:44:03.8723521Z   ...
+2026-07-12T14:44:03.8891498Z # Subtest: 게임 결과 음성 대상 문구를 정규화한다
+2026-07-12T14:44:03.8905715Z ok 118 - 게임 결과 음성 대상 문구를 정규화한다
+2026-07-12T14:44:03.8906325Z   ---
+2026-07-12T14:44:03.8906981Z   duration_ms: 1.537312
+2026-07-12T14:44:03.8907760Z   type: 'test'
+2026-07-12T14:44:03.8908355Z   ...
+2026-07-12T14:44:03.8913264Z # Subtest: 낙 표시의 느낌표와 공백을 제거한다
+2026-07-12T14:44:03.8917014Z ok 119 - 낙 표시의 느낌표와 공백을 제거한다
+2026-07-12T14:44:03.8917735Z   ---
+2026-07-12T14:44:03.8918318Z   duration_ms: 0.199938
+2026-07-12T14:44:03.8918933Z   type: 'test'
+2026-07-12T14:44:03.8919486Z   ...
+2026-07-12T14:44:03.8925999Z # Subtest: 지원하지 않는 결과 문구는 읽지 않는다
+2026-07-12T14:44:03.8930607Z ok 120 - 지원하지 않는 결과 문구는 읽지 않는다
+2026-07-12T14:44:03.8931531Z   ---
+2026-07-12T14:44:03.8932075Z   duration_ms: 0.225316
+2026-07-12T14:44:03.8932685Z   type: 'test'
+2026-07-12T14:44:03.8933237Z   ...
+2026-07-12T14:44:03.9300380Z # Subtest: 로그인과 방 생성 timeout은 각 작업마다 독립적으로 새로 시작한다
+2026-07-12T14:44:03.9304984Z ok 121 - 로그인과 방 생성 timeout은 각 작업마다 독립적으로 새로 시작한다
+2026-07-12T14:44:03.9305891Z   ---
+2026-07-12T14:44:03.9306257Z   duration_ms: 29.532091
+2026-07-12T14:44:03.9306676Z   type: 'test'
+2026-07-12T14:44:03.9307001Z   ...
+2026-07-12T14:44:03.9376706Z # Subtest: 작업 제한 시간이 지나면 작업 종류가 포함된 timeout 오류를 반환한다
+2026-07-12T14:44:03.9380794Z ok 122 - 작업 제한 시간이 지나면 작업 종류가 포함된 timeout 오류를 반환한다
+2026-07-12T14:44:03.9381704Z   ---
+2026-07-12T14:44:03.9382325Z   duration_ms: 6.250209
+2026-07-12T14:44:03.9382906Z   type: 'test'
+2026-07-12T14:44:03.9383432Z   ...
+2026-07-12T14:44:03.9385138Z # Subtest: 동일 생성 요청은 같은 room id와 create request id를 사용한다
+2026-07-12T14:44:03.9388394Z ok 123 - 동일 생성 요청은 같은 room id와 create request id를 사용한다
+2026-07-12T14:44:03.9389123Z   ---
+2026-07-12T14:44:03.9389655Z   duration_ms: 1.161933
+2026-07-12T14:44:03.9390247Z   type: 'test'
+2026-07-12T14:44:03.9390773Z   ...
+2026-07-12T14:44:03.9397244Z # Subtest: timeout 복구는 정확히 같은 room, host, request만 허용한다
+2026-07-12T14:44:03.9400343Z ok 124 - timeout 복구는 정확히 같은 room, host, request만 허용한다
+2026-07-12T14:44:03.9401575Z   ---
+2026-07-12T14:44:03.9402161Z   duration_ms: 0.302321
+2026-07-12T14:44:03.9402739Z   type: 'test'
+2026-07-12T14:44:03.9403262Z   ...
+2026-07-12T14:44:03.9409443Z # Subtest: 다른 방으로 전환 중인 background cleanup은 새 방 화면 상태를 지우지 않는다
+2026-07-12T14:44:03.9412303Z ok 125 - 다른 방으로 전환 중인 background cleanup은 새 방 화면 상태를 지우지 않는다
+2026-07-12T14:44:03.9444670Z   ---
+2026-07-12T14:44:03.9448138Z   duration_ms: 0.30819
+2026-07-12T14:44:03.9448844Z   type: 'test'
+2026-07-12T14:44:03.9449402Z   ...
+2026-07-12T14:44:03.9519697Z # Subtest: 로비 controller는 start 전에는 구독하지 않고 중복 start에도 한 번만 구독한다
+2026-07-12T14:44:03.9520992Z ok 126 - 로비 controller는 start 전에는 구독하지 않고 중복 start에도 한 번만 구독한다
+2026-07-12T14:44:03.9521881Z   ---
+2026-07-12T14:44:03.9522512Z   duration_ms: 1.098247
+2026-07-12T14:44:03.9523104Z   type: 'test'
+2026-07-12T14:44:03.9523651Z   ...
+2026-07-12T14:44:03.9524945Z # Subtest: 활성 방마다 players listener를 한 번만 만들고 기존 currentPlayers 계산을 유지한다
+2026-07-12T14:44:03.9526291Z ok 127 - 활성 방마다 players listener를 한 번만 만들고 기존 currentPlayers 계산을 유지한다
+2026-07-12T14:44:03.9527246Z   ---
+2026-07-12T14:44:03.9527815Z   duration_ms: 1.020942
+2026-07-12T14:44:03.9528424Z   type: 'test'
+2026-07-12T14:44:03.9528972Z   ...
+2026-07-12T14:44:03.9529945Z # Subtest: 사람 플레이어가 없는 방은 목록에서 숨기지만 listener callback에서 삭제 작업을 만들지 않는다
+2026-07-12T14:44:03.9536304Z ok 128 - 사람 플레이어가 없는 방은 목록에서 숨기지만 listener callback에서 삭제 작업을 만들지 않는다
+2026-07-12T14:44:03.9537094Z   ---
+2026-07-12T14:44:03.9537737Z   duration_ms: 0.178726
+2026-07-12T14:44:03.9538138Z   type: 'test'
+2026-07-12T14:44:03.9538472Z   ...
+2026-07-12T14:44:03.9539273Z # Subtest: 방이 목록에서 사라지면 해당 players listener만 해제하고 늦은 callback은 무시한다
+2026-07-12T14:44:03.9540367Z ok 129 - 방이 목록에서 사라지면 해당 players listener만 해제하고 늦은 callback은 무시한다
+2026-07-12T14:44:03.9540909Z   ---
+2026-07-12T14:44:03.9541240Z   duration_ms: 0.189122
+2026-07-12T14:44:03.9541615Z   type: 'test'
+2026-07-12T14:44:03.9541952Z   ...
+2026-07-12T14:44:03.9542788Z # Subtest: 대기실·게임 전환에 해당하는 stop은 active rooms와 모든 players listener를 즉시 해제한다
+2026-07-12T14:44:03.9543886Z ok 130 - 대기실·게임 전환에 해당하는 stop은 active rooms와 모든 players listener를 즉시 해제한다
+2026-07-12T14:44:03.9544668Z   ---
+2026-07-12T14:44:03.9545028Z   duration_ms: 0.32202
+2026-07-12T14:44:03.9545407Z   type: 'test'
+2026-07-12T14:44:03.9545724Z   ...
+2026-07-12T14:44:03.9546443Z # Subtest: 로비 복귀에 해당하는 재시작은 즉시 새 active rooms listener를 생성한다
+2026-07-12T14:44:03.9547296Z ok 131 - 로비 복귀에 해당하는 재시작은 즉시 새 active rooms listener를 생성한다
+2026-07-12T14:44:03.9547784Z   ---
+2026-07-12T14:44:03.9548111Z   duration_ms: 1.010767
+2026-07-12T14:44:03.9548473Z   type: 'test'
+2026-07-12T14:44:03.9548788Z   ...
+2026-07-12T14:44:03.9554060Z # Subtest: 한 방의 cleanup lease는 한 소유자만 유지하고 만료 뒤 다른 사용자가 인계한다
+2026-07-12T14:44:03.9566056Z ok 132 - 한 방의 cleanup lease는 한 소유자만 유지하고 만료 뒤 다른 사용자가 인계한다
+2026-07-12T14:44:03.9566600Z   ---
+2026-07-12T14:44:03.9566933Z   duration_ms: 2.027463
+2026-07-12T14:44:03.9567318Z   type: 'test'
+2026-07-12T14:44:03.9567644Z   ...
+2026-07-12T14:44:03.9568657Z # Subtest: 종료된 방과 빈 후보는 cleanup lease를 획득하지 않는다
+2026-07-12T14:44:03.9569383Z ok 133 - 종료된 방과 빈 후보는 cleanup lease를 획득하지 않는다
+2026-07-12T14:44:03.9569832Z   ---
+2026-07-12T14:44:03.9570149Z   duration_ms: 0.49658
+2026-07-12T14:44:03.9570751Z   type: 'test'
+2026-07-12T14:44:03.9571083Z   ...
+2026-07-12T14:44:03.9571813Z # Subtest: spectator와 AI는 cleanup 주체와 stale human 대상에서 제외한다
+2026-07-12T14:44:03.9572894Z ok 134 - spectator와 AI는 cleanup 주체와 stale human 대상에서 제외한다
+2026-07-12T14:44:03.9574749Z   ---
+2026-07-12T14:44:03.9575098Z   duration_ms: 0.257244
+2026-07-12T14:44:03.9575489Z   type: 'test'
+2026-07-12T14:44:03.9575819Z   ...
+2026-07-12T14:44:03.9576532Z # Subtest: fresh heartbeat는 유지하고 stale human만 정리 대상으로 판정한다
+2026-07-12T14:44:03.9585770Z ok 135 - fresh heartbeat는 유지하고 stale human만 정리 대상으로 판정한다
+2026-07-12T14:44:03.9586558Z   ---
+2026-07-12T14:44:03.9587166Z   duration_ms: 0.210184
+2026-07-12T14:44:03.9587800Z   type: 'test'
+2026-07-12T14:44:03.9588360Z   ...
+2026-07-12T14:44:03.9589299Z # Subtest: 게임 중 stale human은 AI 대체하고 대기실 stale human은 제거한다
+2026-07-12T14:44:03.9590553Z ok 136 - 게임 중 stale human은 AI 대체하고 대기실 stale human은 제거한다
+2026-07-12T14:44:03.9591300Z   ---
+2026-07-12T14:44:03.9591845Z   duration_ms: 0.304113
+2026-07-12T14:44:03.9592475Z   type: 'test'
+2026-07-12T14:44:03.9593017Z   ...
+2026-07-12T14:44:03.9593991Z # Subtest: 좌석이 없는 stale spectator성 데이터는 게임 중에도 제거 경로를 사용한다
+2026-07-12T14:44:03.9595396Z ok 137 - 좌석이 없는 stale spectator성 데이터는 게임 중에도 제거 경로를 사용한다
+2026-07-12T14:44:03.9596140Z   ---
+2026-07-12T14:44:03.9596697Z   duration_ms: 0.146098
+2026-07-12T14:44:03.9597293Z   type: 'test'
+2026-07-12T14:44:03.9597837Z   ...
+2026-07-12T14:44:03.9697048Z # Subtest: 정상 snapshot이 계속 도착하면 sequence query를 실행하지 않는다
+2026-07-12T14:44:03.9697948Z ok 138 - 정상 snapshot이 계속 도착하면 sequence query를 실행하지 않는다
+2026-07-12T14:44:03.9698498Z   ---
+2026-07-12T14:44:03.9698830Z   duration_ms: 1.599775
+2026-07-12T14:44:03.9699209Z   type: 'test'
+2026-07-12T14:44:03.9699534Z   ...
+2026-07-12T14:44:03.9700100Z # Subtest: listener가 멈추면 5초 후 단발 복구 확인을 실행한다
+2026-07-12T14:44:03.9700854Z ok 139 - listener가 멈추면 5초 후 단발 복구 확인을 실행한다
+2026-07-12T14:44:03.9701313Z   ---
+2026-07-12T14:44:03.9701640Z   duration_ms: 0.457232
+2026-07-12T14:44:03.9702044Z   type: 'test'
+2026-07-12T14:44:03.9702372Z   ...
+2026-07-12T14:44:03.9703096Z # Subtest: 예약 중 snapshot이 도착하면 기존 watchdog을 취소하고 5초를 다시 센다
+2026-07-12T14:44:03.9704001Z ok 140 - 예약 중 snapshot이 도착하면 기존 watchdog을 취소하고 5초를 다시 센다
+2026-07-12T14:44:03.9705320Z   ---
+2026-07-12T14:44:03.9705682Z   duration_ms: 0.519555
+2026-07-12T14:44:03.9706082Z   type: 'test'
+2026-07-12T14:44:03.9706429Z   ...
+2026-07-12T14:44:03.9707188Z # Subtest: 변화가 없거나 조회가 실패하면 5초, 10초, 20초 백오프 후 최대 4회에서 멈춘다
+2026-07-12T14:44:03.9708063Z ok 141 - 변화가 없거나 조회가 실패하면 5초, 10초, 20초 백오프 후 최대 4회에서 멈춘다
+2026-07-12T14:44:03.9708529Z   ---
+2026-07-12T14:44:03.9708891Z   duration_ms: 1.42201
+2026-07-12T14:44:03.9709297Z   type: 'test'
+2026-07-12T14:44:03.9709619Z   ...
+2026-07-12T14:44:03.9710179Z # Subtest: 최대 총 복구시간을 넘기는 다음 확인은 예약하지 않는다
+2026-07-12T14:44:03.9710869Z ok 142 - 최대 총 복구시간을 넘기는 다음 확인은 예약하지 않는다
+2026-07-12T14:44:03.9711318Z   ---
+2026-07-12T14:44:03.9711660Z   duration_ms: 0.298174
+2026-07-12T14:44:03.9711987Z   type: 'test'
+2026-07-12T14:44:03.9712216Z   ...
+2026-07-12T14:44:03.9712982Z # Subtest: 페이지 복귀 즉시 확인은 예약 시간을 기다리지 않고 실행한다
+2026-07-12T14:44:03.9713610Z ok 143 - 페이지 복귀 즉시 확인은 예약 시간을 기다리지 않고 실행한다
+2026-07-12T14:44:03.9714037Z   ---
+2026-07-12T14:44:03.9714520Z   duration_ms: 0.431063
+2026-07-12T14:44:03.9714763Z   type: 'test'
+2026-07-12T14:44:03.9714990Z   ...
+2026-07-12T14:44:03.9715442Z # Subtest: 조회 중 snapshot이 도착하면 완료 후 즉시 재조회하지 않고 새 5초 기준으로 재예약한다
+2026-07-12T14:44:03.9716381Z ok 144 - 조회 중 snapshot이 도착하면 완료 후 즉시 재조회하지 않고 새 5초 기준으로 재예약한다
+2026-07-12T14:44:03.9716915Z   ---
+2026-07-12T14:44:03.9717135Z   duration_ms: 0.414538
+2026-07-12T14:44:03.9717384Z   type: 'test'
+2026-07-12T14:44:03.9717598Z   ...
+2026-07-12T14:44:03.9718107Z # Subtest: 다른 복구 흐름 때문에 deferred되면 재시도 횟수를 소모하지 않고 5초 뒤 다시 확인한다
+2026-07-12T14:44:03.9718635Z ok 145 - 다른 복구 흐름 때문에 deferred되면 재시도 횟수를 소모하지 않고 5초 뒤 다시 확인한다
+2026-07-12T14:44:03.9719166Z   ---
+2026-07-12T14:44:03.9719379Z   duration_ms: 0.441599
+2026-07-12T14:44:03.9719625Z   type: 'test'
+2026-07-12T14:44:03.9719831Z   ...
+2026-07-12T14:44:03.9720401Z # Subtest: 기존 replay, 이동, snapshot 적용, 수동 동기화, pending action, deadline 복구와 충돌하면 deferred한다
+2026-07-12T14:44:03.9721135Z ok 146 - 기존 replay, 이동, snapshot 적용, 수동 동기화, pending action, deadline 복구와 충돌하면 deferred한다
+2026-07-12T14:44:03.9721557Z   ---
+2026-07-12T14:44:03.9721770Z   duration_ms: 0.533055
+2026-07-12T14:44:03.9722009Z   type: 'test'
+2026-07-12T14:44:03.9722216Z   ...
+2026-07-12T14:44:03.9745099Z 1..146
+2026-07-12T14:44:03.9745469Z # tests 146
+2026-07-12T14:44:03.9745776Z # suites 0
+2026-07-12T14:44:03.9746078Z # pass 146
+2026-07-12T14:44:03.9746382Z # fail 0
+2026-07-12T14:44:03.9746684Z # cancelled 0
+2026-07-12T14:44:03.9747021Z # skipped 0
+2026-07-12T14:44:03.9747326Z # todo 0
+2026-07-12T14:44:03.9747678Z # duration_ms 518.984983
+2026-07-12T14:44:03.9918272Z ##[group]Run npm run build
+2026-07-12T14:44:03.9918596Z [36;1mnpm run build[0m
+2026-07-12T14:44:03.9953262Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:44:03.9953532Z env:
+2026-07-12T14:44:03.9953758Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:44:03.9954084Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:44:03.9954683Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:03.9955174Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:03.9955561Z ##[endgroup]
+2026-07-12T14:44:04.0919400Z 
+2026-07-12T14:44:04.0919634Z > build
+2026-07-12T14:44:04.0920008Z > tsc -b && vite build
+2026-07-12T14:44:04.0920252Z 
+2026-07-12T14:44:10.9786043Z [36mvite v8.1.3 [32mbuilding client environment for production...[36m[39m
+2026-07-12T14:44:10.9875402Z [2K
+2026-07-12T14:44:11.2193993Z transforming...✓ 88 modules transformed.
+2026-07-12T14:44:11.2801386Z rendering chunks...
+2026-07-12T14:44:11.4065243Z computing gzip size...
+2026-07-12T14:44:11.4242840Z dist/index.html                     0.24 kB │ gzip:   0.19 kB
+2026-07-12T14:44:11.4243695Z dist/assets/index-02A_khSq.css    114.71 kB │ gzip:  21.46 kB
+2026-07-12T14:44:11.4244630Z dist/assets/index-CzaGbd1H.js   1,048.38 kB │ gzip: 310.29 kB
+2026-07-12T14:44:11.4244982Z 
+2026-07-12T14:44:11.4251770Z [33m[plugin builtin:vite-reporter] 
+2026-07-12T14:44:11.4252354Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-07-12T14:44:11.4252864Z - Using dynamic import() to code-split the application
+2026-07-12T14:44:11.4253681Z - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+2026-07-12T14:44:11.4254758Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+2026-07-12T14:44:11.4255462Z [32m✓ built in 448ms[39m
+2026-07-12T14:44:11.4560194Z ##[group]Run npx playwright install --with-deps chromium
+2026-07-12T14:44:11.4560943Z [36;1mnpx playwright install --with-deps chromium[0m
+2026-07-12T14:44:11.4610145Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:44:11.4610543Z env:
+2026-07-12T14:44:11.4610877Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:44:11.4611400Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:44:11.4612088Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:11.4612936Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:11.4613562Z ##[endgroup]
+2026-07-12T14:44:12.2236766Z Installing dependencies...
+2026-07-12T14:44:12.2302897Z Switching to root user to install dependencies...
+2026-07-12T14:44:12.3231241Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-07-12T14:44:12.3839602Z Hit:2 http://azure.archive.ubuntu.com/ubuntu noble InRelease
+2026-07-12T14:44:12.3860670Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+2026-07-12T14:44:12.3938733Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+2026-07-12T14:44:12.3955799Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+2026-07-12T14:44:12.3957294Z Get:6 https://dl.google.com/linux/chrome-stable/deb stable InRelease [1825 B]
+2026-07-12T14:44:12.4536030Z Get:7 https://packages.microsoft.com/repos/azure-cli noble InRelease [3564 B]
+2026-07-12T14:44:12.4593984Z Get:8 https://packages.microsoft.com/ubuntu/24.04/prod noble InRelease [3600 B]
+2026-07-12T14:44:12.5207321Z Get:9 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1092 kB]
+2026-07-12T14:44:12.5344763Z Get:10 http://azure.archive.ubuntu.com/ubuntu noble-updates/main Translation-en [269 kB]
+2026-07-12T14:44:12.5375353Z Get:11 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Components [181 kB]
+2026-07-12T14:44:12.5392502Z Get:12 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1660 kB]
+2026-07-12T14:44:12.5515353Z Get:13 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe Translation-en [327 kB]
+2026-07-12T14:44:12.5542107Z Get:14 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Components [388 kB]
+2026-07-12T14:44:12.5558077Z Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1225 kB]
+2026-07-12T14:44:12.5655928Z Get:16 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted Translation-en [276 kB]
+2026-07-12T14:44:12.5682270Z Get:17 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Components [940 B]
+2026-07-12T14:44:12.5806225Z Get:18 http://azure.archive.ubuntu.com/ubuntu noble-backports/main amd64 Components [5744 B]
+2026-07-12T14:44:12.6272656Z Get:19 http://azure.archive.ubuntu.com/ubuntu noble-backports/universe amd64 Components [10.5 kB]
+2026-07-12T14:44:12.6361172Z Get:20 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [827 kB]
+2026-07-12T14:44:12.6416311Z Get:21 http://azure.archive.ubuntu.com/ubuntu noble-security/main Translation-en [187 kB]
+2026-07-12T14:44:12.6444448Z Get:22 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 Components [44.8 kB]
+2026-07-12T14:44:12.6455694Z Get:23 http://azure.archive.ubuntu.com/ubuntu noble-security/main amd64 c-n-f Metadata [11.9 kB]
+2026-07-12T14:44:12.6470835Z Get:24 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1174 kB]
+2026-07-12T14:44:12.6542509Z Get:25 http://azure.archive.ubuntu.com/ubuntu noble-security/universe Translation-en [231 kB]
+2026-07-12T14:44:12.6564822Z Get:26 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 Components [76.3 kB]
+2026-07-12T14:44:12.6582701Z Get:27 http://azure.archive.ubuntu.com/ubuntu noble-security/universe amd64 c-n-f Metadata [24.2 kB]
+2026-07-12T14:44:12.7076325Z Get:28 https://dl.google.com/linux/chrome-stable/deb stable/main amd64 Packages [1216 B]
+2026-07-12T14:44:12.7348101Z Get:29 https://packages.microsoft.com/repos/azure-cli noble/main amd64 Packages [2314 B]
+2026-07-12T14:44:12.7899224Z Get:30 https://packages.microsoft.com/ubuntu/24.04/prod noble/main armhf Packages [11.6 kB]
+2026-07-12T14:44:12.7938102Z Get:31 https://packages.microsoft.com/ubuntu/24.04/prod noble/main amd64 Packages [214 kB]
+2026-07-12T14:44:12.8018161Z Get:32 https://packages.microsoft.com/ubuntu/24.04/prod noble/main arm64 Packages [181 kB]
+2026-07-12T14:44:17.2819953Z Fetched 8808 kB in 1s (7880 kB/s)
+2026-07-12T14:44:17.9496329Z Reading package lists...
+2026-07-12T14:44:17.9750583Z Reading package lists...
+2026-07-12T14:44:18.1258846Z Building dependency tree...
+2026-07-12T14:44:18.1265661Z Reading state information...
+2026-07-12T14:44:18.2718206Z libasound2t64 is already the newest version (1.2.11-1ubuntu0.2).
+2026-07-12T14:44:18.2718743Z libasound2t64 set to manually installed.
+2026-07-12T14:44:18.2719223Z libatk-bridge2.0-0t64 is already the newest version (2.52.0-1build1).
+2026-07-12T14:44:18.2719725Z libatk-bridge2.0-0t64 set to manually installed.
+2026-07-12T14:44:18.2720171Z libatk1.0-0t64 is already the newest version (2.52.0-1build1).
+2026-07-12T14:44:18.2720585Z libatk1.0-0t64 set to manually installed.
+2026-07-12T14:44:18.2721014Z libatspi2.0-0t64 is already the newest version (2.52.0-1build1).
+2026-07-12T14:44:18.2721428Z libatspi2.0-0t64 set to manually installed.
+2026-07-12T14:44:18.2721891Z libcairo2 is already the newest version (1.18.0-3build1).
+2026-07-12T14:44:18.2722529Z libcairo2 set to manually installed.
+2026-07-12T14:44:18.2723151Z libcups2t64 is already the newest version (2.4.7-1.2ubuntu7.14).
+2026-07-12T14:44:18.2723872Z libcups2t64 set to manually installed.
+2026-07-12T14:44:18.2724754Z libdbus-1-3 is already the newest version (1.14.10-4ubuntu4.1).
+2026-07-12T14:44:18.2725272Z libdbus-1-3 set to manually installed.
+2026-07-12T14:44:18.2725987Z libdrm2 is already the newest version (2.4.125-1ubuntu0.1~24.04.2).
+2026-07-12T14:44:18.2726541Z libdrm2 set to manually installed.
+2026-07-12T14:44:18.2739519Z libgbm1 is already the newest version (25.2.8-0ubuntu0.24.04.2).
+2026-07-12T14:44:18.2740030Z libgbm1 set to manually installed.
+2026-07-12T14:44:18.2740486Z libglib2.0-0t64 is already the newest version (2.80.0-6ubuntu3.8).
+2026-07-12T14:44:18.2740925Z libglib2.0-0t64 set to manually installed.
+2026-07-12T14:44:18.2741353Z libnspr4 is already the newest version (2:4.35-1.1build1).
+2026-07-12T14:44:18.2741754Z libnspr4 set to manually installed.
+2026-07-12T14:44:18.2742164Z libnss3 is already the newest version (2:3.98-1ubuntu0.2).
+2026-07-12T14:44:18.2742539Z libnss3 set to manually installed.
+2026-07-12T14:44:18.2742957Z libpango-1.0-0 is already the newest version (1.52.1+ds-1build1).
+2026-07-12T14:44:18.2743378Z libpango-1.0-0 set to manually installed.
+2026-07-12T14:44:18.2743791Z libx11-6 is already the newest version (2:1.8.7-1build1).
+2026-07-12T14:44:18.2744273Z libx11-6 set to manually installed.
+2026-07-12T14:44:18.2744655Z libxcb1 is already the newest version (1.15-1ubuntu2).
+2026-07-12T14:44:18.2745023Z libxcb1 set to manually installed.
+2026-07-12T14:44:18.2745435Z libxcomposite1 is already the newest version (1:0.4.5-1build3).
+2026-07-12T14:44:18.2745861Z libxcomposite1 set to manually installed.
+2026-07-12T14:44:18.2746270Z libxdamage1 is already the newest version (1:1.1.6-1build1).
+2026-07-12T14:44:18.2746663Z libxdamage1 set to manually installed.
+2026-07-12T14:44:18.2747054Z libxext6 is already the newest version (2:1.3.4-1build2).
+2026-07-12T14:44:18.2747432Z libxext6 set to manually installed.
+2026-07-12T14:44:18.2747825Z libxfixes3 is already the newest version (1:6.0.0-2build1).
+2026-07-12T14:44:18.2748220Z libxfixes3 set to manually installed.
+2026-07-12T14:44:18.2748627Z libxkbcommon0 is already the newest version (1.6.0-1build1).
+2026-07-12T14:44:18.2749022Z libxkbcommon0 set to manually installed.
+2026-07-12T14:44:18.2749435Z libxrandr2 is already the newest version (2:1.5.2-2build1).
+2026-07-12T14:44:18.2749811Z libxrandr2 set to manually installed.
+2026-07-12T14:44:18.2750512Z xvfb is already the newest version (2:21.1.12-1ubuntu1.6).
+2026-07-12T14:44:18.2751066Z fonts-noto-color-emoji is already the newest version (2.047-0ubuntu0.24.04.1).
+2026-07-12T14:44:18.2751784Z libfontconfig1 is already the newest version (2.15.0-1.1ubuntu2).
+2026-07-12T14:44:18.2752213Z libfontconfig1 set to manually installed.
+2026-07-12T14:44:18.2752665Z libfreetype6 is already the newest version (2.13.2+dfsg-1ubuntu0.1).
+2026-07-12T14:44:18.2753087Z libfreetype6 set to manually installed.
+2026-07-12T14:44:18.2753515Z fonts-liberation is already the newest version (1:2.1.5-3).
+2026-07-12T14:44:18.2753934Z fonts-liberation set to manually installed.
+2026-07-12T14:44:18.2754455Z The following additional packages will be installed:
+2026-07-12T14:44:18.2754825Z   xfonts-encodings xfonts-utils
+2026-07-12T14:44:18.2755121Z Recommended packages:
+2026-07-12T14:44:18.2755421Z   fonts-ipafont-mincho fonts-tlwg-loma
+2026-07-12T14:44:18.2917047Z The following NEW packages will be installed:
+2026-07-12T14:44:18.2917662Z   fonts-freefont-ttf fonts-ipafont-gothic fonts-tlwg-loma-otf fonts-unifont
+2026-07-12T14:44:18.2922547Z   fonts-wqy-zenhei xfonts-cyrillic xfonts-encodings xfonts-scalable
+2026-07-12T14:44:18.2923006Z   xfonts-utils
+2026-07-12T14:44:18.3105212Z 0 upgraded, 9 newly installed, 0 to remove and 38 not upgraded.
+2026-07-12T14:44:18.3105882Z Need to get 21.1 MB of archives.
+2026-07-12T14:44:18.3106564Z After this operation, 79.5 MB of additional disk space will be used.
+2026-07-12T14:44:18.3107372Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [144 B]
+2026-07-12T14:44:18.4515511Z Get:2 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 fonts-ipafont-gothic all 00303-21ubuntu1 [3513 kB]
+2026-07-12T14:44:18.5011968Z Get:3 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 fonts-freefont-ttf all 20211204+svn4273-2 [5641 kB]
+2026-07-12T14:44:18.5702652Z Get:4 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 fonts-tlwg-loma-otf all 1:0.7.3-1 [107 kB]
+2026-07-12T14:44:18.5928453Z Get:5 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 fonts-unifont all 1:15.1.01-1build1 [2993 kB]
+2026-07-12T14:44:18.6387546Z Get:6 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 fonts-wqy-zenhei all 0.9.45-8 [7472 kB]
+2026-07-12T14:44:18.7196522Z Get:7 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 xfonts-encodings all 1:1.0.5-0ubuntu2 [578 kB]
+2026-07-12T14:44:18.7496461Z Get:8 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 xfonts-utils amd64 1:7.7+6build3 [94.4 kB]
+2026-07-12T14:44:18.7724001Z Get:9 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 xfonts-cyrillic all 1:1.0.5+nmu1 [384 kB]
+2026-07-12T14:44:18.7971802Z Get:10 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 xfonts-scalable all 1:1.0.3-1.3 [304 kB]
+2026-07-12T14:44:19.0510525Z Fetched 21.1 MB in 0s (42.2 MB/s)
+2026-07-12T14:44:19.0744931Z Selecting previously unselected package fonts-ipafont-gothic.
+2026-07-12T14:44:19.1018408Z (Reading database ... 
+2026-07-12T14:44:19.1019166Z (Reading database ... 5%
+2026-07-12T14:44:19.1020036Z (Reading database ... 10%
+2026-07-12T14:44:19.1020468Z (Reading database ... 15%
+2026-07-12T14:44:19.1020779Z (Reading database ... 20%
+2026-07-12T14:44:19.1021040Z (Reading database ... 25%
+2026-07-12T14:44:19.1021303Z (Reading database ... 30%
+2026-07-12T14:44:19.1021545Z (Reading database ... 35%
+2026-07-12T14:44:19.1021783Z (Reading database ... 40%
+2026-07-12T14:44:19.1022029Z (Reading database ... 45%
+2026-07-12T14:44:19.1022266Z (Reading database ... 50%
+2026-07-12T14:44:19.1065718Z (Reading database ... 55%
+2026-07-12T14:44:19.2249100Z (Reading database ... 60%
+2026-07-12T14:44:19.4285299Z (Reading database ... 65%
+2026-07-12T14:44:19.6348787Z (Reading database ... 70%
+2026-07-12T14:44:19.6632218Z (Reading database ... 75%
+2026-07-12T14:44:19.7764388Z (Reading database ... 80%
+2026-07-12T14:44:19.9563762Z (Reading database ... 85%
+2026-07-12T14:44:20.0820288Z (Reading database ... 90%
+2026-07-12T14:44:20.2542179Z (Reading database ... 95%
+2026-07-12T14:44:20.2542685Z (Reading database ... 100%
+2026-07-12T14:44:20.2543368Z (Reading database ... 202701 files and directories currently installed.)
+2026-07-12T14:44:20.2587164Z Preparing to unpack .../0-fonts-ipafont-gothic_00303-21ubuntu1_all.deb ...
+2026-07-12T14:44:20.2682454Z Unpacking fonts-ipafont-gothic (00303-21ubuntu1) ...
+2026-07-12T14:44:20.5033226Z Selecting previously unselected package fonts-freefont-ttf.
+2026-07-12T14:44:20.5165836Z Preparing to unpack .../1-fonts-freefont-ttf_20211204+svn4273-2_all.deb ...
+2026-07-12T14:44:20.5174681Z Unpacking fonts-freefont-ttf (20211204+svn4273-2) ...
+2026-07-12T14:44:20.5971965Z Selecting previously unselected package fonts-tlwg-loma-otf.
+2026-07-12T14:44:20.6102766Z Preparing to unpack .../2-fonts-tlwg-loma-otf_1%3a0.7.3-1_all.deb ...
+2026-07-12T14:44:20.6109822Z Unpacking fonts-tlwg-loma-otf (1:0.7.3-1) ...
+2026-07-12T14:44:20.6323218Z Selecting previously unselected package fonts-unifont.
+2026-07-12T14:44:20.6450990Z Preparing to unpack .../3-fonts-unifont_1%3a15.1.01-1build1_all.deb ...
+2026-07-12T14:44:20.6456578Z Unpacking fonts-unifont (1:15.1.01-1build1) ...
+2026-07-12T14:44:20.7533243Z Selecting previously unselected package fonts-wqy-zenhei.
+2026-07-12T14:44:20.7664922Z Preparing to unpack .../4-fonts-wqy-zenhei_0.9.45-8_all.deb ...
+2026-07-12T14:44:20.7765793Z Unpacking fonts-wqy-zenhei (0.9.45-8) ...
+2026-07-12T14:44:21.2448270Z Selecting previously unselected package xfonts-encodings.
+2026-07-12T14:44:21.2580294Z Preparing to unpack .../5-xfonts-encodings_1%3a1.0.5-0ubuntu2_all.deb ...
+2026-07-12T14:44:21.2594644Z Unpacking xfonts-encodings (1:1.0.5-0ubuntu2) ...
+2026-07-12T14:44:21.2885115Z Selecting previously unselected package xfonts-utils.
+2026-07-12T14:44:21.3013124Z Preparing to unpack .../6-xfonts-utils_1%3a7.7+6build3_amd64.deb ...
+2026-07-12T14:44:21.3019945Z Unpacking xfonts-utils (1:7.7+6build3) ...
+2026-07-12T14:44:21.3350950Z Selecting previously unselected package xfonts-cyrillic.
+2026-07-12T14:44:21.3478230Z Preparing to unpack .../7-xfonts-cyrillic_1%3a1.0.5+nmu1_all.deb ...
+2026-07-12T14:44:21.3485049Z Unpacking xfonts-cyrillic (1:1.0.5+nmu1) ...
+2026-07-12T14:44:21.3817661Z Selecting previously unselected package xfonts-scalable.
+2026-07-12T14:44:21.3944419Z Preparing to unpack .../8-xfonts-scalable_1%3a1.0.3-1.3_all.deb ...
+2026-07-12T14:44:21.3950967Z Unpacking xfonts-scalable (1:1.0.3-1.3) ...
+2026-07-12T14:44:21.4358571Z Setting up fonts-wqy-zenhei (0.9.45-8) ...
+2026-07-12T14:44:21.4477316Z Setting up fonts-freefont-ttf (20211204+svn4273-2) ...
+2026-07-12T14:44:21.4493576Z Setting up fonts-tlwg-loma-otf (1:0.7.3-1) ...
+2026-07-12T14:44:21.4510293Z Setting up xfonts-encodings (1:1.0.5-0ubuntu2) ...
+2026-07-12T14:44:21.4526237Z Setting up fonts-ipafont-gothic (00303-21ubuntu1) ...
+2026-07-12T14:44:21.4594504Z update-alternatives: using /usr/share/fonts/opentype/ipafont-gothic/ipag.ttf to provide /usr/share/fonts/truetype/fonts-japanese-gothic.ttf (fonts-japanese-gothic.ttf) in auto mode
+2026-07-12T14:44:21.4612384Z Setting up fonts-unifont (1:15.1.01-1build1) ...
+2026-07-12T14:44:21.4628356Z Setting up xfonts-utils (1:7.7+6build3) ...
+2026-07-12T14:44:21.4667969Z Setting up xfonts-cyrillic (1:1.0.5+nmu1) ...
+2026-07-12T14:44:21.5020932Z Setting up xfonts-scalable (1:1.0.3-1.3) ...
+2026-07-12T14:44:21.5308702Z Processing triggers for man-db (2.12.0-4build2) ...
+2026-07-12T14:44:21.5327946Z Not building database; man-db/auto-update is not 'true'.
+2026-07-12T14:44:21.5340812Z Processing triggers for fontconfig (2.15.0-1.1ubuntu2) ...
+2026-07-12T14:44:22.2546693Z 
+2026-07-12T14:44:22.2548410Z Running kernel seems to be up-to-date.
+2026-07-12T14:44:22.2548708Z 
+2026-07-12T14:44:22.2548872Z No services need to be restarted.
+2026-07-12T14:44:22.2549157Z 
+2026-07-12T14:44:22.2549415Z No containers need to be restarted.
+2026-07-12T14:44:22.2549683Z 
+2026-07-12T14:44:22.2549945Z No user sessions are running outdated binaries.
+2026-07-12T14:44:22.2550261Z 
+2026-07-12T14:44:22.2551086Z No VM guests are running outdated hypervisor (qemu) binaries on this host.
+2026-07-12T14:44:23.0515227Z Downloading Chrome for Testing 149.0.7827.55 (playwright chromium v1228) from https://cdn.playwright.dev/builds/cft/149.0.7827.55/linux64/chrome-linux64.zip
+2026-07-12T14:44:24.0648099Z |                                                                                |   0% of 177 MiB
+2026-07-12T14:44:24.2848016Z |■■■■■■■■                                                                        |  10% of 177 MiB
+2026-07-12T14:44:24.4061296Z |■■■■■■■■■■■■■■■■                                                                |  20% of 177 MiB
+2026-07-12T14:44:24.4931685Z |■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 177 MiB
+2026-07-12T14:44:24.5996781Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 177 MiB
+2026-07-12T14:44:24.6978854Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 177 MiB
+2026-07-12T14:44:24.8330462Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 177 MiB
+2026-07-12T14:44:24.9489393Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 177 MiB
+2026-07-12T14:44:25.0507223Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 177 MiB
+2026-07-12T14:44:25.1380102Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 177 MiB
+2026-07-12T14:44:25.2581608Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 177 MiB
+2026-07-12T14:44:27.7306558Z Chrome for Testing 149.0.7827.55 (playwright chromium v1228) downloaded to /home/runner/.cache/ms-playwright/chromium-1228
+2026-07-12T14:44:27.7309520Z Downloading FFmpeg (playwright ffmpeg v1011) from https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/1011/ffmpeg-linux.zip
+2026-07-12T14:44:28.6813149Z |                                                                                |   0% of 2.3 MiB
+2026-07-12T14:44:28.6873670Z |■■■■■■■■                                                                        |  10% of 2.3 MiB
+2026-07-12T14:44:28.6903363Z |■■■■■■■■■■■■■■■■                                                                |  20% of 2.3 MiB
+2026-07-12T14:44:28.6921653Z |■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 2.3 MiB
+2026-07-12T14:44:28.6939545Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 2.3 MiB
+2026-07-12T14:44:28.6951673Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 2.3 MiB
+2026-07-12T14:44:28.6965456Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 2.3 MiB
+2026-07-12T14:44:28.6975262Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 2.3 MiB
+2026-07-12T14:44:28.6989633Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 2.3 MiB
+2026-07-12T14:44:28.6999188Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 2.3 MiB
+2026-07-12T14:44:28.7009515Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 2.3 MiB
+2026-07-12T14:44:28.7568414Z FFmpeg (playwright ffmpeg v1011) downloaded to /home/runner/.cache/ms-playwright/ffmpeg-1011
+2026-07-12T14:44:28.7571193Z Downloading Chrome Headless Shell 149.0.7827.55 (playwright chromium-headless-shell v1228) from https://cdn.playwright.dev/builds/cft/149.0.7827.55/linux64/chrome-headless-shell-linux64.zip
+2026-07-12T14:44:29.7687391Z |                                                                                |   0% of 114.2 MiB
+2026-07-12T14:44:29.9545712Z |■■■■■■■■                                                                        |  10% of 114.2 MiB
+2026-07-12T14:44:30.0101459Z |■■■■■■■■■■■■■■■■                                                                |  20% of 114.2 MiB
+2026-07-12T14:44:30.0589999Z |■■■■■■■■■■■■■■■■■■■■■■■■                                                        |  30% of 114.2 MiB
+2026-07-12T14:44:30.1121184Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                                |  40% of 114.2 MiB
+2026-07-12T14:44:30.1794883Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                        |  50% of 114.2 MiB
+2026-07-12T14:44:30.2422346Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                                |  60% of 114.2 MiB
+2026-07-12T14:44:30.3278388Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                        |  70% of 114.2 MiB
+2026-07-12T14:44:30.3892083Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■                |  80% of 114.2 MiB
+2026-07-12T14:44:30.4422008Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■        |  90% of 114.2 MiB
+2026-07-12T14:44:30.4982356Z |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■| 100% of 114.2 MiB
+2026-07-12T14:44:32.3253999Z Chrome Headless Shell 149.0.7827.55 (playwright chromium-headless-shell v1228) downloaded to /home/runner/.cache/ms-playwright/chromium_headless_shell-1228
+2026-07-12T14:44:32.3516973Z ##[group]Run node .github/scripts/write-qa-firebase-env.mjs
+2026-07-12T14:44:32.3517436Z [36;1mnode .github/scripts/write-qa-firebase-env.mjs[0m
+2026-07-12T14:44:32.3553717Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:44:32.3553981Z env:
+2026-07-12T14:44:32.3554364Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:44:32.3554692Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:44:32.3555126Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:32.3555614Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:32.3556000Z ##[endgroup]
+2026-07-12T14:44:32.3904768Z Wrote isolated QA Firebase config for project=demo-yut-auth-gated-29196810420-1, run=auth-gated-29196810420-1
+2026-07-12T14:44:32.3966391Z ##[group]Run node .github/scripts/verify-qa-emulator-config.mjs
+2026-07-12T14:44:32.3966860Z [36;1mnode .github/scripts/verify-qa-emulator-config.mjs[0m
+2026-07-12T14:44:32.4000668Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:44:32.4000923Z env:
+2026-07-12T14:44:32.4001147Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:44:32.4001467Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:44:32.4001882Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:32.4002369Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:32.4002753Z ##[endgroup]
+2026-07-12T14:44:32.4338278Z QA Firebase config guard passed: project=demo-yut-auth-gated-29196810420-1, run=auth-gated-29196810420-1
+2026-07-12T14:44:32.4341315Z Expected Firestore emulator endpoint: 127.0.0.1:8080
+2026-07-12T14:44:32.4342102Z Expected Auth emulator endpoint: http://127.0.0.1:9099
+2026-07-12T14:44:32.4401765Z ##[group]Run npm run build:qa
+2026-07-12T14:44:32.4402048Z [36;1mnpm run build:qa[0m
+2026-07-12T14:44:32.4435118Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:44:32.4435378Z env:
+2026-07-12T14:44:32.4435617Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:44:32.4435943Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:44:32.4436361Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:32.4436850Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:32.4437237Z ##[endgroup]
+2026-07-12T14:44:32.5405029Z 
+2026-07-12T14:44:32.5405289Z > build:qa
+2026-07-12T14:44:32.5405786Z > tsc -b && vite build --mode qa
+2026-07-12T14:44:32.5406091Z 
+2026-07-12T14:44:36.2666167Z [36mvite v8.1.3 [32mbuilding client environment for qa...[36m[39m
+2026-07-12T14:44:36.2804428Z [2K
+2026-07-12T14:44:36.4461400Z transforming...✓ 88 modules transformed.
+2026-07-12T14:44:36.5029015Z rendering chunks...
+2026-07-12T14:44:36.6305384Z computing gzip size...
+2026-07-12T14:44:36.6458171Z dist/index.html                     0.24 kB │ gzip:   0.20 kB
+2026-07-12T14:44:36.6458791Z dist/assets/index-02A_khSq.css    114.71 kB │ gzip:  21.46 kB
+2026-07-12T14:44:36.6459355Z dist/assets/index-DmO5zcJF.js   1,049.43 kB │ gzip: 310.83 kB
+2026-07-12T14:44:36.6459609Z 
+2026-07-12T14:44:36.6462524Z [32m✓ built in 379ms[39m
+2026-07-12T14:44:36.6471200Z [33m[plugin builtin:vite-reporter] 
+2026-07-12T14:44:36.6471972Z (!) Some chunks are larger than 500 kB after minification. Consider:
+2026-07-12T14:44:36.6472771Z - Using dynamic import() to code-split the application
+2026-07-12T14:44:36.6474010Z - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+2026-07-12T14:44:36.6475638Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+2026-07-12T14:44:36.6700714Z ##[group]Run npx --yes firebase-tools@latest emulators:exec \
+2026-07-12T14:44:36.6701181Z [36;1mnpx --yes firebase-tools@latest emulators:exec \[0m
+2026-07-12T14:44:36.6701528Z [36;1m  --config firebase.qa.json \[0m
+2026-07-12T14:44:36.6701829Z [36;1m  --project "$QA_PROJECT_ID" \[0m
+2026-07-12T14:44:36.6702305Z [36;1m  --only auth,firestore \[0m
+2026-07-12T14:44:36.6702581Z [36;1m  "npm run qa:emulator-suite"[0m
+2026-07-12T14:44:36.6737846Z shell: /usr/bin/bash -e {0}
+2026-07-12T14:44:36.6738111Z env:
+2026-07-12T14:44:36.6738336Z   QA_RUN_ID: auth-gated-29196810420-1
+2026-07-12T14:44:36.6738665Z   QA_PROJECT_ID: demo-yut-auth-gated-29196810420-1
+2026-07-12T14:44:36.6739083Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:36.6739572Z   JAVA_HOME_21_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.11-10/x64
+2026-07-12T14:44:36.6739954Z ##[endgroup]
+2026-07-12T14:44:47.3773695Z npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+2026-07-12T14:44:47.8125209Z npm warn deprecated json-ptr@3.1.1: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+2026-07-12T14:44:48.1385964Z npm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+2026-07-12T14:44:48.2425912Z npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+2026-07-12T14:44:54.1354746Z [36m[1mi  emulators:[22m[39m Starting emulators: auth, firestore
+2026-07-12T14:44:54.1356187Z [36m[1mi  emulators:[22m[39m Detected demo project ID "demo-yut-auth-gated-29196810420-1", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.
+2026-07-12T14:44:54.1461414Z [33m[1m⚠ [22m[39m It appears you are running in a CI environment. You can avoid downloading the Firestore Emulator repeatedly by caching the /home/runner/.cache/firebase/emulators directory.
+2026-07-12T14:44:54.1463305Z [36m[1mi  firestore:[22m[39m downloading cloud-firestore-emulator-v1.21.0.jar...
+2026-07-12T14:44:55.1495907Z 
+2026-07-12T14:44:55.5283470Z [36m[1mi  firestore:[22m[39m Firestore Emulator logging to [1mfirestore-debug.log[22m
+2026-07-12T14:44:58.3416311Z [32m[1m✔  firestore:[22m[39m Firestore Emulator was started in standard edition.
+2026-07-12T14:44:58.3435594Z [32m[1m✔  firestore:[22m[39m Firestore Emulator UI websocket is running on 9150.
+2026-07-12T14:45:03.5973753Z [36m[1mi [22m[39m Running script: [1mnpm run qa:emulator-suite[22m
+2026-07-12T14:45:03.6965240Z 
+2026-07-12T14:45:03.6965837Z > qa:emulator-suite
+2026-07-12T14:45:03.6966390Z > node tests/helpers/run-qa-emulator-suite.mjs
+2026-07-12T14:45:03.6966638Z 
+2026-07-12T14:45:03.7267629Z 
+2026-07-12T14:45:03.7268166Z ===== Verify emulator runtime =====
+2026-07-12T14:45:03.7615591Z FIREBASE_CONFIG contains emulator-generated demo config for demo-yut-auth-gated-29196810420-1.
+2026-07-12T14:45:03.7618146Z QA Firebase config guard passed: project=demo-yut-auth-gated-29196810420-1, run=auth-gated-29196810420-1
+2026-07-12T14:45:03.7619238Z Expected Firestore emulator endpoint: 127.0.0.1:8080
+2026-07-12T14:45:03.7619979Z Expected Auth emulator endpoint: http://127.0.0.1:9099
+2026-07-12T14:45:03.7644599Z QA Firebase emulator runtime endpoints are reachable.
+2026-07-12T14:45:03.7702057Z 
+2026-07-12T14:45:03.7702393Z ===== Cleanup current QA namespace before tests =====
+2026-07-12T14:45:03.9178048Z (node:3544) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+2026-07-12T14:45:03.9180353Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+2026-07-12T14:45:03.9181766Z To eliminate this warning, add "type": "module" to /home/runner/work/Yut/Yut/package.json.
+2026-07-12T14:45:03.9182834Z (Use `node --trace-warnings ...` to show where the warning was created)
+2026-07-12T14:45:05.1718510Z QA cleanup namespace=auth-gated-29196810420-1, rooms=0
+2026-07-12T14:46:05.2033887Z 
+2026-07-12T14:46:05.2034587Z ===== Browser Firebase isolation guard =====
+2026-07-12T14:46:06.6699381Z 
+2026-07-12T14:46:06.6700100Z Running 1 test using 1 worker
+2026-07-12T14:46:06.6714357Z 
+2026-07-12T14:46:07.6696683Z   ✓  1 [desktop-chromium] › tests/smoke/firebase-emulator-isolation.spec.js:3:5 › QA browser app uses only the isolated Firebase emulators (330ms)
+2026-07-12T14:46:07.7303257Z 
+2026-07-12T14:46:07.7316810Z   1 passed (1.7s)
+2026-07-12T14:46:07.7607001Z 
+2026-07-12T14:46:07.7607568Z ===== QA basic flow =====
+2026-07-12T14:46:07.8627438Z 
+2026-07-12T14:46:07.8628397Z > test:qa-basic-flow
+2026-07-12T14:46:07.8630394Z > playwright test --workers=1 --project=desktop-chromium tests/game-flow/basic-turn.spec.js tests/game-flow/game-start-authority.spec.js --output=test-results/basic-flow
+2026-07-12T14:46:07.8652247Z 
+2026-07-12T14:46:09.3218251Z 
+2026-07-12T14:46:09.3218860Z Running 6 tests using 1 worker
+2026-07-12T14:46:09.3231636Z 
+2026-07-12T14:46:26.5510430Z   ✓  1 [desktop-chromium] › tests/game-flow/basic-turn.spec.js:13:7 › game flow QA › AI를 추가한 2인 방에서 게임 화면 진입과 첫 턴 조작 UI를 검증한다 (16.6s)
+2026-07-12T14:46:37.1205727Z   ✓  2 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:37:7 › game start authority QA › 게스트 동시 접속에서는 초기 state 저장 후에만 양쪽 화면이 game으로 전환된다 (10.5s)
+2026-07-12T14:46:41.3201497Z   ✓  3 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:83:7 › game start authority QA › 빠른 3회 클릭과 timeout 재클릭은 동일 requestId로 한 번만 version을 증가시킨다 (4.2s)
+2026-07-12T14:46:45.4839658Z   ✓  4 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:111:7 › game start authority QA › timeout 재클릭 후 카운트다운 취소 시 늦은 응답이 와도 초기화되지 않는다 (4.2s)
+2026-07-12T14:46:50.8927472Z   ✓  5 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:131:7 › game start authority QA › 초기화 지연 중 cancelled 또는 다른 requestId로 바뀌면 transaction이 거절되고 게임 화면에 진입하지 않는다 (5.4s)
+2026-07-12T14:46:52.3471532Z   ✓  6 [desktop-chromium] › tests/game-flow/game-start-authority.spec.js:155:7 › game start authority QA › 만료된 requested 상태에서 새 시작은 새 version과 countdown을 실제 room 문서에 만든다 (1.4s)
+2026-07-12T14:46:52.4019025Z 
+2026-07-12T14:46:52.4024626Z   6 passed (44.0s)
+2026-07-12T14:46:52.4207928Z 
+2026-07-12T14:46:52.4208334Z ===== QA room lifecycle =====
+2026-07-12T14:46:52.5139323Z 
+2026-07-12T14:46:52.5139867Z > test:qa-room-lifecycle
+2026-07-12T14:46:52.5140672Z > playwright test --workers=1 --project=desktop-chromium tests/online/room-lifecycle.spec.js --output=test-results/room-lifecycle
+2026-07-12T14:46:52.5141212Z 
+2026-07-12T14:46:53.7839181Z 
+2026-07-12T14:46:53.7839966Z Running 1 test using 1 worker
+2026-07-12T14:46:53.7852065Z 
+2026-07-12T14:46:55.5219513Z   ✓  1 [desktop-chromium] › tests/online/room-lifecycle.spec.js:13:7 › online room QA › 방 생성 후 대기실에 진입한다 (1.1s)
+2026-07-12T14:46:55.5743151Z 
+2026-07-12T14:46:55.5749799Z   1 passed (2.6s)
+2026-07-12T14:46:55.5954114Z 
+2026-07-12T14:46:55.5954781Z ===== QA online turn recovery =====
+2026-07-12T14:46:55.6888187Z 
+2026-07-12T14:46:55.6889066Z > test:qa-online-turn-recovery
+2026-07-12T14:46:55.6892656Z > playwright test --workers=1 --project=desktop-chromium tests/regression/bug-history-smoke.spec.js tests/regression/roll-mat-surface.spec.js --output=test-results/online-turn-recovery
+2026-07-12T14:46:55.6893806Z 
+2026-07-12T14:46:57.1304928Z 
+2026-07-12T14:46:57.1305684Z Running 5 tests using 1 worker
+2026-07-12T14:46:57.1314641Z 
+2026-07-12T14:47:05.2036397Z   ✓  1 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:14:7 › BUG_HISTORY regression smoke › 게임 시작 직후 윷 던지기/대기 버튼 상태가 고착되지 않는다 (7.4s)
+2026-07-12T14:47:41.2340147Z   ✓  2 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:42:7 › BUG_HISTORY regression smoke › 온라인 윷 던지기는 sequence replay 애니메이션을 표시하고 이동 직후 경로 preview를 숨긴다 (36.0s)
+2026-07-12T14:48:15.9796421Z   ✓  3 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:326:7 › BUG_HISTORY regression smoke › host가 대리 제출한 AI 이동은 sequence 경로로 칸별 재생되고 내 이동은 중복 재생되지 않는다 (34.7s)
+2026-07-12T14:48:16.0400933Z   ✓  4 [desktop-chromium] › tests/regression/bug-history-smoke.spec.js:551:7 › BUG_HISTORY regression smoke › timeout 벌칙은 오프라인 로컬 timeout에만 적용된다 (52ms)
+2026-07-12T14:48:32.2007936Z   ✓  5 [desktop-chromium] › tests/regression/roll-mat-surface.spec.js:13:7 › roll mat surface regression › pending부터 결과 유지까지 같은 2D 매트 표면을 계속 표시한다 (16.1s)
+2026-07-12T14:48:32.2556747Z 
+2026-07-12T14:48:32.2561799Z   5 passed (1.6m)
+2026-07-12T14:48:32.2766591Z 
+2026-07-12T14:48:32.2767146Z ===== QA desktop lobby regression =====
+2026-07-12T14:48:32.3695867Z 
+2026-07-12T14:48:32.3696750Z > test:qa-cleanup-layout-regression
+2026-07-12T14:48:32.3697978Z > playwright test --workers=1 --project=desktop-chromium tests/lobby --output=test-results/lobby-regression
+2026-07-12T14:48:32.3698683Z 
+2026-07-12T14:48:33.7033551Z 
+2026-07-12T14:48:33.7034660Z Running 2 tests using 1 worker
+2026-07-12T14:48:33.7047823Z 
+2026-07-12T14:48:37.3305859Z   ✓  1 [desktop-chromium] › tests/lobby/cleanup-layout-regression.spec.js:17:7 › cleanup/layout regression QA › 대기실과 로비 주요 버튼은 force click 없이 클릭 가능하고 로비 action column 정렬을 유지한다 (3.0s)
+2026-07-12T14:48:37.6500991Z   ✓  2 [desktop-chromium] › tests/lobby/lobby-options.spec.js:6:7 › lobby QA › 로비 저장 옵션이 현재 화면에 반영된다 (299ms)
+2026-07-12T14:48:37.7101126Z 
+2026-07-12T14:48:37.7108947Z   2 passed (4.8s)
+2026-07-12T14:48:37.7411897Z 
+2026-07-12T14:48:37.7412531Z ===== QA mobile layout =====
+2026-07-12T14:48:37.8337144Z 
+2026-07-12T14:48:37.8338164Z > test:qa-mobile-layout
+2026-07-12T14:48:37.8339616Z > playwright test --workers=1 --project=mobile-galaxy --project=tablet-ipad tests/mobile/mobile-layout.spec.js --output=test-results/mobile-layout
+2026-07-12T14:48:37.8340583Z 
+2026-07-12T14:48:39.1227141Z 
+2026-07-12T14:48:39.1228044Z Running 4 tests using 1 worker
+2026-07-12T14:48:39.1241977Z 
+2026-07-12T14:48:40.4319437Z   ✓  1 [mobile-galaxy] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 (687ms)
+2026-07-12T14:48:41.6363902Z   ✓  2 [mobile-galaxy] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 (1.2s)
+2026-07-12T14:48:42.2261413Z   ✘  3 [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 (3ms)
+2026-07-12T14:48:42.7749923Z   ✘  4 [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 (3ms)
+2026-07-12T14:48:42.8031568Z 
+2026-07-12T14:48:42.8051653Z 
+2026-07-12T14:48:42.8053711Z   1) [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 
+2026-07-12T14:48:42.8054560Z 
+2026-07-12T14:48:42.8055368Z     Error: browserType.launch: Executable doesn't exist at /home/runner/.cache/ms-playwright/webkit-2311/pw_run.sh
+2026-07-12T14:48:42.8056141Z     ╔════════════════════════════════════════════════════════════╗
+2026-07-12T14:48:42.8056656Z     ║ Looks like Playwright was just installed or updated.       ║
+2026-07-12T14:48:42.8057516Z     ║ Please run the following command to download new browsers: ║
+2026-07-12T14:48:42.8058061Z     ║                                                            ║
+2026-07-12T14:48:42.8058490Z     ║     npx playwright install                                 ║
+2026-07-12T14:48:42.8058930Z     ║                                                            ║
+2026-07-12T14:48:42.8059372Z     ║ <3 Playwright Team                                         ║
+2026-07-12T14:48:42.8059847Z     ╚════════════════════════════════════════════════════════════╝
+2026-07-12T14:48:42.8060065Z 
+2026-07-12T14:48:42.8060906Z     Error Context: test-results/mobile-layout/mobile-mobile-layout-mobil-a8364-일-태블릿-뷰포트에서-로비-핵심-탭-대상이-보인다-tablet-ipad/error-context.md
+2026-07-12T14:48:42.8061450Z 
+2026-07-12T14:48:42.8062162Z   2) [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 
+2026-07-12T14:48:42.8062758Z 
+2026-07-12T14:48:42.8063415Z     Error: browserType.launch: Executable doesn't exist at /home/runner/.cache/ms-playwright/webkit-2311/pw_run.sh
+2026-07-12T14:48:42.8064999Z     ╔════════════════════════════════════════════════════════════╗
+2026-07-12T14:48:42.8065618Z     ║ Looks like Playwright was just installed or updated.       ║
+2026-07-12T14:48:42.8066250Z     ║ Please run the following command to download new browsers: ║
+2026-07-12T14:48:42.8066712Z     ║                                                            ║
+2026-07-12T14:48:42.8067151Z     ║     npx playwright install                                 ║
+2026-07-12T14:48:42.8067587Z     ║                                                            ║
+2026-07-12T14:48:42.8068037Z     ║ <3 Playwright Team                                         ║
+2026-07-12T14:48:42.8068534Z     ╚════════════════════════════════════════════════════════════╝
+2026-07-12T14:48:42.8068767Z 
+2026-07-12T14:48:42.8069396Z     Error Context: test-results/mobile-layout/mobile-mobile-layout-mobil-98cdc-모바일-로비-방-카드의-좌우-영역이-겹치지-않는다-tablet-ipad/error-context.md
+2026-07-12T14:48:42.8069919Z 
+2026-07-12T14:48:42.8070016Z   2 failed
+2026-07-12T14:48:42.8070620Z     [tablet-ipad] › tests/mobile/mobile-layout.spec.js:11:7 › mobile layout QA › 모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다 
+2026-07-12T14:48:42.8071464Z     [tablet-ipad] › tests/mobile/mobile-layout.spec.js:20:7 › mobile layout QA › 모바일 로비 방 카드의 좌우 영역이 겹치지 않는다 
+2026-07-12T14:48:42.8071947Z   2 passed (4.5s)
+2026-07-12T14:48:42.8288226Z 
+2026-07-12T14:48:42.8288774Z ===== Cleanup current QA namespace after tests =====
+2026-07-12T14:48:42.9722567Z (node:5384) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/runner/work/Yut/Yut/tests/helpers/cleanup-qa-rooms.js is not specified and it doesn't parse as CommonJS.
+2026-07-12T14:48:42.9724770Z Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+2026-07-12T14:48:42.9726052Z To eliminate this warning, add "type": "module" to /home/runner/work/Yut/Yut/package.json.
+2026-07-12T14:48:42.9727030Z (Use `node --trace-warnings ...` to show where the warning was created)
+2026-07-12T14:48:43.0690850Z QA cleanup namespace=auth-gated-29196810420-1, rooms=0
+2026-07-12T14:48:43.0743845Z cleanup-after namespace=auth-gated-29196810420-1, remaining=0
+2026-07-12T14:49:43.0912322Z QA emulator suite failed: QA mobile layout (exit 1)
+2026-07-12T14:49:43.1017467Z [33m[1m⚠ [22m[39m Script exited unsuccessfully (code 1)
+2026-07-12T14:49:43.6031953Z [36m[1mi  emulators:[22m[39m Shutting down emulators.
+2026-07-12T14:49:43.6035289Z [36m[1mi  firestore:[22m[39m Stopping Firestore Emulator
+2026-07-12T14:49:43.9450303Z [36m[1mi  auth:[22m[39m Stopping Authentication Emulator
+2026-07-12T14:49:43.9454091Z [36m[1mi  hub:[22m[39m Stopping emulator hub
+2026-07-12T14:49:43.9458078Z [36m[1mi  logging:[22m[39m Stopping Logging Emulator
+2026-07-12T14:49:43.9491380Z 
+2026-07-12T14:49:43.9492411Z [1m[31mError:[39m[22m Script "[1mnpm run qa:emulator-suite[22m" exited with code 1
+2026-07-12T14:49:44.2516810Z ##[error]Process completed with exit code 1.
+2026-07-12T14:49:44.2628587Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-12T14:49:44.2629732Z Post job cleanup.
+2026-07-12T14:49:44.3946025Z (node:5413) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-07-12T14:49:44.3947161Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-07-12T14:49:44.4154660Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-07-12T14:49:44.4155885Z Post job cleanup.
+2026-07-12T14:49:44.5115911Z [command]/usr/bin/git version
+2026-07-12T14:49:44.5144742Z git version 2.54.0
+2026-07-12T14:49:44.5168092Z Temporarily overriding HOME='/home/runner/work/_temp/8cf35c70-b953-4de3-a599-839b43455726' before making global git config changes
+2026-07-12T14:49:44.5169893Z Adding repository directory to the temporary git global config as a safe directory
+2026-07-12T14:49:44.5175370Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/Yut/Yut
+2026-07-12T14:49:44.5214731Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-07-12T14:49:44.5254598Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-07-12T14:49:44.5546628Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-07-12T14:49:44.5578089Z http.https://github.com/.extraheader
+2026-07-12T14:49:44.5590328Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-07-12T14:49:44.5627950Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-07-12T14:49:44.5958200Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-07-12T14:49:44.6002793Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-07-12T14:49:44.6538224Z Cleaning up orphan processes
+2026-07-12T14:49:44.6875509Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/setup-java@v4, actions/setup-node@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
