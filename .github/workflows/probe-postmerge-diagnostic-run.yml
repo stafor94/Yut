@@ -7,7 +7,7 @@ on:
 
 permissions:
   actions: read
-  contents: write
+  contents: read
 
 jobs:
   probe:
@@ -19,19 +19,16 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Query diagnostic workflow
         shell: bash
         run: |
           set -euo pipefail
           RUNS="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f head_sha="$TARGET_SHA" -f per_page=20)"
           jq '{runs:[.workflow_runs[]|{id,name,status,conclusion,head_sha,html_url,created_at,updated_at}]}' <<<"$RUNS" > POSTMERGE_DIAGNOSTIC_RUNS.json
-      - name: Commit query result
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add POSTMERGE_DIAGNOSTIC_RUNS.json
-          git commit -m "후속 진단 workflow 상태 기록"
-          git push
+      - name: Upload diagnostic result
+        uses: actions/upload-artifact@v4
+        with:
+          name: postmerge-diagnostic-runs-${{ env.TARGET_SHA }}
+          path: POSTMERGE_DIAGNOSTIC_RUNS.json
+          if-no-files-found: error
+          retention-days: 7
