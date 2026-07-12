@@ -359,11 +359,11 @@
 }
 
 .pending-roll .yut-stick {
-  animation: yut-pending-primary-flight 2s cubic-bezier(.22, .82, .28, 1) calc(var(--stick-index) * 50ms) both;
+  animation: yut-pending-primary-flight 1.2s cubic-bezier(.22, .82, .28, 1) both;
 }
 
 .pending-roll .yut-stick-body {
-  animation: yut-pending-primary-face-spin 2s ease-in-out calc(var(--stick-index) * 50ms) both;
+  animation: yut-pending-primary-face-spin 1.2s ease-in-out both;
 }
 
 .pending-roll.extra-spin-roll .yut-stick {
@@ -381,20 +381,20 @@
 }
 
 .resolved-from-pending .yut-stick {
-  animation: yut-resolved-from-pending 1.5s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
+  animation: yut-resolved-from-pending 1s cubic-bezier(.18, .86, .24, 1) both;
 }
 
 .resolved-from-pending .yut-stick.flat .yut-stick-body {
-  animation: yut-resolved-stick-flat-spin 1.5s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
+  animation: yut-resolved-stick-flat-spin 1s cubic-bezier(.18, .86, .24, 1) both;
 }
 
 .resolved-from-pending .yut-stick.round .yut-stick-body {
-  animation: yut-resolved-stick-round-spin 1.5s cubic-bezier(.18, .86, .24, 1) calc(var(--stick-index) * 45ms) both;
+  animation: yut-resolved-stick-round-spin 1s cubic-bezier(.18, .86, .24, 1) both;
 }
 
 .resolved-from-pending .roll-label {
   opacity: 1;
-  animation: resolved-from-pending-result-hold 2.7s ease both;
+  animation: resolved-from-pending-result-hold 2.6s ease both;
 }
 
 .resolved-from-pending .roll-impact-burst span {
@@ -689,7 +689,7 @@
 }
 
 .resolved-from-pending .roll-mat.bonus-roll .roll-label {
-  animation: resolved-from-pending-result-hold 2.7s ease both;
+  animation: resolved-from-pending-result-hold 2.6s ease both;
 }
 
 

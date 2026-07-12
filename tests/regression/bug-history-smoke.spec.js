@@ -110,12 +110,12 @@ test.describe('BUG_HISTORY regression smoke', () => {
       const firstPendingBody = page.locator('.roll-stage.pending-roll .yut-stick-body').first();
       await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationDuration), {
         timeout: 1_000,
-        message: 'primary 외부 윷은 2초 동안 천천히 정점까지 상승해야 합니다.',
-      }).toBe('2s');
+        message: 'primary 외부 윷은 1.2초 동안 정점까지 상승해야 합니다.',
+      }).toBe('1.2s');
       await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationDuration), {
         timeout: 1_000,
-        message: 'primary body는 2초 동안 정확히 720도 회전해야 합니다.',
-      }).toBe('2s');
+        message: 'primary body는 1.2초 동안 정확히 720도 회전해야 합니다.',
+      }).toBe('1.2s');
       await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationIterationCount), {
         timeout: 1_000,
         message: 'pending 외부 윷 비행은 무한 반복이 아니라 한 번만 실행되어야 합니다.',
@@ -159,25 +159,15 @@ test.describe('BUG_HISTORY regression smoke', () => {
       await page.waitForTimeout(700);
       const pendingStickTransformAtPeak = await firstPendingStick.evaluate((node) => getComputedStyle(node).transform);
       expect(pendingStickTransformAtPeak, 'pending 외부 윷은 아래 시작점에서 정점 좌표로 한 번 상승해야 합니다.').not.toBe(pendingStickTransformAtStart);
-      await page.waitForTimeout(2_050);
-      await expect(page.locator('.roll-stage.pending-roll.extra-spin-roll'), '서버 결과가 아직 없으면 1초 extra-spin을 이어가야 합니다.').toBeVisible({ timeout: 2_000 });
-      await expect.poll(async () => firstPendingStick.evaluate((node) => getComputedStyle(node).animationDuration), {
-        timeout: 1_000,
-        message: 'extra-spin 외부 윷은 1초 회전 단위를 사용해야 합니다.',
-      }).toBe('1s');
-      await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).animationIterationCount), {
-        timeout: 1_000,
-        message: 'extra-spin body는 결과 도착 전까지 정점 정지 없이 반복 회전해야 합니다.',
-      }).toBe('infinite');
-      const pendingTransformStart = await firstPendingBody.evaluate((node) => getComputedStyle(node).transform);
-      await page.waitForTimeout(180);
-      await expect.poll(async () => firstPendingBody.evaluate((node) => getComputedStyle(node).transform), {
-        timeout: 1_000,
-        message: 'pending 중 윷 내부 body의 3D transform이 계속 변해야 앞면/뒷면이 번갈아 보입니다.',
-      }).not.toBe(pendingTransformStart);
+      await page.waitForTimeout(550);
+      await expect(page.locator('.roll-stage.pending-roll.extra-spin-roll'), '클라이언트 선확정 결과는 Firebase 응답을 기다리는 extra-spin으로 넘어가면 안 됩니다.').toHaveCount(0);
       const landingStage = page.locator('.roll-stage.resolved-from-pending.landing-roll');
       await expect(landingStage, `서버 결과 도착 시 pending overlay를 같은 팝업의 landing 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       await expect(landingStage.locator('.roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
+      await expect.poll(async () => landingStage.locator('.yut-stick').first().evaluate((node) => getComputedStyle(node).animationDuration), {
+        timeout: 1_000,
+        message: '클라이언트 선확정 결과의 착지 애니메이션은 1초여야 합니다.',
+      }).toBe('1s');
       await page.evaluate(() => {
         window.__YUT_QA_RESULT_HOLD_OBSERVER__?.disconnect();
         const timing = { startedAt: 0, endedAt: 0 };
