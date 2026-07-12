@@ -1,0 +1,61 @@
+name: Validate QA cleanup exit fix
+
+on:
+  push:
+    branches:
+      - fix/qa-postmerge-failures
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Validate
+        shell: bash
+        run: |
+          set +e
+          npm ci > .npm-ci.log 2>&1
+          NPM_CI=$?
+          node --check tests/helpers/cleanup-qa-rooms.js > .syntax.log 2>&1
+          SYNTAX=$?
+          npm run test:unit > .unit.log 2>&1
+          UNIT=$?
+          npm run build > .build.log 2>&1
+          BUILD=$?
+          {
+            echo '# QA cleanup exit validation'
+            echo
+            echo "- npm ci: $NPM_CI"
+            echo "- node --check: $SYNTAX"
+            echo "- unit: $UNIT"
+            echo "- build: $BUILD"
+            for LOG in .npm-ci.log .syntax.log .unit.log .build.log; do
+              if [ -s "$LOG" ]; then
+                echo
+                echo "## $LOG"
+                echo '```text'
+                tail -n 80 "$LOG"
+                echo '```'
+              fi
+            done
+          } > QA_CLEANUP_VALIDATION.md
+      - name: Commit validation
+        shell: bash
+        run: |
+          rm -f .npm-ci.log .syntax.log .unit.log .build.log
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add QA_CLEANUP_VALIDATION.md
+          git commit -m "QA cleanup 종료 수정 검증 결과 기록"
+          git push
