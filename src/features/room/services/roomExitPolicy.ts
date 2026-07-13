@@ -1,5 +1,6 @@
 export type RoomExitPlayer = {
   isAI?: boolean;
+  isSubstitutedByAI?: boolean;
   isSpectator?: boolean;
 };
 
@@ -14,6 +15,10 @@ export const isAiSubstitutionUpdate = (update: RoomExitPlayerUpdate) => (
 
 export const hasNonAiPlayer = (players: RoomExitPlayer[]) => players.some((player) => (
   !player.isSpectator && !player.isAI
+));
+
+export const hasRecoverableRoomPlayer = (players: RoomExitPlayer[]) => players.some((player) => (
+  !player.isSpectator && (!player.isAI || player.isSubstitutedByAI === true)
 ));
 
 export function shouldDeleteRoomAfterAiSubstitution(
