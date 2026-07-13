@@ -1,7 +1,8 @@
 import { GameBoard, type BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
-import type { CaptureEffect, FallEffect, Seat, TrapEffect, TrapNode } from '../appState';
+import type { CaptureVisualEffect } from '../flows/captureAnimation';
+import type { FallEffect, Seat, TrapEffect, TrapNode } from '../appState';
 
 type GameBoardSectionProps = {
   pieces: BoardPiece[];
@@ -22,7 +23,8 @@ type GameBoardSectionProps = {
   previewNodeIds: string[];
   branchChoice: BranchChoice;
   onBranchChoiceChange: (choice: BranchChoice) => void;
-  captureEffect: CaptureEffect | null;
+  captureEffect: CaptureVisualEffect | null;
+  captureDestinationNodeId: string;
   trapEffect: TrapEffect | null;
   fallEffect: FallEffect | null;
   trapPlacementNodeIds: string[];
@@ -49,13 +51,14 @@ export function GameBoardSection({
   branchChoice,
   onBranchChoiceChange,
   captureEffect,
+  captureDestinationNodeId,
   trapEffect,
   fallEffect,
   trapPlacementNodeIds,
   onSelectTrapNode,
 }: GameBoardSectionProps) {
   const selectedPieceIds = selectedGroupPieceIds.length ? selectedGroupPieceIds : activeMovablePiece ? [activeMovablePiece.id] : [];
-  const capturedPieceIds = Array.from(new Set([...(captureEffect?.pieceIds ?? []), ...(trapEffect?.pieceIds ?? [])]));
+  const trapAffectedPieceIds = trapEffect?.pieceIds ?? [];
   const trapNodeIds = trapNodes.map((trap) => trap.nodeId);
 
   return <GameBoard
@@ -78,7 +81,9 @@ export function GameBoardSection({
     branchChoice={branchChoice}
     onBranchChoiceChange={onBranchChoiceChange}
     showBranchControls={false}
-    capturedPieceIds={capturedPieceIds}
+    capturedPieceIds={trapAffectedPieceIds}
+    captureEffect={captureEffect}
+    captureDestinationNodeId={captureDestinationNodeId}
     trapEffectNodeId={trapEffect?.nodeId}
     selectableNodeIds={trapPlacementNodeIds}
     onSelectNode={onSelectTrapNode}
