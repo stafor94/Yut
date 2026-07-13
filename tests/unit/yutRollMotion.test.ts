@@ -64,7 +64,7 @@ test('landing starts moving immediately and remains monotonic until impact', () 
   assert.equal(samples[0], 0);
   assert.ok(samples[1] > 0);
   for (let index = 1; index < samples.length; index += 1) assert.ok(samples[index] > samples[index - 1]);
-  assert.equal(samples.at(-1), 1);
+  assert.equal(samples[samples.length - 1], 1);
 });
 
 test('landing uses a stronger bounce and lateral roll before settling exactly', () => {
