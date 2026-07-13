@@ -10,7 +10,7 @@ test.describe('roll mat surface regression', () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('pending부터 결과 유지까지 같은 2D 매트 표면과 충분한 3D viewport를 계속 표시한다', async ({ page, context }, testInfo) => {
+  test('pending부터 결과 유지까지 축소된 2D 매트 표면과 충분한 3D viewport를 계속 표시한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 412, height: 915 });
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'mat-host'));
     const roomTitle = makeQaName(testInfo, 'mat-room');
@@ -32,7 +32,7 @@ test.describe('roll mat surface regression', () => {
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
     });
 
-    await runQaStep(testInfo, '매트 표면 phase 연속성과 3D viewport 확인', async () => {
+    await runQaStep(testInfo, '축소된 매트 표면과 3D viewport 확인', async () => {
       await expect.poll(async () => {
         const state = await collectScreenState(page);
         if (state.rollButton.visible && !state.rollButton.disabled) return 'ready';
@@ -55,12 +55,14 @@ test.describe('roll mat surface regression', () => {
         const canvasRect = canvas?.getBoundingClientRect();
         const stage = node.closest('.roll-stage');
         const matNode = node.closest('[data-testid="roll-mat"]');
+        const matRect = matNode?.getBoundingClientRect();
         return {
           sceneWidth: Math.round(sceneRect.width),
           sceneHeight: Math.round(sceneRect.height),
           canvasWidth: Math.round(canvasRect?.width ?? 0),
           canvasHeight: Math.round(canvasRect?.height ?? 0),
-          matHeight: Math.round(matNode?.getBoundingClientRect().height ?? 0),
+          matWidth: Math.round(matRect?.width ?? 0),
+          matHeight: Math.round(matRect?.height ?? 0),
           stageContain: stage ? getComputedStyle(stage).contain : '',
           viewportWidth: window.innerWidth,
         };
@@ -70,6 +72,7 @@ test.describe('roll mat surface regression', () => {
       expect(sceneLayout.sceneHeight).toBeGreaterThanOrEqual(320);
       expect(sceneLayout.canvasWidth).toBe(sceneLayout.sceneWidth);
       expect(sceneLayout.canvasHeight).toBe(sceneLayout.sceneHeight);
+      expect(sceneLayout.matWidth).toBeGreaterThan(0);
       expect(sceneLayout.matHeight).toBeGreaterThanOrEqual(360);
       expect(sceneLayout.stageContain.split(/\s+/)).not.toContain('paint');
 
@@ -105,6 +108,9 @@ test.describe('roll mat surface regression', () => {
       expect(pendingSurface.layoutHeight).toBeGreaterThan(0);
       expect(pendingSurface.visualWidth).toBeGreaterThan(0);
       expect(pendingSurface.visualHeight).toBeGreaterThan(0);
+      expect(pendingSurface.visualWidth).toBeLessThan(sceneLayout.sceneWidth);
+      expect(pendingSurface.visualWidth).toBeLessThanOrEqual(Math.round(sceneLayout.viewportWidth * 0.9));
+      expect(pendingSurface.visualHeight).toBeLessThan(sceneLayout.matHeight);
 
       await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll, .roll-stage.resolved-from-pending.result-hold-roll')).toBeVisible({ timeout: 8_000 });
       await expect.poll(() => page.evaluate(() => (
