@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
-import type { CaptureVisualEffect } from '../../../app/flows/captureAnimation';
+import { CAPTURE_IMPACT_DELAY_MS, type CaptureVisualEffect } from '../../../app/flows/captureAnimation';
+import type { FinishVisualEffect } from '../../../app/flows/finishAnimation';
 import type { BoardItem, BoardNode, BranchChoice } from '../../../game-core/board/board';
 import { BOARD_NODES, FINISH_NODE_ID } from '../../../game-core/board/board';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
@@ -34,6 +35,7 @@ type GameBoardProps = {
   capturedPieceIds?: string[];
   captureEffect?: CaptureVisualEffect | null;
   captureDestinationNodeId?: string;
+  finishEffect?: FinishVisualEffect | null;
   trapEffectNodeId?: string;
   selectableNodeIds?: string[];
   onSelectNode?: (nodeId: string) => void;
@@ -99,7 +101,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], shieldedPieceIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], captureEffect = null, captureDestinationNodeId = '', trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
+export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], shieldedPieceIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], captureEffect = null, captureDestinationNodeId = '', finishEffect = null, trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
   void branchChoice;
   void onBranchChoiceChange;
   void showBranchControls;
@@ -108,6 +110,8 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
   const selectedIds = selectedPieceIds ?? (selectedPieceId ? [selectedPieceId] : []);
   const previewFinishes = previewNodeIds.includes(FINISH_NODE_ID);
   const visualCapturePieceIds = new Set(captureEffect?.pieceIds ?? []);
+  const captureAttackerPieceIds = new Set(captureEffect?.attackerPieceIds ?? []);
+  const finishPieceIds = new Set(finishEffect?.pieceIds ?? []);
   const movingAnchor = movingPieceId ? pieces.find((piece) => piece.id === movingPieceId) : undefined;
   const movingSideKey = movingAnchor ? getPieceGroupKey(movingAnchor) : '';
   const hasCapturableDestinationTarget = Boolean(
@@ -125,8 +129,15 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
     ? pieces.filter((piece) => piece.started && !piece.finished && piece.nodeId === movingAnchor?.nodeId && getPieceGroupKey(piece) === movingSideKey).map((piece) => piece.id)
     : []);
   const captureNode = captureEffect ? BOARD_NODES.find((node) => node.id === captureEffect.nodeId) : undefined;
+  const finishSource = finishEffect?.pieces[0];
+  const lastCaptureDelayMs = captureEffect?.pieces[captureEffect.pieces.length - 1]?.delayMs ?? 0;
 
-  return <div data-testid="game-board" className={`board ${boardShaking ? 'capture-shake' : ''}`} aria-label="윷놀이 말판">
+  return <div
+    data-testid="game-board"
+    className={`board ${boardShaking ? 'capture-shake' : ''}`}
+    aria-label="윷놀이 말판"
+    style={{ '--capture-total-duration': `${captureEffect?.durationMs ?? 720}ms` } as CSSProperties}
+  >
     <svg className="board-route-lines" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
       <rect x="8" y="8" width="84" height="84" rx="0" />
       <line x1="8" y1="8" x2="92" y2="92" />
@@ -149,12 +160,17 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
     {pieces.map((piece) => {
       const pieceSelectable = isPieceSelectable?.(piece) !== false;
       const pieceSelected = pieceSelectable && selectedIds.includes(piece.id);
+      const finishVisualPiece = finishEffect?.pieces.find((candidate) => candidate.id === piece.id);
+      const pieceStyle = {
+        ...getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey),
+        ...(finishVisualPiece ? { '--finish-delay': `${finishVisualPiece.delayMs}ms` } : {}),
+      } as CSSProperties;
       return <button
         type="button"
         data-testid={`piece-${piece.id}`}
         key={piece.id}
-        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${piece.started && !piece.finished && capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''} ${captureApproachPieceIds.has(piece.id) ? 'capture-approach' : ''} ${visualCapturePieceIds.has(piece.id) ? 'capture-source-hidden' : ''}`}
-        style={getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey)}
+        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${piece.started && !piece.finished && capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''} ${captureApproachPieceIds.has(piece.id) ? 'capture-approach' : ''} ${captureAttackerPieceIds.has(piece.id) ? 'capture-attacker-recoil' : ''} ${visualCapturePieceIds.has(piece.id) ? 'capture-source-hidden' : ''} ${finishPieceIds.has(piece.id) ? 'finish-arrival' : ''}`}
+        style={pieceStyle}
         onClick={() => onSelectPiece(piece.id)}
         disabled={piece.finished || !pieceSelectable}
         aria-label={`${piece.label} 말 선택${shieldedPieceIds.includes(piece.id) ? ', 방패 적용됨' : ''}`}
@@ -163,11 +179,25 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         {shieldedPieceIds.includes(piece.id) && !piece.finished ? <span className="piece-shield-badge" aria-label="방패 적용됨">🛡️</span> : null}
       </button>;
     })}
-    {captureNode ? <span
-      className="capture-impact-wave"
+    {captureNode ? captureEffect?.pieces.map((piece, index) => <span
+      key={`${captureEffect.id}:impact:${piece.id}`}
+      className={`capture-impact-wave ${index === captureEffect.pieces.length - 1 ? 'last' : ''}`}
       aria-hidden="true"
-      style={{ left: `${captureNode.x}%`, top: `${captureNode.y}%` }}
-    /> : null}
+      style={{
+        left: `${captureNode.x}%`,
+        top: `${captureNode.y}%`,
+        '--capture-delay': `${piece.delayMs}ms`,
+      } as CSSProperties}
+    />) : null}
+    {captureNode && (captureEffect?.pieceCount ?? 0) > 1 ? <span
+      className="capture-chain-count"
+      aria-hidden="true"
+      style={{
+        left: `${captureNode.x}%`,
+        top: `${captureNode.y}%`,
+        '--capture-count-delay': `${CAPTURE_IMPACT_DELAY_MS + lastCaptureDelayMs + 90}ms`,
+      } as CSSProperties}
+    >×{captureEffect?.pieceCount}</span> : null}
     {captureEffect?.pieces.map((piece) => <span
       key={`${captureEffect.id}:${piece.id}`}
       className="piece-token capture-ghost"
@@ -183,7 +213,43 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         '--capture-target-top': `${piece.targetTop}%`,
         '--capture-rotation': `${piece.rotation}deg`,
         '--capture-mid-rotation': `${piece.midRotation}deg`,
+        '--capture-delay': `${piece.delayMs}ms`,
+        '--capture-arc-height': `${piece.arcHeight}px`,
+        '--capture-end-scale': piece.endScale,
       } as CSSProperties}
     >{piece.label}</span>)}
+    {finishEffect?.pieces.map((piece) => <span
+      key={`${finishEffect.id}:${piece.id}`}
+      className="piece-token finish-ghost"
+      aria-hidden="true"
+      style={{
+        left: `${piece.sourceLeft}%`,
+        top: `${piece.sourceTop}%`,
+        background: piece.color,
+        translate: '-50% -50%',
+        '--finish-source-left': `${piece.sourceLeft}%`,
+        '--finish-source-top': `${piece.sourceTop}%`,
+        '--finish-target-left': `${piece.targetLeft}%`,
+        '--finish-target-top': `${piece.targetTop}%`,
+        '--finish-rotation': `${piece.rotation}deg`,
+        '--finish-mid-rotation': `${piece.midRotation}deg`,
+        '--finish-delay': `${piece.delayMs}ms`,
+      } as CSSProperties}
+    >{piece.label}</span>)}
+    {finishEffect?.pieces.map((piece) => <span
+      key={`${finishEffect.id}:launch:${piece.id}`}
+      className="finish-launch-wave"
+      aria-hidden="true"
+      style={{
+        left: `${piece.sourceLeft}%`,
+        top: `${piece.sourceTop}%`,
+        '--finish-delay': `${piece.delayMs}ms`,
+      } as CSSProperties}
+    />)}
+    {finishSource ? <span
+      className="finish-complete-label"
+      aria-hidden="true"
+      style={{ left: `${finishSource.sourceLeft}%`, top: `${finishSource.sourceTop - 10}%` }}
+    >완주!</span> : null}
   </div>;
 }
