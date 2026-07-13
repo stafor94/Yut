@@ -2,7 +2,7 @@ import type { YutResult } from '../../game-core/roll';
 import { rollYutResult } from '../../game-core/roll';
 import type { Seat, Team, TurnOrderRoll } from '../appState';
 import { TEAM_COLORS } from '../appState';
-import { getTurnOrderSlotRevealDurationMs } from '../appUtils';
+import { TURN_ORDER_PRESENTATION_PREPARE_MS, getTurnOrderSlotRevealDurationMs } from './turnOrderPresentation';
 
 export const getTurnOrderScore = (result: YutResult) => result.name === '빽도' ? 0 : result.steps;
 
@@ -89,6 +89,6 @@ type CreateTurnOrderIntroOptions = {
 
 export function createTurnOrderIntro(orderedSeats: Seat[], { getSeatPieceColor, playMode, finalHoldMs, now = Date.now() }: CreateTurnOrderIntroOptions) {
   const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
-  const slotUntil = now + getTurnOrderSlotRevealDurationMs(order.length);
+  const slotUntil = now + TURN_ORDER_PRESENTATION_PREPARE_MS + getTurnOrderSlotRevealDurationMs(order.length);
   return { order, slotUntil, intro: { order, visible: true, slotUntil, readyAt: slotUntil + finalHoldMs } };
 }
