@@ -2,6 +2,7 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
+import { playStoredSoundEffect } from '../../shared/audio/sound';
 
 type GameBoardControlsProps = {
   roll: YutResult | null;
@@ -71,6 +72,8 @@ export function GameBoardControls({
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const rollTimingMeterRef = useRef<HTMLDivElement | null>(null);
   const rollTimingOrbRef = useRef<HTMLSpanElement | null>(null);
+  const wasLocalTurnActiveRef = useRef(false);
+  const localTurnActive = Boolean(activeSeatId && activeSeatId === localSeatId && !waitingForOnlineTurnOrder && !hasActiveTurnOrderIntro);
   const getVisibleRollTimingPositionPercent = () => {
     const meter = rollTimingMeterRef.current;
     const orb = rollTimingOrbRef.current;
@@ -81,6 +84,15 @@ export function GameBoardControls({
     const orbCenterX = orbRect.left + orbRect.width / 2;
     return Math.max(0, Math.min(100, ((orbCenterX - meterRect.left) / meterRect.width) * 100));
   };
+  useEffect(() => {
+    if (!localTurnActive) {
+      wasLocalTurnActiveRef.current = false;
+      return;
+    }
+    if (wasLocalTurnActiveRef.current) return;
+    wasLocalTurnActiveRef.current = true;
+    playStoredSoundEffect('turn');
+  }, [localTurnActive]);
   useEffect(() => {
     if (!(canRollNow || canRollForTurnOrderNow || hasActiveTurnOrderIntro) || roll || typeof window === 'undefined') return undefined;
     if (!window.matchMedia('(orientation: portrait)').matches) return undefined;
