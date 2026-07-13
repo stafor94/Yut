@@ -4,6 +4,11 @@
   transition-timing-function: cubic-bezier(.16, .72, .22, 1);
 }
 
+.piece-token.capture-attacker-recoil {
+  z-index: 19;
+  animation: capture-attacker-recoil var(--capture-total-duration, 720ms) cubic-bezier(.16, .72, .22, 1) both;
+}
+
 .piece-token.capture-source-hidden {
   visibility: hidden;
 }
@@ -21,7 +26,30 @@
   box-shadow:
     0 0 0 0 rgba(242, 184, 75, .82),
     0 0 0 0 rgba(217, 74, 56, .48);
-  animation: capture-impact-wave 720ms ease-out both;
+  animation: capture-impact-wave 720ms ease-out var(--capture-delay, 0ms) both;
+}
+
+.capture-impact-wave.last {
+  width: 54px;
+  height: 54px;
+  border-width: 5px;
+}
+
+.capture-chain-count {
+  position: absolute;
+  z-index: 27;
+  translate: -50% -50%;
+  padding: 6px 11px;
+  border: 3px solid #fff;
+  border-radius: 999px;
+  background: linear-gradient(145deg, var(--red), #f27b61);
+  color: #fff;
+  font-size: .86rem;
+  font-weight: 1000;
+  line-height: 1;
+  box-shadow: 0 10px 24px rgba(217, 74, 56, .34);
+  pointer-events: none;
+  animation: capture-chain-count 520ms cubic-bezier(.16, 1, .3, 1) var(--capture-count-delay, 0ms) both;
 }
 
 .piece-token.capture-ghost {
@@ -29,11 +57,11 @@
   pointer-events: none;
   transition: none;
   will-change: left, top, transform, opacity;
-  animation: capture-piece-ejection 720ms cubic-bezier(.18, .78, .18, 1) both;
+  animation: capture-piece-ejection 720ms cubic-bezier(.18, .78, .18, 1) var(--capture-delay, 0ms) both;
 }
 
 .board.capture-shake {
-  animation: capture-board-impact 720ms ease-out both;
+  animation: capture-board-impact var(--capture-total-duration, 720ms) ease-out both;
 }
 
 @keyframes capture-impact-wave {
@@ -81,15 +109,30 @@
   }
   38% {
     opacity: 1;
-    transform: translateY(-22px) rotate(var(--capture-mid-rotation)) scale(1.08);
+    transform: translateY(var(--capture-arc-height, -22px)) rotate(var(--capture-mid-rotation)) scale(1.08);
   }
   100% {
     left: var(--capture-target-left);
     top: var(--capture-target-top);
     opacity: 0;
-    transform: translateY(-34px) rotate(var(--capture-rotation)) scale(.68);
+    transform: translateY(calc(var(--capture-arc-height, -22px) - 12px)) rotate(var(--capture-rotation)) scale(var(--capture-end-scale, .68));
     filter: brightness(.92);
   }
+}
+
+@keyframes capture-attacker-recoil {
+  0%, 21%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  23% { transform: translate3d(0, 5px, 0) scale(1.12, .78); filter: brightness(1.22); }
+  36% { transform: translate3d(-7px, -2px, 0) scale(.96, 1.05); }
+  54% { transform: translate3d(3px, 1px, 0) scale(1.02, .98); }
+  72% { transform: translate3d(-1px, 0, 0) scale(1); }
+}
+
+@keyframes capture-chain-count {
+  0% { opacity: 0; transform: translateY(12px) scale(.62); }
+  30% { opacity: 1; transform: translateY(-11px) scale(1.18); }
+  68% { opacity: 1; transform: translateY(-7px) scale(.98); }
+  100% { opacity: 0; transform: translateY(-20px) scale(1); }
 }
 
 @keyframes capture-board-impact {
@@ -106,16 +149,18 @@
     transition-duration: 160ms;
   }
 
+  .piece-token.capture-attacker-recoil,
   .board.capture-shake {
     animation: none;
   }
 
-  .capture-impact-wave {
+  .capture-impact-wave,
+  .capture-chain-count {
     animation-duration: 260ms;
   }
 
   .piece-token.capture-ghost {
-    animation: capture-piece-ejection-reduced 260ms ease-out both;
+    animation: capture-piece-ejection-reduced 260ms ease-out var(--capture-delay, 0ms) both;
   }
 }
 
