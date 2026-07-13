@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { auth } from '../../../services/firebase/firebaseAuth';
+import { auth, listenAuthState } from '../../../services/firebase/firebaseAuth';
 import { subscribeActiveRooms, subscribeRoomPlayers, type RoomSummary } from '../services/roomService';
 import { createRoomListSubscriptionController } from './roomListSubscription';
 
@@ -10,6 +10,11 @@ type UseRoomsOptions = {
 export function useRooms(options: UseRoomsOptions = {}) {
   const enabled = options.enabled ?? true;
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [currentUserId, setCurrentUserId] = useState(() => auth?.currentUser?.uid ?? '');
+
+  useEffect(() => listenAuthState((user) => {
+    setCurrentUserId(user?.uid ?? '');
+  }), []);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -17,11 +22,11 @@ export function useRooms(options: UseRoomsOptions = {}) {
       subscribeRooms: subscribeActiveRooms,
       subscribePlayers: subscribeRoomPlayers,
       onRooms: setRooms,
-      getCurrentUserId: () => auth?.currentUser?.uid ?? '',
+      getCurrentUserId: () => currentUserId,
     });
     controller.start();
     return () => controller.dispose();
-  }, [enabled]);
+  }, [currentUserId, enabled]);
 
   return rooms;
 }
