@@ -120,6 +120,20 @@ export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', p
     window.localStorage.setItem('yut-online:playMode', values.playMode);
     window.localStorage.setItem('yut-online:itemMode', values.itemMode);
     window.localStorage.setItem('yut-online:pieceCount', values.pieceCount);
+
+    const nativeRandom = Math.random;
+    document.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest('[data-testid="roll-yut-button"]')) return;
+      if (!document.body.textContent?.includes('ai-seq-room')) return;
+
+      // This regression test must exercise an actual local move. Keep its Perfect roll on 개
+      // instead of occasionally taking the valid 빽도-with-no-board-piece pass branch.
+      Math.random = () => 0.3;
+      queueMicrotask(() => {
+        Math.random = nativeRandom;
+      });
+    }, true);
   }, { nickname, maxPlayers, playMode, itemMode, pieceCount });
 }
 
