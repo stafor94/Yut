@@ -1,15 +1,17 @@
-export type RoomListSummary = {
+import {
+  classifyRoomAvailability,
+  type RoomAvailabilityPlayer,
+  type RoomAvailabilityResult,
+  type RoomAvailabilityRoom,
+} from '../services/roomAvailabilityPolicy';
+
+export type RoomListSummary = RoomAvailabilityRoom & {
   id: string;
   currentPlayers?: number;
   playerIds?: string[];
 };
 
-export type RoomListPlayer = {
-  id: string;
-  isSpectator?: boolean;
-  isAI?: boolean;
-  isSubstitutedByAI?: boolean;
-};
+export type RoomListPlayer = RoomAvailabilityPlayer;
 
 export type RoomListUnsubscribe = () => void;
 
@@ -23,30 +25,35 @@ type RoomListSubscriptionOptions<TRoom extends RoomListSummary, TPlayer extends 
   subscribeRooms: (callback: (rooms: TRoom[]) => void) => RoomListUnsubscribe;
   subscribePlayers: (roomId: string, callback: (players: TPlayer[]) => void) => RoomListUnsubscribe;
   onRooms: (rooms: TRoom[]) => void;
+  getCurrentUserId?: () => string;
 };
 
 export function createRoomListSubscriptionController<TRoom extends RoomListSummary, TPlayer extends RoomListPlayer>({
   subscribeRooms,
   subscribePlayers,
   onRooms,
+  getCurrentUserId = () => '',
 }: RoomListSubscriptionOptions<TRoom, TPlayer>): RoomListSubscriptionController {
   let running = false;
   let unsubscribeRooms: RoomListUnsubscribe | null = null;
   let activeRooms: TRoom[] = [];
-  const playerCounts = new Map<string, number>();
-  const roomPlayerIds = new Map<string, string[]>();
+  const roomAvailability = new Map<string, RoomAvailabilityResult>();
   const roomPlayerUnsubscribes = new Map<string, RoomListUnsubscribe>();
 
   const publishRooms = () => {
     if (!running) return;
     const visibleRooms = activeRooms
-      .filter((room) => playerCounts.has(room.id))
-      .map((room) => ({
-        ...room,
-        currentPlayers: playerCounts.get(room.id) ?? 0,
-        playerIds: roomPlayerIds.get(room.id) ?? [],
-      }))
-      .filter((room) => Number(room.currentPlayers ?? 0) > 0) as TRoom[];
+      .map((room) => {
+        const availability = roomAvailability.get(room.id);
+        if (!availability?.visible) return null;
+        return {
+          ...room,
+          currentPlayers: availability.currentPlayers,
+          playerIds: availability.playerIds,
+        } as TRoom;
+      })
+      .filter((room): room is TRoom => Boolean(room))
+      .slice(0, 3);
     onRooms(visibleRooms);
   };
 
@@ -58,8 +65,7 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
     roomPlayerUnsubscribes.forEach((unsubscribe) => unsubscribe());
     roomPlayerUnsubscribes.clear();
     activeRooms = [];
-    playerCounts.clear();
-    roomPlayerIds.clear();
+    roomAvailability.clear();
   };
 
   return {
@@ -75,18 +81,17 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
           if (activeRoomIds.has(roomId)) return;
           unsubscribe();
           roomPlayerUnsubscribes.delete(roomId);
-          playerCounts.delete(roomId);
-          roomPlayerIds.delete(roomId);
+          roomAvailability.delete(roomId);
         });
 
         nextRooms.forEach((room) => {
           if (roomPlayerUnsubscribes.has(room.id)) return;
           roomPlayerUnsubscribes.set(room.id, () => undefined);
           const unsubscribePlayers = subscribePlayers(room.id, (players) => {
-            if (!running || !activeRooms.some((activeRoom) => activeRoom.id === room.id)) return;
-            const activePlayers = players.filter((player) => !player.isSpectator && (!player.isAI || player.isSubstitutedByAI));
-            playerCounts.set(room.id, activePlayers.length);
-            roomPlayerIds.set(room.id, activePlayers.map((player) => player.id));
+            if (!running) return;
+            const currentRoom = activeRooms.find((activeRoom) => activeRoom.id === room.id);
+            if (!currentRoom) return;
+            roomAvailability.set(room.id, classifyRoomAvailability(currentRoom, players, getCurrentUserId()));
             publishRooms();
           });
           if (!running || !activeRoomIds.has(room.id)) {
