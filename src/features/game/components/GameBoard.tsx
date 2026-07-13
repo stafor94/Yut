@@ -182,6 +182,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         '--capture-target-left': `${piece.targetLeft}%`,
         '--capture-target-top': `${piece.targetTop}%`,
         '--capture-rotation': `${piece.rotation}deg`,
+        '--capture-mid-rotation': `${piece.midRotation}deg`,
       } as CSSProperties}
     >{piece.label}</span>)}
   </div>;
