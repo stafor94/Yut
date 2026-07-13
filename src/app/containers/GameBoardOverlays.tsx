@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import type { YutResult } from '../../game-core/roll';
-import { YutRollScene } from '../components/YutRollScene';
+import { YutRollScenePhysics } from '../components/YutRollScenePhysics';
 import type { RollAnimation, ToastMessage } from '../appState';
 
 type WinnerOverlayProps = {
@@ -113,7 +113,7 @@ export function RollStage({ rollAnimation }: RollStageProps) {
       <span data-testid="roll-mat-surface" className="roll-mat-surface" aria-hidden="true"></span>
       {rollAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${rollAnimation.timingZone}`}>{rollAnimation.timingZone === 'perfect' ? 'Perfect!' : rollAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{fallCount ? '낙!' : result.name}</span>}
-      <YutRollScene rollAnimation={rollAnimation} onSettled={() => setSettledAnimationId(rollAnimation.id)} />
+      <YutRollScenePhysics rollAnimation={rollAnimation} onSettled={() => setSettledAnimationId(rollAnimation.id)} />
     </div>
   </div>;
 }
