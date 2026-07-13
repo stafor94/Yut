@@ -11,7 +11,7 @@ const aiSubstitution = { isAI: true, isSubstitutedByAI: true };
 test('인게임 종료의 AI 대체 업데이트를 구분한다', () => {
   assert.equal(isAiSubstitutionUpdate(aiSubstitution), true);
   assert.equal(isAiSubstitutionUpdate({ isAI: true, isSubstitutedByAI: false }), false);
-  assert.equal(isAiSubstitutionUpdate({ ready: true }), false);
+  assert.equal(isAiSubstitutionUpdate({}), false);
 });
 
 test('관전자와 AI를 제외한 사람 플레이어가 남아있는지 판정한다', () => {
