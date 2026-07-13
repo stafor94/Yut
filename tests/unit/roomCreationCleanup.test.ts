@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { leavePlayerRoomsBeforeCreate } from '../../src/features/room/services/roomCreationCleanup.js';
 
-test('방 생성 전 기존 모든 방을 AI 대체 없이 한 번씩 나간다', async () => {
-  const calls: Array<{ roomId: string; playerId: string; preservePlayingSeatAsAi: false }> = [];
+test('방 생성 전 기존 모든 방을 상태 기반 퇴장으로 한 번씩 정리한다', async () => {
+  const calls: Array<{ roomId: string; playerId: string }> = [];
 
   const leftRoomIds = await leavePlayerRoomsBeforeCreate({
     playerId: 'player-a',
@@ -13,15 +13,15 @@ test('방 생성 전 기존 모든 방을 AI 대체 없이 한 번씩 나간다'
       { room: { id: 'room-a' } },
       { room: { id: '  ' } },
     ],
-    leaveRoom: async (roomId, playerId, options) => {
-      calls.push({ roomId, playerId, preservePlayingSeatAsAi: options.preservePlayingSeatAsAi });
+    leaveRoom: async (roomId, playerId) => {
+      calls.push({ roomId, playerId });
     },
   });
 
   assert.deepEqual(leftRoomIds, ['room-a', 'room-b']);
   assert.deepEqual(calls, [
-    { roomId: 'room-a', playerId: 'player-a', preservePlayingSeatAsAi: false },
-    { roomId: 'room-b', playerId: 'player-a', preservePlayingSeatAsAi: false },
+    { roomId: 'room-a', playerId: 'player-a' },
+    { roomId: 'room-b', playerId: 'player-a' },
   ]);
 });
 
