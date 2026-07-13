@@ -6,12 +6,14 @@ import {
   LOCAL_ROLL_PRIMARY_MS,
   REMOTE_ROLL_PRE_RESULT_MS,
   clampUnit,
-  easeInCubic,
-  easeOutCubic,
-  getLocalLandingDropProgress,
   smoothStep,
   type YutRollScenePhase,
 } from '../flows/yutRollAnimation';
+import {
+  getLandingMotion,
+  getPrimaryThrowHeight,
+  getRemoteLandingElapsedMs,
+} from '../flows/yutRollMotion';
 import {
   getYutRollFallTarget,
   getYutRollMatWorldBounds,
@@ -35,7 +37,6 @@ type RuntimeStick = {
   targetQuaternion: any;
   flatMark: any;
   roundMarks: any[];
-  seed: number;
   isFallen: boolean;
 };
 
@@ -168,7 +169,6 @@ function createYutStick(THREE: ThreeModule, index: number) {
     targetQuaternion: new THREE.Quaternion(),
     flatMark,
     roundMarks,
-    seed: index + 1,
     isFallen: false,
   } satisfies RuntimeStick;
 }
@@ -225,31 +225,38 @@ function setFinalTransforms(runtime: SceneRuntime) {
   });
 }
 
-function applyResidualSpin(runtime: SceneRuntime, entry: RuntimeStick, index: number, settleProgress: number, turns: number) {
-  entry.group.quaternion.copy(entry.phaseQuaternion).slerp(entry.targetQuaternion, settleProgress);
-  if (settleProgress >= 1) return;
-  const fullTurns = Math.max(1, Math.round(turns + index * 0.28));
-  const residualSpin = new runtime.THREE.Quaternion().setFromAxisAngle(
+function getPrimaryEndPosition(entry: RuntimeStick, index: number) {
+  return {
+    x: -1.02 + index * 0.68,
+    y: getPrimaryThrowHeight(entry.startPosition.y, 1, index),
+    z: -0.3 + (index % 2) * 0.2,
+  };
+}
+
+function getPrimaryEndQuaternion(runtime: SceneRuntime, entry: RuntimeStick, index: number) {
+  const spin = new runtime.THREE.Quaternion().setFromAxisAngle(
     entry.spinAxis,
-    settleProgress * Math.PI * 2 * fullTurns,
+    Math.PI * 2 * (4.1 + index * 0.35),
   );
-  entry.group.quaternion.multiply(residualSpin);
+  return entry.startQuaternion.clone().multiply(spin);
 }
 
 function renderPrimary(runtime: SceneRuntime, elapsedMs: number) {
   const { THREE } = runtime;
   const progress = clampUnit(elapsedMs / LOCAL_ROLL_PRIMARY_MS);
-  const rise = easeOutCubic(progress);
+  const horizontalProgress = smoothStep(progress);
   runtime.sticks.forEach((entry, index) => {
     entry.group.visible = true;
-    const apexX = -1.02 + index * 0.68;
-    const apexZ = -0.3 + (index % 2) * 0.2;
+    const end = getPrimaryEndPosition(entry, index);
     entry.group.position.set(
-      lerp(entry.startPosition.x, apexX, rise),
-      lerp(entry.startPosition.y, 2.12 + index * 0.06, rise),
-      lerp(entry.startPosition.z, apexZ, rise),
+      lerp(entry.startPosition.x, end.x, horizontalProgress),
+      getPrimaryThrowHeight(entry.startPosition.y, progress, index),
+      lerp(entry.startPosition.z, end.z, horizontalProgress),
     );
-    const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, progress * Math.PI * (7.2 + index * 0.55));
+    const spin = new THREE.Quaternion().setFromAxisAngle(
+      entry.spinAxis,
+      progress * Math.PI * 2 * (4.1 + index * 0.35),
+    );
     entry.group.quaternion.copy(entry.startQuaternion).multiply(spin);
   });
 }
@@ -259,111 +266,107 @@ function renderExtraSpin(runtime: SceneRuntime, elapsedMs: number) {
   const seconds = elapsedMs / 1000;
   runtime.sticks.forEach((entry, index) => {
     entry.group.visible = true;
+    const end = getPrimaryEndPosition(entry, index);
+    const drift = Math.min(0.42, seconds * 0.24);
     entry.group.position.set(
-      -1.02 + index * 0.68 + Math.sin(seconds * 2.1 + index) * 0.08,
-      2.12 + index * 0.06 + Math.sin(seconds * 2.8 + index * 0.8) * 0.1,
-      -0.3 + (index % 2) * 0.2 + Math.cos(seconds * 1.9 + index) * 0.07,
+      end.x + Math.sin(seconds * 2.2 + index) * 0.09,
+      end.y - drift + Math.sin(seconds * 3.1 + index * 0.7) * 0.08,
+      end.z + Math.cos(seconds * 2 + index) * 0.075,
     );
-    const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, seconds * (5.4 + index * 0.45));
+    const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, seconds * (6.2 + index * 0.48));
     entry.group.quaternion.copy(entry.phaseQuaternion).multiply(spin);
   });
 }
 
-function renderLanding(runtime: SceneRuntime, elapsedMs: number) {
+function applyLandingRotation(
+  runtime: SceneRuntime,
+  entry: RuntimeStick,
+  index: number,
+  progress: number,
+  wobbleRadians: number,
+  rollOffsetX: number,
+  rollOffsetZ: number,
+  phaseQuaternion?: any,
+) {
+  const startQuaternion = phaseQuaternion ?? entry.phaseQuaternion;
+  const settleProgress = smoothStep(clampUnit((progress - 0.04) / 0.92));
+  entry.group.quaternion.copy(startQuaternion).slerp(entry.targetQuaternion, settleProgress);
+  if (settleProgress < 1) {
+    const fullTurns = Math.max(2, Math.round(2.8 + index * 0.31));
+    const residualSpin = new runtime.THREE.Quaternion().setFromAxisAngle(
+      entry.spinAxis,
+      settleProgress * Math.PI * 2 * fullTurns,
+    );
+    entry.group.quaternion.multiply(residualSpin);
+  }
+  if (wobbleRadians !== 0) {
+    const rollAxis = new runtime.THREE.Vector3(rollOffsetZ, 0, -rollOffsetX).normalize();
+    const wobble = new runtime.THREE.Quaternion().setFromAxisAngle(rollAxis, wobbleRadians);
+    entry.group.quaternion.multiply(wobble);
+  }
+}
+
+function renderLanding(runtime: SceneRuntime, elapsedMs: number, fromPrimaryEnd = false) {
   const progress = clampUnit(elapsedMs / LOCAL_ROLL_LANDING_MS);
-  const flightProgress = clampUnit(progress / 0.82);
-  const positionProgress = getLocalLandingDropProgress(flightProgress);
-  const settleProgress = smoothStep(clampUnit((progress - 0.08) / 0.9));
   runtime.sticks.forEach((entry, index) => {
+    const motion = getLandingMotion(progress, index);
+    const deterministicStart = getPrimaryEndPosition(entry, index);
+    const startPosition = fromPrimaryEnd ? deterministicStart : entry.phasePosition;
+    const startQuaternion = fromPrimaryEnd
+      ? getPrimaryEndQuaternion(runtime, entry, index)
+      : entry.phaseQuaternion;
+
     if (entry.isFallen) {
-      const edgeProgress = getLocalLandingDropProgress(clampUnit(progress / 0.58));
-      const exitProgress = smoothStep(clampUnit((progress - 0.46) / 0.5));
-      const edgeX = lerp(entry.phasePosition.x, entry.fallEdgePosition.x, edgeProgress);
-      const edgeY = lerp(entry.phasePosition.y, entry.fallEdgePosition.y, edgeProgress);
-      const edgeZ = lerp(entry.phasePosition.z, entry.fallEdgePosition.z, edgeProgress);
+      const edgeProgress = motion.dropProgress;
+      const exitProgress = smoothStep(clampUnit((progress - 0.48) / 0.48));
+      const edgeX = lerp(startPosition.x, entry.fallEdgePosition.x, edgeProgress);
+      const edgeY = lerp(startPosition.y, entry.fallEdgePosition.y, edgeProgress);
+      const edgeZ = lerp(startPosition.z, entry.fallEdgePosition.z, edgeProgress);
       entry.group.position.set(
         lerp(edgeX, entry.targetPosition.x, exitProgress),
         lerp(edgeY, entry.targetPosition.y, exitProgress),
         lerp(edgeZ, entry.targetPosition.z, exitProgress),
       );
-      applyResidualSpin(runtime, entry, index, settleProgress, 3.1);
+      applyLandingRotation(
+        runtime,
+        entry,
+        index,
+        progress,
+        0,
+        motion.rollOffsetX,
+        motion.rollOffsetZ,
+        startQuaternion,
+      );
       entry.group.visible = progress < 0.97;
       return;
     }
 
-    const bounceProgress = clampUnit((progress - 0.82) / 0.18);
-    const bounce = progress > 0.82
-      ? Math.sin(bounceProgress * Math.PI) * 0.14 * (1 - bounceProgress)
-      : 0;
+    const impactX = entry.targetPosition.x - motion.rollOffsetX;
+    const impactZ = entry.targetPosition.z - motion.rollOffsetZ;
+    const flightX = lerp(startPosition.x, impactX, motion.dropProgress);
+    const flightY = lerp(startPosition.y, entry.targetPosition.y, motion.dropProgress);
+    const flightZ = lerp(startPosition.z, impactZ, motion.dropProgress);
     entry.group.position.set(
-      lerp(entry.phasePosition.x, entry.targetPosition.x, positionProgress),
-      lerp(entry.phasePosition.y, entry.targetPosition.y, positionProgress) + bounce,
-      lerp(entry.phasePosition.z, entry.targetPosition.z, positionProgress),
+      lerp(flightX, entry.targetPosition.x, motion.slideProgress),
+      lerp(flightY, entry.targetPosition.y, motion.slideProgress) + motion.bounceHeight,
+      lerp(flightZ, entry.targetPosition.z, motion.slideProgress),
     );
-    applyResidualSpin(runtime, entry, index, settleProgress, 2.4);
+    applyLandingRotation(
+      runtime,
+      entry,
+      index,
+      progress,
+      motion.wobbleRadians,
+      motion.rollOffsetX,
+      motion.rollOffsetZ,
+      startQuaternion,
+    );
   });
   if (progress >= 1) setFinalTransforms(runtime);
 }
 
 function renderResolved(runtime: SceneRuntime, elapsedMs: number) {
-  const { THREE } = runtime;
-  const progress = clampUnit(elapsedMs / REMOTE_ROLL_PRE_RESULT_MS);
-  const ascentProgress = clampUnit(progress / 0.42);
-  const descentProgress = clampUnit((progress - 0.42) / 0.58);
-  runtime.sticks.forEach((entry, index) => {
-    entry.group.visible = true;
-    const ascentX = -0.98 + index * 0.66;
-    const ascentY = 1.72 + index * 0.06;
-    const ascentZ = -0.22 + (index % 2) * 0.18;
-    if (progress <= 0.42) {
-      const rise = easeOutCubic(ascentProgress);
-      entry.group.position.set(
-        lerp(entry.startPosition.x, ascentX, rise),
-        lerp(entry.startPosition.y, ascentY, rise),
-        lerp(entry.startPosition.z, ascentZ, rise),
-      );
-      const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, rise * Math.PI * (4.4 + index * 0.45));
-      entry.group.quaternion.copy(entry.startQuaternion).multiply(spin);
-      return;
-    }
-
-    const settle = smoothStep(clampUnit((descentProgress - 0.35) / 0.65));
-    if (entry.isFallen) {
-      const edgeProgress = easeInCubic(clampUnit(descentProgress / 0.62));
-      const exitProgress = smoothStep(clampUnit((descentProgress - 0.52) / 0.43));
-      const edgeX = lerp(ascentX, entry.fallEdgePosition.x, edgeProgress);
-      const edgeY = lerp(ascentY, entry.fallEdgePosition.y, edgeProgress);
-      const edgeZ = lerp(ascentZ, entry.fallEdgePosition.z, edgeProgress);
-      entry.group.position.set(
-        lerp(edgeX, entry.targetPosition.x, exitProgress),
-        lerp(edgeY, entry.targetPosition.y, exitProgress),
-        lerp(edgeZ, entry.targetPosition.z, exitProgress),
-      );
-      entry.group.quaternion.copy(entry.startQuaternion).slerp(entry.targetQuaternion, settle);
-      if (settle < 0.96) {
-        const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, (1 - settle) * Math.PI * (3.6 + index * 0.32));
-        entry.group.quaternion.multiply(spin);
-      }
-      entry.group.visible = descentProgress < 0.97;
-      return;
-    }
-
-    const fall = easeInCubic(descentProgress);
-    const bounce = descentProgress > 0.78
-      ? Math.sin(((descentProgress - 0.78) / 0.22) * Math.PI) * 0.13 * (1 - descentProgress)
-      : 0;
-    entry.group.position.set(
-      lerp(ascentX, entry.targetPosition.x, fall),
-      lerp(ascentY, entry.targetPosition.y, fall) + bounce,
-      lerp(ascentZ, entry.targetPosition.z, fall),
-    );
-    entry.group.quaternion.copy(entry.startQuaternion).slerp(entry.targetQuaternion, settle);
-    if (settle < 0.96) {
-      const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, (1 - settle) * Math.PI * (3.2 + index * 0.32));
-      entry.group.quaternion.multiply(spin);
-    }
-  });
-  if (progress >= 1) setFinalTransforms(runtime);
+  renderLanding(runtime, getRemoteLandingElapsedMs(elapsedMs), true);
 }
 
 function disposeRuntime(runtime: SceneRuntime) {
@@ -384,7 +387,7 @@ type YutRollSceneProps = {
   onSettled: () => void;
 };
 
-export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
+export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const runtimeRef = useRef<SceneRuntime | null>(null);
   const latestAnimationRef = useRef(rollAnimation);
