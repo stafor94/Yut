@@ -3,10 +3,10 @@ import { db } from '../../../services/firebase/firebaseDb';
 import { auth } from '../../../services/firebase/firebaseAuth';
 import {
   deleteRoom as deleteRoomCore,
-  isRoomInGame as isRoomInGameCore,
   removeRoomPlayer as removeRoomPlayerCore,
   type RoomPlayer,
 } from './roomServiceCore';
+import { shouldSubstituteRoomPlayerAsAi } from './roomExitPolicy';
 import {
   getRoomLastActivityMillis,
   shouldDeferOwnRoomRemoval,
@@ -66,7 +66,7 @@ export const queuePendingRoomCleanup = (entry: PendingRoomCleanup) => {
   writePendingCleanups(nextEntries);
 };
 
-export async function removeRoomPlayerNow(roomId: string, playerId: string, options: { preservePlayingSeatAsAi?: boolean } = {}) {
+export async function removeRoomPlayerNow(roomId: string, playerId: string, _options: { preservePlayingSeatAsAi?: boolean } = {}) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const [room, players] = await Promise.all([getManagedRoom(roomId), getRoomPlayers(roomId)]);
   if (!room) return;
@@ -74,10 +74,6 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, opti
   if (!observedPlayer) return;
   const observedCurrentPlayers = Number(room.currentPlayers ?? countActivePlayers(players));
   const noOtherHumanPlayers = !players.some((player) => player.id !== playerId && !player.isSpectator && !player.isAI);
-  const preservePlayingSeatAsAi = options.preservePlayingSeatAsAi ?? true;
-  const seatIndex = Number(observedPlayer.seatIndex);
-  const hasSeat = Number.isInteger(seatIndex) && seatIndex >= 0;
-  const shouldSubstituteAsAi = preservePlayingSeatAsAi && isRoomInGameCore(room) && !observedPlayer.isSpectator && hasSeat;
   const roomRef = doc(db, 'rooms', roomId);
   const playerRef = doc(db, 'rooms', roomId, 'players', playerId);
 
@@ -95,8 +91,9 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, opti
     const shouldFinishRoom = noOtherHumanPlayers && deletionGuardStillMatches;
     const freshSeatIndex = Number(freshPlayer.seatIndex);
     const hasFreshSeat = Number.isInteger(freshSeatIndex) && freshSeatIndex >= 0;
+    const shouldSubstituteAsAi = shouldSubstituteRoomPlayerAsAi(freshRoom, freshPlayer, hasFreshSeat);
 
-    if (shouldSubstituteAsAi && hasFreshSeat) {
+    if (shouldSubstituteAsAi) {
       transaction.set(playerRef, {
         nickname: freshPlayer.nickname || '플레이어',
         ready: true,
