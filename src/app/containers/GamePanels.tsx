@@ -1,7 +1,9 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ItemCard } from '../../features/items/components/ItemCard';
-import type { ItemType } from '../../features/items/logic/items';
+import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
+import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
+import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } from '../flows/remoteItemUseNotice';
 import { GameLogPanel, PlayersPanel } from '../screens/GameScreen';
 import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
 
@@ -24,6 +26,13 @@ type GamePlayersPanelProps = {
   onOpenEndGameDialog: () => void;
 };
 
+type RemoteItemUseNotice = {
+  id: number;
+  playerName: string;
+  itemType: ItemType;
+  color: string;
+};
+
 export function GamePlayersPanel({
   title,
   playMode,
@@ -43,8 +52,66 @@ export function GamePlayersPanel({
 }: GamePlayersPanelProps) {
   const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
   const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
+  const previousOwnedItemsRef = useRef<OwnedItemsSnapshot | null>(null);
+  const remoteItemNoticeTimerRef = useRef<number | null>(null);
+  const [remoteItemUseNotice, setRemoteItemUseNotice] = useState<RemoteItemUseNotice | null>(null);
+
+  useEffect(() => {
+    const seatIds = seats.map((seat) => seat.id);
+    const previousOwnedItems = previousOwnedItemsRef.current;
+    const nextOwnedItems = snapshotOwnedItems(seatIds, ownedItems);
+    previousOwnedItemsRef.current = nextOwnedItems;
+    if (!previousOwnedItems) return;
+
+    const remoteItemUse = findRemoteConsumedItem(seatIds, localSeatId, previousOwnedItems, nextOwnedItems);
+    const remoteSeat = remoteItemUse ? seats.find((seat) => seat.id === remoteItemUse.seatId) : undefined;
+    if (!remoteItemUse || !remoteSeat) return;
+
+    if (remoteItemNoticeTimerRef.current !== null) window.clearTimeout(remoteItemNoticeTimerRef.current);
+    setRemoteItemUseNotice({
+      id: Date.now(),
+      playerName: getPlayerCardName(remoteSeat),
+      itemType: remoteItemUse.itemType,
+      color: playMode === 'team' ? TEAM_COLORS[remoteSeat.team] : getSeatPieceColor(remoteSeat),
+    });
+    playStoredSoundEffect('itemUse');
+    remoteItemNoticeTimerRef.current = window.setTimeout(() => {
+      setRemoteItemUseNotice(null);
+      remoteItemNoticeTimerRef.current = null;
+    }, 3600);
+  }, [getPlayerCardName, getSeatPieceColor, localSeatId, ownedItems, playMode, seats]);
+
+  useEffect(() => () => {
+    if (remoteItemNoticeTimerRef.current !== null) window.clearTimeout(remoteItemNoticeTimerRef.current);
+  }, []);
 
   return <PlayersPanel>
+    {remoteItemUseNotice && <div
+      key={remoteItemUseNotice.id}
+      role="status"
+      aria-live="assertive"
+      style={{
+        position: 'fixed',
+        top: '18%',
+        left: '50%',
+        zIndex: 120,
+        width: 'min(88vw, 360px)',
+        transform: 'translateX(-50%)',
+        border: `2px solid ${remoteItemUseNotice.color}`,
+        borderRadius: 18,
+        background: 'rgba(17, 24, 39, 0.96)',
+        boxShadow: '0 14px 38px rgba(0, 0, 0, 0.38)',
+        color: '#fff',
+        padding: '14px 18px',
+        textAlign: 'center',
+        pointerEvents: 'none',
+      }}
+    >
+      <strong style={{ display: 'block', color: remoteItemUseNotice.color, fontSize: '1rem', marginBottom: 5 }}>{remoteItemUseNotice.playerName}</strong>
+      <span style={{ display: 'block', fontSize: '1.08rem', fontWeight: 800 }}>
+        {ITEM_DEFINITIONS[remoteItemUseNotice.itemType].icon} {ITEM_DEFINITIONS[remoteItemUseNotice.itemType].name} 사용
+      </span>
+    </div>}
     <h2>{title}</h2>
     <p className="game-end-guide room-rule-badges game-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</p>
     {seats.map((seat) => {
