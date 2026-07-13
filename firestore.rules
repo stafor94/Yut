@@ -65,7 +65,7 @@ service cloud.firestore {
     function isCleanupEligibleRoom(roomId) {
       let room = get(roomPath(roomId)).data;
       return roomExists(roomId)
-        && room.systemRoomType != 'creation_lock'
+        && (!('systemRoomType' in room) || room.systemRoomType != 'creation_lock')
         && (
           room.status == 'finished'
           || room.currentPlayers <= 0
