@@ -7,9 +7,10 @@ import {
 } from './roomServiceCore';
 import {
   cleanupDeletionCandidatesBeforeCreate,
-  getRecoverableActiveRooms,
+  getActiveRoomsWithPlayers,
   type ManagedRoomSummary,
 } from './roomLifecycleStore';
+import { hasCreationBlockingHumanPlayer, hasResumablePlayerForUser } from './roomLifecyclePolicy';
 
 const ACTIVE_HOST_ROOM_ERROR = '이미 진행 중인 방이 있습니다. 기존 방으로 돌아간 뒤 새 방을 만들어주세요.';
 const ACTIVE_ROOM_LIMIT_ERROR = '방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.';
@@ -94,11 +95,17 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
       throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
     }
 
-    const activeRooms = await getRecoverableActiveRooms();
-    if (activeRooms.some((room) => room.hostId === params.hostId)) throw new Error(ACTIVE_HOST_ROOM_ERROR);
-    const activeUserRooms = activeRooms.filter((room) => !isQaRoomTitle(room.title));
+    const activeRoomCandidates = await getActiveRoomsWithPlayers();
+    const ownResumableRoom = activeRoomCandidates.some(({ room, players }) => (
+      room.hostId === params.hostId && hasResumablePlayerForUser(players, params.hostId)
+    ));
+    if (ownResumableRoom) throw new Error(ACTIVE_HOST_ROOM_ERROR);
+    const activeUserRooms = activeRoomCandidates
+      .filter(({ players }) => hasCreationBlockingHumanPlayer(players))
+      .map(({ room }) => room)
+      .filter((room) => !isQaRoomTitle(room.title));
     if (!isQaRoomTitle(normalizedTitle) && activeUserRooms.length >= 3) throw new Error(ACTIVE_ROOM_LIMIT_ERROR);
-    if (activeRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error(DUPLICATE_ROOM_TITLE_ERROR);
+    if (activeUserRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error(DUPLICATE_ROOM_TITLE_ERROR);
 
     const now = Date.now();
     const batch = writeBatch(db);
