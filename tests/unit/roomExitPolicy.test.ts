@@ -4,7 +4,9 @@ import {
   hasNonAiPlayer,
   hasRecoverableRoomPlayer,
   isAiSubstitutionUpdate,
+  isRoomExitInGame,
   shouldDeleteRoomAfterAiSubstitution,
+  shouldSubstituteRoomPlayerAsAi,
 } from '../../src/features/room/services/roomExitPolicy';
 
 const aiSubstitution = { isAI: true, isSubstitutedByAI: true };
@@ -24,6 +26,21 @@ test('사람 또는 AI 대체 자리가 있으면 진행 방을 복구할 수 �
   assert.equal(hasRecoverableRoomPlayer([{ isAI: false }]), true);
   assert.equal(hasRecoverableRoomPlayer([{ isAI: true, isSubstitutedByAI: true }]), true);
   assert.equal(hasRecoverableRoomPlayer([{ isAI: true }, { isSpectator: true }]), false);
+});
+
+test('진행 상태와 진입 상태는 모두 인게임으로 판정한다', () => {
+  assert.equal(isRoomExitInGame({ status: 'playing' }), true);
+  assert.equal(isRoomExitInGame({ status: 'finished', startStatus: 'playing' }), true);
+  assert.equal(isRoomExitInGame({ status: 'waiting', startStatus: 'entering' }), true);
+  assert.equal(isRoomExitInGame({ status: 'waiting', startStatus: 'idle' }), false);
+});
+
+test('인게임의 플레이어 시트는 퇴장 사유와 무관하게 AI로 대체한다', () => {
+  assert.equal(shouldSubstituteRoomPlayerAsAi({ status: 'playing' }, { isAI: false }, true), true);
+  assert.equal(shouldSubstituteRoomPlayerAsAi({ status: 'finished', startStatus: 'playing' }, { isAI: false }, true), true);
+  assert.equal(shouldSubstituteRoomPlayerAsAi({ status: 'waiting' }, { isAI: false }, true), false);
+  assert.equal(shouldSubstituteRoomPlayerAsAi({ status: 'playing' }, { isSpectator: true }, true), false);
+  assert.equal(shouldSubstituteRoomPlayerAsAi({ status: 'playing' }, { isAI: false }, false), false);
 });
 
 test('마지막 사람 플레이어가 AI로 대체되면 방을 삭제한다', () => {
