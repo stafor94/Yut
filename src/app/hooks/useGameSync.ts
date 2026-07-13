@@ -180,7 +180,10 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
       }).catch(() => ({ status: 'unavailable' as const }));
       if (disposed || !currentRequestMatches(key)) return;
       if ((result.status === 'sequence_mismatch' || result.status === 'unavailable') && attempt < 3 && Date.now() < countdownEndsAt) {
-        preparationTimer = window.setTimeout(() => { void runPreparation(key, attempt + 1); }, GAME_PREPARATION_RETRY_MS);
+        preparationTimer = window.setTimeout(() => {
+          preparationTimer = null;
+          void runPreparation(key, attempt + 1);
+        }, GAME_PREPARATION_RETRY_MS);
       }
     };
 
@@ -190,35 +193,51 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
       const startRequestId = String(room.startRequestId ?? '');
       const activated = await activatePreparedRoomGame(activeRoomId, { startRequestVersion, startRequestId }).catch(() => false);
       if (activated || disposed || !currentRequestMatches(key) || attempt >= GAME_ACTIVATION_RETRY_LIMIT) return;
-      activationTimer = window.setTimeout(() => { void runActivation(key, attempt + 1); }, GAME_ACTIVATION_RETRY_MS);
+      activationTimer = window.setTimeout(() => {
+        activationTimer = null;
+        void runActivation(key, attempt + 1);
+      }, GAME_ACTIVATION_RETRY_MS);
     };
 
     const scheduleCurrentRequest = () => {
-      clearPreparationTimer();
-      clearActivationTimer();
-      if (!room || room.status !== 'waiting' || room.startStatus !== 'requested') return;
+      if (!room || room.status !== 'waiting' || room.startStatus !== 'requested') {
+        clearPreparationTimer();
+        clearActivationTimer();
+        scheduledKey = '';
+        preparationStartedKey = '';
+        activationStartedKey = '';
+        return;
+      }
       const startRequestVersion = Number(room.startRequestVersion ?? 0);
       const startRequestId = String(room.startRequestId ?? '');
       const countdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
       const key = getRoomStartRequestKey(activeRoomId, startRequestVersion, startRequestId);
-      if (!key || countdownEndsAt <= 0) return;
+      if (!key || countdownEndsAt <= 0) {
+        clearPreparationTimer();
+        clearActivationTimer();
+        return;
+      }
       if (scheduledKey !== key) {
+        clearPreparationTimer();
+        clearActivationTimer();
         scheduledKey = key;
         preparationStartedKey = '';
         activationStartedKey = '';
       }
 
       const coordinatorPlayerId = getGameStartCoordinatorPlayerId(players);
-      if (coordinatorPlayerId && auth?.currentUser?.uid === coordinatorPlayerId && preparationStartedKey !== key) {
+      if (coordinatorPlayerId && auth?.currentUser?.uid === coordinatorPlayerId && preparationStartedKey !== key && preparationTimer === null) {
         const preparationDelay = Math.max(0, getRoomStartPreparationAt(countdownEndsAt) - Date.now());
         preparationTimer = window.setTimeout(() => {
+          preparationTimer = null;
           preparationStartedKey = key;
           void runPreparation(key);
         }, preparationDelay);
       }
-      if (activationStartedKey !== key) {
+      if (activationStartedKey !== key && activationTimer === null) {
         const activationDelay = Math.max(0, countdownEndsAt - Date.now());
         activationTimer = window.setTimeout(() => {
+          activationTimer = null;
           activationStartedKey = key;
           void runActivation(key);
         }, activationDelay);
