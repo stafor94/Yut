@@ -100,10 +100,12 @@ export function RollStage({ rollAnimation }: RollStageProps) {
   const result = 'result' in rollAnimation ? rollAnimation.result : undefined;
   const fallCount = 'fallCount' in rollAnimation ? rollAnimation.fallCount ?? 0 : 0;
   const turnOrder = 'turnOrder' in rollAnimation ? rollAnimation.turnOrder : false;
-  const shouldShowResult = Boolean(result) && (isResultHold || (!isPreResult && !isLanding && settledAnimationId === rollAnimation.id));
+  const hasSettled = settledAnimationId === rollAnimation.id;
+  const isVisualLanding = isLanding || (isResultHold && !hasSettled);
+  const shouldShowResult = Boolean(result) && hasSettled && !isPreResult && !isLanding;
   const hasResolvedResult = (isLanding || isResultHold || Boolean(result)) && Boolean(result);
   const isBonusResult = hasResolvedResult && !turnOrder && !fallCount && (result?.name === '윷' || result?.name === '모');
-  const phaseClass = isPreResult ? `pending-roll ${rollAnimation.phase === 'extra-spin' ? 'extra-spin-roll' : 'primary-roll'}` : isLanding || isResultHold ? `resolved-from-pending resolved-roll ${isLanding ? 'landing-roll' : 'result-hold-roll'}` : 'resolved-roll';
+  const phaseClass = isPreResult ? `pending-roll ${rollAnimation.phase === 'extra-spin' ? 'extra-spin-roll' : 'primary-roll'}` : isVisualLanding ? 'resolved-from-pending resolved-roll landing-roll' : isResultHold ? 'resolved-from-pending resolved-roll result-hold-roll' : 'resolved-roll';
   return <div className={`roll-stage ${phaseClass}`} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
