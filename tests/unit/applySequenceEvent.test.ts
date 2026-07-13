@@ -147,7 +147,14 @@ test('연속 v2 event는 입력 순서와 무관하게 authoritative 버전과 s
 });
 
 test('신규 sequence writer는 v2 필드만 기록하도록 구성되어 있다', async () => {
-  const source = await import('node:fs/promises').then((fs) => fs.readFile('src/features/room/services/roomService.ts', 'utf8'));
+  const fs = await import('node:fs/promises');
+  const sourcePaths = [
+    'src/features/room/services/roomService.ts',
+    'src/features/room/services/roomServiceCore.ts',
+  ];
+  const sources = await Promise.all(sourcePaths.map((sourcePath) => fs.readFile(sourcePath, 'utf8')));
+  const source = sources.find((candidate) => candidate.includes('export const makeSequenceEventFields')) ?? '';
+  assert.notEqual(source, '');
   const helperStart = source.indexOf('export const makeSequenceEventFields');
   const helperEnd = source.indexOf('const isTurnOrderIntroActive', helperStart);
   const helperSource = source.slice(helperStart, helperEnd);
