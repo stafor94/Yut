@@ -102,3 +102,8 @@ export const shouldDeferOwnRoomRemoval = (params: {
   && params.currentUserId
   && params.currentUserId === params.playerId
 );
+
+export const shouldRestoreDeferredRoomPointer = (params: {
+  hasOtherMembership: boolean;
+  activeRoomId: string;
+}) => !params.hasOtherMembership && !params.activeRoomId;
