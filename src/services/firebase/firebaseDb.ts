@@ -1,10 +1,13 @@
 import { connectFirestoreEmulator, getFirestore, initializeFirestore } from 'firebase/firestore';
 import { firebaseApp, isFirebaseEmulatorMode } from './firebaseApp';
+import { getFirestoreDatabaseId } from './firestoreConfig';
+
+export const firestoreDatabaseId = getFirestoreDatabaseId(isFirebaseEmulatorMode);
 
 export const db = firebaseApp
   ? isFirebaseEmulatorMode
     ? initializeFirestore(firebaseApp, { experimentalForceLongPolling: true })
-    : getFirestore(firebaseApp)
+    : getFirestore(firebaseApp, firestoreDatabaseId)
   : null;
 
 if (db && isFirebaseEmulatorMode) {
