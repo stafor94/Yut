@@ -10,7 +10,7 @@ test.describe('roll mat surface regression', () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('pending부터 결과 유지까지 축소된 2D 매트 표면과 충분한 3D viewport를 계속 표시한다', async ({ page, context }, testInfo) => {
+  test('pending부터 결과 유지까지 축소된 매트와 넓은 3D 비행 영역을 계속 표시한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 412, height: 915 });
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'mat-host'));
     const roomTitle = makeQaName(testInfo, 'mat-room');
@@ -57,6 +57,7 @@ test.describe('roll mat surface regression', () => {
         const matNode = node.closest('[data-testid="roll-mat"]');
         const matRect = matNode?.getBoundingClientRect();
         return {
+          sceneTop: Math.round(sceneRect.top),
           sceneWidth: Math.round(sceneRect.width),
           sceneHeight: Math.round(sceneRect.height),
           canvasWidth: Math.round(canvasRect?.width ?? 0),
@@ -93,6 +94,7 @@ test.describe('roll mat surface regression', () => {
           opacity: style.opacity,
           layoutWidth: node.offsetWidth,
           layoutHeight: node.offsetHeight,
+          visualTop: Math.round(rect.top),
           visualWidth: Math.round(rect.width),
           visualHeight: Math.round(rect.height),
         };
@@ -108,8 +110,10 @@ test.describe('roll mat surface regression', () => {
       expect(pendingSurface.layoutHeight).toBeGreaterThan(0);
       expect(pendingSurface.visualWidth).toBeGreaterThan(0);
       expect(pendingSurface.visualHeight).toBeGreaterThan(0);
+      expect(pendingSurface.visualWidth).toBeLessThanOrEqual(Math.round(sceneLayout.viewportWidth * 0.64));
+      expect(pendingSurface.visualHeight).toBeLessThanOrEqual(270);
+      expect(pendingSurface.visualTop - sceneLayout.sceneTop).toBeGreaterThanOrEqual(50);
       expect(pendingSurface.visualWidth).toBeLessThan(sceneLayout.sceneWidth);
-      expect(pendingSurface.visualWidth).toBeLessThanOrEqual(Math.round(sceneLayout.viewportWidth * 0.9));
       expect(pendingSurface.visualHeight).toBeLessThan(sceneLayout.matHeight);
 
       await expect(page.locator('.roll-stage.resolved-from-pending.landing-roll, .roll-stage.resolved-from-pending.result-hold-roll')).toBeVisible({ timeout: 8_000 });
