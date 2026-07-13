@@ -3,25 +3,10 @@ import { BRANCH_NODE_IDS, FINISH_NODE_ID, getMovePathNodeIdsWithPrevious, type B
 import type { YutResult } from '../game-core/roll';
 import type { GameLog, PieceCount, PlayMode } from './appState';
 
-const TURN_ORDER_INITIAL_SLOT_SPIN_MS = 3000;
-const TURN_ORDER_SLOT_REVEAL_INTERVAL_MS = 2000;
-const TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS = 1000;
+export { getTurnOrderSlotRevealDurationMs, getTurnOrderStoppedSlotCount } from './flows/turnOrderPresentation';
+
 const ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_GRACE_MS = 1200;
-
-export const getTurnOrderSlotRevealDurationMs = (orderLength: number) => {
-  if (orderLength <= 0) return 0;
-  if (orderLength === 1) return TURN_ORDER_INITIAL_SLOT_SPIN_MS;
-  return TURN_ORDER_INITIAL_SLOT_SPIN_MS + Math.max(0, orderLength - 2) * TURN_ORDER_SLOT_REVEAL_INTERVAL_MS + TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS;
-};
-
-export const getTurnOrderStoppedSlotCount = (orderLength: number, elapsedMs: number) => {
-  if (orderLength <= 0 || elapsedMs < TURN_ORDER_INITIAL_SLOT_SPIN_MS) return 0;
-  if (orderLength === 1) return 1;
-  const beforeLastCount = Math.min(orderLength - 1, 1 + Math.floor((elapsedMs - TURN_ORDER_INITIAL_SLOT_SPIN_MS) / TURN_ORDER_SLOT_REVEAL_INTERVAL_MS));
-  const lastRevealAt = TURN_ORDER_INITIAL_SLOT_SPIN_MS + Math.max(0, orderLength - 2) * TURN_ORDER_SLOT_REVEAL_INTERVAL_MS + TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS;
-  return elapsedMs >= lastRevealAt ? orderLength : beforeLastCount;
-};
 
 export const normalizeMaxPlayers = (value: unknown, mode: PlayMode): 2 | 3 | 4 => {
   if (mode === 'team') return 4;

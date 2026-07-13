@@ -1,0 +1,241 @@
+.turn-order-ready-overlay.slot-machine {
+  display: grid;
+  gap: 12px;
+  width: min(76vw, 320px);
+  padding: 22px 18px;
+  transform-origin: 50% 18%;
+  transition: opacity .32s ease, transform .32s ease, box-shadow .32s ease;
+}
+
+.turn-order-presentation-heading {
+  display: grid;
+  gap: 3px;
+  text-align: center;
+}
+
+.turn-order-presentation-heading > span {
+  color: rgba(42, 30, 23, .58);
+  font-size: .75rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+}
+
+.turn-order-presentation-heading > strong {
+  color: #2a1e17;
+  font-size: clamp(1.02rem, 3vw, 1.22rem);
+}
+
+.turn-order-ready-overlay.slot-machine.finalized {
+  box-shadow: 0 18px 48px rgba(42, 30, 23, .22), 0 0 0 3px rgba(242, 184, 75, .2);
+}
+
+.turn-order-ready-overlay.slot-machine.exiting {
+  pointer-events: none;
+  animation: turn-order-overlay-exit .42s cubic-bezier(.5, 0, .85, .35) forwards;
+}
+
+.turn-order-slot-list {
+  gap: 8px;
+}
+
+.turn-order-slot-window {
+  height: 58px;
+  border-left: 4px solid transparent;
+  border-radius: 16px;
+  transition: transform .28s ease, background .28s ease, border-color .28s ease, box-shadow .28s ease;
+}
+
+.turn-order-slot-window.stopped {
+  border-left-color: var(--slot-color, #f2b84b);
+  background: rgba(255, 250, 240, .98);
+}
+
+.turn-order-slot-reel {
+  --slot-row-step: 52px;
+  gap: 4px;
+  padding: 5px 7px;
+  animation-duration: .42s;
+}
+
+.turn-order-slot-window.stopped .turn-order-slot-reel {
+  transition-duration: .38s;
+  transition-timing-function: cubic-bezier(.12, .84, .24, 1);
+}
+
+.turn-order-slot-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 48px;
+  padding: 0 9px;
+  border-radius: 13px;
+  font-size: clamp(.88rem, 2.8vw, 1.08rem);
+  line-height: 1;
+  transition: background .22s ease, box-shadow .22s ease, transform .22s ease;
+}
+
+.turn-order-slot-card.final-card {
+  justify-content: flex-start;
+  animation: turn-order-card-land .3s cubic-bezier(.12, .86, .28, 1.18) .24s both;
+}
+
+.turn-order-slot-card.mine {
+  border-color: currentColor !important;
+  background: rgba(255, 248, 234, .98);
+  color: inherit !important;
+  transform: none;
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .96), 0 7px 18px rgba(42, 30, 23, .16);
+}
+
+.turn-order-rank-medal {
+  display: inline-grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #2a1e17;
+  color: #fffaf0;
+  font-size: .78rem;
+  font-weight: 1000;
+  box-shadow: 0 3px 8px rgba(42, 30, 23, .22);
+}
+
+.turn-order-slot-window.starter .turn-order-rank-medal {
+  background: linear-gradient(135deg, #d59623, #f2b84b);
+  color: #2a1e17;
+}
+
+.turn-order-slot-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-order-slot-card.final-card .turn-order-slot-name {
+  text-align: left;
+}
+
+.turn-order-slot-badge {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 6px;
+  border-radius: 999px;
+  font-size: .64rem;
+  font-style: normal;
+  font-weight: 1000;
+  line-height: 1;
+}
+
+.mine-badge {
+  border: 1px solid currentColor;
+  background: #fff;
+  color: inherit;
+}
+
+.starter-badge {
+  background: #f2b84b;
+  color: #2a1e17;
+}
+
+.turn-order-ready-overlay.finalized .turn-order-slot-window.starter {
+  transform: translateY(-3px) scale(1.015);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--slot-color, #f2b84b) 28%, transparent);
+}
+
+.turn-order-final-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  margin: 0;
+  color: #2a1e17;
+  font-size: .86rem;
+  font-weight: 800;
+  animation: turn-order-summary-in .28s ease-out both;
+}
+
+.turn-order-final-summary > span {
+  color: #d59623;
+}
+
+.turn-order-live-summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes turn-order-card-land {
+  0% { opacity: .58; transform: translateY(-5px) scale(.97); }
+  70% { opacity: 1; transform: translateY(1px) scale(1.025); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes turn-order-summary-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes turn-order-overlay-exit {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-24px) scale(.92); }
+}
+
+@media (max-width: 520px) {
+  .turn-order-ready-overlay.slot-machine {
+    width: min(76vw, 301px);
+    padding: 18px 14px;
+  }
+
+  .turn-order-slot-window {
+    height: 54px;
+  }
+
+  .turn-order-slot-reel {
+    --slot-row-step: 48px;
+    padding: 4px 6px;
+  }
+
+  .turn-order-slot-card {
+    min-height: 44px;
+    padding-inline: 7px;
+    font-size: clamp(.8rem, 3.5vw, .96rem);
+  }
+
+  .turn-order-rank-medal {
+    width: 24px;
+    height: 24px;
+    font-size: .7rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-order-slot-reel,
+  .turn-order-slot-card.final-card,
+  .turn-order-final-summary,
+  .turn-order-ready-overlay.slot-machine.exiting {
+    animation: none !important;
+  }
+
+  .turn-order-ready-overlay.slot-machine,
+  .turn-order-slot-window,
+  .turn-order-slot-card,
+  .turn-order-slot-window.stopped .turn-order-slot-reel {
+    transition: none !important;
+  }
+
+  .turn-order-ready-overlay.slot-machine.exiting {
+    opacity: 0;
+  }
+}
