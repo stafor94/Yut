@@ -41,12 +41,20 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
   const activeRoomIdRef = useRef(activeRoomId);
   activeRoomIdRef.current = activeRoomId;
   const previousRoomIdRef = useRef('');
+  const latestGameStateActiveRef = useRef(false);
   const fatalRecoveryHandledRef = useRef(false);
   const escalationRecoveryRef = useRef<Promise<boolean> | null>(null);
   const recoverLatestStateRef = useRef<(roomId: string) => Promise<boolean>>(async () => false);
+  const syncRecoveryRoomContextRef = useRef<() => void>(() => undefined);
 
   const controllerRef = useRef<GameSyncSubscriptionController<SyncedGameState> | null>(null);
   if (!controllerRef.current) controllerRef.current = createGameSyncSubscriptionController<SyncedGameState>();
+
+  syncRecoveryRoomContextRef.current = () => {
+    const roomId = activeRoomIdRef.current;
+    const gameScreenActive = Boolean(document.querySelector('[data-testid="app-shell"].screen-game'));
+    setSequenceRecoveryRoomContext(roomId, Boolean(roomId && latestGameStateActiveRef.current && gameScreenActive));
+  };
 
   recoverLatestStateRef.current = (roomId: string) => {
     if (escalationRecoveryRef.current) return escalationRecoveryRef.current;
@@ -77,8 +85,8 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
     applySyncedStateSnapshot: (state) => applySyncedStateSnapshot(state as SequenceStateSnapshot),
     enqueueAuthoritativeResultApplication,
     onSnapshotReceived: (state) => {
-      const gameFinished = Boolean(state.winner);
-      setSequenceRecoveryRoomContext(activeRoomId, Boolean(activeRoomId) && !gameFinished);
+      latestGameStateActiveRef.current = !state.winner;
+      syncRecoveryRoomContextRef.current();
       onSnapshotReceived?.(state as SequenceStateSnapshot);
     },
     scheduleApplyingReset: (reset) => { window.setTimeout(reset, 0); },
@@ -86,8 +94,18 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
   controllerRef.current.updateRuntime(runtimeRef.current);
 
   useEffect(() => {
+    const observer = new MutationObserver(() => syncRecoveryRoomContextRef.current());
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'], subtree: true });
+    syncRecoveryRoomContextRef.current();
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     const previousRoomId = previousRoomIdRef.current;
-    if (previousRoomId && previousRoomId !== activeRoomId) setSequenceRecoveryRoomContext(previousRoomId, false);
+    if (previousRoomId && previousRoomId !== activeRoomId) {
+      latestGameStateActiveRef.current = false;
+      setSequenceRecoveryRoomContext(previousRoomId, false);
+    }
     previousRoomIdRef.current = activeRoomId;
     const controller = controllerRef.current;
     const runtime = runtimeRef.current;
@@ -95,7 +113,11 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
     fatalRecoveryHandledRef.current = false;
     controller.updateRuntime(runtime);
     controller.syncRoom(activeRoomId, subscribeRef.current);
-    if (!activeRoomId) setSequenceRecoveryRoomContext(previousRoomId, false);
+    if (!activeRoomId) {
+      latestGameStateActiveRef.current = false;
+      setSequenceRecoveryRoomContext(previousRoomId, false);
+    }
+    syncRecoveryRoomContextRef.current();
   }, [activeRoomId]);
 
   useEffect(() => {
@@ -131,6 +153,7 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
           return;
         }
         controllerRef.current?.syncRoom('', subscribeRef.current);
+        latestGameStateActiveRef.current = false;
         setSequenceRecoveryRoomContext(roomId, false);
         let finalized = false;
         const finalizeExit = () => {
@@ -163,6 +186,7 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
 
   useEffect(() => () => {
     const roomId = previousRoomIdRef.current;
+    latestGameStateActiveRef.current = false;
     if (roomId) setSequenceRecoveryRoomContext(roomId, false);
     controllerRef.current?.dispose();
   }, []);
