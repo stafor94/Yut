@@ -7,20 +7,23 @@ import {
   smoothStep,
 } from './yutRollAnimation';
 
+export const MAX_TOTAL_SPIN_TURNS = 3;
 export const LOCAL_THROW_APEX_PROGRESS = 0.48;
-export const LOCAL_LANDING_IMPACT_PROGRESS = 0.62;
-export const PRIMARY_SPIN_TURNS_BASE = 2.05;
-export const PRIMARY_SPIN_TURNS_STEP = 0.175;
-export const EXTRA_SPIN_RADIANS_PER_SECOND_BASE = 3.1;
-export const EXTRA_SPIN_RADIANS_PER_SECOND_STEP = 0.24;
-export const LANDING_FLIGHT_SPIN_TURNS_BASE = 0.86;
-export const LANDING_FLIGHT_SPIN_TURNS_STEP = 0.11;
+export const LOCAL_LANDING_IMPACT_PROGRESS = 0.38;
+export const PRIMARY_SPIN_TURNS_BASE = 1.8;
+export const PRIMARY_SPIN_TURNS_STEP = 0.08;
+export const EXTRA_SPIN_RADIANS_PER_SECOND_BASE = 0;
+export const EXTRA_SPIN_RADIANS_PER_SECOND_STEP = 0;
+export const LANDING_FLIGHT_SPIN_TURNS_BASE = 0.72;
+export const LANDING_FLIGHT_SPIN_TURNS_STEP = 0.06;
 export const REMOTE_ROLL_LOCAL_TIMELINE_START_MS = LOCAL_ROLL_PRE_RESULT_MS / 2;
 export const REMOTE_ROLL_LOCAL_TIMELINE_OFFSET_MS = REMOTE_ROLL_LOCAL_TIMELINE_START_MS;
 export const REMOTE_ROLL_LANDING_START_MS = Math.max(
   0,
   REMOTE_ROLL_LOCAL_TIMELINE_START_MS - LOCAL_ROLL_PRIMARY_MS,
 );
+
+const LANDING_DROP_INITIAL_SLOPE = 0.92;
 
 export type LandingMotion = {
   flightProgress: number;
@@ -54,7 +57,7 @@ export function getPrimaryThrowHeight(startY: number, progress: number, index: n
 
   const descentProgress = (normalized - LOCAL_THROW_APEX_PROGRESS) / (1 - LOCAL_THROW_APEX_PROGRESS);
   const landingStartSlope = -endY
-    * 0.72
+    * LANDING_DROP_INITIAL_SLOPE
     / LOCAL_LANDING_IMPACT_PROGRESS
     * LOCAL_ROLL_PRIMARY_MS
     / LOCAL_ROLL_LANDING_MS;
@@ -69,7 +72,7 @@ export function getPrimaryThrowHeight(startY: number, progress: number, index: n
 
 export function getContinuousLandingDropProgress(progress: number) {
   const normalized = clampUnit(progress);
-  return normalized * (0.72 + 0.28 * normalized);
+  return normalized * (LANDING_DROP_INITIAL_SLOPE + (1 - LANDING_DROP_INITIAL_SLOPE) * normalized);
 }
 
 export function getLandingMotion(progress: number, index: number): LandingMotion {
@@ -78,13 +81,13 @@ export function getLandingMotion(progress: number, index: number): LandingMotion
   const settleProgress = clampUnit(
     (normalized - LOCAL_LANDING_IMPACT_PROGRESS) / (1 - LOCAL_LANDING_IMPACT_PROGRESS),
   );
-  const firstBounceProgress = clampUnit(settleProgress / 0.56);
-  const secondBounceProgress = clampUnit((settleProgress - 0.52) / 0.48);
+  const firstBounceProgress = clampUnit(settleProgress / 0.62);
+  const secondBounceProgress = clampUnit((settleProgress - 0.48) / 0.52);
   const firstBounce = settleProgress > 0 && firstBounceProgress < 1
-    ? Math.sin(firstBounceProgress * Math.PI) * 0.34 * (1 - firstBounceProgress * 0.45)
+    ? Math.sin(firstBounceProgress * Math.PI) * 0.42 * (1 - firstBounceProgress * 0.38)
     : 0;
-  const secondBounce = settleProgress > 0.52 && secondBounceProgress < 1
-    ? Math.sin(secondBounceProgress * Math.PI) * 0.11 * (1 - secondBounceProgress)
+  const secondBounce = settleProgress > 0.48 && secondBounceProgress < 1
+    ? Math.sin(secondBounceProgress * Math.PI) * 0.16 * (1 - secondBounceProgress)
     : 0;
   const direction = index % 2 === 0 ? -1 : 1;
   const depthDirection = index % 3 === 0 ? -1 : 1;
@@ -95,7 +98,7 @@ export function getLandingMotion(progress: number, index: number): LandingMotion
     settleProgress,
     slideProgress: smoothStep(settleProgress),
     bounceHeight: firstBounce + secondBounce,
-    wobbleRadians: Math.sin(settleProgress * Math.PI * 2.35) * (1 - settleProgress) * 0.58,
+    wobbleRadians: Math.sin(settleProgress * Math.PI * 3.1) * (1 - settleProgress) * 0.62,
     rollOffsetX: direction * (0.22 + index * 0.018),
     rollOffsetZ: depthDirection * (0.09 + (index % 2) * 0.024),
   };
