@@ -18,6 +18,19 @@ export const ITEM_DEFINITIONS: Record<ItemType, { name: string; timing: ItemTimi
   golden_yut: { name: '황금 윷', timing: 'before_roll', description: '윷을 던지기 전 원하는 결과를 선택합니다.', icon: '✨' },
 };
 
+const AI_ITEM_VALUES: Record<ItemType, number> = {
+  golden_yut: 90,
+  reroll: 75,
+  move_plus_one: 70,
+  trap: 62,
+  shield: 58,
+  move_minus_one: 45,
+};
+
+export function getAiItemValue(type: ItemType) {
+  return AI_ITEM_VALUES[type];
+}
+
 export function getRandomItemType(random = Math.random): ItemType {
   return ITEM_TYPES[Math.floor(random() * ITEM_TYPES.length)];
 }
