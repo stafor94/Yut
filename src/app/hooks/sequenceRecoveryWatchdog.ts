@@ -15,6 +15,7 @@ export type SequenceRecoveryConflictState = {
   turnRecoveryInFlight: boolean;
 };
 
+export const SEQUENCE_RECOVERY_SOFT_EVENT = 'yut:sequence-soft-recovery';
 export const SEQUENCE_RECOVERY_HARD_EVENT = 'yut:sequence-hard-recovery';
 export const SEQUENCE_RECOVERY_FATAL_EVENT = 'yut:sequence-fatal-stall';
 
@@ -52,17 +53,32 @@ type SequenceRecoveryWatchdogOptions = {
   hardRecoveryAfterMs?: number;
   fatalRecoveryAfterMs?: number;
   fatalDeferredRetryMs?: number;
+  maxFatalDeferrals?: number;
   onCheckStarted?: (attempt: number) => void;
+  onSoftRecovery?: (detail: SequenceRecoveryEscalationDetail) => void;
   onHardRecovery?: (detail: SequenceRecoveryEscalationDetail) => void;
   onFatalRecovery?: (detail: SequenceRecoveryEscalationDetail) => void;
 };
 
 type SequenceProgressListener = (roomId: string, sequence: number) => void;
+type SequenceRoomContextListener = (roomId: string, active: boolean) => void;
+
 const sequenceProgressListeners = new Set<SequenceProgressListener>();
+const sequenceRoomContextListeners = new Set<SequenceRoomContextListener>();
+let activeSequenceRoomId = '';
 
 export function notifySequenceRecoveryProgress(roomId: string, sequence: number) {
   if (!roomId || !Number.isFinite(sequence) || sequence < 0) return;
   sequenceProgressListeners.forEach((listener) => listener(roomId, sequence));
+}
+
+export function setSequenceRecoveryRoomContext(roomId: string, active: boolean) {
+  const nextRoomId = active && roomId ? roomId : '';
+  if (nextRoomId === activeSequenceRoomId) return;
+  const previousRoomId = activeSequenceRoomId;
+  activeSequenceRoomId = nextRoomId;
+  if (previousRoomId) sequenceRoomContextListeners.forEach((listener) => listener(previousRoomId, false));
+  if (nextRoomId) sequenceRoomContextListeners.forEach((listener) => listener(nextRoomId, true));
 }
 
 const dispatchEscalationEvent = (eventName: string, detail: SequenceRecoveryEscalationDetail) => {
@@ -81,6 +97,7 @@ export function createSequenceRecoveryWatchdog(options: SequenceRecoveryWatchdog
     runCheck,
     scheduler,
     onCheckStarted,
+    onSoftRecovery = (detail) => dispatchEscalationEvent(SEQUENCE_RECOVERY_SOFT_EVENT, detail),
     onHardRecovery = (detail) => dispatchEscalationEvent(SEQUENCE_RECOVERY_HARD_EVENT, detail),
     onFatalRecovery = (detail) => dispatchEscalationEvent(SEQUENCE_RECOVERY_FATAL_EVENT, detail),
   } = options;
@@ -93,6 +110,7 @@ export function createSequenceRecoveryWatchdog(options: SequenceRecoveryWatchdog
   const hardRecoveryAfterMs = Math.max(softRecoveryAfterMs, options.hardRecoveryAfterMs ?? 60_000);
   const fatalRecoveryAfterMs = Math.max(hardRecoveryAfterMs, options.fatalRecoveryAfterMs ?? 120_000);
   const fatalDeferredRetryMs = Math.max(1, options.fatalDeferredRetryMs ?? 5_000);
+  const maxFatalDeferrals = Math.max(0, Math.floor(options.maxFatalDeferrals ?? 1));
 
   let active = false;
   let watchKey = '';
@@ -105,6 +123,7 @@ export function createSequenceRecoveryWatchdog(options: SequenceRecoveryWatchdog
   let softRecoveryStarted = false;
   let hardRecoveryStarted = false;
   let fatalRecoveryStarted = false;
+  let fatalDeferralCount = 0;
   let generation = 0;
   let rescheduleAfterFlight = false;
 
@@ -151,10 +170,28 @@ export function createSequenceRecoveryWatchdog(options: SequenceRecoveryWatchdog
     softRecoveryStarted = false;
     hardRecoveryStarted = false;
     fatalRecoveryStarted = false;
+    fatalDeferralCount = 0;
     if (typeof sequence === 'number' && Number.isFinite(sequence)) lastObservedSequence = sequence;
     clearScheduled();
     if (inFlight) rescheduleAfterFlight = true;
     else scheduleNext();
+  };
+
+  const start = (nextRoomId: string, nextWatchKey: string) => {
+    generation += 1;
+    active = true;
+    roomId = nextRoomId;
+    watchKey = nextWatchKey;
+    cycleStartedAt = scheduler.now();
+    lastObservedSequence = -1;
+    attemptCount = 0;
+    softRecoveryStarted = false;
+    hardRecoveryStarted = false;
+    fatalRecoveryStarted = false;
+    fatalDeferralCount = 0;
+    rescheduleAfterFlight = false;
+    clearScheduled();
+    scheduleNext();
   };
 
   const executeCheck = async (): Promise<SequenceRecoveryCheckResult> => {
@@ -200,22 +237,26 @@ export function createSequenceRecoveryWatchdog(options: SequenceRecoveryWatchdog
     if (!softRecoveryStarted && elapsedMs >= softRecoveryAfterMs) {
       softRecoveryStarted = true;
       const result = await executeCheck();
+      if (result === 'deferred') onSoftRecovery(makeDetail());
       if (result !== 'changed') scheduleNext();
       return;
     }
 
     if (!hardRecoveryStarted && elapsedMs >= hardRecoveryAfterMs) {
       hardRecoveryStarted = true;
-      onHardRecovery(makeDetail());
       const result = await executeCheck();
-      if (result !== 'changed') scheduleNext();
+      if (result !== 'changed') {
+        onHardRecovery(makeDetail());
+        scheduleNext();
+      }
       return;
     }
 
     if (!fatalRecoveryStarted && elapsedMs >= fatalRecoveryAfterMs) {
       const result = await executeCheck();
       if (result === 'changed') return;
-      if (result === 'deferred') {
+      if (result === 'deferred' && fatalDeferralCount < maxFatalDeferrals) {
+        fatalDeferralCount += 1;
         cycleStartedAt += fatalDeferredRetryMs;
         scheduleNext();
         return;
@@ -241,6 +282,7 @@ export function createSequenceRecoveryWatchdog(options: SequenceRecoveryWatchdog
     softRecoveryStarted = false;
     hardRecoveryStarted = false;
     fatalRecoveryStarted = false;
+    fatalDeferralCount = 0;
   };
 
   const notifySequence = (sequence: number) => {
@@ -257,11 +299,24 @@ export function createSequenceRecoveryWatchdog(options: SequenceRecoveryWatchdog
   const progressListener: SequenceProgressListener = (progressRoomId, sequence) => {
     if (active && progressRoomId === roomId) notifySequence(sequence);
   };
+  const contextListener: SequenceRoomContextListener = (contextRoomId, contextActive) => {
+    if (contextActive) {
+      if (!active || roomId !== contextRoomId) start(contextRoomId, `${contextRoomId}:all-turns`);
+      return;
+    }
+    if (active && roomId === contextRoomId) stop();
+  };
   sequenceProgressListeners.add(progressListener);
+  sequenceRoomContextListeners.add(contextListener);
+  if (activeSequenceRoomId) start(activeSequenceRoomId, `${activeSequenceRoomId}:all-turns`);
 
   return {
     update(nextState) {
       if (!nextState.active || !nextState.key) {
+        if (activeSequenceRoomId) {
+          if (!active || roomId !== activeSequenceRoomId) start(activeSequenceRoomId, `${activeSequenceRoomId}:all-turns`);
+          return;
+        }
         if (active || watchKey) stop();
         return;
       }
@@ -270,19 +325,7 @@ export function createSequenceRecoveryWatchdog(options: SequenceRecoveryWatchdog
         watchKey = nextState.key;
         return;
       }
-      generation += 1;
-      active = true;
-      watchKey = nextState.key;
-      roomId = nextRoomId;
-      cycleStartedAt = scheduler.now();
-      lastObservedSequence = -1;
-      attemptCount = 0;
-      softRecoveryStarted = false;
-      hardRecoveryStarted = false;
-      fatalRecoveryStarted = false;
-      rescheduleAfterFlight = false;
-      clearScheduled();
-      scheduleNext();
+      start(nextRoomId, nextState.key);
     },
     notifySnapshot() {
       // Snapshot activity alone is not progress. Only a higher lastSequence resets the watchdog.
@@ -291,11 +334,13 @@ export function createSequenceRecoveryWatchdog(options: SequenceRecoveryWatchdog
     async triggerNow() {
       if (!active || inFlight) return false;
       const result = await executeCheck();
+      if (result === 'deferred') onSoftRecovery(makeDetail());
       if (result !== 'changed') scheduleNext();
       return true;
     },
     dispose() {
       sequenceProgressListeners.delete(progressListener);
+      sequenceRoomContextListeners.delete(contextListener);
       stop();
     },
   };
