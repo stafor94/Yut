@@ -5,8 +5,10 @@ import {
   createRoomRequestIdentity,
   isMatchingCreatedRoom,
   isRoomTransitionInProgress,
+  resolveRoomCreationTimeoutMs,
   withOperationTimeout,
 } from '../../src/app/flows/roomCreationFlow.js';
+import { ROOM_CREATION_TIMEOUT_MS } from '../../src/features/room/services/roomCreationTiming.js';
 
 const delay = (delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 
@@ -20,6 +22,13 @@ test('작업 제한 시간이 지나면 작업 종류가 포함된 timeout 오�
     withOperationTimeout(new Promise<void>(() => undefined), 5, 'create'),
     (error: unknown) => error instanceof RoomCreationTimeoutError && error.operation === 'create',
   );
+});
+
+test('운영 방 생성 관련 timeout은 모두 10초 기준으로 통일한다', () => {
+  assert.equal(ROOM_CREATION_TIMEOUT_MS, 10_000);
+  assert.equal(resolveRoomCreationTimeoutMs(12_000, 'auth'), ROOM_CREATION_TIMEOUT_MS);
+  assert.equal(resolveRoomCreationTimeoutMs(12_000, 'create'), ROOM_CREATION_TIMEOUT_MS);
+  assert.equal(resolveRoomCreationTimeoutMs(5_000, 'recover'), ROOM_CREATION_TIMEOUT_MS);
 });
 
 test('동일 생성 요청은 같은 room id와 create request id를 사용한다', () => {
