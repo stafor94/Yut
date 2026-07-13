@@ -3,6 +3,7 @@ import { ItemCard } from '../../features/items/components/ItemCard';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
+import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } from '../flows/remoteItemUseNotice';
 import { GameLogPanel, PlayersPanel } from '../screens/GameScreen';
 import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
 
@@ -32,20 +33,6 @@ type RemoteItemUseNotice = {
   color: string;
 };
 
-const cloneOwnedItems = (seats: Seat[], ownedItems: Record<string, ItemType[]>) => Object.fromEntries(
-  seats.map((seat) => [seat.id, [...(ownedItems[seat.id] ?? [])]]),
-) as Record<string, ItemType[]>;
-
-const getRemovedItemTypes = (previousItems: ItemType[], currentItems: ItemType[]) => {
-  const unmatchedCurrentItems = [...currentItems];
-  return previousItems.filter((itemType) => {
-    const matchingIndex = unmatchedCurrentItems.indexOf(itemType);
-    if (matchingIndex < 0) return true;
-    unmatchedCurrentItems.splice(matchingIndex, 1);
-    return false;
-  });
-};
-
 export function GamePlayersPanel({
   title,
   playMode,
@@ -65,31 +52,27 @@ export function GamePlayersPanel({
 }: GamePlayersPanelProps) {
   const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
   const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
-  const previousOwnedItemsRef = useRef<Record<string, ItemType[]> | null>(null);
+  const previousOwnedItemsRef = useRef<OwnedItemsSnapshot | null>(null);
   const remoteItemNoticeTimerRef = useRef<number | null>(null);
   const [remoteItemUseNotice, setRemoteItemUseNotice] = useState<RemoteItemUseNotice | null>(null);
 
   useEffect(() => {
+    const seatIds = seats.map((seat) => seat.id);
     const previousOwnedItems = previousOwnedItemsRef.current;
-    const nextOwnedItems = cloneOwnedItems(seats, ownedItems);
+    const nextOwnedItems = snapshotOwnedItems(seatIds, ownedItems);
     previousOwnedItemsRef.current = nextOwnedItems;
     if (!previousOwnedItems) return;
 
-    const remoteItemUse = seats
-      .filter((seat) => seat.id !== localSeatId)
-      .map((seat) => ({
-        seat,
-        removedItemType: getRemovedItemTypes(previousOwnedItems[seat.id] ?? [], nextOwnedItems[seat.id] ?? [])[0],
-      }))
-      .find((entry) => entry.removedItemType);
-    if (!remoteItemUse?.removedItemType) return;
+    const remoteItemUse = findRemoteConsumedItem(seatIds, localSeatId, previousOwnedItems, nextOwnedItems);
+    const remoteSeat = remoteItemUse ? seats.find((seat) => seat.id === remoteItemUse.seatId) : undefined;
+    if (!remoteItemUse || !remoteSeat) return;
 
     if (remoteItemNoticeTimerRef.current !== null) window.clearTimeout(remoteItemNoticeTimerRef.current);
     setRemoteItemUseNotice({
       id: Date.now(),
-      playerName: getPlayerCardName(remoteItemUse.seat),
-      itemType: remoteItemUse.removedItemType,
-      color: playMode === 'team' ? TEAM_COLORS[remoteItemUse.seat.team] : getSeatPieceColor(remoteItemUse.seat),
+      playerName: getPlayerCardName(remoteSeat),
+      itemType: remoteItemUse.itemType,
+      color: playMode === 'team' ? TEAM_COLORS[remoteSeat.team] : getSeatPieceColor(remoteSeat),
     });
     playStoredSoundEffect('itemUse');
     remoteItemNoticeTimerRef.current = window.setTimeout(() => {
