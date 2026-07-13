@@ -19,6 +19,7 @@
     "src/features/items/logic/items.ts",
     "src/features/room/hooks/roomListSubscription.ts",
     "src/features/room/services/roomAvailabilityPolicy.ts",
+    "src/features/room/services/roomCreationCleanup.ts",
     "src/features/room/services/roomLifecyclePolicy.ts",
     "src/features/room/services/roomAuthoritativeReducer.ts",
     "src/features/room/services/roomPresenceCleanupPolicy.ts",
