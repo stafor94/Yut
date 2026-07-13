@@ -14,6 +14,7 @@ import {
 import { hasCreationBlockingHumanPlayer, hasResumablePlayerForUser } from './roomLifecyclePolicy';
 import { removeRoomPlayerNow } from './roomExitService';
 import { leavePlayerRoomsBeforeCreate } from './roomCreationCleanup';
+import { waitForRoomCreationLock } from './roomCreationLock';
 
 const ACTIVE_HOST_ROOM_ERROR = '이미 진행 중인 방이 있습니다. 기존 방으로 돌아간 뒤 새 방을 만들어주세요.';
 const ACTIVE_ROOM_LIMIT_ERROR = '방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.';
@@ -30,14 +31,14 @@ const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.sta
 
 const createLockOwnerToken = (requestId: string) => `${requestId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 
-async function acquireRoomCreationLock(hostId: string, requestId: string, ownerToken: string) {
+async function tryAcquireRoomCreationLock(hostId: string, requestId: string, ownerToken: string) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const lockRef = doc(db, 'rooms', ROOM_CREATION_LOCK_ID);
-  const now = Date.now();
-  await runTransaction(db, async (transaction) => {
+  return runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(lockRef);
     const lock = snapshot.exists() ? snapshot.data() as ManagedRoomSummary : null;
-    if (lock && Number(lock.lockExpiresAt ?? 0) > now && lock.lockRequestId !== requestId) throw new Error(CREATE_IN_PROGRESS_ERROR);
+    const now = Date.now();
+    if (lock && Number(lock.lockExpiresAt ?? 0) > now && lock.lockRequestId !== requestId) return false;
     transaction.set(lockRef, {
       title: '시스템 방 생성 잠금',
       hostId,
@@ -57,7 +58,15 @@ async function acquireRoomCreationLock(hostId: string, requestId: string, ownerT
       lastActivityAt: now,
       createdAt: lock?.createdAt ?? serverTimestamp(),
     }, { merge: true });
+    return true;
   });
+}
+
+async function acquireRoomCreationLock(hostId: string, requestId: string, ownerToken: string) {
+  const acquired = await waitForRoomCreationLock({
+    tryAcquire: () => tryAcquireRoomCreationLock(hostId, requestId, ownerToken),
+  });
+  if (!acquired) throw new Error(CREATE_IN_PROGRESS_ERROR);
 }
 
 async function releaseRoomCreationLock(requestId: string, ownerToken: string) {
