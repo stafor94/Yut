@@ -5,7 +5,7 @@ import {
   type RoomPlayer,
   type RoomSummary,
 } from './roomServiceCore';
-import { hasNonAiPlayer, hasRecoverableRoomPlayer } from './roomExitPolicy';
+import { hasNonAiPlayer } from './roomExitPolicy';
 import {
   getRoomLastActivityMillis,
   getRoomTimestampMillis,
@@ -129,14 +129,14 @@ export async function cleanupDeletionCandidatesBeforeCreate(protectedRoomId = ''
   return deletedRoomIds;
 }
 
-export async function getRecoverableActiveRooms() {
+export async function getActiveRoomsWithPlayers() {
   if (!db) return [];
   const snapshot = await getDocs(query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing'])));
   const rooms = await Promise.all(snapshot.docs.map(async (roomDoc) => {
     const room = { id: roomDoc.id, ...(roomDoc.data() as Omit<ManagedRoomSummary, 'id'>) };
     if (isSystemRoom(room) || room.deletingAt) return null;
     const players = await getRoomPlayers(room.id);
-    return hasRecoverableRoomPlayer(players) ? room : null;
+    return { room, players };
   }));
-  return rooms.filter((room): room is ManagedRoomSummary => Boolean(room));
+  return rooms.filter((entry): entry is { room: ManagedRoomSummary; players: RoomPlayer[] } => Boolean(entry));
 }
