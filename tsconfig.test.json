@@ -23,6 +23,7 @@
     "src/features/room/services/roomLifecyclePolicy.ts",
     "src/features/room/services/roomAuthoritativeReducer.ts",
     "src/features/room/services/roomPresenceCleanupPolicy.ts",
+    "src/features/room/services/roomTiming.ts",
     "src/game-core/board/board.ts",
     "src/game-core/gameEngine.ts",
     "src/game-core/roll.ts",
@@ -32,6 +33,9 @@
     "src/app/flows/presenceRecovery.ts",
     "src/app/flows/onlineGameCoordinator.ts",
     "src/app/flows/actionFeedback.ts",
+    "src/app/flows/gameStartPreparation.ts",
+    "src/app/flows/turnOrderFlow.ts",
+    "src/app/flows/turnOrderPresentation.ts",
     "tests/unit/**/*.ts",
     "src/app/diagnostics/gameDiagnostics.ts"
   ]
