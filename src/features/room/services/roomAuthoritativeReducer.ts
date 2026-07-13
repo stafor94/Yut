@@ -1,4 +1,4 @@
-import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
+import { ITEM_DEFINITIONS, getAiItemValue, type ItemType } from '../../items/logic/items';
 import {
   isAuthoritativeCommitReduction,
   reduceAuthoritativeGameAction as reduceCoreAuthoritativeGameAction,
@@ -37,11 +37,69 @@ const retryRollAfterResolvedBeforeRollPrompt = (
   }, action, room, sides);
 };
 
+type PendingItemPickupShape = {
+  ownerId?: unknown;
+  itemType?: unknown;
+  existingItemType?: unknown;
+};
+
+const isItemType = (value: unknown): value is ItemType => typeof value === 'string' && value in ITEM_DEFINITIONS;
+
+const resolveAiPendingItemPickup = (
+  args: Parameters<typeof reduceCoreAuthoritativeGameAction>,
+  reduction: ReturnType<typeof reduceCoreAuthoritativeGameAction>,
+): ReturnType<typeof reduceCoreAuthoritativeGameAction> => {
+  if (!isAuthoritativeCommitReduction(reduction)) return reduction;
+
+  const [state, action, room, sides] = args;
+  const coordinatorSeatId = action.payload?.coordinatorSeatId;
+  const pending = reduction.patch.pendingItemPickup as PendingItemPickupShape | null | undefined;
+  if (action.type !== 'move_piece'
+    || typeof coordinatorSeatId !== 'string'
+    || !coordinatorSeatId
+    || coordinatorSeatId === action.actorId
+    || !pending
+    || pending.ownerId !== action.actorId
+    || !isItemType(pending.itemType)
+    || !isItemType(pending.existingItemType)) return reduction;
+
+  const decision = getAiItemValue(pending.itemType) > getAiItemValue(pending.existingItemType) ? 'replace' : 'keep';
+  const resolvedState = { ...state, ...reduction.patch };
+  const decisionReduction = reduceCoreAuthoritativeGameAction(
+    resolvedState,
+    {
+      type: 'item_pickup_decision',
+      actorId: action.actorId,
+      payload: {
+        decision,
+        actorLogName: action.payload?.actorLogName,
+        actorLabel: action.payload?.actorLabel,
+        actorName: action.payload?.actorName,
+      },
+    },
+    room,
+    sides,
+  );
+  if (!isAuthoritativeCommitReduction(decisionReduction)) return reduction;
+
+  return {
+    status: 'committed',
+    patch: { ...reduction.patch, ...decisionReduction.patch },
+    payload: {
+      ...reduction.payload,
+      ...decisionReduction.payload,
+      itemPickupDecision: decision,
+      autoResolvedItemPickup: true,
+    },
+  };
+};
+
 export function reduceAuthoritativeGameAction(
   ...args: Parameters<typeof reduceCoreAuthoritativeGameAction>
 ): ReturnType<typeof reduceCoreAuthoritativeGameAction> {
   let reduction = reduceCoreAuthoritativeGameAction(...args);
   reduction = retryRollAfterResolvedBeforeRollPrompt(args, reduction);
+  reduction = resolveAiPendingItemPickup(args, reduction);
   if (!isAuthoritativeCommitReduction(reduction)) return reduction;
 
   const [state, action, room] = args;

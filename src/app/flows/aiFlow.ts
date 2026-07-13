@@ -1,10 +1,12 @@
 import type { BoardPiece } from '../../features/game/components/GameBoard';
-import type { ItemType } from '../../features/items/logic/items';
+import { getAiItemValue, type ItemType } from '../../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getMovePathNodeIds, type BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { GOLDEN_YUT_CHOICES } from '../../game-core/roll';
 import type { Seat } from '../appState';
 import { getEffectiveBranchChoice } from '../appUtils';
+
+export { getAiItemValue };
 
 export const getAiBranchChoice = (piece: BoardPiece): BranchChoice => piece.started && BRANCH_NODE_IDS.includes(piece.nodeId as typeof BRANCH_NODE_IDS[number]) ? 'shortcut' : 'outer';
 
@@ -36,16 +38,6 @@ export function chooseAiMove(seat: Seat, result: YutResult, context: AiMoveConte
       return { piece, branchChoice: aiBranchChoice, score: scoreAiMove(piece, result, seat, aiBranchChoice, context) };
     })
     .sort((left, right) => right.score - left.score)[0];
-}
-
-export function getAiItemValue(type: ItemType) {
-  if (type === 'golden_yut') return 90;
-  if (type === 'reroll') return 75;
-  if (type === 'move_plus_one') return 70;
-  if (type === 'trap') return 62;
-  if (type === 'shield') return 58;
-  if (type === 'move_minus_one') return 45;
-  return 0;
 }
 
 export function shouldAiUseReroll(seat: Seat, result: YutResult, context: AiMoveContext) {
