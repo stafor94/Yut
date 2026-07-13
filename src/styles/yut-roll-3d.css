@@ -12,7 +12,8 @@
 }
 
 .roll-stage .roll-mat-surface {
-  inset: 4px 48px 28px;
+  inset: auto 96px 36px;
+  height: clamp(250px, 38vw, 300px);
 }
 
 .yut-roll-scene {
@@ -79,7 +80,8 @@
   }
 
   .roll-stage .roll-mat-surface {
-    inset: 4px 24px 24px;
+    inset: auto 68px 28px;
+    height: clamp(240px, 62vw, 280px);
   }
 
   .yut-roll-scene {
@@ -95,7 +97,8 @@
   }
 
   .roll-stage .roll-mat-surface {
-    inset: 4px 20px 20px;
+    inset: auto 72px 24px;
+    height: clamp(235px, 62vw, 258px);
   }
 
   .yut-roll-scene {
@@ -111,6 +114,11 @@
 @media (max-height: 720px) and (max-width: 767px) {
   .roll-stage .roll-mat {
     min-height: 340px;
+  }
+
+  .roll-stage .roll-mat-surface {
+    inset-block: auto 22px;
+    height: 230px;
   }
 
   .yut-roll-scene {
