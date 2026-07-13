@@ -11,6 +11,10 @@
   overflow: visible;
 }
 
+.roll-stage .roll-mat-surface {
+  inset: 4px 48px 28px;
+}
+
 .yut-roll-scene {
   position: relative;
   z-index: 2;
@@ -74,6 +78,10 @@
     padding: 52px 16px 22px;
   }
 
+  .roll-stage .roll-mat-surface {
+    inset: 4px 24px 24px;
+  }
+
   .yut-roll-scene {
     width: min(94vw, 520px);
     height: clamp(320px, 78vw, 390px);
@@ -84,6 +92,10 @@
   .roll-stage .roll-mat {
     min-height: 360px;
     padding-inline: 10px;
+  }
+
+  .roll-stage .roll-mat-surface {
+    inset: 4px 20px 20px;
   }
 
   .yut-roll-scene {
