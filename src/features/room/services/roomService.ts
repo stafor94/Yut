@@ -2,13 +2,18 @@ import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
 import {
   cleanupCurrentRoomPresence as cleanupCurrentRoomPresenceCore,
+  commitAuthoritativeGameAction as commitAuthoritativeGameActionCore,
   createRoom as createRoomCore,
   deleteRoom as deleteRoomCore,
+  getProcessedGameAction as getProcessedGameActionCore,
   isRoomInGame as isRoomInGameCore,
   updateRoomPlayer as updateRoomPlayerCore,
+  type CommitAuthoritativeGameActionResult,
+  type GameAction,
   type RoomPlayer,
   type RoomSummary,
 } from './roomServiceCore';
+import { settleAuthoritativeCommit } from './authoritativeCommitTimeout';
 import {
   hasNonAiPlayer,
   hasRecoverableRoomPlayer,
@@ -20,6 +25,18 @@ export * from './roomServiceCore';
 export * from './roomExitPolicy';
 
 const ACTIVE_HOST_ROOM_ERROR = '이미 진행 중인 방이 있습니다. 기존 방으로 돌아간 뒤 새 방을 만들어주세요.';
+
+export async function commitAuthoritativeGameAction(
+  roomId: string,
+  action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
+): Promise<CommitAuthoritativeGameActionResult> {
+  const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
+  return settleAuthoritativeCommit({
+    actionType: action.type,
+    commit: () => commitAuthoritativeGameActionCore(roomId, action),
+    recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
+  });
+}
 
 async function deleteRoomWhenNoNonAiPlayersRemain(roomId: string) {
   if (!db) return false;
