@@ -16,7 +16,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const previousStoppedCountRef = useRef(0);
   const completionSoundTimerRef = useRef<number | null>(null);
   const order = activeTurnOrderIntro?.order ?? [];
-  const orderKey = order.map((entry) => `${entry.seatId}:${entry.name}:${entry.color}`).join('|');
+  const orderKey = order.map((entry) => `${entry.seatId}:${entry.label}:${entry.name}:${entry.color}`).join('|');
   const reels = useMemo(() => order.map((_, slotIndex) => buildTurnOrderSlotReel(order, slotIndex)), [orderKey]);
   const slotUntil = activeTurnOrderIntro?.slotUntil ?? ((activeTurnOrderIntro?.readyAt ?? 0) - finalHoldMs);
   const slotRevealDurationMs = getTurnOrderSlotRevealDurationMs(order.length);
@@ -61,7 +61,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     ? `최종 순서가 정해졌습니다. ${order.map((entry, index) => `${index + 1}위 ${entry.name}`).join(', ')}. ${starter?.name ?? ''}님부터 시작합니다.`
     : `순서를 섞는 중입니다. ${stoppedCount}명의 순서가 공개되었습니다.`;
 
-  return <div className={`turn-order-ready-overlay slot-machine ${isFinalized ? 'finalized' : ''} ${isExiting ? 'exiting' : ''}`} role="status" aria-live="polite" aria-label={announcement}>
+  return <div className={`turn-order-ready-overlay slot-machine ${isFinalized ? 'finalized' : ''} ${isExiting ? 'exiting' : ''}`} role="status" aria-live="polite">
     <div className="turn-order-presentation-heading">
       <span>순서 정하기</span>
       <strong>{isFinalized ? '최종 순서 확정' : '순서를 섞는 중...'}</strong>
