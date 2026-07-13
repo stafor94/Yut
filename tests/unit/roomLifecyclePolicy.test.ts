@@ -10,6 +10,7 @@ import {
   isReusableWaitingRoomSeat,
   shouldDeferOwnRoomRemoval,
   shouldDeleteRoomSnapshot,
+  shouldRestoreDeferredRoomPointer,
 } from '../../src/features/room/services/roomLifecyclePolicy.js';
 
 test('2시간이 지난 방도 복귀 가능한 사람 플레이어가 있으면 삭제하지 않는다', () => {
@@ -62,4 +63,10 @@ test('방 생성 제한은 실제 사람 방만 계산하고 본인의 AI 대체
   assert.equal(hasResumablePlayerForUser(otherAiRoomPlayers, 'viewer'), false);
   assert.equal(hasResumablePlayerForUser(ownAiRoomPlayers, 'viewer'), true);
   assert.equal(hasCreationBlockingHumanPlayer([{ id: 'human' }]), true);
+});
+
+test('대상 방 입장이 실패하고 활성 방 포인터가 비어 있으면 기존 방 포인터를 복원한다', () => {
+  assert.equal(shouldRestoreDeferredRoomPointer({ hasOtherMembership: false, activeRoomId: '' }), true);
+  assert.equal(shouldRestoreDeferredRoomPointer({ hasOtherMembership: true, activeRoomId: '' }), false);
+  assert.equal(shouldRestoreDeferredRoomPointer({ hasOtherMembership: false, activeRoomId: 'room-b' }), false);
 });
