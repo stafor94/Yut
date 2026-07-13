@@ -6,12 +6,16 @@ import type { YutResult } from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import type { CaptureEffect, FallEffect, GameLog, RollAnimation, Seat, ToastMessage, TrapEffect, TrapNode, TurnOrderIntro, TurnOrderPhase } from '../appState';
 import {
-  CAPTURE_EFFECT_MS,
   CAPTURE_IMPACT_DELAY_MS,
   createCaptureVisualEffect,
   inferCapturedPieceIds,
   type CaptureVisualEffect,
 } from '../flows/captureAnimation';
+import {
+  createFinishVisualEffect,
+  inferFinishedPieceIds,
+  type FinishVisualEffect,
+} from '../flows/finishAnimation';
 import { getRollOutcomeSoundEffect, shouldPlayPerfectRollSound } from '../flows/rollSound';
 import { BoardPanel, GameScreen } from '../screens/GameScreen';
 import { GameLogPanelView, GamePlayersPanel } from '../containers/GamePanels';
@@ -133,6 +137,9 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   const captureSoundTimerRef = useRef<number | null>(null);
   const [visualCaptureEffect, setVisualCaptureEffect] = useState<CaptureVisualEffect | null>(null);
   const [captureDestinationNodeId, setCaptureDestinationNodeId] = useState('');
+  const visualFinishEffectRef = useRef<FinishVisualEffect | null>(null);
+  const finishClearTimerRef = useRef<number | null>(null);
+  const [visualFinishEffect, setVisualFinishEffect] = useState<FinishVisualEffect | null>(null);
   const lastRevealedItemsKeyRef = useRef('');
   const stackCountsInitializedRef = useRef(false);
   const previousStackCountsRef = useRef<Map<string, number>>(new Map());
@@ -155,12 +162,26 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         setVisualCaptureEffect(null);
       }
       captureClearTimerRef.current = null;
-    }, CAPTURE_EFFECT_MS);
+    }, nextEffect.durationMs);
+  };
+
+  const startVisualFinish = (nextEffect: FinishVisualEffect) => {
+    if (finishClearTimerRef.current !== null) window.clearTimeout(finishClearTimerRef.current);
+    visualFinishEffectRef.current = nextEffect;
+    setVisualFinishEffect(nextEffect);
+    finishClearTimerRef.current = window.setTimeout(() => {
+      if (visualFinishEffectRef.current?.id === nextEffect.id) {
+        visualFinishEffectRef.current = null;
+        setVisualFinishEffect(null);
+      }
+      finishClearTimerRef.current = null;
+    }, nextEffect.durationMs);
   };
 
   useEffect(() => () => {
     if (captureClearTimerRef.current !== null) window.clearTimeout(captureClearTimerRef.current);
     if (captureSoundTimerRef.current !== null) window.clearTimeout(captureSoundTimerRef.current);
+    if (finishClearTimerRef.current !== null) window.clearTimeout(finishClearTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -245,6 +266,17 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   useEffect(() => {
     const previousPieces = previousPiecesRef.current;
     const previousMovingPieceId = previousMovingPieceIdRef.current;
+    if (previousPieces.length && !visualFinishEffectRef.current) {
+      const finishedPieceIds = inferFinishedPieceIds({ previousPieces, pieces });
+      if (finishedPieceIds.length) {
+        const nextEffect = createFinishVisualEffect({
+          id: Date.now(),
+          pieceIds: finishedPieceIds,
+          previousPieces,
+        });
+        if (nextEffect) startVisualFinish(nextEffect);
+      }
+    }
     if (previousPieces.length && !captureEffect && !trapEffect && !visualCaptureEffectRef.current) {
       const attackerPieceId = movingPieceId || previousMovingPieceId;
       const inferredPieceIds = inferCapturedPieceIds({
@@ -318,7 +350,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       onOpenEndGameDialog={onOpenEndGameDialog}
     />
     <BoardPanel>
-      <WinnerOverlay winner={winner} winnerText={winnerText} canContinueRace={canContinueRace} onReturnToWaitingRoom={onReturnToWaitingRoom} onExitToLobby={onFinishGame} onContinueRace={onContinueRace} />
+      <WinnerOverlay winner={visualFinishEffect ? '' : winner} winnerText={winnerText} canContinueRace={canContinueRace} onReturnToWaitingRoom={onReturnToWaitingRoom} onExitToLobby={onFinishGame} onContinueRace={onContinueRace} />
       <TurnOrderIntroOverlay activeTurnOrderIntro={activeTurnOrderIntro} localSeatId={localSeatId} turnOrderClock={turnOrderClock} finalHoldMs={finalHoldMs} />
       {activeTurnOrderIntro && !activeTurnOrderIntro.visible && <div className="turn-order-lock" role="status" aria-live="polite">잠시 후 게임 시작!</div>}
       <GoldenYutPicker isOpen={goldenYutPickerOpen} choices={goldenYutChoices} onSelect={onGoldenYutSelect} />
@@ -345,6 +377,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         onBranchChoiceChange={onBranchChoiceChange}
         captureEffect={visualCaptureEffect}
         captureDestinationNodeId={captureDestinationNodeId}
+        finishEffect={visualFinishEffect}
         trapEffect={trapEffect}
         fallEffect={fallEffect}
         trapPlacementNodeIds={trapPlacementNodeIds}
