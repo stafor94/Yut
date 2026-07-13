@@ -1,8 +1,7 @@
 import { ITEM_DEFINITIONS, ITEM_TYPES } from '../../features/items/logic/items';
-import type { GameAction } from '../../features/room/services/roomService';
 
 type PendingRemoteActionPolicyMeta = {
-  type: GameAction['type'];
+  type: string;
   optimisticApplied?: boolean;
 };
 
