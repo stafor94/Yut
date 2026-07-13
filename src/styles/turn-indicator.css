@@ -1,0 +1,21 @@
+.turn-current-badge {
+  display: inline-block;
+  max-width: min(42vw, 260px);
+  padding: 4px 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--turn-current-color, var(--green));
+  color: #fff;
+  font-size: clamp(.78rem, 1.35vw, 1rem);
+  font-weight: 1000;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-shadow: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px rgba(42, 30, 23, .16);
+}
+
+.turn-roll-stack-badges {
+  inset-block-start: calc(100% - 2px);
+}
