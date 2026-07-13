@@ -17,6 +17,17 @@ export const CAPTURE_IMPACT_DELAY_MS = 160;
 export const CAPTURE_FLIGHT_MS = 560;
 export const CAPTURE_EFFECT_MS = CAPTURE_IMPACT_DELAY_MS + CAPTURE_FLIGHT_MS;
 
+export function getCaptureStaggerMs(pieceCount: number) {
+  if (pieceCount <= 1) return 0;
+  if (pieceCount === 2) return 90;
+  if (pieceCount === 3) return 75;
+  return 60;
+}
+
+export function getCaptureEffectDurationMs(pieceCount: number) {
+  return CAPTURE_EFFECT_MS + Math.max(0, pieceCount - 1) * getCaptureStaggerMs(pieceCount);
+}
+
 export type CaptureVisualPiece = Pick<CaptureAnimationPiece, 'id' | 'label' | 'color' | 'ownerId'> & {
   sourceLeft: number;
   sourceTop: number;
@@ -24,6 +35,9 @@ export type CaptureVisualPiece = Pick<CaptureAnimationPiece, 'id' | 'label' | 'c
   targetTop: number;
   rotation: number;
   midRotation: number;
+  delayMs: number;
+  arcHeight: number;
+  endScale: number;
 };
 
 export type CaptureVisualEffect = {
@@ -31,6 +45,9 @@ export type CaptureVisualEffect = {
   nodeId: string;
   pieceIds: string[];
   pieces: CaptureVisualPiece[];
+  attackerPieceIds: string[];
+  pieceCount: number;
+  durationMs: number;
 };
 
 type Direction = { x: number; y: number };
@@ -89,13 +106,13 @@ export function getCaptureExitTarget(nodeId: string, previousNodeId = '', pieceI
     direction.y < -0.0001 ? (EXIT_MIN - node.y) / direction.y : Number.POSITIVE_INFINITY,
   ].filter((distance) => Number.isFinite(distance) && distance >= 0);
   const boundaryDistance = Math.min(...distances);
-  const travelDistance = (Number.isFinite(boundaryDistance) ? boundaryDistance : 72) + EXIT_OVERSHOOT;
+  const travelDistance = (Number.isFinite(boundaryDistance) ? boundaryDistance : 72) + EXIT_OVERSHOOT + pieceIndex * 5;
   const rotationDirection = direction.x >= 0 ? 1 : -1;
 
   return {
     left: Number((node.x + direction.x * travelDistance).toFixed(2)),
     top: Number((node.y + direction.y * travelDistance).toFixed(2)),
-    rotation: Math.round(rotationDirection * (250 + pieceIndex * 46 + Math.abs(centeredIndex) * 24)),
+    rotation: Math.round(rotationDirection * (250 + pieceIndex * 64 + Math.abs(centeredIndex) * 24)),
   };
 }
 
@@ -122,28 +139,47 @@ export function createCaptureVisualEffect(params: {
       && piece.nodeId === nodeId
       && params.getPieceGroupKey(piece) !== capturedSideKey);
   const previousNodeId = attacker?.previousNodeId ?? '';
+  const attackerSideKey = attacker ? params.getPieceGroupKey(attacker) : '';
+  const attackerPieceIds = attackerSideKey
+    ? params.pieces
+      .filter((piece) => !pieceIdSet.has(piece.id)
+        && piece.started
+        && !piece.finished
+        && piece.nodeId === nodeId
+        && params.getPieceGroupKey(piece) === attackerSideKey)
+      .map((piece) => piece.id)
+    : [];
   const node = getBoardNodeById(nodeId);
   if (!node) return null;
+
+  const staggerMs = getCaptureStaggerMs(capturedPieces.length);
+  const pieces = capturedPieces.map((piece, index) => {
+    const target = getCaptureExitTarget(nodeId, previousNodeId, index, capturedPieces.length);
+    return {
+      id: piece.id,
+      label: piece.label,
+      color: piece.color,
+      ownerId: piece.ownerId,
+      sourceLeft: node.x,
+      sourceTop: node.y,
+      targetLeft: target.left,
+      targetTop: target.top,
+      rotation: target.rotation,
+      midRotation: Math.round(target.rotation * 0.28),
+      delayMs: index * staggerMs,
+      arcHeight: -(22 + index * 4),
+      endScale: Number((0.68 + (index === capturedPieces.length - 1 ? 0.1 : index * 0.02)).toFixed(2)),
+    };
+  });
 
   return {
     id: params.id,
     nodeId,
-    pieceIds: capturedPieces.map((piece) => piece.id),
-    pieces: capturedPieces.map((piece, index) => {
-      const target = getCaptureExitTarget(nodeId, previousNodeId, index, capturedPieces.length);
-      return {
-        id: piece.id,
-        label: piece.label,
-        color: piece.color,
-        ownerId: piece.ownerId,
-        sourceLeft: node.x,
-        sourceTop: node.y,
-        targetLeft: target.left,
-        targetTop: target.top,
-        rotation: target.rotation,
-        midRotation: Math.round(target.rotation * 0.28),
-      };
-    }),
+    pieceIds: pieces.map((piece) => piece.id),
+    pieces,
+    attackerPieceIds,
+    pieceCount: pieces.length,
+    durationMs: getCaptureEffectDurationMs(pieces.length),
   };
 }
 
