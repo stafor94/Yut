@@ -23,11 +23,11 @@ export type YutRollFallTarget = {
 
 const MIN_VIEWPORT_SIZE = 1;
 const BASE_ASPECT = 1.42;
-const BASE_TARGET_Y = 0.88;
+const BASE_TARGET_Y = 1.42;
 const BASE_TARGET_Z = -0.02;
 const BASE_CAMERA_OFFSET_Y = 4.45;
 const BASE_CAMERA_OFFSET_Z = 7.35;
-const CAMERA_FOV_DEGREES = 34;
+const CAMERA_FOV_DEGREES = 36;
 const DEFAULT_SURFACE_LEFT_RATIO = 0.2;
 const DEFAULT_SURFACE_RIGHT_RATIO = 0.8;
 const FALL_TARGET_Z = -0.18;
