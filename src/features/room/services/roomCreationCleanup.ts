@@ -7,7 +7,6 @@ export type RoomCreationMembership = {
 export type LeaveRoomBeforeCreate = (
   roomId: string,
   playerId: string,
-  options: { preservePlayingSeatAsAi: false },
 ) => Promise<unknown>;
 
 export async function leavePlayerRoomsBeforeCreate(params: {
@@ -22,7 +21,7 @@ export async function leavePlayerRoomsBeforeCreate(params: {
   ));
 
   for (const roomId of roomIds) {
-    await params.leaveRoom(roomId, params.playerId, { preservePlayingSeatAsAi: false });
+    await params.leaveRoom(roomId, params.playerId);
   }
 
   return roomIds;
