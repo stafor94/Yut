@@ -89,6 +89,24 @@ test('활성 방마다 players listener를 한 번만 만들고 기존 currentPl
   ]);
 });
 
+test('AI로 대체된 사람 자리는 진행 중 방 복구를 위해 목록에 유지한다', () => {
+  const harness = createHarness();
+  harness.controller.start();
+  harness.emitRooms([{ id: 'room-a', title: 'A' }]);
+  harness.emitPlayers('room-a', [
+    { id: 'host-a', isAI: true, isSubstitutedByAI: true },
+    { id: 'regular-ai', isAI: true },
+    { id: 'spectator-a', isSpectator: true },
+  ]);
+
+  assert.deepEqual(getLatestPublishedRooms(harness.published), [{
+    id: 'room-a',
+    title: 'A',
+    currentPlayers: 1,
+    playerIds: ['host-a'],
+  }]);
+});
+
 test('사람 플레이어가 없는 방은 목록에서 숨기지만 listener callback에서 삭제 작업을 만들지 않는다', () => {
   const harness = createHarness();
   harness.controller.start();
