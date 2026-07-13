@@ -13,7 +13,6 @@ export function isTurnFinalizingOptimisticItemAction(actionKey: string, meta: Pe
   return Boolean(itemType && ITEM_DEFINITIONS[itemType].timing === 'after_move');
 }
 
-export function normalizePendingRemoteActionMeta<T extends PendingRemoteActionPolicyMeta>(actionKey: string, meta: T): T {
-  if (!isTurnFinalizingOptimisticItemAction(actionKey, meta)) return meta;
-  return { ...meta, optimisticApplied: false };
+export function getPendingRemoteActionOptimisticApplied(actionKey: string, meta: PendingRemoteActionPolicyMeta) {
+  return isTurnFinalizingOptimisticItemAction(actionKey, meta) ? false : meta.optimisticApplied;
 }
