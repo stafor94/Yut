@@ -5,6 +5,7 @@ import {
   LOCAL_ROLL_PRE_RESULT_MS,
   LOCAL_ROLL_PRIMARY_MS,
   REMOTE_ROLL_PRE_RESULT_MS,
+  getLocalLandingDropProgress,
   getYutRollPreResultDurationMs,
 } from '../../src/app/flows/yutRollAnimation.js';
 import {
@@ -13,16 +14,24 @@ import {
   getYutRollSceneFraming,
 } from '../../src/app/flows/yutRollSceneLayout.js';
 
-test('local player roll keeps the pre-result animation one second longer', () => {
+test('local player roll extends the landing by 0.7 seconds', () => {
   assert.equal(LOCAL_ROLL_PRIMARY_MS, 1200);
-  assert.equal(LOCAL_ROLL_LANDING_MS, 1000);
-  assert.equal(LOCAL_ROLL_PRE_RESULT_MS, 2200);
-  assert.equal(LOCAL_ROLL_PRE_RESULT_MS - REMOTE_ROLL_PRE_RESULT_MS, 1000);
+  assert.equal(LOCAL_ROLL_LANDING_MS, 1700);
+  assert.equal(LOCAL_ROLL_PRE_RESULT_MS, 2900);
+  assert.equal(LOCAL_ROLL_PRE_RESULT_MS - REMOTE_ROLL_PRE_RESULT_MS, 1700);
+});
+
+test('local landing starts moving immediately and accelerates continuously', () => {
+  assert.equal(getLocalLandingDropProgress(0), 0);
+  assert.ok(getLocalLandingDropProgress(0.05) > 0);
+  assert.ok(getLocalLandingDropProgress(0.1) < getLocalLandingDropProgress(0.5));
+  assert.ok(getLocalLandingDropProgress(0.5) < getLocalLandingDropProgress(0.9));
+  assert.equal(getLocalLandingDropProgress(1), 1);
 });
 
 test('pending phases use the local timeline and resolved rolls use the remote timeline', () => {
-  assert.equal(getYutRollPreResultDurationMs('primary'), 2200);
-  assert.equal(getYutRollPreResultDurationMs('landing'), 2200);
+  assert.equal(getYutRollPreResultDurationMs('primary'), 2900);
+  assert.equal(getYutRollPreResultDurationMs('landing'), 2900);
   assert.equal(getYutRollPreResultDurationMs('resolved'), 1200);
   assert.equal(getYutRollPreResultDurationMs(undefined), 1200);
 });
