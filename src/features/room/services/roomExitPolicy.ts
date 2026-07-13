@@ -1,26 +1,24 @@
-export type RoomExitPolicyRoom = {
-  hostId?: string;
-  status?: 'waiting' | 'playing' | 'finished';
-  startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing';
+export type RoomExitPlayer = {
+  isAI?: boolean;
+  isSpectator?: boolean;
 };
 
-export type HostGameExitTrigger = 'ai_substitution' | 'player_removal';
+export type RoomExitPlayerUpdate = {
+  isAI?: boolean;
+  isSubstitutedByAI?: boolean;
+};
 
-const isStartedGameRoom = (room: RoomExitPolicyRoom) => room.status === 'playing'
-  || room.status === 'finished'
-  || room.startStatus === 'entering'
-  || room.startStatus === 'playing';
+export const isAiSubstitutionUpdate = (update: RoomExitPlayerUpdate) => (
+  update.isAI === true && update.isSubstitutedByAI === true
+);
 
-export function shouldDeleteHostedRoomOnGameExit(
-  room: RoomExitPolicyRoom | null,
-  playerId: string,
-  trigger: HostGameExitTrigger,
+export const hasNonAiPlayer = (players: RoomExitPlayer[]) => players.some((player) => (
+  !player.isSpectator && !player.isAI
+));
+
+export function shouldDeleteRoomAfterAiSubstitution(
+  update: RoomExitPlayerUpdate,
+  players: RoomExitPlayer[],
 ) {
-  return Boolean(
-    room
-    && playerId
-    && room.hostId === playerId
-    && isStartedGameRoom(room)
-    && (trigger === 'ai_substitution' || trigger === 'player_removal'),
-  );
+  return isAiSubstitutionUpdate(update) && !hasNonAiPlayer(players);
 }
