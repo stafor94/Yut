@@ -2,6 +2,7 @@ import { GameBoard, type BoardPiece } from '../../features/game/components/GameB
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
 import type { CaptureVisualEffect } from '../flows/captureAnimation';
+import type { FinishVisualEffect } from '../flows/finishAnimation';
 import type { FallEffect, Seat, TrapEffect, TrapNode } from '../appState';
 
 type GameBoardSectionProps = {
@@ -25,6 +26,7 @@ type GameBoardSectionProps = {
   onBranchChoiceChange: (choice: BranchChoice) => void;
   captureEffect: CaptureVisualEffect | null;
   captureDestinationNodeId: string;
+  finishEffect: FinishVisualEffect | null;
   trapEffect: TrapEffect | null;
   fallEffect: FallEffect | null;
   trapPlacementNodeIds: string[];
@@ -52,6 +54,7 @@ export function GameBoardSection({
   onBranchChoiceChange,
   captureEffect,
   captureDestinationNodeId,
+  finishEffect,
   trapEffect,
   fallEffect,
   trapPlacementNodeIds,
@@ -84,6 +87,7 @@ export function GameBoardSection({
     capturedPieceIds={trapAffectedPieceIds}
     captureEffect={captureEffect}
     captureDestinationNodeId={captureDestinationNodeId}
+    finishEffect={finishEffect}
     trapEffectNodeId={trapEffect?.nodeId}
     selectableNodeIds={trapPlacementNodeIds}
     onSelectNode={onSelectTrapNode}
