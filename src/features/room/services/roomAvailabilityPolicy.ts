@@ -1,6 +1,8 @@
 export type RoomAvailabilityRoom = {
   status?: 'waiting' | 'playing' | 'finished';
   maxPlayers?: number;
+  deletingAt?: unknown;
+  systemRoomType?: string;
 };
 
 export type RoomAvailabilityPlayer = {
@@ -24,7 +26,9 @@ export function classifyRoomAvailability(
   players: RoomAvailabilityPlayer[],
   currentUserId = '',
 ): RoomAvailabilityResult {
-  if (room.status === 'finished') return { visible: false, reason: 'inactive', currentPlayers: 0, playerIds: [] };
+  if (room.status === 'finished' || room.deletingAt || room.systemRoomType) {
+    return { visible: false, reason: 'inactive', currentPlayers: 0, playerIds: [] };
+  }
   if (room.status !== 'waiting' && room.status !== 'playing') return { visible: false, reason: 'malformed', currentPlayers: 0, playerIds: [] };
 
   const activePlayers = players.filter((player) => {
