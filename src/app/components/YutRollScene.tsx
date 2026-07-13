@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { RollAnimation } from '../appState';
 import {
   LOCAL_ROLL_LANDING_MS,
+  LOCAL_ROLL_PRE_RESULT_MS,
   LOCAL_ROLL_PRIMARY_MS,
   REMOTE_ROLL_PRE_RESULT_MS,
   clampUnit,
   easeInCubic,
   easeOutCubic,
+  getLocalLandingDropProgress,
   smoothStep,
   type YutRollScenePhase,
 } from '../flows/yutRollAnimation';
@@ -74,6 +76,12 @@ function getAnimationAgeMs(animation: RollAnimation) {
   const animationId = Number(animation.id);
   if (!Number.isFinite(animationId) || animationId <= 0) return 0;
   return Math.max(0, Date.now() - animationId);
+}
+
+function getRuntimeInitialPhase(animation: RollAnimation): YutRollScenePhase {
+  const phase = getPhase(animation);
+  if (phase === 'result-hold' && getAnimationAgeMs(animation) < LOCAL_ROLL_PRE_RESULT_MS) return 'landing';
+  return phase;
 }
 
 function getInitialPhaseElapsedMs(animation: RollAnimation, phase: YutRollScenePhase) {
@@ -194,7 +202,7 @@ function updateStickTargets(runtime: SceneRuntime, animation: RollAnimation) {
       yaw,
       isFallen ? 0.18 * (index % 2 === 0 ? -1 : 1) : -0.035 + index * 0.022,
     ));
-    entry.group.visible = !(isFallen && phase === 'result-hold');
+    entry.group.visible = !(isFallen && phase === 'result-hold' && runtime.phase !== 'landing');
     entry.flatMark.visible = !isPreResult && Boolean(stick.flat && stick.marked);
     entry.roundMarks.forEach((mark) => { mark.visible = !isPreResult && !stick.flat; });
   });
@@ -219,10 +227,11 @@ function setFinalTransforms(runtime: SceneRuntime) {
 
 function applyResidualSpin(runtime: SceneRuntime, entry: RuntimeStick, index: number, settleProgress: number, turns: number) {
   entry.group.quaternion.copy(entry.phaseQuaternion).slerp(entry.targetQuaternion, settleProgress);
-  if (settleProgress >= 0.96) return;
+  if (settleProgress >= 1) return;
+  const fullTurns = Math.max(1, Math.round(turns + index * 0.28));
   const residualSpin = new runtime.THREE.Quaternion().setFromAxisAngle(
     entry.spinAxis,
-    (1 - settleProgress) * Math.PI * (turns + index * 0.28),
+    settleProgress * Math.PI * 2 * fullTurns,
   );
   entry.group.quaternion.multiply(residualSpin);
 }
@@ -262,13 +271,13 @@ function renderExtraSpin(runtime: SceneRuntime, elapsedMs: number) {
 
 function renderLanding(runtime: SceneRuntime, elapsedMs: number) {
   const progress = clampUnit(elapsedMs / LOCAL_ROLL_LANDING_MS);
-  const dropProgress = clampUnit((progress - 0.12) / 0.72);
-  const positionProgress = easeInCubic(dropProgress);
-  const settleProgress = smoothStep(clampUnit((progress - 0.28) / 0.72));
+  const flightProgress = clampUnit(progress / 0.82);
+  const positionProgress = getLocalLandingDropProgress(flightProgress);
+  const settleProgress = smoothStep(clampUnit((progress - 0.08) / 0.9));
   runtime.sticks.forEach((entry, index) => {
     if (entry.isFallen) {
-      const edgeProgress = easeInCubic(clampUnit((progress - 0.12) / 0.5));
-      const exitProgress = smoothStep(clampUnit((progress - 0.55) / 0.41));
+      const edgeProgress = getLocalLandingDropProgress(clampUnit(progress / 0.58));
+      const exitProgress = smoothStep(clampUnit((progress - 0.46) / 0.5));
       const edgeX = lerp(entry.phasePosition.x, entry.fallEdgePosition.x, edgeProgress);
       const edgeY = lerp(entry.phasePosition.y, entry.fallEdgePosition.y, edgeProgress);
       const edgeZ = lerp(entry.phasePosition.z, entry.fallEdgePosition.z, edgeProgress);
@@ -282,13 +291,13 @@ function renderLanding(runtime: SceneRuntime, elapsedMs: number) {
       return;
     }
 
-    const hover = Math.sin(progress * Math.PI) * 0.16 * (1 - dropProgress);
+    const bounceProgress = clampUnit((progress - 0.82) / 0.18);
     const bounce = progress > 0.82
-      ? Math.sin(((progress - 0.82) / 0.18) * Math.PI) * 0.14 * (1 - progress)
+      ? Math.sin(bounceProgress * Math.PI) * 0.14 * (1 - bounceProgress)
       : 0;
     entry.group.position.set(
       lerp(entry.phasePosition.x, entry.targetPosition.x, positionProgress),
-      lerp(entry.phasePosition.y, entry.targetPosition.y, positionProgress) + hover + bounce,
+      lerp(entry.phasePosition.y, entry.targetPosition.y, positionProgress) + bounce,
       lerp(entry.phasePosition.z, entry.targetPosition.z, positionProgress),
     );
     applyResidualSpin(runtime, entry, index, settleProgress, 2.4);
@@ -381,6 +390,7 @@ export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
   const latestAnimationRef = useRef(rollAnimation);
   const settledRef = useRef(false);
   const onSettledRef = useRef(onSettled);
+  const landingStartedAtRef = useRef<number | null>(null);
   const [rendererStatus, setRendererStatus] = useState<RendererStatus>('loading');
   const phase = getPhase(rollAnimation);
   const sticksKey = useMemo(
@@ -399,6 +409,7 @@ export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
 
   useEffect(() => {
     settledRef.current = false;
+    landingStartedAtRef.current = null;
     setRendererStatus('loading');
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
@@ -439,7 +450,7 @@ export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
         const sticks = Array.from({ length: 4 }, (_, index) => createYutStick(THREE, index));
         sticks.forEach((entry) => scene.add(entry.group));
         const initialAnimation = latestAnimationRef.current;
-        const initialPhase = getPhase(initialAnimation);
+        const initialPhase = getRuntimeInitialPhase(initialAnimation);
         const now = performance.now();
         const initialPhaseElapsedMs = getInitialPhaseElapsedMs(initialAnimation, initialPhase);
         const initialAnimationElapsedMs = initialPhase === 'resolved'
@@ -460,6 +471,7 @@ export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
           disposed: false,
         };
         runtimeRef.current = runtime;
+        if (initialPhase === 'landing') landingStartedAtRef.current = runtime.phaseStartedAt;
 
         const resize = () => {
           const element = canvas.parentElement;
@@ -530,7 +542,9 @@ export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
     if (!runtime) return;
     updateStickTargets(runtime, rollAnimation);
     if (runtime.phase !== phase) {
+      if (phase === 'result-hold' && runtime.phase === 'landing') return;
       capturePhaseStart(runtime, phase);
+      landingStartedAtRef.current = phase === 'landing' ? runtime.phaseStartedAt : null;
       if (phase === 'result-hold') {
         setFinalTransforms(runtime);
         notifySettled();
@@ -540,12 +554,15 @@ export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
 
   useEffect(() => {
     if (rendererStatus !== 'fallback') return undefined;
+    const landingElapsedMs = landingStartedAtRef.current === null
+      ? Math.max(0, getAnimationAgeMs(rollAnimation) - LOCAL_ROLL_PRIMARY_MS)
+      : Math.max(0, performance.now() - landingStartedAtRef.current);
     const delayMs = phase === 'landing'
-      ? LOCAL_ROLL_LANDING_MS
+      ? Math.max(0, LOCAL_ROLL_LANDING_MS - landingElapsedMs)
       : phase === 'resolved'
         ? REMOTE_ROLL_PRE_RESULT_MS
         : phase === 'result-hold'
-          ? 0
+          ? Math.max(0, LOCAL_ROLL_LANDING_MS - landingElapsedMs)
           : null;
     if (delayMs === null) return undefined;
     const timer = window.setTimeout(notifySettled, delayMs);
