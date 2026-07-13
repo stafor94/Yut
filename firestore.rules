@@ -72,7 +72,7 @@ service cloud.firestore {
     }
 
     function deletingWithParentRoom(roomId) {
-      return signedIn() && roomExists(roomId) && !roomExistsAfter(roomPath(roomId));
+      return signedIn() && roomExists(roomId) && !roomExistsAfter(roomId);
     }
 
     function canDeleteRoomData(roomId) {
