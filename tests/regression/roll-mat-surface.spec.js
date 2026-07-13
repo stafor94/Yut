@@ -10,7 +10,8 @@ test.describe('roll mat surface regression', () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('pending부터 결과 유지까지 같은 2D 매트 표면을 계속 표시한다', async ({ page, context }, testInfo) => {
+  test('pending부터 결과 유지까지 같은 2D 매트 표면과 충분한 3D viewport를 계속 표시한다', async ({ page, context }, testInfo) => {
+    await page.setViewportSize({ width: 412, height: 915 });
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'mat-host'));
     const roomTitle = makeQaName(testInfo, 'mat-room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
@@ -31,7 +32,7 @@ test.describe('roll mat surface regression', () => {
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
     });
 
-    await runQaStep(testInfo, '매트 표면 phase 연속성 확인', async () => {
+    await runQaStep(testInfo, '매트 표면 phase 연속성과 3D viewport 확인', async () => {
       await expect.poll(async () => {
         const state = await collectScreenState(page);
         if (state.rollButton.visible && !state.rollButton.disabled) return 'ready';
@@ -41,13 +42,41 @@ test.describe('roll mat surface regression', () => {
       await page.getByTestId('roll-yut-button').click();
       const mat = page.getByTestId('roll-mat');
       const surface = page.getByTestId('roll-mat-surface');
-      await expect(page.locator('.roll-stage.pending-roll')).toBeVisible({ timeout: 500 });
+      const pendingStage = page.locator('.roll-stage.pending-roll');
+      const pendingScene = pendingStage.getByTestId('yut-roll-scene');
+      await expect(pendingStage).toBeVisible({ timeout: 500 });
       await expect(mat).toBeVisible();
       await expect(surface).toBeVisible();
+      await expect(pendingScene).toBeVisible();
+
+      const sceneLayout = await pendingScene.evaluate((node) => {
+        const sceneRect = node.getBoundingClientRect();
+        const canvas = node.querySelector('.yut-roll-three-canvas');
+        const canvasRect = canvas?.getBoundingClientRect();
+        const stage = node.closest('.roll-stage');
+        const matNode = node.closest('[data-testid="roll-mat"]');
+        return {
+          sceneWidth: Math.round(sceneRect.width),
+          sceneHeight: Math.round(sceneRect.height),
+          canvasWidth: Math.round(canvasRect?.width ?? 0),
+          canvasHeight: Math.round(canvasRect?.height ?? 0),
+          matHeight: Math.round(matNode?.getBoundingClientRect().height ?? 0),
+          stageContain: stage ? getComputedStyle(stage).contain : '',
+          viewportWidth: window.innerWidth,
+        };
+      });
+      expect(sceneLayout.sceneWidth).toBeLessThanOrEqual(sceneLayout.viewportWidth);
+      expect(sceneLayout.sceneWidth).toBeGreaterThanOrEqual(360);
+      expect(sceneLayout.sceneHeight).toBeGreaterThanOrEqual(320);
+      expect(sceneLayout.canvasWidth).toBe(sceneLayout.sceneWidth);
+      expect(sceneLayout.canvasHeight).toBe(sceneLayout.sceneHeight);
+      expect(sceneLayout.matHeight).toBeGreaterThanOrEqual(360);
+      expect(sceneLayout.stageContain.split(/\s+/)).not.toContain('paint');
 
       await page.evaluate(() => {
         window.__YUT_QA_ROLL_MAT_NODE__ = document.querySelector('[data-testid="roll-mat"]');
         window.__YUT_QA_ROLL_MAT_SURFACE_NODE__ = document.querySelector('[data-testid="roll-mat-surface"]');
+        window.__YUT_QA_ROLL_SCENE_NODE__ = document.querySelector('[data-testid="yut-roll-scene"]');
       });
 
       const readSurfaceState = () => surface.evaluate((node) => {
@@ -81,9 +110,10 @@ test.describe('roll mat surface regression', () => {
       await expect.poll(() => page.evaluate(() => (
         window.__YUT_QA_ROLL_MAT_NODE__ === document.querySelector('[data-testid="roll-mat"]')
         && window.__YUT_QA_ROLL_MAT_SURFACE_NODE__ === document.querySelector('[data-testid="roll-mat-surface"]')
+        && window.__YUT_QA_ROLL_SCENE_NODE__ === document.querySelector('[data-testid="yut-roll-scene"]')
       )), {
         timeout: 1_000,
-        message: 'pending에서 landing/result-hold로 전환할 때 매트와 표면 DOM을 교체하면 안 됩니다.',
+        message: 'pending에서 landing/result-hold로 전환할 때 매트, 표면, 3D 장면 DOM을 교체하면 안 됩니다.',
       }).toBe(true);
 
       const resolvedSurface = await readSurfaceState();
