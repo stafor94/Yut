@@ -1,4 +1,6 @@
-export const ROOM_CREATION_LOCK_WAIT_TIMEOUT_MS = 15_000;
+import { ROOM_CREATION_TIMEOUT_MS } from './roomCreationTiming';
+
+export const ROOM_CREATION_LOCK_WAIT_TIMEOUT_MS = ROOM_CREATION_TIMEOUT_MS;
 export const ROOM_CREATION_LOCK_RETRY_INTERVAL_MS = 250;
 
 type RoomCreationLockWaitOptions = {
