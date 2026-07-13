@@ -41,6 +41,10 @@ type AppModalsProps = {
 };
 
 export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialogOpen, diagnosticText, sequenceExportCopied, sequenceExportDialogOpen, sequenceExportText, endGameDialogOpen, gameExitDescription, itemPickupClock, loadingMessage, nicknameDialogOpen, nicknameDraft, pendingItemPickup, roomNoticeDialog, screen, onClearActionErrorDialog, onCloseDiagnosticDialog, onCloseEndGameDialog, onCloseNicknameDialog, onClearRoomNoticeDialog, onCopyDiagnosticState, onCloseSequenceExportDialog, onCopySequenceExportState, onFinishGame, onKeepPendingItemPickup, onNicknameDraftChange, onReplacePendingItemPickup, onSaveNickname }: AppModalsProps) {
+  const resolvedGameExitDescription = gameExitDescription.includes('모든 사람 플레이어가 나가면')
+    ? '현재 방에서 나가 로비로 이동합니다. 방장이라면 생성한 방도 함께 종료됩니다.'
+    : gameExitDescription;
+
   return <>
     {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className="loading-modal panel" role="status" aria-live="polite" aria-label={loadingMessage}><span className="loading-modal-spinner" aria-hidden="true"></span><p>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
 
@@ -54,6 +58,6 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
 
     {pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>같은 사용 조건의 아이템은 1개만 보유할 수 있습니다. 10초 뒤 자동으로 유지합니다.</p><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${Math.max(0, pendingItemPickup.deadline - itemPickupClock)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="item-replace-preview"><div><strong>기존 아이템</strong><ItemCard type={pendingItemPickup.existingItem} /></div><div><strong>새 아이템</strong><ItemCard type={pendingItemPickup.item} /></div></div><div className="inline-item-actions"><button onClick={onReplacePendingItemPickup}>교체</button><button className="secondary" onClick={onKeepPendingItemPickup}>유지</button></div></section></div>}
 
-    {endGameDialogOpen && screen === 'game' && <div className="modal-backdrop" role="presentation" onMouseDown={onCloseEndGameDialog}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="게임 종료 확인" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">게임 종료</p><h2>정말 윷판을 정리할까요?</h2><p>{gameExitDescription}</p><div className="modal-actions"><button className="danger" onClick={onFinishGame}>게임 종료</button><button className="secondary" onClick={onCloseEndGameDialog}>계속하기</button></div></section></div>}
+    {endGameDialogOpen && screen === 'game' && <div className="modal-backdrop" role="presentation" onMouseDown={onCloseEndGameDialog}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="게임 종료 확인" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">게임 종료</p><h2>정말 윷판을 정리할까요?</h2><p>{resolvedGameExitDescription}</p><div className="modal-actions"><button className="danger" onClick={onFinishGame}>게임 종료</button><button className="secondary" onClick={onCloseEndGameDialog}>계속하기</button></div></section></div>}
   </>;
 }
