@@ -7,10 +7,13 @@ import {
 } from './roomServiceCore';
 import {
   cleanupDeletionCandidatesBeforeCreate,
+  getActivePlayerRoomMemberships,
   getActiveRoomsWithPlayers,
   type ManagedRoomSummary,
 } from './roomLifecycleStore';
 import { hasCreationBlockingHumanPlayer, hasResumablePlayerForUser } from './roomLifecyclePolicy';
+import { removeRoomPlayerNow } from './roomExitService';
+import { leavePlayerRoomsBeforeCreate } from './roomCreationCleanup';
 
 const ACTIVE_HOST_ROOM_ERROR = '이미 진행 중인 방이 있습니다. 기존 방으로 돌아간 뒤 새 방을 만들어주세요.';
 const ACTIVE_ROOM_LIMIT_ERROR = '방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.';
@@ -93,6 +96,13 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
   await acquireRoomCreationLock(params.hostId, requestId, ownerToken);
   try {
     await cleanupDeletionCandidatesBeforeCreate(roomRef.id);
+    const memberships = await getActivePlayerRoomMemberships(params.hostId);
+    await leavePlayerRoomsBeforeCreate({
+      playerId: params.hostId,
+      memberships,
+      leaveRoom: removeRoomPlayerNow,
+    });
+
     const idempotentSnapshot = await getDoc(roomRef);
     if (idempotentSnapshot.exists()) {
       const existing = idempotentSnapshot.data() as ManagedRoomSummary;
