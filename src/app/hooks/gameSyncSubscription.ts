@@ -1,3 +1,5 @@
+import { notifySequenceRecoveryProgress } from './sequenceRecoveryWatchdog';
+
 export type MutableValueRef<T> = { current: T };
 
 export type GameSyncRuntime<TState> = {
@@ -92,6 +94,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
 
   const handleSnapshot = async (roomId: string, state: TState | null) => {
     if (!state || !isCurrentRoom(roomId)) return;
+    notifySequenceRecoveryProgress(roomId, toFiniteNumber(state.lastSequence));
     runtime?.onSnapshotReceived?.(state);
     const snapshotKey = getGameSyncSnapshotApplyKey(state);
     const scopedSnapshotKey = `${roomId}:${snapshotKey}`;
