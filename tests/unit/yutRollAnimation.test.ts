@@ -7,7 +7,11 @@ import {
   REMOTE_ROLL_PRE_RESULT_MS,
   getYutRollPreResultDurationMs,
 } from '../../src/app/flows/yutRollAnimation.js';
-import { getYutRollSceneFraming } from '../../src/app/flows/yutRollSceneLayout.js';
+import {
+  getYutRollFallTarget,
+  getYutRollMatWorldBounds,
+  getYutRollSceneFraming,
+} from '../../src/app/flows/yutRollSceneLayout.js';
 
 test('local player roll keeps the pre-result animation one second longer', () => {
   assert.equal(LOCAL_ROLL_PRIMARY_MS, 1200);
@@ -39,4 +43,33 @@ test('scene framing normalizes invalid viewport dimensions', () => {
   assert.equal(framing.aspect, 1);
   assert.ok(Number.isFinite(framing.cameraY));
   assert.ok(Number.isFinite(framing.cameraZ));
+});
+
+test('visible mat pixel bounds map to matching Three.js ground bounds', () => {
+  const compactMat = getYutRollMatWorldBounds(388, 330, 72, 316);
+  const wideMat = getYutRollMatWorldBounds(388, 330, 24, 364);
+
+  assert.ok(compactMat.leftX < 0);
+  assert.ok(compactMat.rightX > 0);
+  assert.ok(compactMat.rightX - compactMat.leftX < wideMat.rightX - wideMat.leftX);
+  assert.equal(compactMat.targetZ, -0.18);
+});
+
+test('fall targets clear the actual mat edge and drop below its ground plane', () => {
+  const bounds = getYutRollMatWorldBounds(388, 330, 72, 316);
+  const targets = Array.from({ length: 4 }, (_, index) => getYutRollFallTarget(index, bounds));
+
+  targets.forEach((target, index) => {
+    if (index % 2 === 0) {
+      assert.equal(target.side, -1);
+      assert.ok(target.x <= bounds.leftX - 0.92);
+    } else {
+      assert.equal(target.side, 1);
+      assert.ok(target.x >= bounds.rightX + 0.92);
+    }
+    assert.ok(target.y < 0);
+  });
+
+  assert.notEqual(targets[0].z, targets[2].z);
+  assert.notEqual(targets[1].z, targets[3].z);
 });
