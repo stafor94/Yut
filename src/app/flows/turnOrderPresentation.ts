@@ -7,7 +7,8 @@ export type TurnOrderPresentationEntry = {
 
 type TurnOrderEntry = TurnOrderPresentationEntry;
 
-const TURN_ORDER_INITIAL_SLOT_SPIN_MS = 1000;
+export const TURN_ORDER_PRESENTATION_PREPARE_MS = 2000;
+const TURN_ORDER_INITIAL_SLOT_SPIN_MS = 2000;
 const TURN_ORDER_SLOT_REVEAL_INTERVAL_MS = 550;
 const TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS = 550;
 
