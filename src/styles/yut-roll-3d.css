@@ -88,9 +88,9 @@
 
 @keyframes yut-flight {
   0% { opacity: 1; transform: translate3d(calc(-32px + var(--stick-index) * 22px), -190px, 0) rotateZ(calc(-150deg + var(--stick-index) * 28deg)) scale(.98); }
-  62% { opacity: 1; transform: translate3d(calc(var(--stick-roll-x) * .82), 8px, 0) rotateZ(var(--stick-land-rotate)) scale(1.02); }
+  62% { opacity: 1; transform: translate3d(0, 8px, 0) rotateZ(var(--stick-land-rotate)) scale(1.02); }
   76% { transform: translate3d(var(--stick-roll-x), -36px, 0) rotateZ(var(--stick-bounce-rotate)) scale(1.01); }
-  88% { transform: translate3d(calc(var(--stick-roll-x) * .38), -11px, 0) rotateZ(calc(var(--stick-final-rotate) - 5deg)) scale(1); }
+  88% { transform: translate3d(0, -11px, 0) rotateZ(calc(var(--stick-final-rotate) - 5deg)) scale(1); }
   100% { opacity: 1; transform: translate3d(0, 0, 0) rotateZ(var(--stick-final-rotate)) scale(1); }
 }
 
@@ -118,9 +118,9 @@
 
 @keyframes yut-resolved-from-pending {
   0% { opacity: 1; filter: drop-shadow(0 6px 12px rgba(42, 30, 23, .16)); transform: translate3d(calc(-48px + var(--stick-index) * 32px), calc(-230px + var(--stick-index) * 6px), 0) rotateZ(calc(-20deg + var(--stick-index) * 16deg)) scale(.99); }
-  62% { opacity: 1; filter: drop-shadow(0 20px 28px rgba(42, 30, 23, .34)); transform: translate3d(calc(var(--stick-roll-x) * .82), 8px, 0) rotateZ(var(--stick-land-rotate)) scale(1.02); }
+  62% { opacity: 1; filter: drop-shadow(0 20px 28px rgba(42, 30, 23, .34)); transform: translate3d(0, 8px, 0) rotateZ(var(--stick-land-rotate)) scale(1.02); }
   76% { filter: drop-shadow(0 15px 24px rgba(42, 30, 23, .3)); transform: translate3d(var(--stick-roll-x), -36px, 0) rotateZ(var(--stick-bounce-rotate)) scale(1.01); }
-  88% { filter: drop-shadow(0 14px 22px rgba(42, 30, 23, .27)); transform: translate3d(calc(var(--stick-roll-x) * .38), -11px, 0) rotateZ(calc(var(--stick-final-rotate) - 5deg)) scale(1); }
+  88% { filter: drop-shadow(0 14px 22px rgba(42, 30, 23, .27)); transform: translate3d(0, -11px, 0) rotateZ(calc(var(--stick-final-rotate) - 5deg)) scale(1); }
   100% { opacity: 1; filter: drop-shadow(0 16px 28px rgba(42, 30, 23, .28)); transform: translate3d(0, 0, 0) rotateZ(var(--stick-final-rotate)) scale(1); }
 }
 
