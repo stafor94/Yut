@@ -7,7 +7,11 @@ import {
   removeRoomPlayer as removeRoomPlayerCore,
   type RoomPlayer,
 } from './roomServiceCore';
-import { getRoomLastActivityMillis, shouldDeferOwnRoomRemoval } from './roomLifecyclePolicy';
+import {
+  getRoomLastActivityMillis,
+  shouldDeferOwnRoomRemoval,
+  shouldRestoreDeferredRoomPointer,
+} from './roomLifecyclePolicy';
 import {
   countActivePlayers,
   deleteRoomWhenNoNonAiPlayersRemain,
@@ -151,7 +155,14 @@ function scheduleTransitionRoomRemoval(roomId: string, playerId: string, options
     transitionRemovalTimers.delete(key);
     void getActivePlayerRoomMemberships(playerId)
       .then((memberships) => {
-        if (!memberships.some((membership) => membership.room.id !== roomId)) return;
+        const hasOtherMembership = memberships.some((membership) => membership.room.id !== roomId);
+        if (!hasOtherMembership) {
+          if (shouldRestoreDeferredRoomPointer({
+            hasOtherMembership,
+            activeRoomId: getActiveRoomIdFromStorage(),
+          })) window.localStorage.setItem(ACTIVE_ROOM_STORAGE_KEY, roomId);
+          return;
+        }
         return removeRoomPlayerNow(roomId, playerId, options);
       })
       .catch((error) => {
