@@ -10,6 +10,7 @@ import {
   smoothStep,
   type YutRollScenePhase,
 } from '../flows/yutRollAnimation';
+import { getYutRollSceneFraming } from '../flows/yutRollSceneLayout';
 
 const THREE_MODULE_URL = 'https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.module.js';
 type ThreeModule = Record<string, any>;
@@ -61,6 +62,21 @@ const seededUnit = (seed: number) => {
 };
 const lerp = (from: number, to: number, progress: number) => from + (to - from) * progress;
 
+function getAnimationAgeMs(animation: RollAnimation) {
+  const animationId = Number(animation.id);
+  if (!Number.isFinite(animationId) || animationId <= 0) return 0;
+  return Math.max(0, Date.now() - animationId);
+}
+
+function getInitialPhaseElapsedMs(animation: RollAnimation, phase: YutRollScenePhase) {
+  const animationAgeMs = getAnimationAgeMs(animation);
+  if (phase === 'primary') return Math.min(animationAgeMs, LOCAL_ROLL_PRIMARY_MS);
+  if (phase === 'extra-spin') return Math.max(0, animationAgeMs - LOCAL_ROLL_PRIMARY_MS);
+  if (phase === 'landing') return Math.min(Math.max(0, animationAgeMs - LOCAL_ROLL_PRIMARY_MS), LOCAL_ROLL_LANDING_MS);
+  if (phase === 'resolved') return Math.min(animationAgeMs, REMOTE_ROLL_PRE_RESULT_MS);
+  return 0;
+}
+
 function createCrossMark(THREE: ThreeModule, material: any, y: number, z: number, inverted = false) {
   const mark = new THREE.Group();
   for (const rotation of [-Math.PI / 4, Math.PI / 4]) {
@@ -109,7 +125,7 @@ function createYutStick(THREE: ThreeModule, index: number) {
     return mark;
   });
 
-  const startPosition = new THREE.Vector3(-0.42 + index * 0.28, -0.28, 1.42 + (index % 2) * 0.12);
+  const startPosition = new THREE.Vector3(-0.54 + index * 0.36, -0.14, 1.02 + (index % 2) * 0.1);
   const spinAxis = new THREE.Vector3(
     0.55 + seededUnit(index + 2) * 0.35,
     0.25 + seededUnit(index + 9) * 0.35,
@@ -147,9 +163,9 @@ function updateStickTargets(runtime: SceneRuntime, animation: RollAnimation) {
     const stick = animation.sticks[index] ?? { flat: true, marked: false };
     const fallCount = getFallCount(animation);
     const isFallen = Boolean(!isPreResult && fallCount && index < fallCount);
-    const spreadX = -1.38 + index * 0.92;
-    const targetX = isFallen ? (index % 2 === 0 ? -2.15 - index * 0.08 : 2.15 + index * 0.08) : spreadX;
-    const targetZ = isFallen ? -0.34 + index * 0.35 : -0.28 + (index % 2) * 0.28;
+    const spreadX = -1.32 + index * 0.88;
+    const targetX = isFallen ? (index % 2 === 0 ? -1.95 - index * 0.05 : 1.95 + index * 0.05) : spreadX;
+    const targetZ = isFallen ? -0.26 + index * 0.24 : -0.24 + (index % 2) * 0.24;
     const yaw = isFallen
       ? (index % 2 === 0 ? -0.9 - index * 0.08 : 0.82 + index * 0.1)
       : -0.2 + index * 0.14;
@@ -186,11 +202,11 @@ function renderPrimary(runtime: SceneRuntime, elapsedMs: number) {
   const progress = clampUnit(elapsedMs / LOCAL_ROLL_PRIMARY_MS);
   const rise = easeOutCubic(progress);
   runtime.sticks.forEach((entry, index) => {
-    const apexX = -1.08 + index * 0.72;
-    const apexZ = -0.38 + (index % 2) * 0.22;
+    const apexX = -1.02 + index * 0.68;
+    const apexZ = -0.3 + (index % 2) * 0.2;
     entry.group.position.set(
       lerp(entry.startPosition.x, apexX, rise),
-      lerp(entry.startPosition.y, 2.35 + index * 0.08, rise),
+      lerp(entry.startPosition.y, 2.12 + index * 0.06, rise),
       lerp(entry.startPosition.z, apexZ, rise),
     );
     const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, progress * Math.PI * (7.2 + index * 0.55));
@@ -203,9 +219,9 @@ function renderExtraSpin(runtime: SceneRuntime, elapsedMs: number) {
   const seconds = elapsedMs / 1000;
   runtime.sticks.forEach((entry, index) => {
     entry.group.position.set(
-      -1.08 + index * 0.72 + Math.sin(seconds * 2.1 + index) * 0.09,
-      2.34 + index * 0.08 + Math.sin(seconds * 2.8 + index * 0.8) * 0.12,
-      -0.38 + (index % 2) * 0.22 + Math.cos(seconds * 1.9 + index) * 0.08,
+      -1.02 + index * 0.68 + Math.sin(seconds * 2.1 + index) * 0.08,
+      2.12 + index * 0.06 + Math.sin(seconds * 2.8 + index * 0.8) * 0.1,
+      -0.3 + (index % 2) * 0.2 + Math.cos(seconds * 1.9 + index) * 0.07,
     );
     const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, seconds * (5.4 + index * 0.45));
     entry.group.quaternion.copy(entry.phaseQuaternion).multiply(spin);
@@ -249,9 +265,9 @@ function renderResolved(runtime: SceneRuntime, elapsedMs: number) {
     if (progress <= 0.42) {
       const rise = easeOutCubic(ascentProgress);
       entry.group.position.set(
-        lerp(entry.startPosition.x, -1.02 + index * 0.68, rise),
-        lerp(entry.startPosition.y, 1.82 + index * 0.08, rise),
-        lerp(entry.startPosition.z, -0.24 + (index % 2) * 0.2, rise),
+        lerp(entry.startPosition.x, -0.98 + index * 0.66, rise),
+        lerp(entry.startPosition.y, 1.72 + index * 0.06, rise),
+        lerp(entry.startPosition.z, -0.22 + (index % 2) * 0.18, rise),
       );
       const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, rise * Math.PI * (4.4 + index * 0.45));
       entry.group.quaternion.copy(entry.startQuaternion).multiply(spin);
@@ -263,9 +279,9 @@ function renderResolved(runtime: SceneRuntime, elapsedMs: number) {
       ? Math.sin(((descentProgress - 0.78) / 0.22) * Math.PI) * 0.13 * (1 - descentProgress)
       : 0;
     entry.group.position.set(
-      lerp(-1.02 + index * 0.68, entry.targetPosition.x, fall),
-      lerp(1.82 + index * 0.08, entry.targetPosition.y, fall) + bounce,
-      lerp(-0.24 + (index % 2) * 0.2, entry.targetPosition.z, fall),
+      lerp(-0.98 + index * 0.66, entry.targetPosition.x, fall),
+      lerp(1.72 + index * 0.06, entry.targetPosition.y, fall) + bounce,
+      lerp(-0.22 + (index % 2) * 0.18, entry.targetPosition.z, fall),
     );
     entry.group.quaternion.copy(entry.startQuaternion).slerp(entry.targetQuaternion, settle);
     if (settle < 0.96) {
@@ -335,9 +351,7 @@ export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
         if ('outputColorSpace' in renderer && THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 50);
-        camera.position.set(0, 4.9, 6.7);
-        camera.lookAt(0, 0.45, -0.1);
+        const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
         scene.add(new THREE.HemisphereLight(0xfff3d5, 0x4f2c1f, 1.5));
         const keyLight = new THREE.DirectionalLight(0xfff2cf, 2.2);
         keyLight.position.set(-3.4, 6.2, 4.8);
@@ -349,7 +363,7 @@ export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
         scene.add(fillLight);
 
         const floor = new THREE.Mesh(
-          new THREE.PlaneGeometry(6.2, 4.2),
+          new THREE.PlaneGeometry(6.8, 4.8),
           new THREE.ShadowMaterial({ color: 0x3c2116, opacity: 0.22 }),
         );
         floor.rotation.x = -Math.PI / 2;
@@ -359,30 +373,39 @@ export function YutRollScene({ rollAnimation, onSettled }: YutRollSceneProps) {
 
         const sticks = Array.from({ length: 4 }, (_, index) => createYutStick(THREE, index));
         sticks.forEach((entry) => scene.add(entry.group));
+        const initialAnimation = latestAnimationRef.current;
+        const initialPhase = getPhase(initialAnimation);
         const now = performance.now();
+        const initialPhaseElapsedMs = getInitialPhaseElapsedMs(initialAnimation, initialPhase);
+        const initialAnimationElapsedMs = initialPhase === 'resolved'
+          ? Math.min(getAnimationAgeMs(initialAnimation), REMOTE_ROLL_PRE_RESULT_MS)
+          : 0;
         const runtime: SceneRuntime = {
           THREE,
           renderer,
           scene,
           camera,
           sticks,
-          phase: getPhase(latestAnimationRef.current),
-          phaseStartedAt: now,
-          animationStartedAt: now,
+          phase: initialPhase,
+          phaseStartedAt: now - initialPhaseElapsedMs,
+          animationStartedAt: now - initialAnimationElapsedMs,
           frameId: 0,
           resizeObserver: null,
           disposed: false,
         };
         runtimeRef.current = runtime;
-        updateStickTargets(runtime, latestAnimationRef.current);
+        updateStickTargets(runtime, initialAnimation);
 
         const resize = () => {
           const element = canvas.parentElement;
           if (!element) return;
           const width = Math.max(1, element.clientWidth);
           const height = Math.max(1, element.clientHeight);
+          const framing = getYutRollSceneFraming(width, height);
           renderer.setSize(width, height, false);
-          camera.aspect = width / height;
+          camera.aspect = framing.aspect;
+          camera.position.set(0, framing.cameraY, framing.cameraZ);
+          camera.lookAt(0, framing.targetY, framing.targetZ);
           camera.updateProjectionMatrix();
         };
         resize();
