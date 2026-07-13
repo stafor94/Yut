@@ -10,9 +10,16 @@ import {
   type YutRollScenePhase,
 } from '../flows/yutRollAnimation';
 import {
+  EXTRA_SPIN_RADIANS_PER_SECOND_BASE,
+  EXTRA_SPIN_RADIANS_PER_SECOND_STEP,
+  LANDING_FLIGHT_SPIN_TURNS_BASE,
+  LANDING_FLIGHT_SPIN_TURNS_STEP,
+  PRIMARY_SPIN_TURNS_BASE,
+  PRIMARY_SPIN_TURNS_STEP,
   getLandingMotion,
+  getPrimaryHorizontalProgress,
   getPrimaryThrowHeight,
-  getRemoteLandingElapsedMs,
+  getRemoteTimelineElapsedMs,
 } from '../flows/yutRollMotion';
 import {
   getYutRollFallTarget,
@@ -21,7 +28,11 @@ import {
   type YutRollMatWorldBounds,
 } from '../flows/yutRollSceneLayout';
 
-const THREE_MODULE_URL = 'https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.module.js';
+const THREE_MODULE_URLS = [
+  'https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.module.js',
+  'https://unpkg.com/three@0.154.0/build/three.module.js',
+] as const;
+
 type ThreeModule = Record<string, any>;
 type RendererStatus = 'loading' | 'three' | 'fallback';
 
@@ -58,7 +69,17 @@ type SceneRuntime = {
 let threeModulePromise: Promise<ThreeModule> | null = null;
 const loadThreeModule = () => {
   if (!threeModulePromise) {
-    threeModulePromise = import(/* @vite-ignore */ THREE_MODULE_URL) as Promise<ThreeModule>;
+    threeModulePromise = (async () => {
+      let lastError: unknown;
+      for (const url of THREE_MODULE_URLS) {
+        try {
+          return await import(/* @vite-ignore */ url) as ThreeModule;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError;
+    })();
   }
   return threeModulePromise;
 };
@@ -72,6 +93,8 @@ const seededUnit = (seed: number) => {
   return value - Math.floor(value);
 };
 const lerp = (from: number, to: number, progress: number) => from + (to - from) * progress;
+const getPrimarySpinTurns = (index: number) => PRIMARY_SPIN_TURNS_BASE + index * PRIMARY_SPIN_TURNS_STEP;
+const getLandingSpinTurns = (index: number) => LANDING_FLIGHT_SPIN_TURNS_BASE + index * LANDING_FLIGHT_SPIN_TURNS_STEP;
 
 function getAnimationAgeMs(animation: RollAnimation) {
   const animationId = Number(animation.id);
@@ -106,27 +129,24 @@ function createCrossMark(THREE: ThreeModule, material: any, y: number, z: number
   return mark;
 }
 
-function createYutStick(THREE: ThreeModule, index: number) {
+function createYutStick(THREE: ThreeModule, index: number): RuntimeStick {
   const group = new THREE.Group();
   const wood = new THREE.MeshStandardMaterial({ color: 0xb87835, roughness: 0.78, metalness: 0, flatShading: true });
   const flatFace = new THREE.MeshStandardMaterial({ color: 0xf0c47d, roughness: 0.7, metalness: 0 });
   const roundFace = new THREE.MeshStandardMaterial({ color: 0x865027, roughness: 0.84, metalness: 0, flatShading: true });
   const markMaterial = new THREE.MeshStandardMaterial({ color: 0x4d2817, roughness: 0.9, metalness: 0 });
-
   const center = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.22, 1.55), wood);
   const capGeometry = new THREE.CylinderGeometry(0.24, 0.24, 0.22, 8);
   const capFront = new THREE.Mesh(capGeometry, wood);
   const capBack = new THREE.Mesh(capGeometry, wood);
   capFront.position.z = 0.775;
   capBack.position.z = -0.775;
-
   const top = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 1.98), flatFace);
   top.rotation.x = -Math.PI / 2;
   top.position.y = 0.112;
   const bottom = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 1.94), roundFace);
   bottom.rotation.x = Math.PI / 2;
   bottom.position.y = -0.112;
-
   group.add(center, capFront, capBack, top, bottom);
   group.traverse((object: any) => {
     if (!object.isMesh) return;
@@ -141,7 +161,6 @@ function createYutStick(THREE: ThreeModule, index: number) {
     group.add(mark);
     return mark;
   });
-
   const startPosition = new THREE.Vector3(-0.54 + index * 0.36, -0.14, 1.02 + (index % 2) * 0.1);
   const spinAxis = new THREE.Vector3(
     0.55 + seededUnit(index + 2) * 0.35,
@@ -153,10 +172,8 @@ function createYutStick(THREE: ThreeModule, index: number) {
     -0.65 + index * 0.31,
     0.24 - index * 0.11,
   ));
-
   group.position.copy(startPosition);
   group.quaternion.copy(startQuaternion);
-
   return {
     group,
     spinAxis,
@@ -170,7 +187,7 @@ function createYutStick(THREE: ThreeModule, index: number) {
     flatMark,
     roundMarks,
     isFallen: false,
-  } satisfies RuntimeStick;
+  };
 }
 
 function updateStickTargets(runtime: SceneRuntime, animation: RollAnimation) {
@@ -183,22 +200,16 @@ function updateStickTargets(runtime: SceneRuntime, animation: RollAnimation) {
     const isFallen = Boolean(!isPreResult && fallCount && index < fallCount);
     const spreadX = -1.32 + index * 0.88;
     const fallTarget = getYutRollFallTarget(index, runtime.matBounds);
-    const targetX = isFallen ? fallTarget.x : spreadX;
-    const targetY = isFallen ? fallTarget.y : 0;
-    const targetZ = isFallen ? fallTarget.z : -0.24 + (index % 2) * 0.24;
-    const yaw = isFallen
-      ? (index % 2 === 0 ? -0.9 - index * 0.08 : 0.82 + index * 0.1)
-      : -0.2 + index * 0.14;
-    const faceRotation = stick.flat ? 0 : Math.PI;
+    const yaw = isFallen ? (index % 2 === 0 ? -0.9 - index * 0.08 : 0.82 + index * 0.1) : -0.2 + index * 0.14;
     entry.isFallen = isFallen;
-    entry.fallEdgePosition.set(
-      fallTarget.edgeX + fallTarget.side * 0.08,
-      0.08,
-      fallTarget.z,
+    entry.fallEdgePosition.set(fallTarget.edgeX + fallTarget.side * 0.08, 0.08, fallTarget.z);
+    entry.targetPosition.set(
+      isFallen ? fallTarget.x : spreadX,
+      isFallen ? fallTarget.y : 0,
+      isFallen ? fallTarget.z : -0.24 + (index % 2) * 0.24,
     );
-    entry.targetPosition.set(targetX, targetY, targetZ);
     entry.targetQuaternion.setFromEuler(new THREE.Euler(
-      faceRotation + (isFallen ? 0.18 : 0.025 * (index % 2 === 0 ? -1 : 1)),
+      (stick.flat ? 0 : Math.PI) + (isFallen ? 0.18 : 0.025 * (index % 2 === 0 ? -1 : 1)),
       yaw,
       isFallen ? 0.18 * (index % 2 === 0 ? -1 : 1) : -0.035 + index * 0.022,
     ));
@@ -234,17 +245,13 @@ function getPrimaryEndPosition(entry: RuntimeStick, index: number) {
 }
 
 function getPrimaryEndQuaternion(runtime: SceneRuntime, entry: RuntimeStick, index: number) {
-  const spin = new runtime.THREE.Quaternion().setFromAxisAngle(
-    entry.spinAxis,
-    Math.PI * 2 * (4.1 + index * 0.35),
-  );
+  const spin = new runtime.THREE.Quaternion().setFromAxisAngle(entry.spinAxis, Math.PI * 2 * getPrimarySpinTurns(index));
   return entry.startQuaternion.clone().multiply(spin);
 }
 
 function renderPrimary(runtime: SceneRuntime, elapsedMs: number) {
-  const { THREE } = runtime;
   const progress = clampUnit(elapsedMs / LOCAL_ROLL_PRIMARY_MS);
-  const horizontalProgress = smoothStep(progress);
+  const horizontalProgress = getPrimaryHorizontalProgress(progress);
   runtime.sticks.forEach((entry, index) => {
     entry.group.visible = true;
     const end = getPrimaryEndPosition(entry, index);
@@ -253,27 +260,29 @@ function renderPrimary(runtime: SceneRuntime, elapsedMs: number) {
       getPrimaryThrowHeight(entry.startPosition.y, progress, index),
       lerp(entry.startPosition.z, end.z, horizontalProgress),
     );
-    const spin = new THREE.Quaternion().setFromAxisAngle(
+    const spin = new runtime.THREE.Quaternion().setFromAxisAngle(
       entry.spinAxis,
-      progress * Math.PI * 2 * (4.1 + index * 0.35),
+      progress * Math.PI * 2 * getPrimarySpinTurns(index),
     );
     entry.group.quaternion.copy(entry.startQuaternion).multiply(spin);
   });
 }
 
 function renderExtraSpin(runtime: SceneRuntime, elapsedMs: number) {
-  const { THREE } = runtime;
   const seconds = elapsedMs / 1000;
   runtime.sticks.forEach((entry, index) => {
     entry.group.visible = true;
     const end = getPrimaryEndPosition(entry, index);
-    const drift = Math.min(0.42, seconds * 0.24);
+    const drift = Math.min(0.62, seconds * 0.3);
     entry.group.position.set(
-      end.x + Math.sin(seconds * 2.2 + index) * 0.09,
-      end.y - drift + Math.sin(seconds * 3.1 + index * 0.7) * 0.08,
-      end.z + Math.cos(seconds * 2 + index) * 0.075,
+      end.x + Math.sin(seconds * 2 + index) * 0.1,
+      end.y - drift + Math.sin(seconds * 2.7 + index * 0.7) * 0.06,
+      end.z + Math.cos(seconds * 1.8 + index) * 0.08,
     );
-    const spin = new THREE.Quaternion().setFromAxisAngle(entry.spinAxis, seconds * (6.2 + index * 0.48));
+    const spin = new runtime.THREE.Quaternion().setFromAxisAngle(
+      entry.spinAxis,
+      seconds * (EXTRA_SPIN_RADIANS_PER_SECOND_BASE + index * EXTRA_SPIN_RADIANS_PER_SECOND_STEP),
+    );
     entry.group.quaternion.copy(entry.phaseQuaternion).multiply(spin);
   });
 }
@@ -282,27 +291,31 @@ function applyLandingRotation(
   runtime: SceneRuntime,
   entry: RuntimeStick,
   index: number,
-  progress: number,
+  flightProgress: number,
+  settleProgress: number,
   wobbleRadians: number,
   rollOffsetX: number,
   rollOffsetZ: number,
   phaseQuaternion?: any,
 ) {
   const startQuaternion = phaseQuaternion ?? entry.phaseQuaternion;
-  const settleProgress = smoothStep(clampUnit((progress - 0.04) / 0.92));
-  entry.group.quaternion.copy(startQuaternion).slerp(entry.targetQuaternion, settleProgress);
-  if (settleProgress < 1) {
-    const fullTurns = Math.max(2, Math.round(2.8 + index * 0.31));
-    const residualSpin = new runtime.THREE.Quaternion().setFromAxisAngle(
+  const flightTurns = getLandingSpinTurns(index);
+  if (settleProgress <= 0) {
+    const freeSpin = new runtime.THREE.Quaternion().setFromAxisAngle(
       entry.spinAxis,
-      settleProgress * Math.PI * 2 * fullTurns,
+      flightProgress * Math.PI * 2 * flightTurns,
     );
-    entry.group.quaternion.multiply(residualSpin);
+    entry.group.quaternion.copy(startQuaternion).multiply(freeSpin);
+    return;
   }
+
+  const impactSpin = new runtime.THREE.Quaternion().setFromAxisAngle(entry.spinAxis, Math.PI * 2 * flightTurns);
+  const impactQuaternion = startQuaternion.clone().multiply(impactSpin);
+  const settled = smoothStep(settleProgress);
+  entry.group.quaternion.copy(impactQuaternion).slerp(entry.targetQuaternion, settled);
   if (wobbleRadians !== 0) {
     const rollAxis = new runtime.THREE.Vector3(rollOffsetZ, 0, -rollOffsetX).normalize();
-    const wobble = new runtime.THREE.Quaternion().setFromAxisAngle(rollAxis, wobbleRadians);
-    entry.group.quaternion.multiply(wobble);
+    entry.group.quaternion.multiply(new runtime.THREE.Quaternion().setFromAxisAngle(rollAxis, wobbleRadians));
   }
 }
 
@@ -310,33 +323,20 @@ function renderLanding(runtime: SceneRuntime, elapsedMs: number, fromPrimaryEnd 
   const progress = clampUnit(elapsedMs / LOCAL_ROLL_LANDING_MS);
   runtime.sticks.forEach((entry, index) => {
     const motion = getLandingMotion(progress, index);
-    const deterministicStart = getPrimaryEndPosition(entry, index);
-    const startPosition = fromPrimaryEnd ? deterministicStart : entry.phasePosition;
-    const startQuaternion = fromPrimaryEnd
-      ? getPrimaryEndQuaternion(runtime, entry, index)
-      : entry.phaseQuaternion;
+    const startPosition = fromPrimaryEnd ? getPrimaryEndPosition(entry, index) : entry.phasePosition;
+    const startQuaternion = fromPrimaryEnd ? getPrimaryEndQuaternion(runtime, entry, index) : entry.phaseQuaternion;
 
     if (entry.isFallen) {
-      const edgeProgress = motion.dropProgress;
-      const exitProgress = smoothStep(clampUnit((progress - 0.48) / 0.48));
-      const edgeX = lerp(startPosition.x, entry.fallEdgePosition.x, edgeProgress);
-      const edgeY = lerp(startPosition.y, entry.fallEdgePosition.y, edgeProgress);
-      const edgeZ = lerp(startPosition.z, entry.fallEdgePosition.z, edgeProgress);
+      const exitProgress = smoothStep(clampUnit((progress - 0.46) / 0.5));
+      const edgeX = lerp(startPosition.x, entry.fallEdgePosition.x, motion.dropProgress);
+      const edgeY = lerp(startPosition.y, entry.fallEdgePosition.y, motion.dropProgress);
+      const edgeZ = lerp(startPosition.z, entry.fallEdgePosition.z, motion.dropProgress);
       entry.group.position.set(
         lerp(edgeX, entry.targetPosition.x, exitProgress),
         lerp(edgeY, entry.targetPosition.y, exitProgress),
         lerp(edgeZ, entry.targetPosition.z, exitProgress),
       );
-      applyLandingRotation(
-        runtime,
-        entry,
-        index,
-        progress,
-        0,
-        motion.rollOffsetX,
-        motion.rollOffsetZ,
-        startQuaternion,
-      );
+      applyLandingRotation(runtime, entry, index, motion.flightProgress, motion.settleProgress, 0, motion.rollOffsetX, motion.rollOffsetZ, startQuaternion);
       entry.group.visible = progress < 0.97;
       return;
     }
@@ -355,7 +355,8 @@ function renderLanding(runtime: SceneRuntime, elapsedMs: number, fromPrimaryEnd 
       runtime,
       entry,
       index,
-      progress,
+      motion.flightProgress,
+      motion.settleProgress,
       motion.wobbleRadians,
       motion.rollOffsetX,
       motion.rollOffsetZ,
@@ -366,7 +367,12 @@ function renderLanding(runtime: SceneRuntime, elapsedMs: number, fromPrimaryEnd 
 }
 
 function renderResolved(runtime: SceneRuntime, elapsedMs: number) {
-  renderLanding(runtime, getRemoteLandingElapsedMs(elapsedMs), true);
+  const localElapsedMs = getRemoteTimelineElapsedMs(elapsedMs);
+  if (localElapsedMs < LOCAL_ROLL_PRIMARY_MS) {
+    renderPrimary(runtime, localElapsedMs);
+    return;
+  }
+  renderLanding(runtime, localElapsedMs - LOCAL_ROLL_PRIMARY_MS, true);
 }
 
 function disposeRuntime(runtime: SceneRuntime) {
@@ -382,10 +388,7 @@ function disposeRuntime(runtime: SceneRuntime) {
   runtime.renderer.dispose();
 }
 
-type YutRollSceneProps = {
-  rollAnimation: RollAnimation;
-  onSettled: () => void;
-};
+type YutRollSceneProps = { rollAnimation: RollAnimation; onSettled: () => void };
 
 export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -403,7 +406,6 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
 
   latestAnimationRef.current = rollAnimation;
   onSettledRef.current = onSettled;
-
   const notifySettled = () => {
     if (settledRef.current) return;
     settledRef.current = true;
@@ -430,7 +432,7 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         if ('outputColorSpace' in renderer && THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
 
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 60);
+        const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 60);
         scene.add(new THREE.HemisphereLight(0xfff3d5, 0x4f2c1f, 1.5));
         const keyLight = new THREE.DirectionalLight(0xfff2cf, 2.2);
         keyLight.position.set(-3.4, 6.2, 4.8);
@@ -440,11 +442,7 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         const fillLight = new THREE.DirectionalLight(0xf1a764, 0.65);
         fillLight.position.set(4, 2.4, 1);
         scene.add(fillLight);
-
-        const floor = new THREE.Mesh(
-          new THREE.PlaneGeometry(6.8, 4.8),
-          new THREE.ShadowMaterial({ color: 0x3c2116, opacity: 0.22 }),
-        );
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(6.8, 4.8), new THREE.ShadowMaterial({ color: 0x3c2116, opacity: 0.22 }));
         floor.rotation.x = -Math.PI / 2;
         floor.position.y = -0.145;
         floor.receiveShadow = true;
@@ -456,9 +454,7 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         const initialPhase = getRuntimeInitialPhase(initialAnimation);
         const now = performance.now();
         const initialPhaseElapsedMs = getInitialPhaseElapsedMs(initialAnimation, initialPhase);
-        const initialAnimationElapsedMs = initialPhase === 'resolved'
-          ? Math.min(getAnimationAgeMs(initialAnimation), REMOTE_ROLL_PRE_RESULT_MS)
-          : 0;
+        const initialAnimationElapsedMs = initialPhase === 'resolved' ? Math.min(getAnimationAgeMs(initialAnimation), REMOTE_ROLL_PRE_RESULT_MS) : 0;
         const runtime: SceneRuntime = {
           THREE,
           renderer,
@@ -509,11 +505,9 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
           if (reducedMotion || activePhase === 'result-hold') {
             setFinalTransforms(runtime);
             notifySettled();
-          } else if (activePhase === 'primary') {
-            renderPrimary(runtime, elapsed);
-          } else if (activePhase === 'extra-spin') {
-            renderExtraSpin(runtime, elapsed);
-          } else if (activePhase === 'landing') {
+          } else if (activePhase === 'primary') renderPrimary(runtime, elapsed);
+          else if (activePhase === 'extra-spin') renderExtraSpin(runtime, elapsed);
+          else if (activePhase === 'landing') {
             renderLanding(runtime, elapsed);
             if (elapsed >= LOCAL_ROLL_LANDING_MS) notifySettled();
           } else {
@@ -590,10 +584,25 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         const isFallenStick = Boolean(!isPreResult && fallCount && index < fallCount);
         const faceClassName = isPreResult ? '' : stick.flat ? 'flat' : 'round';
         const fallX = index % 2 === 0 ? 'calc(0px - min(42vw, 300px))' : 'min(42vw, 300px)';
-        return <span key={`${rollAnimation.id}-${index}`} className={`yut-stick ${faceClassName} ${stick.marked ? 'marked' : ''} ${isFallenStick ? 'fallen' : ''}`} style={{ '--stick-index': index, '--stick-start-rotate': `${-360 + index * 45}deg`, '--stick-land-rotate': `${28 - index * 14}deg`, '--stick-bounce-rotate': `${12 + index * 18}deg`, '--stick-final-rotate': `${-8 + index * 12}deg`, '--fall-x': fallX, '--fall-y': `${96 + index * 14}px`, '--fall-rotate': `${index % 2 === 0 ? -64 - index * 18 : 62 + index * 16}deg` } as CSSProperties}>
+        const rollX = `${index % 2 === 0 ? -22 - index * 2 : 22 + index * 2}px`;
+        return <span
+          key={`${rollAnimation.id}-${index}`}
+          className={`yut-stick ${faceClassName} ${stick.marked ? 'marked' : ''} ${isFallenStick ? 'fallen' : ''}`}
+          style={{
+            '--stick-index': index,
+            '--stick-start-rotate': `${-180 + index * 24}deg`,
+            '--stick-land-rotate': `${28 - index * 14}deg`,
+            '--stick-bounce-rotate': `${12 + index * 18}deg`,
+            '--stick-final-rotate': `${-8 + index * 12}deg`,
+            '--stick-roll-x': rollX,
+            '--fall-x': fallX,
+            '--fall-y': `${96 + index * 14}px`,
+            '--fall-rotate': `${index % 2 === 0 ? -64 - index * 18 : 62 + index * 16}deg`,
+          } as CSSProperties}
+        >
           <span className="yut-stick-body">
-            <i className="yut-stick-flat-face">{Array.from({ length: flatMarkCount }, (_, markIndex) => <span key={`flat-mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark"></span>)}</i>
-            <i className="yut-stick-round-face">{Array.from({ length: roundMarkCount }, (_, markIndex) => <span key={`round-mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark"></span>)}</i>
+            <i className="yut-stick-flat-face">{Array.from({ length: flatMarkCount }, (_, markIndex) => <span key={`flat-mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark" />)}</i>
+            <i className="yut-stick-round-face">{Array.from({ length: roundMarkCount }, (_, markIndex) => <span key={`round-mark-${rollAnimation.id}-${index}-${markIndex}`} className="yut-mark" />)}</i>
           </span>
         </span>;
       })}
