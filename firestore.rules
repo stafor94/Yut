@@ -65,10 +65,10 @@ service cloud.firestore {
     function isCleanupEligibleRoom(roomId) {
       let room = get(roomPath(roomId)).data;
       return roomExists(roomId)
+        && (!('systemRoomType' in room) || room.systemRoomType != 'creation_lock')
         && (
           room.status == 'finished'
           || room.currentPlayers <= 0
-          || (room.createdAt is timestamp && request.time > room.createdAt + duration.value(2, 'h'))
         );
     }
 

@@ -4,6 +4,7 @@ import {
   type RoomAvailabilityResult,
   type RoomAvailabilityRoom,
 } from '../services/roomAvailabilityPolicy';
+import { ROOM_LIST_CANDIDATE_LIMIT } from '../services/roomLifecyclePolicy';
 
 export type RoomListSummary = RoomAvailabilityRoom & {
   id: string;
@@ -74,8 +75,8 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
       running = true;
       unsubscribeRooms = subscribeRooms((nextRooms) => {
         if (!running) return;
-        activeRooms = nextRooms;
-        const activeRoomIds = new Set(nextRooms.map((room) => room.id));
+        activeRooms = nextRooms.slice(0, ROOM_LIST_CANDIDATE_LIMIT);
+        const activeRoomIds = new Set(activeRooms.map((room) => room.id));
 
         roomPlayerUnsubscribes.forEach((unsubscribe, roomId) => {
           if (activeRoomIds.has(roomId)) return;
@@ -84,7 +85,7 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
           roomAvailability.delete(roomId);
         });
 
-        nextRooms.forEach((room) => {
+        activeRooms.forEach((room) => {
           if (roomPlayerUnsubscribes.has(room.id)) return;
           roomPlayerUnsubscribes.set(room.id, () => undefined);
           const unsubscribePlayers = subscribePlayers(room.id, (players) => {

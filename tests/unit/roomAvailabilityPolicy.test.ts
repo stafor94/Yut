@@ -41,7 +41,9 @@ test('가득 찬 대기 방은 기존 참가자가 아니면 숨긴다', () => {
   assert.equal(classifyRoomAvailability({ status: 'waiting', maxPlayers: 2 }, players, 'human-a').visible, true);
 });
 
-test('종료 상태 또는 잘못된 정원 정보의 방은 숨긴다', () => {
+test('종료·삭제 중·시스템 상태 또는 잘못된 정원 정보의 방은 숨긴다', () => {
   assert.equal(classifyRoomAvailability({ status: 'finished', maxPlayers: 2 }, [{ id: 'human-a' }], 'viewer').reason, 'inactive');
+  assert.equal(classifyRoomAvailability({ status: 'waiting', maxPlayers: 2, deletingAt: 1 }, [{ id: 'human-a' }], 'viewer').reason, 'inactive');
+  assert.equal(classifyRoomAvailability({ status: 'waiting', maxPlayers: 2, systemRoomType: 'creation_lock' }, [{ id: 'human-a' }], 'viewer').reason, 'inactive');
   assert.equal(classifyRoomAvailability({ status: 'waiting', maxPlayers: 1 }, [{ id: 'human-a' }], 'viewer').reason, 'malformed');
 });
