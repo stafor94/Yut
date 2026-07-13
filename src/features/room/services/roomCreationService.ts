@@ -24,7 +24,9 @@ const COLORS = ['red', 'blue', 'green', 'yellow'] as const;
 
 const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.startsWith(QA_ROOM_TITLE_PREFIX);
 
-async function acquireRoomCreationLock(hostId: string, requestId: string) {
+const createLockOwnerToken = (requestId: string) => `${requestId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+
+async function acquireRoomCreationLock(hostId: string, requestId: string, ownerToken: string) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const lockRef = doc(db, 'rooms', ROOM_CREATION_LOCK_ID);
   const now = Date.now();
@@ -46,6 +48,7 @@ async function acquireRoomCreationLock(hostId: string, requestId: string) {
       currentPlayers: 0,
       systemRoomType: 'creation_lock',
       lockRequestId: requestId,
+      lockOwnerToken: ownerToken,
       lockExpiresAt: now + ROOM_CREATION_LOCK_MS,
       lastActivityAt: now,
       createdAt: lock?.createdAt ?? serverTimestamp(),
@@ -53,14 +56,14 @@ async function acquireRoomCreationLock(hostId: string, requestId: string) {
   });
 }
 
-async function releaseRoomCreationLock(requestId: string) {
+async function releaseRoomCreationLock(requestId: string, ownerToken: string) {
   if (!db) return;
   const lockRef = doc(db, 'rooms', ROOM_CREATION_LOCK_ID);
   await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(lockRef);
     if (!snapshot.exists()) return;
     const lock = snapshot.data() as ManagedRoomSummary;
-    if (lock.lockRequestId !== requestId) return;
+    if (lock.lockRequestId !== requestId || lock.lockOwnerToken !== ownerToken) return;
     transaction.set(lockRef, {
       status: 'finished',
       currentPlayers: 0,
@@ -77,6 +80,7 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
   const roomsRef = collection(db, 'rooms');
   const roomRef = params.roomId ? doc(roomsRef, params.roomId) : doc(roomsRef);
   const requestId = params.createRequestId || roomRef.id;
+  const ownerToken = createLockOwnerToken(requestId);
 
   const existingSnapshot = await getDoc(roomRef);
   if (existingSnapshot.exists()) {
@@ -85,7 +89,7 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
     throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
   }
 
-  await acquireRoomCreationLock(params.hostId, requestId);
+  await acquireRoomCreationLock(params.hostId, requestId, ownerToken);
   try {
     await cleanupDeletionCandidatesBeforeCreate(roomRef.id);
     const idempotentSnapshot = await getDoc(roomRef);
@@ -157,6 +161,6 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
     await batch.commit();
     return roomRef.id;
   } finally {
-    await releaseRoomCreationLock(requestId).catch((error) => console.warn('방 생성 잠금 해제에 실패했습니다.', error));
+    await releaseRoomCreationLock(requestId, ownerToken).catch((error) => console.warn('방 생성 잠금 해제에 실패했습니다.', error));
   }
 }
