@@ -1,6 +1,6 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Unsubscribe } from 'firebase/firestore';
-import { removeRoomPlayer, subscribeGameState, type SyncedGameState } from '../../features/room/services/roomService';
+import { getLatestGameState, removeRoomPlayer, subscribeGameState, type SyncedGameState } from '../../features/room/services/roomService';
 import { auth } from '../../services/firebase/firebaseAuth';
 import { STORAGE_KEYS, type SequenceStateSnapshot } from '../appState';
 import {
@@ -9,8 +9,11 @@ import {
   type GameSyncSubscriptionController,
 } from './gameSyncSubscription';
 import {
+  notifySequenceRecoveryProgress,
   SEQUENCE_RECOVERY_FATAL_EVENT,
   SEQUENCE_RECOVERY_HARD_EVENT,
+  SEQUENCE_RECOVERY_SOFT_EVENT,
+  setSequenceRecoveryRoomContext,
   type SequenceRecoveryEscalationDetail,
 } from './sequenceRecoveryWatchdog';
 
@@ -37,10 +40,31 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
   subscribeRef.current = subscribe;
   const activeRoomIdRef = useRef(activeRoomId);
   activeRoomIdRef.current = activeRoomId;
+  const previousRoomIdRef = useRef('');
   const fatalRecoveryHandledRef = useRef(false);
+  const escalationRecoveryRef = useRef<Promise<boolean> | null>(null);
 
   const controllerRef = useRef<GameSyncSubscriptionController<SyncedGameState> | null>(null);
   if (!controllerRef.current) controllerRef.current = createGameSyncSubscriptionController<SyncedGameState>();
+
+  const recoverLatestState = (roomId: string) => {
+    if (escalationRecoveryRef.current) return escalationRecoveryRef.current;
+    const recovery = (async () => {
+      if (!roomId || activeRoomIdRef.current !== roomId) return false;
+      const latestState = await getLatestGameState(roomId);
+      if (!latestState || activeRoomIdRef.current !== roomId) return false;
+      const localSequence = lastAppliedSequenceRef.current;
+      const remoteSequence = Number(latestState.lastSequence ?? 0);
+      if (!Number.isFinite(remoteSequence) || remoteSequence <= localSequence) return false;
+      await replayMissingSequencesThenApply(latestState as SequenceStateSnapshot, localSequence, remoteSequence);
+      notifySequenceRecoveryProgress(roomId, remoteSequence);
+      return true;
+    })().catch(() => false).finally(() => {
+      escalationRecoveryRef.current = null;
+    });
+    escalationRecoveryRef.current = recovery;
+    return recovery;
+  };
 
   const runtimeRef = useRef<GameSyncRuntime<SyncedGameState> | null>(null);
   runtimeRef.current = {
@@ -51,66 +75,94 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
     replayMissingSequencesThenApply: (state, localSequence, remoteSequence) => replayMissingSequencesThenApply(state as SequenceStateSnapshot, localSequence, remoteSequence),
     applySyncedStateSnapshot: (state) => applySyncedStateSnapshot(state as SequenceStateSnapshot),
     enqueueAuthoritativeResultApplication,
-    onSnapshotReceived: onSnapshotReceived ? (state) => onSnapshotReceived(state as SequenceStateSnapshot) : undefined,
+    onSnapshotReceived: (state) => {
+      const gameFinished = Boolean(state.winner);
+      setSequenceRecoveryRoomContext(activeRoomId, Boolean(activeRoomId) && !gameFinished);
+      onSnapshotReceived?.(state as SequenceStateSnapshot);
+    },
     scheduleApplyingReset: (reset) => { window.setTimeout(reset, 0); },
   };
   controllerRef.current.updateRuntime(runtimeRef.current);
 
   useEffect(() => {
+    const previousRoomId = previousRoomIdRef.current;
+    if (previousRoomId && previousRoomId !== activeRoomId) setSequenceRecoveryRoomContext(previousRoomId, false);
+    previousRoomIdRef.current = activeRoomId;
     const controller = controllerRef.current;
     const runtime = runtimeRef.current;
     if (!controller || !runtime) return;
     fatalRecoveryHandledRef.current = false;
     controller.updateRuntime(runtime);
     controller.syncRoom(activeRoomId, subscribeRef.current);
+    if (!activeRoomId) setSequenceRecoveryRoomContext(previousRoomId, false);
   }, [activeRoomId]);
 
   useEffect(() => {
     const getDetail = (event: Event) => (event as CustomEvent<SequenceRecoveryEscalationDetail>).detail;
+    const getActiveRecoveryRoomId = (event: Event) => {
+      const roomId = getDetail(event)?.roomId ?? '';
+      return roomId && activeRoomIdRef.current === roomId ? roomId : '';
+    };
+    const handleSoftRecovery = (event: Event) => {
+      const roomId = getActiveRecoveryRoomId(event);
+      if (!roomId) return;
+      void recoverLatestState(roomId);
+    };
     const handleHardRecovery = (event: Event) => {
-      const detail = getDetail(event);
-      const roomId = detail?.roomId ?? '';
-      if (!roomId || activeRoomIdRef.current !== roomId) return;
+      const roomId = getActiveRecoveryRoomId(event);
+      if (!roomId) return;
       const controller = controllerRef.current;
-      if (!controller) return;
-      controller.syncRoom('', subscribeRef.current);
-      const runtime = runtimeRef.current;
-      if (runtime) controller.updateRuntime(runtime);
-      controller.syncRoom(roomId, subscribeRef.current);
+      if (controller) {
+        controller.syncRoom('', subscribeRef.current);
+        const runtime = runtimeRef.current;
+        if (runtime) controller.updateRuntime(runtime);
+        controller.syncRoom(roomId, subscribeRef.current);
+      }
+      void recoverLatestState(roomId);
     };
     const handleFatalRecovery = (event: Event) => {
-      const detail = getDetail(event);
-      const roomId = detail?.roomId ?? '';
-      if (!roomId || activeRoomIdRef.current !== roomId || fatalRecoveryHandledRef.current) return;
+      const roomId = getActiveRecoveryRoomId(event);
+      if (!roomId || fatalRecoveryHandledRef.current) return;
       fatalRecoveryHandledRef.current = true;
-      controllerRef.current?.syncRoom('', subscribeRef.current);
-      let finalized = false;
-      const finalizeExit = () => {
-        if (finalized) return;
-        finalized = true;
-        window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-        window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-        window.alert('2분 동안 서버의 게임 진행을 확인하지 못해 게임을 종료하고 로비로 이동합니다.');
-        window.location.reload();
-      };
-      const fallbackTimer = window.setTimeout(finalizeExit, 2000);
-      const userId = auth?.currentUser?.uid ?? '';
-      const leaveRequest = userId ? removeRoomPlayer(roomId, userId) : Promise.resolve();
-      void leaveRequest.catch(() => undefined).finally(() => {
-        window.clearTimeout(fallbackTimer);
-        finalizeExit();
+      void recoverLatestState(roomId).then((recovered) => {
+        if (recovered || activeRoomIdRef.current !== roomId) {
+          fatalRecoveryHandledRef.current = false;
+          return;
+        }
+        controllerRef.current?.syncRoom('', subscribeRef.current);
+        setSequenceRecoveryRoomContext(roomId, false);
+        let finalized = false;
+        const finalizeExit = () => {
+          if (finalized) return;
+          finalized = true;
+          window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+          window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+          window.alert('2분 동안 서버의 게임 진행을 확인하지 못해 게임을 종료하고 로비로 이동합니다.');
+          window.location.reload();
+        };
+        const fallbackTimer = window.setTimeout(finalizeExit, 2000);
+        const userId = auth?.currentUser?.uid ?? '';
+        const leaveRequest = userId ? removeRoomPlayer(roomId, userId) : Promise.resolve();
+        void leaveRequest.catch(() => undefined).finally(() => {
+          window.clearTimeout(fallbackTimer);
+          finalizeExit();
+        });
       });
     };
 
+    window.addEventListener(SEQUENCE_RECOVERY_SOFT_EVENT, handleSoftRecovery);
     window.addEventListener(SEQUENCE_RECOVERY_HARD_EVENT, handleHardRecovery);
     window.addEventListener(SEQUENCE_RECOVERY_FATAL_EVENT, handleFatalRecovery);
     return () => {
+      window.removeEventListener(SEQUENCE_RECOVERY_SOFT_EVENT, handleSoftRecovery);
       window.removeEventListener(SEQUENCE_RECOVERY_HARD_EVENT, handleHardRecovery);
       window.removeEventListener(SEQUENCE_RECOVERY_FATAL_EVENT, handleFatalRecovery);
     };
   }, []);
 
   useEffect(() => () => {
+    const roomId = previousRoomIdRef.current;
+    if (roomId) setSequenceRecoveryRoomContext(roomId, false);
     controllerRef.current?.dispose();
   }, []);
 }
