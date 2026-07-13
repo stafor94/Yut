@@ -21,6 +21,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const slotUntil = activeTurnOrderIntro?.slotUntil ?? ((activeTurnOrderIntro?.readyAt ?? 0) - finalHoldMs);
   const slotRevealDurationMs = getTurnOrderSlotRevealDurationMs(order.length);
   const slotStartedAt = slotUntil - slotRevealDurationMs;
+  const isWaitingToStart = Boolean(activeTurnOrderIntro?.visible && turnOrderClock < slotStartedAt);
   const elapsedRevealMs = Math.max(0, turnOrderClock - slotStartedAt);
   const stoppedCount = activeTurnOrderIntro?.visible ? getTurnOrderStoppedSlotCount(order.length, elapsedRevealMs) : 0;
   const isFinalized = order.length > 0 && stoppedCount >= order.length;
@@ -40,7 +41,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   }, []);
 
   useEffect(() => {
-    if (!activeTurnOrderIntro?.visible || !order.length) return;
+    if (!activeTurnOrderIntro?.visible || !order.length || isWaitingToStart) return;
     const previousStoppedCount = previousStoppedCountRef.current;
     if (stoppedCount <= previousStoppedCount) return;
 
@@ -53,18 +54,20 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
       playStoredSoundEffect('countdownStart');
       completionSoundTimerRef.current = null;
     }, 180);
-  }, [activeTurnOrderIntro?.visible, order.length, stoppedCount]);
+  }, [activeTurnOrderIntro?.visible, isWaitingToStart, order.length, stoppedCount]);
 
   if (!activeTurnOrderIntro?.visible) return null;
 
-  const announcement = isFinalized
-    ? `최종 순서가 정해졌습니다. ${order.map((entry, index) => `${index + 1}위 ${entry.name}`).join(', ')}. ${starter?.name ?? ''}님부터 시작합니다.`
-    : `순서를 섞는 중입니다. ${stoppedCount}명의 순서가 공개되었습니다.`;
+  const announcement = isWaitingToStart
+    ? '순서 정하기를 준비하고 있습니다.'
+    : isFinalized
+      ? `최종 순서가 정해졌습니다. ${order.map((entry, index) => `${index + 1}위 ${entry.name}`).join(', ')}. ${starter?.name ?? ''}님부터 시작합니다.`
+      : `순서를 섞는 중입니다. ${stoppedCount}명의 순서가 공개되었습니다.`;
 
-  return <div className={`turn-order-ready-overlay slot-machine ${isFinalized ? 'finalized' : ''} ${isExiting ? 'exiting' : ''}`} role="status" aria-live="polite">
+  return <div className={`turn-order-ready-overlay slot-machine ${isWaitingToStart ? 'waiting' : ''} ${isFinalized ? 'finalized' : ''} ${isExiting ? 'exiting' : ''}`} role="status" aria-live="polite">
     <div className="turn-order-presentation-heading">
       <span>순서 정하기</span>
-      <strong>{isFinalized ? '최종 순서 확정' : '순서를 섞는 중...'}</strong>
+      <strong>{isWaitingToStart ? '잠시 후 순서를 정합니다' : isFinalized ? '최종 순서 확정' : '순서를 섞는 중...'}</strong>
     </div>
     <div className="turn-order-slot-list" aria-hidden="true">
       {order.map((entry, columnIndex) => {
