@@ -15,6 +15,7 @@ import { hasCreationBlockingHumanPlayer, hasResumablePlayerForUser } from './roo
 import { removeRoomPlayerNow } from './roomExitService';
 import { leavePlayerRoomsBeforeCreate } from './roomCreationCleanup';
 import { waitForRoomCreationLock } from './roomCreationLock';
+import { ROOM_CREATION_TIMEOUT_MS } from './roomCreationTiming';
 
 const ACTIVE_HOST_ROOM_ERROR = '이미 진행 중인 방이 있습니다. 기존 방으로 돌아간 뒤 새 방을 만들어주세요.';
 const ACTIVE_ROOM_LIMIT_ERROR = '방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.';
@@ -22,7 +23,7 @@ const DUPLICATE_ROOM_TITLE_ERROR = '이미 존재하는 방 제목입니다. 다
 const CREATE_IN_PROGRESS_ERROR = '다른 방 생성 요청을 처리 중입니다. 잠시 뒤 다시 시도해주세요.';
 // Firestore reserves document IDs that match the __.*__ pattern.
 const ROOM_CREATION_LOCK_ID = 'system-room-creation-lock';
-const ROOM_CREATION_LOCK_MS = 60_000;
+const ROOM_CREATION_LOCK_MS = ROOM_CREATION_TIMEOUT_MS;
 const QA_ROOM_TITLE_PREFIX = 'QA-';
 const QA_RUN_ID = String(import.meta.env.VITE_QA_RUN_ID ?? '').trim();
 const COLORS = ['red', 'blue', 'green', 'yellow'] as const;
