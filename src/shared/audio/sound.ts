@@ -1,6 +1,6 @@
 import { bindYutResultSpeech } from './yutSpeech';
 
-export type SoundEffect = 'countdown' | 'countdownStart' | 'roll' | 'bonus' | 'perfect' | 'fall' | 'move' | 'arrive' | 'stack' | 'capture' | 'itemPickup' | 'itemUse' | 'trap' | 'shield' | 'win' | 'toast';
+export type SoundEffect = 'countdown' | 'countdownStart' | 'turn' | 'roll' | 'bonus' | 'perfect' | 'fall' | 'move' | 'arrive' | 'stack' | 'capture' | 'itemPickup' | 'itemUse' | 'trap' | 'shield' | 'win' | 'toast';
 
 const SOUND_ENABLED_STORAGE_KEY = 'yut-online:soundEnabled';
 const SOUND_EFFECT_VOLUME = 0.38;
@@ -124,6 +124,11 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
         break;
       case 'countdownStart':
         [523, 659, 784].forEach((frequency, index) => playTone(context, frequency, now + index * 0.055, 0.2, safeVolume * 0.72, 'triangle'));
+        break;
+      case 'turn':
+        playTone(context, 659, now, 0.18, safeVolume * 0.58, 'triangle');
+        playTone(context, 988, now + 0.075, 0.24, safeVolume * 0.72, 'sine');
+        playTone(context, 1319, now + 0.16, 0.2, safeVolume * 0.42, 'sine');
         break;
       case 'roll':
         playNoise(context, nowWithOffset(context), 0.16, safeVolume, 650);
