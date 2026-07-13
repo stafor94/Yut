@@ -6,8 +6,6 @@ import {
 
 export * from './roomAuthoritativeReducerCore';
 
-const BEFORE_ROLL_PROMPT_REQUIRED_REASON = '아이템 사용 여부를 먼저 선택해주세요.';
-
 const resolvesAfterRollStackPrompt = (action: Parameters<typeof reduceCoreAuthoritativeGameAction>[1]) => action.type === 'use_item'
   && (action.payload?.skipAfterRollItem === true
     || action.payload?.itemType === 'move_plus_one'
@@ -20,7 +18,6 @@ const retryRollAfterResolvedBeforeRollPrompt = (
   const [state, action, room, sides] = args;
   if (action.type !== 'roll_yut'
     || reduction.status !== 'rejected'
-    || reduction.reason !== BEFORE_ROLL_PROMPT_REQUIRED_REASON
     || state.itemPromptTiming != null
     || typeof state.pendingAfterMoveTurnIndex === 'number'
     || state.pendingGoldenYutSelection != null
@@ -32,7 +29,8 @@ const retryRollAfterResolvedBeforeRollPrompt = (
   if (itemsWithoutBeforeRollPrompt.length === actorItems.length) return reduction;
 
   // itemPromptTiming is the authoritative per-turn gate. After an explicit skip it is null,
-  // so retained before-roll items must not reopen the same prompt during roll validation.
+  // so retained before-roll items are removed only for this retry. Any unrelated rejection
+  // is evaluated again by the core reducer and remains rejected without depending on message text.
   return reduceCoreAuthoritativeGameAction({
     ...state,
     ownedItems: { ...ownedItems, [action.actorId]: itemsWithoutBeforeRollPrompt },
