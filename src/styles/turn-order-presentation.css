@@ -25,6 +25,18 @@
   font-size: clamp(1.02rem, 3vw, 1.22rem);
 }
 
+.turn-order-ready-overlay.slot-machine.waiting .turn-order-presentation-heading > strong {
+  animation: turn-order-wait-pulse 1s ease-in-out infinite;
+}
+
+.turn-order-ready-overlay.slot-machine.waiting .turn-order-slot-window {
+  opacity: .72;
+}
+
+.turn-order-ready-overlay.slot-machine.waiting .turn-order-slot-reel {
+  animation-play-state: paused;
+}
+
 .turn-order-ready-overlay.slot-machine.finalized {
   box-shadow: 0 18px 48px rgba(42, 30, 23, .22), 0 0 0 3px rgba(242, 184, 75, .2);
 }
@@ -42,7 +54,7 @@
   height: 58px;
   border-left: 4px solid transparent;
   border-radius: 16px;
-  transition: transform .28s ease, background .28s ease, border-color .28s ease, box-shadow .28s ease;
+  transition: transform .28s ease, background .28s ease, border-color .28s ease, box-shadow .28s ease, opacity .28s ease;
 }
 
 .turn-order-slot-window.stopped {
@@ -176,6 +188,11 @@
   border: 0;
 }
 
+@keyframes turn-order-wait-pulse {
+  0%, 100% { opacity: .7; }
+  50% { opacity: 1; }
+}
+
 @keyframes turn-order-card-land {
   0% { opacity: .58; transform: translateY(-5px) scale(.97); }
   70% { opacity: 1; transform: translateY(1px) scale(1.025); }
@@ -221,6 +238,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .turn-order-ready-overlay.slot-machine.waiting .turn-order-presentation-heading > strong,
   .turn-order-slot-reel,
   .turn-order-slot-card.final-card,
   .turn-order-final-summary,
