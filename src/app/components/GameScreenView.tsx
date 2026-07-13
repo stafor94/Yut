@@ -1,10 +1,17 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
-import type { BoardItem, BranchChoice } from '../../game-core/board/board';
+import { getMovePathNodeIdsWithPrevious, type BoardItem, type BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import type { CaptureEffect, FallEffect, GameLog, RollAnimation, Seat, ToastMessage, TrapEffect, TrapNode, TurnOrderIntro, TurnOrderPhase } from '../appState';
+import {
+  CAPTURE_EFFECT_MS,
+  CAPTURE_IMPACT_DELAY_MS,
+  createCaptureVisualEffect,
+  inferCapturedPieceIds,
+  type CaptureVisualEffect,
+} from '../flows/captureAnimation';
 import { getRollOutcomeSoundEffect, shouldPlayPerfectRollSound } from '../flows/rollSound';
 import { BoardPanel, GameScreen } from '../screens/GameScreen';
 import { GameLogPanelView, GamePlayersPanel } from '../containers/GamePanels';
@@ -117,11 +124,67 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   const lastRollOutcomeKeyRef = useRef('');
   const lastPerfectRollKeyRef = useRef('');
   const previousPieceNodeIdsRef = useRef<Map<string, string>>(new Map());
+  const previousPiecesRef = useRef<BoardPiece[]>([]);
+  const previousMovingPieceIdRef = useRef('');
+  const activeMovePieceIdRef = useRef('');
   const lastCaptureEffectIdRef = useRef('');
+  const visualCaptureEffectRef = useRef<CaptureVisualEffect | null>(null);
+  const captureClearTimerRef = useRef<number | null>(null);
+  const captureSoundTimerRef = useRef<number | null>(null);
+  const [visualCaptureEffect, setVisualCaptureEffect] = useState<CaptureVisualEffect | null>(null);
+  const [captureDestinationNodeId, setCaptureDestinationNodeId] = useState('');
   const lastRevealedItemsKeyRef = useRef('');
   const stackCountsInitializedRef = useRef(false);
   const previousStackCountsRef = useRef<Map<string, number>>(new Map());
   const activeGameSeatId = activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder ? undefined : activeSeat?.id;
+
+  const startVisualCapture = (nextEffect: CaptureVisualEffect, playInferredSound: boolean) => {
+    if (captureClearTimerRef.current !== null) window.clearTimeout(captureClearTimerRef.current);
+    if (captureSoundTimerRef.current !== null) window.clearTimeout(captureSoundTimerRef.current);
+    visualCaptureEffectRef.current = nextEffect;
+    setVisualCaptureEffect(nextEffect);
+    if (playInferredSound) {
+      captureSoundTimerRef.current = window.setTimeout(() => {
+        playStoredSoundEffect('capture');
+        captureSoundTimerRef.current = null;
+      }, CAPTURE_IMPACT_DELAY_MS);
+    }
+    captureClearTimerRef.current = window.setTimeout(() => {
+      if (visualCaptureEffectRef.current?.id === nextEffect.id) {
+        visualCaptureEffectRef.current = null;
+        setVisualCaptureEffect(null);
+      }
+      captureClearTimerRef.current = null;
+    }, CAPTURE_EFFECT_MS);
+  };
+
+  useEffect(() => () => {
+    if (captureClearTimerRef.current !== null) window.clearTimeout(captureClearTimerRef.current);
+    if (captureSoundTimerRef.current !== null) window.clearTimeout(captureSoundTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!movingPieceId) {
+      activeMovePieceIdRef.current = '';
+      setCaptureDestinationNodeId('');
+      return;
+    }
+    if (activeMovePieceIdRef.current === movingPieceId) return;
+    activeMovePieceIdRef.current = movingPieceId;
+    const movingPieceBeforeStep = previousPiecesRef.current.find((piece) => piece.id === movingPieceId)
+      ?? pieces.find((piece) => piece.id === movingPieceId);
+    if (!movingPieceBeforeStep || !roll || roll.steps === 0) {
+      setCaptureDestinationNodeId('');
+      return;
+    }
+    const pathNodeIds = getMovePathNodeIdsWithPrevious(
+      movingPieceBeforeStep.nodeId,
+      roll.steps,
+      displayBranchChoice,
+      movingPieceBeforeStep.previousNodeId,
+    );
+    setCaptureDestinationNodeId(pathNodeIds[pathNodeIds.length - 1] ?? movingPieceBeforeStep.nodeId);
+  }, [displayBranchChoice, movingPieceId, roll?.name, roll?.steps]);
 
   useEffect(() => {
     if (!rollAnimation) return;
@@ -166,8 +229,43 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     const captureEffectId = captureEffect?.id ? String(captureEffect.id) : '';
     if (!captureEffectId || lastCaptureEffectIdRef.current === captureEffectId) return;
     lastCaptureEffectIdRef.current = captureEffectId;
-    playStoredSoundEffect('capture');
-  }, [captureEffect]);
+    const capturedPiecesStillOnBoard = captureEffect.pieceIds.some((pieceId) => pieces.some((piece) => piece.id === pieceId && piece.started && !piece.finished));
+    const sourcePieces = capturedPiecesStillOnBoard ? pieces : previousPiecesRef.current;
+    const nextEffect = createCaptureVisualEffect({
+      id: captureEffect.id,
+      pieceIds: captureEffect.pieceIds,
+      pieces: sourcePieces,
+      attackerPieceId: movingPieceId || previousMovingPieceIdRef.current,
+      getPieceGroupKey: getPieceSideKey,
+    });
+    if (nextEffect) startVisualCapture(nextEffect, false);
+  }, [captureEffect, getPieceSideKey, movingPieceId, pieces]);
+
+  useEffect(() => {
+    const previousPieces = previousPiecesRef.current;
+    const previousMovingPieceId = previousMovingPieceIdRef.current;
+    if (previousPieces.length && !captureEffect && !trapEffect && !visualCaptureEffectRef.current) {
+      const attackerPieceId = movingPieceId || previousMovingPieceId;
+      const inferredPieceIds = inferCapturedPieceIds({
+        previousPieces,
+        pieces,
+        attackerPieceId,
+        getPieceGroupKey: getPieceSideKey,
+      });
+      if (inferredPieceIds.length) {
+        const nextEffect = createCaptureVisualEffect({
+          id: Date.now(),
+          pieceIds: inferredPieceIds,
+          pieces: previousPieces,
+          attackerPieceId,
+          getPieceGroupKey: getPieceSideKey,
+        });
+        if (nextEffect) startVisualCapture(nextEffect, true);
+      }
+    }
+    previousPiecesRef.current = pieces.map((piece) => ({ ...piece }));
+    previousMovingPieceIdRef.current = movingPieceId;
+  }, [captureEffect, getPieceSideKey, movingPieceId, pieces, trapEffect]);
 
   useEffect(() => {
     const revealedItemsKey = revealedItems.join('|');
@@ -244,7 +342,8 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         previewNodeIds={previewNodeIds}
         branchChoice={branchChoice}
         onBranchChoiceChange={onBranchChoiceChange}
-        captureEffect={captureEffect}
+        captureEffect={visualCaptureEffect}
+        captureDestinationNodeId={captureDestinationNodeId}
         trapEffect={trapEffect}
         fallEffect={fallEffect}
         trapPlacementNodeIds={trapPlacementNodeIds}
