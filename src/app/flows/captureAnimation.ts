@@ -23,6 +23,7 @@ export type CaptureVisualPiece = Pick<CaptureAnimationPiece, 'id' | 'label' | 'c
   targetLeft: number;
   targetTop: number;
   rotation: number;
+  midRotation: number;
 };
 
 export type CaptureVisualEffect = {
@@ -140,6 +141,7 @@ export function createCaptureVisualEffect(params: {
         targetLeft: target.left,
         targetTop: target.top,
         rotation: target.rotation,
+        midRotation: Math.round(target.rotation * 0.28),
       };
     }),
   };
