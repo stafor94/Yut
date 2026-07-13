@@ -43,11 +43,12 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
   const previousRoomIdRef = useRef('');
   const fatalRecoveryHandledRef = useRef(false);
   const escalationRecoveryRef = useRef<Promise<boolean> | null>(null);
+  const recoverLatestStateRef = useRef<(roomId: string) => Promise<boolean>>(async () => false);
 
   const controllerRef = useRef<GameSyncSubscriptionController<SyncedGameState> | null>(null);
   if (!controllerRef.current) controllerRef.current = createGameSyncSubscriptionController<SyncedGameState>();
 
-  const recoverLatestState = (roomId: string) => {
+  recoverLatestStateRef.current = (roomId: string) => {
     if (escalationRecoveryRef.current) return escalationRecoveryRef.current;
     const recovery = (async () => {
       if (!roomId || activeRoomIdRef.current !== roomId) return false;
@@ -106,7 +107,7 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
     const handleSoftRecovery = (event: Event) => {
       const roomId = getActiveRecoveryRoomId(event);
       if (!roomId) return;
-      void recoverLatestState(roomId);
+      void recoverLatestStateRef.current(roomId);
     };
     const handleHardRecovery = (event: Event) => {
       const roomId = getActiveRecoveryRoomId(event);
@@ -118,13 +119,13 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
         if (runtime) controller.updateRuntime(runtime);
         controller.syncRoom(roomId, subscribeRef.current);
       }
-      void recoverLatestState(roomId);
+      void recoverLatestStateRef.current(roomId);
     };
     const handleFatalRecovery = (event: Event) => {
       const roomId = getActiveRecoveryRoomId(event);
       if (!roomId || fatalRecoveryHandledRef.current) return;
       fatalRecoveryHandledRef.current = true;
-      void recoverLatestState(roomId).then((recovered) => {
+      void recoverLatestStateRef.current(roomId).then((recovered) => {
         if (recovered || activeRoomIdRef.current !== roomId) {
           fatalRecoveryHandledRef.current = false;
           return;
