@@ -7,7 +7,9 @@ import {
   CAPTURE_IMPACT_DELAY_MS,
   CAPTURE_SLOW_MOTION_MS,
   createCaptureVisualEffect,
+  getCaptureEffectDurationMs,
   getCaptureExitTarget,
+  getCaptureStaggerMs,
   inferCapturedPieceIds,
 } from '../../src/app/flows/captureAnimation.js';
 
@@ -26,6 +28,13 @@ const makePiece = (overrides: Partial<CaptureAnimationPiece>): CaptureAnimationP
 test('capture approach uses an exact 400ms slow-motion window', () => {
   assert.equal(CAPTURE_SLOW_MOTION_MS, 400);
   assert.equal(CAPTURE_EFFECT_MS, CAPTURE_IMPACT_DELAY_MS + CAPTURE_FLIGHT_MS);
+});
+
+test('chain capture timing tightens as the captured stack grows', () => {
+  assert.equal(getCaptureStaggerMs(2), 90);
+  assert.equal(getCaptureStaggerMs(3), 75);
+  assert.equal(getCaptureStaggerMs(4), 60);
+  assert.equal(getCaptureEffectDurationMs(4), CAPTURE_EFFECT_MS + 180);
 });
 
 test('outer corners eject pieces through the nearest natural board edge', () => {
@@ -48,7 +57,7 @@ test('center captures continue the attackers incoming direction', () => {
   assert.ok(fromTopRight.top > 100);
 });
 
-test('stacked captured pieces fan out to distinct targets', () => {
+test('stacked captured pieces leave in a timed sequence and the last piece travels farthest', () => {
   const capturedPieces = [
     makePiece({ id: 'target-1', ownerId: 'player-2', nodeId: 'n06' }),
     makePiece({ id: 'target-2', ownerId: 'player-2', nodeId: 'n06' }),
@@ -65,8 +74,14 @@ test('stacked captured pieces fan out to distinct targets', () => {
 
   if (!effect) throw new Error('capture effect was not created');
   assert.equal(effect.pieces.length, 3);
+  assert.deepEqual(effect.pieces.map((piece) => piece.delayMs), [0, 75, 150]);
+  assert.equal(effect.durationMs, CAPTURE_EFFECT_MS + 150);
+  assert.deepEqual(effect.attackerPieceIds, ['attacker']);
   assert.equal(new Set(effect.pieces.map((piece) => `${piece.targetLeft}:${piece.targetTop}`)).size, 3);
   assert.equal(new Set(effect.pieces.map((piece) => piece.rotation)).size, 3);
+  const distances = effect.pieces.map((piece) => Math.hypot(piece.targetLeft - piece.sourceLeft, piece.targetTop - piece.sourceTop));
+  assert.ok(distances[2] > distances[1]);
+  assert.ok(distances[1] > distances[0]);
 });
 
 test('remote capture inference requires the moving attacker to remain on the captured node', () => {

@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import type { YutResult } from '../../game-core/roll';
 import { YutRollScene } from '../components/YutRollScene';
 import type { RollAnimation, ToastMessage } from '../appState';
@@ -13,7 +13,18 @@ type WinnerOverlayProps = {
 };
 
 export function WinnerOverlay({ winner, winnerText, canContinueRace, onReturnToWaitingRoom, onExitToLobby, onContinueRace }: WinnerOverlayProps) {
-  if (!winner) return null;
+  const [visibleWinner, setVisibleWinner] = useState('');
+
+  useEffect(() => {
+    if (!winner) {
+      setVisibleWinner('');
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => setVisibleWinner(winner));
+    return () => window.cancelAnimationFrame(frameId);
+  }, [winner]);
+
+  if (!winner || visibleWinner !== winner) return null;
   return <div data-testid="winner-overlay" className="winner-overlay" role="status" aria-live="assertive">
     <span>게임 종료</span>
     <strong>{winnerText}</strong>
