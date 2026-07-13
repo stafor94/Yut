@@ -60,17 +60,25 @@ test.describe('roll mat surface regression', () => {
           sceneTop: Math.round(sceneRect.top),
           sceneWidth: Math.round(sceneRect.width),
           sceneHeight: Math.round(sceneRect.height),
+          sceneLayoutWidth: node.offsetWidth,
+          sceneLayoutHeight: node.offsetHeight,
           canvasWidth: Math.round(canvasRect?.width ?? 0),
           canvasHeight: Math.round(canvasRect?.height ?? 0),
+          canvasLayoutWidth: canvas?.offsetWidth ?? 0,
+          canvasLayoutHeight: canvas?.offsetHeight ?? 0,
           matWidth: Math.round(matRect?.width ?? 0),
           matHeight: Math.round(matRect?.height ?? 0),
           stageContain: stage ? getComputedStyle(stage).contain : '',
           viewportWidth: window.innerWidth,
         };
       });
-      expect(sceneLayout.sceneWidth).toBeLessThanOrEqual(sceneLayout.viewportWidth);
-      expect(sceneLayout.sceneWidth).toBeGreaterThanOrEqual(360);
-      expect(sceneLayout.sceneHeight).toBeGreaterThanOrEqual(320);
+      expect(sceneLayout.sceneLayoutWidth).toBeLessThanOrEqual(sceneLayout.viewportWidth);
+      expect(sceneLayout.sceneLayoutWidth).toBeGreaterThanOrEqual(360);
+      expect(sceneLayout.sceneLayoutHeight).toBeGreaterThanOrEqual(320);
+      expect(sceneLayout.canvasLayoutWidth).toBe(sceneLayout.sceneLayoutWidth);
+      expect(sceneLayout.canvasLayoutHeight).toBe(sceneLayout.sceneLayoutHeight);
+      expect(sceneLayout.sceneWidth).toBeGreaterThan(0);
+      expect(sceneLayout.sceneHeight).toBeGreaterThan(0);
       expect(sceneLayout.canvasWidth).toBe(sceneLayout.sceneWidth);
       expect(sceneLayout.canvasHeight).toBe(sceneLayout.sceneHeight);
       expect(sceneLayout.matWidth).toBeGreaterThan(0);
