@@ -49,6 +49,17 @@ export const hasRecoverableLifecyclePlayer = (players: RoomLifecyclePlayer[]) =>
   !player.isSpectator && (!player.isAI || player.isSubstitutedByAI === true)
 ));
 
+export const hasCreationBlockingHumanPlayer = (players: RoomLifecyclePlayer[]) => players.some((player) => (
+  !player.isSpectator && !player.isAI
+));
+
+export const hasResumablePlayerForUser = (players: RoomLifecyclePlayer[], userId: string) => players.some((player) => (
+  Boolean(userId)
+  && player.id === userId
+  && !player.isSpectator
+  && (!player.isAI || player.isSubstitutedByAI === true)
+));
+
 export const hasHumanLifecyclePlayer = (players: RoomLifecyclePlayer[]) => players.some((player) => (
   !player.isSpectator && !player.isAI
 ));
