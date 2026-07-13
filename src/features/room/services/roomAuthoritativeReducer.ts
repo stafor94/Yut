@@ -1,3 +1,4 @@
+import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
 import {
   isAuthoritativeCommitReduction,
   reduceAuthoritativeGameAction as reduceCoreAuthoritativeGameAction,
@@ -5,15 +6,44 @@ import {
 
 export * from './roomAuthoritativeReducerCore';
 
+const BEFORE_ROLL_PROMPT_REQUIRED_REASON = '아이템 사용 여부를 먼저 선택해주세요.';
+
 const resolvesAfterRollStackPrompt = (action: Parameters<typeof reduceCoreAuthoritativeGameAction>[1]) => action.type === 'use_item'
   && (action.payload?.skipAfterRollItem === true
     || action.payload?.itemType === 'move_plus_one'
     || action.payload?.itemType === 'move_minus_one');
 
+const retryRollAfterResolvedBeforeRollPrompt = (
+  args: Parameters<typeof reduceCoreAuthoritativeGameAction>,
+  reduction: ReturnType<typeof reduceCoreAuthoritativeGameAction>,
+) => {
+  const [state, action, room, sides] = args;
+  if (action.type !== 'roll_yut'
+    || reduction.status !== 'rejected'
+    || reduction.reason !== BEFORE_ROLL_PROMPT_REQUIRED_REASON
+    || state.itemPromptTiming != null
+    || typeof state.pendingAfterMoveTurnIndex === 'number'
+    || state.pendingGoldenYutSelection != null
+    || state.roll != null) return reduction;
+
+  const ownedItems = (state.ownedItems ?? {}) as Record<string, ItemType[]>;
+  const actorItems = ownedItems[action.actorId] ?? [];
+  const itemsWithoutBeforeRollPrompt = actorItems.filter((type) => ITEM_DEFINITIONS[type]?.timing !== 'before_roll');
+  if (itemsWithoutBeforeRollPrompt.length === actorItems.length) return reduction;
+
+  // itemPromptTiming is the authoritative per-turn gate. After an explicit skip it is null,
+  // so retained before-roll items must not reopen the same prompt during roll validation.
+  return reduceCoreAuthoritativeGameAction({
+    ...state,
+    ownedItems: { ...ownedItems, [action.actorId]: itemsWithoutBeforeRollPrompt },
+  }, action, room, sides);
+};
+
 export function reduceAuthoritativeGameAction(
   ...args: Parameters<typeof reduceCoreAuthoritativeGameAction>
 ): ReturnType<typeof reduceCoreAuthoritativeGameAction> {
-  const reduction = reduceCoreAuthoritativeGameAction(...args);
+  let reduction = reduceCoreAuthoritativeGameAction(...args);
+  reduction = retryRollAfterResolvedBeforeRollPrompt(args, reduction);
   if (!isAuthoritativeCommitReduction(reduction)) return reduction;
 
   const [state, action, room] = args;
