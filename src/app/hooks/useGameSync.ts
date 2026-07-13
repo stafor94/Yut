@@ -1,7 +1,7 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Unsubscribe } from 'firebase/firestore';
-import type { SyncedGameState } from '../../features/room/services/roomService';
-import { subscribeGameState } from '../../features/room/services/roomService';
+import { removeRoomPlayer, subscribeGameState, type SyncedGameState } from '../../features/room/services/roomService';
+import { auth } from '../../services/firebase/firebaseAuth';
 import { STORAGE_KEYS, type SequenceStateSnapshot } from '../appState';
 import {
   createGameSyncSubscriptionController,
@@ -84,10 +84,22 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
       if (!roomId || activeRoomIdRef.current !== roomId || fatalRecoveryHandledRef.current) return;
       fatalRecoveryHandledRef.current = true;
       controllerRef.current?.syncRoom('', subscribeRef.current);
-      window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-      window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-      window.alert('2분 동안 서버의 게임 진행을 확인하지 못해 게임을 종료하고 로비로 이동합니다.');
-      window.location.reload();
+      let finalized = false;
+      const finalizeExit = () => {
+        if (finalized) return;
+        finalized = true;
+        window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+        window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+        window.alert('2분 동안 서버의 게임 진행을 확인하지 못해 게임을 종료하고 로비로 이동합니다.');
+        window.location.reload();
+      };
+      const fallbackTimer = window.setTimeout(finalizeExit, 2000);
+      const userId = auth?.currentUser?.uid ?? '';
+      const leaveRequest = userId ? removeRoomPlayer(roomId, userId) : Promise.resolve();
+      void leaveRequest.catch(() => undefined).finally(() => {
+        window.clearTimeout(fallbackTimer);
+        finalizeExit();
+      });
     };
 
     window.addEventListener(SEQUENCE_RECOVERY_HARD_EVENT, handleHardRecovery);
