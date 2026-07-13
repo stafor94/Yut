@@ -81,7 +81,7 @@
   }
   38% {
     opacity: 1;
-    transform: translateY(-22px) rotate(calc(var(--capture-rotation) * .28)) scale(1.08);
+    transform: translateY(-22px) rotate(var(--capture-mid-rotation)) scale(1.08);
   }
   100% {
     left: var(--capture-target-left);
