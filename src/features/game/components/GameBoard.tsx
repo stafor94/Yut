@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import type { CaptureVisualEffect } from '../../../app/flows/captureAnimation';
 import type { BoardItem, BoardNode, BranchChoice } from '../../../game-core/board/board';
 import { BOARD_NODES, FINISH_NODE_ID } from '../../../game-core/board/board';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
@@ -31,6 +32,8 @@ type GameBoardProps = {
   onBranchChoiceChange?: (branchChoice: BranchChoice) => void;
   showBranchControls?: boolean;
   capturedPieceIds?: string[];
+  captureEffect?: CaptureVisualEffect | null;
+  captureDestinationNodeId?: string;
   trapEffectNodeId?: string;
   selectableNodeIds?: string[];
   onSelectNode?: (nodeId: string) => void;
@@ -96,13 +99,32 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], shieldedPieceIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
+export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], shieldedPieceIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], captureEffect = null, captureDestinationNodeId = '', trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
   void branchChoice;
   void onBranchChoiceChange;
   void showBranchControls;
+  void showFallEffect;
 
   const selectedIds = selectedPieceIds ?? (selectedPieceId ? [selectedPieceId] : []);
   const previewFinishes = previewNodeIds.includes(FINISH_NODE_ID);
+  const visualCapturePieceIds = new Set(captureEffect?.pieceIds ?? []);
+  const movingAnchor = movingPieceId ? pieces.find((piece) => piece.id === movingPieceId) : undefined;
+  const movingSideKey = movingAnchor ? getPieceGroupKey(movingAnchor) : '';
+  const hasCapturableDestinationTarget = Boolean(
+    movingAnchor
+    && captureDestinationNodeId
+    && movingAnchor.nodeId === captureDestinationNodeId
+    && pieces.some((piece) => piece.id !== movingAnchor.id
+      && piece.started
+      && !piece.finished
+      && piece.nodeId === movingAnchor.nodeId
+      && getPieceGroupKey(piece) !== movingSideKey
+      && !shieldedPieceIds.includes(piece.id)),
+  );
+  const captureApproachPieceIds = new Set(hasCapturableDestinationTarget
+    ? pieces.filter((piece) => piece.started && !piece.finished && piece.nodeId === movingAnchor?.nodeId && getPieceGroupKey(piece) === movingSideKey).map((piece) => piece.id)
+    : []);
+  const captureNode = captureEffect ? BOARD_NODES.find((node) => node.id === captureEffect.nodeId) : undefined;
 
   return <div data-testid="game-board" className={`board ${boardShaking ? 'capture-shake' : ''}`} aria-label="윷놀이 말판">
     <svg className="board-route-lines" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
@@ -131,7 +153,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         type="button"
         data-testid={`piece-${piece.id}`}
         key={piece.id}
-        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${piece.started && !piece.finished && capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''}`}
+        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${piece.started && !piece.finished && capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''} ${captureApproachPieceIds.has(piece.id) ? 'capture-approach' : ''} ${visualCapturePieceIds.has(piece.id) ? 'capture-source-hidden' : ''}`}
         style={getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey)}
         onClick={() => onSelectPiece(piece.id)}
         disabled={piece.finished || !pieceSelectable}
@@ -141,5 +163,26 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         {shieldedPieceIds.includes(piece.id) && !piece.finished ? <span className="piece-shield-badge" aria-label="방패 적용됨">🛡️</span> : null}
       </button>;
     })}
+    {captureNode ? <span
+      className="capture-impact-wave"
+      aria-hidden="true"
+      style={{ left: `${captureNode.x}%`, top: `${captureNode.y}%` }}
+    /> : null}
+    {captureEffect?.pieces.map((piece) => <span
+      key={`${captureEffect.id}:${piece.id}`}
+      className="piece-token capture-ghost"
+      aria-hidden="true"
+      style={{
+        left: `${piece.sourceLeft}%`,
+        top: `${piece.sourceTop}%`,
+        background: piece.color,
+        translate: '-50% -50%',
+        '--capture-source-left': `${piece.sourceLeft}%`,
+        '--capture-source-top': `${piece.sourceTop}%`,
+        '--capture-target-left': `${piece.targetLeft}%`,
+        '--capture-target-top': `${piece.targetTop}%`,
+        '--capture-rotation': `${piece.rotation}deg`,
+      } as CSSProperties}
+    >{piece.label}</span>)}
   </div>;
 }
