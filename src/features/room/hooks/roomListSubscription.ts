@@ -8,6 +8,7 @@ export type RoomListPlayer = {
   id: string;
   isSpectator?: boolean;
   isAI?: boolean;
+  isSubstitutedByAI?: boolean;
 };
 
 export type RoomListUnsubscribe = () => void;
@@ -83,7 +84,7 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
           roomPlayerUnsubscribes.set(room.id, () => undefined);
           const unsubscribePlayers = subscribePlayers(room.id, (players) => {
             if (!running || !activeRooms.some((activeRoom) => activeRoom.id === room.id)) return;
-            const activePlayers = players.filter((player) => !player.isSpectator && !player.isAI);
+            const activePlayers = players.filter((player) => !player.isSpectator && (!player.isAI || player.isSubstitutedByAI));
             playerCounts.set(room.id, activePlayers.length);
             roomPlayerIds.set(room.id, activePlayers.map((player) => player.id));
             publishRooms();
