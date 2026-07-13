@@ -10,17 +10,20 @@ import {
 
 const ROOM_START_CANCEL_LOCK_MS = 2_000;
 
-type GameStartRequestMeta = {
-  actorId: string;
+type GameStartRequestIdentity = {
   startRequestVersion: number;
   startRequestId: string;
+};
+
+type GameStartRequestMeta = GameStartRequestIdentity & {
+  actorId: string;
   initializedAt: number;
   clientMutationId: string;
 };
 
-const isCurrentStartRequest = (room: Omit<RoomSummary, 'id'>, meta: GameStartRequestMeta) => (
-  Number(room.startRequestVersion ?? 0) === meta.startRequestVersion
-  && String(room.startRequestId ?? '') === meta.startRequestId
+const isCurrentStartRequest = (room: Omit<RoomSummary, 'id'>, identity: GameStartRequestIdentity) => (
+  Number(room.startRequestVersion ?? 0) === identity.startRequestVersion
+  && String(room.startRequestId ?? '') === identity.startRequestId
 );
 
 const isCancelledStartRequest = (room: Omit<RoomSummary, 'id'>) => {
@@ -28,9 +31,9 @@ const isCancelledStartRequest = (room: Omit<RoomSummary, 'id'>) => {
   return Boolean(startCancelledAt && startCancelledAt >= Number(room.startRequestedAt ?? 0));
 };
 
-const isPreparedForRequest = (state: SyncedGameState | null, meta: GameStartRequestMeta) => (
-  Number(state?.startRequestVersion ?? 0) === meta.startRequestVersion
-  && String(state?.startRequestId ?? '') === meta.startRequestId
+const isPreparedForRequest = (state: SyncedGameState | null, identity: GameStartRequestIdentity) => (
+  Number(state?.startRequestVersion ?? 0) === identity.startRequestVersion
+  && String(state?.startRequestId ?? '') === identity.startRequestId
   && Array.isArray(state?.pieces)
   && state.pieces.length > 0
 );
@@ -112,7 +115,7 @@ export async function prepareRoomGameState(
       createdAt: serverTimestamp(),
     });
     transaction.set(gameStateRef, {
-      ...sanitizeForFirestore(state) as Record<string, unknown>,
+      ...(sanitizeForFirestore(state) as Record<string, unknown>),
       updatedAt: serverTimestamp(),
       turnVersion: nextVersion,
       lastSequence: nextSequence,
@@ -137,7 +140,7 @@ export async function prepareRoomGameState(
   });
 }
 
-export async function activatePreparedRoomGame(roomId: string, meta: Pick<GameStartRequestMeta, 'startRequestVersion' | 'startRequestId'>) {
+export async function activatePreparedRoomGame(roomId: string, identity: GameStartRequestIdentity): Promise<boolean> {
   if (!db || !roomId) return false;
   const roomRef = doc(db, 'rooms', roomId);
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
@@ -149,17 +152,7 @@ export async function activatePreparedRoomGame(roomId: string, meta: Pick<GameSt
 
     const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
     const state = gameStateSnapshot.data() as SyncedGameState;
-    const currentRequest = isCurrentStartRequest(room, {
-      ...meta,
-      actorId: '',
-      initializedAt: 0,
-      clientMutationId: '',
-    });
-    const prepared = Number(state.startRequestVersion ?? 0) === meta.startRequestVersion
-      && String(state.startRequestId ?? '') === meta.startRequestId
-      && Array.isArray(state.pieces)
-      && state.pieces.length > 0;
-    if (!currentRequest || !prepared) return false;
+    if (!isCurrentStartRequest(room, identity) || !isPreparedForRequest(state, identity)) return false;
     if (room.status === 'playing' && room.startStatus === 'playing') return true;
 
     const countdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
