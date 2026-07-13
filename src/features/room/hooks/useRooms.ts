@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { auth } from '../../../services/firebase/firebaseAuth';
 import { subscribeActiveRooms, subscribeRoomPlayers, type RoomSummary } from '../services/roomService';
 import { createRoomListSubscriptionController } from './roomListSubscription';
 
@@ -16,6 +17,7 @@ export function useRooms(options: UseRoomsOptions = {}) {
       subscribeRooms: subscribeActiveRooms,
       subscribePlayers: subscribeRoomPlayers,
       onRooms: setRooms,
+      getCurrentUserId: () => auth?.currentUser?.uid ?? '',
     });
     controller.start();
     return () => controller.dispose();
