@@ -68,12 +68,11 @@ service cloud.firestore {
         && (
           room.status == 'finished'
           || room.currentPlayers <= 0
-          || (room.createdAt is timestamp && request.time > room.createdAt + duration.value(2, 'h'))
         );
     }
 
     function deletingWithParentRoom(roomId) {
-      return signedIn() && roomExists(roomId) && !roomExistsAfter(roomId);
+      return signedIn() && roomExists(roomId) && !roomExistsAfter(roomPath(roomId));
     }
 
     function canDeleteRoomData(roomId) {
