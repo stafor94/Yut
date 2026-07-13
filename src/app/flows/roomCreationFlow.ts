@@ -1,3 +1,5 @@
+import { ROOM_CREATION_TIMEOUT_MS } from '../../features/room/services/roomCreationTiming';
+
 export type RoomCreationOperation = 'auth' | 'create' | 'recover';
 
 export class RoomCreationTimeoutError extends Error {
@@ -7,10 +9,20 @@ export class RoomCreationTimeoutError extends Error {
   }
 }
 
+export function resolveRoomCreationTimeoutMs(timeoutMs: number, operation: RoomCreationOperation) {
+  const safeTimeoutMs = Math.max(0, timeoutMs);
+  return operation === 'recover'
+    ? ROOM_CREATION_TIMEOUT_MS
+    : Math.min(safeTimeoutMs, ROOM_CREATION_TIMEOUT_MS);
+}
+
 export function withOperationTimeout<T>(operationPromise: Promise<T>, timeoutMs: number, operation: RoomCreationOperation): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<T>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new RoomCreationTimeoutError(operation)), Math.max(0, timeoutMs));
+    timeoutId = setTimeout(
+      () => reject(new RoomCreationTimeoutError(operation)),
+      resolveRoomCreationTimeoutMs(timeoutMs, operation),
+    );
   });
   return Promise.race([operationPromise, timeoutPromise]).finally(() => {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
