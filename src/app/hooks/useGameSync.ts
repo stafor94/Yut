@@ -17,6 +17,22 @@ import {
   type SequenceRecoveryEscalationDetail,
 } from './sequenceRecoveryWatchdog';
 
+const SEQUENCE_RECOVERY_FETCH_TIMEOUT_MS = 5000;
+
+function getLatestGameStateWithTimeout(roomId: string) {
+  return new Promise<SyncedGameState | null>((resolve) => {
+    let settled = false;
+    const finish = (state: SyncedGameState | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      resolve(state);
+    };
+    const timer = window.setTimeout(() => finish(null), SEQUENCE_RECOVERY_FETCH_TIMEOUT_MS);
+    void getLatestGameState(roomId).then(finish).catch(() => finish(null));
+  });
+}
+
 export function useGameSyncDebugState(diagnosticState: Record<string, unknown>) {
   useEffect(() => {
     (window as typeof window & { __YUT_DEBUG_STATE__?: Record<string, unknown> }).__YUT_DEBUG_STATE__ = diagnosticState;
@@ -60,7 +76,7 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
     if (escalationRecoveryRef.current) return escalationRecoveryRef.current;
     const recovery = (async () => {
       if (!roomId || activeRoomIdRef.current !== roomId) return false;
-      const latestState = await getLatestGameState(roomId);
+      const latestState = await getLatestGameStateWithTimeout(roomId);
       if (!latestState || activeRoomIdRef.current !== roomId) return false;
       const localSequence = lastAppliedSequenceRef.current;
       const remoteSequence = Number(latestState.lastSequence ?? 0);
