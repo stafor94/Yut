@@ -226,8 +226,9 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   }, [movingPieceId, pieces]);
 
   useEffect(() => {
-    const captureEffectId = captureEffect?.id ? String(captureEffect.id) : '';
-    if (!captureEffectId || lastCaptureEffectIdRef.current === captureEffectId) return;
+    if (!captureEffect?.id) return;
+    const captureEffectId = String(captureEffect.id);
+    if (lastCaptureEffectIdRef.current === captureEffectId) return;
     lastCaptureEffectIdRef.current = captureEffectId;
     const capturedPiecesStillOnBoard = captureEffect.pieceIds.some((pieceId) => pieces.some((piece) => piece.id === pieceId && piece.started && !piece.finished));
     const sourcePieces = capturedPiecesStillOnBoard ? pieces : previousPiecesRef.current;
