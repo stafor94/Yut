@@ -18,6 +18,7 @@ export type ManagedRoomSummary = RoomSummary & {
   lastActivityAt?: unknown;
   systemRoomType?: string;
   lockRequestId?: string;
+  lockOwnerToken?: string;
   lockExpiresAt?: number;
 };
 
