@@ -30,6 +30,10 @@ export const isRoomExitInGame = (room: RoomExitRoomState) => (
   room.status === 'playing' || room.startStatus === 'entering' || room.startStatus === 'playing'
 );
 
+export const shouldDeferRoomExitCleanup = (gameScreenActive: boolean, lifecycleRequestsDeferral: boolean) => (
+  !gameScreenActive && lifecycleRequestsDeferral
+);
+
 export const shouldSubstituteRoomPlayerAsAi = (
   room: RoomExitRoomState,
   player: RoomExitPlayer,
