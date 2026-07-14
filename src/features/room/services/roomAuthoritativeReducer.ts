@@ -200,8 +200,14 @@ const applyTurnActionTimeoutPolicy = (
   const currentState = state as TimeoutCountState;
   const timeoutCounts = getTimeoutCountMap(currentState.turnActionTimeoutCountBySeatId);
   const recoveredFromTimeout = isTimeoutRecoveryAction(action);
+  const previousActorTimeoutCount = action.actorId ? normalizeTurnActionTimeoutCount(timeoutCounts[action.actorId]) : 0;
+  let timeoutCountChanged = false;
   if (recoveredFromTimeout && action.actorId) {
-    timeoutCounts[action.actorId] = incrementTurnActionTimeoutCount(timeoutCounts[action.actorId]);
+    timeoutCounts[action.actorId] = incrementTurnActionTimeoutCount(previousActorTimeoutCount);
+    timeoutCountChanged = true;
+  } else if (action.actorId && previousActorTimeoutCount > 0) {
+    timeoutCounts[action.actorId] = 0;
+    timeoutCountChanged = true;
   }
 
   const patch = { ...reduction.patch };
@@ -221,7 +227,7 @@ const applyTurnActionTimeoutPolicy = (
     if ('pendingItemPickup' in patch) patch.pendingItemPickup = replaceNestedDeadline(patch.pendingItemPickup, nextDeadline);
   }
 
-  if (recoveredFromTimeout) patch.turnActionTimeoutCountBySeatId = timeoutCounts;
+  if (timeoutCountChanged) patch.turnActionTimeoutCountBySeatId = timeoutCounts;
   return { ...reduction, patch };
 };
 
