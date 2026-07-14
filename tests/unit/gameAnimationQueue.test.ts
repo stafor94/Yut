@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createGameAnimationQueue } from '../../src/app/flows/gameAnimationQueue.js';
+import {
+  REMOTE_ROLL_PRESENTATION_MS,
+  REMOTE_ROLL_RESULT_HOLD_MS,
+  createGameAnimationQueue,
+} from '../../src/app/flows/gameAnimationQueue.js';
+import { REMOTE_ROLL_PRE_RESULT_MS } from '../../src/app/flows/yutRollAnimation.js';
 
 const createDeferred = () => {
   let resolve!: () => void;
@@ -9,6 +14,12 @@ const createDeferred = () => {
   });
   return { promise, resolve };
 };
+
+test('remote roll presentation preserves 1.4 seconds for the settled result', () => {
+  assert.equal(REMOTE_ROLL_RESULT_HOLD_MS, 1400);
+  assert.equal(REMOTE_ROLL_PRESENTATION_MS, REMOTE_ROLL_PRE_RESULT_MS + REMOTE_ROLL_RESULT_HOLD_MS);
+  assert.equal(REMOTE_ROLL_PRESENTATION_MS - REMOTE_ROLL_PRE_RESULT_MS, 1400);
+});
 
 test('game animations run strictly in enqueue order', async () => {
   const queue = createGameAnimationQueue();
