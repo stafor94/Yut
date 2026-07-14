@@ -25,6 +25,7 @@ import {
   type GameSyncRuntime,
   type GameSyncSubscriptionController,
 } from './gameSyncSubscription';
+import { syncPendingRemoteActionItemPromptTiming } from './pendingRemoteActionPolicy';
 import {
   notifySequenceRecoveryProgress,
   SEQUENCE_RECOVERY_FATAL_EVENT,
@@ -54,6 +55,7 @@ function getLatestGameStateWithTimeout(roomId: string) {
 }
 
 export function useGameSyncDebugState(diagnosticState: Record<string, unknown>) {
+  syncPendingRemoteActionItemPromptTiming(diagnosticState.itemPromptTiming);
   useEffect(() => {
     (window as typeof window & { __YUT_DEBUG_STATE__?: Record<string, unknown> }).__YUT_DEBUG_STATE__ = diagnosticState;
   }, [diagnosticState]);
