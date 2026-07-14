@@ -94,12 +94,38 @@ const resolveAiPendingItemPickup = (
   };
 };
 
+const finalizeIndividualWinner = (
+  args: Parameters<typeof reduceCoreAuthoritativeGameAction>,
+  reduction: ReturnType<typeof reduceCoreAuthoritativeGameAction>,
+): ReturnType<typeof reduceCoreAuthoritativeGameAction> => {
+  if (!isAuthoritativeCommitReduction(reduction)) return reduction;
+
+  const [, action, room] = args;
+  if (action.type !== 'move_piece'
+    || room.playMode !== 'individual'
+    || typeof reduction.patch.winner !== 'string'
+    || !reduction.patch.winner) return reduction;
+
+  return {
+    ...reduction,
+    patch: {
+      ...reduction.patch,
+      gameEndMode: 'final',
+    },
+    payload: {
+      ...reduction.payload,
+      gameEndMode: 'final',
+    },
+  };
+};
+
 export function reduceAuthoritativeGameAction(
   ...args: Parameters<typeof reduceCoreAuthoritativeGameAction>
 ): ReturnType<typeof reduceCoreAuthoritativeGameAction> {
   let reduction = reduceCoreAuthoritativeGameAction(...args);
   reduction = retryRollAfterResolvedBeforeRollPrompt(args, reduction);
   reduction = resolveAiPendingItemPickup(args, reduction);
+  reduction = finalizeIndividualWinner(args, reduction);
   if (!isAuthoritativeCommitReduction(reduction)) return reduction;
 
   const [state, action, room] = args;
