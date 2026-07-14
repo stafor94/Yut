@@ -45,12 +45,16 @@ type GameBoardProps = {
   getPieceGroupKey?: (piece: BoardPiece) => string;
 };
 
+function getPieceColorStyle(piece: BoardPiece) {
+  return { '--piece-color': piece.color } as CSSProperties;
+}
+
 function getOffBoardPieceStyle(piece: BoardPiece, ownerIndex: number, ownerOrder: number, desktopTop: number, portraitTop: number) {
   const portraitColumn = ownerOrder % 2;
   return {
     left: `${108 + ownerIndex * 5}%`,
     top: `${desktopTop}%`,
-    background: piece.color,
+    ...getPieceColorStyle(piece),
     translate: '-50% -50%',
     '--portrait-bench-left': `${16 + portraitColumn * 48 + ownerIndex * 8}%`,
     '--portrait-bench-top': `${portraitTop}px`,
@@ -71,7 +75,7 @@ function getFinishedPieceStyle(piece: BoardPiece, pieces: BoardPiece[], getPiece
   return {
     left: `${108 + benchIndex * 5}%`,
     top: `${20 + safeOwnerOrder * 15}%`,
-    background: piece.color,
+    ...getPieceColorStyle(piece),
     translate: '-50% -50%',
     '--portrait-bench-left': `${16 + portraitColumn * 48 + benchIndex * 8}%`,
     '--portrait-bench-top': `${34 + portraitRow * 54}px`,
@@ -91,14 +95,36 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   if (piece.finished) {
     return getFinishedPieceStyle(piece, pieces, getPieceGroupKey);
   }
+
   const node: BoardNode | undefined = BOARD_NODES.find((candidate) => candidate.id === piece.nodeId) ?? BOARD_NODES[piece.nodeIndex] ?? BOARD_NODES[0];
-  const stackedPieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished && (candidate.started || candidate.id === movingPieceId));
+  const nodePieces = pieces.filter((candidate) => candidate.nodeId === piece.nodeId && !candidate.finished && (candidate.started || candidate.id === movingPieceId));
+  const pieceGroupKey = getPieceGroupKey(piece);
+  const groupKeys = Array.from(new Set(nodePieces.map((candidate) => getPieceGroupKey(candidate))));
+  const groupIndex = Math.max(0, groupKeys.findIndex((groupKey) => groupKey === pieceGroupKey));
+  const groupAngle = (Math.PI * 2 * groupIndex) / Math.max(groupKeys.length, 1);
+  const groupRadius = groupKeys.length > 1 ? 12 : 0;
+  const xOffset = Number((Math.cos(groupAngle) * groupRadius).toFixed(1));
+  const yOffset = Number((Math.sin(groupAngle) * groupRadius).toFixed(1));
+  const stackedPieces = nodePieces.filter((candidate) => getPieceGroupKey(candidate) === pieceGroupKey);
   const stackIndex = Math.max(0, stackedPieces.findIndex((candidate) => candidate.id === piece.id));
-  const angle = (Math.PI * 2 * stackIndex) / Math.max(stackedPieces.length, 1);
-  const radius = stackedPieces.length > 1 ? 12 : 0;
-  const xOffset = Number((Math.cos(angle) * radius).toFixed(1));
-  const yOffset = Number((Math.sin(angle) * radius).toFixed(1));
-  return { left: `${node.x}%`, top: `${node.y}%`, background: piece.color, translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset}px)` };
+  const stackLift = stackIndex * 2;
+
+  return {
+    left: `${node.x}%`,
+    top: `${node.y}%`,
+    ...getPieceColorStyle(piece),
+    '--piece-stack-z': 10 + groupIndex * 5 + stackIndex,
+    translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset - stackLift}px)`,
+    '--piece-stack-index': stackIndex,
+    '--piece-stack-size': stackedPieces.length,
+  } as CSSProperties;
+}
+
+function PieceFigure() {
+  return <span className="piece-token-figure" aria-hidden="true">
+    <span className="piece-token-head" />
+    <span className="piece-token-body" />
+  </span>;
 }
 
 export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], shieldedPieceIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], captureEffect = null, captureDestinationNodeId = '', finishEffect = null, trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
@@ -161,6 +187,9 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
       const pieceSelectable = isPieceSelectable?.(piece) !== false;
       const pieceSelected = pieceSelectable && selectedIds.includes(piece.id);
       const finishVisualPiece = finishEffect?.pieces.find((candidate) => candidate.id === piece.id);
+      const stackedPieceCount = (piece.started || piece.id === movingPieceId) && !piece.finished
+        ? pieces.filter((candidate) => (candidate.started || candidate.id === movingPieceId) && !candidate.finished && candidate.nodeId === piece.nodeId && getPieceGroupKey(candidate) === getPieceGroupKey(piece)).length
+        : 1;
       const pieceStyle = {
         ...getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey),
         ...(finishVisualPiece ? { '--finish-delay': `${finishVisualPiece.delayMs}ms` } : {}),
@@ -169,13 +198,14 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         type="button"
         data-testid={`piece-${piece.id}`}
         key={piece.id}
-        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${piece.started && !piece.finished && capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''} ${captureApproachPieceIds.has(piece.id) ? 'capture-approach' : ''} ${captureAttackerPieceIds.has(piece.id) ? 'capture-attacker-recoil' : ''} ${visualCapturePieceIds.has(piece.id) ? 'capture-source-hidden' : ''} ${finishPieceIds.has(piece.id) ? 'finish-arrival' : ''}`}
+        className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${stackedPieceCount > 1 ? 'stacked' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${piece.started && !piece.finished && capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''} ${captureApproachPieceIds.has(piece.id) ? 'capture-approach' : ''} ${captureAttackerPieceIds.has(piece.id) ? 'capture-attacker-recoil' : ''} ${visualCapturePieceIds.has(piece.id) ? 'capture-source-hidden' : ''} ${finishPieceIds.has(piece.id) ? 'finish-arrival' : ''}`}
         style={pieceStyle}
         onClick={() => onSelectPiece(piece.id)}
         disabled={piece.finished || !pieceSelectable}
         aria-label={`${piece.label} 말 선택${shieldedPieceIds.includes(piece.id) ? ', 방패 적용됨' : ''}`}
       >
-        {piece.finished ? '완' : piece.label}
+        <PieceFigure />
+        {piece.finished ? <span className="piece-finish-mark">완</span> : null}
         {shieldedPieceIds.includes(piece.id) && !piece.finished ? <span className="piece-shield-badge" aria-label="방패 적용됨">🛡️</span> : null}
       </button>;
     })}
@@ -205,7 +235,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
       style={{
         left: `${piece.sourceLeft}%`,
         top: `${piece.sourceTop}%`,
-        background: piece.color,
+        '--piece-color': piece.color,
         translate: '-50% -50%',
         '--capture-source-left': `${piece.sourceLeft}%`,
         '--capture-source-top': `${piece.sourceTop}%`,
@@ -217,7 +247,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         '--capture-arc-height': `${piece.arcHeight}px`,
         '--capture-end-scale': piece.endScale,
       } as CSSProperties}
-    >{piece.label}</span>)}
+    ><PieceFigure /></span>)}
     {finishEffect?.pieces.map((piece) => <span
       key={`${finishEffect.id}:${piece.id}`}
       className="piece-token finish-ghost"
@@ -225,7 +255,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
       style={{
         left: `${piece.sourceLeft}%`,
         top: `${piece.sourceTop}%`,
-        background: piece.color,
+        '--piece-color': piece.color,
         translate: '-50% -50%',
         '--finish-source-left': `${piece.sourceLeft}%`,
         '--finish-source-top': `${piece.sourceTop}%`,
@@ -235,7 +265,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         '--finish-mid-rotation': `${piece.midRotation}deg`,
         '--finish-delay': `${piece.delayMs}ms`,
       } as CSSProperties}
-    >{piece.label}</span>)}
+    ><PieceFigure /></span>)}
     {finishEffect?.pieces.map((piece) => <span
       key={`${finishEffect.id}:launch:${piece.id}`}
       className="finish-launch-wave"
