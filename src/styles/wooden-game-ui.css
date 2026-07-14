@@ -1,0 +1,435 @@
+/* Premium traditional wooden game UI.
+   The board, turn plaque, and controls are rendered with CSS-only materials so
+   gameplay geometry and timing logic remain unchanged. */
+
+.game-shell .board-panel {
+  isolation: isolate;
+  border: 1px solid rgba(92, 48, 22, .22);
+  background:
+    radial-gradient(circle at 50% 8%, rgba(255, 239, 195, .82), transparent 34%),
+    repeating-linear-gradient(0deg, rgba(110, 67, 30, .025) 0 1px, transparent 1px 5px),
+    linear-gradient(145deg, #fff9e9 0%, #f5e7c9 54%, #ead4ab 100%);
+  box-shadow:
+    0 28px 64px rgba(67, 35, 17, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .88),
+    inset 0 0 0 5px rgba(255, 249, 230, .58);
+}
+
+/* Carved wooden board and recessed path. */
+.game-shell .board {
+  border: 12px solid #5b2f18;
+  border-radius: 34px;
+  background:
+    radial-gradient(circle at 50% 46%, rgba(255, 235, 183, .5), transparent 48%),
+    repeating-linear-gradient(7deg, rgba(255, 238, 196, .09) 0 2px, rgba(96, 52, 25, .055) 2px 4px, transparent 4px 11px),
+    linear-gradient(145deg, #e8bd7c 0%, #d6a562 44%, #c98f4f 72%, #b9793f 100%);
+  box-shadow:
+    0 30px 46px rgba(55, 27, 12, .34),
+    0 12px 18px rgba(55, 27, 12, .22),
+    0 0 0 3px #35180b,
+    0 0 0 7px rgba(190, 126, 52, .28),
+    inset 0 3px 0 rgba(255, 226, 168, .48),
+    inset 0 -7px 12px rgba(57, 27, 12, .42);
+}
+
+.game-shell .board::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  z-index: 0;
+  border: 2px solid rgba(236, 190, 102, .88);
+  border-radius: 20px;
+  box-shadow:
+    0 0 0 3px rgba(67, 31, 13, .42),
+    inset 0 0 0 2px rgba(255, 232, 183, .22),
+    inset 0 0 32px rgba(77, 39, 17, .16);
+  pointer-events: none;
+}
+
+.game-shell .board::after {
+  content: "";
+  position: absolute;
+  inset: 17px;
+  z-index: 0;
+  border-radius: 13px;
+  background:
+    linear-gradient(90deg, transparent 0 10%, rgba(255, 239, 199, .06) 16%, transparent 24% 68%, rgba(86, 45, 20, .04) 76%, transparent 86%),
+    repeating-linear-gradient(2deg, transparent 0 17px, rgba(89, 48, 23, .035) 17px 18px);
+  pointer-events: none;
+}
+
+.game-shell .board-route-lines {
+  filter:
+    drop-shadow(0 2px 0 rgba(255, 224, 167, .34))
+    drop-shadow(0 -1px 0 rgba(62, 30, 14, .46));
+}
+
+.game-shell .board-route-lines rect,
+.game-shell .board-route-lines line {
+  stroke: rgba(87, 43, 20, .72);
+  stroke-width: 2.05;
+  stroke-dasharray: none;
+}
+
+.game-shell .board-node {
+  border: 3px solid #592b15;
+  background:
+    radial-gradient(circle at 48% 48%, #dcb175 0 54%, #bc7f43 64%, #74401f 80%, #3f1d0d 100%);
+  box-shadow:
+    inset 0 7px 9px rgba(54, 25, 10, .42),
+    inset 0 -2px 3px rgba(255, 221, 160, .32),
+    0 2px 0 rgba(255, 224, 169, .42),
+    0 5px 8px rgba(54, 25, 10, .2);
+}
+
+.game-shell .board-node.corner {
+  border-color: #6d3b1d;
+  box-shadow:
+    inset 0 8px 10px rgba(48, 21, 8, .48),
+    inset 0 -2px 4px rgba(255, 225, 166, .34),
+    0 0 0 2px rgba(207, 151, 70, .52),
+    0 5px 9px rgba(54, 25, 10, .24);
+}
+
+.game-shell .board-node.center {
+  border-color: #684018;
+  background:
+    radial-gradient(circle at 36% 28%, #fff2ac 0 8%, transparent 9%),
+    radial-gradient(circle at 50% 48%, #e9ba4e 0 45%, #bd7927 67%, #6e3a16 100%);
+  box-shadow:
+    inset 0 3px 4px rgba(255, 239, 166, .54),
+    inset 0 -5px 7px rgba(83, 41, 14, .38),
+    0 0 0 3px rgba(247, 206, 104, .5),
+    0 7px 12px rgba(67, 33, 14, .3);
+}
+
+.game-shell .board-node.start {
+  border-color: #d6a64c;
+  background:
+    radial-gradient(circle at 36% 28%, rgba(255, 255, 255, .42) 0 8%, transparent 9%),
+    radial-gradient(circle at 50% 52%, #2e7656 0 48%, #20513f 72%, #132e25 100%);
+  box-shadow:
+    inset 0 4px 7px rgba(255, 255, 255, .2),
+    inset 0 -5px 8px rgba(7, 29, 20, .42),
+    0 0 0 4px rgba(236, 184, 75, .28),
+    0 7px 12px rgba(38, 23, 12, .3);
+}
+
+.game-shell .board-node.start::before {
+  bottom: -34px;
+  border: 1px solid rgba(224, 180, 91, .88);
+  border-radius: 9px;
+  background: linear-gradient(180deg, #274f3f, #17372c);
+  color: #fff4d3;
+  box-shadow:
+    0 5px 10px rgba(44, 24, 12, .26),
+    inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+
+.game-shell .board-node.start::after {
+  color: #cb3e2e;
+  text-shadow:
+    0 2px 0 #f6d794,
+    0 5px 8px rgba(66, 31, 14, .32);
+}
+
+/* Parchment order strip and carved current-turn plaque. */
+.game-shell .turn-indicator {
+  width: min(100%, 620px);
+  min-height: 66px;
+  margin-bottom: 20px;
+  padding: 11px 18px;
+  border: 2px solid #8b582c;
+  border-radius: 18px;
+  background:
+    linear-gradient(90deg, rgba(137, 84, 39, .1), transparent 12% 88%, rgba(137, 84, 39, .1)),
+    repeating-linear-gradient(0deg, rgba(92, 52, 24, .025) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #fff5d8 0%, #efd5a5 100%);
+  box-shadow:
+    0 12px 22px rgba(62, 31, 14, .22),
+    0 0 0 3px rgba(211, 157, 73, .2),
+    inset 0 1px 0 rgba(255, 255, 255, .8),
+    inset 0 -4px 7px rgba(103, 57, 25, .12);
+  text-shadow: none;
+}
+
+.game-shell .turn-indicator::before,
+.game-shell .turn-indicator::after {
+  content: "";
+  width: 8px;
+  height: 32px;
+  border: 1px solid #6f3c1e;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6b3519, #d6a75c 48%, #5b2b15);
+  box-shadow: 0 3px 6px rgba(49, 23, 10, .26);
+}
+
+.game-shell .turn-indicator::before { justify-self: start; }
+.game-shell .turn-indicator::after { justify-self: end; }
+
+.game-shell .turn-current-badge {
+  max-width: min(46vw, 292px);
+  padding: 9px 18px;
+  border: 2px solid #d2a553;
+  border-radius: 13px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .11), transparent 32%),
+    linear-gradient(145deg, #28533f, #18372c 68%, #10281f);
+  color: #fff4d3;
+  font-size: clamp(.86rem, 1.6vw, 1.08rem);
+  letter-spacing: .015em;
+  text-shadow: 0 2px 2px rgba(8, 25, 18, .62);
+  box-shadow:
+    inset 5px 0 0 var(--turn-current-color, #d2a553),
+    inset -5px 0 0 var(--turn-current-color, #d2a553),
+    inset 0 1px 0 rgba(255, 255, 255, .18),
+    0 5px 10px rgba(43, 24, 12, .28);
+}
+
+.game-shell .turn-neighbor {
+  color: #5f391f;
+  text-shadow: 0 1px 0 rgba(255, 250, 224, .9);
+}
+
+.game-shell .turn-separator {
+  color: #865229;
+  text-shadow: 0 1px 0 rgba(255, 244, 204, .9);
+}
+
+.game-shell .turn-roll-stack-badge {
+  border-color: #aa7434;
+  background: linear-gradient(180deg, #fff3cb, #e6c184);
+  color: #315a45;
+  box-shadow:
+    0 4px 8px rgba(64, 33, 15, .16),
+    inset 0 1px 0 rgba(255, 255, 255, .72);
+}
+
+/* Low wooden control table with woven inlay and lacquered buttons. */
+.game-shell .play-controls {
+  position: relative;
+  width: min(100%, 620px);
+  min-height: 104px;
+  margin-top: 28px;
+  padding: 20px 22px 18px;
+  border: 9px solid #5a2d16;
+  border-radius: 26px;
+  background:
+    radial-gradient(ellipse at 50% 15%, rgba(255, 246, 205, .5), transparent 48%),
+    repeating-linear-gradient(0deg, rgba(91, 51, 23, .075) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, rgba(255, 247, 213, .14) 0 1px, transparent 1px 5px),
+    linear-gradient(145deg, #e4ca91, #cfa665 62%, #b98345);
+  box-shadow:
+    0 24px 34px rgba(55, 28, 13, .3),
+    0 10px 14px rgba(55, 28, 13, .18),
+    0 0 0 3px #36190c,
+    0 0 0 6px rgba(203, 143, 57, .22),
+    inset 0 2px 0 rgba(255, 231, 179, .46),
+    inset 0 -6px 10px rgba(67, 31, 13, .28);
+}
+
+.game-shell .play-controls::before {
+  content: "";
+  position: absolute;
+  inset: 7px;
+  z-index: 0;
+  border: 2px solid rgba(211, 160, 75, .92);
+  border-radius: 13px;
+  box-shadow:
+    0 0 0 2px rgba(67, 31, 13, .34),
+    inset 0 0 18px rgba(88, 47, 20, .14);
+  pointer-events: none;
+}
+
+.game-shell .play-controls > * {
+  position: relative;
+  z-index: 1;
+}
+
+.game-shell .time-limit-bar {
+  width: min(100%, 500px);
+  height: 12px;
+  border: 2px solid #5a301a;
+  background: #8b603d;
+  box-shadow:
+    inset 0 3px 5px rgba(49, 23, 10, .52),
+    0 1px 0 rgba(255, 224, 164, .48);
+}
+
+.game-shell .time-limit-bar span {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .34),
+    inset 0 -2px 3px rgba(63, 31, 14, .22);
+}
+
+.game-shell .roll-timing-meter {
+  width: min(100%, 500px);
+  height: 12px;
+  border: 2px solid #5a301a;
+  background: linear-gradient(180deg, #8b603d, #654126);
+  box-shadow:
+    inset 0 3px 5px rgba(49, 23, 10, .52),
+    0 1px 0 rgba(255, 224, 164, .48);
+}
+
+.game-shell .roll-timing-meter > span:not(.roll-timing-orb) {
+  top: 1px;
+  bottom: 1px;
+  height: auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .24);
+}
+
+.game-shell .roll-timing-good.left,
+.game-shell .roll-timing-good.right {
+  background: rgba(47, 107, 79, .72);
+}
+
+.game-shell .roll-timing-perfect {
+  background: rgba(142, 68, 173, .72);
+}
+
+.game-shell .roll-timing-orb {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  border: 3px solid #4b2917;
+  background:
+    radial-gradient(circle at 35% 28%, #fff6c8 0 9%, transparent 10%),
+    radial-gradient(circle, #efce76 0 42%, #b87c2c 70%, #704015 100%);
+  box-shadow:
+    0 5px 9px rgba(45, 22, 10, .36),
+    inset 0 2px 2px rgba(255, 247, 198, .5),
+    inset 0 -3px 4px rgba(83, 43, 15, .34);
+}
+
+.game-shell .play-controls button,
+.game-shell .bottom-branch-controls .branch-move-button {
+  border: 2px solid #e1b45d;
+  color: #fff8df;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .15), transparent 30%),
+    linear-gradient(145deg, #de5942, #b93629 64%, #8e251d);
+  text-shadow: 0 2px 2px rgba(76, 21, 15, .5);
+  box-shadow:
+    0 9px 0 #6c281b,
+    0 14px 20px rgba(67, 28, 15, .26),
+    inset 0 2px 0 rgba(255, 234, 199, .28),
+    inset 0 -4px 6px rgba(88, 23, 17, .28);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.game-shell .play-controls button:not(:disabled):active {
+  transform: translateY(5px);
+  box-shadow:
+    0 4px 0 #6c281b,
+    0 8px 12px rgba(67, 28, 15, .22),
+    inset 0 2px 0 rgba(255, 234, 199, .22),
+    inset 0 -3px 5px rgba(88, 23, 17, .3);
+}
+
+.game-shell .play-controls button:disabled {
+  opacity: .6;
+  filter: saturate(.56) brightness(.92);
+  box-shadow:
+    0 5px 0 #684334,
+    0 9px 14px rgba(56, 29, 16, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+
+.game-shell .bottom-branch-controls button:not(.branch-move-button),
+.game-shell .inline-item-actions button.secondary {
+  border-color: #8d5b2d;
+  background: linear-gradient(180deg, #fff0c6, #d8ad6d);
+  color: #4f2d19;
+  text-shadow: 0 1px 0 rgba(255, 248, 219, .72);
+  box-shadow:
+    0 6px 0 #81502a,
+    0 10px 15px rgba(58, 29, 13, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+
+.game-shell .bottom-branch-controls button.active {
+  border-color: #d7ad59;
+  background: linear-gradient(145deg, #2f6b4f, #183c2f);
+  color: #fff8df;
+  text-shadow: 0 2px 2px rgba(8, 31, 21, .42);
+}
+
+@media (max-width: 767px) {
+  .game-shell .board-panel {
+    padding-inline: 12px;
+    border-radius: 22px;
+  }
+
+  .game-shell .turn-indicator {
+    min-height: 56px;
+    margin-bottom: 16px;
+    padding: 8px 10px;
+    border-radius: 15px;
+    gap: 5px;
+  }
+
+  .game-shell .turn-indicator::before,
+  .game-shell .turn-indicator::after {
+    width: 5px;
+    height: 25px;
+  }
+
+  .game-shell .turn-current-badge {
+    max-width: min(43vw, 210px);
+    padding: 7px 11px;
+    border-radius: 11px;
+  }
+
+  .game-shell .board {
+    border-width: 9px;
+    border-radius: 27px;
+    box-shadow:
+      0 22px 34px rgba(55, 27, 12, .31),
+      0 8px 13px rgba(55, 27, 12, .2),
+      0 0 0 2px #35180b,
+      0 0 0 5px rgba(190, 126, 52, .24),
+      inset 0 2px 0 rgba(255, 226, 168, .42),
+      inset 0 -5px 9px rgba(57, 27, 12, .38);
+  }
+
+  .game-shell .board::before {
+    inset: 4px;
+    border-radius: 16px;
+  }
+
+  .game-shell .board::after { inset: 12px; }
+
+  .game-shell .board-node {
+    border-width: 2px;
+  }
+
+  .game-shell .board-route-lines rect,
+  .game-shell .board-route-lines line {
+    stroke-width: 1.8;
+  }
+
+  .game-shell .play-controls {
+    min-height: 138px;
+    margin-top: 30px;
+    padding: 17px 15px 18px;
+    border-width: 7px;
+    border-radius: 23px;
+  }
+
+  .game-shell .play-controls button {
+    min-height: 54px;
+  }
+
+  .game-shell .time-limit-bar,
+  .game-shell .roll-timing-meter {
+    width: min(100%, 460px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-shell .play-controls button {
+    transition: none;
+  }
+}
