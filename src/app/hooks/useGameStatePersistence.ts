@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { saveGameState, type GameAction, type GameSequenceType } from '../../features/room/services/roomService';
+import { clearPendingStackedBonusRoll, syncPendingStackedBonusRoll } from '../../game-core/stackedRollTurnGuard';
 import { makeGameStateFingerprint } from '../appState';
 
 type PendingSequenceMeta = {
@@ -32,7 +33,14 @@ export function useGameStatePersistence({
   const savingStateFingerprintRef = useRef('');
   const coordinatorSaveRetryRef = useRef<{ roomId: string; fingerprint: string; count: number; timer: number }>({ roomId: '', fingerprint: '', count: 0, timer: 0 });
 
+  syncPendingStackedBonusRoll({
+    screen,
+    rollStackLength: Array.isArray(rollStack) ? rollStack.length : 0,
+    rollStackClosed: Boolean(rollStackClosed),
+  });
+
   useEffect(() => () => {
+    clearPendingStackedBonusRoll();
     if (coordinatorSaveRetryRef.current.timer) window.clearTimeout(coordinatorSaveRetryRef.current.timer);
   }, []);
 
