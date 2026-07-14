@@ -36,6 +36,7 @@ const transitionRemovalTimers = new Map<string, number>();
 let pendingCleanupDrainInFlight = false;
 
 const getActiveRoomIdFromStorage = () => typeof window === 'undefined' ? '' : window.localStorage.getItem(ACTIVE_ROOM_STORAGE_KEY) ?? '';
+const isGameScreenActive = () => typeof document !== 'undefined' && Boolean(document.querySelector('[data-testid="app-shell"].screen-game'));
 
 const readPendingCleanups = (): PendingRoomCleanup[] => {
   if (typeof window === 'undefined') return [];
@@ -189,7 +190,7 @@ function scheduleTransitionRoomRemoval(roomId: string, playerId: string, options
 export async function removeRoomPlayerSafely(...args: Parameters<typeof removeRoomPlayerCore>) {
   const [roomId, playerId, options = {}] = args;
   const pendingCleanup = { roomId, playerId, preservePlayingSeatAsAi: options.preservePlayingSeatAsAi ?? true };
-  if (shouldDeferOwnRoomRemoval({
+  if (!isGameScreenActive() && shouldDeferOwnRoomRemoval({
     roomId,
     activeRoomId: getActiveRoomIdFromStorage(),
     currentUserId: auth?.currentUser?.uid ?? '',
