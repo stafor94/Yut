@@ -5,8 +5,9 @@ import {
   deleteRoom as deleteRoomCore,
   removeRoomPlayer as removeRoomPlayerCore,
   type RoomPlayer,
+  type RoomSeat,
 } from './roomServiceCore';
-import { shouldSubstituteRoomPlayerAsAi } from './roomExitPolicy';
+import { shouldDeferRoomExitCleanup, shouldSubstituteRoomPlayerAsAi } from './roomExitPolicy';
 import {
   getRoomLastActivityMillis,
   shouldDeferOwnRoomRemoval,
@@ -35,6 +36,7 @@ const transitionRemovalTimers = new Map<string, number>();
 let pendingCleanupDrainInFlight = false;
 
 const getActiveRoomIdFromStorage = () => typeof window === 'undefined' ? '' : window.localStorage.getItem(ACTIVE_ROOM_STORAGE_KEY) ?? '';
+const isGameScreenActive = () => typeof document !== 'undefined' && Boolean(document.querySelector('[data-testid="app-shell"].screen-game'));
 
 const readPendingCleanups = (): PendingRoomCleanup[] => {
   if (typeof window === 'undefined') return [];
@@ -66,7 +68,11 @@ export const queuePendingRoomCleanup = (entry: PendingRoomCleanup) => {
   writePendingCleanups(nextEntries);
 };
 
-export async function removeRoomPlayerNow(roomId: string, playerId: string, _options: { preservePlayingSeatAsAi?: boolean } = {}) {
+const removePendingRoomCleanup = (roomId: string, playerId: string) => {
+  writePendingCleanups(readPendingCleanups().filter((entry) => entry.roomId !== roomId || entry.playerId !== playerId));
+};
+
+export async function removeRoomPlayerNow(roomId: string, playerId: string, options: { preservePlayingSeatAsAi?: boolean } = {}) {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const [room, players] = await Promise.all([getManagedRoom(roomId), getRoomPlayers(roomId)]);
   if (!room) return;
@@ -91,18 +97,25 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, _opt
     const shouldFinishRoom = noOtherHumanPlayers && deletionGuardStillMatches;
     const freshSeatIndex = Number(freshPlayer.seatIndex);
     const hasFreshSeat = Number.isInteger(freshSeatIndex) && freshSeatIndex >= 0;
-    const shouldSubstituteAsAi = shouldSubstituteRoomPlayerAsAi(freshRoom, freshPlayer, hasFreshSeat);
+    const freshSeatRef = hasFreshSeat ? doc(db!, 'rooms', roomId, 'seats', String(freshSeatIndex)) : null;
+    const freshSeatSnapshot = freshSeatRef ? await transaction.get(freshSeatRef) : null;
+    const freshSeat = freshSeatSnapshot?.exists() ? freshSeatSnapshot.data() as RoomSeat : null;
+    const shouldSubstituteAsAi = options.preservePlayingSeatAsAi !== false
+      && shouldSubstituteRoomPlayerAsAi(freshRoom, freshPlayer, hasFreshSeat);
 
-    if (shouldSubstituteAsAi) {
+    if (shouldSubstituteAsAi && freshSeatRef) {
+      const nextPresenceEpoch = Math.max(Number(freshPlayer.presenceEpoch ?? 0), Number(freshSeat?.presenceEpoch ?? 0)) + 1;
       transaction.set(playerRef, {
         nickname: freshPlayer.nickname || '플레이어',
         ready: true,
         isAI: true,
         isSubstitutedByAI: true,
         isSpectator: false,
+        presenceEpoch: nextPresenceEpoch,
+        substitutedAt: serverTimestamp(),
         lastSeen: serverTimestamp(),
       }, { merge: true });
-      transaction.set(doc(db!, 'rooms', roomId, 'seats', String(freshSeatIndex)), {
+      transaction.set(freshSeatRef, {
         playerId,
         originalPlayerId: playerId,
         currentPlayerId: playerId,
@@ -115,6 +128,8 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, _opt
         aiName: '',
         isSubstitutedByAI: true,
         status: 'ai_substitute',
+        presenceEpoch: nextPresenceEpoch,
+        substitutedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }, { merge: true });
       const changedAt = Date.now();
@@ -126,7 +141,7 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, _opt
     }
 
     transaction.delete(playerRef);
-    if (hasFreshSeat) transaction.delete(doc(db!, 'rooms', roomId, 'seats', String(freshSeatIndex)));
+    if (freshSeatRef) transaction.delete(freshSeatRef);
     const nextCurrentPlayers = Math.max(0, currentPlayers - (freshPlayer.isSpectator ? 0 : 1));
     const changedAt = Date.now();
     transaction.set(roomRef, {
@@ -151,16 +166,18 @@ function scheduleTransitionRoomRemoval(roomId: string, playerId: string, options
   const timerId = window.setTimeout(() => {
     transitionRemovalTimers.delete(key);
     void getActivePlayerRoomMemberships(playerId)
-      .then((memberships) => {
+      .then(async (memberships) => {
         const hasOtherMembership = memberships.some((membership) => membership.room.id !== roomId);
         if (!hasOtherMembership) {
+          removePendingRoomCleanup(roomId, playerId);
           if (shouldRestoreDeferredRoomPointer({
             hasOtherMembership,
             activeRoomId: getActiveRoomIdFromStorage(),
           })) window.localStorage.setItem(ACTIVE_ROOM_STORAGE_KEY, roomId);
           return;
         }
-        return removeRoomPlayerNow(roomId, playerId, options);
+        await removeRoomPlayerNow(roomId, playerId, options);
+        removePendingRoomCleanup(roomId, playerId);
       })
       .catch((error) => {
         queuePendingRoomCleanup({ roomId, playerId, preservePlayingSeatAsAi: options.preservePlayingSeatAsAi ?? true });
@@ -172,19 +189,23 @@ function scheduleTransitionRoomRemoval(roomId: string, playerId: string, options
 
 export async function removeRoomPlayerSafely(...args: Parameters<typeof removeRoomPlayerCore>) {
   const [roomId, playerId, options = {}] = args;
-  if (shouldDeferOwnRoomRemoval({
+  const pendingCleanup = { roomId, playerId, preservePlayingSeatAsAi: options.preservePlayingSeatAsAi ?? true };
+  const lifecycleRequestsDeferral = shouldDeferOwnRoomRemoval({
     roomId,
     activeRoomId: getActiveRoomIdFromStorage(),
     currentUserId: auth?.currentUser?.uid ?? '',
     playerId,
-  })) {
+  });
+  if (shouldDeferRoomExitCleanup(isGameScreenActive(), lifecycleRequestsDeferral)) {
+    queuePendingRoomCleanup(pendingCleanup);
     scheduleTransitionRoomRemoval(roomId, playerId, options);
     return;
   }
+  queuePendingRoomCleanup(pendingCleanup);
   try {
     await removeRoomPlayerNow(roomId, playerId, options);
+    removePendingRoomCleanup(roomId, playerId);
   } catch (error) {
-    queuePendingRoomCleanup({ roomId, playerId, preservePlayingSeatAsAi: options.preservePlayingSeatAsAi ?? true });
     throw error;
   }
 }
@@ -207,6 +228,10 @@ export async function drainPendingRoomCleanups() {
   const failed: PendingRoomCleanup[] = [];
   try {
     for (const entry of entries) {
+      if (entry.roomId === getActiveRoomIdFromStorage()) {
+        failed.push(entry);
+        continue;
+      }
       try {
         await removeRoomPlayerNow(entry.roomId, entry.playerId, { preservePlayingSeatAsAi: entry.preservePlayingSeatAsAi });
       } catch {

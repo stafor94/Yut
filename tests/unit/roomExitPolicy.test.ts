@@ -5,6 +5,7 @@ import {
   hasRecoverableRoomPlayer,
   isAiSubstitutionUpdate,
   isRoomExitInGame,
+  shouldDeferRoomExitCleanup,
   shouldDeleteRoomAfterAiSubstitution,
   shouldSubstituteRoomPlayerAsAi,
 } from '../../src/features/room/services/roomExitPolicy';
@@ -33,6 +34,12 @@ test('진행 상태와 진입 상태는 모두 인게임으로 판정한다', ()
   assert.equal(isRoomExitInGame({ status: 'finished', startStatus: 'playing' }), true);
   assert.equal(isRoomExitInGame({ status: 'waiting', startStatus: 'entering' }), true);
   assert.equal(isRoomExitInGame({ status: 'waiting', startStatus: 'idle' }), false);
+});
+
+test('인게임 화면의 퇴장 정리는 로컬 포인터가 남아있어도 지연하지 않는다', () => {
+  assert.equal(shouldDeferRoomExitCleanup(true, true), false);
+  assert.equal(shouldDeferRoomExitCleanup(false, true), true);
+  assert.equal(shouldDeferRoomExitCleanup(false, false), false);
 });
 
 test('인게임의 플레이어 시트는 퇴장 사유와 무관하게 AI로 대체한다', () => {
