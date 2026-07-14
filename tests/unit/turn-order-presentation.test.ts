@@ -10,25 +10,31 @@ const order = [
   { seatId: 'player-d', label: '4P', name: '라온', color: '#8055a5' },
 ];
 
-test('순서 연출 시작 전 2초 준비 시간을 둔다', () => {
-  assert.equal(TURN_ORDER_PRESENTATION_PREPARE_MS, 2000);
+test('순서 연출 시작 전 3초 준비 시간을 둔다', () => {
+  assert.equal(TURN_ORDER_PRESENTATION_PREPARE_MS, 3000);
 });
 
-test('순서 공개 애니메이션은 기존보다 1초 길게 계산된다', () => {
+test('순서 공개 애니메이션은 초기 셔플을 2초 더 길게 계산한다', () => {
   assert.equal(getTurnOrderSlotRevealDurationMs(0), 0);
-  assert.equal(getTurnOrderSlotRevealDurationMs(1), 2000);
-  assert.equal(getTurnOrderSlotRevealDurationMs(2), 2550);
-  assert.equal(getTurnOrderSlotRevealDurationMs(3), 3100);
-  assert.equal(getTurnOrderSlotRevealDurationMs(4), 3650);
+  assert.equal(getTurnOrderSlotRevealDurationMs(1), 4000);
+  assert.equal(getTurnOrderSlotRevealDurationMs(2), 4550);
+  assert.equal(getTurnOrderSlotRevealDurationMs(3), 5100);
+  assert.equal(getTurnOrderSlotRevealDurationMs(4), 5650);
 });
 
-test('2초 초기 셔플 뒤 0.55초 간격으로 순서가 하나씩 공개된다', () => {
-  assert.equal(getTurnOrderStoppedSlotCount(4, 1999), 0);
-  assert.equal(getTurnOrderStoppedSlotCount(4, 2000), 1);
-  assert.equal(getTurnOrderStoppedSlotCount(4, 2549), 1);
-  assert.equal(getTurnOrderStoppedSlotCount(4, 2550), 2);
-  assert.equal(getTurnOrderStoppedSlotCount(4, 3100), 3);
-  assert.equal(getTurnOrderStoppedSlotCount(4, 3650), 4);
+test('4초 초기 셔플 뒤 0.55초 간격으로 순서가 하나씩 공개된다', () => {
+  assert.equal(getTurnOrderStoppedSlotCount(4, 3999), 0);
+  assert.equal(getTurnOrderStoppedSlotCount(4, 4000), 1);
+  assert.equal(getTurnOrderStoppedSlotCount(4, 4549), 1);
+  assert.equal(getTurnOrderStoppedSlotCount(4, 4550), 2);
+  assert.equal(getTurnOrderStoppedSlotCount(4, 5100), 3);
+  assert.equal(getTurnOrderStoppedSlotCount(4, 5650), 4);
+});
+
+test('4인 순서 정하기는 준비와 공개 구간을 합쳐 기존보다 정확히 3초 길어진다', () => {
+  const previousDurationMs = 2000 + 3650;
+  const currentDurationMs = TURN_ORDER_PRESENTATION_PREPARE_MS + getTurnOrderSlotRevealDurationMs(order.length);
+  assert.equal(currentDurationMs - previousDurationMs, 3000);
 });
 
 test('intro 타임스탬프에 준비 시간과 연장된 공개 시간을 함께 반영한다', () => {
