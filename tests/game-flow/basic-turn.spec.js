@@ -70,6 +70,35 @@ test.describe('game flow QA', () => {
         overlayVisible: true,
         initialEntryPending: false,
       });
+      await expect.poll(async () => {
+        const [screenState, room, roomState, sequences] = await Promise.all([
+          collectScreenState(page),
+          getRoomForQa(roomId),
+          getRoomStateForQa(roomId),
+          getRoomSequencesForQa(roomId),
+        ]);
+        const countdownEndsAt = Number(room?.startCountdownEndsAt ?? 0);
+        const introReadyAt = Number(roomState?.turnOrderIntro?.readyAt ?? 0);
+        return {
+          overlayVisible: await page.getByTestId('start-countdown-overlay').isVisible().catch(() => false),
+          waitingVisible: screenState.visibleScreens.waitingRoom,
+          gameVisible: screenState.visibleScreens.game,
+          roomStatus: room?.status,
+          startStatus: room?.startStatus,
+          hasCurrentState: Boolean(roomState),
+          initializedSequenceCount: sequences.filter((sequence) => sequence.type === 'game_initialized').length,
+          introStartsAfterCountdown: countdownEndsAt > 0 && introReadyAt > countdownEndsAt,
+        };
+      }, { timeout: 5_000, message: '취소 잠금 이후에는 카운트다운을 유지한 채 초기 state와 순서 결과를 한 번만 미리 전송해야 합니다.' }).toEqual({
+        overlayVisible: true,
+        waitingVisible: true,
+        gameVisible: false,
+        roomStatus: 'waiting',
+        startStatus: 'requested',
+        hasCurrentState: true,
+        initializedSequenceCount: 1,
+        introStartsAfterCountdown: true,
+      });
       await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 5_000 });
       await expect.poll(async () => {
         const state = await collectScreenState(page);
@@ -80,14 +109,12 @@ test.describe('game flow QA', () => {
           gameVisible: state.visibleScreens.game,
           hasCurrentState: Boolean(roomState),
           initializedSequenceCount: sequences.filter((sequence) => sequence.type === 'game_initialized').length,
-          initialEntryPending: Boolean(state.yutDebug?.turnHealth?.initialGameEntryPending),
         };
-      }, { timeout: 2_500, message: '카운트다운 종료 후 초기화 지연 중에는 pending만 켜고 대기실/state 없음 상태를 유지해야 합니다.' }).toEqual({
-        waitingVisible: true,
-        gameVisible: false,
-        hasCurrentState: false,
-        initializedSequenceCount: 0,
-        initialEntryPending: true,
+      }, { timeout: 5_000, message: '카운트다운 종료 후에는 사전 준비된 state로 즉시 게임 화면에 진입해야 합니다.' }).toEqual({
+        waitingVisible: false,
+        gameVisible: true,
+        hasCurrentState: true,
+        initializedSequenceCount: 1,
       });
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 5_000 });

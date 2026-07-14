@@ -10,6 +10,11 @@ import {
   type GameStartPreparationPlayer,
   type GameStartPreparationRoom,
 } from '../../src/app/flows/gameStartPreparation.js';
+import {
+  isRoomGameActivationWindowOpen,
+  isRoomGamePreparationWindowOpen,
+  ROOM_START_ACTIVATION_GRACE_MS,
+} from '../../src/features/room/services/roomGamePreparationPolicy.js';
 import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming.js';
 import { TURN_ORDER_PRESENTATION_PREPARE_MS, getTurnOrderSlotRevealDurationMs } from '../../src/app/flows/turnOrderPresentation.js';
 
@@ -32,6 +37,25 @@ test('취소 잠금 시점은 카운트다운 종료 2초 전으로 계산한다
   const countdownEndsAt = 20_000;
   assert.equal(ROOM_START_CANCEL_LOCK_MS, 2_000);
   assert.equal(getRoomStartPreparationAt(countdownEndsAt), 18_000);
+});
+
+test('초기 게임 상태는 취소 잠금 이후부터 카운트다운 종료 전까지만 준비한다', () => {
+  const countdownEndsAt = 20_000;
+  assert.equal(isRoomGamePreparationWindowOpen(countdownEndsAt, 17_999), false);
+  assert.equal(isRoomGamePreparationWindowOpen(countdownEndsAt, 18_000), true);
+  assert.equal(isRoomGamePreparationWindowOpen(countdownEndsAt, 19_999), true);
+  assert.equal(isRoomGamePreparationWindowOpen(countdownEndsAt, 20_000), false);
+  assert.equal(isRoomGamePreparationWindowOpen(countdownEndsAt, 29_000), false);
+});
+
+test('준비된 게임은 카운트다운 종료 직후 5초 유예시간 안에서만 활성화한다', () => {
+  const countdownEndsAt = 20_000;
+  assert.equal(ROOM_START_ACTIVATION_GRACE_MS, 5_000);
+  assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 19_999), false);
+  assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 20_000), true);
+  assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 25_000), true);
+  assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 25_001), false);
+  assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 29_000), false);
 });
 
 test('같은 시작 요청은 동일한 준비 키와 mutation id를 사용한다', () => {

@@ -2,13 +2,15 @@ import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
 import { getClientMutationDocRef, makeSequenceDocId, sanitizeForFirestore } from './roomFirestore';
 import {
+  isRoomGameActivationWindowOpen,
+  isRoomGamePreparationWindowOpen,
+} from './roomGamePreparationPolicy';
+import {
   makeSequenceEventFields,
   type RoomSummary,
   type SaveGameStateResult,
   type SyncedGameState,
 } from './roomServiceCore';
-
-const ROOM_START_CANCEL_LOCK_MS = 2_000;
 
 type GameStartRequestIdentity = {
   startRequestVersion: number;
@@ -87,11 +89,9 @@ export async function prepareRoomGameState(
     }
 
     const countdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
-    const preparationStartsAt = countdownEndsAt - ROOM_START_CANCEL_LOCK_MS;
     const requestCanBePrepared = room.status === 'waiting'
       && room.startStatus === 'requested'
-      && countdownEndsAt > 0
-      && Date.now() >= preparationStartsAt
+      && isRoomGamePreparationWindowOpen(countdownEndsAt)
       && !isCancelledStartRequest(room);
     if (!requestCanBePrepared) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
 
@@ -158,8 +158,7 @@ export async function activatePreparedRoomGame(roomId: string, identity: GameSta
     const countdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
     const requestCanBeActivated = room.status === 'waiting'
       && room.startStatus === 'requested'
-      && countdownEndsAt > 0
-      && Date.now() >= countdownEndsAt
+      && isRoomGameActivationWindowOpen(countdownEndsAt)
       && !isCancelledStartRequest(room);
     if (!requestCanBeActivated) return false;
 
