@@ -189,6 +189,7 @@ export function buildPreparedRoomGameState(params: {
     rollResultReadyAt: 0,
     turnOrderPhase: { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
     waitingForPlayersReady: false,
+    turnActionTimeoutCountBySeatId: {} as Record<string, number>,
     turnDeadlineAt: gameStartedAt + TURN_ACTION_TIMEOUT_MS,
     turnDeadlineKind: 'roll' as const,
     startRequestVersion,

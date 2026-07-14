@@ -1,5 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
+import {
+  TURN_ITEM_PROMPT_TIMEOUT_MS,
+  getTurnActionTimeoutMsForCount,
+  incrementTurnActionTimeoutCount,
+} from '../../features/room/services/roomTiming';
 import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
@@ -75,6 +80,7 @@ export function GameBoardControls({
   const rollTimingOrbRef = useRef<HTMLSpanElement | null>(null);
   const wasLocalTurnActiveRef = useRef(false);
   const [turnActionTimedOut, setTurnActionTimedOut] = useState(false);
+  const [timeoutCountBySeatId, setTimeoutCountBySeatId] = useState<Record<string, number>>({});
   const localTurnActive = Boolean(activeSeatId && activeSeatId === localSeatId && !waitingForOnlineTurnOrder && !hasActiveTurnOrderIntro);
   const getVisibleRollTimingPositionPercent = () => {
     const meter = rollTimingMeterRef.current;
@@ -108,9 +114,25 @@ export function GameBoardControls({
   const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;
   const showRollStackPicker = canShowLocalRollStack && rollStack.length >= 2 && selectedRollStackIndex === null;
   const showRollStackMoveButton = canShowLocalRollStack && rollStack.length > 0 && !showRollStackPicker;
-  const timerDurationMs = activeSeatId ? getTurnActionTimeoutMs(activeSeatId) : turnActionTimeoutMs;
   const turnActionPhase = roll || rollStackClosed ? 'move' : 'roll';
   const turnActionTimerKey = `${activeSeatId ?? ''}:${turnActionPhase}:${rollStack.length}`;
+  const itemPromptTimerKey = `${activeSeatId ?? localSeatId}:${activeItemPromptTypes.join('|')}`;
+  const timerSeatId = activeSeatId ?? localSeatId;
+  const timerDurationMs = useMemo(
+    () => getTurnActionTimeoutMsForCount(timeoutCountBySeatId[timerSeatId], turnActionTimeoutMs),
+    [timerSeatId, turnActionTimerKey, turnActionTimeoutMs],
+  );
+  const itemPromptTimerDurationMs = useMemo(
+    () => getTurnActionTimeoutMsForCount(timeoutCountBySeatId[localSeatId], TURN_ITEM_PROMPT_TIMEOUT_MS),
+    [itemPromptTimerKey, localSeatId],
+  );
+  const recordTimeout = (seatId: string) => {
+    if (!seatId) return;
+    setTimeoutCountBySeatId((current) => ({
+      ...current,
+      [seatId]: incrementTurnActionTimeoutCount(current[seatId]),
+    }));
+  };
   const turnActionTimerVisible = !isOpponentTurn && activeItemPromptTypes.length === 0 && (
     showBottomBranchControls
       ? canRequestMove
@@ -120,9 +142,18 @@ export function GameBoardControls({
   useEffect(() => {
     setTurnActionTimedOut(false);
     if (!turnActionTimerVisible || typeof window === 'undefined') return undefined;
-    const timer = window.setTimeout(() => setTurnActionTimedOut(true), timerDurationMs);
+    const timer = window.setTimeout(() => {
+      setTurnActionTimedOut(true);
+      recordTimeout(timerSeatId);
+    }, timerDurationMs);
     return () => window.clearTimeout(timer);
-  }, [timerDurationMs, turnActionTimerKey, turnActionTimerVisible]);
+  }, [timerDurationMs, timerSeatId, turnActionTimerKey, turnActionTimerVisible]);
+
+  useEffect(() => {
+    if (isOpponentTurn || activeItemPromptTypes.length === 0 || !localSeatId || typeof window === 'undefined') return undefined;
+    const timer = window.setTimeout(() => recordTimeout(localSeatId), itemPromptTimerDurationMs);
+    return () => window.clearTimeout(timer);
+  }, [activeItemPromptTypes.length, isOpponentTurn, itemPromptTimerDurationMs, itemPromptTimerKey, localSeatId]);
 
   const handleRollButtonClick = () => {
     if (turnActionTimedOut) return;
@@ -147,10 +178,13 @@ export function GameBoardControls({
         : waitingForOnlineTurnOrder ? '순서 정하기 대기 중'
           : hasActiveTurnOrderIntro ? '결과 확인 중' : '윷 던지기';
 
+  void getItemPromptTimeoutMs;
+  void getTurnActionTimeoutMs;
+
   return <div ref={controlsRef} className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
     {isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
       <div><strong>아이템을 사용할까요?</strong></div>
-      <div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${getItemPromptTimeoutMs(localSeatId)}ms` } as CSSProperties} aria-hidden="true"><span></span></div>
+      <div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${itemPromptTimerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>
       <div className="inline-item-actions">
         {activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => onUseItem(type)}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}
         <button className="secondary" onClick={onSkipItemPrompt}>사용 안 함</button>
