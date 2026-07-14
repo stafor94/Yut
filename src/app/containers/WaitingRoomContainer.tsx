@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { PieceCount, PlayMode, Seat, Team } from '../appState';
 import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
 import { getWaitingRoomStartHint } from '../flows/gameStartFlow';
 import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
+import { ROOM_START_ACTIVATION_GRACE_MS } from '../../features/room/services/roomGamePreparationPolicy';
 
 type WaitingRoomContainerProps = {
   canManageRoom: boolean;
@@ -61,12 +62,15 @@ export function WaitingRoomContainer({
   onLeaveRoom,
 }: WaitingRoomContainerProps) {
   const lastCountdownValueRef = useRef<number | null>(null);
+  const transitionTimerRef = useRef<number | null>(null);
+  const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
+  const effectiveStartFlowBusy = startFlowBusy || countdownTransitionPending;
   const startBlockedHint = getWaitingRoomStartHint({
     initialGameEntryPending,
     roomInGame,
-    startFlowBusy,
+    startFlowBusy: effectiveStartFlowBusy,
     allReady,
     playMode,
     teamBalanced,
@@ -79,22 +83,42 @@ export function WaitingRoomContainer({
   useEffect(() => {
     if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return undefined;
 
-    const playCountdownSound = () => {
-      const countdownElement = document.querySelector<HTMLElement>('[data-testid="start-countdown-overlay"] strong');
+    const clearTransitionTimer = () => {
+      if (transitionTimerRef.current === null) return;
+      window.clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = null;
+    };
+    const holdCompletedCountdown = () => {
+      clearTransitionTimer();
+      setCountdownTransitionPending(true);
+      transitionTimerRef.current = window.setTimeout(() => {
+        transitionTimerRef.current = null;
+        setCountdownTransitionPending(false);
+      }, ROOM_START_ACTIVATION_GRACE_MS);
+    };
+    const inspectCountdown = () => {
+      const countdownElement = document.querySelector<HTMLElement>('[data-testid="start-countdown-overlay"]:not([data-start-transition-bridge="true"]) strong');
       if (!countdownElement) {
+        if (lastCountdownValueRef.current === 0) holdCompletedCountdown();
         lastCountdownValueRef.current = null;
         return;
       }
+
+      clearTransitionTimer();
+      setCountdownTransitionPending(false);
       const value = Number(countdownElement.textContent?.trim());
       if (!Number.isInteger(value) || value < 0 || value > 5 || lastCountdownValueRef.current === value) return;
       lastCountdownValueRef.current = value;
       playStoredSoundEffect(value === 0 ? 'countdownStart' : 'countdown');
     };
 
-    playCountdownSound();
-    const observer = new MutationObserver(playCountdownSound);
+    inspectCountdown();
+    const observer = new MutationObserver(inspectCountdown);
     observer.observe(document.body, { childList: true, characterData: true, subtree: true });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      clearTransitionTimer();
+    };
   }, []);
 
   return <WaitingRoomScreen canManageRoom={canManageRoom}>
@@ -130,9 +154,11 @@ export function WaitingRoomContainer({
     <footer className="waiting-actions role-actions">
       {startBlockedHint ? <p className="start-blocked-hint" role="status">{startBlockedHint}</p> : null}
       <div className="waiting-action-buttons">
-        {canManageRoom ? <button data-testid="start-game-button" onClick={onStartGame} disabled={startFlowBusy || !allReady}>게임 시작</button> : <button onClick={onToggleReady} disabled={roomInGame || !myWaitingSeat}>{roomInGame ? '게임중' : myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
+        {canManageRoom ? <button data-testid="start-game-button" onClick={onStartGame} disabled={effectiveStartFlowBusy || !allReady}>게임 시작</button> : <button onClick={onToggleReady} disabled={roomInGame || !myWaitingSeat}>{roomInGame ? '게임중' : myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
         <button className="secondary" onClick={onLeaveRoom}>방 나가기</button>
       </div>
     </footer>
+
+    {countdownTransitionPending && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" data-start-transition-bridge="true" className="countdown-overlay" role="status"><span>게임 시작</span><strong>0</strong></div></div>}
   </WaitingRoomScreen>;
 }
