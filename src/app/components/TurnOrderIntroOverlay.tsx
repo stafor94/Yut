@@ -104,7 +104,10 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
                   key={`${entry.seatId}-${slotEntry.seatId}-${rowIndex}`}
                 >
                   {isTargetRow && <b className="turn-order-rank-medal">{columnIndex + 1}</b>}
-                  <span className="turn-order-slot-name">{slotEntry.name}</span>
+                  <span
+                    className="turn-order-slot-name"
+                    style={{ color: '#fff', textShadow: '0 1px 2px rgba(0, 0, 0, .38)' }}
+                  >{slotEntry.name}</span>
                   {isMine && <em className="turn-order-slot-badge mine-badge" style={{ color: slotEntry.color, borderColor: '#fff' }}>나</em>}
                 </span>;
               })}
