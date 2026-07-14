@@ -57,12 +57,12 @@
 }
 
 .yut-roll-scene[data-renderer='fallback'] .yut-stick {
-  animation-duration: 1.2s;
+  animation-duration: 2.2s;
   animation-delay: calc(var(--stick-index) * 34ms);
 }
 
 .pending-roll .yut-roll-scene[data-renderer='fallback'] .yut-stick {
-  animation-duration: 1.2s;
+  animation-duration: 2.2s;
 }
 
 .pending-roll.extra-spin-roll .yut-roll-scene[data-renderer='fallback'] .yut-stick-body {
