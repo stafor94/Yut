@@ -111,3 +111,29 @@ test('두 번째 시간초과부터 서버 제한시간은 최소 5초로 고정
   assert.deepEqual(result.patch.turnActionTimeoutCountBySeatId, { 'seat-1': 2 });
   assert.equal(result.patch.turnDeadlineAt, 300000 + 2600 + 5000);
 }));
+
+test('아이템 교체 대기의 내부 deadline도 줄어든 turn deadline과 일치한다', () => withMockNow(400000, () => {
+  const state = {
+    ...baseState(400000, 1),
+    pieces: [
+      { id: 'seat-1-piece-1', ownerId: 'seat-1', nodeIndex: 1, nodeId: 'n02', started: true, finished: false },
+      { id: 'seat-2-piece-1', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+    ],
+    roll: { name: '도' as const, steps: 1 },
+    boardItems: [{ id: 'item-1', type: 'move_minus_one' as const, nodeId: 'n03' }],
+    ownedItems: { 'seat-1': ['move_plus_one' as const] },
+    turnDeadlineKind: 'move' as const,
+  };
+  const result = reduceAuthoritativeGameAction(
+    state as any,
+    { type: 'move_piece', actorId: 'seat-1', payload: { pieceId: 'seat-1-piece-1', branchChoice: 'outer' } },
+    room,
+    sides,
+  );
+
+  assert.equal(result.status, 'committed');
+  if (result.status !== 'committed') return;
+  assert.equal(result.patch.turnDeadlineKind, 'item_prompt');
+  assert.equal(result.patch.turnDeadlineAt, 400000 + 5000);
+  assert.equal((result.patch.pendingItemPickup as { deadline?: number } | null)?.deadline, 400000 + 5000);
+}));
