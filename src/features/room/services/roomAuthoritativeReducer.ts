@@ -119,6 +119,7 @@ export function reduceAuthoritativeGameAction(
     }
   }
 
+  if (!isAuthoritativeCommitReduction(reduction)) return reduction;
   if (!room.stackedRollMode || !resolvesAfterRollStackPrompt(action)) return reduction;
 
   const resolvedRollStack = (reduction.patch.rollStack ?? state.rollStack) as unknown[] | undefined;
