@@ -35,9 +35,6 @@ const retryRollAfterResolvedBeforeRollPrompt = (
   const itemsWithoutBeforeRollPrompt = actorItems.filter((type) => ITEM_DEFINITIONS[type]?.timing !== 'before_roll');
   if (itemsWithoutBeforeRollPrompt.length === actorItems.length) return reduction;
 
-  // itemPromptTiming is the authoritative per-turn gate. After an explicit skip it is null,
-  // so retained before-roll items are removed only for this retry. Any unrelated rejection
-  // is evaluated again by the core reducer and remains rejected without depending on message text.
   return reduceCoreAuthoritativeGameAction({
     ...state,
     ownedItems: { ...ownedItems, [action.actorId]: itemsWithoutBeforeRollPrompt },
@@ -183,7 +180,11 @@ const replaceMatchingNestedDeadline = (value: unknown, previousDeadline: number,
   return Number(record.deadline ?? 0) === previousDeadline ? { ...record, deadline: nextDeadline } : value;
 };
 
-const getBaseTimeoutMs = (kind: TurnDeadlineKind) => (
+const getCoreDeadlineBaseMs = (kind: TurnDeadlineKind) => (
+  kind === 'trap_placement' ? TURN_ITEM_PROMPT_TIMEOUT_MS : TURN_ACTION_TIMEOUT_MS
+);
+
+const getVisibleDeadlineBaseMs = (kind: TurnDeadlineKind) => (
   kind === 'item_prompt' || kind === 'trap_placement'
     ? TURN_ITEM_PROMPT_TIMEOUT_MS
     : TURN_ACTION_TIMEOUT_MS
@@ -210,9 +211,10 @@ const applyTurnActionTimeoutPolicy = (
 
   if (previousDeadline > 0 && deadlineKind && deadlineKind !== 'turn_order') {
     const targetSeatId = getTimeoutTargetSeatId(mergedState);
-    const baseTimeoutMs = getBaseTimeoutMs(deadlineKind);
-    const nextTimeoutMs = getTurnActionTimeoutMsForCount(timeoutCounts[targetSeatId], baseTimeoutMs);
-    const nextDeadline = previousDeadline - baseTimeoutMs + nextTimeoutMs;
+    const coreBaseTimeoutMs = getCoreDeadlineBaseMs(deadlineKind);
+    const visibleBaseTimeoutMs = getVisibleDeadlineBaseMs(deadlineKind);
+    const nextTimeoutMs = getTurnActionTimeoutMsForCount(timeoutCounts[targetSeatId], visibleBaseTimeoutMs);
+    const nextDeadline = previousDeadline - coreBaseTimeoutMs + nextTimeoutMs;
     patch.turnDeadlineAt = nextDeadline;
     if ('pendingTrapPlacement' in patch) patch.pendingTrapPlacement = replaceMatchingNestedDeadline(patch.pendingTrapPlacement, previousDeadline, nextDeadline);
     if ('pendingGoldenYutSelection' in patch) patch.pendingGoldenYutSelection = replaceMatchingNestedDeadline(patch.pendingGoldenYutSelection, previousDeadline, nextDeadline);
