@@ -1,3 +1,8 @@
+.board-node.route-preview {
+  outline-color: rgba(255, 212, 59, .96);
+  box-shadow: none;
+}
+
 .route-preview-marker.finish {
   width: auto;
   min-width: 38px;
