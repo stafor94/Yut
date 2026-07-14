@@ -97,3 +97,35 @@ test('reset discards queued animations that have not started', async () => {
   assert.deepEqual(order, ['active-start', 'active-end']);
   assert.equal(queue.isBusy(), false);
 });
+
+test('an immediate remount keeps the active animation queue', async () => {
+  const queue = createGameAnimationQueue();
+  const gate = createDeferred();
+  const order: string[] = [];
+  const releaseFirstMount = queue.acquire();
+
+  const active = queue.enqueue('strict-mode-roll', async () => {
+    order.push('roll-start');
+    await gate.promise;
+    order.push('roll-end');
+  });
+  const queued = queue.enqueue('strict-mode-move', async () => {
+    order.push('move-start');
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+  releaseFirstMount();
+  const releaseSecondMount = queue.acquire();
+  await Promise.resolve();
+
+  assert.equal(queue.isBusy(), true);
+  assert.equal(queue.has('strict-mode-move'), true);
+  gate.resolve();
+  await Promise.all([active, queued]);
+  assert.deepEqual(order, ['roll-start', 'roll-end', 'move-start']);
+
+  releaseSecondMount();
+  await Promise.resolve();
+  assert.equal(queue.isBusy(), false);
+});
