@@ -13,6 +13,7 @@ export type TurnOrderSeat = {
 export type TurnOrderRollEntry<TSeat extends TurnOrderSeat = TurnOrderSeat> = { seat: TSeat; result: YutResult; rollOffRound: number };
 
 const TURN_ORDER_TEAM_COLORS: Record<TurnOrderTeam, string> = { 청팀: '#3a78c2', 홍팀: '#d94a38' };
+export const TURN_ORDER_PRESENTATION_FINAL_HOLD_MS = 3000;
 
 export const getTurnOrderScore = (result: YutResult) => result.name === '빽도' ? 0 : result.steps;
 
@@ -100,5 +101,6 @@ type CreateTurnOrderIntroOptions<TSeat extends TurnOrderSeat> = {
 export function createTurnOrderIntro<TSeat extends TurnOrderSeat>(orderedSeats: TSeat[], { getSeatPieceColor, playMode, finalHoldMs, now = Date.now() }: CreateTurnOrderIntroOptions<TSeat>) {
   const order = orderedSeats.map((seat) => ({ seatId: seat.id, label: seat.label, name: seat.name, color: playMode === 'team' ? TURN_ORDER_TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }));
   const slotUntil = now + TURN_ORDER_PRESENTATION_PREPARE_MS + getTurnOrderSlotRevealDurationMs(order.length);
-  return { order, slotUntil, intro: { order, visible: true, slotUntil, readyAt: slotUntil + finalHoldMs } };
+  const finalHoldDurationMs = Math.max(finalHoldMs, TURN_ORDER_PRESENTATION_FINAL_HOLD_MS);
+  return { order, slotUntil, intro: { order, visible: true, slotUntil, readyAt: slotUntil + finalHoldDurationMs } };
 }
