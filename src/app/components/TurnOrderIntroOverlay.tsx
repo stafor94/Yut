@@ -94,7 +94,12 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
                 const isFinalCard = isStopped && isTargetRow;
                 return <span
                   className={`turn-order-slot-card ${isFinalCard ? 'final-card' : ''} ${isFinalCard && slotEntry.seatId === localSeatId ? 'mine' : ''}`}
-                  style={{ color: slotEntry.color, borderColor: slotEntry.color }}
+                  style={{
+                    '--slot-card-color': slotEntry.color,
+                    backgroundColor: slotEntry.color,
+                    borderColor: slotEntry.color,
+                    color: '#fff',
+                  } as CSSProperties}
                   key={`${entry.seatId}-${slotEntry.seatId}-${rowIndex}`}
                 >
                   {isTargetRow && <b className="turn-order-rank-medal">{columnIndex + 1}</b>}
