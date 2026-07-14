@@ -63,6 +63,7 @@ export function WaitingRoomContainer({
 }: WaitingRoomContainerProps) {
   const lastCountdownValueRef = useRef<number | null>(null);
   const transitionTimerRef = useRef<number | null>(null);
+  const transitionPendingRef = useRef(false);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
@@ -83,33 +84,45 @@ export function WaitingRoomContainer({
   useEffect(() => {
     if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return undefined;
 
-    const clearTransitionTimer = () => {
-      if (transitionTimerRef.current === null) return;
-      window.clearTimeout(transitionTimerRef.current);
-      transitionTimerRef.current = null;
+    const clearCompletedCountdown = () => {
+      if (transitionTimerRef.current !== null) {
+        window.clearTimeout(transitionTimerRef.current);
+        transitionTimerRef.current = null;
+      }
+      if (!transitionPendingRef.current) return;
+      transitionPendingRef.current = false;
+      setCountdownTransitionPending(false);
     };
     const holdCompletedCountdown = () => {
-      clearTransitionTimer();
+      if (transitionPendingRef.current) return;
+      transitionPendingRef.current = true;
       setCountdownTransitionPending(true);
       transitionTimerRef.current = window.setTimeout(() => {
         transitionTimerRef.current = null;
+        transitionPendingRef.current = false;
         setCountdownTransitionPending(false);
       }, ROOM_START_ACTIVATION_GRACE_MS);
     };
     const inspectCountdown = () => {
-      const countdownElement = document.querySelector<HTMLElement>('[data-testid="start-countdown-overlay"]:not([data-start-transition-bridge="true"]) strong');
+      const countdownElement = document.querySelector<HTMLElement>('[data-testid="start-countdown-overlay"] strong');
       if (!countdownElement) {
-        if (lastCountdownValueRef.current === 0) holdCompletedCountdown();
         lastCountdownValueRef.current = null;
         return;
       }
 
-      clearTransitionTimer();
-      setCountdownTransitionPending(false);
       const value = Number(countdownElement.textContent?.trim());
-      if (!Number.isInteger(value) || value < 0 || value > 5 || lastCountdownValueRef.current === value) return;
+      if (!Number.isInteger(value) || value < 0 || value > 5) return;
+      if (value === 0) {
+        if (lastCountdownValueRef.current !== value) playStoredSoundEffect('countdownStart');
+        lastCountdownValueRef.current = value;
+        holdCompletedCountdown();
+        return;
+      }
+
+      clearCompletedCountdown();
+      if (lastCountdownValueRef.current === value) return;
       lastCountdownValueRef.current = value;
-      playStoredSoundEffect(value === 0 ? 'countdownStart' : 'countdown');
+      playStoredSoundEffect('countdown');
     };
 
     inspectCountdown();
@@ -117,7 +130,9 @@ export function WaitingRoomContainer({
     observer.observe(document.body, { childList: true, characterData: true, subtree: true });
     return () => {
       observer.disconnect();
-      clearTransitionTimer();
+      if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = null;
+      transitionPendingRef.current = false;
     };
   }, []);
 
@@ -159,6 +174,6 @@ export function WaitingRoomContainer({
       </div>
     </footer>
 
-    {countdownTransitionPending && <div className="countdown-scrim" role="presentation"><div data-testid="start-countdown-overlay" data-start-transition-bridge="true" className="countdown-overlay" role="status"><span>게임 시작</span><strong>0</strong></div></div>}
+    {countdownTransitionPending && <div className="countdown-scrim" role="presentation"><div data-testid="start-transition-overlay" className="countdown-overlay" role="status"><span>게임 시작</span><strong>0</strong></div></div>}
   </WaitingRoomScreen>;
 }
