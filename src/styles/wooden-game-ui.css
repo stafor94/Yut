@@ -156,16 +156,26 @@
 .game-shell .turn-indicator::before,
 .game-shell .turn-indicator::after {
   content: "";
+  position: absolute;
+  top: 50%;
+  z-index: 0;
   width: 8px;
   height: 32px;
+  translate: 0 -50%;
   border: 1px solid #6f3c1e;
   border-radius: 999px;
   background: linear-gradient(90deg, #6b3519, #d6a75c 48%, #5b2b15);
   box-shadow: 0 3px 6px rgba(49, 23, 10, .26);
+  pointer-events: none;
 }
 
-.game-shell .turn-indicator::before { justify-self: start; }
-.game-shell .turn-indicator::after { justify-self: end; }
+.game-shell .turn-indicator::before { left: -6px; }
+.game-shell .turn-indicator::after { right: -6px; }
+
+.game-shell .turn-indicator > * {
+  position: relative;
+  z-index: 1;
+}
 
 .game-shell .turn-current-badge {
   max-width: min(46vw, 292px);
