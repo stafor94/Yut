@@ -92,14 +92,20 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
               {reel.rows.map((slotEntry, rowIndex) => {
                 const isTargetRow = rowIndex === reel.targetRow;
                 const isFinalCard = isStopped && isTargetRow;
+                const isMine = isFinalCard && slotEntry.seatId === localSeatId;
                 return <span
-                  className={`turn-order-slot-card ${isFinalCard ? 'final-card' : ''} ${isFinalCard && slotEntry.seatId === localSeatId ? 'mine' : ''}`}
-                  style={{ color: slotEntry.color, borderColor: slotEntry.color }}
+                  className={`turn-order-slot-card ${isFinalCard ? 'final-card' : ''}`}
+                  style={{
+                    backgroundColor: slotEntry.color,
+                    borderColor: isMine ? '#fff' : slotEntry.color,
+                    color: '#fff',
+                    boxShadow: isMine ? 'inset 0 0 0 3px rgba(255, 255, 255, .96), 0 7px 18px rgba(42, 30, 23, .16)' : undefined,
+                  }}
                   key={`${entry.seatId}-${slotEntry.seatId}-${rowIndex}`}
                 >
                   {isTargetRow && <b className="turn-order-rank-medal">{columnIndex + 1}</b>}
                   <span className="turn-order-slot-name">{slotEntry.name}</span>
-                  {isFinalCard && slotEntry.seatId === localSeatId && <em className="turn-order-slot-badge mine-badge">나</em>}
+                  {isMine && <em className="turn-order-slot-badge mine-badge" style={{ color: slotEntry.color, borderColor: '#fff' }}>나</em>}
                   {isFinalCard && columnIndex === 0 && <em className="turn-order-slot-badge starter-badge">★ 선공</em>}
                 </span>;
               })}
