@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
+import { subscribeGameState } from '../../features/room/services/roomService';
 import {
   TURN_ITEM_PROMPT_TIMEOUT_MS,
   getTurnActionTimeoutMsForCount,
   incrementTurnActionTimeoutCount,
+  normalizeTurnActionTimeoutCount,
 } from '../../features/room/services/roomTiming';
 import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
+import { STORAGE_KEYS } from '../appState';
 import { getRollControlPresentation } from '../flows/rollControlPresentation';
 
 type GameBoardControlsProps = {
@@ -109,6 +112,22 @@ export function GameBoardControls({
     }, 120);
     return () => window.clearTimeout(timer);
   }, [activeSeatId, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
+    if (!roomId) return undefined;
+    return subscribeGameState(roomId, (state) => {
+      const rawCounts = (state as { turnActionTimeoutCountBySeatId?: unknown } | null)?.turnActionTimeoutCountBySeatId;
+      if (!rawCounts || typeof rawCounts !== 'object' || Array.isArray(rawCounts)) {
+        setTimeoutCountBySeatId({});
+        return;
+      }
+      setTimeoutCountBySeatId(Object.fromEntries(
+        Object.entries(rawCounts as Record<string, unknown>)
+          .map(([seatId, count]) => [seatId, normalizeTurnActionTimeoutCount(count)]),
+      ));
+    });
+  }, [localSeatId]);
 
   const isOpponentTurn = Boolean(activeSeatId && activeSeatId !== localSeatId);
   const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;
@@ -118,13 +137,15 @@ export function GameBoardControls({
   const turnActionTimerKey = `${activeSeatId ?? ''}:${turnActionPhase}:${rollStack.length}`;
   const itemPromptTimerKey = `${activeSeatId ?? localSeatId}:${activeItemPromptTypes.join('|')}`;
   const timerSeatId = activeSeatId ?? localSeatId;
+  const timerTimeoutCount = timeoutCountBySeatId[timerSeatId];
+  const localTimeoutCount = timeoutCountBySeatId[localSeatId];
   const timerDurationMs = useMemo(
-    () => getTurnActionTimeoutMsForCount(timeoutCountBySeatId[timerSeatId], turnActionTimeoutMs),
-    [timerSeatId, turnActionTimerKey, turnActionTimeoutMs],
+    () => getTurnActionTimeoutMsForCount(timerTimeoutCount, turnActionTimeoutMs),
+    [timerSeatId, timerTimeoutCount, turnActionTimerKey, turnActionTimeoutMs],
   );
   const itemPromptTimerDurationMs = useMemo(
-    () => getTurnActionTimeoutMsForCount(timeoutCountBySeatId[localSeatId], TURN_ITEM_PROMPT_TIMEOUT_MS),
-    [itemPromptTimerKey, localSeatId],
+    () => getTurnActionTimeoutMsForCount(localTimeoutCount, TURN_ITEM_PROMPT_TIMEOUT_MS),
+    [itemPromptTimerKey, localSeatId, localTimeoutCount],
   );
   const recordTimeout = (seatId: string) => {
     if (!seatId) return;
@@ -132,6 +153,16 @@ export function GameBoardControls({
       ...current,
       [seatId]: incrementTurnActionTimeoutCount(current[seatId]),
     }));
+  };
+  const resetTimeoutPenalty = (seatId: string) => {
+    if (!seatId) return;
+    setTimeoutCountBySeatId((current) => normalizeTurnActionTimeoutCount(current[seatId]) > 0
+      ? { ...current, [seatId]: 0 }
+      : current);
+  };
+  const runPlayerAction = (action: () => void, seatId = localSeatId) => {
+    resetTimeoutPenalty(seatId);
+    action();
   };
   const turnActionTimerVisible = !isOpponentTurn && activeItemPromptTypes.length === 0 && (
     showBottomBranchControls
@@ -157,6 +188,7 @@ export function GameBoardControls({
 
   const handleRollButtonClick = () => {
     if (turnActionTimedOut) return;
+    resetTimeoutPenalty(timerSeatId);
     if (roll) {
       onMoveSelectedPiece();
       return;
@@ -186,14 +218,14 @@ export function GameBoardControls({
       <div><strong>아이템을 사용할까요?</strong></div>
       <div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${itemPromptTimerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>
       <div className="inline-item-actions">
-        {activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => onUseItem(type)}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}
-        <button className="secondary" onClick={onSkipItemPrompt}>사용 안 함</button>
+        {activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => runPlayerAction(() => onUseItem(type))}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}
+        <button className="secondary" onClick={() => runPlayerAction(onSkipItemPrompt)}>사용 안 함</button>
       </div>
     </div> : showBottomBranchControls ? <div className="bottom-branch-controls" aria-label="이동 방향 선택">
       <button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => onBranchChoiceChange('outer')} disabled={turnActionTimedOut}>바깥길</button>
       <button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => onBranchChoiceChange('shortcut')} disabled={turnActionTimedOut}>지름길</button>
       {canRequestMove && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
-      <button type="button" data-testid={turnActionTimedOut ? 'turn-waiting-button' : 'move-piece-button'} className="branch-move-button" onClick={onMoveSelectedPiece} disabled={turnActionTimedOut || !canRequestMove}>{turnActionTimedOut ? '자동 진행 중...' : '선택한 말 이동'}</button>
+      <button type="button" data-testid={turnActionTimedOut ? 'turn-waiting-button' : 'move-piece-button'} className="branch-move-button" onClick={() => runPlayerAction(onMoveSelectedPiece, timerSeatId)} disabled={turnActionTimedOut || !canRequestMove}>{turnActionTimedOut ? '자동 진행 중...' : '선택한 말 이동'}</button>
     </div> : <>
       {turnActionTimerVisible && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
       {showRollStackPicker && (turnActionTimedOut
