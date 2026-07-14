@@ -106,7 +106,6 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
                   {isTargetRow && <b className="turn-order-rank-medal">{columnIndex + 1}</b>}
                   <span className="turn-order-slot-name">{slotEntry.name}</span>
                   {isMine && <em className="turn-order-slot-badge mine-badge" style={{ color: slotEntry.color, borderColor: '#fff' }}>나</em>}
-                  {isFinalCard && columnIndex === 0 && <em className="turn-order-slot-badge starter-badge">★ 선공</em>}
                 </span>;
               })}
             </div>
