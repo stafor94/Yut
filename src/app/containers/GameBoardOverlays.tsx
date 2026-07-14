@@ -1,6 +1,11 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { YutResult } from '../../game-core/roll';
 import { YutRollScenePhysics } from '../components/YutRollScenePhysics';
+import {
+  REMOTE_ROLL_PRESENTATION_MS,
+  gameAnimationQueue,
+  waitForGameAnimation,
+} from '../flows/gameAnimationQueue';
 import type { RollAnimation, ToastMessage } from '../appState';
 
 type WinnerOverlayProps = {
@@ -91,24 +96,89 @@ type RollStageProps = {
   rollAnimation: RollAnimation | null;
 };
 
+const isResolvedRollAnimation = (animation: RollAnimation) => animation.phase === undefined || animation.phase === 'resolved';
+
 export function RollStage({ rollAnimation }: RollStageProps) {
+  const mountedRef = useRef(true);
+  const presentedAnimationRef = useRef<RollAnimation | null>(rollAnimation);
+  const deferredLiveAnimationRef = useRef<RollAnimation | null>(null);
+  const seenResolvedAnimationIdsRef = useRef<Set<number>>(new Set());
+  const [presentedAnimation, setPresentedAnimation] = useState<RollAnimation | null>(rollAnimation);
   const [settledAnimationId, setSettledAnimationId] = useState<number | null>(null);
-  if (!rollAnimation) return null;
-  const isPreResult = rollAnimation.phase === 'primary' || rollAnimation.phase === 'extra-spin';
-  const isLanding = rollAnimation.phase === 'landing';
-  const isResultHold = rollAnimation.phase === 'result-hold';
-  const result = 'result' in rollAnimation ? rollAnimation.result : undefined;
-  const fallCount = 'fallCount' in rollAnimation ? rollAnimation.fallCount ?? 0 : 0;
-  const turnOrder = 'turnOrder' in rollAnimation ? rollAnimation.turnOrder : false;
-  const hasSettled = settledAnimationId === rollAnimation.id;
+
+  const presentAnimation = (nextAnimation: RollAnimation | null) => {
+    presentedAnimationRef.current = nextAnimation;
+    setPresentedAnimation(nextAnimation);
+  };
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    const releaseQueue = gameAnimationQueue.acquire();
+    return () => {
+      mountedRef.current = false;
+      releaseQueue();
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!rollAnimation) {
+      deferredLiveAnimationRef.current = null;
+      const currentAnimation = presentedAnimationRef.current;
+      if (currentAnimation && isResolvedRollAnimation(currentAnimation) && gameAnimationQueue.has(`roll:${currentAnimation.id}`)) return;
+      presentAnimation(null);
+      return;
+    }
+
+    if (!isResolvedRollAnimation(rollAnimation)) {
+      deferredLiveAnimationRef.current = rollAnimation;
+      if (!gameAnimationQueue.isBusy()) {
+        presentAnimation(rollAnimation);
+        return;
+      }
+      void gameAnimationQueue.enqueue(`live-roll:${rollAnimation.id}`, async () => {
+        const latestAnimation = deferredLiveAnimationRef.current;
+        if (!mountedRef.current || !latestAnimation || latestAnimation.id !== rollAnimation.id) return;
+        presentAnimation(latestAnimation);
+      });
+      return;
+    }
+
+    deferredLiveAnimationRef.current = null;
+    if (seenResolvedAnimationIdsRef.current.has(rollAnimation.id)) return;
+    seenResolvedAnimationIdsRef.current.add(rollAnimation.id);
+    if (seenResolvedAnimationIdsRef.current.size > 120) {
+      seenResolvedAnimationIdsRef.current = new Set(Array.from(seenResolvedAnimationIdsRef.current).slice(-60));
+    }
+
+    const queuedAnimation: RollAnimation = {
+      ...rollAnimation,
+      sticks: rollAnimation.sticks.map((stick) => ({ ...stick })),
+    };
+    void gameAnimationQueue.enqueue(`roll:${queuedAnimation.id}`, async () => {
+      if (!mountedRef.current) return;
+      setSettledAnimationId(null);
+      presentAnimation(queuedAnimation);
+      await waitForGameAnimation(REMOTE_ROLL_PRESENTATION_MS);
+      if (mountedRef.current && presentedAnimationRef.current?.id === queuedAnimation.id) presentAnimation(null);
+    });
+  }, [rollAnimation]);
+
+  if (!presentedAnimation) return null;
+  const isPreResult = presentedAnimation.phase === 'primary' || presentedAnimation.phase === 'extra-spin';
+  const isLanding = presentedAnimation.phase === 'landing';
+  const isResultHold = presentedAnimation.phase === 'result-hold';
+  const result = 'result' in presentedAnimation ? presentedAnimation.result : undefined;
+  const fallCount = 'fallCount' in presentedAnimation ? presentedAnimation.fallCount ?? 0 : 0;
+  const turnOrder = 'turnOrder' in presentedAnimation ? presentedAnimation.turnOrder : false;
+  const hasSettled = settledAnimationId === presentedAnimation.id;
   const isVisualLanding = isLanding || (isResultHold && !hasSettled);
   const shouldShowResult = Boolean(result) && hasSettled && !isPreResult && !isLanding;
   const hasResolvedResult = (isLanding || isResultHold || Boolean(result)) && Boolean(result);
   const isBonusResult = hasResolvedResult && !turnOrder && !fallCount && (result?.name === '윷' || result?.name === '모');
-  const phaseClass = isPreResult ? `pending-roll ${rollAnimation.phase === 'extra-spin' ? 'extra-spin-roll' : 'primary-roll'}` : isVisualLanding ? 'resolved-from-pending resolved-roll landing-roll' : isResultHold ? 'resolved-from-pending resolved-roll result-hold-roll' : 'resolved-roll';
+  const phaseClass = isPreResult ? `pending-roll ${presentedAnimation.phase === 'extra-spin' ? 'extra-spin-roll' : 'primary-roll'}` : isVisualLanding ? 'resolved-from-pending resolved-roll landing-roll' : isResultHold ? 'resolved-from-pending resolved-roll result-hold-roll' : 'resolved-roll';
   return <div className={`roll-stage ${phaseClass}`} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
-    <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
+    <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${presentedAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
     <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`}>
       <span data-testid="roll-mat-surface" className="roll-mat-surface" aria-hidden="true">
         <span className="roll-mat-depth"></span>
@@ -120,9 +190,9 @@ export function RollStage({ rollAnimation }: RollStageProps) {
         <span className="roll-mat-leg roll-mat-leg-left"></span>
         <span className="roll-mat-leg roll-mat-leg-right"></span>
       </span>
-      {rollAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${rollAnimation.timingZone}`}>{rollAnimation.timingZone === 'perfect' ? 'Perfect!' : rollAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
+      {presentedAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${presentedAnimation.timingZone}`}>{presentedAnimation.timingZone === 'perfect' ? 'Perfect!' : presentedAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{fallCount ? '낙!' : result.name}</span>}
-      <YutRollScenePhysics rollAnimation={rollAnimation} onSettled={() => setSettledAnimationId(rollAnimation.id)} />
+      <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={() => setSettledAnimationId(presentedAnimation.id)} />
     </div>
   </div>;
 }
