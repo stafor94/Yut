@@ -16,10 +16,12 @@ export function createGameAnimationQueue(): GameAnimationQueue {
   let generation = 0;
   let pendingCount = 0;
   let consumerCount = 0;
+  let releaseCheckVersion = 0;
   const pendingByKey = new Map<string, Promise<void>>();
 
   const reset = () => {
     generation += 1;
+    releaseCheckVersion += 1;
     tail = Promise.resolve();
     pendingCount = 0;
     pendingByKey.clear();
@@ -55,12 +57,17 @@ export function createGameAnimationQueue(): GameAnimationQueue {
     },
     acquire() {
       consumerCount += 1;
+      releaseCheckVersion += 1;
       let released = false;
       return () => {
         if (released) return;
         released = true;
         consumerCount = Math.max(0, consumerCount - 1);
-        if (consumerCount === 0) reset();
+        if (consumerCount !== 0) return;
+        const scheduledVersion = ++releaseCheckVersion;
+        void Promise.resolve().then(() => {
+          if (consumerCount === 0 && releaseCheckVersion === scheduledVersion) reset();
+        });
       };
     },
     reset,
