@@ -6,6 +6,8 @@ import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { ROOM_START_ACTIVATION_GRACE_MS } from '../../features/room/services/roomGamePreparationPolicy';
 
+const COUNTDOWN_FINAL_TICK_BRIDGE_MS = 1_500;
+
 type WaitingRoomContainerProps = {
   canManageRoom: boolean;
   activeRoomTitle: string;
@@ -64,7 +66,9 @@ export function WaitingRoomContainer({
   const lastCountdownValueRef = useRef<number | null>(null);
   const transitionTimerRef = useRef<number | null>(null);
   const transitionPendingRef = useRef(false);
+  const transitionOverlayRef = useRef<HTMLDivElement | null>(null);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
+  const [countdownTransitionOverlayVisible, setCountdownTransitionOverlayVisible] = useState(false);
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const effectiveStartFlowBusy = startFlowBusy || countdownTransitionPending;
@@ -84,54 +88,76 @@ export function WaitingRoomContainer({
   useEffect(() => {
     if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return undefined;
 
-    const clearCompletedCountdown = () => {
-      if (transitionTimerRef.current !== null) {
-        window.clearTimeout(transitionTimerRef.current);
-        transitionTimerRef.current = null;
-      }
-      if (!transitionPendingRef.current) return;
-      transitionPendingRef.current = false;
-      setCountdownTransitionPending(false);
+    const setTransitionOverlayVisible = (visible: boolean) => {
+      if (transitionOverlayRef.current) transitionOverlayRef.current.hidden = !visible;
+      setCountdownTransitionOverlayVisible((current) => current === visible ? current : visible);
     };
-    const holdCompletedCountdown = () => {
-      if (transitionPendingRef.current) return;
-      transitionPendingRef.current = true;
-      setCountdownTransitionPending(true);
+    const clearTransitionTimer = () => {
+      if (transitionTimerRef.current === null) return;
+      window.clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = null;
+    };
+    const clearCompletedCountdown = () => {
+      clearTransitionTimer();
+      if (transitionPendingRef.current) {
+        transitionPendingRef.current = false;
+        setCountdownTransitionPending(false);
+      }
+      setTransitionOverlayVisible(false);
+    };
+    const holdCompletedCountdown = (durationMs: number) => {
+      clearTransitionTimer();
+      if (!transitionPendingRef.current) {
+        transitionPendingRef.current = true;
+        setCountdownTransitionPending(true);
+      }
       transitionTimerRef.current = window.setTimeout(() => {
         transitionTimerRef.current = null;
         transitionPendingRef.current = false;
         setCountdownTransitionPending(false);
-      }, ROOM_START_ACTIVATION_GRACE_MS);
+        setTransitionOverlayVisible(false);
+      }, durationMs);
     };
     const inspectCountdown = () => {
       const countdownElement = document.querySelector<HTMLElement>('[data-testid="start-countdown-overlay"] strong');
       if (!countdownElement) {
         lastCountdownValueRef.current = null;
+        if (transitionPendingRef.current) setTransitionOverlayVisible(true);
         return;
       }
 
+      if (transitionPendingRef.current) setTransitionOverlayVisible(false);
       const value = Number(countdownElement.textContent?.trim());
       if (!Number.isInteger(value) || value < 0 || value > 5) return;
-      if (value === 0) {
-        if (lastCountdownValueRef.current !== value) playStoredSoundEffect('countdownStart');
-        lastCountdownValueRef.current = value;
-        holdCompletedCountdown();
-        return;
-      }
-
-      clearCompletedCountdown();
       if (lastCountdownValueRef.current === value) return;
       lastCountdownValueRef.current = value;
+      if (value === 0) {
+        playStoredSoundEffect('countdownStart');
+        holdCompletedCountdown(ROOM_START_ACTIVATION_GRACE_MS);
+        return;
+      }
       playStoredSoundEffect('countdown');
+      if (value === 1) {
+        holdCompletedCountdown(ROOM_START_ACTIVATION_GRACE_MS + COUNTDOWN_FINAL_TICK_BRIDGE_MS);
+        return;
+      }
+      clearCompletedCountdown();
+    };
+    const handleCountdownCancel = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || !target.closest('[data-testid="cancel-start-button"]')) return;
+      clearCompletedCountdown();
+      lastCountdownValueRef.current = null;
     };
 
     inspectCountdown();
     const observer = new MutationObserver(inspectCountdown);
     observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+    document.addEventListener('click', handleCountdownCancel, true);
     return () => {
       observer.disconnect();
-      if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
-      transitionTimerRef.current = null;
+      document.removeEventListener('click', handleCountdownCancel, true);
+      clearTransitionTimer();
       transitionPendingRef.current = false;
     };
   }, []);
@@ -174,6 +200,6 @@ export function WaitingRoomContainer({
       </div>
     </footer>
 
-    {countdownTransitionPending && <div className="countdown-scrim" role="presentation"><div data-testid="start-transition-overlay" className="countdown-overlay" role="status"><span>게임 시작</span><strong>0</strong></div></div>}
+    {countdownTransitionPending && <div ref={transitionOverlayRef} hidden={!countdownTransitionOverlayVisible} className="countdown-scrim" role="presentation"><div data-testid="start-transition-overlay" className="countdown-overlay" role="status"><span>게임 시작</span><strong>0</strong></div></div>}
   </WaitingRoomScreen>;
 }
