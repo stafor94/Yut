@@ -13,6 +13,7 @@ import {
 import { activatePreparedRoomGame, prepareRoomGameState } from '../../features/room/services/roomGamePreparationService';
 import { auth } from '../../services/firebase/firebaseAuth';
 import { STORAGE_KEYS, type SequenceStateSnapshot } from '../appState';
+import { showCustomAlert } from '../components/CustomAlertHost';
 import {
   buildPreparedRoomGameState,
   getGameStartCoordinatorPlayerId,
@@ -332,8 +333,10 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
           finalized = true;
           window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
           window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-          window.alert('2분 동안 서버의 게임 진행을 확인하지 못해 게임을 종료하고 로비로 이동합니다.');
-          window.location.reload();
+          void showCustomAlert(
+            '2분 동안 서버의 게임 진행을 확인하지 못해 게임을 종료하고 로비로 이동합니다.',
+            '게임 진행 확인 실패',
+          ).then(() => window.location.reload());
         };
         const fallbackTimer = window.setTimeout(finalizeExit, 2000);
         const userId = auth?.currentUser?.uid ?? '';
