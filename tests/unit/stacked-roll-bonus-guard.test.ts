@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { getRollControlPresentation } from '../../src/app/flows/rollControlPresentation';
 import {
   PENDING_STACKED_BONUS_ROLL_REASON,
   canRoll,
@@ -19,7 +20,7 @@ const turnGuardInput = {
   isSpectator: false,
 };
 
-test('열린 보너스 이동 스택은 말 이동만 막고 다음 윷 던지기는 허용한다', () => {
+test('열린 보너스 이동 스택은 말 이동만 막고 다음 윷 던지기와 타이밍 막대는 허용한다', () => {
   clearPendingStackedBonusRoll();
   assert.equal(canSubmitTurnAction(turnGuardInput), true);
 
@@ -27,7 +28,15 @@ test('열린 보너스 이동 스택은 말 이동만 막고 다음 윷 던지�
 
   assert.equal(canSubmitTurnAction(turnGuardInput), false);
   assert.ok(getTurnActionBlockReasons(turnGuardInput).includes(PENDING_STACKED_BONUS_ROLL_REASON));
-  assert.equal(canRoll({ ...turnGuardInput, roll: null, rollLocked: false, rollInProgress: false }), true);
+  const canRollAgain = canRoll({ ...turnGuardInput, roll: null, rollLocked: false, rollInProgress: false });
+  assert.equal(canRollAgain, true);
+  const presentation = getRollControlPresentation({
+    hasRoll: false,
+    canRollNow: canRollAgain,
+    showRollStackPicker: false,
+  });
+  assert.equal(presentation.showTimingMeter, true);
+  assert.equal(presentation.actionButtonTestId, 'roll-yut-button');
 
   clearPendingStackedBonusRoll();
 });
