@@ -17,7 +17,7 @@ type WinnerOverlayProps = {
   onContinueRace: () => void;
 };
 
-export function WinnerOverlay({ winner, winnerText, canContinueRace, onReturnToWaitingRoom, onExitToLobby, onContinueRace }: WinnerOverlayProps) {
+export function WinnerOverlay({ winner, winnerText, onReturnToWaitingRoom, onExitToLobby }: WinnerOverlayProps) {
   const [visibleWinner, setVisibleWinner] = useState('');
 
   useEffect(() => {
@@ -35,7 +35,6 @@ export function WinnerOverlay({ winner, winnerText, canContinueRace, onReturnToW
     <strong>{winnerText}</strong>
     <p>원하는 다음 행동을 선택하세요.</p>
     <button onClick={onReturnToWaitingRoom}>대기실로 돌아가기</button>
-    {canContinueRace && <button data-testid="continue-race-button" onClick={onContinueRace}>이어서 진행하기</button>}
     <button className="secondary" onClick={onExitToLobby}>로비로 나가기</button>
   </div>;
 }
