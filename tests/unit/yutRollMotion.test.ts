@@ -10,6 +10,8 @@ import {
 import {
   EXTRA_SPIN_RADIANS_PER_SECOND_BASE,
   EXTRA_SPIN_RADIANS_PER_SECOND_STEP,
+  FALL_EXIT_START_PROGRESS,
+  FALL_ON_MAT_ROLL_END_PROGRESS,
   LANDING_FLIGHT_SPIN_TURNS_BASE,
   LANDING_FLIGHT_SPIN_TURNS_STEP,
   LOCAL_LANDING_IMPACT_PROGRESS,
@@ -20,6 +22,7 @@ import {
   REMOTE_ROLL_LANDING_START_MS,
   REMOTE_ROLL_LOCAL_TIMELINE_START_MS,
   getContinuousLandingDropProgress,
+  getFallLandingMotion,
   getLandingMotion,
   getPrimaryHorizontalProgress,
   getPrimaryThrowHeight,
@@ -78,6 +81,26 @@ test('landing starts immediately, accelerates into an earlier impact, and remain
   for (let index = 1; index < samples.length; index += 1) assert.ok(samples[index] > samples[index - 1]);
   assert.equal(samples[samples.length - 1], 1);
   assert.ok(LOCAL_LANDING_IMPACT_PROGRESS <= 0.4);
+});
+
+test('fall motion lands first, rolls across the mat, and exits only near the end', () => {
+  const beforeImpact = getFallLandingMotion(LOCAL_LANDING_IMPACT_PROGRESS - 0.01);
+  const afterImpact = getFallLandingMotion(LOCAL_LANDING_IMPACT_PROGRESS + 0.1);
+  const beforeExit = getFallLandingMotion(FALL_EXIT_START_PROGRESS - 0.01);
+  const exiting = getFallLandingMotion((FALL_EXIT_START_PROGRESS + 1) / 2);
+  const completed = getFallLandingMotion(1);
+
+  assert.equal(beforeImpact.onMatRollProgress, 0);
+  assert.equal(beforeImpact.exitProgress, 0);
+  assert.ok(afterImpact.onMatRollProgress > 0);
+  assert.equal(afterImpact.exitProgress, 0);
+  assert.ok(beforeExit.onMatRollProgress > 0.5);
+  assert.equal(beforeExit.exitProgress, 0);
+  assert.equal(FALL_ON_MAT_ROLL_END_PROGRESS, 0.72);
+  assert.ok(exiting.exitProgress > 0 && exiting.exitProgress < 1);
+  assert.equal(completed.onMatRollProgress, 1);
+  assert.equal(completed.exitProgress, 1);
+  assert.equal(completed.bounceScale, 0);
 });
 
 test('landing dedicates more time to two visible bounces before settling exactly', () => {
