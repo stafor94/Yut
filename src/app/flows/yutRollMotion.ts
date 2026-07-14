@@ -11,6 +11,8 @@ import {
 export const MAX_TOTAL_SPIN_TURNS = 3;
 export const LOCAL_THROW_APEX_PROGRESS = 0.48;
 export const LOCAL_LANDING_IMPACT_PROGRESS = 0.38;
+export const FALL_ON_MAT_ROLL_END_PROGRESS = 0.72;
+export const FALL_EXIT_START_PROGRESS = 0.68;
 export const PRIMARY_SPIN_TURNS_BASE = 1.8;
 export const PRIMARY_SPIN_TURNS_STEP = 0.08;
 export const EXTRA_SPIN_RADIANS_PER_SECOND_BASE = 0;
@@ -38,6 +40,12 @@ export type LandingMotion = {
   wobbleRadians: number;
   rollOffsetX: number;
   rollOffsetZ: number;
+};
+
+export type FallLandingMotion = {
+  onMatRollProgress: number;
+  exitProgress: number;
+  bounceScale: number;
 };
 
 const getPeakY = (index: number) => 4.08 + index * 0.06;
@@ -77,6 +85,22 @@ export function getPrimaryThrowHeight(startY: number, progress: number, index: n
 export function getContinuousLandingDropProgress(progress: number) {
   const normalized = clampUnit(progress);
   return normalized * (LANDING_DROP_INITIAL_SLOPE + (1 - LANDING_DROP_INITIAL_SLOPE) * normalized);
+}
+
+export function getFallLandingMotion(progress: number): FallLandingMotion {
+  const normalized = clampUnit(progress);
+  const onMatRollProgress = smoothStep(clampUnit(
+    (normalized - LOCAL_LANDING_IMPACT_PROGRESS)
+      / (FALL_ON_MAT_ROLL_END_PROGRESS - LOCAL_LANDING_IMPACT_PROGRESS),
+  ));
+  const exitProgress = smoothStep(clampUnit(
+    (normalized - FALL_EXIT_START_PROGRESS) / (1 - FALL_EXIT_START_PROGRESS),
+  ));
+  return {
+    onMatRollProgress,
+    exitProgress,
+    bounceScale: 1 - exitProgress,
+  };
 }
 
 export function getLandingMotion(progress: number, index: number): LandingMotion {

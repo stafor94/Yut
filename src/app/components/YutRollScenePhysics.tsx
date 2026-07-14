@@ -16,6 +16,7 @@ import {
   LANDING_FLIGHT_SPIN_TURNS_STEP,
   PRIMARY_SPIN_TURNS_BASE,
   PRIMARY_SPIN_TURNS_STEP,
+  getFallLandingMotion,
   getLandingMotion,
   getPrimaryHorizontalProgress,
   getPrimaryThrowHeight,
@@ -43,6 +44,7 @@ type RuntimeStick = {
   startQuaternion: any;
   phasePosition: any;
   phaseQuaternion: any;
+  fallImpactPosition: any;
   fallEdgePosition: any;
   targetPosition: any;
   targetQuaternion: any;
@@ -181,6 +183,7 @@ function createYutStick(THREE: ThreeModule, index: number): RuntimeStick {
     startQuaternion,
     phasePosition: startPosition.clone(),
     phaseQuaternion: startQuaternion.clone(),
+    fallImpactPosition: startPosition.clone(),
     fallEdgePosition: startPosition.clone(),
     targetPosition: new THREE.Vector3(),
     targetQuaternion: new THREE.Quaternion(),
@@ -200,9 +203,15 @@ function updateStickTargets(runtime: SceneRuntime, animation: RollAnimation) {
     const isFallen = Boolean(!isPreResult && fallCount && index < fallCount);
     const spreadX = -1.32 + index * 0.88;
     const fallTarget = getYutRollFallTarget(index, runtime.matBounds);
+    const fallImpactInset = 0.72 + (index >= 2 ? 0.12 : 0);
     const yaw = isFallen ? (index % 2 === 0 ? -0.9 - index * 0.08 : 0.82 + index * 0.1) : -0.2 + index * 0.14;
     entry.isFallen = isFallen;
-    entry.fallEdgePosition.set(fallTarget.edgeX + fallTarget.side * 0.08, 0.08, fallTarget.z);
+    entry.fallImpactPosition.set(
+      fallTarget.edgeX - fallTarget.side * fallImpactInset,
+      0,
+      -0.24 + (index % 2) * 0.24,
+    );
+    entry.fallEdgePosition.set(fallTarget.edgeX + fallTarget.side * 0.05, 0.04, fallTarget.z);
     entry.targetPosition.set(
       isFallen ? fallTarget.x : spreadX,
       isFallen ? fallTarget.y : 0,
@@ -327,16 +336,39 @@ function renderLanding(runtime: SceneRuntime, elapsedMs: number, fromPrimaryEnd 
     const startQuaternion = fromPrimaryEnd ? getPrimaryEndQuaternion(runtime, entry, index) : entry.phaseQuaternion;
 
     if (entry.isFallen) {
-      const exitProgress = smoothStep(clampUnit((progress - 0.46) / 0.5));
-      const edgeX = lerp(startPosition.x, entry.fallEdgePosition.x, motion.dropProgress);
-      const edgeY = lerp(startPosition.y, entry.fallEdgePosition.y, motion.dropProgress);
-      const edgeZ = lerp(startPosition.z, entry.fallEdgePosition.z, motion.dropProgress);
+      const fallMotion = getFallLandingMotion(progress);
+      const flightX = lerp(startPosition.x, entry.fallImpactPosition.x, motion.dropProgress);
+      const flightY = lerp(startPosition.y, entry.fallImpactPosition.y, motion.dropProgress);
+      const flightZ = lerp(startPosition.z, entry.fallImpactPosition.z, motion.dropProgress);
+      const surfaceX = lerp(flightX, entry.fallEdgePosition.x, fallMotion.onMatRollProgress);
+      const surfaceY = lerp(flightY, entry.fallEdgePosition.y, fallMotion.onMatRollProgress)
+        + motion.bounceHeight * fallMotion.bounceScale;
+      const surfaceZ = lerp(flightZ, entry.fallEdgePosition.z, fallMotion.onMatRollProgress);
       entry.group.position.set(
-        lerp(edgeX, entry.targetPosition.x, exitProgress),
-        lerp(edgeY, entry.targetPosition.y, exitProgress),
-        lerp(edgeZ, entry.targetPosition.z, exitProgress),
+        lerp(surfaceX, entry.targetPosition.x, fallMotion.exitProgress),
+        lerp(surfaceY, entry.targetPosition.y, fallMotion.exitProgress),
+        lerp(surfaceZ, entry.targetPosition.z, fallMotion.exitProgress),
       );
-      applyLandingRotation(runtime, entry, index, motion.flightProgress, motion.settleProgress, 0, motion.rollOffsetX, motion.rollOffsetZ, startQuaternion);
+      applyLandingRotation(
+        runtime,
+        entry,
+        index,
+        motion.flightProgress,
+        motion.settleProgress,
+        motion.wobbleRadians * fallMotion.bounceScale,
+        motion.rollOffsetX,
+        motion.rollOffsetZ,
+        startQuaternion,
+      );
+      const exitDirection = entry.targetPosition.x >= entry.fallEdgePosition.x ? 1 : -1;
+      const rollRadians = -exitDirection * (
+        fallMotion.onMatRollProgress * Math.PI * 1.35
+        + fallMotion.exitProgress * Math.PI * 0.85
+      );
+      entry.group.quaternion.multiply(new runtime.THREE.Quaternion().setFromAxisAngle(
+        new runtime.THREE.Vector3(0, 0, 1),
+        rollRadians,
+      ));
       entry.group.visible = progress < 0.97;
       return;
     }
@@ -583,8 +615,9 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         const roundMarkCount = isPreResult ? 0 : stick.flat ? 0 : 3;
         const isFallenStick = Boolean(!isPreResult && fallCount && index < fallCount);
         const faceClassName = isPreResult ? '' : stick.flat ? 'flat' : 'round';
-        const fallX = index % 2 === 0 ? 'calc(0px - min(42vw, 300px))' : 'min(42vw, 300px)';
-        const rollX = `${index % 2 === 0 ? -22 - index * 2 : 22 + index * 2}px`;
+        const fallDirection = index % 2 === 0 ? -1 : 1;
+        const fallX = fallDirection < 0 ? 'calc(0px - min(42vw, 300px))' : 'min(42vw, 300px)';
+        const rollX = `${fallDirection * (22 + index * 2)}px`;
         return <span
           key={`${rollAnimation.id}-${index}`}
           className={`yut-stick ${faceClassName} ${stick.marked ? 'marked' : ''} ${isFallenStick ? 'fallen' : ''}`}
@@ -595,9 +628,11 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
             '--stick-bounce-rotate': `${12 + index * 18}deg`,
             '--stick-final-rotate': `${-8 + index * 12}deg`,
             '--stick-roll-x': rollX,
+            '--fall-bounce-x': `${fallDirection * (34 + index * 4)}px`,
+            '--fall-edge-x': `${fallDirection * (108 + index * 8)}px`,
             '--fall-x': fallX,
             '--fall-y': `${96 + index * 14}px`,
-            '--fall-rotate': `${index % 2 === 0 ? -64 - index * 18 : 62 + index * 16}deg`,
+            '--fall-rotate': `${fallDirection < 0 ? -64 - index * 18 : 62 + index * 16}deg`,
           } as CSSProperties}
         >
           <span className="yut-stick-body">
