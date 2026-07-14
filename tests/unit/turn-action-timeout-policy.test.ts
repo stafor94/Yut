@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
+import {
+  isAuthoritativeCommitReduction,
+  reduceAuthoritativeGameAction,
+} from '../../src/features/room/services/roomAuthoritativeReducer';
 import {
   TURN_ACTION_TIMEOUT_MIN_MS,
   TURN_ACTION_TIMEOUT_MS,
@@ -17,6 +20,12 @@ const withMockNow = <T>(now: number, callback: () => T): T => {
   } finally {
     Date.now = originalNow;
   }
+};
+
+const getCommittedPatch = (result: ReturnType<typeof reduceAuthoritativeGameAction>) => {
+  assert.equal(result.status, 'committed');
+  assert.ok(isAuthoritativeCommitReduction(result));
+  return result.patch;
 };
 
 const baseState = (now: number, timeoutCount = 0) => ({
@@ -85,32 +94,29 @@ test('아이템 선택 제한시간도 누적 시간초과를 반영하되 5초 
 test('플레이어가 정상 버튼 액션을 수행하면 누적 횟수와 다음 제한시간을 기본값으로 복구한다', () => withMockNow(100000, () => {
   const state = baseState(100000, 2);
   const result = reduceAuthoritativeGameAction(state as any, rollAction(state.turnDeadlineAt), room, sides);
+  const patch = getCommittedPatch(result);
 
-  assert.equal(result.status, 'committed');
-  if (result.status !== 'committed') return;
-  assert.deepEqual(result.patch.turnActionTimeoutCountBySeatId, { 'seat-1': 0 });
-  assert.equal(result.patch.turnDeadlineKind, 'move');
-  assert.equal(result.patch.turnDeadlineAt, 100000 + 2600 + TURN_ACTION_TIMEOUT_MS);
+  assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 0 });
+  assert.equal(patch.turnDeadlineKind, 'move');
+  assert.equal(patch.turnDeadlineAt, 100000 + 2600 + TURN_ACTION_TIMEOUT_MS);
 }));
 
 test('시간초과 복구가 커밋되면 좌석 횟수를 올리고 바로 다음 막대를 5초 단축한다', () => withMockNow(200000, () => {
   const state = baseState(200000, 0);
   const result = reduceAuthoritativeGameAction(state as any, rollAction(state.turnDeadlineAt, true), room, sides);
+  const patch = getCommittedPatch(result);
 
-  assert.equal(result.status, 'committed');
-  if (result.status !== 'committed') return;
-  assert.deepEqual(result.patch.turnActionTimeoutCountBySeatId, { 'seat-1': 1 });
-  assert.equal(result.patch.turnDeadlineAt, 200000 + 2600 + 10000);
+  assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 1 });
+  assert.equal(patch.turnDeadlineAt, 200000 + 2600 + 10000);
 }));
 
 test('두 번째 시간초과부터 서버 제한시간은 최소 5초로 고정된다', () => withMockNow(300000, () => {
   const state = baseState(300000, 1);
   const result = reduceAuthoritativeGameAction(state as any, rollAction(state.turnDeadlineAt, true), room, sides);
+  const patch = getCommittedPatch(result);
 
-  assert.equal(result.status, 'committed');
-  if (result.status !== 'committed') return;
-  assert.deepEqual(result.patch.turnActionTimeoutCountBySeatId, { 'seat-1': 2 });
-  assert.equal(result.patch.turnDeadlineAt, 300000 + 2600 + 5000);
+  assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 2 });
+  assert.equal(patch.turnDeadlineAt, 300000 + 2600 + 5000);
 }));
 
 test('정상 이동 뒤 아이템 교체 선택도 기본 10초로 복구하고 내부 deadline을 일치시킨다', () => withMockNow(400000, () => {
@@ -131,11 +137,10 @@ test('정상 이동 뒤 아이템 교체 선택도 기본 10초로 복구하고 
     room,
     sides,
   );
+  const patch = getCommittedPatch(result);
 
-  assert.equal(result.status, 'committed');
-  if (result.status !== 'committed') return;
-  assert.deepEqual(result.patch.turnActionTimeoutCountBySeatId, { 'seat-1': 0 });
-  assert.equal(result.patch.turnDeadlineKind, 'item_prompt');
-  assert.equal(result.patch.turnDeadlineAt, 400000 + TURN_ITEM_PROMPT_TIMEOUT_MS);
-  assert.equal((result.patch.pendingItemPickup as { deadline?: number } | null)?.deadline, 400000 + TURN_ITEM_PROMPT_TIMEOUT_MS);
+  assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 0 });
+  assert.equal(patch.turnDeadlineKind, 'item_prompt');
+  assert.equal(patch.turnDeadlineAt, 400000 + TURN_ITEM_PROMPT_TIMEOUT_MS);
+  assert.equal((patch.pendingItemPickup as { deadline?: number } | null)?.deadline, 400000 + TURN_ITEM_PROMPT_TIMEOUT_MS);
 }));
