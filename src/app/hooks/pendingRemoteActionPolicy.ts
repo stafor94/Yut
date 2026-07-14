@@ -3,10 +3,16 @@ import { ITEM_DEFINITIONS, ITEM_TYPES, type ItemTiming } from '../../features/it
 type PendingRemoteActionPolicyMeta = {
   type: string;
   optimisticApplied?: boolean;
-  itemPromptTiming?: ItemTiming | null;
 };
 
+let currentItemPromptTiming: ItemTiming | null = null;
+
+const isItemTiming = (value: unknown): value is ItemTiming => value === 'before_roll' || value === 'after_roll' || value === 'after_move';
 const isOptimisticItemSkipAction = (actionKey: string) => actionKey.startsWith('use_item:') && actionKey.endsWith('::');
+
+export function syncPendingRemoteActionItemPromptTiming(itemPromptTiming: unknown) {
+  currentItemPromptTiming = isItemTiming(itemPromptTiming) ? itemPromptTiming : null;
+}
 
 export function isTurnFinalizingOptimisticItemAction(actionKey: string, meta: PendingRemoteActionPolicyMeta) {
   if (meta.type !== 'use_item' || meta.optimisticApplied !== true) return false;
@@ -15,7 +21,7 @@ export function isTurnFinalizingOptimisticItemAction(actionKey: string, meta: Pe
   const itemTiming = itemType
     ? ITEM_DEFINITIONS[itemType].timing
     : isOptimisticItemSkipAction(actionKey)
-      ? meta.itemPromptTiming
+      ? currentItemPromptTiming
       : null;
   return itemTiming === 'after_move';
 }
