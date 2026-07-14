@@ -1,8 +1,9 @@
 import { spawnInitialBoardItems } from '../../game-core/board/board';
+import { ROOM_START_CANCEL_LOCK_MS } from '../../features/room/services/roomGamePreparationPolicy';
 import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
 import { buildAlternatingTeamTurnOrder, createTurnOrderIntro, formatTurnOrderSummary } from './turnOrderFlow';
 
-export const ROOM_START_CANCEL_LOCK_MS = 2_000;
+export { ROOM_START_CANCEL_LOCK_MS };
 const TURN_ORDER_FINAL_HOLD_MS = 2_000;
 const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'] as const;
 const TEAM_COLORS: Record<GameStartPreparationPlayer['team'], string> = { 청팀: '#3a78c2', 홍팀: '#d94a38' };
