@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
+import {
+  isAuthoritativeCommitReduction,
+  reduceAuthoritativeGameAction,
+} from '../../src/features/room/services/roomAuthoritativeReducer';
 
 const state = {
   pieces: [
@@ -28,7 +31,6 @@ const state = {
   winner: '',
   branchChoice: 'outer' as const,
   itemPromptTiming: null,
-  pendingAfterMoveTurnIndex: null,
   pendingGoldenYutSelection: null,
   pendingTrapPlacement: null,
   turnDeadlineAt: 0,
@@ -59,7 +61,8 @@ test('3인 이상 개인전도 첫 완주자가 나오면 순위전을 열지 �
   );
 
   assert.equal(result.status, 'committed');
-  if (result.status !== 'committed') return;
+  assert.ok(isAuthoritativeCommitReduction(result));
+  if (!isAuthoritativeCommitReduction(result)) return;
   assert.equal(result.patch.winner, 'P1 승리');
   assert.equal(result.patch.gameEndMode, 'final');
   assert.equal(result.payload.gameEndMode, 'final');
