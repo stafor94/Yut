@@ -107,7 +107,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   const yOffset = Number((Math.sin(groupAngle) * groupRadius).toFixed(1));
   const stackedPieces = nodePieces.filter((candidate) => getPieceGroupKey(candidate) === pieceGroupKey);
   const stackIndex = Math.max(0, stackedPieces.findIndex((candidate) => candidate.id === piece.id));
-  const stackLift = stackIndex * 2;
+  const stackLift = stackIndex * 5;
 
   return {
     left: `${node.x}%`,
@@ -122,8 +122,8 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
 
 function PieceFigure() {
   return <span className="piece-token-figure" aria-hidden="true">
-    <span className="piece-token-head" />
-    <span className="piece-token-body" />
+    <span className="piece-token-side" />
+    <span className="piece-token-top" />
   </span>;
 }
 
