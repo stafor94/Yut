@@ -124,7 +124,8 @@
   outline: none;
 }
 
-.piece-token.selected .piece-token-figure {
+.piece-token.selected .piece-token-figure,
+.piece-token.selected.stacked:not(.moving) .piece-token-figure {
   filter: none;
 }
 
