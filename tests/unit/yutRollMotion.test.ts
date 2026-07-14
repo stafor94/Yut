@@ -5,6 +5,7 @@ import {
   LOCAL_ROLL_PRE_RESULT_MS,
   LOCAL_ROLL_PRIMARY_MS,
   REMOTE_ROLL_PRE_RESULT_MS,
+  ROLL_INTRO_EXTENSION_MS,
 } from '../../src/app/flows/yutRollAnimation.js';
 import {
   EXTRA_SPIN_RADIANS_PER_SECOND_BASE,
@@ -27,19 +28,25 @@ import {
 } from '../../src/app/flows/yutRollMotion.js';
 import { getYutRollSceneFraming } from '../../src/app/flows/yutRollSceneLayout.js';
 
-test('roll animation keeps the existing synchronization durations', () => {
-  assert.equal(LOCAL_ROLL_PRIMARY_MS, 1200);
+test('roll animation adds one second before landing for local and remote playback', () => {
+  assert.equal(ROLL_INTRO_EXTENSION_MS, 1000);
+  assert.equal(LOCAL_ROLL_PRIMARY_MS, 2200);
   assert.equal(LOCAL_ROLL_LANDING_MS, 1700);
-  assert.equal(LOCAL_ROLL_PRE_RESULT_MS, 2900);
-  assert.equal(REMOTE_ROLL_PRE_RESULT_MS, 1200);
+  assert.equal(LOCAL_ROLL_PRE_RESULT_MS, 3900);
+  assert.equal(REMOTE_ROLL_PRE_RESULT_MS, 2200);
 });
 
-test('remote roll maps the second half of the local timeline to its existing duration', () => {
-  assert.equal(REMOTE_ROLL_LOCAL_TIMELINE_START_MS, LOCAL_ROLL_PRE_RESULT_MS / 2);
-  assert.equal(REMOTE_ROLL_LANDING_START_MS, 250);
-  assert.equal(getRemoteTimelineElapsedMs(0), LOCAL_ROLL_PRE_RESULT_MS / 2);
+test('remote roll starts one second before the midpoint so the high descent remains visible', () => {
+  assert.equal(
+    REMOTE_ROLL_LOCAL_TIMELINE_START_MS,
+    LOCAL_ROLL_PRE_RESULT_MS / 2 - ROLL_INTRO_EXTENSION_MS,
+  );
+  assert.equal(REMOTE_ROLL_LOCAL_TIMELINE_START_MS, 950);
+  assert.equal(REMOTE_ROLL_LANDING_START_MS, 0);
+  assert.equal(getRemoteTimelineElapsedMs(0), REMOTE_ROLL_LOCAL_TIMELINE_START_MS);
+  assert.ok(getRemoteTimelineElapsedMs(0) / LOCAL_ROLL_PRIMARY_MS < LOCAL_THROW_APEX_PROGRESS);
   assert.equal(getRemoteTimelineElapsedMs(REMOTE_ROLL_PRE_RESULT_MS), LOCAL_ROLL_PRE_RESULT_MS);
-  assert.equal(getRemoteLandingElapsedMs(0), 250);
+  assert.equal(getRemoteLandingElapsedMs(0), 0);
   assert.equal(getRemoteLandingElapsedMs(REMOTE_ROLL_PRE_RESULT_MS), LOCAL_ROLL_LANDING_MS);
 });
 
