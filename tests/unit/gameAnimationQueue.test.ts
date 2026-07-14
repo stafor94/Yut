@@ -1,0 +1,99 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createGameAnimationQueue } from '../../src/app/flows/gameAnimationQueue.js';
+
+const createDeferred = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+};
+
+test('game animations run strictly in enqueue order', async () => {
+  const queue = createGameAnimationQueue();
+  const firstGate = createDeferred();
+  const order: string[] = [];
+
+  const first = queue.enqueue('roll-1', async () => {
+    order.push('roll-start');
+    await firstGate.promise;
+    order.push('roll-end');
+  });
+  const second = queue.enqueue('move-1', async () => {
+    order.push('move-start');
+    order.push('move-end');
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(order, ['roll-start']);
+  assert.equal(queue.isBusy(), true);
+
+  firstGate.resolve();
+  await Promise.all([first, second]);
+  assert.deepEqual(order, ['roll-start', 'roll-end', 'move-start', 'move-end']);
+  assert.equal(queue.isBusy(), false);
+});
+
+test('the same pending animation key is only queued once', async () => {
+  const queue = createGameAnimationQueue();
+  const gate = createDeferred();
+  let runCount = 0;
+
+  const first = queue.enqueue('roll-duplicate', async () => {
+    runCount += 1;
+    await gate.promise;
+  });
+  const duplicate = queue.enqueue('roll-duplicate', async () => {
+    runCount += 1;
+  });
+
+  assert.equal(first, duplicate);
+  assert.equal(queue.has('roll-duplicate'), true);
+  gate.resolve();
+  await first;
+  assert.equal(runCount, 1);
+  assert.equal(queue.has('roll-duplicate'), false);
+});
+
+test('a failed animation does not block animations behind it', async () => {
+  const queue = createGameAnimationQueue();
+  const order: string[] = [];
+
+  const failed = queue.enqueue('broken-roll', async () => {
+    order.push('broken');
+    throw new Error('animation failed');
+  });
+  const next = queue.enqueue('following-move', async () => {
+    order.push('following');
+  });
+
+  await assert.rejects(failed, /animation failed/);
+  await next;
+  assert.deepEqual(order, ['broken', 'following']);
+});
+
+test('reset discards queued animations that have not started', async () => {
+  const queue = createGameAnimationQueue();
+  const gate = createDeferred();
+  const order: string[] = [];
+
+  const active = queue.enqueue('active', async () => {
+    order.push('active-start');
+    await gate.promise;
+    order.push('active-end');
+  });
+  const queued = queue.enqueue('queued', async () => {
+    order.push('queued-start');
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+  queue.reset();
+  gate.resolve();
+  await Promise.all([active, queued]);
+
+  assert.deepEqual(order, ['active-start', 'active-end']);
+  assert.equal(queue.isBusy(), false);
+});
