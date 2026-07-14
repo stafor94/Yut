@@ -19,3 +19,18 @@
 .turn-roll-stack-badges {
   inset-block-start: calc(100% - 2px);
 }
+
+/* 앞선 윷·말 이동 연출이 끝나기 전 다음 액션이 먼저 제출되지 않도록 잠근다. */
+.game-shell .roll-stage ~ .play-controls {
+  pointer-events: none;
+}
+
+.game-shell .roll-stage ~ .play-controls .roll-timing-meter {
+  display: none;
+}
+
+.game-shell .roll-stage ~ .play-controls button {
+  cursor: wait;
+  opacity: .45;
+  filter: grayscale(.35);
+}
