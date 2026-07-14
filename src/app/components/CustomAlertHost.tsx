@@ -7,6 +7,10 @@ type CustomAlertRequest = {
   resolve: () => void;
 };
 
+type StoredCustomAlert = Pick<CustomAlertRequest, 'title' | 'message'>;
+
+const DEFERRED_ALERT_STORAGE_KEY = 'yut-ui:deferred-custom-alert';
+const FATAL_GAME_ALERT_TITLE = '게임 진행 확인 실패';
 const alertQueue: CustomAlertRequest[] = [];
 const listeners = new Set<() => void>();
 let alertVersion = 0;
@@ -24,12 +28,43 @@ const subscribeAlertQueue = (listener: () => void) => {
 
 const getAlertVersion = () => alertVersion;
 
+const enqueueCustomAlert = (message: string, title: string) => new Promise<void>((resolve) => {
+  alertQueue.push({ id: nextAlertId, title, message, resolve });
+  nextAlertId += 1;
+  emitAlertQueueChange();
+});
+
+const storeDeferredAlert = (alert: StoredCustomAlert) => {
+  if (typeof window === 'undefined') return false;
+  try {
+    window.sessionStorage.setItem(DEFERRED_ALERT_STORAGE_KEY, JSON.stringify(alert));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const takeDeferredAlert = (): StoredCustomAlert | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const storedAlert = window.sessionStorage.getItem(DEFERRED_ALERT_STORAGE_KEY);
+    if (!storedAlert) return null;
+    window.sessionStorage.removeItem(DEFERRED_ALERT_STORAGE_KEY);
+    const parsed = JSON.parse(storedAlert) as Partial<StoredCustomAlert>;
+    return typeof parsed.title === 'string' && typeof parsed.message === 'string'
+      ? { title: parsed.title, message: parsed.message }
+      : null;
+  } catch {
+    window.sessionStorage.removeItem(DEFERRED_ALERT_STORAGE_KEY);
+    return null;
+  }
+};
+
 export function showCustomAlert(message: string, title = '알림') {
-  return new Promise<void>((resolve) => {
-    alertQueue.push({ id: nextAlertId, title, message, resolve });
-    nextAlertId += 1;
-    emitAlertQueueChange();
-  });
+  if (title === FATAL_GAME_ALERT_TITLE && storeDeferredAlert({ title, message })) {
+    return Promise.resolve();
+  }
+  return enqueueCustomAlert(message, title);
 }
 
 export function CustomAlertHost() {
@@ -38,6 +73,11 @@ export function CustomAlertHost() {
   const messageId = useId();
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const alertRequest = alertQueue[0] ?? null;
+
+  useEffect(() => {
+    const deferredAlert = takeDeferredAlert();
+    if (deferredAlert) void enqueueCustomAlert(deferredAlert.message, deferredAlert.title);
+  }, []);
 
   useEffect(() => {
     if (!alertRequest) return;
