@@ -10,7 +10,7 @@ test.describe('roll mat surface regression', () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('pending부터 결과 유지까지 축소된 매트와 넓은 3D 비행 영역을 계속 표시한다', async ({ page, context }, testInfo) => {
+  test('원목 게임 UI와 pending부터 결과 유지까지 축소된 매트를 계속 표시한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 412, height: 915 });
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'mat-host'));
     const roomTitle = makeQaName(testInfo, 'mat-room');
@@ -32,12 +32,108 @@ test.describe('roll mat surface regression', () => {
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
     });
 
-    await runQaStep(testInfo, '축소된 매트 표면과 3D viewport 확인', async () => {
+    await runQaStep(testInfo, '원목 UI와 축소된 매트 표면 확인', async () => {
       await expect.poll(async () => {
         const state = await collectScreenState(page);
         if (state.rollButton.visible && !state.rollButton.disabled) return 'ready';
         return JSON.stringify(state, null, 2);
       }, { timeout: 45_000, message: '매트 회귀를 확인할 수 있는 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
+
+      const board = page.getByTestId('game-board');
+      const turnIndicator = page.getByTestId('turn-indicator');
+      const controls = page.locator('.play-controls');
+      const timingMeter = page.locator('.roll-timing-meter');
+      const rollButton = page.getByTestId('roll-yut-button');
+      await expect(board).toBeVisible();
+      await expect(turnIndicator).toBeVisible();
+      await expect(controls).toBeVisible();
+      await expect(timingMeter).toBeVisible();
+      await expect(rollButton).toBeVisible();
+      await expect(page.locator('.board-node')).toHaveCount(29);
+
+      const woodenUi = await page.evaluate(() => {
+        const boardNode = document.querySelector('[data-testid="game-board"]');
+        const routeLine = boardNode?.querySelector('.board-route-lines line');
+        const normalNode = boardNode?.querySelector('.board-node.normal');
+        const centerNode = boardNode?.querySelector('[data-testid="board-node-c01"]');
+        const startNode = boardNode?.querySelector('[data-testid="board-node-n01"]');
+        const turnNode = document.querySelector('[data-testid="turn-indicator"]');
+        const controlNode = document.querySelector('.play-controls');
+        const meterNode = document.querySelector('.roll-timing-meter');
+        const buttonNode = document.querySelector('[data-testid="roll-yut-button"]');
+        if (!boardNode || !routeLine || !normalNode || !centerNode || !startNode || !turnNode || !controlNode || !meterNode || !buttonNode) return null;
+
+        const boardStyle = getComputedStyle(boardNode);
+        const routeStyle = getComputedStyle(routeLine);
+        const normalStyle = getComputedStyle(normalNode);
+        const centerStyle = getComputedStyle(centerNode);
+        const startStyle = getComputedStyle(startNode);
+        const turnStyle = getComputedStyle(turnNode);
+        const controlStyle = getComputedStyle(controlNode);
+        const meterStyle = getComputedStyle(meterNode);
+        const buttonStyle = getComputedStyle(buttonNode);
+        const boardRect = boardNode.getBoundingClientRect();
+        const turnRect = turnNode.getBoundingClientRect();
+        const controlRect = controlNode.getBoundingClientRect();
+        const buttonRect = buttonNode.getBoundingClientRect();
+
+        return {
+          viewportWidth: window.innerWidth,
+          boardWidth: boardRect.width,
+          turnWidth: turnRect.width,
+          controlWidth: controlRect.width,
+          buttonHeight: buttonRect.height,
+          boardBackground: boardStyle.backgroundImage,
+          boardBorderStyle: boardStyle.borderTopStyle,
+          boardBorderWidth: Number.parseFloat(boardStyle.borderTopWidth),
+          boardShadow: boardStyle.boxShadow,
+          routeDash: routeStyle.strokeDasharray,
+          routeWidth: Number.parseFloat(routeStyle.strokeWidth),
+          normalBackground: normalStyle.backgroundImage,
+          normalShadow: normalStyle.boxShadow,
+          centerBackground: centerStyle.backgroundImage,
+          startBackground: startStyle.backgroundImage,
+          turnBackground: turnStyle.backgroundImage,
+          turnBorderWidth: Number.parseFloat(turnStyle.borderTopWidth),
+          turnShadow: turnStyle.boxShadow,
+          controlBackground: controlStyle.backgroundImage,
+          controlBorderWidth: Number.parseFloat(controlStyle.borderTopWidth),
+          controlShadow: controlStyle.boxShadow,
+          meterBackground: meterStyle.backgroundImage,
+          meterHeight: Number.parseFloat(meterStyle.height),
+          buttonBackground: buttonStyle.backgroundImage,
+          buttonBorderWidth: Number.parseFloat(buttonStyle.borderTopWidth),
+          buttonShadow: buttonStyle.boxShadow,
+        };
+      });
+
+      expect(woodenUi, '원목 게임 UI 구성 요소를 모두 찾을 수 있어야 합니다.').not.toBeNull();
+      if (!woodenUi) throw new Error('원목 게임 UI 구성 요소를 찾지 못했습니다.');
+      expect(woodenUi.boardWidth).toBeLessThanOrEqual(woodenUi.viewportWidth);
+      expect(woodenUi.turnWidth).toBeLessThanOrEqual(woodenUi.viewportWidth);
+      expect(woodenUi.controlWidth).toBeLessThanOrEqual(woodenUi.viewportWidth);
+      expect(woodenUi.buttonHeight).toBeGreaterThanOrEqual(52);
+      expect(woodenUi.boardBackground).not.toBe('none');
+      expect(woodenUi.boardBorderStyle).toBe('solid');
+      expect(woodenUi.boardBorderWidth).toBeGreaterThanOrEqual(9);
+      expect(woodenUi.boardShadow).not.toBe('none');
+      expect(woodenUi.routeDash).toBe('none');
+      expect(woodenUi.routeWidth).toBeGreaterThanOrEqual(1.8);
+      expect(woodenUi.normalBackground).not.toBe('none');
+      expect(woodenUi.normalShadow).not.toBe('none');
+      expect(woodenUi.centerBackground).not.toBe('none');
+      expect(woodenUi.startBackground).not.toBe('none');
+      expect(woodenUi.turnBackground).not.toBe('none');
+      expect(woodenUi.turnBorderWidth).toBeGreaterThanOrEqual(2);
+      expect(woodenUi.turnShadow).not.toBe('none');
+      expect(woodenUi.controlBackground).not.toBe('none');
+      expect(woodenUi.controlBorderWidth).toBeGreaterThanOrEqual(7);
+      expect(woodenUi.controlShadow).not.toBe('none');
+      expect(woodenUi.meterBackground).not.toBe('none');
+      expect(woodenUi.meterHeight).toBeGreaterThanOrEqual(12);
+      expect(woodenUi.buttonBackground).not.toBe('none');
+      expect(woodenUi.buttonBorderWidth).toBeGreaterThanOrEqual(2);
+      expect(woodenUi.buttonShadow).not.toBe('none');
 
       await page.getByTestId('roll-yut-button').click();
       const mat = page.getByTestId('roll-mat');
