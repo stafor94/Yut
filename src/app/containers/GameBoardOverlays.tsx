@@ -110,7 +110,16 @@ export function RollStage({ rollAnimation }: RollStageProps) {
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${rollAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
     <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`}>
-      <span data-testid="roll-mat-surface" className="roll-mat-surface" aria-hidden="true"></span>
+      <span data-testid="roll-mat-surface" className="roll-mat-surface" aria-hidden="true">
+        <span className="roll-mat-depth"></span>
+        <span className="roll-mat-inlay"></span>
+        <span className="roll-mat-corner roll-mat-corner-nw"></span>
+        <span className="roll-mat-corner roll-mat-corner-ne"></span>
+        <span className="roll-mat-corner roll-mat-corner-sw"></span>
+        <span className="roll-mat-corner roll-mat-corner-se"></span>
+        <span className="roll-mat-leg roll-mat-leg-left"></span>
+        <span className="roll-mat-leg roll-mat-leg-right"></span>
+      </span>
       {rollAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${rollAnimation.timingZone}`}>{rollAnimation.timingZone === 'perfect' ? 'Perfect!' : rollAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{fallCount ? '낙!' : result.name}</span>}
       <YutRollScenePhysics rollAnimation={rollAnimation} onSettled={() => setSettledAnimationId(rollAnimation.id)} />
