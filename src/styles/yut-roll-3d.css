@@ -140,6 +140,30 @@
   100% { transform: rotateX(0deg) rotateY(180deg) rotateZ(0deg); }
 }
 
+.yut-roll-scene[data-renderer='fallback'] .yut-stick.fallen {
+  animation-name: yut-fallen-flight;
+}
+
+.resolved-from-pending .yut-roll-scene[data-renderer='fallback'] .yut-stick.fallen {
+  animation-name: yut-resolved-fallen-from-pending;
+}
+
+@keyframes yut-fallen-flight {
+  0% { opacity: 1; transform: translate3d(calc(-32px + var(--stick-index) * 22px), -190px, 0) rotateZ(calc(-150deg + var(--stick-index) * 28deg)) scale(.98); }
+  38% { opacity: 1; transform: translate3d(0, 8px, 0) rotateZ(var(--stick-land-rotate)) scale(1.02); }
+  58% { opacity: 1; transform: translate3d(var(--fall-bounce-x), -42px, 0) rotateZ(var(--stick-bounce-rotate)) scale(1.01); }
+  72% { opacity: 1; transform: translate3d(var(--fall-edge-x), 4px, 0) rotateZ(calc(var(--fall-rotate) * .45)) scale(1); }
+  100% { opacity: 0; transform: translate3d(var(--fall-x), var(--fall-y), 0) rotateZ(var(--fall-rotate)) scale(.96); }
+}
+
+@keyframes yut-resolved-fallen-from-pending {
+  0% { opacity: 1; filter: drop-shadow(0 6px 12px rgba(42, 30, 23, .16)); transform: translate3d(calc(-48px + var(--stick-index) * 32px), calc(-230px + var(--stick-index) * 6px), 0) rotateZ(calc(-20deg + var(--stick-index) * 16deg)) scale(.99); }
+  38% { opacity: 1; filter: drop-shadow(0 20px 28px rgba(42, 30, 23, .34)); transform: translate3d(0, 8px, 0) rotateZ(var(--stick-land-rotate)) scale(1.02); }
+  58% { opacity: 1; filter: drop-shadow(0 15px 24px rgba(42, 30, 23, .3)); transform: translate3d(var(--fall-bounce-x), -42px, 0) rotateZ(var(--stick-bounce-rotate)) scale(1.01); }
+  72% { opacity: 1; filter: drop-shadow(0 14px 22px rgba(42, 30, 23, .27)); transform: translate3d(var(--fall-edge-x), 4px, 0) rotateZ(calc(var(--fall-rotate) * .45)) scale(1); }
+  100% { opacity: 0; filter: drop-shadow(0 5px 10px rgba(42, 30, 23, .12)); transform: translate3d(var(--fall-x), var(--fall-y), 0) rotateZ(var(--fall-rotate)) scale(.96); }
+}
+
 @media (max-width: 767px) {
   .roll-stage .roll-mat {
     width: min(96vw, 560px);
