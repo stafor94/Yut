@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
@@ -74,6 +74,7 @@ export function GameBoardControls({
   const rollTimingMeterRef = useRef<HTMLDivElement | null>(null);
   const rollTimingOrbRef = useRef<HTMLSpanElement | null>(null);
   const wasLocalTurnActiveRef = useRef(false);
+  const [turnActionTimedOut, setTurnActionTimedOut] = useState(false);
   const localTurnActive = Boolean(activeSeatId && activeSeatId === localSeatId && !waitingForOnlineTurnOrder && !hasActiveTurnOrderIntro);
   const getVisibleRollTimingPositionPercent = () => {
     const meter = rollTimingMeterRef.current;
@@ -103,7 +104,28 @@ export function GameBoardControls({
     return () => window.clearTimeout(timer);
   }, [activeSeatId, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll]);
 
+  const isOpponentTurn = Boolean(activeSeatId && activeSeatId !== localSeatId);
+  const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;
+  const showRollStackPicker = canShowLocalRollStack && rollStack.length >= 2 && selectedRollStackIndex === null;
+  const showRollStackMoveButton = canShowLocalRollStack && rollStack.length > 0 && !showRollStackPicker;
+  const timerDurationMs = activeSeatId ? getTurnActionTimeoutMs(activeSeatId) : turnActionTimeoutMs;
+  const turnActionPhase = roll || rollStackClosed ? 'move' : 'roll';
+  const turnActionTimerKey = `${activeSeatId ?? ''}:${turnActionPhase}:${rollStack.length}`;
+  const turnActionTimerVisible = !isOpponentTurn && activeItemPromptTypes.length === 0 && (
+    showBottomBranchControls
+      ? canRequestMove
+      : showRollStackPicker || ((!roll && canRollNow) || (roll && canRequestMove))
+  );
+
+  useEffect(() => {
+    setTurnActionTimedOut(false);
+    if (!turnActionTimerVisible || typeof window === 'undefined') return undefined;
+    const timer = window.setTimeout(() => setTurnActionTimedOut(true), timerDurationMs);
+    return () => window.clearTimeout(timer);
+  }, [timerDurationMs, turnActionTimerKey, turnActionTimerVisible]);
+
   const handleRollButtonClick = () => {
+    if (turnActionTimedOut) return;
     if (roll) {
       onMoveSelectedPiece();
       return;
@@ -111,21 +133,19 @@ export function GameBoardControls({
     onRollYut(getVisibleRollTimingPositionPercent());
   };
 
-  const isOpponentTurn = Boolean(activeSeatId && activeSeatId !== localSeatId);
-  const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;
-  const showRollStackPicker = canShowLocalRollStack && rollStack.length >= 2 && selectedRollStackIndex === null;
-  const showRollStackMoveButton = canShowLocalRollStack && rollStack.length > 0 && !showRollStackPicker;
   const rollControlPresentation = getRollControlPresentation({
     hasRoll: Boolean(roll),
     canRollNow,
     showRollStackPicker,
+    timedOut: turnActionTimedOut,
   });
-  const timerDurationMs = activeSeatId ? getTurnActionTimeoutMs(activeSeatId) : turnActionTimeoutMs;
-  const actionButtonText = roll
-    ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동')
-    : pendingTrapPlacement ? '함정 설치 대기 중'
-      : waitingForOnlineTurnOrder ? '순서 정하기 대기 중'
-        : hasActiveTurnOrderIntro ? '결과 확인 중' : '윷 던지기';
+  const actionButtonText = turnActionTimedOut
+    ? '자동 처리 중...'
+    : roll
+      ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동')
+      : pendingTrapPlacement ? '함정 설치 대기 중'
+        : waitingForOnlineTurnOrder ? '순서 정하기 대기 중'
+          : hasActiveTurnOrderIntro ? '결과 확인 중' : '윷 던지기';
 
   return <div ref={controlsRef} className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
     {isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
@@ -136,15 +156,17 @@ export function GameBoardControls({
         <button className="secondary" onClick={onSkipItemPrompt}>사용 안 함</button>
       </div>
     </div> : showBottomBranchControls ? <div className="bottom-branch-controls" aria-label="이동 방향 선택">
-      <button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => onBranchChoiceChange('outer')}>바깥길</button>
-      <button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => onBranchChoiceChange('shortcut')}>지름길</button>
+      <button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => onBranchChoiceChange('outer')} disabled={turnActionTimedOut}>바깥길</button>
+      <button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => onBranchChoiceChange('shortcut')} disabled={turnActionTimedOut}>지름길</button>
       {canRequestMove && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
-      <button type="button" data-testid="move-piece-button" className="branch-move-button" onClick={onMoveSelectedPiece} disabled={!canRequestMove}>선택한 말 이동</button>
+      <button type="button" data-testid={turnActionTimedOut ? 'turn-waiting-button' : 'move-piece-button'} className="branch-move-button" onClick={onMoveSelectedPiece} disabled={turnActionTimedOut || !canRequestMove}>{turnActionTimedOut ? '자동 처리 중...' : '선택한 말 이동'}</button>
     </div> : <>
-      {((!roll && canRollNow) || (roll && canRequestMove)) && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
-      {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index)}>{entry.name}</button>)}</div></div>}
+      {turnActionTimerVisible && <div className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${timerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
+      {showRollStackPicker && (turnActionTimedOut
+        ? <button data-testid="turn-waiting-button" disabled>자동 처리 중...</button>
+        : <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index)}>{entry.name}</button>)}</div></div>)}
       {rollControlPresentation.showTimingMeter && <div ref={rollTimingMeterRef} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대"><span className="roll-timing-good left" aria-hidden="true"></span><span className="roll-timing-perfect" aria-hidden="true"></span><span className="roll-timing-good right" aria-hidden="true"></span><span ref={rollTimingOrbRef} className="roll-timing-orb" aria-hidden="true"></span></div>}
-      {!showRollStackPicker && <button data-testid={rollControlPresentation.actionButtonTestId} className={!roll ? 'roll-button' : undefined} onClick={handleRollButtonClick} disabled={(!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton ? '선택한 말 이동' : actionButtonText}</button>}
+      {!showRollStackPicker && <button data-testid={rollControlPresentation.actionButtonTestId} className={!roll ? 'roll-button' : undefined} onClick={handleRollButtonClick} disabled={turnActionTimedOut || (!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton && !turnActionTimedOut ? '선택한 말 이동' : actionButtonText}</button>}
     </>}
   </div>;
 }
