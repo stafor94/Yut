@@ -113,7 +113,7 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
     left: `${node.x}%`,
     top: `${node.y}%`,
     ...getPieceColorStyle(piece),
-    zIndex: 10 + groupIndex * 5 + stackIndex,
+    '--piece-stack-z': 10 + groupIndex * 5 + stackIndex,
     translate: `calc(-50% + ${xOffset}px) calc(-50% + ${yOffset - stackLift}px)`,
     '--piece-stack-index': stackIndex,
     '--piece-stack-size': stackedPieces.length,
@@ -187,8 +187,8 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
       const pieceSelectable = isPieceSelectable?.(piece) !== false;
       const pieceSelected = pieceSelectable && selectedIds.includes(piece.id);
       const finishVisualPiece = finishEffect?.pieces.find((candidate) => candidate.id === piece.id);
-      const stackedPieceCount = piece.started && !piece.finished
-        ? pieces.filter((candidate) => candidate.started && !candidate.finished && candidate.nodeId === piece.nodeId && getPieceGroupKey(candidate) === getPieceGroupKey(piece)).length
+      const stackedPieceCount = (piece.started || piece.id === movingPieceId) && !piece.finished
+        ? pieces.filter((candidate) => (candidate.started || candidate.id === movingPieceId) && !candidate.finished && candidate.nodeId === piece.nodeId && getPieceGroupKey(candidate) === getPieceGroupKey(piece)).length
         : 1;
       const pieceStyle = {
         ...getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey),
