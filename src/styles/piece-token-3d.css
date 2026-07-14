@@ -130,12 +130,17 @@
 }
 
 .piece-token.selected .piece-token-figure,
-.piece-token.selected.stacked:not(.moving) .piece-token-figure,
 .piece-token.selected:focus .piece-token-figure,
 .piece-token.selected:focus-visible .piece-token-figure,
 .piece-token.selected:active .piece-token-figure {
   box-shadow: none !important;
   filter: none !important;
+}
+
+.piece-token.selected.stacked:not(.moving) .piece-token-figure {
+  filter:
+    drop-shadow(0 2px 1px rgba(255, 255, 255, .34))
+    drop-shadow(0 8px 6px rgba(42, 30, 23, .3)) !important;
 }
 
 .piece-token.selected .piece-token-top {
