@@ -174,10 +174,10 @@ const isTimeoutRecoveryAction = (action: Parameters<typeof reduceCoreAuthoritati
     || typeof payload.timeoutRecoveredBy === 'string';
 };
 
-const replaceMatchingNestedDeadline = (value: unknown, previousDeadline: number, nextDeadline: number) => {
+const replaceNestedDeadline = (value: unknown, nextDeadline: number) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const record = value as Record<string, unknown>;
-  return Number(record.deadline ?? 0) === previousDeadline ? { ...record, deadline: nextDeadline } : value;
+  return typeof record.deadline === 'number' ? { ...record, deadline: nextDeadline } : value;
 };
 
 const getCoreDeadlineBaseMs = (kind: TurnDeadlineKind) => (
@@ -216,9 +216,9 @@ const applyTurnActionTimeoutPolicy = (
     const nextTimeoutMs = getTurnActionTimeoutMsForCount(timeoutCounts[targetSeatId], visibleBaseTimeoutMs);
     const nextDeadline = previousDeadline - coreBaseTimeoutMs + nextTimeoutMs;
     patch.turnDeadlineAt = nextDeadline;
-    if ('pendingTrapPlacement' in patch) patch.pendingTrapPlacement = replaceMatchingNestedDeadline(patch.pendingTrapPlacement, previousDeadline, nextDeadline);
-    if ('pendingGoldenYutSelection' in patch) patch.pendingGoldenYutSelection = replaceMatchingNestedDeadline(patch.pendingGoldenYutSelection, previousDeadline, nextDeadline);
-    if ('pendingItemPickup' in patch) patch.pendingItemPickup = replaceMatchingNestedDeadline(patch.pendingItemPickup, previousDeadline, nextDeadline);
+    if ('pendingTrapPlacement' in patch) patch.pendingTrapPlacement = replaceNestedDeadline(patch.pendingTrapPlacement, nextDeadline);
+    if ('pendingGoldenYutSelection' in patch) patch.pendingGoldenYutSelection = replaceNestedDeadline(patch.pendingGoldenYutSelection, nextDeadline);
+    if ('pendingItemPickup' in patch) patch.pendingItemPickup = replaceNestedDeadline(patch.pendingItemPickup, nextDeadline);
   }
 
   if (recoveredFromTimeout) patch.turnActionTimeoutCountBySeatId = timeoutCounts;
