@@ -14,6 +14,7 @@
   color: #fff;
   font-size: 0;
   isolation: isolate;
+  z-index: var(--piece-stack-z, 10);
   overflow: visible;
   -webkit-tap-highlight-color: transparent;
 }
