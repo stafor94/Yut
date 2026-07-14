@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import type { ItemTiming } from '../../features/items/logic/items';
 import type { GameAction } from '../../features/room/services/roomService';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
 
@@ -9,6 +10,17 @@ export type PendingRemoteActionMeta = {
   createdTurnIndex?: number;
   actorId?: string;
   optimisticApplied?: boolean;
+  itemPromptTiming?: ItemTiming | null;
+};
+
+type GameDebugStateWindow = typeof window & {
+  __YUT_DEBUG_STATE__?: { itemPromptTiming?: unknown };
+};
+
+const getCurrentItemPromptTiming = (): ItemTiming | null => {
+  if (typeof window === 'undefined') return null;
+  const timing = (window as GameDebugStateWindow).__YUT_DEBUG_STATE__?.itemPromptTiming;
+  return timing === 'before_roll' || timing === 'after_roll' || timing === 'after_move' ? timing : null;
 };
 
 export function usePendingRemoteActions() {
@@ -25,12 +37,16 @@ export function usePendingRemoteActions() {
   };
   const addPendingLocalRemoteAction = (actionKey: string, meta: Partial<PendingRemoteActionMeta> & { type?: GameAction['type'] } = {}) => {
     const type = meta.type ?? getPendingLocalRemoteActionType(actionKey);
-    const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied });
+    const itemPromptTiming = type === 'use_item'
+      ? ('itemPromptTiming' in meta ? meta.itemPromptTiming ?? null : getCurrentItemPromptTiming())
+      : undefined;
+    const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied, itemPromptTiming });
     pendingLocalRemoteActionsRef.current.add(actionKey);
     pendingLocalRemoteActionMetaRef.current.set(actionKey, {
       ...meta,
       type,
       optimisticApplied,
+      ...(itemPromptTiming !== undefined ? { itemPromptTiming } : {}),
       createdAt: meta.createdAt ?? Date.now(),
     });
     syncPendingLocalRemoteActionCount();
