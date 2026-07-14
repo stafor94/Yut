@@ -110,7 +110,7 @@ test.describe('game start authority QA', () => {
             initializedCount: initSequenceCount(sequences),
           };
         }, { timeout: 5_000 }).toEqual({ roomVersion: 1, stateVersion: 1, sameRequestId: true, initializedCount: 1 });
-        await expect(readStartTransitionTrace(qa.hostPage)).resolves.toEqual({
+        expect(await readStartTransitionTrace(qa.hostPage)).toEqual({
           countdownSeen: true,
           gameSeen: true,
           overlayMissingBeforeGame: false,
