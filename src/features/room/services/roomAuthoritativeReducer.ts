@@ -103,6 +103,22 @@ export function reduceAuthoritativeGameAction(
   if (!isAuthoritativeCommitReduction(reduction)) return reduction;
 
   const [state, action, room] = args;
+  if (room.stackedRollMode && action.type === 'roll_yut') {
+    const nextRollStack = (reduction.patch.rollStack ?? state.rollStack) as unknown[] | undefined;
+    const nextRollStackClosed = reduction.patch.rollStackClosed ?? state.rollStackClosed;
+    if (nextRollStack?.length && nextRollStackClosed === false) {
+      reduction = {
+        ...reduction,
+        patch: {
+          ...reduction.patch,
+          roll: null,
+          selectedRollStackIndex: null,
+          turnDeadlineKind: 'roll',
+        },
+      };
+    }
+  }
+
   if (!room.stackedRollMode || !resolvesAfterRollStackPrompt(action)) return reduction;
 
   const resolvedRollStack = (reduction.patch.rollStack ?? state.rollStack) as unknown[] | undefined;
