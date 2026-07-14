@@ -5,6 +5,42 @@ import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomSequencesForQa
 
 const initSequenceCount = (sequences) => sequences.filter((sequence) => sequence.type === 'game_initialized').length;
 
+async function installStartTransitionTrace(page) {
+  await page.evaluate(() => {
+    const trace = {
+      countdownSeen: false,
+      gameSeen: false,
+      overlayMissingBeforeGame: false,
+      enabledStartButtonBeforeGame: false,
+    };
+    const inspect = () => {
+      const gameVisible = Boolean(document.querySelector('[data-testid="game-screen"]'));
+      if (gameVisible) {
+        trace.gameSeen = true;
+        return;
+      }
+      const overlayVisible = Boolean(document.querySelector('[data-testid="start-countdown-overlay"], [data-testid="start-transition-overlay"]'));
+      if (overlayVisible) trace.countdownSeen = true;
+      if (!trace.countdownSeen) return;
+      if (!overlayVisible) trace.overlayMissingBeforeGame = true;
+      const startButton = document.querySelector('[data-testid="start-game-button"]');
+      if (startButton instanceof HTMLButtonElement && !startButton.disabled) trace.enabledStartButtonBeforeGame = true;
+    };
+    inspect();
+    const observer = new MutationObserver(inspect);
+    observer.observe(document.body, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['disabled'] });
+    window.__YUT_QA_START_TRANSITION_TRACE__ = trace;
+    window.__YUT_QA_START_TRANSITION_OBSERVER__ = observer;
+  });
+}
+
+async function readStartTransitionTrace(page) {
+  return page.evaluate(() => {
+    window.__YUT_QA_START_TRANSITION_OBSERVER__?.disconnect();
+    return window.__YUT_QA_START_TRANSITION_TRACE__ ?? null;
+  });
+}
+
 async function prepareHostAndGuest(browser, testInfo, { hostDelay = {}, guestDelay = {}, label = 'room' } = {}) {
   const hostContext = await browser.newContext();
   const guestContext = await browser.newContext();
@@ -41,6 +77,7 @@ test.describe('game start authority QA', () => {
     });
     roomIds.push(qa.roomId);
     try {
+      await installStartTransitionTrace(qa.hostPage);
       await runQaStep(testInfo, '초기화 지연 중 대기실 유지', async () => {
         await qa.hostPage.getByTestId('start-game-button').click();
         await expect(qa.hostPage.getByTestId('start-countdown-overlay')).toBeVisible({ timeout: 6_000 });
@@ -73,6 +110,12 @@ test.describe('game start authority QA', () => {
             initializedCount: initSequenceCount(sequences),
           };
         }, { timeout: 5_000 }).toEqual({ roomVersion: 1, stateVersion: 1, sameRequestId: true, initializedCount: 1 });
+        await expect(readStartTransitionTrace(qa.hostPage)).resolves.toEqual({
+          countdownSeen: true,
+          gameSeen: true,
+          overlayMissingBeforeGame: false,
+          enabledStartButtonBeforeGame: false,
+        });
       });
     } finally {
       await qa.guestContext.close();
