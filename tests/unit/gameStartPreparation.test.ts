@@ -16,6 +16,7 @@ import {
   ROOM_START_ACTIVATION_GRACE_MS,
 } from '../../src/features/room/services/roomGamePreparationPolicy.js';
 import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming.js';
+import { TURN_ORDER_PRESENTATION_FINAL_HOLD_MS } from '../../src/app/flows/turnOrderFlow.js';
 import { TURN_ORDER_PRESENTATION_PREPARE_MS, getTurnOrderSlotRevealDurationMs } from '../../src/app/flows/turnOrderPresentation.js';
 
 const room: GameStartPreparationRoom = {
@@ -87,7 +88,7 @@ test('준비 상태의 순서 연출은 카운트다운 종료 시각부터 시�
   const expectedSlotUntil = countdownEndsAt + TURN_ORDER_PRESENTATION_PREPARE_MS + getTurnOrderSlotRevealDurationMs(players.length);
 
   assert.equal(state.turnOrderIntro.slotUntil, expectedSlotUntil);
-  assert.equal(state.gameStartedAt, expectedSlotUntil + 2_000);
+  assert.equal(state.gameStartedAt, expectedSlotUntil + TURN_ORDER_PRESENTATION_FINAL_HOLD_MS);
   assert.equal(state.turnDeadlineAt, state.gameStartedAt + TURN_ACTION_TIMEOUT_MS);
   assert.deepEqual(state.turnOrderIds, state.initialTurnOrderIds);
   assert.equal(state.turnOrderIds.length, players.length);
