@@ -5,6 +5,7 @@ import {
   LOCAL_ROLL_PRE_RESULT_MS,
   LOCAL_ROLL_PRIMARY_MS,
   REMOTE_ROLL_PRE_RESULT_MS,
+  ROLL_INTRO_EXTENSION_MS,
   getLocalLandingDropProgress,
   getYutRollPreResultDurationMs,
 } from '../../src/app/flows/yutRollAnimation.js';
@@ -14,11 +15,15 @@ import {
   getYutRollSceneFraming,
 } from '../../src/app/flows/yutRollSceneLayout.js';
 
-test('local player roll extends the landing by 0.7 seconds', () => {
-  assert.equal(LOCAL_ROLL_PRIMARY_MS, 1200);
+test('local and remote roll intros are extended by one second', () => {
+  assert.equal(ROLL_INTRO_EXTENSION_MS, 1000);
+  assert.equal(LOCAL_ROLL_PRIMARY_MS, 2200);
+  assert.equal(REMOTE_ROLL_PRE_RESULT_MS, 2200);
+  assert.equal(LOCAL_ROLL_PRIMARY_MS - ROLL_INTRO_EXTENSION_MS, 1200);
+  assert.equal(REMOTE_ROLL_PRE_RESULT_MS - ROLL_INTRO_EXTENSION_MS, 1200);
   assert.equal(LOCAL_ROLL_LANDING_MS, 1700);
-  assert.equal(LOCAL_ROLL_PRE_RESULT_MS, 2900);
-  assert.equal(LOCAL_ROLL_PRE_RESULT_MS - REMOTE_ROLL_PRE_RESULT_MS, 1700);
+  assert.equal(LOCAL_ROLL_PRE_RESULT_MS, 3900);
+  assert.equal(LOCAL_ROLL_PRE_RESULT_MS - REMOTE_ROLL_PRE_RESULT_MS, LOCAL_ROLL_LANDING_MS);
 });
 
 test('local landing starts moving immediately and accelerates continuously', () => {
@@ -30,10 +35,11 @@ test('local landing starts moving immediately and accelerates continuously', () 
 });
 
 test('pending phases use the local timeline and resolved rolls use the remote timeline', () => {
-  assert.equal(getYutRollPreResultDurationMs('primary'), 2900);
-  assert.equal(getYutRollPreResultDurationMs('landing'), 2900);
-  assert.equal(getYutRollPreResultDurationMs('resolved'), 1200);
-  assert.equal(getYutRollPreResultDurationMs(undefined), 1200);
+  assert.equal(getYutRollPreResultDurationMs('primary'), LOCAL_ROLL_PRE_RESULT_MS);
+  assert.equal(getYutRollPreResultDurationMs('extra-spin'), LOCAL_ROLL_PRE_RESULT_MS);
+  assert.equal(getYutRollPreResultDurationMs('landing'), LOCAL_ROLL_PRE_RESULT_MS);
+  assert.equal(getYutRollPreResultDurationMs('resolved'), REMOTE_ROLL_PRE_RESULT_MS);
+  assert.equal(getYutRollPreResultDurationMs(undefined), REMOTE_ROLL_PRE_RESULT_MS);
 });
 
 test('narrow mobile scenes move the camera back without distorting the canvas aspect', () => {
