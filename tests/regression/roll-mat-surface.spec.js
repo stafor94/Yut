@@ -108,6 +108,7 @@ test.describe('roll mat surface regression', () => {
       });
 
       expect(woodenUi, '원목 게임 UI 구성 요소를 모두 찾을 수 있어야 합니다.').not.toBeNull();
+      if (!woodenUi) throw new Error('원목 게임 UI 구성 요소를 찾지 못했습니다.');
       expect(woodenUi.boardWidth).toBeLessThanOrEqual(woodenUi.viewportWidth);
       expect(woodenUi.turnWidth).toBeLessThanOrEqual(woodenUi.viewportWidth);
       expect(woodenUi.controlWidth).toBeLessThanOrEqual(woodenUi.viewportWidth);
