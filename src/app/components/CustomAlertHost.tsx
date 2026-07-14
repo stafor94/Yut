@@ -11,6 +11,8 @@ type StoredCustomAlert = Pick<CustomAlertRequest, 'title' | 'message'>;
 
 const DEFERRED_ALERT_STORAGE_KEY = 'yut-ui:deferred-custom-alert';
 const FATAL_GAME_ALERT_TITLE = '게임 진행 확인 실패';
+const FATAL_GAME_ALERT_DISPLAY_TITLE = '게임에서 나왔어요';
+const FATAL_GAME_ALERT_DISPLAY_MESSAGE = '연결이 원활하지 않아 로비로 이동했어요.';
 const alertQueue: CustomAlertRequest[] = [];
 const listeners = new Set<() => void>();
 let alertVersion = 0;
@@ -86,6 +88,10 @@ export function CustomAlertHost() {
 
   if (!alertRequest) return null;
 
+  const isFatalGameAlert = alertRequest.title === FATAL_GAME_ALERT_TITLE;
+  const displayTitle = isFatalGameAlert ? FATAL_GAME_ALERT_DISPLAY_TITLE : alertRequest.title;
+  const displayMessage = isFatalGameAlert ? FATAL_GAME_ALERT_DISPLAY_MESSAGE : alertRequest.message;
+
   const closeAlert = () => {
     const currentRequest = alertQueue[0];
     if (!currentRequest || currentRequest.id !== alertRequest.id) return;
@@ -103,9 +109,9 @@ export function CustomAlertHost() {
         aria-labelledby={titleId}
         aria-describedby={messageId}
       >
-        <p className="section-kicker">시스템 알림</p>
-        <h2 id={titleId}>{alertRequest.title}</h2>
-        <p id={messageId}>{alertRequest.message}</p>
+        <p className="section-kicker">{isFatalGameAlert ? '게임 안내' : '시스템 알림'}</p>
+        <h2 id={titleId}>{displayTitle}</h2>
+        <p id={messageId}>{displayMessage}</p>
         <div className="modal-actions">
           <button ref={confirmButtonRef} onClick={closeAlert}>확인</button>
         </div>
