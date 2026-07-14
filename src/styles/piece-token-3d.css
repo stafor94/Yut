@@ -3,10 +3,20 @@
   --piece-dark: color-mix(in srgb, var(--piece-color) 58%, #160d09);
   --piece-deep: color-mix(in srgb, var(--piece-color) 42%, #100906);
   --piece-light: color-mix(in srgb, var(--piece-color) 76%, #fff);
-  width: 46px;
-  height: 38px;
-  min-width: 46px;
-  min-height: 38px;
+  --piece-octagon: polygon(
+    29.29% 0,
+    70.71% 0,
+    100% 29.29%,
+    100% 70.71%,
+    70.71% 100%,
+    29.29% 100%,
+    0 70.71%,
+    0 29.29%
+  );
+  width: 44px;
+  height: 48px;
+  min-width: 44px;
+  min-height: 48px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -25,7 +35,7 @@
   inset: 0;
   display: block;
   pointer-events: none;
-  filter: drop-shadow(0 8px 7px rgba(42, 30, 23, .24));
+  filter: drop-shadow(0 9px 7px rgba(42, 30, 23, .25));
 }
 
 .piece-token-side,
@@ -33,54 +43,68 @@
   position: absolute;
   left: 50%;
   display: block;
-  width: 44px;
-  height: 30px;
+  width: 42px;
+  height: 42px;
   translate: -50% 0;
-  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  clip-path: var(--piece-octagon);
 }
 
 .piece-token-side {
-  top: 7px;
+  top: 6px;
   z-index: 1;
   background:
-    linear-gradient(90deg, var(--piece-deep) 0%, var(--piece-dark) 28%, var(--piece-color) 58%, var(--piece-deep) 100%);
-  outline: 2px solid rgba(40, 23, 16, .92);
-  outline-offset: -2px;
+    linear-gradient(
+      90deg,
+      var(--piece-deep) 0%,
+      var(--piece-dark) 22%,
+      var(--piece-color) 48%,
+      var(--piece-dark) 74%,
+      var(--piece-deep) 100%
+    );
   box-shadow:
-    inset 0 -5px 7px rgba(16, 9, 6, .38),
-    inset 0 2px 2px rgba(255, 255, 255, .14);
+    inset 0 -7px 8px rgba(16, 9, 6, .42),
+    inset 0 2px 2px rgba(255, 255, 255, .13);
 }
 
 .piece-token-top {
   top: 0;
   z-index: 2;
-  background:
-    radial-gradient(ellipse at 34% 24%, rgba(255, 255, 255, .42) 0 9%, rgba(255, 255, 255, .12) 22%, transparent 43%),
-    linear-gradient(145deg, var(--piece-light) 0%, var(--piece-color) 46%, color-mix(in srgb, var(--piece-color) 80%, var(--piece-dark)) 100%);
-  outline: 3px solid rgba(255, 255, 255, .96);
-  outline-offset: -3px;
+  background: rgba(255, 255, 255, .98);
   box-shadow:
-    inset 0 0 0 2px rgba(44, 26, 18, .34),
+    0 2px 0 rgba(29, 17, 12, .66),
+    inset 0 0 0 1px rgba(255, 255, 255, .7);
+}
+
+.piece-token-top::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: 1;
+  clip-path: var(--piece-octagon);
+  background:
+    radial-gradient(ellipse at 34% 24%, rgba(255, 255, 255, .4) 0 8%, rgba(255, 255, 255, .12) 21%, transparent 42%),
+    linear-gradient(
+      145deg,
+      var(--piece-light) 0%,
+      var(--piece-color) 48%,
+      color-mix(in srgb, var(--piece-color) 78%, var(--piece-dark)) 100%
+    );
+  box-shadow:
     inset -5px -5px 8px rgba(23, 14, 10, .16),
     inset 4px 3px 6px rgba(255, 255, 255, .2);
 }
 
 .piece-token.stacked .piece-token-side {
-  outline-color: rgba(35, 20, 14, .98);
   box-shadow:
-    inset 0 -5px 7px rgba(16, 9, 6, .42),
-    inset 0 2px 2px rgba(255, 255, 255, .16),
-    0 2px 0 rgba(255, 255, 255, .9);
+    inset 0 -7px 8px rgba(16, 9, 6, .46),
+    inset 0 2px 2px rgba(255, 255, 255, .14),
+    0 2px 0 rgba(255, 255, 255, .82);
 }
 
 .piece-token.stacked .piece-token-top {
-  outline-width: 3px;
-  outline-color: #fff;
   box-shadow:
-    inset 0 0 0 2px rgba(42, 24, 16, .42),
-    inset -5px -5px 8px rgba(23, 14, 10, .18),
-    inset 4px 3px 6px rgba(255, 255, 255, .22),
-    0 2px 0 var(--piece-deep);
+    0 2px 0 var(--piece-deep),
+    inset 0 0 0 1px rgba(255, 255, 255, .76);
 }
 
 .piece-token.selected {
@@ -91,15 +115,11 @@
   filter:
     drop-shadow(0 0 4px rgba(242, 184, 75, 1))
     drop-shadow(0 0 9px rgba(242, 184, 75, .9))
-    drop-shadow(0 9px 7px rgba(42, 30, 23, .28));
+    drop-shadow(0 10px 7px rgba(42, 30, 23, .29));
 }
 
-.piece-token.selected .piece-token-top {
-  outline-color: #fff8d9;
-  box-shadow:
-    inset 0 0 0 3px rgba(242, 184, 75, .92),
-    inset -5px -5px 8px rgba(23, 14, 10, .16),
-    inset 4px 3px 6px rgba(255, 255, 255, .24);
+.piece-token.selected .piece-token-top::before {
+  filter: brightness(1.06) saturate(1.04);
 }
 
 .piece-token.moving {
@@ -108,8 +128,8 @@
 
 .piece-token.moving .piece-token-figure {
   filter:
-    drop-shadow(0 2px 0 rgba(255, 255, 255, .86))
-    drop-shadow(0 14px 10px rgba(42, 30, 23, .32));
+    drop-shadow(0 2px 0 rgba(255, 255, 255, .82))
+    drop-shadow(0 15px 10px rgba(42, 30, 23, .33));
 }
 
 .piece-token.shielded {
@@ -122,13 +142,13 @@
     drop-shadow(0 0 3px rgba(255, 255, 255, .98))
     drop-shadow(0 0 8px rgba(255, 215, 92, .95))
     drop-shadow(0 0 15px rgba(255, 198, 41, .7))
-    drop-shadow(0 9px 7px rgba(42, 30, 23, .26));
+    drop-shadow(0 10px 7px rgba(42, 30, 23, .27));
 }
 
 .piece-finish-mark {
   position: absolute;
   left: 50%;
-  top: 39%;
+  top: 42%;
   z-index: 4;
   translate: -50% -50%;
   display: grid;
@@ -152,19 +172,23 @@
 
 @media (max-width: 767px) {
   .piece-token {
-    width: 42px;
-    height: 35px;
-    min-width: 42px;
-    min-height: 35px;
+    width: 40px;
+    height: 44px;
+    min-width: 40px;
+    min-height: 44px;
   }
 
   .piece-token-side,
   .piece-token-top {
-    width: 40px;
-    height: 27px;
+    width: 38px;
+    height: 38px;
   }
 
   .piece-token-side {
-    top: 6px;
+    top: 5px;
+  }
+
+  .piece-token-top::before {
+    inset: 1.75px;
   }
 }
