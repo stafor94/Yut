@@ -118,7 +118,7 @@ test.describe('roll mat surface regression', () => {
       expect(pendingSurface.layoutHeight).toBeGreaterThan(0);
       expect(pendingSurface.visualWidth).toBeGreaterThan(0);
       expect(pendingSurface.visualHeight).toBeGreaterThan(0);
-      expect(pendingSurface.visualWidth).toBeLessThanOrEqual(Math.round(sceneLayout.viewportWidth * 0.64));
+      expect(pendingSurface.layoutWidth).toBeLessThanOrEqual(Math.round(sceneLayout.viewportWidth * 0.64));
       expect(pendingSurface.visualHeight).toBeLessThanOrEqual(270);
       expect(pendingSurface.visualTop - sceneLayout.sceneTop).toBeGreaterThanOrEqual(50);
       expect(pendingSurface.visualWidth).toBeLessThan(sceneLayout.sceneWidth);
