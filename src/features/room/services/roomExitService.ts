@@ -7,7 +7,7 @@ import {
   type RoomPlayer,
   type RoomSeat,
 } from './roomServiceCore';
-import { shouldSubstituteRoomPlayerAsAi } from './roomExitPolicy';
+import { shouldDeferRoomExitCleanup, shouldSubstituteRoomPlayerAsAi } from './roomExitPolicy';
 import {
   getRoomLastActivityMillis,
   shouldDeferOwnRoomRemoval,
@@ -190,12 +190,13 @@ function scheduleTransitionRoomRemoval(roomId: string, playerId: string, options
 export async function removeRoomPlayerSafely(...args: Parameters<typeof removeRoomPlayerCore>) {
   const [roomId, playerId, options = {}] = args;
   const pendingCleanup = { roomId, playerId, preservePlayingSeatAsAi: options.preservePlayingSeatAsAi ?? true };
-  if (!isGameScreenActive() && shouldDeferOwnRoomRemoval({
+  const lifecycleRequestsDeferral = shouldDeferOwnRoomRemoval({
     roomId,
     activeRoomId: getActiveRoomIdFromStorage(),
     currentUserId: auth?.currentUser?.uid ?? '',
     playerId,
-  })) {
+  });
+  if (shouldDeferRoomExitCleanup(isGameScreenActive(), lifecycleRequestsDeferral)) {
     queuePendingRoomCleanup(pendingCleanup);
     scheduleTransitionRoomRemoval(roomId, playerId, options);
     return;
