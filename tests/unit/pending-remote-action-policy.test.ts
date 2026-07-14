@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getPendingRemoteActionOptimisticApplied, isTurnFinalizingOptimisticItemAction } from '../../src/app/hooks/pendingRemoteActionPolicy';
+import { getPendingRemoteActionOptimisticApplied, isTurnFinalizingOptimisticItemAction, syncPendingRemoteActionItemPromptTiming } from '../../src/app/hooks/pendingRemoteActionPolicy';
 
 test('방패와 함정 사용은 optimistic UI를 유지하되 후속 턴 액션을 차단한다', () => {
   for (const itemType of ['shield', 'trap'] as const) {
@@ -9,6 +9,34 @@ test('방패와 함정 사용은 optimistic UI를 유지하되 후속 턴 액션
 
     assert.equal(isTurnFinalizingOptimisticItemAction(actionKey, meta), true);
     assert.equal(getPendingRemoteActionOptimisticApplied(actionKey, meta), false);
+  }
+});
+
+test('말 이동 후 아이템 사용 안 함은 서버 확정 전 후속 턴 액션을 차단한다', () => {
+  const actionKey = 'use_item:seat-1:12:4:ready:seat-1:piece-1::';
+  const meta = { type: 'use_item' as const, optimisticApplied: true };
+  syncPendingRemoteActionItemPromptTiming('after_move');
+
+  try {
+    assert.equal(isTurnFinalizingOptimisticItemAction(actionKey, meta), true);
+    assert.equal(getPendingRemoteActionOptimisticApplied(actionKey, meta), false);
+  } finally {
+    syncPendingRemoteActionItemPromptTiming(null);
+  }
+});
+
+test('윷 던지기 전후 아이템 사용 안 함은 비차단 optimistic 요청을 유지한다', () => {
+  const actionKey = 'use_item:seat-1:12:4:ready:seat-1:piece-1::';
+  const meta = { type: 'use_item' as const, optimisticApplied: true };
+
+  try {
+    for (const itemPromptTiming of ['before_roll', 'after_roll'] as const) {
+      syncPendingRemoteActionItemPromptTiming(itemPromptTiming);
+      assert.equal(isTurnFinalizingOptimisticItemAction(actionKey, meta), false);
+      assert.equal(getPendingRemoteActionOptimisticApplied(actionKey, meta), true);
+    }
+  } finally {
+    syncPendingRemoteActionItemPromptTiming(null);
   }
 });
 
