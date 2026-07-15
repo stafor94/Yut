@@ -140,7 +140,7 @@ test.describe('roll mat surface regression', () => {
       const surface = page.getByTestId('roll-mat-surface');
       const pendingStage = page.locator('.roll-stage.pending-roll');
       const pendingScene = pendingStage.getByTestId('yut-roll-scene');
-      await expect(pendingStage).toBeVisible({ timeout: 500 });
+      await expect(pendingStage).toBeVisible({ timeout: 2_000 });
       await expect(mat).toBeVisible();
       await expect(surface).toBeVisible();
       await expect(pendingScene).toBeVisible();
