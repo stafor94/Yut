@@ -8,7 +8,14 @@ import {
   gameAnimationQueue,
   waitForGameAnimation,
 } from '../flows/gameAnimationQueue';
+import {
+  EMPTY_ROLL_PRESENTATION_STATE,
+  isRollPresentationResultVisible,
+  type RollPresentationState,
+} from '../flows/rollPresentationVisibility';
 import type { RollAnimation, ToastMessage } from '../appState';
+
+export type { RollPresentationState } from '../flows/rollPresentationVisibility';
 
 type WinnerOverlayProps = {
   winner: string;
@@ -93,13 +100,6 @@ export function BoardMessageStack({ turnToast, toast }: BoardMessageStackProps) 
   </div>;
 }
 
-export type RollPresentationState = {
-  active: boolean;
-  actorId: string;
-  fallCount: number;
-  sourceAnimationId: number | null;
-};
-
 type RollStageProps = {
   rollAnimation: RollAnimation | null;
   presentationActorId?: string;
@@ -111,6 +111,7 @@ const isResolvedRollAnimation = (animation: RollAnimation) => animation.phase ==
 export function RollStage({ rollAnimation, presentationActorId = '', onPresentationChange }: RollStageProps) {
   const mountedRef = useRef(true);
   const presentedAnimationRef = useRef<RollAnimation | null>(rollAnimation);
+  const presentedSourceAnimationIdRef = useRef<number | null>(rollAnimation?.id ?? null);
   const deferredLiveAnimationRef = useRef<RollAnimation | null>(null);
   const seenResolvedAnimationIdsRef = useRef<Set<number>>(new Set());
   const queuedPresentationMetaRef = useRef<Map<number, { actorId: string; fallCount: number }>>(new Map());
@@ -121,15 +122,16 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
 
   onPresentationChangeRef.current = onPresentationChange;
 
-  const presentAnimation = (nextAnimation: RollAnimation | null) => {
+  const presentAnimation = (nextAnimation: RollAnimation | null, sourceAnimationId = nextAnimation?.id ?? null) => {
     presentedAnimationRef.current = nextAnimation;
+    presentedSourceAnimationIdRef.current = sourceAnimationId;
     setPresentedAnimation(nextAnimation);
   };
 
   const notifyQueuedPresentation = () => {
     const firstEntry = queuedPresentationMetaRef.current.entries().next().value as [number, { actorId: string; fallCount: number }] | undefined;
     if (!firstEntry) {
-      onPresentationChangeRef.current?.({ active: false, actorId: '', fallCount: 0, sourceAnimationId: null });
+      onPresentationChangeRef.current?.(EMPTY_ROLL_PRESENTATION_STATE);
       return;
     }
     const [sourceAnimationId, meta] = firstEntry;
@@ -138,6 +140,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       actorId: meta.actorId,
       fallCount: meta.fallCount,
       sourceAnimationId,
+      resultVisible: false,
     });
   };
 
@@ -147,7 +150,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     return () => {
       mountedRef.current = false;
       queuedPresentationMetaRef.current.clear();
-      onPresentationChangeRef.current?.({ active: false, actorId: '', fallCount: 0, sourceAnimationId: null });
+      onPresentationChangeRef.current?.(EMPTY_ROLL_PRESENTATION_STATE);
       presentationReleaseRef.current?.();
       presentationReleaseRef.current = null;
       releaseQueue();
@@ -175,13 +178,13 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     if (!isResolvedRollAnimation(rollAnimation)) {
       deferredLiveAnimationRef.current = rollAnimation;
       if (!gameAnimationQueue.isBusy()) {
-        presentAnimation(rollAnimation);
+        presentAnimation(rollAnimation, rollAnimation.id);
         return;
       }
       void gameAnimationQueue.enqueue(`live-roll:${rollAnimation.id}`, async () => {
         const latestAnimation = deferredLiveAnimationRef.current;
         if (!mountedRef.current || !latestAnimation || latestAnimation.id !== rollAnimation.id) return;
-        presentAnimation(latestAnimation);
+        presentAnimation(latestAnimation, latestAnimation.id);
       });
       return;
     }
@@ -217,7 +220,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       task: async (queuedAnimation) => {
         if (!mountedRef.current) return;
         setSettledAnimationId(null);
-        presentAnimation(queuedAnimation);
+        presentAnimation(queuedAnimation, sourceAnimationId);
         await waitForGameAnimation(REMOTE_ROLL_PRESENTATION_MS);
         if (mountedRef.current && presentedAnimationRef.current?.id === queuedAnimation.id) presentAnimation(null);
       },
@@ -226,6 +229,24 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       if (mountedRef.current) notifyQueuedPresentation();
     });
   }, [presentationActorId, rollAnimation]);
+
+  useLayoutEffect(() => {
+    const currentAnimation = presentedAnimationRef.current;
+    if (!currentAnimation) {
+      if (queuedPresentationMetaRef.current.size === 0) onPresentationChangeRef.current?.(EMPTY_ROLL_PRESENTATION_STATE);
+      return;
+    }
+    const sourceAnimationId = presentedSourceAnimationIdRef.current ?? currentAnimation.id;
+    const queuedMeta = queuedPresentationMetaRef.current.get(sourceAnimationId);
+    const fallCount = 'fallCount' in currentAnimation ? currentAnimation.fallCount ?? 0 : 0;
+    onPresentationChangeRef.current?.({
+      active: true,
+      actorId: queuedMeta?.actorId || presentationActorId,
+      fallCount,
+      sourceAnimationId,
+      resultVisible: isRollPresentationResultVisible(currentAnimation, settledAnimationId),
+    });
+  }, [presentedAnimation, presentationActorId, settledAnimationId]);
 
   if (!presentedAnimation) return null;
   const isPreResult = presentedAnimation.phase === 'primary' || presentedAnimation.phase === 'extra-spin';
