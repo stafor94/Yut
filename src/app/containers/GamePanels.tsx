@@ -208,25 +208,27 @@ export function GameLogPanelView({
     };
   }, [logs]);
 
-  return <GameLogPanel>
-    {ownedItemsPresentation.itemMode && <div data-testid="owned-items-panel" className="player-items game-log-owned-items">
+  return <div data-testid="game-side-column" className="game-side-column">
+    {ownedItemsPresentation.itemMode && <aside data-testid="owned-items-panel" className="panel side game-log-owned-items game-owned-items-panel" aria-label="보유 아이템">
       <h2>보유 아이템</h2>
       {ownedItemsPresentation.items.length
         ? <div className="item-grid">{ownedItemsPresentation.items.map((type, index) => <div className="item-info" key={`${type}-${index}`}><ItemCard type={type} /></div>)}</div>
         : <p className="empty-state">보유한 아이템이 없습니다.</p>}
-    </div>}
-    <div className="log-header">
-      <h2>진행 기록</h2>
-      <div className="log-header-actions">
-        {playTimePresentation.visible && <div data-testid="play-timer" className={`play-time ${playTimePresentation.stopped ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimePresentation.playTimeText}`}>{playTimePresentation.playTimeText}</div>}
-        <button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button>
+    </aside>}
+    <GameLogPanel>
+      <div className="log-header">
+        <h2>진행 기록</h2>
+        <div className="log-header-actions">
+          {playTimePresentation.visible && <div data-testid="play-timer" className={`play-time ${playTimePresentation.stopped ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimePresentation.playTimeText}`}>{playTimePresentation.playTimeText}</div>}
+          <button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button>
+        </div>
       </div>
-    </div>
-    <div
-      ref={logListRef}
-      data-testid="game-log-list"
-      className={`log-list ${mobileLogScrollable ? 'scrollable' : 'page-scroll'}`}
-      style={mobileLogViewportHeight === null ? undefined : { height: `${mobileLogViewportHeight}px`, minHeight: `${mobileLogViewportHeight}px`, flex: '0 0 auto' }}
-    >{logs.map((log, index) => <p data-testid="game-log-entry" key={log.id} style={getLogCardStyle(log.text, logs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log)}</span>{renderLogText(log.text)}</p>)}</div>
-  </GameLogPanel>;
+      <div
+        ref={logListRef}
+        data-testid="game-log-list"
+        className={`log-list ${mobileLogScrollable ? 'scrollable' : 'page-scroll'}`}
+        style={mobileLogViewportHeight === null ? undefined : { height: `${mobileLogViewportHeight}px`, minHeight: `${mobileLogViewportHeight}px`, flex: '0 0 auto' }}
+      >{logs.map((log, index) => <p data-testid="game-log-entry" key={log.id} style={getLogCardStyle(log.text, logs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log)}</span>{renderLogText(log.text)}</p>)}</div>
+    </GameLogPanel>
+  </div>;
 }
