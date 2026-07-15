@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { RollAnimation } from '../../src/app/appState.js';
 import {
   EMPTY_ROLL_PRESENTATION_STATE,
   isRollPresentationResultVisible,
@@ -8,11 +7,11 @@ import {
 } from '../../src/app/flows/rollPresentationVisibility.js';
 
 const result = { name: '도', steps: 1 } as const;
-const sticks = [] as RollAnimation['sticks'];
+const sticks = [] as const;
 
 test('roll-derived UI remains hidden until the presented result has settled', () => {
-  const landing: RollAnimation = { id: 10, phase: 'landing', result, sticks };
-  const resultHold: RollAnimation = { id: 10, phase: 'result-hold', result, sticks };
+  const landing = { id: 10, phase: 'landing', result, sticks } as const;
+  const resultHold = { id: 10, phase: 'result-hold', result, sticks } as const;
 
   assert.equal(isRollPresentationResultVisible(landing, 10), false);
   assert.equal(isRollPresentationResultVisible(resultHold, null), false);
