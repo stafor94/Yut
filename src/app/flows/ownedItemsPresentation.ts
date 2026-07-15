@@ -2,11 +2,19 @@ import type { ItemType } from '../../features/items/logic/items';
 
 type OwnedItemsListener = () => void;
 
-let currentOwnedItems: readonly ItemType[] = [];
+type OwnedItemsPresentation = {
+  itemMode: boolean;
+  items: readonly ItemType[];
+};
+
+let currentPresentation: OwnedItemsPresentation = {
+  itemMode: false,
+  items: [],
+};
 const listeners = new Set<OwnedItemsListener>();
 
 export function getOwnedItemsPresentation() {
-  return currentOwnedItems;
+  return currentPresentation;
 }
 
 export function subscribeOwnedItemsPresentation(listener: OwnedItemsListener) {
@@ -14,12 +22,16 @@ export function subscribeOwnedItemsPresentation(listener: OwnedItemsListener) {
   return () => listeners.delete(listener);
 }
 
-export function publishOwnedItemsPresentation(nextOwnedItems: readonly ItemType[]) {
+export function publishOwnedItemsPresentation(nextItems: readonly ItemType[], itemMode: boolean) {
   if (
-    currentOwnedItems.length === nextOwnedItems.length
-    && currentOwnedItems.every((item, index) => item === nextOwnedItems[index])
+    currentPresentation.itemMode === itemMode
+    && currentPresentation.items.length === nextItems.length
+    && currentPresentation.items.every((item, index) => item === nextItems[index])
   ) return;
 
-  currentOwnedItems = [...nextOwnedItems];
+  currentPresentation = {
+    itemMode,
+    items: [...nextItems],
+  };
   listeners.forEach((listener) => listener());
 }
