@@ -182,19 +182,19 @@ export function GameLogPanelView({
         return;
       }
       const cards = Array.from(list.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
-      const visibleCards = cards.slice(0, 4);
-      if (visibleCards.length < 4) {
+      if (cards.length <= 4) {
         setMobileLogViewportHeight(null);
         setMobileLogScrollable(false);
         return;
       }
+      const visibleCards = cards.slice(0, 4);
       const style = window.getComputedStyle(list);
       const gap = Number.parseFloat(style.rowGap || style.gap) || 0;
       const padding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
       const cardsHeight = visibleCards.reduce((sum, card) => sum + card.getBoundingClientRect().height, 0);
       const nextHeight = Math.ceil(cardsHeight + gap * (visibleCards.length - 1) + padding + 12);
       setMobileLogViewportHeight((current) => current === nextHeight ? current : nextHeight);
-      setMobileLogScrollable(cards.length > visibleCards.length);
+      setMobileLogScrollable(true);
     };
 
     measure();
