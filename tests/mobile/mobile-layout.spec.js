@@ -104,6 +104,7 @@ test.describe('mobile layout QA', () => {
                 styles: {
                   cardPaddingLeft: Number.parseFloat(getComputedStyle(card).paddingLeft),
                   cardPaddingRight: Number.parseFloat(getComputedStyle(card).paddingRight),
+                  cardBorderRightWidth: Number.parseFloat(getComputedStyle(card).borderRightWidth),
                   cardColumns: getComputedStyle(card).gridTemplateColumns,
                   contentDisplay: content ? getComputedStyle(content).display : '',
                   sideWidth: side ? getComputedStyle(side).width : '',
@@ -129,10 +130,10 @@ test.describe('mobile layout QA', () => {
             expect(styles.statusWidth, '대기중 배지는 side column 전체 폭을 사용해야 합니다.').toBe('76px');
             expect(styles.actionWidth, '참여 버튼은 side column 전체 폭을 사용해야 합니다.').toBe('76px');
 
-            const cardInnerRight = cardBox.x + cardBox.width - styles.cardPaddingRight;
-            expect(Math.abs((sideBox.x + sideBox.width) - cardInnerRight), 'side column은 카드 오른쪽 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
-            expect(Math.abs((statusBox.x + statusBox.width) - cardInnerRight), '대기중 배지는 카드 오른쪽 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
-            expect(Math.abs((actionBox.x + actionBox.width) - cardInnerRight), '참여 버튼은 카드 오른쪽 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
+            const cardContentRight = cardBox.x + cardBox.width - styles.cardBorderRightWidth - styles.cardPaddingRight;
+            expect(Math.abs((sideBox.x + sideBox.width) - cardContentRight), 'side column은 카드 오른쪽 테두리와 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
+            expect(Math.abs((statusBox.x + statusBox.width) - cardContentRight), '대기중 배지는 카드 오른쪽 테두리와 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
+            expect(Math.abs((actionBox.x + actionBox.width) - cardContentRight), '참여 버튼은 카드 오른쪽 테두리와 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
             expect(mainBox.x + mainBox.width, 'main column은 side column과 겹치면 안 됩니다.').toBeLessThanOrEqual(sideBox.x);
             expect(boxesOverlap(titleBox, statusBox), '방 제목은 상태 배지와 겹치면 안 됩니다.').toBe(false);
             expect(boxesOverlap(titleBox, actionBox), '방 제목은 참여 버튼과 겹치면 안 됩니다.').toBe(false);
