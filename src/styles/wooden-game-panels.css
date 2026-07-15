@@ -1,0 +1,528 @@
+/* Wooden shell surfaces for the game header, player summary, and history panel.
+   These rules are intentionally scoped to .game-shell so lobby and waiting-room
+   layouts keep their existing visual treatment. */
+
+.game-shell .hero,
+.game-shell .game-players-panel,
+.game-shell .side {
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+  border: 7px solid #5a2d16;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 244, 202, .66), transparent 36%),
+    repeating-linear-gradient(0deg, rgba(87, 47, 21, .03) 0 1px, transparent 1px 5px),
+    linear-gradient(145deg, #f6dfb5 0%, #d8ad70 58%, #bd8147 100%);
+  box-shadow:
+    0 22px 38px rgba(58, 29, 13, .24),
+    0 0 0 2px #35180b,
+    0 0 0 5px rgba(202, 143, 59, .2),
+    inset 0 2px 0 rgba(255, 236, 191, .55),
+    inset 0 -5px 9px rgba(65, 30, 13, .24);
+}
+
+.game-shell .hero::before,
+.game-shell .game-players-panel::before,
+.game-shell .side::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  z-index: 0;
+  border: 2px solid rgba(218, 169, 88, .82);
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 2px rgba(66, 30, 13, .34),
+    inset 0 0 22px rgba(81, 42, 18, .13);
+  pointer-events: none;
+}
+
+.game-shell .hero > *,
+.game-shell .game-players-panel > *,
+.game-shell .side > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Compact carved status rail above the board. */
+.game-shell .hero {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 102px;
+  margin-bottom: 20px;
+  padding: 17px 19px;
+  border-radius: 28px;
+}
+
+.game-shell .hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: auto;
+  aspect-ratio: auto;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(255, 248, 219, .14), transparent 20% 76%, rgba(78, 39, 17, .08)),
+    repeating-linear-gradient(5deg, transparent 0 18px, rgba(91, 48, 21, .025) 18px 19px);
+  pointer-events: none;
+}
+
+.game-shell .hero-copy {
+  display: none;
+}
+
+.game-shell .play-time {
+  display: grid;
+  place-items: center;
+  min-width: 84px;
+  min-height: 54px;
+  padding: 10px 13px;
+  border: 2px solid #95622f;
+  border-radius: 15px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .5), transparent 34%),
+    linear-gradient(180deg, #fff5d8, #e6c387);
+  color: #28533f;
+  font-weight: 1000;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .025em;
+  text-shadow: 0 1px 0 rgba(255, 252, 229, .9);
+  box-shadow:
+    0 6px 0 #75431f,
+    0 10px 14px rgba(61, 31, 14, .2),
+    inset 0 1px 0 rgba(255, 255, 255, .8),
+    inset 0 -3px 5px rgba(102, 56, 24, .12);
+}
+
+.game-shell .play-time.stopped {
+  color: #8e2d23;
+}
+
+.game-shell .hero-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(88px, .72fr) minmax(86px, .68fr);
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
+  justify-items: stretch;
+}
+
+.game-shell .hero-actions button {
+  min-width: 0;
+  min-height: 54px;
+  padding: 10px 13px;
+  border: 2px solid #95622f;
+  border-radius: 15px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .48), transparent 34%),
+    linear-gradient(180deg, #fff5d8, #e6c387);
+  color: #315a45;
+  text-shadow: 0 1px 0 rgba(255, 252, 229, .9);
+  box-shadow:
+    0 6px 0 #75431f,
+    0 10px 14px rgba(61, 31, 14, .2),
+    inset 0 1px 0 rgba(255, 255, 255, .76),
+    inset 0 -3px 5px rgba(102, 56, 24, .12);
+}
+
+.game-shell .hero-actions button:not(:disabled):active {
+  transform: translateY(4px);
+  box-shadow:
+    0 2px 0 #75431f,
+    0 5px 9px rgba(61, 31, 14, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .64);
+}
+
+.game-shell .nickname-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.game-shell .nickname-chip span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-shell .sound-controls.sound-toggle.active {
+  border-color: #d8ab55;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .14), transparent 32%),
+    linear-gradient(145deg, #2f6b4f, #183c2f 72%, #10281f);
+  color: #fff5d7;
+  text-shadow: 0 2px 2px rgba(7, 28, 19, .5);
+  box-shadow:
+    0 6px 0 #0f2b20,
+    0 10px 15px rgba(34, 66, 54, .25),
+    inset 0 1px 0 rgba(255, 255, 255, .18),
+    inset 0 -3px 5px rgba(7, 28, 19, .28);
+}
+
+.game-shell .status-card {
+  width: 100%;
+  justify-content: center;
+}
+
+.game-shell .status-card.pending {
+  color: #805114;
+}
+
+.game-shell .status-card.offline {
+  color: #a33b2d;
+}
+
+/* Framed parchment player summary. */
+.game-shell .game-players-panel,
+.game-shell .side {
+  border-radius: 27px;
+  padding: 21px;
+}
+
+.game-shell .game-players-panel > h2,
+.game-shell .side .log-header h2 {
+  margin: 0;
+  color: #4f2d19;
+  font-size: clamp(1.18rem, 2vw, 1.45rem);
+  letter-spacing: -.02em;
+  text-shadow: 0 1px 0 rgba(255, 239, 198, .82);
+}
+
+.game-shell .game-players-panel > h2 {
+  padding: 2px 3px 12px;
+  border-bottom: 2px solid rgba(101, 55, 25, .28);
+}
+
+.game-shell .game-room-rule-badges {
+  margin: 12px 0 14px;
+  padding: 11px 12px;
+  border: 2px solid #9c6a37;
+  border-radius: 15px;
+  background:
+    repeating-linear-gradient(0deg, rgba(91, 50, 23, .025) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #fff1cb, #e4bf80);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .72),
+    inset 0 -3px 5px rgba(92, 50, 22, .12),
+    0 6px 11px rgba(61, 31, 14, .12);
+}
+
+.game-shell .game-room-rule-badges .room-rule-badge {
+  border: 1px solid rgba(97, 54, 26, .2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .48);
+}
+
+.game-shell .game-player-card {
+  position: relative;
+  margin: 9px 0;
+  padding: 12px 13px;
+  border: 2px solid #9b6837;
+  border-radius: 15px;
+  outline: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 248, 218, .48), transparent 18% 82%, rgba(103, 58, 27, .05)),
+    repeating-linear-gradient(0deg, rgba(92, 51, 23, .025) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #fff2cc, #e7c58d);
+  box-shadow:
+    0 6px 0 #74431f,
+    0 10px 14px rgba(60, 30, 13, .14),
+    inset 0 1px 0 rgba(255, 255, 255, .72),
+    inset 0 -3px 5px rgba(94, 50, 22, .11);
+}
+
+.game-shell .game-player-card.ai {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 247, 216, .62) 0 10px, rgba(222, 187, 127, .5) 10px 20px),
+    linear-gradient(180deg, #fff2cc, #e7c58d);
+}
+
+.game-shell .game-player-card.active {
+  border-color: #d4a64c;
+  outline: 0;
+  box-shadow:
+    0 6px 0 #75431f,
+    0 0 0 3px rgba(230, 180, 78, .34),
+    0 13px 20px rgba(58, 29, 13, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .75),
+    inset 5px 0 0 #2f6b4f;
+}
+
+.game-shell .game-player-label {
+  text-shadow: 0 1px 0 rgba(255, 248, 220, .9);
+}
+
+.game-shell .game-player-status {
+  padding: 5px 9px;
+  border: 1px solid rgba(50, 92, 70, .24);
+  border-radius: 999px;
+  background: rgba(47, 107, 79, .12);
+  color: #28533f;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5);
+}
+
+.game-shell .player-items {
+  margin-top: 19px;
+  padding: 15px;
+  border: 2px solid #8d5a2d;
+  border-radius: 17px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 242, 196, .38), transparent 48%),
+    repeating-linear-gradient(0deg, rgba(92, 50, 22, .045) 0 1px, transparent 1px 4px),
+    linear-gradient(145deg, #e5bd7d, #c78c4c);
+  box-shadow:
+    inset 0 5px 9px rgba(70, 34, 14, .2),
+    inset 0 -1px 0 rgba(255, 224, 166, .5),
+    0 5px 10px rgba(61, 31, 14, .12);
+}
+
+.game-shell .player-items h2 {
+  margin-bottom: 10px;
+  color: #3f2a1a;
+  font-size: 1.08rem;
+}
+
+.game-shell .player-items .empty-state {
+  border: 1px solid rgba(104, 59, 27, .16);
+  background: linear-gradient(180deg, rgba(255, 244, 210, .92), rgba(236, 207, 153, .92));
+  color: #65442b;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+
+.game-shell .end-game.secondary {
+  min-height: 52px;
+  margin-top: 18px;
+  border: 2px solid #d8aa55;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .13), transparent 30%),
+    linear-gradient(145deg, #c84d3c, #9d3026 68%, #762219);
+  color: #fff6dd;
+  text-shadow: 0 2px 2px rgba(78, 22, 15, .5);
+  box-shadow:
+    0 7px 0 #672319,
+    0 12px 18px rgba(65, 27, 14, .2),
+    inset 0 1px 0 rgba(255, 236, 200, .24),
+    inset 0 -3px 5px rgba(77, 20, 14, .24);
+}
+
+/* Scroll-like game history with wooden sequence seals. */
+.game-shell .side .log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 4px 3px 12px;
+  border-bottom: 2px solid rgba(101, 55, 25, .28);
+}
+
+.game-shell .side .diagnostic-button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 2px solid #c89a48;
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .14), transparent 30%),
+    linear-gradient(145deg, #315d48, #183c2f);
+  color: #fff5d8;
+  box-shadow:
+    0 5px 0 #112c21,
+    0 9px 13px rgba(42, 26, 13, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+
+.game-shell .side .log-list {
+  gap: 11px;
+  padding: 3px 7px 5px 3px;
+  scrollbar-color: #8c5b2d rgba(255, 238, 198, .36);
+  scrollbar-width: thin;
+}
+
+.game-shell .side .log-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.game-shell .side .log-list::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(255, 238, 198, .38);
+}
+
+.game-shell .side .log-list::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(255, 238, 198, .55);
+  border-radius: 999px;
+  background: #8c5b2d;
+}
+
+.game-shell .side .log-list p {
+  position: relative;
+  padding: 11px 12px;
+  border-color: var(--log-card-border, #9d6b38);
+  border-radius: 13px;
+  background:
+    linear-gradient(90deg, rgba(112, 64, 29, .06), transparent 13% 87%, rgba(112, 64, 29, .06)),
+    repeating-linear-gradient(0deg, rgba(92, 50, 22, .025) 0 1px, transparent 1px 4px),
+    var(--log-card-bg, #fff0c8);
+  color: var(--log-card-color, #5c3b24);
+  box-shadow:
+    0 6px 0 rgba(110, 66, 31, .35),
+    0 10px 14px rgba(57, 29, 13, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .72),
+    inset 0 -3px 5px rgba(95, 51, 22, .08);
+}
+
+.game-shell .side .log-sequence {
+  display: inline-grid;
+  place-items: center;
+  min-width: 36px;
+  min-height: 25px;
+  margin-right: 8px;
+  padding: 3px 7px;
+  border: 1px solid #d1a355;
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .14), transparent 34%),
+    linear-gradient(145deg, #315d48, #17382c);
+  color: #fff5d7;
+  opacity: 1;
+  text-shadow: 0 1px 1px rgba(8, 27, 19, .45);
+  box-shadow:
+    0 3px 0 #10281f,
+    0 5px 8px rgba(45, 24, 12, .16),
+    inset 0 1px 0 rgba(255, 255, 255, .16);
+}
+
+@media (max-width: 767px) {
+  .game-shell .hero {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 9px;
+    min-height: 0;
+    margin-bottom: 14px;
+    padding: 13px 14px 15px;
+    border-width: 6px;
+    border-radius: 24px;
+  }
+
+  .game-shell .hero::before,
+  .game-shell .game-players-panel::before,
+  .game-shell .side::before {
+    inset: 5px;
+    border-radius: 13px;
+  }
+
+  .game-shell .play-time {
+    min-width: 0;
+    min-height: 50px;
+    padding-inline: 8px;
+    border-radius: 13px;
+    font-size: .85rem;
+  }
+
+  .game-shell .hero-actions {
+    grid-template-columns: minmax(0, 1.45fr) minmax(70px, .72fr) minmax(68px, .68fr);
+    gap: 7px;
+  }
+
+  .game-shell .hero-actions button {
+    min-height: 50px;
+    padding: 8px 9px;
+    border-radius: 13px;
+    font-size: .8rem;
+  }
+
+  .game-shell .nickname-chip {
+    gap: 5px;
+  }
+
+  .game-shell .sound-icon {
+    font-size: .95rem;
+  }
+
+  .game-shell .status-card {
+    gap: 6px;
+  }
+
+  .game-shell .game-players-panel,
+  .game-shell .side {
+    padding: 17px;
+    border-width: 6px;
+    border-radius: 24px;
+  }
+
+  .game-shell .game-player-card {
+    padding: 11px 12px;
+  }
+
+  .game-shell .player-items {
+    padding: 13px;
+  }
+
+  .game-shell .side .log-list {
+    max-height: min(46svh, 430px);
+  }
+}
+
+@media (max-width: 430px) {
+  .game-shell .hero {
+    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 7px;
+    padding-inline: 11px;
+  }
+
+  .game-shell .hero-actions {
+    grid-template-columns: minmax(0, 1.35fr) 62px 62px;
+    gap: 5px;
+  }
+
+  .game-shell .hero-actions button {
+    padding-inline: 6px;
+    font-size: .74rem;
+  }
+
+  .game-shell .nickname-chip span:first-child,
+  .game-shell .sound-icon {
+    font-size: .86rem;
+  }
+
+  .game-shell .status-dot {
+    width: 8px;
+    height: 8px;
+  }
+}
+
+@media (min-width: 900px) and (max-height: 900px) {
+  .game-shell .hero {
+    min-height: 0;
+    padding: 13px 17px;
+  }
+
+  .game-shell .game-players-panel,
+  .game-shell .side {
+    padding: 17px;
+    border-width: 6px;
+  }
+
+  .game-shell .game-player-card {
+    margin-block: 7px;
+    padding: 9px 10px;
+    box-shadow:
+      0 4px 0 #74431f,
+      0 7px 10px rgba(60, 30, 13, .12),
+      inset 0 1px 0 rgba(255, 255, 255, .7);
+  }
+
+  .game-shell .player-items {
+    margin-top: 14px;
+    padding: 11px;
+  }
+
+  .game-shell .side .log-list p {
+    padding: 9px 10px;
+  }
+}
