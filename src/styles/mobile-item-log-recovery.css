@@ -1,12 +1,43 @@
-/* Keep the item-mode history panel tall enough to contain the owned items and four-log viewport. */
+/* Keep owned items and history as independent wooden panels in the side column. */
+.game-shell .game-side-column {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.game-shell .game-side-column > .side {
+  width: 100%;
+}
+
+.game-shell .game-side-column > .side:last-child {
+  flex: 1 1 auto;
+}
+
+.game-shell .game-owned-items-panel {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.game-shell .game-owned-items-panel > h2 {
+  margin: 0 0 12px;
+  padding: 4px 3px 12px;
+  border-bottom: 2px solid rgba(101, 55, 25, .28);
+  color: #4f2d19;
+  font-size: clamp(1.08rem, 2vw, 1.32rem);
+  letter-spacing: -.02em;
+  text-shadow: 0 1px 0 rgba(255, 239, 198, .82);
+}
+
 @media (max-width: 767px) {
-  .game-shell .side:has(.game-log-owned-items) {
-    align-self: start;
-    height: auto !important;
-    max-height: none !important;
+  .game-shell .game-side-column {
+    gap: 12px;
   }
 
-  .game-shell .side:has(.game-log-owned-items) .log-list.scrollable {
-    flex: 0 0 auto !important;
+  .game-shell .game-side-column > .side {
+    height: auto;
+    max-height: none;
   }
 }
