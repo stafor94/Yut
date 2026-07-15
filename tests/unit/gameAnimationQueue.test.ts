@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createGamePresentationLock } from '../../src/shared/gamePresentationLock.js';
 import {
   REMOTE_ROLL_PRESENTATION_MS,
   REMOTE_ROLL_RESULT_HOLD_MS,
   createGameAnimationQueue,
+  enqueueRollPresentation,
   getRollPresentationAnimationId,
 } from '../../src/app/flows/gameAnimationQueue.js';
 import { REMOTE_ROLL_PRE_RESULT_MS } from '../../src/app/flows/yutRollAnimation.js';
@@ -16,6 +18,11 @@ const createDeferred = () => {
   return { promise, resolve };
 };
 
+const flushMicrotasks = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
+
 test('remote roll presentation preserves 1.4 seconds for the settled result', () => {
   assert.equal(REMOTE_ROLL_RESULT_HOLD_MS, 1400);
   assert.equal(REMOTE_ROLL_PRESENTATION_MS, REMOTE_ROLL_PRE_RESULT_MS + REMOTE_ROLL_RESULT_HOLD_MS);
@@ -25,6 +32,39 @@ test('remote roll presentation preserves 1.4 seconds for the settled result', ()
 test('stale remote animation timestamps restart from the local presentation time', () => {
   assert.equal(getRollPresentationAnimationId(1_000, 9_000), 9_000);
   assert.equal(getRollPresentationAnimationId(12_000, 9_000), 12_000);
+});
+
+test('queued remote rolls use the actual execution time and lock gameplay while waiting', async () => {
+  const queue = createGameAnimationQueue();
+  const lock = createGamePresentationLock();
+  const firstGate = createDeferred();
+  let now = 9_000;
+  let presentedAnimationId = 0;
+
+  const first = queue.enqueue('move-before-fall', async () => {
+    await firstGate.promise;
+  });
+  const fall = enqueueRollPresentation({
+    key: 'remote-fall',
+    animation: { id: 1_000, result: '낙' },
+    queue,
+    lock,
+    now: () => now,
+    task: (animation) => {
+      presentedAnimationId = animation.id;
+    },
+  });
+
+  await flushMicrotasks();
+  assert.equal(lock.isLocked(), true);
+  assert.equal(presentedAnimationId, 0);
+
+  now = 12_000;
+  firstGate.resolve();
+  await Promise.all([first, fall]);
+  assert.equal(presentedAnimationId, 12_000);
+  await flushMicrotasks();
+  assert.equal(lock.isLocked(), false);
 });
 
 test('game animations run strictly in enqueue order', async () => {
@@ -42,8 +82,7 @@ test('game animations run strictly in enqueue order', async () => {
     order.push('move-end');
   });
 
-  await Promise.resolve();
-  await Promise.resolve();
+  await flushMicrotasks();
   assert.deepEqual(order, ['roll-start']);
   assert.equal(queue.isBusy(), true);
 
@@ -105,8 +144,7 @@ test('reset discards queued animations that have not started', async () => {
     order.push('queued-start');
   });
 
-  await Promise.resolve();
-  await Promise.resolve();
+  await flushMicrotasks();
   queue.reset();
   gate.resolve();
   await Promise.all([active, queued]);
@@ -130,8 +168,7 @@ test('an immediate remount keeps the active animation queue', async () => {
     order.push('move-start');
   });
 
-  await Promise.resolve();
-  await Promise.resolve();
+  await flushMicrotasks();
   releaseFirstMount();
   const releaseSecondMount = queue.acquire();
   await Promise.resolve();
