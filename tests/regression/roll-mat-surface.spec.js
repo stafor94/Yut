@@ -164,6 +164,7 @@ test.describe('roll mat surface regression', () => {
           canvasLayoutHeight: canvas?.offsetHeight ?? 0,
           matWidth: Math.round(matRect?.width ?? 0),
           matHeight: Math.round(matRect?.height ?? 0),
+          matLayoutHeight: matNode?.offsetHeight ?? 0,
           stageContain: stage ? getComputedStyle(stage).contain : '',
           viewportWidth: window.innerWidth,
         };
@@ -178,7 +179,8 @@ test.describe('roll mat surface regression', () => {
       expect(sceneLayout.canvasWidth).toBe(sceneLayout.sceneWidth);
       expect(sceneLayout.canvasHeight).toBe(sceneLayout.sceneHeight);
       expect(sceneLayout.matWidth).toBeGreaterThan(0);
-      expect(sceneLayout.matHeight).toBeGreaterThanOrEqual(360);
+      expect(sceneLayout.matHeight).toBeGreaterThan(0);
+      expect(sceneLayout.matLayoutHeight).toBeGreaterThanOrEqual(360);
       expect(sceneLayout.stageContain.split(/\s+/)).not.toContain('paint');
 
       await page.evaluate(() => {
