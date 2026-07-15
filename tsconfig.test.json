@@ -17,6 +17,7 @@
   },
   "include": [
     "src/features/items/logic/items.ts",
+    "src/features/game/logic/pieceStackPresentation.ts",
     "src/features/room/hooks/roomListSubscription.ts",
     "src/features/room/services/roomAvailabilityPolicy.ts",
     "src/features/room/services/roomCreationCleanup.ts",
