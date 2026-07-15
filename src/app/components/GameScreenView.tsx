@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
 import { getMovePathNodeIdsWithPrevious, type BoardItem, type BranchChoice } from '../../game-core/board/board';
@@ -17,10 +17,15 @@ import {
   type FinishVisualEffect,
 } from '../flows/finishAnimation';
 import { getGamePresentationTurn } from '../flows/gamePresentationTurn';
+import {
+  EMPTY_ROLL_PRESENTATION_STATE,
+  shouldDeferRollDerivedContent,
+  type RollPresentationState,
+} from '../flows/rollPresentationVisibility';
 import { getRollOutcomeSoundEffect, shouldPlayPerfectRollSound } from '../flows/rollSound';
 import { BoardPanel, GameScreen } from '../screens/GameScreen';
 import { GameLogPanelView, GamePlayersPanel } from '../containers/GamePanels';
-import { BoardMessageStack, GoldenYutPicker, RollStage, TurnIndicator, WinnerOverlay, type RollPresentationState } from '../containers/GameBoardOverlays';
+import { BoardMessageStack, GoldenYutPicker, RollStage, TurnIndicator, WinnerOverlay } from '../containers/GameBoardOverlays';
 import { GameBoardControls } from '../containers/GameBoardControls';
 import { GameBoardSection } from '../containers/GameBoardSection';
 import { TurnOrderIntroOverlay } from './TurnOrderIntroOverlay';
@@ -124,13 +129,6 @@ type GameScreenViewProps = {
   renderLogText: (text: string) => ReactNode;
 };
 
-const EMPTY_ROLL_PRESENTATION: RollPresentationState = {
-  active: false,
-  actorId: '',
-  fallCount: 0,
-  sourceAnimationId: null,
-};
-
 export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canRollForTurnOrderNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, moveSelectionTimedOut, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, shieldedPieceIds, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenSequenceExportDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   const lastRollAnimationIdRef = useRef('');
   const lastRollOutcomeKeyRef = useRef('');
@@ -151,7 +149,44 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   const lastRevealedItemsKeyRef = useRef('');
   const stackCountsInitializedRef = useRef(false);
   const previousStackCountsRef = useRef<Map<string, number>>(new Map());
-  const [rollPresentation, setRollPresentation] = useState<RollPresentationState>(EMPTY_ROLL_PRESENTATION);
+  const [rollPresentation, setRollPresentation] = useState<RollPresentationState>(EMPTY_ROLL_PRESENTATION_STATE);
+  const visibleBoardTurnIndicatorRollStackRef = useRef(boardTurnIndicatorRollStack);
+  const visibleRollStackRef = useRef(rollStack);
+  const visibleLogsRef = useRef(logs);
+  const rollDerivedSnapshotsRef = useRef<Map<number, { boardRollStack: YutResult[]; rollStack: YutResult[]; logs: GameLog[] }>>(new Map());
+  if (rollAnimation) {
+    const existingSnapshot = rollDerivedSnapshotsRef.current.get(rollAnimation.id);
+    if (existingSnapshot?.boardRollStack !== boardTurnIndicatorRollStack || existingSnapshot.rollStack !== rollStack || existingSnapshot.logs !== logs) {
+      rollDerivedSnapshotsRef.current.set(rollAnimation.id, { boardRollStack: boardTurnIndicatorRollStack, rollStack, logs });
+    }
+    if (rollDerivedSnapshotsRef.current.size > 120) {
+      rollDerivedSnapshotsRef.current = new Map(Array.from(rollDerivedSnapshotsRef.current.entries()).slice(-60));
+    }
+  }
+  const deferRollDerivedContent = shouldDeferRollDerivedContent({
+    rollAnimationId: rollAnimation?.id ?? null,
+    presentation: rollPresentation,
+  });
+  const revealedRollSnapshot = rollPresentation.resultVisible && rollPresentation.sourceAnimationId !== null
+    ? rollDerivedSnapshotsRef.current.get(rollPresentation.sourceAnimationId)
+    : undefined;
+  const displayedBoardTurnIndicatorRollStack = revealedRollSnapshot?.boardRollStack ?? (deferRollDerivedContent ? visibleBoardTurnIndicatorRollStackRef.current : boardTurnIndicatorRollStack);
+  const displayedRollStack = revealedRollSnapshot?.rollStack ?? (deferRollDerivedContent ? visibleRollStackRef.current : rollStack);
+  const displayedLogs = revealedRollSnapshot?.logs ?? (deferRollDerivedContent ? visibleLogsRef.current : logs);
+
+  useLayoutEffect(() => {
+    if (revealedRollSnapshot) {
+      visibleBoardTurnIndicatorRollStackRef.current = revealedRollSnapshot.boardRollStack;
+      visibleRollStackRef.current = revealedRollSnapshot.rollStack;
+      visibleLogsRef.current = revealedRollSnapshot.logs;
+      return;
+    }
+    if (deferRollDerivedContent) return;
+    visibleBoardTurnIndicatorRollStackRef.current = boardTurnIndicatorRollStack;
+    visibleRollStackRef.current = rollStack;
+    visibleLogsRef.current = logs;
+  }, [boardTurnIndicatorRollStack, deferRollDerivedContent, logs, revealedRollSnapshot, rollStack]);
+
   const activeGameSeatId = activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder ? undefined : activeSeat?.id;
   const presentationTurn = getGamePresentationTurn({
     activeSeatId: activeGameSeatId,
@@ -384,7 +419,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         previousText={previousBoardTurnText}
         previousColor={previousBoardTurnColor}
         currentText={displayedTurnText}
-        currentRollStack={presentationTurn.isFrozen ? [] : boardTurnIndicatorRollStack}
+        currentRollStack={presentationTurn.isFrozen ? [] : displayedBoardTurnIndicatorRollStack}
         nextText={nextBoardTurnText}
         nextColor={nextBoardTurnColor}
       />
@@ -432,20 +467,20 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         showBottomBranchControls={showBottomBranchControls}
         displayBranchChoice={displayBranchChoice}
         onBranchChoiceChange={onBranchChoiceChange}
-        canRequestMove={canRequestMove && !presentationTurn.isFrozen}
+        canRequestMove={canRequestMove && !presentationTurn.isFrozen && !deferRollDerivedContent}
         activeSeatId={displayedActiveGameSeatId}
         activeSeatTurnText={displayedActiveSeatTurnText}
         getTurnActionTimeoutMs={getTurnActionTimeoutMs}
         turnActionTimeoutMs={turnActionTimeoutMs}
         onMoveSelectedPiece={onMoveSelectedPiece}
-        canRollNow={canRollNow && !presentationTurn.isFrozen}
+        canRollNow={canRollNow && !presentationTurn.isFrozen && !deferRollDerivedContent}
         canRollForTurnOrderNow={canRollForTurnOrderNow}
-        canSubmitTurnAction={canSubmitTurnAction && !presentationTurn.isFrozen}
+        canSubmitTurnAction={canSubmitTurnAction && !presentationTurn.isFrozen && !deferRollDerivedContent}
         onRollYut={onRollYut}
-        rollResultHolding={rollResultHolding || presentationTurn.isFrozen}
+        rollResultHolding={rollResultHolding || presentationTurn.isFrozen || deferRollDerivedContent}
         pendingTrapPlacement={pendingTrapPlacement}
         stackedRollMode={stackedRollMode}
-        rollStack={rollStack}
+        rollStack={displayedRollStack}
         selectedRollStackIndex={selectedRollStackIndex}
         rollStackClosed={rollStackClosed}
         onSelectRollStackIndex={onSelectRollStackIndex}
@@ -456,7 +491,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       />
     </BoardPanel>
     <GameLogPanelView
-      logs={logs}
+      logs={displayedLogs}
       getLogCardStyle={getLogCardStyle}
       formatStoredLogSequence={formatStoredLogSequence}
       renderLogText={renderLogText}
