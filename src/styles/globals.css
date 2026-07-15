@@ -30,3 +30,88 @@
   justify-self: stretch;
   width: 100%;
 }
+
+/* Keep every in-game header control on one row with the room toggle anchored left. */
+.game-shell .hero-actions.game-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.game-shell .hero-actions.game-actions > .game-room-header-toggle {
+  flex: 0 0 42px;
+  width: 42px;
+}
+
+.game-shell .hero-actions.game-actions > .nickname-chip {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.game-shell .hero-actions.game-actions > .sound-toggle,
+.game-shell .hero-actions.game-actions > .status-card {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+/* Opponent turns do not reserve vertical space below the board. */
+.game-shell .play-controls:has(> .roll-button[data-testid="turn-waiting-button"]) {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .game-shell .hero-actions.game-actions {
+    gap: 6px;
+  }
+
+  .game-shell .hero-actions.game-actions > .game-room-header-toggle {
+    flex-basis: 38px;
+    width: 38px;
+  }
+
+  .game-shell .hero-actions.game-actions > .sound-toggle,
+  .game-shell .hero-actions.game-actions > .status-card {
+    flex-basis: 64px;
+    width: 64px;
+  }
+
+  .game-shell .side .log-list {
+    padding-bottom: 26px !important;
+    scroll-padding-block-end: 26px;
+  }
+}
+
+@media (max-width: 430px) {
+  .game-shell .hero-actions.game-actions {
+    gap: 5px;
+  }
+
+  .game-shell .hero-actions.game-actions > .game-room-header-toggle {
+    flex-basis: 34px;
+    width: 34px;
+  }
+
+  .game-shell .hero-actions.game-actions > .sound-toggle,
+  .game-shell .hero-actions.game-actions > .status-card {
+    flex-basis: 58px;
+    width: 58px;
+  }
+}
+
+@media (max-width: 350px) {
+  .game-shell .hero-actions.game-actions {
+    gap: 4px;
+  }
+
+  .game-shell .hero-actions.game-actions > .game-room-header-toggle {
+    flex-basis: 32px;
+    width: 32px;
+  }
+
+  .game-shell .hero-actions.game-actions > .sound-toggle,
+  .game-shell .hero-actions.game-actions > .status-card {
+    flex-basis: 54px;
+    width: 54px;
+  }
+}
