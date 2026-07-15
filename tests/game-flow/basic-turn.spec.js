@@ -190,16 +190,23 @@ test.describe('game flow QA', () => {
       if (originalViewport) await page.setViewportSize(originalViewport);
     });
 
-    await runQaStep(testInfo, '모바일 인게임 상단 레이아웃 겹침 확인', async () => {
+    await runQaStep(testInfo, '모바일 인게임 상단과 방 정보 접기 레이아웃 확인', async () => {
       const originalViewport = page.viewportSize();
       await page.setViewportSize({ width: 390, height: 844 });
       const header = page.locator('.game-shell .hero');
+      const roomToggle = page.getByTestId('game-room-info-toggle');
+      const playTimer = page.getByTestId('play-timer');
       await expect(header).toBeVisible();
+      await expect(roomToggle).toBeVisible();
+      await expect(roomToggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(playTimer).toBeVisible();
+      await expect(page.getByTestId('owned-items-panel')).toHaveCount(0);
 
       const layout = await header.evaluate((element) => {
-        const timer = element.querySelector('.play-time');
         const actions = element.querySelector('.hero-actions');
         const buttons = actions ? Array.from(actions.querySelectorAll('button')) : [];
+        const roomInfoButton = element.querySelector('[data-testid="game-room-info-toggle"]');
+        const nicknameButton = element.querySelector('.nickname-chip');
         const toBox = (target) => {
           if (!target) return null;
           const rect = target.getBoundingClientRect();
@@ -208,34 +215,43 @@ test.describe('game flow QA', () => {
         return {
           display: getComputedStyle(element).display,
           headerBox: toBox(element),
-          timerBox: toBox(timer),
           actionsBox: toBox(actions),
+          roomInfoBox: toBox(roomInfoButton),
+          nicknameBox: toBox(nicknameButton),
           buttonBoxes: buttons.map(toBox),
+          headerTimerCount: element.querySelectorAll('.play-time').length,
         };
       });
 
       expect(layout.display, '인게임 상단은 명시적인 grid 레이아웃이어야 합니다.').toBe('grid');
       expect(layout.headerBox, '상단 패널 bounding box').not.toBeNull();
-      expect(layout.timerBox, '플레이 타이머 bounding box').not.toBeNull();
       expect(layout.actionsBox, '상단 액션 영역 bounding box').not.toBeNull();
-      expect(layout.buttonBoxes, '닉네임·효과음·서버 상태 버튼 3개가 있어야 합니다.').toHaveLength(3);
+      expect(layout.roomInfoBox, '방 정보 접기 버튼 bounding box').not.toBeNull();
+      expect(layout.nicknameBox, '닉네임 버튼 bounding box').not.toBeNull();
+      expect(layout.buttonBoxes, '방 정보·닉네임·효과음·서버 상태 버튼 4개가 있어야 합니다.').toHaveLength(4);
+      expect(layout.headerTimerCount, '플레이 타이머는 상단이 아니라 진행 기록 헤더에 있어야 합니다.').toBe(0);
+      expect(layout.roomInfoBox.x + layout.roomInfoBox.width, '방 정보 버튼은 닉네임 버튼 왼쪽에 있어야 합니다.').toBeLessThanOrEqual(layout.nicknameBox.x);
+      expect(layout.roomInfoBox.width, '방 정보 버튼은 닉네임 버튼보다 작아야 합니다.').toBeLessThan(layout.nicknameBox.width);
 
-      const { headerBox, timerBox, actionsBox, buttonBoxes } = layout;
-      expect(timerBox.y, '모바일에서는 타이머가 상단 액션 영역 아래에 배치되어야 합니다.').toBeGreaterThanOrEqual(actionsBox.y + actionsBox.height - 1);
-      expect(timerBox.x, '타이머가 상단 패널 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(headerBox.x);
-      expect(timerBox.x + timerBox.width, '타이머가 상단 패널 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(headerBox.x + headerBox.width);
-
-      for (const buttonBox of buttonBoxes) {
-        expect(buttonBox.x, '상단 버튼이 액션 영역 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(actionsBox.x - 1);
-        expect(buttonBox.x + buttonBox.width, '상단 버튼이 액션 영역 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(actionsBox.x + actionsBox.width + 1);
-        expect(Math.abs(buttonBox.y - buttonBoxes[0].y), '상단 버튼 3개는 같은 행에 정렬되어야 합니다.').toBeLessThanOrEqual(1);
+      const firstCenterY = layout.buttonBoxes[0].y + layout.buttonBoxes[0].height / 2;
+      for (const buttonBox of layout.buttonBoxes) {
+        expect(buttonBox.x, '상단 버튼이 액션 영역 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.actionsBox.x - 1);
+        expect(buttonBox.x + buttonBox.width, '상단 버튼이 액션 영역 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.actionsBox.x + layout.actionsBox.width + 1);
+        expect(Math.abs((buttonBox.y + buttonBox.height / 2) - firstCenterY), '상단 버튼은 같은 행의 중앙선에 정렬되어야 합니다.').toBeLessThanOrEqual(1);
       }
 
-      for (let leftIndex = 0; leftIndex < buttonBoxes.length; leftIndex += 1) {
-        for (let rightIndex = leftIndex + 1; rightIndex < buttonBoxes.length; rightIndex += 1) {
-          expect(boxesOverlap(buttonBoxes[leftIndex], buttonBoxes[rightIndex]), '상단 버튼끼리 겹치면 안 됩니다.').toBe(false);
+      for (let leftIndex = 0; leftIndex < layout.buttonBoxes.length; leftIndex += 1) {
+        for (let rightIndex = leftIndex + 1; rightIndex < layout.buttonBoxes.length; rightIndex += 1) {
+          expect(boxesOverlap(layout.buttonBoxes[leftIndex], layout.buttonBoxes[rightIndex]), '상단 버튼끼리 겹치면 안 됩니다.').toBe(false);
         }
       }
+
+      await roomToggle.click();
+      await expect(roomToggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByTestId('players-panel')).toHaveCount(0);
+      await roomToggle.click();
+      await expect(roomToggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByTestId('players-panel')).toBeVisible();
 
       if (originalViewport) await page.setViewportSize(originalViewport);
     });
@@ -268,6 +284,36 @@ test.describe('game flow QA', () => {
         if (saveCommitted && sequenceApplied && singleInitialization && (actionableRoll || actionableMove || waitingForOtherTurn)) return 'ready';
         return JSON.stringify({ state, latestSequence, initializedSequenceCount: initializedSequences.length }, null, 2);
       }, { timeout: 20_000, message: '초기 state/sequences 저장 후 첫 턴 조작/대기 UI가 보여야 합니다.' }).toBe('ready');
+    });
+
+    await runQaStep(testInfo, '모바일 진행 기록 4개 표시 높이 확인', async () => {
+      const originalViewport = page.viewportSize();
+      await page.setViewportSize({ width: 390, height: 844 });
+      const logEntries = page.getByTestId('game-log-entry');
+      await expect.poll(() => logEntries.count(), { timeout: 10_000, message: '진행 기록이 최소 4개 생성되어야 합니다.' }).toBeGreaterThanOrEqual(4);
+      const logList = page.getByTestId('game-log-list');
+      await expect(logList).toBeVisible();
+
+      const layout = await logList.evaluate((element) => {
+        const toBox = (target) => {
+          const rect = target.getBoundingClientRect();
+          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        };
+        const entries = Array.from(element.querySelectorAll('[data-testid="game-log-entry"]'));
+        return {
+          listBox: toBox(element),
+          entryBoxes: entries.slice(0, 4).map(toBox),
+          entryCount: entries.length,
+          clientHeight: element.clientHeight,
+          scrollHeight: element.scrollHeight,
+        };
+      });
+
+      expect(layout.entryBoxes).toHaveLength(4);
+      expect(layout.entryBoxes[3].y + layout.entryBoxes[3].height, '네 번째 진행 기록이 스크롤 영역 아래에서 잘리면 안 됩니다.').toBeLessThanOrEqual(layout.listBox.y + layout.listBox.height + 1);
+      if (layout.entryCount > 4) expect(layout.scrollHeight, '다섯 번째 진행 기록부터는 스크롤로 접근할 수 있어야 합니다.').toBeGreaterThan(layout.clientHeight);
+
+      if (originalViewport) await page.setViewportSize(originalViewport);
     });
   });
 });
