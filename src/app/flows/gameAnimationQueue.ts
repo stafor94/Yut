@@ -1,3 +1,4 @@
+import { gamePresentationLock, type GamePresentationLock } from '../../shared/gamePresentationLock';
 import { REMOTE_ROLL_PRE_RESULT_MS } from './yutRollAnimation';
 
 export const REMOTE_ROLL_RESULT_HOLD_MS = 1400;
@@ -82,6 +83,34 @@ export function createGameAnimationQueue(): GameAnimationQueue {
 }
 
 export const gameAnimationQueue = createGameAnimationQueue();
+
+type QueuedRollPresentationOptions<TAnimation extends { id: number }> = {
+  key: string;
+  animation: TAnimation;
+  task: (animation: TAnimation) => void | Promise<void>;
+  queue?: GameAnimationQueue;
+  lock?: GamePresentationLock;
+  now?: () => number;
+};
+
+export function enqueueRollPresentation<TAnimation extends { id: number }>({
+  key,
+  animation,
+  task,
+  queue = gameAnimationQueue,
+  lock = gamePresentationLock,
+  now = Date.now,
+}: QueuedRollPresentationOptions<TAnimation>) {
+  const releasePresentation = lock.acquire();
+  const execution = queue.enqueue(key, async () => {
+    const presentedAnimation = {
+      ...animation,
+      id: getRollPresentationAnimationId(animation.id, now()),
+    };
+    await task(presentedAnimation);
+  });
+  return execution.finally(releasePresentation);
+}
 
 export function waitForGameAnimation(durationMs: number) {
   return new Promise<void>((resolve) => {
