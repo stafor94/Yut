@@ -10,7 +10,7 @@
     "qa:cleanup-rooms": "node tests/helpers/cleanup-qa-rooms.js",
     "test:unit": "rm -rf .tmp-unit-tests && tsc -p tsconfig.test.json && node scripts/run-unit-tests.mjs",
     "test:qa-basic-flow": "playwright test --workers=1 --project=desktop-chromium tests/game-flow/basic-turn.spec.js tests/game-flow/game-start-authority.spec.js",
-    "test:qa-online-turn-recovery": "playwright test --workers=1 --timeout=150000 --project=desktop-chromium tests/regression/bug-history-smoke.spec.js tests/regression/roll-mat-surface.spec.js",
+    "test:qa-online-turn-recovery": "playwright test --workers=1 --timeout=150000 --project=desktop-chromium tests/regression/bug-history-smoke.spec.js tests/regression/bug-history-online-sequence.spec.js tests/regression/bug-history-ai-movement.spec.js tests/regression/roll-mat-surface.spec.js",
     "test:qa-cleanup-layout-regression": "playwright test --workers=1 --project=desktop-chromium tests/lobby",
     "test:qa-room-lifecycle": "playwright test --workers=1 --project=desktop-chromium tests/online/room-lifecycle.spec.js",
     "test:qa-mobile-layout": "playwright test --workers=1 --project=mobile-galaxy --project=tablet-ipad tests/mobile/mobile-layout.spec.js"
