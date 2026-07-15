@@ -143,7 +143,7 @@
 }
 
 @media (min-width: 900px) {
-  .game-shell .game-layout:not(:has(.game-players-panel)) {
+  .game-shell .game-layout.room-info-collapsed {
     grid-template-columns: minmax(360px, 1fr) minmax(260px, 360px) !important;
   }
 }
