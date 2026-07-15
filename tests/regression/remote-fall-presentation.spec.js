@@ -190,7 +190,13 @@ test.describe('remote fall presentation QA', () => {
         expect(resultHoldDurationMs, `settle 후 낙 결과를 최소 1.2초 유지해야 합니다. 실제: ${resultHoldDurationMs}ms`).toBeGreaterThanOrEqual(1_200);
         expect(resultHoldDurationMs, `낙 결과 유지가 비정상적으로 길어지면 안 됩니다. 실제: ${resultHoldDurationMs}ms`).toBeLessThanOrEqual(3_000);
 
-        await expect(currentBadge, '낙 연출 종료 후 authoritative 다음 턴이 표시되어야 합니다.').toHaveText(observer.name, { timeout: 8_000 });
+        await expect.poll(async () => {
+          const badgeText = await currentBadge.textContent();
+          return badgeText?.replace(/\s*턴\s*$/, '').trim() ?? '';
+        }, {
+          timeout: 8_000,
+          message: '낙 연출 종료 후 authoritative 다음 턴이 표시되어야 합니다.',
+        }).toBe(observer.name);
       });
     } finally {
       await guestContext.close();
