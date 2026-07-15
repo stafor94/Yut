@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties } from 'react';
 import { CAPTURE_IMPACT_DELAY_MS, type CaptureVisualEffect } from '../../../app/flows/captureAnimation';
 import type { FinishVisualEffect } from '../../../app/flows/finishAnimation';
 import type { BoardItem, BoardNode, BranchChoice } from '../../../game-core/board/board';
@@ -49,6 +49,10 @@ function getPieceColorStyle(piece: BoardPiece) {
   return { '--piece-color': piece.color } as CSSProperties;
 }
 
+function getStackKey(nodeId: string, pieceGroupKey: string) {
+  return `${nodeId}\u0000${pieceGroupKey}`;
+}
+
 function getOffBoardPieceStyle(piece: BoardPiece, ownerIndex: number, ownerOrder: number, desktopTop: number, portraitTop: number) {
   const portraitColumn = ownerOrder % 2;
   return {
@@ -82,7 +86,7 @@ function getFinishedPieceStyle(piece: BoardPiece, pieces: BoardPiece[], getPiece
   } as CSSProperties;
 }
 
-function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = '', getPieceGroupKey: (piece: BoardPiece) => string = (candidate) => candidate.ownerId) {
+function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = '', getPieceGroupKey: (piece: BoardPiece) => string = (candidate) => candidate.ownerId, preferredTopPieceId = '') {
   if (!piece.started && !piece.finished && movingPieceId !== piece.id) {
     const pieceGroupKey = getPieceGroupKey(piece);
     const ownerPieces = pieces.filter((candidate) => getPieceGroupKey(candidate) === pieceGroupKey && !candidate.started && !candidate.finished);
@@ -105,9 +109,14 @@ function getPieceStyle(piece: BoardPiece, pieces: BoardPiece[], movingPieceId = 
   const groupRadius = groupKeys.length > 1 ? 12 : 0;
   const xOffset = Number((Math.cos(groupAngle) * groupRadius).toFixed(1));
   const yOffset = Number((Math.sin(groupAngle) * groupRadius).toFixed(1));
-  const stackedPieces = nodePieces.filter((candidate) => getPieceGroupKey(candidate) === pieceGroupKey);
+  const stackedPieces = nodePieces
+    .filter((candidate) => getPieceGroupKey(candidate) === pieceGroupKey)
+    .sort((left, right) => {
+      const getTopPriority = (candidate: BoardPiece) => candidate.id === movingPieceId ? 2 : candidate.id === preferredTopPieceId ? 1 : 0;
+      return getTopPriority(left) - getTopPriority(right);
+    });
   const stackIndex = Math.max(0, stackedPieces.findIndex((candidate) => candidate.id === piece.id));
-  const stackLift = stackIndex * 5;
+  const stackLift = stackIndex * 3;
 
   return {
     left: `${node.x}%`,
@@ -133,6 +142,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
   void showBranchControls;
   void showFallEffect;
 
+  const stackTopPieceIdByKeyRef = useRef<Map<string, string>>(new Map());
   const selectedIds = selectedPieceIds ?? (selectedPieceId ? [selectedPieceId] : []);
   const previewFinishes = previewNodeIds.includes(FINISH_NODE_ID);
   const visualCapturePieceIds = new Set(captureEffect?.pieceIds ?? []);
@@ -140,6 +150,12 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
   const finishPieceIds = new Set(finishEffect?.pieceIds ?? []);
   const movingAnchor = movingPieceId ? pieces.find((piece) => piece.id === movingPieceId) : undefined;
   const movingSideKey = movingAnchor ? getPieceGroupKey(movingAnchor) : '';
+  const movingStackPeers = movingAnchor && !movingAnchor.finished
+    ? pieces.filter((piece) => piece.nodeId === movingAnchor.nodeId && !piece.finished && (piece.started || piece.id === movingAnchor.id) && getPieceGroupKey(piece) === movingSideKey)
+    : [];
+  if (movingAnchor && movingStackPeers.length > 1) {
+    stackTopPieceIdByKeyRef.current.set(getStackKey(movingAnchor.nodeId, movingSideKey), movingAnchor.id);
+  }
   const hasCapturableDestinationTarget = Boolean(
     movingAnchor
     && captureDestinationNodeId
@@ -190,8 +206,9 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
       const stackedPieceCount = (piece.started || piece.id === movingPieceId) && !piece.finished
         ? pieces.filter((candidate) => (candidate.started || candidate.id === movingPieceId) && !candidate.finished && candidate.nodeId === piece.nodeId && getPieceGroupKey(candidate) === getPieceGroupKey(piece)).length
         : 1;
+      const preferredTopPieceId = stackTopPieceIdByKeyRef.current.get(getStackKey(piece.nodeId, getPieceGroupKey(piece))) ?? '';
       const pieceStyle = {
-        ...getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey),
+        ...getPieceStyle(piece, pieces, movingPieceId, getPieceGroupKey, preferredTopPieceId),
         ...(finishVisualPiece ? { '--finish-delay': `${finishVisualPiece.delayMs}ms` } : {}),
       } as CSSProperties;
       return <button
