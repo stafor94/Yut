@@ -46,7 +46,7 @@
 .game-shell .hero-actions.game-actions > .game-room-header-toggle {
   flex: 0 0 42px;
   width: 42px;
-  margin-right: auto;
+  margin-right: 20px;
 }
 
 .game-shell .hero-actions.game-actions > .nickname-chip {
@@ -54,6 +54,7 @@
   min-width: 0;
   max-width: min(42vw, 240px);
   width: auto;
+  margin-left: auto;
 }
 
 .game-shell .hero-actions.game-actions > .sound-toggle,
@@ -68,8 +69,9 @@
   color: #fff;
 }
 
-/* A finish preview may keep its route highlight, but it does not show a temporary label at start. */
-.game-shell .route-preview-marker.finish {
+/* Finish labels are not shown on the start node before or after arrival. */
+.game-shell .route-preview-marker.finish,
+.game-shell .finish-complete-label {
   display: none;
 }
 
