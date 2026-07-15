@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { expectAppShell } from '../helpers/ui.js';
 
 test.describe('아이템전 모바일 사이드 패널', () => {
   test('방 정보 접기 버튼을 반복 사용해도 윷판 아래에 보유 아이템과 진행 기록을 유지한다', async ({ page }) => {
-    await page.goto('/');
+    await expectAppShell(page);
 
     await page.evaluate(() => {
       const fixture = document.createElement('div');
