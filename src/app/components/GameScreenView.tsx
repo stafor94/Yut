@@ -153,20 +153,39 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   const visibleBoardTurnIndicatorRollStackRef = useRef(boardTurnIndicatorRollStack);
   const visibleRollStackRef = useRef(rollStack);
   const visibleLogsRef = useRef(logs);
+  const rollDerivedSnapshotsRef = useRef<Map<number, { boardRollStack: YutResult[]; rollStack: YutResult[]; logs: GameLog[] }>>(new Map());
+  if (rollAnimation) {
+    const existingSnapshot = rollDerivedSnapshotsRef.current.get(rollAnimation.id);
+    if (existingSnapshot?.boardRollStack !== boardTurnIndicatorRollStack || existingSnapshot.rollStack !== rollStack || existingSnapshot.logs !== logs) {
+      rollDerivedSnapshotsRef.current.set(rollAnimation.id, { boardRollStack: boardTurnIndicatorRollStack, rollStack, logs });
+    }
+    if (rollDerivedSnapshotsRef.current.size > 120) {
+      rollDerivedSnapshotsRef.current = new Map(Array.from(rollDerivedSnapshotsRef.current.entries()).slice(-60));
+    }
+  }
   const deferRollDerivedContent = shouldDeferRollDerivedContent({
     rollAnimationId: rollAnimation?.id ?? null,
     presentation: rollPresentation,
   });
-  const displayedBoardTurnIndicatorRollStack = deferRollDerivedContent ? visibleBoardTurnIndicatorRollStackRef.current : boardTurnIndicatorRollStack;
-  const displayedRollStack = deferRollDerivedContent ? visibleRollStackRef.current : rollStack;
-  const displayedLogs = deferRollDerivedContent ? visibleLogsRef.current : logs;
+  const revealedRollSnapshot = rollPresentation.resultVisible && rollPresentation.sourceAnimationId !== null
+    ? rollDerivedSnapshotsRef.current.get(rollPresentation.sourceAnimationId)
+    : undefined;
+  const displayedBoardTurnIndicatorRollStack = revealedRollSnapshot?.boardRollStack ?? (deferRollDerivedContent ? visibleBoardTurnIndicatorRollStackRef.current : boardTurnIndicatorRollStack);
+  const displayedRollStack = revealedRollSnapshot?.rollStack ?? (deferRollDerivedContent ? visibleRollStackRef.current : rollStack);
+  const displayedLogs = revealedRollSnapshot?.logs ?? (deferRollDerivedContent ? visibleLogsRef.current : logs);
 
   useLayoutEffect(() => {
+    if (revealedRollSnapshot) {
+      visibleBoardTurnIndicatorRollStackRef.current = revealedRollSnapshot.boardRollStack;
+      visibleRollStackRef.current = revealedRollSnapshot.rollStack;
+      visibleLogsRef.current = revealedRollSnapshot.logs;
+      return;
+    }
     if (deferRollDerivedContent) return;
     visibleBoardTurnIndicatorRollStackRef.current = boardTurnIndicatorRollStack;
     visibleRollStackRef.current = rollStack;
     visibleLogsRef.current = logs;
-  }, [boardTurnIndicatorRollStack, deferRollDerivedContent, logs, rollStack]);
+  }, [boardTurnIndicatorRollStack, deferRollDerivedContent, logs, revealedRollSnapshot, rollStack]);
 
   const activeGameSeatId = activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder ? undefined : activeSeat?.id;
   const presentationTurn = getGamePresentationTurn({
