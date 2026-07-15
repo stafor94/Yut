@@ -1,3 +1,6 @@
+import { useEffect } from 'react';
+import { publishPlayTimePresentation } from '../flows/playTimePresentation';
+
 type AppShellHeaderProps = {
   activeRoomId: string;
   manualSequenceSyncing: boolean;
@@ -14,9 +17,16 @@ type AppShellHeaderProps = {
 };
 
 export function AppShellHeader({ activeRoomId, manualSequenceSyncing, nickname, playTimeText, screen, serverStatus, serverStatusTone, soundEnabled, winner, onOpenNicknameDialog, onSyncLatestSequences, onToggleSoundEnabled }: AppShellHeaderProps) {
+  useEffect(() => {
+    publishPlayTimePresentation({
+      playTimeText,
+      stopped: Boolean(winner),
+      visible: screen === 'game',
+    });
+  }, [playTimeText, screen, winner]);
+
   return <section className="hero panel">
     <div className="hero-copy" aria-hidden="true"></div>
-    {screen === 'game' && <div data-testid="play-timer" className={`play-time ${winner ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimeText}`}>{playTimeText}</div>}
     <div className="hero-actions">
       <button className="nickname-chip" type="button" onClick={onOpenNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}><span aria-hidden="true">👤</span><span>{nickname}</span></button>
       <button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={onToggleSoundEnabled} aria-label={`효과음 ${soundEnabled ? '켜짐' : '꺼짐'}`}><span className="sound-icon" aria-hidden="true">{soundEnabled ? '🔊' : '🔇'}</span><span>{soundEnabled ? '켜짐' : '꺼짐'}</span></button>
