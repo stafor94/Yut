@@ -10,6 +10,7 @@ import {
 type TestSnapshot = GameSyncSnapshotIdentity & { value?: string };
 
 const flushController = () => new Promise<void>((resolve) => setImmediate(resolve));
+const wait = (delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 const missingEmitter = () => { throw new Error('구독 callback이 등록되지 않았습니다.'); };
 
 const createRuntime = (
@@ -138,6 +139,37 @@ test('동일 snapshot은 한 번만 적용하고 새 sequence는 즉시 replay�
   assert.equal(refs.sequence.current, 2);
   assert.equal(refs.version.current, 2);
   assert.equal(refs.applying.current, false);
+});
+
+test('사전 준비 snapshot은 공통 카운트다운 종료 시점까지 적용을 보류한다', async () => {
+  const controller = createGameSyncSubscriptionController<TestSnapshot>();
+  const refs = { sequence: { current: 0 }, version: { current: 0 }, applying: { current: false } };
+  const counters = { replay: 0, apply: 0, enqueue: 0 };
+  let emit: (state: TestSnapshot | null) => void = missingEmitter;
+
+  controller.updateRuntime(createRuntime('room-a', counters, refs));
+  controller.syncRoom('room-a', (_roomId, callback) => {
+    emit = callback;
+    return () => undefined;
+  });
+
+  emit({
+    turnVersion: 1,
+    lastSequence: 1,
+    startRequestVersion: 3,
+    startRequestId: 'request-3',
+    startCountdownEndsAt: Date.now() + 40,
+    value: 'prepared',
+  });
+  await flushController();
+  assert.equal(counters.replay, 0);
+  assert.equal(counters.enqueue, 0);
+
+  await wait(80);
+  await flushController();
+  assert.equal(counters.replay, 1);
+  assert.equal(counters.enqueue, 1);
+  controller.dispose();
 });
 
 test('turnVersion이 없는 legacy snapshot도 안정적인 payload key로 중복 적용을 막는다', async () => {
