@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { expectAppShell } from '../helpers/ui.js';
 
 const NICKNAME_STORAGE_KEY = 'yut-online:nickname';
 
 test.describe('닉네임 설정 팝업', () => {
   test('최초 접속 시 닉네임 설정 팝업을 즉시 한 개 제목으로 표시한다', async ({ page }) => {
     await page.addInitScript((storageKey) => window.localStorage.removeItem(storageKey), NICKNAME_STORAGE_KEY);
-    await page.goto('/');
+    await expectAppShell(page);
 
     const dialog = page.getByRole('dialog', { name: '닉네임 설정' });
     await expect(dialog).toBeVisible();
@@ -19,7 +20,7 @@ test.describe('닉네임 설정 팝업', () => {
       storageKey: NICKNAME_STORAGE_KEY,
       nickname: '기존유저',
     });
-    await page.goto('/');
+    await expectAppShell(page);
 
     await expect(page.getByRole('dialog', { name: '닉네임 설정' })).toHaveCount(0);
   });
