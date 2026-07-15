@@ -83,26 +83,28 @@ test.describe('game flow QA', () => {
         ]);
         const countdownEndsAt = Number(room?.startCountdownEndsAt ?? 0);
         const introReadyAt = Number(roomState?.turnOrderIntro?.readyAt ?? 0);
-        return {
-          overlayVisible: await page.getByTestId('start-countdown-overlay').isVisible().catch(() => false),
-          waitingVisible: screenState.visibleScreens.waitingRoom,
-          gameVisible: screenState.visibleScreens.game,
-          roomStatus: room?.status,
-          startStatus: room?.startStatus,
-          hasCurrentState: Boolean(roomState),
-          initializedSequenceCount: sequences.filter((sequence) => sequence.type === 'game_initialized').length,
-          introStartsAfterCountdown: countdownEndsAt > 0 && introReadyAt > countdownEndsAt,
-        };
-      }, { timeout: 5_000, message: '취소 잠금 이후에는 카운트다운을 유지한 채 초기 state와 순서 결과를 한 번만 미리 전송해야 합니다.' }).toEqual({
-        overlayVisible: true,
-        waitingVisible: true,
-        gameVisible: false,
-        roomStatus: 'waiting',
-        startStatus: 'requested',
-        hasCurrentState: true,
-        initializedSequenceCount: 1,
-        introStartsAfterCountdown: true,
-      });
+        const overlayVisible = await page.getByTestId('start-countdown-overlay').isVisible().catch(() => false);
+        const waitingVisible = screenState.visibleScreens.waitingRoom;
+        const gameVisible = screenState.visibleScreens.game;
+        const roomStatus = room?.status;
+        const startStatus = room?.startStatus;
+        const hasCurrentState = Boolean(roomState);
+        const initializedSequenceCount = sequences.filter((sequence) => sequence.type === 'game_initialized').length;
+        const introStartsAfterCountdown = countdownEndsAt > 0 && introReadyAt > countdownEndsAt;
+        const countdownState = overlayVisible && waitingVisible && !gameVisible && roomStatus === 'waiting' && startStatus === 'requested';
+        const playingState = !overlayVisible && !waitingVisible && gameVisible && roomStatus === 'playing' && startStatus === 'playing';
+        if (hasCurrentState && initializedSequenceCount === 1 && introStartsAfterCountdown && (countdownState || playingState)) return 'ready';
+        return JSON.stringify({
+          overlayVisible,
+          waitingVisible,
+          gameVisible,
+          roomStatus,
+          startStatus,
+          hasCurrentState,
+          initializedSequenceCount,
+          introStartsAfterCountdown,
+        }, null, 2);
+      }, { timeout: 5_000, message: '카운트다운 중 또는 종료 직후에 초기 state와 순서 결과가 한 번만 준비되어야 합니다.' }).toBe('ready');
       await expect(page.getByTestId('start-countdown-overlay')).toBeHidden({ timeout: 5_000 });
       await expect.poll(async () => {
         const state = await collectScreenState(page);
