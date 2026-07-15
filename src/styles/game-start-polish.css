@@ -1,0 +1,172 @@
+/* Final polish for the in-game header, stacked pieces, and the waiting-to-game handoff. */
+
+.piece-token {
+  --piece-stack-visibility-lift: 2px;
+}
+
+.game-shell .hero {
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "actions"
+    "timer";
+  gap: 10px;
+  min-height: 128px;
+  margin-bottom: 20px;
+  padding: 17px 19px;
+  border: 7px solid #5a2d16;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 244, 202, .66), transparent 36%),
+    repeating-linear-gradient(0deg, rgba(87, 47, 21, .03) 0 1px, transparent 1px 5px),
+    linear-gradient(145deg, #f6dfb5 0%, #d8ad70 58%, #bd8147 100%);
+  box-shadow:
+    0 22px 38px rgba(58, 29, 13, .24),
+    0 0 0 2px #35180b,
+    0 0 0 5px rgba(202, 143, 59, .2),
+    inset 0 2px 0 rgba(255, 236, 191, .55),
+    inset 0 -5px 9px rgba(65, 30, 13, .24);
+}
+
+.game-shell .hero::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  z-index: 0;
+  border: 2px solid rgba(218, 169, 88, .82);
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 2px rgba(66, 30, 13, .34),
+    inset 0 0 22px rgba(81, 42, 18, .13);
+  pointer-events: none;
+}
+
+.game-shell .hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: auto;
+  aspect-ratio: auto;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(255, 248, 219, .14), transparent 20% 76%, rgba(78, 39, 17, .08)),
+    repeating-linear-gradient(5deg, transparent 0 18px, rgba(91, 48, 21, .025) 18px 19px);
+  pointer-events: none;
+}
+
+.game-shell .hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.game-shell .hero-copy {
+  display: none;
+}
+
+.game-shell .hero-actions {
+  grid-area: actions;
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(74px, .7fr) minmax(72px, .65fr);
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.game-shell .hero-actions button {
+  min-width: 0;
+  min-height: 54px;
+  padding: 9px 10px;
+  border: 2px solid #95622f;
+  border-radius: 15px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .48), transparent 34%),
+    linear-gradient(180deg, #fff4d2, #e6c184);
+  color: #315a45;
+  font-size: .82rem;
+  text-shadow: 0 1px 0 rgba(255, 252, 229, .9);
+  box-shadow:
+    0 6px 0 #75431f,
+    0 10px 14px rgba(61, 31, 14, .2),
+    inset 0 1px 0 rgba(255, 255, 255, .76),
+    inset 0 -3px 5px rgba(102, 56, 24, .12);
+  opacity: 1;
+}
+
+.game-shell .nickname-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.game-shell .nickname-chip span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-shell .sound-controls.sound-toggle.active {
+  border-color: #d8aa55;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .14), transparent 32%),
+    linear-gradient(145deg, #2f6b4f, #183c2f 72%, #10281f);
+  color: #fff5d7;
+  text-shadow: 0 2px 2px rgba(7, 28, 19, .5);
+  box-shadow:
+    0 6px 0 #0f2b20,
+    0 10px 15px rgba(34, 66, 54, .25),
+    inset 0 1px 0 rgba(255, 255, 255, .18),
+    inset 0 -3px 5px rgba(7, 28, 19, .28);
+}
+
+.game-shell .status-card {
+  width: 100%;
+  justify-content: center;
+}
+
+.game-shell .play-time {
+  grid-area: timer;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding-block: 9px;
+}
+
+.start-transition-scrim {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 120 !important;
+  width: 100vw;
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0 !important;
+}
+
+@media (max-width: 430px) {
+  .game-shell .hero {
+    min-height: 124px;
+    padding: 15px 14px;
+  }
+
+  .game-shell .hero-actions {
+    grid-template-columns: minmax(0, 1.7fr) 72px 70px;
+    gap: 6px;
+  }
+
+  .game-shell .hero-actions button {
+    min-height: 50px;
+    padding-inline: 7px;
+    font-size: .76rem;
+  }
+
+  .game-shell .sound-icon,
+  .game-shell .nickname-chip span:first-child {
+    font-size: .8rem;
+  }
+}
