@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { collection, endAt, getDocs, orderBy, query, startAt, where } from 'firebase/firestore';
 import { deleteRoomForQa, getTestDb } from './rooms.js';
 
@@ -7,6 +8,7 @@ const workflowPrefix = String(process.env.QA_WORKFLOW_PREFIX ?? '').trim();
 const orphanMaxAgeMs = Number(process.env.QA_ORPHAN_MAX_AGE_MS ?? 2 * 60 * 60 * 1000);
 const shouldReportRemainingRooms = process.env.QA_CLEANUP_REPORT_REMAINING === '1';
 const strictQaTitlePattern = /^QA-gh-\d+-\d+-(online-flow|roll-movement|lobby-desktop|mobile-layout)-/u;
+const cleanupAuthRetryDelaysMs = [500, 1000, 2000, 4000];
 
 function formatDeletedCounts(deletedCounts) {
   return Object.entries(deletedCounts)
@@ -31,6 +33,37 @@ function normalizeRoom(documentSnapshot) {
     qaCreatedAt: data.qaCreatedAt,
     createdAt: data.createdAt,
   };
+}
+
+function getFirebaseAuthErrorCode(error) {
+  return typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+}
+
+function isTransientFirebaseAuthError(error) {
+  return [
+    'auth/the-service-is-currently-unavailable',
+    'auth/network-request-failed',
+    'auth/internal-error',
+    'auth/timeout',
+  ].includes(getFirebaseAuthErrorCode(error));
+}
+
+async function rerunCleanupAfterTransientAuthFailure(error) {
+  const retryAttempt = Number(process.env.QA_CLEANUP_AUTH_RETRY_ATTEMPT ?? 0);
+  const delayMs = cleanupAuthRetryDelaysMs[retryAttempt];
+  if (!isTransientFirebaseAuthError(error) || delayMs === undefined) return false;
+
+  console.warn(`QA cleanup Firebase 인증 일시 오류로 새 프로세스에서 재시도합니다. attempt=${retryAttempt + 1}, delayMs=${delayMs}, code=${getFirebaseAuthErrorCode(error)}`);
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  const child = spawnSync(process.execPath, [process.argv[1], ...process.argv.slice(2)], {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      QA_CLEANUP_AUTH_RETRY_ATTEMPT: String(retryAttempt + 1),
+    },
+  });
+  if (child.error) throw child.error;
+  process.exit(child.status ?? 1);
 }
 
 async function getCurrentRunRooms(db) {
@@ -108,7 +141,13 @@ async function cleanupQaRooms() {
 
 cleanupQaRooms()
   .then(() => process.exit(0))
-  .catch((error) => {
+  .catch(async (error) => {
+    try {
+      if (await rerunCleanupAfterTransientAuthFailure(error)) return;
+    } catch (retryError) {
+      console.error('QA cleanup 재시도 프로세스 실행에 실패했습니다.', retryError);
+      process.exit(1);
+    }
     console.error('QA 방 정리에 실패했습니다.', error);
     process.exit(1);
   });
