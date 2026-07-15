@@ -4,6 +4,10 @@ export const REMOTE_ROLL_RESULT_HOLD_MS = 1400;
 export const REMOTE_ROLL_PRESENTATION_MS = REMOTE_ROLL_PRE_RESULT_MS + REMOTE_ROLL_RESULT_HOLD_MS;
 export const MOVE_FRAME_PRESENTATION_MS = 240;
 
+export function getRollPresentationAnimationId(sourceAnimationId: number, now = Date.now()) {
+  return Math.max(sourceAnimationId, now);
+}
+
 export type GameAnimationTask = () => void | Promise<void>;
 
 export type GameAnimationQueue = {
