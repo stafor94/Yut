@@ -3,6 +3,10 @@ import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomPlayersForQa, getRoomSeatsForQa, getRoomSequencesForQa, getRoomStateForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
+function boxesOverlap(a, b) {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
 test.describe('game flow QA', () => {
   let roomId;
 
@@ -137,6 +141,56 @@ test.describe('game flow QA', () => {
       await expect(page.getByTestId('players-panel')).toContainText(hostName);
       await expect(page.getByTestId('turn-indicator')).toBeVisible();
       await expect(page.getByTestId('game-board')).toBeVisible();
+    });
+
+    await runQaStep(testInfo, '모바일 인게임 상단 레이아웃 겹침 확인', async () => {
+      const originalViewport = page.viewportSize();
+      await page.setViewportSize({ width: 390, height: 844 });
+      const header = page.locator('.game-shell .hero');
+      await expect(header).toBeVisible();
+
+      const layout = await header.evaluate((element) => {
+        const timer = element.querySelector('.play-time');
+        const actions = element.querySelector('.hero-actions');
+        const buttons = actions ? Array.from(actions.querySelectorAll('button')) : [];
+        const toBox = (target) => {
+          if (!target) return null;
+          const rect = target.getBoundingClientRect();
+          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        };
+        return {
+          display: getComputedStyle(element).display,
+          headerBox: toBox(element),
+          timerBox: toBox(timer),
+          actionsBox: toBox(actions),
+          buttonBoxes: buttons.map(toBox),
+        };
+      });
+
+      expect(layout.display, '인게임 상단은 명시적인 grid 레이아웃이어야 합니다.').toBe('grid');
+      expect(layout.headerBox, '상단 패널 bounding box').not.toBeNull();
+      expect(layout.timerBox, '플레이 타이머 bounding box').not.toBeNull();
+      expect(layout.actionsBox, '상단 액션 영역 bounding box').not.toBeNull();
+      expect(layout.buttonBoxes, '닉네임·효과음·서버 상태 버튼 3개가 있어야 합니다.').toHaveLength(3);
+
+      const { headerBox, timerBox, actionsBox, buttonBoxes } = layout;
+      expect(timerBox.y, '모바일에서는 타이머가 상단 액션 영역 아래에 배치되어야 합니다.').toBeGreaterThanOrEqual(actionsBox.y + actionsBox.height - 1);
+      expect(timerBox.x, '타이머가 상단 패널 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(headerBox.x);
+      expect(timerBox.x + timerBox.width, '타이머가 상단 패널 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(headerBox.x + headerBox.width);
+
+      for (const buttonBox of buttonBoxes) {
+        expect(buttonBox.x, '상단 버튼이 액션 영역 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(actionsBox.x - 1);
+        expect(buttonBox.x + buttonBox.width, '상단 버튼이 액션 영역 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(actionsBox.x + actionsBox.width + 1);
+        expect(Math.abs(buttonBox.y - buttonBoxes[0].y), '상단 버튼 3개는 같은 행에 정렬되어야 합니다.').toBeLessThanOrEqual(1);
+      }
+
+      for (let leftIndex = 0; leftIndex < buttonBoxes.length; leftIndex += 1) {
+        for (let rightIndex = leftIndex + 1; rightIndex < buttonBoxes.length; rightIndex += 1) {
+          expect(boxesOverlap(buttonBoxes[leftIndex], buttonBoxes[rightIndex]), '상단 버튼끼리 겹치면 안 됩니다.').toBe(false);
+        }
+      }
+
+      if (originalViewport) await page.setViewportSize(originalViewport);
     });
 
     await runQaStep(testInfo, '순서 정하기 완료 및 첫 턴 진행 가능 상태 확인', async () => {
