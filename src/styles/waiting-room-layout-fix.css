@@ -3,30 +3,87 @@
 .screen-waitingRoom .compact-ready-card {
   box-sizing: border-box;
   min-height: 86px;
-  display: flex;
-  align-items: center;
+}
+
+.screen-waitingRoom .compact-ready-card:not(:has(.team-card-selector)) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  height: 86px;
 }
 
 .screen-waitingRoom .compact-ready-card .seat-row {
   width: 100%;
+  min-width: 0;
   min-height: 58px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
   align-items: center;
-  gap: 10px;
+  column-gap: 10px;
+  row-gap: 3px;
 }
 
 .screen-waitingRoom .compact-ready-card .seat-identity {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   min-width: 0;
 }
 
+.screen-waitingRoom .compact-ready-card .seat-identity > b,
+.screen-waitingRoom .compact-ready-card .seat-identity > em {
+  flex: 0 0 auto;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-identity > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .screen-waitingRoom .compact-ready-card .seat-status-actions {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  justify-content: flex-end;
+  justify-self: end;
+  align-self: end;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-status-actions:empty {
+  display: none;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-status-actions .mini-button {
+  width: auto;
+  min-width: 70px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  line-height: 1;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-ready-label {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
   align-self: start;
+  min-width: 52px;
+  padding: 5px 9px;
+  text-align: center;
+}
+
+.screen-waitingRoom .compact-ready-card.empty .seat-status-actions {
+  grid-row: 1 / -1;
+  align-self: center;
 }
 
 .screen-waitingRoom .waiting-actions.role-actions {
   margin-top: 4px;
-  padding: 16px;
+  padding: 14px;
   border: 2px solid #8d5a2d;
   border-radius: 17px;
   background:
@@ -39,17 +96,64 @@
 
 .screen-waitingRoom .waiting-action-buttons {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
   align-items: stretch;
+  width: 100%;
 }
 
-.screen-waitingRoom .waiting-action-buttons button,
-.screen-waitingRoom .waiting-action-buttons .secondary {
+.screen-waitingRoom .waiting-action-buttons button {
   width: 100%;
-  min-height: 58px;
+  min-height: 56px;
   margin: 0;
+  padding: 12px 14px;
   border-radius: 15px;
+  line-height: 1.1;
+}
+
+.screen-waitingRoom .waiting-action-buttons button:first-child {
+  border: 2px solid #e4b962;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .18), transparent 32%),
+    linear-gradient(145deg, #df5b43, #b93629 62%, #92271e);
+  color: #fff8df;
+  box-shadow:
+    0 4px 0 #6c281b,
+    0 8px 13px rgba(67, 28, 15, .2),
+    inset 0 2px 0 rgba(255, 234, 199, .28),
+    inset 0 -3px 5px rgba(88, 23, 17, .24);
+}
+
+.screen-waitingRoom .waiting-action-buttons .secondary {
+  border: 2px solid #4a745f;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .72), transparent 38%),
+    linear-gradient(180deg, #fffdf6, #efe2ca);
+  color: #24513e;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .9);
+  box-shadow:
+    0 4px 0 #315a46,
+    0 8px 13px rgba(41, 79, 61, .15),
+    inset 0 1px 0 rgba(255, 255, 255, .86),
+    inset 0 -3px 5px rgba(75, 109, 91, .1);
+}
+
+.screen-waitingRoom .waiting-action-buttons button:not(:disabled):active {
+  transform: translateY(3px);
+}
+
+.screen-waitingRoom .waiting-action-buttons button:first-child:not(:disabled):active {
+  box-shadow:
+    0 1px 0 #6c281b,
+    0 4px 7px rgba(67, 28, 15, .18),
+    inset 0 2px 0 rgba(255, 234, 199, .22);
+}
+
+.screen-waitingRoom .waiting-action-buttons .secondary:not(:disabled):active {
+  box-shadow:
+    0 1px 0 #315a46,
+    0 4px 7px rgba(41, 79, 61, .13),
+    inset 0 1px 0 rgba(255, 255, 255, .78);
 }
 
 @media (max-width: 520px) {
@@ -57,17 +161,34 @@
     min-height: 82px;
   }
 
+  .screen-waitingRoom .compact-ready-card:not(:has(.team-card-selector)) {
+    height: 82px;
+  }
+
+  .screen-waitingRoom .compact-ready-card .seat-row {
+    min-height: 56px;
+    column-gap: 8px;
+  }
+
+  .screen-waitingRoom .compact-ready-card .seat-identity {
+    gap: 7px;
+  }
+
+  .screen-waitingRoom .compact-ready-card .seat-status-actions .mini-button {
+    min-width: 66px;
+    padding-inline: 8px;
+  }
+
   .screen-waitingRoom .waiting-actions.role-actions {
-    padding: 12px;
+    padding: 11px;
   }
 
   .screen-waitingRoom .waiting-action-buttons {
-    gap: 9px;
+    gap: 8px;
   }
 
-  .screen-waitingRoom .waiting-action-buttons button,
-  .screen-waitingRoom .waiting-action-buttons .secondary {
-    min-height: 54px;
-    padding-inline: 10px;
+  .screen-waitingRoom .waiting-action-buttons button {
+    min-height: 52px;
+    padding-inline: 9px;
   }
 }
