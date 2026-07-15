@@ -9,6 +9,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
+import { waitForGamePresentationBeforeAction } from '../../../shared/gamePresentationLock';
 import {
   cleanupCurrentRoomPresence as cleanupCurrentRoomPresenceCore,
   commitAuthoritativeGameAction as commitAuthoritativeGameActionCore,
@@ -82,6 +83,7 @@ export async function commitAuthoritativeGameAction(
   roomId: string,
   action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
 ): Promise<CommitAuthoritativeGameActionResult> {
+  await waitForGamePresentationBeforeAction(action.type);
   const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
   const result = await settleAuthoritativeCommit({
     actionType: action.type,
