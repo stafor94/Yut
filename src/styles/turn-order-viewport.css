@@ -1,0 +1,15 @@
+/* Keep the turn-order presentation fully visible on portrait screens.
+   The shared overlay rule positions it absolutely inside the board panel, which
+   can extend beyond the document's maximum scroll range when the player panel is
+   tall. A viewport-fixed modal avoids that layout dependency. */
+@media (orientation: portrait) and (max-width: 900px) {
+  .turn-order-ready-overlay.slot-machine {
+    position: fixed;
+    inset: 50% auto auto 50%;
+    z-index: 90;
+    width: min(calc(100vw - 32px), 360px);
+    max-height: calc(100vh - 32px);
+    max-height: calc(100svh - 32px);
+    translate: -50% -50%;
+  }
+}
