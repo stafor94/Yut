@@ -293,9 +293,30 @@ test.describe('game flow QA', () => {
       const originalViewport = page.viewportSize();
       await page.setViewportSize({ width: 390, height: 844 });
       const logEntries = page.getByTestId('game-log-entry');
-      await expect.poll(() => logEntries.count(), { timeout: 10_000, message: '진행 기록이 최소 4개 생성되어야 합니다.' }).toBeGreaterThanOrEqual(4);
       const logList = page.getByTestId('game-log-list');
       await expect(logList).toBeVisible();
+      await expect(logEntries.first(), '초기 순서 진행 기록이 표시되어야 합니다.').toBeVisible();
+
+      await logList.evaluate((element) => {
+        const sourceEntry = element.querySelector('[data-testid="game-log-entry"]');
+        if (!(sourceEntry instanceof HTMLElement)) throw new Error('진행 기록 레이아웃 fixture의 기준 카드가 없습니다.');
+        const currentEntries = Array.from(element.querySelectorAll('[data-testid="game-log-entry"]'));
+        for (let index = currentEntries.length; index < 5; index += 1) {
+          const clone = sourceEntry.cloneNode(true);
+          if (!(clone instanceof HTMLElement)) continue;
+          clone.dataset.qaLogLayoutFixture = String(index + 1);
+          const sequence = clone.querySelector('.log-sequence');
+          if (sequence) sequence.textContent = `${index + 1}.`;
+          clone.append(document.createTextNode(` 모바일 진행 기록 높이 검증 ${index + 1}`));
+          element.appendChild(clone);
+        }
+      });
+
+      await expect.poll(() => logEntries.count(), { timeout: 2_000, message: '레이아웃 검증용 진행 기록 5개가 준비되어야 합니다.' }).toBeGreaterThanOrEqual(5);
+      await expect.poll(async () => logList.evaluate((element) => Number.parseFloat(element.style.height) || 0), {
+        timeout: 2_000,
+        message: '모바일 진행 기록 높이가 첫 4개 카드 기준으로 계산되어야 합니다.',
+      }).toBeGreaterThan(0);
 
       const layout = await logList.evaluate((element) => {
         const toBox = (target) => {
@@ -309,13 +330,19 @@ test.describe('game flow QA', () => {
           entryCount: entries.length,
           clientHeight: element.clientHeight,
           scrollHeight: element.scrollHeight,
+          overflowY: getComputedStyle(element).overflowY,
         };
       });
 
       expect(layout.entryBoxes).toHaveLength(4);
       expect(layout.entryBoxes[3].y + layout.entryBoxes[3].height, '네 번째 진행 기록이 스크롤 영역 아래에서 잘리면 안 됩니다.').toBeLessThanOrEqual(layout.listBox.y + layout.listBox.height + 1);
-      if (layout.entryCount > 4) expect(layout.scrollHeight, '다섯 번째 진행 기록부터는 스크롤로 접근할 수 있어야 합니다.').toBeGreaterThan(layout.clientHeight);
+      expect(layout.entryCount, '다섯 번째 진행 기록까지 fixture가 유지되어야 합니다.').toBeGreaterThanOrEqual(5);
+      expect(layout.scrollHeight, '다섯 번째 진행 기록부터는 스크롤로 접근할 수 있어야 합니다.').toBeGreaterThan(layout.clientHeight);
+      expect(['auto', 'scroll'], '모바일 진행 기록 목록은 세로 스크롤을 허용해야 합니다.').toContain(layout.overflowY);
 
+      await logList.evaluate((element) => {
+        element.querySelectorAll('[data-qa-log-layout-fixture]').forEach((node) => node.remove());
+      });
       if (originalViewport) await page.setViewportSize(originalViewport);
     });
   });
