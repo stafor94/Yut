@@ -17,6 +17,41 @@ test.describe('mobile layout QA', () => {
     });
   });
 
+  test('닉네임 팝업이 목재 프레임 안에서 모바일 화면을 벗어나지 않는다', async ({ page }, testInfo) => {
+    await runQaStep(testInfo, '모바일 공통 팝업 스타일 확인', async () => {
+      await expectAppShell(page);
+      await page.locator('.nickname-chip').click();
+
+      const backdrop = page.locator('.nickname-dialog-backdrop');
+      const modal = backdrop.locator('.nickname-modal');
+      await expect(backdrop).toBeVisible();
+      await expect(modal).toBeVisible();
+
+      const layout = await modal.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return {
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+          borderWidth: Number.parseFloat(style.borderTopWidth),
+          backgroundImage: style.backgroundImage,
+          boxShadow: style.boxShadow,
+        };
+      });
+
+      expect(layout.borderWidth, '공통 팝업은 두꺼운 목재 프레임을 사용해야 합니다.').toBeGreaterThanOrEqual(5);
+      expect(layout.backgroundImage, '공통 팝업은 목재/한지 그라데이션 표면을 사용해야 합니다.').toContain('gradient');
+      expect(layout.boxShadow, '공통 팝업은 입체 프레임 그림자를 사용해야 합니다.').not.toBe('none');
+      expect(layout.rect.x, '팝업 왼쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
+      expect(layout.rect.y, '팝업 위쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
+      expect(layout.rect.x + layout.rect.width, '팝업 오른쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewport.width);
+      expect(layout.rect.y + layout.rect.height, '팝업 아래쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewport.height);
+
+      await page.getByRole('button', { name: '취소' }).click();
+      await expect(backdrop).toBeHidden();
+    });
+  });
+
   test('모바일 로비 방 카드의 좌우 영역이 겹치지 않는다', async ({ page, context }, testInfo) => {
     const hostNickname = normalizeQaNickname(makeQaName(testInfo, 'mobile-card-host'));
     const guestNickname = normalizeQaNickname(makeQaName(testInfo, 'mobile-card-guest'));
