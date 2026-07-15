@@ -1,0 +1,28 @@
+/* Reset legacy responsive grid areas so every in-game header control stays on one row. */
+.game-shell .hero-actions.game-actions .game-room-header-toggle {
+  grid-area: auto;
+  grid-row: 1;
+  grid-column: 1;
+  align-self: center;
+}
+
+.game-shell .hero-actions.game-actions .nickname-chip {
+  grid-area: auto;
+  grid-row: 1;
+  grid-column: 2;
+  align-self: center;
+}
+
+.game-shell .hero-actions.game-actions .sound-controls {
+  grid-area: auto;
+  grid-row: 1;
+  grid-column: 3;
+  align-self: center;
+}
+
+.game-shell .hero-actions.game-actions .status-card {
+  grid-area: auto;
+  grid-row: 1;
+  grid-column: 4;
+  align-self: center;
+}
