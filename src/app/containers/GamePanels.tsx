@@ -226,7 +226,7 @@ export function GameLogPanelView({
       ref={logListRef}
       data-testid="game-log-list"
       className={`log-list ${mobileLogScrollable ? 'scrollable' : 'page-scroll'}`}
-      style={mobileLogViewportHeight === null ? undefined : { height: `${mobileLogViewportHeight}px`, flex: '0 0 auto' }}
+      style={mobileLogViewportHeight === null ? undefined : { height: `${mobileLogViewportHeight}px`, minHeight: `${mobileLogViewportHeight}px`, flex: '0 0 auto' }}
     >{logs.map((log, index) => <p data-testid="game-log-entry" key={log.id} style={getLogCardStyle(log.text, logs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log)}</span>{renderLogText(log.text)}</p>)}</div>
   </GameLogPanel>;
 }
