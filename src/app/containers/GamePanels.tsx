@@ -3,6 +3,7 @@ import { ItemCard } from '../../features/items/components/ItemCard';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
+import { publishGameEndDialogOpenHandler } from '../flows/gameEndDialogPresentation';
 import { getOwnedItemsPresentation, publishOwnedItemsPresentation, subscribeOwnedItemsPresentation } from '../flows/ownedItemsPresentation';
 import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } from '../flows/remoteItemUseNotice';
 import { getPlayTimePresentation, subscribePlayTimePresentation } from '../flows/playTimePresentation';
@@ -59,6 +60,8 @@ export function GamePlayersPanel({
   const remoteItemNoticeTimerRef = useRef<number | null>(null);
   const [remoteItemUseNotice, setRemoteItemUseNotice] = useState<RemoteItemUseNotice | null>(null);
   const roomInfoCollapsed = useSyncExternalStore(subscribeRoomInfoPresentation, getRoomInfoCollapsed, getRoomInfoCollapsed);
+
+  useLayoutEffect(() => publishGameEndDialogOpenHandler(onOpenEndGameDialog), [onOpenEndGameDialog]);
 
   useLayoutEffect(() => {
     publishOwnedItemsPresentation(ownedItems[localSeatId] ?? [], itemMode);
@@ -142,7 +145,6 @@ export function GamePlayersPanel({
           })}
         </div>
         {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
-        <button className="secondary end-game" onClick={onOpenEndGameDialog}>게임 종료</button>
       </div>
     </PlayersPanel>}
   </>;
