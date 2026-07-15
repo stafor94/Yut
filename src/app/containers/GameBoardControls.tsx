@@ -213,7 +213,7 @@ export function GameBoardControls({
   void getItemPromptTimeoutMs;
   void getTurnActionTimeoutMs;
 
-  return <div ref={controlsRef} className={`play-controls ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
+  return <div ref={controlsRef} className={`play-controls ${isOpponentTurn ? 'opponent-turn' : 'local-turn'} ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
     {isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
       <div><strong>아이템을 사용할까요?</strong></div>
       <div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${itemPromptTimerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>
