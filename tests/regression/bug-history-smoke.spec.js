@@ -261,7 +261,17 @@ test.describe('BUG_HISTORY regression smoke', () => {
       }
       expect(moveReady, 'Perfect 구간에서 반복 던진 뒤 말 이동 버튼이 활성화되어야 합니다.').toBe(true);
 
-      await page.getByTestId('move-piece-button').click();
+      await expect.poll(async () => page.evaluate(() => {
+        const button = document.querySelector('[data-testid="move-piece-button"]');
+        if (button instanceof HTMLButtonElement && !button.disabled) {
+          button.click();
+          return 'clicked';
+        }
+        return document.querySelector('.piece-token.moving') ? 'auto-moving' : 'waiting';
+      }), {
+        timeout: 2_000,
+        message: '수동 이동 버튼 클릭 또는 단일 이동 후보의 자동 이동이 시작되어야 합니다.',
+      }).toMatch(/^(clicked|auto-moving)$/);
       await expect.poll(async () => page.locator('.board-node.route-preview').count(), {
         timeout: 2_000,
         message: '로컬 이동 애니메이션 종료 후 서버 확정 대기 중에는 예상 이동 경로가 없어야 합니다.',

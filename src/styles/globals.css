@@ -21,3 +21,12 @@
 @import './waiting-room-layout-fix.css';
 @import './game-panel-layout-polish.css';
 @import './game-panel-mobile-recovery.css';
+
+/* Final reset for legacy header grid placement rules. */
+.game-shell .hero-actions.game-actions > button {
+  grid-area: auto;
+  grid-row: 1;
+  grid-column: auto;
+  justify-self: stretch;
+  width: 100%;
+}
