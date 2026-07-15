@@ -1,82 +1,111 @@
+/* Turn-order presentation is imported after the shared wooden overlay theme so
+   its mobile sizing, clipping, and reveal animation remain authoritative. */
+
+/* The normal turn indicator has no meaningful player yet during the intro.
+   Remove the empty plaque/dot and restore it automatically when the overlay ends. */
+.game-layout:has(.turn-order-ready-overlay.slot-machine) .turn-indicator {
+  display: none;
+}
+
 .turn-order-ready-overlay.slot-machine {
+  isolation: isolate;
   display: grid;
-  gap: 12px;
-  width: min(76vw, 320px);
-  padding: 22px 18px;
+  gap: 13px;
+  width: min(88vw, 370px);
+  max-height: min(82svh, 620px);
+  padding: 21px 18px 18px;
+  overflow: hidden;
+  border: 6px solid #5a2d16;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% -8%, rgba(255, 249, 220, .9), transparent 36%),
+    repeating-linear-gradient(0deg, rgba(87, 47, 21, .028) 0 1px, transparent 1px 5px),
+    linear-gradient(145deg, #f7e4bd 0%, #dfba7d 58%, #bd8147 100%);
+  box-shadow:
+    0 28px 70px rgba(42, 21, 9, .42),
+    0 0 0 2px #35180b,
+    0 0 0 5px rgba(216, 170, 85, .28),
+    inset 0 0 0 3px rgba(247, 207, 124, .72),
+    inset 0 -8px 15px rgba(65, 30, 13, .24),
+    inset 0 2px 0 rgba(255, 244, 205, .72);
   transform-origin: 50% 18%;
   transition: opacity .32s ease, transform .32s ease, box-shadow .32s ease;
 }
 
+.turn-order-ready-overlay.slot-machine::before,
+.turn-order-ready-overlay.slot-machine::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.turn-order-ready-overlay.slot-machine::before {
+  inset: 11px;
+  border: 1px solid rgba(116, 67, 31, .62);
+  border-radius: 18px;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 239, 193, .35),
+    inset 0 0 24px rgba(82, 42, 18, .12);
+}
+
+.turn-order-ready-overlay.slot-machine::after {
+  top: 8px;
+  left: 50%;
+  width: 88px;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, #f5cf75 22%, #fff1b3 50%, #d59a35 78%, transparent);
+  box-shadow: 0 2px 4px rgba(76, 37, 15, .2);
+  transform: translateX(-50%);
+}
+
 .turn-order-presentation-heading {
+  position: relative;
   display: grid;
-  gap: 3px;
+  justify-items: center;
+  gap: 5px;
+  padding: 2px 8px 0;
   text-align: center;
 }
 
 .turn-order-presentation-heading > span {
-  color: rgba(42, 30, 23, .58);
-  font-size: .75rem;
-  font-weight: 900;
-  letter-spacing: .12em;
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 4px 12px;
+  border: 1px solid rgba(117, 67, 31, .34);
+  border-radius: 999px;
+  background: rgba(255, 244, 211, .74);
+  color: #81502a;
+  font-size: .7rem;
+  font-weight: 1000;
+  letter-spacing: .14em;
+  line-height: 1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .68), 0 3px 8px rgba(75, 37, 16, .08);
 }
 
 .turn-order-presentation-heading > strong {
-  color: #2a1e17;
-  font-size: clamp(1.02rem, 3vw, 1.22rem);
+  color: #4f2d19;
+  font-size: clamp(1.08rem, 4vw, 1.3rem);
+  font-weight: 1000;
+  letter-spacing: -.02em;
+  line-height: 1.25;
+  text-shadow: 0 1px 0 rgba(255, 244, 208, .92);
 }
 
 .turn-order-ready-overlay.slot-machine.waiting .turn-order-presentation-heading > strong {
   animation: turn-order-wait-pulse 1s ease-in-out infinite;
 }
 
-.turn-order-waiting-panel {
-  display: grid;
-  place-items: center;
-  gap: 14px;
-  min-height: 152px;
-  padding: 22px 14px;
-  border: 1px solid rgba(47, 107, 79, .16);
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 50% 10%, rgba(242, 184, 75, .2), transparent 52%),
-    rgba(255, 250, 240, .82);
-  color: rgba(42, 30, 23, .62);
-  font-size: .84rem;
-  font-weight: 800;
-  text-align: center;
-}
-
-.turn-order-waiting-cards {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-height: 56px;
-}
-
-.turn-order-waiting-cards > i {
-  display: block;
-  width: 28px;
-  height: 42px;
-  border: 2px solid rgba(47, 107, 79, .44);
-  border-radius: 10px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, .98), rgba(255, 243, 216, .96));
-  box-shadow: 0 8px 16px rgba(42, 30, 23, .12);
-  animation: turn-order-waiting-card 1.1s cubic-bezier(.45, 0, .25, 1) infinite;
-}
-
-.turn-order-waiting-cards > i:nth-child(2) {
-  border-color: rgba(58, 120, 194, .48);
-  animation-delay: .12s;
-}
-
-.turn-order-waiting-cards > i:nth-child(3) {
-  border-color: rgba(217, 74, 56, .46);
-  animation-delay: .24s;
-}
-
 .turn-order-ready-overlay.slot-machine.finalized {
-  box-shadow: 0 18px 48px rgba(42, 30, 23, .22), 0 0 0 3px rgba(242, 184, 75, .2);
+  box-shadow:
+    0 30px 74px rgba(42, 21, 9, .44),
+    0 0 0 2px #35180b,
+    0 0 0 6px rgba(242, 184, 75, .34),
+    0 0 34px rgba(242, 184, 75, .2),
+    inset 0 0 0 3px rgba(247, 207, 124, .78),
+    inset 0 -8px 15px rgba(65, 30, 13, .24);
 }
 
 .turn-order-ready-overlay.slot-machine.exiting {
@@ -84,77 +113,219 @@
   animation: turn-order-overlay-exit .42s cubic-bezier(.5, 0, .85, .35) forwards;
 }
 
-.turn-order-slot-list {
+.turn-order-waiting-panel {
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  min-height: 168px;
+  padding: 24px 14px 20px;
+  overflow: hidden;
+  border: 2px solid #986333;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 50% 4%, rgba(242, 184, 75, .26), transparent 50%),
+    repeating-linear-gradient(0deg, rgba(92, 51, 23, .022) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, rgba(255, 246, 215, .98), rgba(232, 198, 143, .98));
+  color: #6d4729;
+  font-size: .84rem;
+  font-weight: 900;
+  text-align: center;
+  box-shadow:
+    inset 0 4px 10px rgba(82, 42, 18, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .78),
+    0 7px 0 rgba(111, 61, 27, .65),
+    0 12px 20px rgba(58, 29, 13, .13);
+}
+
+.turn-order-waiting-cards {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
+  min-height: 62px;
+}
+
+.turn-order-waiting-cards > i {
+  display: block;
+  width: 31px;
+  height: 48px;
+  border: 3px solid rgba(47, 107, 79, .55);
+  border-radius: 11px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .98), rgba(255, 238, 199, .96));
+  box-shadow:
+    0 8px 0 rgba(89, 49, 23, .24),
+    0 12px 18px rgba(42, 30, 23, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .9);
+  animation: turn-order-waiting-card 1.1s cubic-bezier(.45, 0, .25, 1) infinite;
+}
+
+.turn-order-waiting-cards > i:nth-child(2) {
+  border-color: rgba(58, 120, 194, .62);
+  animation-delay: .12s;
+}
+
+.turn-order-waiting-cards > i:nth-child(3) {
+  border-color: rgba(217, 74, 56, .58);
+  animation-delay: .24s;
+}
+
+.turn-order-slot-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 10px;
+  overflow: hidden;
+  border: 2px solid #6e3a1e;
+  border-radius: 21px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 234, 181, .035) 0 1px, transparent 1px 9px),
+    linear-gradient(180deg, #6b381d, #3f2012 52%, #2c160c);
+  box-shadow:
+    inset 0 7px 13px rgba(25, 11, 5, .56),
+    inset 0 -1px 0 rgba(245, 203, 122, .3),
+    0 2px 0 rgba(255, 237, 190, .5),
+    0 9px 16px rgba(61, 31, 14, .15);
 }
 
 .turn-order-slot-window {
-  height: 58px;
-  border-left: 4px solid transparent;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 62px;
+  min-height: 62px;
+  overflow: hidden !important;
+  contain: layout paint;
+  border: 2px solid rgba(224, 176, 92, .54);
+  border-left: 2px solid rgba(224, 176, 92, .54);
   border-radius: 16px;
-  transition: transform .28s ease, background .28s ease, border-color .28s ease, box-shadow .28s ease, opacity .28s ease;
+  background:
+    linear-gradient(180deg, rgba(255, 244, 210, .2), transparent 22%, transparent 78%, rgba(33, 15, 8, .25)),
+    #4b2818;
+  box-shadow:
+    inset 0 4px 8px rgba(29, 13, 7, .45),
+    inset 0 -1px 0 rgba(255, 225, 165, .22),
+    0 3px 0 rgba(26, 12, 6, .5);
+  transition: transform .3s ease, border-color .3s ease, box-shadow .3s ease, opacity .3s ease;
+}
+
+.turn-order-slot-window::before,
+.turn-order-slot-window::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  z-index: 3;
+  height: 9px;
+  pointer-events: none;
+}
+
+.turn-order-slot-window::before {
+  top: 0;
+  background: linear-gradient(180deg, rgba(26, 12, 6, .46), transparent);
+}
+
+.turn-order-slot-window::after {
+  bottom: 0;
+  background: linear-gradient(0deg, rgba(26, 12, 6, .42), transparent);
 }
 
 .turn-order-slot-window.stopped {
-  border-left-color: var(--slot-color, #f2b84b);
-  background: rgba(255, 250, 240, .98);
+  border-color: color-mix(in srgb, var(--slot-color, #f2b84b) 76%, #fff 24%);
+  background: rgba(255, 247, 220, .96);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, .48),
+    0 4px 0 color-mix(in srgb, var(--slot-color, #74431f) 42%, #3b1d0e 58%),
+    0 8px 15px rgba(42, 21, 9, .16);
 }
 
 .turn-order-slot-reel {
   --slot-row-step: 52px;
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  padding: 5px 7px;
-  animation-duration: .42s;
+  padding: 0;
+  margin: 0;
+  will-change: transform, filter;
+}
+
+.turn-order-slot-window:not(.stopped) .turn-order-slot-reel {
+  animation: turn-order-reel-cycle .38s steps(1, end) infinite;
+  filter: saturate(.92) brightness(1.04) blur(.15px);
+}
+
+.turn-order-slot-window:nth-child(even):not(.stopped) .turn-order-slot-reel {
+  animation-delay: -.17s;
 }
 
 .turn-order-slot-window.stopped .turn-order-slot-reel {
-  transition-duration: .38s;
-  transition-timing-function: cubic-bezier(.12, .84, .24, 1);
+  animation: none;
+  filter: none;
+  transform: translateY(calc(var(--slot-target-row) * var(--slot-row-step) * -1));
+  transition: transform .4s cubic-bezier(.12, .84, .24, 1), filter .25s ease;
 }
 
 .turn-order-slot-card {
   display: flex;
+  flex: 0 0 48px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
   min-height: 48px;
-  padding: 0 9px;
+  max-height: 48px;
+  padding: 0 11px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, .54) !important;
   border-radius: 13px;
-  font-size: clamp(.88rem, 2.8vw, 1.08rem);
+  font-size: clamp(.88rem, 3.3vw, 1.04rem);
+  font-weight: 1000;
   line-height: 1;
-  transition: background .22s ease, box-shadow .22s ease, transform .22s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .3),
+    inset 0 -3px 5px rgba(28, 12, 7, .16),
+    0 4px 7px rgba(24, 10, 5, .24);
+  transition: background .22s ease, box-shadow .22s ease, transform .22s ease, opacity .22s ease;
+}
+
+.turn-order-slot-window:not(.stopped) .turn-order-slot-card {
+  opacity: .9;
 }
 
 .turn-order-slot-card.final-card {
   justify-content: flex-start;
-  animation: turn-order-card-land .3s cubic-bezier(.12, .86, .28, 1.18) .24s both;
-}
-
-.turn-order-slot-card.mine {
-  border-color: currentColor !important;
-  background: rgba(255, 248, 234, .98);
-  color: inherit !important;
-  transform: none;
-  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, .96), 0 7px 18px rgba(42, 30, 23, .16);
+  opacity: 1;
+  animation: turn-order-card-land .34s cubic-bezier(.12, .86, .28, 1.18) .16s both;
 }
 
 .turn-order-rank-medal {
   display: inline-grid;
   place-items: center;
-  width: 27px;
-  height: 27px;
+  width: 29px;
+  height: 29px;
   flex: 0 0 auto;
+  border: 2px solid rgba(255, 248, 222, .72);
   border-radius: 50%;
-  background: #2a1e17;
+  background: linear-gradient(145deg, #5a321d, #2d160d);
   color: #fffaf0;
-  font-size: .78rem;
+  font-size: .76rem;
   font-weight: 1000;
-  box-shadow: 0 3px 8px rgba(42, 30, 23, .22);
+  box-shadow:
+    0 3px 7px rgba(42, 21, 9, .28),
+    inset 0 1px 0 rgba(255, 255, 255, .2);
 }
 
 .turn-order-slot-window.starter .turn-order-rank-medal {
-  background: linear-gradient(135deg, #d59623, #f2b84b);
-  color: #2a1e17;
+  border-color: #fff0b2;
+  background: linear-gradient(145deg, #ffe493, #d99b2e 72%, #a96715);
+  color: #4b2b16;
+  box-shadow: 0 3px 9px rgba(93, 52, 13, .3), inset 0 1px 0 rgba(255, 255, 255, .72);
 }
 
 .turn-order-slot-name {
@@ -173,7 +344,7 @@
 .turn-order-slot-badge {
   flex: 0 0 auto;
   margin: 0;
-  padding: 4px 6px;
+  padding: 5px 7px;
   border-radius: 999px;
   font-size: .64rem;
   font-style: normal;
@@ -182,36 +353,41 @@
 }
 
 .mine-badge {
-  border: 1px solid currentColor;
-  background: #fff;
+  border: 2px solid #fff !important;
+  background: rgba(255, 250, 232, .98);
   color: inherit;
-}
-
-.starter-badge {
-  background: #f2b84b;
-  color: #2a1e17;
+  box-shadow: 0 2px 6px rgba(42, 21, 9, .18);
 }
 
 .turn-order-ready-overlay.finalized .turn-order-slot-window.starter {
-  transform: translateY(-3px) scale(1.015);
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--slot-color, #f2b84b) 28%, transparent);
+  transform: translateY(-2px) scale(1.012);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, .54),
+    0 4px 0 color-mix(in srgb, var(--slot-color, #74431f) 42%, #3b1d0e 58%),
+    0 10px 22px color-mix(in srgb, var(--slot-color, #f2b84b) 28%, transparent);
 }
 
 .turn-order-final-summary {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-height: 28px;
+  gap: 6px;
+  min-height: 34px;
   margin: 0;
-  color: #2a1e17;
+  padding: 7px 12px;
+  border: 1px solid rgba(117, 67, 31, .28);
+  border-radius: 999px;
+  background: rgba(255, 243, 203, .82);
+  color: #4f2d19;
   font-size: .86rem;
-  font-weight: 800;
-  animation: turn-order-summary-in .28s ease-out both;
+  font-weight: 900;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 4px 9px rgba(70, 34, 14, .09);
+  animation: turn-order-summary-in .3s ease-out both;
 }
 
 .turn-order-final-summary > span {
   color: #d59623;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, .8));
 }
 
 .turn-order-live-summary {
@@ -226,25 +402,33 @@
   border: 0;
 }
 
+@keyframes turn-order-reel-cycle {
+  0% { transform: translateY(-52px); }
+  25% { transform: translateY(-104px); }
+  50% { transform: translateY(-156px); }
+  75% { transform: translateY(-208px); }
+  100% { transform: translateY(-52px); }
+}
+
 @keyframes turn-order-wait-pulse {
-  0%, 100% { opacity: .7; }
-  50% { opacity: 1; }
+  0%, 100% { opacity: .72; transform: translateY(0); }
+  50% { opacity: 1; transform: translateY(-1px); }
 }
 
 @keyframes turn-order-waiting-card {
-  0%, 100% { transform: translateY(5px) rotate(-2deg); opacity: .62; }
-  48% { transform: translateY(-7px) rotate(2deg); opacity: 1; }
+  0%, 100% { transform: translateY(5px) rotate(-2deg); opacity: .68; }
+  48% { transform: translateY(-8px) rotate(2deg); opacity: 1; }
 }
 
 @keyframes turn-order-card-land {
-  0% { opacity: .58; transform: translateY(-5px) scale(.97); }
+  0% { opacity: .58; transform: translateY(-7px) scale(.96); }
   70% { opacity: 1; transform: translateY(1px) scale(1.025); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes turn-order-summary-in {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(6px) scale(.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes turn-order-overlay-exit {
@@ -254,41 +438,88 @@
 
 @media (max-width: 520px) {
   .turn-order-ready-overlay.slot-machine {
-    width: min(76vw, 301px);
-    padding: 18px 14px;
+    width: min(91vw, 360px);
+    max-height: min(80svh, 580px);
+    gap: 11px;
+    padding: 18px 14px 15px;
+    border-width: 5px;
+    border-radius: 24px;
+  }
+
+  .turn-order-ready-overlay.slot-machine::before {
+    inset: 9px;
+    border-radius: 17px;
   }
 
   .turn-order-waiting-panel {
-    min-height: 138px;
-    padding: 18px 12px;
+    min-height: 150px;
+    padding: 20px 12px 17px;
+  }
+
+  .turn-order-slot-list {
+    gap: 8px;
+    padding: 8px;
+    border-radius: 18px;
   }
 
   .turn-order-slot-window {
-    height: 54px;
+    height: 58px;
+    min-height: 58px;
   }
 
   .turn-order-slot-reel {
-    --slot-row-step: 48px;
-    padding: 4px 6px;
+    top: 3px;
+    right: 5px;
+    left: 5px;
   }
 
   .turn-order-slot-card {
-    min-height: 44px;
-    padding-inline: 7px;
-    font-size: clamp(.8rem, 3.5vw, .96rem);
+    padding-inline: 9px;
+    font-size: clamp(.82rem, 4vw, .98rem);
   }
 
   .turn-order-rank-medal {
-    width: 24px;
-    height: 24px;
-    font-size: .7rem;
+    width: 27px;
+    height: 27px;
+    font-size: .71rem;
+  }
+}
+
+@media (max-width: 360px), (max-height: 700px) {
+  .turn-order-ready-overlay.slot-machine {
+    gap: 9px;
+    padding-block: 15px 13px;
+  }
+
+  .turn-order-presentation-heading {
+    gap: 3px;
+  }
+
+  .turn-order-presentation-heading > span {
+    min-height: 22px;
+    padding-block: 3px;
+  }
+
+  .turn-order-slot-list {
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .turn-order-slot-window {
+    height: 56px;
+    min-height: 56px;
+  }
+
+  .turn-order-final-summary {
+    min-height: 30px;
+    padding-block: 5px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .turn-order-ready-overlay.slot-machine.waiting .turn-order-presentation-heading > strong,
   .turn-order-waiting-cards > i,
-  .turn-order-slot-reel,
+  .turn-order-slot-window:not(.stopped) .turn-order-slot-reel,
   .turn-order-slot-card.final-card,
   .turn-order-final-summary,
   .turn-order-ready-overlay.slot-machine.exiting {
@@ -300,6 +531,10 @@
   .turn-order-slot-card,
   .turn-order-slot-window.stopped .turn-order-slot-reel {
     transition: none !important;
+  }
+
+  .turn-order-slot-window:not(.stopped) .turn-order-slot-reel {
+    transform: translateY(-52px);
   }
 
   .turn-order-ready-overlay.slot-machine.exiting {
