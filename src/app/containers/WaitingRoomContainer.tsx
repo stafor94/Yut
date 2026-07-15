@@ -4,9 +4,6 @@ import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
 import { getWaitingRoomStartHint } from '../flows/gameStartFlow';
 import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
-import { ROOM_START_ACTIVATION_GRACE_MS } from '../../features/room/services/roomGamePreparationPolicy';
-
-const COUNTDOWN_FINAL_TICK_BRIDGE_MS = 1_500;
 
 type WaitingRoomContainerProps = {
   canManageRoom: boolean;
@@ -64,7 +61,6 @@ export function WaitingRoomContainer({
   onLeaveRoom,
 }: WaitingRoomContainerProps) {
   const lastCountdownValueRef = useRef<number | null>(null);
-  const transitionTimerRef = useRef<number | null>(null);
   const transitionPendingRef = useRef(false);
   const transitionOverlayRef = useRef<HTMLDivElement | null>(null);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
@@ -92,31 +88,18 @@ export function WaitingRoomContainer({
       if (transitionOverlayRef.current) transitionOverlayRef.current.hidden = !visible;
       setCountdownTransitionOverlayVisible((current) => current === visible ? current : visible);
     };
-    const clearTransitionTimer = () => {
-      if (transitionTimerRef.current === null) return;
-      window.clearTimeout(transitionTimerRef.current);
-      transitionTimerRef.current = null;
-    };
     const clearCompletedCountdown = () => {
-      clearTransitionTimer();
       if (transitionPendingRef.current) {
         transitionPendingRef.current = false;
         setCountdownTransitionPending(false);
       }
       setTransitionOverlayVisible(false);
     };
-    const holdCompletedCountdown = (durationMs: number) => {
-      clearTransitionTimer();
+    const holdCompletedCountdownUntilGameEntry = () => {
       if (!transitionPendingRef.current) {
         transitionPendingRef.current = true;
         setCountdownTransitionPending(true);
       }
-      transitionTimerRef.current = window.setTimeout(() => {
-        transitionTimerRef.current = null;
-        transitionPendingRef.current = false;
-        setCountdownTransitionPending(false);
-        setTransitionOverlayVisible(false);
-      }, durationMs);
     };
     const inspectCountdown = () => {
       const countdownElement = document.querySelector<HTMLElement>('[data-testid="start-countdown-overlay"] strong');
@@ -133,12 +116,12 @@ export function WaitingRoomContainer({
       lastCountdownValueRef.current = value;
       if (value === 0) {
         playStoredSoundEffect('countdownStart');
-        holdCompletedCountdown(ROOM_START_ACTIVATION_GRACE_MS);
+        holdCompletedCountdownUntilGameEntry();
         return;
       }
       playStoredSoundEffect('countdown');
       if (value === 1) {
-        holdCompletedCountdown(ROOM_START_ACTIVATION_GRACE_MS + COUNTDOWN_FINAL_TICK_BRIDGE_MS);
+        holdCompletedCountdownUntilGameEntry();
         return;
       }
       clearCompletedCountdown();
@@ -157,7 +140,6 @@ export function WaitingRoomContainer({
     return () => {
       observer.disconnect();
       document.removeEventListener('click', handleCountdownCancel, true);
-      clearTransitionTimer();
       transitionPendingRef.current = false;
     };
   }, []);
