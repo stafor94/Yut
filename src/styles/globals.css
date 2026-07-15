@@ -31,7 +31,7 @@
   width: 100%;
 }
 
-/* Keep every in-game header control on one row with the room toggle anchored left. */
+/* Keep every in-game header control on one row while separating the room toggle at the far left. */
 .game-shell .hero-actions.game-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -42,10 +42,13 @@
 .game-shell .hero-actions.game-actions > .game-room-header-toggle {
   flex: 0 0 42px;
   width: 42px;
+  margin-right: auto;
 }
 
 .game-shell .hero-actions.game-actions > .nickname-chip {
-  flex: 1 1 auto;
+  flex: 0 1 240px;
+  min-width: 0;
+  max-width: min(42vw, 240px);
   width: auto;
 }
 
@@ -55,8 +58,8 @@
   width: auto;
 }
 
-/* Opponent turns do not reserve vertical space below the board. */
-.game-shell .play-controls:has(> .roll-button[data-testid="turn-waiting-button"]) {
+/* Hide the board controls only for an explicitly confirmed opponent turn. */
+.game-shell .play-controls.opponent-turn {
   display: none;
 }
 
@@ -70,15 +73,30 @@
     width: 38px;
   }
 
+  .game-shell .hero-actions.game-actions > .nickname-chip {
+    flex-basis: 190px;
+    max-width: min(38vw, 190px);
+  }
+
   .game-shell .hero-actions.game-actions > .sound-toggle,
   .game-shell .hero-actions.game-actions > .status-card {
     flex-basis: 64px;
     width: 64px;
   }
 
+  .game-shell .side .log-list.page-scroll {
+    overflow-y: visible;
+  }
+
+  .game-shell .side .log-list.scrollable {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .game-shell .side .log-list {
     padding-bottom: 26px !important;
-    scroll-padding-block-end: 26px;
+    scroll-padding-block-end: 18px;
   }
 }
 
@@ -90,6 +108,11 @@
   .game-shell .hero-actions.game-actions > .game-room-header-toggle {
     flex-basis: 34px;
     width: 34px;
+  }
+
+  .game-shell .hero-actions.game-actions > .nickname-chip {
+    flex-basis: 150px;
+    max-width: min(34vw, 150px);
   }
 
   .game-shell .hero-actions.game-actions > .sound-toggle,
@@ -107,6 +130,11 @@
   .game-shell .hero-actions.game-actions > .game-room-header-toggle {
     flex-basis: 32px;
     width: 32px;
+  }
+
+  .game-shell .hero-actions.game-actions > .nickname-chip {
+    flex-basis: 112px;
+    max-width: 112px;
   }
 
   .game-shell .hero-actions.game-actions > .sound-toggle,
