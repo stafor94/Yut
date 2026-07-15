@@ -1,0 +1,73 @@
+/* Waiting-room card sizing and footer control alignment. */
+
+.screen-waitingRoom .compact-ready-card {
+  box-sizing: border-box;
+  min-height: 86px;
+  display: flex;
+  align-items: center;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-row {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-identity {
+  min-width: 0;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-status-actions {
+  align-self: start;
+}
+
+.screen-waitingRoom .waiting-actions.role-actions {
+  margin-top: 4px;
+  padding: 16px;
+  border: 2px solid #8d5a2d;
+  border-radius: 17px;
+  background:
+    repeating-linear-gradient(0deg, rgba(91, 50, 23, .025) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, rgba(255, 241, 203, .72), rgba(226, 190, 130, .72));
+  box-shadow:
+    inset 0 3px 7px rgba(70, 34, 14, .14),
+    0 5px 10px rgba(61, 31, 14, .12);
+}
+
+.screen-waitingRoom .waiting-action-buttons {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.screen-waitingRoom .waiting-action-buttons button,
+.screen-waitingRoom .waiting-action-buttons .secondary {
+  width: 100%;
+  min-height: 58px;
+  margin: 0;
+  border-radius: 15px;
+}
+
+@media (max-width: 520px) {
+  .screen-waitingRoom .compact-ready-card {
+    min-height: 82px;
+  }
+
+  .screen-waitingRoom .waiting-actions.role-actions {
+    padding: 12px;
+  }
+
+  .screen-waitingRoom .waiting-action-buttons {
+    gap: 9px;
+  }
+
+  .screen-waitingRoom .waiting-action-buttons button,
+  .screen-waitingRoom .waiting-action-buttons .secondary {
+    min-height: 54px;
+    padding-inline: 10px;
+  }
+}
