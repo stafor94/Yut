@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { ItemCard } from '../../features/items/components/ItemCard';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
 import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } from '../flows/remoteItemUseNotice';
+import { getPlayTimePresentation, subscribePlayTimePresentation } from '../flows/playTimePresentation';
 import { GameLogPanel, PlayersPanel } from '../screens/GameScreen';
 import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
 
@@ -55,6 +56,7 @@ export function GamePlayersPanel({
   const previousOwnedItemsRef = useRef<OwnedItemsSnapshot | null>(null);
   const remoteItemNoticeTimerRef = useRef<number | null>(null);
   const [remoteItemUseNotice, setRemoteItemUseNotice] = useState<RemoteItemUseNotice | null>(null);
+  const [roomInfoCollapsed, setRoomInfoCollapsed] = useState(false);
 
   useEffect(() => {
     const seatIds = seats.map((seat) => seat.id);
@@ -112,31 +114,48 @@ export function GamePlayersPanel({
         {ITEM_DEFINITIONS[remoteItemUseNotice.itemType].icon} {ITEM_DEFINITIONS[remoteItemUseNotice.itemType].name} 사용
       </span>
     </div>}
-    <h2>{title}</h2>
-    <p className="game-end-guide room-rule-badges game-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</p>
-    {seats.map((seat) => {
-      const rankIndex = rankingSeatIds.indexOf(seat.id);
-      const finishText = rankIndex >= 0 ? `${rankIndex + 1}위 완주` : completedSeatIds.includes(seat.id) ? '완주' : '';
-      const statusText = finishText || (seat.isSubstitutedByAI ? '나감' : seat.isAI ? 'AI' : '유저');
-      const displayName = getPlayerCardName(seat);
-      return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeatId === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
-        <span className="game-player-title">
-          <b className="game-player-label" style={{ color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }}>{displayName}</b>
-        </span>
-        <span className="player-badges game-player-meta">
-          {playMode === 'team' && <small>{seat.team}</small>}
-        </span>
-        <em className="game-player-status">{statusText}</em>
-      </div>;
-    })}
-    {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
-    <div className="player-items"><h2>보유 아이템</h2>{(ownedItems[localSeatId] ?? []).length ? <div className="item-grid">{(ownedItems[localSeatId] ?? []).map((type, index) => <div className="item-info" key={`${type}-${index}`}><ItemCard type={type} /></div>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div>
-    <button className="secondary end-game" onClick={onOpenEndGameDialog}>게임 종료</button>
+    <div className="game-room-header">
+      <h2>{title}</h2>
+      <button
+        data-testid="game-room-info-toggle"
+        className="game-room-collapse-toggle"
+        type="button"
+        aria-expanded={!roomInfoCollapsed}
+        aria-controls="game-room-details"
+        aria-label={`방 정보 ${roomInfoCollapsed ? '펼치기' : '접기'}`}
+        onClick={() => setRoomInfoCollapsed((collapsed) => !collapsed)}
+      >
+        <span>{roomInfoCollapsed ? '펼치기' : '접기'}</span>
+        <span aria-hidden="true">{roomInfoCollapsed ? '▾' : '▴'}</span>
+      </button>
+    </div>
+    <div id="game-room-details" data-testid="game-room-info-content" className="game-room-details" hidden={roomInfoCollapsed}>
+      <p className="game-end-guide room-rule-badges game-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</p>
+      {seats.map((seat) => {
+        const rankIndex = rankingSeatIds.indexOf(seat.id);
+        const finishText = rankIndex >= 0 ? `${rankIndex + 1}위 완주` : completedSeatIds.includes(seat.id) ? '완주' : '';
+        const statusText = finishText || (seat.isSubstitutedByAI ? '나감' : seat.isAI ? 'AI' : '유저');
+        const displayName = getPlayerCardName(seat);
+        return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeatId === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
+          <span className="game-player-title">
+            <b className="game-player-label" style={{ color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }}>{displayName}</b>
+          </span>
+          <span className="player-badges game-player-meta">
+            {playMode === 'team' && <small>{seat.team}</small>}
+          </span>
+          <em className="game-player-status">{statusText}</em>
+        </div>;
+      })}
+      {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
+      <button className="secondary end-game" onClick={onOpenEndGameDialog}>게임 종료</button>
+    </div>
   </PlayersPanel>;
 }
 
 type GameLogPanelViewProps = {
   logs: GameLog[];
+  ownedItems: Record<string, ItemType[]>;
+  localSeatId: string;
   getLogCardStyle: (text: string, nextText?: string) => CSSProperties;
   formatStoredLogSequence: (log: GameLog, displayIndex?: number) => string;
   renderLogText: (text: string) => ReactNode;
@@ -145,13 +164,30 @@ type GameLogPanelViewProps = {
 
 export function GameLogPanelView({
   logs,
+  ownedItems,
+  localSeatId,
   getLogCardStyle,
   formatStoredLogSequence,
   renderLogText,
   onOpenSequenceExportDialog,
 }: GameLogPanelViewProps) {
+  const playTimePresentation = useSyncExternalStore(subscribePlayTimePresentation, getPlayTimePresentation, getPlayTimePresentation);
+  const localOwnedItems = ownedItems[localSeatId] ?? [];
+
   return <GameLogPanel>
-    <div className="log-header"><h2>진행 기록</h2><button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button></div>
+    <div data-testid="owned-items-panel" className="player-items game-log-owned-items">
+      <h2>보유 아이템</h2>
+      {localOwnedItems.length
+        ? <div className="item-grid">{localOwnedItems.map((type, index) => <div className="item-info" key={`${type}-${index}`}><ItemCard type={type} /></div>)}</div>
+        : <p className="empty-state">보유한 아이템이 없습니다.</p>}
+    </div>
+    <div className="log-header">
+      <h2>진행 기록</h2>
+      <div className="log-header-actions">
+        {playTimePresentation.visible && <div data-testid="play-timer" className={`play-time ${playTimePresentation.stopped ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimePresentation.playTimeText}`}>{playTimePresentation.playTimeText}</div>}
+        <button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button>
+      </div>
+    </div>
     <div className="log-list">{logs.map((log, index) => <p key={log.id} style={getLogCardStyle(log.text, logs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log)}</span>{renderLogText(log.text)}</p>)}</div>
   </GameLogPanel>;
 }
