@@ -5,6 +5,7 @@ import { YutRollScenePhysics } from '../components/YutRollScenePhysics';
 import {
   REMOTE_ROLL_PRESENTATION_MS,
   gameAnimationQueue,
+  getRollPresentationAnimationId,
   waitForGameAnimation,
 } from '../flows/gameAnimationQueue';
 import type { RollAnimation, ToastMessage } from '../appState';
@@ -162,11 +163,13 @@ export function RollStage({ rollAnimation }: RollStageProps) {
       seenResolvedAnimationIdsRef.current = new Set(Array.from(seenResolvedAnimationIdsRef.current).slice(-60));
     }
 
+    const sourceAnimationId = rollAnimation.id;
     const queuedAnimation: RollAnimation = {
       ...rollAnimation,
+      id: getRollPresentationAnimationId(sourceAnimationId),
       sticks: rollAnimation.sticks.map((stick) => ({ ...stick })),
     };
-    void gameAnimationQueue.enqueue(`roll:${queuedAnimation.id}`, async () => {
+    void gameAnimationQueue.enqueue(`roll:${sourceAnimationId}`, async () => {
       if (!mountedRef.current) return;
       setSettledAnimationId(null);
       presentAnimation(queuedAnimation);
