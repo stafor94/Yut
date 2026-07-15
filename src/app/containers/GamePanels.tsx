@@ -60,7 +60,7 @@ export function GamePlayersPanel({
   const [remoteItemUseNotice, setRemoteItemUseNotice] = useState<RemoteItemUseNotice | null>(null);
   const roomInfoCollapsed = useSyncExternalStore(subscribeRoomInfoPresentation, getRoomInfoCollapsed, getRoomInfoCollapsed);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     publishOwnedItemsPresentation(ownedItems[localSeatId] ?? [], itemMode);
   }, [itemMode, localSeatId, ownedItems]);
 
@@ -196,14 +196,14 @@ export function GameLogPanelView({
     };
 
     measureVisibleLogs();
-    const resizeObserver = new ResizeObserver(measureVisibleLogs);
-    resizeObserver.observe(list);
-    Array.from(list.children).slice(0, 4).forEach((child) => resizeObserver.observe(child));
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureVisibleLogs);
+    resizeObserver?.observe(list);
+    Array.from(list.children).slice(0, 4).forEach((child) => resizeObserver?.observe(child));
     mobileQuery.addEventListener('change', measureVisibleLogs);
     window.addEventListener('resize', measureVisibleLogs);
 
     return () => {
-      resizeObserver.disconnect();
+      resizeObserver?.disconnect();
       mobileQuery.removeEventListener('change', measureVisibleLogs);
       window.removeEventListener('resize', measureVisibleLogs);
     };
