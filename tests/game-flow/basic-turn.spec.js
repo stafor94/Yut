@@ -139,8 +139,54 @@ test.describe('game flow QA', () => {
         overlayVisible: false,
       });
       await expect(page.getByTestId('players-panel')).toContainText(hostName);
-      await expect(page.getByTestId('turn-indicator')).toBeVisible();
       await expect(page.getByTestId('game-board')).toBeVisible();
+      await expect(page.locator('.turn-order-ready-overlay.slot-machine')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('turn-indicator')).toBeHidden();
+    });
+
+    await runQaStep(testInfo, '모바일 순서 정하기 카드 겹침 확인', async () => {
+      const originalViewport = page.viewportSize();
+      await page.setViewportSize({ width: 390, height: 844 });
+      const overlay = page.locator('.turn-order-ready-overlay.slot-machine');
+      const slotList = page.getByTestId('turn-order-slot-list');
+      await expect(overlay).toBeVisible({ timeout: 10_000 });
+      await expect(slotList).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('turn-indicator')).toBeHidden();
+
+      const layout = await overlay.evaluate((element) => {
+        const toBox = (target) => {
+          const rect = target.getBoundingClientRect();
+          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        };
+        const windows = Array.from(element.querySelectorAll('.turn-order-slot-window'));
+        const style = getComputedStyle(element);
+        return {
+          overlayBox: toBox(element),
+          viewport: { width: window.innerWidth, height: window.innerHeight },
+          borderWidth: Number.parseFloat(style.borderTopWidth),
+          backgroundImage: style.backgroundImage,
+          windowBoxes: windows.map(toBox),
+          windowOverflow: windows.map((target) => getComputedStyle(target).overflow),
+        };
+      });
+
+      expect(layout.borderWidth, '순서 정하기 팝업은 두꺼운 목재 프레임을 사용해야 합니다.').toBeGreaterThanOrEqual(5);
+      expect(layout.backgroundImage, '순서 정하기 팝업은 입체 그라데이션 표면을 사용해야 합니다.').toContain('gradient');
+      expect(layout.overlayBox.x, '순서 정하기 팝업 왼쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
+      expect(layout.overlayBox.y, '순서 정하기 팝업 위쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
+      expect(layout.overlayBox.x + layout.overlayBox.width, '순서 정하기 팝업 오른쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewport.width);
+      expect(layout.overlayBox.y + layout.overlayBox.height, '순서 정하기 팝업 아래쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewport.height);
+      expect(layout.windowBoxes.length, '2인 순서 정하기에는 슬롯 카드 2개가 있어야 합니다.').toBe(2);
+      expect(layout.windowOverflow.every((value) => value === 'hidden'), '각 슬롯은 회전 중인 다른 카드를 경계 안에서 잘라야 합니다.').toBe(true);
+
+      for (let index = 0; index < layout.windowBoxes.length; index += 1) {
+        const box = layout.windowBoxes[index];
+        expect(box.x, '슬롯 카드가 팝업 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.overlayBox.x);
+        expect(box.x + box.width, '슬롯 카드가 팝업 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.overlayBox.x + layout.overlayBox.width);
+        if (index > 0) expect(boxesOverlap(layout.windowBoxes[index - 1], box), '순서 슬롯 카드끼리 겹치면 안 됩니다.').toBe(false);
+      }
+
+      if (originalViewport) await page.setViewportSize(originalViewport);
     });
 
     await runQaStep(testInfo, '모바일 인게임 상단 레이아웃 겹침 확인', async () => {
@@ -203,6 +249,8 @@ test.describe('game flow QA', () => {
         return JSON.stringify(state, null, 2);
       }, { timeout: 35_000, message: '순서 정하기가 완료되고 대기/오버레이가 사라져야 합니다.' }).toBe('resolved');
 
+      await expect(page.getByTestId('turn-indicator')).toBeVisible();
+      await expect(page.getByTestId('players-panel')).toContainText(hostName);
       await expect.poll(async () => {
         const state = await collectScreenState(page);
         const debug = state.yutDebug ?? {};
