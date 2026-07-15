@@ -1,22 +1,34 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('아이템전 모바일 사이드 패널', () => {
-  test('보유 아이템과 진행 기록을 전체 너비로 배치하고 접힘 상태에서도 윷판 아래 순서를 유지한다', async ({ page }) => {
+  test('방 정보 접기 버튼을 반복 사용해도 윷판 아래에 보유 아이템과 진행 기록을 유지한다', async ({ page }) => {
     await page.goto('/');
-    await page.setViewportSize({ width: 390, height: 844 });
 
     await page.evaluate(() => {
       const fixture = document.createElement('div');
       fixture.id = 'qa-mobile-item-log-fixture';
       fixture.className = 'game-shell';
       Object.assign(fixture.style, {
-        position: 'fixed', inset: '0', zIndex: '9999', width: '390px', maxWidth: '100vw',
+        position: 'fixed', inset: '0', zIndex: '9999', width: '100vw', maxWidth: '100vw',
         padding: '12px', background: '#f8f1e4', overflow: 'auto',
       });
 
+      const toggle = document.createElement('button');
+      toggle.dataset.testid = 'fixture-room-info-toggle';
+      toggle.type = 'button';
+      toggle.setAttribute('aria-expanded', 'true');
+      toggle.textContent = '방 정보 접기';
+
       const gameLayout = document.createElement('section');
       gameLayout.dataset.testid = 'game-screen';
-      gameLayout.className = 'game-layout';
+      gameLayout.dataset.roomInfoCollapsed = 'false';
+      gameLayout.className = 'game-layout room-info-expanded';
+
+      const playersPanel = document.createElement('aside');
+      playersPanel.dataset.testid = 'players-panel';
+      playersPanel.className = 'panel players game-players-panel';
+      playersPanel.style.minHeight = '120px';
+      playersPanel.textContent = '방 정보와 플레이어';
 
       const boardPanel = document.createElement('section');
       boardPanel.dataset.testid = 'board-panel';
@@ -63,12 +75,26 @@ test.describe('아이템전 모바일 사이드 패널', () => {
 
       logPanel.append(header, list);
       column.append(itemsPanel, logPanel);
-      gameLayout.append(boardPanel, column);
-      fixture.append(gameLayout);
+      gameLayout.append(playersPanel, boardPanel, column);
+
+      let collapsed = false;
+      toggle.addEventListener('click', () => {
+        collapsed = !collapsed;
+        toggle.setAttribute('aria-expanded', String(!collapsed));
+        toggle.textContent = collapsed ? '방 정보 펼치기' : '방 정보 접기';
+        gameLayout.dataset.roomInfoCollapsed = String(collapsed);
+        gameLayout.classList.toggle('room-info-collapsed', collapsed);
+        gameLayout.classList.toggle('room-info-expanded', !collapsed);
+        if (collapsed) playersPanel.remove();
+        else gameLayout.insertBefore(playersPanel, boardPanel);
+      });
+
+      fixture.append(toggle, gameLayout);
       document.body.append(fixture);
     });
 
     const fixture = page.locator('#qa-mobile-item-log-fixture');
+    const toggle = fixture.getByTestId('fixture-room-info-toggle');
     const gameLayout = fixture.getByTestId('game-screen');
     const column = fixture.getByTestId('game-side-column');
     const itemsPanel = fixture.getByTestId('owned-items-panel');
@@ -80,33 +106,38 @@ test.describe('아이템전 모바일 사이드 패널', () => {
     await expect(itemsPanel.getByTestId('game-log-list')).toHaveCount(0);
     await expect(logPanel.getByTestId('owned-items-panel')).toHaveCount(0);
 
-    const panelLayout = await gameLayout.evaluate((element) => {
+    const readPanelLayout = () => gameLayout.evaluate((element) => {
+      const players = element.querySelector('[data-testid="players-panel"]');
       const board = element.querySelector('[data-testid="board-panel"]');
-      const column = element.querySelector('[data-testid="game-side-column"]');
+      const sideColumn = element.querySelector('[data-testid="game-side-column"]');
       const items = element.querySelector('[data-testid="owned-items-panel"]');
       const list = element.querySelector('[data-testid="game-log-list"]');
       const log = list?.closest('aside');
-      if (!(board instanceof HTMLElement) || !(column instanceof HTMLElement) || !(items instanceof HTMLElement) || !(log instanceof HTMLElement)) {
+      if (!(board instanceof HTMLElement) || !(sideColumn instanceof HTMLElement) || !(items instanceof HTMLElement) || !(log instanceof HTMLElement)) {
         throw new Error('모바일 사이드 패널 fixture가 올바르지 않습니다.');
       }
       const layoutBox = element.getBoundingClientRect();
+      const playersBox = players instanceof HTMLElement ? players.getBoundingClientRect() : null;
       const boardBox = board.getBoundingClientRect();
-      const columnBox = column.getBoundingClientRect();
+      const columnBox = sideColumn.getBoundingClientRect();
       const itemsBox = items.getBoundingClientRect();
       const logBox = log.getBoundingClientRect();
-      const columnStyle = getComputedStyle(column);
+      const columnStyle = getComputedStyle(sideColumn);
+      const layoutStyle = getComputedStyle(element);
       return {
-        gridColumns: getComputedStyle(element).gridTemplateColumns,
+        collapsed: element.dataset.roomInfoCollapsed,
+        gridColumns: layoutStyle.gridTemplateColumns,
+        gridAreas: layoutStyle.gridTemplateAreas,
         layoutWidth: layoutBox.width,
+        playersBottom: playersBox?.bottom ?? null,
+        boardTop: boardBox.top,
+        boardBottom: boardBox.bottom,
+        columnTop: columnBox.top,
         columnWidth: columnBox.width,
         itemsWidth: itemsBox.width,
         logWidth: logBox.width,
-        boardBottom: boardBox.bottom,
-        columnTop: columnBox.top,
         columnDisplay: columnStyle.display,
         columnDirection: columnStyle.flexDirection,
-        boardOrder: Number.parseInt(getComputedStyle(board).order, 10),
-        columnOrder: Number.parseInt(columnStyle.order, 10),
         sameParent: items.parentElement === log.parentElement,
         itemsBeforeLog: items.nextElementSibling === log,
         itemsBottom: itemsBox.bottom,
@@ -114,19 +145,49 @@ test.describe('아이템전 모바일 사이드 패널', () => {
       };
     });
 
-    expect(panelLayout.gridColumns.split(' '), '세로모드 게임 레이아웃은 한 열이어야 합니다.').toHaveLength(1);
-    expect(Math.abs(panelLayout.columnWidth - panelLayout.layoutWidth), '보유 아이템·진행 기록 열은 게임 영역 전체 너비를 사용해야 합니다.').toBeLessThanOrEqual(1);
-    expect(Math.abs(panelLayout.itemsWidth - panelLayout.columnWidth), '보유 아이템 패널은 전체 너비여야 합니다.').toBeLessThanOrEqual(1);
-    expect(Math.abs(panelLayout.logWidth - panelLayout.columnWidth), '진행 기록 패널은 전체 너비여야 합니다.').toBeLessThanOrEqual(1);
-    expect(panelLayout.boardOrder, '윷판은 사이드 패널보다 먼저 배치되어야 합니다.').toBeLessThan(panelLayout.columnOrder);
-    expect(panelLayout.boardBottom, '방 정보를 접어도 보유 아이템·진행 기록이 윷판 위로 올라오면 안 됩니다.').toBeLessThanOrEqual(panelLayout.columnTop);
-    expect(panelLayout.columnDisplay).toBe('flex');
-    expect(panelLayout.columnDirection).toBe('column');
-    expect(panelLayout.sameParent, '보유 아이템과 진행 기록은 같은 사이드 열의 별도 패널이어야 합니다.').toBe(true);
-    expect(panelLayout.itemsBeforeLog, '보유 아이템 패널은 진행 기록 패널 바로 위에 있어야 합니다.').toBe(true);
-    expect(panelLayout.itemsBottom, '두 패널이 겹치면 안 됩니다.').toBeLessThanOrEqual(panelLayout.logTop);
+    const expandedLayout = await readPanelLayout();
+    expect(expandedLayout.collapsed).toBe('false');
+    expect(expandedLayout.gridColumns.split(' '), '세로모드 게임 레이아웃은 한 열이어야 합니다.').toHaveLength(1);
+    expect(expandedLayout.gridAreas, '펼침 상태 Grid 영역 순서는 방 정보 → 윷판 → 사이드 패널이어야 합니다.').toBe('"room" "board" "side"');
+    expect(expandedLayout.playersBottom, '방 정보가 윷판 위에 있어야 합니다.').not.toBeNull();
+    expect(expandedLayout.playersBottom).toBeLessThanOrEqual(expandedLayout.boardTop);
+    expect(expandedLayout.boardBottom, '윷판은 보유 아이템·진행 기록보다 먼저 배치되어야 합니다.').toBeLessThanOrEqual(expandedLayout.columnTop);
 
-    const initialLayout = await logList.evaluate((element) => {
+    for (let iteration = 0; iteration < 3; iteration += 1) {
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(gameLayout).toHaveClass(/room-info-collapsed/);
+      await expect(gameLayout).toHaveAttribute('data-room-info-collapsed', 'true');
+      await expect(gameLayout.getByTestId('players-panel')).toHaveCount(0);
+
+      const collapsedLayout = await readPanelLayout();
+      expect(collapsedLayout.gridAreas, '접힘 상태 Grid 영역은 윷판 → 사이드 패널이어야 합니다.').toBe('"board" "side"');
+      expect(collapsedLayout.boardBottom, '접기 후 보유 아이템·진행 기록이 윷판 위로 올라오면 안 됩니다.').toBeLessThanOrEqual(collapsedLayout.columnTop);
+      expect(Math.abs(collapsedLayout.columnWidth - collapsedLayout.layoutWidth), '접기 후 사이드 열은 게임 영역 전체 너비를 사용해야 합니다.').toBeLessThanOrEqual(1);
+      expect(Math.abs(collapsedLayout.itemsWidth - collapsedLayout.columnWidth), '보유 아이템 패널은 전체 너비여야 합니다.').toBeLessThanOrEqual(1);
+      expect(Math.abs(collapsedLayout.logWidth - collapsedLayout.columnWidth), '진행 기록 패널은 전체 너비여야 합니다.').toBeLessThanOrEqual(1);
+
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(gameLayout).toHaveClass(/room-info-expanded/);
+      await expect(gameLayout).toHaveAttribute('data-room-info-collapsed', 'false');
+      await expect(gameLayout.getByTestId('players-panel')).toBeVisible();
+
+      const restoredLayout = await readPanelLayout();
+      expect(restoredLayout.gridAreas).toBe('"room" "board" "side"');
+      expect(restoredLayout.playersBottom).not.toBeNull();
+      expect(restoredLayout.playersBottom).toBeLessThanOrEqual(restoredLayout.boardTop);
+      expect(restoredLayout.boardBottom).toBeLessThanOrEqual(restoredLayout.columnTop);
+    }
+
+    const finalLayout = await readPanelLayout();
+    expect(finalLayout.columnDisplay).toBe('flex');
+    expect(finalLayout.columnDirection).toBe('column');
+    expect(finalLayout.sameParent, '보유 아이템과 진행 기록은 같은 사이드 열의 별도 패널이어야 합니다.').toBe(true);
+    expect(finalLayout.itemsBeforeLog, '보유 아이템 패널은 진행 기록 패널 바로 위에 있어야 합니다.').toBe(true);
+    expect(finalLayout.itemsBottom, '두 패널이 겹치면 안 됩니다.').toBeLessThanOrEqual(finalLayout.logTop);
+
+    const initialLogLayout = await logList.evaluate((element) => {
       const entries = Array.from(element.querySelectorAll('[data-testid="game-log-entry"]'));
       if (entries.length < 4) throw new Error('진행 기록 fixture가 올바르지 않습니다.');
       const listBox = element.getBoundingClientRect();
@@ -139,8 +200,8 @@ test.describe('아이템전 모바일 사이드 패널', () => {
       };
     });
 
-    expect(initialLayout.fourthBottom, '네 번째 진행 기록이 목록 아래에서 잘리면 안 됩니다.').toBeLessThanOrEqual(initialLayout.listBottom + 1);
-    expect(initialLayout.scrollHeight, '다섯 번째 기록부터 내부 스크롤이 생겨야 합니다.').toBeGreaterThan(initialLayout.clientHeight);
+    expect(initialLogLayout.fourthBottom, '네 번째 진행 기록이 목록 아래에서 잘리면 안 됩니다.').toBeLessThanOrEqual(initialLogLayout.listBottom + 1);
+    expect(initialLogLayout.scrollHeight, '다섯 번째 기록부터 내부 스크롤이 생겨야 합니다.').toBeGreaterThan(initialLogLayout.clientHeight);
 
     await logList.evaluate((element) => new Promise((resolve) => {
       element.scrollTop = element.scrollHeight;
