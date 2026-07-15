@@ -4,8 +4,8 @@ import { gamePresentationLock } from '../../shared/gamePresentationLock';
 import { YutRollScenePhysics } from '../components/YutRollScenePhysics';
 import {
   REMOTE_ROLL_PRESENTATION_MS,
+  enqueueRollPresentation,
   gameAnimationQueue,
-  getRollPresentationAnimationId,
   waitForGameAnimation,
 } from '../flows/gameAnimationQueue';
 import type { RollAnimation, ToastMessage } from '../appState';
@@ -93,24 +93,52 @@ export function BoardMessageStack({ turnToast, toast }: BoardMessageStackProps) 
   </div>;
 }
 
+export type RollPresentationState = {
+  active: boolean;
+  actorId: string;
+  fallCount: number;
+  sourceAnimationId: number | null;
+};
+
 type RollStageProps = {
   rollAnimation: RollAnimation | null;
+  presentationActorId?: string;
+  onPresentationChange?: (state: RollPresentationState) => void;
 };
 
 const isResolvedRollAnimation = (animation: RollAnimation) => animation.phase === undefined || animation.phase === 'resolved';
 
-export function RollStage({ rollAnimation }: RollStageProps) {
+export function RollStage({ rollAnimation, presentationActorId = '', onPresentationChange }: RollStageProps) {
   const mountedRef = useRef(true);
   const presentedAnimationRef = useRef<RollAnimation | null>(rollAnimation);
   const deferredLiveAnimationRef = useRef<RollAnimation | null>(null);
   const seenResolvedAnimationIdsRef = useRef<Set<number>>(new Set());
+  const queuedPresentationMetaRef = useRef<Map<number, { actorId: string; fallCount: number }>>(new Map());
+  const onPresentationChangeRef = useRef(onPresentationChange);
   const presentationReleaseRef = useRef<(() => void) | null>(null);
   const [presentedAnimation, setPresentedAnimation] = useState<RollAnimation | null>(rollAnimation);
   const [settledAnimationId, setSettledAnimationId] = useState<number | null>(null);
 
+  onPresentationChangeRef.current = onPresentationChange;
+
   const presentAnimation = (nextAnimation: RollAnimation | null) => {
     presentedAnimationRef.current = nextAnimation;
     setPresentedAnimation(nextAnimation);
+  };
+
+  const notifyQueuedPresentation = () => {
+    const firstEntry = queuedPresentationMetaRef.current.entries().next().value as [number, { actorId: string; fallCount: number }] | undefined;
+    if (!firstEntry) {
+      onPresentationChangeRef.current?.({ active: false, actorId: '', fallCount: 0, sourceAnimationId: null });
+      return;
+    }
+    const [sourceAnimationId, meta] = firstEntry;
+    onPresentationChangeRef.current?.({
+      active: true,
+      actorId: meta.actorId,
+      fallCount: meta.fallCount,
+      sourceAnimationId,
+    });
   };
 
   useLayoutEffect(() => {
@@ -118,6 +146,8 @@ export function RollStage({ rollAnimation }: RollStageProps) {
     const releaseQueue = gameAnimationQueue.acquire();
     return () => {
       mountedRef.current = false;
+      queuedPresentationMetaRef.current.clear();
+      onPresentationChangeRef.current?.({ active: false, actorId: '', fallCount: 0, sourceAnimationId: null });
       presentationReleaseRef.current?.();
       presentationReleaseRef.current = null;
       releaseQueue();
@@ -137,7 +167,7 @@ export function RollStage({ rollAnimation }: RollStageProps) {
     if (!rollAnimation) {
       deferredLiveAnimationRef.current = null;
       const currentAnimation = presentedAnimationRef.current;
-      if (currentAnimation && isResolvedRollAnimation(currentAnimation) && gameAnimationQueue.has(`roll:${currentAnimation.id}`)) return;
+      if (currentAnimation && isResolvedRollAnimation(currentAnimation) && queuedPresentationMetaRef.current.size > 0) return;
       presentAnimation(null);
       return;
     }
@@ -157,25 +187,45 @@ export function RollStage({ rollAnimation }: RollStageProps) {
     }
 
     deferredLiveAnimationRef.current = null;
-    if (seenResolvedAnimationIdsRef.current.has(rollAnimation.id)) return;
-    seenResolvedAnimationIdsRef.current.add(rollAnimation.id);
+    const sourceAnimationId = rollAnimation.id;
+    const fallCount = 'fallCount' in rollAnimation ? rollAnimation.fallCount ?? 0 : 0;
+    const existingMeta = queuedPresentationMetaRef.current.get(sourceAnimationId);
+    if (presentationActorId || existingMeta) {
+      queuedPresentationMetaRef.current.set(sourceAnimationId, {
+        actorId: presentationActorId || existingMeta?.actorId || '',
+        fallCount,
+      });
+      notifyQueuedPresentation();
+    }
+    if (seenResolvedAnimationIdsRef.current.has(sourceAnimationId)) return;
+    seenResolvedAnimationIdsRef.current.add(sourceAnimationId);
     if (seenResolvedAnimationIdsRef.current.size > 120) {
       seenResolvedAnimationIdsRef.current = new Set(Array.from(seenResolvedAnimationIdsRef.current).slice(-60));
     }
 
-    const queuedAnimation: RollAnimation = {
+    if (!queuedPresentationMetaRef.current.has(sourceAnimationId)) {
+      queuedPresentationMetaRef.current.set(sourceAnimationId, { actorId: presentationActorId, fallCount });
+      notifyQueuedPresentation();
+    }
+    const sourceAnimation: RollAnimation = {
       ...rollAnimation,
-      id: getRollPresentationAnimationId(rollAnimation.id),
       sticks: rollAnimation.sticks.map((stick) => ({ ...stick })),
     };
-    void gameAnimationQueue.enqueue(`roll:${queuedAnimation.id}`, async () => {
-      if (!mountedRef.current) return;
-      setSettledAnimationId(null);
-      presentAnimation(queuedAnimation);
-      await waitForGameAnimation(REMOTE_ROLL_PRESENTATION_MS);
-      if (mountedRef.current && presentedAnimationRef.current?.id === queuedAnimation.id) presentAnimation(null);
+    void enqueueRollPresentation({
+      key: `roll:${sourceAnimationId}`,
+      animation: sourceAnimation,
+      task: async (queuedAnimation) => {
+        if (!mountedRef.current) return;
+        setSettledAnimationId(null);
+        presentAnimation(queuedAnimation);
+        await waitForGameAnimation(REMOTE_ROLL_PRESENTATION_MS);
+        if (mountedRef.current && presentedAnimationRef.current?.id === queuedAnimation.id) presentAnimation(null);
+      },
+    }).finally(() => {
+      queuedPresentationMetaRef.current.delete(sourceAnimationId);
+      if (mountedRef.current) notifyQueuedPresentation();
     });
-  }, [rollAnimation]);
+  }, [presentationActorId, rollAnimation]);
 
   if (!presentedAnimation) return null;
   const isPreResult = presentedAnimation.phase === 'primary' || presentedAnimation.phase === 'extra-spin';
