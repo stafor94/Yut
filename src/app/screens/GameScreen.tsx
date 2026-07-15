@@ -1,10 +1,18 @@
-import type { ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
+import { getRoomInfoCollapsed, subscribeRoomInfoPresentation } from '../flows/roomInfoPresentation';
 
 type GameScreenProps = { children: ReactNode };
 type GamePanelProps = { children: ReactNode };
 
 export function GameScreen({ children }: GameScreenProps) {
-  return <section data-testid="game-screen" className="game-layout" aria-label="게임 플레이 화면">{children}</section>;
+  const roomInfoCollapsed = useSyncExternalStore(subscribeRoomInfoPresentation, getRoomInfoCollapsed, getRoomInfoCollapsed);
+
+  return <section
+    data-testid="game-screen"
+    data-room-info-collapsed={roomInfoCollapsed ? 'true' : 'false'}
+    className={`game-layout ${roomInfoCollapsed ? 'room-info-collapsed' : 'room-info-expanded'}`}
+    aria-label="게임 플레이 화면"
+  >{children}</section>;
 }
 
 export function PlayersPanel({ children }: GamePanelProps) {
