@@ -1,20 +1,19 @@
-/* Final polish for the in-game header, stacked pieces, and the waiting-to-game handoff. */
+/* Final polish for the in-game header, stacked pieces, room summary, and the waiting-to-game handoff. */
 
 .piece-token {
   --piece-stack-visibility-lift: 2px;
 }
 
+/* Match the lobby/waiting-room status rail exactly now that the timer lives with the log. */
 .game-shell .hero {
   isolation: isolate;
   position: relative;
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-areas:
-    "actions"
-    "timer";
-  gap: 10px;
-  min-height: 128px;
+  grid-template-areas: "actions";
+  gap: 0;
+  min-height: 102px;
   margin-bottom: 20px;
   padding: 17px 19px;
   border: 7px solid #5a2d16;
@@ -69,24 +68,24 @@
 .game-shell .hero-actions {
   grid-area: actions;
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(74px, .7fr) minmax(72px, .65fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(88px, .72fr) minmax(86px, .68fr);
+  gap: 10px;
   width: 100%;
   min-width: 0;
   align-items: stretch;
+  justify-items: stretch;
 }
 
 .game-shell .hero-actions button {
   min-width: 0;
   min-height: 54px;
-  padding: 9px 10px;
+  padding: 10px 13px;
   border: 2px solid #95622f;
   border-radius: 15px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, .48), transparent 34%),
     linear-gradient(180deg, #fff4d2, #e6c184);
   color: #315a45;
-  font-size: .82rem;
   text-shadow: 0 1px 0 rgba(255, 252, 229, .9);
   box-shadow:
     0 6px 0 #75431f,
@@ -96,11 +95,19 @@
   opacity: 1;
 }
 
+.game-shell .hero-actions button:not(:disabled):active {
+  transform: translateY(4px);
+  box-shadow:
+    0 2px 0 #75431f,
+    0 5px 9px rgba(61, 31, 14, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .64);
+}
+
 .game-shell .nickname-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   overflow: hidden;
 }
 
@@ -130,12 +137,129 @@
   justify-content: center;
 }
 
-.game-shell .play-time {
-  grid-area: timer;
-  width: 100%;
+/* Collapsible room summary. */
+.game-shell .game-room-summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   min-width: 0;
-  min-height: 48px;
-  padding-block: 9px;
+  padding: 2px 3px 12px;
+  border-bottom: 2px solid rgba(101, 55, 25, .28);
+}
+
+.game-shell .game-room-summary-heading h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #4f2d19;
+  font-size: clamp(1.18rem, 2vw, 1.45rem);
+  font-weight: 1000;
+  letter-spacing: -.02em;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 0 rgba(255, 239, 198, .82);
+  white-space: nowrap;
+}
+
+.game-shell .game-room-collapse-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 72px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 2px solid #95622f;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .44), transparent 34%),
+    linear-gradient(180deg, #fff4d2, #e6c184);
+  color: #315a45;
+  font-size: .78rem;
+  font-weight: 1000;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(255, 252, 229, .9);
+  box-shadow:
+    0 4px 0 #75431f,
+    0 7px 10px rgba(61, 31, 14, .16),
+    inset 0 1px 0 rgba(255, 255, 255, .72);
+}
+
+.game-shell .game-room-collapse-button:not(:disabled):active {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 #75431f,
+    0 4px 7px rgba(61, 31, 14, .14),
+    inset 0 1px 0 rgba(255, 255, 255, .62);
+}
+
+.game-shell .game-room-summary-content {
+  min-width: 0;
+}
+
+/* Owned items sit directly above the game history. */
+.game-shell .game-log-owned-items-slot:empty {
+  display: none;
+}
+
+.game-shell .game-log-owned-items-slot .player-items {
+  margin: 0 0 18px;
+}
+
+.game-shell .side .log-header {
+  min-width: 0;
+}
+
+.game-shell .side .log-header h2 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-shell .side .log-header-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.game-shell .side .game-log-play-time-slot:empty {
+  display: none;
+}
+
+.game-shell .side .play-time {
+  display: grid;
+  place-items: center;
+  width: max-content;
+  min-width: 78px;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 10px;
+  border: 2px solid #95622f;
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .5), transparent 34%),
+    linear-gradient(180deg, #fff5d8, #e6c387);
+  color: #28533f;
+  font-size: .86rem;
+  font-weight: 1000;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .025em;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(255, 252, 229, .9);
+  box-shadow:
+    0 5px 0 #75431f,
+    0 9px 13px rgba(61, 31, 14, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .8),
+    inset 0 -3px 5px rgba(102, 56, 24, .12);
+}
+
+.game-shell .side .play-time.stopped {
+  color: #8e2d23;
 }
 
 .start-transition-scrim {
@@ -148,25 +272,100 @@
   margin: 0 !important;
 }
 
-@media (max-width: 430px) {
+@media (max-width: 767px) {
   .game-shell .hero {
-    min-height: 124px;
-    padding: 15px 14px;
+    min-height: 0;
+    margin-bottom: 14px;
+    padding: 13px 14px 15px;
+    border-width: 6px;
+    border-radius: 24px;
+  }
+
+  .game-shell .hero::before {
+    inset: 5px;
+    border-radius: 13px;
   }
 
   .game-shell .hero-actions {
-    grid-template-columns: minmax(0, 1.7fr) 72px 70px;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1.45fr) minmax(70px, .72fr) minmax(68px, .68fr);
+    gap: 7px;
   }
 
   .game-shell .hero-actions button {
     min-height: 50px;
-    padding-inline: 7px;
-    font-size: .76rem;
+    padding: 8px 9px;
+    border-radius: 13px;
+    font-size: .8rem;
+  }
+
+  .game-shell .game-room-summary-heading {
+    gap: 9px;
+  }
+
+  .game-shell .game-room-collapse-button {
+    min-width: 68px;
+    min-height: 34px;
+    padding-inline: 8px;
+    font-size: .74rem;
+  }
+
+  .game-shell .game-log-owned-items-slot .player-items {
+    margin-bottom: 15px;
+  }
+
+  .game-shell .side .log-header-actions {
+    gap: 7px;
+  }
+
+  .game-shell .side .play-time {
+    min-width: 72px;
+    min-height: 40px;
+    height: 40px;
+    padding-inline: 8px;
+    font-size: .82rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .game-shell .hero-actions {
+    grid-template-columns: minmax(0, 1.35fr) 62px 62px;
+    gap: 5px;
+  }
+
+  .game-shell .hero-actions button {
+    padding-inline: 6px;
+    font-size: .74rem;
   }
 
   .game-shell .sound-icon,
   .game-shell .nickname-chip span:first-child {
-    font-size: .8rem;
+    font-size: .86rem;
+  }
+
+  .game-shell .game-room-collapse-button span:first-child {
+    display: none;
+  }
+
+  .game-shell .game-room-collapse-button {
+    min-width: 38px;
+    width: 38px;
+    padding-inline: 0;
+  }
+
+  .game-shell .side .log-header-actions {
+    gap: 5px;
+  }
+
+  .game-shell .side .play-time {
+    min-width: 68px;
+    padding-inline: 7px;
+    font-size: .78rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-shell .hero-actions button,
+  .game-shell .game-room-collapse-button {
+    transition: none;
   }
 }
