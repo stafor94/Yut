@@ -163,13 +163,12 @@ export function RollStage({ rollAnimation }: RollStageProps) {
       seenResolvedAnimationIdsRef.current = new Set(Array.from(seenResolvedAnimationIdsRef.current).slice(-60));
     }
 
-    const sourceAnimationId = rollAnimation.id;
     const queuedAnimation: RollAnimation = {
       ...rollAnimation,
-      id: getRollPresentationAnimationId(sourceAnimationId),
+      id: getRollPresentationAnimationId(rollAnimation.id),
       sticks: rollAnimation.sticks.map((stick) => ({ ...stick })),
     };
-    void gameAnimationQueue.enqueue(`roll:${sourceAnimationId}`, async () => {
+    void gameAnimationQueue.enqueue(`roll:${queuedAnimation.id}`, async () => {
       if (!mountedRef.current) return;
       setSettledAnimationId(null);
       presentAnimation(queuedAnimation);
