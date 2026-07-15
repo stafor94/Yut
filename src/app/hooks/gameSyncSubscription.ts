@@ -24,6 +24,9 @@ export type GameSyncSnapshotIdentity = {
   lastSequence?: unknown;
   lastClientMutationId?: unknown;
   updatedAt?: unknown;
+  startRequestVersion?: unknown;
+  startRequestId?: unknown;
+  startCountdownEndsAt?: unknown;
 };
 
 export type GameSyncSubscriptionController<TState extends GameSyncSnapshotIdentity> = {
@@ -82,6 +85,8 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
   let applyingOperationCount = 0;
   const appliedSnapshotKeys = new Set<string>();
   const pendingSnapshotKeys = new Set<string>();
+  const deferredPreparedSnapshots = new Map<string, { roomId: string; state: TState }>();
+  const deferredPreparedSnapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   const rememberAppliedSnapshotKey = (snapshotKey: string) => {
     appliedSnapshotKeys.add(snapshotKey);
@@ -90,10 +95,37 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
     if (typeof oldestKey === 'string') appliedSnapshotKeys.delete(oldestKey);
   };
 
+  const clearDeferredPreparedSnapshots = () => {
+    deferredPreparedSnapshotTimers.forEach((timer) => clearTimeout(timer));
+    deferredPreparedSnapshotTimers.clear();
+    deferredPreparedSnapshots.clear();
+  };
+
   const isCurrentRoom = (roomId: string) => Boolean(roomId && subscribedRoomId === roomId && runtime?.activeRoomId === roomId);
 
   const handleSnapshot = async (roomId: string, state: TState | null) => {
     if (!state || !isCurrentRoom(roomId)) return;
+
+    const startRequestVersion = toFiniteNumber(state.startRequestVersion);
+    const startRequestId = typeof state.startRequestId === 'string' ? state.startRequestId : '';
+    const countdownEndsAt = toFiniteNumber(state.startCountdownEndsAt);
+    const preparedStartKey = startRequestVersion && startRequestId && countdownEndsAt
+      ? `${roomId}:${startRequestVersion}:${startRequestId}`
+      : '';
+    if (preparedStartKey && Date.now() < countdownEndsAt) {
+      deferredPreparedSnapshots.set(preparedStartKey, { roomId, state });
+      if (!deferredPreparedSnapshotTimers.has(preparedStartKey)) {
+        const timer = setTimeout(() => {
+          deferredPreparedSnapshotTimers.delete(preparedStartKey);
+          const deferred = deferredPreparedSnapshots.get(preparedStartKey);
+          deferredPreparedSnapshots.delete(preparedStartKey);
+          if (deferred) void handleSnapshot(deferred.roomId, deferred.state);
+        }, Math.max(0, countdownEndsAt - Date.now()));
+        deferredPreparedSnapshotTimers.set(preparedStartKey, timer);
+      }
+      return;
+    }
+
     notifySequenceRecoveryProgress(roomId, toFiniteNumber(state.lastSequence));
     runtime?.onSnapshotReceived?.(state);
     const snapshotKey = getGameSyncSnapshotApplyKey(state);
@@ -151,6 +183,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
       subscribedRoomId = roomId;
       appliedSnapshotKeys.clear();
       pendingSnapshotKeys.clear();
+      clearDeferredPreparedSnapshots();
       if (!roomId) return;
       unsubscribe = subscribe(roomId, (state) => {
         void handleSnapshot(roomId, state);
@@ -162,6 +195,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
       subscribedRoomId = '';
       appliedSnapshotKeys.clear();
       pendingSnapshotKeys.clear();
+      clearDeferredPreparedSnapshots();
       applyingOperationCount = 0;
       if (runtime) runtime.applyingSyncedStateRef.current = false;
       runtime = null;
