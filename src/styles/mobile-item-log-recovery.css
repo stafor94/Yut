@@ -4,20 +4,11 @@
   flex-direction: column;
   align-self: stretch;
   justify-self: stretch;
-  order: 3;
   gap: 14px;
   width: 100%;
   max-width: none;
   min-width: 0;
   min-height: 0;
-}
-
-.game-shell .board-panel {
-  order: 2;
-}
-
-.game-shell .game-players-panel {
-  order: 1;
 }
 
 .game-shell .game-side-column > .side {
@@ -82,18 +73,48 @@
     inset 0 1px 0 rgba(255, 236, 200, .2);
 }
 
-@media (max-width: 767px) {
+/* Portrait and stacked tablet layouts use named grid areas so collapsing room info cannot reorder siblings. */
+@media (max-width: 899px), (min-width: 900px) and (max-width: 1199px) and (min-height: 901px) {
   .game-shell .game-layout {
     grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas:
+      "room"
+      "board"
+      "side";
+  }
+
+  .game-shell .game-layout.room-info-collapsed {
+    grid-template-areas:
+      "board"
+      "side";
+  }
+
+  .game-shell .game-layout > .game-players-panel {
+    grid-area: room;
+  }
+
+  .game-shell .game-layout > .board-panel {
+    grid-area: board;
+  }
+
+  .game-shell .game-layout > .game-side-column {
+    grid-area: side;
   }
 
   .game-shell .game-layout > .game-players-panel,
   .game-shell .game-layout > .board-panel,
   .game-shell .game-layout > .game-side-column {
-    grid-column: 1 / -1;
     justify-self: stretch;
     width: 100%;
     max-width: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .game-shell .game-layout > .game-players-panel,
+  .game-shell .game-layout > .board-panel,
+  .game-shell .game-layout > .game-side-column {
+    grid-column: 1 / -1;
   }
 
   .game-shell .game-side-column {
