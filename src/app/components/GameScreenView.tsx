@@ -16,10 +16,11 @@ import {
   inferFinishedPieceIds,
   type FinishVisualEffect,
 } from '../flows/finishAnimation';
+import { getGamePresentationTurn } from '../flows/gamePresentationTurn';
 import { getRollOutcomeSoundEffect, shouldPlayPerfectRollSound } from '../flows/rollSound';
 import { BoardPanel, GameScreen } from '../screens/GameScreen';
 import { GameLogPanelView, GamePlayersPanel } from '../containers/GamePanels';
-import { BoardMessageStack, GoldenYutPicker, RollStage, TurnIndicator, WinnerOverlay } from '../containers/GameBoardOverlays';
+import { BoardMessageStack, GoldenYutPicker, RollStage, TurnIndicator, WinnerOverlay, type RollPresentationState } from '../containers/GameBoardOverlays';
 import { GameBoardControls } from '../containers/GameBoardControls';
 import { GameBoardSection } from '../containers/GameBoardSection';
 import { TurnOrderIntroOverlay } from './TurnOrderIntroOverlay';
@@ -123,6 +124,13 @@ type GameScreenViewProps = {
   renderLogText: (text: string) => ReactNode;
 };
 
+const EMPTY_ROLL_PRESENTATION: RollPresentationState = {
+  active: false,
+  actorId: '',
+  fallCount: 0,
+  sourceAnimationId: null,
+};
+
 export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canRollForTurnOrderNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, moveSelectionTimedOut, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, shieldedPieceIds, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenSequenceExportDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   const lastRollAnimationIdRef = useRef('');
   const lastRollOutcomeKeyRef = useRef('');
@@ -143,7 +151,23 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   const lastRevealedItemsKeyRef = useRef('');
   const stackCountsInitializedRef = useRef(false);
   const previousStackCountsRef = useRef<Map<string, number>>(new Map());
+  const [rollPresentation, setRollPresentation] = useState<RollPresentationState>(EMPTY_ROLL_PRESENTATION);
   const activeGameSeatId = activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder ? undefined : activeSeat?.id;
+  const presentationTurn = getGamePresentationTurn({
+    activeSeatId: activeGameSeatId,
+    localSeatId,
+    presentationActorId: rollPresentation.active && rollPresentation.fallCount > 0 ? rollPresentation.actorId : '',
+  });
+  const presentationSeat = presentationTurn.isFrozen
+    ? seats.find((seat) => seat.id === presentationTurn.activeSeatId)
+      ?? playerPanelSeats.find((seat) => seat.id === presentationTurn.activeSeatId)
+    : undefined;
+  const displayedActiveSeat = presentationSeat ?? activeSeat;
+  const displayedActiveGameSeatId = activeGameSeatId === undefined ? undefined : presentationTurn.activeSeatId || activeGameSeatId;
+  const displayedIsMyTurn = presentationTurn.isFrozen ? presentationTurn.isMyTurn : isMyTurn;
+  const displayedTurnText = presentationTurn.isFrozen && presentationSeat ? getPlayerCardName(presentationSeat) : boardTurnIndicatorText;
+  const displayedTurnColor = presentationTurn.isFrozen && presentationSeat ? getSeatPieceColor(presentationSeat) : boardTurnIndicatorColor;
+  const displayedActiveSeatTurnText = presentationTurn.isFrozen && presentationSeat ? getPlayerCardName(presentationSeat) : activeSeatTurnText;
 
   const startVisualCapture = (nextEffect: CaptureVisualEffect, playInferredSound: boolean) => {
     if (captureClearTimerRef.current !== null) window.clearTimeout(captureClearTimerRef.current);
@@ -338,7 +362,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       itemMode={itemMode}
       stackedRollMode={stackedRollMode}
       seats={activeTurnOrderIntro || turnOrderPhase.active ? seats : playerPanelSeats}
-      activeSeatId={activeGameSeatId}
+      activeSeatId={displayedActiveGameSeatId}
       playMode={playMode}
       completedSeatIds={completedSeatIds}
       rankingSeatIds={rankingSeatIds}
@@ -354,8 +378,17 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       <TurnOrderIntroOverlay activeTurnOrderIntro={activeTurnOrderIntro} localSeatId={localSeatId} turnOrderClock={turnOrderClock} finalHoldMs={finalHoldMs} />
       {activeTurnOrderIntro && !activeTurnOrderIntro.visible && <div className="turn-order-lock" role="status" aria-live="polite">잠시 후 게임 시작!</div>}
       <GoldenYutPicker isOpen={goldenYutPickerOpen} choices={goldenYutChoices} onSelect={onGoldenYutSelect} />
-      <TurnIndicator color={boardTurnIndicatorColor} showNeighbors={showBoardTurnNeighbors} previousText={previousBoardTurnText} previousColor={previousBoardTurnColor} currentText={boardTurnIndicatorText} currentRollStack={boardTurnIndicatorRollStack} nextText={nextBoardTurnText} nextColor={nextBoardTurnColor} />
-      <BoardMessageStack turnToast={turnToast} toast={toast} />
+      <TurnIndicator
+        color={displayedTurnColor}
+        showNeighbors={showBoardTurnNeighbors && !presentationTurn.isFrozen}
+        previousText={previousBoardTurnText}
+        previousColor={previousBoardTurnColor}
+        currentText={displayedTurnText}
+        currentRollStack={presentationTurn.isFrozen ? [] : boardTurnIndicatorRollStack}
+        nextText={nextBoardTurnText}
+        nextColor={nextBoardTurnColor}
+      />
+      <BoardMessageStack turnToast={presentationTurn.isFrozen ? null : turnToast} toast={toast} />
       <GameBoardSection
         pieces={pieces}
         boardItems={boardItems}
@@ -363,8 +396,8 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         activeMovablePiece={activeMovablePiece}
         selectedGroupPieceIds={selectedGroupPieceIds}
         movingPieceId={movingPieceId}
-        isMyTurn={isMyTurn}
-        activeSeat={activeSeat}
+        isMyTurn={displayedIsMyTurn}
+        activeSeat={displayedActiveSeat}
         canSeatControlPiece={canSeatControlPiece}
         onSelectPieceId={onSelectPieceId}
         getPieceSideKey={getPieceSideKey}
@@ -372,7 +405,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         highlightedNodeId={highlightedNodeId}
         trapNodes={trapNodes}
         shieldedPieceIds={shieldedPieceIds}
-        previewNodeIds={previewNodeIds}
+        previewNodeIds={presentationTurn.isFrozen ? [] : previewNodeIds}
         branchChoice={branchChoice}
         onBranchChoiceChange={onBranchChoiceChange}
         captureEffect={visualCaptureEffect}
@@ -383,7 +416,11 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         trapPlacementNodeIds={trapPlacementNodeIds}
         onSelectTrapNode={onSelectTrapNode}
       />
-      <RollStage rollAnimation={rollAnimation} />
+      <RollStage
+        rollAnimation={rollAnimation}
+        presentationActorId={fallEffect?.seatId ?? ''}
+        onPresentationChange={setRollPresentation}
+      />
       {pendingTrapPlacement && <div className="trap-placement-banner" role="status"><strong>함정 설치 위치를 선택하세요</strong><span>{trapPlacementSecondsLeft}초 남음 · 설치 중에는 윷을 던질 수 없습니다.</span></div>}
       <GameBoardControls
         roll={roll}
@@ -395,17 +432,17 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         showBottomBranchControls={showBottomBranchControls}
         displayBranchChoice={displayBranchChoice}
         onBranchChoiceChange={onBranchChoiceChange}
-        canRequestMove={canRequestMove}
-        activeSeatId={activeGameSeatId}
-        activeSeatTurnText={activeSeatTurnText}
+        canRequestMove={canRequestMove && !presentationTurn.isFrozen}
+        activeSeatId={displayedActiveGameSeatId}
+        activeSeatTurnText={displayedActiveSeatTurnText}
         getTurnActionTimeoutMs={getTurnActionTimeoutMs}
         turnActionTimeoutMs={turnActionTimeoutMs}
         onMoveSelectedPiece={onMoveSelectedPiece}
-        canRollNow={canRollNow}
+        canRollNow={canRollNow && !presentationTurn.isFrozen}
         canRollForTurnOrderNow={canRollForTurnOrderNow}
-        canSubmitTurnAction={canSubmitTurnAction}
+        canSubmitTurnAction={canSubmitTurnAction && !presentationTurn.isFrozen}
         onRollYut={onRollYut}
-        rollResultHolding={rollResultHolding}
+        rollResultHolding={rollResultHolding || presentationTurn.isFrozen}
         pendingTrapPlacement={pendingTrapPlacement}
         stackedRollMode={stackedRollMode}
         rollStack={rollStack}
