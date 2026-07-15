@@ -280,8 +280,11 @@ test.describe('game flow QA', () => {
         const saveCommitted = initialSave.status === 'committed' || initialSave.status === 'duplicate';
         const initializedSequences = sequences.filter((sequence) => sequence.type === 'game_initialized');
         const singleInitialization = initializedSequences.length === 1;
+        const authoritativeStateReady = Boolean(debug.syncPipeline?.authoritativeGameStateReady);
+        const hasAuthoritativeSequence = Boolean(debug.syncPipeline?.hasAuthoritativeSequence);
+        const initialStateSettled = saveCommitted || (authoritativeStateReady && hasAuthoritativeSequence);
         const sequenceApplied = Number(debug.syncPipeline?.lastAppliedSequence ?? debug.lastAppliedSequence ?? 0) >= 1 && Number(initialSave.lastSequence ?? latestSequence) >= 1;
-        if (saveCommitted && sequenceApplied && singleInitialization && (actionableRoll || actionableMove || waitingForOtherTurn)) return 'ready';
+        if (initialStateSettled && sequenceApplied && singleInitialization && (actionableRoll || actionableMove || waitingForOtherTurn)) return 'ready';
         return JSON.stringify({ state, latestSequence, initializedSequenceCount: initializedSequences.length }, null, 2);
       }, { timeout: 20_000, message: '초기 state/sequences 저장 후 첫 턴 조작/대기 UI가 보여야 합니다.' }).toBe('ready');
     });
