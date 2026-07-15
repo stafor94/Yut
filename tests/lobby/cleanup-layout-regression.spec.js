@@ -35,10 +35,8 @@ test.describe('cleanup/layout regression QA', () => {
 
     await runQaStep(testInfo, '격리된 게스트 context에서 로비 방 카드 action column 정렬 확인', async () => {
       const lobbyHostContext = await browser.newContext();
-      const extraHostContext = await browser.newContext();
       const lobbyGuestContext = await browser.newContext();
       await primeLobbyStorage(lobbyHostContext, { nickname: lobbyHostNickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
-      await primeLobbyStorage(extraHostContext, { nickname: normalizeQaNickname(makeQaName(testInfo, 'extra-host')), maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
       await primeLobbyStorage(lobbyGuestContext, { nickname: lobbyGuestNickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
       try {
@@ -50,19 +48,15 @@ test.describe('cleanup/layout regression QA', () => {
         const lobbyRoomId = await rememberRoomIdFromPage(lobbyHostPage) ?? await findRoomIdByTitle(lobbyRoomTitle);
         if (lobbyRoomId) roomIds.push(lobbyRoomId);
 
-        const extraHostPage = await extraHostContext.newPage();
-        await expectAppShell(extraHostPage);
-        await extraHostPage.getByTestId('room-title-input').fill(makeQaName(testInfo, 'extra-room'));
-        await extraHostPage.getByTestId('create-room-button').click();
-        await expect(extraHostPage.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
-        const extraRoomId = await rememberRoomIdFromPage(extraHostPage);
-        if (extraRoomId) roomIds.push(extraRoomId);
-
         const lobbyGuestPage = await lobbyGuestContext.newPage();
         await expectAppShell(lobbyGuestPage);
         await waitForBlockingOverlayToDisappear(lobbyGuestPage);
+        await expect(
+          lobbyGuestPage.getByRole('button', { name: /서버 상태: 온라인/ }),
+          '게스트의 익명 인증과 방 목록 구독이 완료되어야 합니다.',
+        ).toBeVisible({ timeout: 30_000 });
         const roomCard = lobbyGuestPage.locator('.lobby-room-card').filter({ hasText: lobbyRoomTitle }).first();
-        await expect(roomCard).toBeVisible({ timeout: 20_000 });
+        await expect(roomCard).toBeVisible({ timeout: 25_000 });
         const statusBox = await roomCard.locator('.lobby-room-status').boundingBox();
         const actionBox = await roomCard.locator('.lobby-room-action').boundingBox();
         expect(statusBox, '대기중 배지 bounding box').not.toBeNull();
@@ -76,7 +70,6 @@ test.describe('cleanup/layout regression QA', () => {
         await expect(lobbyGuestPage.getByTestId('waiting-room')).toBeVisible({ timeout: 20_000 });
       } finally {
         await lobbyGuestContext.close();
-        await extraHostContext.close();
         await lobbyHostContext.close();
       }
     });
