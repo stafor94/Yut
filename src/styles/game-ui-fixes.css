@@ -1,0 +1,34 @@
+/* Final responsive corrections for the in-game header and stacked pieces. */
+.game-shell .piece-token {
+  --piece-stack-visibility-lift: 2px;
+}
+
+.game-shell .nickname-chip:disabled {
+  opacity: 1;
+  filter: none;
+  cursor: default;
+}
+
+@media (max-width: 430px) {
+  .game-shell .hero-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .game-shell .nickname-chip {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    min-width: 0;
+    padding-inline: 12px;
+  }
+
+  .game-shell .nickname-chip span:last-child {
+    max-width: 100%;
+  }
+
+  .game-shell .sound-controls,
+  .game-shell .status-card {
+    min-width: 0;
+    padding-inline: 10px;
+  }
+}
