@@ -151,6 +151,7 @@ test.describe('game flow QA', () => {
       const slotList = page.getByTestId('turn-order-slot-list');
       await expect(overlay).toBeVisible({ timeout: 10_000 });
       await expect(slotList).toBeVisible({ timeout: 10_000 });
+      await overlay.scrollIntoViewIfNeeded();
       await expect(page.getByTestId('turn-indicator')).toBeHidden();
 
       const layout = await overlay.evaluate((element) => {
