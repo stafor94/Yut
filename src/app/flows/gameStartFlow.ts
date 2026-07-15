@@ -34,9 +34,8 @@ export function getWaitingRoomStartHint({
   teamCounts,
   readyMissingCount,
 }: GetWaitingRoomStartHintInput) {
-  if (initialGameEntryPending) return '게임 상태를 준비하고 있습니다.';
+  if (initialGameEntryPending || startFlowBusy) return '';
   if (roomInGame) return '이미 게임이 진행 중입니다.';
-  if (startFlowBusy) return '게임 시작 요청을 처리하고 있습니다.';
   if (allReady) return '';
   if (playMode === 'team' && !teamBalanced) {
     return `청팀 ${Math.max(0, 2 - teamCounts.청팀)}명, 홍팀 ${Math.max(0, 2 - teamCounts.홍팀)}명이 더 필요해요.`;
