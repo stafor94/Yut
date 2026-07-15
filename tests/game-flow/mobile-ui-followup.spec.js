@@ -8,7 +8,7 @@ test('모바일 인게임 최종 레이아웃 규칙이 실제 요소에 적용�
 
   await page.evaluate(() => {
     document.body.innerHTML = `
-      <main class="game-shell">
+      <main class="shell game-shell">
         <section class="hero panel">
           <div class="hero-copy"></div>
           <div class="hero-actions game-actions">
@@ -22,11 +22,14 @@ test('모바일 인게임 최종 레이아웃 규칙이 실제 요소에 적용�
           <div class="game-player-list">
             <div class="player game-player-card"><span class="game-player-title"><b class="game-player-label">플레이어 1</b></span><em>AI</em></div>
             <div class="player game-player-card"><span class="game-player-title"><b class="game-player-label">플레이어 2</b></span><em>AI</em></div>
+            <div class="player game-player-card"><span class="game-player-title"><b class="game-player-label">플레이어 3</b></span><em>유저</em></div>
+            <div class="player game-player-card"><span class="game-player-title"><b class="game-player-label">플레이어 4</b></span><em>AI</em></div>
           </div>
         </aside>
         <section class="board-panel">
           <strong class="turn-current" style="--turn-current-color: rgb(58, 120, 194)"><span class="turn-current-badge">플레이어 2</span></strong>
           <span class="route-preview-marker finish">완주</span>
+          <span class="finish-complete-label">완주!</span>
         </section>
         <aside class="side"><div class="log-list"><p><span class="log-sequence">#001</span>두 줄로 표시되는 진행 기록입니다.<br>두 번째 줄입니다.</p></div></aside>
       </main>`;
@@ -51,17 +54,19 @@ test('모바일 인게임 최종 레이아웃 규칙이 실제 요소에 적용�
   expect(nicknameBox.x - (toggleBox.x + toggleBox.width)).toBeGreaterThanOrEqual(20);
 
   const playerCards = page.locator('.game-player-card');
-  const firstPlayerBox = await playerCards.nth(0).boundingBox();
-  const secondPlayerBox = await playerCards.nth(1).boundingBox();
-  expect(firstPlayerBox).not.toBeNull();
-  expect(secondPlayerBox).not.toBeNull();
-  expect(Math.abs(firstPlayerBox.y - secondPlayerBox.y)).toBeLessThanOrEqual(1);
-  expect(secondPlayerBox.x).toBeGreaterThan(firstPlayerBox.x);
+  const playerBoxes = await Promise.all([0, 1, 2, 3].map((index) => playerCards.nth(index).boundingBox()));
+  playerBoxes.forEach((box) => expect(box).not.toBeNull());
+  expect(Math.abs(playerBoxes[0].y - playerBoxes[1].y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(playerBoxes[2].y - playerBoxes[3].y)).toBeLessThanOrEqual(1);
+  expect(playerBoxes[1].x).toBeGreaterThan(playerBoxes[0].x);
+  expect(playerBoxes[3].x).toBeGreaterThan(playerBoxes[2].x);
+  expect(playerBoxes[2].y).toBeGreaterThan(playerBoxes[0].y);
 
   const turnBadge = page.locator('.turn-current-badge');
   await expect(turnBadge).toHaveCSS('background-color', 'rgb(58, 120, 194)');
   await expect(turnBadge).toHaveCSS('color', 'rgb(255, 255, 255)');
   await expect(page.locator('.route-preview-marker.finish')).toBeHidden();
+  await expect(page.locator('.finish-complete-label')).toBeHidden();
 
   const sequenceBox = await page.locator('.log-sequence').boundingBox();
   expect(sequenceBox).not.toBeNull();
