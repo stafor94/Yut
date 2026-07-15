@@ -107,10 +107,18 @@ export async function waitForBlockingOverlayToDisappear(page, { timeout = 20_000
   await expect(page.locator('.loading-modal-backdrop')).toBeHidden({ timeout });
 }
 
-export async function expectAppShell(page) {
+export async function expectAppShell(page, { timeout = 45_000 } = {}) {
   const targetUrl = String(process.env.PLAYWRIGHT_BASE_URL ?? '').trim() || '/';
-  await page.goto(targetUrl);
-  await expect(page.getByTestId('app-shell')).toBeVisible({ timeout: 15_000 });
+  const appShell = page.getByTestId('app-shell');
+
+  await expect(async () => {
+    const response = await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+    expect(response?.ok(), `배포된 앱 URL이 성공 응답을 반환해야 합니다: ${response?.status() ?? 'no response'}`).toBe(true);
+    await expect(appShell).toBeVisible({ timeout: 5_000 });
+  }).toPass({
+    timeout,
+    intervals: [500, 1_000, 2_000, 3_000, 5_000],
+  });
 }
 
 export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', playMode = 'individual', itemMode = 'false', pieceCount = '4' }) {
