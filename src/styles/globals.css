@@ -89,6 +89,8 @@
   }
 
   .game-shell .side .log-list.scrollable {
+    flex: 1 1 auto !important;
+    min-height: 0;
     overflow-y: auto;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
