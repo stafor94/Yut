@@ -73,6 +73,22 @@ test('an immediate remount preserves the presentation lock', async () => {
   assert.equal(resolved, true);
 });
 
+test('reset releases actions waiting on a discarded presentation', async () => {
+  const lock = createGamePresentationLock();
+  lock.acquire();
+  let resolved = false;
+  const waiting = waitForGamePresentationBeforeAction('move_piece', lock).then(() => {
+    resolved = true;
+  });
+
+  await flushMicrotasks();
+  assert.equal(resolved, false);
+  lock.reset();
+  await waiting;
+  assert.equal(resolved, true);
+  assert.equal(lock.isLocked(), false);
+});
+
 test('non-gameplay actions do not wait for a roll presentation', async () => {
   const lock = createGamePresentationLock();
   const release = lock.acquire();
