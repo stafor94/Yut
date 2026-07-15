@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ItemCard } from '../../features/items/components/ItemCard';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
@@ -33,6 +34,15 @@ type RemoteItemUseNotice = {
   color: string;
 };
 
+function OwnedItemsPanel({ items }: { items: ItemType[] }) {
+  return <div className="player-items game-log-owned-items">
+    <h2>보유 아이템</h2>
+    {items.length
+      ? <div className="item-grid">{items.map((type, index) => <div className="item-info" key={`${type}-${index}`}><ItemCard type={type} /></div>)}</div>
+      : <p className="empty-state">보유한 아이템이 없습니다.</p>}
+  </div>;
+}
+
 export function GamePlayersPanel({
   title,
   playMode,
@@ -55,6 +65,13 @@ export function GamePlayersPanel({
   const previousOwnedItemsRef = useRef<OwnedItemsSnapshot | null>(null);
   const remoteItemNoticeTimerRef = useRef<number | null>(null);
   const [remoteItemUseNotice, setRemoteItemUseNotice] = useState<RemoteItemUseNotice | null>(null);
+  const [roomInfoCollapsed, setRoomInfoCollapsed] = useState(false);
+  const [ownedItemsPortalTarget, setOwnedItemsPortalTarget] = useState<HTMLElement | null>(null);
+  const localOwnedItems = ownedItems[localSeatId] ?? [];
+
+  useEffect(() => {
+    setOwnedItemsPortalTarget(document.getElementById('game-log-owned-items-slot'));
+  }, []);
 
   useEffect(() => {
     const seatIds = seats.map((seat) => seat.id);
@@ -85,54 +102,70 @@ export function GamePlayersPanel({
     if (remoteItemNoticeTimerRef.current !== null) window.clearTimeout(remoteItemNoticeTimerRef.current);
   }, []);
 
-  return <PlayersPanel>
-    {remoteItemUseNotice && <div
-      key={remoteItemUseNotice.id}
-      role="status"
-      aria-live="assertive"
-      style={{
-        position: 'fixed',
-        top: '18%',
-        left: '50%',
-        zIndex: 120,
-        width: 'min(88vw, 360px)',
-        transform: 'translateX(-50%)',
-        border: `2px solid ${remoteItemUseNotice.color}`,
-        borderRadius: 18,
-        background: 'rgba(17, 24, 39, 0.96)',
-        boxShadow: '0 14px 38px rgba(0, 0, 0, 0.38)',
-        color: '#fff',
-        padding: '14px 18px',
-        textAlign: 'center',
-        pointerEvents: 'none',
-      }}
-    >
-      <strong style={{ display: 'block', color: remoteItemUseNotice.color, fontSize: '1rem', marginBottom: 5 }}>{remoteItemUseNotice.playerName}</strong>
-      <span style={{ display: 'block', fontSize: '1.08rem', fontWeight: 800 }}>
-        {ITEM_DEFINITIONS[remoteItemUseNotice.itemType].icon} {ITEM_DEFINITIONS[remoteItemUseNotice.itemType].name} 사용
-      </span>
-    </div>}
-    <h2>{title}</h2>
-    <p className="game-end-guide room-rule-badges game-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</p>
-    {seats.map((seat) => {
-      const rankIndex = rankingSeatIds.indexOf(seat.id);
-      const finishText = rankIndex >= 0 ? `${rankIndex + 1}위 완주` : completedSeatIds.includes(seat.id) ? '완주' : '';
-      const statusText = finishText || (seat.isSubstitutedByAI ? '나감' : seat.isAI ? 'AI' : '유저');
-      const displayName = getPlayerCardName(seat);
-      return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeatId === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
-        <span className="game-player-title">
-          <b className="game-player-label" style={{ color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }}>{displayName}</b>
+  return <>
+    <PlayersPanel>
+      {remoteItemUseNotice && <div
+        key={remoteItemUseNotice.id}
+        role="status"
+        aria-live="assertive"
+        style={{
+          position: 'fixed',
+          top: '18%',
+          left: '50%',
+          zIndex: 120,
+          width: 'min(88vw, 360px)',
+          transform: 'translateX(-50%)',
+          border: `2px solid ${remoteItemUseNotice.color}`,
+          borderRadius: 18,
+          background: 'rgba(17, 24, 39, 0.96)',
+          boxShadow: '0 14px 38px rgba(0, 0, 0, 0.38)',
+          color: '#fff',
+          padding: '14px 18px',
+          textAlign: 'center',
+          pointerEvents: 'none',
+        }}
+      >
+        <strong style={{ display: 'block', color: remoteItemUseNotice.color, fontSize: '1rem', marginBottom: 5 }}>{remoteItemUseNotice.playerName}</strong>
+        <span style={{ display: 'block', fontSize: '1.08rem', fontWeight: 800 }}>
+          {ITEM_DEFINITIONS[remoteItemUseNotice.itemType].icon} {ITEM_DEFINITIONS[remoteItemUseNotice.itemType].name} 사용
         </span>
-        <span className="player-badges game-player-meta">
-          {playMode === 'team' && <small>{seat.team}</small>}
-        </span>
-        <em className="game-player-status">{statusText}</em>
-      </div>;
-    })}
-    {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
-    <div className="player-items"><h2>보유 아이템</h2>{(ownedItems[localSeatId] ?? []).length ? <div className="item-grid">{(ownedItems[localSeatId] ?? []).map((type, index) => <div className="item-info" key={`${type}-${index}`}><ItemCard type={type} /></div>)}</div> : <p className="empty-state">보유한 아이템이 없습니다.</p>}</div>
-    <button className="secondary end-game" onClick={onOpenEndGameDialog}>게임 종료</button>
-  </PlayersPanel>;
+      </div>}
+      <div className="game-room-summary-heading">
+        <h2>{title}</h2>
+        <button
+          type="button"
+          className="game-room-collapse-button"
+          aria-expanded={!roomInfoCollapsed}
+          aria-controls="game-room-summary-content"
+          onClick={() => setRoomInfoCollapsed((current) => !current)}
+        >
+          <span>{roomInfoCollapsed ? '펼치기' : '접기'}</span>
+          <span aria-hidden="true">{roomInfoCollapsed ? '▾' : '▴'}</span>
+        </button>
+      </div>
+      <div id="game-room-summary-content" className="game-room-summary-content" hidden={roomInfoCollapsed}>
+        <p className="game-end-guide room-rule-badges game-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</p>
+        {seats.map((seat) => {
+          const rankIndex = rankingSeatIds.indexOf(seat.id);
+          const finishText = rankIndex >= 0 ? `${rankIndex + 1}위 완주` : completedSeatIds.includes(seat.id) ? '완주' : '';
+          const statusText = finishText || (seat.isSubstitutedByAI ? '나감' : seat.isAI ? 'AI' : '유저');
+          const displayName = getPlayerCardName(seat);
+          return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeatId === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
+            <span className="game-player-title">
+              <b className="game-player-label" style={{ color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }}>{displayName}</b>
+            </span>
+            <span className="player-badges game-player-meta">
+              {playMode === 'team' && <small>{seat.team}</small>}
+            </span>
+            <em className="game-player-status">{statusText}</em>
+          </div>;
+        })}
+        {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
+        <button className="secondary end-game" onClick={onOpenEndGameDialog}>게임 종료</button>
+      </div>
+    </PlayersPanel>
+    {ownedItemsPortalTarget && createPortal(<OwnedItemsPanel items={localOwnedItems} />, ownedItemsPortalTarget)}
+  </>;
 }
 
 type GameLogPanelViewProps = {
@@ -151,7 +184,14 @@ export function GameLogPanelView({
   onOpenSequenceExportDialog,
 }: GameLogPanelViewProps) {
   return <GameLogPanel>
-    <div className="log-header"><h2>진행 기록</h2><button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button></div>
+    <div id="game-log-owned-items-slot" className="game-log-owned-items-slot"></div>
+    <div className="log-header">
+      <h2>진행 기록</h2>
+      <div className="log-header-actions">
+        <div id="game-log-play-time-slot" className="game-log-play-time-slot"></div>
+        <button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button>
+      </div>
+    </div>
     <div className="log-list">{logs.map((log, index) => <p key={log.id} style={getLogCardStyle(log.text, logs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log)}</span>{renderLogText(log.text)}</p>)}</div>
   </GameLogPanel>;
 }
