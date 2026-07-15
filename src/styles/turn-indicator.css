@@ -20,6 +20,12 @@
   inset-block-start: calc(100% - 2px);
 }
 
+/* 낙 연출 중 이웃 턴을 숨겨도 현재 턴 배지는 전체 표시 영역 중앙을 유지한다. */
+.game-shell .turn-indicator > .turn-current:only-child {
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
 /* 앞선 윷·말 이동 연출이 끝나기 전 다음 액션이 먼저 제출되지 않도록 잠근다. */
 .game-shell .roll-stage ~ .play-controls {
   pointer-events: none;
