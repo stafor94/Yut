@@ -1,0 +1,12 @@
+/* Keep the item-mode history panel tall enough to contain the owned items and four-log viewport. */
+@media (max-width: 767px) {
+  .game-shell .side:has(.game-log-owned-items) {
+    align-self: start;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  .game-shell .side:has(.game-log-owned-items) .log-list.scrollable {
+    flex: 0 0 auto !important;
+  }
+}
