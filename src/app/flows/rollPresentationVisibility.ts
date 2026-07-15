@@ -1,11 +1,15 @@
-import type { RollAnimation } from '../appState';
-
 export type RollPresentationState = {
   active: boolean;
   actorId: string;
   fallCount: number;
   sourceAnimationId: number | null;
   resultVisible: boolean;
+};
+
+type RollPresentationAnimation = {
+  id: number;
+  phase: string;
+  result?: unknown;
 };
 
 export const EMPTY_ROLL_PRESENTATION_STATE: RollPresentationState = {
@@ -17,7 +21,7 @@ export const EMPTY_ROLL_PRESENTATION_STATE: RollPresentationState = {
 };
 
 export function isRollPresentationResultVisible(
-  animation: RollAnimation | null,
+  animation: RollPresentationAnimation | null,
   settledAnimationId: number | null,
 ) {
   if (!animation || !('result' in animation)) return false;
