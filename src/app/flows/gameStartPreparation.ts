@@ -194,6 +194,7 @@ export function buildPreparedRoomGameState(params: {
     turnDeadlineKind: 'roll' as const,
     startRequestVersion,
     startRequestId,
+    startCountdownEndsAt: countdownEndsAt,
     gameSeats,
   };
 }

@@ -4,6 +4,8 @@ import { getClientMutationDocRef, makeSequenceDocId, sanitizeForFirestore } from
 import {
   isRoomGameActivationWindowOpen,
   isRoomGamePreparationWindowOpen,
+  ROOM_START_ACTIVATION_GRACE_MS,
+  ROOM_START_ACTIVATION_LEAD_MS,
 } from './roomGamePreparationPolicy';
 import {
   makeSequenceEventFields,
@@ -23,6 +25,9 @@ type GameStartRequestMeta = GameStartRequestIdentity & {
   clientMutationId: string;
 };
 
+const PREPARED_GAME_ACTIVATION_RETRY_MS = 200;
+const preparedGameActivationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 const isCurrentStartRequest = (room: Omit<RoomSummary, 'id'>, identity: GameStartRequestIdentity) => (
   Number(room.startRequestVersion ?? 0) === identity.startRequestVersion
   && String(room.startRequestId ?? '') === identity.startRequestId
@@ -40,6 +45,32 @@ const isPreparedForRequest = (state: SyncedGameState | null, identity: GameStart
   && state.pieces.length > 0
 );
 
+function schedulePreparedRoomActivation(
+  roomId: string,
+  state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>,
+  identity: GameStartRequestIdentity,
+) {
+  const countdownEndsAt = Number((state as { startCountdownEndsAt?: unknown }).startCountdownEndsAt ?? 0);
+  if (!roomId || !countdownEndsAt) return;
+  const activationKey = `${roomId}:${identity.startRequestVersion}:${identity.startRequestId}`;
+  if (preparedGameActivationTimers.has(activationKey)) return;
+
+  const scheduleAttempt = (delayMs: number) => {
+    const timer = setTimeout(() => {
+      preparedGameActivationTimers.delete(activationKey);
+      void activatePreparedRoomGame(roomId, identity).then((activated) => {
+        if (activated || Date.now() > countdownEndsAt + ROOM_START_ACTIVATION_GRACE_MS) return;
+        scheduleAttempt(PREPARED_GAME_ACTIVATION_RETRY_MS);
+      }).catch(() => {
+        if (Date.now() <= countdownEndsAt + ROOM_START_ACTIVATION_GRACE_MS) scheduleAttempt(PREPARED_GAME_ACTIVATION_RETRY_MS);
+      });
+    }, Math.max(0, delayMs));
+    preparedGameActivationTimers.set(activationKey, timer);
+  };
+
+  scheduleAttempt(countdownEndsAt - ROOM_START_ACTIVATION_LEAD_MS - Date.now());
+}
+
 export async function prepareRoomGameState(
   roomId: string,
   state: Omit<SyncedGameState, 'updatedAt' | 'turnVersion'>,
@@ -50,7 +81,7 @@ export async function prepareRoomGameState(
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
   const processedActionRef = getClientMutationDocRef(roomId, meta.clientMutationId);
 
-  return runTransaction(db, async (transaction) => {
+  const result = await runTransaction(db, async (transaction) => {
     const processedActionSnapshot = await transaction.get(processedActionRef);
     const currentStateSnapshot = await transaction.get(gameStateRef);
     const roomSnapshot = await transaction.get(roomRef);
@@ -138,6 +169,11 @@ export async function prepareRoomGameState(
     });
     return { status: 'committed' as const, turnVersion: nextVersion, lastSequence: nextSequence };
   });
+
+  if (result.status === 'committed' || result.status === 'duplicate') {
+    schedulePreparedRoomActivation(roomId, state, meta);
+  }
+  return result;
 }
 
 export async function activatePreparedRoomGame(roomId: string, identity: GameStartRequestIdentity): Promise<boolean> {
