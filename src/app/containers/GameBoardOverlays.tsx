@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { YutResult } from '../../game-core/roll';
+import { gamePresentationLock } from '../../shared/gamePresentationLock';
 import { YutRollScenePhysics } from '../components/YutRollScenePhysics';
 import {
   REMOTE_ROLL_PRESENTATION_MS,
@@ -102,6 +103,7 @@ export function RollStage({ rollAnimation }: RollStageProps) {
   const presentedAnimationRef = useRef<RollAnimation | null>(rollAnimation);
   const deferredLiveAnimationRef = useRef<RollAnimation | null>(null);
   const seenResolvedAnimationIdsRef = useRef<Set<number>>(new Set());
+  const presentationReleaseRef = useRef<(() => void) | null>(null);
   const [presentedAnimation, setPresentedAnimation] = useState<RollAnimation | null>(rollAnimation);
   const [settledAnimationId, setSettledAnimationId] = useState<number | null>(null);
 
@@ -115,9 +117,20 @@ export function RollStage({ rollAnimation }: RollStageProps) {
     const releaseQueue = gameAnimationQueue.acquire();
     return () => {
       mountedRef.current = false;
+      presentationReleaseRef.current?.();
+      presentationReleaseRef.current = null;
       releaseQueue();
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (presentedAnimation) {
+      if (!presentationReleaseRef.current) presentationReleaseRef.current = gamePresentationLock.acquire();
+      return;
+    }
+    presentationReleaseRef.current?.();
+    presentationReleaseRef.current = null;
+  }, [Boolean(presentedAnimation)]);
 
   useLayoutEffect(() => {
     if (!rollAnimation) {
