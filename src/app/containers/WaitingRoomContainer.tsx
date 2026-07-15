@@ -4,9 +4,8 @@ import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
 import { getWaitingRoomStartHint } from '../flows/gameStartFlow';
 import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
-import { ROOM_START_ACTIVATION_GRACE_MS } from '../../features/room/services/roomGamePreparationPolicy';
 
-const COUNTDOWN_FINAL_TICK_BRIDGE_MS = 1_500;
+const COUNTDOWN_TRANSITION_SAFETY_MS = 15_000;
 
 type WaitingRoomContainerProps = {
   canManageRoom: boolean;
@@ -105,18 +104,18 @@ export function WaitingRoomContainer({
       }
       setTransitionOverlayVisible(false);
     };
-    const holdCompletedCountdown = (durationMs: number) => {
-      clearTransitionTimer();
+    const armCompletedCountdown = () => {
       if (!transitionPendingRef.current) {
         transitionPendingRef.current = true;
         setCountdownTransitionPending(true);
       }
+      if (transitionTimerRef.current !== null) return;
       transitionTimerRef.current = window.setTimeout(() => {
         transitionTimerRef.current = null;
         transitionPendingRef.current = false;
         setCountdownTransitionPending(false);
         setTransitionOverlayVisible(false);
-      }, durationMs);
+      }, COUNTDOWN_TRANSITION_SAFETY_MS);
     };
     const inspectCountdown = () => {
       const countdownElement = document.querySelector<HTMLElement>('[data-testid="start-countdown-overlay"] strong');
@@ -133,12 +132,12 @@ export function WaitingRoomContainer({
       lastCountdownValueRef.current = value;
       if (value === 0) {
         playStoredSoundEffect('countdownStart');
-        holdCompletedCountdown(ROOM_START_ACTIVATION_GRACE_MS);
+        armCompletedCountdown();
         return;
       }
       playStoredSoundEffect('countdown');
       if (value === 1) {
-        holdCompletedCountdown(ROOM_START_ACTIVATION_GRACE_MS + COUNTDOWN_FINAL_TICK_BRIDGE_MS);
+        armCompletedCountdown();
         return;
       }
       clearCompletedCountdown();
@@ -200,6 +199,6 @@ export function WaitingRoomContainer({
       </div>
     </footer>
 
-    {countdownTransitionPending && <div ref={transitionOverlayRef} hidden={!countdownTransitionOverlayVisible} className="countdown-scrim" role="presentation"><div data-testid="start-transition-overlay" className="countdown-overlay" role="status"><span>게임 시작</span><strong>0</strong></div></div>}
+    {countdownTransitionPending && <div ref={transitionOverlayRef} hidden={!countdownTransitionOverlayVisible} className="countdown-scrim start-transition-scrim" role="presentation"><div data-testid="start-transition-overlay" className="countdown-overlay" role="status"><span>게임 시작</span><strong>0</strong></div></div>}
   </WaitingRoomScreen>;
 }

@@ -24,11 +24,9 @@ test('준비하지 않은 좌석이 있을 때만 남은 인원 수를 표시한
   );
 });
 
-test('게임 시작 처리 상태 안내는 준비 인원 안내보다 우선한다', () => {
-  assert.equal(
-    getWaitingRoomStartHint({ ...baseInput, startFlowBusy: true }),
-    '게임 시작 요청을 처리하고 있습니다.',
-  );
+test('게임 시작 처리 중에는 팝업 외의 별도 안내 문구를 표시하지 않는다', () => {
+  assert.equal(getWaitingRoomStartHint({ ...baseInput, startFlowBusy: true }), '');
+  assert.equal(getWaitingRoomStartHint({ ...baseInput, initialGameEntryPending: true }), '');
 });
 
 test('팀 균형이 맞지 않으면 팀별 부족 인원을 표시한다', () => {
