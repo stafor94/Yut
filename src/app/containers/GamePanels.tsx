@@ -165,49 +165,6 @@ export function GameLogPanelView({
 }: GameLogPanelViewProps) {
   const playTimePresentation = useSyncExternalStore(subscribePlayTimePresentation, getPlayTimePresentation, getPlayTimePresentation);
   const ownedItemsPresentation = useSyncExternalStore(subscribeOwnedItemsPresentation, getOwnedItemsPresentation, getOwnedItemsPresentation);
-  const logListRef = useRef<HTMLDivElement | null>(null);
-  const [mobileLogViewportHeight, setMobileLogViewportHeight] = useState<number | null>(null);
-
-  useLayoutEffect(() => {
-    const list = logListRef.current;
-    if (!list || typeof window === 'undefined') return;
-    const mobileQuery = window.matchMedia('(max-width: 767px)');
-
-    const measureVisibleLogs = () => {
-      if (!mobileQuery.matches) {
-        setMobileLogViewportHeight(null);
-        return;
-      }
-
-      const cards = Array.from(list.children)
-        .filter((child): child is HTMLElement => child instanceof HTMLElement)
-        .slice(0, 4);
-      if (cards.length < 4) {
-        setMobileLogViewportHeight(null);
-        return;
-      }
-
-      const style = window.getComputedStyle(list);
-      const gap = Number.parseFloat(style.rowGap || style.gap) || 0;
-      const padding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
-      const cardsHeight = cards.reduce((total, card) => total + card.getBoundingClientRect().height, 0);
-      const nextHeight = Math.ceil(cardsHeight + gap * (cards.length - 1) + padding + 12);
-      setMobileLogViewportHeight((current) => current === nextHeight ? current : nextHeight);
-    };
-
-    measureVisibleLogs();
-    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureVisibleLogs);
-    resizeObserver?.observe(list);
-    Array.from(list.children).slice(0, 4).forEach((child) => resizeObserver?.observe(child));
-    mobileQuery.addEventListener('change', measureVisibleLogs);
-    window.addEventListener('resize', measureVisibleLogs);
-
-    return () => {
-      resizeObserver?.disconnect();
-      mobileQuery.removeEventListener('change', measureVisibleLogs);
-      window.removeEventListener('resize', measureVisibleLogs);
-    };
-  }, [logs]);
 
   return <GameLogPanel>
     {ownedItemsPresentation.itemMode && <div data-testid="owned-items-panel" className="player-items game-log-owned-items">
@@ -224,10 +181,8 @@ export function GameLogPanelView({
       </div>
     </div>
     <div
-      ref={logListRef}
       data-testid="game-log-list"
       className="log-list"
-      style={mobileLogViewportHeight === null ? undefined : { height: mobileLogViewportHeight, flex: '0 0 auto' }}
     >{logs.map((log, index) => <p data-testid="game-log-entry" key={log.id} style={getLogCardStyle(log.text, logs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log)}</span>{renderLogText(log.text)}</p>)}</div>
   </GameLogPanel>;
 }
