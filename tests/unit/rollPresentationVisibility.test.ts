@@ -12,10 +12,12 @@ const sticks = [] as const;
 test('roll-derived UI remains hidden until the presented result has settled', () => {
   const landing = { id: 10, phase: 'landing', result, sticks } as const;
   const resultHold = { id: 10, phase: 'result-hold', result, sticks } as const;
+  const resolvedWithoutPhase = { id: 10, result, sticks } as const;
 
   assert.equal(isRollPresentationResultVisible(landing, 10), false);
   assert.equal(isRollPresentationResultVisible(resultHold, null), false);
   assert.equal(isRollPresentationResultVisible(resultHold, 10), true);
+  assert.equal(isRollPresentationResultVisible(resolvedWithoutPhase, 10), true);
 });
 
 test('authoritative stack and logs are deferred for a new or queued presentation', () => {
