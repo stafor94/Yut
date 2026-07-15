@@ -84,12 +84,19 @@
     width: 64px;
   }
 
+  .game-shell .side .log-list.page-scroll {
+    overflow-y: visible;
+  }
+
+  .game-shell .side .log-list.scrollable {
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .game-shell .side .log-list {
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible;
-    padding-bottom: 10px !important;
-    scroll-padding-block-end: 0;
+    padding-bottom: 26px !important;
+    scroll-padding-block-end: 18px;
   }
 }
 
