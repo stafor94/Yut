@@ -1,0 +1,84 @@
+/* Final in-game alignment overrides for the header, room summary, and history cards. */
+.game-shell .side .log-list p {
+  padding-left: 55px;
+}
+
+.game-shell .side .log-sequence {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  margin: 0;
+}
+
+.game-shell .game-room-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 12px;
+  row-gap: 12px;
+}
+
+.game-shell .game-room-details > .game-room-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-shell .game-room-details > .game-room-rule-badges {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: min(58vw, 560px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.game-shell .game-room-details > .game-player-list,
+.game-shell .game-room-details > .spectator-list {
+  grid-column: 1 / -1;
+}
+
+.game-shell .hero.game-header-with-end {
+  --game-header-control-height: 54px;
+}
+
+.game-shell .hero-actions.game-actions > button,
+.game-shell .hero.game-header-with-end > .game-end-button {
+  box-sizing: border-box;
+  height: var(--game-header-control-height);
+  min-height: var(--game-header-control-height);
+  max-height: var(--game-header-control-height);
+}
+
+@media (max-width: 767px) {
+  .game-shell .hero.game-header-with-end {
+    --game-header-control-height: 50px;
+  }
+
+  .game-shell .game-room-details {
+    column-gap: 8px;
+    row-gap: 10px;
+  }
+
+  .game-shell .game-room-details > .game-room-rule-badges {
+    gap: 4px;
+    max-width: 62vw;
+  }
+}
+
+@media (max-width: 430px) {
+  .game-shell .hero.game-header-with-end {
+    --game-header-control-height: 46px;
+  }
+
+  .game-shell .game-room-details > .game-room-rule-badges {
+    max-width: 64vw;
+  }
+}
