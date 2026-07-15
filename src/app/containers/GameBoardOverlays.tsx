@@ -3,19 +3,42 @@ import type { YutResult } from '../../game-core/roll';
 import { gamePresentationLock } from '../../shared/gamePresentationLock';
 import { YutRollScenePhysics } from '../components/YutRollScenePhysics';
 import {
-  REMOTE_ROLL_PRESENTATION_MS,
   enqueueRollPresentation,
   gameAnimationQueue,
-  waitForGameAnimation,
 } from '../flows/gameAnimationQueue';
+import {
+  dismissGoldenYutPicker,
+  EMPTY_GOLDEN_YUT_PICKER_PRESENTATION_STATE,
+  markGoldenYutRollPresentationCompleted,
+  shouldShowGoldenYutPicker,
+  syncGoldenYutPickerOpenState,
+} from '../flows/goldenYutPickerPresentation';
 import {
   EMPTY_ROLL_PRESENTATION_STATE,
   isRollPresentationResultVisible,
   type RollPresentationState,
 } from '../flows/rollPresentationVisibility';
+import {
+  createRollPresentationCompletion,
+  type RollPresentationCompletion,
+} from '../flows/rollPresentationCompletion';
 import type { RollAnimation, ToastMessage } from '../appState';
 
 export type { RollPresentationState } from '../flows/rollPresentationVisibility';
+
+type RollPresentationCompletedListener = () => void;
+const rollPresentationCompletedListeners = new Set<RollPresentationCompletedListener>();
+
+const subscribeRollPresentationCompleted = (listener: RollPresentationCompletedListener) => {
+  rollPresentationCompletedListeners.add(listener);
+  return () => {
+    rollPresentationCompletedListeners.delete(listener);
+  };
+};
+
+const notifyRollPresentationCompleted = () => {
+  rollPresentationCompletedListeners.forEach((listener) => listener());
+};
 
 type WinnerOverlayProps = {
   winner: string;
@@ -55,11 +78,29 @@ type GoldenYutPickerProps = {
 };
 
 export function GoldenYutPicker({ isOpen, choices, onSelect }: GoldenYutPickerProps) {
-  if (!isOpen) return null;
-  return <div className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택">
+  const isOpenRef = useRef(isOpen);
+  const [presentationState, setPresentationState] = useState(EMPTY_GOLDEN_YUT_PICKER_PRESENTATION_STATE);
+  isOpenRef.current = isOpen;
+
+  useEffect(() => subscribeRollPresentationCompleted(() => {
+    setPresentationState((current) => syncGoldenYutPickerOpenState(
+      markGoldenYutRollPresentationCompleted(current),
+      isOpenRef.current,
+    ));
+  }), []);
+
+  useEffect(() => {
+    setPresentationState((current) => syncGoldenYutPickerOpenState(current, isOpen));
+  }, [isOpen]);
+
+  if (!shouldShowGoldenYutPicker(presentationState, isOpen)) return null;
+  return <div data-testid="golden-yut-picker" className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택">
     <h2>황금 윷 결과 선택</h2>
     <p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p>
-    <div>{choices.map((choice) => <button key={choice.name} onClick={() => onSelect(choice)}>{choice.name}</button>)}</div>
+    <div>{choices.map((choice) => <button key={choice.name} onClick={() => {
+      setPresentationState(dismissGoldenYutPicker());
+      onSelect(choice);
+    }}>{choice.name}</button>)}</div>
   </div>;
 }
 
@@ -115,8 +156,10 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const deferredLiveAnimationRef = useRef<RollAnimation | null>(null);
   const seenResolvedAnimationIdsRef = useRef<Set<number>>(new Set());
   const queuedPresentationMetaRef = useRef<Map<number, { actorId: string; fallCount: number }>>(new Map());
+  const presentationCompletionByIdRef = useRef<Map<number, RollPresentationCompletion>>(new Map());
   const onPresentationChangeRef = useRef(onPresentationChange);
   const presentationReleaseRef = useRef<(() => void) | null>(null);
+  const hadPresentedAnimationRef = useRef(Boolean(rollAnimation));
   const [presentedAnimation, setPresentedAnimation] = useState<RollAnimation | null>(rollAnimation);
   const [settledAnimationId, setSettledAnimationId] = useState<number | null>(null);
 
@@ -150,6 +193,8 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     return () => {
       mountedRef.current = false;
       queuedPresentationMetaRef.current.clear();
+      presentationCompletionByIdRef.current.forEach((completion) => completion.cancel());
+      presentationCompletionByIdRef.current.clear();
       onPresentationChangeRef.current?.(EMPTY_ROLL_PRESENTATION_STATE);
       presentationReleaseRef.current?.();
       presentationReleaseRef.current = null;
@@ -165,6 +210,12 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     presentationReleaseRef.current?.();
     presentationReleaseRef.current = null;
   }, [Boolean(presentedAnimation)]);
+
+  useLayoutEffect(() => {
+    const hasPresentedAnimation = Boolean(presentedAnimation);
+    if (hadPresentedAnimationRef.current && !hasPresentedAnimation) notifyRollPresentationCompleted();
+    hadPresentedAnimationRef.current = hasPresentedAnimation;
+  }, [presentedAnimation]);
 
   useLayoutEffect(() => {
     if (!rollAnimation) {
@@ -219,9 +270,15 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       animation: sourceAnimation,
       task: async (queuedAnimation) => {
         if (!mountedRef.current) return;
+        const completion = createRollPresentationCompletion();
+        presentationCompletionByIdRef.current.set(queuedAnimation.id, completion);
         setSettledAnimationId(null);
         presentAnimation(queuedAnimation, sourceAnimationId);
-        await waitForGameAnimation(REMOTE_ROLL_PRESENTATION_MS);
+        try {
+          await completion.waitForCompletion();
+        } finally {
+          presentationCompletionByIdRef.current.delete(queuedAnimation.id);
+        }
         if (mountedRef.current && presentedAnimationRef.current?.id === queuedAnimation.id) presentAnimation(null);
       },
     }).finally(() => {
@@ -277,7 +334,10 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       </span>
       {presentedAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${presentedAnimation.timingZone}`}>{presentedAnimation.timingZone === 'perfect' ? 'Perfect!' : presentedAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{fallCount ? '낙!' : result.name}</span>}
-      <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={() => setSettledAnimationId(presentedAnimation.id)} />
+      <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={() => {
+        setSettledAnimationId(presentedAnimation.id);
+        presentationCompletionByIdRef.current.get(presentedAnimation.id)?.markSettled();
+      }} />
     </div>
   </div>;
 }
