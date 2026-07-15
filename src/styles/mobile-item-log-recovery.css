@@ -82,7 +82,7 @@
     inset 0 1px 0 rgba(255, 236, 200, .2);
 }
 
-@media (max-width: 1199px) {
+@media (max-width: 767px) {
   .game-shell .game-layout {
     grid-template-columns: minmax(0, 1fr) !important;
   }
@@ -95,9 +95,7 @@
     width: 100%;
     max-width: none;
   }
-}
 
-@media (max-width: 767px) {
   .game-shell .game-side-column {
     gap: 12px;
   }
