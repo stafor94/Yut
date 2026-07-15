@@ -8,7 +8,7 @@ export type RollPresentationState = {
 
 type RollPresentationAnimation = {
   id: number;
-  phase: string;
+  phase?: string;
   result?: unknown;
 };
 
