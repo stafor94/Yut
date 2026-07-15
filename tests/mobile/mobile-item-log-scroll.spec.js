@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('아이템전 모바일 진행 기록', () => {
-  test('보유 아이템 아래에서도 네 개 높이를 유지하고 가장 오래된 기록까지 스크롤한다', async ({ page }) => {
+test.describe('아이템전 모바일 사이드 패널', () => {
+  test('보유 아이템과 진행 기록을 별도 패널로 배치하고 가장 오래된 기록까지 스크롤한다', async ({ page }) => {
     await page.goto('/');
     await page.setViewportSize({ width: 390, height: 844 });
 
@@ -14,16 +14,22 @@ test.describe('아이템전 모바일 진행 기록', () => {
         padding: '12px', background: '#f8f1e4', overflow: 'auto',
       });
 
-      const panel = document.createElement('aside');
-      panel.className = 'panel side';
-      panel.style.width = '100%';
-      panel.style.height = '360px';
+      const column = document.createElement('div');
+      column.dataset.testid = 'game-side-column';
+      column.className = 'game-side-column';
 
-      const items = document.createElement('div');
-      items.className = 'player-items game-log-owned-items';
-      items.style.minHeight = '120px';
-      items.textContent = '보유 아이템';
+      const itemsPanel = document.createElement('aside');
+      itemsPanel.dataset.testid = 'owned-items-panel';
+      itemsPanel.className = 'panel side game-log-owned-items game-owned-items-panel';
+      const itemsHeading = document.createElement('h2');
+      itemsHeading.textContent = '보유 아이템';
+      const itemGrid = document.createElement('div');
+      itemGrid.className = 'item-grid';
+      itemGrid.textContent = '아이템 1 · 아이템 2 · 아이템 3';
+      itemsPanel.append(itemsHeading, itemGrid);
 
+      const logPanel = document.createElement('aside');
+      logPanel.className = 'panel side';
       const header = document.createElement('div');
       header.className = 'log-header';
       const heading = document.createElement('h2');
@@ -45,45 +51,61 @@ test.describe('아이템전 모바일 진행 기록', () => {
         list.append(entry);
       });
 
-      panel.append(items, header, list);
-      fixture.append(panel);
+      logPanel.append(header, list);
+      column.append(itemsPanel, logPanel);
+      fixture.append(column);
       document.body.append(fixture);
     });
 
     const fixture = page.locator('#qa-mobile-item-log-fixture');
-    const panel = fixture.locator('.side');
+    const column = fixture.getByTestId('game-side-column');
+    const itemsPanel = fixture.getByTestId('owned-items-panel');
     const logList = fixture.getByTestId('game-log-list');
-    await expect(logList).toBeVisible();
+    const logPanel = logList.locator('xpath=ancestor::aside[1]');
+
+    await expect(itemsPanel).toBeVisible();
+    await expect(logPanel).toBeVisible();
+    await expect(itemsPanel.getByTestId('game-log-list')).toHaveCount(0);
+    await expect(logPanel.getByTestId('owned-items-panel')).toHaveCount(0);
+
+    const panelLayout = await column.evaluate((element) => {
+      const items = element.querySelector('[data-testid="owned-items-panel"]');
+      const list = element.querySelector('[data-testid="game-log-list"]');
+      const log = list?.closest('aside');
+      if (!(items instanceof HTMLElement) || !(log instanceof HTMLElement)) throw new Error('독립 패널 fixture가 올바르지 않습니다.');
+      const itemsBox = items.getBoundingClientRect();
+      const logBox = log.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        display: style.display,
+        flexDirection: style.flexDirection,
+        sameParent: items.parentElement === log.parentElement,
+        itemsBeforeLog: items.nextElementSibling === log,
+        itemsBottom: itemsBox.bottom,
+        logTop: logBox.top,
+      };
+    });
+
+    expect(panelLayout.display).toBe('flex');
+    expect(panelLayout.flexDirection).toBe('column');
+    expect(panelLayout.sameParent, '보유 아이템과 진행 기록은 같은 사이드 열의 별도 패널이어야 합니다.').toBe(true);
+    expect(panelLayout.itemsBeforeLog, '보유 아이템 패널은 진행 기록 패널 바로 위에 있어야 합니다.').toBe(true);
+    expect(panelLayout.itemsBottom, '두 패널이 겹치면 안 됩니다.').toBeLessThanOrEqual(panelLayout.logTop);
 
     const initialLayout = await logList.evaluate((element) => {
-      const panel = element.closest('.side');
       const entries = Array.from(element.querySelectorAll('[data-testid="game-log-entry"]'));
-      if (!(panel instanceof HTMLElement) || entries.length < 4) throw new Error('아이템전 진행 기록 fixture가 올바르지 않습니다.');
+      if (entries.length < 4) throw new Error('진행 기록 fixture가 올바르지 않습니다.');
       const listBox = element.getBoundingClientRect();
-      const panelBox = panel.getBoundingClientRect();
       const fourthBox = entries[3].getBoundingClientRect();
-      const listStyle = getComputedStyle(element);
       return {
-        panelHeight: panelBox.height,
-        requestedPanelHeight: Number.parseFloat(panel.style.height),
-        listHeight: listBox.height,
-        requestedListHeight: Number.parseFloat(element.style.height),
-        flexGrow: listStyle.flexGrow,
-        flexShrink: listStyle.flexShrink,
         fourthBottom: fourthBox.bottom,
         listBottom: listBox.bottom,
-        panelBottom: panelBox.bottom,
         scrollHeight: element.scrollHeight,
         clientHeight: element.clientHeight,
       };
     });
 
-    expect(initialLayout.panelHeight, '아이템 영역 때문에 진행 기록 패널이 고정 높이에 갇히면 안 됩니다.').toBeGreaterThan(initialLayout.requestedPanelHeight);
-    expect(initialLayout.listHeight, '진행 기록은 네 개 카드 기준 높이를 유지해야 합니다.').toBeGreaterThanOrEqual(initialLayout.requestedListHeight);
-    expect(initialLayout.flexGrow, '아이템전 진행 기록 목록은 남은 높이에 맞춰 강제로 늘어나면 안 됩니다.').toBe('0');
-    expect(initialLayout.flexShrink, '아이템전 진행 기록 목록은 한 개 높이로 줄어들면 안 됩니다.').toBe('0');
     expect(initialLayout.fourthBottom, '네 번째 진행 기록이 목록 아래에서 잘리면 안 됩니다.').toBeLessThanOrEqual(initialLayout.listBottom + 1);
-    expect(initialLayout.listBottom, '진행 기록 목록 전체가 목재 패널 안에 있어야 합니다.').toBeLessThanOrEqual(initialLayout.panelBottom + 1);
     expect(initialLayout.scrollHeight, '다섯 번째 기록부터 내부 스크롤이 생겨야 합니다.').toBeGreaterThan(initialLayout.clientHeight);
 
     await logList.evaluate((element) => new Promise((resolve) => {
@@ -109,11 +131,9 @@ test.describe('아이템전 모바일 진행 기록', () => {
     });
 
     expect(scrolledLayout.text).toContain('#001');
-    expect(scrolledLayout.scrollTop, '목록이 아래쪽으로 실제 스크롤되어야 합니다.').toBeGreaterThan(0);
-    expect(Math.abs(scrolledLayout.scrollTop - scrolledLayout.maxScrollTop), '가장 오래된 기록까지 최대 스크롤되어야 합니다.').toBeLessThanOrEqual(1);
-    expect(scrolledLayout.lastTop, '#001 위쪽이 스크롤 영역 밖에 남으면 안 됩니다.').toBeGreaterThanOrEqual(scrolledLayout.visibleTop - 1);
-    expect(scrolledLayout.lastBottom, '#001 아래쪽까지 보여야 합니다.').toBeLessThanOrEqual(scrolledLayout.visibleBottom + 1);
-
-    await expect(panel).toBeVisible();
+    expect(scrolledLayout.scrollTop).toBeGreaterThan(0);
+    expect(Math.abs(scrolledLayout.scrollTop - scrolledLayout.maxScrollTop)).toBeLessThanOrEqual(1);
+    expect(scrolledLayout.lastTop).toBeGreaterThanOrEqual(scrolledLayout.visibleTop - 1);
+    expect(scrolledLayout.lastBottom).toBeLessThanOrEqual(scrolledLayout.visibleBottom + 1);
   });
 });
