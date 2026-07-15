@@ -3,6 +3,7 @@ import { ItemCard } from '../../features/items/components/ItemCard';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
+import { getOwnedItemsPresentation, publishOwnedItemsPresentation, subscribeOwnedItemsPresentation } from '../flows/ownedItemsPresentation';
 import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } from '../flows/remoteItemUseNotice';
 import { getPlayTimePresentation, subscribePlayTimePresentation } from '../flows/playTimePresentation';
 import { GameLogPanel, PlayersPanel } from '../screens/GameScreen';
@@ -57,6 +58,10 @@ export function GamePlayersPanel({
   const remoteItemNoticeTimerRef = useRef<number | null>(null);
   const [remoteItemUseNotice, setRemoteItemUseNotice] = useState<RemoteItemUseNotice | null>(null);
   const [roomInfoCollapsed, setRoomInfoCollapsed] = useState(false);
+
+  useEffect(() => {
+    publishOwnedItemsPresentation(ownedItems[localSeatId] ?? []);
+  }, [localSeatId, ownedItems]);
 
   useEffect(() => {
     const seatIds = seats.map((seat) => seat.id);
@@ -154,8 +159,6 @@ export function GamePlayersPanel({
 
 type GameLogPanelViewProps = {
   logs: GameLog[];
-  ownedItems: Record<string, ItemType[]>;
-  localSeatId: string;
   getLogCardStyle: (text: string, nextText?: string) => CSSProperties;
   formatStoredLogSequence: (log: GameLog, displayIndex?: number) => string;
   renderLogText: (text: string) => ReactNode;
@@ -164,15 +167,13 @@ type GameLogPanelViewProps = {
 
 export function GameLogPanelView({
   logs,
-  ownedItems,
-  localSeatId,
   getLogCardStyle,
   formatStoredLogSequence,
   renderLogText,
   onOpenSequenceExportDialog,
 }: GameLogPanelViewProps) {
   const playTimePresentation = useSyncExternalStore(subscribePlayTimePresentation, getPlayTimePresentation, getPlayTimePresentation);
-  const localOwnedItems = ownedItems[localSeatId] ?? [];
+  const localOwnedItems = useSyncExternalStore(subscribeOwnedItemsPresentation, getOwnedItemsPresentation, getOwnedItemsPresentation);
 
   return <GameLogPanel>
     <div data-testid="owned-items-panel" className="player-items game-log-owned-items">
