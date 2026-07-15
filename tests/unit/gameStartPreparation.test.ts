@@ -14,6 +14,7 @@ import {
   isRoomGameActivationWindowOpen,
   isRoomGamePreparationWindowOpen,
   ROOM_START_ACTIVATION_GRACE_MS,
+  ROOM_START_ACTIVATION_LEAD_MS,
 } from '../../src/features/room/services/roomGamePreparationPolicy.js';
 import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming.js';
 import { TURN_ORDER_PRESENTATION_FINAL_HOLD_MS } from '../../src/app/flows/turnOrderFlow.js';
@@ -49,10 +50,12 @@ test('초기 게임 상태는 취소 잠금 이후부터 카운트다운 종료 
   assert.equal(isRoomGamePreparationWindowOpen(countdownEndsAt, 29_000), false);
 });
 
-test('준비된 게임은 카운트다운 종료 직후 5초 유예시간 안에서만 활성화한다', () => {
+test('준비된 게임은 종료 750ms 전부터 종료 후 5초까지 활성화할 수 있다', () => {
   const countdownEndsAt = 20_000;
+  assert.equal(ROOM_START_ACTIVATION_LEAD_MS, 750);
   assert.equal(ROOM_START_ACTIVATION_GRACE_MS, 5_000);
-  assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 19_999), false);
+  assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 19_249), false);
+  assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 19_250), true);
   assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 20_000), true);
   assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 25_000), true);
   assert.equal(isRoomGameActivationWindowOpen(countdownEndsAt, 25_001), false);
@@ -95,6 +98,7 @@ test('준비 상태의 순서 연출은 카운트다운 종료 시각부터 시�
   assert.equal(state.pieces.length, players.length * room.pieceCount);
   assert.equal(state.startRequestVersion, 7);
   assert.equal(state.startRequestId, 'request-7');
+  assert.equal(state.startCountdownEndsAt, countdownEndsAt);
 });
 
 test('같은 방과 시작 버전으로 생성한 준비 상태는 결정론적이다', () => {
