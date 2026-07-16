@@ -22,6 +22,7 @@ export function requestStoredRoomExitAndReload() {
 }
 
 async function settlePendingStoredRoomExit(roomId: string) {
+  await auth?.authStateReady();
   const user = auth?.currentUser ?? await signInAsGuest();
   if (!user) throw new Error('방 나가기 처리를 위한 사용자 정보를 확인하지 못했습니다.');
 
