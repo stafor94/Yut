@@ -20,6 +20,18 @@ export const EMPTY_ROLL_PRESENTATION_STATE: RollPresentationState = {
   resultVisible: false,
 };
 
+let hasTrackedActiveFallPresentation = false;
+let trackedActiveFallPresentationActorId = '';
+
+export function isActiveFallPresentationActor(actorId: string) {
+  const normalizedActorId = actorId.trim();
+  return Boolean(
+    hasTrackedActiveFallPresentation
+    && normalizedActorId
+    && (!trackedActiveFallPresentationActorId || trackedActiveFallPresentationActorId === normalizedActorId),
+  );
+}
+
 export function isRollPresentationResultVisible(
   animation: RollPresentationAnimation | null,
   settledAnimationId: number | null,
@@ -32,6 +44,8 @@ export function isRollPresentationResultVisible(
 const completedRollPresentationIds = new Set<number>();
 
 const rememberRollPresentationLifecycle = (presentation: RollPresentationState) => {
+  hasTrackedActiveFallPresentation = presentation.active && presentation.fallCount > 0;
+  trackedActiveFallPresentationActorId = hasTrackedActiveFallPresentation ? presentation.actorId.trim() : '';
   const sourceAnimationId = presentation.sourceAnimationId;
   if (!presentation.active || sourceAnimationId === null) return;
   if (presentation.resultVisible) completedRollPresentationIds.add(sourceAnimationId);
