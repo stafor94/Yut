@@ -171,12 +171,11 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     setRollPresentation(nextPresentation);
     if (!nextPresentation.active || nextPresentation.fallCount <= 0) return;
     const actorId = nextPresentation.actorId || fallEffect?.seatId || '';
-    if (!actorId) return;
     pendingFallCompletionRef.current = {
       actorId,
       sourceAnimationId: nextPresentation.sourceAnimationId,
     };
-    setPendingFallActorId(actorId);
+    if (actorId) setPendingFallActorId(actorId);
   };
 
   if (rollAnimation) {
@@ -211,6 +210,14 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     visibleRollStackRef.current = rollStack;
     visibleLogsRef.current = logs;
   }, [boardTurnIndicatorRollStack, deferRollDerivedContent, logs, revealedRollSnapshot, rollStack]);
+
+  useEffect(() => {
+    const pending = pendingFallCompletionRef.current;
+    const actorId = fallEffect?.seatId ?? '';
+    if (!pending || pending.actorId || !actorId) return;
+    pendingFallCompletionRef.current = { ...pending, actorId };
+    setPendingFallActorId(actorId);
+  }, [fallEffect?.seatId]);
 
   useEffect(() => {
     if (rollPresentation.active) return undefined;
