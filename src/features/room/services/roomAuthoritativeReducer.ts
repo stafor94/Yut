@@ -17,6 +17,7 @@ type AuthoritativeArgs = Parameters<typeof reduceCoreAuthoritativeGameAction>;
 type AuthoritativeReduction = ReturnType<typeof reduceCoreAuthoritativeGameAction>;
 
 type PendingFallEffectShape = {
+  id?: unknown;
   seatId?: unknown;
 };
 
@@ -25,69 +26,40 @@ type AuthoritativeLogShape = {
   text?: unknown;
 };
 
-const getPendingFallActorId = (value: unknown) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
-  const seatId = (value as PendingFallEffectShape).seatId;
-  return typeof seatId === 'string' ? seatId : '';
+export const FALL_PRESENTATION_GATE_MS = 3600;
+
+const getPendingFallEffect = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const effect = value as PendingFallEffectShape;
+  const seatId = typeof effect.seatId === 'string' ? effect.seatId : '';
+  const id = typeof effect.id === 'number' && Number.isFinite(effect.id) ? effect.id : null;
+  return seatId ? { id, seatId } : null;
 };
 
-const hasBeforeRollItem = (ownedItems: unknown, seatId: string) => {
-  if (!seatId || !ownedItems || typeof ownedItems !== 'object' || Array.isArray(ownedItems)) return false;
-  const items = (ownedItems as Record<string, unknown>)[seatId];
-  return Array.isArray(items) && items.some((type) => typeof type === 'string'
-    && type in ITEM_DEFINITIONS
-    && ITEM_DEFINITIONS[type as ItemType]?.timing === 'before_roll');
-};
-
-const completePendingFallPresentation = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+const acknowledgeFallPresentationCompletion = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
   const [state, action] = args;
   if (action.type !== 'roll_yut' || action.payload?.completeFallPresentation !== true) return null;
 
-  const pendingActorId = getPendingFallActorId(state.fallEffect);
-  if (!pendingActorId) return { status: 'rejected', reason: '완료할 낙 결과 표출이 없습니다.' };
-  if (pendingActorId !== action.actorId) return { status: 'rejected', reason: '낙 결과 표출을 완료할 권한이 없습니다.' };
+  const pendingEffect = getPendingFallEffect(state.fallEffect);
+  if (pendingEffect && pendingEffect.seatId !== action.actorId) {
+    return { status: 'rejected', reason: '낙 결과 표출을 완료할 권한이 없습니다.' };
+  }
 
-  const turnOrderIds = Array.isArray(state.turnOrderIds) ? state.turnOrderIds.map(String).filter(Boolean) : [];
-  if (!turnOrderIds.length) return { status: 'rejected', reason: '아직 차례 순서가 정해지지 않았습니다.' };
-  const currentTurnIndex = Number(state.turnIndex ?? 0) % turnOrderIds.length;
-  if (turnOrderIds[currentTurnIndex] !== pendingActorId) return { status: 'rejected', reason: '낙 결과 표출 대상 턴이 아닙니다.' };
-
-  const nextTurnIndex = (currentTurnIndex + 1) % turnOrderIds.length;
-  const nextSeatId = turnOrderIds[nextTurnIndex] ?? '';
-  const shouldPromptBeforeRoll = hasBeforeRollItem(state.ownedItems, nextSeatId);
-  const now = Date.now();
-
-  return {
-    status: 'committed',
-    patch: {
-      turnIndex: nextTurnIndex,
-      roll: null,
-      rollResultReadyAt: 0,
-      fallEffect: null,
-      branchChoice: 'outer',
-      lastMovedPieceIds: [],
-      turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: shouldPromptBeforeRoll ? 'item_prompt' : 'roll',
-      itemPromptTiming: shouldPromptBeforeRoll ? 'before_roll' : null,
-    },
-    payload: {
-      activeSeatId: pendingActorId,
-      nextTurnIndex,
-      nextActiveSeatId: nextSeatId,
-      fallPresentationCompleted: true,
-    },
-  };
+  // Presentation completion is deliberately client-local. The authoritative event stays immutable
+  // until the next roll replaces fallEffect, so the fastest client can never erase a slower
+  // client's pending animation or alter turn state.
+  return { status: 'duplicate' };
 };
 
-const rejectRollWhileFallPresentationPending = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+const rejectRollBeforePresentationGateEnds = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
   const [state, action] = args;
   if (action.type !== 'roll_yut' || action.payload?.completeFallPresentation === true) return null;
-  const pendingActorId = getPendingFallActorId(state.fallEffect);
-  if (!pendingActorId) return null;
-  return { status: 'rejected', reason: '낙 결과 표출이 끝난 뒤 다음 차례로 넘어갑니다.' };
+  const readyAt = Number(state.rollResultReadyAt ?? 0);
+  if (!Number.isFinite(readyAt) || readyAt <= Date.now()) return null;
+  return { status: 'rejected', reason: '이전 윷 결과 표출이 끝난 뒤 던질 수 있습니다.' };
 };
 
-const holdTurnUntilFallPresentationCompletes = (
+const applyFallPresentationGate = (
   args: AuthoritativeArgs,
   reduction: AuthoritativeReduction,
 ): AuthoritativeReduction => {
@@ -95,30 +67,33 @@ const holdTurnUntilFallPresentationCompletes = (
     || args[1].type !== 'roll_yut'
     || reduction.payload.fallOccurred !== true) return reduction;
 
-  const [state, action] = args;
+  const [, action] = args;
   const actorLogName = typeof action.payload?.actorLogName === 'string' && action.payload.actorLogName.trim()
     ? action.payload.actorLogName.trim()
     : action.actorId;
   const sourceLogs = Array.isArray(reduction.patch.logs) ? reduction.patch.logs as AuthoritativeLogShape[] : [];
   const logs = sourceLogs.map((log, index) => index === 0 && typeof log?.text === 'string' && log.text.includes('낙')
-    ? { ...log, text: `${actorLogName}님이 낙이 나왔습니다.` }
+    ? { ...log, text: `${actorLogName}님이 낙이 나와 차례를 넘깁니다.` }
     : log);
+  const readyAt = Date.now() + FALL_PRESENTATION_GATE_MS;
+  const fallEffect = getPendingFallEffect(reduction.patch.fallEffect);
 
   return {
     ...reduction,
     patch: {
       ...reduction.patch,
-      turnIndex: Number(state.turnIndex ?? 0),
       roll: null,
-      rollResultReadyAt: 0,
-      itemPromptTiming: null,
-      turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: 'roll',
+      rollResultReadyAt: readyAt,
+      // applyTurnActionTimeoutPolicy converts this core 15-second deadline to the visible
+      // timeout for roll/item-prompt while preserving the presentation gate offset.
+      turnDeadlineAt: readyAt + TURN_ACTION_TIMEOUT_MS,
       ...(sourceLogs.length ? { logs } : {}),
     },
     payload: {
       ...reduction.payload,
-      fallPresentationPending: true,
+      fallPresentationEventId: fallEffect?.id ?? null,
+      fallPresentationReadyAt: readyAt,
+      turnAdvancedIndependently: true,
     },
   };
 };
@@ -344,17 +319,17 @@ const applyTurnActionTimeoutPolicy = (
 export function reduceAuthoritativeGameAction(
   ...args: AuthoritativeArgs
 ): AuthoritativeReduction {
-  const completedFall = completePendingFallPresentation(args);
-  if (completedFall) return applyTurnActionTimeoutPolicy(args, completedFall);
+  const acknowledgedFall = acknowledgeFallPresentationCompletion(args);
+  if (acknowledgedFall) return acknowledgedFall;
 
-  const pendingFallRejection = rejectRollWhileFallPresentationPending(args);
-  if (pendingFallRejection) return pendingFallRejection;
+  const presentationGateRejection = rejectRollBeforePresentationGateEnds(args);
+  if (presentationGateRejection) return presentationGateRejection;
 
   let reduction = reduceCoreAuthoritativeGameAction(...args);
   reduction = retryRollAfterResolvedBeforeRollPrompt(args, reduction);
   reduction = resolveAiPendingItemPickup(args, reduction);
   reduction = finalizeIndividualWinner(args, reduction);
-  reduction = holdTurnUntilFallPresentationCompletes(args, reduction);
+  reduction = applyFallPresentationGate(args, reduction);
 
   const [state, action, room] = args;
   if (isAuthoritativeCommitReduction(reduction) && room.stackedRollMode && action.type === 'roll_yut') {
