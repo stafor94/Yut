@@ -9,14 +9,15 @@ test('모바일 인게임 최종 레이아웃 규칙이 실제 요소에 적용�
   await page.evaluate(() => {
     document.body.innerHTML = `
       <main class="shell game-shell">
-        <section class="hero panel">
+        <section class="hero panel game-header-with-end">
           <div class="hero-copy"></div>
+          <button data-testid="game-room-info-toggle" class="game-room-header-toggle" aria-expanded="true">▴</button>
           <div class="hero-actions game-actions">
-            <button class="game-room-header-toggle">접기</button>
             <button class="nickname-chip">닉네임</button>
             <button class="sound-toggle">켜짐</button>
             <button class="status-card">온라인</button>
           </div>
+          <button class="game-end-button">종료</button>
         </section>
         <aside class="game-players-panel">
           <div class="game-player-list">
@@ -35,23 +36,35 @@ test('모바일 인게임 최종 레이아웃 규칙이 실제 요소에 적용�
       </main>`;
   });
 
-  const header = page.locator('.hero');
+  const header = page.locator('.hero.game-header-with-end');
   const actions = page.locator('.hero-actions.game-actions');
-  const toggle = page.locator('.game-room-header-toggle');
+  const toggle = page.getByTestId('game-room-info-toggle');
   const nickname = page.locator('.nickname-chip');
-  const [headerBox, actionsBox, toggleBox, nicknameBox] = await Promise.all([
+  const sound = page.locator('.sound-toggle');
+  const endButton = page.locator('.game-end-button');
+  const [headerBox, actionsBox, toggleBox, nicknameBox, soundBox, endBox] = await Promise.all([
     header.boundingBox(),
     actions.boundingBox(),
     toggle.boundingBox(),
     nickname.boundingBox(),
+    sound.boundingBox(),
+    endButton.boundingBox(),
   ]);
   expect(headerBox).not.toBeNull();
   expect(actionsBox).not.toBeNull();
   expect(toggleBox).not.toBeNull();
   expect(nicknameBox).not.toBeNull();
+  expect(soundBox).not.toBeNull();
+  expect(endBox).not.toBeNull();
+  await expect(actions.locator('.game-room-header-toggle')).toHaveCount(0);
   expect(actionsBox.x).toBeLessThanOrEqual(headerBox.x + 24);
-  expect(actionsBox.x + actionsBox.width).toBeGreaterThanOrEqual(headerBox.x + headerBox.width - 24);
-  expect(nicknameBox.x - (toggleBox.x + toggleBox.width)).toBeGreaterThanOrEqual(20);
+  expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(endBox.x - 4);
+  expect(Math.abs(nicknameBox.x - actionsBox.x)).toBeLessThanOrEqual(1);
+  expect(nicknameBox.width).toBeGreaterThan(soundBox.width + 20);
+  expect(toggleBox.x).toBeGreaterThanOrEqual(headerBox.x + 8);
+  expect(toggleBox.x).toBeLessThanOrEqual(headerBox.x + 28);
+  expect(toggleBox.y).toBeLessThan(headerBox.y + headerBox.height);
+  expect(toggleBox.y + toggleBox.height).toBeGreaterThan(headerBox.y + headerBox.height);
 
   const playerCards = page.locator('.game-player-card');
   const playerBoxes = await Promise.all([0, 1, 2, 3].map((index) => playerCards.nth(index).boundingBox()));
