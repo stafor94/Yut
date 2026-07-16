@@ -8,6 +8,7 @@ import {
   writeBatch,
   type Unsubscribe,
 } from 'firebase/firestore';
+import { buildPreparedRoomGameState, isCompleteRoomGamePlayerSnapshot } from '../../../app/flows/gameStartPreparation';
 import { db } from '../../../services/firebase/firebaseDb';
 import { waitForGamePresentationBeforeAction } from '../../../shared/gamePresentationLock';
 import {
@@ -15,6 +16,7 @@ import {
   commitAuthoritativeGameAction as commitAuthoritativeGameActionCore,
   createRoom as createRoomCore,
   getProcessedGameAction as getProcessedGameActionCore,
+  initializeGameState as initializeGameStateCore,
   joinRoom as joinRoomCore,
   removeRoomPlayer as removeRoomPlayerCore,
   updateRoomPlayer as updateRoomPlayerCore,
@@ -98,6 +100,26 @@ export async function commitAuthoritativeGameAction(
 
 export async function createRoom(params: Parameters<typeof createRoomCore>[0]) {
   return createRoomSafely(params);
+}
+
+export async function initializeGameState(...args: Parameters<typeof initializeGameStateCore>) {
+  const [roomId, _clientState, meta] = args;
+  const [room, players] = await Promise.all([getManagedRoom(roomId), getRoomPlayers(roomId)]);
+  if (!room) return { status: 'unavailable' as const };
+  if (!isCompleteRoomGamePlayerSnapshot(room, players)) return { status: 'sequence_mismatch' as const };
+
+  const countdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
+  if (!countdownEndsAt) return { status: 'sequence_mismatch' as const };
+
+  const authoritativeState = buildPreparedRoomGameState({
+    roomId,
+    room,
+    players,
+    startRequestVersion: meta.startRequestVersion,
+    startRequestId: meta.startRequestId,
+    countdownEndsAt,
+  });
+  return initializeGameStateCore(roomId, authoritativeState, meta);
 }
 
 export async function joinRoom(...args: Parameters<typeof joinRoomCore>): Promise<JoinRoomResult> {
