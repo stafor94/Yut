@@ -206,7 +206,7 @@ export const getStoredText = (key: string, fallback: string) => {
   return window.localStorage.getItem(key) || fallback;
 };
 export const AI_NAME_PREFIXES = ['씩씩한', '재빠른', '느긋한', '영리한', '용감한', '유쾌한', '차분한', '반짝이는', '든든한', '행운의'];
-export const AI_NAME_BASES = ['단풍이', '구름이', '호랑이', '두루미', '반달이', '별님이', '솔방울', '바람이', '나무꾼', '달토끼', '해님이', '복주머니'];
+export const AI_NAME_BASES = ['쥐', '소', '호랑이', '토끼', '용', '뱀', '말', '양', '원숭이', '닭', '개', '돼지'];
 export const RANDOM_NICKNAME_PREFIXES = ['민첩한', '행운의', '반짝이는', '용감한', '느긋한', '쾌활한', '든든한', '재빠른'];
 export const RANDOM_NICKNAME_BASES = ['토끼', '호랑이', '두루미', '다람쥐', '구름', '단풍', '별님', '솔방울'];
 export const makeRandomNickname = () => `${RANDOM_NICKNAME_PREFIXES[Math.floor(Math.random() * RANDOM_NICKNAME_PREFIXES.length)]} ${RANDOM_NICKNAME_BASES[Math.floor(Math.random() * RANDOM_NICKNAME_BASES.length)]}${Math.floor(Math.random() * 90) + 10}`;
