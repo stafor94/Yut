@@ -156,7 +156,7 @@ test.describe('remote fall presentation QA', () => {
         await expect(currentBadge, '낙 연출 중에는 던진 상대의 이름을 현재 턴으로 유지해야 합니다.').toHaveText(roller.name);
         await expect(neighbors, '낙 연출 중에도 이전·다음 턴 정보가 사라지면 안 됩니다.').toHaveCount(2);
         const neighborTexts = (await neighbors.allTextContents()).map((text) => text.trim());
-        expect(neighborTexts.every(Boolean), `낙 연출 중 이전·다음 턴 이름이 모두 표시되어야 합니다: ${JSON.stringify(neighborTexts)}`).toBe(true);
+        expect(neighborTexts, `낙 연출 중에는 던진 플레이어 기준 이전·다음 턴 이름이 유지되어야 합니다: ${JSON.stringify(neighborTexts)}`).toEqual([observer.name, observer.name]);
 
         await expect(observer.page.locator('.roll-stage .roll-label'), '윷이 매트 밖으로 빠지는 실제 settle 이후 낙 결과가 표시되어야 합니다.').toHaveText('낙!', { timeout: 8_000 });
         await expect(currentBadge, '결과 유지 중에도 던진 상대의 턴 표시가 유지되어야 합니다.').toHaveText(roller.name);
