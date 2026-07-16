@@ -22,6 +22,7 @@ import {
   createRollPresentationCompletion,
   type RollPresentationCompletion,
 } from '../flows/rollPresentationCompletion';
+import { REMOTE_ROLL_PRE_RESULT_MS } from '../flows/yutRollAnimation';
 import type { RollAnimation, ToastMessage } from '../appState';
 
 export type { RollPresentationState } from '../flows/rollPresentationVisibility';
@@ -38,6 +39,24 @@ const subscribeRollPresentationCompleted = (listener: RollPresentationCompletedL
 
 const notifyRollPresentationCompleted = () => {
   rollPresentationCompletedListeners.forEach((listener) => listener());
+};
+
+type FallPresentationActiveListener = (active: boolean) => void;
+const fallPresentationActiveListeners = new Set<FallPresentationActiveListener>();
+let currentFallPresentationActive = false;
+
+const subscribeFallPresentationActive = (listener: FallPresentationActiveListener) => {
+  fallPresentationActiveListeners.add(listener);
+  listener(currentFallPresentationActive);
+  return () => {
+    fallPresentationActiveListeners.delete(listener);
+  };
+};
+
+const notifyFallPresentationActive = (active: boolean) => {
+  if (currentFallPresentationActive === active) return;
+  currentFallPresentationActive = active;
+  fallPresentationActiveListeners.forEach((listener) => listener(active));
 };
 
 type WinnerOverlayProps = {
@@ -116,15 +135,29 @@ type TurnIndicatorProps = {
 };
 
 export function TurnIndicator({ color, showNeighbors, previousText, previousColor, currentText, currentRollStack, nextText, nextColor }: TurnIndicatorProps) {
+  const lastVisibleNeighborsRef = useRef({ previousText, previousColor, nextText, nextColor });
+  const [keepNeighborsVisible, setKeepNeighborsVisible] = useState(currentFallPresentationActive);
+
+  useEffect(() => subscribeFallPresentationActive(setKeepNeighborsVisible), []);
+
+  if (showNeighbors) {
+    lastVisibleNeighborsRef.current = { previousText, previousColor, nextText, nextColor };
+  }
+
+  const renderNeighbors = showNeighbors || keepNeighborsVisible;
+  const visibleNeighbors = showNeighbors
+    ? { previousText, previousColor, nextText, nextColor }
+    : lastVisibleNeighborsRef.current;
+
   return <div data-testid="turn-indicator" className="turn-indicator">
-    {showNeighbors && <span className="turn-neighbor previous-turn" style={{ color: previousColor }}>{previousText}</span>}
-    {showNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}
+    {renderNeighbors && <span className="turn-neighbor previous-turn" style={{ color: visibleNeighbors.previousColor }}>{visibleNeighbors.previousText}</span>}
+    {renderNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}
     <strong className="turn-current" style={{ '--turn-current-color': color } as CSSProperties}>
       <span className="turn-current-badge">{currentText}</span>
       {currentRollStack.length > 0 && <span className="turn-roll-stack-badges" aria-label={`남은 이동 스택: ${currentRollStack.map((entry) => entry.name).join(', ')}`}>{currentRollStack.map((entry, index) => <span key={`${entry.name}-${index}`} className="turn-roll-stack-badge">{entry.name}</span>)}</span>}
     </strong>
-    {showNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}
-    {showNeighbors && <span className="turn-neighbor next-turn" style={{ color: nextColor }}>{nextText}</span>}
+    {renderNeighbors && <span className="turn-separator" aria-hidden="true">&gt;</span>}
+    {renderNeighbors && <span className="turn-neighbor next-turn" style={{ color: visibleNeighbors.nextColor }}>{visibleNeighbors.nextText}</span>}
   </div>;
 }
 
@@ -165,6 +198,11 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
 
   onPresentationChangeRef.current = onPresentationChange;
 
+  const emitPresentationChange = (state: RollPresentationState) => {
+    onPresentationChangeRef.current?.(state);
+    notifyFallPresentationActive(state.active && state.fallCount > 0);
+  };
+
   const presentAnimation = (nextAnimation: RollAnimation | null, sourceAnimationId = nextAnimation?.id ?? null) => {
     presentedAnimationRef.current = nextAnimation;
     presentedSourceAnimationIdRef.current = sourceAnimationId;
@@ -174,11 +212,11 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const notifyQueuedPresentation = () => {
     const firstEntry = queuedPresentationMetaRef.current.entries().next().value as [number, { actorId: string; fallCount: number }] | undefined;
     if (!firstEntry) {
-      onPresentationChangeRef.current?.(EMPTY_ROLL_PRESENTATION_STATE);
+      emitPresentationChange(EMPTY_ROLL_PRESENTATION_STATE);
       return;
     }
     const [sourceAnimationId, meta] = firstEntry;
-    onPresentationChangeRef.current?.({
+    emitPresentationChange({
       active: true,
       actorId: meta.actorId,
       fallCount: meta.fallCount,
@@ -195,7 +233,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       queuedPresentationMetaRef.current.clear();
       presentationCompletionByIdRef.current.forEach((completion) => completion.cancel());
       presentationCompletionByIdRef.current.clear();
-      onPresentationChangeRef.current?.(EMPTY_ROLL_PRESENTATION_STATE);
+      emitPresentationChange(EMPTY_ROLL_PRESENTATION_STATE);
       presentationReleaseRef.current?.();
       presentationReleaseRef.current = null;
       releaseQueue();
@@ -274,9 +312,15 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
         presentationCompletionByIdRef.current.set(queuedAnimation.id, completion);
         setSettledAnimationId(null);
         presentAnimation(queuedAnimation, sourceAnimationId);
+        const deterministicSettleTimer = window.setTimeout(() => {
+          if (!mountedRef.current || presentedAnimationRef.current?.id !== queuedAnimation.id) return;
+          setSettledAnimationId(queuedAnimation.id);
+          completion.markSettled();
+        }, REMOTE_ROLL_PRE_RESULT_MS);
         try {
           await completion.waitForCompletion();
         } finally {
+          window.clearTimeout(deterministicSettleTimer);
           presentationCompletionByIdRef.current.delete(queuedAnimation.id);
         }
         if (mountedRef.current && presentedAnimationRef.current?.id === queuedAnimation.id) presentAnimation(null);
@@ -290,13 +334,13 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   useLayoutEffect(() => {
     const currentAnimation = presentedAnimationRef.current;
     if (!currentAnimation) {
-      if (queuedPresentationMetaRef.current.size === 0) onPresentationChangeRef.current?.(EMPTY_ROLL_PRESENTATION_STATE);
+      if (queuedPresentationMetaRef.current.size === 0) emitPresentationChange(EMPTY_ROLL_PRESENTATION_STATE);
       return;
     }
     const sourceAnimationId = presentedSourceAnimationIdRef.current ?? currentAnimation.id;
     const queuedMeta = queuedPresentationMetaRef.current.get(sourceAnimationId);
     const fallCount = 'fallCount' in currentAnimation ? currentAnimation.fallCount ?? 0 : 0;
-    onPresentationChangeRef.current?.({
+    emitPresentationChange({
       active: true,
       actorId: queuedMeta?.actorId || presentationActorId,
       fallCount,
