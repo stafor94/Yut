@@ -1,77 +1,54 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  FALL_PRESENTATION_PENDING_REASON,
-  getAutomatedFallPresentationRecoveryAction,
-} from '../../src/features/room/services/fallPresentationRecovery';
+  isFallPresentationCompletionAction,
+  shouldRetryFallPresentationCompletion,
+  shouldWaitForGamePresentationBeforeCommit,
+} from '../../src/features/room/services/fallPresentationCommitPolicy';
 
-type SourceAction = Parameters<typeof getAutomatedFallPresentationRecoveryAction>[0];
-type SourceResult = Parameters<typeof getAutomatedFallPresentationRecoveryAction>[1];
+type SourceAction = Parameters<typeof isFallPresentationCompletionAction>[0];
 
-const makeRollAction = (clientActionId: string): SourceAction => ({
+const makeRollAction = (payload: Record<string, unknown>): SourceAction => ({
   type: 'roll_yut',
   actorId: 'seat-ai',
-  payload: {
-    rollTimingZone: 'normal',
-    clientActionId,
-  },
+  payload,
 });
 
-const pendingFallRejection: SourceResult = {
-  status: 'rejected',
-  reason: FALL_PRESENTATION_PENDING_REASON,
-};
+test('실제 낙 표출 완료 액션만 presentation lock을 우회한다', () => {
+  const completionAction = makeRollAction({
+    completeFallPresentation: true,
+    clientActionId: 'complete_fall_presentation:room-1:seat-ai:3',
+  });
 
-test('presentation lock 이후의 AI 재던지기 거부는 낙 완료 복구 액션으로 변환한다', () => {
-  const recovery = getAutomatedFallPresentationRecoveryAction(
-    makeRollAction('roll_yut_ai:seat-ai:3:0:server:server'),
-    pendingFallRejection,
-  );
+  assert.equal(isFallPresentationCompletionAction(completionAction), true);
+  assert.equal(shouldWaitForGamePresentationBeforeCommit(completionAction), false);
+});
 
-  assert.deepEqual(recovery, {
-    type: 'roll_yut',
-    actorId: 'seat-ai',
-    payload: {
-      completeFallPresentation: true,
-      recoverySourceClientActionId: 'roll_yut_ai:seat-ai:3:0:server:server',
-      clientActionId: 'complete_fall_presentation_recovery:roll_yut_ai:seat-ai:3:0:server:server',
-    },
+test('일반 사용자·AI·timeout 윷 던지기는 계속 presentation lock을 기다린다', () => {
+  const clientActionIds = [
+    'roll_yut:seat-human:manual-request',
+    'roll_yut_ai:seat-ai:3:0:server:server',
+    'roll_timeout:room-1:3:0:seat-ai:roll:1234',
+  ];
+
+  clientActionIds.forEach((clientActionId) => {
+    const action = makeRollAction({ rollTimingZone: 'normal', clientActionId });
+    assert.equal(isFallPresentationCompletionAction(action), false);
+    assert.equal(shouldWaitForGamePresentationBeforeCommit(action), true);
+    assert.equal(shouldRetryFallPresentationCompletion(action, { status: 'rejected' }), false);
   });
 });
 
-test('제한 시간 자동 진행도 pending fall 거부 시 동일한 낙 완료 복구를 수행한다', () => {
-  const recovery = getAutomatedFallPresentationRecoveryAction(
-    makeRollAction('roll_timeout:room-1:3:0:seat-ai:roll:1234'),
-    pendingFallRejection,
-  );
+test('낙 완료 커밋 성공과 중복 처리는 재시도하지 않는다', () => {
+  const action = makeRollAction({ completeFallPresentation: true });
 
-  assert.equal(recovery?.payload?.completeFallPresentation, true);
-  assert.equal(recovery?.actorId, 'seat-ai');
+  assert.equal(shouldRetryFallPresentationCompletion(action, { status: 'committed' }), false);
+  assert.equal(shouldRetryFallPresentationCompletion(action, { status: 'duplicate' }), false);
 });
 
-test('사용자의 일반 윷 던지기는 pending fall 거부를 자동 완료로 바꾸지 않는다', () => {
-  const recovery = getAutomatedFallPresentationRecoveryAction(
-    makeRollAction('roll_yut:seat-ai:manual-request'),
-    pendingFallRejection,
-  );
+test('낙 완료 요청이 거부되거나 지원되지 않으면 화면 재시도 경로로 넘긴다', () => {
+  const action = makeRollAction({ completeFallPresentation: true });
 
-  assert.equal(recovery, null);
-});
-
-test('다른 거부 사유나 성공 결과는 자동 낙 완료 복구 대상이 아니다', () => {
-  assert.equal(getAutomatedFallPresentationRecoveryAction(
-    makeRollAction('roll_yut_ai:seat-ai:3:0:server:server'),
-    { status: 'rejected', reason: '지금은 내 차례가 아닙니다.' },
-  ), null);
-  assert.equal(getAutomatedFallPresentationRecoveryAction(
-    makeRollAction('roll_yut_ai:seat-ai:3:0:server:server'),
-    { status: 'committed', reason: undefined },
-  ), null);
-});
-
-test('이미 낙 완료 액션인 요청은 다시 복구 액션으로 감싸지 않는다', () => {
-  const action = makeRollAction('roll_yut_ai:seat-ai:3:0:server:server');
-  action.payload = { ...action.payload, completeFallPresentation: true };
-
-  assert.equal(getAutomatedFallPresentationRecoveryAction(action, pendingFallRejection), null);
+  assert.equal(shouldRetryFallPresentationCompletion(action, { status: 'rejected' }), true);
+  assert.equal(shouldRetryFallPresentationCompletion(action, { status: 'unsupported' }), true);
 });
