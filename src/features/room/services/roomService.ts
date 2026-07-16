@@ -52,6 +52,7 @@ import {
   drainPendingRoomCleanups,
   leaveDuplicatePlayerRoomsSafely,
   queuePendingRoomCleanup,
+  removeRoomPlayerNow,
   removeRoomPlayerSafely,
 } from './roomExitService';
 
@@ -167,15 +168,19 @@ export async function deleteRoom(roomId: string, guard: RoomDeletionGuard = {}) 
 }
 
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
+  const atomicAiSubstitution = isAiSubstitutionUpdate(params);
   try {
-    await updateRoomPlayerCore(roomId, playerId, params);
+    if (atomicAiSubstitution) {
+      await removeRoomPlayerNow(roomId, playerId, { preservePlayingSeatAsAi: true });
+    } else {
+      await updateRoomPlayerCore(roomId, playerId, params);
+    }
   } catch (error) {
-    if (isAiSubstitutionUpdate(params)) queuePendingRoomCleanup({ roomId, playerId, preservePlayingSeatAsAi: true });
+    if (atomicAiSubstitution) queuePendingRoomCleanup({ roomId, playerId, preservePlayingSeatAsAi: true });
     throw error;
   }
+  if (atomicAiSubstitution) return;
   if (db) await setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now() }, { merge: true });
-  if (!isAiSubstitutionUpdate(params)) return;
-  await deleteRoomWhenNoNonAiPlayersRemain(roomId);
 }
 
 export async function updateRoomStatus(roomId: string, status: RoomSummary['status']) {
