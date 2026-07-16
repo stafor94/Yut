@@ -29,6 +29,20 @@ export function isRollPresentationResultVisible(
   return settledAnimationId === animation.id;
 }
 
+const completedRollPresentationIds = new Set<number>();
+
+const rememberRollPresentationLifecycle = (presentation: RollPresentationState) => {
+  const sourceAnimationId = presentation.sourceAnimationId;
+  if (!presentation.active || sourceAnimationId === null) return;
+  if (presentation.resultVisible) completedRollPresentationIds.add(sourceAnimationId);
+  else completedRollPresentationIds.delete(sourceAnimationId);
+  if (completedRollPresentationIds.size > 120) {
+    const retainedIds = Array.from(completedRollPresentationIds).slice(-60);
+    completedRollPresentationIds.clear();
+    retainedIds.forEach((animationId) => completedRollPresentationIds.add(animationId));
+  }
+};
+
 type RollDerivedContentDeferralInput = {
   rollAnimationId: number | null;
   presentation: RollPresentationState;
@@ -38,8 +52,11 @@ export function shouldDeferRollDerivedContent({
   rollAnimationId,
   presentation,
 }: RollDerivedContentDeferralInput) {
+  rememberRollPresentationLifecycle(presentation);
   if (rollAnimationId !== null) {
+    if (!presentation.active && completedRollPresentationIds.has(rollAnimationId)) return false;
     return presentation.sourceAnimationId !== rollAnimationId || !presentation.resultVisible;
   }
+  if (!presentation.active) completedRollPresentationIds.clear();
   return presentation.active && !presentation.resultVisible;
 }

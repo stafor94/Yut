@@ -16,14 +16,10 @@ export function getGamePresentationTurn({
   presentationActorId = '',
 }: GamePresentationTurnInput): GamePresentationTurn {
   const normalizedActorId = presentationActorId.trim();
-  const shouldFreezePresentation = Boolean(
-    normalizedActorId
-    && (!activeSeatId || normalizedActorId === activeSeatId),
-  );
-  const displayedActiveSeatId = shouldFreezePresentation ? normalizedActorId : activeSeatId;
+  const displayedActiveSeatId = normalizedActorId || activeSeatId;
   return {
     activeSeatId: displayedActiveSeatId,
     isMyTurn: Boolean(displayedActiveSeatId && displayedActiveSeatId === localSeatId),
-    isFrozen: shouldFreezePresentation,
+    isFrozen: Boolean(normalizedActorId),
   };
 }
