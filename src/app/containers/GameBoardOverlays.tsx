@@ -406,6 +406,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${presentedAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
     <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`} onAnimationEnd={(event) => {
+      if (isPreResult) return;
       const target = event.target;
       if (!(target instanceof HTMLElement) || !target.classList.contains('yut-stick')) return;
       const scene = target.closest<HTMLElement>('[data-testid="yut-roll-scene"]');
@@ -427,8 +428,13 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       {presentedAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${presentedAnimation.timingZone}`}>{presentedAnimation.timingZone === 'perfect' ? 'Perfect!' : presentedAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{fallCount ? '낙!' : result.name}</span>}
       <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={() => {
-        const renderer = rollStageRef.current?.querySelector<HTMLElement>('[data-testid="yut-roll-scene"]')?.dataset.renderer;
-        if (renderer === 'fallback') return;
+        const scene = rollStageRef.current?.querySelector<HTMLElement>('[data-testid="yut-roll-scene"]');
+        if (scene?.dataset.renderer === 'fallback') {
+          const animations = Array.from(scene.querySelectorAll<HTMLElement>('.yut-stick')).flatMap((stick) => stick.getAnimations());
+          const allAnimationsFinished = animations.every((animation) => animation.playState === 'finished' || animation.playState === 'idle');
+          if (allAnimationsFinished) markCurrentAnimationSettled('css-animation-end');
+          return;
+        }
         markCurrentAnimationSettled('three-renderer');
       }} />
     </div>
