@@ -26,7 +26,7 @@ test.describe('online room QA', () => {
     });
   });
 
-  test('AI 난이도 배지와 확대된 방장 전용 선택 버튼이 authoritative 방 상태와 일치한다', async ({ page, context }, testInfo) => {
+  test('AI 난이도 배지와 확대된 방장 전용 선택 버튼이 authoritative 방 상태와 인게임 카드에 반영된다', async ({ page, context }, testInfo) => {
     expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'ai-level-host'));
     const roomTitle = makeQaName(testInfo, 'ai-level-room');
@@ -93,6 +93,13 @@ test.describe('online room QA', () => {
         const players = await getRoomPlayersForQa(roomId);
         return players.find((player) => player.isAI)?.aiDifficulty ?? null;
       }, { timeout: 10_000 }).toBe('easy');
+
+      await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await page.getByTestId('start-game-button').click();
+      await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+      const inGameAiCard = page.locator('.game-player-card.ai').first();
+      await expect(inGameAiCard).toBeVisible();
+      await expect(inGameAiCard.locator('.game-player-status')).toHaveText('쉬움 AI');
     });
   });
 });
