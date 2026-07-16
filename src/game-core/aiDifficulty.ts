@@ -9,9 +9,23 @@ export type AiDifficultySource = {
 
 export type AiDifficultySeatSource = NonNullable<AiDifficultySource> & { id: string };
 
+export type AiDifficultyManageSource = {
+  isAI?: boolean;
+  isSubstitutedByAI?: boolean;
+} | null | undefined;
+
 export function getEffectiveAiDifficulty(source: AiDifficultySource): AiDifficulty {
   if (source?.isSubstitutedByAI) return 'hard';
   return source?.aiDifficulty === 'easy' ? 'easy' : DEFAULT_AI_DIFFICULTY;
+}
+
+export function getAiDifficultyBadgeLabel(source: AiDifficultySource | AiDifficulty) {
+  const difficulty = typeof source === 'string' ? source : getEffectiveAiDifficulty(source);
+  return difficulty === 'easy' ? '쉬움 AI' : '어려움 AI';
+}
+
+export function canManageAiDifficulty(canManageRoom: boolean, source: AiDifficultyManageSource) {
+  return canManageRoom && Boolean(source?.isAI) && !source?.isSubstitutedByAI;
 }
 
 let currentAiRollDifficulty: AiDifficulty = DEFAULT_AI_DIFFICULTY;
