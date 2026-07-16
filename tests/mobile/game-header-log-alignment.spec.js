@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { expectAppShell } from '../helpers/ui.js';
 
 test.describe('모바일 인게임 정렬', () => {
-  test('기록 번호와 방 옵션 및 상단 버튼을 지정 위치에 정렬한다', async ({ page }) => {
+  test('접기 탭과 방 옵션 및 상단 버튼을 지정 위치에 정렬한다', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await expectAppShell(page);
 
@@ -21,10 +21,15 @@ test.describe('모바일 인게임 정렬', () => {
 
       const header = document.createElement('section');
       header.className = 'hero panel game-header-with-end';
+      const toggle = document.createElement('button');
+      toggle.className = 'game-room-header-toggle';
+      toggle.dataset.testid = 'game-room-info-toggle';
+      toggle.setAttribute('aria-expanded', 'true');
+      toggle.textContent = '▴';
+
       const actions = document.createElement('div');
       actions.className = 'hero-actions game-actions';
       [
-        ['game-room-header-toggle', '▴'],
         ['nickname-chip', '닉네임'],
         ['sound-controls sound-toggle active', '켜짐'],
         ['status-card online', '온라인'],
@@ -37,7 +42,7 @@ test.describe('모바일 인게임 정렬', () => {
       const endButton = document.createElement('button');
       endButton.className = 'game-end-button';
       endButton.textContent = '종료';
-      header.append(actions, endButton);
+      header.append(toggle, actions, endButton);
 
       const playersPanel = document.createElement('section');
       playersPanel.className = 'game-players-panel';
@@ -80,12 +85,54 @@ test.describe('모바일 인게임 정렬', () => {
     });
 
     const fixture = page.locator('#qa-game-alignment-fixture');
-    const headerButtons = fixture.locator('.hero-actions.game-actions > button');
-    const endButton = fixture.locator('.game-end-button');
+    const header = fixture.locator('.hero.game-header-with-end');
+    const actions = header.locator('.hero-actions.game-actions');
+    const toggle = header.getByTestId('game-room-info-toggle');
+    const headerButtons = actions.locator(':scope > button');
+    const endButton = header.locator(':scope > .game-end-button');
     const buttonHeights = await headerButtons.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height));
     const endHeight = await endButton.evaluate((button) => button.getBoundingClientRect().height);
-    expect(buttonHeights.length).toBe(4);
+    expect(buttonHeights.length).toBe(3);
     buttonHeights.forEach((height) => expect(Math.abs(height - endHeight)).toBeLessThanOrEqual(1));
+
+    const headerLayout = await header.evaluate((element) => {
+      const actionsElement = element.querySelector('.hero-actions.game-actions');
+      const toggleElement = element.querySelector('.game-room-header-toggle');
+      const nickname = element.querySelector('.nickname-chip');
+      const sound = element.querySelector('.sound-toggle');
+      const end = element.querySelector('.game-end-button');
+      if (!(actionsElement instanceof HTMLElement) || !(toggleElement instanceof HTMLElement) || !(nickname instanceof HTMLElement) || !(sound instanceof HTMLElement) || !(end instanceof HTMLElement)) {
+        throw new Error('상단 헤더 fixture가 올바르지 않습니다.');
+      }
+      const headerBox = element.getBoundingClientRect();
+      const actionsBox = actionsElement.getBoundingClientRect();
+      const toggleBox = toggleElement.getBoundingClientRect();
+      const nicknameBox = nickname.getBoundingClientRect();
+      const soundBox = sound.getBoundingClientRect();
+      const endBox = end.getBoundingClientRect();
+      return {
+        headerLeft: headerBox.left,
+        headerBottom: headerBox.bottom,
+        actionsLeft: actionsBox.left,
+        actionsRight: actionsBox.right,
+        toggleLeft: toggleBox.left,
+        toggleTop: toggleBox.top,
+        toggleBottom: toggleBox.bottom,
+        nicknameLeft: nicknameBox.left,
+        nicknameWidth: nicknameBox.width,
+        soundWidth: soundBox.width,
+        endLeft: endBox.left,
+        toggleInsideActions: actionsElement.contains(toggleElement),
+      };
+    });
+    expect(headerLayout.toggleInsideActions).toBe(false);
+    expect(headerLayout.toggleLeft).toBeGreaterThanOrEqual(headerLayout.headerLeft + 8);
+    expect(headerLayout.toggleLeft).toBeLessThanOrEqual(headerLayout.headerLeft + 28);
+    expect(headerLayout.toggleTop, '접기 탭의 위쪽은 헤더 안쪽에 걸쳐야 합니다.').toBeLessThan(headerLayout.headerBottom);
+    expect(headerLayout.toggleBottom, '접기 탭의 아래쪽은 헤더 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(headerLayout.headerBottom);
+    expect(Math.abs(headerLayout.nicknameLeft - headerLayout.actionsLeft)).toBeLessThanOrEqual(1);
+    expect(headerLayout.actionsRight).toBeLessThanOrEqual(headerLayout.endLeft - 4);
+    expect(headerLayout.nicknameWidth, '닉네임 버튼은 접기 버튼이 빠진 공간을 사용해야 합니다.').toBeGreaterThan(headerLayout.soundWidth + 20);
 
     const roomLayout = await fixture.locator('.game-room-details').evaluate((details) => {
       const title = details.querySelector('.game-room-title');
