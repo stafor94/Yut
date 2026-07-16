@@ -47,11 +47,13 @@ test.describe('online room QA', () => {
         const hostAiCard = hostPage.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
         await expect(hostAiCard.locator('.seat-role-badge')).toHaveText('어려움 AI');
         await expect(hostPage.getByTestId('ai-difficulty-P2-hard')).toBeVisible();
+        await expect(hostAiCard.locator('.seat-ready-label')).toHaveCount(0);
 
         await joinRoomFromLobby(guestPage, roomTitle);
         const guestAiCard = guestPage.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
         await expect(guestAiCard).toBeVisible();
         await expect(guestAiCard.locator('.seat-role-badge')).toHaveText('어려움 AI');
+        await expect(guestAiCard.locator('.seat-ready-label')).toHaveCount(0);
         await expect(guestAiCard.locator('.ai-difficulty-selector')).toHaveCount(0);
         await expect(guestPage.getByTestId('ai-difficulty-P2-easy')).toHaveCount(0);
         await expect(guestPage.getByTestId('ai-difficulty-P2-hard')).toHaveCount(0);
@@ -62,13 +64,13 @@ test.describe('online room QA', () => {
     }
   });
 
-  test('AI 난이도 배지와 확대된 방장 전용 선택 버튼이 authoritative 방 상태와 인게임 카드에 반영된다', async ({ page, context }, testInfo) => {
+  test('AI 배지와 방장 전용 액션이 요청한 대기실 배치와 인게임 난이도에 반영된다', async ({ page, context }, testInfo) => {
     expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'ai-level-host'));
     const roomTitle = makeQaName(testInfo, 'ai-level-room');
     await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
-    await runQaStep(testInfo, '대기실 AI 난이도 UI와 저장 상태 확인', async () => {
+    await runQaStep(testInfo, '대기실 AI 배지와 액션 배치 및 저장 상태 확인', async () => {
       await expectAppShell(page);
       await page.getByTestId('room-title-input').fill(roomTitle);
       await page.getByTestId('create-room-button').click();
@@ -76,12 +78,25 @@ test.describe('online room QA', () => {
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
       expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
 
-      await page.getByTestId('add-ai-P2').click();
+      const emptyCard = page.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
+      const addButton = page.getByTestId('add-ai-P2');
+      await expect(addButton).toBeVisible();
+      const addLayout = await emptyCard.evaluate((element) => {
+        const button = element.querySelector('[data-testid="add-ai-P2"]');
+        if (!(button instanceof HTMLElement)) throw new Error('AI 추가 버튼을 찾지 못했습니다.');
+        const cardRect = element.getBoundingClientRect();
+        const buttonRect = button.getBoundingClientRect();
+        return {
+          card: { x: cardRect.x, y: cardRect.y, width: cardRect.width, height: cardRect.height },
+          add: { x: buttonRect.x, y: buttonRect.y, width: buttonRect.width, height: buttonRect.height },
+        };
+      });
+
+      await addButton.click();
       const card = page.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
       const easyButton = page.getByTestId('ai-difficulty-P2-easy');
       const hardButton = page.getByTestId('ai-difficulty-P2-hard');
       const removeButton = card.locator('.ai-remove-button');
-      const readyLabel = card.locator('.seat-ready-label');
       const aiBadge = card.locator('.seat-role-badge');
 
       await expect(aiBadge).toHaveText('어려움 AI');
@@ -89,7 +104,7 @@ test.describe('online room QA', () => {
       await expect(hardButton).toBeVisible();
       await expect(hardButton).toHaveAttribute('aria-pressed', 'true');
       await expect(removeButton).toBeVisible();
-      await expect(readyLabel).toBeVisible();
+      await expect(card.locator('.seat-ready-label')).toHaveCount(0);
 
       const layout = await card.evaluate((element) => {
         const box = (selector) => {
@@ -98,29 +113,30 @@ test.describe('online room QA', () => {
           const rect = target.getBoundingClientRect();
           return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
         };
+        const cardRect = element.getBoundingClientRect();
         return {
+          card: { x: cardRect.x, y: cardRect.y, width: cardRect.width, height: cardRect.height },
           aiBadge: box('.seat-role-badge'),
+          nickname: box('.ai-seat-copy > strong'),
           easy: box('[data-testid="ai-difficulty-P2-easy"]'),
           hard: box('[data-testid="ai-difficulty-P2-hard"]'),
           remove: box('.ai-remove-button'),
-          ready: box('.seat-ready-label'),
         };
       });
 
-      expect(layout.aiBadge).not.toBeNull();
-      expect(layout.easy).not.toBeNull();
-      expect(layout.hard).not.toBeNull();
-      expect(layout.remove).not.toBeNull();
-      expect(layout.ready).not.toBeNull();
-      expect(layout.easy.x, '난이도 선택은 AI 배지 오른쪽에 있어야 합니다.').toBeGreaterThanOrEqual(layout.aiBadge.x + layout.aiBadge.width);
+      for (const key of ['aiBadge', 'nickname', 'easy', 'hard', 'remove']) expect(layout[key], `${key} bounding box`).not.toBeNull();
+      expect(layout.aiBadge.y + layout.aiBadge.height, 'AI 난이도 배지는 닉네임 위쪽에 있어야 합니다.').toBeLessThanOrEqual(layout.nickname.y + 1);
       expect(layout.hard.y, '쉬움/어려움 버튼은 위아래로 배치되어야 합니다.').toBeGreaterThan(layout.easy.y + layout.easy.height);
-      expect(layout.easy.width, '난이도 버튼 폭은 기존보다 커야 합니다.').toBeGreaterThanOrEqual(48);
+      expect(Math.abs(layout.remove.x - (layout.easy.x + layout.easy.width) - 12), '난이도 선택과 AI 제거 버튼 사이 간격은 12px이어야 합니다.').toBeLessThanOrEqual(1);
+      expect(layout.easy.width, '난이도 버튼 폭은 누르기 쉬운 크기여야 합니다.').toBeGreaterThanOrEqual(48);
       expect(layout.easy.height, '난이도 버튼 높이는 누르기 쉬운 크기여야 합니다.').toBeGreaterThanOrEqual(26);
       expect(layout.hard.width).toBeGreaterThanOrEqual(48);
       expect(layout.hard.height).toBeGreaterThanOrEqual(26);
-      expect(layout.remove.width, 'AI 제거 버튼은 기존보다 작은 폭이어야 합니다.').toBeLessThanOrEqual(70);
-      expect(layout.remove.height, 'AI 제거 버튼은 compact 높이를 유지해야 합니다.').toBeLessThanOrEqual(30);
-      expect(layout.ready.y - (layout.remove.y + layout.remove.height), 'AI 제거와 준비 사이에 세로 간격이 필요합니다.').toBeGreaterThanOrEqual(4);
+      expect(Math.abs(layout.remove.width - addLayout.add.width), 'AI 제거 버튼 폭은 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
+      expect(Math.abs(layout.remove.height - addLayout.add.height), 'AI 제거 버튼 높이는 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
+      expect(Math.abs(layout.remove.x - addLayout.add.x), 'AI 제거 버튼의 가로 위치는 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
+      expect(Math.abs(layout.remove.y - addLayout.add.y), 'AI 제거 버튼의 세로 위치는 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
+      expect(Math.abs(layout.card.height - addLayout.card.height), 'AI 추가 전후 카드 높이는 같아야 합니다.').toBeLessThanOrEqual(1);
 
       await easyButton.click();
       await expect(easyButton).toHaveAttribute('aria-pressed', 'true');
