@@ -31,16 +31,6 @@ const baseState = (): EngineState => ({
   ownedItems: {},
 });
 
-const completePendingFall = (state: EngineState, clientActionId: string) => reduceAuthoritativeGameAction(
-  state,
-  {
-    type: 'roll_yut',
-    actorId: 'seat-1',
-    payload: { completeFallPresentation: true, clientActionId },
-  },
-  { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
-);
-
 const replacementTests = new Map<string, () => void>([
   ['온라인 누적 AI 낙 후 다음 플레이어가 황금 윷을 보유하면 before_roll 선택 대기를 연다', () => withMockRandom([0.9, 0.9, 0.9, 0.9, 0], () => {
     const fall = reduceAuthoritativeGameAction(
@@ -55,24 +45,14 @@ const replacementTests = new Map<string, () => void>([
 
     assert.equal(fall.status, 'committed');
     assert.equal(fall.payload?.fallOccurred, true);
-    assert.equal(fall.payload?.fallPresentationPending, true);
-    assert.equal(fall.patch?.turnIndex, 0);
+    assert.equal(fall.payload?.turnAdvancedIndependently, true);
+    assert.equal(fall.payload?.fallPresentationReadyAt, fall.patch?.rollResultReadyAt);
+    assert.equal(fall.patch?.turnIndex, 1);
     assert.deepEqual(fall.patch?.rollStack, []);
     assert.equal(fall.patch?.selectedRollStackIndex, null);
-
-    const completed = completePendingFall({
-      ...baseState(),
-      ...fall.patch,
-      ownedItems: { 'seat-2': ['golden_yut'] },
-      logs: (fall.patch?.logs as EngineState['logs'] | undefined) ?? [],
-    } as EngineState, 'complete-stacked-fall-before-roll-item');
-
-    assert.equal(completed.status, 'committed');
-    assert.equal(completed.payload?.fallPresentationCompleted, true);
-    assert.equal(completed.patch?.turnIndex, 1);
-    assert.equal(completed.patch?.itemPromptTiming, 'before_roll');
-    assert.equal(completed.patch?.turnDeadlineKind, 'item_prompt');
-    assert.equal(completed.patch?.pendingGoldenYutSelection ?? null, null);
+    assert.equal(fall.patch?.itemPromptTiming, 'before_roll');
+    assert.equal(fall.patch?.turnDeadlineKind, 'item_prompt');
+    assert.equal(fall.patch?.pendingGoldenYutSelection ?? null, null);
   })],
   ['온라인 누적 낙 후 다음 플레이어에게 before_roll 아이템이 없으면 roll 상태를 유지한다', () => withMockRandom([0.9, 0.9, 0.9, 0.9, 0], () => {
     const fall = reduceAuthoritativeGameAction(
@@ -87,24 +67,14 @@ const replacementTests = new Map<string, () => void>([
 
     assert.equal(fall.status, 'committed');
     assert.equal(fall.payload?.fallOccurred, true);
-    assert.equal(fall.payload?.fallPresentationPending, true);
-    assert.equal(fall.patch?.turnIndex, 0);
+    assert.equal(fall.payload?.turnAdvancedIndependently, true);
+    assert.equal(fall.payload?.fallPresentationReadyAt, fall.patch?.rollResultReadyAt);
+    assert.equal(fall.patch?.turnIndex, 1);
     assert.deepEqual(fall.patch?.rollStack, []);
     assert.equal(fall.patch?.selectedRollStackIndex, null);
-
-    const completed = completePendingFall({
-      ...baseState(),
-      ...fall.patch,
-      ownedItems: {},
-      logs: (fall.patch?.logs as EngineState['logs'] | undefined) ?? [],
-    } as EngineState, 'complete-stacked-fall-roll');
-
-    assert.equal(completed.status, 'committed');
-    assert.equal(completed.payload?.fallPresentationCompleted, true);
-    assert.equal(completed.patch?.turnIndex, 1);
-    assert.equal(completed.patch?.itemPromptTiming, null);
-    assert.equal(completed.patch?.turnDeadlineKind, 'roll');
-    assert.equal(completed.patch?.pendingGoldenYutSelection ?? null, null);
+    assert.equal(fall.patch?.itemPromptTiming, null);
+    assert.equal(fall.patch?.turnDeadlineKind, 'roll');
+    assert.equal(fall.patch?.pendingGoldenYutSelection ?? null, null);
   })],
 ]);
 
