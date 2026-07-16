@@ -56,7 +56,7 @@
   --game-header-control-height: 54px;
 }
 
-.game-shell .hero-actions.game-actions > button,
+.game-shell .hero.game-header-with-end .hero-actions.game-actions > button,
 .game-shell .hero.game-header-with-end > .game-end-button {
   box-sizing: border-box;
   height: var(--game-header-control-height);
