@@ -117,6 +117,7 @@ test.describe('player substitution AI QA', () => {
       const guestPlayerId = await getPlayerIdByNickname(qa.roomId, qa.guestName);
 
       await runQaStep(testInfo, '참여 중이던 방 확인 팝업에서 닫기', async () => {
+        await qa.guestPage.setViewportSize({ width: 412, height: 915 });
         let releaseFirestore = () => undefined;
         const firestoreGate = new Promise((resolve) => { releaseFirestore = resolve; });
         const routeHandler = async (route) => {
@@ -152,7 +153,10 @@ test.describe('player substitution AI QA', () => {
           expect(layout.closeWidth).toBeLessThanOrEqual(80);
           expect(layout.closeHeight).toBeLessThanOrEqual(44);
 
-          const navigation = qa.guestPage.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15_000 });
+          const navigation = qa.guestPage.waitForEvent('framenavigated', {
+            predicate: (frame) => frame === qa.guestPage.mainFrame(),
+            timeout: 15_000,
+          });
           await closeButton.evaluate((button) => button.click());
           releaseFirestore();
           await navigation;
