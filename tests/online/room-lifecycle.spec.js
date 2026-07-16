@@ -26,7 +26,7 @@ test.describe('online room QA', () => {
     });
   });
 
-  test('AI 난이도 선택과 축소된 제거 버튼이 authoritative 방 상태와 일치한다', async ({ page, context }, testInfo) => {
+  test('AI 난이도 배지와 확대된 방장 전용 선택 버튼이 authoritative 방 상태와 일치한다', async ({ page, context }, testInfo) => {
     expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'ai-level-host'));
     const roomTitle = makeQaName(testInfo, 'ai-level-room');
@@ -48,7 +48,7 @@ test.describe('online room QA', () => {
       const readyLabel = card.locator('.seat-ready-label');
       const aiBadge = card.locator('.seat-role-badge');
 
-      await expect(card).toContainText('AI');
+      await expect(aiBadge).toHaveText('어려움 AI');
       await expect(easyButton).toBeVisible();
       await expect(hardButton).toBeVisible();
       await expect(hardButton).toHaveAttribute('aria-pressed', 'true');
@@ -78,12 +78,17 @@ test.describe('online room QA', () => {
       expect(layout.ready).not.toBeNull();
       expect(layout.easy.x, '난이도 선택은 AI 배지 오른쪽에 있어야 합니다.').toBeGreaterThanOrEqual(layout.aiBadge.x + layout.aiBadge.width);
       expect(layout.hard.y, '쉬움/어려움 버튼은 위아래로 배치되어야 합니다.').toBeGreaterThan(layout.easy.y + layout.easy.height);
+      expect(layout.easy.width, '난이도 버튼 폭은 기존보다 커야 합니다.').toBeGreaterThanOrEqual(48);
+      expect(layout.easy.height, '난이도 버튼 높이는 누르기 쉬운 크기여야 합니다.').toBeGreaterThanOrEqual(26);
+      expect(layout.hard.width).toBeGreaterThanOrEqual(48);
+      expect(layout.hard.height).toBeGreaterThanOrEqual(26);
       expect(layout.remove.width, 'AI 제거 버튼은 기존보다 작은 폭이어야 합니다.').toBeLessThanOrEqual(70);
       expect(layout.remove.height, 'AI 제거 버튼은 compact 높이를 유지해야 합니다.').toBeLessThanOrEqual(30);
       expect(layout.ready.y - (layout.remove.y + layout.remove.height), 'AI 제거와 준비 사이에 세로 간격이 필요합니다.').toBeGreaterThanOrEqual(4);
 
       await easyButton.click();
       await expect(easyButton).toHaveAttribute('aria-pressed', 'true');
+      await expect(aiBadge).toHaveText('쉬움 AI');
       await expect.poll(async () => {
         const players = await getRoomPlayersForQa(roomId);
         return players.find((player) => player.isAI)?.aiDifficulty ?? null;
