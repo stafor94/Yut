@@ -28,6 +28,7 @@ import {
   type RoomSummary,
 } from './roomServiceCore';
 import { settleAuthoritativeCommit } from './authoritativeCommitTimeout';
+import { getAutomatedFallPresentationRecoveryAction } from './fallPresentationRecovery';
 import { isAiSubstitutionUpdate } from './roomExitPolicy';
 import { ROOM_LIST_CANDIDATE_LIMIT, getRoomLastActivityMillis, isRoomSummaryInactive } from './roomLifecyclePolicy';
 import {
@@ -81,17 +82,28 @@ export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): 
   }, () => callback([]));
 }
 
-export async function commitAuthoritativeGameAction(
+type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
+
+const settleRoomAction = (
   roomId: string,
-  action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
-): Promise<CommitAuthoritativeGameActionResult> {
-  await waitForGamePresentationBeforeAction(action.type);
+  action: CommittableGameAction,
+): Promise<CommitAuthoritativeGameActionResult> => {
   const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
-  const result = await settleAuthoritativeCommit({
+  return settleAuthoritativeCommit({
     actionType: action.type,
     commit: () => commitAuthoritativeGameActionCore(roomId, action),
     recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
   });
+};
+
+export async function commitAuthoritativeGameAction(
+  roomId: string,
+  action: CommittableGameAction,
+): Promise<CommitAuthoritativeGameActionResult> {
+  await waitForGamePresentationBeforeAction(action.type);
+  let result = await settleRoomAction(roomId, action);
+  const recoveryAction = getAutomatedFallPresentationRecoveryAction(action, result);
+  if (recoveryAction) result = await settleRoomAction(roomId, recoveryAction);
   if (db && (result.status === 'committed' || result.status === 'duplicate')) {
     void setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now() }, { merge: true }).catch(() => undefined);
   }
