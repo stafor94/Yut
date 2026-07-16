@@ -1,55 +1,55 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  chooseAiMoveCandidate,
-  scoreAiMove,
-  type AiMoveCandidate,
-} from '../../src/app/flows/aiFlow.js';
+  AI_SCORE_PROFILES,
+  chooseScoredAiCandidate,
+  type ScoredAiCandidate,
+} from '../../src/game-core/aiStrategy.js';
 
-const aiSeat = { id: 'ai', team: '청팀', aiDifficulty: 'hard' } as any;
-const easySeat = { ...aiSeat, aiDifficulty: 'easy' } as any;
-const enemySeat = { id: 'enemy', team: '홍팀' } as any;
-const movingPiece = { id: 'moving', ownerId: 'ai', nodeId: 'n02', nodeIndex: 1, started: true, finished: false, label: 'P2-1', color: '#000' } as any;
-const enemyPiece = { id: 'enemy-piece', ownerId: 'enemy', nodeId: 'n03', nodeIndex: 2, started: true, finished: false, label: 'P1-1', color: '#fff' } as any;
-const result = { name: '도', steps: 1 } as const;
+type Candidate = ScoredAiCandidate & { id: string };
+const candidate = (id: string, score: number): Candidate => ({ id, score });
 
-const captureContext = {
-  pieces: [movingPiece, enemyPiece],
-  canSeatControlPiece: (seat: any, piece: any) => seat?.id === piece?.ownerId,
-  getSeatById: (seatId: string) => seatId === 'ai' ? aiSeat : enemySeat,
-  isSameSide: (left: any, right: any) => left?.team === right?.team,
-};
-
-test('finish, capture and stack weights are reduced by difficulty profile', () => {
-  assert.equal(scoreAiMove(movingPiece, result, aiSeat, 'outer', captureContext, 'hard'), 92);
-  assert.equal(scoreAiMove(movingPiece, result, easySeat, 'outer', captureContext, 'easy'), 57);
-
-  const stackedContext = {
-    ...captureContext,
-    pieces: [movingPiece, { ...movingPiece, id: 'stacked' }],
-  };
-  assert.equal(scoreAiMove(movingPiece, result, aiSeat, 'outer', stackedContext, 'hard'), 14);
-  assert.equal(scoreAiMove(movingPiece, result, easySeat, 'outer', stackedContext, 'easy'), 10);
+test('AI difficulty profiles use the planned lower weights', () => {
+  assert.deepEqual(AI_SCORE_PROFILES.hard, {
+    finish: 180,
+    capture: 90,
+    shortcut: 55,
+    start: 35,
+    stack: 12,
+    candidateRange: 20,
+    rerollThreshold: 55,
+  });
+  assert.deepEqual(AI_SCORE_PROFILES.easy, {
+    finish: 110,
+    capture: 55,
+    shortcut: 35,
+    start: 25,
+    stack: 8,
+    candidateRange: 45,
+    rerollThreshold: 35,
+  });
 });
 
-const makeCandidate = (id: string, score: number): AiMoveCandidate => ({
-  piece: { ...movingPiece, id } as any,
-  branchChoice: 'outer',
-  score,
+test('hard AI ignores a move more than 20 points below the best score', () => {
+  const moves = [candidate('best', 100), candidate('low', 79)];
+  assert.equal(chooseScoredAiCandidate(moves, 'hard', () => 0.999)?.id, 'best');
 });
 
-test('hard AI excludes candidates more than 20 points below the best move', () => {
-  const candidates = [makeCandidate('best', 100), makeCandidate('excluded', 79)];
-  assert.equal(chooseAiMoveCandidate(candidates, 'hard', () => 0.999)?.piece.id, 'best');
+test('hard AI can select a similarly strong move', () => {
+  const moves = [candidate('best', 100), candidate('second', 90)];
+  assert.equal(chooseScoredAiCandidate(moves, 'hard', () => 0.999)?.id, 'second');
 });
 
-test('hard AI can vary between similarly strong legal moves', () => {
-  const candidates = [makeCandidate('best', 100), makeCandidate('second', 90)];
-  assert.equal(chooseAiMoveCandidate(candidates, 'hard', () => 0.999)?.piece.id, 'second');
+test('easy AI sometimes selects any legal move', () => {
+  let call = 0;
+  const values = [0.05, 0.99];
+  const moves = [candidate('best', 100), candidate('middle', 60), candidate('last', 5)];
+  assert.equal(chooseScoredAiCandidate(moves, 'easy', () => values[call++] ?? 0)?.id, 'last');
 });
 
-test('easy AI occasionally chooses an odd but legal move from all candidates', () => {
-  const randomValues = [0.05, 0.99];
-  const candidates = [makeCandidate('best', 100), makeCandidate('middle', 60), makeCandidate('odd', 5)];
-  assert.equal(chooseAiMoveCandidate(candidates, 'easy', () => randomValues.shift() ?? 0)?.piece.id, 'odd');
+test('easy AI regular selection includes moves within 45 points', () => {
+  let call = 0;
+  const values = [0.5, 0.999];
+  const moves = [candidate('best', 100), candidate('near', 56), candidate('low', 55)];
+  assert.equal(chooseScoredAiCandidate(moves, 'easy', () => values[call++] ?? 0)?.id, 'near');
 });
