@@ -29,15 +29,42 @@ export function isRollPresentationResultVisible(
   return settledAnimationId === animation.id;
 }
 
+type CompletedRollPresentationIdInput = {
+  previousPresentation: RollPresentationState;
+  nextPresentation: RollPresentationState;
+  completedPresentationId?: number | null;
+};
+
+export function getCompletedRollPresentationId({
+  previousPresentation,
+  nextPresentation,
+  completedPresentationId = null,
+}: CompletedRollPresentationIdInput) {
+  if (
+    previousPresentation.active
+    && !nextPresentation.active
+    && previousPresentation.sourceAnimationId !== null
+  ) return previousPresentation.sourceAnimationId;
+  if (nextPresentation.active && nextPresentation.sourceAnimationId !== null) return null;
+  return completedPresentationId;
+}
+
 type RollDerivedContentDeferralInput = {
   rollAnimationId: number | null;
+  completedPresentationId?: number | null;
   presentation: RollPresentationState;
 };
 
 export function shouldDeferRollDerivedContent({
   rollAnimationId,
+  completedPresentationId = null,
   presentation,
 }: RollDerivedContentDeferralInput) {
+  if (
+    rollAnimationId !== null
+    && !presentation.active
+    && completedPresentationId === rollAnimationId
+  ) return false;
   if (rollAnimationId !== null) {
     return presentation.sourceAnimationId !== rollAnimationId || !presentation.resultVisible;
   }
