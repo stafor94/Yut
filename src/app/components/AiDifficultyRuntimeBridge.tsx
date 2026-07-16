@@ -30,8 +30,8 @@ export function AiDifficultyRuntimeBridge() {
     let activeRoomId = '';
     let players: RoomPlayer[] = [];
     let gameState: SyncedGameState | null = null;
-    let unsubscribePlayers = () => undefined;
-    let unsubscribeGameState = () => undefined;
+    let unsubscribePlayers: () => void = () => undefined;
+    let unsubscribeGameState: () => void = () => undefined;
 
     const applyDifficulty = () => {
       setCurrentAiRollDifficulty(resolveActiveAiDifficulty(players, gameState));
