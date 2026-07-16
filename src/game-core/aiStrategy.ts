@@ -16,20 +16,20 @@ export type ScoredAiCandidate = {
 
 export const AI_SCORE_PROFILES: Record<AiDifficulty, AiScoreProfile> = {
   hard: {
-    finish: 180,
+    finish: 80,
     capture: 90,
     shortcut: 55,
     start: 35,
-    stack: 12,
+    stack: 20,
     candidateRange: 20,
     rerollThreshold: 55,
   },
   easy: {
-    finish: 110,
+    finish: 70,
     capture: 55,
     shortcut: 35,
     start: 25,
-    stack: 8,
+    stack: 15,
     candidateRange: 45,
     rerollThreshold: 35,
   },
