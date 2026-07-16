@@ -193,7 +193,10 @@ test.describe('roll mat surface regression', () => {
       const readSurfaceState = () => surface.evaluate((node) => {
         const style = getComputedStyle(node);
         const rect = node.getBoundingClientRect();
-        const sceneRect = node.closest('[data-testid="yut-roll-scene"]')?.getBoundingClientRect();
+        const matNode = node.closest('[data-testid="roll-mat"]');
+        const sceneNode = matNode?.querySelector('[data-testid="yut-roll-scene"]');
+        if (!sceneNode) throw new Error('윷 매트 내부의 3D 장면을 찾지 못했습니다.');
+        const sceneRect = sceneNode.getBoundingClientRect();
         return {
           backgroundImage: style.backgroundImage,
           borderTopWidth: style.borderTopWidth,
@@ -202,7 +205,7 @@ test.describe('roll mat surface regression', () => {
           opacity: style.opacity,
           layoutWidth: node.offsetWidth,
           layoutHeight: node.offsetHeight,
-          visualInsetTop: Math.round(rect.top - (sceneRect?.top ?? rect.top)),
+          visualInsetTop: Math.round(rect.top - sceneRect.top),
           visualWidth: Math.round(rect.width),
           visualHeight: Math.round(rect.height),
         };
