@@ -221,6 +221,7 @@ test.describe('game flow QA', () => {
           roomInfoBox: toBox(roomInfoButton),
           nicknameBox: toBox(nicknameButton),
           buttonBoxes: buttons.map(toBox),
+          roomInfoInActionsCount: actions?.querySelectorAll('[data-testid="game-room-info-toggle"]').length ?? 0,
           headerTimerCount: element.querySelectorAll('.play-time').length,
         };
       });
@@ -230,10 +231,15 @@ test.describe('game flow QA', () => {
       expect(layout.actionsBox, '상단 액션 영역 bounding box').not.toBeNull();
       expect(layout.roomInfoBox, '방 정보 접기 버튼 bounding box').not.toBeNull();
       expect(layout.nicknameBox, '닉네임 버튼 bounding box').not.toBeNull();
-      expect(layout.buttonBoxes, '방 정보·닉네임·효과음·서버 상태 버튼 4개가 있어야 합니다.').toHaveLength(4);
+      expect(layout.buttonBoxes, '닉네임·효과음·서버 상태 버튼 3개가 액션 영역에 있어야 합니다.').toHaveLength(3);
+      expect(layout.roomInfoInActionsCount, '방 정보 접기 탭은 액션 영역 밖의 헤더 좌측 하단에 있어야 합니다.').toBe(0);
       expect(layout.headerTimerCount, '플레이 타이머는 상단이 아니라 진행 기록 헤더에 있어야 합니다.').toBe(0);
-      expect(layout.roomInfoBox.x + layout.roomInfoBox.width, '방 정보 버튼은 닉네임 버튼 왼쪽에 있어야 합니다.').toBeLessThanOrEqual(layout.nicknameBox.x);
-      expect(layout.roomInfoBox.width, '방 정보 버튼은 닉네임 버튼보다 작아야 합니다.').toBeLessThan(layout.nicknameBox.width);
+      const headerBottom = layout.headerBox.y + layout.headerBox.height;
+      expect(layout.roomInfoBox.x, '방 정보 접기 탭은 헤더 왼쪽 테두리 안쪽에서 시작해야 합니다.').toBeGreaterThanOrEqual(layout.headerBox.x + 8);
+      expect(layout.roomInfoBox.x, '방 정보 접기 탭은 헤더 좌측 하단 영역을 벗어나면 안 됩니다.').toBeLessThanOrEqual(layout.headerBox.x + 30);
+      expect(layout.roomInfoBox.y, '방 정보 접기 탭 위쪽은 헤더 안에 걸쳐 있어야 합니다.').toBeLessThan(headerBottom);
+      expect(layout.roomInfoBox.y + layout.roomInfoBox.height, '방 정보 접기 탭 아래쪽은 헤더 테두리 아래로 내려와야 합니다.').toBeGreaterThan(headerBottom);
+      expect(layout.nicknameBox.width, '접기 탭이 빠진 공간은 닉네임 버튼이 활용해야 합니다.').toBeGreaterThan(layout.buttonBoxes[1].width + 20);
 
       const firstCenterY = layout.buttonBoxes[0].y + layout.buttonBoxes[0].height / 2;
       for (const buttonBox of layout.buttonBoxes) {
