@@ -29,6 +29,8 @@ import {
 } from './roomServiceCore';
 import { settleAuthoritativeCommit } from './authoritativeCommitTimeout';
 import {
+  isFallPresentationCompletionAction,
+  settleFallPresentationCompletionWithRetry,
   shouldRetryFallPresentationCompletion,
   shouldWaitForGamePresentationBeforeCommit,
 } from './fallPresentationCommitPolicy';
@@ -106,7 +108,12 @@ export async function commitAuthoritativeGameAction(
   if (shouldWaitForGamePresentationBeforeCommit(action)) {
     await waitForGamePresentationBeforeAction(action.type);
   }
-  const result = await settleRoomAction(roomId, action);
+  const result = isFallPresentationCompletionAction(action)
+    ? await settleFallPresentationCompletionWithRetry({
+      action,
+      commit: () => settleRoomAction(roomId, action),
+    })
+    : await settleRoomAction(roomId, action);
   if (shouldRetryFallPresentationCompletion(action, result)) {
     throw new Error(result.reason || '낙 결과 표출 완료 요청이 거부되었습니다.');
   }
