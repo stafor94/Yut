@@ -6,7 +6,7 @@
 
 .game-shell .side .log-list p {
   overflow: visible;
-  padding-left: 55px;
+  padding-left: 42px;
 }
 
 .game-shell .side .log-sequence {
@@ -164,6 +164,8 @@
 }
 
 .game-shell .hero.game-header-with-end > .game-room-header-toggle .game-room-header-toggle-icon {
+  font-size: calc(1em + 6px);
+  line-height: 1;
   transform: translateY(-1px);
 }
 
