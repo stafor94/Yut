@@ -1,6 +1,7 @@
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import { getAiItemValue, type ItemType } from '../../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getMovePathNodeIds, type BranchChoice } from '../../game-core/board/board';
+import { getEffectiveAiDifficulty, type AiDifficulty } from '../../game-core/aiDifficulty';
 import type { YutResult } from '../../game-core/roll';
 import { GOLDEN_YUT_CHOICES } from '../../game-core/roll';
 import type { Seat } from '../appState';
@@ -17,7 +18,29 @@ type AiMoveContext = {
   pieces: BoardPiece[];
 };
 
-export function scoreAiMove(piece: BoardPiece, result: YutResult, seat: Seat, aiBranchChoice: BranchChoice, { canSeatControlPiece, getSeatById, isSameSide, pieces }: AiMoveContext) {
+type AiScoreProfile = {
+  finish: number;
+  capture: number;
+  shortcut: number;
+  start: number;
+  stack: number;
+  candidateRange: number;
+};
+
+export type AiMoveCandidate = {
+  piece: BoardPiece;
+  branchChoice: BranchChoice;
+  score: number;
+};
+
+const AI_SCORE_PROFILES: Record<AiDifficulty, AiScoreProfile> = {
+  hard: { finish: 180, capture: 90, shortcut: 55, start: 35, stack: 12, candidateRange: 20 },
+  easy: { finish: 110, capture: 55, shortcut: 35, start: 25, stack: 8, candidateRange: 45 },
+};
+
+const getSeatDifficulty = (seat: Seat): AiDifficulty => getEffectiveAiDifficulty(seat as Seat & { aiDifficulty?: unknown });
+
+export function scoreAiMove(piece: BoardPiece, result: YutResult, seat: Seat, aiBranchChoice: BranchChoice, { canSeatControlPiece, getSeatById, isSameSide, pieces }: AiMoveContext, difficulty = getSeatDifficulty(seat)) {
   const steps = result.steps;
   if (steps < 0 && !piece.started) return Number.NEGATIVE_INFINITY;
   const pathNodeIds = getMovePathNodeIds(piece.nodeId, steps, getEffectiveBranchChoice(piece.nodeId, aiBranchChoice));
@@ -27,28 +50,67 @@ export function scoreAiMove(piece: BoardPiece, result: YutResult, seat: Seat, ai
   const stacks = !finishes && piece.started ? pieces.filter((target) => canSeatControlPiece(seat, target) && target.started && !target.finished && target.nodeId === piece.nodeId).length - 1 : 0;
   const startsNewPiece = !piece.started && steps > 0;
   const progress = finishes ? 25 : BOARD_NODES.findIndex((node) => node.id === landedNodeId);
-  return (finishes ? 1000 : 0) + (captures ? 400 : 0) + (aiBranchChoice === 'shortcut' ? 80 : 0) + (startsNewPiece ? 60 : 0) + (stacks * 30) + progress - (piece.finished ? 10000 : 0);
+  const profile = AI_SCORE_PROFILES[difficulty];
+  return (finishes ? profile.finish : 0) + (captures ? profile.capture : 0) + (aiBranchChoice === 'shortcut' ? profile.shortcut : 0) + (startsNewPiece ? profile.start : 0) + (stacks * profile.stack) + progress - (piece.finished ? 10000 : 0);
 }
 
-export function chooseAiMove(seat: Seat, result: YutResult, context: AiMoveContext) {
+export function getAiMoveCandidates(seat: Seat, result: YutResult, context: AiMoveContext) {
+  const difficulty = getSeatDifficulty(seat);
   return context.pieces
     .filter((piece) => context.canSeatControlPiece(seat, piece) && !piece.finished && (result.steps >= 0 || piece.started))
     .map((piece) => {
       const aiBranchChoice = getAiBranchChoice(piece);
-      return { piece, branchChoice: aiBranchChoice, score: scoreAiMove(piece, result, seat, aiBranchChoice, context) };
+      return { piece, branchChoice: aiBranchChoice, score: scoreAiMove(piece, result, seat, aiBranchChoice, context, difficulty) };
     })
-    .sort((left, right) => right.score - left.score)[0];
+    .sort((left, right) => right.score - left.score);
+}
+
+const getCandidateWeight = (difficulty: AiDifficulty, scoreGap: number) => {
+  if (difficulty === 'hard') {
+    if (scoreGap <= 0) return 70;
+    if (scoreGap <= 10) return 22;
+    return 8;
+  }
+  if (scoreGap <= 0) return 45;
+  if (scoreGap <= 15) return 30;
+  if (scoreGap <= 30) return 15;
+  return 10;
+};
+
+export function chooseAiMoveCandidate(candidates: AiMoveCandidate[], difficulty: AiDifficulty, random = Math.random) {
+  if (!candidates.length) return undefined;
+  if (candidates.length === 1) return candidates[0];
+
+  if (difficulty === 'easy' && random() < 0.1) {
+    return candidates[Math.min(candidates.length - 1, Math.floor(random() * candidates.length))];
+  }
+
+  const bestScore = candidates[0].score;
+  const eligible = candidates.filter((candidate) => bestScore - candidate.score <= AI_SCORE_PROFILES[difficulty].candidateRange);
+  const weighted = eligible.map((candidate) => ({ candidate, weight: getCandidateWeight(difficulty, bestScore - candidate.score) }));
+  const totalWeight = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+  let cursor = random() * totalWeight;
+  for (const entry of weighted) {
+    cursor -= entry.weight;
+    if (cursor < 0) return entry.candidate;
+  }
+  return weighted[weighted.length - 1]?.candidate ?? candidates[0];
+}
+
+export function chooseAiMove(seat: Seat, result: YutResult, context: AiMoveContext, random = Math.random) {
+  return chooseAiMoveCandidate(getAiMoveCandidates(seat, result, context), getSeatDifficulty(seat), random);
 }
 
 export function shouldAiUseReroll(seat: Seat, result: YutResult, context: AiMoveContext) {
-  const move = chooseAiMove(seat, result, context);
+  const move = getAiMoveCandidates(seat, result, context)[0];
   if (!move) return true;
-  return result.steps <= 1 && move.score < 120;
+  const threshold = getSeatDifficulty(seat) === 'easy' ? 35 : 55;
+  return result.steps <= 1 && move.score < threshold;
 }
 
 export function chooseAiGoldenYutResult(seat: Seat, context: AiMoveContext) {
   return [...GOLDEN_YUT_CHOICES]
-    .map((choice) => ({ choice, move: chooseAiMove(seat, choice, context) }))
+    .map((choice) => ({ choice, move: getAiMoveCandidates(seat, choice, context)[0] }))
     .map(({ choice, move }) => ({ choice, score: move ? move.score + (choice.bonus ? 40 : 0) : Number.NEGATIVE_INFINITY }))
     .sort((left, right) => right.score - left.score)[0]?.choice ?? GOLDEN_YUT_CHOICES[GOLDEN_YUT_CHOICES.length - 1];
 }
