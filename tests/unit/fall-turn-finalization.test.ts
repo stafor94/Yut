@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
-import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
+import { TURN_ITEM_PROMPT_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
 
 const makeState = () => ({
   pieces: [
@@ -103,7 +103,7 @@ test('낙 결과 표출 완료 액션에서만 다음 턴을 확정하고 fallEf
     assert.equal(result.patch?.fallEffect, null);
     assert.equal(result.patch?.turnDeadlineKind, 'item_prompt');
     assert.equal(result.patch?.itemPromptTiming, 'before_roll');
-    assert.equal(result.patch?.turnDeadlineAt, now + TURN_ACTION_TIMEOUT_MS);
+    assert.equal(result.patch?.turnDeadlineAt, now + TURN_ITEM_PROMPT_TIMEOUT_MS);
     assert.equal(result.payload?.fallPresentationCompleted, true);
     assert.equal(result.payload?.nextActiveSeatId, 'seat-2');
   } finally {
