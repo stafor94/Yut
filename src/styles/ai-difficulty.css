@@ -1,22 +1,49 @@
 .screen-waitingRoom .compact-ready-card .seat-identity {
   flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .screen-waitingRoom .compact-ready-card .ai-seat-copy {
-  display: grid;
-  flex: 1 1 auto;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-self: stretch;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: start;
-  align-content: center;
-  gap: 5px;
+  max-width: 100%;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.screen-waitingRoom .compact-ready-card .ai-seat-copy > .seat-role-badge,
+.screen-waitingRoom .compact-ready-card .ai-seat-copy > strong {
+  position: static;
+  inset: auto;
+  align-self: flex-start;
+  margin: 0;
+  transform: none;
+  translate: none;
+}
+
+.screen-waitingRoom .compact-ready-card .ai-seat-copy > .seat-role-badge {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+  line-height: 1;
 }
 
 .screen-waitingRoom .compact-ready-card .ai-seat-copy > strong {
+  display: block;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.15;
 }
 
 .screen-waitingRoom .compact-ready-card .ai-seat-actions {
@@ -75,7 +102,7 @@
   }
 
   .screen-waitingRoom .compact-ready-card .ai-seat-copy {
-    gap: 4px;
+    gap: 3px;
   }
 
   .screen-waitingRoom .ai-difficulty-selector button {
