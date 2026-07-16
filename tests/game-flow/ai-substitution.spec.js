@@ -27,6 +27,7 @@ async function prepareHostAndGuest(browser, testInfo) {
   const guestPage = await guestContext.newPage();
   await createRoomFromLobby(hostPage, roomTitle);
   const roomId = await rememberRoomIdFromPage(hostPage) ?? await findRoomIdByTitle(roomTitle);
+  expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
   await joinRoomFromLobby(guestPage, roomTitle);
   await markGuestReady(guestPage);
   await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
@@ -50,11 +51,10 @@ test.describe('player substitution AI QA', () => {
         await expect(qa.guestPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
       });
 
-      const guestPlayerBeforeLeave = await expect.poll(async () => {
+      await expect.poll(async () => {
         const players = await getRoomPlayersForQa(qa.roomId);
-        return players.find((player) => player.nickname === qa.guestName) ?? null;
-      }, { timeout: 10_000 }).not.toBeNull();
-      void guestPlayerBeforeLeave;
+        return players.some((player) => player.nickname === qa.guestName);
+      }, { timeout: 10_000 }).toBe(true);
       const playersBeforeLeave = await getRoomPlayersForQa(qa.roomId);
       const guestPlayerId = playersBeforeLeave.find((player) => player.nickname === qa.guestName)?.id ?? '';
       expect(guestPlayerId, '게임을 나갈 게스트 player id가 필요합니다.').toBeTruthy();
