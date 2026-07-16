@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && mkdir -p dist/source-snapshot && cp -R src tests scripts package.json package-lock.json tsconfig.json tsconfig.node.json tsconfig.test.json vite.config.ts playwright.config.js dist/source-snapshot/ && echo source-snapshot-ready",
     "preview": "vite preview --host 0.0.0.0",
     "test:e2e": "npm run build && playwright test",
     "test:smoke": "playwright test --project=desktop-chromium tests/smoke tests/lobby",
