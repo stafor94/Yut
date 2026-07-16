@@ -18,8 +18,9 @@ import {
 async function prepareHostAndGuest(browser, testInfo) {
   const hostContext = await browser.newContext();
   const guestContext = await browser.newContext();
-  const hostName = normalizeQaNickname(makeQaName(testInfo, 'sub-host'));
-  const guestName = normalizeQaNickname(makeQaName(testInfo, 'sub-guest'));
+  const hostName = normalizeQaNickname(`H-${makeQaName(testInfo, 'sub-host')}`);
+  const guestName = normalizeQaNickname(`G-${makeQaName(testInfo, 'sub-guest')}`);
+  expect(hostName, '방장과 게스트 QA 닉네임은 7자 제한 후에도 구분되어야 합니다.').not.toBe(guestName);
   const roomTitle = makeQaName(testInfo, 'sub-room');
   await primeLobbyStorage(hostContext, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
   await primeLobbyStorage(guestContext, { nickname: guestName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
@@ -37,10 +38,12 @@ async function prepareHostAndGuest(browser, testInfo) {
 async function getPlayerIdByNickname(roomId, nickname) {
   await expect.poll(async () => {
     const players = await getRoomPlayersForQa(roomId);
-    return players.some((player) => player.nickname === nickname);
-  }, { timeout: 10_000 }).toBe(true);
+    return players.filter((player) => player.nickname === nickname).length;
+  }, { timeout: 10_000 }).toBe(1);
   const players = await getRoomPlayersForQa(roomId);
-  const playerId = players.find((player) => player.nickname === nickname)?.id ?? '';
+  const matchedPlayers = players.filter((player) => player.nickname === nickname);
+  expect(matchedPlayers, `QA 닉네임 ${nickname}은 방 안에서 정확히 한 명이어야 합니다.`).toHaveLength(1);
+  const playerId = matchedPlayers[0]?.id ?? '';
   expect(playerId, '게임을 나갈 게스트 player id가 필요합니다.').toBeTruthy();
   return playerId;
 }
