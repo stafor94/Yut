@@ -1,6 +1,11 @@
-import type { CommitAuthoritativeGameActionResult, GameAction } from './roomServiceCore';
+type CommittableGameAction = {
+  type: string;
+  payload?: Record<string, unknown>;
+};
 
-type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
+type ActionResultSummary = {
+  status: string;
+};
 
 export const isFallPresentationCompletionAction = (action: CommittableGameAction) => (
   action.type === 'roll_yut' && action.payload?.completeFallPresentation === true
@@ -12,7 +17,7 @@ export const shouldWaitForGamePresentationBeforeCommit = (action: CommittableGam
 
 export const shouldRetryFallPresentationCompletion = (
   action: CommittableGameAction,
-  result: Pick<CommitAuthoritativeGameActionResult, 'status'>,
+  result: ActionResultSummary,
 ) => isFallPresentationCompletionAction(action)
   && result.status !== 'committed'
   && result.status !== 'duplicate';
