@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { expectAppShell, primeLobbyStorage, runQaStep, waitForBlockingOverlayToDisappear } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { createLobbyRoomFixtureForQa, deleteRoomForQa } from '../helpers/rooms.js';
+import { createLobbyRoomFixtureForQa, deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 function boxesOverlap(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
@@ -50,6 +50,68 @@ test.describe('mobile layout QA', () => {
 
       await page.getByRole('button', { name: '취소' }).click();
       await expect(backdrop).toBeHidden();
+    });
+  });
+
+  test('모바일 AI 난이도 선택과 제거/준비 영역이 카드 안에서 겹치지 않는다', async ({ page, context }, testInfo) => {
+    const nickname = normalizeQaNickname(makeQaName(testInfo, 'mobile-ai-host'));
+    const roomTitle = makeQaName(testInfo, 'mobile-ai-room');
+    let roomId;
+    await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+
+    await runQaStep(testInfo, '모바일 AI 난이도와 액션 영역 배치 확인', async () => {
+      try {
+        await expectAppShell(page);
+        await page.getByTestId('room-title-input').fill(roomTitle);
+        await page.getByTestId('create-room-button').click();
+        await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 15_000 });
+        roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
+        await page.getByTestId('add-ai-P2').click();
+
+        const card = page.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
+        const easyButton = page.getByTestId('ai-difficulty-P2-easy');
+        const hardButton = page.getByTestId('ai-difficulty-P2-hard');
+        await expect(card).toBeVisible();
+        await expect(easyButton).toBeVisible();
+        await expect(hardButton).toBeVisible();
+
+        const layout = await card.evaluate((element) => {
+          const cardRect = element.getBoundingClientRect();
+          const box = (selector) => {
+            const target = element.querySelector(selector);
+            if (!target) return null;
+            const rect = target.getBoundingClientRect();
+            return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+          };
+          return {
+            viewportWidth: window.innerWidth,
+            card: { x: cardRect.x, y: cardRect.y, width: cardRect.width, height: cardRect.height },
+            aiBadge: box('.seat-role-badge'),
+            easy: box('[data-testid="ai-difficulty-P2-easy"]'),
+            hard: box('[data-testid="ai-difficulty-P2-hard"]'),
+            remove: box('.ai-remove-button'),
+            ready: box('.seat-ready-label'),
+          };
+        });
+
+        for (const key of ['aiBadge', 'easy', 'hard', 'remove', 'ready']) expect(layout[key], `${key} bounding box`).not.toBeNull();
+        const cardRight = layout.card.x + layout.card.width;
+        for (const key of ['aiBadge', 'easy', 'hard', 'remove', 'ready']) {
+          const box = layout[key];
+          expect(box.x, `${key} 왼쪽은 카드 안에 있어야 합니다.`).toBeGreaterThanOrEqual(layout.card.x);
+          expect(box.x + box.width, `${key} 오른쪽은 카드 안에 있어야 합니다.`).toBeLessThanOrEqual(cardRight + 1);
+        }
+        expect(cardRight, 'AI 카드는 모바일 뷰포트를 벗어나면 안 됩니다.').toBeLessThanOrEqual(layout.viewportWidth + 1);
+        expect(layout.easy.x).toBeGreaterThanOrEqual(layout.aiBadge.x + layout.aiBadge.width);
+        expect(layout.hard.y).toBeGreaterThan(layout.easy.y + layout.easy.height);
+        expect(boxesOverlap(layout.easy, layout.remove), '난이도 선택과 AI 제거 버튼이 겹치면 안 됩니다.').toBe(false);
+        expect(boxesOverlap(layout.hard, layout.remove), '난이도 선택과 AI 제거 버튼이 겹치면 안 됩니다.').toBe(false);
+        expect(layout.remove.width).toBeLessThanOrEqual(70);
+        expect(layout.remove.height).toBeLessThanOrEqual(30);
+        expect(layout.ready.y - (layout.remove.y + layout.remove.height)).toBeGreaterThanOrEqual(4);
+      } finally {
+        if (roomId) await deleteRoomForQa(roomId);
+      }
     });
   });
 
