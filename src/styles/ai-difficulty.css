@@ -1,14 +1,35 @@
-.screen-waitingRoom .compact-ready-card:has(.ai-difficulty-selector):not(:has(.team-card-selector)) {
-  min-height: 96px;
-  height: 96px;
-}
-
-.screen-waitingRoom .compact-ready-card.ai .seat-row {
-  row-gap: 8px;
-}
-
 .screen-waitingRoom .compact-ready-card .seat-identity {
   flex-wrap: nowrap;
+}
+
+.screen-waitingRoom .compact-ready-card .ai-seat-copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 5px;
+}
+
+.screen-waitingRoom .compact-ready-card .ai-seat-copy > strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-waitingRoom .compact-ready-card .ai-seat-actions {
+  grid-row: 1 / -1;
+  align-self: center;
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.screen-waitingRoom .compact-ready-card .ai-seat-actions:empty {
+  display: none;
 }
 
 .screen-waitingRoom .ai-difficulty-selector {
@@ -16,7 +37,7 @@
   flex: 0 0 auto;
   flex-direction: column;
   gap: 3px;
-  margin-left: 1px;
+  margin: 0;
 }
 
 .screen-waitingRoom .ai-difficulty-selector button {
@@ -48,21 +69,13 @@
   opacity: .68;
 }
 
-.screen-waitingRoom .compact-ready-card .seat-status-actions .ai-remove-button {
-  min-width: 58px;
-  min-height: 26px;
-  padding: 4px 8px;
-  font-size: .75rem;
-}
-
 @media (max-width: 520px) {
-  .screen-waitingRoom .compact-ready-card:has(.ai-difficulty-selector):not(:has(.team-card-selector)) {
-    min-height: 96px;
-    height: 96px;
-  }
-
   .screen-waitingRoom .compact-ready-card .seat-identity {
     gap: 6px;
+  }
+
+  .screen-waitingRoom .compact-ready-card .ai-seat-copy {
+    gap: 4px;
   }
 
   .screen-waitingRoom .ai-difficulty-selector button {
@@ -70,10 +83,5 @@
     min-height: 25px;
     padding-inline: 6px;
     font-size: .67rem;
-  }
-
-  .screen-waitingRoom .compact-ready-card .seat-status-actions .ai-remove-button {
-    min-width: 54px;
-    padding-inline: 7px;
   }
 }
