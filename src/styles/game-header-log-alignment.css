@@ -58,11 +58,13 @@
 
 .game-shell .hero.game-header-with-end {
   --game-header-control-height: 54px;
+  z-index: 2;
   overflow: visible;
   grid-template-columns: minmax(0, 1fr) 88px;
   align-items: center;
   column-gap: 10px;
   margin-bottom: 30px;
+  padding-right: 19px;
 }
 
 .game-shell .hero.game-header-with-end::after {
@@ -99,11 +101,24 @@
 }
 
 .game-shell .hero.game-header-with-end > .game-end-button {
+  position: static;
+  top: auto;
+  right: auto;
   grid-column: 2;
   grid-row: 1;
+  align-self: stretch;
   justify-self: stretch;
   width: 88px;
   min-width: 88px;
+  transform: none;
+}
+
+.game-shell .hero.game-header-with-end > .game-end-button:not(:disabled):active {
+  transform: translateY(3px);
+  box-shadow:
+    0 3px 0 #672319,
+    0 6px 9px rgba(65, 27, 14, .18),
+    inset 0 1px 0 rgba(255, 236, 200, .2);
 }
 
 .game-shell .hero.game-header-with-end > .game-room-header-toggle {
@@ -158,6 +173,7 @@
     grid-template-columns: minmax(0, 1fr) 64px;
     column-gap: 6px;
     margin-bottom: 28px;
+    padding-right: 14px;
   }
 
   .game-shell .hero.game-header-with-end > .hero-actions.game-actions {
