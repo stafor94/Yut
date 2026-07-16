@@ -153,7 +153,6 @@ test.describe('roll mat surface regression', () => {
         const matNode = node.closest('[data-testid="roll-mat"]');
         const matRect = matNode?.getBoundingClientRect();
         return {
-          sceneTop: Math.round(sceneRect.top),
           sceneWidth: Math.round(sceneRect.width),
           sceneHeight: Math.round(sceneRect.height),
           sceneLayoutWidth: node.offsetWidth,
@@ -194,6 +193,7 @@ test.describe('roll mat surface regression', () => {
       const readSurfaceState = () => surface.evaluate((node) => {
         const style = getComputedStyle(node);
         const rect = node.getBoundingClientRect();
+        const sceneRect = node.closest('[data-testid="yut-roll-scene"]')?.getBoundingClientRect();
         return {
           backgroundImage: style.backgroundImage,
           borderTopWidth: style.borderTopWidth,
@@ -202,7 +202,7 @@ test.describe('roll mat surface regression', () => {
           opacity: style.opacity,
           layoutWidth: node.offsetWidth,
           layoutHeight: node.offsetHeight,
-          visualTop: Math.round(rect.top),
+          visualInsetTop: Math.round(rect.top - (sceneRect?.top ?? rect.top)),
           visualWidth: Math.round(rect.width),
           visualHeight: Math.round(rect.height),
         };
@@ -220,7 +220,7 @@ test.describe('roll mat surface regression', () => {
       expect(pendingSurface.visualHeight).toBeGreaterThan(0);
       expect(pendingSurface.layoutWidth).toBeLessThanOrEqual(Math.round(sceneLayout.viewportWidth * 0.64));
       expect(pendingSurface.visualHeight).toBeLessThanOrEqual(270);
-      expect(pendingSurface.visualTop - sceneLayout.sceneTop).toBeGreaterThanOrEqual(50);
+      expect(pendingSurface.visualInsetTop).toBeGreaterThanOrEqual(50);
       expect(pendingSurface.visualWidth).toBeLessThan(sceneLayout.sceneWidth);
       expect(pendingSurface.visualHeight).toBeLessThan(sceneLayout.matHeight);
 
