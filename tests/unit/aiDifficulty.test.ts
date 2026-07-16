@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  clearRuntimeAiDifficulties,
   getEffectiveAiDifficulty,
+  getRuntimeAiDifficultyForSeat,
+  replaceRuntimeAiDifficulties,
   setCurrentAiRollDifficulty,
 } from '../../src/game-core/aiDifficulty.js';
 import { chooseAiRollTimingZone } from '../../src/game-core/roll.js';
@@ -10,6 +13,17 @@ test('substituted players always use hard AI difficulty', () => {
   assert.equal(getEffectiveAiDifficulty({ aiDifficulty: 'easy', isSubstitutedByAI: true }), 'hard');
   assert.equal(getEffectiveAiDifficulty({ aiDifficulty: 'easy', isSubstitutedByAI: false }), 'easy');
   assert.equal(getEffectiveAiDifficulty(undefined), 'hard');
+});
+
+test('runtime difficulty is kept per AI seat', () => {
+  replaceRuntimeAiDifficulties([
+    { id: 'easy-ai', aiDifficulty: 'easy' },
+    { id: 'left-player', aiDifficulty: 'easy', isSubstitutedByAI: true },
+  ]);
+  assert.equal(getRuntimeAiDifficultyForSeat('easy-ai'), 'easy');
+  assert.equal(getRuntimeAiDifficultyForSeat('left-player'), 'hard');
+  assert.equal(getRuntimeAiDifficultyForSeat('missing'), 'hard');
+  clearRuntimeAiDifficulties();
 });
 
 test('easy AI roll timing uses 20/40/40 boundaries', () => {
