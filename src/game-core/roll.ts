@@ -1,3 +1,5 @@
+import { getCurrentAiRollDifficulty, type AiDifficulty } from './aiDifficulty';
+
 export type YutResultName = '빽도' | '도' | '개' | '걸' | '윷' | '모' | '황금 윷';
 export type YutResult = { name: YutResultName; steps: number; bonus?: boolean };
 export type YutStick = { flat: boolean; marked: boolean };
@@ -59,10 +61,15 @@ export function shouldFallForTimingZone(zone: RollTimingZone, random = Math.rand
   return random() < getFallChanceForTimingZone(zone);
 }
 
-export function chooseAiRollTimingZone(random = Math.random): RollTimingZone {
+export function chooseAiRollTimingZone(random?: () => number): RollTimingZone;
+export function chooseAiRollTimingZone(difficulty: AiDifficulty, random?: () => number): RollTimingZone;
+export function chooseAiRollTimingZone(difficultyOrRandom?: AiDifficulty | (() => number), providedRandom = Math.random): RollTimingZone {
+  const difficulty = typeof difficultyOrRandom === 'string' ? difficultyOrRandom : getCurrentAiRollDifficulty();
+  const random = typeof difficultyOrRandom === 'function' ? difficultyOrRandom : providedRandom;
   const roll = random();
-  if (roll < 0.3) return 'perfect';
-  if (roll < 0.7) return 'good';
+  const perfectChance = difficulty === 'easy' ? 0.2 : 0.3;
+  if (roll < perfectChance) return 'perfect';
+  if (roll < perfectChance + 0.4) return 'good';
   return 'normal';
 }
 
