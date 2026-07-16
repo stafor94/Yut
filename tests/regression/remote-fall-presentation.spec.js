@@ -5,6 +5,7 @@ import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../h
 
 const MOBILE_VIEWPORT = { width: 412, height: 915 };
 const REMOTE_RENDERER_FRAME_DELAY_MS = 4_000;
+const REMOTE_RENDERER_DELAY_STYLE_ID = 'yut-qa-remote-renderer-delay';
 
 async function findActiveRoller(entries) {
   for (const entry of entries) {
@@ -52,25 +53,30 @@ async function clickForcedFall(page) {
 }
 
 async function delayAnimationFrames(page, delayMs) {
-  await page.evaluate((nextDelayMs) => {
+  await page.evaluate(({ nextDelayMs, styleId }) => {
     if (!window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__) {
       window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__ = window.requestAnimationFrame.bind(window);
       window.__YUT_QA_ORIGINAL_CANCEL_ANIMATION_FRAME__ = window.cancelAnimationFrame.bind(window);
     }
     window.requestAnimationFrame = (callback) => window.setTimeout(() => callback(performance.now()), nextDelayMs);
     window.cancelAnimationFrame = (handle) => window.clearTimeout(handle);
-  }, delayMs);
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `.yut-roll-scene[data-renderer='fallback'] .yut-stick { animation-duration: ${nextDelayMs}ms !important; }`;
+    document.head.append(style);
+  }, { nextDelayMs: delayMs, styleId: REMOTE_RENDERER_DELAY_STYLE_ID });
 }
 
 async function restoreAnimationFrames(page) {
-  await page.evaluate(() => {
+  await page.evaluate((styleId) => {
+    document.getElementById(styleId)?.remove();
     if (window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__) {
       window.requestAnimationFrame = window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__;
       window.cancelAnimationFrame = window.__YUT_QA_ORIGINAL_CANCEL_ANIMATION_FRAME__;
       delete window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__;
       delete window.__YUT_QA_ORIGINAL_CANCEL_ANIMATION_FRAME__;
     }
-  }).catch(() => undefined);
+  }, REMOTE_RENDERER_DELAY_STYLE_ID).catch(() => undefined);
 }
 
 async function startFallTimingObservation(page) {
@@ -195,7 +201,7 @@ test.describe('remote fall presentation QA', () => {
         await expect(label, '실제 렌더러 settle 전에는 낙 결과가 공개되면 안 됩니다.').toBeHidden();
         await expect(stage).toHaveAttribute('data-settle-source', 'pending');
 
-        await expect(stage, '실제 렌더러 콜백으로만 결과 유지 단계에 진입해야 합니다.').toHaveAttribute('data-settle-source', 'renderer-settled', { timeout: 5_000 });
+        await expect(stage, '실제 렌더러 콜백으로만 결과 유지 단계에 진입해야 합니다.').toHaveAttribute('data-settle-source', /^(three-renderer|css-animation-end)$/, { timeout: 6_000 });
         await expect(label, '윷이 매트 밖으로 빠지는 실제 settle 이후 낙 결과가 표시되어야 합니다.').toHaveText('낙!', { timeout: 2_000 });
         await expect(currentBadge, '결과 유지 중에도 던진 상대의 턴 표시가 유지되어야 합니다.').toHaveText(roller.name);
         await expect(neighbors, '결과 유지 중에도 전체 턴 정보가 유지되어야 합니다.').toHaveCount(2);
