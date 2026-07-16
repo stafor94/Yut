@@ -134,20 +134,32 @@ type TurnIndicatorProps = {
   nextColor?: string;
 };
 
+type TurnNeighborSnapshot = Pick<TurnIndicatorProps, 'previousText' | 'previousColor' | 'nextText' | 'nextColor'>;
+
+const getTurnIndicatorSnapshotKey = (currentText: ReactNode) => (
+  typeof currentText === 'string' || typeof currentText === 'number' ? String(currentText) : ''
+);
+
 export function TurnIndicator({ color, showNeighbors, previousText, previousColor, currentText, currentRollStack, nextText, nextColor }: TurnIndicatorProps) {
-  const lastVisibleNeighborsRef = useRef({ previousText, previousColor, nextText, nextColor });
+  const initialNeighbors = { previousText, previousColor, nextText, nextColor };
+  const lastVisibleNeighborsRef = useRef<TurnNeighborSnapshot>(initialNeighbors);
+  const neighborsByCurrentTextRef = useRef<Map<string, TurnNeighborSnapshot>>(new Map());
   const [keepNeighborsVisible, setKeepNeighborsVisible] = useState(currentFallPresentationActive);
 
   useEffect(() => subscribeFallPresentationActive(setKeepNeighborsVisible), []);
 
   if (showNeighbors) {
-    lastVisibleNeighborsRef.current = { previousText, previousColor, nextText, nextColor };
+    const visibleNeighbors = { previousText, previousColor, nextText, nextColor };
+    lastVisibleNeighborsRef.current = visibleNeighbors;
+    const snapshotKey = getTurnIndicatorSnapshotKey(currentText);
+    if (snapshotKey) neighborsByCurrentTextRef.current.set(snapshotKey, visibleNeighbors);
   }
 
   const renderNeighbors = showNeighbors || keepNeighborsVisible;
+  const frozenSnapshotKey = getTurnIndicatorSnapshotKey(currentText);
   const visibleNeighbors = showNeighbors
     ? { previousText, previousColor, nextText, nextColor }
-    : lastVisibleNeighborsRef.current;
+    : neighborsByCurrentTextRef.current.get(frozenSnapshotKey) ?? lastVisibleNeighborsRef.current;
 
   return <div data-testid="turn-indicator" className="turn-indicator">
     {renderNeighbors && <span className="turn-neighbor previous-turn" style={{ color: visibleNeighbors.previousColor }}>{visibleNeighbors.previousText}</span>}
