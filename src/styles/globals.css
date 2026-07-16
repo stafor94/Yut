@@ -187,3 +187,12 @@
     width: 54px;
   }
 }
+
+/* Keep floating board items compact and closer to their board node. */
+.game-shell .floating-board-item {
+  top: -21px;
+}
+
+.game-shell .floating-board-item .item-orb {
+  transform: scale(.75);
+}
