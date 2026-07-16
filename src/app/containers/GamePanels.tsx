@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { ItemCard } from '../../features/items/components/ItemCard';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
+import { getAiDifficultyBadgeLabel, getRuntimeAiDifficultyForSeat } from '../../game-core/aiDifficulty';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
 import { publishGameEndDialogOpenHandler } from '../flows/gameEndDialogPresentation';
@@ -131,9 +132,13 @@ export function GamePlayersPanel({
           {seats.map((seat) => {
             const rankIndex = rankingSeatIds.indexOf(seat.id);
             const finishText = rankIndex >= 0 ? `${rankIndex + 1}위 완주` : completedSeatIds.includes(seat.id) ? '완주' : '';
-            const statusText = finishText || (seat.isSubstitutedByAI ? '나감' : seat.isAI ? 'AI' : '유저');
+            const isAiControlled = Boolean(seat.isAI || seat.isSubstitutedByAI);
+            const aiDifficultyBadge = isAiControlled
+              ? getAiDifficultyBadgeLabel(getRuntimeAiDifficultyForSeat(seat.id, seat as Seat & { aiDifficulty?: unknown }))
+              : '';
+            const statusText = finishText || (seat.isSubstitutedByAI ? `나감 · ${aiDifficultyBadge}` : seat.isAI ? aiDifficultyBadge : '유저');
             const displayName = getPlayerCardName(seat);
-            return <div className={`player game-player-card ${seat.isAI ? 'ai' : ''} ${activeSeatId === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
+            return <div className={`player game-player-card ${isAiControlled ? 'ai' : ''} ${activeSeatId === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
               <span className="game-player-title">
                 <b className="game-player-label" style={{ color: playMode === 'team' ? TEAM_COLORS[seat.team] : getSeatPieceColor(seat) }}>{displayName}</b>
               </span>
