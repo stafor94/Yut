@@ -4,6 +4,7 @@ import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 const MOBILE_VIEWPORT = { width: 412, height: 915 };
+const REMOTE_RENDERER_FRAME_DELAY_MS = 4_000;
 
 async function findActiveRoller(entries) {
   for (const entry of entries) {
@@ -50,6 +51,28 @@ async function clickForcedFall(page) {
   }));
 }
 
+async function delayAnimationFrames(page, delayMs) {
+  await page.evaluate((nextDelayMs) => {
+    if (!window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__) {
+      window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__ = window.requestAnimationFrame.bind(window);
+      window.__YUT_QA_ORIGINAL_CANCEL_ANIMATION_FRAME__ = window.cancelAnimationFrame.bind(window);
+    }
+    window.requestAnimationFrame = (callback) => window.setTimeout(() => callback(performance.now()), nextDelayMs);
+    window.cancelAnimationFrame = (handle) => window.clearTimeout(handle);
+  }, delayMs);
+}
+
+async function restoreAnimationFrames(page) {
+  await page.evaluate(() => {
+    if (window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__) {
+      window.requestAnimationFrame = window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__;
+      window.cancelAnimationFrame = window.__YUT_QA_ORIGINAL_CANCEL_ANIMATION_FRAME__;
+      delete window.__YUT_QA_ORIGINAL_REQUEST_ANIMATION_FRAME__;
+      delete window.__YUT_QA_ORIGINAL_CANCEL_ANIMATION_FRAME__;
+    }
+  }).catch(() => undefined);
+}
+
 async function startFallTimingObservation(page) {
   await page.evaluate(() => {
     window.__YUT_QA_REMOTE_FALL_OBSERVER__?.disconnect();
@@ -69,7 +92,7 @@ async function startFallTimingObservation(page) {
     };
     const observer = new MutationObserver(sample);
     window.__YUT_QA_REMOTE_FALL_OBSERVER__ = observer;
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'hidden'] });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'hidden', 'data-settle-source'] });
     sample();
   });
 }
@@ -81,7 +104,7 @@ test.describe('remote fall presentation QA', () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('상대 플레이어 낙은 끝까지 재생되고 상단 전체 턴 정보를 유지한다', async ({ page: hostPage, context: hostContext, browser }, testInfo) => {
+  test('상대 플레이어 낙은 렌더러 완료 전 종료되지 않고 상단 전체 턴 정보를 유지한다', async ({ page: hostPage, context: hostContext, browser }, testInfo) => {
     testInfo.setTimeout(180_000);
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'fall-host'));
     const guestName = normalizeQaNickname(makeQaName(testInfo, 'fall-guest'));
@@ -135,7 +158,8 @@ test.describe('remote fall presentation QA', () => {
       expect(observer, '다른 플레이어 화면을 관찰할 수 있어야 합니다.').toBeTruthy();
       if (!roller || !observer) return;
 
-      await runQaStep(testInfo, '현재 플레이어가 실제 낙 4개 서버 액션 제출', async () => {
+      await runQaStep(testInfo, '상대 화면 렌더러 프레임 지연 후 실제 낙 서버 액션 제출', async () => {
+        await delayAnimationFrames(observer.page, REMOTE_RENDERER_FRAME_DELAY_MS);
         await startFallTimingObservation(observer.page);
         const forced = await clickForcedFall(roller.page);
         expect(forced.randomValuesUsed, '결과 4회, 낙 판정, 낙 개수, action id 순서의 난수를 사용해야 합니다.').toBeGreaterThanOrEqual(7);
@@ -144,12 +168,14 @@ test.describe('remote fall presentation QA', () => {
       await runQaStep(testInfo, '상대 화면 낙 전체 연출과 턴 표시 확인', async () => {
         const stage = observer.page.locator('.roll-stage');
         const fallMat = observer.page.locator('.roll-stage .roll-mat.fall-roll');
+        const label = observer.page.locator('.roll-stage .roll-label');
         const scene = observer.page.locator('.roll-stage [data-testid="yut-roll-scene"]');
         const indicator = observer.page.getByTestId('turn-indicator');
         const currentBadge = indicator.locator('.turn-current-badge');
         const neighbors = indicator.locator('.turn-neighbor');
 
         await expect(stage, `상대 낙 연출이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(observer.page), null, 2)}`).toBeVisible({ timeout: 8_000 });
+        await expect(stage).toHaveAttribute('data-settle-source', 'pending');
         await expect(fallMat, '상대 낙 결과에는 fall-roll 매트가 적용되어야 합니다.').toBeVisible({ timeout: 8_000 });
         await expect(scene, '상대 낙의 실제 윷 장면이 표시되어야 합니다.').toHaveAttribute('data-fall-count', '4', { timeout: 8_000 });
         await expect.poll(() => scene.getAttribute('data-renderer'), { timeout: 8_000, message: '상대 낙 장면이 Three.js 또는 CSS fallback 렌더러로 확정되어야 합니다.' }).toMatch(/^(three|fallback)$/);
@@ -158,7 +184,19 @@ test.describe('remote fall presentation QA', () => {
         const neighborTexts = (await neighbors.allTextContents()).map((text) => text.trim());
         expect(neighborTexts, `낙 연출 중에는 던진 플레이어 기준 이전·다음 턴 이름이 유지되어야 합니다: ${JSON.stringify(neighborTexts)}`).toEqual([observer.name, observer.name]);
 
-        await expect(observer.page.locator('.roll-stage .roll-label'), '윷이 매트 밖으로 빠지는 실제 settle 이후 낙 결과가 표시되어야 합니다.').toHaveText('낙!', { timeout: 8_000 });
+        await expect.poll(() => observer.page.evaluate(() => {
+          const timing = window.__YUT_QA_REMOTE_FALL_TIMING__;
+          return timing?.stageStartedAt ? performance.now() - timing.stageStartedAt : 0;
+        }), {
+          timeout: 7_000,
+          message: '고정 2.2초 완료 타이머가 발동하던 시점 이후까지 렌더러 프레임을 지연해야 합니다.',
+        }).toBeGreaterThanOrEqual(3_000);
+        await expect(stage, '실제 렌더러 settle 전에는 낙 연출이 제거되면 안 됩니다.').toBeVisible();
+        await expect(label, '실제 렌더러 settle 전에는 낙 결과가 공개되면 안 됩니다.').toBeHidden();
+        await expect(stage).toHaveAttribute('data-settle-source', 'pending');
+
+        await expect(stage, '실제 렌더러 콜백으로만 결과 유지 단계에 진입해야 합니다.').toHaveAttribute('data-settle-source', 'renderer-settled', { timeout: 5_000 });
+        await expect(label, '윷이 매트 밖으로 빠지는 실제 settle 이후 낙 결과가 표시되어야 합니다.').toHaveText('낙!', { timeout: 2_000 });
         await expect(currentBadge, '결과 유지 중에도 던진 상대의 턴 표시가 유지되어야 합니다.').toHaveText(roller.name);
         await expect(neighbors, '결과 유지 중에도 전체 턴 정보가 유지되어야 합니다.').toHaveCount(2);
         await expect(stage, '낙 결과 유지가 끝난 뒤에만 연출이 종료되어야 합니다.').toBeHidden({ timeout: 6_000 });
@@ -175,7 +213,7 @@ test.describe('remote fall presentation QA', () => {
         const resultHoldDurationMs = timing.endedAt - timing.labelStartedAt;
         expect(timing.stageStartedAt).toBeGreaterThan(0);
         expect(timing.labelStartedAt).toBeGreaterThan(timing.stageStartedAt);
-        expect(landingDurationMs, `상대 낙은 실제 착지·이탈 연출을 최소 1.8초 재생해야 합니다. 실제: ${landingDurationMs}ms`).toBeGreaterThanOrEqual(1_800);
+        expect(landingDurationMs, `지연된 렌더러가 실제 완료되기 전에 낙 결과를 공개하면 안 됩니다. 실제: ${landingDurationMs}ms`).toBeGreaterThanOrEqual(3_200);
         expect(resultHoldDurationMs, `settle 후 낙 결과를 최소 1.2초 유지해야 합니다. 실제: ${resultHoldDurationMs}ms`).toBeGreaterThanOrEqual(1_200);
         expect(resultHoldDurationMs, `낙 결과 유지가 비정상적으로 길어지면 안 됩니다. 실제: ${resultHoldDurationMs}ms`).toBeLessThanOrEqual(3_000);
 
@@ -188,6 +226,10 @@ test.describe('remote fall presentation QA', () => {
         }).toBe(observer.name);
       });
     } finally {
+      await Promise.all([
+        restoreAnimationFrames(hostPage),
+        restoreAnimationFrames(guestPage),
+      ]);
       await guestContext.close();
     }
   });
