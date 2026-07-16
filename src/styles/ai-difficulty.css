@@ -1,0 +1,76 @@
+.screen-waitingRoom .compact-ready-card:has(.ai-difficulty-selector):not(:has(.team-card-selector)) {
+  min-height: 96px;
+  height: 96px;
+}
+
+.screen-waitingRoom .compact-ready-card.ai .seat-row {
+  row-gap: 8px;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-identity {
+  flex-wrap: nowrap;
+}
+
+.screen-waitingRoom .ai-difficulty-selector {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+  margin-left: 1px;
+}
+
+.screen-waitingRoom .ai-difficulty-selector button {
+  min-width: 42px;
+  min-height: 21px;
+  margin: 0;
+  padding: 2px 6px;
+  border: 1px solid rgba(76, 48, 28, .34);
+  border-radius: 7px;
+  background: rgba(255, 244, 211, .72);
+  color: #5a351f;
+  font-size: .66rem;
+  font-weight: 1000;
+  line-height: 1;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .62);
+}
+
+.screen-waitingRoom .ai-difficulty-selector button.active {
+  border-color: #d7ad59;
+  background: linear-gradient(145deg, #2f6b4f, #183c2f);
+  color: #fff8df;
+  text-shadow: 0 1px 1px rgba(8, 31, 21, .42);
+}
+
+.screen-waitingRoom .ai-difficulty-selector button:disabled {
+  cursor: wait;
+  opacity: .68;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-status-actions .ai-remove-button {
+  min-width: 58px;
+  min-height: 26px;
+  padding: 4px 8px;
+  font-size: .75rem;
+}
+
+@media (max-width: 520px) {
+  .screen-waitingRoom .compact-ready-card:has(.ai-difficulty-selector):not(:has(.team-card-selector)) {
+    min-height: 94px;
+    height: 94px;
+  }
+
+  .screen-waitingRoom .compact-ready-card .seat-identity {
+    gap: 6px;
+  }
+
+  .screen-waitingRoom .ai-difficulty-selector button {
+    min-width: 39px;
+    padding-inline: 4px;
+    font-size: .62rem;
+  }
+
+  .screen-waitingRoom .compact-ready-card .seat-status-actions .ai-remove-button {
+    min-width: 54px;
+    padding-inline: 7px;
+  }
+}
