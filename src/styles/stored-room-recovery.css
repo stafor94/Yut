@@ -1,0 +1,53 @@
+.loading-modal-backdrop > .stored-room-recovery-modal {
+  padding-top: 58px;
+}
+
+.loading-modal-backdrop > .stored-room-recovery-modal .stored-room-recovery-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  min-width: 58px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 2px solid #8d5b2d;
+  border-radius: 11px;
+  background: linear-gradient(180deg, #fff0c6, #d8ad6d);
+  color: #4f2d19;
+  font-size: .78rem;
+  font-weight: 1000;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(255, 248, 219, .76);
+  box-shadow:
+    0 4px 0 #81502a,
+    0 7px 11px rgba(58, 29, 13, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .62);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+
+.loading-modal-backdrop > .stored-room-recovery-modal .stored-room-recovery-close:not(:disabled):active {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 #81502a,
+    0 4px 7px rgba(58, 29, 13, .16),
+    inset 0 1px 0 rgba(255, 255, 255, .56);
+}
+
+.loading-modal-backdrop > .stored-room-recovery-modal .stored-room-recovery-close:focus-visible {
+  outline: 3px solid rgba(255, 237, 170, .95);
+  outline-offset: 3px;
+}
+
+@media (max-width: 430px) {
+  .loading-modal-backdrop > .stored-room-recovery-modal {
+    padding-top: 54px;
+  }
+
+  .loading-modal-backdrop > .stored-room-recovery-modal .stored-room-recovery-close {
+    top: 10px;
+    right: 10px;
+    min-width: 54px;
+    min-height: 34px;
+    padding-inline: 10px;
+    font-size: .74rem;
+  }
+}
