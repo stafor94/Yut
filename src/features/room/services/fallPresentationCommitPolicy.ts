@@ -15,6 +15,10 @@ export const isFallPresentationCompletionAction = (action: CommittableGameAction
   action.type === 'roll_yut' && action.payload?.completeFallPresentation === true
 );
 
+export const resolveFallPresentationCompletionLocally = (action: CommittableGameAction) => (
+  isFallPresentationCompletionAction(action) ? { status: 'duplicate' as const } : null
+);
+
 export const shouldWaitForGamePresentationBeforeCommit = (action: CommittableGameAction) => (
   !isFallPresentationCompletionAction(action)
 );
