@@ -60,3 +60,5 @@ GitHub Actions 배포에는 Firebase 환경변수가 필요합니다. 저장소 
 - 아이템 6종 동일 확률 정의
 - 아이템 모드 시작 시 말판 아이템 4~8개 생성 로직
 - PC, 태블릿, 모바일 반응형 게임 화면 초안
+
+[검증용 App.tsx 소스 미러](https://cdn.jsdelivr.net/gh/stafor94/Yut@50d01fa667cbc683001586a1619444ac3826a9e3/src/app/App.tsx)
