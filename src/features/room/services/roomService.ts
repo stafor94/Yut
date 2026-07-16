@@ -29,9 +29,7 @@ import {
 } from './roomServiceCore';
 import { settleAuthoritativeCommit } from './authoritativeCommitTimeout';
 import {
-  isFallPresentationCompletionAction,
-  settleFallPresentationCompletionWithRetry,
-  shouldRetryFallPresentationCompletion,
+  resolveFallPresentationCompletionLocally,
   shouldWaitForGamePresentationBeforeCommit,
 } from './fallPresentationCommitPolicy';
 import { isAiSubstitutionUpdate } from './roomExitPolicy';
@@ -106,18 +104,13 @@ export async function commitAuthoritativeGameAction(
   roomId: string,
   action: CommittableGameAction,
 ): Promise<CommitAuthoritativeGameActionResult> {
+  const localFallCompletion = resolveFallPresentationCompletionLocally(action);
+  if (localFallCompletion) return localFallCompletion;
+
   if (shouldWaitForGamePresentationBeforeCommit(action)) {
     await waitForGamePresentationBeforeAction(action.type);
   }
-  const result = isFallPresentationCompletionAction(action)
-    ? await settleFallPresentationCompletionWithRetry({
-      action,
-      commit: () => settleRoomAction(roomId, action),
-    })
-    : await settleRoomAction(roomId, action);
-  if (shouldRetryFallPresentationCompletion(action, result)) {
-    throw new Error(result.reason || '낙 결과 표출 완료 요청이 거부되었습니다.');
-  }
+  const result = await settleRoomAction(roomId, action);
   if (db && (result.status === 'committed' || result.status === 'duplicate')) {
     void setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now() }, { merge: true }).catch(() => undefined);
   }
