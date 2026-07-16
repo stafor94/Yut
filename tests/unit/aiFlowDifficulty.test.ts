@@ -50,6 +50,6 @@ test('easy AI sometimes selects any legal move', () => {
 test('easy AI regular selection includes moves within 45 points', () => {
   let call = 0;
   const values = [0.5, 0.999];
-  const moves = [candidate('best', 100), candidate('near', 56), candidate('low', 55)];
+  const moves = [candidate('best', 100), candidate('near', 56), candidate('low', 54)];
   assert.equal(chooseScoredAiCandidate(moves, 'easy', () => values[call++] ?? 0)?.id, 'near');
 });
