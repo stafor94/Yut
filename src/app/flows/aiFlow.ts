@@ -1,7 +1,7 @@
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import { getAiItemValue, type ItemType } from '../../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getMovePathNodeIds, type BranchChoice } from '../../game-core/board/board';
-import { getCurrentAiRollDifficulty, type AiDifficulty } from '../../game-core/aiDifficulty';
+import { getRuntimeAiDifficultyForSeat, type AiDifficulty } from '../../game-core/aiDifficulty';
 import { AI_SCORE_PROFILES, chooseScoredAiCandidate } from '../../game-core/aiStrategy';
 import type { YutResult } from '../../game-core/roll';
 import { GOLDEN_YUT_CHOICES } from '../../game-core/roll';
@@ -25,12 +25,10 @@ export type AiMoveCandidate = {
   score: number;
 };
 
-const getSeatDifficulty = (seat: Seat): AiDifficulty => {
-  const source = seat as Seat & { aiDifficulty?: unknown };
-  if (source.isSubstitutedByAI) return 'hard';
-  if (source.aiDifficulty === 'easy') return 'easy';
-  return getCurrentAiRollDifficulty();
-};
+const getSeatDifficulty = (seat: Seat): AiDifficulty => getRuntimeAiDifficultyForSeat(
+  seat.id,
+  seat as Seat & { aiDifficulty?: unknown },
+);
 
 export function scoreAiMove(piece: BoardPiece, result: YutResult, seat: Seat, aiBranchChoice: BranchChoice, { canSeatControlPiece, getSeatById, isSameSide, pieces }: AiMoveContext, difficulty = getSeatDifficulty(seat)) {
   const steps = result.steps;
