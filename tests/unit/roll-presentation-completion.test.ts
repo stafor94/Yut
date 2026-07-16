@@ -20,7 +20,7 @@ const flushMicrotasks = async () => {
   await Promise.resolve();
 };
 
-test('remote roll presentation waits for the renderer settled signal and then holds the result', async () => {
+test('remote roll presentation waits for the Three.js renderer settled signal and then holds the result', async () => {
   const hold = createDeferred();
   const completion = createRollPresentationCompletion({
     watchdogMs: 1000,
@@ -35,12 +35,12 @@ test('remote roll presentation waits for the renderer settled signal and then ho
   await flushMicrotasks();
   assert.equal(finished, false);
 
-  completion.markSettled('renderer-settled');
+  completion.markSettled('three-renderer');
   await flushMicrotasks();
   assert.equal(finished, false);
 
   hold.resolve();
-  assert.equal(await waiting, 'renderer-settled');
+  assert.equal(await waiting, 'three-renderer');
   assert.equal(finished, true);
 });
 
@@ -63,7 +63,7 @@ test('queued remote roll keeps the presentation lock until the renderer settles'
   assert.equal(lock.isLocked(), true);
   assert.equal(queue.isBusy(), true);
 
-  completion.markSettled('renderer-settled');
+  completion.markSettled('css-animation-end');
   await presentation;
   assert.equal(lock.isLocked(), false);
   assert.equal(queue.isBusy(), false);
