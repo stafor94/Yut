@@ -1,12 +1,19 @@
 /* Final in-game alignment overrides for the header, room summary, and history cards. */
+.game-shell .side .log-list {
+  padding-top: 15px;
+  padding-left: 15px;
+}
+
 .game-shell .side .log-list p {
+  overflow: visible;
   padding-left: 55px;
 }
 
 .game-shell .side .log-sequence {
   position: absolute;
-  top: 7px;
-  left: 7px;
+  top: -12px;
+  left: -12px;
+  z-index: 2;
   margin: 0;
 }
 

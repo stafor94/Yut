@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { expectAppShell } from '../helpers/ui.js';
 
 test.describe('모바일 인게임 정렬', () => {
   test('기록 번호와 방 옵션 및 상단 버튼을 지정 위치에 정렬한다', async ({ page }) => {
-    await page.goto('/');
     await page.setViewportSize({ width: 390, height: 844 });
+    await expectAppShell(page);
 
     await page.evaluate(() => {
       const fixture = document.createElement('main');
@@ -62,7 +63,7 @@ test.describe('모바일 인게임 정렬', () => {
       const side = document.createElement('aside');
       side.className = 'panel side';
       const logList = document.createElement('div');
-      logList.className = 'log-list';
+      logList.className = 'log-list scrollable';
       const logEntry = document.createElement('p');
       const sequence = document.createElement('span');
       sequence.className = 'log-sequence';
@@ -107,21 +108,32 @@ test.describe('모바일 인게임 정렬', () => {
     expect(roomLayout.playerTop).toBeGreaterThan(roomLayout.badgesTop);
 
     const logLayout = await fixture.locator('.log-list p').evaluate((entry) => {
+      const list = entry.parentElement;
       const sequence = entry.querySelector('.log-sequence');
       const text = entry.querySelector('[data-testid="log-text"]');
-      if (!(sequence instanceof HTMLElement) || !(text instanceof HTMLElement)) throw new Error('진행 기록 fixture가 올바르지 않습니다.');
+      if (!(list instanceof HTMLElement) || !(sequence instanceof HTMLElement) || !(text instanceof HTMLElement)) throw new Error('진행 기록 fixture가 올바르지 않습니다.');
+      const listBox = list.getBoundingClientRect();
       const entryBox = entry.getBoundingClientRect();
       const sequenceBox = sequence.getBoundingClientRect();
       const textBox = text.getBoundingClientRect();
+      const sequenceStyle = getComputedStyle(sequence);
       return {
+        sequenceTop: sequenceStyle.top,
+        sequenceLeft: sequenceStyle.left,
         sequenceTopOffset: sequenceBox.top - entryBox.top,
         sequenceLeftOffset: sequenceBox.left - entryBox.left,
+        sequenceTopInsideList: sequenceBox.top - listBox.top,
+        sequenceLeftInsideList: sequenceBox.left - listBox.left,
         sequenceRight: sequenceBox.right,
         textLeft: textBox.left,
       };
     });
-    expect(logLayout.sequenceTopOffset).toBeLessThanOrEqual(10);
-    expect(logLayout.sequenceLeftOffset).toBeLessThanOrEqual(10);
+    expect(logLayout.sequenceTop).toBe('-12px');
+    expect(logLayout.sequenceLeft).toBe('-12px');
+    expect(logLayout.sequenceTopOffset, '번호 배지는 카드 상단보다 위로 돌출되어야 합니다.').toBeLessThan(0);
+    expect(logLayout.sequenceLeftOffset, '번호 배지는 카드 왼쪽보다 밖으로 돌출되어야 합니다.').toBeLessThan(0);
+    expect(logLayout.sequenceTopInsideList, '상단으로 돌출된 번호 배지가 스크롤 영역에 잘리면 안 됩니다.').toBeGreaterThanOrEqual(0);
+    expect(logLayout.sequenceLeftInsideList, '왼쪽으로 돌출된 번호 배지가 스크롤 영역에 잘리면 안 됩니다.').toBeGreaterThanOrEqual(0);
     expect(logLayout.textLeft).toBeGreaterThan(logLayout.sequenceRight);
   });
 });
