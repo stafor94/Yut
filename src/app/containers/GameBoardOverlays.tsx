@@ -294,6 +294,16 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     const sourceAnimationId = rollAnimation.id;
     const fallCount = 'fallCount' in rollAnimation ? rollAnimation.fallCount ?? 0 : 0;
     const existingMeta = queuedPresentationMetaRef.current.get(sourceAnimationId);
+    if (seenResolvedAnimationIdsRef.current.has(sourceAnimationId)) {
+      if (existingMeta && presentationActorId && existingMeta.actorId !== presentationActorId) {
+        queuedPresentationMetaRef.current.set(sourceAnimationId, {
+          actorId: presentationActorId,
+          fallCount,
+        });
+        notifyQueuedPresentation();
+      }
+      return;
+    }
     if (presentationActorId || existingMeta) {
       queuedPresentationMetaRef.current.set(sourceAnimationId, {
         actorId: presentationActorId || existingMeta?.actorId || '',
@@ -301,7 +311,6 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       });
       notifyQueuedPresentation();
     }
-    if (seenResolvedAnimationIdsRef.current.has(sourceAnimationId)) return;
     seenResolvedAnimationIdsRef.current.add(sourceAnimationId);
     if (seenResolvedAnimationIdsRef.current.size > 120) {
       seenResolvedAnimationIdsRef.current = new Set(Array.from(seenResolvedAnimationIdsRef.current).slice(-60));
