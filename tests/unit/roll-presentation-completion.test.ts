@@ -20,7 +20,7 @@ const flushMicrotasks = async () => {
   await Promise.resolve();
 };
 
-test('remote roll presentation waits for the actual settled signal and then holds the result', async () => {
+test('remote roll presentation waits for the Three.js renderer settled signal and then holds the result', async () => {
   const hold = createDeferred();
   const completion = createRollPresentationCompletion({
     watchdogMs: 1000,
@@ -35,16 +35,16 @@ test('remote roll presentation waits for the actual settled signal and then hold
   await flushMicrotasks();
   assert.equal(finished, false);
 
-  completion.markSettled();
+  completion.markSettled('three-renderer');
   await flushMicrotasks();
   assert.equal(finished, false);
 
   hold.resolve();
-  assert.equal(await waiting, 'settled');
+  assert.equal(await waiting, 'three-renderer');
   assert.equal(finished, true);
 });
 
-test('queued remote roll keeps the presentation lock until the scene settles', async () => {
+test('queued remote roll keeps the presentation lock until the renderer settles', async () => {
   const queue = createGameAnimationQueue();
   const lock = createGamePresentationLock();
   const completion = createRollPresentationCompletion({ resultHoldMs: 0, watchdogMs: 1000 });
@@ -63,10 +63,29 @@ test('queued remote roll keeps the presentation lock until the scene settles', a
   assert.equal(lock.isLocked(), true);
   assert.equal(queue.isBusy(), true);
 
-  completion.markSettled();
+  completion.markSettled('css-animation-end');
   await presentation;
   assert.equal(lock.isLocked(), false);
   assert.equal(queue.isBusy(), false);
+});
+
+test('watchdog reveals the result only through the explicit abnormal completion path', async () => {
+  const hold = createDeferred();
+  const completion = createRollPresentationCompletion({
+    watchdogMs: 0,
+    waitForHold: () => hold.promise,
+  });
+
+  assert.equal(await completion.waitForVisualSettle(), 'watchdog');
+  let holdFinished = false;
+  const waitingForHold = completion.waitForResultHold().then((result) => {
+    holdFinished = true;
+    return result;
+  });
+  await flushMicrotasks();
+  assert.equal(holdFinished, false);
+  hold.resolve();
+  assert.equal(await waitingForHold, 'held');
 });
 
 test('presentation completion can be cancelled without waiting for the result hold', async () => {

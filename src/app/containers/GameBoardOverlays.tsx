@@ -21,8 +21,9 @@ import {
 import {
   createRollPresentationCompletion,
   type RollPresentationCompletion,
+  type RollPresentationSettleSource,
+  type RollPresentationVisualResult,
 } from '../flows/rollPresentationCompletion';
-import { REMOTE_ROLL_PRE_RESULT_MS } from '../flows/yutRollAnimation';
 import type { RollAnimation, ToastMessage } from '../appState';
 
 export type { RollPresentationState } from '../flows/rollPresentationVisibility';
@@ -194,8 +195,11 @@ type RollStageProps = {
 
 const isResolvedRollAnimation = (animation: RollAnimation) => animation.phase === undefined || animation.phase === 'resolved';
 
+type PresentationSettleSource = 'pending' | Exclude<RollPresentationVisualResult, 'cancelled'>;
+
 export function RollStage({ rollAnimation, presentationActorId = '', onPresentationChange }: RollStageProps) {
   const mountedRef = useRef(true);
+  const rollStageRef = useRef<HTMLDivElement | null>(null);
   const presentedAnimationRef = useRef<RollAnimation | null>(rollAnimation);
   const presentedSourceAnimationIdRef = useRef<number | null>(rollAnimation?.id ?? null);
   const deferredLiveAnimationRef = useRef<RollAnimation | null>(null);
@@ -207,7 +211,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const hadPresentedAnimationRef = useRef(Boolean(rollAnimation));
   const [presentedAnimation, setPresentedAnimation] = useState<RollAnimation | null>(rollAnimation);
   const [settledAnimationId, setSettledAnimationId] = useState<number | null>(null);
-
+  const [settleSource, setSettleSource] = useState<PresentationSettleSource>('pending');
   onPresentationChangeRef.current = onPresentationChange;
 
   const emitPresentationChange = (state: RollPresentationState) => {
@@ -219,6 +223,14 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     presentedAnimationRef.current = nextAnimation;
     presentedSourceAnimationIdRef.current = sourceAnimationId;
     setPresentedAnimation(nextAnimation);
+  };
+
+  const markCurrentAnimationSettled = (source: RollPresentationSettleSource) => {
+    const currentAnimation = presentedAnimationRef.current;
+    if (!currentAnimation) return;
+    setSettledAnimationId(currentAnimation.id);
+    setSettleSource((current) => current === 'pending' ? source : current);
+    presentationCompletionByIdRef.current.get(currentAnimation.id)?.markSettled(source);
   };
 
   const notifyQueuedPresentation = () => {
@@ -332,16 +344,23 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
         const completion = createRollPresentationCompletion();
         presentationCompletionByIdRef.current.set(queuedAnimation.id, completion);
         setSettledAnimationId(null);
+        setSettleSource('pending');
         presentAnimation(queuedAnimation, sourceAnimationId);
-        const deterministicSettleTimer = window.setTimeout(() => {
-          if (!mountedRef.current || presentedAnimationRef.current?.id !== queuedAnimation.id) return;
-          setSettledAnimationId(queuedAnimation.id);
-          completion.markSettled();
-        }, REMOTE_ROLL_PRE_RESULT_MS);
         try {
-          await completion.waitForCompletion();
+          const visualResult = await completion.waitForVisualSettle();
+          if (visualResult === 'cancelled') return;
+          if (!mountedRef.current || presentedAnimationRef.current?.id !== queuedAnimation.id) return;
+          setSettleSource(visualResult);
+          if (visualResult === 'watchdog') {
+            console.warn('윷 애니메이션 렌더러 완료 신호가 없어 watchdog으로 결과를 확정합니다.', {
+              animationId: queuedAnimation.id,
+              sourceAnimationId,
+            });
+            setSettledAnimationId(queuedAnimation.id);
+          }
+          const holdResult = await completion.waitForResultHold();
+          if (holdResult === 'cancelled') return;
         } finally {
-          window.clearTimeout(deterministicSettleTimer);
           presentationCompletionByIdRef.current.delete(queuedAnimation.id);
         }
         if (mountedRef.current && presentedAnimationRef.current?.id === queuedAnimation.id) presentAnimation(null);
@@ -383,10 +402,19 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const hasResolvedResult = (isLanding || isResultHold || Boolean(result)) && Boolean(result);
   const isBonusResult = hasResolvedResult && !turnOrder && !fallCount && (result?.name === '윷' || result?.name === '모');
   const phaseClass = isPreResult ? `pending-roll ${presentedAnimation.phase === 'extra-spin' ? 'extra-spin-roll' : 'primary-roll'}` : isVisualLanding ? 'resolved-from-pending resolved-roll landing-roll' : isResultHold ? 'resolved-from-pending resolved-roll result-hold-roll' : 'resolved-roll';
-  return <div className={`roll-stage ${phaseClass}`} role="status" aria-live="polite">
+  return <div ref={rollStageRef} className={`roll-stage ${phaseClass}`} data-settle-source={settleSource} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${presentedAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
-    <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`}>
+    <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`} onAnimationEnd={(event) => {
+      if (isPreResult) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.classList.contains('yut-stick')) return;
+      const scene = target.closest<HTMLElement>('[data-testid="yut-roll-scene"]');
+      if (scene?.dataset.renderer !== 'fallback') return;
+      const sticks = scene.querySelectorAll<HTMLElement>('.yut-stick');
+      if (sticks.item(sticks.length - 1) !== target) return;
+      markCurrentAnimationSettled('css-animation-end');
+    }}>
       <span data-testid="roll-mat-surface" className="roll-mat-surface" aria-hidden="true">
         <span className="roll-mat-depth"></span>
         <span className="roll-mat-inlay"></span>
@@ -400,8 +428,14 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       {presentedAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${presentedAnimation.timingZone}`}>{presentedAnimation.timingZone === 'perfect' ? 'Perfect!' : presentedAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{fallCount ? '낙!' : result.name}</span>}
       <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={() => {
-        setSettledAnimationId(presentedAnimation.id);
-        presentationCompletionByIdRef.current.get(presentedAnimation.id)?.markSettled();
+        const scene = rollStageRef.current?.querySelector<HTMLElement>('[data-testid="yut-roll-scene"]');
+        if (scene?.dataset.renderer === 'fallback') {
+          const animations = Array.from(scene.querySelectorAll<HTMLElement>('.yut-stick')).flatMap((stick) => stick.getAnimations());
+          const allAnimationsFinished = animations.every((animation) => animation.playState === 'finished' || animation.playState === 'idle');
+          if (allAnimationsFinished) markCurrentAnimationSettled('css-animation-end');
+          return;
+        }
+        markCurrentAnimationSettled('three-renderer');
       }} />
     </div>
   </div>;
