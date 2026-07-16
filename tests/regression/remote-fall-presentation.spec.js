@@ -81,7 +81,7 @@ test.describe('remote fall presentation QA', () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('상대 플레이어 낙은 끝까지 재생되고 상단 현재 턴 배지는 중앙을 유지한다', async ({ page: hostPage, context: hostContext, browser }, testInfo) => {
+  test('상대 플레이어 낙은 끝까지 재생되고 상단 전체 턴 정보를 유지한다', async ({ page: hostPage, context: hostContext, browser }, testInfo) => {
     testInfo.setTimeout(180_000);
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'fall-host'));
     const guestName = normalizeQaNickname(makeQaName(testInfo, 'fall-guest'));
@@ -147,31 +147,20 @@ test.describe('remote fall presentation QA', () => {
         const scene = observer.page.locator('.roll-stage [data-testid="yut-roll-scene"]');
         const indicator = observer.page.getByTestId('turn-indicator');
         const currentBadge = indicator.locator('.turn-current-badge');
+        const neighbors = indicator.locator('.turn-neighbor');
 
         await expect(stage, `상대 낙 연출이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(observer.page), null, 2)}`).toBeVisible({ timeout: 8_000 });
         await expect(fallMat, '상대 낙 결과에는 fall-roll 매트가 적용되어야 합니다.').toBeVisible({ timeout: 8_000 });
         await expect(scene, '상대 낙의 실제 윷 장면이 표시되어야 합니다.').toHaveAttribute('data-fall-count', '4', { timeout: 8_000 });
         await expect.poll(() => scene.getAttribute('data-renderer'), { timeout: 8_000, message: '상대 낙 장면이 Three.js 또는 CSS fallback 렌더러로 확정되어야 합니다.' }).toMatch(/^(three|fallback)$/);
         await expect(currentBadge, '낙 연출 중에는 던진 상대의 이름을 현재 턴으로 유지해야 합니다.').toHaveText(roller.name);
-        await expect(indicator.locator('.turn-neighbor'), '낙 연출 중 이웃 턴 표시는 숨겨야 합니다.').toHaveCount(0);
-
-        const alignment = await indicator.evaluate((node) => {
-          const badge = node.querySelector('.turn-current-badge');
-          if (!(badge instanceof HTMLElement)) return null;
-          const indicatorRect = node.getBoundingClientRect();
-          const badgeRect = badge.getBoundingClientRect();
-          return {
-            centerDeltaPx: Math.abs((indicatorRect.left + indicatorRect.width / 2) - (badgeRect.left + badgeRect.width / 2)),
-            indicatorWidth: indicatorRect.width,
-            badgeWidth: badgeRect.width,
-          };
-        });
-        expect(alignment, '상단 현재 턴 배지의 위치를 측정할 수 있어야 합니다.').not.toBeNull();
-        expect(alignment?.indicatorWidth ?? 0).toBeGreaterThan(alignment?.badgeWidth ?? 0);
-        expect(alignment?.centerDeltaPx ?? 999, `낙 중 현재 턴 배지는 상단 표시 중앙에 있어야 합니다: ${JSON.stringify(alignment)}`).toBeLessThanOrEqual(2);
+        await expect(neighbors, '낙 연출 중에도 이전·다음 턴 정보가 사라지면 안 됩니다.').toHaveCount(2);
+        const neighborTexts = (await neighbors.allTextContents()).map((text) => text.trim());
+        expect(neighborTexts, `낙 연출 중에는 던진 플레이어 기준 이전·다음 턴 이름이 유지되어야 합니다: ${JSON.stringify(neighborTexts)}`).toEqual([observer.name, observer.name]);
 
         await expect(observer.page.locator('.roll-stage .roll-label'), '윷이 매트 밖으로 빠지는 실제 settle 이후 낙 결과가 표시되어야 합니다.').toHaveText('낙!', { timeout: 8_000 });
         await expect(currentBadge, '결과 유지 중에도 던진 상대의 턴 표시가 유지되어야 합니다.').toHaveText(roller.name);
+        await expect(neighbors, '결과 유지 중에도 전체 턴 정보가 유지되어야 합니다.').toHaveCount(2);
         await expect(stage, '낙 결과 유지가 끝난 뒤에만 연출이 종료되어야 합니다.').toBeHidden({ timeout: 6_000 });
 
         await expect.poll(() => observer.page.evaluate(() => window.__YUT_QA_REMOTE_FALL_TIMING__?.endedAt ?? 0), {
