@@ -2,6 +2,7 @@ import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
 import { getClientMutationDocRef, makeSequenceDocId, sanitizeForFirestore } from './roomFirestore';
 import {
+  hasCompletePreparedGameSeats,
   isRoomGameActivationWindowOpen,
   isRoomGamePreparationWindowOpen,
   ROOM_START_ACTIVATION_GRACE_MS,
@@ -38,11 +39,12 @@ const isCancelledStartRequest = (room: Omit<RoomSummary, 'id'>) => {
   return Boolean(startCancelledAt && startCancelledAt >= Number(room.startRequestedAt ?? 0));
 };
 
-const isPreparedForRequest = (state: SyncedGameState | null, identity: GameStartRequestIdentity) => (
+const isPreparedForRequest = (state: SyncedGameState | null, identity: GameStartRequestIdentity, maxPlayers: number) => (
   Number(state?.startRequestVersion ?? 0) === identity.startRequestVersion
   && String(state?.startRequestId ?? '') === identity.startRequestId
   && Array.isArray(state?.pieces)
   && state.pieces.length > 0
+  && hasCompletePreparedGameSeats(state.gameSeats, maxPlayers)
 );
 
 function schedulePreparedRoomActivation(
@@ -91,11 +93,15 @@ export async function prepareRoomGameState(
     const currentState = currentStateSnapshot.exists() ? currentStateSnapshot.data() as SyncedGameState : null;
     const currentVersion = Number(currentState?.turnVersion ?? 0);
     const currentSequence = Number(currentState?.lastSequence ?? 0);
+    const maxPlayers = Number(room.maxPlayers ?? 0);
     if (!isCurrentStartRequest(room, meta)) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
 
     if (processedActionSnapshot.exists()) {
       const processed = processedActionSnapshot.data();
       if (Number(processed.startRequestVersion ?? 0) !== meta.startRequestVersion || String(processed.startRequestId ?? '') !== meta.startRequestId) {
+        return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
+      }
+      if (!isPreparedForRequest(currentState, meta, maxPlayers)) {
         return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
       }
       return {
@@ -105,7 +111,7 @@ export async function prepareRoomGameState(
       };
     }
 
-    if (isPreparedForRequest(currentState, meta)) {
+    if (isPreparedForRequest(currentState, meta, maxPlayers)) {
       transaction.set(processedActionRef, {
         clientMutationId: meta.clientMutationId,
         startRequestVersion: meta.startRequestVersion,
@@ -123,7 +129,8 @@ export async function prepareRoomGameState(
     const requestCanBePrepared = room.status === 'waiting'
       && room.startStatus === 'requested'
       && isRoomGamePreparationWindowOpen(countdownEndsAt)
-      && !isCancelledStartRequest(room);
+      && !isCancelledStartRequest(room)
+      && hasCompletePreparedGameSeats(state.gameSeats, maxPlayers);
     if (!requestCanBePrepared) return { status: 'sequence_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
 
     const nextVersion = currentVersion + 1;
@@ -188,7 +195,7 @@ export async function activatePreparedRoomGame(roomId: string, identity: GameSta
 
     const room = roomSnapshot.data() as Omit<RoomSummary, 'id'>;
     const state = gameStateSnapshot.data() as SyncedGameState;
-    if (!isCurrentStartRequest(room, identity) || !isPreparedForRequest(state, identity)) return false;
+    if (!isCurrentStartRequest(room, identity) || !isPreparedForRequest(state, identity, Number(room.maxPlayers ?? 0))) return false;
     if (room.status === 'playing' && room.startStatus === 'playing') return true;
 
     const countdownEndsAt = Number(room.startCountdownEndsAt ?? room.startCountdownUntil ?? 0);
