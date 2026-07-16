@@ -2,7 +2,7 @@ import { REMOTE_ROLL_RESULT_HOLD_MS, waitForGameAnimation } from './gameAnimatio
 
 export const REMOTE_ROLL_SETTLE_WATCHDOG_MS = 12000;
 
-export type RollPresentationSettleSource = 'renderer-settled';
+export type RollPresentationSettleSource = 'three-renderer' | 'css-animation-end';
 export type RollPresentationVisualResult = RollPresentationSettleSource | 'watchdog' | 'cancelled';
 export type RollPresentationResultHoldResult = 'held' | 'cancelled';
 export type RollPresentationCompletionResult = Exclude<RollPresentationVisualResult, 'cancelled'> | 'cancelled';
@@ -60,7 +60,7 @@ export function createRollPresentationCompletion({
       watchdogPromise,
       cancelledPromise.then(() => 'cancelled' as const),
     ]);
-    if (watchdogTimer) clearTimeout(watchdogTimer);
+    if (watchdogTimer !== null) clearTimeout(watchdogTimer);
     return result;
   };
 
