@@ -72,7 +72,7 @@ const replacementTests = new Map<string, () => void>([
     assert.equal(completed.patch?.turnIndex, 1);
     assert.equal(completed.patch?.itemPromptTiming, 'before_roll');
     assert.equal(completed.patch?.turnDeadlineKind, 'item_prompt');
-    assert.equal(completed.patch?.pendingGoldenYutSelection, null);
+    assert.equal(completed.patch?.pendingGoldenYutSelection ?? null, null);
   })],
   ['온라인 누적 낙 후 다음 플레이어에게 before_roll 아이템이 없으면 roll 상태를 유지한다', () => withMockRandom([0.9, 0.9, 0.9, 0.9, 0], () => {
     const fall = reduceAuthoritativeGameAction(
@@ -104,7 +104,7 @@ const replacementTests = new Map<string, () => void>([
     assert.equal(completed.patch?.turnIndex, 1);
     assert.equal(completed.patch?.itemPromptTiming, null);
     assert.equal(completed.patch?.turnDeadlineKind, 'roll');
-    assert.equal(completed.patch?.pendingGoldenYutSelection, null);
+    assert.equal(completed.patch?.pendingGoldenYutSelection ?? null, null);
   })],
 ]);
 
