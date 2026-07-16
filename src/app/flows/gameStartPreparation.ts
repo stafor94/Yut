@@ -24,6 +24,7 @@ export type GameStartPreparationPlayer = {
   color: string;
   seatIndex: number;
   team: '청팀' | '홍팀';
+  ready?: boolean;
   isAI?: boolean;
   isSubstitutedByAI?: boolean;
   isSpectator?: boolean;
@@ -57,8 +58,41 @@ const getSeededTurnOrderSeats = (targetSeats: PreparedSeat[], seed: string) => [
   return scoreDiff || left.label.localeCompare(right.label, undefined, { numeric: true });
 });
 
-const getPreparedSeats = (room: GameStartPreparationRoom, players: GameStartPreparationPlayer[]): PreparedSeat[] => players
-  .filter((player) => !player.isSpectator && Number.isInteger(Number(player.seatIndex)) && Number(player.seatIndex) >= 0 && Number(player.seatIndex) < room.maxPlayers)
+const getActiveRoomGamePlayers = (room: GameStartPreparationRoom, players: GameStartPreparationPlayer[]) => players
+  .filter((player) => !player.isSpectator && Number.isInteger(Number(player.seatIndex)) && Number(player.seatIndex) >= 0 && Number(player.seatIndex) < room.maxPlayers);
+
+export const isCompleteRoomGamePlayerSnapshot = (room: GameStartPreparationRoom, players: GameStartPreparationPlayer[]) => {
+  const expectedSeatCount = Number(room.maxPlayers);
+  if (![2, 3, 4].includes(expectedSeatCount)) return false;
+
+  const activePlayers = getActiveRoomGamePlayers(room, players);
+  if (activePlayers.length !== expectedSeatCount) return false;
+
+  const playerIds = new Set<string>();
+  const seatIndexes = new Set<number>();
+  for (const player of activePlayers) {
+    const playerId = player.id.trim();
+    const seatIndex = Number(player.seatIndex);
+    if (!playerId || playerIds.has(playerId) || seatIndexes.has(seatIndex)) return false;
+    if (!player.isAI && !player.isSubstitutedByAI && player.ready !== true) return false;
+    playerIds.add(playerId);
+    seatIndexes.add(seatIndex);
+  }
+  if (!Array.from({ length: expectedSeatCount }, (_, index) => index).every((index) => seatIndexes.has(index))) return false;
+
+  if (room.playMode === 'team') {
+    if (expectedSeatCount !== 4) return false;
+    const teamCounts = activePlayers.reduce<Record<GameStartPreparationPlayer['team'], number>>(
+      (counts, player) => ({ ...counts, [player.team]: counts[player.team] + 1 }),
+      { 청팀: 0, 홍팀: 0 },
+    );
+    if (teamCounts.청팀 !== 2 || teamCounts.홍팀 !== 2) return false;
+  }
+
+  return true;
+};
+
+const getPreparedSeats = (room: GameStartPreparationRoom, players: GameStartPreparationPlayer[]): PreparedSeat[] => getActiveRoomGamePlayers(room, players)
   .sort((left, right) => Number(left.seatIndex) - Number(right.seatIndex))
   .map((player) => ({
     id: player.id,
