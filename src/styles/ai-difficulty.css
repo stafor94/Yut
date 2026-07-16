@@ -85,3 +85,8 @@
     font-size: .67rem;
   }
 }
+
+/* Waiting-room cards contain live controls, so a sticky touch hover must not move them after an AI add/remove action. */
+.screen-waitingRoom .compact-ready-card:hover {
+  transform: none;
+}
