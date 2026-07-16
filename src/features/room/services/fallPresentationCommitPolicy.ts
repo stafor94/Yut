@@ -1,5 +1,6 @@
 type CommittableGameAction = {
   type: string;
+  actorId: string;
   payload?: Record<string, unknown>;
 };
 
