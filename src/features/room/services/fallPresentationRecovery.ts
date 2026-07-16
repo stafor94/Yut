@@ -1,7 +1,23 @@
-import type { CommitAuthoritativeGameActionResult, GameAction } from './roomServiceCore';
+type RecoverableGameAction = {
+  type: string;
+  actorId: string;
+  payload?: Record<string, unknown>;
+};
 
-type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
-type ActionResultSummary = Pick<CommitAuthoritativeGameActionResult, 'status' | 'reason'>;
+type ActionResultSummary = {
+  status: string;
+  reason?: string;
+};
+
+export type AutomatedFallPresentationRecoveryAction = {
+  type: 'roll_yut';
+  actorId: string;
+  payload: {
+    completeFallPresentation: true;
+    recoverySourceClientActionId: string;
+    clientActionId: string;
+  };
+};
 
 export const FALL_PRESENTATION_PENDING_REASON = '낙 결과 표출이 끝난 뒤 다음 차례로 넘어갑니다.';
 
@@ -11,9 +27,9 @@ const AUTOMATED_ROLL_CLIENT_ACTION_PREFIXES = [
 ] as const;
 
 export const getAutomatedFallPresentationRecoveryAction = (
-  action: CommittableGameAction,
+  action: RecoverableGameAction,
   result: ActionResultSummary,
-): CommittableGameAction | null => {
+): AutomatedFallPresentationRecoveryAction | null => {
   if (action.type !== 'roll_yut'
     || action.payload?.completeFallPresentation === true
     || result.status !== 'rejected'
