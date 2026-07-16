@@ -21,6 +21,7 @@ import {
 import {
   createRollPresentationCompletion,
   type RollPresentationCompletion,
+  type RollPresentationSettleSource,
   type RollPresentationVisualResult,
 } from '../flows/rollPresentationCompletion';
 import type { RollAnimation, ToastMessage } from '../appState';
@@ -198,6 +199,7 @@ type PresentationSettleSource = 'pending' | Exclude<RollPresentationVisualResult
 
 export function RollStage({ rollAnimation, presentationActorId = '', onPresentationChange }: RollStageProps) {
   const mountedRef = useRef(true);
+  const rollStageRef = useRef<HTMLDivElement | null>(null);
   const presentedAnimationRef = useRef<RollAnimation | null>(rollAnimation);
   const presentedSourceAnimationIdRef = useRef<number | null>(rollAnimation?.id ?? null);
   const deferredLiveAnimationRef = useRef<RollAnimation | null>(null);
@@ -221,6 +223,14 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     presentedAnimationRef.current = nextAnimation;
     presentedSourceAnimationIdRef.current = sourceAnimationId;
     setPresentedAnimation(nextAnimation);
+  };
+
+  const markCurrentAnimationSettled = (source: RollPresentationSettleSource) => {
+    const currentAnimation = presentedAnimationRef.current;
+    if (!currentAnimation) return;
+    setSettledAnimationId(currentAnimation.id);
+    setSettleSource((current) => current === 'pending' ? source : current);
+    presentationCompletionByIdRef.current.get(currentAnimation.id)?.markSettled(source);
   };
 
   const notifyQueuedPresentation = () => {
@@ -392,10 +402,18 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const hasResolvedResult = (isLanding || isResultHold || Boolean(result)) && Boolean(result);
   const isBonusResult = hasResolvedResult && !turnOrder && !fallCount && (result?.name === '윷' || result?.name === '모');
   const phaseClass = isPreResult ? `pending-roll ${presentedAnimation.phase === 'extra-spin' ? 'extra-spin-roll' : 'primary-roll'}` : isVisualLanding ? 'resolved-from-pending resolved-roll landing-roll' : isResultHold ? 'resolved-from-pending resolved-roll result-hold-roll' : 'resolved-roll';
-  return <div className={`roll-stage ${phaseClass}`} data-settle-source={settleSource} role="status" aria-live="polite">
+  return <div ref={rollStageRef} className={`roll-stage ${phaseClass}`} data-settle-source={settleSource} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${presentedAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
-    <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`}>
+    <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`} onAnimationEnd={(event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.classList.contains('yut-stick')) return;
+      const scene = target.closest<HTMLElement>('[data-testid="yut-roll-scene"]');
+      if (scene?.dataset.renderer !== 'fallback') return;
+      const sticks = scene.querySelectorAll<HTMLElement>('.yut-stick');
+      if (sticks.item(sticks.length - 1) !== target) return;
+      markCurrentAnimationSettled('css-animation-end');
+    }}>
       <span data-testid="roll-mat-surface" className="roll-mat-surface" aria-hidden="true">
         <span className="roll-mat-depth"></span>
         <span className="roll-mat-inlay"></span>
@@ -409,9 +427,9 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       {presentedAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${presentedAnimation.timingZone}`}>{presentedAnimation.timingZone === 'perfect' ? 'Perfect!' : presentedAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
       {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{fallCount ? '낙!' : result.name}</span>}
       <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={() => {
-        setSettledAnimationId(presentedAnimation.id);
-        setSettleSource((current) => current === 'pending' ? 'renderer-settled' : current);
-        presentationCompletionByIdRef.current.get(presentedAnimation.id)?.markSettled('renderer-settled');
+        const renderer = rollStageRef.current?.querySelector<HTMLElement>('[data-testid="yut-roll-scene"]')?.dataset.renderer;
+        if (renderer === 'fallback') return;
+        markCurrentAnimationSettled('three-renderer');
       }} />
     </div>
   </div>;
