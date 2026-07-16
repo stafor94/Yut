@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { hasFirebaseConfig, makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { collectScreenState, createRoomFromLobby, expectAppShell, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomPlayersForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 test.describe('online room QA', () => {
@@ -24,6 +24,42 @@ test.describe('online room QA', () => {
       await expect(page.getByTestId('waiting-room')).toContainText(nickname);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
     });
+  });
+
+  test('비방장에게는 AI 난이도 배지만 보이고 선택 버튼은 보이지 않는다', async ({ browser }, testInfo) => {
+    expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
+    const hostContext = await browser.newContext();
+    const guestContext = await browser.newContext();
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'ai-visibility-host'));
+    const guestName = normalizeQaNickname(makeQaName(testInfo, 'ai-visibility-guest'));
+    const roomTitle = makeQaName(testInfo, 'ai-visibility-room');
+    await primeLobbyStorage(hostContext, { nickname: hostName, maxPlayers: '3', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    await primeLobbyStorage(guestContext, { nickname: guestName, maxPlayers: '3', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    const hostPage = await hostContext.newPage();
+    const guestPage = await guestContext.newPage();
+
+    try {
+      await runQaStep(testInfo, '방장 AI 추가 후 비방장 난이도 UI 확인', async () => {
+        await createRoomFromLobby(hostPage, roomTitle);
+        roomId = await rememberRoomIdFromPage(hostPage) ?? await findRoomIdByTitle(roomTitle);
+        expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
+        await hostPage.getByTestId('add-ai-P2').click();
+        const hostAiCard = hostPage.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
+        await expect(hostAiCard.locator('.seat-role-badge')).toHaveText('어려움 AI');
+        await expect(hostPage.getByTestId('ai-difficulty-P2-hard')).toBeVisible();
+
+        await joinRoomFromLobby(guestPage, roomTitle);
+        const guestAiCard = guestPage.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
+        await expect(guestAiCard).toBeVisible();
+        await expect(guestAiCard.locator('.seat-role-badge')).toHaveText('어려움 AI');
+        await expect(guestAiCard.locator('.ai-difficulty-selector')).toHaveCount(0);
+        await expect(guestPage.getByTestId('ai-difficulty-P2-easy')).toHaveCount(0);
+        await expect(guestPage.getByTestId('ai-difficulty-P2-hard')).toHaveCount(0);
+      });
+    } finally {
+      await guestContext.close();
+      await hostContext.close();
+    }
   });
 
   test('AI 난이도 배지와 확대된 방장 전용 선택 버튼이 authoritative 방 상태와 인게임 카드에 반영된다', async ({ page, context }, testInfo) => {
