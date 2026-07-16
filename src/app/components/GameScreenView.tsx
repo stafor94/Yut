@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
+import { commitAuthoritativeGameAction } from '../../features/room/services/roomService';
 import { getMovePathNodeIdsWithPrevious, type BoardItem, type BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
-import type { CaptureEffect, FallEffect, GameLog, RollAnimation, Seat, ToastMessage, TrapEffect, TrapNode, TurnOrderIntro, TurnOrderPhase } from '../appState';
+import { STORAGE_KEYS, type CaptureEffect, type FallEffect, type GameLog, type RollAnimation, type Seat, type ToastMessage, type TrapEffect, type TrapNode, type TurnOrderIntro, type TurnOrderPhase } from '../appState';
 import {
   CAPTURE_IMPACT_DELAY_MS,
   createCaptureVisualEffect,
@@ -129,6 +130,13 @@ type GameScreenViewProps = {
   renderLogText: (text: string) => ReactNode;
 };
 
+type PendingFallPresentationCompletion = {
+  actorId: string;
+  sourceAnimationId: number | null;
+};
+
+const FALL_COMPLETION_RETRY_MS = 800;
+
 export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorText, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canRollForTurnOrderNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, moveSelectionTimedOut, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, shieldedPieceIds, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenSequenceExportDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   const lastRollAnimationIdRef = useRef('');
   const lastRollOutcomeKeyRef = useRef('');
@@ -150,10 +158,27 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   const stackCountsInitializedRef = useRef(false);
   const previousStackCountsRef = useRef<Map<string, number>>(new Map());
   const [rollPresentation, setRollPresentation] = useState<RollPresentationState>(EMPTY_ROLL_PRESENTATION_STATE);
+  const pendingFallCompletionRef = useRef<PendingFallPresentationCompletion | null>(null);
+  const completingFallKeyRef = useRef('');
+  const [pendingFallActorId, setPendingFallActorId] = useState('');
+  const [fallCompletionRetryToken, setFallCompletionRetryToken] = useState(0);
   const visibleBoardTurnIndicatorRollStackRef = useRef(boardTurnIndicatorRollStack);
   const visibleRollStackRef = useRef(rollStack);
   const visibleLogsRef = useRef(logs);
   const rollDerivedSnapshotsRef = useRef<Map<number, { boardRollStack: YutResult[]; rollStack: YutResult[]; logs: GameLog[] }>>(new Map());
+
+  const handleRollPresentationChange = (nextPresentation: RollPresentationState) => {
+    setRollPresentation(nextPresentation);
+    if (!nextPresentation.active || nextPresentation.fallCount <= 0) return;
+    const actorId = nextPresentation.actorId || fallEffect?.seatId || '';
+    if (!actorId) return;
+    pendingFallCompletionRef.current = {
+      actorId,
+      sourceAnimationId: nextPresentation.sourceAnimationId,
+    };
+    setPendingFallActorId(actorId);
+  };
+
   if (rollAnimation) {
     const existingSnapshot = rollDerivedSnapshotsRef.current.get(rollAnimation.id);
     if (existingSnapshot?.boardRollStack !== boardTurnIndicatorRollStack || existingSnapshot.rollStack !== rollStack || existingSnapshot.logs !== logs) {
@@ -187,11 +212,59 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     visibleLogsRef.current = logs;
   }, [boardTurnIndicatorRollStack, deferRollDerivedContent, logs, revealedRollSnapshot, rollStack]);
 
+  useEffect(() => {
+    if (rollPresentation.active) return undefined;
+    const pending = pendingFallCompletionRef.current;
+    if (!pending || !pendingFallActorId) return undefined;
+    if (!fallEffect) {
+      pendingFallCompletionRef.current = null;
+      completingFallKeyRef.current = '';
+      setPendingFallActorId('');
+      return undefined;
+    }
+    if (fallEffect.seatId !== pending.actorId) return undefined;
+
+    const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
+    if (!roomId) {
+      pendingFallCompletionRef.current = null;
+      completingFallKeyRef.current = '';
+      setPendingFallActorId('');
+      return undefined;
+    }
+
+    const completionKey = `${roomId}:${pending.actorId}:${pending.sourceAnimationId ?? fallEffect.id}`;
+    if (completingFallKeyRef.current === completionKey) return undefined;
+    completingFallKeyRef.current = completionKey;
+    let cancelled = false;
+
+    void commitAuthoritativeGameAction(roomId, {
+      type: 'roll_yut',
+      actorId: pending.actorId,
+      payload: {
+        completeFallPresentation: true,
+        clientActionId: `complete_fall_presentation:${completionKey}`,
+      },
+    }).catch(() => {
+      if (cancelled) return;
+      completingFallKeyRef.current = '';
+      window.setTimeout(() => {
+        if (!cancelled) setFallCompletionRetryToken((current) => current + 1);
+      }, FALL_COMPLETION_RETRY_MS);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallCompletionRetryToken, fallEffect, pendingFallActorId, rollPresentation.active]);
+
   const activeGameSeatId = activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder ? undefined : activeSeat?.id;
+  const frozenFallActorId = rollPresentation.active && rollPresentation.fallCount > 0
+    ? rollPresentation.actorId || pendingFallActorId
+    : pendingFallActorId;
   const presentationTurn = getGamePresentationTurn({
     activeSeatId: activeGameSeatId,
     localSeatId,
-    presentationActorId: rollPresentation.active && rollPresentation.fallCount > 0 ? rollPresentation.actorId : '',
+    presentationActorId: frozenFallActorId,
   });
   const presentationSeat = presentationTurn.isFrozen
     ? seats.find((seat) => seat.id === presentationTurn.activeSeatId)
@@ -454,7 +527,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       <RollStage
         rollAnimation={rollAnimation}
         presentationActorId={fallEffect?.seatId ?? ''}
-        onPresentationChange={setRollPresentation}
+        onPresentationChange={handleRollPresentationChange}
       />
       {pendingTrapPlacement && <div className="trap-placement-banner" role="status"><strong>함정 설치 위치를 선택하세요</strong><span>{trapPlacementSecondsLeft}초 남음 · 설치 중에는 윷을 던질 수 없습니다.</span></div>}
       <GameBoardControls
