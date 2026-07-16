@@ -7,7 +7,9 @@ import {
 } from '../../features/room/services/roomService';
 import {
   DEFAULT_AI_DIFFICULTY,
+  clearRuntimeAiDifficulties,
   getEffectiveAiDifficulty,
+  replaceRuntimeAiDifficulties,
   setCurrentAiRollDifficulty,
 } from '../../game-core/aiDifficulty';
 import { STORAGE_KEYS } from '../appState';
@@ -42,11 +44,14 @@ export function AiDifficultyRuntimeBridge() {
       unsubscribeGameState();
       players = [];
       gameState = null;
-      setCurrentAiRollDifficulty(DEFAULT_AI_DIFFICULTY);
+      clearRuntimeAiDifficulties();
       activeRoomId = roomId;
       if (!roomId) return;
       unsubscribePlayers = subscribeRoomPlayers(roomId, (nextPlayers) => {
         players = nextPlayers;
+        replaceRuntimeAiDifficulties(nextPlayers
+          .filter((player) => player.isAI || player.isSubstitutedByAI)
+          .map((player) => player as RoomPlayerWithDifficulty));
         applyDifficulty();
       });
       unsubscribeGameState = subscribeGameState(roomId, (nextState) => {
@@ -66,7 +71,7 @@ export function AiDifficultyRuntimeBridge() {
       window.clearInterval(interval);
       unsubscribePlayers();
       unsubscribeGameState();
-      setCurrentAiRollDifficulty(DEFAULT_AI_DIFFICULTY);
+      clearRuntimeAiDifficulties();
     };
   }, []);
 
