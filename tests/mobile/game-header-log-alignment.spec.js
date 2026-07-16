@@ -25,7 +25,10 @@ test.describe('모바일 인게임 정렬', () => {
       toggle.className = 'game-room-header-toggle';
       toggle.dataset.testid = 'game-room-info-toggle';
       toggle.setAttribute('aria-expanded', 'true');
-      toggle.textContent = '▴';
+      const toggleIcon = document.createElement('span');
+      toggleIcon.className = 'game-room-header-toggle-icon';
+      toggleIcon.textContent = '▴';
+      toggle.append(toggleIcon);
 
       const actions = document.createElement('div');
       actions.className = 'hero-actions game-actions';
@@ -98,10 +101,11 @@ test.describe('모바일 인게임 정렬', () => {
     const headerLayout = await header.evaluate((element) => {
       const actionsElement = element.querySelector('.hero-actions.game-actions');
       const toggleElement = element.querySelector('.game-room-header-toggle');
+      const toggleIconElement = element.querySelector('.game-room-header-toggle-icon');
       const nickname = element.querySelector('.nickname-chip');
       const sound = element.querySelector('.sound-toggle');
       const end = element.querySelector('.game-end-button');
-      if (!(actionsElement instanceof HTMLElement) || !(toggleElement instanceof HTMLElement) || !(nickname instanceof HTMLElement) || !(sound instanceof HTMLElement) || !(end instanceof HTMLElement)) {
+      if (!(actionsElement instanceof HTMLElement) || !(toggleElement instanceof HTMLElement) || !(toggleIconElement instanceof HTMLElement) || !(nickname instanceof HTMLElement) || !(sound instanceof HTMLElement) || !(end instanceof HTMLElement)) {
         throw new Error('상단 헤더 fixture가 올바르지 않습니다.');
       }
       const headerBox = element.getBoundingClientRect();
@@ -110,6 +114,8 @@ test.describe('모바일 인게임 정렬', () => {
       const nicknameBox = nickname.getBoundingClientRect();
       const soundBox = sound.getBoundingClientRect();
       const endBox = end.getBoundingClientRect();
+      const toggleStyle = getComputedStyle(toggleElement);
+      const toggleIconStyle = getComputedStyle(toggleIconElement);
       return {
         headerLeft: headerBox.left,
         headerBottom: headerBox.bottom,
@@ -118,6 +124,10 @@ test.describe('모바일 인게임 정렬', () => {
         toggleLeft: toggleBox.left,
         toggleTop: toggleBox.top,
         toggleBottom: toggleBox.bottom,
+        toggleWidth: toggleBox.width,
+        toggleHeight: toggleBox.height,
+        toggleFontSize: Number.parseFloat(toggleStyle.fontSize),
+        toggleIconFontSize: Number.parseFloat(toggleIconStyle.fontSize),
         nicknameLeft: nicknameBox.left,
         nicknameWidth: nicknameBox.width,
         soundWidth: soundBox.width,
@@ -130,6 +140,9 @@ test.describe('모바일 인게임 정렬', () => {
     expect(headerLayout.toggleLeft).toBeLessThanOrEqual(headerLayout.headerLeft + 28);
     expect(headerLayout.toggleTop, '접기 탭의 위쪽은 헤더 안쪽에 걸쳐야 합니다.').toBeLessThan(headerLayout.headerBottom);
     expect(headerLayout.toggleBottom, '접기 탭의 아래쪽은 헤더 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(headerLayout.headerBottom);
+    expect(headerLayout.toggleWidth, '모바일 접기 탭 폭은 유지되어야 합니다.').toBe(44);
+    expect(headerLayout.toggleHeight, '모바일 접기 탭 높이는 유지되어야 합니다.').toBe(30);
+    expect(Math.abs(headerLayout.toggleIconFontSize - headerLayout.toggleFontSize - 6), '접기/펼치기 아이콘 글자는 버튼 글자보다 6px 커야 합니다.').toBeLessThanOrEqual(.1);
     expect(Math.abs(headerLayout.nicknameLeft - headerLayout.actionsLeft)).toBeLessThanOrEqual(1);
     expect(headerLayout.actionsRight).toBeLessThanOrEqual(headerLayout.endLeft - 4);
     expect(headerLayout.nicknameWidth, '닉네임 버튼은 접기 버튼이 빠진 공간을 사용해야 합니다.').toBeGreaterThan(headerLayout.soundWidth + 20);
@@ -163,8 +176,10 @@ test.describe('모바일 인게임 정렬', () => {
       const entryBox = entry.getBoundingClientRect();
       const sequenceBox = sequence.getBoundingClientRect();
       const textBox = text.getBoundingClientRect();
+      const entryStyle = getComputedStyle(entry);
       const sequenceStyle = getComputedStyle(sequence);
       return {
+        entryPaddingLeft: Number.parseFloat(entryStyle.paddingLeft),
         sequenceTop: sequenceStyle.top,
         sequenceLeft: sequenceStyle.left,
         sequenceTopOffset: sequenceBox.top - entryBox.top,
@@ -173,8 +188,10 @@ test.describe('모바일 인게임 정렬', () => {
         sequenceLeftInsideList: sequenceBox.left - listBox.left,
         sequenceRight: sequenceBox.right,
         textLeft: textBox.left,
+        textGap: textBox.left - sequenceBox.right,
       };
     });
+    expect(logLayout.entryPaddingLeft, '진행 기록 메시지 왼쪽 여백은 축소된 값이어야 합니다.').toBe(42);
     expect(logLayout.sequenceTop).toBe('-12px');
     expect(logLayout.sequenceLeft).toBe('-12px');
     expect(logLayout.sequenceTopOffset, '번호 배지는 카드 상단보다 위로 돌출되어야 합니다.').toBeLessThan(0);
@@ -182,5 +199,6 @@ test.describe('모바일 인게임 정렬', () => {
     expect(logLayout.sequenceTopInsideList, '상단으로 돌출된 번호 배지가 스크롤 영역에 잘리면 안 됩니다.').toBeGreaterThanOrEqual(0);
     expect(logLayout.sequenceLeftInsideList, '왼쪽으로 돌출된 번호 배지가 스크롤 영역에 잘리면 안 됩니다.').toBeGreaterThanOrEqual(0);
     expect(logLayout.textLeft).toBeGreaterThan(logLayout.sequenceRight);
+    expect(logLayout.textGap, '번호 배지와 메시지 사이 간격은 과도하게 넓으면 안 됩니다.').toBeLessThanOrEqual(16);
   });
 });
