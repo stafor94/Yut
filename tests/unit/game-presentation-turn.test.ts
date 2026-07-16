@@ -48,7 +48,7 @@ test('낙 프레젠테이션 종료 후 남은 pending actor는 다음 authorita
   });
 });
 
-test('종료 처리 대기 actor가 아직 authoritative 차례이면 화면 고정을 유지한다', () => {
+test('낙 프레젠테이션 종료 후 같은 actor 차례가 다시 와도 턴 표시를 단독 배지로 고정하지 않는다', () => {
   rememberPresentation(EMPTY_ROLL_PRESENTATION_STATE);
 
   assert.deepEqual(getGamePresentationTurn({
@@ -58,20 +58,20 @@ test('종료 처리 대기 actor가 아직 authoritative 차례이면 화면 고
   }), {
     activeSeatId: 'seat-ai',
     isMyTurn: false,
-    isFrozen: true,
+    isFrozen: false,
   });
 });
 
-test('active seat 미확정 구간에서는 pending actor를 유지한다', () => {
+test('active seat 미확정 구간에서도 종료된 pending actor로 화면을 고정하지 않는다', () => {
   rememberPresentation(EMPTY_ROLL_PRESENTATION_STATE);
 
   assert.deepEqual(getGamePresentationTurn({
     localSeatId: 'seat-user',
     presentationActorId: 'seat-ai',
   }), {
-    activeSeatId: 'seat-ai',
+    activeSeatId: '',
     isMyTurn: false,
-    isFrozen: true,
+    isFrozen: false,
   });
 });
 
