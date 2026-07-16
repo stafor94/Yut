@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { subscribeRoomPlayers, updateRoomPlayer, type RoomPlayer } from '../../features/room/services/roomService';
-import { getEffectiveAiDifficulty, type AiDifficulty } from '../../game-core/aiDifficulty';
+import { canManageAiDifficulty, getAiDifficultyBadgeLabel, getEffectiveAiDifficulty, type AiDifficulty } from '../../game-core/aiDifficulty';
 import { STORAGE_KEYS, type Seat, type Team } from '../appState';
 
 type WaitingRoomScreenProps = {
@@ -42,10 +42,6 @@ export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSea
   const [pendingDifficultySeatIds, setPendingDifficultySeatIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    if (!canManageRoom) {
-      setAiDifficultyBySeatId({});
-      return undefined;
-    }
     const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
     if (!roomId) return undefined;
     return subscribeRoomPlayers(roomId, (players) => {
@@ -56,10 +52,10 @@ export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSea
       });
       setAiDifficultyBySeatId(next);
     });
-  }, [canManageRoom]);
+  }, []);
 
   const changeAiDifficulty = async (seat: Seat, difficulty: AiDifficulty) => {
-    if (seat.isSubstitutedByAI || pendingDifficultySeatIds.has(seat.id)) return;
+    if (!canManageAiDifficulty(canManageRoom, seat) || pendingDifficultySeatIds.has(seat.id)) return;
     const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
     if (!roomId) return;
     const previous = aiDifficultyBySeatId[seat.id] ?? 'hard';
@@ -83,14 +79,15 @@ export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSea
     {seats.map((seat) => {
       const aiDifficulty = aiDifficultyBySeatId[seat.id] ?? 'hard';
       const difficultyPending = pendingDifficultySeatIds.has(seat.id);
+      const showDifficultyControls = canManageAiDifficulty(canManageRoom, seat);
       return <article className={`ready-card compact-ready-card ${seat.ready && !seat.isEmpty ? 'ready' : ''} ${seat.isAI ? 'ai' : ''} ${seat.isEmpty ? 'empty' : ''} ${seat.id === localSeatId ? 'me' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
         <div className="seat-row">
           <div className="seat-identity">
             <b style={{ background: getSeatPieceColor(seat) }}>{seat.label}</b>
             {seat.isEmpty ? <span className="empty-seat-badge">빈 자리</span> : <>
               <strong>{seat.name}</strong>
-              <em className="seat-role-badge">{seat.isHost ? '방장' : seat.isAI ? 'AI' : '플레이어'}</em>
-              {seat.isAI && canManageRoom && !seat.isSubstitutedByAI ? <span className="ai-difficulty-selector" role="group" aria-label={`${seat.label} AI 난이도`}>
+              <em className="seat-role-badge">{seat.isHost ? '방장' : seat.isAI ? getAiDifficultyBadgeLabel(aiDifficulty) : '플레이어'}</em>
+              {showDifficultyControls ? <span className="ai-difficulty-selector" role="group" aria-label={`${seat.label} AI 난이도`}>
                 {(['easy', 'hard'] as AiDifficulty[]).map((difficulty) => <button
                   type="button"
                   key={difficulty}

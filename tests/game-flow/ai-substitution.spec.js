@@ -68,7 +68,7 @@ async function expectGuestSubstitutedByAi(qa, guestPlayerId) {
 
   const substitutedCard = qa.hostPage.locator('.game-player-card.ai').filter({ hasText: qa.guestName }).first();
   await expect(substitutedCard).toBeVisible({ timeout: 15_000 });
-  await expect(substitutedCard.locator('.game-player-status')).toHaveText('나감');
+  await expect(substitutedCard.locator('.game-player-status')).toHaveText('나감 · 어려움 AI');
 }
 
 test.describe('player substitution AI QA', () => {

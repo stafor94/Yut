@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { hasFirebaseConfig, makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { collectScreenState, createRoomFromLobby, expectAppShell, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomPlayersForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 test.describe('online room QA', () => {
@@ -26,7 +26,43 @@ test.describe('online room QA', () => {
     });
   });
 
-  test('AI 난이도 선택과 축소된 제거 버튼이 authoritative 방 상태와 일치한다', async ({ page, context }, testInfo) => {
+  test('비방장에게는 AI 난이도 배지만 보이고 선택 버튼은 보이지 않는다', async ({ browser }, testInfo) => {
+    expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
+    const hostContext = await browser.newContext();
+    const guestContext = await browser.newContext();
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'ai-visibility-host'));
+    const guestName = normalizeQaNickname(makeQaName(testInfo, 'ai-visibility-guest'));
+    const roomTitle = makeQaName(testInfo, 'ai-visibility-room');
+    await primeLobbyStorage(hostContext, { nickname: hostName, maxPlayers: '3', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    await primeLobbyStorage(guestContext, { nickname: guestName, maxPlayers: '3', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    const hostPage = await hostContext.newPage();
+    const guestPage = await guestContext.newPage();
+
+    try {
+      await runQaStep(testInfo, '방장 AI 추가 후 비방장 난이도 UI 확인', async () => {
+        await createRoomFromLobby(hostPage, roomTitle);
+        roomId = await rememberRoomIdFromPage(hostPage) ?? await findRoomIdByTitle(roomTitle);
+        expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
+        await hostPage.getByTestId('add-ai-P2').click();
+        const hostAiCard = hostPage.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
+        await expect(hostAiCard.locator('.seat-role-badge')).toHaveText('어려움 AI');
+        await expect(hostPage.getByTestId('ai-difficulty-P2-hard')).toBeVisible();
+
+        await joinRoomFromLobby(guestPage, roomTitle);
+        const guestAiCard = guestPage.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
+        await expect(guestAiCard).toBeVisible();
+        await expect(guestAiCard.locator('.seat-role-badge')).toHaveText('어려움 AI');
+        await expect(guestAiCard.locator('.ai-difficulty-selector')).toHaveCount(0);
+        await expect(guestPage.getByTestId('ai-difficulty-P2-easy')).toHaveCount(0);
+        await expect(guestPage.getByTestId('ai-difficulty-P2-hard')).toHaveCount(0);
+      });
+    } finally {
+      await guestContext.close();
+      await hostContext.close();
+    }
+  });
+
+  test('AI 난이도 배지와 확대된 방장 전용 선택 버튼이 authoritative 방 상태와 인게임 카드에 반영된다', async ({ page, context }, testInfo) => {
     expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'ai-level-host'));
     const roomTitle = makeQaName(testInfo, 'ai-level-room');
@@ -48,7 +84,7 @@ test.describe('online room QA', () => {
       const readyLabel = card.locator('.seat-ready-label');
       const aiBadge = card.locator('.seat-role-badge');
 
-      await expect(card).toContainText('AI');
+      await expect(aiBadge).toHaveText('어려움 AI');
       await expect(easyButton).toBeVisible();
       await expect(hardButton).toBeVisible();
       await expect(hardButton).toHaveAttribute('aria-pressed', 'true');
@@ -78,16 +114,28 @@ test.describe('online room QA', () => {
       expect(layout.ready).not.toBeNull();
       expect(layout.easy.x, '난이도 선택은 AI 배지 오른쪽에 있어야 합니다.').toBeGreaterThanOrEqual(layout.aiBadge.x + layout.aiBadge.width);
       expect(layout.hard.y, '쉬움/어려움 버튼은 위아래로 배치되어야 합니다.').toBeGreaterThan(layout.easy.y + layout.easy.height);
+      expect(layout.easy.width, '난이도 버튼 폭은 기존보다 커야 합니다.').toBeGreaterThanOrEqual(48);
+      expect(layout.easy.height, '난이도 버튼 높이는 누르기 쉬운 크기여야 합니다.').toBeGreaterThanOrEqual(26);
+      expect(layout.hard.width).toBeGreaterThanOrEqual(48);
+      expect(layout.hard.height).toBeGreaterThanOrEqual(26);
       expect(layout.remove.width, 'AI 제거 버튼은 기존보다 작은 폭이어야 합니다.').toBeLessThanOrEqual(70);
       expect(layout.remove.height, 'AI 제거 버튼은 compact 높이를 유지해야 합니다.').toBeLessThanOrEqual(30);
       expect(layout.ready.y - (layout.remove.y + layout.remove.height), 'AI 제거와 준비 사이에 세로 간격이 필요합니다.').toBeGreaterThanOrEqual(4);
 
       await easyButton.click();
       await expect(easyButton).toHaveAttribute('aria-pressed', 'true');
+      await expect(aiBadge).toHaveText('쉬움 AI');
       await expect.poll(async () => {
         const players = await getRoomPlayersForQa(roomId);
         return players.find((player) => player.isAI)?.aiDifficulty ?? null;
       }, { timeout: 10_000 }).toBe('easy');
+
+      await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await page.getByTestId('start-game-button').click();
+      await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+      const inGameAiCard = page.locator('.game-player-card.ai').first();
+      await expect(inGameAiCard).toBeVisible();
+      await expect(inGameAiCard.locator('.game-player-status')).toHaveText('쉬움 AI');
     });
   });
 });

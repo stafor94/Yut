@@ -20,17 +20,19 @@
 }
 
 .screen-waitingRoom .ai-difficulty-selector button {
-  min-width: 42px;
-  min-height: 21px;
+  min-width: 48px;
+  min-height: 26px;
   margin: 0;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border: 1px solid rgba(76, 48, 28, .34);
-  border-radius: 7px;
+  border-radius: 8px;
   background: rgba(255, 244, 211, .72);
   color: #5a351f;
-  font-size: .66rem;
+  font-size: .7rem;
   font-weight: 1000;
   line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .62);
 }
 
@@ -55,8 +57,8 @@
 
 @media (max-width: 520px) {
   .screen-waitingRoom .compact-ready-card:has(.ai-difficulty-selector):not(:has(.team-card-selector)) {
-    min-height: 94px;
-    height: 94px;
+    min-height: 96px;
+    height: 96px;
   }
 
   .screen-waitingRoom .compact-ready-card .seat-identity {
@@ -64,9 +66,10 @@
   }
 
   .screen-waitingRoom .ai-difficulty-selector button {
-    min-width: 39px;
-    padding-inline: 4px;
-    font-size: .62rem;
+    min-width: 46px;
+    min-height: 25px;
+    padding-inline: 6px;
+    font-size: .67rem;
   }
 
   .screen-waitingRoom .compact-ready-card .seat-status-actions .ai-remove-button {
