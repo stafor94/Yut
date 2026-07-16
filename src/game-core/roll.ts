@@ -67,9 +67,10 @@ export function chooseAiRollTimingZone(difficultyOrRandom?: AiDifficulty | (() =
   const difficulty = typeof difficultyOrRandom === 'string' ? difficultyOrRandom : getCurrentAiRollDifficulty();
   const random = typeof difficultyOrRandom === 'function' ? difficultyOrRandom : providedRandom;
   const roll = random();
-  const perfectChance = difficulty === 'easy' ? 0.2 : 0.3;
-  if (roll < perfectChance) return 'perfect';
-  if (roll < perfectChance + 0.4) return 'good';
+  const perfectUpperBound = difficulty === 'easy' ? 0.2 : 0.3;
+  const goodUpperBound = difficulty === 'easy' ? 0.6 : 0.7;
+  if (roll < perfectUpperBound) return 'perfect';
+  if (roll < goodUpperBound) return 'good';
   return 'normal';
 }
 
