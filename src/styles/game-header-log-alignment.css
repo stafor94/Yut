@@ -57,6 +57,7 @@
 }
 
 .game-shell .hero-actions.game-actions > button,
+.game-shell .hero-actions.game-actions > .game-room-header-toggle,
 .game-shell .hero.game-header-with-end > .game-end-button {
   box-sizing: border-box;
   height: var(--game-header-control-height);
