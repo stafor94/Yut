@@ -6,7 +6,7 @@ import {
   shouldClearPendingFallPresentation,
 } from '../../src/app/flows/fallPresentationCompletion';
 
-test('낙 애니메이션 종료 전에 authoritative effect가 늦으면 pending을 유지한다', () => {
+test('낙 애니메이션이 끝났고 authoritative effect가 없으면 미결 상태를 정리한다', () => {
   const pending = createPendingFallPresentationCompletion({
     presentationActorId: 'seat-stale',
     sourceAnimationId: 17,
@@ -14,7 +14,7 @@ test('낙 애니메이션 종료 전에 authoritative effect가 늦으면 pendin
   });
 
   assert.equal(pending.authoritativeEffectId, null);
-  assert.equal(shouldClearPendingFallPresentation(pending, null), false);
+  assert.equal(shouldClearPendingFallPresentation(pending, null), true);
 });
 
 test('늦게 도착한 authoritative effect가 actor와 effect id를 교정한다', () => {

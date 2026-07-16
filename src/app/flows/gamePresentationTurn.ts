@@ -20,11 +20,7 @@ export function getGamePresentationTurn({
   const normalizedActorId = presentationActorId.trim();
   const shouldFreezePresentation = Boolean(
     normalizedActorId
-    && (
-      isActiveFallPresentationActor(normalizedActorId)
-      || !activeSeatId
-      || normalizedActorId === activeSeatId
-    ),
+    && isActiveFallPresentationActor(normalizedActorId),
   );
   const displayedActiveSeatId = shouldFreezePresentation ? normalizedActorId : activeSeatId;
   return {
