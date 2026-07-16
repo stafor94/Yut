@@ -33,6 +33,6 @@ export const bindPendingFallPresentationEffect = (
 });
 
 export const shouldClearPendingFallPresentation = (
-  pending: PendingFallPresentationCompletion,
+  _pending: PendingFallPresentationCompletion,
   fallEffect: FallPresentationEffectIdentity | null,
-) => !fallEffect && pending.authoritativeEffectId !== null;
+) => !fallEffect;
