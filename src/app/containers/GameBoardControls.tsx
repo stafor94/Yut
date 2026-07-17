@@ -11,7 +11,7 @@ import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { STORAGE_KEYS } from '../appState';
-import { getRollControlPresentation } from '../flows/rollControlPresentation';
+import { getRollControlPresentation, shouldAutoScrollGameControls } from '../flows/rollControlPresentation';
 
 type GameBoardControlsProps = {
   roll: YutResult | null;
@@ -85,6 +85,14 @@ export function GameBoardControls({
   const [turnActionTimedOut, setTurnActionTimedOut] = useState(false);
   const [timeoutCountBySeatId, setTimeoutCountBySeatId] = useState<Record<string, number>>({});
   const localTurnActive = Boolean(activeSeatId && activeSeatId === localSeatId && !waitingForOnlineTurnOrder && !hasActiveTurnOrderIntro);
+  const shouldAutoScrollControls = shouldAutoScrollGameControls({
+    hasRoll: Boolean(roll),
+    canRollNow,
+    canRollForTurnOrderNow,
+    hasActiveTurnOrderIntro,
+    showBottomBranchControls,
+    canRequestMove,
+  });
   const getVisibleRollTimingPositionPercent = () => {
     const meter = rollTimingMeterRef.current;
     const orb = rollTimingOrbRef.current;
@@ -105,13 +113,13 @@ export function GameBoardControls({
     playStoredSoundEffect('turn');
   }, [localTurnActive]);
   useEffect(() => {
-    if (!(canRollNow || canRollForTurnOrderNow || hasActiveTurnOrderIntro) || roll || typeof window === 'undefined') return undefined;
+    if (!shouldAutoScrollControls || typeof window === 'undefined') return undefined;
     if (!window.matchMedia('(orientation: portrait)').matches) return undefined;
     const timer = window.setTimeout(() => {
       controlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [activeSeatId, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll]);
+  }, [activeSeatId, canRequestMove, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll, shouldAutoScrollControls, showBottomBranchControls]);
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
