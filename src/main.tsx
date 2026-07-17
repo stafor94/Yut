@@ -5,6 +5,7 @@ import { AiDifficultyRuntimeBridge } from './app/components/AiDifficultyRuntimeB
 import { CustomAlertHost } from './app/components/CustomAlertHost';
 import './styles/mobile-item-log-recovery.css';
 import './styles/game-header-log-alignment.css';
+import './styles/game-room-info-toggle.css';
 import './styles/ai-difficulty.css';
 import './styles/stored-room-recovery.css';
 
