@@ -178,10 +178,24 @@ export async function updateRoomPlayer(roomId: string, playerId: string, params:
 
 export async function updateRoomStatus(roomId: string, status: RoomSummary['status']) {
   await updateRoomStatusCore(roomId, status);
-  if (db) await setDoc(doc(db, 'rooms', roomId), {
-    lastActivityAt: Date.now(),
-    ...(status !== 'finished' ? { deletingAt: null } : {}),
-  }, { merge: true });
+  if (!db) return;
+  if (status === 'waiting') {
+    const [room, players] = await Promise.all([getManagedRoom(roomId), getRoomPlayers(roomId)]);
+    const remainingPlayers = players.filter((player) => !player.isSubstitutedByAI);
+    const batch = writeBatch(db);
+    players.forEach((player) => {
+      if (player.isSubstitutedByAI) {
+        batch.delete(doc(db!, 'rooms', roomId, 'players', player.id));
+        if (Number.isInteger(Number(player.seatIndex)) && Number(player.seatIndex) >= 0) batch.delete(doc(db!, 'rooms', roomId, 'seats', String(Number(player.seatIndex))));
+        return;
+      }
+      if (!player.isAI && player.id !== room?.hostId && player.ready) batch.set(doc(db!, 'rooms', roomId, 'players', player.id), { ready: false }, { merge: true });
+    });
+    batch.set(doc(db, 'rooms', roomId), { currentPlayers: countActivePlayers(remainingPlayers), lastActivityAt: Date.now(), deletingAt: null }, { merge: true });
+    await batch.commit();
+    return;
+  }
+  await setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now(), ...(status !== 'finished' ? { deletingAt: null } : {}) }, { merge: true });
 }
 
 export async function cleanupCurrentRoomPresence(...args: Parameters<typeof cleanupCurrentRoomPresenceSafely>) {

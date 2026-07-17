@@ -78,11 +78,12 @@ const applyFallPresentationGate = (
   const readyAt = Date.now() + FALL_PRESENTATION_GATE_MS;
   const fallEffect = getPendingFallEffect(reduction.patch.fallEffect);
 
+  const keepFallRerollPrompt = reduction.patch.itemPromptTiming === 'after_roll' && reduction.patch.roll != null;
   return {
     ...reduction,
     patch: {
       ...reduction.patch,
-      roll: null,
+      roll: keepFallRerollPrompt ? reduction.patch.roll : null,
       rollResultReadyAt: readyAt,
       // applyTurnActionTimeoutPolicy converts this core 15-second deadline to the visible
       // timeout for roll/item-prompt while preserving the presentation gate offset.

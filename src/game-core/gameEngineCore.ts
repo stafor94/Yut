@@ -151,7 +151,7 @@ export function reduceRollCommand(params: { state: EngineState; actorId: string;
       patch: {
         roll: null,
         rollResultReadyAt: 0,
-        shieldedPieceIds: [],
+        shieldedPieceIds: state.shieldedPieceIds,
         turnIndex: (Number(state.turnIndex ?? 0) + 1) % state.turnOrderIds.length,
         lastMovedPieceIds: [],
         lastMovedSeatId: actorId,
@@ -168,7 +168,7 @@ export function reduceRollCommand(params: { state: EngineState; actorId: string;
     patch: {
       roll: nextRoll,
       rollResultReadyAt,
-      shieldedPieceIds: [],
+      shieldedPieceIds: state.shieldedPieceIds,
       fallEffect: null,
       lastRollTimingZone: timingZone ?? null,
       logs: [makeLog(state.logs ?? [], `${actorLogName}님이 ${nextRoll.name}(${nextRoll.steps}칸)를 던졌습니다.`), ...(state.logs ?? [])],
