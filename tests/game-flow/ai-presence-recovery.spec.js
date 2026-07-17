@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
   createRoomFromLobby,
+  expectAppShell,
   joinRoomFromLobby,
   markGuestReady,
   primeLobbyStorage,
@@ -101,7 +102,7 @@ test.describe('stale presence AI substitution recovery', () => {
       expect(substitutedControl.gameSeat?.presenceEpoch).toBe(substitutedEpoch);
 
       const recoveredPage = await qa.guestContext.newPage();
-      await recoveredPage.goto('/');
+      await expectAppShell(recoveredPage);
       await expect(recoveredPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
 
       await expect.poll(async () => readPresenceControl(qa.roomId, qa.guestPlayerId), { timeout: 15_000 }).toEqual({
