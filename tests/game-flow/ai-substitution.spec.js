@@ -192,12 +192,12 @@ test.describe('player substitution AI QA', () => {
         await qa.guestPage.setViewportSize({ width: 412, height: 915 });
         let releaseFirestore = () => undefined;
         const firestoreGate = new Promise((resolve) => { releaseFirestore = resolve; });
+        const firestoreRoute = '**://firestore.googleapis.com/**';
         const routeHandler = async (route) => {
-          const url = route.request().url();
-          if (url.includes('firestore.googleapis.com') || url.includes('google.firestore.v1.Firestore')) await firestoreGate;
+          await firestoreGate;
           await route.continue().catch(() => undefined);
         };
-        await qa.guestPage.route('**/*', routeHandler);
+        await qa.guestPage.route(firestoreRoute, routeHandler);
         try {
           await qa.guestPage.reload({ waitUntil: 'domcontentloaded' });
           const recoveryModal = qa.guestPage.getByRole('dialog', { name: '참여 중이던 방을 확인하고 있습니다...' });
@@ -232,14 +232,13 @@ test.describe('player substitution AI QA', () => {
           await closeButton.evaluate((button) => button.click());
           releaseFirestore();
           await navigation;
+          await expect(qa.guestPage.getByTestId('create-room-button')).toBeVisible({ timeout: 15_000 });
+          await expect(qa.guestPage.getByTestId('game-screen')).toBeHidden();
+          await expectGuestSubstitutedByAi(qa, guestPlayerId);
         } finally {
           releaseFirestore();
-          await qa.guestPage.unroute('**/*', routeHandler);
+          await qa.guestPage.unroute(firestoreRoute, routeHandler);
         }
-
-        await expect(qa.guestPage.getByTestId('create-room-button')).toBeVisible({ timeout: 15_000 });
-        await expect(qa.guestPage.getByTestId('game-screen')).toBeHidden();
-        await expectGuestSubstitutedByAi(qa, guestPlayerId);
       });
     } finally {
       await qa.guestContext.close();
