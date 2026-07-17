@@ -8,6 +8,7 @@ import './styles/game-header-log-alignment.css';
 import './styles/game-room-info-toggle.css';
 import './styles/ai-difficulty.css';
 import './styles/stored-room-recovery.css';
+import './styles/roll-stage-lifecycle-fix.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
