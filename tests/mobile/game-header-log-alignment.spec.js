@@ -153,8 +153,8 @@ test.describe('모바일 인게임 정렬', () => {
     expect(Math.abs(headerLayout.toggleCenter - headerLayout.headerCenter), '펼치기 탭은 최상단 패널 하단 중앙에 있어야 합니다.').toBeLessThanOrEqual(1);
     expect(headerLayout.toggleTop, '펼치기 탭의 위쪽 절반은 헤더 안쪽에 걸쳐야 합니다.').toBeLessThan(headerLayout.headerBottom);
     expect(headerLayout.toggleBottom, '펼치기 탭의 아래쪽 절반은 헤더 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(headerLayout.headerBottom);
-    expect(headerLayout.toggleWidth).toBe(96);
-    expect(headerLayout.toggleHeight).toBe(34);
+    expect(headerLayout.toggleWidth).toBe(88);
+    expect(headerLayout.toggleHeight).toBe(30);
     expect(headerLayout.toggleText).toBe('▼펼치기');
     expect(headerLayout.toggleColor).toBe('rgb(79, 45, 25)');
     expect(headerLayout.toggleBorderColor).toBe('rgb(141, 90, 45)');
