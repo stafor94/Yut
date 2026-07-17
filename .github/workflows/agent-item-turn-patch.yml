@@ -36,3 +36,4 @@ jobs:
           git add -A
           git commit -m "fix item and turn lifecycle consistency"
           git push origin HEAD:agent/item-turn-lifecycle-fixes
+# retrigger validation after workflow registration
