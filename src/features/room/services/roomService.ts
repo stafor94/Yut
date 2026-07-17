@@ -12,7 +12,6 @@ import { buildPreparedRoomGameState, isCompleteRoomGamePlayerSnapshot } from '..
 import { db } from '../../../services/firebase/firebaseDb';
 import { waitForGamePresentationBeforeAction } from '../../../shared/gamePresentationLock';
 import {
-  cleanupCurrentRoomPresence as cleanupCurrentRoomPresenceCore,
   commitAuthoritativeGameAction as commitAuthoritativeGameActionCore,
   createRoom as createRoomCore,
   getProcessedGameAction as getProcessedGameActionCore,
@@ -46,6 +45,7 @@ import {
 } from './roomLifecycleStore';
 import { createRoomSafely } from './roomCreationService';
 import { joinRoomSafely } from './roomJoinService';
+import { cleanupCurrentRoomPresenceSafely } from './roomPresenceCleanupService';
 import {
   drainPendingRoomCleanups,
   leaveDuplicatePlayerRoomsSafely,
@@ -184,11 +184,11 @@ export async function updateRoomStatus(roomId: string, status: RoomSummary['stat
   }, { merge: true });
 }
 
-export async function cleanupCurrentRoomPresence(...args: Parameters<typeof cleanupCurrentRoomPresenceCore>) {
+export async function cleanupCurrentRoomPresence(...args: Parameters<typeof cleanupCurrentRoomPresenceSafely>) {
   const [roomId] = args;
   const [roomBefore, playersBefore] = await Promise.all([getManagedRoom(roomId), getRoomPlayers(roomId)]);
   const seatIndexByPlayerId = new Map(playersBefore.map((player) => [player.id, Number(player.seatIndex)]));
-  const result = await cleanupCurrentRoomPresenceCore(...args);
+  const result = await cleanupCurrentRoomPresenceSafely(...args);
   if (!result.cleanedPlayerIds.length) return result;
 
   if (db && roomBefore?.status === 'waiting') {
