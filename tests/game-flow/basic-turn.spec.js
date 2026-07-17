@@ -192,74 +192,119 @@ test.describe('game flow QA', () => {
       if (originalViewport) await page.setViewportSize(originalViewport);
     });
 
-    await runQaStep(testInfo, '모바일 인게임 상단과 방 정보 접기 레이아웃 확인', async () => {
+    await runQaStep(testInfo, '모바일 인게임 상단과 플레이어 목록 접기 레이아웃 확인', async () => {
       const originalViewport = page.viewportSize();
       await page.setViewportSize({ width: 390, height: 844 });
       const header = page.locator('.game-shell .hero');
-      const roomToggle = page.getByTestId('game-room-info-toggle');
+      const playersPanel = page.getByTestId('players-panel');
+      const expandedToggle = page.getByTestId('game-room-info-toggle');
       const playTimer = page.getByTestId('play-timer');
       await expect(header).toBeVisible();
-      await expect(roomToggle).toBeVisible();
-      await expect(roomToggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(playersPanel).toBeVisible();
+      await expect(expandedToggle).toBeVisible();
+      await expect(expandedToggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(expandedToggle).toHaveText('▲접기');
       await expect(playTimer).toBeVisible();
       await expect(page.getByTestId('owned-items-panel')).toHaveCount(0);
 
-      const layout = await header.evaluate((element) => {
-        const actions = element.querySelector('.hero-actions');
+      const expandedLayout = await page.locator('.game-shell').evaluate((shell) => {
+        const headerElement = shell.querySelector('.hero');
+        const playerPanelElement = shell.querySelector('[data-testid="players-panel"]');
+        const toggleElement = playerPanelElement?.querySelector('[data-testid="game-room-info-toggle"]');
+        const actions = headerElement?.querySelector('.hero-actions');
         const buttons = actions ? Array.from(actions.querySelectorAll('button')) : [];
-        const roomInfoButton = element.querySelector('[data-testid="game-room-info-toggle"]');
-        const nicknameButton = element.querySelector('.nickname-chip');
+        const nicknameButton = actions?.querySelector('.nickname-chip');
         const toBox = (target) => {
           if (!target) return null;
           const rect = target.getBoundingClientRect();
           return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
         };
         return {
-          display: getComputedStyle(element).display,
-          headerBox: toBox(element),
+          headerDisplay: headerElement ? getComputedStyle(headerElement).display : '',
+          headerBox: toBox(headerElement),
           actionsBox: toBox(actions),
-          roomInfoBox: toBox(roomInfoButton),
+          playerPanelBox: toBox(playerPanelElement),
+          toggleBox: toBox(toggleElement),
+          toggleText: toggleElement?.textContent ?? '',
+          toggleColor: toggleElement ? getComputedStyle(toggleElement).color : '',
           nicknameBox: toBox(nicknameButton),
           buttonBoxes: buttons.map(toBox),
-          roomInfoInActionsCount: actions?.querySelectorAll('[data-testid="game-room-info-toggle"]').length ?? 0,
-          headerTimerCount: element.querySelectorAll('.play-time').length,
+          toggleInHeaderCount: headerElement?.querySelectorAll('[data-testid="game-room-info-toggle"]').length ?? 0,
+          headerTimerCount: headerElement?.querySelectorAll('.play-time').length ?? 0,
         };
       });
 
-      expect(layout.display, '인게임 상단은 명시적인 grid 레이아웃이어야 합니다.').toBe('grid');
-      expect(layout.headerBox, '상단 패널 bounding box').not.toBeNull();
-      expect(layout.actionsBox, '상단 액션 영역 bounding box').not.toBeNull();
-      expect(layout.roomInfoBox, '방 정보 접기 버튼 bounding box').not.toBeNull();
-      expect(layout.nicknameBox, '닉네임 버튼 bounding box').not.toBeNull();
-      expect(layout.buttonBoxes, '닉네임·효과음·서버 상태 버튼 3개가 액션 영역에 있어야 합니다.').toHaveLength(3);
-      expect(layout.roomInfoInActionsCount, '방 정보 접기 탭은 액션 영역 밖의 헤더 좌측 하단에 있어야 합니다.').toBe(0);
-      expect(layout.headerTimerCount, '플레이 타이머는 상단이 아니라 진행 기록 헤더에 있어야 합니다.').toBe(0);
-      const headerBottom = layout.headerBox.y + layout.headerBox.height;
-      expect(layout.roomInfoBox.x, '방 정보 접기 탭은 헤더 왼쪽 테두리 안쪽에서 시작해야 합니다.').toBeGreaterThanOrEqual(layout.headerBox.x + 8);
-      expect(layout.roomInfoBox.x, '방 정보 접기 탭은 헤더 좌측 하단 영역을 벗어나면 안 됩니다.').toBeLessThanOrEqual(layout.headerBox.x + 30);
-      expect(layout.roomInfoBox.y, '방 정보 접기 탭 위쪽은 헤더 안에 걸쳐 있어야 합니다.').toBeLessThan(headerBottom);
-      expect(layout.roomInfoBox.y + layout.roomInfoBox.height, '방 정보 접기 탭 아래쪽은 헤더 테두리 아래로 내려와야 합니다.').toBeGreaterThan(headerBottom);
-      expect(layout.nicknameBox.width, '접기 탭이 빠진 공간은 닉네임 버튼이 활용해야 합니다.').toBeGreaterThan(layout.buttonBoxes[1].width + 20);
+      expect(expandedLayout.headerDisplay, '인게임 상단은 명시적인 grid 레이아웃이어야 합니다.').toBe('grid');
+      expect(expandedLayout.headerBox, '상단 패널 bounding box').not.toBeNull();
+      expect(expandedLayout.actionsBox, '상단 액션 영역 bounding box').not.toBeNull();
+      expect(expandedLayout.playerPanelBox, '플레이어 패널 bounding box').not.toBeNull();
+      expect(expandedLayout.toggleBox, '접기 탭 bounding box').not.toBeNull();
+      expect(expandedLayout.nicknameBox, '닉네임 버튼 bounding box').not.toBeNull();
+      expect(expandedLayout.buttonBoxes, '닉네임·효과음·서버 상태 버튼 3개가 액션 영역에 있어야 합니다.').toHaveLength(3);
+      expect(expandedLayout.toggleInHeaderCount, '펼침 상태 접기 탭은 상단 패널에 남아 있으면 안 됩니다.').toBe(0);
+      expect(expandedLayout.headerTimerCount, '플레이 타이머는 상단이 아니라 진행 기록 헤더에 있어야 합니다.').toBe(0);
+      expect(expandedLayout.toggleText).toBe('▲접기');
+      expect(expandedLayout.toggleColor).toBe('rgb(79, 45, 25)');
+      const playerPanelCenter = expandedLayout.playerPanelBox.x + expandedLayout.playerPanelBox.width / 2;
+      const expandedToggleCenter = expandedLayout.toggleBox.x + expandedLayout.toggleBox.width / 2;
+      const playerPanelBottom = expandedLayout.playerPanelBox.y + expandedLayout.playerPanelBox.height;
+      expect(Math.abs(expandedToggleCenter - playerPanelCenter), '접기 탭은 플레이어 목록 패널 하단 중앙에 있어야 합니다.').toBeLessThanOrEqual(1);
+      expect(expandedLayout.toggleBox.y, '접기 탭 위쪽은 플레이어 패널 안쪽에 걸쳐야 합니다.').toBeLessThan(playerPanelBottom);
+      expect(expandedLayout.toggleBox.y + expandedLayout.toggleBox.height, '접기 탭 아래쪽은 플레이어 패널 테두리 아래로 내려와야 합니다.').toBeGreaterThan(playerPanelBottom);
+      expect(expandedLayout.nicknameBox.width, '상단 닉네임 버튼은 접기 탭과 무관하게 확보된 너비를 사용해야 합니다.').toBeGreaterThan(expandedLayout.buttonBoxes[1].width + 20);
 
-      const firstCenterY = layout.buttonBoxes[0].y + layout.buttonBoxes[0].height / 2;
-      for (const buttonBox of layout.buttonBoxes) {
-        expect(buttonBox.x, '상단 버튼이 액션 영역 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.actionsBox.x - 1);
-        expect(buttonBox.x + buttonBox.width, '상단 버튼이 액션 영역 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.actionsBox.x + layout.actionsBox.width + 1);
+      const firstCenterY = expandedLayout.buttonBoxes[0].y + expandedLayout.buttonBoxes[0].height / 2;
+      for (const buttonBox of expandedLayout.buttonBoxes) {
+        expect(buttonBox.x, '상단 버튼이 액션 영역 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(expandedLayout.actionsBox.x - 1);
+        expect(buttonBox.x + buttonBox.width, '상단 버튼이 액션 영역 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(expandedLayout.actionsBox.x + expandedLayout.actionsBox.width + 1);
         expect(Math.abs((buttonBox.y + buttonBox.height / 2) - firstCenterY), '상단 버튼은 같은 행의 중앙선에 정렬되어야 합니다.').toBeLessThanOrEqual(1);
       }
 
-      for (let leftIndex = 0; leftIndex < layout.buttonBoxes.length; leftIndex += 1) {
-        for (let rightIndex = leftIndex + 1; rightIndex < layout.buttonBoxes.length; rightIndex += 1) {
-          expect(boxesOverlap(layout.buttonBoxes[leftIndex], layout.buttonBoxes[rightIndex]), '상단 버튼끼리 겹치면 안 됩니다.').toBe(false);
+      for (let leftIndex = 0; leftIndex < expandedLayout.buttonBoxes.length; leftIndex += 1) {
+        for (let rightIndex = leftIndex + 1; rightIndex < expandedLayout.buttonBoxes.length; rightIndex += 1) {
+          expect(boxesOverlap(expandedLayout.buttonBoxes[leftIndex], expandedLayout.buttonBoxes[rightIndex]), '상단 버튼끼리 겹치면 안 됩니다.').toBe(false);
         }
       }
 
-      await roomToggle.click();
-      await expect(roomToggle).toHaveAttribute('aria-expanded', 'false');
+      await expandedToggle.click();
       await expect(page.getByTestId('players-panel')).toHaveCount(0);
-      await roomToggle.click();
-      await expect(roomToggle).toHaveAttribute('aria-expanded', 'true');
+      const collapsedToggle = page.getByTestId('game-room-info-toggle');
+      await expect(collapsedToggle).toBeVisible();
+      await expect(collapsedToggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(collapsedToggle).toHaveText('▼펼치기');
+      await expect(page.getByTestId('game-screen')).toHaveAttribute('data-room-info-collapsed', 'true');
+
+      const collapsedLayout = await header.evaluate((element) => {
+        const toggleElement = element.querySelector('[data-testid="game-room-info-toggle"]');
+        if (!(toggleElement instanceof HTMLElement)) throw new Error('접힘 상태 펼치기 탭을 찾지 못했습니다.');
+        const headerBox = element.getBoundingClientRect();
+        const toggleBox = toggleElement.getBoundingClientRect();
+        const style = getComputedStyle(toggleElement);
+        return {
+          headerCenter: headerBox.x + headerBox.width / 2,
+          headerBottom: headerBox.y + headerBox.height,
+          toggleCenter: toggleBox.x + toggleBox.width / 2,
+          toggleTop: toggleBox.y,
+          toggleBottom: toggleBox.y + toggleBox.height,
+          toggleText: toggleElement.textContent,
+          toggleColor: style.color,
+          toggleBorderColor: style.borderTopColor,
+          toggleBackgroundImage: style.backgroundImage,
+        };
+      });
+      expect(Math.abs(collapsedLayout.toggleCenter - collapsedLayout.headerCenter), '펼치기 탭은 최상단 패널 하단 중앙에 있어야 합니다.').toBeLessThanOrEqual(1);
+      expect(collapsedLayout.toggleTop, '펼치기 탭 위쪽 절반은 최상단 패널 안쪽에 걸쳐야 합니다.').toBeLessThan(collapsedLayout.headerBottom);
+      expect(collapsedLayout.toggleBottom, '펼치기 탭 아래쪽 절반은 최상단 패널 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(collapsedLayout.headerBottom);
+      expect(collapsedLayout.toggleText).toBe('▼펼치기');
+      expect(collapsedLayout.toggleColor).toBe('rgb(79, 45, 25)');
+      expect(collapsedLayout.toggleBorderColor).toBe('rgb(141, 90, 45)');
+      expect(collapsedLayout.toggleBackgroundImage).toContain('gradient');
+
+      await collapsedToggle.click();
+      await expect(page.getByTestId('game-room-info-toggle')).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByTestId('game-room-info-toggle')).toHaveText('▲접기');
       await expect(page.getByTestId('players-panel')).toBeVisible();
+      await expect(page.getByTestId('game-screen')).toHaveAttribute('data-room-info-collapsed', 'false');
 
       if (originalViewport) await page.setViewportSize(originalViewport);
     });

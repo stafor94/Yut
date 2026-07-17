@@ -8,7 +8,7 @@ import { publishGameEndDialogOpenHandler } from '../flows/gameEndDialogPresentat
 import { getOwnedItemsPresentation, publishOwnedItemsPresentation, subscribeOwnedItemsPresentation } from '../flows/ownedItemsPresentation';
 import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } from '../flows/remoteItemUseNotice';
 import { getPlayTimePresentation, subscribePlayTimePresentation } from '../flows/playTimePresentation';
-import { getRoomInfoCollapsed, subscribeRoomInfoPresentation } from '../flows/roomInfoPresentation';
+import { getRoomInfoCollapsed, subscribeRoomInfoPresentation, toggleRoomInfoCollapsed } from '../flows/roomInfoPresentation';
 import { GameLogPanel, PlayersPanel } from '../screens/GameScreen';
 import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
 
@@ -151,6 +151,16 @@ export function GamePlayersPanel({
         </div>
         {spectators.length > 0 && <div className="spectator-list"><h2>관전자</h2>{spectators.map((spectator) => <p key={spectator.id}>👁 {spectator.name}</p>)}</div>}
       </div>
+      <button
+        data-testid="game-room-info-toggle"
+        className="game-room-info-toggle game-room-info-toggle-expanded"
+        type="button"
+        aria-expanded="true"
+        aria-controls="game-room-info-panel"
+        aria-label="플레이어 목록 접기"
+        title="플레이어 목록 접기"
+        onClick={toggleRoomInfoCollapsed}
+      ><span className="game-room-info-toggle-direction" aria-hidden="true">▲</span><span>접기</span></button>
     </PlayersPanel>}
   </>;
 }
