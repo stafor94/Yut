@@ -1,0 +1,6 @@
+/* RollStage owns the complete visual lifetime.
+   The container must not disappear on an unrelated fixed CSS clock. */
+.roll-stage {
+  animation: none;
+  opacity: 1;
+}

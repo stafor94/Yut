@@ -4,7 +4,7 @@ import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 const MOBILE_VIEWPORT = { width: 412, height: 915 };
-const REMOTE_RENDERER_FRAME_DELAY_MS = 4_000;
+const REMOTE_RENDERER_FRAME_DELAY_MS = 6_000;
 const REMOTE_RENDERER_DELAY_STYLE_ID = 'yut-qa-remote-renderer-delay';
 
 async function findActiveRoller(entries) {
@@ -103,6 +103,10 @@ async function startFallTimingObservation(page) {
   });
 }
 
+async function readRollStageOpacity(page) {
+  return page.locator('.roll-stage').evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
+}
+
 test.describe('remote fall presentation QA', () => {
   let roomId;
 
@@ -194,17 +198,22 @@ test.describe('remote fall presentation QA', () => {
           const timing = window.__YUT_QA_REMOTE_FALL_TIMING__;
           return timing?.stageStartedAt ? performance.now() - timing.stageStartedAt : 0;
         }), {
-          timeout: 7_000,
-          message: '고정 2.2초 완료 타이머가 발동하던 시점 이후까지 렌더러 프레임을 지연해야 합니다.',
-        }).toBeGreaterThanOrEqual(3_000);
+          timeout: 9_000,
+          message: '기존 3.8초 CSS 페이드 종료 시점 이후까지 렌더러 프레임을 지연해야 합니다.',
+        }).toBeGreaterThanOrEqual(4_200);
         await expect(stage, '실제 렌더러 settle 전에는 낙 연출이 제거되면 안 됩니다.').toBeVisible();
         await expect(label, '실제 렌더러 settle 전에는 낙 결과가 공개되면 안 됩니다.').toBeHidden();
         await expect(stage).toHaveAttribute('data-settle-source', 'pending');
+        await expect.poll(() => readRollStageOpacity(observer.page), {
+          timeout: 2_000,
+          message: '기존 3.8초 페이드 시점 이후에도 낙 연출은 실제 화면에서 완전히 불투명해야 합니다.',
+        }).toBeGreaterThanOrEqual(0.99);
 
-        await expect(stage, '실제 렌더러 콜백으로만 결과 유지 단계에 진입해야 합니다.').toHaveAttribute('data-settle-source', /^(three-renderer|css-animation-end)$/, { timeout: 6_000 });
+        await expect(stage, '실제 렌더러 콜백으로만 결과 유지 단계에 진입해야 합니다.').toHaveAttribute('data-settle-source', /^(three-renderer|css-animation-end)$/, { timeout: 8_000 });
         await expect(label, '윷이 매트 밖으로 빠지는 실제 settle 이후 낙 결과가 표시되어야 합니다.').toHaveText('낙!', { timeout: 2_000 });
         await expect(currentBadge, '결과 유지 중에도 던진 상대의 턴 표시가 유지되어야 합니다.').toHaveText(roller.name);
         await expect(neighbors, '결과 유지 중에도 전체 턴 정보가 유지되어야 합니다.').toHaveCount(2);
+        expect(await readRollStageOpacity(observer.page), '낙 결과 유지 중에도 연출이 투명해지면 안 됩니다.').toBeGreaterThanOrEqual(0.99);
         await expect(stage, '낙 결과 유지가 끝난 뒤에만 연출이 종료되어야 합니다.').toBeHidden({ timeout: 6_000 });
 
         await expect.poll(() => observer.page.evaluate(() => window.__YUT_QA_REMOTE_FALL_TIMING__?.endedAt ?? 0), {
@@ -219,7 +228,7 @@ test.describe('remote fall presentation QA', () => {
         const resultHoldDurationMs = timing.endedAt - timing.labelStartedAt;
         expect(timing.stageStartedAt).toBeGreaterThan(0);
         expect(timing.labelStartedAt).toBeGreaterThan(timing.stageStartedAt);
-        expect(landingDurationMs, `지연된 렌더러가 실제 완료되기 전에 낙 결과를 공개하면 안 됩니다. 실제: ${landingDurationMs}ms`).toBeGreaterThanOrEqual(3_200);
+        expect(landingDurationMs, `지연된 렌더러가 실제 완료되기 전에 낙 결과를 공개하면 안 됩니다. 실제: ${landingDurationMs}ms`).toBeGreaterThanOrEqual(5_200);
         expect(resultHoldDurationMs, `settle 후 낙 결과를 최소 1.2초 유지해야 합니다. 실제: ${resultHoldDurationMs}ms`).toBeGreaterThanOrEqual(1_200);
         expect(resultHoldDurationMs, `낙 결과 유지가 비정상적으로 길어지면 안 됩니다. 실제: ${resultHoldDurationMs}ms`).toBeLessThanOrEqual(3_000);
 
