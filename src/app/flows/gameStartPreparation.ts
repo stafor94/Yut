@@ -220,7 +220,6 @@ export function buildPreparedRoomGameState(params: {
     lastMovedPieceIds: [] as string[],
     lastMovedSeatId: '',
     itemPromptTiming: null,
-    pendingAfterMoveTurnIndex: null,
     branchChoice: 'outer' as const,
     rollResultReadyAt: 0,
     turnOrderPhase: { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
