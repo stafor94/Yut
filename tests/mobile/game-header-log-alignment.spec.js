@@ -29,6 +29,7 @@ test.describe('모바일 인게임 정렬', () => {
       collapsedDirection.className = 'game-room-info-toggle-direction';
       collapsedDirection.textContent = '▼';
       const collapsedText = document.createElement('span');
+      collapsedText.className = 'game-room-info-toggle-label';
       collapsedText.textContent = '펼치기';
       collapsedToggle.append(collapsedDirection, collapsedText);
 
@@ -77,6 +78,7 @@ test.describe('모바일 인게임 정렬', () => {
       expandedDirection.className = 'game-room-info-toggle-direction';
       expandedDirection.textContent = '▲';
       const expandedText = document.createElement('span');
+      expandedText.className = 'game-room-info-toggle-label';
       expandedText.textContent = '접기';
       expandedToggle.append(expandedDirection, expandedText);
       playersPanel.append(details, expandedToggle);
@@ -115,10 +117,11 @@ test.describe('모바일 인게임 정렬', () => {
     const headerLayout = await header.evaluate((element) => {
       const actionsElement = element.querySelector('.hero-actions.game-actions');
       const toggleElement = element.querySelector('.game-room-info-toggle-collapsed');
+      const toggleLabel = toggleElement?.querySelector('.game-room-info-toggle-label');
       const nickname = element.querySelector('.nickname-chip');
       const sound = element.querySelector('.sound-toggle');
       const end = element.querySelector('.game-end-button');
-      if (!(actionsElement instanceof HTMLElement) || !(toggleElement instanceof HTMLElement) || !(nickname instanceof HTMLElement) || !(sound instanceof HTMLElement) || !(end instanceof HTMLElement)) {
+      if (!(actionsElement instanceof HTMLElement) || !(toggleElement instanceof HTMLElement) || !(toggleLabel instanceof HTMLElement) || !(nickname instanceof HTMLElement) || !(sound instanceof HTMLElement) || !(end instanceof HTMLElement)) {
         throw new Error('상단 헤더 fixture가 올바르지 않습니다.');
       }
       const headerBox = element.getBoundingClientRect();
@@ -138,9 +141,12 @@ test.describe('모바일 인게임 정렬', () => {
         toggleBottom: toggleBox.bottom,
         toggleWidth: toggleBox.width,
         toggleHeight: toggleBox.height,
-        toggleText: toggleElement.textContent,
+        toggleText: toggleElement.innerText,
+        toggleLabelDisplay: getComputedStyle(toggleLabel).display,
         toggleColor: toggleStyle.color,
-        toggleBorderColor: toggleStyle.borderTopColor,
+        toggleBorderColor: toggleStyle.borderBottomColor,
+        toggleBorderTopWidth: toggleStyle.borderTopWidth,
+        toggleTopRadius: toggleStyle.borderTopLeftRadius,
         toggleBackgroundImage: toggleStyle.backgroundImage,
         nicknameLeft: nicknameBox.left,
         nicknameWidth: nicknameBox.width,
@@ -151,13 +157,16 @@ test.describe('모바일 인게임 정렬', () => {
     });
     expect(headerLayout.toggleInsideActions).toBe(false);
     expect(Math.abs(headerLayout.toggleCenter - headerLayout.headerCenter), '펼치기 탭은 최상단 패널 하단 중앙에 있어야 합니다.').toBeLessThanOrEqual(1);
-    expect(headerLayout.toggleTop, '펼치기 탭의 위쪽 절반은 헤더 안쪽에 걸쳐야 합니다.').toBeLessThan(headerLayout.headerBottom);
-    expect(headerLayout.toggleBottom, '펼치기 탭의 아래쪽 절반은 헤더 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(headerLayout.headerBottom);
-    expect(headerLayout.toggleWidth).toBe(88);
-    expect(headerLayout.toggleHeight).toBe(30);
-    expect(headerLayout.toggleText).toBe('▼펼치기');
+    expect(headerLayout.toggleTop, '펼치기 탭의 위쪽 일부는 헤더 안쪽에 걸쳐야 합니다.').toBeLessThan(headerLayout.headerBottom);
+    expect(headerLayout.toggleBottom, '펼치기 탭은 헤더 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(headerLayout.headerBottom);
+    expect(headerLayout.toggleWidth).toBe(44);
+    expect(headerLayout.toggleHeight).toBe(22);
+    expect(headerLayout.toggleText).toBe('▼');
+    expect(headerLayout.toggleLabelDisplay).toBe('none');
     expect(headerLayout.toggleColor).toBe('rgb(79, 45, 25)');
-    expect(headerLayout.toggleBorderColor).toBe('rgb(141, 90, 45)');
+    expect(headerLayout.toggleBorderColor).toBe('rgb(90, 45, 22)');
+    expect(headerLayout.toggleBorderTopWidth).toBe('0px');
+    expect(headerLayout.toggleTopRadius).toBe('0px');
     expect(headerLayout.toggleBackgroundImage).toContain('gradient');
     expect(Math.abs(headerLayout.nicknameLeft - headerLayout.actionsLeft)).toBeLessThanOrEqual(1);
     expect(headerLayout.actionsRight).toBeLessThanOrEqual(headerLayout.endLeft - 4);
@@ -165,7 +174,8 @@ test.describe('모바일 인게임 정렬', () => {
 
     const playerPanelLayout = await fixture.locator('.game-players-panel').evaluate((panel) => {
       const toggle = panel.querySelector('.game-room-info-toggle-expanded');
-      if (!(toggle instanceof HTMLElement)) throw new Error('플레이어 패널 접기 탭을 찾지 못했습니다.');
+      const toggleLabel = toggle?.querySelector('.game-room-info-toggle-label');
+      if (!(toggle instanceof HTMLElement) || !(toggleLabel instanceof HTMLElement)) throw new Error('플레이어 패널 접기 탭을 찾지 못했습니다.');
       const panelBox = panel.getBoundingClientRect();
       const toggleBox = toggle.getBoundingClientRect();
       return {
@@ -174,13 +184,19 @@ test.describe('모바일 인게임 정렬', () => {
         toggleCenter: toggleBox.left + toggleBox.width / 2,
         toggleTop: toggleBox.top,
         toggleBottom: toggleBox.bottom,
-        toggleText: toggle.textContent,
+        toggleWidth: toggleBox.width,
+        toggleHeight: toggleBox.height,
+        toggleText: toggle.innerText,
+        toggleLabelDisplay: getComputedStyle(toggleLabel).display,
       };
     });
     expect(Math.abs(playerPanelLayout.toggleCenter - playerPanelLayout.panelCenter), '접기 탭은 플레이어 목록 패널 하단 중앙에 있어야 합니다.').toBeLessThanOrEqual(1);
     expect(playerPanelLayout.toggleTop).toBeLessThan(playerPanelLayout.panelBottom);
     expect(playerPanelLayout.toggleBottom).toBeGreaterThan(playerPanelLayout.panelBottom);
-    expect(playerPanelLayout.toggleText).toBe('▲접기');
+    expect(playerPanelLayout.toggleWidth).toBe(44);
+    expect(playerPanelLayout.toggleHeight).toBe(22);
+    expect(playerPanelLayout.toggleText).toBe('▲');
+    expect(playerPanelLayout.toggleLabelDisplay).toBe('none');
     await expect(collapsedToggle).toBeVisible();
     await expect(expandedToggle).toBeVisible();
 
