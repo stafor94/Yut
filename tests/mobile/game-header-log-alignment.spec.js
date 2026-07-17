@@ -21,14 +21,16 @@ test.describe('모바일 인게임 정렬', () => {
 
       const header = document.createElement('section');
       header.className = 'hero panel game-header-with-end';
-      const toggle = document.createElement('button');
-      toggle.className = 'game-room-header-toggle';
-      toggle.dataset.testid = 'game-room-info-toggle';
-      toggle.setAttribute('aria-expanded', 'true');
-      const toggleIcon = document.createElement('span');
-      toggleIcon.className = 'game-room-header-toggle-icon';
-      toggleIcon.textContent = '▴';
-      toggle.append(toggleIcon);
+      const collapsedToggle = document.createElement('button');
+      collapsedToggle.className = 'game-room-info-toggle game-room-info-toggle-collapsed';
+      collapsedToggle.dataset.testid = 'collapsed-room-info-toggle';
+      collapsedToggle.setAttribute('aria-expanded', 'false');
+      const collapsedDirection = document.createElement('span');
+      collapsedDirection.className = 'game-room-info-toggle-direction';
+      collapsedDirection.textContent = '▼';
+      const collapsedText = document.createElement('span');
+      collapsedText.textContent = '펼치기';
+      collapsedToggle.append(collapsedDirection, collapsedText);
 
       const actions = document.createElement('div');
       actions.className = 'hero-actions game-actions';
@@ -45,10 +47,10 @@ test.describe('모바일 인게임 정렬', () => {
       const endButton = document.createElement('button');
       endButton.className = 'game-end-button';
       endButton.textContent = '종료';
-      header.append(toggle, actions, endButton);
+      header.append(collapsedToggle, actions, endButton);
 
-      const playersPanel = document.createElement('section');
-      playersPanel.className = 'game-players-panel';
+      const playersPanel = document.createElement('aside');
+      playersPanel.className = 'panel players game-players-panel';
       const details = document.createElement('div');
       details.className = 'game-room-details';
       const title = document.createElement('h2');
@@ -66,7 +68,18 @@ test.describe('모바일 인게임 정렬', () => {
       playerList.className = 'game-player-list';
       playerList.textContent = '플레이어 목록';
       details.append(title, badges, playerList);
-      playersPanel.append(details);
+
+      const expandedToggle = document.createElement('button');
+      expandedToggle.className = 'game-room-info-toggle game-room-info-toggle-expanded';
+      expandedToggle.dataset.testid = 'expanded-room-info-toggle';
+      expandedToggle.setAttribute('aria-expanded', 'true');
+      const expandedDirection = document.createElement('span');
+      expandedDirection.className = 'game-room-info-toggle-direction';
+      expandedDirection.textContent = '▲';
+      const expandedText = document.createElement('span');
+      expandedText.textContent = '접기';
+      expandedToggle.append(expandedDirection, expandedText);
+      playersPanel.append(details, expandedToggle);
 
       const side = document.createElement('aside');
       side.className = 'panel side';
@@ -90,7 +103,8 @@ test.describe('모바일 인게임 정렬', () => {
     const fixture = page.locator('#qa-game-alignment-fixture');
     const header = fixture.locator('.hero.game-header-with-end');
     const actions = header.locator('.hero-actions.game-actions');
-    const toggle = header.getByTestId('game-room-info-toggle');
+    const collapsedToggle = fixture.getByTestId('collapsed-room-info-toggle');
+    const expandedToggle = fixture.getByTestId('expanded-room-info-toggle');
     const headerButtons = actions.locator(':scope > button');
     const endButton = header.locator(':scope > .game-end-button');
     const buttonHeights = await headerButtons.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height));
@@ -100,12 +114,11 @@ test.describe('모바일 인게임 정렬', () => {
 
     const headerLayout = await header.evaluate((element) => {
       const actionsElement = element.querySelector('.hero-actions.game-actions');
-      const toggleElement = element.querySelector('.game-room-header-toggle');
-      const toggleIconElement = element.querySelector('.game-room-header-toggle-icon');
+      const toggleElement = element.querySelector('.game-room-info-toggle-collapsed');
       const nickname = element.querySelector('.nickname-chip');
       const sound = element.querySelector('.sound-toggle');
       const end = element.querySelector('.game-end-button');
-      if (!(actionsElement instanceof HTMLElement) || !(toggleElement instanceof HTMLElement) || !(toggleIconElement instanceof HTMLElement) || !(nickname instanceof HTMLElement) || !(sound instanceof HTMLElement) || !(end instanceof HTMLElement)) {
+      if (!(actionsElement instanceof HTMLElement) || !(toggleElement instanceof HTMLElement) || !(nickname instanceof HTMLElement) || !(sound instanceof HTMLElement) || !(end instanceof HTMLElement)) {
         throw new Error('상단 헤더 fixture가 올바르지 않습니다.');
       }
       const headerBox = element.getBoundingClientRect();
@@ -115,19 +128,20 @@ test.describe('모바일 인게임 정렬', () => {
       const soundBox = sound.getBoundingClientRect();
       const endBox = end.getBoundingClientRect();
       const toggleStyle = getComputedStyle(toggleElement);
-      const toggleIconStyle = getComputedStyle(toggleIconElement);
       return {
-        headerLeft: headerBox.left,
+        headerCenter: headerBox.left + headerBox.width / 2,
         headerBottom: headerBox.bottom,
         actionsLeft: actionsBox.left,
         actionsRight: actionsBox.right,
-        toggleLeft: toggleBox.left,
+        toggleCenter: toggleBox.left + toggleBox.width / 2,
         toggleTop: toggleBox.top,
         toggleBottom: toggleBox.bottom,
         toggleWidth: toggleBox.width,
         toggleHeight: toggleBox.height,
-        toggleFontSize: Number.parseFloat(toggleStyle.fontSize),
-        toggleIconFontSize: Number.parseFloat(toggleIconStyle.fontSize),
+        toggleText: toggleElement.textContent,
+        toggleColor: toggleStyle.color,
+        toggleBorderColor: toggleStyle.borderTopColor,
+        toggleBackgroundImage: toggleStyle.backgroundImage,
         nicknameLeft: nicknameBox.left,
         nicknameWidth: nicknameBox.width,
         soundWidth: soundBox.width,
@@ -136,16 +150,39 @@ test.describe('모바일 인게임 정렬', () => {
       };
     });
     expect(headerLayout.toggleInsideActions).toBe(false);
-    expect(headerLayout.toggleLeft).toBeGreaterThanOrEqual(headerLayout.headerLeft + 8);
-    expect(headerLayout.toggleLeft).toBeLessThanOrEqual(headerLayout.headerLeft + 28);
-    expect(headerLayout.toggleTop, '접기 탭의 위쪽은 헤더 안쪽에 걸쳐야 합니다.').toBeLessThan(headerLayout.headerBottom);
-    expect(headerLayout.toggleBottom, '접기 탭의 아래쪽은 헤더 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(headerLayout.headerBottom);
-    expect(headerLayout.toggleWidth, '모바일 접기 탭 폭은 유지되어야 합니다.').toBe(44);
-    expect(headerLayout.toggleHeight, '모바일 접기 탭 높이는 유지되어야 합니다.').toBe(30);
-    expect(Math.abs(headerLayout.toggleIconFontSize - headerLayout.toggleFontSize - 6), '접기/펼치기 아이콘 글자는 버튼 글자보다 6px 커야 합니다.').toBeLessThanOrEqual(.1);
+    expect(Math.abs(headerLayout.toggleCenter - headerLayout.headerCenter), '펼치기 탭은 최상단 패널 하단 중앙에 있어야 합니다.').toBeLessThanOrEqual(1);
+    expect(headerLayout.toggleTop, '펼치기 탭의 위쪽 절반은 헤더 안쪽에 걸쳐야 합니다.').toBeLessThan(headerLayout.headerBottom);
+    expect(headerLayout.toggleBottom, '펼치기 탭의 아래쪽 절반은 헤더 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(headerLayout.headerBottom);
+    expect(headerLayout.toggleWidth).toBe(96);
+    expect(headerLayout.toggleHeight).toBe(34);
+    expect(headerLayout.toggleText).toBe('▼펼치기');
+    expect(headerLayout.toggleColor).toBe('rgb(79, 45, 25)');
+    expect(headerLayout.toggleBorderColor).toBe('rgb(141, 90, 45)');
+    expect(headerLayout.toggleBackgroundImage).toContain('gradient');
     expect(Math.abs(headerLayout.nicknameLeft - headerLayout.actionsLeft)).toBeLessThanOrEqual(1);
     expect(headerLayout.actionsRight).toBeLessThanOrEqual(headerLayout.endLeft - 4);
-    expect(headerLayout.nicknameWidth, '닉네임 버튼은 접기 버튼이 빠진 공간을 사용해야 합니다.').toBeGreaterThan(headerLayout.soundWidth + 20);
+    expect(headerLayout.nicknameWidth).toBeGreaterThan(headerLayout.soundWidth + 20);
+
+    const playerPanelLayout = await fixture.locator('.game-players-panel').evaluate((panel) => {
+      const toggle = panel.querySelector('.game-room-info-toggle-expanded');
+      if (!(toggle instanceof HTMLElement)) throw new Error('플레이어 패널 접기 탭을 찾지 못했습니다.');
+      const panelBox = panel.getBoundingClientRect();
+      const toggleBox = toggle.getBoundingClientRect();
+      return {
+        panelCenter: panelBox.left + panelBox.width / 2,
+        panelBottom: panelBox.bottom,
+        toggleCenter: toggleBox.left + toggleBox.width / 2,
+        toggleTop: toggleBox.top,
+        toggleBottom: toggleBox.bottom,
+        toggleText: toggle.textContent,
+      };
+    });
+    expect(Math.abs(playerPanelLayout.toggleCenter - playerPanelLayout.panelCenter), '접기 탭은 플레이어 목록 패널 하단 중앙에 있어야 합니다.').toBeLessThanOrEqual(1);
+    expect(playerPanelLayout.toggleTop).toBeLessThan(playerPanelLayout.panelBottom);
+    expect(playerPanelLayout.toggleBottom).toBeGreaterThan(playerPanelLayout.panelBottom);
+    expect(playerPanelLayout.toggleText).toBe('▲접기');
+    await expect(collapsedToggle).toBeVisible();
+    await expect(expandedToggle).toBeVisible();
 
     const roomLayout = await fixture.locator('.game-room-details').evaluate((details) => {
       const title = details.querySelector('.game-room-title');
