@@ -1,20 +1,22 @@
-import type { GameLog, Seat } from '../appState';
+type BoardTurnIndicatorLog = {
+  text: string;
+};
 
-type BoardTurnIndicatorTextArgs = {
+type BoardTurnIndicatorTextArgs<TSeat, TLog extends BoardTurnIndicatorLog> = {
   activeSeatTurnText: string;
-  getPlayerCardName: (seat: Seat) => string;
-  logs: GameLog[];
-  seats: Seat[];
+  getPlayerCardName: (seat: TSeat) => string;
+  logs: TLog[];
+  seats: TSeat[];
   winner: string;
 };
 
-export function getBoardTurnIndicatorText({
+export function getBoardTurnIndicatorText<TSeat, TLog extends BoardTurnIndicatorLog>({
   activeSeatTurnText,
   getPlayerCardName,
   logs,
   seats,
   winner,
-}: BoardTurnIndicatorTextArgs) {
+}: BoardTurnIndicatorTextArgs<TSeat, TLog>) {
   if (!winner) return activeSeatTurnText;
 
   for (const log of logs) {
