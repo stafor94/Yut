@@ -35,16 +35,16 @@ export function AppShellHeader({ activeRoomId, manualSequenceSyncing, nickname, 
 
   return <section className={`hero panel ${screen === 'game' ? 'game-header-with-end' : ''}`}>
     <div className="hero-copy" aria-hidden="true"></div>
-    {screen === 'game' && <button
+    {screen === 'game' && roomInfoCollapsed && <button
       data-testid="game-room-info-toggle"
-      className="game-room-header-toggle"
+      className="game-room-info-toggle game-room-info-toggle-collapsed"
       type="button"
-      aria-expanded={!roomInfoCollapsed}
+      aria-expanded="false"
       aria-controls="game-room-info-panel"
-      aria-label={`방 정보 ${roomInfoCollapsed ? '펼치기' : '접기'}`}
-      title={`방 정보 ${roomInfoCollapsed ? '펼치기' : '접기'}`}
+      aria-label="플레이어 목록 펼치기"
+      title="플레이어 목록 펼치기"
       onClick={toggleRoomInfoCollapsed}
-    ><span className="game-room-header-toggle-icon" aria-hidden="true">{roomInfoCollapsed ? '▾' : '▴'}</span></button>}
+    ><span className="game-room-info-toggle-direction" aria-hidden="true">▼</span><span>펼치기</span></button>}
     <div className={`hero-actions ${screen === 'game' ? 'game-actions' : ''}`}>
       <button className="nickname-chip" type="button" onClick={onOpenNicknameDialog} disabled={screen !== 'lobby'} aria-label={`닉네임 수정: ${nickname}`}><span aria-hidden="true">👤</span><span>{nickname}</span></button>
       <button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={onToggleSoundEnabled} aria-label={`효과음 ${soundEnabled ? '켜짐' : '꺼짐'}`}><span className="sound-icon" aria-hidden="true">{soundEnabled ? '🔊' : '🔇'}</span><span>{soundEnabled ? '켜짐' : '꺼짐'}</span></button>
