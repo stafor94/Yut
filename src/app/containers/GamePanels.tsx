@@ -158,9 +158,8 @@ export function GamePlayersPanel({
         aria-expanded="true"
         aria-controls="game-room-info-panel"
         aria-label="플레이어 목록 접기"
-        title="플레이어 목록 접기"
         onClick={toggleRoomInfoCollapsed}
-      ><span className="game-room-info-toggle-direction" aria-hidden="true">▲</span><span>접기</span></button>
+      ><span className="game-room-info-toggle-direction" aria-hidden="true">▲</span><span className="game-room-info-toggle-label">접기</span></button>
     </PlayersPanel>}
   </>;
 }
