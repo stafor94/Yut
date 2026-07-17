@@ -6,6 +6,7 @@ import {
   type JoinRoomResult,
   type RoomPlayer,
   type RoomSeat,
+  type SyncedGameState,
 } from './roomServiceCore';
 import {
   isRoomCapacityFullError,
@@ -14,6 +15,7 @@ import {
 } from './roomAvailabilityPolicy';
 import { isReusableWaitingRoomSeat, isSystemRoom } from './roomLifecyclePolicy';
 import type { ManagedRoomSummary } from './roomLifecycleStore';
+import { updateGameSeatControlState } from './roomPresenceGameSeat';
 
 const COLORS = ['red', 'blue', 'green', 'yellow'] as const;
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
@@ -25,6 +27,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
   const [roomId, params] = args;
   const roomRef = doc(db, 'rooms', roomId);
   const playerRef = doc(db, 'rooms', roomId, 'players', params.userId);
+  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
   return runTransaction(db, async (transaction): Promise<JoinRoomResult> => {
     const roomSnapshot = await transaction.get(roomRef);
     if (!roomSnapshot.exists()) throw new Error('존재하지 않는 방입니다.');
@@ -35,6 +38,8 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     const maxPlayers = room.maxPlayers as 2 | 3 | 4;
     const seatRefs = Array.from({ length: maxPlayers }, (_, index) => doc(db!, 'rooms', roomId, 'seats', String(index)));
     const seatSnapshots = await Promise.all(seatRefs.map((seatRef) => transaction.get(seatRef)));
+    const gameStateSnapshot = await transaction.get(gameStateRef);
+    const gameState = gameStateSnapshot.exists() ? gameStateSnapshot.data() as SyncedGameState : null;
     const isAvailableSeat = (seatSnapshot: SeatSnapshot) => (
       isReusableWaitingRoomSeat(seatSnapshot.exists() ? seatSnapshot.data() as RoomSeat : null)
     );
@@ -92,6 +97,16 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         restoredAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }, { merge: true });
+      if (wasSubstituted && gameState) {
+        const nextGameSeats = updateGameSeatControlState(gameState.gameSeats, {
+          playerId: params.userId,
+          seatIndex,
+          isAI: false,
+          isSubstitutedByAI: false,
+          presenceEpoch: restoredPresenceEpoch,
+        });
+        if (nextGameSeats) transaction.set(gameStateRef, { gameSeats: nextGameSeats, updatedAt: serverTimestamp() }, { merge: true });
+      }
       transaction.set(roomRef, {
         emptySince: null,
         deletingAt: null,
