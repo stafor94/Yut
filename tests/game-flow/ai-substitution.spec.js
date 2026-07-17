@@ -32,7 +32,7 @@ async function prepareHostAndGuest(browser, testInfo) {
   await joinRoomFromLobby(guestPage, roomTitle);
   await markGuestReady(guestPage);
   await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
-  return { hostContext, guestContext, hostPage, guestPage, hostName, guestName, roomId };
+  return { hostContext, guestContext, hostPage, guestPage, hostName, guestName, roomTitle, roomId };
 }
 
 async function getPlayerIdByNickname(roomId, nickname) {
@@ -74,6 +74,46 @@ async function expectGuestSubstitutedByAi(qa, guestPlayerId) {
   await expect(substitutedCard.locator('.game-player-status')).toHaveText('나감 · 어려움 AI');
 }
 
+async function expectGuestRestoredAsHuman(qa, guestPlayerId) {
+  await expect.poll(async () => {
+    const players = await getRoomPlayersForQa(qa.roomId);
+    const player = players.find((candidate) => candidate.id === guestPlayerId);
+    return player ? {
+      isAI: player.isAI === true,
+      isSubstitutedByAI: player.isSubstitutedByAI === true,
+      isSpectator: player.isSpectator === true,
+    } : null;
+  }, { timeout: 15_000 }).toEqual({ isAI: false, isSubstitutedByAI: false, isSpectator: false });
+
+  await expect.poll(async () => {
+    const seats = await getRoomSeatsForQa(qa.roomId);
+    const seat = seats.find((candidate) => candidate.originalPlayerId === guestPlayerId || candidate.currentPlayerId === guestPlayerId || candidate.playerId === guestPlayerId);
+    return seat ? {
+      aiActive: seat.aiActive === true,
+      isSubstitutedByAI: seat.isSubstitutedByAI === true,
+      status: seat.status,
+    } : null;
+  }, { timeout: 15_000 }).toEqual({ aiActive: false, isSubstitutedByAI: false, status: 'human' });
+
+  await expect(qa.hostPage.locator('.game-player-card.ai').filter({ hasText: qa.guestName })).toHaveCount(0, { timeout: 15_000 });
+  await expect(qa.hostPage.locator('.game-player-card').filter({ hasText: qa.guestName }).first()).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => qa.guestPage.evaluate((playerId) => {
+    const state = window.__YUT_DEBUG_STATE__;
+    const localSeat = Array.isArray(state?.displaySeats) ? state.displaySeats.find((seat) => seat.id === playerId) : null;
+    return {
+      localSeatId: state?.localSeatId ?? '',
+      isAI: localSeat?.isAI === true,
+      isSubstitutedByAI: localSeat?.isSubstitutedByAI === true,
+      isSpectator: state?.isSpectator === true,
+    };
+  }, guestPlayerId), { timeout: 15_000 }).toEqual({
+    localSeatId: guestPlayerId,
+    isAI: false,
+    isSubstitutedByAI: false,
+    isSpectator: false,
+  });
+}
+
 test.describe('player substitution AI QA', () => {
   let roomId;
 
@@ -100,6 +140,35 @@ test.describe('player substitution AI QA', () => {
         await dialog.getByRole('button', { name: '게임 종료', exact: true }).click();
         await expect(qa.guestPage.getByTestId('game-screen')).toBeHidden({ timeout: 10_000 });
         await expectGuestSubstitutedByAi(qa, guestPlayerId);
+      });
+    } finally {
+      await qa.guestContext.close();
+      await qa.hostContext.close();
+    }
+  });
+
+  test('AI 대체된 플레이어가 같은 계정으로 돌아오면 사람 제어권을 회수한다', async ({ browser }, testInfo) => {
+    const qa = await prepareHostAndGuest(browser, testInfo);
+    roomId = qa.roomId;
+    try {
+      await qa.hostPage.getByTestId('start-game-button').click();
+      await expect(qa.hostPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+      await expect(qa.guestPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+      const guestPlayerId = await getPlayerIdByNickname(qa.roomId, qa.guestName);
+
+      await qa.guestPage.getByTestId('game-end-button').click();
+      const dialog = qa.guestPage.getByRole('dialog', { name: '게임 종료 확인' });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button', { name: '게임 종료', exact: true }).click();
+      await expect(qa.guestPage.getByTestId('create-room-button')).toBeVisible({ timeout: 15_000 });
+      await expectGuestSubstitutedByAi(qa, guestPlayerId);
+
+      await runQaStep(testInfo, '동일 게스트 재입장 후 사람 제어권 복구', async () => {
+        await joinRoomFromLobby(qa.guestPage, qa.roomTitle);
+        await expect(qa.guestPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+        await expectGuestRestoredAsHuman(qa, guestPlayerId);
+        await qa.guestPage.waitForTimeout(2_000);
+        await expectGuestRestoredAsHuman(qa, guestPlayerId);
       });
     } finally {
       await qa.guestContext.close();
