@@ -8,7 +8,7 @@ import {
 
 const waitingRoom = { status: 'waiting' as const, maxPlayers: 4 };
 
-test('일반 AI 좌석도 로비 현재 인원에 포함한다', () => {
+test('일반 AI 좌석도 로비 현재 인원에 포함하되 참가자 ID에는 넣지 않는다', () => {
   const result = classifyRoomAvailability(waitingRoom, [
     { id: 'host' },
     { id: 'slot-2', isAI: true },
@@ -17,7 +17,7 @@ test('일반 AI 좌석도 로비 현재 인원에 포함한다', () => {
 
   assert.equal(result.visible, true);
   assert.equal(result.currentPlayers, 2);
-  assert.deepEqual(result.playerIds, ['host', 'slot-2']);
+  assert.deepEqual(result.playerIds, ['host']);
 });
 
 test('사람과 AI가 정원을 모두 차지하면 외부 사용자에게 full 상태로 분류한다', () => {
@@ -40,6 +40,18 @@ test('정원이 찬 방의 기존 참가자는 자신의 방을 계속 확인할
   assert.equal(result.visible, true);
   assert.equal(result.reason, 'visible');
   assert.equal(result.currentPlayers, 2);
+});
+
+test('일반 AI와 다른 사용자의 대체 AI만 남은 방은 인원 수와 무관하게 고아 방으로 처리한다', () => {
+  const result = classifyRoomAvailability({ status: 'playing', maxPlayers: 4 }, [
+    { id: 'departed-user', isAI: true, isSubstitutedByAI: true },
+    { id: 'slot-2', isAI: true },
+  ], 'guest');
+
+  assert.equal(result.visible, false);
+  assert.equal(result.reason, 'orphaned');
+  assert.equal(result.currentPlayers, 2);
+  assert.deepEqual(result.playerIds, []);
 });
 
 test('정원 초과 오류만 팝업 대상으로 식별한다', () => {
