@@ -5,6 +5,28 @@ export type RollControlPresentationInput = {
   timedOut: boolean;
 };
 
+export type GameControlsAutoScrollInput = {
+  hasRoll: boolean;
+  canRollNow: boolean;
+  canRollForTurnOrderNow: boolean;
+  hasActiveTurnOrderIntro: boolean;
+  showBottomBranchControls: boolean;
+  canRequestMove: boolean;
+};
+
+export function shouldAutoScrollGameControls({
+  hasRoll,
+  canRollNow,
+  canRollForTurnOrderNow,
+  hasActiveTurnOrderIntro,
+  showBottomBranchControls,
+  canRequestMove,
+}: GameControlsAutoScrollInput) {
+  const rollControlReady = !hasRoll && (canRollNow || canRollForTurnOrderNow || hasActiveTurnOrderIntro);
+  const branchMoveReady = showBottomBranchControls && canRequestMove;
+  return rollControlReady || branchMoveReady;
+}
+
 export function getRollControlPresentation({
   hasRoll,
   canRollNow,
