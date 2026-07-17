@@ -275,7 +275,12 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     throw error;
   });
 
-  if (transactionResult.role === 'player' && transactionResult.syncRestoredGameSeat && typeof transactionResult.presenceEpoch === 'number') {
+  if (
+    transactionResult.role === 'player'
+    && transactionResult.syncRestoredGameSeat
+    && typeof transactionResult.seatIndex === 'number'
+    && typeof transactionResult.presenceEpoch === 'number'
+  ) {
     await syncRestoredGameSeatAfterJoin(roomId, params.userId, transactionResult.seatIndex, transactionResult.presenceEpoch);
   }
   const { syncRestoredGameSeat: _syncRestoredGameSeat, ...result } = transactionResult;
