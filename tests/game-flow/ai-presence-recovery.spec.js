@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { doc, updateDoc } from 'firebase/firestore';
 import {
   createRoomFromLobby,
   joinRoomFromLobby,
@@ -13,7 +12,6 @@ import {
   getRoomPlayersForQa,
   getRoomSeatsForQa,
   getRoomStateForQa,
-  getTestDb,
   rememberRoomIdFromPage,
 } from '../helpers/rooms.js';
 
@@ -81,22 +79,18 @@ test.describe('stale presence AI substitution recovery', () => {
   });
 
   test('heartbeat가 끊긴 플레이어도 AI 대체 후 같은 계정 재접속으로 제어권을 회수한다', async ({ browser }, testInfo) => {
+    test.setTimeout(140_000);
     const qa = await prepareGame(browser, testInfo);
     roomId = qa.roomId;
     try {
       await qa.guestPage.close();
-      const db = await getTestDb();
-      expect(db, 'QA Firestore 연결이 필요합니다.').toBeTruthy();
-      await updateDoc(doc(db, 'rooms', qa.roomId, 'players', qa.guestPlayerId), {
-        lastSeen: new Date(Date.now() - 90_000),
-      });
 
       let substitutedEpoch = 0;
       await expect.poll(async () => {
         const control = await readPresenceControl(qa.roomId, qa.guestPlayerId);
         substitutedEpoch = control.player?.presenceEpoch ?? 0;
         return control;
-      }, { timeout: 35_000, intervals: [500, 1_000, 2_000] }).toEqual({
+      }, { timeout: 75_000, intervals: [1_000, 2_000, 5_000] }).toEqual({
         player: { isAI: true, isSubstitutedByAI: true, presenceEpoch: expect.any(Number) },
         seat: { aiActive: true, isSubstitutedByAI: true, status: 'ai_substitute', presenceEpoch: expect.any(Number) },
         gameSeat: { isAI: true, isSubstitutedByAI: true, presenceEpoch: expect.any(Number) },
