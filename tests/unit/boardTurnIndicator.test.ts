@@ -1,19 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getBoardTurnIndicatorText } from '../../src/app/flows/boardTurnIndicator.js';
-import type { Seat } from '../../src/app/appState.js';
 
-const makeSeat = (id: string, name: string): Seat => ({
-  id,
-  label: id,
-  name,
-  color: '#000000',
-  ready: true,
-  team: '청팀',
-});
+const makeSeat = (id: string, name: string) => ({ id, name });
 
 const seats = [makeSeat('first', '튼튼한 소'), makeSeat('second', '행운의 돼지')];
-const getPlayerCardName = (seat: Seat) => seat.name;
+const getPlayerCardName = (seat: ReturnType<typeof makeSeat>) => seat.name;
 
 test('the active player nickname is shown without a turn suffix', () => {
   assert.equal(getBoardTurnIndicatorText({
