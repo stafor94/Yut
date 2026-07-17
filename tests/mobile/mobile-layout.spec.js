@@ -151,7 +151,7 @@ test.describe('mobile layout QA', () => {
         expect(layout.nicknameStyles).toEqual({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
         await card.locator('.ai-seat-copy > strong').evaluate((element) => {
-          element.textContent = '아주아주긴인공지능플레이어닉네임말줄임검증';
+          element.textContent = '긴AI닉네임말줄임검증'.repeat(64);
         });
         const longNameLayout = await readAiCardLayout(card);
         expect(longNameLayout.nicknameScrollWidth, '긴 AI 닉네임은 실제 표시 폭보다 길어야 합니다.').toBeGreaterThan(longNameLayout.nicknameClientWidth);
