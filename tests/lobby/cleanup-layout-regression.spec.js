@@ -14,7 +14,7 @@ test.describe('cleanup/layout regression QA', () => {
     await Promise.allSettled(roomIds.map((roomId) => deleteRoomForQa(roomId)));
   });
 
-  test('대기실과 로비 주요 버튼은 force click 없이 클릭 가능하고 로비 action column 정렬을 유지한다', async ({ page, context, browser }, testInfo) => {
+  test('대기실과 로비 주요 버튼은 force click 없이 클릭 가능하고 로비 컴팩트 카드 정렬을 유지한다', async ({ page, context, browser }, testInfo) => {
     const waitingRoomNickname = normalizeQaNickname(makeQaName(testInfo, 'wait-host'));
     const waitingRoomTitle = makeQaName(testInfo, 'wait-room');
     const lobbyHostNickname = normalizeQaNickname(makeQaName(testInfo, 'card-host'));
@@ -33,7 +33,7 @@ test.describe('cleanup/layout regression QA', () => {
       await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
     });
 
-    await runQaStep(testInfo, '격리된 게스트 context에서 로비 방 카드 action column 정렬 확인', async () => {
+    await runQaStep(testInfo, '격리된 게스트 context에서 로비 컴팩트 카드 정렬 확인', async () => {
       const lobbyHostContext = await browser.newContext();
       const lobbyGuestContext = await browser.newContext();
       await primeLobbyStorage(lobbyHostContext, { nickname: lobbyHostNickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
@@ -57,14 +57,27 @@ test.describe('cleanup/layout regression QA', () => {
         ).toBeVisible({ timeout: 30_000 });
         const roomCard = lobbyGuestPage.locator('.lobby-room-card').filter({ hasText: lobbyRoomTitle }).first();
         await expect(roomCard).toBeVisible({ timeout: 25_000 });
-        const statusBox = await roomCard.locator('.lobby-room-status').boundingBox();
-        const actionBox = await roomCard.locator('.lobby-room-action').boundingBox();
-        expect(statusBox, '대기중 배지 bounding box').not.toBeNull();
-        expect(actionBox, '참여 버튼 bounding box').not.toBeNull();
-        expect(Math.abs((statusBox.x + statusBox.width / 2) - (actionBox.x + actionBox.width / 2)), '대기중 배지와 참여 버튼은 같은 우측 action column 중앙에 있어야 합니다.').toBeLessThanOrEqual(8);
+        const stateDot = roomCard.locator('.lobby-room-state-dot');
+        const occupancy = roomCard.locator('.lobby-room-occupancy');
         const joinButton = roomCard.locator('.lobby-room-action');
+        await expect(stateDot).toBeVisible({ timeout: 10_000 });
+        await expect(stateDot).toHaveAttribute('aria-label', '대기중');
+        await expect(occupancy).toHaveText(/^\d+\/2명$/);
         await expect(joinButton).toBeVisible({ timeout: 10_000 });
         await expect(joinButton).toBeEnabled({ timeout: 10_000 });
+
+        const titleBox = await roomCard.locator('.lobby-room-title-row').boundingBox();
+        const metaBox = await roomCard.locator('.lobby-room-meta').boundingBox();
+        const occupancyBox = await occupancy.boundingBox();
+        const actionBox = await joinButton.boundingBox();
+        expect(titleBox, '방 제목 행 bounding box').not.toBeNull();
+        expect(metaBox, '방 옵션 행 bounding box').not.toBeNull();
+        expect(occupancyBox, '현재 인원 bounding box').not.toBeNull();
+        expect(actionBox, '참여 버튼 bounding box').not.toBeNull();
+        expect(titleBox.x + titleBox.width, '방 제목은 현재 인원 영역을 침범하면 안 됩니다.').toBeLessThanOrEqual(occupancyBox.x + 1);
+        expect(occupancyBox.x + occupancyBox.width, '현재 인원은 참여 버튼 영역을 침범하면 안 됩니다.').toBeLessThanOrEqual(actionBox.x + 1);
+        expect(metaBox.x + metaBox.width, '방 옵션은 참여 버튼 영역을 침범하면 안 됩니다.').toBeLessThanOrEqual(actionBox.x + 1);
+
         await waitForBlockingOverlayToDisappear(lobbyGuestPage);
         await joinButton.click();
         await expect(lobbyGuestPage.getByTestId('waiting-room')).toBeVisible({ timeout: 20_000 });
