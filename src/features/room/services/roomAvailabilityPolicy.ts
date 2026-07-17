@@ -38,11 +38,16 @@ export function classifyRoomAvailability(
   }
   if (room.status !== 'waiting' && room.status !== 'playing') return { visible: false, reason: 'malformed', currentPlayers: 0, playerIds: [] };
 
-  const activePlayers = players.filter((player) => !player.isSpectator);
-  const playerIds = activePlayers.map((player) => player.id);
-  const currentPlayers = activePlayers.length;
+  const occupiedPlayers = players.filter((player) => !player.isSpectator);
+  const playerIds = occupiedPlayers
+    .filter((player) => (
+      !player.isAI
+      || (player.isSubstitutedByAI === true && Boolean(currentUserId) && player.id === currentUserId)
+    ))
+    .map((player) => player.id);
+  const currentPlayers = occupiedPlayers.length;
 
-  if (!currentPlayers) return { visible: false, reason: 'orphaned', currentPlayers, playerIds };
+  if (!playerIds.length) return { visible: false, reason: 'orphaned', currentPlayers, playerIds };
 
   const maxPlayers = Number(room.maxPlayers ?? 0);
   if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > 4) {
