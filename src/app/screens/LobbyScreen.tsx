@@ -20,7 +20,7 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
     const maxPlayers = normalizeMaxPlayers(room.maxPlayers, room.playMode);
     const rawCurrentPlayers = Number(room.currentPlayers ?? room.playerIds?.length ?? 0);
     const currentPlayers = Number.isFinite(rawCurrentPlayers) ? Math.min(maxPlayers, Math.max(0, Math.trunc(rawCurrentPlayers))) : 0;
-    return { currentPlayers, maxPlayers, label: `(${currentPlayers}/${maxPlayers})` };
+    return { currentPlayers, maxPlayers, label: `${currentPlayers}/${maxPlayers}명` };
   };
   const getRoomActionText = (room: RoomSummary) => {
     if (isFirebaseConfigured && !currentUser) return '준비 중';
@@ -43,8 +43,22 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
         <p className="section-kicker">방 참여</p>
       </div>
       <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => {
+        const badges = getLobbyRoomBadges(room);
         const occupancy = getLobbyRoomOccupancy(room);
-        return <article className="room-card lobby-room-card" key={room.id}><div className="lobby-room-content"><div className="lobby-room-main"><b>{room.title}</b><span className="room-rule-badges lobby-room-meta" aria-label={`방 옵션: ${getLobbyRoomBadges(room).map((badge) => badge.label).join(', ')}, 현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{getLobbyRoomBadges(room).map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}<span className="room-rule-badge neutral lobby-room-occupancy">{occupancy.label}</span></span></div><div className="lobby-room-side"><span className="lobby-room-status">{isRoomInGame(room) ? '게임중' : '대기중'}</span><button className="lobby-room-action" disabled={isFirebaseConfigured && !currentUser} onClick={() => onOpenWaitingRoom(room)}>{getRoomActionText(room)}</button></div></div></article>;
+        const roomStatus = isRoomInGame(room) ? '게임중' : '대기중';
+        return <article className="room-card lobby-room-card" key={room.id}>
+          <div className="lobby-room-content">
+            <div className="lobby-room-main">
+              <div className="lobby-room-title-row">
+                <span className={`lobby-room-state-dot ${isRoomInGame(room) ? 'in-game' : 'waiting'}`} role="img" aria-label={roomStatus} title={roomStatus}></span>
+                <b>{room.title}</b>
+              </div>
+              <span className="lobby-room-meta" aria-label={`방 옵션: ${badges.map((badge) => badge.label).join(', ')}, 현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{badges.map((badge) => badge.label).join(' · ')}</span>
+            </div>
+            <span className="lobby-room-occupancy" aria-label={`현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{occupancy.label}</span>
+            <button className="lobby-room-action" disabled={isFirebaseConfigured && !currentUser} onClick={() => onOpenWaitingRoom(room)}>{getRoomActionText(room)}</button>
+          </div>
+        </article>;
       }) : <div className="empty-lobby-room"><strong>아직 열린 방이 없습니다</strong></div>}</div>
     </section>
   </section>;
