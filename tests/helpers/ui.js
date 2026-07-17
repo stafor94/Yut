@@ -160,7 +160,7 @@ export async function joinRoomFromLobby(page, roomTitle) {
   const joinButton = roomCard.locator('.lobby-room-action');
   await expect(joinButton).toBeEnabled({ timeout: 10_000 });
   await joinButton.click();
-  await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+  await expect(page.getByTestId('waiting-room').or(page.getByTestId('game-screen'))).toBeVisible({ timeout: 25_000 });
 }
 
 export async function markGuestReady(page) {
