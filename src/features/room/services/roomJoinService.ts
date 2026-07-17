@@ -21,6 +21,36 @@ const COLORS = ['red', 'blue', 'green', 'yellow'] as const;
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 
 type SeatSnapshot = DocumentSnapshot;
+type JoinRoomInternalResult = JoinRoomResult & { syncRestoredGameSeat?: boolean };
+
+async function syncRestoredGameSeatAfterJoin(
+  roomId: string,
+  playerId: string,
+  seatIndex: number,
+  presenceEpoch: number,
+) {
+  if (!db) return;
+  const playerRef = doc(db, 'rooms', roomId, 'players', playerId);
+  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
+  await runTransaction(db, async (transaction) => {
+    const [playerSnapshot, gameStateSnapshot] = await Promise.all([
+      transaction.get(playerRef),
+      transaction.get(gameStateRef),
+    ]);
+    if (!playerSnapshot.exists() || !gameStateSnapshot.exists()) return;
+    const player = playerSnapshot.data() as RoomPlayer;
+    if (player.isAI || player.isSubstitutedByAI || player.isSpectator || Number(player.presenceEpoch ?? 0) !== presenceEpoch) return;
+    const gameState = gameStateSnapshot.data() as SyncedGameState;
+    const nextGameSeats = updateGameSeatControlState(gameState.gameSeats, {
+      playerId,
+      seatIndex,
+      isAI: false,
+      isSubstitutedByAI: false,
+      presenceEpoch,
+    });
+    if (nextGameSeats) transaction.set(gameStateRef, { gameSeats: nextGameSeats, updatedAt: serverTimestamp() }, { merge: true });
+  });
+}
 
 export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): Promise<JoinRoomResult> {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
@@ -28,7 +58,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
   const roomRef = doc(db, 'rooms', roomId);
   const playerRef = doc(db, 'rooms', roomId, 'players', params.userId);
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
-  return runTransaction(db, async (transaction): Promise<JoinRoomResult> => {
+  const transactionResult = await runTransaction(db, async (transaction): Promise<JoinRoomInternalResult> => {
     const roomSnapshot = await transaction.get(roomRef);
     if (!roomSnapshot.exists()) throw new Error('존재하지 않는 방입니다.');
     const room = roomSnapshot.data() as ManagedRoomSummary;
@@ -38,8 +68,6 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     const maxPlayers = room.maxPlayers as 2 | 3 | 4;
     const seatRefs = Array.from({ length: maxPlayers }, (_, index) => doc(db!, 'rooms', roomId, 'seats', String(index)));
     const seatSnapshots = await Promise.all(seatRefs.map((seatRef) => transaction.get(seatRef)));
-    const gameStateSnapshot = await transaction.get(gameStateRef);
-    const gameState = gameStateSnapshot.exists() ? gameStateSnapshot.data() as SyncedGameState : null;
     const isAvailableSeat = (seatSnapshot: SeatSnapshot) => (
       isReusableWaitingRoomSeat(seatSnapshot.exists() ? seatSnapshot.data() as RoomSeat : null)
     );
@@ -57,7 +85,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
       if (replacedPlayerId && replacedPlayerId !== params.userId) transaction.delete(doc(db!, 'rooms', roomId, 'players', replacedPlayerId));
     };
 
-    const restorePlayerAt = (seatIndex: number, player: RoomPlayer | null, seat: RoomSeat | null, joinedAt: unknown) => {
+    const restorePlayerAt = async (seatIndex: number, player: RoomPlayer | null, seat: RoomSeat | null, joinedAt: unknown): Promise<JoinRoomInternalResult> => {
       const currentPresenceEpoch = Math.max(Number(player?.presenceEpoch ?? 0), Number(seat?.presenceEpoch ?? 0));
       const wasSubstituted = Boolean(player?.isSubstitutedByAI || seat?.isSubstitutedByAI);
       if (wasSubstituted && params.expectedPresenceEpoch !== undefined && params.expectedPresenceEpoch !== currentPresenceEpoch) throw new Error('PRESENCE_RESTORE_STALE');
@@ -66,6 +94,12 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
       const restoredColor = player?.color ?? seat?.color ?? COLORS[seatIndex] ?? 'black';
       const restoredNickname = wasSubstituted ? (player?.nickname || seat?.nickname || params.nickname) : params.nickname;
       const seatWasAvailable = isAvailableSeat(seatSnapshots[seatIndex]);
+      let gameState: SyncedGameState | null = null;
+      const syncRestoredGameSeat = wasSubstituted && !player;
+      if (wasSubstituted && player) {
+        const gameStateSnapshot = await transaction.get(gameStateRef);
+        gameState = gameStateSnapshot.exists() ? gameStateSnapshot.data() as SyncedGameState : null;
+      }
       transaction.set(playerRef, {
         nickname: restoredNickname,
         ready: true,
@@ -97,7 +131,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         restoredAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }, { merge: true });
-      if (wasSubstituted && gameState) {
+      if (gameState) {
         const nextGameSeats = updateGameSeatControlState(gameState.gameSeats, {
           playerId: params.userId,
           seatIndex,
@@ -113,7 +147,12 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         lastActivityAt: Date.now(),
         currentPlayers: occupiedSeatCount + (seatWasAvailable ? 1 : 0),
       }, { merge: true });
-      return { role: 'player' as const, seatIndex, presenceEpoch: restoredPresenceEpoch };
+      return {
+        role: 'player',
+        seatIndex,
+        presenceEpoch: restoredPresenceEpoch,
+        ...(syncRestoredGameSeat ? { syncRestoredGameSeat: true } : {}),
+      };
     };
 
     if (existingPlayer.exists()) {
@@ -235,4 +274,15 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     }
     throw error;
   });
+
+  if (
+    transactionResult.role === 'player'
+    && transactionResult.syncRestoredGameSeat
+    && typeof transactionResult.seatIndex === 'number'
+    && typeof transactionResult.presenceEpoch === 'number'
+  ) {
+    await syncRestoredGameSeatAfterJoin(roomId, params.userId, transactionResult.seatIndex, transactionResult.presenceEpoch);
+  }
+  const { syncRestoredGameSeat: _syncRestoredGameSeat, ...result } = transactionResult;
+  return result as JoinRoomResult;
 }

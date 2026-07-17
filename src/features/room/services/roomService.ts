@@ -191,13 +191,15 @@ export async function cleanupCurrentRoomPresence(...args: Parameters<typeof clea
   const result = await cleanupCurrentRoomPresenceSafely(...args);
   if (!result.cleanedPlayerIds.length) return result;
 
-  if (db && roomBefore?.status === 'waiting') {
-    const batch = writeBatch(db);
-    result.cleanedPlayerIds.forEach((playerId) => {
-      const seatIndex = seatIndexByPlayerId.get(playerId);
-      if (Number.isInteger(seatIndex) && Number(seatIndex) >= 0) batch.delete(doc(db!, 'rooms', roomId, 'seats', String(seatIndex)));
-    });
+  if (db) {
     const playersAfter = await getRoomPlayers(roomId);
+    const batch = writeBatch(db);
+    if (roomBefore?.status === 'waiting') {
+      result.cleanedPlayerIds.forEach((playerId) => {
+        const seatIndex = seatIndexByPlayerId.get(playerId);
+        if (Number.isInteger(seatIndex) && Number(seatIndex) >= 0) batch.delete(doc(db!, 'rooms', roomId, 'seats', String(seatIndex)));
+      });
+    }
     batch.set(doc(db, 'rooms', roomId), {
       currentPlayers: countActivePlayers(playersAfter),
       lastActivityAt: Date.now(),
