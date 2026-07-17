@@ -9,6 +9,7 @@ import './styles/game-room-info-toggle.css';
 import './styles/ai-difficulty.css';
 import './styles/stored-room-recovery.css';
 import './styles/roll-stage-lifecycle-fix.css';
+import './styles/bonus-roll-result-glow.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
