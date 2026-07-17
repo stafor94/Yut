@@ -7,6 +7,11 @@ import {
   type RoomPlayer,
   type RoomSeat,
 } from './roomServiceCore';
+import {
+  isRoomCapacityFullError,
+  ROOM_CAPACITY_FULL_ERROR_MESSAGE,
+  ROOM_CAPACITY_FULL_EVENT,
+} from './roomAvailabilityPolicy';
 import { isReusableWaitingRoomSeat, isSystemRoom } from './roomLifecyclePolicy';
 import type { ManagedRoomSummary } from './roomLifecycleStore';
 
@@ -124,7 +129,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         return { role: 'spectator', seatIndex: null };
       }
       const seatIndex = seatSnapshots.findIndex(isAvailableSeat);
-      if (seatIndex < 0) throw new Error('방이 가득 찼습니다.');
+      if (seatIndex < 0) throw new Error(ROOM_CAPACITY_FULL_ERROR_MESSAGE);
       clearReplacedSeatPlayer(seatIndex);
       transaction.set(playerRef, {
         nickname: params.nickname,
@@ -178,7 +183,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     }
 
     const seatIndex = seatSnapshots.findIndex(isAvailableSeat);
-    if (seatIndex < 0) throw new Error('방이 가득 찼습니다.');
+    if (seatIndex < 0) throw new Error(ROOM_CAPACITY_FULL_ERROR_MESSAGE);
     clearReplacedSeatPlayer(seatIndex);
     transaction.set(playerRef, {
       nickname: params.nickname,
@@ -209,5 +214,10 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     });
     transaction.set(roomRef, { emptySince: null, currentPlayers: occupiedSeatCount + 1, lastActivityAt: Date.now() }, { merge: true });
     return { role: 'player', seatIndex };
+  }).catch((error) => {
+    if (isRoomCapacityFullError(error) && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(ROOM_CAPACITY_FULL_EVENT));
+    }
+    throw error;
   });
 }

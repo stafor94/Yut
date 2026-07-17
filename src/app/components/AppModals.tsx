@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { ItemCard } from '../../features/items/components/ItemCard';
+import { ROOM_CAPACITY_FULL_EVENT } from '../../features/room/services/roomAvailabilityPolicy';
 import { NICKNAME_MAX_LENGTH, STORAGE_KEYS, type PendingItemPickup } from '../appState';
 import {
   processPendingStoredRoomExit,
@@ -49,6 +50,7 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
   const [initialNicknameDialogOpen, setInitialNicknameDialogOpen] = useState(() => (
     typeof window !== 'undefined' && !window.localStorage.getItem(STORAGE_KEYS.nickname)?.trim()
   ));
+  const [roomCapacityFullDialogOpen, setRoomCapacityFullDialogOpen] = useState(false);
   const nicknameSetupDialogOpen = screen === 'lobby' && (nicknameDialogOpen || initialNicknameDialogOpen);
   const canExitStoredRoom = loadingMessage === STORED_ROOM_RECOVERY_MESSAGE;
 
@@ -56,6 +58,12 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     void processPendingStoredRoomExit().catch((error) => {
       console.warn('참여 중이던 방 나가기 후속 처리에 실패했습니다.', error);
     });
+  }, []);
+
+  useEffect(() => {
+    const openRoomCapacityFullDialog = () => setRoomCapacityFullDialogOpen(true);
+    window.addEventListener(ROOM_CAPACITY_FULL_EVENT, openRoomCapacityFullDialog);
+    return () => window.removeEventListener(ROOM_CAPACITY_FULL_EVENT, openRoomCapacityFullDialog);
   }, []);
 
   const closeNicknameDialog = () => {
@@ -75,6 +83,7 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className={`loading-modal panel ${canExitStoredRoom ? 'stored-room-recovery-modal' : ''}`} role={canExitStoredRoom ? 'dialog' : 'status'} aria-modal={canExitStoredRoom || undefined} aria-live={canExitStoredRoom ? undefined : 'polite'} aria-label={loadingMessage}>{canExitStoredRoom && <button data-testid="stored-room-recovery-close" className="stored-room-recovery-close" type="button" aria-label="참여 중이던 방에서 나가기" onClick={requestStoredRoomExitAndReload}>닫기</button>}<span className="loading-modal-spinner" aria-hidden="true"></span><p aria-live={canExitStoredRoom ? 'polite' : undefined}>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
 
     {actionErrorDialog && <div className="modal-backdrop" role="presentation" onMouseDown={onClearActionErrorDialog}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label="액션 오류" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">오류</p><h2>요청을 처리할 수 없습니다</h2><p>{actionErrorDialog}</p><div className="modal-actions"><button onClick={onClearActionErrorDialog}>확인</button></div></section></div>}
+    {roomCapacityFullDialogOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setRoomCapacityFullDialogOpen(false)}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label="방 정원이 찼습니다" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">방 알림</p><h2>방 정원이 찼습니다</h2><p>다른 방에 참여하거나 자리가 생긴 뒤 다시 시도해주세요.</p><div className="modal-actions"><button onClick={() => setRoomCapacityFullDialogOpen(false)}>확인</button></div></section></div>}
     {roomNoticeDialog && <div className="modal-backdrop" role="presentation" onMouseDown={onClearRoomNoticeDialog}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label={roomNoticeDialog.title} onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">방 알림</p><h2>{roomNoticeDialog.title}</h2><p>{roomNoticeDialog.message}</p><div className="modal-actions"><button onClick={onClearRoomNoticeDialog}>확인</button></div></section></div>}
     {sequenceExportDialogOpen && <div className="modal-backdrop" role="presentation" onMouseDown={onCloseSequenceExportDialog}><section className="diagnostic-modal panel" role="dialog" aria-modal="true" aria-label="최신 상태와 전체 sequence" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">Sequence Export</p><h2>최신 상태와 전체 sequence</h2><p className="diagnostic-description">Firebase에서 현재 상태와 전체 sequence 배열을 다시 내려받았습니다. 아래 내용을 복사해 전달할 수 있습니다.</p><pre className="diagnostic-raw">{sequenceExportText}</pre><div className="modal-actions"><button onClick={onCopySequenceExportState}>{sequenceExportCopied ? '복사 완료' : '복사'}</button><button className="secondary" onClick={onCloseSequenceExportDialog}>닫기</button></div></section></div>}
 

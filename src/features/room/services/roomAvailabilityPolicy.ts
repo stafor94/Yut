@@ -21,6 +21,13 @@ export type RoomAvailabilityResult = {
   playerIds: string[];
 };
 
+export const ROOM_CAPACITY_FULL_ERROR_MESSAGE = '방이 가득 찼습니다.';
+export const ROOM_CAPACITY_FULL_EVENT = 'yut:room-capacity-full';
+
+export const isRoomCapacityFullError = (error: unknown) => (
+  error instanceof Error && error.message === ROOM_CAPACITY_FULL_ERROR_MESSAGE
+);
+
 export function classifyRoomAvailability(
   room: RoomAvailabilityRoom,
   players: RoomAvailabilityPlayer[],
@@ -31,11 +38,7 @@ export function classifyRoomAvailability(
   }
   if (room.status !== 'waiting' && room.status !== 'playing') return { visible: false, reason: 'malformed', currentPlayers: 0, playerIds: [] };
 
-  const activePlayers = players.filter((player) => {
-    if (player.isSpectator) return false;
-    if (!player.isAI) return true;
-    return player.isSubstitutedByAI === true && Boolean(currentUserId) && player.id === currentUserId;
-  });
+  const activePlayers = players.filter((player) => !player.isSpectator);
   const playerIds = activePlayers.map((player) => player.id);
   const currentPlayers = activePlayers.length;
 
