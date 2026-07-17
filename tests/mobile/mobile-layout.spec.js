@@ -183,14 +183,14 @@ test.describe('mobile layout QA', () => {
     });
   });
 
-  test('모바일 로비 방 카드의 좌우 영역이 겹치지 않는다', async ({ page, context }, testInfo) => {
+  test('모바일 로비 방 카드의 컴팩트 영역이 겹치지 않는다', async ({ page, context }, testInfo) => {
     const hostNickname = normalizeQaNickname(makeQaName(testInfo, 'mobile-card-host'));
     const guestNickname = normalizeQaNickname(makeQaName(testInfo, 'mobile-card-guest'));
     const roomTitle = `${makeQaName(testInfo, 'mobile-card-room')}-긴-방-제목-겹침-검증`;
     let roomId;
     await primeLobbyStorage(context, { nickname: guestNickname, maxPlayers: '2', playMode: 'individual', itemMode: 'true', pieceCount: '5' });
 
-    await runQaStep(testInfo, '모바일 로비 방 카드 boundingBox 겹침 확인', async () => {
+    await runQaStep(testInfo, '모바일 로비 컴팩트 카드 boundingBox 겹침 확인', async () => {
       try {
         roomId = await createLobbyRoomFixtureForQa({
           title: roomTitle,
@@ -210,66 +210,82 @@ test.describe('mobile layout QA', () => {
         try {
           await expect(async () => {
             const layout = await roomCard.evaluate((card) => {
-              const main = card.querySelector('.lobby-room-main');
-              const side = card.querySelector('.lobby-room-side');
-              const title = card.querySelector('.lobby-room-main > b');
-              const meta = card.querySelector('.lobby-room-meta');
-              const status = card.querySelector('.lobby-room-status');
-              const action = card.querySelector('.lobby-room-action');
               const content = card.querySelector('.lobby-room-content');
+              const titleRow = card.querySelector('.lobby-room-title-row');
+              const title = card.querySelector('.lobby-room-title-row > b');
+              const stateDot = card.querySelector('.lobby-room-state-dot');
+              const meta = card.querySelector('.lobby-room-meta');
+              const occupancy = card.querySelector('.lobby-room-occupancy');
+              const action = card.querySelector('.lobby-room-action');
               const toBox = (element) => {
                 if (!element) return null;
                 const rect = element.getBoundingClientRect();
                 if (rect.width <= 0 || rect.height <= 0) return null;
                 return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
               };
+              const cardStyle = getComputedStyle(card);
+              const contentStyle = content ? getComputedStyle(content) : null;
+              const titleStyle = title ? getComputedStyle(title) : null;
+              const stateDotStyle = stateDot ? getComputedStyle(stateDot) : null;
+              const actionStyle = action ? getComputedStyle(action) : null;
 
               return {
+                viewportWidth: window.innerWidth,
                 cardBox: toBox(card),
-                mainBox: toBox(main),
-                sideBox: toBox(side),
+                contentBox: toBox(content),
+                titleRowBox: toBox(titleRow),
                 titleBox: toBox(title),
+                stateDotBox: toBox(stateDot),
                 metaBox: toBox(meta),
-                statusBox: toBox(status),
+                occupancyBox: toBox(occupancy),
                 actionBox: toBox(action),
                 styles: {
-                  cardPaddingLeft: Number.parseFloat(getComputedStyle(card).paddingLeft),
-                  cardPaddingRight: Number.parseFloat(getComputedStyle(card).paddingRight),
-                  cardBorderRightWidth: Number.parseFloat(getComputedStyle(card).borderRightWidth),
-                  cardColumns: getComputedStyle(card).gridTemplateColumns,
-                  contentDisplay: content ? getComputedStyle(content).display : '',
-                  sideWidth: side ? getComputedStyle(side).width : '',
-                  statusWidth: status ? getComputedStyle(status).width : '',
-                  actionWidth: action ? getComputedStyle(action).width : '',
+                  cardPaddingLeft: Number.parseFloat(cardStyle.paddingLeft),
+                  cardPaddingRight: Number.parseFloat(cardStyle.paddingRight),
+                  cardBorderRightWidth: Number.parseFloat(cardStyle.borderRightWidth),
+                  contentDisplay: contentStyle?.display ?? '',
+                  contentColumns: contentStyle?.gridTemplateColumns ?? '',
+                  actionWidth: Number.parseFloat(actionStyle?.width ?? '0'),
+                  stateDotWidth: Number.parseFloat(stateDotStyle?.width ?? '0'),
+                  stateDotHeight: Number.parseFloat(stateDotStyle?.height ?? '0'),
+                  titleOverflow: titleStyle?.overflow ?? '',
+                  titleTextOverflow: titleStyle?.textOverflow ?? '',
+                  titleWhiteSpace: titleStyle?.whiteSpace ?? '',
                 },
               };
             });
 
-            const { cardBox, mainBox, sideBox, titleBox, metaBox, statusBox, actionBox, styles } = layout;
+            const { cardBox, contentBox, titleRowBox, titleBox, stateDotBox, metaBox, occupancyBox, actionBox, styles } = layout;
+            const expectedPadding = layout.viewportWidth <= 767 ? 12 : 14;
+            const expectedActionWidth = layout.viewportWidth <= 767 ? 64 : 68;
             expect(cardBox, '카드 bounding box').not.toBeNull();
-            expect(mainBox, '왼쪽 main column bounding box').not.toBeNull();
-            expect(sideBox, '오른쪽 action column bounding box').not.toBeNull();
+            expect(contentBox, '컴팩트 grid content bounding box').not.toBeNull();
+            expect(titleRowBox, '방 제목 행 bounding box').not.toBeNull();
             expect(titleBox, '방 제목 bounding box').not.toBeNull();
-            expect(metaBox, '옵션 배지 bounding box').not.toBeNull();
-            expect(statusBox, '상태 배지 bounding box').not.toBeNull();
+            expect(stateDotBox, '방 상태 점 bounding box').not.toBeNull();
+            expect(metaBox, '옵션 텍스트 bounding box').not.toBeNull();
+            expect(occupancyBox, '현재 인원 bounding box').not.toBeNull();
             expect(actionBox, '참여 버튼 bounding box').not.toBeNull();
             expect(styles.cardPaddingLeft, '카드 좌우 padding은 동일해야 합니다.').toBe(styles.cardPaddingRight);
-            expect(styles.cardPaddingRight, '모바일 카드 오른쪽 padding은 20px이어야 합니다.').toBe(20);
-            expect(styles.cardColumns, 'card grid는 오른쪽 76px action column을 가져야 합니다.').toContain('76px');
-            expect(styles.contentDisplay, 'content wrapper는 card grid 배치를 위해 contents로 풀려야 합니다.').toBe('contents');
-            expect(styles.sideWidth, 'side column 폭은 76px이어야 합니다.').toBe('76px');
-            expect(styles.statusWidth, '대기중 배지는 side column 전체 폭을 사용해야 합니다.').toBe('76px');
-            expect(styles.actionWidth, '참여 버튼은 side column 전체 폭을 사용해야 합니다.').toBe('76px');
+            expect(styles.cardPaddingRight, '뷰포트별 컴팩트 카드 오른쪽 padding을 유지해야 합니다.').toBe(expectedPadding);
+            expect(styles.contentDisplay, 'content wrapper는 컴팩트 grid여야 합니다.').toBe('grid');
+            expect(styles.contentColumns, `content grid는 오른쪽 ${expectedActionWidth}px action column을 가져야 합니다.`).toContain(`${expectedActionWidth}px`);
+            expect(styles.actionWidth, '참여 버튼 폭은 뷰포트별 action column과 같아야 합니다.').toBe(expectedActionWidth);
+            expect(styles.stateDotWidth, '상태 점 너비는 8px이어야 합니다.').toBe(8);
+            expect(styles.stateDotHeight, '상태 점 높이는 8px이어야 합니다.').toBe(8);
+            expect(styles.titleOverflow).toBe('hidden');
+            expect(styles.titleTextOverflow).toBe('ellipsis');
+            expect(styles.titleWhiteSpace).toBe('nowrap');
 
             const cardContentRight = cardBox.x + cardBox.width - styles.cardBorderRightWidth - styles.cardPaddingRight;
-            expect(Math.abs((sideBox.x + sideBox.width) - cardContentRight), 'side column은 카드 오른쪽 테두리와 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
-            expect(Math.abs((statusBox.x + statusBox.width) - cardContentRight), '대기중 배지는 카드 오른쪽 테두리와 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
-            expect(Math.abs((actionBox.x + actionBox.width) - cardContentRight), '참여 버튼은 카드 오른쪽 테두리와 padding 안쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
-            expect(mainBox.x + mainBox.width, 'main column은 side column과 겹치면 안 됩니다.').toBeLessThanOrEqual(sideBox.x);
-            expect(boxesOverlap(titleBox, statusBox), '방 제목은 상태 배지와 겹치면 안 됩니다.').toBe(false);
+            expect(Math.abs((contentBox.x + contentBox.width) - cardContentRight), 'content grid는 카드 padding 안쪽 오른쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
+            expect(Math.abs((actionBox.x + actionBox.width) - cardContentRight), '참여 버튼은 카드 padding 안쪽 오른쪽 끝에 붙어야 합니다.').toBeLessThanOrEqual(1);
+            expect(boxesOverlap(titleRowBox, occupancyBox), '방 제목 행은 현재 인원과 겹치면 안 됩니다.').toBe(false);
             expect(boxesOverlap(titleBox, actionBox), '방 제목은 참여 버튼과 겹치면 안 됩니다.').toBe(false);
-            expect(boxesOverlap(metaBox, statusBox), '옵션 배지는 상태 배지와 겹치면 안 됩니다.').toBe(false);
-            expect(boxesOverlap(metaBox, actionBox), '옵션 배지는 참여 버튼과 겹치면 안 됩니다.').toBe(false);
+            expect(boxesOverlap(metaBox, actionBox), '옵션 텍스트는 참여 버튼과 겹치면 안 됩니다.').toBe(false);
+            expect(boxesOverlap(occupancyBox, actionBox), '현재 인원은 참여 버튼과 겹치면 안 됩니다.').toBe(false);
+            expect(stateDotBox.x, '상태 점은 제목 행 내부에 있어야 합니다.').toBeGreaterThanOrEqual(titleRowBox.x);
+            expect(stateDotBox.x + stateDotBox.width, '상태 점은 제목 행 내부에 있어야 합니다.').toBeLessThanOrEqual(titleRowBox.x + titleRowBox.width);
           }).toPass({ timeout: 20_000, intervals: [100, 250, 500] });
         } catch (error) {
           await testInfo.attach('mobile-lobby-room-card-layout-failure', {
