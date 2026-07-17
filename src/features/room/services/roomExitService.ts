@@ -6,6 +6,7 @@ import {
   removeRoomPlayer as removeRoomPlayerCore,
   type RoomPlayer,
   type RoomSeat,
+  type SyncedGameState,
 } from './roomServiceCore';
 import { shouldDeferRoomExitCleanup, shouldSubstituteRoomPlayerAsAi } from './roomExitPolicy';
 import {
@@ -21,6 +22,7 @@ import {
   getRoomPlayers,
   type ManagedRoomSummary,
 } from './roomLifecycleStore';
+import { updateGameSeatControlState } from './roomPresenceGameSeat';
 
 const TRANSITION_REMOVAL_DELAY_MS = 1_500;
 const ACTIVE_ROOM_STORAGE_KEY = 'yut-online:activeRoomId';
@@ -82,6 +84,7 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, opti
   const noOtherHumanPlayers = !players.some((player) => player.id !== playerId && !player.isSpectator && !player.isAI);
   const roomRef = doc(db, 'rooms', roomId);
   const playerRef = doc(db, 'rooms', roomId, 'players', playerId);
+  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
 
   const markedForDeletion = await runTransaction(db, async (transaction) => {
     const [freshRoomSnapshot, freshPlayerSnapshot] = await Promise.all([
@@ -102,6 +105,8 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, opti
     const freshSeat = freshSeatSnapshot?.exists() ? freshSeatSnapshot.data() as RoomSeat : null;
     const shouldSubstituteAsAi = options.preservePlayingSeatAsAi !== false
       && shouldSubstituteRoomPlayerAsAi(freshRoom, freshPlayer, hasFreshSeat);
+    const gameStateSnapshot = shouldSubstituteAsAi ? await transaction.get(gameStateRef) : null;
+    const gameState = gameStateSnapshot?.exists() ? gameStateSnapshot.data() as SyncedGameState : null;
 
     if (shouldSubstituteAsAi && freshSeatRef) {
       const nextPresenceEpoch = Math.max(Number(freshPlayer.presenceEpoch ?? 0), Number(freshSeat?.presenceEpoch ?? 0)) + 1;
@@ -132,6 +137,16 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, opti
         substitutedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }, { merge: true });
+      if (gameState) {
+        const nextGameSeats = updateGameSeatControlState(gameState.gameSeats, {
+          playerId,
+          seatIndex: freshSeatIndex,
+          isAI: true,
+          isSubstitutedByAI: true,
+          presenceEpoch: nextPresenceEpoch,
+        });
+        if (nextGameSeats) transaction.set(gameStateRef, { gameSeats: nextGameSeats, updatedAt: serverTimestamp() }, { merge: true });
+      }
       const changedAt = Date.now();
       transaction.set(roomRef, {
         lastActivityAt: changedAt,
