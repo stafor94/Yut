@@ -85,7 +85,6 @@ export function WinnerOverlay({ winner, winnerText, onReturnToWaitingRoom, onExi
   return <div data-testid="winner-overlay" className="winner-overlay" role="status" aria-live="assertive">
     <span>게임 종료</span>
     <strong>{winnerText}</strong>
-    <p>원하는 다음 행동을 선택하세요.</p>
     <button onClick={onReturnToWaitingRoom}>대기실로 돌아가기</button>
     <button className="secondary" onClick={onExitToLobby}>로비로 나가기</button>
   </div>;
