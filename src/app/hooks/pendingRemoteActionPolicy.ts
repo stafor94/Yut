@@ -27,8 +27,7 @@ export function isTurnFinalizingOptimisticItemAction(actionKey: string, meta: Pe
 }
 
 export function getPendingRemoteActionOptimisticApplied(actionKey: string, meta: PendingRemoteActionPolicyMeta) {
-  // Item actions change the authoritative roll, pending prompt, turn index, or trap placement.
-  // Keep the optimistic presentation, but block the next roll/move until the server confirms it.
-  if (meta.type === 'use_item' && meta.optimisticApplied === true) return false;
+  // Only after-move item actions finalize the current turn and must block follow-up actions.
+  // Before/after-roll item actions keep their optimistic pending state without blocking the turn.
   return isTurnFinalizingOptimisticItemAction(actionKey, meta) ? false : meta.optimisticApplied;
 }
