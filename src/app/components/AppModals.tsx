@@ -1,6 +1,7 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { ItemCard } from '../../features/items/components/ItemCard';
 import { ROOM_CAPACITY_FULL_EVENT } from '../../features/room/services/roomAvailabilityPolicy';
+import { auth } from '../../services/firebase/firebaseAuth';
 import { NICKNAME_MAX_LENGTH, STORAGE_KEYS, type PendingItemPickup } from '../appState';
 import {
   processPendingStoredRoomExit,
@@ -53,6 +54,10 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
   const [roomCapacityFullDialogOpen, setRoomCapacityFullDialogOpen] = useState(false);
   const nicknameSetupDialogOpen = screen === 'lobby' && (nicknameDialogOpen || initialNicknameDialogOpen);
   const canExitStoredRoom = loadingMessage === STORED_ROOM_RECOVERY_MESSAGE;
+  const canShowPendingItemPickup = Boolean(
+    pendingItemPickup
+    && pendingItemPickup.seatId === auth?.currentUser?.uid,
+  );
 
   useEffect(() => {
     void processPendingStoredRoomExit().catch((error) => {
@@ -91,7 +96,7 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
 
     {nicknameSetupDialogOpen && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={closeNicknameDialog}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 설정" onMouseDown={(event) => event.stopPropagation()}><h2>닉네임 설정</h2><p>닉네임은 7글자까지 사용할 수 있어요.</p><input value={nicknameDraft} onChange={(event) => onNicknameDraftChange(event.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(event) => { if (event.key === 'Enter') saveNickname(); if (event.key === 'Escape') closeNicknameDialog(); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" /><div className="modal-actions"><button onClick={saveNickname}>저장</button><button className="secondary" onClick={closeNicknameDialog}>취소</button></div></section></div>}
 
-    {pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>같은 사용 조건의 아이템은 1개만 보유할 수 있습니다. 10초 뒤 자동으로 유지합니다.</p><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${Math.max(0, pendingItemPickup.deadline - itemPickupClock)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="item-replace-preview"><div><strong>기존 아이템</strong><ItemCard type={pendingItemPickup.existingItem} /></div><div><strong>새 아이템</strong><ItemCard type={pendingItemPickup.item} /></div></div><div className="inline-item-actions"><button onClick={onReplacePendingItemPickup}>교체</button><button className="secondary" onClick={onKeepPendingItemPickup}>유지</button></div></section></div>}
+    {canShowPendingItemPickup && pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>같은 사용 조건의 아이템은 1개만 보유할 수 있습니다. 10초 뒤 자동으로 유지합니다.</p><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${Math.max(0, pendingItemPickup.deadline - itemPickupClock)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="item-replace-preview"><div><strong>기존 아이템</strong><ItemCard type={pendingItemPickup.existingItem} /></div><div><strong>새 아이템</strong><ItemCard type={pendingItemPickup.item} /></div></div><div className="inline-item-actions"><button onClick={onReplacePendingItemPickup}>교체</button><button className="secondary" onClick={onKeepPendingItemPickup}>유지</button></div></section></div>}
 
     {endGameDialogOpen && screen === 'game' && <div className="modal-backdrop" role="presentation" onMouseDown={onCloseEndGameDialog}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="게임 종료 확인" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">게임 종료</p><h2>정말 윷판을 정리할까요?</h2><p>{gameExitDescription}</p><div className="modal-actions"><button className="danger" onClick={onFinishGame}>게임 종료</button><button className="secondary" onClick={onCloseEndGameDialog}>계속하기</button></div></section></div>}
   </>;

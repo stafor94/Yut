@@ -36,6 +36,7 @@
     "src/app/flows/presenceRecovery.ts",
     "src/app/flows/onlineGameCoordinator.ts",
     "src/app/flows/actionFeedback.ts",
+    "src/app/flows/effectiveMoveContext.ts",
     "src/app/flows/gameStartPreparation.ts",
     "src/app/flows/turnOrderFlow.ts",
     "src/app/flows/turnOrderPresentation.ts",

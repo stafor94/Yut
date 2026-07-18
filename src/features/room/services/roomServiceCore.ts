@@ -77,6 +77,16 @@ const isExpiredItemPromptTimeoutRecoveryAction = (state: SyncedGameState, action
   && Date.now() >= state.turnDeadlineAt + TURN_NETWORK_GRACE_MS
 );
 
+const isExpiredItemPickupTimeoutRecoveryAction = (state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => {
+  const pending = state.pendingItemPickup as { ownerId?: unknown; deadline?: unknown } | null | undefined;
+  return action.type === 'item_pickup_decision'
+    && action.payload?.itemPickupTimeoutRecovery === true
+    && pending?.ownerId === action.actorId
+    && typeof pending.deadline === 'number'
+    && action.payload?.timeoutDeadlineAt === pending.deadline
+    && Date.now() >= pending.deadline + TURN_NETWORK_GRACE_MS;
+};
+
 const isExpiredTrapPlacementTimeoutRecoveryAction = (state: SyncedGameState, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => {
   const placement = state.pendingTrapPlacement as { ownerId?: unknown; pieceId?: unknown; deadline?: unknown } | null | undefined;
   return action.type === 'use_item'
@@ -684,7 +694,7 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
       clientCreatedAt: Date.now(),
       createdAt: serverTimestamp(),
     });
-    transaction.set(gameStateRef, { ...makeFirestoreStateData(state), updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: meta.clientMutationId }, { merge: true });
+    transaction.set(gameStateRef, { ...makeFirestoreStateData(state), updatedAt: serverTimestamp(), turnVersion: nextVersion, lastSequence: nextSequence, lastClientMutationId: meta.clientMutationId });
     transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
     transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, startRequestVersion: meta.startRequestVersion, startRequestId: meta.startRequestId, sequence: nextSequence, turnVersion: nextVersion, type: 'game_initialized', actorId: meta.actorId, createdAt: serverTimestamp() });
     return { status: 'committed' as const, turnVersion: nextVersion, lastSequence: nextSequence };
@@ -941,7 +951,7 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const actorSeat = snapshotSeats.find((seat) => seat.id === action.actorId);
     const actorIsAiControlled = Boolean(actorSeat?.isAI || actorSeat?.isSubstitutedByAI);
     const coordinatorSeatId = snapshotSeats.find((seat) => !seat.isAI)?.id ?? '';
-    const allowCoordinator = isExpiredItemPromptTimeoutRecoveryAction(state, action) || isExpiredTrapPlacementTimeoutRecoveryAction(state, action);
+    const allowCoordinator = isExpiredItemPromptTimeoutRecoveryAction(state, action) || isExpiredItemPickupTimeoutRecoveryAction(state, action) || isExpiredTrapPlacementTimeoutRecoveryAction(state, action);
     const coordinatorPlayerIds = coordinatorSeatId ? [coordinatorSeatId] : [];
     let actorPlayer: RoomPlayer | null = null;
     if (auth && uid && uid !== action.actorId && !(actorIsAiControlled && (uid === room.hostId || uid === coordinatorSeatId))) {

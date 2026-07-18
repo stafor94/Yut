@@ -72,9 +72,12 @@ const applyFallPresentationGate = (
     ? action.payload.actorLogName.trim()
     : action.actorId;
   const sourceLogs = Array.isArray(reduction.patch.logs) ? reduction.patch.logs as AuthoritativeLogShape[] : [];
-  const logs = sourceLogs.map((log, index) => index === 0 && typeof log?.text === 'string' && log.text.includes('낙')
-    ? { ...log, text: `${actorLogName}님이 낙이 나와 차례를 넘깁니다.` }
-    : log);
+  const keepFallRerollPrompt = reduction.patch.itemPromptTiming === 'after_roll' && reduction.patch.roll != null;
+  const logs = keepFallRerollPrompt
+    ? sourceLogs
+    : sourceLogs.map((log, index) => index === 0 && typeof log?.text === 'string' && log.text.includes('낙')
+      ? { ...log, text: `${actorLogName}님이 낙이 나와 차례를 넘깁니다.` }
+      : log);
   const readyAt = Date.now() + FALL_PRESENTATION_GATE_MS;
   const fallEffect = getPendingFallEffect(reduction.patch.fallEffect);
 
@@ -82,7 +85,7 @@ const applyFallPresentationGate = (
     ...reduction,
     patch: {
       ...reduction.patch,
-      roll: null,
+      roll: keepFallRerollPrompt ? reduction.patch.roll : null,
       rollResultReadyAt: readyAt,
       // applyTurnActionTimeoutPolicy converts this core 15-second deadline to the visible
       // timeout for roll/item-prompt while preserving the presentation gate offset.
@@ -93,7 +96,7 @@ const applyFallPresentationGate = (
       ...reduction.payload,
       fallPresentationEventId: fallEffect?.id ?? null,
       fallPresentationReadyAt: readyAt,
-      turnAdvancedIndependently: true,
+      turnAdvancedIndependently: !keepFallRerollPrompt,
     },
   };
 };
@@ -255,6 +258,7 @@ const isTimeoutRecoveryAction = (action: AuthoritativeArgs[1]) => {
   return payload.timedOut === true
     || payload.recoveredByCoordinator === true
     || payload.itemPromptTimeoutRecovery === true
+    || payload.itemPickupTimeoutRecovery === true
     || payload.trapPlacementTimeoutRecovery === true
     || typeof payload.timeoutRecoveredBy === 'string';
 };

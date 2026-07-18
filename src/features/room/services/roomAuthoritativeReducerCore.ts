@@ -76,6 +76,7 @@ const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
 const isItemPromptTimeoutRecoveryPayload = (payload: Record<string, unknown> | undefined) => payload?.itemPromptTimeoutRecovery === true;
+const isItemPickupTimeoutRecoveryPayload = (payload: Record<string, unknown> | undefined) => payload?.itemPickupTimeoutRecovery === true;
 const isTrapPlacementTimeoutRecoveryPayload = (payload: Record<string, unknown> | undefined) => payload?.trapPlacementTimeoutRecovery === true;
 const validateTimeoutDeadline = (state: SyncedGameStateShape, payload: Record<string, unknown> | undefined, expectedKind: SyncedGameStateShape['turnDeadlineKind']) => {
   if (state.turnDeadlineKind !== expectedKind || typeof state.turnDeadlineAt !== 'number') return '시간초과 상태가 아닙니다.';
@@ -92,6 +93,14 @@ const validateTrapPlacementTimeoutRecovery = (state: SyncedGameStateShape, actio
   if (!placement.pieceId || action.payload?.pieceId !== placement.pieceId) return '함정 설치 시간초과 대상 말이 아닙니다.';
   return null;
 };
+const validateItemPickupTimeoutRecovery = (state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, pending: AuthoritativePendingItemPickup) => {
+  if (!isItemPickupTimeoutRecoveryPayload(action.payload)) return null;
+  if (pending.ownerId !== action.actorId || typeof pending.deadline !== 'number') return '아이템 교체 시간초과 대상이 아닙니다.';
+  if (action.payload?.timeoutDeadlineAt !== pending.deadline) return '아이템 교체 시간초과 deadline이 아닙니다.';
+  if (Date.now() < pending.deadline + TURN_NETWORK_GRACE_MS) return '아이템 교체 네트워크 유예 시간이 아직 남아 있습니다.';
+  return null;
+};
+
 const validateItemPromptTimeoutRecovery = (state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>) => {
   if (!isItemPromptTimeoutRecoveryPayload(action.payload)) return null;
   const deadlineRejection = validateTimeoutDeadline(state, action.payload, 'item_prompt');
@@ -108,8 +117,9 @@ const hasAuthoritativeMovablePieceForRoll = (state: SyncedGameStateShape, actorI
   const steps = roll.steps;
   return pieces.some((piece) => canActorControlAuthoritativePiece(actorId, piece, room, sides) && !piece.finished && (steps >= 0 || piece.started));
 };
-const hasUsableAfterRollItem = (state: SyncedGameStateShape, actorId: string, roll: YutResult, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]) => {
+const hasUsableAfterRollItem = (state: SyncedGameStateShape, actorId: string, roll: YutResult, room: RoomSummaryShape, sides: AuthoritativeSeatSide[], fallOccurred = false) => {
   const itemTypes = ((state.ownedItems as Record<string, ItemType[]> | undefined)?.[actorId] ?? []).filter((type) => ITEM_DEFINITIONS[type]?.timing === 'after_roll');
+  if (fallOccurred) return itemTypes.includes('reroll');
   if (!itemTypes.length) return false;
   if (roll.steps < 0 && !hasAuthoritativeMovablePieceForRoll(state, actorId, roll, room, sides)) return false;
   return true;
@@ -141,10 +151,17 @@ const canActorControlAuthoritativePiece = (actorId: string, piece: Authoritative
 const getAfterMovePromptPatch = (state: SyncedGameStateShape, basePatch: GameStatePatch, actorId: string, nextTurnIndex: number, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]) => {
   const nextOwnedItems = (basePatch.ownedItems ?? state.ownedItems ?? {}) as Record<string, ItemType[]>;
   const lastMovedPieceIds = ((basePatch.lastMovedPieceIds as string[] | undefined) ?? state.lastMovedPieceIds ?? []);
-  const hasAfterMoveItem = (nextOwnedItems[actorId] ?? []).some((type) => ITEM_DEFINITIONS[type]?.timing === 'after_move');
   const nextPieces = (basePatch.pieces as AuthoritativePiece[] | undefined) ?? (state.pieces as AuthoritativePiece[]);
-  const hasMovedPieceOnBoard = lastMovedPieceIds.some((pieceId) => nextPieces.some((piece) => piece.id === pieceId && piece.started && !piece.finished && canActorControlAuthoritativePiece(actorId, piece, room, sides)));
-  if (!hasAfterMoveItem || !hasMovedPieceOnBoard) return null;
+  const movedPiece = lastMovedPieceIds
+    .map((pieceId) => nextPieces.find((piece) => piece.id === pieceId && piece.started && !piece.finished && canActorControlAuthoritativePiece(actorId, piece, room, sides)))
+    .find((piece): piece is AuthoritativePiece => Boolean(piece));
+  if (!movedPiece) return null;
+  const usableAfterMoveItems = (nextOwnedItems[actorId] ?? []).filter((type) => {
+    if (type === 'shield') return true;
+    if (type === 'trap') return makeAuthoritativeTrapCandidateNodeIds(movedPiece.nodeId, nextPieces).length > 0;
+    return false;
+  });
+  if (!usableAfterMoveItems.length) return null;
   return { turnIndex: Number(state.turnIndex ?? 0), turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS, turnDeadlineKind: 'item_prompt' as const, itemPromptTiming: 'after_move' as const, pendingAfterMoveTurnIndex: nextTurnIndex };
 };
 
@@ -191,13 +208,9 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
   const pendingGoldenYutSelection = state.pendingGoldenYutSelection as { actorId?: unknown; deadline?: unknown } | null | undefined;
   const pendingRerollStackIndex = state.rollStackClosed === false && typeof state.selectedRollStackIndex === 'number' ? state.selectedRollStackIndex : null;
   const pendingReroll = pendingRerollStackIndex !== null;
-  if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll' || state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') {
-    return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
-  }
+  if (state.itemPromptTiming === 'before_roll' || state.itemPromptTiming === 'after_roll' || state.itemPromptTiming === 'after_move' || typeof state.pendingAfterMoveTurnIndex === 'number') return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
   if (!pendingGoldenYutSelection && !pendingReroll && !state.roll && hasUsableBeforeRollItem(state, action.actorId)) return makeActionReject('아이템 사용 여부를 먼저 선택해주세요.');
-  if (room.stackedRollMode && state.rollStackClosed === true && !pendingReroll) {
-    return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
-  }
+  if (room.stackedRollMode && state.rollStackClosed === true && !pendingReroll) return makeActionReject('이미 윷을 던졌습니다. 말을 이동해주세요.');
   const selectedGoldenYutResult = action.payload?.selectedGoldenYutResult;
   const pendingGoldenDeadline = Number(pendingGoldenYutSelection?.deadline ?? 0);
   const pendingGoldenTimedOut = Boolean(pendingGoldenYutSelection && pendingGoldenDeadline > 0 && Date.now() >= pendingGoldenDeadline);
@@ -213,70 +226,49 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
   const nextRoll = pendingGoldenYutSelection && selectedGoldenYutResult === undefined && pendingGoldenTimedOut
     ? GOLDEN_YUT_CHOICES.find((choice) => choice.name === '도') ?? GOLDEN_YUT_CHOICES[0]
     : getAuthoritativeRoll(action.payload);
-  const fallOccurred = pendingGoldenYutSelection
-    ? false
-    : typeof clientFallOccurred === 'boolean'
-      ? clientFallOccurred
-      : shouldFallForTimingZone(timingZone);
-  const fallCount = fallOccurred
-    ? typeof clientFallCount === 'number' ? clientFallCount : Math.floor(Math.random() * 4) + 1
-    : 0;
+  const fallOccurred = pendingGoldenYutSelection ? false : typeof clientFallOccurred === 'boolean' ? clientFallOccurred : shouldFallForTimingZone(timingZone);
+  const fallCount = fallOccurred ? typeof clientFallCount === 'number' ? clientFallCount : Math.floor(Math.random() * 4) + 1 : 0;
   const now = Date.now();
+  const statePieces = state.pieces as AuthoritativePiece[];
+  const shieldedPieceIds = (state.shieldedPieceIds ?? []).filter((pieceId) => {
+    const piece = statePieces.find((entry) => entry.id === pieceId);
+    return !canActorControlAuthoritativePiece(action.actorId, piece, room, sides);
+  });
+  const stateForRoll = { ...state, shieldedPieceIds, roll: room.stackedRollMode ? null : state.roll };
   let shouldPromptAfterRoll = false;
   const baseReduction = toAuthoritativeReduction(reduceRollCommand({
-    state: makeEngineState({ ...state, roll: room.stackedRollMode ? null : state.roll }),
-    actorId: action.actorId,
-    nextRoll,
-    actorLogName: getActionActorLogName(action),
-    rollResultReadyAt: now + 2600,
-    makeLog: makeAuthoritativeLog,
-    fallOccurred,
-    timingZone,
+    state: makeEngineState(stateForRoll), actorId: action.actorId, nextRoll,
+    actorLogName: getActionActorLogName(action), rollResultReadyAt: now + 2600,
+    makeLog: makeAuthoritativeLog, fallOccurred, timingZone,
   }));
   if (isAuthoritativeCommitReduction(baseReduction)) {
-    shouldPromptAfterRoll = !fallOccurred
-      && (!room.stackedRollMode || !nextRoll.bonus)
-      && hasUsableAfterRollItem(state, action.actorId, nextRoll, room, sides);
-    const nextActiveSeatIdAfterFall = fallOccurred ? (state.turnOrderIds ?? [])[Number(baseReduction.patch.turnIndex ?? state.turnIndex ?? 0)] : null;
+    const nextTurnIndexAfterFall = Number(baseReduction.patch.turnIndex ?? state.turnIndex ?? 0);
+    const shouldPromptFallReroll = fallOccurred && hasUsableAfterRollItem(state, action.actorId, nextRoll, room, sides, true);
+    shouldPromptAfterRoll = !fallOccurred && (!room.stackedRollMode || !nextRoll.bonus) && hasUsableAfterRollItem(state, action.actorId, nextRoll, room, sides);
+    const nextActiveSeatIdAfterFall = fallOccurred && !shouldPromptFallReroll ? (state.turnOrderIds ?? [])[nextTurnIndexAfterFall] : null;
     const shouldPromptBeforeRollAfterFall = Boolean(nextActiveSeatIdAfterFall && hasUsableBeforeRollItem({ ...state, ...baseReduction.patch } as SyncedGameStateShape, String(nextActiveSeatIdAfterFall)));
+    const nextLogs = shouldPromptFallReroll && Array.isArray(baseReduction.patch.logs)
+      ? (baseReduction.patch.logs as AuthoritativeLog[]).map((log, index) => index === 0 ? { ...log, text: `${getActionActorLogName(action)}님이 낙이 나왔습니다. 다시 던지기 아이템 사용 여부를 선택합니다.` } : log)
+      : baseReduction.patch.logs;
     baseReduction.patch = {
       ...baseReduction.patch,
-      turnDeadlineAt: shouldPromptAfterRoll ? now + 2600 + TURN_ACTION_TIMEOUT_MS : fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: shouldPromptAfterRoll || shouldPromptBeforeRollAfterFall ? 'item_prompt' : fallOccurred ? 'roll' : 'move',
-      itemPromptTiming: shouldPromptAfterRoll ? 'after_roll' : shouldPromptBeforeRollAfterFall ? 'before_roll' : null,
+      shieldedPieceIds,
+      ...(shouldPromptFallReroll ? { roll: nextRoll, turnIndex: Number(state.turnIndex ?? 0), pendingAfterMoveTurnIndex: nextTurnIndexAfterFall, logs: nextLogs } : {}),
+      turnDeadlineAt: shouldPromptAfterRoll || shouldPromptFallReroll ? now + 2600 + TURN_ACTION_TIMEOUT_MS : fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
+      turnDeadlineKind: shouldPromptAfterRoll || shouldPromptFallReroll || shouldPromptBeforeRollAfterFall ? 'item_prompt' : fallOccurred ? 'roll' : 'move',
+      itemPromptTiming: shouldPromptAfterRoll || shouldPromptFallReroll ? 'after_roll' : shouldPromptBeforeRollAfterFall ? 'before_roll' : null,
       pendingGoldenYutSelection: null,
       ...(pendingReroll ? { selectedRollStackIndex: null } : {}),
     };
-    baseReduction.payload = {
-      ...baseReduction.payload,
-      displayRoll: nextRoll,
-      fallOccurred,
-      fallCount,
-      timedOut: Boolean(action.payload?.timedOut),
-      timeoutRecoveredBy: action.payload?.timeoutRecoveredBy ?? null,
-    };
+    baseReduction.payload = { ...baseReduction.payload, displayRoll: nextRoll, fallOccurred, fallCount, timedOut: Boolean(action.payload?.timedOut), timeoutRecoveredBy: action.payload?.timeoutRecoveredBy ?? null, fallRerollPrompt: shouldPromptFallReroll };
   }
   if (!isAuthoritativeCommitReduction(baseReduction) || !room.stackedRollMode) return baseReduction;
-  if (fallOccurred) {
-    return { ...baseReduction, patch: { ...baseReduction.patch, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false } };
-  }
+  if (fallOccurred) return { ...baseReduction, patch: { ...baseReduction.patch, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false } };
   const currentStack = ((state.rollStack as YutResult[] | undefined) ?? []);
-  const replacementIndex = pendingReroll && pendingRerollStackIndex !== null
-    ? Math.min(Math.max(0, pendingRerollStackIndex), currentStack.length)
-    : currentStack.length;
+  const replacementIndex = pendingReroll && pendingRerollStackIndex !== null ? Math.min(Math.max(0, pendingRerollStackIndex), currentStack.length) : currentStack.length;
   const nextStack = [...currentStack];
   nextStack.splice(replacementIndex, 0, nextRoll);
-  return {
-    ...baseReduction,
-    patch: {
-      ...baseReduction.patch,
-      roll: null,
-      rollStack: nextStack,
-      selectedRollStackIndex: shouldPromptAfterRoll ? replacementIndex : null,
-      rollStackClosed: !nextRoll.bonus,
-    },
-    payload: { ...baseReduction.payload, rollStack: nextStack, rollStackClosed: !nextRoll.bonus, rerolledStackIndex: pendingReroll ? replacementIndex : null },
-  };
+  return { ...baseReduction, patch: { ...baseReduction.patch, roll: null, rollStack: nextStack, selectedRollStackIndex: shouldPromptAfterRoll ? replacementIndex : null, rollStackClosed: !nextRoll.bonus }, payload: { ...baseReduction.payload, rollStack: nextStack, rollStackClosed: !nextRoll.bonus, rerolledStackIndex: pendingReroll ? replacementIndex : null } };
 }
 function reduceAuthoritativeMove(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
   if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
@@ -426,10 +418,7 @@ const removeOneItem = (ownedItems: unknown, ownerId: string, itemType: ItemType)
 const getSelectedStackIndex = (state: SyncedGameStateShape) => {
   if (typeof state.selectedRollStackIndex === 'number') return state.selectedRollStackIndex;
   const stack = (state.rollStack as YutResult[] | undefined) ?? [];
-  if (!stack.length || !state.roll) return null;
-  const currentRoll = state.roll as YutResult;
-  const index = stack.findIndex((roll) => roll.name === currentRoll.name && roll.steps === currentRoll.steps && Boolean(roll.bonus) === Boolean(currentRoll.bonus));
-  return index >= 0 ? index : null;
+  return stack.length === 1 ? 0 : null;
 };
 const isOccupiedTrapNode = (pieces: AuthoritativePiece[], nodeId: string) => pieces.some((piece) => piece.nodeId === nodeId && piece.started && !piece.finished);
 const makeAuthoritativeTrapCandidateNodeIds = (nodeId: string, pieces: AuthoritativePiece[]) => getAdjacentBoardNodeIds(nodeId)
@@ -444,7 +433,9 @@ const getRollWithStepDelta = (roll: unknown, delta: number): YutResult | null =>
 function reduceItemPickupDecision(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>): AuthoritativeReduction {
   const pending = state.pendingItemPickup as AuthoritativePendingItemPickup | null | undefined;
   if (!pending || pending.ownerId !== action.actorId || !pending.itemType || !pending.existingItemType) return makeActionReject('처리할 아이템 교체 대기가 없습니다.');
-  const decision = action.payload?.decision === 'replace' ? 'replace' : action.payload?.decision === 'keep' ? 'keep' : '';
+  const timeoutRecoveryRejection = validateItemPickupTimeoutRecovery(state, action, pending);
+  if (timeoutRecoveryRejection) return makeActionReject(timeoutRecoveryRejection);
+  const decision = action.payload?.decision === 'replace' ? 'replace' : action.payload?.decision === 'keep' || isItemPickupTimeoutRecoveryPayload(action.payload) ? 'keep' : '';
   if (!decision) return makeActionReject('아이템 교체 선택이 유효하지 않습니다.');
   const currentOwnedItems = { ...((state.ownedItems ?? {}) as Record<string, ItemType[]>) };
   const currentItems = [...(currentOwnedItems[action.actorId] ?? [])];
@@ -454,24 +445,14 @@ function reduceItemPickupDecision(state: SyncedGameStateShape, action: Omit<Game
   const nextOwnedItems = { ...currentOwnedItems, [action.actorId]: currentItems };
   const logs = (state.logs as AuthoritativeLog[] | undefined) ?? [];
   const actorLogName = getActionActorLogName(action);
+  const timedOut = isItemPickupTimeoutRecoveryPayload(action.payload);
   const logText = decision === 'replace'
     ? `${actorLogName}님이 아이템 '${ITEM_DEFINITIONS[pending.existingItemType].name}'을 '${ITEM_DEFINITIONS[pending.itemType].name}'으로 교체했습니다.`
-    : `${actorLogName}님이 새 아이템 '${ITEM_DEFINITIONS[pending.itemType].name}'을 유지하지 않았습니다.`;
+    : timedOut
+      ? `${actorLogName}님의 아이템 교체 시간이 만료되어 기존 아이템을 유지했습니다.`
+      : `${actorLogName}님이 새 아이템 '${ITEM_DEFINITIONS[pending.itemType].name}'을 유지하지 않았습니다.`;
   const resumeAfterMove = pending.resumeItemPromptTiming === 'after_move' && typeof pending.resumePendingAfterMoveTurnIndex === 'number';
-  return {
-    status: 'committed',
-    patch: {
-      ownedItems: nextOwnedItems,
-      pendingItemPickup: null,
-      itemPromptTiming: resumeAfterMove ? 'after_move' : null,
-      pendingAfterMoveTurnIndex: resumeAfterMove ? pending.resumePendingAfterMoveTurnIndex : null,
-      turnIndex: resumeAfterMove ? Number(state.turnIndex ?? 0) : Number(pending.nextTurnIndex ?? state.turnIndex ?? 0),
-      turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: resumeAfterMove ? 'item_prompt' : 'roll',
-      logs: [makeAuthoritativeLog(logs, logText), ...logs],
-    },
-    payload: { activeSeatId: action.actorId, decision, itemType: pending.itemType, existingItemType: pending.existingItemType },
-  };
+  return { status: 'committed', patch: { ownedItems: nextOwnedItems, pendingItemPickup: null, itemPromptTiming: resumeAfterMove ? 'after_move' : null, pendingAfterMoveTurnIndex: resumeAfterMove ? pending.resumePendingAfterMoveTurnIndex : null, turnIndex: resumeAfterMove ? Number(state.turnIndex ?? 0) : Number(pending.nextTurnIndex ?? state.turnIndex ?? 0), turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS, turnDeadlineKind: resumeAfterMove ? 'item_prompt' : 'roll', logs: [makeAuthoritativeLog(logs, logText), ...logs] }, payload: { activeSeatId: action.actorId, decision, itemType: pending.itemType, existingItemType: pending.existingItemType, itemPickupTimeoutRecovery: timedOut } };
 }
 
 function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[]): AuthoritativeReduction {
@@ -514,6 +495,12 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
       return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
     }
     const now = Date.now();
+    const fallAdvanceTurnIndex = state.fallEffect && typeof state.pendingAfterMoveTurnIndex === 'number' ? state.pendingAfterMoveTurnIndex : null;
+    if (fallAdvanceTurnIndex !== null) {
+      const nextActiveSeatId = (state.turnOrderIds ?? [])[fallAdvanceTurnIndex];
+      const shouldPromptBeforeRoll = Boolean(nextActiveSeatId && hasUsableBeforeRollItem(state, String(nextActiveSeatId)));
+      return { status: 'committed', patch: { itemPromptTiming: shouldPromptBeforeRoll ? 'before_roll' : null, pendingAfterMoveTurnIndex: null, fallEffect: null, roll: null, turnIndex: fallAdvanceTurnIndex, turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS, turnDeadlineKind: shouldPromptBeforeRoll ? 'item_prompt' : 'roll' }, payload: { activeSeatId: action.actorId, skippedAfterRollItem: true, skippedFallReroll: true } };
+    }
     return {
       status: 'committed',
       patch: {
@@ -578,6 +565,8 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   } else if ((state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] !== action.actorId) return makeActionReject('지금은 내 차례가 아닙니다.');
   if (itemTiming === 'before_roll' && state.itemPromptTiming !== 'before_roll') return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
   if (itemTiming === 'after_roll' && state.itemPromptTiming !== 'after_roll') return makeActionReject('아이템 사용 여부를 먼저 선택할 수 없습니다.');
+  const pendingFallReroll = itemTiming === 'after_roll' && Boolean(state.fallEffect) && typeof state.pendingAfterMoveTurnIndex === 'number';
+  if (pendingFallReroll && itemType !== 'reroll') return makeActionReject('낙 이후에는 다시 던지기 아이템만 사용할 수 있습니다.');
   const nextOwnedItems = removeOneItem(state.ownedItems, action.actorId, itemType);
   if (!nextOwnedItems) return makeActionReject('보유한 아이템이 없습니다.');
   const now = Date.now();
@@ -587,6 +576,9 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
   if (itemType === 'reroll') {
     if (action.payload?.replacementRoll !== undefined) return makeActionReject('허용되지 않은 다시 던지기 결과입니다.');
     const rerollLog = makeAuthoritativeLog(logs, `${actorLogName}님이 다시 던지기 아이템을 사용했습니다. 다시 윷을 던집니다.`);
+    if (pendingFallReroll) {
+      return { status: 'committed', patch: { ownedItems: nextOwnedItems, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, rollResultReadyAt: 0, pendingAfterMoveTurnIndex: null, fallEffect: null, turnDeadlineAt: now + TURN_ACTION_TIMEOUT_MS, turnDeadlineKind: 'roll', itemPromptTiming: null, logs: [rerollLog, ...logs] }, payload: { activeSeatId: action.actorId, itemType, rerollReady: true, rerolledFall: true } };
+    }
     if (room.stackedRollMode) {
       const currentStack = [...(((state.rollStack as YutResult[] | undefined) ?? []))];
       const stackIndex = typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : getSelectedStackIndex(state);
@@ -781,6 +773,7 @@ function reduceContinueRace(state: SyncedGameStateShape, action: Omit<GameAction
       fallEffect: null,
       pendingGoldenYutSelection: null,
       pendingTrapPlacement: null,
+      pendingItemPickup: null,
       pendingAfterMoveTurnIndex: null,
       itemPromptTiming: null,
       branchChoice: 'outer',
