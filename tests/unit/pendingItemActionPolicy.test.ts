@@ -5,10 +5,10 @@ import {
   syncPendingRemoteActionItemPromptTiming,
 } from '../../src/app/hooks/pendingRemoteActionPolicy';
 
-test('item actions block the next turn action until authoritative confirmation', () => {
+test('after-move item actions block the next turn action until authoritative confirmation', () => {
   syncPendingRemoteActionItemPromptTiming('after_roll');
   assert.equal(getPendingRemoteActionOptimisticApplied(
-    'use_item:p1:1:0:도:1:::stack:0:',
+    'use_item:p1:1:0:도:1:::shield:0:',
     { type: 'use_item', optimisticApplied: true },
   ), false);
   assert.equal(getPendingRemoteActionOptimisticApplied(
