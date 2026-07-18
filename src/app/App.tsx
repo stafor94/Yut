@@ -1,4 +1,4 @@
-import { App as GameRuntime } from './runtime/GameRuntime';
+import { App as GameRuntime } from './GameRuntime';
 
 export function App() {
   return <GameRuntime />;
