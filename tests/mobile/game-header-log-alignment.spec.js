@@ -244,14 +244,13 @@ test.describe('모바일 인게임 정렬', () => {
         textGap: textBox.left - sequenceBox.right,
       };
     });
-    expect(logLayout.entryPaddingLeft, '진행 기록 메시지 왼쪽 여백은 축소된 값이어야 합니다.').toBe(42);
+    expect(logLayout.entryPaddingLeft, '진행 기록 메시지 왼쪽 여백은 크게 축소된 값이어야 합니다.').toBe(16);
     expect(logLayout.sequenceTop).toBe('-12px');
     expect(logLayout.sequenceLeft).toBe('-12px');
     expect(logLayout.sequenceTopOffset, '번호 배지는 카드 상단보다 위로 돌출되어야 합니다.').toBeLessThan(0);
     expect(logLayout.sequenceLeftOffset, '번호 배지는 카드 왼쪽보다 밖으로 돌출되어야 합니다.').toBeLessThan(0);
     expect(logLayout.sequenceTopInsideList, '상단으로 돌출된 번호 배지가 스크롤 영역에 잘리면 안 됩니다.').toBeGreaterThanOrEqual(0);
     expect(logLayout.sequenceLeftInsideList, '왼쪽으로 돌출된 번호 배지가 스크롤 영역에 잘리면 안 됩니다.').toBeGreaterThanOrEqual(0);
-    expect(logLayout.textLeft).toBeGreaterThan(logLayout.sequenceRight);
-    expect(logLayout.textGap, '번호 배지와 메시지 사이 간격은 과도하게 넓으면 안 됩니다.').toBeLessThanOrEqual(16);
+    expect(logLayout.textGap, '번호 배지가 메시지 내용을 오른쪽으로 밀어내면 안 됩니다.').toBeLessThanOrEqual(0);
   });
 });
