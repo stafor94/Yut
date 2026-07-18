@@ -1,1 +1,1 @@
-{"compilerOptions":{"composite":true,"module":"ESNext","moduleResolution":"Bundler","allowSyntheticDefaultImports":true},"include":["vite.config.ts"]}
+{"compilerOptions":{"composite":true,"target":"ES2020","module":"ESNext","moduleResolution":"Bundler","allowSyntheticDefaultImports":true},"include":["vite.config.ts","src/build/hoistTrapPlacementHelpers.ts"]}
