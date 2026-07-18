@@ -1,124 +1,109 @@
 import { normalizeSpokenYutResult, type SpokenYutResult } from '../../app/flows/rollSpeech';
+import backdoAudioSource from './assets/backdo';
+import doAudioSource from './assets/do';
+import gaeAudioSource from './assets/gae';
+import geolAudioSource from './assets/geol';
+import moAudioSource from './assets/mo';
+import nakAudioSource from './assets/nak';
+import yutAudioSource from './assets/yut';
 
-const KOREAN_LANGUAGE = 'ko-KR';
-const PREFERRED_VOICE_NAME = '한국어 대한민국';
-const SPEECH_VOLUME = 0.9;
-const VOICE_LOAD_GRACE_MS = 1000;
-const VOICE_RETRY_DELAY_MS = 160;
-const SPEAK_AFTER_CANCEL_DELAY_MS = 30;
+const RESULT_AUDIO_VOLUME = 0.9;
 
-type YutSpeechStyle = {
-  text: string;
-  rate: number;
-  pitch: number;
+const RESULT_AUDIO_SOURCE: Record<SpokenYutResult, string> = {
+  도: doAudioSource,
+  개: gaeAudioSource,
+  걸: geolAudioSource,
+  윷: yutAudioSource,
+  모: moAudioSource,
+  빽도: backdoAudioSource,
+  낙: nakAudioSource,
 };
 
-const SPEECH_STYLE: Record<SpokenYutResult, YutSpeechStyle> = {
-  도: { text: '도!', rate: 1, pitch: 1.05 },
-  개: { text: '개!', rate: 1, pitch: 1.05 },
-  걸: { text: '걸!', rate: 0.95, pitch: 1.08 },
-  윷: { text: '윷!', rate: 0.85, pitch: 1.2 },
-  모: { text: '모!', rate: 0.85, pitch: 1.2 },
-  빽도: { text: '빽도!', rate: 0.9, pitch: 0.95 },
-  낙: { text: '낙…', rate: 0.8, pitch: 0.8 },
-};
-
-const spokenByElement = new WeakMap<Element, SpokenYutResult>();
+const playedByElement = new WeakMap<Element, SpokenYutResult>();
 const queuedByElement = new WeakMap<Element, SpokenYutResult>();
-const rejectedVoiceUris = new Set<string>();
+const audioByResult = new Map<SpokenYutResult, HTMLAudioElement>();
 let observer: MutationObserver | null = null;
 let bindingScheduled = false;
 let currentVisibleLabel: HTMLElement | null = null;
-let voiceLoadStartedAt = 0;
-let voiceRetryTimer: number | null = null;
-let activeCheck: (() => void) | null = null;
+let activeAudio: HTMLAudioElement | null = null;
+let audioUnlocked = false;
 
-const normalizeVoiceLanguage = (language: string) => language.toLowerCase().replace(/_/g, '-');
-const isKoreanVoice = (voice: SpeechSynthesisVoice) => normalizeVoiceLanguage(voice.lang).startsWith('ko');
+const getResultAudio = (result: SpokenYutResult) => {
+  const cachedAudio = audioByResult.get(result);
+  if (cachedAudio) return cachedAudio;
 
-const getKoreanVoice = (voices: SpeechSynthesisVoice[]) => {
-  const availableVoices = voices.filter((voice) => isKoreanVoice(voice) && !rejectedVoiceUris.has(voice.voiceURI));
-  return availableVoices.find((voice) => voice.name === PREFERRED_VOICE_NAME && voice.localService)
-    ?? availableVoices.find((voice) => voice.name === PREFERRED_VOICE_NAME)
-    ?? availableVoices.find((voice) => voice.localService)
-    ?? availableVoices[0];
+  const audio = new Audio(RESULT_AUDIO_SOURCE[result]);
+  audio.preload = 'auto';
+  audio.volume = RESULT_AUDIO_VOLUME;
+  audioByResult.set(result, audio);
+  return audio;
 };
 
-const scheduleVoiceRetry = () => {
-  if (typeof window === 'undefined' || !activeCheck || voiceRetryTimer !== null) return;
-  voiceRetryTimer = window.setTimeout(() => {
-    voiceRetryTimer = null;
-    activeCheck?.();
-  }, VOICE_RETRY_DELAY_MS);
+const preloadResultAudio = () => {
+  (Object.keys(RESULT_AUDIO_SOURCE) as SpokenYutResult[]).forEach((result) => {
+    getResultAudio(result).load();
+  });
+};
+
+const unlockResultAudio = () => {
+  if (audioUnlocked) return;
+  const audio = getResultAudio('도');
+  audio.muted = true;
+  void audio.play().then(() => {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = false;
+    audioUnlocked = true;
+  }).catch(() => {
+    audio.muted = false;
+  });
 };
 
 const clearQueuedResult = (label: Element, result: SpokenYutResult) => {
   if (queuedByElement.get(label) === result) queuedByElement.delete(label);
 };
 
-const speakResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () => boolean) => {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') return false;
-  if (spokenByElement.get(label) === result || queuedByElement.get(label) === result) return true;
+const playResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () => boolean) => {
+  if (typeof window === 'undefined' || typeof Audio === 'undefined') return false;
+  if (playedByElement.get(label) === result || queuedByElement.get(label) === result) return true;
+  if (!isEnabled()) return false;
 
-  const synthesis = window.speechSynthesis;
-  const voices = synthesis.getVoices();
-  if (voices.length === 0) {
-    if (!voiceLoadStartedAt) voiceLoadStartedAt = Date.now();
-    if (Date.now() - voiceLoadStartedAt < VOICE_LOAD_GRACE_MS) {
-      scheduleVoiceRetry();
-      return false;
-    }
-  } else {
-    voiceLoadStartedAt = 0;
-  }
-
-  const voice = getKoreanVoice(voices);
-  const speechStyle = SPEECH_STYLE[result];
-  const utterance = new SpeechSynthesisUtterance(speechStyle.text);
-  utterance.lang = voice?.lang || KOREAN_LANGUAGE;
-  utterance.rate = speechStyle.rate;
-  utterance.pitch = speechStyle.pitch;
-  utterance.volume = SPEECH_VOLUME;
-  if (voice) utterance.voice = voice;
-
+  const audio = getResultAudio(result);
   queuedByElement.set(label, result);
-  let started = false;
-  utterance.onstart = () => {
-    started = true;
-    spokenByElement.set(label, result);
-  };
-  utterance.onend = () => {
-    if (!started) spokenByElement.set(label, result);
-    clearQueuedResult(label, result);
-  };
-  utterance.onerror = (event) => {
-    clearQueuedResult(label, result);
-    if (event.error !== 'canceled' && event.error !== 'interrupted') {
-      if (voice?.voiceURI) rejectedVoiceUris.add(voice.voiceURI);
-      scheduleVoiceRetry();
-    }
-  };
 
-  synthesis.cancel();
-  window.setTimeout(() => {
-    if (!isEnabled() || spokenByElement.get(label) === result) {
-      clearQueuedResult(label, result);
-      return;
-    }
-    synthesis.resume();
-    synthesis.speak(utterance);
-  }, SPEAK_AFTER_CANCEL_DELAY_MS);
+  if (activeAudio && activeAudio !== audio) {
+    activeAudio.pause();
+    activeAudio.currentTime = 0;
+  }
+  activeAudio = audio;
+  audio.pause();
+  audio.currentTime = 0;
+  audio.muted = false;
+  audio.volume = RESULT_AUDIO_VOLUME;
+
+  const handleEnded = () => clearQueuedResult(label, result);
+  const handleError = () => clearQueuedResult(label, result);
+  audio.addEventListener('ended', handleEnded, { once: true });
+  audio.addEventListener('error', handleError, { once: true });
+
+  void audio.play().then(() => {
+    playedByElement.set(label, result);
+  }).catch(() => {
+    audio.removeEventListener('ended', handleEnded);
+    audio.removeEventListener('error', handleError);
+    clearQueuedResult(label, result);
+  });
   return true;
 };
 
 const clearHiddenResult = () => {
   if (!currentVisibleLabel) return;
-  spokenByElement.delete(currentVisibleLabel);
+  playedByElement.delete(currentVisibleLabel);
   queuedByElement.delete(currentVisibleLabel);
   currentVisibleLabel = null;
 };
 
-const speakVisibleResultOnce = (isEnabled: () => boolean) => {
+const playVisibleResultOnce = (isEnabled: () => boolean) => {
   const label = document.querySelector<HTMLElement>('.roll-label:not([hidden])');
   if (!label || label.getAttribute('aria-hidden') === 'true') {
     clearHiddenResult();
@@ -126,19 +111,19 @@ const speakVisibleResultOnce = (isEnabled: () => boolean) => {
   }
   if (!isEnabled()) return;
   if (currentVisibleLabel && currentVisibleLabel !== label) {
-    spokenByElement.delete(currentVisibleLabel);
+    playedByElement.delete(currentVisibleLabel);
     queuedByElement.delete(currentVisibleLabel);
   }
   currentVisibleLabel = label;
   const result = normalizeSpokenYutResult(label.textContent ?? '');
-  if (!result || spokenByElement.get(label) === result || queuedByElement.get(label) === result) return;
-  speakResult(label, result, isEnabled);
+  if (!result || playedByElement.get(label) === result || queuedByElement.get(label) === result) return;
+  playResult(label, result, isEnabled);
 };
 
 const startObserving = (isEnabled: () => boolean) => {
   if (!document.body || observer) return;
-  const check = () => speakVisibleResultOnce(isEnabled);
-  activeCheck = check;
+  preloadResultAudio();
+  const check = () => playVisibleResultOnce(isEnabled);
   observer = new MutationObserver(check);
   observer.observe(document.body, {
     childList: true,
@@ -147,14 +132,13 @@ const startObserving = (isEnabled: () => boolean) => {
     attributes: true,
     attributeFilter: ['class', 'hidden', 'aria-hidden'],
   });
-  window.speechSynthesis?.addEventListener?.('voiceschanged', check);
-  const resumeAndCheck = () => {
-    window.speechSynthesis?.resume();
+  const unlockAndCheck = () => {
+    unlockResultAudio();
     check();
   };
-  window.addEventListener('pointerdown', resumeAndCheck, { passive: true });
-  window.addEventListener('touchstart', resumeAndCheck, { passive: true });
-  window.addEventListener('keydown', resumeAndCheck);
+  window.addEventListener('pointerdown', unlockAndCheck, { passive: true });
+  window.addEventListener('touchstart', unlockAndCheck, { passive: true });
+  window.addEventListener('keydown', unlockAndCheck);
   check();
 };
 
