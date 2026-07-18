@@ -20,8 +20,8 @@ export type PreferenceStorage = {
 };
 
 const getBrowserStorage = (): PreferenceStorage | null => {
-  if (typeof window === 'undefined') return null;
-  return window.localStorage;
+  const browserWindow = (globalThis as { window?: { localStorage?: PreferenceStorage } }).window;
+  return browserWindow?.localStorage ?? null;
 };
 
 export const normalizeNickname = (value: string) => value.trim().slice(0, NICKNAME_MAX_LENGTH);
