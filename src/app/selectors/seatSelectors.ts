@@ -1,7 +1,32 @@
-import type { GameSeatSnapshot, RoomPlayer } from '../../features/room/services/roomService';
 import type { PlayMode, Seat, Team } from '../appTypes';
 import { PLAYER_COLOR_LABELS, ROOM_COLOR_LABELS } from '../constants/playerPresentation';
 import { getActivePlayerSeats, getSeatIndexFromLabel } from './gameViewSelectors';
+
+type RoomPlayerSeatSource = {
+  id: string;
+  nickname: string;
+  ready: boolean;
+  color: string;
+  seatIndex: number;
+  team: Team;
+  isAI?: boolean;
+  isSubstitutedByAI?: boolean;
+  isSpectator?: boolean;
+  enteredGameAt?: number;
+  enteredStartVersion?: number;
+};
+
+type GameSeatSnapshotShape = {
+  id: string;
+  label: string;
+  name: string;
+  color: string;
+  team: Team;
+  isHost?: boolean;
+  isAI?: boolean;
+  isSubstitutedByAI?: boolean;
+  seatIndex: number;
+};
 
 export const createSeats = (
   hostName: string,
@@ -25,7 +50,7 @@ export const createSeats = (
 };
 
 export const seatsFromRoomPlayers = (
-  players: RoomPlayer[],
+  players: RoomPlayerSeatSource[],
   playMode: PlayMode,
   playerCount: 2 | 3 | 4,
   hostId = '',
@@ -55,7 +80,7 @@ export const seatsFromRoomPlayers = (
 };
 
 export const seatsWithJoinedPlayer = (
-  players: RoomPlayer[],
+  players: RoomPlayerSeatSource[],
   currentUserId: string,
   nickname: string,
   playMode: PlayMode,
@@ -75,7 +100,7 @@ export const seatsWithJoinedPlayer = (
     : seat);
 };
 
-export const spectatorsFromRoomPlayers = (players: RoomPlayer[]): Seat[] => players
+export const spectatorsFromRoomPlayers = (players: RoomPlayerSeatSource[]): Seat[] => players
   .filter((player) => player.isSpectator)
   .map((player) => ({
     id: player.id,
@@ -87,7 +112,7 @@ export const spectatorsFromRoomPlayers = (players: RoomPlayer[]): Seat[] => play
     team: '청팀',
   }));
 
-export const gameSeatSnapshotsFromSeats = (sourceSeats: Seat[]): GameSeatSnapshot[] =>
+export const gameSeatSnapshotsFromSeats = (sourceSeats: Seat[]): GameSeatSnapshotShape[] =>
   getActivePlayerSeats(sourceSeats).map((seat) => ({
     id: seat.id,
     label: seat.label,
@@ -101,7 +126,7 @@ export const gameSeatSnapshotsFromSeats = (sourceSeats: Seat[]): GameSeatSnapsho
   }));
 
 export const seatsFromGameSeatSnapshots = (
-  gameSeats: GameSeatSnapshot[],
+  gameSeats: GameSeatSnapshotShape[],
   playMode: PlayMode,
   playerCount: 2 | 3 | 4,
 ): Seat[] => {
