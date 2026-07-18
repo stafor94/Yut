@@ -1,4 +1,3 @@
-import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { PieceCount, PlayMode, Seat, Team } from '../appTypes';
 import { PLAYER_COLORS, TEAM_COLORS } from '../constants/playerPresentation';
 import { getOccupiedSeats, getSeatIndexFromLabel } from '../selectors/gameViewSelectors';
@@ -7,7 +6,7 @@ export const makePieces = (
   seats: Seat[],
   pieceCount: PieceCount,
   mode: PlayMode = 'individual',
-): BoardPiece[] => {
+) => {
   const activeSeats = getOccupiedSeats(seats);
 
   if (mode === 'team') {
