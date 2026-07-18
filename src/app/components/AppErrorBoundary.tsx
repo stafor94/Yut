@@ -40,7 +40,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
       <section className="app-render-error-card">
         <p className="section-kicker">화면 오류</p>
         <h1>게임 화면을 표시하지 못했습니다</h1>
-        <p>게임 데이터는 서버에 유지됩니다. 화면을 다시 불러와 최신 상태로 복구하세요.</p>
+        <p>화면을 다시 불러와 복구를 시도하세요. 온라인 게임은 최신 서버 상태를 다시 불러옵니다.</p>
         <button type="button" onClick={() => window.location.reload()}>게임 화면 다시 불러오기</button>
         <details>
           <summary>오류 정보</summary>
