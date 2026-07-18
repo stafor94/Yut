@@ -108,7 +108,7 @@ test('new prepared game state clears every pending item and movement field', () 
   assert.equal(state.pendingItemPickup, null);
   assert.equal(state.pendingTrapPlacement, null);
   assert.equal(state.pendingGoldenYutSelection, null);
-  assert.equal(state.pendingAfterMoveTurnIndex, null);
+  assert.equal(state.pendingAfterMoveTurnIndex, undefined);
   assert.equal(state.itemPromptTiming, null);
   assert.equal(state.selectedRollStackIndex, null);
   assert.deepEqual(state.lastMovedPieceIds, []);
