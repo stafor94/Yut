@@ -7,7 +7,7 @@ function hoistAppTrapPlacementHelpers(): Plugin {
     name: 'hoist-app-trap-placement-helpers',
     enforce: 'pre',
     transform(source, id) {
-      if (!id.replaceAll('\\', '/').endsWith('/src/app/App.tsx')) return null;
+      if (!id.replace(/\\/g, '/').endsWith('/src/app/App.tsx')) return null;
       return {
         code: hoistTrapPlacementHelpers(source),
         map: null,
