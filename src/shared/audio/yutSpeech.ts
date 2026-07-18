@@ -1,5 +1,6 @@
 import { normalizeSpokenYutResult, type SpokenYutResult } from '../../app/flows/rollSpeech';
 import backdoAudioSource from './assets/backdo';
+import bonusAudioSource from './assets/bonus';
 import doAudioSource from './assets/do';
 import gaeAudioSource from './assets/gae';
 import geolAudioSource from './assets/geol';
@@ -8,6 +9,7 @@ import nakAudioSource from './assets/nak';
 import yutAudioSource from './assets/yut';
 
 const RESULT_AUDIO_VOLUME = 0.9;
+const BONUS_AUDIO_VOLUME = 0.9;
 
 const RESULT_AUDIO_SOURCE: Record<SpokenYutResult, string> = {
   도: doAudioSource,
@@ -26,6 +28,7 @@ let observer: MutationObserver | null = null;
 let bindingScheduled = false;
 let currentVisibleLabel: HTMLElement | null = null;
 let activeAudio: HTMLAudioElement | null = null;
+let bonusAudio: HTMLAudioElement | null = null;
 let audioUnlocked = false;
 
 const getResultAudio = (result: SpokenYutResult) => {
@@ -39,10 +42,19 @@ const getResultAudio = (result: SpokenYutResult) => {
   return audio;
 };
 
+const getBonusAudio = () => {
+  if (bonusAudio) return bonusAudio;
+  bonusAudio = new Audio(bonusAudioSource);
+  bonusAudio.preload = 'auto';
+  bonusAudio.volume = BONUS_AUDIO_VOLUME;
+  return bonusAudio;
+};
+
 const preloadResultAudio = () => {
   (Object.keys(RESULT_AUDIO_SOURCE) as SpokenYutResult[]).forEach((result) => {
     getResultAudio(result).load();
   });
+  getBonusAudio().load();
 };
 
 const unlockResultAudio = () => {
@@ -63,6 +75,21 @@ const clearQueuedResult = (label: Element, result: SpokenYutResult) => {
   if (queuedByElement.get(label) === result) queuedByElement.delete(label);
 };
 
+const playBonus = (isEnabled: () => boolean) => {
+  if (!isEnabled()) return;
+  const audio = getBonusAudio();
+  if (activeAudio && activeAudio !== audio) {
+    activeAudio.pause();
+    activeAudio.currentTime = 0;
+  }
+  activeAudio = audio;
+  audio.pause();
+  audio.currentTime = 0;
+  audio.muted = false;
+  audio.volume = BONUS_AUDIO_VOLUME;
+  void audio.play().catch(() => undefined);
+};
+
 const playResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () => boolean) => {
   if (typeof window === 'undefined' || typeof Audio === 'undefined') return false;
   if (playedByElement.get(label) === result || queuedByElement.get(label) === result) return true;
@@ -81,7 +108,10 @@ const playResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () =
   audio.muted = false;
   audio.volume = RESULT_AUDIO_VOLUME;
 
-  const handleEnded = () => clearQueuedResult(label, result);
+  const handleEnded = () => {
+    clearQueuedResult(label, result);
+    if (result === '윷' || result === '모') playBonus(isEnabled);
+  };
   const handleError = () => clearQueuedResult(label, result);
   audio.addEventListener('ended', handleEnded, { once: true });
   audio.addEventListener('error', handleError, { once: true });
