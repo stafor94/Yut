@@ -11,6 +11,7 @@ import { useRooms } from '../features/room/hooks/useRooms';
 import { useAppPreferences } from './hooks/useAppPreferences';
 import { useRoomCreationController } from './controllers/useRoomCreationController';
 import { useRoomEntryController } from './controllers/useRoomEntryController';
+import { useStoredRoomRecoveryController } from './controllers/useStoredRoomRecoveryController';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
@@ -1145,59 +1146,25 @@ export function App() {
     window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
   }, [isRoomHost, screen]);
 
-  useEffect(() => {
-    if (!currentUser || activeRoomId) return;
-    const storedRoomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId);
-    if (!storedRoomId) return;
-    let cancelled = false;
-    setLoadingMessage('참여 중이던 방을 확인하고 있습니다...');
-    void (async () => {
-      try {
-        const storedRoom = await getRoom(storedRoomId);
-        if (cancelled) return;
-        if (!storedRoom || storedRoom.status === 'finished') {
-          window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-          window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-          setLoadingMessage('');
-          setMessage('이전에 참여했던 방이 없어져 대기화면으로 돌아왔습니다.');
-          return;
-        }
-
-        const restoredAsHost = storedRoom.hostId === currentUser.uid;
-        const restoredMaxPlayers = storedRoom.maxPlayers as 2 | 3 | 4;
-        const joinResult = await joinRoom(storedRoom.id, { userId: currentUser.uid, nickname, playMode: storedRoom.playMode });
-        if (cancelled) return;
-
-        setActiveRoomId(storedRoom.id);
-        setIsRoomHost(restoredAsHost);
-        setActiveRoomTitle(storedRoom.title);
-        setActiveRoomHostId(storedRoom.hostId ?? '');
-        setPlayMode(storedRoom.playMode);
-        setMaxPlayers(restoredMaxPlayers);
-        setItemMode(storedRoom.itemMode);
-        setStackedRollMode(Boolean(storedRoom.stackedRollMode));
-        setPieceCount(storedRoom.pieceCount ?? 4);
-        if (joinResult.role === 'player') {
-          setSeats(seatsWithJoinedPlayer([], currentUser.uid, nickname, storedRoom.playMode, restoredMaxPlayers, joinResult.seatIndex));
-        }
-        setScreen(isRoomInGame(storedRoom) ? 'game' : 'waitingRoom');
-        setLoadingMessage('');
-        setMessage('참여 중이던 방에 다시 입장했습니다.');
-      } catch (error) {
-        if (cancelled) return;
-        window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-        window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-        hostingRoomUserIdRef.current = '';
-        setActiveRoomId('');
-        setIsRoomHost(false);
-        setActiveRoomTitle('');
-        setScreen('lobby');
-        setLoadingMessage('');
-        setMessage(error instanceof Error ? error.message : '이전 방 복구에 실패했습니다. 다시 참가해주세요.');
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [activeRoomId, currentUser, nickname]);
+  useStoredRoomRecoveryController({
+    currentUser,
+    activeRoomId,
+    nickname,
+    hostingRoomUserIdRef,
+    onActiveRoomIdChange: setActiveRoomId,
+    onRoomHostChange: setIsRoomHost,
+    onActiveRoomTitleChange: setActiveRoomTitle,
+    onRoomHostIdChange: setActiveRoomHostId,
+    onPlayModeChange: setPlayMode,
+    onMaxPlayersChange: setMaxPlayers,
+    onItemModeChange: setItemMode,
+    onStackedRollModeChange: setStackedRollMode,
+    onPieceCountChange: setPieceCount,
+    onSeatsChange: setSeats,
+    onScreenChange: setScreen,
+    onMessage: setMessage,
+    onLoadingMessage: setLoadingMessage,
+  });
 
   useRoomPresence(activeRoomId, localSeatId, { canCleanup: canOwnRoomPresenceCleanup });
   const { handlePresencePlayerSnapshot } = usePresenceRecovery({

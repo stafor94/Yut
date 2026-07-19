@@ -91,7 +91,7 @@ export async function openWaitingRoomForEntry(params: RoomEntryControllerParams 
     const joiningUser = !asHost && room.id && runtime.firebaseConfigured ? roomUser ?? await withJoinAuthTimeout(runtime.signInAsGuest, runtime.setTimeout) : roomUser;
     if (!asHost && room.id && runtime.firebaseConfigured && !joiningUser) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
     if (joiningUser) params.rememberUser(joiningUser);
-    const previousRoomCleanup = leavePreviousOnlineRoomForEntry(params);
+    const previousRoomCleanup = leavePreviousOnlineRoomForEntry({ ...params, nextRoomId: room.id ?? '' });
     if (asHost) void previousRoomCleanup;
     else await previousRoomCleanup;
     const joinResult = !asHost && room.id && joiningUser ? await runtime.joinRoom(room.id, { userId: joiningUser.uid, nickname: params.nickname, playMode: room.playMode }) : null;
