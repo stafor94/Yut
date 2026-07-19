@@ -4,6 +4,7 @@ import { REMOTE_ROLL_PRE_RESULT_MS } from './yutRollAnimation';
 export const REMOTE_ROLL_RESULT_HOLD_MS = 1400;
 export const REMOTE_ROLL_PRESENTATION_MS = REMOTE_ROLL_PRE_RESULT_MS + REMOTE_ROLL_RESULT_HOLD_MS;
 export const MOVE_FRAME_PRESENTATION_MS = 240;
+export const GAME_ANIMATION_SEQUENCE_WAIT_TIMEOUT_MS = 15000;
 
 export function getRollPresentationAnimationId(sourceAnimationId: number, now = Date.now()) {
   return Math.max(sourceAnimationId, now);
@@ -18,8 +19,15 @@ export type GameAnimationSequence<T> = {
   isSettled: () => boolean;
 };
 
-export function createGameAnimationSequence<T>(): GameAnimationSequence<T> {
+export type GameAnimationSequenceOptions = {
+  timeoutMs?: number;
+};
+
+export function createGameAnimationSequence<T>({
+  timeoutMs = GAME_ANIMATION_SEQUENCE_WAIT_TIMEOUT_MS,
+}: GameAnimationSequenceOptions = {}): GameAnimationSequence<T> {
   let settled = false;
+  let waitTimer: ReturnType<typeof setTimeout> | null = null;
   let settlePromise!: (value: T | null) => void;
   const promise = new Promise<T | null>((resolve) => {
     settlePromise = resolve;
@@ -27,11 +35,23 @@ export function createGameAnimationSequence<T>(): GameAnimationSequence<T> {
   const settle = (value: T | null) => {
     if (settled) return;
     settled = true;
+    if (waitTimer !== null) {
+      clearTimeout(waitTimer);
+      waitTimer = null;
+    }
     settlePromise(value);
   };
 
   return {
-    wait: () => promise,
+    wait: () => {
+      if (!settled && waitTimer === null && Number.isFinite(timeoutMs)) {
+        waitTimer = setTimeout(() => {
+          waitTimer = null;
+          settle(null);
+        }, Math.max(0, timeoutMs));
+      }
+      return promise;
+    },
     resolve: (value) => settle(value),
     cancel: () => settle(null),
     isSettled: () => settled,
