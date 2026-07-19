@@ -11,7 +11,7 @@ import {
   getActiveRoomsWithPlayers,
   type ManagedRoomSummary,
 } from './roomLifecycleStore';
-import { hasCreationBlockingHumanPlayer, hasResumablePlayerForUser } from './roomLifecyclePolicy';
+import { hasActiveHumanLifecyclePlayer, hasResumablePlayerForUser } from './roomLifecyclePolicy';
 import { removeRoomPlayerNow } from './roomExitService';
 import { leavePlayerRoomsBeforeCreate } from './roomCreationCleanup';
 import { waitForRoomCreationLock } from './roomCreationLock';
@@ -125,14 +125,14 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
       room.hostId === params.hostId && hasResumablePlayerForUser(players, params.hostId)
     ));
     if (ownResumableRoom) throw new Error(ACTIVE_HOST_ROOM_ERROR);
+    const now = Date.now();
     const activeUserRooms = activeRoomCandidates
-      .filter(({ players }) => hasCreationBlockingHumanPlayer(players))
+      .filter(({ players }) => hasActiveHumanLifecyclePlayer(players, now))
       .map(({ room }) => room)
       .filter((room) => !isQaRoomTitle(room.title));
     if (!isQaRoomTitle(normalizedTitle) && activeUserRooms.length >= 3) throw new Error(ACTIVE_ROOM_LIMIT_ERROR);
     if (activeUserRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error(DUPLICATE_ROOM_TITLE_ERROR);
 
-    const now = Date.now();
     const batch = writeBatch(db);
     batch.set(roomRef, {
       title: normalizedTitle,
