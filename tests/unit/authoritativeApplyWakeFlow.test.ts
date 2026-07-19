@@ -49,6 +49,40 @@ test('wake snapshot은 authoritative 결과의 유효한 게임 시작 식별자
   assert.equal(wakeSnapshot.startRequestId, 'start-new');
 });
 
+test('wake snapshot은 queued commit 결과의 sequence와 patch를 현재 상태에 병합한다', () => {
+  const latestSnapshot = {
+    lastSequence: 3,
+    startRequestVersion: 1,
+    startRequestId: 'start-1',
+    turnIndex: 0,
+    pieces: [{ id: 'human-piece', nodeId: 'n03' }],
+    gameSeats: [{ id: 'human', isAI: false }, { id: 'slot-2', isAI: true }],
+    roll: { name: '개', steps: 2 },
+    rollStack: [],
+  };
+  const committedResult = {
+    status: 'committed',
+    sequence: 4,
+    patch: {
+      turnIndex: 1,
+      pieces: [{ id: 'human-piece', nodeId: 'n05' }],
+      roll: null,
+      lastMovedSeatId: 'human',
+    },
+  };
+
+  const wakeSnapshot = buildAuthoritativeApplyWakeSnapshot(committedResult, latestSnapshot) as unknown as Record<string, unknown>;
+
+  assert.equal(wakeSnapshot.lastSequence, 4);
+  assert.equal(wakeSnapshot.turnIndex, 1);
+  assert.equal(wakeSnapshot.roll, null);
+  assert.equal(wakeSnapshot.lastMovedSeatId, 'human');
+  assert.equal(wakeSnapshot.startRequestVersion, 1);
+  assert.equal(wakeSnapshot.startRequestId, 'start-1');
+  assert.notEqual(wakeSnapshot.pieces, committedResult.patch.pieces);
+  assert.notEqual(wakeSnapshot.gameSeats, latestSnapshot.gameSeats);
+});
+
 test('wake snapshot은 적용 결과가 객체가 아니면 생성하지 않는다', () => {
   assert.equal(buildAuthoritativeApplyWakeSnapshot(null, null), null);
   assert.equal(buildAuthoritativeApplyWakeSnapshot('invalid', null), null);
