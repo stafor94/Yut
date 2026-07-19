@@ -18,6 +18,7 @@ import { useWaitingRoomController } from './controllers/useWaitingRoomController
 import { useAuthoritativeGameSyncController } from './controllers/useAuthoritativeGameSyncController';
 import { useGameLifecycleController } from './controllers/useGameLifecycleController';
 import { useGameStartController } from './controllers/useGameStartController';
+import { useItemController } from './controllers/useItemController';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useGameSyncDebugState } from './hooks/useGameSync';
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
@@ -2859,6 +2860,42 @@ export function App() {
     },
   });
 
+  const { skipItemPrompt } = useItemController({
+    activeRoomId,
+    localSeatId,
+    turnIndex,
+    selectedRollStackIndex,
+    pendingAfterMoveTurnIndex,
+    lastAppliedSequenceRef,
+    shouldAdvanceTurnAfterItemPromptRef,
+    playableSeats,
+    itemPromptTiming,
+    pendingLocalRemoteActionsRef,
+    hasPendingUseItemActionFor,
+    getLocalActionKey,
+    withActorLogPayload,
+    addPendingLocalRemoteAction,
+    acknowledgePendingLocalRemoteAction,
+    removeSettledPendingLocalRemoteAction,
+    commitQueuedAuthoritativeGameAction,
+    enqueueAuthoritativeResultApplication,
+    applyAuthoritativeResultSequence,
+    syncLatestAuthoritativeState,
+    applyProcessedAuthoritativeAction,
+    recordRemoteActionDiagnostic,
+    clearTurnActionTimeoutPenalty,
+    markItemPromptResolved,
+    finishPendingAfterMoveTurnAdvance,
+    clearRoll,
+    setItemPromptTiming,
+    setPendingItemPromptChoice,
+    setTurnDeadlineAt,
+    setTurnDeadlineKind,
+    setTurnIndex,
+    setPendingAfterMoveTurnIndex,
+    setFallEffect,
+  });
+
   function canSubmitDeadlineRecovery() {
     return Boolean(activeRoomId && screen === 'game' && isOnlinePlayer && !isSpectator && activeSeat && !winner && !activeTurnOrderIntro && !turnOrderPhase.active && !pendingTrapPlacement);
   }
@@ -4363,64 +4400,7 @@ export function App() {
       onRollYut={rollYut}
       onSelectPieceId={setSelectedPieceId}
       onSelectTrapNode={placePendingTrap}
-      onSkipItemPrompt={() => {
-        if (activeRoomId) {
-          const promptTiming = itemPromptTiming;
-          if (!promptTiming || hasPendingUseItemActionFor(localSeatId)) return;
-          const promptRollStackIndex = selectedRollStackIndex;
-          const skipSeat = playableSeats.find((seat) => seat.id === localSeatId);
-          const payload = promptTiming === 'before_roll'
-            ? { skipBeforeRollItem: true }
-            : promptTiming === 'after_roll'
-              ? { skipAfterRollItem: true, rollStackIndex: promptRollStackIndex }
-              : { skipAfterMoveItem: true };
-          const clientMutationId = getLocalActionKey('use_item', payload);
-          if (pendingLocalRemoteActionsRef.current.has(clientMutationId)) return;
-          const action = { type: 'use_item' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
-          shouldAdvanceTurnAfterItemPromptRef.current = false;
-          markItemPromptResolved(promptTiming, promptRollStackIndex);
-          setItemPromptTiming(null);
-          if (promptTiming === 'before_roll') {
-            setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
-            setTurnDeadlineKind('roll');
-          } else if (promptTiming === 'after_roll') {
-            setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
-            setTurnDeadlineKind('move');
-          } else finishPendingAfterMoveTurnAdvance();
-          setPendingItemPromptChoice({ actionKey: clientMutationId, timing: promptTiming, itemType: null });
-          addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: localSeatId, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: true });
-          void commitQueuedAuthoritativeGameAction(activeRoomId, action)
-            .then(async (result) => {
-              await enqueueAuthoritativeResultApplication(activeRoomId, () => applyAuthoritativeResultSequence(result));
-              if (result.status === 'committed' || result.status === 'duplicate') acknowledgePendingLocalRemoteAction(clientMutationId);
-              if (result.status === 'rejected' || result.status === 'unsupported') {
-                setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
-                removeSettledPendingLocalRemoteAction(clientMutationId);
-                await syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
-              }
-            })
-            .catch((error) => {
-              recordRemoteActionDiagnostic('roll_yut', 'skip-item-prompt-error', error instanceof Error ? error.message : '아이템 건너뛰기 처리에 실패했습니다.', { actionKey: clientMutationId });
-              void applyProcessedAuthoritativeAction(clientMutationId)
-                .then((processedState) => processedState ? null : syncLatestAuthoritativeState('아이템 건너뛰기 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }))
-                .catch(() => { void syncLatestAuthoritativeState('아이템 건너뛰기 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }); });
-            });
-          return;
-        }
-        clearTurnActionTimeoutPenalty(localSeatId);
-        const skippedTiming = itemPromptTiming;
-        setItemPromptTiming(null);
-        markItemPromptResolved(skippedTiming, selectedRollStackIndex);
-        if (skippedTiming === 'after_move') finishPendingAfterMoveTurnAdvance();
-        else if (skippedTiming === 'after_roll' && typeof pendingAfterMoveTurnIndex === 'number') {
-          clearRoll();
-          setTurnIndex(pendingAfterMoveTurnIndex);
-          setPendingAfterMoveTurnIndex(null);
-          setFallEffect(null);
-          setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
-          setTurnDeadlineKind('roll');
-        }
-      }}
+      onSkipItemPrompt={skipItemPrompt}
       onUseItem={useItem}
       renderLogText={renderLogText}
     />}
