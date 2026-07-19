@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { SequenceStateSnapshot } from '../../src/app/appState.js';
 import { buildAuthoritativeApplyWakeSnapshot } from '../../src/app/flows/authoritativeApplyWakeFlow.js';
 
 test('wake snapshot은 최신 게임 시작 식별자를 보존하고 AI effect 의존 객체를 복제한다', () => {
@@ -12,7 +11,7 @@ test('wake snapshot은 최신 게임 시작 식별자를 보존하고 AI effect 
     gameSeats: [{ id: 'slot-2', isAI: true }],
     roll: null,
     rollStack: [],
-  } as unknown as SequenceStateSnapshot;
+  };
   const appliedValue = {
     lastSequence: 11,
     pieces: [{ id: 'piece-1', nodeId: 'n01' }],
@@ -38,7 +37,7 @@ test('wake snapshot은 authoritative 결과의 유효한 게임 시작 식별자
     lastSequence: 10,
     startRequestVersion: 3,
     startRequestId: 'start-old',
-  } as unknown as SequenceStateSnapshot;
+  };
 
   const wakeSnapshot = buildAuthoritativeApplyWakeSnapshot({
     lastSequence: 12,
