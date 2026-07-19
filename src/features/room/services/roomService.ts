@@ -3,6 +3,7 @@ import {
   doc,
   onSnapshot,
   query,
+  serverTimestamp,
   setDoc,
   where,
   writeBatch,
@@ -166,6 +167,23 @@ export async function deleteRoom(roomId: string, guard: RoomDeletionGuard = {}) 
   return deleteRoomSafely(roomId, guard);
 }
 
+export async function heartbeatRoomPlayer(roomId: string, playerId: string) {
+  if (!db || !roomId || !playerId) return false;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'rooms', roomId, 'players', playerId), { lastSeen: serverTimestamp() }, { merge: true });
+    batch.set(doc(db, 'rooms', roomId), {
+      lastHumanSeenAt: serverTimestamp(),
+      emptySince: null,
+      lastActivityAt: serverTimestamp(),
+    }, { merge: true });
+    await batch.commit();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
   const atomicAiSubstitution = isAiSubstitutionUpdate(params);
   try {
@@ -204,11 +222,11 @@ export async function updateRoomStatus(roomId: string, status: RoomSummary['stat
       lastActivityAt: Date.now(),
     }, { merge: true });
     await batch.commit();
-    await reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceClear: true });
+    await reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceClear: true, allowGraceStart: true });
     return;
   }
   await setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now(), deletingAt: null }, { merge: true });
-  await reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceClear: true });
+  await reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceClear: true, allowGraceStart: true });
 }
 
 export async function cleanupCurrentRoomPresence(...args: Parameters<typeof cleanupCurrentRoomPresenceSafely>) {
@@ -233,7 +251,7 @@ export async function cleanupCurrentRoomPresence(...args: Parameters<typeof clea
     await batch.commit();
   }
 
-  await reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceClear: true });
+  await reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceClear: true, allowGraceStart: true });
   return result;
 }
 
