@@ -9,7 +9,7 @@ export type AuthoritativeQueueHooks<T> = {
 export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
   activeRoomIdRef: RoomIdRef;
   commit: (roomId: string, action: TAction) => Promise<TResult>;
-  onApplySettled?: (roomId: string) => void;
+  onApplySettled?: (roomId: string, appliedValue: unknown) => void;
 }) {
   let commitQueue: Promise<void> = Promise.resolve();
   let applyQueue: Promise<void> = Promise.resolve();
@@ -31,14 +31,24 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
       if (params.activeRoomIdRef.current !== roomId) return null;
       return await applyResult();
     };
-    const queuedApply = applyQueue.then(runApply, runApply);
-    const settledApply = queuedApply.finally(() => {
+    const notifyApplySettled = (appliedValue: unknown) => {
       try {
-        params.onApplySettled?.(roomId);
+        params.onApplySettled?.(roomId, appliedValue);
       } catch {
         // 후속 화면 재평가 실패가 authoritative action 결과를 변경하지 않게 한다.
       }
-    });
+    };
+    const queuedApply = applyQueue.then(runApply, runApply);
+    const settledApply = queuedApply.then(
+      (appliedValue) => {
+        notifyApplySettled(appliedValue);
+        return appliedValue;
+      },
+      (error) => {
+        notifyApplySettled(undefined);
+        throw error;
+      },
+    );
     applyQueue = settledApply.then(() => undefined, () => undefined);
     return settledApply;
   };

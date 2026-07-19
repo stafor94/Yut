@@ -8,6 +8,7 @@ export type AuthoritativeCommitResult = Awaited<ReturnType<typeof commitAuthorit
 
 type RemoteActionType = GameAction['type'];
 type PendingMeta = { type?: RemoteActionType; actorId?: string; createdSequence?: number; createdTurnIndex?: number; optimisticApplied?: boolean };
+type SnapshotApplyOptions = { allowMoveAnimation?: boolean; allowRollAnimation?: boolean; updateVersion?: boolean; updateSequence?: boolean };
 
 type Params = {
   activeRoomId: string;
@@ -16,7 +17,7 @@ type Params = {
   lastAppliedStateVersionRef: React.MutableRefObject<number>;
   applyingSyncedStateRef: React.MutableRefObject<boolean>;
   replayMissingSequencesThenApply: (finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) => Promise<void>;
-  applySyncedStateSnapshot: (state: SequenceStateSnapshot) => void;
+  applySyncedStateSnapshot: (state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => void;
   applyAuthoritativeResultSequence: (result: AuthoritativeCommitResult) => Promise<unknown>;
   syncLatestAuthoritativeState: (reason: string, options?: { allowRollAnimation?: boolean; diagnosticType?: 'roll_yut' | 'move_piece' }) => Promise<boolean>;
   syncLatestSequencesFromBadge: () => Promise<void>;
@@ -30,23 +31,38 @@ type Params = {
   pendingLocalRemoteActionCount: number;
 };
 
+const isSequenceStateSnapshot = (value: unknown): value is SequenceStateSnapshot => Boolean(value && typeof value === 'object');
+
 export function useAuthoritativeGameSyncController(params: Params) {
-  const [, setAuthoritativeApplyWakeVersion] = useState(0);
+  const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
+  applySyncedStateSnapshotRef.current = params.applySyncedStateSnapshot;
+
   const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
   const clearAuthoritativeApplyWake = useCallback(() => {
     if (authoritativeApplyWakeTimerRef.current === null) return;
     window.clearTimeout(authoritativeApplyWakeTimerRef.current);
     authoritativeApplyWakeTimerRef.current = null;
   }, []);
-  const scheduleAuthoritativeApplyWake = useCallback((roomId: string) => {
-    if (params.activeRoomIdRef.current !== roomId) return;
+  const scheduleAuthoritativeApplyWake = useCallback((roomId: string, appliedValue: unknown) => {
+    if (params.activeRoomIdRef.current !== roomId || !isSequenceStateSnapshot(appliedValue)) return;
+    const appliedSequence = Number(appliedValue.lastSequence ?? 0);
+    if (!appliedSequence) return;
     clearAuthoritativeApplyWake();
     authoritativeApplyWakeTimerRef.current = window.setTimeout(() => {
       authoritativeApplyWakeTimerRef.current = null;
-      if (params.activeRoomIdRef.current !== roomId) return;
-      setAuthoritativeApplyWakeVersion((version) => version + 1);
+      if (params.activeRoomIdRef.current !== roomId || appliedSequence < params.lastAppliedSequenceRef.current) return;
+      applySyncedStateSnapshotRef.current({
+        ...appliedValue,
+        pieces: Array.isArray(appliedValue.pieces) ? appliedValue.pieces.map((piece) => ({ ...piece })) : appliedValue.pieces,
+        gameSeats: Array.isArray(appliedValue.gameSeats) ? appliedValue.gameSeats.map((seat) => ({ ...seat })) : appliedValue.gameSeats,
+      }, {
+        allowMoveAnimation: false,
+        allowRollAnimation: false,
+        updateVersion: false,
+        updateSequence: false,
+      });
     }, 0);
-  }, [clearAuthoritativeApplyWake, params.activeRoomIdRef]);
+  }, [clearAuthoritativeApplyWake, params.activeRoomIdRef, params.lastAppliedSequenceRef]);
 
   const queuesRef = useRef<ReturnType<typeof createAuthoritativeGameActionQueues<Omit<GameAction, 'id' | 'createdAt' | 'processed'>, AuthoritativeCommitResult>> | null>(null);
   if (!queuesRef.current) {
