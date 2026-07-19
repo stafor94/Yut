@@ -20,8 +20,20 @@ export type PreferenceStorage = {
 };
 
 const getBrowserStorage = (): PreferenceStorage | null => {
-  const browserWindow = (globalThis as { window?: { localStorage?: PreferenceStorage } }).window;
-  return browserWindow?.localStorage ?? null;
+  try {
+    const browserWindow = (globalThis as { window?: { localStorage?: PreferenceStorage } }).window;
+    return browserWindow?.localStorage ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const readStorageItem = (storage: PreferenceStorage | null, key: string) => {
+  try {
+    return storage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
 };
 
 export const normalizeNickname = (value: string) => value.trim().slice(0, NICKNAME_MAX_LENGTH);
@@ -30,15 +42,15 @@ export const readStoredText = (
   storage: PreferenceStorage | null,
   key: string,
   fallback: string,
-) => storage?.getItem(key) || fallback;
+) => readStorageItem(storage, key) || fallback;
 
 export const readStoredBoolean = (
   storage: PreferenceStorage | null,
   key: string,
   fallback: boolean,
 ) => {
-  const stored = storage?.getItem(key);
-  return stored === null || stored === undefined ? fallback : stored === 'true';
+  const stored = readStorageItem(storage, key);
+  return stored === null ? fallback : stored === 'true';
 };
 
 export const readStoredNumber = <T extends number>(
@@ -47,7 +59,7 @@ export const readStoredNumber = <T extends number>(
   fallback: T,
   allowed: readonly T[],
 ): T => {
-  const stored = Number(storage?.getItem(key));
+  const stored = Number(readStorageItem(storage, key));
   return allowed.includes(stored as T) ? stored as T : fallback;
 };
 
