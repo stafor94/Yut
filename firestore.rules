@@ -69,14 +69,17 @@ service cloud.firestore {
     }
 
     function hasExpiredEmptyGrace(roomId) {
-      let room = get(roomPath(roomId)).data;
+      let hasRoom = roomExists(roomId) || roomExistsAfter(roomId);
+      let room = roomExists(roomId)
+        ? get(roomPath(roomId)).data
+        : getAfter(roomPath(roomId)).data;
       let explicitGraceExpired = ('emptySince' in room)
         && room.emptySince is timestamp
         && request.time >= room.emptySince + duration.value(3, 'm');
       let heartbeatGraceExpired = ('lastHumanSeenAt' in room)
         && room.lastHumanSeenAt is timestamp
         && request.time >= room.lastHumanSeenAt + duration.value(225, 's');
-      return roomExists(roomId) && (explicitGraceExpired || heartbeatGraceExpired);
+      return hasRoom && (explicitGraceExpired || heartbeatGraceExpired);
     }
 
     function startsEmptyRoomGrace(roomId) {
