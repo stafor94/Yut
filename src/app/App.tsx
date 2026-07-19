@@ -9,6 +9,7 @@ import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollA
 import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useAppPreferences } from './hooks/useAppPreferences';
+import { useRoomCreationController } from './controllers/useRoomCreationController';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
@@ -27,7 +28,7 @@ import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItem
 import { getStartGameBlockMessage } from './flows/gameStartFlow';
 import { classifyTurnActionFeedback, shouldClearActionErrorDialog, shouldOpenTurnActionErrorDialog } from './flows/actionFeedback';
 import { ROOM_PLAYER_MISSING_GRACE_MS } from './flows/presenceRecovery';
-import { RoomCreationTimeoutError, createRoomRequestIdentity, isMatchingCreatedRoom, isRoomTransitionInProgress, withOperationTimeout } from './flows/roomCreationFlow';
+import { isRoomTransitionInProgress } from './flows/roomCreationFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
 import { calculatePieceSelection } from './flows/pieceSelection';
@@ -101,8 +102,6 @@ import {
   AI_AUTHORITATIVE_ACTION_RETRY_LIMIT,
   AI_MOVE_DELAY_MS,
   CREATE_ROOM_AUTH_TIMEOUT_MS,
-  CREATE_ROOM_COMMIT_TIMEOUT_MS,
-  CREATE_ROOM_RECOVERY_TIMEOUT_MS,
   ITEM_PROMPT_TIMEOUT_MS,
   ITEM_REPLACE_TIMEOUT_MS,
   AUTO_SINGLE_MOVE_DELAY_MS,
@@ -198,8 +197,6 @@ export function App() {
   const [pendingItemPickup, setPendingItemPickup] = useState<PendingItemPickup | null>(null);
   const [seats, setSeats] = useState<Seat[]>(() => createSeats('플레이어', 'individual', 4));
   const [pieces, setPieces] = useState<BoardPiece[]>(() => makePieces(createSeats('플레이어', 'individual', 4), 4));
-  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
-  const pendingRoomCreationRef = useRef<{ roomId: string; createRequestId: string; title: string } | null>(null);
   const [gameStartedAt, setGameStartedAt] = useState<number | null>(null);
   const [playTimeNow, setPlayTimeNow] = useState(() => Date.now());
   const [boardItems, setBoardItems] = useState<BoardItem[]>([]);
@@ -2648,6 +2645,27 @@ export function App() {
     return { ...payload, actorLabel: seat?.label ?? '', actorName: seat?.name ?? '', actorLogName: getActorLogName(seat) };
   }
 
+
+  const { isCreatingRoom, handleCreateRoom } = useRoomCreationController({
+    title,
+    nickname,
+    playMode,
+    maxPlayers,
+    itemMode,
+    stackedRollMode,
+    pieceCount,
+    currentUser,
+    userRef,
+    rememberUser,
+    onMaxPlayersChange: setMaxPlayers,
+    onMessage: setMessage,
+    onLoadingMessage: setLoadingMessage,
+    onRoomNotice: setRoomNoticeDialog,
+    onRoomCreated: async (room, hostUser, nextMessage = '') => {
+      await openWaitingRoom(room, nextMessage, true, hostUser);
+    },
+  });
+
   async function leavePreviousOnlineRoom(nextRoomId = '') {
     const previousRoomId = activeRoomIdRef.current || window.localStorage.getItem(STORAGE_KEYS.activeRoomId) || '';
     const roomUser = userRef.current ?? currentUser;
@@ -2667,83 +2685,6 @@ export function App() {
     }
   }
 
-
-  function showRoomCreationFailure(messageText: string) {
-    setMessage(messageText);
-    setRoomNoticeDialog({ title: '방 생성에 실패했습니다', message: messageText });
-  }
-
-  async function findCreatedRoomWithTimeout(request: { roomId: string; createRequestId: string }, hostId: string) {
-    try {
-      const room = await withOperationTimeout(getRoom(request.roomId), CREATE_ROOM_RECOVERY_TIMEOUT_MS, 'recover');
-      return isMatchingCreatedRoom(room, { ...request, hostId }) ? room : null;
-    } catch {
-      return null;
-    }
-  }
-
-  async function handleCreateRoom() {
-    const normalizedTitle = title.trim();
-    if (!nickname.trim()) { setMessage('닉네임을 먼저 정해주세요.'); return; }
-    if (isCreatingRoom) return;
-    setIsCreatingRoom(true);
-    setMessage('');
-    setLoadingMessage(isFirebaseConfigured && !currentUser ? '입장 준비를 마친 뒤 방을 만드는 중입니다...' : '방을 만드는 중입니다. 잠시만 기다려주세요...');
-    let roomHost = userRef.current ?? currentUser;
-    const existingRequest = pendingRoomCreationRef.current;
-    const request = existingRequest?.title === normalizedTitle
-      ? existingRequest
-      : { ...createRoomRequestIdentity(typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`), title: normalizedTitle };
-    pendingRoomCreationRef.current = request;
-    try {
-      const roomMaxPlayers = normalizeMaxPlayers(maxPlayers, playMode);
-      if (roomMaxPlayers !== maxPlayers) setMaxPlayers(roomMaxPlayers);
-      if (!isFirebaseConfigured) {
-        pendingRoomCreationRef.current = null;
-        setLoadingMessage('');
-        setMessage('Firebase 연결 정보가 없어 온라인 방을 만들 수 없습니다.');
-        return;
-      }
-      roomHost = roomHost ?? await withOperationTimeout(signInAsGuest(), CREATE_ROOM_AUTH_TIMEOUT_MS, 'auth');
-      if (!roomHost) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
-      rememberUser(roomHost);
-      const roomId = await withOperationTimeout(createRoom({
-        title: normalizedTitle,
-        hostId: roomHost.uid,
-        nickname,
-        maxPlayers: roomMaxPlayers,
-        itemMode,
-        stackedRollMode,
-        playMode,
-        pieceCount,
-        roomId: request.roomId,
-        createRequestId: request.createRequestId,
-      }), CREATE_ROOM_COMMIT_TIMEOUT_MS, 'create');
-      pendingRoomCreationRef.current = null;
-      await openWaitingRoom({ id: roomId, title: normalizedTitle, itemMode, stackedRollMode, maxPlayers: roomMaxPlayers, playMode, pieceCount }, '', true, roomHost);
-    } catch (error) {
-      if (isFirebaseConfigured && roomHost && error instanceof RoomCreationTimeoutError && error.operation === 'create') {
-        setLoadingMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
-        const recoveredRoom = await findCreatedRoomWithTimeout(request, roomHost.uid);
-        if (recoveredRoom) {
-          pendingRoomCreationRef.current = null;
-          await openWaitingRoom(recoveredRoom, '방 생성은 완료되어 대기실로 이동했습니다.', true, roomHost);
-        } else {
-          setLoadingMessage('');
-          showRoomCreationFailure('방 만들기 응답이 지연되고 있습니다. 같은 요청으로 다시 확인할 수 있으니 잠시 뒤 방 만들기를 다시 눌러주세요.');
-        }
-      } else {
-        pendingRoomCreationRef.current = null;
-        setLoadingMessage('');
-        const messageText = error instanceof RoomCreationTimeoutError && error.operation === 'auth'
-          ? '입장 준비 시간이 초과되었습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.'
-          : error instanceof Error ? error.message : '방 생성에 실패했습니다. 잠시 뒤 다시 시도해주세요.';
-        showRoomCreationFailure(messageText);
-      }
-    } finally {
-      setIsCreatingRoom(false);
-    }
-  }
 
   async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'stackedRollMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & { id?: string }, nextMessage = '', asHost = false, hostUserOverride: User | null = null) {
     leavingRoomRef.current = false;
