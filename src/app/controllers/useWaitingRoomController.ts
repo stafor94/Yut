@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type MutableRefObject, type Dispatch, type SetStateAction } from 'react';
 import { removeRoomPlayer, updateRoomOptions, updateRoomPlayer, type RoomPlayer } from '../../features/room/services/roomService';
 import { createSeats, STORAGE_KEYS, type PieceCount, type PlayMode, type Seat, type Team } from '../appState';
+import { makeUniqueAIName } from '../flows/aiName';
 
 type Params = {
   activeRoomId: string; localSeatId: string; screen: 'lobby' | 'waitingRoom' | 'game'; nickname: string; playMode: PlayMode; maxPlayers: 2 | 3 | 4; itemMode: boolean; stackedRollMode: boolean; pieceCount: PieceCount; seats: Seat[]; canManageRoom: boolean; isRoomManager: boolean; activeRoomIdRef: MutableRefObject<string>; leavingRoomRef: MutableRefObject<boolean>; confirmedRoomPlayerRef: MutableRefObject<boolean>; hostingRoomUserIdRef: MutableRefObject<string>; addLog: (text: string) => void; setSeats: Dispatch<SetStateAction<Seat[]>>; setMessage: (message: string) => void; setScreen: (screen: 'lobby' | 'waitingRoom' | 'game') => void; setActiveRoomId: (id: string) => void; setActiveRoomTitle: (title: string) => void; setActiveRoomHostId: (id: string) => void; setIsRoomHost: (isHost: boolean) => void; setCountdown: (countdown: number) => void; setTurnOrderIds: (ids: string[]) => void; setGameStartedAt: (startedAt: number | null) => void; setPlayMode: (mode: PlayMode) => void; setMaxPlayers: (count: 2 | 3 | 4) => void; setItemMode: (enabled: boolean) => void; setStackedRollMode: (enabled: boolean) => void; setPieceCount: (count: PieceCount) => void;
@@ -17,7 +18,6 @@ export function useWaitingRoomController(p: Params) {
   const sync = () => setPendingAiSeatCount(pendingAiSeatIdsRef.current.size);
   const addPendingAiSeat = (id: string) => { if (id) { pendingAiSeatIdsRef.current.add(id); sync(); } };
   const clearPendingAiSeat = (id: string) => { if (id && pendingAiSeatIdsRef.current.delete(id)) sync(); };
-  const makeUniqueAIName = (currentSeats: Seat[]) => { const used = new Set(currentSeats.map((seat) => seat.name)); let suffix = 1; while (used.has(`AI 친구 ${suffix}`)) suffix += 1; return `AI 친구 ${suffix}`; };
 
   const toggleMyReady = useCallback(async () => {
     if (p.isRoomManager) return;

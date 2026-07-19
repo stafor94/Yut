@@ -95,6 +95,13 @@ const playBonus = (isEnabled: () => boolean, sequence: number) => {
   void audio.play().catch(() => undefined);
 };
 
+export const playBonusSpeech = (isEnabled: () => boolean) => {
+  if (typeof window === 'undefined' || typeof Audio === 'undefined' || !isEnabled()) return false;
+  playSequence += 1;
+  playBonus(isEnabled, playSequence);
+  return true;
+};
+
 const playResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () => boolean) => {
   if (typeof window === 'undefined' || typeof Audio === 'undefined') return false;
   if (playedByElement.get(label) === result || queuedByElement.get(label) === result) return true;

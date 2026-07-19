@@ -5,6 +5,7 @@ import {
   REMOTE_ROLL_PRESENTATION_MS,
   REMOTE_ROLL_RESULT_HOLD_MS,
   createGameAnimationQueue,
+  createGameAnimationSequence,
   enqueueRollPresentation,
   getRollPresentationAnimationId,
 } from '../../src/app/flows/gameAnimationQueue.js';
@@ -65,6 +66,36 @@ test('queued remote rolls use the actual execution time and lock gameplay while 
   assert.equal(presentedAnimationId, 12_000);
   await flushMicrotasks();
   assert.equal(lock.isLocked(), false);
+});
+
+test('a roll sequence keeps later animations queued until its resolved presentation finishes', async () => {
+  const queue = createGameAnimationQueue();
+  const sequence = createGameAnimationSequence<string>();
+  const resultHold = createDeferred();
+  const order: string[] = [];
+
+  const roll = queue.enqueue('roll-sequence', async () => {
+    order.push('roll-start');
+    const result = await sequence.wait();
+    assert.equal(result, '낙');
+    order.push('roll-resolved');
+    await resultHold.promise;
+    order.push('roll-end');
+  });
+  const move = queue.enqueue('move-after-roll', async () => {
+    order.push('move-start');
+  });
+
+  await flushMicrotasks();
+  assert.deepEqual(order, ['roll-start']);
+
+  sequence.resolve('낙');
+  await flushMicrotasks();
+  assert.deepEqual(order, ['roll-start', 'roll-resolved']);
+
+  resultHold.resolve();
+  await Promise.all([roll, move]);
+  assert.deepEqual(order, ['roll-start', 'roll-resolved', 'roll-end', 'move-start']);
 });
 
 test('game animations run strictly in enqueue order', async () => {

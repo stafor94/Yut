@@ -11,6 +11,33 @@ export function getRollPresentationAnimationId(sourceAnimationId: number, now = 
 
 export type GameAnimationTask = () => void | Promise<void>;
 
+export type GameAnimationSequence<T> = {
+  wait: () => Promise<T | null>;
+  resolve: (value: T) => void;
+  cancel: () => void;
+  isSettled: () => boolean;
+};
+
+export function createGameAnimationSequence<T>(): GameAnimationSequence<T> {
+  let settled = false;
+  let settlePromise!: (value: T | null) => void;
+  const promise = new Promise<T | null>((resolve) => {
+    settlePromise = resolve;
+  });
+  const settle = (value: T | null) => {
+    if (settled) return;
+    settled = true;
+    settlePromise(value);
+  };
+
+  return {
+    wait: () => promise,
+    resolve: (value) => settle(value),
+    cancel: () => settle(null),
+    isSettled: () => settled,
+  };
+}
+
 export type GameAnimationQueue = {
   enqueue: (key: string, task: GameAnimationTask) => Promise<void>;
   has: (key: string) => boolean;
