@@ -9,7 +9,7 @@ export const TRAP_PLACEMENT_HELPER_FUNCTION_BLOCK = `  function isTrapNodeOccupi
   }`;
 
 export const UNSAFE_ACTIVE_ROOM_STORAGE_READ = "window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? ''";
-export const SAFE_ACTIVE_ROOM_STORAGE_READ = "getStoredText(STORAGE_KEYS.activeRoomId, '')";
+export const SAFE_ACTIVE_ROOM_STORAGE_READ = "(() => { try { return window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? ''; } catch { return ''; } })()";
 
 export function hoistTrapPlacementHelpers(source: string) {
   if (!source.includes(TRAP_PLACEMENT_HELPER_CONST_BLOCK)) {
