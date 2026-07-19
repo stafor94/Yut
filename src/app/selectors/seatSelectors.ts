@@ -153,17 +153,39 @@ export const seatsFromGameSeatSnapshots = (
   });
 };
 
+const areSeatsEquivalent = (left: Seat, right: Seat) => (
+  left.id === right.id
+  && left.label === right.label
+  && left.name === right.name
+  && left.color === right.color
+  && left.ready === right.ready
+  && left.isHost === right.isHost
+  && left.isAI === right.isAI
+  && left.isSubstitutedByAI === right.isSubstitutedByAI
+  && left.isEmpty === right.isEmpty
+  && left.isSpectator === right.isSpectator
+  && left.enteredGameAt === right.enteredGameAt
+  && left.enteredStartVersion === right.enteredStartVersion
+  && left.team === right.team
+);
+
 export const preserveLockedGameSeats = (
   currentSeats: Seat[],
   nextSeats: Seat[],
-): Seat[] => nextSeats.map((nextSeat) => {
-  const currentSeat = currentSeats.find((seat) => seat.label === nextSeat.label);
-  if (!currentSeat || currentSeat.isEmpty || currentSeat.isSpectator) return nextSeat;
-  if (!nextSeat.isEmpty && nextSeat.id === currentSeat.id) {
-    return { ...currentSeat, ...nextSeat, isEmpty: false };
-  }
-  if (!nextSeat.isEmpty && nextSeat.isAI && nextSeat.id === currentSeat.id) {
-    return { ...currentSeat, ...nextSeat, id: currentSeat.id, isEmpty: false };
-  }
-  return { ...currentSeat, ready: nextSeat.ready || currentSeat.ready, isEmpty: false };
-});
+): Seat[] => {
+  const preservedSeats = nextSeats.map((nextSeat) => {
+    const currentSeat = currentSeats.find((seat) => seat.label === nextSeat.label);
+    if (!currentSeat || currentSeat.isEmpty || currentSeat.isSpectator) return nextSeat;
+    if (!nextSeat.isEmpty && nextSeat.id === currentSeat.id) {
+      return { ...currentSeat, ...nextSeat, isEmpty: false };
+    }
+    if (!nextSeat.isEmpty && nextSeat.isAI && nextSeat.id === currentSeat.id) {
+      return { ...currentSeat, ...nextSeat, id: currentSeat.id, isEmpty: false };
+    }
+    return { ...currentSeat, ready: nextSeat.ready || currentSeat.ready, isEmpty: false };
+  });
+
+  const unchanged = currentSeats.length === preservedSeats.length
+    && preservedSeats.every((seat, index) => areSeatsEquivalent(currentSeats[index], seat));
+  return unchanged ? currentSeats : preservedSeats;
+};
