@@ -26,6 +26,7 @@ import {
   type RollPresentationSettleSource,
   type RollPresentationVisualResult,
 } from '../flows/rollPresentationCompletion';
+import { isTerminalLiveRollPhase } from '../flows/yutRollAnimation';
 import type { RollAnimation, ToastMessage } from '../appState';
 
 export type { RollPresentationState } from '../flows/rollPresentationVisibility';
@@ -377,11 +378,10 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       if (liveSequenceId !== null) {
         currentLiveSequenceIdRef.current = null;
         const sequence = rollSequenceByIdRef.current.get(liveSequenceId);
-        if (sequence && !sequence.isSettled()) {
+        const terminalAnimation = liveAnimationByIdRef.current.get(liveSequenceId);
+        if (sequence && !sequence.isSettled() && terminalAnimation && isTerminalLiveRollPhase(terminalAnimation.phase)) {
           completedLiveSequenceIdsRef.current.add(liveSequenceId);
-          const terminalAnimation = liveAnimationByIdRef.current.get(liveSequenceId);
-          if (terminalAnimation) sequence.resolve(terminalAnimation);
-          else sequence.cancel();
+          sequence.resolve(terminalAnimation);
           return;
         }
       }
