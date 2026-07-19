@@ -4,6 +4,7 @@ import {
   createGameAnimationQueue,
   createGameAnimationSequence,
 } from '../../src/app/flows/gameAnimationQueue.js';
+import { isTerminalLiveRollPhase } from '../../src/app/flows/yutRollAnimation.js';
 
 const flushMicrotasks = async () => {
   await Promise.resolve();
@@ -55,4 +56,31 @@ test('a local roll completed before its queue turn is still retained', async () 
   blocker.resolve();
   await Promise.all([first, second]);
   assert.deepEqual(order, ['blocker-start', 'blocker-end', 'roll-replayed']);
+});
+
+test('an interrupted nonterminal remote roll remains queued until its authoritative fall resolves', async () => {
+  const queue = createGameAnimationQueue();
+  const sequence = createGameAnimationSequence<{ phase: 'resolved'; result: '낙' }>();
+  const order: string[] = [];
+
+  const roll = queue.enqueue('remote-fall', async () => {
+    order.push('roll-start');
+    const resolved = await sequence.wait();
+    assert.deepEqual(resolved, { phase: 'resolved', result: '낙' });
+    order.push('fall-presented');
+  });
+  const move = queue.enqueue('move-after-fall', async () => {
+    order.push('move-start');
+  });
+
+  await flushMicrotasks();
+  assert.deepEqual(order, ['roll-start']);
+  assert.equal(isTerminalLiveRollPhase('landing'), false);
+  assert.equal(sequence.isSettled(), false);
+
+  await flushMicrotasks();
+  assert.deepEqual(order, ['roll-start']);
+  sequence.resolve({ phase: 'resolved', result: '낙' });
+  await Promise.all([roll, move]);
+  assert.deepEqual(order, ['roll-start', 'fall-presented', 'move-start']);
 });
