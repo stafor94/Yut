@@ -35,6 +35,8 @@ export type GameSyncSubscriptionController<TState extends GameSyncSnapshotIdenti
   dispose: () => void;
 };
 
+const MAX_RENDER_SEPARATED_SEQUENCE_GAP = 8;
+
 const toFiniteNumber = (value: unknown) => {
   const numericValue = Number(value ?? 0);
   return Number.isFinite(numericValue) ? numericValue : 0;
@@ -156,16 +158,19 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
         applyingRef.current = true;
         try {
           if (remoteSequence > localSequence) {
-            let replayFromSequence = localSequence;
-            while (replayFromSequence < remoteSequence && isCurrentRoom(roomId)) {
-              const replayTargetSequence = replayFromSequence > 0
-                ? Math.min(remoteSequence, replayFromSequence + 1)
-                : remoteSequence;
-              await latestRuntime.replayMissingSequencesThenApply(state, replayFromSequence, replayTargetSequence);
-              const appliedSequence = Math.min(remoteSequence, latestRuntime.lastAppliedSequenceRef.current);
-              if (appliedSequence <= replayFromSequence) break;
-              replayFromSequence = appliedSequence;
-              if (replayFromSequence < remoteSequence) await yieldToNextTask();
+            const sequenceGap = remoteSequence - localSequence;
+            if (localSequence <= 0 || sequenceGap > MAX_RENDER_SEPARATED_SEQUENCE_GAP) {
+              await latestRuntime.replayMissingSequencesThenApply(state, localSequence, remoteSequence);
+            } else {
+              let replayFromSequence = localSequence;
+              while (replayFromSequence < remoteSequence && isCurrentRoom(roomId)) {
+                const replayTargetSequence = Math.min(remoteSequence, replayFromSequence + 1);
+                await latestRuntime.replayMissingSequencesThenApply(state, replayFromSequence, replayTargetSequence);
+                const appliedSequence = Math.min(remoteSequence, latestRuntime.lastAppliedSequenceRef.current);
+                if (appliedSequence <= replayFromSequence) break;
+                replayFromSequence = appliedSequence;
+                if (replayFromSequence < remoteSequence) await yieldToNextTask();
+              }
             }
           } else {
             latestRuntime.applySyncedStateSnapshot(state);
