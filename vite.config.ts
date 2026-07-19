@@ -1,15 +1,15 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import { hoistTrapPlacementHelpers } from './src/build/hoistTrapPlacementHelpers';
+import { hoistTrapPlacementHelpers, replaceUnsafeAppStorageReads } from './src/build/hoistTrapPlacementHelpers';
 
-function hoistAppTrapPlacementHelpers(): Plugin {
+function hardenAppRenderSource(): Plugin {
   return {
-    name: 'hoist-app-trap-placement-helpers',
+    name: 'harden-app-render-source',
     enforce: 'pre',
     transform(source, id) {
       if (!id.replace(/\\/g, '/').endsWith('/src/app/App.tsx')) return null;
       return {
-        code: hoistTrapPlacementHelpers(source),
+        code: replaceUnsafeAppStorageReads(hoistTrapPlacementHelpers(source)),
         map: null,
       };
     },
@@ -17,6 +17,6 @@ function hoistAppTrapPlacementHelpers(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [hoistAppTrapPlacementHelpers(), react()],
+  plugins: [hardenAppRenderSource(), react()],
   base: '/Yut/',
 });
