@@ -16,3 +16,7 @@ export function getSkippedItemPromptNextDeadlineKind(timing: ItemTiming): 'roll'
   if (timing === 'after_roll') return 'move';
   return 'after_move_turn_advance';
 }
+
+export function isCurrentItemPromptRequestRoom(requestRoomId: string, currentRoomId: string): boolean {
+  return Boolean(requestRoomId && requestRoomId === currentRoomId);
+}
