@@ -87,7 +87,7 @@ export async function cleanupCurrentRoomPresenceSafely(
     if (action === 'skip') return null;
 
     const seatIndex = Number(player.seatIndex);
-    const hasSeat = Number.isInteger(seatIndex) && seatIndex >= 0;
+    const hasSeat = !player.isSpectator && Number.isInteger(seatIndex) && seatIndex >= 0;
     if (action === 'substitute_ai' && hasSeat) {
       const seatRef = doc(db!, 'rooms', roomId, 'seats', String(seatIndex));
       const [seatSnapshot, gameStateSnapshot] = await Promise.all([
