@@ -4,6 +4,14 @@ import { createAuthoritativeGameActionQueues } from '../../src/app/flows/authori
 
 const waitImmediate = () => new Promise<void>((resolve) => setImmediate(resolve));
 
+const createDeferred = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+};
+
 test('commit queue는 첫 commit 실패 후에도 다음 commit을 순차 실행한다', async () => {
   const order: string[] = [];
   const queues = createAuthoritativeGameActionQueues<string, string>({
@@ -48,6 +56,39 @@ test('apply queue는 순차 실행하고 room 변경 시 queued apply를 무시�
   assert.equal(await first, 'first');
   assert.equal(await second, null);
   assert.deepEqual(order, ['first:start', 'first:end']);
+});
+
+test('연속된 apply 사이에 렌더 task 경계를 기다린다', async () => {
+  const order: string[] = [];
+  const firstBoundary = createDeferred();
+  const secondBoundary = createDeferred();
+  let boundaryCount = 0;
+  const queues = createAuthoritativeGameActionQueues<string, string>({
+    activeRoomIdRef: { current: 'room-a' },
+    commit: async (_roomId, action) => `result:${action}`,
+    yieldBetweenApplies: () => {
+      boundaryCount += 1;
+      return boundaryCount === 1 ? firstBoundary.promise : secondBoundary.promise;
+    },
+  });
+
+  const first = queues.enqueueAuthoritativeResultApplication('room-a', () => {
+    order.push('first');
+    return 'first';
+  });
+  const second = queues.enqueueAuthoritativeResultApplication('room-a', () => {
+    order.push('second');
+    return 'second';
+  });
+
+  assert.equal(await first, 'first');
+  await Promise.resolve();
+  assert.deepEqual(order, ['first']);
+
+  firstBoundary.resolve();
+  assert.equal(await second, 'second');
+  assert.deepEqual(order, ['first', 'second']);
+  secondBoundary.resolve();
 });
 
 test('apply 종료 알림은 성공값을 전달하고 실패와 stale room 경로에서도 원래 결과를 보존한다', async () => {
