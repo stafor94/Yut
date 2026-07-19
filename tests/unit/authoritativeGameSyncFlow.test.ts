@@ -119,3 +119,31 @@ test('enqueueAuthoritativeGameAction은 result/error/finally 순서를 보존한
   await waitImmediate();
   assert.deepEqual(errorEvents, ['error:boom', 'finally']);
 });
+
+test('queued action 적용 완료 알림은 handleResult가 끝난 뒤 commit 결과를 전달한다', async () => {
+  const events: string[] = [];
+  const commitResult = { sequence: 4, patch: { turnIndex: 1, roll: null } };
+  const settledValues: unknown[] = [];
+  const queues = createAuthoritativeGameActionQueues<string, typeof commitResult>({
+    activeRoomIdRef: { current: 'room-a' },
+    commit: async () => commitResult,
+    onApplySettled: (_roomId, value) => { settledValues.push(value); },
+  });
+
+  queues.enqueueAuthoritativeGameAction('room-a', 'move', {
+    handleResult: async () => {
+      events.push('apply:start');
+      await waitImmediate();
+      events.push('apply:end');
+    },
+    handleError: () => { events.push('error'); },
+    handleFinally: () => { events.push('finally'); },
+  });
+
+  await waitImmediate();
+  await waitImmediate();
+  await waitImmediate();
+
+  assert.deepEqual(events, ['apply:start', 'apply:end', 'finally']);
+  assert.deepEqual(settledValues, [commitResult]);
+});
