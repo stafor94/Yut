@@ -1,9 +1,13 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { ItemTiming, ItemType } from '../../features/items/logic/items';
 import type { GameAction } from '../../features/room/services/roomService';
 import type { FallEffect, SequenceStateSnapshot, Seat } from '../appState';
 import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
-import { buildSkipItemPromptPayload, getSkippedItemPromptNextDeadlineKind } from '../flows/itemControllerFlow';
+import {
+  buildSkipItemPromptPayload,
+  getSkippedItemPromptNextDeadlineKind,
+  isCurrentItemPromptRequestRoom,
+} from '../flows/itemControllerFlow';
 import type { AuthoritativeCommitResult } from './useAuthoritativeGameSyncController';
 
 type PendingMeta = { type?: GameAction['type']; actorId?: string; createdSequence?: number; createdTurnIndex?: number; optimisticApplied?: boolean };
@@ -47,8 +51,12 @@ type Params = {
 };
 
 export function useItemController(params: Params) {
+  const activeRoomIdRef = useRef(params.activeRoomId);
+  activeRoomIdRef.current = params.activeRoomId;
+
   const skipItemPrompt = useCallback(() => {
     if (params.activeRoomId) {
+      const requestRoomId = params.activeRoomId;
       const promptTiming = params.itemPromptTiming;
       if (!promptTiming || params.hasPendingUseItemActionFor(params.localSeatId)) return;
       const promptRollStackIndex = params.selectedRollStackIndex;
@@ -68,9 +76,10 @@ export function useItemController(params: Params) {
       }
       params.setPendingItemPromptChoice({ actionKey: clientMutationId, timing: promptTiming, itemType: null });
       params.addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: params.localSeatId, createdSequence: params.lastAppliedSequenceRef.current, createdTurnIndex: params.turnIndex, optimisticApplied: true });
-      void params.commitQueuedAuthoritativeGameAction(params.activeRoomId, action)
+      void params.commitQueuedAuthoritativeGameAction(requestRoomId, action)
         .then(async (result) => {
-          await params.enqueueAuthoritativeResultApplication(params.activeRoomId, () => params.applyAuthoritativeResultSequence(result));
+          await params.enqueueAuthoritativeResultApplication(requestRoomId, () => params.applyAuthoritativeResultSequence(result));
+          if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return;
           if (result.status === 'committed' || result.status === 'duplicate') params.acknowledgePendingLocalRemoteAction(clientMutationId);
           if (result.status === 'rejected' || result.status === 'unsupported') {
             params.setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
@@ -79,6 +88,7 @@ export function useItemController(params: Params) {
           }
         })
         .catch((error) => {
+          if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return;
           params.recordRemoteActionDiagnostic('roll_yut', 'skip-item-prompt-error', error instanceof Error ? error.message : '아이템 건너뛰기 처리에 실패했습니다.', { actionKey: clientMutationId });
           void params.applyProcessedAuthoritativeAction(clientMutationId)
             .then((processedState) => processedState ? null : params.syncLatestAuthoritativeState('아이템 건너뛰기 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }))
