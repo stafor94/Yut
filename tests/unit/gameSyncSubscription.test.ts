@@ -22,10 +22,10 @@ const createRuntime = (
   lastAppliedSequenceRef: refs.sequence,
   lastAppliedStateVersionRef: refs.version,
   applyingSyncedStateRef: refs.applying,
-  replayMissingSequencesThenApply: async (state) => {
+  replayMissingSequencesThenApply: async (_state, _localSequence, remoteSequence) => {
     counters.replay += 1;
-    refs.sequence.current = Number(state.lastSequence ?? 0);
-    refs.version.current = Number(state.turnVersion ?? 0);
+    refs.sequence.current = remoteSequence;
+    refs.version.current = remoteSequence;
   },
   applySyncedStateSnapshot: (state) => {
     counters.apply += 1;
@@ -138,6 +138,68 @@ test('동일 snapshot은 한 번만 적용하고 새 sequence는 즉시 replay�
   assert.equal(counters.enqueue, 2);
   assert.equal(refs.sequence.current, 2);
   assert.equal(refs.version.current, 2);
+  assert.equal(refs.applying.current, false);
+});
+
+test('짧게 누락된 여러 sequence는 렌더 경계를 두고 한 건씩 replay한다', async () => {
+  const controller = createGameSyncSubscriptionController<TestSnapshot>();
+  const refs = { sequence: { current: 3 }, version: { current: 3 }, applying: { current: false } };
+  const counters = { replay: 0, apply: 0, enqueue: 0 };
+  const replayRanges: Array<[number, number]> = [];
+  let emit: (state: TestSnapshot | null) => void = missingEmitter;
+
+  const runtime: GameSyncRuntime<TestSnapshot> = {
+    ...createRuntime('room-a', counters, refs),
+    replayMissingSequencesThenApply: async (_state, localSequence, remoteSequence) => {
+      replayRanges.push([localSequence, remoteSequence]);
+      refs.sequence.current = remoteSequence;
+      refs.version.current = remoteSequence;
+    },
+  };
+  controller.updateRuntime(runtime);
+  controller.syncRoom('room-a', (_roomId, callback) => {
+    emit = callback;
+    return () => undefined;
+  });
+
+  emit({ turnVersion: 6, lastSequence: 6, value: 'three-missing-sequences' });
+  await wait(30);
+  await flushController();
+
+  assert.deepEqual(replayRanges, [[3, 4], [4, 5], [5, 6]]);
+  assert.equal(counters.enqueue, 1);
+  assert.equal(refs.sequence.current, 6);
+  assert.equal(refs.applying.current, false);
+});
+
+test('큰 sequence gap은 중복 서버 조회를 피하도록 한 번에 replay한다', async () => {
+  const controller = createGameSyncSubscriptionController<TestSnapshot>();
+  const refs = { sequence: { current: 3 }, version: { current: 3 }, applying: { current: false } };
+  const counters = { replay: 0, apply: 0, enqueue: 0 };
+  const replayRanges: Array<[number, number]> = [];
+  let emit: (state: TestSnapshot | null) => void = missingEmitter;
+
+  const runtime: GameSyncRuntime<TestSnapshot> = {
+    ...createRuntime('room-a', counters, refs),
+    replayMissingSequencesThenApply: async (_state, localSequence, remoteSequence) => {
+      replayRanges.push([localSequence, remoteSequence]);
+      refs.sequence.current = remoteSequence;
+      refs.version.current = remoteSequence;
+    },
+  };
+  controller.updateRuntime(runtime);
+  controller.syncRoom('room-a', (_roomId, callback) => {
+    emit = callback;
+    return () => undefined;
+  });
+
+  emit({ turnVersion: 20, lastSequence: 20, value: 'large-sequence-gap' });
+  await wait(30);
+  await flushController();
+
+  assert.deepEqual(replayRanges, [[3, 20]]);
+  assert.equal(counters.enqueue, 1);
+  assert.equal(refs.sequence.current, 20);
   assert.equal(refs.applying.current, false);
 });
 

@@ -6,10 +6,13 @@ export type AuthoritativeQueueHooks<T> = {
   handleFinally: () => void;
 };
 
+const yieldToNextTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
   activeRoomIdRef: RoomIdRef;
   commit: (roomId: string, action: TAction) => Promise<TResult>;
   onApplySettled?: (roomId: string, appliedValue: unknown) => void;
+  yieldBetweenApplies?: () => Promise<void>;
 }) {
   let commitQueue: Promise<void> = Promise.resolve();
   let applyQueue: Promise<void> = Promise.resolve();
@@ -49,7 +52,8 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
         throw error;
       },
     );
-    applyQueue = settledApply.then(() => undefined, () => undefined);
+    const waitForRenderBoundary = params.yieldBetweenApplies ?? yieldToNextTask;
+    applyQueue = settledApply.then(waitForRenderBoundary, waitForRenderBoundary);
     return settledApply;
   };
 
