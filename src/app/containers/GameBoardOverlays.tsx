@@ -310,7 +310,15 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
           if (presentedSourceAnimationIdRef.current === sourceAnimationId) presentAnimation(null);
           return;
         }
-        await runResolvedPresentation(sourceAnimationId, { ...resolvedAnimation, phase: 'resolved' });
+        if (!('result' in resolvedAnimation)) return;
+        await runResolvedPresentation(sourceAnimationId, {
+          id: resolvedAnimation.id,
+          phase: 'resolved',
+          result: resolvedAnimation.result,
+          sticks: resolvedAnimation.sticks,
+          fallCount: resolvedAnimation.fallCount,
+          timingZone: resolvedAnimation.timingZone,
+        });
         return;
       }
       await runResolvedPresentation(sourceAnimationId, resolvedAnimation);
