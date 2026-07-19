@@ -1,12 +1,12 @@
 import { normalizeSpokenYutResult, type SpokenYutResult } from '../../app/flows/rollSpeech';
-import backdoAudioSource from './assets/backdo';
-import bonusAudioSource from './assets/bonus';
-import doAudioSource from './assets/do';
-import gaeAudioSource from './assets/gae';
-import geolAudioSource from './assets/geol';
-import moAudioSource from './assets/mo';
-import nakAudioSource from './assets/nak';
-import yutAudioSource from './assets/yut';
+import backdoAudioSource from './assets/results/backdo.wav';
+import bonusAudioSource from './assets/results/bonus.wav';
+import doAudioSource from './assets/results/do.wav';
+import gaeAudioSource from './assets/results/gae.wav';
+import geolAudioSource from './assets/results/geol.wav';
+import moAudioSource from './assets/results/mo.wav';
+import nakAudioSource from './assets/results/nak.wav';
+import yutAudioSource from './assets/results/yut.wav';
 
 const RESULT_AUDIO_VOLUME = 0.9;
 const BONUS_AUDIO_VOLUME = 0.9;
@@ -30,6 +30,7 @@ let currentVisibleLabel: HTMLElement | null = null;
 let activeAudio: HTMLAudioElement | null = null;
 let bonusAudio: HTMLAudioElement | null = null;
 let audioUnlocked = false;
+let playSequence = 0;
 
 const getResultAudio = (result: SpokenYutResult) => {
   const cachedAudio = audioByResult.get(result);
@@ -75,13 +76,17 @@ const clearQueuedResult = (label: Element, result: SpokenYutResult) => {
   if (queuedByElement.get(label) === result) queuedByElement.delete(label);
 };
 
-const playBonus = (isEnabled: () => boolean) => {
-  if (!isEnabled()) return;
+const stopActiveAudio = () => {
+  if (!activeAudio) return;
+  activeAudio.pause();
+  activeAudio.currentTime = 0;
+  activeAudio = null;
+};
+
+const playBonus = (isEnabled: () => boolean, sequence: number) => {
+  if (sequence !== playSequence || !isEnabled()) return;
   const audio = getBonusAudio();
-  if (activeAudio && activeAudio !== audio) {
-    activeAudio.pause();
-    activeAudio.currentTime = 0;
-  }
+  if (activeAudio && activeAudio !== audio) stopActiveAudio();
   activeAudio = audio;
   audio.pause();
   audio.currentTime = 0;
@@ -95,13 +100,12 @@ const playResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () =
   if (playedByElement.get(label) === result || queuedByElement.get(label) === result) return true;
   if (!isEnabled()) return false;
 
+  playSequence += 1;
+  const sequence = playSequence;
   const audio = getResultAudio(result);
   queuedByElement.set(label, result);
 
-  if (activeAudio && activeAudio !== audio) {
-    activeAudio.pause();
-    activeAudio.currentTime = 0;
-  }
+  if (activeAudio && activeAudio !== audio) stopActiveAudio();
   activeAudio = audio;
   audio.pause();
   audio.currentTime = 0;
@@ -110,7 +114,7 @@ const playResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () =
 
   const handleEnded = () => {
     clearQueuedResult(label, result);
-    if (result === '윷' || result === '모') playBonus(isEnabled);
+    if (sequence === playSequence && (result === '윷' || result === '모')) playBonus(isEnabled, sequence);
   };
   const handleError = () => clearQueuedResult(label, result);
   audio.addEventListener('ended', handleEnded, { once: true });
@@ -136,11 +140,15 @@ const clearHiddenResult = () => {
 const playVisibleResultOnce = (isEnabled: () => boolean) => {
   const label = document.querySelector<HTMLElement>('.roll-label:not([hidden])');
   if (!label || label.getAttribute('aria-hidden') === 'true') {
+    playSequence += 1;
+    stopActiveAudio();
     clearHiddenResult();
     return;
   }
   if (!isEnabled()) return;
   if (currentVisibleLabel && currentVisibleLabel !== label) {
+    playSequence += 1;
+    stopActiveAudio();
     playedByElement.delete(currentVisibleLabel);
     queuedByElement.delete(currentVisibleLabel);
   }
