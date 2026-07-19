@@ -6,7 +6,7 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getAdjacentBoardNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
+import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, requestRoomGameStart, resolveTurnOrderIntro, updateRoomOptions, updateRoomPlayer, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useAppPreferences } from './hooks/useAppPreferences';
 import { useRoomCreationController } from './controllers/useRoomCreationController';
@@ -14,8 +14,9 @@ import { useRoomEntryController } from './controllers/useRoomEntryController';
 import { useStoredRoomRecoveryController } from './controllers/useStoredRoomRecoveryController';
 import { useRoomSummarySubscription } from './controllers/useRoomSummarySubscription';
 import { useRoomPlayersSubscription } from './controllers/useRoomPlayersSubscription';
-import { useWaitingRoomController, getSubstitutedRoomPlayerUpdate } from './controllers/useWaitingRoomController';
+import { useWaitingRoomController } from './controllers/useWaitingRoomController';
 import { useAuthoritativeGameSyncController } from './controllers/useAuthoritativeGameSyncController';
+import { useGameLifecycleController } from './controllers/useGameLifecycleController';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
@@ -4633,110 +4634,17 @@ export function App() {
   }
 
 
-  function returnToWaitingRoom() {
-    const finishedRoomId = activeRoomId;
-    setSeats((currentSeats) => currentSeats.map((seat) => {
-      if (seat.isSubstitutedByAI) return { ...seat, id: `slot-${Number(seat.label.replace('P', ''))}`, name: '빈 자리', ready: false, isAI: false, isSubstitutedByAI: false, isEmpty: true, isHost: false };
-      if (!seat.isAI && seat.id !== activeRoomHostId) return { ...seat, ready: false };
-      return seat;
-    }));
-    setScreen(finishedRoomId ? 'waitingRoom' : 'lobby');
-    setCountdown(-1);
-    setItemPromptTiming(null);
-    setPendingItemPickup(null);
-    pendingItemPickupRef.current = null;
-    setEndGameDialogOpen(false);
-    setMessage(finishedRoomId ? '방 대기실로 돌아왔습니다.' : '첫 대기화면으로 돌아왔습니다.');
-    if (finishedRoomId) void updateRoomStatus(finishedRoomId, 'waiting').catch((error) => console.warn('완주 후 방 대기실 전환에 실패했습니다.', error));
-  }
-
-  function finishGame() {
-    const finishedRoomId = activeRoomId;
-    const finishedSeatId = localSeatId;
-    const shouldSubstituteAsAi = Boolean(finishedRoomId && finishedSeatId && screen === 'game' && !winner);
-    const shouldLeaveFinishedRoom = Boolean(finishedRoomId && finishedSeatId && screen === 'game' && winner);
-    const leavingSeat = shouldSubstituteAsAi ? seats.find((seat) => seat.id === finishedSeatId && !seat.isEmpty && !seat.isAI) : undefined;
-    if (shouldLeaveFinishedRoom) leavingRoomRef.current = true;
-    hostingRoomUserIdRef.current = '';
-    activeRoomIdRef.current = '';
-    confirmedRoomPlayerRef.current = false;
-    setScreen('lobby');
-    setActiveRoomTitle('');
-    setActiveRoomId('');
-    setActiveRoomHostId('');
-    setIsRoomHost(false);
-    window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-    window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-    setSeats(createSeats(nickname, playMode, maxPlayers));
-    setCountdown(-1);
-    setTurnOrderIds([]);
-    setGameStartedAt(null);
-    setItemPromptTiming(null);
-    setEndGameDialogOpen(false);
-    setMessage('게임을 나와 로비로 이동했습니다.');
-    if (finishedRoomId && finishedSeatId && shouldSubstituteAsAi && leavingSeat) {
-      addPendingAiSeat(finishedSeatId);
-      void updateRoomPlayer(finishedRoomId, finishedSeatId, getSubstitutedRoomPlayerUpdate(leavingSeat))
-        .catch((error) => console.warn('게임 종료 후 AI 전환에 실패했습니다.', error))
-        .finally(() => clearPendingAiSeat(finishedSeatId));
-    }
-    if (finishedRoomId && finishedSeatId && shouldLeaveFinishedRoom) {
-      void removeRoomPlayer(finishedRoomId, finishedSeatId, { preservePlayingSeatAsAi: false })
-        .catch((error) => console.warn('완주 후 방 나가기 정리에 실패했습니다.', error))
-        .finally(() => { leavingRoomRef.current = false; });
-    }
-  }
-
-  function continueRace() {
-    if (!activeRoomId) {
-      setMessage('온라인 방 정보가 없어 이어서 진행할 수 없습니다.');
-      return;
-    }
-    if (!canShowContinueRaceButton) {
-      setMessage('이어서 진행할 수 있는 플레이어가 부족합니다.');
-      return;
-    }
-    const actionKey = `continue_race:${activeRoomId}:${continuationRound + 1}:${Date.now()}`;
-    addPendingLocalRemoteAction(actionKey, {
-      type: 'continue_race',
-      actorId: localSeatId,
-      createdSequence: lastAppliedSequenceRef.current,
-      createdTurnIndex: turnIndex,
-      optimisticApplied: false,
-    });
-    enqueueAuthoritativeGameAction(
-      activeRoomId,
-      { type: 'continue_race', actorId: localSeatId, payload: { clientActionId: actionKey } },
-      async (result) => {
-        if (result.status === 'rejected' || result.status === 'unsupported') {
-          setMessage(result.reason ?? '이어서 진행 요청을 처리하지 못했습니다.');
-          removeSettledPendingLocalRemoteAction(actionKey);
-          void syncLatestAuthoritativeState('서버가 이어서 진행 요청을 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
-          return;
-        }
-        if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-          const localSequence = lastAppliedSequenceRef.current;
-          const resultSequence = result.sequence;
-          if (resultSequence > localSequence) {
-            const sequences = await getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence));
-            const latestState = applySequenceEvents({ ...currentSequenceStateRef.current, lastSequence: localSequence }, sequences.filter((sequence) => Number(sequence.sequence ?? 0) <= resultSequence)) ?? undefined;
-            if (latestState) await replayMissingSequencesThenApply(latestState, localSequence, resultSequence);
-          }
-          acknowledgePendingLocalRemoteAction(actionKey);
-        }
-        setScreen('game');
-        setMessage('완주하지 못한 플레이어가 이어서 진행합니다.');
-        void updateRoomStatus(activeRoomId, 'playing').catch((error) => {
-          console.warn('이어서 진행 후 게임중 상태 반영에 실패했습니다.', error);
-        });
-      },
-      (error) => {
-        setMessage(error instanceof Error ? error.message : '이어서 진행 요청을 처리하지 못했습니다.');
-        void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('이어서 진행 요청 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' }));
-      },
-      () => undefined,
-    );
-  }
+  const lifecycleController = useGameLifecycleController({
+    activeRoomId, activeRoomHostId, activeRoomIdRef, canShowContinueRaceButton, continuationRound,
+    confirmedRoomPlayerRef, currentSequenceStateRef, hostingRoomUserIdRef, enqueueAuthoritativeGameAction, getGameSequencesSince,
+    lastAppliedSequenceRef, leavingRoomRef, localSeatId, maxPlayers, nickname, pendingItemPickupRef, playMode,
+    reconcilePendingLocalRemoteActions, replayMissingSequencesThenApply, screen, seats, setActiveRoomHostId, setActiveRoomId,
+    setActiveRoomTitle, setCountdown, setEndGameDialogOpen, setGameStartedAt, setIsRoomHost, setItemPromptTiming,
+    setMessage, setPendingItemPickup, setScreen, setSeats, setTurnOrderIds, addPendingAiSeat, clearPendingAiSeat,
+    addPendingLocalRemoteAction, acknowledgePendingLocalRemoteAction, removeSettledPendingLocalRemoteAction,
+    syncLatestAuthoritativeState, turnIndex, winner,
+  });
+  const { returnToWaitingRoom, finishGame, continueRace } = lifecycleController;
 
   function openNicknameDialog() {
     if (screen !== 'lobby') return;
