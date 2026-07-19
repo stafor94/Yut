@@ -1,8 +1,9 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { ItemCard } from '../../features/items/components/ItemCard';
+import { isItemType } from '../../features/items/logic/items';
 import { ROOM_CAPACITY_FULL_EVENT } from '../../features/room/services/roomAvailabilityPolicy';
 import { auth } from '../../services/firebase/firebaseAuth';
-import { NICKNAME_MAX_LENGTH, STORAGE_KEYS, type PendingItemPickup } from '../appState';
+import { getStoredText, NICKNAME_MAX_LENGTH, STORAGE_KEYS, type PendingItemPickup } from '../appState';
 import {
   processPendingStoredRoomExit,
   requestStoredRoomExitAndReload,
@@ -49,14 +50,16 @@ type AppModalsProps = {
 
 export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialogOpen, diagnosticText, sequenceExportCopied, sequenceExportDialogOpen, sequenceExportText, endGameDialogOpen, gameExitDescription, itemPickupClock, loadingMessage, nicknameDialogOpen, nicknameDraft, pendingItemPickup, roomNoticeDialog, screen, onClearActionErrorDialog, onCloseDiagnosticDialog, onCloseEndGameDialog, onCloseNicknameDialog, onClearRoomNoticeDialog, onCopyDiagnosticState, onCloseSequenceExportDialog, onCopySequenceExportState, onFinishGame, onKeepPendingItemPickup, onNicknameDraftChange, onReplacePendingItemPickup, onSaveNickname }: AppModalsProps) {
   const [initialNicknameDialogOpen, setInitialNicknameDialogOpen] = useState(() => (
-    typeof window !== 'undefined' && !window.localStorage.getItem(STORAGE_KEYS.nickname)?.trim()
+    !getStoredText(STORAGE_KEYS.nickname, '').trim()
   ));
   const [roomCapacityFullDialogOpen, setRoomCapacityFullDialogOpen] = useState(false);
   const nicknameSetupDialogOpen = screen === 'lobby' && (nicknameDialogOpen || initialNicknameDialogOpen);
   const canExitStoredRoom = loadingMessage === STORED_ROOM_RECOVERY_MESSAGE;
   const canShowPendingItemPickup = Boolean(
     pendingItemPickup
-    && pendingItemPickup.seatId === auth?.currentUser?.uid,
+    && pendingItemPickup.seatId === auth?.currentUser?.uid
+    && isItemType(pendingItemPickup.item)
+    && isItemType(pendingItemPickup.existingItem),
   );
 
   useEffect(() => {

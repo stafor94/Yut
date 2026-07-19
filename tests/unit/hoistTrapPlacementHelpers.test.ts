@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import ts from 'typescript';
 import {
+  SAFE_ACTIVE_ROOM_STORAGE_READ,
   TRAP_PLACEMENT_HELPER_CONST_BLOCK,
+  UNSAFE_ACTIVE_ROOM_STORAGE_READ,
   hoistTrapPlacementHelpers,
+  replaceUnsafeAppStorageReads,
 } from '../../src/build/hoistTrapPlacementHelpers';
 
 function executeFixture(source: string) {
@@ -42,9 +45,24 @@ test('hoists trap helpers so the prompt can render before their source position'
   assert.equal(transformed.includes('function getTrapCandidateNodeIds'), true);
 });
 
-test('fails loudly when the guarded App source pattern changes', () => {
+test('fails loudly when the guarded App helper source pattern changes', () => {
   assert.throws(
     () => hoistTrapPlacementHelpers('export function App() {}'),
     /helper declarations were not found/,
+  );
+});
+
+test('replaces the render-time active room localStorage read with the safe preference reader', () => {
+  const source = `const props = { resumableRoomId: ${UNSAFE_ACTIVE_ROOM_STORAGE_READ} };`;
+  const transformed = replaceUnsafeAppStorageReads(source);
+
+  assert.equal(transformed.includes(UNSAFE_ACTIVE_ROOM_STORAGE_READ), false);
+  assert.equal(transformed.includes(SAFE_ACTIVE_ROOM_STORAGE_READ), true);
+});
+
+test('fails loudly when the guarded App storage source pattern changes', () => {
+  assert.throws(
+    () => replaceUnsafeAppStorageReads('export function App() {}'),
+    /active-room localStorage read was not found/,
   );
 });
