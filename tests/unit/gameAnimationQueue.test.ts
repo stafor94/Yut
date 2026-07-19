@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGamePresentationLock } from '../../src/shared/gamePresentationLock.js';
 import {
+  GAME_ANIMATION_SEQUENCE_WAIT_TIMEOUT_MS,
   REMOTE_ROLL_PRESENTATION_MS,
   REMOTE_ROLL_RESULT_HOLD_MS,
   createGameAnimationQueue,
@@ -96,6 +97,28 @@ test('a roll sequence keeps later animations queued until its resolved presentat
   resultHold.resolve();
   await Promise.all([roll, move]);
   assert.deepEqual(order, ['roll-start', 'roll-resolved', 'roll-end', 'move-start']);
+});
+
+test('an active unresolved roll sequence times out and releases later animations', async () => {
+  const queue = createGameAnimationQueue();
+  const sequence = createGameAnimationSequence<string>({ timeoutMs: 10 });
+  const order: string[] = [];
+
+  const roll = queue.enqueue('orphaned-roll', async () => {
+    order.push('roll-start');
+    const result = await sequence.wait();
+    assert.equal(result, null);
+    order.push('roll-cancelled');
+  });
+  const move = queue.enqueue('move-after-orphaned-roll', async () => {
+    order.push('move-start');
+  });
+
+  await Promise.all([roll, move]);
+  assert.deepEqual(order, ['roll-start', 'roll-cancelled', 'move-start']);
+  assert.equal(sequence.isSettled(), true);
+  assert.equal(queue.isBusy(), false);
+  assert.equal(GAME_ANIMATION_SEQUENCE_WAIT_TIMEOUT_MS, 15_000);
 });
 
 test('game animations run strictly in enqueue order', async () => {
