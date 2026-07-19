@@ -74,6 +74,17 @@ test('강제 종료로 emptySince가 없어도 마지막 heartbeat 기준 유예
   assert.equal(result.reason, 'inactive');
 });
 
+test('현재 사용자 문서가 남아 있어도 heartbeat가 stale이고 유예가 끝났으면 숨긴다', () => {
+  const result = classifyRoomAvailability(
+    { status: 'playing', maxPlayers: 2, lastHumanSeenAt: now - 45_000 - ROOM_EMPTY_DELETE_GRACE_MS },
+    [{ id: 'viewer', lastSeen: now - 45_000 - ROOM_EMPTY_DELETE_GRACE_MS }],
+    'viewer',
+    now,
+  );
+  assert.equal(result.visible, false);
+  assert.equal(result.reason, 'inactive');
+});
+
 test('활성 인간이 없는 상태로 3분이 지난 방은 목록에서 숨긴다', () => {
   const result = classifyRoomAvailability(
     { status: 'playing', maxPlayers: 2, emptySince: now - ROOM_EMPTY_DELETE_GRACE_MS },
