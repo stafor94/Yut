@@ -140,8 +140,6 @@ const clearHiddenResult = () => {
 const playVisibleResultOnce = (isEnabled: () => boolean) => {
   const label = document.querySelector<HTMLElement>('.roll-label:not([hidden])');
   if (!label || label.getAttribute('aria-hidden') === 'true') {
-    playSequence += 1;
-    stopActiveAudio();
     clearHiddenResult();
     return;
   }
