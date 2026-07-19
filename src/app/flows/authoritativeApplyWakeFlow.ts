@@ -1,8 +1,6 @@
-import type { SequenceStateSnapshot } from '../appState';
+type SnapshotRecord = Record<string, unknown>;
 
-type SnapshotRecord = SequenceStateSnapshot & Record<string, unknown>;
-
-const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const isRecord = (value: unknown): value is SnapshotRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 
 const cloneObjectValue = (value: unknown) => isRecord(value) ? { ...value } : value;
 
@@ -10,15 +8,15 @@ const cloneArrayValue = (value: unknown) => Array.isArray(value)
   ? value.map((entry) => cloneObjectValue(entry))
   : value;
 
-export function buildAuthoritativeApplyWakeSnapshot(
+export function buildAuthoritativeApplyWakeSnapshot<TSnapshot extends object>(
   appliedValue: unknown,
-  latestSnapshot: SequenceStateSnapshot | null,
-): SequenceStateSnapshot | null {
+  latestSnapshot: TSnapshot | null,
+): TSnapshot | null {
   if (!isRecord(appliedValue)) return null;
 
-  const appliedSnapshot = appliedValue as SnapshotRecord;
+  const appliedSnapshot = appliedValue;
   const latestRecord = (latestSnapshot ?? {}) as SnapshotRecord;
-  const mergedSnapshot = { ...latestRecord, ...appliedSnapshot } as SnapshotRecord;
+  const mergedSnapshot = { ...latestRecord, ...appliedSnapshot };
   const startRequestVersion = Number(appliedSnapshot.startRequestVersion ?? 0) || Number(latestRecord.startRequestVersion ?? 0);
   const startRequestId = String(appliedSnapshot.startRequestId ?? '') || String(latestRecord.startRequestId ?? '');
   const pieces = cloneArrayValue(appliedSnapshot.pieces ?? latestRecord.pieces);
@@ -34,5 +32,5 @@ export function buildAuthoritativeApplyWakeSnapshot(
     gameSeats,
     roll,
     rollStack,
-  } as SequenceStateSnapshot;
+  } as TSnapshot;
 }
