@@ -8,6 +8,7 @@ export type RoomAvailabilityRoom = {
   maxPlayers?: number;
   deletingAt?: unknown;
   emptySince?: unknown;
+  lastHumanSeenAt?: unknown;
   systemRoomType?: string;
 };
 
