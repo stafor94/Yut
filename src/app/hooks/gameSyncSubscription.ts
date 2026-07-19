@@ -69,6 +69,8 @@ const hashSnapshotString = (value: string) => {
   return (hash >>> 0).toString(36);
 };
 
+const yieldToNextTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
 export function getGameSyncSnapshotApplyKey(state: GameSyncSnapshotIdentity) {
   const stateVersion = toFiniteNumber(state.turnVersion);
   const sequence = toFiniteNumber(state.lastSequence);
@@ -154,7 +156,17 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
         applyingRef.current = true;
         try {
           if (remoteSequence > localSequence) {
-            await latestRuntime.replayMissingSequencesThenApply(state, localSequence, remoteSequence);
+            let replayFromSequence = localSequence;
+            while (replayFromSequence < remoteSequence && isCurrentRoom(roomId)) {
+              const replayTargetSequence = replayFromSequence > 0
+                ? Math.min(remoteSequence, replayFromSequence + 1)
+                : remoteSequence;
+              await latestRuntime.replayMissingSequencesThenApply(state, replayFromSequence, replayTargetSequence);
+              const appliedSequence = Math.min(remoteSequence, latestRuntime.lastAppliedSequenceRef.current);
+              if (appliedSequence <= replayFromSequence) break;
+              replayFromSequence = appliedSequence;
+              if (replayFromSequence < remoteSequence) await yieldToNextTask();
+            }
           } else {
             latestRuntime.applySyncedStateSnapshot(state);
           }
