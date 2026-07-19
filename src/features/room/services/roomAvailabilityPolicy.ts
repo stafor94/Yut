@@ -1,7 +1,6 @@
 import {
   isActiveHumanLifecyclePlayer,
   isRoomDeletionExpired,
-  isRoomDeletionGraceActive,
 } from './roomLifecyclePolicy';
 
 export type RoomAvailabilityRoom = {
@@ -61,19 +60,9 @@ export function classifyRoomAvailability(
   const hasActiveHumanPresence = players.some((player) => (
     player.id === currentUserId && !player.isAI
   ) || isActiveHumanLifecyclePlayer(player, now));
-  const hasCurrentUserRecoverableSeat = occupiedPlayers.some((player) => (
-    Boolean(currentUserId)
-    && player.id === currentUserId
-    && player.isSubstitutedByAI === true
-  ));
-
   if (!hasActiveHumanPresence && isRoomDeletionExpired(room, now)) {
     return { visible: false, reason: 'inactive', currentPlayers, playerIds };
   }
-  if (!hasActiveHumanPresence && !hasCurrentUserRecoverableSeat && !isRoomDeletionGraceActive(room, now)) {
-    return { visible: false, reason: 'orphaned', currentPlayers, playerIds };
-  }
-
   const maxPlayers = Number(room.maxPlayers ?? 0);
   if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > 4) {
     return { visible: false, reason: 'malformed', currentPlayers, playerIds };
