@@ -31,11 +31,29 @@ type Params = {
 };
 
 export function useAuthoritativeGameSyncController(params: Params) {
+  const [, setAuthoritativeApplyWakeVersion] = useState(0);
+  const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
+  const clearAuthoritativeApplyWake = useCallback(() => {
+    if (authoritativeApplyWakeTimerRef.current === null) return;
+    window.clearTimeout(authoritativeApplyWakeTimerRef.current);
+    authoritativeApplyWakeTimerRef.current = null;
+  }, []);
+  const scheduleAuthoritativeApplyWake = useCallback((roomId: string) => {
+    if (params.activeRoomIdRef.current !== roomId) return;
+    clearAuthoritativeApplyWake();
+    authoritativeApplyWakeTimerRef.current = window.setTimeout(() => {
+      authoritativeApplyWakeTimerRef.current = null;
+      if (params.activeRoomIdRef.current !== roomId) return;
+      setAuthoritativeApplyWakeVersion((version) => version + 1);
+    }, 0);
+  }, [clearAuthoritativeApplyWake, params.activeRoomIdRef]);
+
   const queuesRef = useRef<ReturnType<typeof createAuthoritativeGameActionQueues<Omit<GameAction, 'id' | 'createdAt' | 'processed'>, AuthoritativeCommitResult>> | null>(null);
   if (!queuesRef.current) {
     queuesRef.current = createAuthoritativeGameActionQueues({
       activeRoomIdRef: params.activeRoomIdRef,
       commit: commitAuthoritativeGameAction,
+      onApplySettled: scheduleAuthoritativeApplyWake,
     });
   }
   const [manualSequenceSyncing, setManualSequenceSyncing] = useState(false);
@@ -44,10 +62,13 @@ export function useAuthoritativeGameSyncController(params: Params) {
   useEffect(() => {
     if (previousRoomIdRef.current === params.activeRoomId) return;
     previousRoomIdRef.current = params.activeRoomId;
+    clearAuthoritativeApplyWake();
     queuesRef.current?.reset();
     setManualSequenceSyncing(false);
     params.clearPendingLocalRemoteActions();
-  }, [params.activeRoomId, params.clearPendingLocalRemoteActions]);
+  }, [clearAuthoritativeApplyWake, params.activeRoomId, params.clearPendingLocalRemoteActions]);
+
+  useEffect(() => clearAuthoritativeApplyWake, [clearAuthoritativeApplyWake]);
 
   useGameSyncSubscription({
     activeRoomId: params.activeRoomId,
