@@ -46,10 +46,11 @@ test('정상 종료 상태 자체는 재입장과 목록 표시를 차단하지 
   assert.doesNotMatch(summaryFlow, /if \(room\.status === 'finished'\)/);
 });
 
-test('Firestore 규칙은 절대 시각 만료와 임의 유예 조작 차단을 강제한다', () => {
+test('Firestore 규칙은 3분 절대 시각 만료와 만료 후 신규 입장 차단을 강제한다', () => {
   const rules = read('firestore.rules');
   assert.match(rules, /room\.emptySince \+ duration\.value\(3, 'm'\)/);
   assert.match(rules, /room\.lastHumanSeenAt \+ duration\.value\(225, 's'\)/);
+  assert.match(rules, /roomExists\(roomId\)\s*\? get\(roomPath\(roomId\)\)\.data\s*:\s*getAfter\(roomPath\(roomId\)\)\.data/s);
   assert.match(rules, /request\.resource\.data\.emptySince == request\.time/);
   assert.match(rules, /isRoomMember\(roomId\)\s*\|\| isRoomMemberAfter\(roomId\)\s*\|\| isPresenceCleanupLeaseOwner\(roomId\)/s);
   assert.match(rules, /request\.resource\.data\.lastHumanSeenAt == request\.time/);
