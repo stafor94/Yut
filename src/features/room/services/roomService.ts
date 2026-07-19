@@ -3,6 +3,7 @@ import {
   doc,
   onSnapshot,
   query,
+  serverTimestamp,
   setDoc,
   where,
   writeBatch,
@@ -16,6 +17,7 @@ import {
   createRoom as createRoomCore,
   getProcessedGameAction as getProcessedGameActionCore,
   initializeGameState as initializeGameStateCore,
+  isRoomInGame as isRoomInGameCore,
   joinRoom as joinRoomCore,
   removeRoomPlayer as removeRoomPlayerCore,
   updateRoomPlayer as updateRoomPlayerCore,
@@ -37,9 +39,9 @@ import {
   cleanupDeletionCandidatesBeforeCreate,
   countActivePlayers,
   deleteRoomSafely,
-  deleteRoomWhenNoNonAiPlayersRemain,
   getManagedRoom,
   getRoomPlayers,
+  reconcileRoomDeletionGrace,
   type ManagedRoomSummary,
   type RoomDeletionGuard,
 } from './roomLifecycleStore';
@@ -59,6 +61,10 @@ export * from './roomExitPolicy';
 export * from './roomAvailabilityPolicy';
 export * from './roomLifecyclePolicy';
 
+export function isRoomInGame(room: Parameters<typeof isRoomInGameCore>[0]) {
+  return room.status === 'finished' || isRoomInGameCore(room);
+}
+
 const keepNewestRoomPerHost = (rooms: RoomSummary[]) => {
   const latestRoomsByHost = new Map<string, RoomSummary>();
   const roomsWithoutHost: RoomSummary[] = [];
@@ -77,7 +83,8 @@ const keepNewestRoomPerHost = (rooms: RoomSummary[]) => {
 export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): Unsubscribe {
   if (!db) { callback([]); return () => undefined; }
   void drainPendingRoomCleanups();
-  const roomsQuery = query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing']));
+  void cleanupDeletionCandidatesBeforeCreate().catch((error) => console.warn('방 목록 조회 전 만료 방 정리에 실패했습니다.', error));
+  const roomsQuery = query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing', 'finished']));
   return onSnapshot(roomsQuery, (snapshot) => {
     const rooms = snapshot.docs
       .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
@@ -160,6 +167,23 @@ export async function deleteRoom(roomId: string, guard: RoomDeletionGuard = {}) 
   return deleteRoomSafely(roomId, guard);
 }
 
+export async function heartbeatRoomPlayer(roomId: string, playerId: string) {
+  if (!db || !roomId || !playerId) return false;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'rooms', roomId, 'players', playerId), { lastSeen: serverTimestamp() }, { merge: true });
+    batch.set(doc(db, 'rooms', roomId), {
+      lastHumanSeenAt: serverTimestamp(),
+      emptySince: null,
+      lastActivityAt: serverTimestamp(),
+    }, { merge: true });
+    await batch.commit();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
   const atomicAiSubstitution = isAiSubstitutionUpdate(params);
   try {
@@ -191,11 +215,18 @@ export async function updateRoomStatus(roomId: string, status: RoomSummary['stat
       }
       if (!player.isAI && player.id !== room?.hostId && player.ready) batch.set(doc(db!, 'rooms', roomId, 'players', player.id), { ready: false }, { merge: true });
     });
-    batch.set(doc(db, 'rooms', roomId), { currentPlayers: countActivePlayers(remainingPlayers), lastActivityAt: Date.now(), deletingAt: null }, { merge: true });
+    batch.set(doc(db, 'rooms', roomId), {
+      currentPlayers: countActivePlayers(remainingPlayers),
+      emptySince: null,
+      deletingAt: null,
+      lastActivityAt: Date.now(),
+    }, { merge: true });
     await batch.commit();
+    await reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceClear: true, allowGraceStart: true });
     return;
   }
-  await setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now(), ...(status !== 'finished' ? { deletingAt: null } : {}) }, { merge: true });
+  await setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now(), deletingAt: null }, { merge: true });
+  await reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceClear: true, allowGraceStart: true });
 }
 
 export async function cleanupCurrentRoomPresence(...args: Parameters<typeof cleanupCurrentRoomPresenceSafely>) {
@@ -203,9 +234,8 @@ export async function cleanupCurrentRoomPresence(...args: Parameters<typeof clea
   const [roomBefore, playersBefore] = await Promise.all([getManagedRoom(roomId), getRoomPlayers(roomId)]);
   const seatIndexByPlayerId = new Map(playersBefore.map((player) => [player.id, Number(player.seatIndex)]));
   const result = await cleanupCurrentRoomPresenceSafely(...args);
-  if (!result.cleanedPlayerIds.length) return result;
 
-  if (db) {
+  if (result.cleanedPlayerIds.length && db) {
     const playersAfter = await getRoomPlayers(roomId);
     const batch = writeBatch(db);
     if (roomBefore?.status === 'waiting') {
@@ -221,7 +251,7 @@ export async function cleanupCurrentRoomPresence(...args: Parameters<typeof clea
     await batch.commit();
   }
 
-  await deleteRoomWhenNoNonAiPlayersRemain(roomId);
+  await reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceClear: true, allowGraceStart: true });
   return result;
 }
 
@@ -230,20 +260,6 @@ export async function cleanupInactiveRooms(protectedRoomId = '') {
 }
 
 export async function scheduleEmptyRoomDeletion(roomId: string) {
-  if (!db || !roomId) return;
-  const players = await getRoomPlayers(roomId);
-  const roomRef = doc(db, 'rooms', roomId);
-  if (players.length) {
-    await setDoc(roomRef, { currentPlayers: countActivePlayers(players), emptySince: null, lastActivityAt: Date.now() }, { merge: true });
-    return;
-  }
-  const emptySince = Date.now();
-  await setDoc(roomRef, { currentPlayers: 0, emptySince, lastActivityAt: emptySince }, { merge: true });
-  globalThis.setTimeout(() => {
-    void (async () => {
-      const [room, currentPlayers] = await Promise.all([getManagedRoom(roomId), getRoomPlayers(roomId)]);
-      if (!room || currentPlayers.length || Number(room.emptySince ?? 0) !== emptySince) return;
-      await deleteRoomSafely(roomId, { expectedCurrentPlayers: 0, expectedEmptySince: emptySince, expectedLastActivityAt: emptySince });
-    })().catch((error) => console.warn('빈 방 지연 정리에 실패했습니다.', error));
-  }, 30_000);
+  if (!db || !roomId) return false;
+  return reconcileRoomDeletionGrace(roomId);
 }

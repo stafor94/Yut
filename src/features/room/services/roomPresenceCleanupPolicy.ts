@@ -1,37 +1,36 @@
-export const ROOM_PRESENCE_HEARTBEAT_INTERVAL_MS = 15000;
-export const ROOM_PRESENCE_CLEANUP_INTERVAL_MS = 15000;
-export const ROOM_PRESENCE_CLEANUP_LEASE_MS = 25000;
-export const ROOM_PRESENCE_STALE_MS = 45000;
+export const ROOM_PRESENCE_HEARTBEAT_MS = 15_000;
+export const ROOM_PRESENCE_CLEANUP_INTERVAL_MS = 15_000;
+export const ROOM_PRESENCE_CLEANUP_LEASE_MS = 25_000;
+export const ROOM_PRESENCE_STALE_MS = 45_000;
 
 export type RoomPresenceLeaseState = {
-  status?: unknown;
-  startStatus?: unknown;
-  presenceCleanupLeaseOwnerId?: unknown;
-  presenceCleanupLeaseExpiresAt?: unknown;
-  presenceCleanupLeaseVersion?: unknown;
+  status?: 'waiting' | 'playing' | 'finished';
+  startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing';
+  presenceCleanupLeaseOwnerId?: string;
+  presenceCleanupLeaseExpiresAt?: number;
+  presenceCleanupLeaseVersion?: number;
 };
-
-export type RoomPresenceLeaseDecision =
-  | { status: 'acquire' | 'renew'; ownerId: string; expiresAt: number; version: number }
-  | { status: 'held'; ownerId: string; expiresAt: number; version: number }
-  | { status: 'inactive'; ownerId: string; expiresAt: number; version: number };
 
 export type RoomPresencePlayerState = {
   id: string;
-  isAI?: unknown;
-  isSpectator?: unknown;
+  isAI?: boolean;
+  isSubstitutedByAI?: boolean;
+  isSpectator?: boolean;
+  seatIndex?: number;
   lastSeen?: unknown;
   joinedAt?: unknown;
-  seatIndex?: unknown;
 };
 
 export type RoomPresenceCleanupAction = 'skip' | 'substitute_ai' | 'remove';
+export type RoomPresenceLeaseDecision = {
+  status: 'inactive' | 'held' | 'acquire' | 'renew';
+  ownerId: string;
+  expiresAt: number;
+  version: number;
+};
 
-export const getPresenceTimestampMillis = (value: unknown) => {
-  if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
-    const millis = Number(value.toMillis());
-    return Number.isFinite(millis) ? millis : 0;
-  }
+const getPresenceTimestampMillis = (value: unknown) => {
+  if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') return Number(value.toMillis());
   if (value instanceof Date) return value.getTime();
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
   return 0;
@@ -40,6 +39,7 @@ export const getPresenceTimestampMillis = (value: unknown) => {
 export const isPresenceCleanupRoomActive = (room: RoomPresenceLeaseState) => (
   room.status === 'waiting'
   || room.status === 'playing'
+  || room.status === 'finished'
   || room.startStatus === 'entering'
   || room.startStatus === 'playing'
 );
@@ -64,8 +64,7 @@ export function decideRoomPresenceCleanupLease(
 export const isEligiblePresenceCleanupCandidate = (player: RoomPresencePlayerState | null | undefined) => Boolean(
   player
   && player.id
-  && !player.isAI
-  && !player.isSpectator,
+  && !player.isAI,
 );
 
 export const isStaleHumanPresencePlayer = (
@@ -73,7 +72,7 @@ export const isStaleHumanPresencePlayer = (
   now = Date.now(),
   staleMs = ROOM_PRESENCE_STALE_MS,
 ) => {
-  if (player.isAI || player.isSpectator) return false;
+  if (player.isAI) return false;
   const lastSeen = getPresenceTimestampMillis(player.lastSeen ?? player.joinedAt);
   return !lastSeen || now - lastSeen > staleMs;
 };
@@ -86,8 +85,8 @@ export function getRoomPresenceCleanupAction(
 ): RoomPresenceCleanupAction {
   if (!isStaleHumanPresencePlayer(player, now, staleMs)) return 'skip';
   const seatIndex = Number(player.seatIndex);
-  const hasSeat = Number.isInteger(seatIndex) && seatIndex >= 0;
-  return isPresenceCleanupRoomActive(room) && (room.status === 'playing' || room.startStatus === 'entering' || room.startStatus === 'playing') && hasSeat
+  const hasPlayerSeat = !player.isSpectator && Number.isInteger(seatIndex) && seatIndex >= 0;
+  return isPresenceCleanupRoomActive(room) && (room.status === 'playing' || room.startStatus === 'entering' || room.startStatus === 'playing') && hasPlayerSeat
     ? 'substitute_ai'
     : 'remove';
 }

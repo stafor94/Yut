@@ -2,7 +2,6 @@ import { doc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
 import { auth } from '../../../services/firebase/firebaseAuth';
 import {
-  deleteRoom as deleteRoomCore,
   removeRoomPlayer as removeRoomPlayerCore,
   type RoomPlayer,
   type RoomSeat,
@@ -16,10 +15,10 @@ import {
 } from './roomLifecyclePolicy';
 import {
   countActivePlayers,
-  deleteRoomWhenNoNonAiPlayersRemain,
   getActivePlayerRoomMemberships,
   getManagedRoom,
   getRoomPlayers,
+  reconcileRoomDeletionGrace,
   type ManagedRoomSummary,
 } from './roomLifecycleStore';
 import { updateGameSeatControlState } from './roomPresenceGameSeat';
@@ -81,25 +80,25 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, opti
   const observedPlayer = players.find((player) => player.id === playerId);
   if (!observedPlayer) return;
   const observedCurrentPlayers = Number(room.currentPlayers ?? countActivePlayers(players));
-  const noOtherHumanPlayers = !players.some((player) => player.id !== playerId && !player.isSpectator && !player.isAI);
+  const noOtherHumanPlayers = !players.some((player) => player.id !== playerId && !player.isAI);
   const roomRef = doc(db, 'rooms', roomId);
   const playerRef = doc(db, 'rooms', roomId, 'players', playerId);
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
 
-  const markedForDeletion = await runTransaction(db, async (transaction) => {
+  await runTransaction(db, async (transaction) => {
     const [freshRoomSnapshot, freshPlayerSnapshot] = await Promise.all([
       transaction.get(roomRef),
       transaction.get(playerRef),
     ]);
-    if (!freshRoomSnapshot.exists() || !freshPlayerSnapshot.exists()) return false;
+    if (!freshRoomSnapshot.exists() || !freshPlayerSnapshot.exists()) return;
     const freshRoom = freshRoomSnapshot.data() as ManagedRoomSummary;
     const freshPlayer = freshPlayerSnapshot.data() as RoomPlayer;
     const currentPlayers = Number(freshRoom.currentPlayers ?? observedCurrentPlayers);
     const deletionGuardStillMatches = currentPlayers === observedCurrentPlayers
       && getRoomLastActivityMillis(freshRoom) === getRoomLastActivityMillis(room);
-    const shouldFinishRoom = noOtherHumanPlayers && deletionGuardStillMatches;
+    const shouldStartDeletionGrace = noOtherHumanPlayers && deletionGuardStillMatches;
     const freshSeatIndex = Number(freshPlayer.seatIndex);
-    const hasFreshSeat = Number.isInteger(freshSeatIndex) && freshSeatIndex >= 0;
+    const hasFreshSeat = !freshPlayer.isSpectator && Number.isInteger(freshSeatIndex) && freshSeatIndex >= 0;
     const freshSeatRef = hasFreshSeat ? doc(db!, 'rooms', roomId, 'seats', String(freshSeatIndex)) : null;
     const freshSeatSnapshot = freshSeatRef ? await transaction.get(freshSeatRef) : null;
     const freshSeat = freshSeatSnapshot?.exists() ? freshSeatSnapshot.data() as RoomSeat : null;
@@ -150,9 +149,11 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, opti
       const changedAt = Date.now();
       transaction.set(roomRef, {
         lastActivityAt: changedAt,
-        ...(shouldFinishRoom ? { status: 'finished', deletingAt: changedAt } : { emptySince: null }),
+        ...(shouldStartDeletionGrace
+          ? { emptySince: serverTimestamp() }
+          : { emptySince: null, deletingAt: null }),
       }, { merge: true });
-      return shouldFinishRoom;
+      return;
     }
 
     transaction.delete(playerRef);
@@ -162,16 +163,13 @@ export async function removeRoomPlayerNow(roomId: string, playerId: string, opti
     transaction.set(roomRef, {
       currentPlayers: nextCurrentPlayers,
       lastActivityAt: changedAt,
-      ...(shouldFinishRoom ? { status: 'finished', deletingAt: changedAt } : { emptySince: null }),
+      ...(shouldStartDeletionGrace
+        ? { emptySince: serverTimestamp() }
+        : { emptySince: null, deletingAt: null }),
     }, { merge: true });
-    return shouldFinishRoom;
   });
 
-  if (markedForDeletion) {
-    await deleteRoomCore(roomId);
-    return;
-  }
-  await deleteRoomWhenNoNonAiPlayersRemain(roomId);
+  await reconcileRoomDeletionGrace(roomId);
 }
 
 function scheduleTransitionRoomRemoval(roomId: string, playerId: string, options: { preservePlayingSeatAsAi?: boolean }) {

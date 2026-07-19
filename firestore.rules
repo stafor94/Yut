@@ -51,6 +51,12 @@ service cloud.firestore {
         && getAfter(playerPath(roomId, request.auth.uid)).data.isSpectator != true;
     }
 
+    function isPresenceCleanupLeaseOwner(roomId) {
+      return signedIn()
+        && isRoomMember(roomId)
+        && get(roomPath(roomId)).data.presenceCleanupLeaseOwnerId == request.auth.uid;
+    }
+
     function canReadRoomData(roomId) {
       return isRoomMember(roomId);
     }
@@ -62,14 +68,101 @@ service cloud.firestore {
         || isRoomHostAfter(roomId);
     }
 
+    function hasExpiredEmptyGrace(roomId) {
+      let hasRoom = roomExists(roomId) || roomExistsAfter(roomId);
+      let room = roomExists(roomId)
+        ? get(roomPath(roomId)).data
+        : getAfter(roomPath(roomId)).data;
+      let explicitGraceExpired = ('emptySince' in room)
+        && room.emptySince is timestamp
+        && request.time >= room.emptySince + duration.value(3, 'm');
+      let heartbeatGraceExpired = ('lastHumanSeenAt' in room)
+        && room.lastHumanSeenAt is timestamp
+        && request.time >= room.lastHumanSeenAt + duration.value(225, 's');
+      return hasRoom && (explicitGraceExpired || heartbeatGraceExpired);
+    }
+
+    function startsEmptyRoomGrace(roomId) {
+      return signedIn()
+        && roomExists(roomId)
+        && (
+          isRoomMember(roomId)
+          || isRoomMemberAfter(roomId)
+          || isPresenceCleanupLeaseOwner(roomId)
+        )
+        && (
+          !('emptySince' in resource.data)
+          || resource.data.emptySince == null
+        )
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'emptySince',
+          'lastActivityAt'
+        ])
+        && request.resource.data.emptySince == request.time
+        && request.resource.data.lastActivityAt == request.time;
+    }
+
+    function isRoomMemberPresenceUpdate(roomId) {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return signedIn()
+        && isRoomMemberAfter(roomId)
+        && changedKeys.hasOnly([
+          'emptySince',
+          'lastHumanSeenAt',
+          'lastActivityAt',
+          'currentPlayers',
+          'presenceCleanupLeaseOwnerId',
+          'presenceCleanupLeaseExpiresAt',
+          'presenceCleanupLeaseVersion',
+          'presenceCleanupLeaseUpdatedAt'
+        ])
+        && (
+          !changedKeys.hasAny(['lastHumanSeenAt'])
+          || request.resource.data.lastHumanSeenAt == request.time
+        )
+        && (
+          !changedKeys.hasAny(['emptySince'])
+          || request.resource.data.emptySince == null
+          || request.resource.data.emptySince == request.time
+        );
+    }
+
+    function isRoomMemberExitUpdate(roomId) {
+      let changedKeys = request.resource.data.diff(resource.data).affectedKeys();
+      return signedIn()
+        && isRoomMember(roomId)
+        && !isRoomMemberAfter(roomId)
+        && changedKeys.hasOnly([
+          'emptySince',
+          'deletingAt',
+          'lastActivityAt',
+          'currentPlayers'
+        ])
+        && (
+          !changedKeys.hasAny(['emptySince'])
+          || request.resource.data.emptySince == null
+          || request.resource.data.emptySince == request.time
+        );
+    }
+
+    function isExpiredRoomCleanupUpdate(roomId) {
+      return signedIn()
+        && hasExpiredEmptyGrace(roomId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'deletingAt',
+          'lastActivityAt'
+        ])
+        && request.resource.data.status == 'finished'
+        && request.resource.data.deletingAt == request.time
+        && request.resource.data.lastActivityAt == request.time;
+    }
+
     function isCleanupEligibleRoom(roomId) {
       let room = get(roomPath(roomId)).data;
       return roomExists(roomId)
         && (!('systemRoomType' in room) || room.systemRoomType != 'creation_lock')
-        && (
-          room.status == 'finished'
-          || room.currentPlayers <= 0
-        );
+        && hasExpiredEmptyGrace(roomId);
     }
 
     function deletingWithParentRoom(roomId) {
@@ -78,6 +171,7 @@ service cloud.firestore {
 
     function canDeleteRoomData(roomId) {
       return canWriteRoomData(roomId)
+        || isPresenceCleanupLeaseOwner(roomId)
         || isCleanupEligibleRoom(roomId)
         || deletingWithParentRoom(roomId);
     }
@@ -94,13 +188,18 @@ service cloud.firestore {
         && request.resource.data.playMode in ['individual', 'team']
         && request.resource.data.pieceCount in [1, 2, 3, 4];
 
-      allow update: if canWriteRoomData(roomId);
+      allow update: if canWriteRoomData(roomId)
+        || isRoomMemberPresenceUpdate(roomId)
+        || isRoomMemberExitUpdate(roomId)
+        || startsEmptyRoomGrace(roomId)
+        || isExpiredRoomCleanupUpdate(roomId);
       allow delete: if canWriteRoomData(roomId) || isCleanupEligibleRoom(roomId);
 
       match /players/{playerId} {
         allow read: if signedIn();
 
         allow create: if signedIn()
+          && !hasExpiredEmptyGrace(roomId)
           && (
             playerId == request.auth.uid
             || isRoomHostAfter(roomId)
@@ -109,26 +208,33 @@ service cloud.firestore {
 
         allow update: if signedIn()
           && (
-            playerId == request.auth.uid
-            || canWriteRoomData(roomId)
+            isPresenceCleanupLeaseOwner(roomId)
+            || (
+              !hasExpiredEmptyGrace(roomId)
+              && (
+                playerId == request.auth.uid
+                || canWriteRoomData(roomId)
+              )
+            )
           );
 
         allow delete: if signedIn()
           && (
             playerId == request.auth.uid
+            || isPresenceCleanupLeaseOwner(roomId)
             || canDeleteRoomData(roomId)
           );
       }
 
       match /seats/{seatId} {
         allow read: if signedIn();
-        allow create, update: if canWriteRoomData(roomId);
+        allow create, update: if canWriteRoomData(roomId) || isPresenceCleanupLeaseOwner(roomId);
         allow delete: if canDeleteRoomData(roomId);
       }
 
       match /state/{stateId} {
         allow read: if canReadRoomData(roomId);
-        allow create, update: if canWriteRoomData(roomId);
+        allow create, update: if canWriteRoomData(roomId) || isPresenceCleanupLeaseOwner(roomId);
         allow delete: if canDeleteRoomData(roomId);
       }
 

@@ -1,7 +1,14 @@
+import {
+  isActiveHumanLifecyclePlayer,
+  isRoomDeletionExpired,
+} from './roomLifecyclePolicy';
+
 export type RoomAvailabilityRoom = {
   status?: 'waiting' | 'playing' | 'finished';
   maxPlayers?: number;
   deletingAt?: unknown;
+  emptySince?: unknown;
+  lastHumanSeenAt?: unknown;
   systemRoomType?: string;
 };
 
@@ -10,6 +17,8 @@ export type RoomAvailabilityPlayer = {
   isSpectator?: boolean;
   isAI?: boolean;
   isSubstitutedByAI?: boolean;
+  lastSeen?: unknown;
+  joinedAt?: unknown;
 };
 
 export type RoomAvailabilityReason = 'visible' | 'inactive' | 'orphaned' | 'full' | 'malformed';
@@ -32,11 +41,14 @@ export function classifyRoomAvailability(
   room: RoomAvailabilityRoom,
   players: RoomAvailabilityPlayer[],
   currentUserId = '',
+  now = Date.now(),
 ): RoomAvailabilityResult {
-  if (room.status === 'finished' || room.deletingAt || room.systemRoomType) {
+  if (room.deletingAt || room.systemRoomType) {
     return { visible: false, reason: 'inactive', currentPlayers: 0, playerIds: [] };
   }
-  if (room.status !== 'waiting' && room.status !== 'playing') return { visible: false, reason: 'malformed', currentPlayers: 0, playerIds: [] };
+  if (room.status !== 'waiting' && room.status !== 'playing' && room.status !== 'finished') {
+    return { visible: false, reason: 'malformed', currentPlayers: 0, playerIds: [] };
+  }
 
   const occupiedPlayers = players.filter((player) => !player.isSpectator);
   const playerIds = occupiedPlayers
@@ -46,9 +58,10 @@ export function classifyRoomAvailability(
     ))
     .map((player) => player.id);
   const currentPlayers = occupiedPlayers.length;
-
-  if (!playerIds.length) return { visible: false, reason: 'orphaned', currentPlayers, playerIds };
-
+  const hasActiveHumanPresence = players.some((player) => isActiveHumanLifecyclePlayer(player, now));
+  if (!hasActiveHumanPresence && isRoomDeletionExpired(room, now)) {
+    return { visible: false, reason: 'inactive', currentPlayers, playerIds };
+  }
   const maxPlayers = Number(room.maxPlayers ?? 0);
   if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > 4) {
     return { visible: false, reason: 'malformed', currentPlayers, playerIds };

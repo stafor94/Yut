@@ -163,24 +163,6 @@ export function applyRoomSummarySnapshot(params: RoomSummarySnapshotParams) {
     params.onEndGameDialogOpenChange(false);
     params.onMessage('게임이 종료되어 방 대기실로 돌아왔습니다.');
   }
-
-  if (room.status === 'finished') {
-    params.hostingRoomUserIdRef.current = '';
-    params.activeRoomHostIdRef.current = '';
-    params.onScreenChange('lobby');
-    params.onActiveRoomIdChange('');
-    params.onActiveRoomTitleChange('');
-    params.onActiveRoomHostIdChange('');
-    params.onRoomHostChange(false);
-    params.onCountdownChange(-1);
-    resetStartRequestId(params);
-    params.onInitialGameEntryPendingChange(false);
-    params.appliedGameStartKeyRef.current = '';
-    params.onItemPromptTimingChange(null);
-    params.onTurnOrderIntroChange(null);
-    params.onEndGameDialogOpenChange(false);
-    params.onMessage('게임이 종료되어 첫 대기화면으로 돌아왔습니다.');
-  }
 }
 
 export function shouldApplyRoomSummarySnapshot(params: { subscribedRoomId: string; currentActiveRoomId: string }) {
