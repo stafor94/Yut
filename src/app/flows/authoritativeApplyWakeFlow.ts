@@ -18,6 +18,10 @@ const normalizeAppliedSnapshot = (appliedValue: unknown): SnapshotRecord | null 
   };
 };
 
+const getAppliedOrLatestValue = (appliedSnapshot: SnapshotRecord, latestRecord: SnapshotRecord, key: string) => (
+  Object.prototype.hasOwnProperty.call(appliedSnapshot, key) ? appliedSnapshot[key] : latestRecord[key]
+);
+
 export function buildAuthoritativeApplyWakeSnapshot<TSnapshot extends object>(
   appliedValue: unknown,
   latestSnapshot: TSnapshot | null,
@@ -29,10 +33,10 @@ export function buildAuthoritativeApplyWakeSnapshot<TSnapshot extends object>(
   const mergedSnapshot = { ...latestRecord, ...appliedSnapshot };
   const startRequestVersion = Number(appliedSnapshot.startRequestVersion ?? 0) || Number(latestRecord.startRequestVersion ?? 0);
   const startRequestId = String(appliedSnapshot.startRequestId ?? '') || String(latestRecord.startRequestId ?? '');
-  const pieces = cloneArrayValue(appliedSnapshot.pieces ?? latestRecord.pieces);
-  const gameSeats = cloneArrayValue(appliedSnapshot.gameSeats ?? latestRecord.gameSeats);
-  const roll = cloneObjectValue(appliedSnapshot.roll ?? latestRecord.roll);
-  const rollStack = cloneArrayValue(appliedSnapshot.rollStack ?? latestRecord.rollStack);
+  const pieces = cloneArrayValue(getAppliedOrLatestValue(appliedSnapshot, latestRecord, 'pieces'));
+  const gameSeats = cloneArrayValue(getAppliedOrLatestValue(appliedSnapshot, latestRecord, 'gameSeats'));
+  const roll = cloneObjectValue(getAppliedOrLatestValue(appliedSnapshot, latestRecord, 'roll'));
+  const rollStack = cloneArrayValue(getAppliedOrLatestValue(appliedSnapshot, latestRecord, 'rollStack'));
 
   return {
     ...mergedSnapshot,
