@@ -4160,6 +4160,7 @@ export function App() {
       captured = capturablePieces.some((piece) => !shieldedPieceIds.includes(piece.id));
       if (shieldedCaptures.length) {
         setShieldedPieceIds((ids) => ids.filter((id) => !shieldedCaptures.some((piece) => piece.id === id)));
+        playSfx('shield');
         addLog('방패가 상대의 잡기를 1회 막았습니다.');
       }
       if (captured) {

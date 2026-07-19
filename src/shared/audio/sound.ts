@@ -1,13 +1,69 @@
 import { bindYutResultSpeech } from './yutSpeech';
+import arriveAudioSource from './assets/effects/arrive-original.wav';
+import captureAudioSource from './assets/effects/capture-original.wav';
+import countdownAudioSource from './assets/effects/countdown-original.wav';
+import countdownStartAudioSource from './assets/effects/countdown-start-original.wav';
+import fallAudioSource from './assets/effects/fall-original.wav';
+import itemPickupAudioSource from './assets/effects/item-pickup-original.wav';
+import itemUseAudioSource from './assets/effects/item-use-original.wav';
+import moveAudioSource from './assets/effects/move-original.wav';
+import perfectAudioSource from './assets/effects/perfect-original.wav';
+import rollAudioSource from './assets/effects/roll_original.wav';
+import shieldAudioSource from './assets/effects/shield-original.wav';
+import stackAudioSource from './assets/effects/stack-original.wav';
+import toastAudioSource from './assets/effects/toast-original.wav';
+import turnAudioSource from './assets/effects/turn-original.wav';
+import winAudioSource from './assets/effects/win-original.wav';
 
 export type SoundEffect = 'countdown' | 'countdownStart' | 'turn' | 'roll' | 'bonus' | 'perfect' | 'fall' | 'move' | 'arrive' | 'stack' | 'capture' | 'itemPickup' | 'itemUse' | 'trap' | 'shield' | 'win' | 'toast';
 
 const SOUND_ENABLED_STORAGE_KEY = 'yut-online:soundEnabled';
 const SOUND_EFFECT_VOLUME = 0.38;
 
+const WAV_EFFECT_SOURCES = {
+  arrive: arriveAudioSource,
+  capture: captureAudioSource,
+  countdown: countdownAudioSource,
+  countdownStart: countdownStartAudioSource,
+  fall: fallAudioSource,
+  itemPickup: itemPickupAudioSource,
+  itemUse: itemUseAudioSource,
+  move: moveAudioSource,
+  perfect: perfectAudioSource,
+  roll: rollAudioSource,
+  shield: shieldAudioSource,
+  stack: stackAudioSource,
+  toast: toastAudioSource,
+  turn: turnAudioSource,
+  win: winAudioSource,
+} satisfies Partial<Record<SoundEffect, string>>;
+
+const effectAudioByEffect = new Map<keyof typeof WAV_EFFECT_SOURCES, HTMLAudioElement>();
+
 let audioContext: AudioContext | null = null;
 let soundUnlockBound = false;
 const lastPlayedEffectAt = new Map<SoundEffect, number>();
+
+const getEffectAudio = (effect: keyof typeof WAV_EFFECT_SOURCES) => {
+  const cachedAudio = effectAudioByEffect.get(effect);
+  if (cachedAudio) return cachedAudio;
+  if (typeof Audio === 'undefined') return null;
+  const audio = new Audio(WAV_EFFECT_SOURCES[effect]);
+  audio.preload = 'auto';
+  audio.volume = SOUND_EFFECT_VOLUME;
+  effectAudioByEffect.set(effect, audio);
+  return audio;
+};
+
+const playWavEffect = (effect: keyof typeof WAV_EFFECT_SOURCES) => {
+  const audio = getEffectAudio(effect);
+  if (!audio) return;
+  audio.pause();
+  audio.currentTime = 0;
+  audio.muted = false;
+  audio.volume = SOUND_EFFECT_VOLUME;
+  void audio.play().catch(() => undefined);
+};
 
 const getAudioContext = () => {
   if (typeof window === 'undefined') return null;
@@ -44,8 +100,6 @@ const bindSoundUnlock = () => {
 };
 
 bindSoundUnlock();
-
-const nowWithOffset = (context: AudioContext, offset = 0) => context.currentTime + offset;
 
 const makeGain = (context: AudioContext, volume: number, start: number, duration: number, peak = 1) => {
   const gain = context.createGain();
@@ -106,82 +160,31 @@ bindYutResultSpeech(isStoredSoundEnabled);
 
 export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
   if (!enabled) return;
+
+  const now = typeof performance === 'undefined' ? Date.now() / 1000 : performance.now() / 1000;
+  const lastPlayedAt = lastPlayedEffectAt.get(effect) ?? -Infinity;
+  if (now - lastPlayedAt < getEffectDedupeWindow(effect)) return;
+  lastPlayedEffectAt.set(effect, now);
+
+  if (effect in WAV_EFFECT_SOURCES) {
+    playWavEffect(effect as keyof typeof WAV_EFFECT_SOURCES);
+    return;
+  }
+
   const context = getAudioContext();
   if (!context) return;
 
   const play = () => {
     if (context.state === 'suspended') return;
     const safeVolume = SOUND_EFFECT_VOLUME;
-    const now = context.currentTime;
-    const lastPlayedAt = lastPlayedEffectAt.get(effect) ?? -Infinity;
-    if (now - lastPlayedAt < getEffectDedupeWindow(effect)) return;
-    lastPlayedEffectAt.set(effect, now);
+    const contextNow = context.currentTime;
 
     switch (effect) {
-      case 'countdown':
-        playTone(context, 660, now, 0.12, safeVolume * 0.72, 'triangle');
-        playTone(context, 880, now + 0.035, 0.08, safeVolume * 0.38, 'sine');
-        break;
-      case 'countdownStart':
-        [523, 659, 784].forEach((frequency, index) => playTone(context, frequency, now + index * 0.055, 0.2, safeVolume * 0.72, 'triangle'));
-        break;
-      case 'turn':
-        playTone(context, 659, now, 0.18, safeVolume * 0.58, 'triangle');
-        playTone(context, 988, now + 0.075, 0.24, safeVolume * 0.72, 'sine');
-        playTone(context, 1319, now + 0.16, 0.2, safeVolume * 0.42, 'sine');
-        break;
-      case 'roll':
-        playNoise(context, nowWithOffset(context), 0.16, safeVolume, 650);
-        playTone(context, 170, nowWithOffset(context, 0.08), 0.14, safeVolume, 'triangle');
-        playTone(context, 115, nowWithOffset(context, 0.2), 0.18, safeVolume, 'triangle');
+      case 'trap':
+        playTone(context, 180, contextNow, 0.18, safeVolume, 'sawtooth');
+        playNoise(context, contextNow + 0.02, 0.16, safeVolume * 0.8, 420);
         break;
       case 'bonus':
-      case 'fall':
-        // 윷·모·낙 결과는 화면에 결과가 표시되는 순간 한국어 음성 합성으로 재생한다.
-        break;
-      case 'perfect':
-        [659, 880, 1047, 1319].forEach((frequency, index) => playTone(context, frequency, now + index * 0.045, 0.24, safeVolume * 0.82, index % 2 === 0 ? 'triangle' : 'sine'));
-        playTone(context, 1568, now + 0.16, 0.32, safeVolume * 0.58, 'sine');
-        playNoise(context, now + 0.02, 0.24, safeVolume * 0.2, 2400);
-        break;
-      case 'move':
-        playTone(context, 260, now, 0.055, safeVolume * 0.32, 'triangle');
-        playNoise(context, now, 0.045, safeVolume * 0.12, 520);
-        break;
-      case 'arrive':
-        playTone(context, 420, now, 0.08, safeVolume * 0.7, 'triangle');
-        playTone(context, 560, now + 0.06, 0.11, safeVolume * 0.55, 'triangle');
-        break;
-      case 'stack':
-        playTone(context, 294, now, 0.1, safeVolume * 0.62, 'triangle');
-        playTone(context, 440, now + 0.045, 0.14, safeVolume * 0.68, 'triangle');
-        playNoise(context, now + 0.015, 0.08, safeVolume * 0.16, 780);
-        break;
-      case 'capture':
-        playNoise(context, now, 0.12, safeVolume, 1200);
-        playTone(context, 98, now, 0.22, safeVolume, 'sawtooth');
-        playTone(context, 392, now + 0.06, 0.12, safeVolume * 0.7, 'triangle');
-        break;
-      case 'itemPickup':
-        [740, 988].forEach((frequency, index) => playTone(context, frequency, now + index * 0.06, 0.12, safeVolume * 0.75, 'sine'));
-        break;
-      case 'itemUse':
-        [440, 660, 880].forEach((frequency, index) => playTone(context, frequency, now + index * 0.045, 0.12, safeVolume * 0.65, 'triangle'));
-        break;
-      case 'trap':
-        playTone(context, 180, now, 0.18, safeVolume, 'sawtooth');
-        playNoise(context, now + 0.02, 0.16, safeVolume * 0.8, 420);
-        break;
-      case 'shield':
-        playTone(context, 620, now, 0.18, safeVolume * 0.7, 'sine');
-        playTone(context, 930, now + 0.04, 0.22, safeVolume * 0.55, 'sine');
-        break;
-      case 'win':
-        [523, 659, 784, 1047, 1319].forEach((frequency, index) => playTone(context, frequency, now + index * 0.09, 0.28, safeVolume * 0.75, 'triangle'));
-        break;
-      case 'toast':
-        playTone(context, 880, now, 0.08, safeVolume * 0.45, 'sine');
-        break;
       default:
         break;
     }
