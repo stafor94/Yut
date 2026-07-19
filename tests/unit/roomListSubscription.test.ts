@@ -52,6 +52,10 @@ function createHarness(currentUserId = 'viewer') {
 
 const waitingRoom = (id: string, title: string, maxPlayers = 4): TestRoom => ({ id, title, status: 'waiting', maxPlayers });
 const playingRoom = (id: string, title: string, maxPlayers = 4): TestRoom => ({ id, title, status: 'playing', maxPlayers });
+const expiredPlayingRoom = (id: string, title: string, maxPlayers = 4): TestRoom => ({
+  ...playingRoom(id, title, maxPlayers),
+  emptySince: 1,
+});
 const getLatestPublishedRooms = (published: TestRoom[][]) => published[published.length - 1];
 
 test('로비 controller는 start 전에는 구독하지 않고 중복 start에도 한 번만 구독한다', () => {
@@ -86,10 +90,10 @@ test('현재 사용자의 AI 대체 자리만 남은 진행 방은 복귀를 위
   assert.deepEqual(getLatestPublishedRooms(harness.published), [{ id: 'room-a', title: 'A', status: 'playing', maxPlayers: 4, currentPlayers: 2, playerIds: ['viewer'] }]);
 });
 
-test('다른 사용자의 AI 대체 자리나 일반 AI만 남은 방은 목록에서 숨긴다', () => {
+test('3분 유예가 만료된 다른 사용자의 AI 대체 방은 목록에서 숨긴다', () => {
   const harness = createHarness('viewer');
   harness.controller.start();
-  harness.emitRooms([playingRoom('room-a', 'A')]);
+  harness.emitRooms([expiredPlayingRoom('room-a', 'A')]);
   harness.emitPlayers('room-a', [{ id: 'departed-user', isAI: true, isSubstitutedByAI: true }, { id: 'ai-a', isAI: true }]);
   assert.deepEqual(getLatestPublishedRooms(harness.published), []);
 });
@@ -150,10 +154,10 @@ test('로비 복귀에 해당하는 재시작은 즉시 새 active rooms listene
   assert.equal(harness.roomSubscribeCount, 2);
 });
 
-test('앞쪽 고아 방이 있어도 검증 후 정상 방 최대 3개를 표시한다', () => {
+test('앞쪽의 만료된 AI 전용 방을 제외하고 정상 방 최대 3개를 표시한다', () => {
   const harness = createHarness('viewer');
   harness.controller.start();
-  harness.emitRooms([playingRoom('orphan', '고아 방'), waitingRoom('room-a', 'A'), waitingRoom('room-b', 'B'), waitingRoom('room-c', 'C'), waitingRoom('room-d', 'D')]);
+  harness.emitRooms([expiredPlayingRoom('orphan', '만료 방'), waitingRoom('room-a', 'A'), waitingRoom('room-b', 'B'), waitingRoom('room-c', 'C'), waitingRoom('room-d', 'D')]);
   harness.emitPlayers('orphan', [{ id: 'other', isAI: true, isSubstitutedByAI: true }]);
   harness.emitPlayers('room-a', [{ id: 'human-a' }]);
   harness.emitPlayers('room-b', [{ id: 'human-b' }]);
