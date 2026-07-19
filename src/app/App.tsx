@@ -94,6 +94,7 @@ import {
   withAndParticle,
   withSubjectParticle,
 } from './appUtils';
+import { selectPlayableSeats } from './selectors/gameViewSelectors';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
@@ -430,7 +431,7 @@ export function App() {
   const serverStatus = manualSequenceSyncing ? '동기화 중...' : isFirebaseConfigured ? (currentUser ? '온라인' : '연결 중') : '연결 정보 확인 필요';
   const serverStatusTone = isFirebaseConfigured ? (currentUser ? 'online' : 'pending') : 'offline';
   const displaySeats = useMemo(() => screen === 'game' ? seats.map((seat) => ({ ...seat, isHost: false })) : seats, [screen, seats]);
-  const playableSeats = useMemo(() => displaySeats.filter((seat) => !seat.isEmpty), [displaySeats]);
+  const playableSeats = useMemo(() => selectPlayableSeats(displaySeats), [displaySeats]);
   const syncedGameSeats = useMemo(() => gameSeatSnapshotsFromSeats(playableSeats), [playableSeats]);
   const teamCounts = useMemo(() => playableSeats.reduce<Record<Team, number>>((acc, seat) => ({ ...acc, [seat.team]: acc[seat.team] + 1 }), { 청팀: 0, 홍팀: 0 }), [playableSeats]);
   const teamBalanced = playMode === 'individual' || (maxPlayers === 4 && teamCounts.청팀 === 2 && teamCounts.홍팀 === 2);

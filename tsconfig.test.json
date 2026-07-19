@@ -43,6 +43,10 @@
     "src/app/flows/turnOrderPresentation.ts",
     "src/app/flows/renderFailure.ts",
     "src/services/firebase/firebaseAuthRetry.ts",
+    "src/app/appTypes.ts",
+    "src/app/preferences/localPreferences.ts",
+    "src/app/selectors/seatSelectors.ts",
+    "src/app/selectors/gameViewSelectors.ts",
     "tests/unit/**/*.ts",
     "src/app/diagnostics/gameDiagnostics.ts"
   ]
