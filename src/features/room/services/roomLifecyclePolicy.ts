@@ -7,6 +7,7 @@ export type RoomLifecycleRoom = {
   lastActivityAt?: unknown;
   deletingAt?: unknown;
   emptySince?: unknown;
+  lastHumanSeenAt?: unknown;
   currentPlayers?: number;
   systemRoomType?: string;
 };
@@ -88,11 +89,23 @@ export const getRoomLastActivityMillis = (room: RoomLifecycleRoom) => (
 
 export const getRoomEmptySinceMillis = (room: RoomLifecycleRoom) => getRoomTimestampMillis(room.emptySince);
 
+export const getRoomLastHumanSeenMillis = (room: RoomLifecycleRoom) => getRoomTimestampMillis(room.lastHumanSeenAt);
+
+export const getRoomDerivedEmptySinceMillis = (
+  room: RoomLifecycleRoom,
+  staleMs = ROOM_PRESENCE_STALE_MS,
+) => {
+  const explicitEmptySince = getRoomEmptySinceMillis(room);
+  if (explicitEmptySince) return explicitEmptySince;
+  const lastHumanSeenAt = getRoomLastHumanSeenMillis(room);
+  return lastHumanSeenAt ? lastHumanSeenAt + staleMs : 0;
+};
+
 export const getRoomDeletionDeadlineMillis = (
   room: RoomLifecycleRoom,
   graceMs = ROOM_EMPTY_DELETE_GRACE_MS,
 ) => {
-  const emptySince = getRoomEmptySinceMillis(room);
+  const emptySince = getRoomDerivedEmptySinceMillis(room);
   return emptySince ? emptySince + graceMs : 0;
 };
 
@@ -133,6 +146,7 @@ export const shouldStartRoomDeletionGrace = (
   !isSystemRoom(room)
   && !isRoomDeleting(room)
   && !getRoomEmptySinceMillis(room)
+  && !getRoomLastHumanSeenMillis(room)
   && !hasActiveHumanLifecyclePlayer(players, now)
 );
 
