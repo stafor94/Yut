@@ -9,7 +9,7 @@ export function resolveLocalRoomPlayerSnapshot<TPlayer extends LocalRoomPlayerSn
   return {
     localPresencePlayer,
     hasCurrentUserInSnapshot: Boolean(localPresencePlayer && !localPresencePlayer.isSpectator),
-    presenceCleanupEligible: Boolean(localPresencePlayer && !localPresencePlayer.isAI && !localPresencePlayer.isSpectator),
+    presenceCleanupEligible: Boolean(localPresencePlayer && !localPresencePlayer.isAI),
   };
 }
 
