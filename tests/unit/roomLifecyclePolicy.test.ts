@@ -4,6 +4,7 @@ import {
   ROOM_EMPTY_DELETE_GRACE_MS,
   ROOM_MAX_IDLE_MS,
   getRoomDeletionDeadlineMillis,
+  getRoomDerivedEmptySinceMillis,
   getRoomLastActivityMillis,
   hasActiveHumanLifecyclePlayer,
   hasCreationBlockingHumanPlayer,
@@ -35,6 +36,16 @@ test('활성 인간이 없으면 삭제 유예를 시작하고 3분 전에는 �
   assert.equal(getRoomDeletionDeadlineMillis(graceRoom), now + ROOM_EMPTY_DELETE_GRACE_MS);
   assert.equal(isRoomDeletionGraceActive(graceRoom, now + ROOM_EMPTY_DELETE_GRACE_MS - 1), true);
   assert.equal(shouldDeleteRoomSnapshot(graceRoom, players, now + ROOM_EMPTY_DELETE_GRACE_MS - 1), false);
+});
+
+test('마지막 heartbeat가 끊긴 방은 45초 stale 시점부터 3분 유예를 계산한다', () => {
+  const lastHumanSeenAt = 1_000_000;
+  const derivedEmptySince = lastHumanSeenAt + 45_000;
+  const room = { status: 'playing' as const, createdAt: 1, lastHumanSeenAt };
+  assert.equal(getRoomDerivedEmptySinceMillis(room), derivedEmptySince);
+  assert.equal(getRoomDeletionDeadlineMillis(room), derivedEmptySince + ROOM_EMPTY_DELETE_GRACE_MS);
+  assert.equal(shouldDeleteRoomSnapshot(room, [{ id: 'ai', isAI: true }], derivedEmptySince + ROOM_EMPTY_DELETE_GRACE_MS - 1), false);
+  assert.equal(shouldDeleteRoomSnapshot(room, [{ id: 'ai', isAI: true }], derivedEmptySince + ROOM_EMPTY_DELETE_GRACE_MS), true);
 });
 
 test('활성 인간이 없는 상태로 3분이 지나면 삭제 대상으로 판정한다', () => {
