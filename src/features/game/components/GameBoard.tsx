@@ -1,8 +1,10 @@
-import { useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { CAPTURE_IMPACT_DELAY_MS, type CaptureVisualEffect } from '../../../app/flows/captureAnimation';
 import type { FinishVisualEffect } from '../../../app/flows/finishAnimation';
 import type { BoardItem, BoardNode, BranchChoice } from '../../../game-core/board/board';
 import { BOARD_NODES, FINISH_NODE_ID } from '../../../game-core/board/board';
+import { isStoredSoundEnabled } from '../../../shared/audio/sound';
+import { playBonusSpeech } from '../../../shared/audio/yutSpeech';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
 
 export type BoardPiece = {
@@ -143,6 +145,23 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
   void showFallEffect;
 
   const stackTopPieceIdByKeyRef = useRef<Map<string, string>>(new Map());
+  const lastCaptureBonusIdRef = useRef<number | null>(null);
+  const captureBonusTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!captureEffect || lastCaptureBonusIdRef.current === captureEffect.id) return;
+    lastCaptureBonusIdRef.current = captureEffect.id;
+    if (captureBonusTimerRef.current !== null) window.clearTimeout(captureBonusTimerRef.current);
+    captureBonusTimerRef.current = window.setTimeout(() => {
+      playBonusSpeech(isStoredSoundEnabled);
+      captureBonusTimerRef.current = null;
+    }, captureEffect.durationMs);
+  }, [captureEffect?.durationMs, captureEffect?.id]);
+
+  useEffect(() => () => {
+    if (captureBonusTimerRef.current !== null) window.clearTimeout(captureBonusTimerRef.current);
+  }, []);
+
   const selectedIds = selectedPieceIds ?? (selectedPieceId ? [selectedPieceId] : []);
   const previewFinishes = previewNodeIds.includes(FINISH_NODE_ID);
   const visualCapturePieceIds = new Set(captureEffect?.pieceIds ?? []);
