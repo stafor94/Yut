@@ -67,8 +67,8 @@ test('replaces the render-time active room localStorage read without introducing
   const source = `const props = { resumableRoomId: ${UNSAFE_ACTIVE_ROOM_STORAGE_READ} };`;
   const transformed = replaceUnsafeAppStorageReads(source);
 
-  assert.equal(transformed.includes(UNSAFE_ACTIVE_ROOM_STORAGE_READ), false);
-  assert.equal(transformed.includes(SAFE_ACTIVE_ROOM_STORAGE_READ), true);
+  assert.equal(transformed, `const props = { resumableRoomId: ${SAFE_ACTIVE_ROOM_STORAGE_READ} };`);
+  assert.notEqual(transformed, source);
   assert.equal(transformed.includes('getStoredText'), false);
   assert.equal(executeStorageFixture(transformed, () => 'room-a'), 'room-a');
   assert.equal(executeStorageFixture(transformed, () => null), '');
