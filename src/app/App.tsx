@@ -99,75 +99,46 @@ import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAut
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
 import { makeBugReportSequenceExport, makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
 import { TURN_ACTION_TIMEOUT_MS, getTurnRecoveryDeadlineAt } from '../features/room/services/roomTiming';
+import {
+  AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS,
+  AI_AUTHORITATIVE_ACTION_RETRY_LIMIT,
+  AI_MOVE_DELAY_MS,
+  CREATE_ROOM_AUTH_TIMEOUT_MS,
+  CREATE_ROOM_COMMIT_TIMEOUT_MS,
+  CREATE_ROOM_RECOVERY_TIMEOUT_MS,
+  ITEM_PROMPT_TIMEOUT_MS,
+  ITEM_REPLACE_TIMEOUT_MS,
+  AUTO_SINGLE_MOVE_DELAY_MS,
+  PENDING_ROLL_EXTRA_SPIN_MS,
+  PENDING_ROLL_LANDING_MS,
+  PENDING_ROLL_PRIMARY_MS,
+  PENDING_ROLL_RESULT_HOLD_MS,
+  PENALTY_TURN_ACTION_TIMEOUT_MS,
+  ROLL_ANIMATION_MS,
+  ROLL_STUCK_TIMEOUT_MS,
+  SEQUENCE_RECOVERY_INITIAL_DELAY_MS,
+  SEQUENCE_RECOVERY_MAX_ATTEMPTS,
+  SEQUENCE_RECOVERY_MAX_TOTAL_MS,
+  SEQUENCE_RECOVERY_RETRY_DELAYS_MS,
+  START_CANCEL_LOCK_MS,
+  STALE_PENDING_REMOTE_ACTION_MS,
+  START_REQUEST_TIMEOUT_MS,
+  STEP_DELAY_MS,
+  TOAST_MESSAGE_MS,
+  TRAP_EFFECT_MS,
+  TURN_DELAY_MS,
+  NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS,
+  TURN_ORDER_AI_DELAY_SPREAD_MS,
+  TURN_ORDER_AI_MIN_DELAY_MS,
+  TURN_ORDER_FINAL_HOLD_MS,
+  TURN_ORDER_PRESENCE_FALLBACK_MS,
+  TURN_ORDER_ROLL_ANIMATION_MS,
+  TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS,
+} from './config/gameTimings';
+import { getQaInitializeGameStateDelayMs, getQaRequestRoomGameStartDelayMs, getQaRollYutActionDelayMs } from './config/qaDelays';
+import { getSequenceRefetchAfter } from './utils/sequenceRefetch';
+import { getSeededTurnOrderSeats } from './utils/turnOrderSeed';
 import '../styles/globals.css';
-
-const TURN_DELAY_MS = 1000;
-const START_CANCEL_LOCK_MS = 2000;
-const SEQUENCE_RECOVERY_INITIAL_DELAY_MS = 5000;
-const SEQUENCE_RECOVERY_RETRY_DELAYS_MS = [5000, 10000, 20000] as const;
-const SEQUENCE_RECOVERY_MAX_ATTEMPTS = 4;
-const SEQUENCE_RECOVERY_MAX_TOTAL_MS = 40000;
-const TURN_ORDER_START_DELAY_MS = 3000;
-const TURN_ORDER_TIMEOUT_MS = 10000;
-const TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS = 1500;
-const TURN_ORDER_PRESENCE_FALLBACK_MS = 8000;
-const TURN_ORDER_INITIAL_SLOT_SPIN_MS = 3000;
-const TURN_ORDER_SLOT_REVEAL_INTERVAL_MS = 2000;
-const TURN_ORDER_LAST_SLOT_REVEAL_INTERVAL_MS = 1000;
-const TURN_ORDER_FINAL_HOLD_MS = 2000;
-const TURN_ORDER_AI_MIN_DELAY_MS = 2000;
-const TURN_ORDER_AI_DELAY_SPREAD_MS = 1000;
-const TURN_ORDER_ROLL_ANIMATION_MS = 2600;
-const ROLL_RESULT_HOLD_GRACE_MS = 1200;
-const ROLL_ANIMATION_MS = 2600;
-const ROLL_STUCK_TIMEOUT_MS = 12000;
-const PENDING_ROLL_PRIMARY_MS = 1200;
-const PENDING_ROLL_EXTRA_SPIN_MS = 1000;
-const PENDING_ROLL_LANDING_MS = 1000;
-const PENDING_ROLL_RESULT_HOLD_MS = ROLL_ANIMATION_MS;
-const STALE_PENDING_REMOTE_ACTION_MS = 30000;
-const AI_AUTHORITATIVE_ACTION_RETRY_LIMIT = 2;
-const AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS = 700;
-const PENALTY_TURN_ACTION_TIMEOUT_MS = 10000;
-const ITEM_PROMPT_TIMEOUT_MS = 10000;
-const ITEM_REPLACE_TIMEOUT_MS = 10000;
-const TRAP_EFFECT_MS = 3000;
-const AI_MOVE_DELAY_MS = 350;
-const NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS = 500;
-const AUTO_SINGLE_MOVE_DELAY_MS = 500;
-const TOAST_MESSAGE_MS = 4000;
-const CREATE_ROOM_AUTH_TIMEOUT_MS = 12000;
-const CREATE_ROOM_COMMIT_TIMEOUT_MS = 12000;
-const CREATE_ROOM_RECOVERY_TIMEOUT_MS = 5000;
-const STEP_DELAY_MS = 240;
-const START_REQUEST_TIMEOUT_MS = 1500;
-
-const getQaDelayMs = (key: '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__' | '__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__' | '__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__') => {
-  if (typeof window === 'undefined') return 0;
-  const value = Number((window as typeof window & Record<typeof key, unknown>)[key] ?? 0);
-  return Number.isFinite(value) ? Math.max(0, value) : 0;
-};
-
-const getQaRequestRoomGameStartDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__');
-const getQaInitializeGameStateDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__');
-const getQaRollYutActionDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__');
-
-const getSequenceRefetchAfter = (sequence: number) => Math.max(0, sequence - 2);
-
-const getStableTurnOrderScore = (seed: string, seatId: string) => {
-  const value = `${seed}:${seatId}`;
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-};
-
-const getSeededTurnOrderSeats = (targetSeats: Seat[], seed: string) => [...targetSeats].sort((left, right) => {
-  const scoreDiff = getStableTurnOrderScore(seed, left.id) - getStableTurnOrderScore(seed, right.id);
-  return scoreDiff || left.label.localeCompare(right.label, undefined, { numeric: true });
-});
 
 export function App() {
   const [user, setUser] = useState<User | null>(null);
