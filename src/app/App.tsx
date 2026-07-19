@@ -6,10 +6,11 @@ import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getAdjacentBoardNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
-import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
+import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useAppPreferences } from './hooks/useAppPreferences';
 import { useRoomCreationController } from './controllers/useRoomCreationController';
+import { useRoomEntryController } from './controllers/useRoomEntryController';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
@@ -28,7 +29,6 @@ import { chooseAiAfterMoveItem, chooseAiGoldenYutResult, chooseAiMove, getAiItem
 import { getStartGameBlockMessage } from './flows/gameStartFlow';
 import { classifyTurnActionFeedback, shouldClearActionErrorDialog, shouldOpenTurnActionErrorDialog } from './flows/actionFeedback';
 import { ROOM_PLAYER_MISSING_GRACE_MS } from './flows/presenceRecovery';
-import { isRoomTransitionInProgress } from './flows/roomCreationFlow';
 import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLogPresentation';
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
 import { calculatePieceSelection } from './flows/pieceSelection';
@@ -93,7 +93,6 @@ import {
   withSubjectParticle,
 } from './appUtils';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
-import { signInAsGuest } from '../services/firebase/firebaseAuth';
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
 import { makeBugReportSequenceExport, makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
 import { TURN_ACTION_TIMEOUT_MS, getTurnRecoveryDeadlineAt } from '../features/room/services/roomTiming';
@@ -101,7 +100,6 @@ import {
   AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS,
   AI_AUTHORITATIVE_ACTION_RETRY_LIMIT,
   AI_MOVE_DELAY_MS,
-  CREATE_ROOM_AUTH_TIMEOUT_MS,
   ITEM_PROMPT_TIMEOUT_MS,
   ITEM_REPLACE_TIMEOUT_MS,
   AUTO_SINGLE_MOVE_DELAY_MS,
@@ -2646,6 +2644,29 @@ export function App() {
   }
 
 
+  const { openWaitingRoom } = useRoomEntryController({
+    nickname,
+    currentUser,
+    userRef,
+    rememberUser,
+    activeRoomIdRef,
+    hostingRoomUserIdRef,
+    leavingRoomRef,
+    onActiveRoomIdChange: setActiveRoomId,
+    onRoomHostChange: setIsRoomHost,
+    onActiveRoomTitleChange: setActiveRoomTitle,
+    onRoomHostIdChange: setActiveRoomHostId,
+    onPlayModeChange: setPlayMode,
+    onMaxPlayersChange: setMaxPlayers,
+    onItemModeChange: setItemMode,
+    onStackedRollModeChange: setStackedRollMode,
+    onPieceCountChange: setPieceCount,
+    onSeatsChange: setSeats,
+    onScreenChange: setScreen,
+    onMessage: setMessage,
+    onLoadingMessage: setLoadingMessage,
+  });
+
   const { isCreatingRoom, handleCreateRoom } = useRoomCreationController({
     title,
     nickname,
@@ -2665,86 +2686,6 @@ export function App() {
       await openWaitingRoom(room, nextMessage, true, hostUser);
     },
   });
-
-  async function leavePreviousOnlineRoom(nextRoomId = '') {
-    const previousRoomId = activeRoomIdRef.current || window.localStorage.getItem(STORAGE_KEYS.activeRoomId) || '';
-    const roomUser = userRef.current ?? currentUser;
-    if (!previousRoomId || previousRoomId === nextRoomId || !isFirebaseConfigured || !roomUser) return;
-    try {
-      const previousRoom = await getRoom(previousRoomId);
-      if (!previousRoom) return;
-      await removeRoomPlayer(previousRoomId, roomUser.uid);
-    } catch (error) {
-      console.warn('이전 방 정리에 실패했습니다.', error);
-    } finally {
-      const transitioningToNextRoom = isRoomTransitionInProgress(previousRoomId, nextRoomId);
-      const activeRoomIsPrevious = !activeRoomIdRef.current || activeRoomIdRef.current === previousRoomId;
-      if (!transitioningToNextRoom && activeRoomIdRef.current === previousRoomId) setActiveRoomId('');
-      if (window.localStorage.getItem(STORAGE_KEYS.activeRoomId) === previousRoomId) window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-      if (!transitioningToNextRoom && activeRoomIsPrevious) window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-    }
-  }
-
-
-  async function openWaitingRoom(room: Pick<RoomSummary, 'title' | 'itemMode' | 'stackedRollMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & { id?: string }, nextMessage = '', asHost = false, hostUserOverride: User | null = null) {
-    leavingRoomRef.current = false;
-    setLoadingMessage('방으로 이동하는 중입니다...');
-    const nextMaxPlayers = room.maxPlayers as 2 | 3 | 4;
-    try {
-      const roomUser = asHost && hostUserOverride ? hostUserOverride : userRef.current ?? currentUser;
-      hostingRoomUserIdRef.current = asHost && roomUser ? roomUser.uid : '';
-      if (asHost && roomUser) rememberUser(roomUser);
-      const joiningUser = !asHost && room.id && isFirebaseConfigured ? roomUser ?? await Promise.race([
-        signInAsGuest(),
-        new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error('JOIN_ROOM_TIMEOUT')), CREATE_ROOM_AUTH_TIMEOUT_MS)),
-      ]) : roomUser;
-      if (!asHost && room.id && isFirebaseConfigured && !joiningUser) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
-      if (joiningUser) rememberUser(joiningUser);
-      const previousRoomCleanup = leavePreviousOnlineRoom(room.id ?? '');
-      if (asHost) void previousRoomCleanup;
-      else await previousRoomCleanup;
-      const joinResult = !asHost && room.id && joiningUser ? await joinRoom(room.id, { userId: joiningUser.uid, nickname, playMode: room.playMode }) : null;
-      setActiveRoomId(room.id ?? '');
-      setIsRoomHost(asHost);
-      setActiveRoomTitle(room.title);
-      setActiveRoomHostId(asHost && roomUser ? roomUser.uid : ('hostId' in room ? String((room as RoomSummary).hostId ?? '') : ''));
-      setPlayMode(room.playMode);
-      setMaxPlayers(nextMaxPlayers);
-      setItemMode(room.itemMode);
-      setStackedRollMode(Boolean(room.stackedRollMode));
-      setPieceCount(room.pieceCount ?? 4);
-      const nextSeats = createSeats(nickname, room.playMode, nextMaxPlayers);
-      if (joinResult?.role === 'player' && joiningUser) {
-        setSeats(seatsWithJoinedPlayer([], joiningUser.uid, nickname, room.playMode, nextMaxPlayers, joinResult.seatIndex));
-      } else if (asHost && roomUser) {
-        setSeats(nextSeats.map((seat) => seat.isHost ? { ...seat, id: roomUser.uid } : seat));
-      } else {
-        setSeats(nextSeats);
-      }
-      setScreen(room.id && !asHost && 'status' in room && isRoomInGame(room as RoomSummary) ? 'game' : 'waitingRoom');
-      setLoadingMessage('');
-      setMessage(nextMessage);
-      if (asHost && roomUser && room.id) {
-        void leaveDuplicatePlayerRooms(roomUser.uid, room.id).catch((cleanupError) => {
-          console.warn('새 방 입장 후 중복 방 정리에 실패했습니다. 현재 방은 유지합니다.', cleanupError);
-        });
-      }
-      if (!asHost && joiningUser && room.id) {
-        void leaveDuplicatePlayerRooms(joiningUser.uid, room.id).catch((cleanupError) => {
-          console.warn('중복 방 정리에 실패했습니다. 대상 방 입장은 유지합니다.', cleanupError);
-        });
-      }
-    } catch (error) {
-      hostingRoomUserIdRef.current = '';
-      setActiveRoomId('');
-      setIsRoomHost(false);
-      setActiveRoomTitle('');
-      setActiveRoomHostId('');
-      setScreen('lobby');
-      setLoadingMessage('');
-      setMessage(error instanceof Error ? error.message : '방 참가에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
-    }
-  }
 
   async function handleStartGame() {
     if (startRequestInFlightRef.current || startFlowBusy) return;
