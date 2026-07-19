@@ -10,10 +10,14 @@ const cloneArrayValue = (value: unknown) => Array.isArray(value)
 
 const normalizeAppliedSnapshot = (appliedValue: unknown): SnapshotRecord | null => {
   if (!isRecord(appliedValue)) return null;
-  const appliedPatch = isRecord(appliedValue.patch) ? appliedValue.patch : appliedValue;
-  const appliedSequence = Number(appliedValue.sequence ?? appliedPatch.lastSequence ?? 0);
+  const appliedState = isRecord(appliedValue.stateAfter)
+    ? appliedValue.stateAfter
+    : isRecord(appliedValue.patch)
+      ? appliedValue.patch
+      : appliedValue;
+  const appliedSequence = Number(appliedValue.sequence ?? appliedState.lastSequence ?? 0);
   return {
-    ...appliedPatch,
+    ...appliedState,
     ...(appliedSequence ? { lastSequence: appliedSequence } : {}),
   };
 };
