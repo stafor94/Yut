@@ -13,7 +13,7 @@ import {
   ROOM_CAPACITY_FULL_ERROR_MESSAGE,
   ROOM_CAPACITY_FULL_EVENT,
 } from './roomAvailabilityPolicy';
-import { isReusableWaitingRoomSeat, isSystemRoom } from './roomLifecyclePolicy';
+import { isReusableWaitingRoomSeat, isRoomDeletionExpired, isSystemRoom } from './roomLifecyclePolicy';
 import type { ManagedRoomSummary } from './roomLifecycleStore';
 import { updateGameSeatControlState } from './roomPresenceGameSeat';
 
@@ -22,6 +22,8 @@ const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 
 type SeatSnapshot = DocumentSnapshot;
 type JoinRoomInternalResult = JoinRoomResult & { syncRestoredGameSeat?: boolean };
+
+const isRoomOpenForGameEntry = (room: ManagedRoomSummary) => room.status === 'finished' || isRoomInGameCore(room);
 
 async function syncRestoredGameSeatAfterJoin(
   roomId: string,
@@ -62,7 +64,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     const roomSnapshot = await transaction.get(roomRef);
     if (!roomSnapshot.exists()) throw new Error('존재하지 않는 방입니다.');
     const room = roomSnapshot.data() as ManagedRoomSummary;
-    if (room.status === 'finished' || room.deletingAt || isSystemRoom(room)) throw new Error('이미 종료되었거나 입장할 수 없는 방입니다.');
+    if (room.deletingAt || isSystemRoom(room) || isRoomDeletionExpired(room, Date.now())) throw new Error('이미 종료되었거나 입장할 수 없는 방입니다.');
 
     const existingPlayer = await transaction.get(playerRef);
     const maxPlayers = room.maxPlayers as 2 | 3 | 4;
@@ -168,18 +170,20 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         const restoreSeat = seatSnapshots[restoreSeatIndex].exists() ? seatSnapshots[restoreSeatIndex].data() as RoomSeat : null;
         return restorePlayerAt(restoreSeatIndex, existingData, restoreSeat, existingData.joinedAt ?? serverTimestamp());
       }
-      if (isRoomInGameCore(room)) {
+      if (isRoomOpenForGameEntry(room)) {
         transaction.set(playerRef, {
           nickname: params.nickname,
           ready: true,
           color: 'spectator',
           seatIndex: 99 + Date.now() % 100000,
           team: '청팀',
+          isAI: false,
+          isSubstitutedByAI: false,
           isSpectator: true,
           joinedAt: existingData.joinedAt ?? serverTimestamp(),
           lastSeen: serverTimestamp(),
         }, { merge: true });
-        transaction.set(roomRef, { emptySince: null, currentPlayers: occupiedSeatCount, lastActivityAt: Date.now() }, { merge: true });
+        transaction.set(roomRef, { emptySince: null, deletingAt: null, currentPlayers: occupiedSeatCount, lastActivityAt: Date.now() }, { merge: true });
         return { role: 'spectator', seatIndex: null };
       }
       const seatIndex = seatSnapshots.findIndex(isAvailableSeat);
@@ -212,7 +216,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      transaction.set(roomRef, { emptySince: null, currentPlayers: occupiedSeatCount + 1, lastActivityAt: Date.now() }, { merge: true });
+      transaction.set(roomRef, { emptySince: null, deletingAt: null, currentPlayers: occupiedSeatCount + 1, lastActivityAt: Date.now() }, { merge: true });
       return { role: 'player', seatIndex };
     }
 
@@ -221,18 +225,20 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
       return restorePlayerAt(matchingLockedSeatIndex, null, lockedSeat, serverTimestamp());
     }
 
-    if (isRoomInGameCore(room)) {
+    if (isRoomOpenForGameEntry(room)) {
       transaction.set(playerRef, {
         nickname: params.nickname,
         ready: true,
         color: 'spectator',
         seatIndex: 99 + Date.now() % 100000,
         team: '청팀',
+        isAI: false,
+        isSubstitutedByAI: false,
         isSpectator: true,
         joinedAt: serverTimestamp(),
         lastSeen: serverTimestamp(),
       }, { merge: true });
-      transaction.set(roomRef, { emptySince: null, currentPlayers: occupiedSeatCount, lastActivityAt: Date.now() }, { merge: true });
+      transaction.set(roomRef, { emptySince: null, deletingAt: null, currentPlayers: occupiedSeatCount, lastActivityAt: Date.now() }, { merge: true });
       return { role: 'spectator', seatIndex: null };
     }
 
@@ -266,7 +272,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    transaction.set(roomRef, { emptySince: null, currentPlayers: occupiedSeatCount + 1, lastActivityAt: Date.now() }, { merge: true });
+    transaction.set(roomRef, { emptySince: null, deletingAt: null, currentPlayers: occupiedSeatCount + 1, lastActivityAt: Date.now() }, { merge: true });
     return { role: 'player', seatIndex };
   }).catch((error) => {
     if (isRoomCapacityFullError(error) && typeof window !== 'undefined') {
