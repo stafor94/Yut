@@ -42,14 +42,14 @@ test('정원이 찬 방의 기존 참가자는 자신의 방을 계속 확인할
   assert.equal(result.currentPlayers, 2);
 });
 
-test('일반 AI와 다른 사용자의 대체 AI만 남은 방은 인원 수와 무관하게 고아 방으로 처리한다', () => {
-  const result = classifyRoomAvailability({ status: 'playing', maxPlayers: 4 }, [
+test('3분 유예가 만료된 AI 전용 방은 인원 수와 무관하게 숨긴다', () => {
+  const result = classifyRoomAvailability({ status: 'playing', maxPlayers: 4, emptySince: 1 }, [
     { id: 'departed-user', isAI: true, isSubstitutedByAI: true },
     { id: 'slot-2', isAI: true },
   ], 'guest');
 
   assert.equal(result.visible, false);
-  assert.equal(result.reason, 'orphaned');
+  assert.equal(result.reason, 'inactive');
   assert.equal(result.currentPlayers, 2);
   assert.deepEqual(result.playerIds, []);
 });
