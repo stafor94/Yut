@@ -18,12 +18,10 @@ export const isAiSubstitutionUpdate = (update: RoomExitPlayerUpdate) => (
   update.isAI === true && update.isSubstitutedByAI === true
 );
 
-export const hasNonAiPlayer = (players: RoomExitPlayer[]) => players.some((player) => (
-  !player.isSpectator && !player.isAI
-));
+export const hasNonAiPlayer = (players: RoomExitPlayer[]) => players.some((player) => !player.isAI);
 
 export const hasRecoverableRoomPlayer = (players: RoomExitPlayer[]) => players.some((player) => (
-  !player.isSpectator && (!player.isAI || player.isSubstitutedByAI === true)
+  !player.isAI || player.isSubstitutedByAI === true
 ));
 
 export const isRoomExitInGame = (room: RoomExitRoomState) => (
@@ -40,9 +38,11 @@ export const shouldSubstituteRoomPlayerAsAi = (
   hasSeat: boolean,
 ) => isRoomExitInGame(room) && !player.isSpectator && hasSeat;
 
-export function shouldDeleteRoomAfterAiSubstitution(
+export function shouldStartRoomDeletionGraceAfterAiSubstitution(
   update: RoomExitPlayerUpdate,
   players: RoomExitPlayer[],
 ) {
   return isAiSubstitutionUpdate(update) && !hasNonAiPlayer(players);
 }
+
+export const shouldDeleteRoomAfterAiSubstitution = shouldStartRoomDeletionGraceAfterAiSubstitution;
