@@ -206,6 +206,8 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const liveAnimationByIdRef = useRef<Map<number, RollAnimation>>(new Map());
   const rollSequenceByIdRef = useRef<Map<number, GameAnimationSequence<RollAnimation>>>(new Map());
   const activeRollSequenceIdRef = useRef<number | null>(null);
+  const currentLiveSequenceIdRef = useRef<number | null>(null);
+  const completedLiveSequenceIdsRef = useRef<Set<number>>(new Set());
   const seenResolvedAnimationIdsRef = useRef<Set<number>>(new Set());
   const queuedPresentationMetaRef = useRef<Map<number, { actorId: string; fallCount: number }>>(new Map());
   const presentationCompletionByIdRef = useRef<Map<number, RollPresentationCompletion>>(new Map());
@@ -293,16 +295,30 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     const releaseQueuedPresentation = gamePresentationLock.acquire();
     void gameAnimationQueue.enqueue(`roll:${sourceAnimationId}`, async () => {
       activeRollSequenceIdRef.current = sourceAnimationId;
+      let presentedLive = false;
       if (!sequence.isSettled()) {
         const latestLiveAnimation = liveAnimationByIdRef.current.get(sourceAnimationId);
-        if (mountedRef.current && latestLiveAnimation) presentAnimation(latestLiveAnimation, sourceAnimationId);
+        if (mountedRef.current && latestLiveAnimation) {
+          presentAnimation(latestLiveAnimation, sourceAnimationId);
+          presentedLive = true;
+        }
       }
       const resolvedAnimation = await sequence.wait();
       if (!resolvedAnimation || !mountedRef.current) return;
+      if (completedLiveSequenceIdsRef.current.has(sourceAnimationId)) {
+        if (presentedLive || presentedSourceAnimationIdRef.current === sourceAnimationId) {
+          if (presentedSourceAnimationIdRef.current === sourceAnimationId) presentAnimation(null);
+          return;
+        }
+        await runResolvedPresentation(sourceAnimationId, { ...resolvedAnimation, phase: 'resolved' });
+        return;
+      }
       await runResolvedPresentation(sourceAnimationId, resolvedAnimation);
     }).finally(() => {
       releaseQueuedPresentation();
       if (activeRollSequenceIdRef.current === sourceAnimationId) activeRollSequenceIdRef.current = null;
+      if (currentLiveSequenceIdRef.current === sourceAnimationId) currentLiveSequenceIdRef.current = null;
+      completedLiveSequenceIdsRef.current.delete(sourceAnimationId);
       rollSequenceByIdRef.current.delete(sourceAnimationId);
       liveAnimationByIdRef.current.delete(sourceAnimationId);
       queuedPresentationMetaRef.current.delete(sourceAnimationId);
@@ -320,6 +336,8 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       rollSequenceByIdRef.current.clear();
       liveAnimationByIdRef.current.clear();
       activeRollSequenceIdRef.current = null;
+      currentLiveSequenceIdRef.current = null;
+      completedLiveSequenceIdsRef.current.clear();
       queuedPresentationMetaRef.current.clear();
       presentationCompletionByIdRef.current.forEach((completion) => completion.cancel());
       presentationCompletionByIdRef.current.clear();
@@ -347,8 +365,18 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
 
   useLayoutEffect(() => {
     if (!rollAnimation) {
-      const activeSequenceId = activeRollSequenceIdRef.current;
-      if (activeSequenceId !== null && rollSequenceByIdRef.current.has(activeSequenceId)) return;
+      const liveSequenceId = currentLiveSequenceIdRef.current;
+      if (liveSequenceId !== null) {
+        currentLiveSequenceIdRef.current = null;
+        const sequence = rollSequenceByIdRef.current.get(liveSequenceId);
+        if (sequence && !sequence.isSettled()) {
+          completedLiveSequenceIdsRef.current.add(liveSequenceId);
+          const terminalAnimation = liveAnimationByIdRef.current.get(liveSequenceId);
+          if (terminalAnimation) sequence.resolve(terminalAnimation);
+          else sequence.cancel();
+          return;
+        }
+      }
       const currentAnimation = presentedAnimationRef.current;
       if (currentAnimation && isResolvedRollAnimation(currentAnimation) && queuedPresentationMetaRef.current.size > 0) return;
       presentAnimation(null);
@@ -357,6 +385,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
 
     const sourceAnimationId = rollAnimation.id;
     if (!isResolvedRollAnimation(rollAnimation)) {
+      currentLiveSequenceIdRef.current = sourceAnimationId;
       const liveAnimation: RollAnimation = {
         ...rollAnimation,
         sticks: rollAnimation.sticks.map((stick) => ({ ...stick })),
@@ -375,6 +404,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       return;
     }
 
+    if (currentLiveSequenceIdRef.current === sourceAnimationId) currentLiveSequenceIdRef.current = null;
     const fallCount = 'fallCount' in rollAnimation ? rollAnimation.fallCount ?? 0 : 0;
     const existingMeta = queuedPresentationMetaRef.current.get(sourceAnimationId);
     if (seenResolvedAnimationIdsRef.current.has(sourceAnimationId)) {
