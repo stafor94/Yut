@@ -12,6 +12,7 @@ import rollAudioSource from './assets/effects/roll_original.wav';
 import shieldAudioSource from './assets/effects/shield-original.wav';
 import stackAudioSource from './assets/effects/stack-original.wav';
 import toastAudioSource from './assets/effects/toast-original.wav';
+import trapAudioSource from './assets/effects/trap-original.wav';
 import turnAudioSource from './assets/effects/turn-original.wav';
 import winAudioSource from './assets/effects/win-original.wav';
 
@@ -34,6 +35,7 @@ const WAV_EFFECT_SOURCES = {
   shield: shieldAudioSource,
   stack: stackAudioSource,
   toast: toastAudioSource,
+  trap: trapAudioSource,
   turn: turnAudioSource,
   win: winAudioSource,
 } satisfies Partial<Record<SoundEffect, string>>;
