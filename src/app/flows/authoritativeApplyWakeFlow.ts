@@ -8,13 +8,23 @@ const cloneArrayValue = (value: unknown) => Array.isArray(value)
   ? value.map((entry) => cloneObjectValue(entry))
   : value;
 
+const normalizeAppliedSnapshot = (appliedValue: unknown): SnapshotRecord | null => {
+  if (!isRecord(appliedValue)) return null;
+  const appliedPatch = isRecord(appliedValue.patch) ? appliedValue.patch : appliedValue;
+  const appliedSequence = Number(appliedValue.sequence ?? appliedPatch.lastSequence ?? 0);
+  return {
+    ...appliedPatch,
+    ...(appliedSequence ? { lastSequence: appliedSequence } : {}),
+  };
+};
+
 export function buildAuthoritativeApplyWakeSnapshot<TSnapshot extends object>(
   appliedValue: unknown,
   latestSnapshot: TSnapshot | null,
 ): TSnapshot | null {
-  if (!isRecord(appliedValue)) return null;
+  const appliedSnapshot = normalizeAppliedSnapshot(appliedValue);
+  if (!appliedSnapshot) return null;
 
-  const appliedSnapshot = appliedValue;
   const latestRecord = (latestSnapshot ?? {}) as SnapshotRecord;
   const mergedSnapshot = { ...latestRecord, ...appliedSnapshot };
   const startRequestVersion = Number(appliedSnapshot.startRequestVersion ?? 0) || Number(latestRecord.startRequestVersion ?? 0);
