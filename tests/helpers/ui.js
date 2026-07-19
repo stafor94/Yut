@@ -108,7 +108,7 @@ export async function waitForBlockingOverlayToDisappear(page, { timeout = 20_000
 }
 
 export async function expectAppShell(page, { timeout = 45_000 } = {}) {
-  const targetUrl = String(process.env.PLAYWRIGHT_BASE_URL ?? '').trim() || '/';
+  const targetUrl = String(process.env.PLAYWRIGHT_BASE_URL ?? '').trim() || '/Yut/';
   const appShell = page.getByTestId('app-shell');
 
   await expect(async () => {
