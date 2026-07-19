@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
 import {
@@ -9,15 +10,25 @@ import {
   replaceUnsafeAppStorageReads,
 } from '../../src/build/hoistTrapPlacementHelpers';
 
-function executeFixture(source: string) {
-  const output = ts.transpileModule(source, {
+function transpileFixture(source: string) {
+  return ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2020,
     },
   }).outputText;
+}
 
+function executeFixture(source: string) {
+  const output = transpileFixture(source);
   return Function(`${output}\nreturn renderTrapPrompt();`)() as string[];
+}
+
+function executeStorageFixture(source: string, getItem: (key: string) => string | null) {
+  const output = transpileFixture(source);
+  const browserWindow = { localStorage: { getItem } };
+  const storageKeys = { activeRoomId: 'yut-online:activeRoomId' };
+  return Function('window', 'STORAGE_KEYS', `${output}\nreturn props.resumableRoomId;`)(browserWindow, storageKeys) as string;
 }
 
 const trapPromptFixture = `
@@ -52,12 +63,16 @@ test('fails loudly when the guarded App helper source pattern changes', () => {
   );
 });
 
-test('replaces the render-time active room localStorage read with the safe preference reader', () => {
+test('replaces the render-time active room localStorage read without introducing a free identifier', () => {
   const source = `const props = { resumableRoomId: ${UNSAFE_ACTIVE_ROOM_STORAGE_READ} };`;
   const transformed = replaceUnsafeAppStorageReads(source);
 
   assert.equal(transformed.includes(UNSAFE_ACTIVE_ROOM_STORAGE_READ), false);
   assert.equal(transformed.includes(SAFE_ACTIVE_ROOM_STORAGE_READ), true);
+  assert.equal(transformed.includes('getStoredText'), false);
+  assert.equal(executeStorageFixture(transformed, () => 'room-a'), 'room-a');
+  assert.equal(executeStorageFixture(transformed, () => null), '');
+  assert.equal(executeStorageFixture(transformed, () => { throw new Error('storage unavailable'); }), '');
 });
 
 test('fails loudly when the guarded App storage source pattern changes', () => {
@@ -65,4 +80,25 @@ test('fails loudly when the guarded App storage source pattern changes', () => {
     () => replaceUnsafeAppStorageReads('export function App() {}'),
     /active-room localStorage read was not found/,
   );
+});
+
+test('keeps timeout penalties limited to offline local actions after controller extraction', () => {
+  const appSource = readFileSync('src/app/App.tsx', 'utf8');
+  const timingSource = readFileSync('src/app/config/gameTimings.ts', 'utf8');
+  const itemControllerSource = readFileSync('src/app/controllers/useItemController.ts', 'utf8');
+
+  assert.ok(timingSource.includes('export const PENALTY_TURN_ACTION_TIMEOUT_MS = 10000;'));
+  assert.ok(appSource.includes("const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? '') => activeRoomId ? TURN_ACTION_TIMEOUT_MS"));
+  assert.ok(appSource.includes('const getItemPromptTimeoutMs = (seatId = localSeatId) => activeRoomId ? ITEM_PROMPT_TIMEOUT_MS'));
+  assert.ok(appSource.includes('if (!seatId || activeRoomId) return;'));
+
+  const onlinePromptStart = appSource.indexOf('if (activeRoomId) {', appSource.indexOf('if (!itemPromptTiming) return undefined;'));
+  const offlinePromptTimeout = appSource.indexOf('const timeoutMs = getItemPromptTimeoutMs(localSeatId);');
+  assert.ok(onlinePromptStart >= 0 && offlinePromptTimeout > onlinePromptStart);
+  assert.equal(appSource.slice(onlinePromptStart, offlinePromptTimeout).includes('markTurnActionTimedOut'), false);
+
+  const onlineSkipBranch = itemControllerSource.indexOf('if (params.activeRoomId) {');
+  const offlinePenaltyClear = itemControllerSource.indexOf('params.clearTurnActionTimeoutPenalty(params.localSeatId);');
+  assert.ok(onlineSkipBranch >= 0 && offlinePenaltyClear > onlineSkipBranch);
+  assert.ok(appSource.includes('onSkipItemPrompt={skipItemPrompt}'));
 });
