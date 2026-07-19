@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { User } from 'firebase/auth';
 import { claimRoomHostIfMissing, scheduleEmptyRoomDeletion, subscribeRoomPlayers, type RoomPlayer } from '../../features/room/services/roomService';
@@ -47,6 +47,10 @@ interface UseRoomPlayersSubscriptionParams {
 
 export function useRoomPlayersSubscription(params: UseRoomPlayersSubscriptionParams) {
   const { activeRoomId, activeRoomIdRef, activeRoomHostId, currentUser, userRef, playMode, maxPlayers, screen, isRoomManager, canCoordinateOnlineGame, localSeatId, leavingRoomRef, confirmedRoomPlayerRef, missingRoomPlayerTimerRef, roomHostClaimKeyRef, pendingAiSeatIdsRef, spectatorIdsRef, roomPlayerAiStatesRef, pendingSequenceMetaRef, handlePresencePlayerSnapshot, addLogs, setCoordinatorStateSaveKey, setPresenceCleanupEligibility, setSeats, setSpectators, setScreen, setActiveRoomId, setActiveRoomTitle, setActiveRoomHostId, setIsRoomHost, setCountdown, setMessage, setRoomNoticeDialog } = params;
+  const addLogsRef = useRef(addLogs);
+  const handlePresencePlayerSnapshotRef = useRef(handlePresencePlayerSnapshot);
+  addLogsRef.current = addLogs;
+  handlePresencePlayerSnapshotRef.current = handlePresencePlayerSnapshot;
 
   useEffect(() => {
     if (!activeRoomId) return undefined;
@@ -72,7 +76,7 @@ export function useRoomPlayersSubscription(params: UseRoomPlayersSubscriptionPar
           setMessage('방장에게 강퇴당했습니다.'); setRoomNoticeDialog({ title: '방장에게 강퇴당했습니다.', message: '로비로 이동했습니다.' });
         }, ROOM_PLAYER_MISSING_GRACE_MS);
       }
-      handlePresencePlayerSnapshot(localPresencePlayer);
+      handlePresencePlayerSnapshotRef.current(localPresencePlayer);
       const currentHostPlayer = activeRoomHostId ? players.find((player) => player.id === activeRoomHostId) : undefined;
       const hasActiveHumanHost = Boolean(currentHostPlayer && !currentHostPlayer.isAI && !currentHostPlayer.isSpectator);
       const localHumanPlayer = currentUserId ? players.find((player) => player.id === currentUserId && !player.isAI && !player.isSpectator) : undefined;
@@ -105,7 +109,7 @@ export function useRoomPlayersSubscription(params: UseRoomPlayersSubscriptionPar
         const previousIds = spectatorIdsRef.current; const previousAiStates = roomPlayerAiStatesRef.current; const systemLogTexts: string[] = [];
         nextSpectators.forEach((spectator) => { if (!previousIds.has(spectator.id)) systemLogTexts.push(`${spectator.name}님이 관전자로 입장했습니다.`); });
         players.forEach((player) => { if (player.isSpectator) return; const previous = previousAiStates.get(player.id); if (!previous || previous.isSpectator) return; if (!previous.isAI && player.isAI && player.isSubstitutedByAI) systemLogTexts.push(`${previous.nickname || player.nickname}님이 나갔습니다. AI가 이어서 플레이합니다.`); if (previous.isSubstitutedByAI && !player.isAI) systemLogTexts.push(`${player.nickname}님이 돌아왔습니다. 다시 유저가 플레이합니다.`); });
-        if (systemLogTexts.length) { addLogs(systemLogTexts); pendingSequenceMetaRef.current = { type: 'state_snapshot', actorId: localSeatId, clientMutationId: `player_presence:${activeRoomId}:${Date.now()}`, payload: { event: 'player_presence_changed', count: systemLogTexts.length } }; setCoordinatorStateSaveKey((current) => current || `player_presence:${activeRoomId}:${Date.now()}`); }
+        if (systemLogTexts.length) { addLogsRef.current(systemLogTexts); pendingSequenceMetaRef.current = { type: 'state_snapshot', actorId: localSeatId, clientMutationId: `player_presence:${activeRoomId}:${Date.now()}`, payload: { event: 'player_presence_changed', count: systemLogTexts.length } }; setCoordinatorStateSaveKey((current) => current || `player_presence:${activeRoomId}:${Date.now()}`); }
       }
       spectatorIdsRef.current = new Set(nextSpectators.map((spectator) => spectator.id));
       roomPlayerAiStatesRef.current = new Map(players.map((player) => [player.id, { isAI: Boolean(player.isAI), isSubstitutedByAI: Boolean(player.isSubstitutedByAI), isSpectator: Boolean(player.isSpectator), nickname: player.nickname }]));
@@ -113,5 +117,5 @@ export function useRoomPlayersSubscription(params: UseRoomPlayersSubscriptionPar
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
     return () => { if (missingRoomPlayerTimerRef.current !== null) { window.clearTimeout(missingRoomPlayerTimerRef.current); missingRoomPlayerTimerRef.current = null; } unsubscribe(); };
-  }, [activeRoomHostId, activeRoomId, activeRoomIdRef, addLogs, canCoordinateOnlineGame, confirmedRoomPlayerRef, currentUser, handlePresencePlayerSnapshot, isRoomManager, leavingRoomRef, localSeatId, maxPlayers, missingRoomPlayerTimerRef, pendingAiSeatIdsRef, pendingSequenceMetaRef, playMode, roomHostClaimKeyRef, roomPlayerAiStatesRef, screen, setActiveRoomHostId, setActiveRoomId, setActiveRoomTitle, setCountdown, setCoordinatorStateSaveKey, setIsRoomHost, setMessage, setPresenceCleanupEligibility, setRoomNoticeDialog, setScreen, setSeats, setSpectators, spectatorIdsRef, userRef]);
+  }, [activeRoomHostId, activeRoomId, activeRoomIdRef, canCoordinateOnlineGame, confirmedRoomPlayerRef, currentUser, isRoomManager, leavingRoomRef, localSeatId, maxPlayers, missingRoomPlayerTimerRef, pendingAiSeatIdsRef, pendingSequenceMetaRef, playMode, roomHostClaimKeyRef, roomPlayerAiStatesRef, screen, setActiveRoomHostId, setActiveRoomId, setActiveRoomTitle, setCountdown, setCoordinatorStateSaveKey, setIsRoomHost, setMessage, setPresenceCleanupEligibility, setRoomNoticeDialog, setScreen, setSeats, setSpectators, spectatorIdsRef, userRef]);
 }
