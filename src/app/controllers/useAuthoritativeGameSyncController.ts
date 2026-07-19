@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { commitAuthoritativeGameAction, type GameAction } from '../../features/room/services/roomService';
 import type { SequenceStateSnapshot } from '../appState';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
+import { buildAuthoritativeApplyWakeSnapshot } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
 
 export type AuthoritativeCommitResult = Awaited<ReturnType<typeof commitAuthoritativeGameAction>>;
@@ -31,11 +32,15 @@ type Params = {
   pendingLocalRemoteActionCount: number;
 };
 
-const isSequenceStateSnapshot = (value: unknown): value is SequenceStateSnapshot => Boolean(value && typeof value === 'object');
-
 export function useAuthoritativeGameSyncController(params: Params) {
   const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
   applySyncedStateSnapshotRef.current = params.applySyncedStateSnapshot;
+  const latestSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
+
+  const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
+    latestSyncedStateRef.current = state;
+    applySyncedStateSnapshotRef.current(state, options);
+  }, []);
 
   const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
   const clearAuthoritativeApplyWake = useCallback(() => {
@@ -44,18 +49,18 @@ export function useAuthoritativeGameSyncController(params: Params) {
     authoritativeApplyWakeTimerRef.current = null;
   }, []);
   const scheduleAuthoritativeApplyWake = useCallback((roomId: string, appliedValue: unknown) => {
-    if (params.activeRoomIdRef.current !== roomId || !isSequenceStateSnapshot(appliedValue)) return;
-    const appliedSequence = Number(appliedValue.lastSequence ?? 0);
+    const appliedSnapshot = buildAuthoritativeApplyWakeSnapshot(appliedValue, latestSyncedStateRef.current);
+    if (params.activeRoomIdRef.current !== roomId || !appliedSnapshot) return;
+    const appliedSequence = Number(appliedSnapshot.lastSequence ?? 0);
     if (!appliedSequence) return;
     clearAuthoritativeApplyWake();
     authoritativeApplyWakeTimerRef.current = window.setTimeout(() => {
       authoritativeApplyWakeTimerRef.current = null;
       if (params.activeRoomIdRef.current !== roomId || appliedSequence < params.lastAppliedSequenceRef.current) return;
-      applySyncedStateSnapshotRef.current({
-        ...appliedValue,
-        pieces: Array.isArray(appliedValue.pieces) ? appliedValue.pieces.map((piece) => ({ ...piece })) : appliedValue.pieces,
-        gameSeats: Array.isArray(appliedValue.gameSeats) ? appliedValue.gameSeats.map((seat) => ({ ...seat })) : appliedValue.gameSeats,
-      }, {
+      const wakeSnapshot = buildAuthoritativeApplyWakeSnapshot(appliedValue, latestSyncedStateRef.current);
+      if (!wakeSnapshot) return;
+      latestSyncedStateRef.current = wakeSnapshot;
+      applySyncedStateSnapshotRef.current(wakeSnapshot, {
         allowMoveAnimation: false,
         allowRollAnimation: false,
         updateVersion: false,
@@ -79,6 +84,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     if (previousRoomIdRef.current === params.activeRoomId) return;
     previousRoomIdRef.current = params.activeRoomId;
     clearAuthoritativeApplyWake();
+    latestSyncedStateRef.current = null;
     queuesRef.current?.reset();
     setManualSequenceSyncing(false);
     params.clearPendingLocalRemoteActions();
@@ -92,7 +98,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     lastAppliedStateVersionRef: params.lastAppliedStateVersionRef,
     applyingSyncedStateRef: params.applyingSyncedStateRef,
     replayMissingSequencesThenApply: params.replayMissingSequencesThenApply,
-    applySyncedStateSnapshot: params.applySyncedStateSnapshot,
+    applySyncedStateSnapshot: rememberAndApplySyncedStateSnapshot,
     enqueueAuthoritativeResultApplication: (applyResult) => enqueueAuthoritativeResultApplication(params.activeRoomId, applyResult),
     onSnapshotReceived: () => {
       params.onSnapshotReceived?.();
