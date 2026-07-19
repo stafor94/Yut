@@ -8,6 +8,7 @@ import {
   ROLL_INTRO_EXTENSION_MS,
   getLocalLandingDropProgress,
   getYutRollPreResultDurationMs,
+  isTerminalLiveRollPhase,
 } from '../../src/app/flows/yutRollAnimation.js';
 import {
   getYutRollFallTarget,
@@ -32,6 +33,15 @@ test('local landing starts moving immediately and accelerates continuously', () 
   assert.ok(getLocalLandingDropProgress(0.1) < getLocalLandingDropProgress(0.5));
   assert.ok(getLocalLandingDropProgress(0.5) < getLocalLandingDropProgress(0.9));
   assert.equal(getLocalLandingDropProgress(1), 1);
+});
+
+test('only result-hold is a terminal live roll phase', () => {
+  assert.equal(isTerminalLiveRollPhase('primary'), false);
+  assert.equal(isTerminalLiveRollPhase('extra-spin'), false);
+  assert.equal(isTerminalLiveRollPhase('landing'), false);
+  assert.equal(isTerminalLiveRollPhase('resolved'), false);
+  assert.equal(isTerminalLiveRollPhase(undefined), false);
+  assert.equal(isTerminalLiveRollPhase('result-hold'), true);
 });
 
 test('pending phases use the local timeline and resolved rolls use the remote timeline', () => {

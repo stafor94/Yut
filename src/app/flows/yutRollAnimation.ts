@@ -19,6 +19,8 @@ export const getLocalLandingDropProgress = (value: number) => {
   return normalized * (0.22 + 0.78 * normalized);
 };
 
+export const isTerminalLiveRollPhase = (phase?: YutRollScenePhase) => phase === 'result-hold';
+
 export const getYutRollPreResultDurationMs = (phase?: YutRollScenePhase) =>
   phase === 'primary' || phase === 'extra-spin' || phase === 'landing'
     ? LOCAL_ROLL_PRE_RESULT_MS
