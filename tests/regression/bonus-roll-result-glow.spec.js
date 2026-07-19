@@ -15,6 +15,53 @@ const readGlowState = (surface) => surface.evaluate((node) => {
   };
 });
 
+const installAudioMock = async (page) => {
+  await page.addInitScript(() => {
+    window.__YUT_QA_AUDIO_EVENTS__ = [];
+    window.__YUT_QA_AUDIO_INSTANCES__ = [];
+
+    class MockAudio extends EventTarget {
+      constructor(source = '') {
+        super();
+        this.src = String(source);
+        this.currentTime = 0;
+        this.volume = 1;
+        this.muted = false;
+        this.preload = '';
+        this.paused = true;
+        window.__YUT_QA_AUDIO_INSTANCES__.push(this);
+      }
+
+      load() {}
+
+      pause() {
+        this.paused = true;
+        window.__YUT_QA_AUDIO_EVENTS__.push({ type: 'pause', src: this.src });
+      }
+
+      play() {
+        this.paused = false;
+        window.__YUT_QA_AUDIO_EVENTS__.push({ type: 'play', src: this.src });
+        return Promise.resolve();
+      }
+    }
+
+    Object.defineProperty(window, 'Audio', {
+      configurable: true,
+      writable: true,
+      value: MockAudio,
+    });
+  });
+};
+
+const countAudioEvents = (page, type, assetName) => page.evaluate(({ eventType, expectedAssetName }) => {
+  const matchesAsset = (source) => {
+    const filename = decodeURIComponent(String(source).split('/').pop()?.split('?')[0] ?? '');
+    return new RegExp(`^${expectedAssetName}(?:-[^.]+)?\\.wav$`).test(filename);
+  };
+  return window.__YUT_QA_AUDIO_EVENTS__.filter((event) => event.type === eventType && matchesAsset(event.src)).length;
+}, { eventType: type, expectedAssetName: assetName });
+
 test.describe('bonus roll result glow regression', () => {
   test('내 던지기와 상대 던지기 모두 윷·모 텍스트 공개 순간부터 같은 황금 애니메이션을 실행한다', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -77,5 +124,47 @@ test.describe('bonus roll result glow regression', () => {
     }
 
     await page.locator('#qa-bonus-result-glow-root').evaluate((node) => node.remove());
+  });
+
+  test('결과 표시가 사라져도 음성을 중단하지 않고 윷 보너스 음성을 이어 재생한다', async ({ page }) => {
+    await installAudioMock(page);
+    await expectAppShell(page);
+
+    await page.evaluate(() => {
+      document.getElementById('qa-yut-speech-root')?.remove();
+      const root = document.createElement('div');
+      root.id = 'qa-yut-speech-root';
+      root.innerHTML = '<span class="roll-label">윷</span>';
+      document.body.append(root);
+    });
+
+    await expect.poll(() => countAudioEvents(page, 'play', 'yut'), {
+      timeout: 1_000,
+      message: '윷 결과가 보이면 결과 음성이 한 번 재생되어야 합니다.',
+    }).toBe(1);
+
+    const pauseCountBeforeRemoval = await countAudioEvents(page, 'pause', 'yut');
+    await page.locator('#qa-yut-speech-root').evaluate((node) => node.remove());
+    await page.waitForTimeout(100);
+
+    expect(
+      await countAudioEvents(page, 'pause', 'yut'),
+      '결과 DOM이 사라졌다는 이유만으로 재생 중인 음성을 pause하면 안 됩니다.',
+    ).toBe(pauseCountBeforeRemoval);
+
+    await page.evaluate(() => {
+      const matchesYutAudio = (audio) => {
+        const filename = decodeURIComponent(String(audio.src).split('/').pop()?.split('?')[0] ?? '');
+        return /^yut(?:-[^.]+)?\.wav$/.test(filename);
+      };
+      const resultAudio = window.__YUT_QA_AUDIO_INSTANCES__.find(matchesYutAudio);
+      if (!resultAudio) throw new Error('윷 결과 음성 인스턴스를 찾지 못했습니다.');
+      resultAudio.dispatchEvent(new Event('ended'));
+    });
+
+    await expect.poll(() => countAudioEvents(page, 'play', 'bonus'), {
+      timeout: 1_000,
+      message: '윷 결과 음성이 끝나면 결과 표시 제거 여부와 관계없이 보너스 음성이 재생되어야 합니다.',
+    }).toBe(1);
   });
 });
