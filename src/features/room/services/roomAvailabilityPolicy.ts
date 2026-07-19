@@ -58,9 +58,7 @@ export function classifyRoomAvailability(
     ))
     .map((player) => player.id);
   const currentPlayers = occupiedPlayers.length;
-  const hasActiveHumanPresence = players.some((player) => (
-    player.id === currentUserId && !player.isAI
-  ) || isActiveHumanLifecyclePlayer(player, now));
+  const hasActiveHumanPresence = players.some((player) => isActiveHumanLifecyclePlayer(player, now));
   if (!hasActiveHumanPresence && isRoomDeletionExpired(room, now)) {
     return { visible: false, reason: 'inactive', currentPlayers, playerIds };
   }
