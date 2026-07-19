@@ -52,6 +52,14 @@ export type RequestRoomCreationParams = {
   runtime: Partial<RoomCreationRuntime>;
 };
 
+type RoomCreationRecoveryOptions = {
+  pollIntervalMs?: number;
+  wait?: (delayMs: number) => Promise<void>;
+};
+
+const ROOM_CREATION_RECOVERY_POLL_INTERVAL_MS = 250;
+const waitForRoomCreationRecovery = (delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+
 function showRoomCreationFailure(
   messageText: string,
   onMessage: (message: string) => void,
@@ -65,12 +73,31 @@ export async function findCreatedRoomWithTimeout(
   request: { roomId: string; createRequestId: string },
   hostId: string,
   getRoomById: RoomCreationRuntime['getRoom'],
+  options: RoomCreationRecoveryOptions = {},
 ) {
+  let stopped = false;
+  const pollIntervalMs = Math.max(0, options.pollIntervalMs ?? ROOM_CREATION_RECOVERY_POLL_INTERVAL_MS);
+  const wait = options.wait ?? waitForRoomCreationRecovery;
+  const pollForCreatedRoom = async () => {
+    while (!stopped) {
+      try {
+        const room = await getRoomById(request.roomId);
+        if (isMatchingCreatedRoom(room, { ...request, hostId })) return room;
+      } catch {
+        // Firestore가 생성 직후 일시적으로 조회되지 않으면 recovery 제한 시간 안에서 다시 확인한다.
+      }
+      if (stopped) break;
+      await wait(pollIntervalMs);
+    }
+    return null;
+  };
+
   try {
-    const room = await withOperationTimeout(getRoomById(request.roomId), CREATE_ROOM_RECOVERY_TIMEOUT_MS, 'recover');
-    return isMatchingCreatedRoom(room, { ...request, hostId }) ? room : null;
+    return await withOperationTimeout(pollForCreatedRoom(), CREATE_ROOM_RECOVERY_TIMEOUT_MS, 'recover');
   } catch {
     return null;
+  } finally {
+    stopped = true;
   }
 }
 
