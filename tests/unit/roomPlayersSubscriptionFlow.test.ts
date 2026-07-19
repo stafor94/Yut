@@ -26,9 +26,11 @@ test('현재 사용자 확인과 cleanup eligibility를 계산한다', () => {
   assert.equal(result.presenceCleanupEligible, true);
 });
 
-test('AI와 관전자는 cleanup eligibility에서 제외한다', () => {
+test('관전자는 좌석 플레이어는 아니지만 인간 presence cleanup 주체가 된다', () => {
+  const result = resolveLocalRoomPlayerSnapshot([player({ id: 'spectator', isSpectator: true })], 'spectator');
+  assert.equal(result.hasCurrentUserInSnapshot, false);
+  assert.equal(result.presenceCleanupEligible, true);
   assert.equal(resolveLocalRoomPlayerSnapshot([player({ id: 'ai', isAI: true })], 'ai').presenceCleanupEligible, false);
-  assert.equal(resolveLocalRoomPlayerSnapshot([player({ id: 'spectator', isSpectator: true })], 'spectator').hasCurrentUserInSnapshot, false);
 });
 
 test('방장 승계 중복 차단 key를 만든다', () => {
