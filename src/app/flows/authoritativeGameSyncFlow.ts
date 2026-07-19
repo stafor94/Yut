@@ -60,7 +60,10 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
   ) => {
     void commitQueuedAuthoritativeGameAction(roomId, action)
       .then((result) => enqueueAuthoritativeResultApplication(roomId, async () => {
-        try { await hooks.handleResult(result); }
+        try {
+          await hooks.handleResult(result);
+          return result;
+        }
         finally { hooks.handleFinally(); }
       }))
       .catch((error) => {
