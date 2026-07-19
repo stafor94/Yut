@@ -14,6 +14,8 @@ import { useRoomEntryController } from './controllers/useRoomEntryController';
 import { useStoredRoomRecoveryController } from './controllers/useStoredRoomRecoveryController';
 import { useRoomSummarySubscription } from './controllers/useRoomSummarySubscription';
 import { useRoomPlayersSubscription } from './controllers/useRoomPlayersSubscription';
+import { useWaitingRoomController, getSubstitutedRoomPlayerUpdate } from './controllers/useWaitingRoomController';
+import { useAuthoritativeGameSyncController } from './controllers/useAuthoritativeGameSyncController';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
@@ -187,7 +189,6 @@ export function App() {
   const [startStatus, setStartStatus] = useState<NonNullable<RoomSummary['startStatus']>>('idle');
   const [startRequestPending, setStartRequestPending] = useState(false);
   const [initialGameEntryPending, setInitialGameEntryPending] = useState(false);
-  const [pendingAiSeatCount, setPendingAiSeatCount] = useState(0);
   const [authoritativeGameStateReady, setAuthoritativeGameStateReady] = useState(false);
   const [firebaseLatencySamples, setFirebaseLatencySamples] = useState<number[]>([]);
   const [spectators, setSpectators] = useState<Seat[]>([]);
@@ -373,7 +374,6 @@ export function App() {
   const roomPlayerAiStatesRef = useRef<Map<string, { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }>>(new Map());
   const roomHostClaimKeyRef = useRef('');
   const missingRoomPlayerTimerRef = useRef<number | null>(null);
-  const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
   const startRequestVersionRef = useRef(0);
   const startRequestIdRef = useRef('');
   const startStatusRef = useRef<NonNullable<RoomSummary['startStatus']>>('idle');
@@ -381,18 +381,6 @@ export function App() {
   const leavingRoomRef = useRef(false);
   const hostingRoomUserIdRef = useRef('');
 
-  function syncPendingAiSeatCount() {
-    setPendingAiSeatCount(pendingAiSeatIdsRef.current.size);
-  }
-  function addPendingAiSeat(seatId: string) {
-    if (!seatId) return;
-    pendingAiSeatIdsRef.current.add(seatId);
-    syncPendingAiSeatCount();
-  }
-  function clearPendingAiSeat(seatId: string) {
-    if (!seatId || !pendingAiSeatIdsRef.current.delete(seatId)) return;
-    syncPendingAiSeatCount();
-  }
 
   const currentUser = userRef.current ?? user;
   const currentUserId = currentUser?.uid ?? '';
@@ -404,7 +392,6 @@ export function App() {
   const syncedGameSeats = useMemo(() => gameSeatSnapshotsFromSeats(playableSeats), [playableSeats]);
   const teamCounts = useMemo(() => playableSeats.reduce<Record<Team, number>>((acc, seat) => ({ ...acc, [seat.team]: acc[seat.team] + 1 }), { 청팀: 0, 홍팀: 0 }), [playableSeats]);
   const teamBalanced = playMode === 'individual' || (maxPlayers === 4 && teamCounts.청팀 === 2 && teamCounts.홍팀 === 2);
-  const allReady = pendingAiSeatCount === 0 && seats.every((seat) => !seat.isEmpty && (seat.ready || seat.isAI)) && teamBalanced;
   const turnSeats = useMemo(() => {
     if (!turnOrderIds.length) return playableSeats;
     const orderedSeats = turnOrderIds.map((seatId) => playableSeats.find((seat) => seat.id === seatId)).filter((seat): seat is Seat => Boolean(seat));
@@ -434,6 +421,24 @@ export function App() {
   const canResolveInitialOnlineTurnOrder = canCoordinateOnlineGame;
   const canCompleteInitialOnlineTurnOrderIntro = canCoordinateOnlineGame || Boolean(activeRoomId && isOnlinePlayer);
   const canManageRoom = isRoomManager;
+  const {
+    pendingAiSeatCount,
+    pendingAiSeatIdsRef,
+    addPendingAiSeat,
+    clearPendingAiSeat,
+    toggleMyReady,
+    leaveRoom,
+    changeWaitingOptions,
+    markPlayerAsAI,
+    cancelAISeat,
+    kickWaitingPlayer,
+    changeTeam,
+  } = useWaitingRoomController({
+    activeRoomId, localSeatId, screen, nickname, playMode, maxPlayers, itemMode, stackedRollMode, pieceCount, seats, canManageRoom, isRoomManager,
+    activeRoomIdRef, leavingRoomRef, confirmedRoomPlayerRef, hostingRoomUserIdRef, addLog, setSeats, setMessage, setScreen, setActiveRoomId, setActiveRoomTitle, setActiveRoomHostId, setIsRoomHost, setCountdown, setTurnOrderIds, setGameStartedAt, setPlayMode, setMaxPlayers, setItemMode, setStackedRollMode, setPieceCount,
+  });
+
+  const allReady = pendingAiSeatCount === 0 && seats.every((seat) => !seat.isEmpty && (seat.ready || seat.isAI)) && teamBalanced;
   const gameExitDescription = activeRoomId ? '현재 방에서 나가 로비로 이동합니다. 모든 사람 플레이어가 나가면 방이 종료됩니다.' : 'AI가 대신 플레이하게 됩니다.';
   const isMyTurn = activeSeat?.id === localSeatId && !activeSeat.isAI && !isSpectator;
   const getSeatById = (seatId: string) => playableSeats.find((seat) => seat.id === seatId);
@@ -3150,49 +3155,6 @@ export function App() {
   }
 
 
-  function getSubstitutedRoomPlayerUpdate(seat: Seat): Partial<Omit<RoomPlayer, 'id'>> {
-    const seatIndex = getSeatIndex(seat);
-    return { nickname: seat.name, ready: true, isAI: true, isSubstitutedByAI: true, seatIndex, color: ['red', 'blue', 'green', 'yellow'][seatIndex] ?? 'black', team: seat.team };
-  }
-
-  function markPlayerAsAI(playerId: string) {
-    setSeats((currentSeats) => {
-      const aiName = makeUniqueAIName(currentSeats);
-      const targetSeat = currentSeats.find((seat) => seat.id === playerId);
-      if (activeRoomId && targetSeat) {
-        addPendingAiSeat(playerId);
-        void updateRoomPlayer(activeRoomId, playerId, getAiRoomPlayerUpdate(targetSeat, aiName))
-          .catch((error) => {
-            console.warn('AI 추가에 실패했습니다.', error);
-            setMessage('AI 추가에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
-            setSeats((latestSeats) => latestSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
-          })
-          .finally(() => clearPendingAiSeat(playerId));
-      }
-      return currentSeats.map((seat) => seat.id === playerId ? { ...seat, name: aiName, ready: true, isAI: true, isSubstitutedByAI: false, isEmpty: false } : seat);
-    });
-  }
-  function cancelAISeat(playerId: string) {
-    clearPendingAiSeat(playerId);
-    if (activeRoomId) { void removeRoomPlayer(activeRoomId, playerId); }
-    setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat));
-  }
-  async function kickWaitingPlayer(seat: Seat) {
-    if (!activeRoomId || !canManageRoom || seat.isEmpty || seat.isHost || seat.isAI) return;
-    const previousSeat = seat;
-    setSeats((currentSeats) => currentSeats.map((currentSeat) => currentSeat.id === previousSeat.id ? { ...currentSeat, id: `slot-${Number(currentSeat.label.replace('P', ''))}`, name: '빈 자리', ready: false, isEmpty: true } : currentSeat));
-    try {
-      await removeRoomPlayer(activeRoomId, previousSeat.id);
-      setMessage(`${previousSeat.name}님을 방에서 내보냈습니다.`);
-    } catch (error) {
-      setSeats((currentSeats) => currentSeats.map((currentSeat) => currentSeat.label === previousSeat.label ? previousSeat : currentSeat));
-      setMessage(error instanceof Error ? error.message : '플레이어 강퇴에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
-    }
-  }
-  function changeTeam(playerId: string, team: Team) {
-    if (activeRoomId) { void updateRoomPlayer(activeRoomId, playerId, { team }); }
-    setSeats((currentSeats) => currentSeats.map((seat) => seat.id === playerId ? { ...seat, team } : seat));
-  }
   function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean; timingZone?: RollTimingZone } = {}) {
     if (rollInProgressRef.current || currentRollRef.current) return null;
     rollInProgressRef.current = true;
@@ -3371,51 +3333,23 @@ export function App() {
     return latestState ?? null;
   }
 
-  async function commitQueuedAuthoritativeGameAction(
-    roomId: string,
-    action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
-  ) {
-    const runCommit = () => commitAuthoritativeGameAction(roomId, action);
-    const queuedCommit = localActionCommitQueueRef.current.then(runCommit, runCommit);
-    localActionCommitQueueRef.current = queuedCommit.then(() => undefined, () => undefined);
-    return queuedCommit;
-  }
-
-  function enqueueAuthoritativeResultApplication<T>(roomId: string, applyResult: () => Promise<T> | T): Promise<T | null> {
-    const runApply = async () => {
-      if (activeRoomIdRef.current !== roomId) return null;
-      return await applyResult();
-    };
-    const queuedApply = localActionApplyQueueRef.current.then(runApply, runApply);
-    localActionApplyQueueRef.current = queuedApply.then(() => undefined, () => undefined);
-    return queuedApply;
-  }
-
-  function enqueueAuthoritativeGameAction(
-    roomId: string,
-    action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
-    handleResult: (result: Awaited<ReturnType<typeof commitAuthoritativeGameAction>>) => Promise<void> | void,
-    handleError: (error: unknown) => void,
-    handleFinally: () => void,
-  ) {
-    void commitQueuedAuthoritativeGameAction(roomId, action)
-      .then((result) => enqueueAuthoritativeResultApplication(roomId, async () => {
-        try {
-          await handleResult(result);
-        } finally {
-          handleFinally();
-        }
-      }))
-      .catch((error) => {
-        void enqueueAuthoritativeResultApplication(roomId, () => {
-          try {
-            handleError(error);
-          } finally {
-            handleFinally();
-          }
-        });
-      });
-  }
+  const {
+    commitQueuedAuthoritativeGameAction,
+    enqueueAuthoritativeResultApplication,
+    enqueueAuthoritativeGameAction,
+  } = useAuthoritativeGameSyncController({
+    activeRoomIdRef,
+    applyAuthoritativeResultSequence,
+    syncLatestAuthoritativeState,
+    syncLatestSequencesFromBadge,
+    reconcilePendingLocalRemoteActions,
+    addPendingLocalRemoteAction,
+    acknowledgePendingLocalRemoteAction,
+    removeSettledPendingLocalRemoteAction,
+    clearPendingLocalRemoteActions,
+    hasPendingCurrentTurnAction,
+    pendingLocalRemoteActionCount,
+  });
 
   function canSubmitDeadlineRecovery() {
     return Boolean(activeRoomId && screen === 'game' && isOnlinePlayer && !isSpectator && activeSeat && !winner && !activeTurnOrderIntro && !turnOrderPhase.active && !pendingTrapPlacement);
@@ -4699,55 +4633,6 @@ export function App() {
   }
 
 
-  async function toggleMyReady() {
-    if (isRoomManager) return;
-    const mySeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
-    if (!mySeat) { setMessage('내 참가 정보를 찾는 중입니다. 잠시 뒤 다시 시도하세요.'); return; }
-    const nextReady = !mySeat.ready;
-    setSeats((currentSeats) => currentSeats.map((seat) => seat.id === mySeat.id ? { ...seat, ready: nextReady } : seat));
-    try {
-      if (activeRoomId) await updateRoomPlayer(activeRoomId, mySeat.id, { ready: nextReady });
-      setMessage(nextReady ? '준비 완료했습니다. 방장이 시작할 때까지 기다려주세요.' : '준비를 취소했습니다.');
-    } catch (error) {
-      setSeats((currentSeats) => currentSeats.map((seat) => seat.id === mySeat.id ? { ...seat, ready: mySeat.ready } : seat));
-      setMessage(error instanceof Error ? error.message : '준비 상태 변경에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
-    }
-  }
-
-  async function leaveRoom() {
-    const leavingRoomId = activeRoomId;
-    const leavingSeatId = localSeatId;
-    const wasGameScreen = screen === 'game';
-    leavingRoomRef.current = true;
-    const leavingSeat = seats.find((seat) => seat.id === leavingSeatId && !seat.isEmpty && !seat.isAI);
-    if (wasGameScreen && leavingRoomId) addLog(`${nickname}님이 나갔습니다. AI가 이어서 플레이합니다.`);
-    hostingRoomUserIdRef.current = '';
-    activeRoomIdRef.current = '';
-    confirmedRoomPlayerRef.current = false;
-    setScreen('lobby'); setActiveRoomId(''); setActiveRoomTitle(''); setActiveRoomHostId(''); setIsRoomHost(false); setCountdown(-1); setTurnOrderIds([]); setGameStartedAt(null); setSeats(createSeats(nickname, playMode, maxPlayers));
-    window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
-    window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
-    setMessage('방에서 나왔습니다.');
-    if (!leavingRoomId || !leavingSeatId) {
-      leavingRoomRef.current = false;
-      return;
-    }
-    try {
-      if (wasGameScreen && leavingSeat) {
-        addPendingAiSeat(leavingSeatId);
-        await updateRoomPlayer(leavingRoomId, leavingSeatId, getSubstitutedRoomPlayerUpdate(leavingSeat));
-        clearPendingAiSeat(leavingSeatId);
-      } else {
-        await removeRoomPlayer(leavingRoomId, leavingSeatId);
-      }
-    } catch (error) {
-      clearPendingAiSeat(leavingSeatId);
-      console.warn('방 나가기 정리에 실패했습니다.', error);
-    } finally {
-      leavingRoomRef.current = false;
-    }
-  }
-
   function returnToWaitingRoom() {
     const finishedRoomId = activeRoomId;
     setSeats((currentSeats) => currentSeats.map((seat) => {
@@ -4851,25 +4736,6 @@ export function App() {
       },
       () => undefined,
     );
-  }
-
-  async function changeWaitingOptions(next: { itemMode?: boolean; stackedRollMode?: boolean; pieceCount?: PieceCount; playMode?: PlayMode; maxPlayers?: 2 | 3 | 4 }) {
-    const nextPlayMode = next.playMode ?? playMode;
-    const nextMaxPlayers = nextPlayMode === 'team' ? 4 : next.maxPlayers ?? maxPlayers;
-    const nextItemMode = next.itemMode ?? itemMode;
-    const nextStackedRollMode = next.stackedRollMode ?? stackedRollMode;
-    const nextPieceCount = next.pieceCount ?? (next.playMode === 'team' && playMode !== 'team' ? 2 : pieceCount);
-    const activePlayerCount = seats.filter((seat) => !seat.isEmpty && !seat.isSpectator).length;
-    if (nextMaxPlayers < activePlayerCount) {
-      setMessage(`현재 참가 인원 ${activePlayerCount}명보다 적게 인원을 줄일 수 없습니다.`);
-      return;
-    }
-    setPlayMode(nextPlayMode);
-    setMaxPlayers(nextMaxPlayers);
-    setItemMode(nextItemMode);
-    setStackedRollMode(nextStackedRollMode);
-    setPieceCount(nextPieceCount);
-    if (canManageRoom && activeRoomId) await updateRoomOptions(activeRoomId, { playMode: nextPlayMode, maxPlayers: nextMaxPlayers, itemMode: nextItemMode, stackedRollMode: nextStackedRollMode, pieceCount: nextPieceCount });
   }
 
   function openNicknameDialog() {
