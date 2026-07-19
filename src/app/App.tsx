@@ -19,7 +19,7 @@ import { useAuthoritativeGameSyncController } from './controllers/useAuthoritati
 import { useGameLifecycleController } from './controllers/useGameLifecycleController';
 import { useGameStartController } from './controllers/useGameStartController';
 import { useAuthSession } from './hooks/useAuthSession';
-import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
+import { useGameSyncDebugState } from './hooks/useGameSync';
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
 import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
@@ -174,7 +174,6 @@ export function App() {
   const [sequenceExportCopied, setSequenceExportCopied] = useState(false);
   const [sequenceExportText, setSequenceExportText] = useState('');
   const [loadingMessage, setLoadingMessage] = useState('');
-  const [manualSequenceSyncing, setManualSequenceSyncing] = useState(false);
   const [lastManualSyncResolution, setLastManualSyncResolution] = useState<ManualSyncResolution | null>(null);
   const [initialGameStateSaveDiagnostic, setInitialGameStateSaveDiagnostic] = useState<{ status: SaveGameStateResult['status'] | 'pending' | 'error' | ''; turnVersion: number; lastSequence: number; startedAt: number; completedAt: number; source: string; message: string; fingerprint: string } | null>(null);
   const [screen, setScreen] = useState<Screen>('lobby');
@@ -279,8 +278,6 @@ export function App() {
     acknowledgePendingLocalRemoteAction,
     clearPendingLocalRemoteActions,
   } = usePendingRemoteActions();
-  const localActionCommitQueueRef = useRef(Promise.resolve());
-  const localActionApplyQueueRef = useRef(Promise.resolve());
   const sequenceReplayInProgressRef = useRef(false);
   const queuedSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
   const currentSequenceStateRef = useRef<SequenceStateSnapshot | null>(null);
@@ -386,7 +383,7 @@ export function App() {
   const currentUser = userRef.current ?? user;
   const currentUserId = currentUser?.uid ?? '';
   const rooms = useRooms({ enabled: screen === 'lobby' && Boolean(currentUser) });
-  const serverStatus = manualSequenceSyncing ? '동기화 중...' : isFirebaseConfigured ? (currentUser ? '온라인' : '연결 중') : '연결 정보 확인 필요';
+  const serverStatus = isFirebaseConfigured ? (currentUser ? '온라인' : '연결 중') : '연결 정보 확인 필요';
   const serverStatusTone = isFirebaseConfigured ? (currentUser ? 'online' : 'pending') : 'offline';
   const displaySeats = useMemo(() => screen === 'game' ? seats.map((seat) => ({ ...seat, isHost: false })) : seats, [screen, seats]);
   const playableSeats = useMemo(() => displaySeats.filter((seat) => !seat.isEmpty), [displaySeats]);
@@ -1099,8 +1096,6 @@ export function App() {
     processingActionIdsRef.current.clear();
     completedActionIdsRef.current.clear();
     processedClientActionIdsRef.current.clear();
-    localActionCommitQueueRef.current = Promise.resolve();
-    localActionApplyQueueRef.current = Promise.resolve();
     rollInProgressRef.current = false;
     rollInProgressStartedAtRef.current = 0;
     setRollInProgress(false);
@@ -1971,19 +1966,6 @@ export function App() {
     }
   }
 
-  useGameSyncSubscription({
-    activeRoomId,
-    lastAppliedSequenceRef,
-    lastAppliedStateVersionRef,
-    applyingSyncedStateRef,
-    replayMissingSequencesThenApply,
-    applySyncedStateSnapshot,
-    enqueueAuthoritativeResultApplication: (applyResult) => enqueueAuthoritativeResultApplication(activeRoomId, applyResult),
-    onSnapshotReceived: () => {
-      sequenceRecoveryWatchdogRef.current?.notifySnapshot();
-    },
-  });
-
   useEffect(() => {
     if (playMode === 'team' && maxPlayers !== 4) setMaxPlayers(4);
   }, [maxPlayers, playMode]);
@@ -2852,8 +2834,16 @@ export function App() {
     commitQueuedAuthoritativeGameAction,
     enqueueAuthoritativeResultApplication,
     enqueueAuthoritativeGameAction,
+    manualSequenceSyncing,
+    setManualSequenceSyncing,
   } = useAuthoritativeGameSyncController({
+    activeRoomId,
     activeRoomIdRef,
+    lastAppliedSequenceRef,
+    lastAppliedStateVersionRef,
+    applyingSyncedStateRef,
+    replayMissingSequencesThenApply,
+    applySyncedStateSnapshot,
     applyAuthoritativeResultSequence,
     syncLatestAuthoritativeState,
     syncLatestSequencesFromBadge,
@@ -2864,6 +2854,9 @@ export function App() {
     clearPendingLocalRemoteActions,
     hasPendingCurrentTurnAction,
     pendingLocalRemoteActionCount,
+    onSnapshotReceived: () => {
+      sequenceRecoveryWatchdogRef.current?.notifySnapshot();
+    },
   });
 
   function canSubmitDeadlineRecovery() {
