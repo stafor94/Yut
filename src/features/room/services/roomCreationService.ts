@@ -147,6 +147,7 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
       status: 'waiting',
       startStatus: 'idle',
       emptySince: null,
+      lastHumanSeenAt: serverTimestamp(),
       currentPlayers: 1,
       deletingAt: null,
       lastActivityAt: now,
