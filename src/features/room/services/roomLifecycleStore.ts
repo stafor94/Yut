@@ -19,6 +19,7 @@ import {
 export type ManagedRoomSummary = RoomSummary & {
   deletingAt?: unknown;
   lastActivityAt?: unknown;
+  lastHumanSeenAt?: unknown;
   systemRoomType?: string;
   lockRequestId?: string;
   lockOwnerToken?: string;
@@ -131,7 +132,7 @@ async function startRoomDeletionGrace(roomId: string, room: ManagedRoomSummary) 
 export async function reconcileRoomDeletionGrace(
   roomId: string,
   now = Date.now(),
-  options: { allowGraceClear?: boolean } = {},
+  options: { allowGraceClear?: boolean; allowGraceStart?: boolean } = {},
 ) {
   if (!db || !roomId) return false;
   const [room, players] = await Promise.all([getManagedRoom(roomId), getRoomPlayers(roomId)]);
@@ -150,14 +151,14 @@ export async function reconcileRoomDeletionGrace(
     });
   }
 
-  if (shouldStartRoomDeletionGrace(room, players, now)) {
+  if (options.allowGraceStart && shouldStartRoomDeletionGrace(room, players, now)) {
     await startRoomDeletionGrace(roomId, room);
   }
   return false;
 }
 
 export async function deleteRoomWhenNoNonAiPlayersRemain(roomId: string) {
-  return reconcileRoomDeletionGrace(roomId);
+  return reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceStart: true });
 }
 
 export async function cleanupDeletionCandidatesBeforeCreate(protectedRoomId = '') {
