@@ -49,7 +49,7 @@ test('wake snapshot은 authoritative 결과의 유효한 게임 시작 식별자
   assert.equal(wakeSnapshot.startRequestId, 'start-new');
 });
 
-test('wake snapshot은 queued commit 결과의 sequence와 patch를 현재 상태에 병합한다', () => {
+test('wake snapshot은 queued commit 결과의 sequence와 stateAfter를 현재 상태에 병합한다', () => {
   const latestSnapshot = {
     lastSequence: 3,
     startRequestVersion: 1,
@@ -59,16 +59,26 @@ test('wake snapshot은 queued commit 결과의 sequence와 patch를 현재 상�
     gameSeats: [{ id: 'human', isAI: false }, { id: 'slot-2', isAI: true }],
     roll: { name: '개', steps: 2 },
     rollStack: [],
+    logs: [{ id: 1, text: '이전 상태' }],
+  };
+  const authoritativeState = {
+    ...latestSnapshot,
+    turnIndex: 1,
+    pieces: [{ id: 'human-piece', nodeId: 'n05' }],
+    roll: null,
+    lastMovedSeatId: 'human',
+    logs: [{ id: 2, text: '사람 이동 완료' }],
   };
   const committedResult = {
     status: 'committed',
     sequence: 4,
     patch: {
       turnIndex: 1,
-      pieces: [{ id: 'human-piece', nodeId: 'n05' }],
+      pieces: authoritativeState.pieces,
       roll: null,
       lastMovedSeatId: 'human',
     },
+    stateAfter: authoritativeState,
   };
 
   const wakeSnapshot = buildAuthoritativeApplyWakeSnapshot(committedResult, latestSnapshot) as unknown as Record<string, unknown>;
@@ -79,8 +89,31 @@ test('wake snapshot은 queued commit 결과의 sequence와 patch를 현재 상�
   assert.equal(wakeSnapshot.lastMovedSeatId, 'human');
   assert.equal(wakeSnapshot.startRequestVersion, 1);
   assert.equal(wakeSnapshot.startRequestId, 'start-1');
-  assert.notEqual(wakeSnapshot.pieces, committedResult.patch.pieces);
-  assert.notEqual(wakeSnapshot.gameSeats, latestSnapshot.gameSeats);
+  assert.deepEqual(wakeSnapshot.logs, authoritativeState.logs);
+  assert.notEqual(wakeSnapshot.pieces, authoritativeState.pieces);
+  assert.notEqual(wakeSnapshot.gameSeats, authoritativeState.gameSeats);
+});
+
+test('wake snapshot은 stateAfter가 없으면 queued commit patch를 현재 상태에 병합한다', () => {
+  const latestSnapshot = {
+    lastSequence: 3,
+    turnIndex: 0,
+    pieces: [{ id: 'human-piece', nodeId: 'n03' }],
+    gameSeats: [{ id: 'slot-2', isAI: true }],
+    roll: { name: '개', steps: 2 },
+    rollStack: [],
+  };
+  const committedResult = {
+    sequence: 4,
+    patch: { turnIndex: 1, roll: null },
+  };
+
+  const wakeSnapshot = buildAuthoritativeApplyWakeSnapshot(committedResult, latestSnapshot) as unknown as Record<string, unknown>;
+
+  assert.equal(wakeSnapshot.lastSequence, 4);
+  assert.equal(wakeSnapshot.turnIndex, 1);
+  assert.equal(wakeSnapshot.roll, null);
+  assert.notEqual(wakeSnapshot.pieces, latestSnapshot.pieces);
 });
 
 test('wake snapshot은 적용 결과가 객체가 아니면 생성하지 않는다', () => {
