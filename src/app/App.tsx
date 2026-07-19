@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import type { BoardPiece } from '../features/game/components/GameBoard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
@@ -8,6 +8,8 @@ import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercen
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
 import { cancelRoomGameStart, claimRoomHostIfMissing, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, leaveDuplicatePlayerRooms, removeRoomPlayer, requestRoomGameStart, resolveTurnOrderIntro, scheduleEmptyRoomDeletion, subscribeRoom, subscribeRoomPlayers, updateRoomOptions, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
+import { useAppPreferences } from './hooks/useAppPreferences';
+import { useAuthSession } from './hooks/useAuthSession';
 import { useGameSyncDebugState, useGameSyncSubscription } from './hooks/useGameSync';
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
 import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
@@ -49,11 +51,6 @@ import {
   TEAM_COLORS,
   createSeats,
   gameSeatSnapshotsFromSeats,
-  getInitialNickname,
-  getStoredBoolean,
-  getStoredNumber,
-  getStoredPlayMode,
-  getStoredText,
   makeGameStateFingerprint,
   makePieces,
   normalizeNickname,
@@ -95,7 +92,7 @@ import {
   withSubjectParticle,
 } from './appUtils';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
-import { listenAuthState, signInAsGuest } from '../services/firebase/firebaseAuth';
+import { signInAsGuest } from '../services/firebase/firebaseAuth';
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
 import { makeBugReportSequenceExport, makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
 import { TURN_ACTION_TIMEOUT_MS, getTurnRecoveryDeadlineAt } from '../features/room/services/roomTiming';
@@ -141,24 +138,31 @@ import { getSeededTurnOrderSeats } from './utils/turnOrderSeed';
 import '../styles/globals.css';
 
 export function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const userRef = useRef<User | null>(null);
-  const rememberUser = (nextUser: User | null) => {
-    userRef.current = nextUser;
-    setUser(nextUser);
-  };
-  const [nickname, setNickname] = useState(() => getInitialNickname());
-  const [nicknameDraft, setNicknameDraft] = useState(() => getInitialNickname());
+  const [message, setMessage] = useState('');
+  const handleAuthError = useCallback((nextMessage: string) => setMessage(nextMessage), []);
+  const { user, userRef, rememberUser } = useAuthSession(handleAuthError);
+  const {
+    nickname,
+    setNickname,
+    nicknameDraft,
+    setNicknameDraft,
+    title,
+    setTitle,
+    playMode,
+    setPlayMode,
+    maxPlayers,
+    setMaxPlayers,
+    itemMode,
+    setItemMode,
+    stackedRollMode,
+    setStackedRollMode,
+    pieceCount,
+    setPieceCount,
+    soundEnabled,
+    setSoundEnabled,
+  } = useAppPreferences();
   const [nicknameDialogOpen, setNicknameDialogOpen] = useState(false);
   const [endGameDialogOpen, setEndGameDialogOpen] = useState(false);
-  const [title, setTitle] = useState(() => getStoredText(STORAGE_KEYS.title, '친구들과 윷놀이'));
-  const [playMode, setPlayMode] = useState<PlayMode>(() => getStoredPlayMode());
-  const [maxPlayers, setMaxPlayers] = useState<2 | 3 | 4>(() => getStoredNumber(STORAGE_KEYS.maxPlayers, 4, [2, 3, 4] as const));
-  const [itemMode, setItemMode] = useState(() => getStoredBoolean(STORAGE_KEYS.itemMode, true));
-  const [stackedRollMode, setStackedRollMode] = useState(() => getStoredBoolean(STORAGE_KEYS.stackedRollMode, false));
-  const [pieceCount, setPieceCount] = useState<PieceCount>(() => getStoredNumber(STORAGE_KEYS.pieceCount, 4, [1, 2, 3, 4] as const));
-  const [soundEnabled, setSoundEnabled] = useState(() => getStoredBoolean(STORAGE_KEYS.soundEnabled, true));
-  const [message, setMessage] = useState('');
   const [actionErrorDialog, setActionErrorDialog] = useState('');
   const actionErrorDialogContextRef = useRef({ roomId: '', sequence: 0, turnIndex: 0 });
   const [roomNoticeDialog, setRoomNoticeDialog] = useState<{ title: string; message: string } | null>(null);
@@ -1147,23 +1151,6 @@ export function App() {
   }, [isRoomHost, screen]);
 
   useEffect(() => {
-    let mounted = true;
-    const applyUser = (nextUser: User | null) => { if (mounted) rememberUser(nextUser); };
-    const unsubscribe = listenAuthState(applyUser);
-    signInAsGuest()
-      .then((nextUser) => {
-        if (!nextUser) return;
-        applyUser(nextUser);
-      })
-      .catch((error) => setMessage(error.message));
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, []);
-
-
-  useEffect(() => {
     if (!currentUser || activeRoomId) return;
     const storedRoomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId);
     if (!storedRoomId) return;
@@ -1216,21 +1203,6 @@ export function App() {
     })();
     return () => { cancelled = true; };
   }, [activeRoomId, currentUser, nickname]);
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.nickname, nickname);
-  }, [nickname]);
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.title, title);
-  }, [title]);
-
-  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.playMode, playMode); }, [playMode]);
-  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.maxPlayers, String(maxPlayers)); }, [maxPlayers]);
-  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.itemMode, String(itemMode)); }, [itemMode]);
-  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.stackedRollMode, String(stackedRollMode)); }, [stackedRollMode]);
-  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.pieceCount, String(pieceCount)); }, [pieceCount]);
-  useEffect(() => { window.localStorage.setItem(STORAGE_KEYS.soundEnabled, String(soundEnabled)); }, [soundEnabled]);
 
   useRoomPresence(activeRoomId, localSeatId, { canCleanup: canOwnRoomPresenceCleanup });
   const { handlePresencePlayerSnapshot } = usePresenceRecovery({
