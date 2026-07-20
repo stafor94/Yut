@@ -165,7 +165,14 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
         }
       }
       const resolvedAnimation = await sequence.wait();
-      if (!resolvedAnimation || !mountedRef.current) return;
+      if (!resolvedAnimation) {
+        updatePresentationSession(sourceAnimationId, markRollPresentationCancelled);
+        if (mountedRef.current && presentedSourceAnimationIdRef.current === sourceAnimationId) {
+          presentAnimation(null);
+        }
+        return;
+      }
+      if (!mountedRef.current) return;
       const session = presentationSessionByIdRef.current.get(sourceAnimationId);
       if (session?.liveCompleted) {
         if (presentedLive || presentedSourceAnimationIdRef.current === sourceAnimationId) {
