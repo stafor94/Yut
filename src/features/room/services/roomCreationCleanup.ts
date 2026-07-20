@@ -20,9 +20,6 @@ export async function leavePlayerRoomsBeforeCreate(params: {
       .filter(Boolean),
   ));
 
-  for (const roomId of roomIds) {
-    await params.leaveRoom(roomId, params.playerId);
-  }
-
+  await Promise.all(roomIds.map((roomId) => params.leaveRoom(roomId, params.playerId)));
   return roomIds;
 }
