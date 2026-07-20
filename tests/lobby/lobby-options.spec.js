@@ -9,7 +9,11 @@ test.describe('lobby QA', () => {
 
     await runQaStep(testInfo, '저장된 로비 값으로 앱 열기', async () => {
       await expectAppShell(page);
-      await expect(page.getByRole('button', { name: `닉네임 수정: ${nickname}` })).toBeVisible();
+      const nicknameDisplay = page.getByTestId('lobby-nickname-display');
+      await expect(nicknameDisplay).toBeVisible();
+      await expect(nicknameDisplay).toContainText(nickname);
+      await expect(nicknameDisplay).toHaveAttribute('aria-label', `설정 열기: ${nickname}`);
+      await expect(page.getByRole('button', { name: `닉네임 수정: ${nickname}` })).toHaveCount(0);
       await page.getByRole('button', { name: '방 만들기', exact: true }).click();
       const createDialog = page.getByRole('dialog', { name: '방 만들기' });
       await expect(createDialog).toBeVisible();
