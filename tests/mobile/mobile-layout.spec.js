@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { expectAppShell, joinRoomFromLobby, primeLobbyStorage, runQaStep, waitForBlockingOverlayToDisappear } from '../helpers/ui.js';
+import { createRoomFromLobby, expectAppShell, joinRoomFromLobby, primeLobbyStorage, runQaStep, waitForBlockingOverlayToDisappear } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { createLobbyRoomFixtureForQa, deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -42,11 +42,15 @@ async function readAiCardLayout(card) {
 }
 
 test.describe('mobile layout QA', () => {
-  test('모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다', async ({ page }, testInfo) => {
+  test('모바일/태블릿 뷰포트에서 로비 핵심 탭 대상이 보인다', async ({ page, context }, testInfo) => {
+    await primeLobbyStorage(context, { nickname: '모바일QA' });
     await runQaStep(testInfo, '모바일 로비 핵심 UI 확인', async () => {
       await expectAppShell(page);
+      await expect(page.getByRole('button', { name: '방 만들기', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '게임 참가', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: '방 만들기', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
       await expect(page.getByTestId('room-title-input')).toBeVisible();
-      await expect(page.getByTestId('create-room-button')).toBeVisible();
       await expect(page.getByTestId('create-room-button')).toBeEnabled();
     });
   });
@@ -97,10 +101,7 @@ test.describe('mobile layout QA', () => {
 
     await runQaStep(testInfo, '모바일 AI 배지와 액션 영역 배치 확인', async () => {
       try {
-        await expectAppShell(page);
-        await page.getByTestId('room-title-input').fill(roomTitle);
-        await page.getByTestId('create-room-button').click();
-        await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 15_000 });
+        await createRoomFromLobby(page, roomTitle);
         roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
 
         const emptyCard = page.locator('.compact-ready-card').filter({ hasText: 'P3' }).first();
@@ -204,6 +205,8 @@ test.describe('mobile layout QA', () => {
 
         await expectAppShell(page);
         await waitForBlockingOverlayToDisappear(page);
+        await page.getByRole('button', { name: '게임 참가', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: '게임 참가' })).toBeVisible();
         const roomCard = page.locator('.lobby-room-card').filter({ hasText: roomTitle }).first();
         await expect(roomCard).toBeVisible({ timeout: 20_000 });
 
