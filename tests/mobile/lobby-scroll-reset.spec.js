@@ -45,6 +45,32 @@ async function expectLobbyViewportLocked(page) {
   }).toBe(0);
 }
 
+async function createRoom(page, roomTitle) {
+  await expectAppShell(page);
+  await page.getByRole('button', { name: '방 만들기', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
+  await page.getByTestId('room-title-input').fill(roomTitle);
+  await page.getByTestId('create-room-button').click();
+  await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 20_000 });
+  return await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
+}
+
+async function forceDocumentScroll(page, screenTestId) {
+  await page.getByTestId(screenTestId).evaluate((screen) => {
+    const spacer = document.createElement('div');
+    spacer.dataset.testid = 'scroll-reset-spacer';
+    spacer.style.height = '1200px';
+    spacer.style.pointerEvents = 'none';
+    screen.append(spacer);
+    window.scrollTo(0, document.documentElement.scrollHeight);
+  });
+
+  await expect.poll(() => page.evaluate(() => window.scrollY), {
+    timeout: 5_000,
+    message: '로비 복귀 전 재현용 문서 스크롤이 발생해야 합니다.',
+  }).toBeGreaterThan(0);
+}
+
 test.describe('mobile lobby scroll reset QA', () => {
   test('대기실에서 로비로 나오면 문서 스크롤을 제거하고 뷰포트를 잠근다', async ({ page, context }, testInfo) => {
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'scroll-reset-host'));
@@ -61,33 +87,52 @@ test.describe('mobile lobby scroll reset QA', () => {
 
     await runQaStep(testInfo, '대기실에서 로비 복귀 시 모바일 문서 스크롤 제거와 뷰포트 잠금 확인', async () => {
       try {
-        await expectAppShell(page);
-        await page.getByRole('button', { name: '방 만들기', exact: true }).click();
-        await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
-        await page.getByTestId('room-title-input').fill(roomTitle);
-        await page.getByTestId('create-room-button').click();
-        await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 20_000 });
-        roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
-
-        await page.getByTestId('waiting-room').evaluate((waitingRoom) => {
-          const spacer = document.createElement('div');
-          spacer.dataset.testid = 'scroll-reset-spacer';
-          spacer.style.height = '1200px';
-          spacer.style.pointerEvents = 'none';
-          waitingRoom.querySelector('.waiting-actions')?.before(spacer);
-          window.scrollTo(0, document.documentElement.scrollHeight);
-        });
-
-        await expect.poll(() => page.evaluate(() => window.scrollY), {
-          timeout: 5_000,
-          message: '대기실에서 재현용 문서 스크롤이 발생해야 합니다.',
-        }).toBeGreaterThan(0);
+        roomId = await createRoom(page, roomTitle);
+        await forceDocumentScroll(page, 'waiting-room');
 
         await page.getByRole('button', { name: '방 나가기' }).click();
         await expect(page.getByTestId('lobby-screen')).toBeVisible({ timeout: 10_000 });
         await expect.poll(() => page.evaluate(() => window.scrollY), {
           timeout: 5_000,
           message: '로비 전환 후 문서 스크롤은 상단으로 초기화되어야 합니다.',
+        }).toBe(0);
+        await expectLobbyViewportLocked(page);
+      } finally {
+        if (roomId) await deleteRoomForQa(roomId);
+      }
+    });
+  });
+
+  test('인게임에서 종료해 로비로 나오면 문서 스크롤을 제거하고 뷰포트를 잠근다', async ({ page, context }, testInfo) => {
+    const nickname = normalizeQaNickname(makeQaName(testInfo, 'scroll-game-host'));
+    const roomTitle = makeQaName(testInfo, 'scroll-game-room');
+    let roomId;
+
+    await primeLobbyStorage(context, {
+      nickname,
+      maxPlayers: '2',
+      playMode: 'individual',
+      itemMode: 'false',
+      pieceCount: '4',
+    });
+
+    await runQaStep(testInfo, '인게임 종료 후 로비 복귀 시 모바일 문서 스크롤 제거와 뷰포트 잠금 확인', async () => {
+      try {
+        roomId = await createRoom(page, roomTitle);
+        await page.getByTestId('add-ai-P2').click();
+        await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 10_000 });
+        await page.getByTestId('start-game-button').click();
+        await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+        await forceDocumentScroll(page, 'game-screen');
+
+        await page.getByTestId('game-end-button').click();
+        const dialog = page.getByRole('dialog', { name: '게임 종료 확인' });
+        await expect(dialog).toBeVisible();
+        await dialog.getByRole('button', { name: '게임 종료', exact: true }).click();
+        await expect(page.getByTestId('lobby-screen')).toBeVisible({ timeout: 15_000 });
+        await expect.poll(() => page.evaluate(() => window.scrollY), {
+          timeout: 5_000,
+          message: '인게임 종료 후 로비 문서 스크롤은 상단으로 초기화되어야 합니다.',
         }).toBe(0);
         await expectLobbyViewportLocked(page);
       } finally {
