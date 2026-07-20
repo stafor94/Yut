@@ -14,6 +14,8 @@ export type RoomExitRoomState = {
   startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing';
 };
 
+export type RoomExitScreen = 'lobby' | 'waitingRoom' | 'game';
+
 export const isAiSubstitutionUpdate = (update: RoomExitPlayerUpdate) => (
   update.isAI === true && update.isSubstitutedByAI === true
 );
@@ -27,6 +29,11 @@ export const hasRecoverableRoomPlayer = (players: RoomExitPlayer[]) => players.s
 export const isRoomExitInGame = (room: RoomExitRoomState) => (
   room.status === 'playing' || room.startStatus === 'entering' || room.startStatus === 'playing'
 );
+
+export const shouldDeleteWaitingRoomOnHostExit = (
+  screen: RoomExitScreen,
+  hasHostAuthority: boolean,
+) => screen === 'waitingRoom' && hasHostAuthority;
 
 export const shouldDeferRoomExitCleanup = (gameScreenActive: boolean, lifecycleRequestsDeferral: boolean) => (
   !gameScreenActive && lifecycleRequestsDeferral
