@@ -20,6 +20,7 @@ import './styles/lobby-guide-polish.css';
 import './styles/lobby-dialog-position.css';
 import './styles/lobby-room-query-loading.css';
 import './styles/lobby-background-reference.css';
+import './styles/control-geometry.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
