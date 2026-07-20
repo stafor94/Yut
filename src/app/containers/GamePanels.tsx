@@ -10,7 +10,7 @@ import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } f
 import { getPlayTimePresentation, subscribePlayTimePresentation } from '../flows/playTimePresentation';
 import { getRoomInfoCollapsed, subscribeRoomInfoPresentation, toggleRoomInfoCollapsed } from '../flows/roomInfoPresentation';
 import { GameLogPanel, PlayersPanel } from '../screens/GameScreen';
-import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
+import { RoomRuleBadges } from '../components/RoomRuleBadges';
 
 type GamePlayersPanelProps = {
   title: string;
@@ -55,8 +55,6 @@ export function GamePlayersPanel({
   getSeatPieceColor,
   onOpenEndGameDialog,
 }: GamePlayersPanelProps) {
-  const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
-  const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
   const previousOwnedItemsRef = useRef<OwnedItemsSnapshot | null>(null);
   const remoteItemNoticeTimerRef = useRef<number | null>(null);
   const [remoteItemUseNotice, setRemoteItemUseNotice] = useState<RemoteItemUseNotice | null>(null);
@@ -127,7 +125,7 @@ export function GamePlayersPanel({
     {!roomInfoCollapsed && <PlayersPanel>
       <div id="game-room-info-panel" data-testid="game-room-info-content" className="game-room-details">
         <h2 className="game-room-title">{title}</h2>
-        <p className="game-end-guide room-rule-badges game-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</p>
+        <RoomRuleBadges as="p" mode={playMode} players={maxPlayers} pieces={pieceCount} itemsEnabled={itemMode} stackedRollEnabled={stackedRollMode} className="game-end-guide game-room-rule-badges" />
         <div className="game-player-list">
           {seats.map((seat) => {
             const rankIndex = rankingSeatIds.indexOf(seat.id);

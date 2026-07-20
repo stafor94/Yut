@@ -26,7 +26,29 @@ test.describe('cleanup/layout regression QA', () => {
       await createRoomFromLobby(page, waitingRoomTitle);
       const roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(waitingRoomTitle);
       if (roomId) roomIds.push(roomId);
+      const waitingBadges = page.locator('.waiting-room-rule-badges .room-rule-badge');
+      await expect(waitingBadges).toHaveText(['개인전', '2인', '말 4개']);
+      await page.locator('.play-mode-group').getByText('팀전').click();
+      await page.locator('.piece-count-group').getByText('2개').click();
+      await page.locator('.stacked-roll-mode-group').getByText('ON').click();
+      await expect(waitingBadges).toHaveText(['팀전', '4인', '팀별 말 2개', '누적']);
+      const waitingRuleLayout = await page.locator('.waiting-room-rule-badges').evaluate((element) => {
+        const bodyWidth = document.documentElement.clientWidth;
+        const box = element.getBoundingClientRect();
+        const badges = Array.from(element.querySelectorAll('.room-rule-badge')).map((badge) => badge.textContent?.trim());
+        return {
+          badges,
+          right: box.right,
+          bodyWidth,
+          documentScrollWidth: document.documentElement.scrollWidth,
+        };
+      });
+      expect(waitingRuleLayout.badges).toEqual(['팀전', '4인', '팀별 말 2개', '누적']);
+      expect(waitingRuleLayout.right, '대기실 옵션 배지는 화면 밖으로 넘치면 안 됩니다.').toBeLessThanOrEqual(waitingRuleLayout.bodyWidth + 1);
+      expect(waitingRuleLayout.documentScrollWidth, '대기실 옵션 배지는 가로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(waitingRuleLayout.bodyWidth + 1);
       await page.getByTestId('add-ai-P2').click();
+      await page.getByTestId('add-ai-P3').click();
+      await page.getByTestId('add-ai-P4').click();
       await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
     });
 

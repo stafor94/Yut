@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PieceCount, PlayMode, Seat, Team } from '../appState';
-import { formatRoomRuleText, getRoomRuleBadges } from '../appUtils';
+import { RoomRuleBadges } from '../components/RoomRuleBadges';
 import { getWaitingRoomStartHint } from '../flows/gameStartFlow';
 import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
@@ -81,8 +81,6 @@ export function WaitingRoomContainer({
     teamCounts,
     readyMissingCount,
   });
-  const roomRuleText = formatRoomRuleText(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
-  const roomRuleBadges = getRoomRuleBadges(playMode, maxPlayers, pieceCount, itemMode, stackedRollMode);
 
   useEffect(() => {
     if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return undefined;
@@ -166,7 +164,7 @@ export function WaitingRoomContainer({
       <div>
         <h2 className="room-title">{activeRoomTitle || title}</h2>
       </div>
-      <span className="room-rule-badges waiting-room-rule-badges" aria-label={`방 옵션: ${roomRuleText}`}>{roomRuleBadges.map((badge) => <span key={badge.key} className={`room-rule-badge ${badge.tone}`}>{badge.label}</span>)}</span>
+      <RoomRuleBadges mode={playMode} players={maxPlayers} pieces={pieceCount} itemsEnabled={itemMode} stackedRollEnabled={stackedRollMode} className="waiting-room-rule-badges" />
     </header>
 
     <div className="waiting-main-grid">
