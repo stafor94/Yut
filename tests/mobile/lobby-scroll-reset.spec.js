@@ -20,6 +20,8 @@ test.describe('mobile lobby scroll reset QA', () => {
     await runQaStep(testInfo, '대기실에서 로비 복귀 시 모바일 문서 스크롤과 동적 뷰포트 높이 복구 확인', async () => {
       try {
         await expectAppShell(page);
+        await page.getByRole('button', { name: '방 만들기', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
         await page.getByTestId('room-title-input').fill(roomTitle);
         await page.getByTestId('create-room-button').click();
         await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 20_000 });
