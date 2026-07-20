@@ -1,0 +1,655 @@
+/* High-fidelity lobby landing screen. Loaded after the legacy wooden theme so
+   the entry experience can use its own cinematic composition without changing
+   waiting-room or game layouts. */
+.screen-lobby.lobby-shell.shell {
+  --lobby-ink: #4c2b18;
+  --lobby-muted: #7c6048;
+  --lobby-paper: #fffaf0;
+  --lobby-orange: #ed7a12;
+  --lobby-orange-dark: #c94f08;
+  --lobby-blue: #3779d6;
+  --lobby-blue-dark: #1f4eaa;
+  width: 100%;
+  max-width: none;
+  min-height: var(--app-viewport-height);
+  padding: max(10px, env(safe-area-inset-top)) clamp(10px, 2.4vw, 24px) max(18px, env(safe-area-inset-bottom));
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 10% 8%, rgba(255, 255, 255, .92) 0 7%, transparent 17%),
+    radial-gradient(circle at 88% 18%, rgba(255, 255, 255, .72) 0 6%, transparent 15%),
+    linear-gradient(180deg, #fffaf0 0%, #f8ecd7 63%, #efe0c3 100%);
+}
+
+.screen-lobby.lobby-shell.shell::before,
+.screen-lobby.lobby-shell.shell::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.screen-lobby.lobby-shell.shell::before {
+  inset: 0;
+  opacity: .22;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(100, 61, 28, .05) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, .2) 0 1px, transparent 1px 8px);
+  mix-blend-mode: multiply;
+}
+
+.screen-lobby.lobby-shell.shell::after {
+  right: -130px;
+  bottom: -160px;
+  width: 520px;
+  height: 360px;
+  border-radius: 52% 48% 0 0;
+  background:
+    radial-gradient(ellipse at 20% 78%, #7d9351 0 18%, transparent 19%),
+    radial-gradient(ellipse at 48% 72%, #91a967 0 24%, transparent 25%),
+    radial-gradient(ellipse at 76% 79%, #71864b 0 20%, transparent 21%),
+    linear-gradient(155deg, transparent 35%, rgba(131, 151, 83, .45) 36% 62%, transparent 63%);
+  opacity: .45;
+}
+
+.screen-lobby > .hero.panel,
+.screen-lobby .lobby-start {
+  position: relative;
+  z-index: 1;
+}
+
+/* Keep account, sound, and connection controls available without competing
+   with the landing-screen hierarchy. */
+.screen-lobby > .hero.panel {
+  width: min(820px, 100%);
+  min-height: 0;
+  margin: 0 auto clamp(6px, 1.4vw, 12px);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  isolation: auto;
+  background: transparent;
+  box-shadow: none;
+}
+
+.screen-lobby > .hero.panel::before,
+.screen-lobby > .hero.panel::after {
+  content: none;
+}
+
+.screen-lobby > .hero.panel .hero-actions {
+  display: flex;
+  grid-template-columns: none;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+}
+
+.screen-lobby > .hero.panel .hero-actions button {
+  width: auto;
+  min-width: 0;
+  min-height: 36px;
+  padding: 8px 11px;
+  border: 1px solid rgba(92, 55, 28, .13);
+  border-radius: 999px;
+  background: rgba(255, 252, 243, .75);
+  color: #68452e;
+  box-shadow: 0 5px 15px rgba(92, 54, 22, .08), inset 0 1px 0 rgba(255, 255, 255, .9);
+  backdrop-filter: blur(10px);
+  text-shadow: none;
+  font-size: .78rem;
+}
+
+.screen-lobby > .hero.panel .hero-actions button:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 7px rgba(92, 54, 22, .1);
+}
+
+.screen-lobby > .hero.panel .nickname-chip {
+  max-width: min(42vw, 180px);
+}
+
+.screen-lobby > .hero.panel .nickname-chip span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-lobby > .hero.panel .sound-controls.sound-toggle.active {
+  border-color: rgba(47, 107, 79, .22);
+  background: rgba(235, 248, 239, .82);
+  color: #28533f;
+  box-shadow: 0 5px 15px rgba(34, 66, 54, .08), inset 0 1px 0 rgba(255, 255, 255, .86);
+  text-shadow: none;
+}
+
+.screen-lobby > .hero.panel .status-card {
+  background: rgba(237, 247, 240, .82);
+  color: #28533f;
+}
+
+.screen-lobby > .hero.panel .status-card.pending {
+  background: rgba(255, 246, 218, .86);
+  color: #8a5a00;
+}
+
+.screen-lobby > .hero.panel .status-card.offline {
+  background: rgba(255, 235, 231, .86);
+  color: #a9372d;
+}
+
+.screen-lobby .lobby-start.lobby-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: start center;
+  width: min(820px, 100%);
+  min-height: calc(var(--app-viewport-height) - 74px);
+  margin: 0 auto;
+  padding: 0;
+}
+
+.screen-lobby .lobby-hero-panel {
+  width: 100%;
+  display: grid;
+  gap: clamp(10px, 1.8vw, 16px);
+  padding: clamp(8px, 1.5vw, 14px) clamp(2px, 1vw, 8px) 0;
+  text-align: center;
+}
+
+.screen-lobby .lobby-brand {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.screen-lobby .lobby-brand-title-row {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: min(100%, 420px);
+  padding-inline: clamp(42px, 11vw, 70px);
+}
+
+.screen-lobby .lobby-brand h1 {
+  margin: 0;
+  color: var(--lobby-ink);
+  font-family: "Arial Rounded MT Bold", "NanumSquareRound", "Apple SD Gothic Neo", system-ui, sans-serif;
+  font-size: clamp(3.1rem, 10.5vw, 5.9rem);
+  font-weight: 1000;
+  line-height: .92;
+  letter-spacing: -.1em;
+  text-indent: -.08em;
+  text-shadow:
+    0 2px 0 #fff8e7,
+    0 5px 0 rgba(119, 71, 33, .12),
+    0 12px 22px rgba(83, 45, 18, .12);
+}
+
+.screen-lobby .lobby-brand p {
+  margin: 2px 0 0;
+  color: #4f392a;
+  font-size: clamp(1rem, 3.2vw, 1.32rem);
+  font-weight: 700;
+  letter-spacing: -.025em;
+}
+
+.screen-lobby .lobby-brand p strong {
+  color: var(--lobby-ink);
+  font-weight: 1000;
+}
+
+.screen-lobby .lobby-brand-stick {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: clamp(28px, 7vw, 45px);
+  height: clamp(70px, 17vw, 100px);
+  border: 2px solid #b76523;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #c97128, #ffc267 48%, #d9822f);
+  color: #744019;
+  box-shadow: 0 9px 16px rgba(93, 46, 15, .18), inset 3px 0 5px rgba(255, 229, 157, .5);
+  font-size: clamp(.72rem, 2vw, .95rem);
+  font-weight: 1000;
+  line-height: 1.25;
+  writing-mode: vertical-rl;
+}
+
+.screen-lobby .lobby-brand-stick-left {
+  left: 4px;
+  transform: translateY(-47%) rotate(-18deg);
+}
+
+.screen-lobby .lobby-brand-stick-right {
+  right: 7px;
+  transform: translateY(-58%) rotate(10deg);
+}
+
+.screen-lobby .lobby-scene {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 740 / 500;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(127, 78, 36, .1);
+  border-radius: clamp(24px, 5vw, 42px);
+  background: #fff8ea;
+  box-shadow:
+    0 24px 55px rgba(91, 50, 20, .16),
+    inset 0 1px 0 rgba(255, 255, 255, .92),
+    0 0 0 5px rgba(255, 255, 255, .34);
+}
+
+.screen-lobby .lobby-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, rgba(255, 255, 255, .32), transparent 24% 78%, rgba(112, 63, 26, .06)),
+    repeating-linear-gradient(0deg, rgba(120, 76, 37, .018) 0 1px, transparent 1px 5px);
+  mix-blend-mode: soft-light;
+}
+
+.screen-lobby .lobby-scene svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.screen-lobby .lobby-scene-float {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lobby-yut-float 3.4s ease-in-out infinite;
+}
+
+.screen-lobby .lobby-scene-float-two { animation-delay: -.8s; }
+.screen-lobby .lobby-scene-float-three { animation-delay: -1.65s; }
+.screen-lobby .lobby-scene-float-four { animation-delay: -2.35s; }
+
+@keyframes lobby-yut-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-9px) rotate(1deg); }
+}
+
+.screen-lobby .lobby-primary-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 11px;
+  width: min(680px, calc(100% - clamp(0px, 4vw, 44px)));
+  margin: 0 auto;
+}
+
+.screen-lobby .lobby-main-action {
+  position: relative;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  min-height: clamp(68px, 11vw, 82px);
+  padding: 10px 18px 11px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, .34);
+  border-radius: clamp(18px, 3.5vw, 25px);
+  color: #fff;
+  text-align: left;
+  text-shadow: 0 2px 2px rgba(66, 29, 8, .28);
+  transition: transform 170ms ease, filter 170ms ease, box-shadow 170ms ease;
+}
+
+.screen-lobby .lobby-main-action::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .27), transparent 40%, rgba(56, 17, 3, .1));
+  pointer-events: none;
+}
+
+.screen-lobby .lobby-main-action::after {
+  content: "";
+  position: absolute;
+  top: -30%;
+  left: -20%;
+  width: 45%;
+  height: 160%;
+  transform: rotate(18deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .18), transparent);
+  pointer-events: none;
+}
+
+.screen-lobby .lobby-create-action {
+  background: linear-gradient(145deg, #ff9b20 0%, var(--lobby-orange) 55%, var(--lobby-orange-dark) 100%);
+  box-shadow:
+    0 7px 0 #a94307,
+    0 16px 27px rgba(192, 75, 8, .26),
+    inset 0 2px 0 rgba(255, 255, 255, .34);
+}
+
+.screen-lobby .lobby-join-action {
+  background: linear-gradient(145deg, #5599f1 0%, var(--lobby-blue) 54%, var(--lobby-blue-dark) 100%);
+  box-shadow:
+    0 7px 0 #173e8d,
+    0 16px 27px rgba(30, 73, 157, .24),
+    inset 0 2px 0 rgba(255, 255, 255, .32);
+}
+
+.screen-lobby .lobby-action-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .16);
+}
+
+.screen-lobby .lobby-action-icon svg,
+.screen-lobby .lobby-secondary-actions svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.screen-lobby .lobby-action-icon svg {
+  width: 29px;
+  height: 29px;
+}
+
+.screen-lobby .lobby-action-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.screen-lobby .lobby-action-copy strong {
+  font-size: clamp(1.22rem, 4vw, 1.58rem);
+  font-weight: 1000;
+  letter-spacing: -.035em;
+}
+
+.screen-lobby .lobby-action-copy small {
+  overflow: hidden;
+  color: rgba(255, 255, 255, .86);
+  font-size: clamp(.76rem, 2.5vw, .9rem);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-lobby .lobby-action-arrow {
+  position: relative;
+  z-index: 1;
+  font-size: 2.1rem;
+  font-weight: 400;
+  line-height: 1;
+  opacity: .84;
+}
+
+.screen-lobby .lobby-secondary-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(15px, 4vw, 30px);
+  min-height: 48px;
+  padding: 2px 0 8px;
+}
+
+.screen-lobby .lobby-secondary-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 7px 5px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #5b402d;
+  box-shadow: none;
+  text-shadow: none;
+  font-size: clamp(.88rem, 2.8vw, 1.02rem);
+  font-weight: 900;
+}
+
+.screen-lobby .lobby-secondary-actions svg {
+  width: 25px;
+  height: 25px;
+}
+
+.screen-lobby .lobby-action-divider {
+  width: 1px;
+  height: 27px;
+  background: rgba(91, 64, 45, .22);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .screen-lobby .lobby-main-action:hover {
+    transform: translateY(-3px);
+    filter: saturate(1.05) brightness(1.035);
+  }
+
+  .screen-lobby .lobby-create-action:hover {
+    box-shadow: 0 10px 0 #a94307, 0 22px 35px rgba(192, 75, 8, .29), inset 0 2px 0 rgba(255, 255, 255, .36);
+  }
+
+  .screen-lobby .lobby-join-action:hover {
+    box-shadow: 0 10px 0 #173e8d, 0 22px 35px rgba(30, 73, 157, .27), inset 0 2px 0 rgba(255, 255, 255, .34);
+  }
+
+  .screen-lobby .lobby-secondary-actions button:hover {
+    background: rgba(255, 255, 255, .44);
+    color: #402716;
+    transform: none;
+  }
+}
+
+.screen-lobby .lobby-main-action:active {
+  transform: translateY(5px);
+}
+
+.screen-lobby .lobby-create-action:active {
+  box-shadow: 0 2px 0 #a94307, 0 7px 13px rgba(192, 75, 8, .2), inset 0 2px 0 rgba(255, 255, 255, .28);
+}
+
+.screen-lobby .lobby-join-action:active {
+  box-shadow: 0 2px 0 #173e8d, 0 7px 13px rgba(30, 73, 157, .19), inset 0 2px 0 rgba(255, 255, 255, .26);
+}
+
+.screen-lobby .lobby-main-action:focus-visible,
+.screen-lobby .lobby-secondary-actions button:focus-visible {
+  outline: 4px solid rgba(79, 45, 25, .26);
+  outline-offset: 3px;
+}
+
+/* Sheets retain the established interaction contract but receive a calmer,
+   more deliberate surface that matches the new landing screen. */
+.screen-lobby .lobby-sheet-backdrop {
+  background: rgba(51, 29, 15, .48);
+  backdrop-filter: blur(8px);
+}
+
+.screen-lobby .lobby-sheet.panel {
+  border: 6px solid #75431f;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 250, 222, .7), transparent 36%),
+    linear-gradient(150deg, #fff1c9, #dfb26f);
+  box-shadow:
+    0 28px 70px rgba(48, 23, 9, .35),
+    0 0 0 2px #3d1e0d,
+    inset 0 2px 0 rgba(255, 255, 255, .62);
+}
+
+.screen-lobby .lobby-sheet .sheet-close {
+  border: 1px solid rgba(82, 44, 19, .22);
+  background: rgba(255, 246, 217, .88);
+  color: #5f351b;
+  box-shadow: 0 5px 12px rgba(76, 36, 14, .14);
+}
+
+.screen-lobby .lobby-sheet .primary-cta,
+.screen-lobby .lobby-sheet .code-join-row button {
+  background: linear-gradient(145deg, #e75840, #a92e24);
+  color: #fff8df;
+}
+
+@media (min-width: 860px) and (min-height: 760px) {
+  .screen-lobby .lobby-hero-panel {
+    grid-template-columns: minmax(0, 1.04fr) minmax(310px, .76fr);
+    grid-template-areas:
+      "brand brand"
+      "scene actions"
+      "scene utilities";
+    align-items: center;
+    column-gap: 22px;
+  }
+
+  .screen-lobby .lobby-brand { grid-area: brand; }
+  .screen-lobby .lobby-scene { grid-area: scene; }
+  .screen-lobby .lobby-primary-actions {
+    grid-area: actions;
+    width: 100%;
+    align-self: end;
+  }
+  .screen-lobby .lobby-secondary-actions {
+    grid-area: utilities;
+    align-self: start;
+  }
+}
+
+@media (max-width: 600px) {
+  .screen-lobby.lobby-shell.shell {
+    padding-inline: 8px;
+  }
+
+  .screen-lobby > .hero.panel {
+    padding-inline: 4px;
+  }
+
+  .screen-lobby > .hero.panel .hero-actions {
+    gap: 5px;
+  }
+
+  .screen-lobby > .hero.panel .hero-actions button {
+    min-height: 33px;
+    padding: 7px 9px;
+    font-size: .7rem;
+  }
+
+  .screen-lobby > .hero.panel .status-card {
+    max-width: 112px;
+  }
+
+  .screen-lobby > .hero.panel .status-card .status-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .screen-lobby .lobby-start.lobby-layout {
+    min-height: calc(var(--app-viewport-height) - 62px);
+  }
+
+  .screen-lobby .lobby-hero-panel {
+    gap: 9px;
+  }
+
+  .screen-lobby .lobby-scene {
+    border-radius: 25px;
+    box-shadow: 0 16px 34px rgba(91, 50, 20, .15), inset 0 1px 0 rgba(255, 255, 255, .9);
+  }
+
+  .screen-lobby .lobby-primary-actions {
+    width: calc(100% - 10px);
+    gap: 9px;
+  }
+
+  .screen-lobby .lobby-main-action {
+    grid-template-columns: 46px minmax(0, 1fr) 18px;
+    min-height: 68px;
+    gap: 10px;
+    padding: 8px 14px 9px;
+    border-radius: 19px;
+  }
+
+  .screen-lobby .lobby-action-icon {
+    width: 43px;
+    height: 43px;
+    border-radius: 14px;
+  }
+
+  .screen-lobby .lobby-action-icon svg {
+    width: 26px;
+    height: 26px;
+  }
+
+  .screen-lobby .lobby-secondary-actions {
+    gap: 15px;
+    padding-bottom: 4px;
+  }
+}
+
+@media (max-width: 390px) {
+  .screen-lobby > .hero.panel .sound-controls span:last-child,
+  .screen-lobby > .hero.panel .status-card .status-text {
+    display: none;
+  }
+
+  .screen-lobby > .hero.panel .status-card,
+  .screen-lobby > .hero.panel .sound-controls {
+    width: 35px;
+    min-width: 35px;
+    padding-inline: 8px;
+  }
+
+  .screen-lobby .lobby-brand-title-row {
+    padding-inline: 38px;
+  }
+
+  .screen-lobby .lobby-brand h1 {
+    font-size: clamp(3rem, 16vw, 4rem);
+  }
+
+  .screen-lobby .lobby-brand-stick {
+    width: 28px;
+    height: 66px;
+  }
+
+  .screen-lobby .lobby-action-copy small {
+    font-size: .72rem;
+  }
+}
+
+@media (max-height: 700px) and (max-width: 859px) {
+  .screen-lobby .lobby-brand h1 {
+    font-size: clamp(2.8rem, 9vw, 4rem);
+  }
+
+  .screen-lobby .lobby-brand-stick {
+    height: clamp(58px, 13vw, 76px);
+  }
+
+  .screen-lobby .lobby-scene {
+    width: min(100%, 610px);
+    justify-self: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-lobby .lobby-scene-float {
+    animation: none;
+  }
+
+  .screen-lobby .lobby-main-action {
+    transition: none;
+  }
+}
