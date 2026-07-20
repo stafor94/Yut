@@ -44,10 +44,14 @@ test.describe('mobile lobby polish QA', () => {
           secondaryButtons: secondaryButtons.map((button) => {
             const style = getComputedStyle(button);
             const svg = button.querySelector('svg');
+            const svgStyle = svg instanceof SVGElement ? getComputedStyle(svg) : null;
             return {
               ...rect(button),
               fontSize: Number.parseFloat(style.fontSize),
-              svg: svg instanceof SVGElement ? rect(svg) : null,
+              svg: svg instanceof SVGElement ? {
+                ...rect(svg),
+                flexShrink: Number.parseFloat(svgStyle?.flexShrink ?? '1'),
+              } : null,
             };
           }),
           shellBackground: shellStyle.backgroundImage,
@@ -85,6 +89,8 @@ test.describe('mobile lobby polish QA', () => {
         expect(button.height, '게임 방법과 설정 버튼은 충분한 터치 높이를 가져야 합니다.').toBeGreaterThanOrEqual(44);
         expect(button.fontSize, '게임 방법과 설정 텍스트는 너무 작으면 안 됩니다.').toBeGreaterThanOrEqual(14);
         expect(button.svg?.width ?? 0, '게임 방법과 설정 아이콘은 충분히 커야 합니다.').toBeGreaterThanOrEqual(24);
+        expect(button.svg?.height ?? 0, '게임 방법과 설정 아이콘 높이도 충분히 커야 합니다.').toBeGreaterThanOrEqual(24);
+        expect(button.svg?.flexShrink ?? 1, '보조 버튼의 아이콘은 텍스트 공간 때문에 축소되면 안 됩니다.').toBe(0);
       });
     });
   });
