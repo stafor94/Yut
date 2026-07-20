@@ -126,7 +126,7 @@ test.describe('lobby start screen QA', () => {
     const settingsDialog = page.getByRole('dialog', { name: '설정' });
     await expect(settingsDialog).toBeVisible();
     await expect(page.getByRole('dialog', { name: '닉네임 설정' })).toHaveCount(0);
-    await expect(settingsDialog.getByLabel('닉네임')).toBeVisible();
+    await expect(settingsDialog.getByRole('textbox', { name: '닉네임', exact: true })).toBeVisible();
     await settingsDialog.getByRole('button', { name: '취소' }).click();
     await expect(settingsDialog).toBeHidden();
   });
@@ -178,8 +178,8 @@ test.describe('lobby start screen QA', () => {
     await page.getByRole('button', { name: '설정', exact: true }).click();
     const settingsDialog = page.getByRole('dialog', { name: '설정' });
     await expect(settingsDialog.locator('.settings-card')).toHaveCount(2);
-    const nicknameInput = settingsDialog.getByLabel('닉네임');
-    const saveButton = settingsDialog.getByRole('button', { name: '닉네임 저장' });
+    const nicknameInput = settingsDialog.getByRole('textbox', { name: '닉네임', exact: true });
+    const saveButton = settingsDialog.getByRole('button', { name: '닉네임 저장', exact: true });
     await nicknameInput.fill('가');
     await expect(saveButton).toBeDisabled();
     await nicknameInput.fill('가나다');
