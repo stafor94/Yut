@@ -23,5 +23,6 @@
 }
 
 .screen-waitingRoom .compact-ready-card .ai-seat-actions .ai-remove-button {
+  align-self: center;
   justify-self: end;
 }
