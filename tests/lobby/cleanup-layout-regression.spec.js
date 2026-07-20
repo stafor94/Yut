@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { expectAppShell, primeLobbyStorage, runQaStep, waitForBlockingOverlayToDisappear } from '../helpers/ui.js';
+import { createRoomFromLobby, expectAppShell, primeLobbyStorage, runQaStep, waitForBlockingOverlayToDisappear } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -23,10 +23,7 @@ test.describe('cleanup/layout regression QA', () => {
     await primeLobbyStorage(context, { nickname: waitingRoomNickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
     await runQaStep(testInfo, '방 생성 후 대기실 버튼 실제 클릭 가능 확인', async () => {
-      await expectAppShell(page);
-      await page.getByTestId('room-title-input').fill(waitingRoomTitle);
-      await page.getByTestId('create-room-button').click();
-      await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+      await createRoomFromLobby(page, waitingRoomTitle);
       const roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(waitingRoomTitle);
       if (roomId) roomIds.push(roomId);
       await page.getByTestId('add-ai-P2').click();
@@ -41,10 +38,7 @@ test.describe('cleanup/layout regression QA', () => {
 
       try {
         const lobbyHostPage = await lobbyHostContext.newPage();
-        await expectAppShell(lobbyHostPage);
-        await lobbyHostPage.getByTestId('room-title-input').fill(lobbyRoomTitle);
-        await lobbyHostPage.getByTestId('create-room-button').click();
-        await expect(lobbyHostPage.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+        await createRoomFromLobby(lobbyHostPage, lobbyRoomTitle);
         const lobbyRoomId = await rememberRoomIdFromPage(lobbyHostPage) ?? await findRoomIdByTitle(lobbyRoomTitle);
         if (lobbyRoomId) roomIds.push(lobbyRoomId);
 
@@ -55,6 +49,8 @@ test.describe('cleanup/layout regression QA', () => {
           lobbyGuestPage.getByRole('button', { name: /서버 상태: 온라인/ }),
           '게스트의 익명 인증과 방 목록 구독이 완료되어야 합니다.',
         ).toBeVisible({ timeout: 30_000 });
+        await lobbyGuestPage.getByRole('button', { name: '게임 참가', exact: true }).click();
+        await expect(lobbyGuestPage.getByRole('dialog', { name: '게임 참가' })).toBeVisible();
         const roomCard = lobbyGuestPage.locator('.lobby-room-card').filter({ hasText: lobbyRoomTitle }).first();
         await expect(roomCard).toBeVisible({ timeout: 25_000 });
         const stateDot = roomCard.locator('.lobby-room-state-dot');
