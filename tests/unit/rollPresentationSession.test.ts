@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { RollAnimation } from '../../src/app/appState.js';
+import type { RollAnimation } from '../../src/app/types/rollAnimation.js';
 import type { YutResult, YutStick } from '../../src/game-core/roll.js';
 import {
   applyRollPresentationInput,

@@ -1,4 +1,4 @@
-import type { RollAnimation } from '../appState';
+import type { RollAnimation } from '../types/rollAnimation';
 import { isTerminalLiveRollPhase } from './yutRollAnimation';
 
 export type RollPresentationSessionPhase =
