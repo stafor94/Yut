@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { requestGameEndDialogOpen } from '../flows/gameEndDialogPresentation';
 import { publishPlayTimePresentation } from '../flows/playTimePresentation';
 import { getRoomInfoCollapsed, resetRoomInfoCollapsed, subscribeRoomInfoPresentation, toggleRoomInfoCollapsed } from '../flows/roomInfoPresentation';
+import { useLobbyViewportLock } from '../hooks/useLobbyViewportLock';
 
 type AppShellHeaderProps = {
   activeRoomId: string;
@@ -20,6 +21,7 @@ type AppShellHeaderProps = {
 
 export function AppShellHeader({ activeRoomId, manualSequenceSyncing, nickname, playTimeText, screen, serverStatus, serverStatusTone, soundEnabled, winner, onSyncLatestSequences, onToggleSoundEnabled }: AppShellHeaderProps) {
   const roomInfoCollapsed = useSyncExternalStore(subscribeRoomInfoPresentation, getRoomInfoCollapsed, getRoomInfoCollapsed);
+  useLobbyViewportLock(screen);
 
   useEffect(() => {
     publishPlayTimePresentation({
