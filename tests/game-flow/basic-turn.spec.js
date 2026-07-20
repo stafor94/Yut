@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomPlayersForQa, getRoomSeatsForQa, getRoomSequencesForQa, getRoomStateForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -25,9 +25,7 @@ test.describe('game flow QA', () => {
     });
 
     await runQaStep(testInfo, '방 생성', async () => {
-      await expectAppShell(page);
-      await page.getByTestId('room-title-input').fill(roomTitle);
-      await page.getByTestId('create-room-button').click();
+      await createRoomFromLobby(page, roomTitle);
       await expect(page.getByTestId('waiting-room'), `대기실 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
     });

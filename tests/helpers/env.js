@@ -84,5 +84,8 @@ export function makeQaName(testInfo, suffix) {
 }
 
 export function normalizeQaNickname(value) {
-  return value.trim().slice(0, QA_NICKNAME_MAX_LENGTH);
+  const normalized = String(value ?? '')
+    .normalize('NFC')
+    .replace(/[^가-힣A-Za-z0-9]/gu, '');
+  return (normalized.length >= 2 ? normalized : `${normalized}QA`).slice(0, QA_NICKNAME_MAX_LENGTH);
 }

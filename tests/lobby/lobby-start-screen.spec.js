@@ -15,14 +15,16 @@ test.describe('lobby start screen QA', () => {
     const startButton = nicknameDialog.getByRole('button', { name: '시작하기' });
     await expect(nicknameInput).toBeFocused();
     await page.keyboard.press('Shift+Tab');
-    await expect(startButton).toBeFocused();
-    await page.keyboard.press('Tab');
     await expect(nicknameInput).toBeFocused();
 
     await nicknameInput.fill('가');
     await expect(startButton).toBeDisabled();
     await nicknameInput.fill('가나');
     await expect(startButton).toBeEnabled();
+    await page.keyboard.press('Tab');
+    await expect(startButton).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(nicknameInput).toBeFocused();
     await startButton.click();
 
     await expect(nicknameDialog).toBeHidden();

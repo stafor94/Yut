@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -20,10 +20,7 @@ test.describe('roll mat surface regression', () => {
     });
 
     await runQaStep(testInfo, 'AI 게임 시작', async () => {
-      await expectAppShell(page);
-      await page.getByTestId('room-title-input').fill(roomTitle);
-      await page.getByTestId('create-room-button').click();
-      await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+      await createRoomFromLobby(page, roomTitle);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
       const addAiButton = page.getByTestId('add-ai-P2');
       if (await addAiButton.isVisible().catch(() => false)) await addAiButton.click();

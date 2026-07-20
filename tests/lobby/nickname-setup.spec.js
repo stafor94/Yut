@@ -10,7 +10,7 @@ test.describe('닉네임 설정 팝업', () => {
 
     const dialog = page.getByRole('dialog', { name: '닉네임 설정' });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('heading', { name: '닉네임 설정', exact: true })).toHaveCount(1);
+    await expect(dialog.getByRole('heading', { name: '반가워요!', exact: true })).toHaveCount(1);
     await expect(dialog.getByRole('heading')).toHaveCount(1);
     await expect(dialog.locator('.section-kicker')).toHaveCount(0);
   });

@@ -10,6 +10,9 @@ test.describe('lobby QA', () => {
     await runQaStep(testInfo, '저장된 로비 값으로 앱 열기', async () => {
       await expectAppShell(page);
       await expect(page.getByRole('button', { name: `닉네임 수정: ${nickname}` })).toBeVisible();
+      await page.getByRole('button', { name: '방 만들기', exact: true }).click();
+      const createDialog = page.getByRole('dialog', { name: '방 만들기' });
+      await expect(createDialog).toBeVisible();
       await expect(page.getByTestId('room-title-input')).toBeVisible();
       await expect(page.getByTestId('create-room-button')).toBeEnabled();
     });

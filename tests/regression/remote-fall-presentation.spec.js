@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep, waitForBlockingOverlayToDisappear } from '../helpers/ui.js';
+import { collectScreenState, createRoomFromLobby, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -128,18 +128,10 @@ test.describe('remote fall presentation QA', () => {
 
     try {
       await runQaStep(testInfo, '실제 2인 온라인 방 시작', async () => {
-        await expectAppShell(hostPage);
-        await hostPage.getByTestId('room-title-input').fill(roomTitle);
-        await hostPage.getByTestId('create-room-button').click();
-        await expect(hostPage.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+        await createRoomFromLobby(hostPage, roomTitle);
         roomId = await rememberRoomIdFromPage(hostPage) ?? await findRoomIdByTitle(roomTitle);
 
-        await expectAppShell(guestPage);
-        await waitForBlockingOverlayToDisappear(guestPage);
-        await expect(guestPage.getByRole('button', { name: /서버 상태: 온라인/ })).toBeVisible({ timeout: 30_000 });
-        const roomCard = guestPage.locator('.lobby-room-card').filter({ hasText: roomTitle }).first();
-        await expect(roomCard).toBeVisible({ timeout: 25_000 });
-        await roomCard.locator('.lobby-room-action').click();
+        await joinRoomFromLobby(guestPage, roomTitle);
         await expect(guestPage.getByTestId('waiting-room')).toBeVisible({ timeout: 20_000 });
         const readyButton = guestPage.getByRole('button', { name: '준비 완료' });
         if (await readyButton.isVisible().catch(() => false)) await readyButton.click();
