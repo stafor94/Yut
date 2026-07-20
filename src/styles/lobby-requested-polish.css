@@ -127,6 +127,66 @@
   transform: translateY(1px);
 }
 
+/* Keep the illustrated lobby and every action on one continuous surface. */
+.screen-lobby .lobby-stage {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  align-content: start;
+  width: 100%;
+  min-height: 0;
+  padding-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(127, 78, 36, .14);
+  border-radius: clamp(24px, 5vw, 42px);
+  background:
+    repeating-linear-gradient(0deg, rgba(76, 36, 16, .08) 0 1px, transparent 1px 34px),
+    repeating-linear-gradient(90deg, rgba(255, 220, 160, .05) 0 1px, transparent 1px 110px),
+    linear-gradient(180deg, #c9823b, #8e4b22);
+  box-shadow: 0 24px 55px rgba(91, 50, 20, .16), inset 0 1px 0 rgba(255, 255, 255, .35);
+}
+
+.screen-lobby .lobby-stage .lobby-scene {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.screen-lobby .lobby-stage .lobby-primary-actions {
+  width: min(80%, 680px);
+  margin: 14px auto 0;
+}
+
+.screen-lobby .lobby-stage .lobby-secondary-actions {
+  width: min(80%, 680px);
+  margin: 10px auto 0;
+}
+
+.screen-lobby .lobby-stage .lobby-secondary-actions button {
+  min-height: 46px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 247, 222, .42);
+  border-radius: 14px;
+  background: rgba(255, 247, 222, .9);
+  color: #4d2c18;
+  box-shadow: 0 6px 14px rgba(55, 24, 8, .18), inset 0 1px 0 rgba(255, 255, 255, .76);
+  font-size: clamp(.94rem, 2.9vw, 1.08rem);
+}
+
+.screen-lobby .lobby-stage .lobby-secondary-actions svg {
+  width: 26px;
+  height: 26px;
+}
+
+.screen-lobby .lobby-stage .lobby-action-divider {
+  background: rgba(255, 244, 215, .58);
+}
+
+@media (min-width: 860px) and (min-height: 760px) {
+  .screen-lobby .lobby-stage {
+    display: contents;
+  }
+}
+
 @media (max-width: 700px) and (orientation: portrait) {
   .screen-lobby .lobby-brand-title-row {
     min-height: 68px;
@@ -138,6 +198,52 @@
     line-height: 1.02;
   }
 
+  .screen-lobby .lobby-hero-panel {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .screen-lobby .lobby-stage {
+    height: 100%;
+    min-height: 0;
+    padding-bottom: 8px;
+    border-radius: 19px;
+  }
+
+  .screen-lobby .lobby-stage .lobby-scene {
+    width: 100%;
+    height: min(calc((100vw - 14px) * 500 / 740), 42dvh);
+    max-height: 42dvh;
+  }
+
+  .screen-lobby .lobby-stage .lobby-primary-actions {
+    width: 80%;
+    max-width: 80vw;
+    gap: 15px;
+    margin-top: 12px;
+  }
+
+  .screen-lobby .lobby-stage .lobby-secondary-actions {
+    width: 80%;
+    min-height: 48px;
+    height: auto;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 0;
+  }
+
+  .screen-lobby .lobby-stage .lobby-secondary-actions button {
+    min-height: 44px;
+    height: 44px;
+    padding: 7px 10px;
+    gap: 7px;
+    font-size: .9rem;
+  }
+
+  .screen-lobby .lobby-stage .lobby-secondary-actions svg {
+    width: 24px;
+    height: 24px;
+  }
+
   .screen-lobby .lobby-primary-actions {
     gap: 15px;
   }
@@ -146,6 +252,12 @@
   .screen-lobby .lobby-sheet-backdrop:has(.lobby-join-sheet) {
     align-items: center;
     padding: 7px;
+  }
+
+  .screen-lobby .lobby-create-sheet {
+    max-height: min(calc(100dvh - 14px), calc(var(--app-viewport-height) - 14px));
+    overflow-y: auto;
+    scroll-padding-block: 12px;
   }
 
   .screen-lobby .lobby-simple-sheet-heading {
