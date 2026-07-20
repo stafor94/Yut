@@ -35,7 +35,8 @@
   gap: 21px;
 }
 
-.screen-lobby .lobby-sheet-backdrop {
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet),
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-join-sheet) {
   align-items: center;
   justify-items: center;
 }
@@ -141,7 +142,8 @@
     gap: 15px;
   }
 
-  .screen-lobby .lobby-sheet-backdrop {
+  .screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet),
+  .screen-lobby .lobby-sheet-backdrop:has(.lobby-join-sheet) {
     align-items: center;
     padding: 7px;
   }
