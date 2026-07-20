@@ -1,3 +1,5 @@
+import { waitForNextRenderTask } from './renderTaskBoundary';
+
 export type RoomIdRef = { current: string };
 
 export type AuthoritativeQueueHooks<T> = {
@@ -5,8 +7,6 @@ export type AuthoritativeQueueHooks<T> = {
   handleError: (error: unknown) => void;
   handleFinally: () => void;
 };
-
-const yieldToNextTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
   activeRoomIdRef: RoomIdRef;
@@ -52,7 +52,7 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
         throw error;
       },
     );
-    const waitForRenderBoundary = params.yieldBetweenApplies ?? yieldToNextTask;
+    const waitForRenderBoundary = params.yieldBetweenApplies ?? waitForNextRenderTask;
     applyQueue = settledApply.then(waitForRenderBoundary, waitForRenderBoundary);
     return settledApply;
   };
