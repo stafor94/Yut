@@ -1,0 +1,77 @@
+.lobby-room-query-shell {
+  display: contents;
+}
+
+.lobby-room-query-shell.is-querying .lobby-join-sheet .lobby-room-list {
+  visibility: hidden;
+  min-height: 156px;
+  pointer-events: none;
+}
+
+.lobby-room-query-shell.is-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] {
+  pointer-events: none;
+}
+
+.lobby-room-query-shell.is-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] .lobby-room-refresh-icon {
+  animation: lobby-initial-room-query-spin .8s linear infinite;
+}
+
+.lobby-room-query-shell.is-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] > span:last-child {
+  font-size: 0;
+}
+
+.lobby-room-query-shell.is-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] > span:last-child::after {
+  content: "조회 중...";
+  font-size: .82rem;
+}
+
+.join-room-query-status {
+  position: fixed;
+  z-index: 10020;
+  top: 54%;
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  width: min(320px, calc(100vw - 64px));
+  padding: 18px 20px;
+  border: 1px solid rgba(104, 68, 38, .16);
+  border-radius: 18px;
+  background: rgba(255, 250, 240, .96);
+  color: #4c2b18;
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(67, 39, 19, .16);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.join-room-query-status strong {
+  font-size: 1rem;
+}
+
+.join-room-query-status p {
+  margin: 0;
+  color: #7c6048;
+  font-size: .84rem;
+}
+
+.join-room-query-spinner {
+  width: 27px;
+  height: 27px;
+  border: 3px solid rgba(201, 79, 8, .2);
+  border-top-color: #c94f08;
+  border-radius: 50%;
+  animation: lobby-initial-room-query-spin .8s linear infinite;
+}
+
+@keyframes lobby-initial-room-query-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 520px) {
+  .join-room-query-status {
+    top: 52%;
+    width: min(286px, calc(100vw - 44px));
+    padding: 16px 18px;
+  }
+}
