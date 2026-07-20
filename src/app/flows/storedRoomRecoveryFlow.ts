@@ -1,7 +1,7 @@
 import type { MutableRefObject } from 'react';
 import type { User } from 'firebase/auth';
 import type { PieceCount, PlayMode, Seat } from '../appTypes';
-import { STORAGE_KEYS } from '../preferences/localPreferences';
+import { STORAGE_KEYS, validateNickname } from '../preferences/localPreferences';
 import { seatsWithJoinedPlayer } from '../selectors/seatSelectors';
 import { beginGameStateSync } from './gameStateSyncPresentation';
 import type { JoinRoomResult, RoomSummary } from './roomEntryControllerFlow';
@@ -41,8 +41,8 @@ export type StoredRoomRecoveryFlowParams = StoredRoomRecoveryActions & {
   runtime: StoredRoomRecoveryRuntime;
 };
 
-export function getStoredRoomRecoveryTarget(params: { currentUser: User | null; activeRoomId: string; localStorage: Pick<Storage, 'getItem'> }) {
-  if (!params.currentUser || params.activeRoomId) return '';
+export function getStoredRoomRecoveryTarget(params: { currentUser: User | null; activeRoomId: string; nickname: string; localStorage: Pick<Storage, 'getItem'> }) {
+  if (!params.currentUser || params.activeRoomId || !validateNickname(params.nickname).valid) return '';
   return params.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
 }
 
