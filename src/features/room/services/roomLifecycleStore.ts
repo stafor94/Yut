@@ -5,6 +5,7 @@ import {
   type RoomPlayer,
   type RoomSummary,
 } from './roomServiceCore';
+import { isRoomCreationCandidate } from './roomCreationPolicy';
 import {
   getRoomEmptySinceMillis,
   getRoomLastActivityMillis,
@@ -49,6 +50,14 @@ export async function getRoomPlayers(roomId: string) {
   }));
 }
 
+export async function getRoomPlayer(roomId: string, playerId: string): Promise<RoomPlayer | null> {
+  if (!db || !roomId || !playerId) return null;
+  const playerSnapshot = await getDoc(doc(db, 'rooms', roomId, 'players', playerId));
+  return playerSnapshot.exists()
+    ? { id: playerSnapshot.id, ...(playerSnapshot.data() as Omit<RoomPlayer, 'id'>) }
+    : null;
+}
+
 export async function getManagedRoom(roomId: string): Promise<ManagedRoomSummary | null> {
   if (!db || !roomId) return null;
   const snapshot = await getDoc(doc(db, 'rooms', roomId));
@@ -57,19 +66,27 @@ export async function getManagedRoom(roomId: string): Promise<ManagedRoomSummary
 
 export async function getActivePlayerRoomMemberships(playerId: string): Promise<PlayerRoomMembership[]> {
   if (!db || !playerId) return [];
+  const now = Date.now();
   const roomsSnapshot = await getDocs(query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing', 'finished'])));
   const memberships = await Promise.all(roomsSnapshot.docs.map(async (roomDoc) => {
     const room = { id: roomDoc.id, ...(roomDoc.data() as Omit<ManagedRoomSummary, 'id'>) };
-    if (isSystemRoom(room) || room.deletingAt) return null;
-    const playerSnapshot = await getDoc(doc(db!, 'rooms', room.id, 'players', playerId));
-    if (!playerSnapshot.exists()) return null;
-    const player = { id: playerSnapshot.id, ...(playerSnapshot.data() as Omit<RoomPlayer, 'id'>) };
+    if (!isRoomCreationCandidate(room, now)) return null;
+    const player = await getRoomPlayer(room.id, playerId);
+    if (!player) return null;
     const joinedAt = getRoomTimestampMillis(player.joinedAt)
       || getRoomTimestampMillis(player.lastSeen)
       || getRoomLastActivityMillis(room);
     return { room, player, joinedAt };
   }));
   return memberships.filter((membership): membership is PlayerRoomMembership => Boolean(membership));
+}
+
+export async function getActiveRoomSummaries(now = Date.now()) {
+  if (!db) return [];
+  const roomsSnapshot = await getDocs(query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing', 'finished'])));
+  return roomsSnapshot.docs
+    .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<ManagedRoomSummary, 'id'>) }))
+    .filter((room) => isRoomCreationCandidate(room, now));
 }
 
 async function claimRoomDeletion(roomId: string, guard: RoomDeletionGuard = {}) {
