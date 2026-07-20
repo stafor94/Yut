@@ -33,6 +33,53 @@ test.describe('lobby start screen QA', () => {
     await expect(page.getByRole('button', { name: '게임 참가', exact: true })).toBeEnabled();
   });
 
+  test('로비는 브랜드, 윷판 장면, 네 개의 윷가락과 계층화된 시작 액션을 제공한다', async ({ page, context }) => {
+    await primeLobbyStorage(context, { nickname: '로비QA' });
+    await expectAppShell(page);
+    await waitForBlockingOverlayToDisappear(page);
+
+    const lobby = page.getByTestId('lobby-screen');
+    const heroArt = lobby.getByTestId('lobby-hero-art');
+    const createButton = lobby.getByRole('button', { name: '방 만들기', exact: true });
+    const joinButton = lobby.getByRole('button', { name: '게임 참가', exact: true });
+
+    await expect(lobby.getByRole('heading', { name: '윷놀이', exact: true })).toBeVisible();
+    await expect(lobby).toContainText('친구들과 바로 즐기는');
+    await expect(heroArt).toBeVisible();
+    await expect(heroArt.locator('[data-testid^="lobby-yut-stick-"]')).toHaveCount(4);
+    await expect(createButton).toContainText('방 만들기');
+    await expect(joinButton).toContainText('방 코드로 참가');
+    await expect(lobby.getByRole('button', { name: '게임 방법', exact: true })).toBeVisible();
+    await expect(lobby.getByRole('button', { name: '설정', exact: true })).toBeVisible();
+
+    const layout = await lobby.evaluate((element) => {
+      const rect = (target) => {
+        const box = target.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height, bottom: box.bottom, right: box.right };
+      };
+      const art = element.querySelector('[data-testid="lobby-hero-art"]');
+      const create = element.querySelector('[aria-label="방 만들기"]');
+      const join = element.querySelector('[aria-label="게임 참가"]');
+      if (!(art instanceof HTMLElement) || !(create instanceof HTMLElement) || !(join instanceof HTMLElement)) return null;
+      return {
+        viewportWidth: window.innerWidth,
+        documentScrollWidth: document.documentElement.scrollWidth,
+        art: rect(art),
+        create: rect(create),
+        join: rect(join),
+      };
+    });
+
+    expect(layout, '로비 핵심 장면과 CTA 레이아웃을 읽을 수 있어야 합니다.').not.toBeNull();
+    expect(layout.documentScrollWidth, '로비가 가로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.art.x, '윷판 장면 왼쪽이 화면 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
+    expect(layout.art.right, '윷판 장면 오른쪽이 화면 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.art.height, '윷판 장면은 단순 아이콘이 아닌 충분한 시각 면적을 가져야 합니다.').toBeGreaterThan(180);
+    expect(layout.create.height, '주 CTA는 충분한 터치 면적을 가져야 합니다.').toBeGreaterThanOrEqual(64);
+    expect(layout.join.height, '참가 CTA는 충분한 터치 면적을 가져야 합니다.').toBeGreaterThanOrEqual(64);
+    expect(layout.join.y, '방 참가 CTA는 방 만들기 CTA 아래에 배치되어야 합니다.').toBeGreaterThan(layout.create.y);
+  });
+
   test('유효하지 않은 닉네임이면 저장된 방 ID가 있어도 자동 복구하지 않는다', async ({ page, context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('yut-online:nickname', '가');
