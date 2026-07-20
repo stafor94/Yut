@@ -1,0 +1,57 @@
+/* Keyboard-aware create-room dialog and room-list refresh feedback. */
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet) {
+  position: fixed;
+  inset: var(--lobby-visual-viewport-offset-top, 0px) 0 auto;
+  box-sizing: border-box;
+  height: var(--lobby-visual-viewport-height, var(--app-viewport-height, 100dvh));
+  min-height: 0;
+  overflow: hidden;
+}
+
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet) .lobby-create-sheet {
+  max-height: calc(var(--lobby-visual-viewport-height, var(--app-viewport-height, 100dvh)) - 14px);
+  overscroll-behavior: contain;
+}
+
+.screen-lobby .lobby-create-sheet .create-room-submit-button {
+  scroll-margin-block: 12px;
+}
+
+.screen-lobby .lobby-room-refresh-row button:disabled {
+  cursor: wait;
+  opacity: .72;
+  transform: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .72);
+}
+
+.screen-lobby .lobby-room-refresh-row button:disabled:active {
+  transform: none;
+}
+
+.screen-lobby .lobby-room-refresh-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 1em;
+  height: 1em;
+  transform-origin: 50% 50%;
+}
+
+.screen-lobby .lobby-room-refresh-icon.is-spinning {
+  animation: lobby-room-refresh-spin .8s linear infinite;
+}
+
+@keyframes lobby-room-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 700px) and (orientation: portrait) {
+  .screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet) .lobby-create-sheet {
+    scroll-padding-block: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-lobby .lobby-room-refresh-icon.is-spinning {
+    animation: none;
+  }
+}

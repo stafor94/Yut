@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { isRoomInGame, type RoomSummary } from '../../features/room/services/roomService';
+import '../../styles/lobby-modal-feedback.css';
 import { getRoomRuleBadges, normalizeMaxPlayers } from '../appUtils';
 import { NICKNAME_MAX_LENGTH, validateNickname } from '../appState';
 
@@ -25,6 +26,9 @@ type LobbyDialog = 'create' | 'join' | 'howto' | 'settings' | null;
 type LobbyActionIconProps = {
   type: 'create' | 'join' | 'guide' | 'settings';
 };
+
+const ROOM_REFRESH_MIN_VISIBLE_MS = 600;
+const ROOM_REFRESH_TIMEOUT_MS = 8_000;
 
 const getErrorMessage = (error: unknown) => error instanceof Error && error.message
   ? error.message
@@ -95,18 +99,42 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
   const [joinPending, setJoinPending] = useState(false);
   const [joiningRoomId, setJoiningRoomId] = useState('');
   const [joinMessage, setJoinMessage] = useState('');
+  const [isRefreshingRooms, setIsRefreshingRooms] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState(nickname);
   const [settingsMessage, setSettingsMessage] = useState('');
   const dialogRef = useRef<HTMLElement | null>(null);
+  const createRoomButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const refreshStartedAtRef = useRef(0);
+  const refreshCompleteTimerRef = useRef<number | null>(null);
+  const refreshTimeoutRef = useRef<number | null>(null);
   const nicknameValidation = validateNickname(settingsDraft);
 
-  const closeDialog = useCallback(() => setDialog(null), []);
+  const clearRoomRefreshTimers = useCallback(() => {
+    if (refreshCompleteTimerRef.current !== null) {
+      window.clearTimeout(refreshCompleteTimerRef.current);
+      refreshCompleteTimerRef.current = null;
+    }
+    if (refreshTimeoutRef.current !== null) {
+      window.clearTimeout(refreshTimeoutRef.current);
+      refreshTimeoutRef.current = null;
+    }
+  }, []);
+  const resetRoomRefreshState = useCallback(() => {
+    clearRoomRefreshTimers();
+    refreshStartedAtRef.current = 0;
+    setIsRefreshingRooms(false);
+  }, [clearRoomRefreshTimers]);
+  const closeDialog = useCallback(() => {
+    resetRoomRefreshState();
+    setDialog(null);
+  }, [resetRoomRefreshState]);
   const openDialog = useCallback((nextDialog: Exclude<LobbyDialog, null>) => {
     previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    resetRoomRefreshState();
     setJoinMessage('');
     setDialog(nextDialog);
-  }, []);
+  }, [resetRoomRefreshState]);
   const openSettings = useCallback(() => {
     setSettingsDraft(nickname);
     setSettingsMessage('');
@@ -150,6 +178,61 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
     };
   }, [closeDialog, dialog]);
 
+  useEffect(() => {
+    if (dialog !== 'create' || !dialogRef.current) return undefined;
+    const backdrop = dialogRef.current.parentElement;
+    if (!(backdrop instanceof HTMLElement)) return undefined;
+    const visualViewport = window.visualViewport;
+    let frame = 0;
+    const syncCreateDialogToViewport = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const viewportHeight = Math.max(0, visualViewport?.height ?? window.innerHeight);
+        const viewportOffsetTop = Math.max(0, visualViewport?.offsetTop ?? 0);
+        backdrop.style.setProperty('--lobby-visual-viewport-height', `${viewportHeight}px`);
+        backdrop.style.setProperty('--lobby-visual-viewport-offset-top', `${viewportOffsetTop}px`);
+        if (document.activeElement?.id === 'room-title-input') {
+          createRoomButtonRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+      });
+    };
+
+    syncCreateDialogToViewport();
+    visualViewport?.addEventListener('resize', syncCreateDialogToViewport);
+    visualViewport?.addEventListener('scroll', syncCreateDialogToViewport);
+    window.addEventListener('resize', syncCreateDialogToViewport);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      visualViewport?.removeEventListener('resize', syncCreateDialogToViewport);
+      visualViewport?.removeEventListener('scroll', syncCreateDialogToViewport);
+      window.removeEventListener('resize', syncCreateDialogToViewport);
+      backdrop.style.removeProperty('--lobby-visual-viewport-height');
+      backdrop.style.removeProperty('--lobby-visual-viewport-offset-top');
+    };
+  }, [dialog]);
+
+  useEffect(() => {
+    const handleRoomsRefreshed = () => {
+      if (refreshStartedAtRef.current <= 0) return;
+      const elapsed = window.performance.now() - refreshStartedAtRef.current;
+      const remaining = Math.max(0, ROOM_REFRESH_MIN_VISIBLE_MS - elapsed);
+      if (refreshCompleteTimerRef.current !== null) window.clearTimeout(refreshCompleteTimerRef.current);
+      refreshCompleteTimerRef.current = window.setTimeout(() => {
+        if (refreshTimeoutRef.current !== null) window.clearTimeout(refreshTimeoutRef.current);
+        refreshCompleteTimerRef.current = null;
+        refreshTimeoutRef.current = null;
+        refreshStartedAtRef.current = 0;
+        setIsRefreshingRooms(false);
+      }, remaining);
+    };
+
+    window.addEventListener('yut:rooms-refreshed', handleRoomsRefreshed);
+    return () => {
+      window.removeEventListener('yut:rooms-refreshed', handleRoomsRefreshed);
+      clearRoomRefreshTimers();
+    };
+  }, [clearRoomRefreshTimers]);
+
   const getLobbyRoomBadges = (room: RoomSummary) => getRoomRuleBadges(room.playMode, normalizeMaxPlayers(room.maxPlayers, room.playMode), room.pieceCount ?? 4, room.itemMode, Boolean(room.stackedRollMode));
   const getLobbyRoomOccupancy = (room: RoomSummary) => {
     const maxPlayers = normalizeMaxPlayers(room.maxPlayers, room.playMode);
@@ -168,7 +251,17 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
     setSettingsMessage('닉네임이 저장되었습니다.');
   };
   const refreshRooms = () => {
+    if (isRefreshingRooms) return;
+    clearRoomRefreshTimers();
     setJoinMessage('');
+    setIsRefreshingRooms(true);
+    refreshStartedAtRef.current = window.performance.now();
+    refreshTimeoutRef.current = window.setTimeout(() => {
+      refreshTimeoutRef.current = null;
+      refreshStartedAtRef.current = 0;
+      setIsRefreshingRooms(false);
+      setJoinMessage('방 목록 조회가 지연되고 있습니다. 다시 시도해 주세요.');
+    }, ROOM_REFRESH_TIMEOUT_MS);
     window.dispatchEvent(new Event('yut:refresh-rooms'));
   };
   const openRoom = async (room: RoomSummary) => {
@@ -202,9 +295,30 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
       </div>
     </section>
 
-    {dialog === 'create' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}><section ref={dialogRef} className="panel lobby-sheet lobby-create-sheet" role="dialog" aria-modal="true" aria-label="방 만들기" onMouseDown={(event) => event.stopPropagation()}><header className="lobby-simple-sheet-heading"><div><p className="section-kicker">새 게임</p><h2>방 만들기</h2></div><button className="sheet-close" data-dialog-autofocus type="button" onClick={closeDialog} aria-label="닫기">×</button></header><div className="form-grid lobby-form"><label htmlFor="room-title-input">방 제목<input id="room-title-input" data-testid="room-title-input" value={title} onChange={(event) => onTitleChange(event.target.value)} placeholder="친구들과 윷놀이" /></label><button data-testid="create-room-button" className="primary-cta create-room-submit-button" onClick={onCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '생성 중...' : '방 생성하기'}</button></div></section></div>}
+    {dialog === 'create' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}>
+      <section ref={dialogRef} className="panel lobby-sheet lobby-create-sheet" role="dialog" aria-modal="true" aria-label="방 만들기" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="lobby-simple-sheet-heading"><div><p className="section-kicker">새 게임</p><h2>방 만들기</h2></div><button className="sheet-close" data-dialog-autofocus type="button" onClick={closeDialog} aria-label="닫기">×</button></header>
+        <div className="form-grid lobby-form">
+          <label htmlFor="room-title-input">방 제목<input id="room-title-input" data-testid="room-title-input" value={title} onChange={(event) => onTitleChange(event.target.value)} placeholder="친구들과 윷놀이" /></label>
+          <button ref={createRoomButtonRef} data-testid="create-room-button" className="primary-cta create-room-submit-button" onClick={onCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '생성 중...' : '방 생성하기'}</button>
+        </div>
+      </section>
+    </div>}
 
-    {dialog === 'join' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}><section ref={dialogRef} className="panel lobby-sheet lobby-join-sheet" role="dialog" aria-modal="true" aria-label="게임 참가" onMouseDown={(event) => event.stopPropagation()}><header className="lobby-simple-sheet-heading"><div><p className="section-kicker">공개 방 목록</p><h2>게임 참가</h2></div><button className="sheet-close" type="button" onClick={closeDialog} aria-label="닫기">×</button></header><div className="lobby-room-refresh-row"><p>참가할 공개 방을 선택하세요.</p><button data-testid="refresh-room-list-button" data-dialog-autofocus type="button" onClick={refreshRooms} aria-label="방 목록 새로고침"><span aria-hidden="true">↻</span>새로고침</button></div>{joinMessage && <p className="settings-feedback" role="alert">{joinMessage}</p>}<div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => { const badges = getLobbyRoomBadges(room); const occupancy = getLobbyRoomOccupancy(room); const roomStatus = isRoomInGame(room) ? '게임중' : '대기중'; return <article className="room-card lobby-room-card" key={room.id}><div className="lobby-room-content"><div className="lobby-room-main"><div className="lobby-room-title-row"><span className={`lobby-room-state-dot ${isRoomInGame(room) ? 'in-game' : 'waiting'}`} role="img" aria-label={roomStatus} title={roomStatus}></span><b>{room.title}</b></div><span className="lobby-room-meta" aria-label={`방 옵션: ${badges.map((badge) => badge.label).join(', ')}, 현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{roomStatus} · {badges.map((badge) => badge.label).join(' · ')}</span></div><span className="lobby-room-occupancy" aria-label={`현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{occupancy.label}</span><button className="lobby-room-action" disabled={(isFirebaseConfigured && !currentUser) || joinPending} onClick={() => { void openRoom(room); }}>{joiningRoomId === room.id ? '입장 중...' : getRoomActionText(room)}</button></div></article>; }) : <div className="empty-lobby-room"><strong>표시할 공개 방이 없습니다</strong><p>새로고침으로 공개 방을 다시 확인하거나 직접 방을 만들어 보세요.</p></div>}</div></section></div>}
+    {dialog === 'join' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}>
+      <section ref={dialogRef} className="panel lobby-sheet lobby-join-sheet" role="dialog" aria-modal="true" aria-label="게임 참가" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="lobby-simple-sheet-heading"><div><p className="section-kicker">공개 방 목록</p><h2>게임 참가</h2></div><button className="sheet-close" type="button" onClick={closeDialog} aria-label="닫기">×</button></header>
+        <div className="lobby-room-refresh-row">
+          <p>참가할 공개 방을 선택하세요.</p>
+          <button data-testid="refresh-room-list-button" data-dialog-autofocus type="button" onClick={refreshRooms} disabled={isRefreshingRooms} aria-busy={isRefreshingRooms} aria-label="방 목록 새로고침">
+            <span className={`lobby-room-refresh-icon${isRefreshingRooms ? ' is-spinning' : ''}`} aria-hidden="true">↻</span>
+            <span aria-live="polite">{isRefreshingRooms ? '조회 중...' : '새로고침'}</span>
+          </button>
+        </div>
+        {joinMessage && <p className="settings-feedback" role="alert">{joinMessage}</p>}
+        <div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => { const badges = getLobbyRoomBadges(room); const occupancy = getLobbyRoomOccupancy(room); const roomStatus = isRoomInGame(room) ? '게임중' : '대기중'; return <article className="room-card lobby-room-card" key={room.id}><div className="lobby-room-content"><div className="lobby-room-main"><div className="lobby-room-title-row"><span className={`lobby-room-state-dot ${isRoomInGame(room) ? 'in-game' : 'waiting'}`} role="img" aria-label={roomStatus} title={roomStatus}></span><b>{room.title}</b></div><span className="lobby-room-meta" aria-label={`방 옵션: ${badges.map((badge) => badge.label).join(', ')}, 현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{roomStatus} · {badges.map((badge) => badge.label).join(' · ')}</span></div><span className="lobby-room-occupancy" aria-label={`현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{occupancy.label}</span><button className="lobby-room-action" disabled={(isFirebaseConfigured && !currentUser) || joinPending} onClick={() => { void openRoom(room); }}>{joiningRoomId === room.id ? '입장 중...' : getRoomActionText(room)}</button></div></article>; }) : <div className="empty-lobby-room"><strong>표시할 공개 방이 없습니다</strong><p>새로고침으로 공개 방을 다시 확인하거나 직접 방을 만들어 보세요.</p></div>}</div>
+      </section>
+    </div>}
 
     {dialog === 'howto' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}>
       <section ref={dialogRef} className="panel lobby-sheet lobby-howto-sheet" role="dialog" aria-modal="true" aria-label="게임 방법" onMouseDown={(event) => event.stopPropagation()}>

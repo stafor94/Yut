@@ -70,7 +70,7 @@ test.describe('mobile lobby polish QA', () => {
     });
   });
 
-  test('방 만들기 팝업은 자동으로 키보드를 열지 않고 좁아진 화면에서도 내용을 스크롤할 수 있다', async ({ page, context }, testInfo) => {
+  test('방 만들기 팝업은 자동으로 키보드를 열지 않고 축소된 화면에서 생성 버튼을 자동 노출한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 780 });
     await primeLobbyStorage(context, { nickname: '키보드QA' });
 
@@ -89,26 +89,36 @@ test.describe('mobile lobby polish QA', () => {
 
       await titleInput.focus();
       await page.setViewportSize({ width: 390, height: 430 });
-      await createButton.scrollIntoViewIfNeeded();
-      await expect(createButton).toBeVisible();
+      await expect(createButton).toBeInViewport();
 
       const layout = await dialog.evaluate((element) => {
+        const createButton = element.querySelector('[data-testid="create-room-button"]');
+        if (!(createButton instanceof HTMLElement)) return null;
         const rect = element.getBoundingClientRect();
+        const createRect = createButton.getBoundingClientRect();
         const style = getComputedStyle(element);
+        const viewportTop = window.visualViewport?.offsetTop ?? 0;
+        const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
         return {
           top: rect.top,
           bottom: rect.bottom,
           height: rect.height,
-          viewportHeight: window.innerHeight,
+          viewportTop,
+          viewportBottom: viewportTop + viewportHeight,
           overflowY: style.overflowY,
           scrollHeight: element.scrollHeight,
           clientHeight: element.clientHeight,
+          createButtonTop: createRect.top,
+          createButtonBottom: createRect.bottom,
         };
       });
 
-      expect(layout.top, '키보드가 열린 높이에서도 팝업 상단이 화면 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
-      expect(layout.bottom, '키보드가 열린 높이에서도 팝업 하단이 화면 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
-      expect(layout.height, '팝업 높이는 축소된 뷰포트를 따라야 합니다.').toBeLessThanOrEqual(layout.viewportHeight);
+      expect(layout, '축소 뷰포트의 팝업과 생성 버튼을 읽을 수 있어야 합니다.').not.toBeNull();
+      expect(layout.top, '키보드가 열린 높이에서도 팝업 상단이 화면 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.viewportTop - 1);
+      expect(layout.bottom, '키보드가 열린 높이에서도 팝업 하단이 화면 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewportBottom + 1);
+      expect(layout.height, '팝업 높이는 축소된 뷰포트를 따라야 합니다.').toBeLessThanOrEqual(layout.viewportBottom - layout.viewportTop);
+      expect(layout.createButtonTop, '방 생성하기 버튼 상단이 키보드 뒤로 숨으면 안 됩니다.').toBeGreaterThanOrEqual(layout.viewportTop - 1);
+      expect(layout.createButtonBottom, '방 생성하기 버튼은 키보드 위의 가시 영역 안에 있어야 합니다.').toBeLessThanOrEqual(layout.viewportBottom + 1);
       expect(layout.overflowY, '키보드로 공간이 줄면 팝업 내부를 스크롤할 수 있어야 합니다.').toBe('auto');
       expect(layout.scrollHeight, '팝업 내용 높이는 최소한 표시 영역만큼 유지되어야 합니다.').toBeGreaterThanOrEqual(layout.clientHeight);
     });
