@@ -33,11 +33,6 @@ export function AppShellHeader({ activeRoomId, manualSequenceSyncing, nickname, 
     if (screen !== 'game') resetRoomInfoCollapsed();
   }, [screen]);
 
-  const openLobbySettings = () => {
-    if (screen !== 'lobby') return;
-    window.dispatchEvent(new Event('yut:lobby-settings'));
-  };
-
   return <section className={`hero panel ${screen === 'game' ? 'game-header-with-end' : ''}`}>
     <div className="hero-copy" aria-hidden="true"></div>
     {screen === 'game' && roomInfoCollapsed && <button
@@ -50,8 +45,8 @@ export function AppShellHeader({ activeRoomId, manualSequenceSyncing, nickname, 
       onClick={toggleRoomInfoCollapsed}
     ><span className="game-room-info-toggle-direction" aria-hidden="true">▼</span><span className="game-room-info-toggle-label">펼치기</span></button>}
     <div className={`hero-actions ${screen === 'game' ? 'game-actions' : ''}`}>
-      <button data-testid="lobby-nickname-display" className="nickname-chip" type="button" onClick={openLobbySettings} disabled={screen !== 'lobby'} aria-label={`설정 열기: ${nickname}`}><span aria-hidden="true">👤</span><span>{nickname}</span></button>
-      <button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={onToggleSoundEnabled} aria-label={`효과음 ${soundEnabled ? '켜짐' : '꺼짐'}`}><span className="sound-icon" aria-hidden="true">{soundEnabled ? '🔊' : '🔇'}</span><span>{soundEnabled ? '켜짐' : '꺼짐'}</span></button>
+      <button data-testid="lobby-nickname-display" className="nickname-chip" type="button" disabled aria-label={`닉네임: ${nickname}`}><span aria-hidden="true">👤</span><span>{nickname}</span></button>
+      <button className={`sound-controls sound-toggle ${soundEnabled ? 'active' : ''}`} type="button" onClick={onToggleSoundEnabled} disabled={screen === 'lobby'} aria-label={`효과음 ${soundEnabled ? '켜짐' : '꺼짐'}`}><span className="sound-icon" aria-hidden="true">{soundEnabled ? '🔊' : '🔇'}</span><span>{soundEnabled ? '켜짐' : '꺼짐'}</span></button>
       <button className={`status-card ${serverStatusTone}`} type="button" onClick={onSyncLatestSequences} disabled={manualSequenceSyncing || !activeRoomId || screen !== 'game'} aria-label={`서버 상태: ${serverStatus}. 최신 게임 상태 동기화`} title="최신 게임 상태 동기화"><span className={`status-dot ${serverStatusTone}`} aria-hidden="true"></span><span className="status-text">{serverStatus}</span></button>
     </div>
     {screen === 'game' && <button data-testid="game-end-button" className="game-end-button" type="button" onClick={requestGameEndDialogOpen} aria-label="게임 종료">종료</button>}
