@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { ItemCard } from '../../features/items/components/ItemCard';
 import { isItemType } from '../../features/items/logic/items';
 import { ROOM_CAPACITY_FULL_EVENT } from '../../features/room/services/roomAvailabilityPolicy';
@@ -58,6 +58,8 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     !validateNickname(getStoredText(STORAGE_KEYS.nickname, '')).valid
   ));
   const [roomCapacityFullDialogOpen, setRoomCapacityFullDialogOpen] = useState(false);
+  const nicknameDialogRef = useRef<HTMLElement | null>(null);
+  const nicknameDialogPreviousFocusRef = useRef<HTMLElement | null>(null);
   const gameStateSyncPresentation = useSyncExternalStore(
     subscribeGameStateSyncPresentation,
     getGameStateSyncPresentation,
@@ -100,6 +102,40 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     onSaveNickname();
   };
 
+  useEffect(() => {
+    if (!nicknameSetupDialogOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    nicknameDialogPreviousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    document.body.style.overflow = 'hidden';
+    const frame = window.requestAnimationFrame(() => nicknameDialogRef.current?.querySelector<HTMLElement>('input, button:not([disabled])')?.focus());
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isRequiredNicknameDialog) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (event.key !== 'Tab' || !nicknameDialogRef.current) return;
+      const focusable = Array.from(nicknameDialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.body.style.overflow = previousOverflow;
+      nicknameDialogPreviousFocusRef.current?.focus();
+    };
+  }, [isRequiredNicknameDialog, nicknameSetupDialogOpen]);
+
   return <>
     {effectiveLoadingMessage && <div className="loading-modal-backdrop" role="presentation"><section data-testid={gameStateSyncLoadingMessage && !loadingMessage ? 'game-state-sync-loading' : undefined} className={`loading-modal panel ${canExitStoredRoom ? 'stored-room-recovery-modal' : ''}`} role={canExitStoredRoom ? 'dialog' : 'status'} aria-modal={canExitStoredRoom || undefined} aria-live={canExitStoredRoom ? undefined : 'polite'} aria-label={effectiveLoadingMessage}>{canExitStoredRoom && <button data-testid="stored-room-recovery-close" className="stored-room-recovery-close" type="button" aria-label="참여 중이던 방에서 나가기" onClick={requestStoredRoomExitAndReload}>닫기</button>}<span className="loading-modal-spinner" aria-hidden="true"></span><p aria-live={canExitStoredRoom ? 'polite' : undefined}>{splitMessageBySentence(effectiveLoadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
 
@@ -110,7 +146,7 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
 
     {diagnosticDialogOpen && <div className="modal-backdrop" role="presentation" onMouseDown={onCloseDiagnosticDialog}><section className="diagnostic-modal panel" role="dialog" aria-modal="true" aria-label="게임 상태 분석 요청 데이터" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">분석 요청</p><h2>게임 상태 분석 데이터</h2><p className="diagnostic-description">아래 텍스트를 복사해 시스템에 전달하면 에러 원인 분석에 사용할 수 있습니다.</p><pre className="diagnostic-raw">{diagnosticText}</pre><div className="modal-actions"><button onClick={onCopyDiagnosticState}>{diagnosticCopied ? '복사 완료' : '복사'}</button><button className="secondary" onClick={onCloseDiagnosticDialog}>닫기</button></div></section></div>}
 
-    {nicknameSetupDialogOpen && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={closeNicknameDialog}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 설정" onMouseDown={(event) => event.stopPropagation()}><h2>{isRequiredNicknameDialog ? '반가워요!' : '닉네임 설정'}</h2><p>{isRequiredNicknameDialog ? '게임에서 사용할 닉네임을 설정해 주세요.' : '한글·영문·숫자 2~7글자만 사용할 수 있어요.'}</p><input value={nicknameDraft} onChange={(event) => onNicknameDraftChange(event.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(event) => { if (event.key === 'Enter') saveNickname(); if (event.key === 'Escape') closeNicknameDialog(); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" aria-invalid={!nicknameValidation.valid} /><p className="nickname-helper">{nicknameDraft.length}/{NICKNAME_MAX_LENGTH} · {nicknameValidation.valid ? '사용 가능한 닉네임입니다.' : nicknameValidation.message}</p><div className="modal-actions"><button onClick={saveNickname} disabled={!nicknameValidation.valid}>{isRequiredNicknameDialog ? '시작하기' : '저장'}</button>{!isRequiredNicknameDialog && <button className="secondary" onClick={closeNicknameDialog}>취소</button>}</div></section></div>}
+    {nicknameSetupDialogOpen && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={closeNicknameDialog}><section ref={nicknameDialogRef} className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 설정" onMouseDown={(event) => event.stopPropagation()}><h2>{isRequiredNicknameDialog ? '반가워요!' : '닉네임 설정'}</h2><p>{isRequiredNicknameDialog ? '게임에서 사용할 닉네임을 설정해 주세요.' : '한글·영문·숫자 2~7글자만 사용할 수 있어요.'}</p><input value={nicknameDraft} onChange={(event) => onNicknameDraftChange(event.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(event) => { if (event.key === 'Enter') saveNickname(); if (event.key === 'Escape') closeNicknameDialog(); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" aria-invalid={!nicknameValidation.valid} /><p className="nickname-helper">{nicknameDraft.length}/{NICKNAME_MAX_LENGTH} · {nicknameValidation.valid ? '사용 가능한 닉네임입니다.' : nicknameValidation.message}</p><div className="modal-actions"><button onClick={saveNickname} disabled={!nicknameValidation.valid}>{isRequiredNicknameDialog ? '시작하기' : '저장'}</button>{!isRequiredNicknameDialog && <button className="secondary" onClick={closeNicknameDialog}>취소</button>}</div></section></div>}
 
     {canShowPendingItemPickup && pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>같은 사용 조건의 아이템은 1개만 보유할 수 있습니다. 10초 뒤 자동으로 유지합니다.</p><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${Math.max(0, pendingItemPickup.deadline - itemPickupClock)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="item-replace-preview"><div><strong>기존 아이템</strong><ItemCard type={pendingItemPickup.existingItem} /></div><div><strong>새 아이템</strong><ItemCard type={pendingItemPickup.item} /></div></div><div className="inline-item-actions"><button onClick={onReplacePendingItemPickup}>교체</button><button className="secondary" onClick={onKeepPendingItemPickup}>유지</button></div></section></div>}
 
