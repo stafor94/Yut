@@ -182,8 +182,35 @@
 }
 
 @media (min-width: 860px) and (min-height: 760px) {
+  .screen-lobby .lobby-hero-panel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "brand"
+      "stage";
+  }
+
   .screen-lobby .lobby-stage {
-    display: contents;
+    grid-area: stage;
+    grid-template-columns: minmax(0, 1.04fr) minmax(310px, .76fr);
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "scene actions"
+      "scene utilities";
+    align-items: center;
+    column-gap: 22px;
+    padding: 0 18px 18px 0;
+  }
+
+  .screen-lobby .lobby-stage .lobby-scene { grid-area: scene; }
+  .screen-lobby .lobby-stage .lobby-primary-actions {
+    grid-area: actions;
+    width: 100%;
+    align-self: end;
+  }
+  .screen-lobby .lobby-stage .lobby-secondary-actions {
+    grid-area: utilities;
+    width: 100%;
+    align-self: start;
   }
 }
 
@@ -216,14 +243,15 @@
   }
 
   .screen-lobby .lobby-stage .lobby-primary-actions {
-    width: 80%;
-    max-width: 80vw;
+    width: 80vw;
+    max-width: 680px;
     gap: 15px;
     margin-top: 12px;
   }
 
   .screen-lobby .lobby-stage .lobby-secondary-actions {
-    width: 80%;
+    width: 80vw;
+    max-width: 680px;
     min-height: 48px;
     height: auto;
     gap: 8px;
