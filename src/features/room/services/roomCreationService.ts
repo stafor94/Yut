@@ -5,13 +5,14 @@ import {
   createRoom as createRoomCore,
   type RoomPlayer,
 } from './roomServiceCore';
+import { hasActiveHumanRoomSummary } from './roomCreationPolicy';
 import {
-  cleanupDeletionCandidatesBeforeCreate,
   getActivePlayerRoomMemberships,
-  getActiveRoomsWithPlayers,
+  getActiveRoomSummaries,
+  getRoomPlayer,
   type ManagedRoomSummary,
 } from './roomLifecycleStore';
-import { hasActiveHumanLifecyclePlayer, hasResumablePlayerForUser } from './roomLifecyclePolicy';
+import { hasResumablePlayerForUser } from './roomLifecyclePolicy';
 import { removeRoomPlayerNow } from './roomExitService';
 import { leavePlayerRoomsBeforeCreate } from './roomCreationCleanup';
 import { waitForRoomCreationLock } from './roomCreationLock';
@@ -103,16 +104,16 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
     throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
   }
 
-  await acquireRoomCreationLock(params.hostId, requestId, ownerToken);
-  try {
-    await cleanupDeletionCandidatesBeforeCreate(roomRef.id);
-    const memberships = await getActivePlayerRoomMemberships(params.hostId);
-    await leavePlayerRoomsBeforeCreate({
-      playerId: params.hostId,
-      memberships,
-      leaveRoom: removeRoomPlayerNow,
-    });
+  const memberships = await getActivePlayerRoomMemberships(params.hostId);
+  await leavePlayerRoomsBeforeCreate({
+    playerId: params.hostId,
+    memberships,
+    leaveRoom: removeRoomPlayerNow,
+  });
 
+  await acquireRoomCreationLock(params.hostId, requestId, ownerToken);
+  let lockReleasedWithRoomCommit = false;
+  try {
     const idempotentSnapshot = await getDoc(roomRef);
     if (idempotentSnapshot.exists()) {
       const existing = idempotentSnapshot.data() as ManagedRoomSummary;
@@ -120,15 +121,17 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
       throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
     }
 
-    const activeRoomCandidates = await getActiveRoomsWithPlayers();
-    const ownResumableRoom = activeRoomCandidates.some(({ room, players }) => (
-      room.hostId === params.hostId && hasResumablePlayerForUser(players, params.hostId)
+    const now = Date.now();
+    const activeRoomCandidates = await getActiveRoomSummaries(now);
+    const ownHostRooms = activeRoomCandidates.filter((room) => room.hostId === params.hostId);
+    const ownHostPlayers = await Promise.all(ownHostRooms.map((room) => getRoomPlayer(room.id, params.hostId)));
+    const ownResumableRoom = ownHostPlayers.some((player) => (
+      player ? hasResumablePlayerForUser([player], params.hostId) : false
     ));
     if (ownResumableRoom) throw new Error(ACTIVE_HOST_ROOM_ERROR);
-    const now = Date.now();
+
     const activeUserRooms = activeRoomCandidates
-      .filter(({ players }) => hasActiveHumanLifecyclePlayer(players, now))
-      .map(({ room }) => room)
+      .filter((room) => hasActiveHumanRoomSummary(room, now))
       .filter((room) => !isQaRoomTitle(room.title));
     if (!isQaRoomTitle(normalizedTitle) && activeUserRooms.length >= 3) throw new Error(ACTIVE_ROOM_LIMIT_ERROR);
     if (activeUserRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error(DUPLICATE_ROOM_TITLE_ERROR);
@@ -180,9 +183,18 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
       updatedAt: serverTimestamp(),
     });
     if (params.itemMode) spawnInitialBoardItems().forEach((item) => batch.set(doc(db!, 'rooms', roomRef.id, 'boardItems', item.id), item));
+    batch.set(doc(db, 'rooms', ROOM_CREATION_LOCK_ID), {
+      status: 'finished',
+      currentPlayers: 0,
+      lockExpiresAt: 0,
+      lastActivityAt: now,
+    }, { merge: true });
     await batch.commit();
+    lockReleasedWithRoomCommit = true;
     return roomRef.id;
   } finally {
-    await releaseRoomCreationLock(requestId, ownerToken).catch((error) => console.warn('방 생성 잠금 해제에 실패했습니다.', error));
+    if (!lockReleasedWithRoomCommit) {
+      await releaseRoomCreationLock(requestId, ownerToken).catch((error) => console.warn('방 생성 잠금 해제에 실패했습니다.', error));
+    }
   }
 }
