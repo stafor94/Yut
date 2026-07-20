@@ -60,7 +60,7 @@ import {
   gameSeatSnapshotsFromSeats,
   makeGameStateFingerprint,
   makePieces,
-  normalizeNickname,
+  validateNickname,
   preserveLockedGameSeats,
   seatsFromGameSeatSnapshots,
   seatsWithJoinedPlayer,
@@ -4197,9 +4197,9 @@ export function App() {
   }
 
   function saveNickname() {
-    const nextNickname = normalizeNickname(nicknameDraft);
-    if (!nextNickname) { setMessage('닉네임은 비워둘 수 없습니다.'); return; }
-    setNickname(nextNickname);
+    const validation = validateNickname(nicknameDraft);
+    if (!validation.valid) { setMessage(validation.message); return; }
+    setNickname(validation.value);
     setNicknameDialogOpen(false);
     setMessage('닉네임이 변경되었습니다.');
   }
@@ -4270,7 +4270,11 @@ export function App() {
       resumableRoomId={window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? ''}
       onTitleChange={setTitle}
       onCreateRoom={handleCreateRoom}
+      nickname={nickname}
+      soundEnabled={soundEnabled}
       onOpenWaitingRoom={openWaitingRoom}
+      onNicknameChange={setNickname}
+      onSoundEnabledChange={setSoundEnabled}
     />}
 
     {screen === 'waitingRoom' && <WaitingRoomContainer
