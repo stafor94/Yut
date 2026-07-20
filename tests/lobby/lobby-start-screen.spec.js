@@ -80,6 +80,57 @@ test.describe('lobby start screen QA', () => {
     expect(layout.join.y, '방 참가 CTA는 방 만들기 CTA 아래에 배치되어야 합니다.').toBeGreaterThan(layout.create.y);
   });
 
+  test('세로 모바일 로비는 스크롤 없이 전체 시작 UI와 한 줄 상태 바를 보여준다', async ({ page, context }) => {
+    await page.setViewportSize({ width: 390, height: 780 });
+    await primeLobbyStorage(context, { nickname: '세로모드QA' });
+    await expectAppShell(page);
+    await waitForBlockingOverlayToDisappear(page);
+
+    const nicknameDisplay = page.getByTestId('lobby-nickname-display');
+    const soundButton = page.getByRole('button', { name: /효과음/ });
+    const statusButton = page.getByRole('button', { name: /서버 상태:/ });
+    const settingsButton = page.getByRole('button', { name: '설정', exact: true });
+    await expect(nicknameDisplay).toBeVisible();
+    await expect(soundButton).toBeVisible();
+    await expect(statusButton).toBeVisible();
+    await expect(settingsButton).toBeVisible();
+
+    const layout = await page.evaluate(() => {
+      const shell = document.querySelector('[data-testid="app-shell"]');
+      const secondary = document.querySelector('.lobby-secondary-actions');
+      const utilities = Array.from(document.querySelectorAll('.screen-lobby > .hero.panel .hero-actions > button'));
+      if (!(shell instanceof HTMLElement) || !(secondary instanceof HTMLElement) || utilities.length !== 3) return null;
+      const utilityRects = utilities.map((element) => element.getBoundingClientRect());
+      const shellRect = shell.getBoundingClientRect();
+      const secondaryRect = secondary.getBoundingClientRect();
+      return {
+        viewportHeight: window.innerHeight,
+        scrollHeight: document.documentElement.scrollHeight,
+        scrollY: window.scrollY,
+        shellBottom: shellRect.bottom,
+        secondaryBottom: secondaryRect.bottom,
+        utilityTopSpread: Math.max(...utilityRects.map((rect) => rect.top)) - Math.min(...utilityRects.map((rect) => rect.top)),
+        utilityMaxHeight: Math.max(...utilityRects.map((rect) => rect.height)),
+      };
+    });
+
+    expect(layout, '세로 로비 레이아웃을 읽을 수 있어야 합니다.').not.toBeNull();
+    expect(layout.scrollY, '세로 로비는 초기 스크롤 위치가 상단이어야 합니다.').toBe(0);
+    expect(layout.scrollHeight, '세로 로비는 문서 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
+    expect(layout.shellBottom, '앱 셸은 세로 뷰포트 안에서 끝나야 합니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
+    expect(layout.secondaryBottom, '게임 방법과 설정까지 스크롤 없이 보여야 합니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
+    expect(layout.utilityTopSpread, '닉네임·효과음·온라인 상태는 한 줄에 있어야 합니다.').toBeLessThanOrEqual(1);
+    expect(layout.utilityMaxHeight, '상단 상태 바는 작은 높이를 유지해야 합니다.').toBeLessThanOrEqual(34);
+
+    await nicknameDisplay.click();
+    const settingsDialog = page.getByRole('dialog', { name: '설정' });
+    await expect(settingsDialog).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '닉네임 설정' })).toHaveCount(0);
+    await expect(settingsDialog.getByLabel('닉네임')).toBeVisible();
+    await settingsDialog.getByRole('button', { name: '취소' }).click();
+    await expect(settingsDialog).toBeHidden();
+  });
+
   test('유효하지 않은 닉네임이면 저장된 방 ID가 있어도 자동 복구하지 않는다', async ({ page, context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem('yut-online:nickname', '가');
@@ -94,7 +145,7 @@ test.describe('lobby start screen QA', () => {
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:activeRoomId'))).toBe('invalid-nickname-recovery-target');
   });
 
-  test('로비 팝업은 실시간 목록 안내, 공통 닫기, 설정 저장을 제공한다', async ({ page, context }) => {
+  test('로비 팝업은 실시간 목록 안내, 고품질 게임 방법, 통합 설정 저장을 제공한다', async ({ page, context }) => {
     await primeLobbyStorage(context, { nickname: '가나' });
     await expectAppShell(page);
     await waitForBlockingOverlayToDisappear(page);
@@ -112,11 +163,21 @@ test.describe('lobby start screen QA', () => {
     const howToDialog = page.getByRole('dialog', { name: '게임 방법' });
     await expect(howToDialog).toBeVisible();
     await expect(howToDialog).toContainText('재접속과 관전');
+    await expect(howToDialog.locator('.howto-list article')).toHaveCount(4);
+    await expect(howToDialog.locator('.howto-result-strip span')).toHaveCount(5);
+    const howToSurface = await howToDialog.locator('.howto-list article').first().evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { backgroundImage: style.backgroundImage, borderRadius: Number.parseFloat(style.borderRadius), boxShadow: style.boxShadow };
+    });
+    expect(howToSurface.backgroundImage, '게임 방법 카드는 입체 그라데이션 표면이어야 합니다.').toContain('gradient');
+    expect(howToSurface.borderRadius, '게임 방법 카드는 충분히 다듬어진 모서리를 사용해야 합니다.').toBeGreaterThanOrEqual(15);
+    expect(howToSurface.boxShadow, '게임 방법 카드는 깊이감을 가져야 합니다.').not.toBe('none');
     await howToDialog.getByRole('button', { name: '확인하고 시작하기' }).click();
     await expect(howToDialog).toBeHidden();
 
     await page.getByRole('button', { name: '설정', exact: true }).click();
     const settingsDialog = page.getByRole('dialog', { name: '설정' });
+    await expect(settingsDialog.locator('.settings-card')).toHaveCount(2);
     const nicknameInput = settingsDialog.getByLabel('닉네임');
     const saveButton = settingsDialog.getByRole('button', { name: '닉네임 저장' });
     await nicknameInput.fill('가');
