@@ -13,6 +13,7 @@ import './styles/roll-stage-lifecycle-fix.css';
 import './styles/bonus-roll-result-glow.css';
 import './styles/render-error.css';
 import './styles/lobby-start.css';
+import './styles/lobby-compact-polish.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
