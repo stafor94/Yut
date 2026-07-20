@@ -187,8 +187,11 @@ test.describe('lobby start screen QA', () => {
     await expect(settingsDialog).toContainText('닉네임이 저장되었습니다.');
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:nickname'))).toBe('가나다');
 
-    const soundToggle = settingsDialog.getByRole('checkbox', { name: /효과음/ });
-    await soundToggle.uncheck();
+    const soundSwitch = settingsDialog.locator('.lobby-sound-switch');
+    const soundToggle = soundSwitch.getByRole('checkbox', { name: /게임 효과음/ });
+    await expect(soundToggle).toBeChecked();
+    await soundSwitch.locator('.sound-switch-track').click();
+    await expect(soundToggle).not.toBeChecked();
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:soundEnabled'))).toBe('false');
   });
 });
