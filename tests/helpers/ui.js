@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { normalizeQaNickname } from './env.js';
 
 export const consoleLogPath = path.join(process.cwd(), 'console-log.txt');
 
@@ -122,6 +123,7 @@ export async function expectAppShell(page, { timeout = 45_000 } = {}) {
 }
 
 export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', playMode = 'individual', itemMode = 'false', pieceCount = '4' }) {
+  const normalizedNickname = normalizeQaNickname(nickname);
   await context.addInitScript((values) => {
     window.localStorage.setItem('yut-online:nickname', values.nickname);
     window.localStorage.setItem('yut-online:maxPlayers', values.maxPlayers);
@@ -142,7 +144,7 @@ export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', p
         Math.random = nativeRandom;
       });
     }, true);
-  }, { nickname, maxPlayers, playMode, itemMode, pieceCount });
+  }, { nickname: normalizedNickname, maxPlayers, playMode, itemMode, pieceCount });
 }
 
 export async function createRoomFromLobby(page, roomTitle) {
