@@ -23,6 +23,42 @@ test.describe('online room QA', () => {
     });
   });
 
+  test('대기실 방장이 나가면 방을 삭제하고 참가자를 알림과 함께 로비로 이동한다', async ({ browser }, testInfo) => {
+    expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
+    const hostContext = await browser.newContext();
+    const guestContext = await browser.newContext();
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'host-exit-host'));
+    const guestName = normalizeQaNickname(makeQaName(testInfo, 'host-exit-guest'));
+    const roomTitle = makeQaName(testInfo, 'host-exit-room');
+    await primeLobbyStorage(hostContext, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    await primeLobbyStorage(guestContext, { nickname: guestName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    const hostPage = await hostContext.newPage();
+    const guestPage = await guestContext.newPage();
+
+    try {
+      await runQaStep(testInfo, '방장 퇴장 시 방 삭제와 참가자 로비 이동 확인', async () => {
+        await createRoomFromLobby(hostPage, roomTitle);
+        roomId = await rememberRoomIdFromPage(hostPage) ?? await findRoomIdByTitle(roomTitle);
+        expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
+        await joinRoomFromLobby(guestPage, roomTitle);
+        await expect(guestPage.getByTestId('waiting-room')).toContainText(hostName);
+
+        await hostPage.getByRole('button', { name: '방 나가기', exact: true }).click();
+        await expect(hostPage.getByTestId('lobby-screen')).toBeVisible({ timeout: 25_000 });
+        await expect(guestPage.getByTestId('lobby-screen')).toBeVisible({ timeout: 25_000 });
+        const hostExitDialog = guestPage.getByRole('alertdialog', { name: '방장이 방을 나갔습니다.' });
+        await expect(hostExitDialog).toBeVisible({ timeout: 25_000 });
+        await expect(hostExitDialog).toContainText('방이 종료되어 로비로 이동했습니다.');
+        await expect.poll(async () => findRoomIdByTitle(roomTitle), { timeout: 25_000 }).toBeNull();
+        await hostExitDialog.getByRole('button', { name: '확인' }).click();
+        await expect(hostExitDialog).toBeHidden();
+      });
+    } finally {
+      await guestContext.close();
+      await hostContext.close();
+    }
+  });
+
   test('비방장에게는 AI 난이도 배지만 보이고 선택 버튼은 보이지 않는다', async ({ browser }, testInfo) => {
     expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
     const hostContext = await browser.newContext();
