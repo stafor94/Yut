@@ -3347,6 +3347,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .compact-waiting-room .room-rule-badge {
@@ -3354,6 +3356,7 @@
   font-weight: 700;
   line-height: 1.25;
   padding: 7px 10px;
+  white-space: nowrap;
 }
 
 .compact-waiting-room .waiting-main-grid {
