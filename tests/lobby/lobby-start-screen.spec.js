@@ -255,9 +255,6 @@ test.describe('lobby start screen QA', () => {
     await nicknameInput.fill('가');
     await expect(saveButton).toBeDisabled();
     await nicknameInput.fill('가나다');
-    await saveButton.click();
-    await expect(settingsDialog).toContainText('닉네임이 저장되었습니다.');
-    await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:nickname'))).toBe('가나다');
 
     const soundSwitch = settingsDialog.locator('.lobby-sound-switch');
     const soundToggle = soundSwitch.getByRole('checkbox', { name: /게임 효과음/ });
@@ -265,5 +262,10 @@ test.describe('lobby start screen QA', () => {
     await soundSwitch.locator('.sound-switch-track').click();
     await expect(soundToggle).not.toBeChecked();
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:soundEnabled'))).toBe('false');
+
+    await saveButton.click();
+    await expect(settingsDialog).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:nickname'))).toBe('가나다');
+    await expect(page.getByTestId('lobby-nickname-display')).toContainText('가나다');
   });
 });
