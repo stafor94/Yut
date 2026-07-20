@@ -2,12 +2,13 @@
 .screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet) {
   position: fixed;
   inset: var(--lobby-visual-viewport-offset-top, 0px) 0 auto;
+  box-sizing: border-box;
   height: var(--lobby-visual-viewport-height, var(--app-viewport-height, 100dvh));
   min-height: 0;
   overflow: hidden;
 }
 
-.screen-lobby .lobby-create-sheet {
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet) .lobby-create-sheet {
   max-height: calc(var(--lobby-visual-viewport-height, var(--app-viewport-height, 100dvh)) - 14px);
   overscroll-behavior: contain;
 }
@@ -44,7 +45,7 @@
 }
 
 @media (max-width: 700px) and (orientation: portrait) {
-  .screen-lobby .lobby-create-sheet {
+  .screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet) .lobby-create-sheet {
     scroll-padding-block: 10px;
   }
 }
