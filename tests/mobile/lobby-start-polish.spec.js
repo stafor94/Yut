@@ -55,6 +55,8 @@ test.describe('mobile lobby polish QA', () => {
             };
           }),
           shellBackground: shellStyle.backgroundImage,
+          shellBackgroundSize: shellStyle.backgroundSize,
+          shellBackgroundPosition: shellStyle.backgroundPosition,
           stageBackground: stageStyle.backgroundImage,
           stageOverflow: stageStyle.overflow,
           sceneOpacity: sceneStyle.opacity,
@@ -69,7 +71,18 @@ test.describe('mobile lobby polish QA', () => {
 
       expect(layout, '모바일 로비 통합 영역을 읽을 수 있어야 합니다.').not.toBeNull();
       expect(layout.scrollHeight, '로비는 세로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
-      expect(layout.shellBackground, '첨부한 로비 배경 이미지가 앱 셸에 적용되어야 합니다.').toContain('lobby-background.webp');
+      expect(layout.shellBackground, '첨부한 로비 배경 이미지가 앱 셸에 적용되어야 합니다.').toContain('lobby-background-original.png');
+      expect(layout.shellBackgroundSize, '배경은 비율을 유지하며 화면 높이에 맞춰야 합니다.').toContain('auto 100%');
+      expect(layout.shellBackgroundPosition, '배경 구도는 중앙 상단 기준을 유지해야 합니다.').toContain('center top');
+      const backgroundUrl = /url\(["']?(.*?lobby-background-original\.png)["']?\)/u.exec(layout.shellBackground)?.[1];
+      expect(backgroundUrl, '로비가 실제 원본 배경 URL을 로드해야 합니다.').toBeTruthy();
+      const naturalSize = await page.evaluate(async (src) => {
+        const image = new Image();
+        image.src = src;
+        await image.decode();
+        return { width: image.naturalWidth, height: image.naturalHeight };
+      }, backgroundUrl);
+      expect(naturalSize, '브라우저가 로드한 배경 이미지의 원본 픽셀 크기를 유지해야 합니다.').toEqual({ width: 768, height: 1334 });
       expect(layout.stageBackground, '장면과 버튼 뒤의 투명 통합 영역을 유지해야 합니다.').toContain('gradient');
       expect(layout.stageOverflow, '통합 영역 밖으로 액션이 넘치면 안 됩니다.').toBe('hidden');
       expect(layout.sceneOpacity, '기존 SVG 장면은 첨부 배경과 중복 노출되면 안 됩니다.').toBe('0');
