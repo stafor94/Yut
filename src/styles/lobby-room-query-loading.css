@@ -1,26 +1,22 @@
-.lobby-room-query-shell {
-  display: contents;
-}
-
-.lobby-room-query-shell.is-querying .lobby-join-sheet .lobby-room-list {
+html.yut-room-list-querying .lobby-join-sheet .lobby-room-list {
   visibility: hidden;
   min-height: 156px;
   pointer-events: none;
 }
 
-.lobby-room-query-shell.is-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] {
+html.yut-room-list-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] {
   pointer-events: none;
 }
 
-.lobby-room-query-shell.is-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] .lobby-room-refresh-icon {
+html.yut-room-list-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] .lobby-room-refresh-icon {
   animation: lobby-initial-room-query-spin .8s linear infinite;
 }
 
-.lobby-room-query-shell.is-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] > span:last-child {
+html.yut-room-list-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] > span:last-child {
   font-size: 0;
 }
 
-.lobby-room-query-shell.is-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] > span:last-child::after {
+html.yut-room-list-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] > span:last-child::after {
   content: "조회 중...";
   font-size: .82rem;
 }
