@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import type { RoomSummary } from '../../features/room/services/roomService';
 import { LobbyScreen } from '../screens/LobbyScreen';
@@ -56,16 +56,19 @@ export function LobbyContainer({
   const resetInitialRoomQuery = useCallback(() => {
     clearRoomQueryTimers();
     roomQueryStartedAtRef.current = 0;
+    document.documentElement.classList.remove('yut-room-list-querying');
     setIsInitialRoomQuerying(false);
   }, [clearRoomQueryTimers]);
 
   const startInitialRoomQuery = useCallback(() => {
     clearRoomQueryTimers();
     roomQueryStartedAtRef.current = window.performance.now();
+    document.documentElement.classList.add('yut-room-list-querying');
     setIsInitialRoomQuerying(true);
     roomQueryTimeoutRef.current = window.setTimeout(() => {
       roomQueryTimeoutRef.current = null;
       roomQueryStartedAtRef.current = 0;
+      document.documentElement.classList.remove('yut-room-list-querying');
       setIsInitialRoomQuerying(false);
     }, ROOM_QUERY_TIMEOUT_MS);
     window.dispatchEvent(new Event('yut:refresh-rooms'));
@@ -77,40 +80,34 @@ export function LobbyContainer({
       const elapsed = window.performance.now() - roomQueryStartedAtRef.current;
       const remaining = Math.max(0, ROOM_QUERY_MIN_VISIBLE_MS - elapsed);
       if (roomQueryCompleteTimerRef.current !== null) window.clearTimeout(roomQueryCompleteTimerRef.current);
-      roomQueryCompleteTimerRef.current = window.setTimeout(() => {
-        clearRoomQueryTimers();
-        roomQueryStartedAtRef.current = 0;
-        setIsInitialRoomQuerying(false);
-      }, remaining);
+      roomQueryCompleteTimerRef.current = window.setTimeout(resetInitialRoomQuery, remaining);
     };
 
     window.addEventListener('yut:rooms-refreshed', handleRoomsRefreshed);
-    return () => {
-      window.removeEventListener('yut:rooms-refreshed', handleRoomsRefreshed);
-      clearRoomQueryTimers();
+    return () => window.removeEventListener('yut:rooms-refreshed', handleRoomsRefreshed);
+  }, [resetInitialRoomQuery]);
+
+  useEffect(() => {
+    const handleLobbyClick = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('button[aria-label="게임 참가"]')) {
+        startInitialRoomQuery();
+        return;
+      }
+      if (target.closest('.lobby-join-sheet .sheet-close') || (target.classList.contains('lobby-sheet-backdrop') && target.querySelector('.lobby-join-sheet'))) {
+        resetInitialRoomQuery();
+      }
     };
-  }, [clearRoomQueryTimers]);
 
-  const handleLobbyClickCapture = (event: MouseEvent<HTMLDivElement>) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    if (target.closest('button[aria-label="게임 참가"]')) {
-      startInitialRoomQuery();
-      return;
-    }
-    if (!isInitialRoomQuerying) return;
-    if (target.closest('.lobby-join-sheet .sheet-close') || (target.classList.contains('lobby-sheet-backdrop') && target.querySelector('.lobby-join-sheet'))) {
+    document.addEventListener('click', handleLobbyClick, true);
+    return () => {
+      document.removeEventListener('click', handleLobbyClick, true);
       resetInitialRoomQuery();
-    }
-  };
+    };
+  }, [resetInitialRoomQuery, startInitialRoomQuery]);
 
-  return <div
-    className={`lobby-room-query-shell${isInitialRoomQuerying ? ' is-querying' : ''}`}
-    data-testid="lobby-room-query-shell"
-    data-room-list-querying={isInitialRoomQuerying ? 'true' : 'false'}
-    aria-busy={isInitialRoomQuerying}
-    onClickCapture={handleLobbyClickCapture}
-  >
+  return <>
     <LobbyScreen
       title={title}
       rooms={isInitialRoomQuerying ? [] : rooms}
@@ -131,5 +128,5 @@ export function LobbyContainer({
       <strong>방 목록 조회 중</strong>
       <p>조회가 끝나면 참가 가능한 방을 보여드릴게요.</p>
     </div>}
-  </div>;
+  </>;
 }
