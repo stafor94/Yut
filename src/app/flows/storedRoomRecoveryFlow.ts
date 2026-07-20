@@ -3,6 +3,7 @@ import type { User } from 'firebase/auth';
 import type { PieceCount, PlayMode, Seat } from '../appTypes';
 import { STORAGE_KEYS } from '../preferences/localPreferences';
 import { seatsWithJoinedPlayer } from '../selectors/seatSelectors';
+import { beginGameStateSync } from './gameStateSyncPresentation';
 import type { JoinRoomResult, RoomSummary } from './roomEntryControllerFlow';
 
 type Screen = 'lobby' | 'waitingRoom' | 'game';
@@ -39,7 +40,6 @@ export type StoredRoomRecoveryFlowParams = StoredRoomRecoveryActions & {
   isCancelled: () => boolean;
   runtime: StoredRoomRecoveryRuntime;
 };
-
 
 export function getStoredRoomRecoveryTarget(params: { currentUser: User | null; activeRoomId: string; localStorage: Pick<Storage, 'getItem'> }) {
   if (!params.currentUser || params.activeRoomId) return '';
@@ -88,7 +88,9 @@ export async function recoverStoredRoom(params: StoredRoomRecoveryFlowParams) {
     if (joinResult.role === 'player') {
       params.onSeatsChange(seatsWithJoinedPlayer([], currentUser.uid, nickname, storedRoom.playMode, restoredMaxPlayers, joinResult.seatIndex));
     }
-    params.onScreenChange(runtime.isRoomInGame(storedRoom) ? 'game' : 'waitingRoom');
+    const nextScreen: Screen = runtime.isRoomInGame(storedRoom) ? 'game' : 'waitingRoom';
+    if (nextScreen === 'game') beginGameStateSync(storedRoom.id);
+    params.onScreenChange(nextScreen);
     params.onLoadingMessage('');
     params.onMessage('참여 중이던 방에 다시 입장했습니다.');
   } catch (error) {
