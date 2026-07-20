@@ -1,3 +1,4 @@
+import { waitForNextRenderTask } from '../flows/renderTaskBoundary';
 import { notifySequenceRecoveryProgress } from './sequenceRecoveryWatchdog';
 
 export type MutableValueRef<T> = { current: T };
@@ -70,8 +71,6 @@ const hashSnapshotString = (value: string) => {
   }
   return (hash >>> 0).toString(36);
 };
-
-const yieldToNextTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 export function getGameSyncSnapshotApplyKey(state: GameSyncSnapshotIdentity) {
   const stateVersion = toFiniteNumber(state.turnVersion);
@@ -169,7 +168,7 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
                 const appliedSequence = Math.min(remoteSequence, latestRuntime.lastAppliedSequenceRef.current);
                 if (appliedSequence <= replayFromSequence) break;
                 replayFromSequence = appliedSequence;
-                if (replayFromSequence < remoteSequence) await yieldToNextTask();
+                if (replayFromSequence < remoteSequence) await waitForNextRenderTask();
               }
             }
           } else {
