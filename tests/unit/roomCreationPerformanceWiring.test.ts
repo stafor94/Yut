@@ -24,15 +24,18 @@ test('기존 방 퇴장은 전역 생성 잠금을 획득하기 전에 완료한
 
 test('최종 검증은 방 요약과 해당 호스트 player 문서만 읽는다', () => {
   const source = read('src/features/room/services/roomCreationService.ts');
-  assert.match(source, /const activeRoomCandidates = await getActiveRoomSummaries\(now\)/);
+  assert.match(source, /await getActiveRoomSummaries\(now\)/);
   assert.match(source, /ownHostRooms\.map\(\(room\) => getRoomPlayer\(room\.id, params\.hostId\)\)/);
   assert.match(source, /hasActiveHumanRoomSummary\(room, now\)/);
 });
 
-test('성공 경로에서는 방 생성과 잠금 해제를 같은 batch로 커밋한다', () => {
+test('성공 경로는 잠금 소유권과 방 ID를 transaction에서 재검증하고 잠금을 함께 해제한다', () => {
   const source = read('src/features/room/services/roomCreationService.ts');
-  assert.match(source, /batch\.set\(doc\(db, 'rooms', ROOM_CREATION_LOCK_ID\)/);
-  assert.match(source, /await batch\.commit\(\);\s*lockReleasedWithRoomCommit = true/s);
+  assert.match(source, /transaction\.get\(lockRef\)/);
+  assert.match(source, /transaction\.get\(roomRef\)/);
+  assert.match(source, /lock\.lockRequestId !== requestId \|\| lock\.lockOwnerToken !== ownerToken/);
+  assert.match(source, /transaction\.set\(lockRef, \{[\s\S]*lockExpiresAt: 0/);
+  assert.match(source, /lockReleasedWithRoomCommit = true/);
   assert.match(source, /if \(!lockReleasedWithRoomCommit\)/);
 });
 
