@@ -2,29 +2,35 @@ import { test, expect } from '@playwright/test';
 import { expectAppShell, primeLobbyStorage, runQaStep, waitForBlockingOverlayToDisappear } from '../helpers/ui.js';
 
 test.describe('mobile lobby polish QA', () => {
-  test('로비 배경과 액션이 하나의 영역으로 이어지고 모바일 버튼 크기를 유지한다', async ({ page, context }, testInfo) => {
+  test('첨부 배경 위에 상단 배지와 시작 액션을 한 화면으로 배치한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 780 });
     await primeLobbyStorage(context, { nickname: '모바일로비QA' });
 
-    await runQaStep(testInfo, '모바일 로비 연속 배경과 액션 크기 확인', async () => {
+    await runQaStep(testInfo, '모바일 로비 배경·배지·액션 배치 확인', async () => {
       await expectAppShell(page);
       await waitForBlockingOverlayToDisappear(page);
 
       const layout = await page.evaluate(() => {
+        const shell = document.querySelector('.screen-lobby.lobby-shell');
         const stage = document.querySelector('.lobby-stage');
         const scene = document.querySelector('.lobby-scene');
         const primary = document.querySelector('.lobby-primary-actions');
         const create = document.querySelector('[aria-label="방 만들기"]');
         const join = document.querySelector('[aria-label="게임 참가"]');
+        const sound = document.querySelector('.screen-lobby > .hero.panel .sound-toggle');
+        const status = document.querySelector('.screen-lobby > .hero.panel .status-card');
         const secondary = document.querySelector('.lobby-secondary-actions');
         const secondaryButtons = Array.from(document.querySelectorAll('.lobby-secondary-actions button'));
-        if (!(stage instanceof HTMLElement) || !(scene instanceof HTMLElement) || !(primary instanceof HTMLElement) || !(create instanceof HTMLElement) || !(join instanceof HTMLElement) || !(secondary instanceof HTMLElement) || secondaryButtons.length !== 2) return null;
+        if (!(shell instanceof HTMLElement) || !(stage instanceof HTMLElement) || !(scene instanceof HTMLElement) || !(primary instanceof HTMLElement) || !(create instanceof HTMLElement) || !(join instanceof HTMLElement) || !(sound instanceof HTMLElement) || !(status instanceof HTMLElement) || !(secondary instanceof HTMLElement) || secondaryButtons.length !== 2) return null;
         const rect = (element) => {
           const box = element.getBoundingClientRect();
           return { x: box.x, y: box.y, width: box.width, height: box.height, right: box.right, bottom: box.bottom };
         };
+        const shellStyle = getComputedStyle(shell);
         const stageStyle = getComputedStyle(stage);
         const sceneStyle = getComputedStyle(scene);
+        const createStyle = getComputedStyle(create);
+        const joinStyle = getComputedStyle(join);
         return {
           viewportWidth: window.innerWidth,
           viewportHeight: window.innerHeight,
@@ -44,22 +50,35 @@ test.describe('mobile lobby polish QA', () => {
               svg: svg instanceof SVGElement ? rect(svg) : null,
             };
           }),
+          shellBackground: shellStyle.backgroundImage,
           stageBackground: stageStyle.backgroundImage,
           stageOverflow: stageStyle.overflow,
+          sceneOpacity: sceneStyle.opacity,
           sceneBorderWidth: Number.parseFloat(sceneStyle.borderTopWidth),
           sceneBoxShadow: sceneStyle.boxShadow,
+          createBackground: createStyle.backgroundImage,
+          joinBackground: joinStyle.backgroundImage,
+          soundText: sound.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+          statusMedallions: status.querySelectorAll('.lobby-status-medallion').length,
         };
       });
 
       expect(layout, '모바일 로비 통합 영역을 읽을 수 있어야 합니다.').not.toBeNull();
       expect(layout.scrollHeight, '로비는 세로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
-      expect(layout.stageBackground, '장면과 버튼 뒤에 이어지는 배경이 있어야 합니다.').toContain('gradient');
-      expect(layout.stageOverflow, '통합 배경은 둥근 프레임 안에서 잘려야 합니다.').toBe('hidden');
-      expect(layout.sceneBorderWidth, '장면과 버튼 사이에 별도 테두리가 있으면 안 됩니다.').toBe(0);
-      expect(layout.sceneBoxShadow, '장면만 별도 카드처럼 보이는 그림자가 있으면 안 됩니다.').toBe('none');
-      expect(layout.create.x, '방 만들기 버튼은 통합 배경 안에 있어야 합니다.').toBeGreaterThanOrEqual(layout.stage.x);
-      expect(layout.join.right, '방 참가 버튼은 통합 배경 안에 있어야 합니다.').toBeLessThanOrEqual(layout.stage.right);
-      expect(layout.secondary.bottom, '보조 버튼도 통합 배경 안에 있어야 합니다.').toBeLessThanOrEqual(layout.stage.bottom + 1);
+      expect(layout.shellBackground, '첨부한 로비 배경 이미지가 앱 셸에 적용되어야 합니다.').toContain('lobby-background.webp');
+      expect(layout.stageBackground, '장면과 버튼 뒤의 투명 통합 영역을 유지해야 합니다.').toContain('gradient');
+      expect(layout.stageOverflow, '통합 영역 밖으로 액션이 넘치면 안 됩니다.').toBe('hidden');
+      expect(layout.sceneOpacity, '기존 SVG 장면은 첨부 배경과 중복 노출되면 안 됩니다.').toBe('0');
+      expect(layout.sceneBorderWidth, '배경 위에 별도 장면 카드 테두리가 있으면 안 됩니다.').toBe(0);
+      expect(layout.sceneBoxShadow, '배경 위에 별도 장면 카드 그림자가 있으면 안 됩니다.').toBe('none');
+      expect(layout.soundText, '로비 상단 소리 배지는 상태값 대신 효과음 라벨을 보여야 합니다.').toContain('효과음');
+      expect(layout.statusMedallions, '온라인 배지에는 금색 상태 메달이 있어야 합니다.').toBe(1);
+      expect(layout.createBackground, '방 만들기 버튼은 주황 계열 그라데이션이어야 합니다.').toContain('gradient');
+      expect(layout.joinBackground, '방 참가 버튼은 파랑 계열 그라데이션이어야 합니다.').toContain('gradient');
+      expect(layout.create.x, '방 만들기 버튼은 통합 영역 안에 있어야 합니다.').toBeGreaterThanOrEqual(layout.stage.x);
+      expect(layout.join.right, '방 참가 버튼은 통합 영역 안에 있어야 합니다.').toBeLessThanOrEqual(layout.stage.right);
+      expect(layout.join.y, '방 참가 버튼은 방 만들기 버튼 아래에 있어야 합니다.').toBeGreaterThan(layout.create.bottom);
+      expect(layout.secondary.bottom, '보조 버튼도 통합 영역 안에 있어야 합니다.').toBeLessThanOrEqual(layout.stage.bottom + 1);
       expect(layout.primary.width / layout.viewportWidth, '주요 버튼 영역은 화면 너비의 약 80%여야 합니다.').toBeGreaterThanOrEqual(.78);
       expect(layout.primary.width / layout.viewportWidth, '주요 버튼 영역은 화면 너비의 약 80%여야 합니다.').toBeLessThanOrEqual(.82);
       layout.secondaryButtons.forEach((button) => {
