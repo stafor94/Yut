@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { hasFirebaseConfig, makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { collectScreenState, createRoomFromLobby, expectAppShell, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { createRoomFromLobby, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomPlayersForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 test.describe('online room QA', () => {
@@ -17,10 +17,7 @@ test.describe('online room QA', () => {
     await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
     await runQaStep(testInfo, '온라인 방 생성 및 대기실 확인', async () => {
-      await expectAppShell(page);
-      await page.getByTestId('room-title-input').fill(roomTitle);
-      await page.getByTestId('create-room-button').click();
-      await expect(page.getByTestId('waiting-room'), `대기실 상태: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 15_000 });
+      await createRoomFromLobby(page, roomTitle);
       await expect(page.getByTestId('waiting-room')).toContainText(nickname);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
     });
@@ -71,10 +68,7 @@ test.describe('online room QA', () => {
     await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
     await runQaStep(testInfo, '대기실 AI 배지와 액션 배치 및 저장 상태 확인', async () => {
-      await expectAppShell(page);
-      await page.getByTestId('room-title-input').fill(roomTitle);
-      await page.getByTestId('create-room-button').click();
-      await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 15_000 });
+      await createRoomFromLobby(page, roomTitle);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
       expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
 
