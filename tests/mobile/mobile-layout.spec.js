@@ -55,11 +55,11 @@ test.describe('mobile layout QA', () => {
     });
   });
 
-  test('닉네임 팝업이 목재 프레임 안에서 모바일 화면을 벗어나지 않는다', async ({ page, context }, testInfo) => {
+  test('설정 팝업이 목재 프레임 안에서 모바일 화면을 벗어나지 않는다', async ({ page, context }, testInfo) => {
     await primeLobbyStorage(context, { nickname: '모바일QA' });
-    await runQaStep(testInfo, '모바일 공통 팝업 스타일 확인', async () => {
+    await runQaStep(testInfo, '모바일 설정 팝업 스타일 확인', async () => {
       await expectAppShell(page);
-      await page.locator('.nickname-chip').click();
+      await page.getByRole('button', { name: '설정', exact: true }).click();
 
       const backdrop = page.locator('.nickname-dialog-backdrop');
       const modal = backdrop.locator('.nickname-modal');
