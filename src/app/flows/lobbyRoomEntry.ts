@@ -1,10 +1,14 @@
-import type { RoomSummary } from '../../features/room/services/roomService';
+export type LobbyRoomEntry = {
+  id: string;
+  title: string;
+  status: 'waiting' | 'playing' | 'finished';
+};
 
-export type RoomCodeLookup = (roomId: string) => Promise<RoomSummary | null>;
+export type RoomCodeLookup<TRoom extends LobbyRoomEntry = LobbyRoomEntry> = (roomId: string) => Promise<TRoom | null>;
 
 export const normalizeRoomCode = (value: string) => value.trim();
 
-export async function resolveRoomCodeEntry(value: string, lookupRoom: RoomCodeLookup): Promise<RoomSummary> {
+export async function resolveRoomCodeEntry<TRoom extends LobbyRoomEntry>(value: string, lookupRoom: RoomCodeLookup<TRoom>): Promise<TRoom> {
   const roomId = normalizeRoomCode(value);
   if (!roomId) throw new Error('방 코드를 입력해 주세요.');
 
