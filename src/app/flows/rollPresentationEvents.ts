@@ -16,6 +16,8 @@ type FallPresentationActiveListener = (active: boolean) => void;
 const fallPresentationActiveListeners = new Set<FallPresentationActiveListener>();
 let currentFallPresentationActive = false;
 
+export const getFallPresentationActive = () => currentFallPresentationActive;
+
 export const subscribeFallPresentationActive = (listener: FallPresentationActiveListener) => {
   fallPresentationActiveListeners.add(listener);
   listener(currentFallPresentationActive);
