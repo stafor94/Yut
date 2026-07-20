@@ -178,7 +178,7 @@ test.describe('lobby start screen QA', () => {
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:activeRoomId'))).toBe('invalid-nickname-recovery-target');
   });
 
-  test('게임 참가 팝업은 수동 새로고침 목록과 중앙 정렬 헤더를 제공한다', async ({ page, context }) => {
+  test('게임 참가 팝업은 최초 조회와 수동 새로고침 목록 및 중앙 정렬 헤더를 제공한다', async ({ page, context }) => {
     await primeLobbyStorage(context, { nickname: '가나' });
     await expectAppShell(page);
     await waitForBlockingOverlayToDisappear(page);
@@ -199,8 +199,9 @@ test.describe('lobby start screen QA', () => {
     const refreshButton = joinDialog.getByRole('button', { name: '방 목록 새로고침' });
     await expect(refreshButton).toBeVisible();
     await expect(refreshButton).toBeFocused();
-    await refreshButton.click();
     await expect.poll(() => page.evaluate(() => window.__yutQaRefreshCount)).toBe(1);
+    await refreshButton.click();
+    await expect.poll(() => page.evaluate(() => window.__yutQaRefreshCount)).toBe(2);
 
     const joinGeometry = await joinDialog.evaluate((dialog) => {
       const heading = dialog.querySelector('.lobby-simple-sheet-heading');
