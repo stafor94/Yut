@@ -160,7 +160,8 @@ test.describe('player substitution AI QA', () => {
       const dialog = qa.guestPage.getByRole('dialog', { name: '게임 종료 확인' });
       await expect(dialog).toBeVisible();
       await dialog.getByRole('button', { name: '게임 종료', exact: true }).click();
-      await expect(qa.guestPage.getByTestId('create-room-button')).toBeVisible({ timeout: 15_000 });
+      await expect(qa.guestPage.getByTestId('lobby-screen')).toBeVisible({ timeout: 15_000 });
+      await expect(qa.guestPage.getByRole('button', { name: '방 만들기', exact: true })).toBeVisible();
       await expectGuestSubstitutedByAi(qa, guestPlayerId);
 
       await runQaStep(testInfo, '동일 게스트 재입장 후 사람 제어권 복구', async () => {
@@ -232,7 +233,8 @@ test.describe('player substitution AI QA', () => {
           await closeButton.evaluate((button) => button.click());
           releaseFirestore();
           await navigation;
-          await expect(qa.guestPage.getByTestId('create-room-button')).toBeVisible({ timeout: 15_000 });
+          await expect(qa.guestPage.getByTestId('lobby-screen')).toBeVisible({ timeout: 15_000 });
+          await expect(qa.guestPage.getByRole('button', { name: '방 만들기', exact: true })).toBeVisible();
           await expect(qa.guestPage.getByTestId('game-screen')).toBeHidden();
           await expectGuestSubstitutedByAi(qa, guestPlayerId);
         } finally {
