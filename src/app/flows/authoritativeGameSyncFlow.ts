@@ -53,7 +53,10 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
       },
     );
     const waitForRenderBoundary = params.yieldBetweenApplies ?? waitForNextRenderTask;
-    applyQueue = settledApply.then(waitForRenderBoundary, waitForRenderBoundary);
+    applyQueue = settledApply.then(
+      () => waitForRenderBoundary(),
+      () => waitForRenderBoundary(),
+    );
     return settledApply;
   };
 
