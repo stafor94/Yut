@@ -1,0 +1,6 @@
+/* Keep compact guide and settings sheets centered in portrait layouts. */
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-howto-sheet),
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-settings-sheet) {
+  align-items: center;
+  justify-items: center;
+}
