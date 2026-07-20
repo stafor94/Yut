@@ -13,6 +13,12 @@ test.describe('lobby start screen QA', () => {
 
     const nicknameInput = nicknameDialog.getByPlaceholder('닉네임');
     const startButton = nicknameDialog.getByRole('button', { name: '시작하기' });
+    await expect(nicknameInput).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(startButton).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(nicknameInput).toBeFocused();
+
     await nicknameInput.fill('가');
     await expect(startButton).toBeDisabled();
     await nicknameInput.fill('가나');
@@ -23,6 +29,20 @@ test.describe('lobby start screen QA', () => {
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:nickname'))).toBe('가나');
     await expect(page.getByRole('button', { name: '방 만들기', exact: true })).toBeEnabled();
     await expect(page.getByRole('button', { name: '게임 참가', exact: true })).toBeEnabled();
+  });
+
+  test('유효하지 않은 닉네임이면 저장된 방 ID가 있어도 자동 복구하지 않는다', async ({ page, context }) => {
+    await context.addInitScript(() => {
+      window.localStorage.setItem('yut-online:nickname', '가');
+      window.localStorage.setItem('yut-online:activeRoomId', 'invalid-nickname-recovery-target');
+    });
+
+    await expectAppShell(page);
+    await expect(page.getByRole('dialog', { name: '닉네임 설정' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /서버 상태: 온라인/ })).toBeVisible({ timeout: 20_000 });
+    await page.waitForTimeout(500);
+    await expect(page.locator('.loading-modal-backdrop')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:activeRoomId'))).toBe('invalid-nickname-recovery-target');
   });
 
   test('로비 팝업은 실시간 목록 안내, 공통 닫기, 설정 저장을 제공한다', async ({ page, context }) => {
