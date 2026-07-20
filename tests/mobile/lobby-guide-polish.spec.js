@@ -35,6 +35,7 @@ test.describe('mobile lobby guide polish QA', () => {
         const yutBonus = getComputedStyle(resultItems[3], '::after');
         const moBonus = getComputedStyle(resultItems[4], '::after');
         return {
+          documentCharset: document.characterSet,
           viewportWidth: window.innerWidth,
           viewportHeight: window.innerHeight,
           documentScrollWidth: document.documentElement.scrollWidth,
@@ -51,6 +52,7 @@ test.describe('mobile lobby guide polish QA', () => {
       });
 
       expect(layout, '모바일 게임 방법 팝업 레이아웃을 읽을 수 있어야 합니다.').not.toBeNull();
+      expect(layout.documentCharset, 'HTML과 CSS 한글은 UTF-8로 해석되어야 합니다.').toBe('UTF-8');
       expect(layout.documentScrollWidth, '팝업이 가로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(layout.viewportWidth);
       expect(layout.dialog.x, '팝업 왼쪽이 화면 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
       expect(layout.dialog.right, '팝업 오른쪽이 화면 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewportWidth + 1);
