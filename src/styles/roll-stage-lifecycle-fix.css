@@ -1,6 +1,11 @@
 /* RollStage owns the complete visual lifetime.
-   The container must not disappear on an unrelated fixed CSS clock. */
-.roll-stage {
+   Neither the overlay nor the actual roll mat may disappear on an unrelated fixed CSS clock. */
+.roll-stage,
+.roll-stage .roll-mat {
   animation: none;
   opacity: 1;
+}
+
+.roll-stage .roll-mat {
+  transform: none;
 }
