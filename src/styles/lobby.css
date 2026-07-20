@@ -240,3 +240,25 @@ button.secondary {
     padding-inline: 12px;
   }
 }
+
+/* Keep the refreshed lobby coupled to the shared dynamic viewport contract. */
+.screen-lobby.lobby-shell.shell {
+  min-height: var(--app-viewport-height);
+}
+
+.screen-lobby .lobby-start.lobby-layout {
+  min-height: calc(var(--app-viewport-height) - 120px);
+}
+
+/* Touch emulation must not move the submit button while Playwright or a user targets it. */
+@media (hover: none), (pointer: coarse) {
+  .screen-lobby .lobby-sheet .primary-cta:hover:not(:active) {
+    transform: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .screen-lobby .lobby-start.lobby-layout {
+    min-height: calc(var(--app-viewport-height) - 92px);
+  }
+}
