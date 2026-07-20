@@ -23,9 +23,73 @@ type LobbyScreenProps = {
 
 type LobbyDialog = 'create' | 'join' | 'howto' | 'settings' | null;
 
+type LobbyActionIconProps = {
+  type: 'create' | 'join' | 'guide' | 'settings';
+};
+
 const getErrorMessage = (error: unknown) => error instanceof Error && error.message
   ? error.message
   : '요청을 처리하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+
+function LobbyActionIcon({ type }: LobbyActionIconProps) {
+  if (type === 'create') {
+    return <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="11" cy="11" r="5" /><circle cx="22" cy="12" r="4" /><path d="M3.5 27c.8-5.3 3.4-8 7.7-8s6.9 2.7 7.7 8M18.3 26.5c.4-3.7 2.2-5.8 5.3-5.8 2.8 0 4.5 1.7 5 5" /></svg>;
+  }
+  if (type === 'join') {
+    return <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M18 6h8v20h-8" /><path d="M4 16h16M14 10l6 6-6 6" /></svg>;
+  }
+  if (type === 'guide') {
+    return <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 6.5c5-1.2 8-.3 12 2.2v18c-4-2.5-7-3.4-12-2.2zM28 6.5c-5-1.2-8-.3-12 2.2v18c4-2.5 7-3.4 12-2.2z" /></svg>;
+  }
+  return <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="4.5" /><path d="M16 3.5v4M16 24.5v4M3.5 16h4M24.5 16h4M7.2 7.2l2.8 2.8M22 22l2.8 2.8M24.8 7.2 22 10M10 22l-2.8 2.8" /></svg>;
+}
+
+function LobbyHeroScene() {
+  const routeDots = [
+    [151, 388], [205, 388], [259, 388], [313, 388], [367, 388], [421, 388], [475, 388], [529, 388], [583, 388],
+    [151, 338], [151, 288], [151, 238], [583, 338], [583, 288], [583, 238],
+    [205, 338], [259, 305], [313, 272], [421, 272], [475, 305], [529, 338],
+  ];
+
+  return <div className="lobby-scene" data-testid="lobby-hero-art" role="img" aria-label="윷판 위로 네 개의 윷가락이 떠오르는 장면">
+    <svg viewBox="0 0 740 500" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="lobby-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fffaf0" /><stop offset="1" stopColor="#f5e8cd" /></linearGradient>
+        <linearGradient id="lobby-table" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#c9823b" /><stop offset="1" stopColor="#8e4b22" /></linearGradient>
+        <linearGradient id="lobby-board" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffe6a7" /><stop offset=".52" stopColor="#efc778" /><stop offset="1" stopColor="#d59b4d" /></linearGradient>
+        <linearGradient id="lobby-stick" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#c97927" /><stop offset=".18" stopColor="#f0ad4c" /><stop offset=".52" stopColor="#ffd17d" /><stop offset=".8" stopColor="#e39735" /><stop offset="1" stopColor="#b9601d" /></linearGradient>
+        <linearGradient id="lobby-bag" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#bb7836" /><stop offset="1" stopColor="#74401e" /></linearGradient>
+        <radialGradient id="lobby-token-red"><stop offset="0" stopColor="#ef6b4f" /><stop offset="1" stopColor="#a92b24" /></radialGradient>
+        <radialGradient id="lobby-token-blue"><stop offset="0" stopColor="#6095e8" /><stop offset="1" stopColor="#2453a6" /></radialGradient>
+        <filter id="lobby-soft-shadow" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="12" stdDeviation="10" floodColor="#542a12" floodOpacity=".25" /></filter>
+        <filter id="lobby-stick-shadow" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="12" stdDeviation="9" floodColor="#5b2b10" floodOpacity=".3" /></filter>
+      </defs>
+
+      <rect width="740" height="500" rx="42" fill="url(#lobby-sky)" />
+      <g className="lobby-scene-clouds" fill="#efe3c8" opacity=".7"><path d="M24 95c7-22 25-34 47-30 10-26 50-25 61 2 24-5 43 8 48 28z" /><path d="M565 120c7-18 22-27 40-24 10-24 45-22 55 3 22-3 38 9 43 26z" /><path d="M-8 214c8-18 25-27 42-22 12-29 52-24 61 4 20-2 34 10 39 25H-8z" /></g>
+      <g className="lobby-scene-hills"><path d="M0 402c77-67 123-54 182-17 54-64 118-82 185-21 56-62 123-59 192 1 61-35 114-27 181 31v104H0z" fill="#c8b77b" opacity=".38" /><path d="M0 428c75-37 129-35 194 8 69-58 127-52 189 0 63-51 135-44 183 7 68-32 119-23 174 13v44H0z" fill="#8fa25f" opacity=".57" /></g>
+      <path d="M0 352h740v148H0z" fill="url(#lobby-table)" />
+      <g opacity=".14" stroke="#4c2410" strokeWidth="2"><path d="M0 378h740M0 411h740M0 447h740M0 481h740" /><path d="M70 352v148M228 352v148M397 352v148M579 352v148" /></g>
+
+      <g className="lobby-scene-board" filter="url(#lobby-soft-shadow)">
+        <rect x="117" y="211" width="500" height="209" rx="20" fill="#7b431f" opacity=".35" />
+        <rect x="125" y="203" width="500" height="209" rx="20" fill="url(#lobby-board)" stroke="#9a5c29" strokeWidth="7" />
+        <rect x="140" y="218" width="470" height="179" rx="14" fill="none" stroke="#b57936" strokeWidth="3" />
+        <g fill="none" stroke="#a86b2e" strokeWidth="4" strokeLinecap="round" opacity=".74"><path d="M151 238v150h432V238z" /><path d="M151 238 367 388 583 238M151 388 367 238 583 388" /></g>
+        <g fill="#aa6b2e" opacity=".93">{routeDots.map(([cx, cy], index) => <circle key={`${cx}-${cy}-${index}`} cx={cx} cy={cy} r={index % 8 === 0 ? 11 : 7} />)}<circle cx="367" cy="313" r="15" /></g>
+        <g fill="#f7d895" opacity=".45"><path d="M162 248h35l-35 31zM572 248h-35l35 31zM162 379h35l-35-31zM572 379h-35l35-31z" /></g>
+      </g>
+
+      <g className="lobby-scene-bag" filter="url(#lobby-soft-shadow)"><path d="M43 280c-9 21-11 70 1 104 13 34 82 36 102 4 17-28 11-87-5-110-23 10-76 10-98 2z" fill="url(#lobby-bag)" /><path d="M42 279c15 15 82 15 101-2-12-22-26-31-48-29-24-2-41 8-53 31z" fill="#9c5d2b" /><path d="M53 290c25-11 60-11 81 0" fill="none" stroke="#ddb06b" strokeWidth="8" strokeLinecap="round" /><path d="M66 286c8 18 16 23 29 29M122 286c-8 18-16 23-29 29" fill="none" stroke="#e0b670" strokeWidth="5" strokeLinecap="round" /></g>
+      <g className="lobby-scene-tokens" filter="url(#lobby-soft-shadow)"><ellipse cx="662" cy="380" rx="40" ry="13" fill="#6f3218" opacity=".27" /><ellipse cx="660" cy="368" rx="37" ry="16" fill="url(#lobby-token-red)" stroke="#8e2520" strokeWidth="4" /><ellipse cx="691" cy="411" rx="40" ry="13" fill="#532f1f" opacity=".25" /><ellipse cx="688" cy="399" rx="38" ry="17" fill="url(#lobby-token-blue)" stroke="#214b94" strokeWidth="4" /></g>
+
+      <g className="lobby-scene-float lobby-scene-float-one" data-testid="lobby-yut-stick-1" filter="url(#lobby-stick-shadow)"><g transform="translate(235 122) rotate(-36)"><rect x="-25" y="-76" width="50" height="152" rx="24" fill="url(#lobby-stick)" stroke="#ad5d1f" strokeWidth="4" /><path d="M-10-38 10-20M10-38-10-20M-10 5 10 23M10 5-10 23" stroke="#754019" strokeWidth="7" strokeLinecap="round" /></g></g>
+      <g className="lobby-scene-float lobby-scene-float-two" data-testid="lobby-yut-stick-2" filter="url(#lobby-stick-shadow)"><g transform="translate(340 117) rotate(-18)"><rect x="-26" y="-82" width="52" height="164" rx="25" fill="url(#lobby-stick)" stroke="#ad5d1f" strokeWidth="4" /><path d="M-11-44 11-22M11-44-11-22M-11 0 11 22M11 0-11 22M-11 42 11 64M11 42-11 64" stroke="#754019" strokeWidth="7" strokeLinecap="round" /></g></g>
+      <g className="lobby-scene-float lobby-scene-float-three" data-testid="lobby-yut-stick-3" filter="url(#lobby-stick-shadow)"><g transform="translate(463 117) rotate(18)"><rect x="-26" y="-84" width="52" height="168" rx="25" fill="url(#lobby-stick)" stroke="#ad5d1f" strokeWidth="4" /><path d="M-11-48 11-26M11-48-11-26M-11-3 11 19M11-3-11 19M-11 42 11 64M11 42-11 64" stroke="#754019" strokeWidth="7" strokeLinecap="round" /></g></g>
+      <g className="lobby-scene-float lobby-scene-float-four" data-testid="lobby-yut-stick-4" filter="url(#lobby-stick-shadow)"><g transform="translate(548 146) rotate(34)"><rect x="-25" y="-78" width="50" height="156" rx="24" fill="url(#lobby-stick)" stroke="#ad5d1f" strokeWidth="4" /><path d="M-10-38 10-20M10-38-10-20M-10 4 10 22M10 4-10 22M-10 42 10 60M10 42-10 60" stroke="#754019" strokeWidth="7" strokeLinecap="round" /></g></g>
+    </svg>
+  </div>;
+}
 
 export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured, currentUser, resumableRoomId, nickname, soundEnabled, onTitleChange, onCreateRoom, onOpenWaitingRoom, onJoinRoomByCode, onNicknameChange, onSoundEnabledChange }: LobbyScreenProps) {
   const [dialog, setDialog] = useState<LobbyDialog>(null);
@@ -135,17 +199,17 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
   };
 
   return <section data-testid="lobby-screen" className="lobby-layout premium-lobby lobby-start" aria-label="윷놀이 시작 화면">
-    <section className="panel lobby-hero-panel">
-      <p className="section-kicker">실시간 온라인 윷놀이</p>
-      <h1>친구들과 바로 즐기는 윷놀이</h1>
-      <p className="lobby-hero-copy">방을 만들거나 공개 방에 참가해 모바일에서도 빠르게 시작하세요.</p>
-      <div className="lobby-yut-visual" role="img" aria-label="윷가락 네 개 도식"><span></span><span></span><span></span><span></span></div>
+    <section className="lobby-hero-panel">
+      <header className="lobby-brand">
+        <div className="lobby-brand-title-row"><span className="lobby-brand-stick lobby-brand-stick-left" aria-hidden="true">×××</span><h1>윷놀이</h1><span className="lobby-brand-stick lobby-brand-stick-right" aria-hidden="true">××</span></div>
+        <p>친구들과 바로 즐기는 <strong>온라인 윷놀이</strong></p>
+      </header>
+      <LobbyHeroScene />
       <div className="lobby-primary-actions" aria-label="로비 주요 기능">
-        <button className="primary-cta" type="button" onClick={() => openDialog('create')}>방 만들기</button>
-        <button className="primary-cta secondary-cta" type="button" onClick={() => openDialog('join')}>게임 참가</button>
-        <button type="button" onClick={() => openDialog('howto')}>게임 방법</button>
-        <button type="button" onClick={openSettings}>설정</button>
+        <button className="lobby-main-action lobby-create-action" type="button" aria-label="방 만들기" onClick={() => openDialog('create')}><span className="lobby-action-icon"><LobbyActionIcon type="create" /></span><span className="lobby-action-copy"><strong>방 만들기</strong><small>새 게임을 시작해요</small></span><span className="lobby-action-arrow" aria-hidden="true">›</span></button>
+        <button className="lobby-main-action lobby-join-action" type="button" aria-label="게임 참가" onClick={() => openDialog('join')}><span className="lobby-action-icon"><LobbyActionIcon type="join" /></span><span className="lobby-action-copy"><strong>방 코드로 참가</strong><small>초대받은 방에 들어가요</small></span><span className="lobby-action-arrow" aria-hidden="true">›</span></button>
       </div>
+      <nav className="lobby-secondary-actions" aria-label="로비 보조 기능"><button type="button" aria-label="게임 방법" onClick={() => openDialog('howto')}><LobbyActionIcon type="guide" /><span>게임 방법 보기</span></button><span className="lobby-action-divider" aria-hidden="true"></span><button type="button" aria-label="설정" onClick={openSettings}><LobbyActionIcon type="settings" /><span>설정</span></button></nav>
     </section>
 
     {dialog === 'create' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}><section ref={dialogRef} className="panel lobby-sheet" role="dialog" aria-modal="true" aria-label="방 만들기" onMouseDown={(event) => event.stopPropagation()}><button className="sheet-close" type="button" onClick={closeDialog} aria-label="닫기">×</button><p className="section-kicker">방 만들기</p><h2>새 방 만들기</h2><div className="form-grid lobby-form"><label htmlFor="room-title-input">방 제목<input id="room-title-input" data-testid="room-title-input" data-dialog-autofocus value={title} onChange={(event) => onTitleChange(event.target.value)} placeholder="친구들과 윷놀이" /></label><button data-testid="create-room-button" className="primary-cta create-room-submit-button" onClick={onCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '생성 중...' : '방 생성하기'}</button></div></section></div>}
