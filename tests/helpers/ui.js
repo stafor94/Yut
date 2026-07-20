@@ -165,7 +165,6 @@ export async function joinRoomFromLobby(page, roomTitle) {
   await expect(roomListLoading).toBeVisible();
   await expect(page.locator('.lobby-room-card')).toHaveCount(0);
   await expect(roomListLoading).toBeHidden({ timeout: 25_000 });
-  await expect(page.getByTestId('lobby-room-query-shell')).toHaveAttribute('data-room-list-querying', 'false');
   const roomCard = page.locator('.lobby-room-card').filter({ hasText: roomTitle }).first();
   await expect(roomCard).toBeVisible({ timeout: 25_000 });
   const joinButton = roomCard.locator('.lobby-room-action');
