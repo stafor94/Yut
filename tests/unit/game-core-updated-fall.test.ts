@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
+import { TURN_NETWORK_GRACE_MS } from '../../src/features/room/services/roomTiming';
 import type { EngineState } from '../../src/game-core/gameEngine';
 
 const withMockRandom = <T>(values: number[], callback: () => T): T => {
@@ -11,6 +12,16 @@ const withMockRandom = <T>(values: number[], callback: () => T): T => {
     return callback();
   } finally {
     Math.random = originalRandom;
+  }
+};
+
+const withMockNow = <T>(now: number, callback: () => T): T => {
+  const originalNow = Date.now;
+  Date.now = () => now;
+  try {
+    return callback();
+  } finally {
+    Date.now = originalNow;
   }
 };
 
@@ -75,6 +86,23 @@ const replacementTests = new Map<string, () => void>([
     assert.equal(fall.patch?.itemPromptTiming, null);
     assert.equal(fall.patch?.turnDeadlineKind, 'roll');
     assert.equal(fall.patch?.pendingGoldenYutSelection ?? null, null);
+  })],
+  ['온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치를 거부한다', () => withMockNow(10_000, () => {
+    const deadline = 10_000 - TURN_NETWORK_GRACE_MS - 1;
+    const result = reduceAuthoritativeGameAction(
+      {
+        ...baseState(),
+        roll: { name: '도', steps: 1 },
+        itemPromptTiming: 'after_roll',
+        turnDeadlineKind: 'item_prompt',
+        turnDeadlineAt: deadline,
+      } as EngineState & { itemPromptTiming: 'after_roll'; turnDeadlineKind: 'item_prompt'; turnDeadlineAt: number },
+      { type: 'use_item', actorId: 'seat-2', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: deadline } },
+      { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+    );
+
+    assert.equal(result.status, 'rejected');
+    assert.equal(result.reason, '아이템 선택 시간초과 대상이 아닙니다.');
   })],
 ]);
 
