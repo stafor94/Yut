@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { auth, listenAuthState } from '../../../services/firebase/firebaseAuth';
 import { subscribeActiveRooms, subscribeRoomPlayers, type RoomSummary } from '../services/roomService';
 import { createRoomListSubscriptionController } from './roomListSubscription';
@@ -12,13 +12,20 @@ export function useRooms(options: UseRoomsOptions = {}) {
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [currentUserId, setCurrentUserId] = useState(() => auth?.currentUser?.uid ?? '');
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const pendingRefreshVersionRef = useRef<number | null>(null);
 
   useEffect(() => listenAuthState((user) => {
     setCurrentUserId(user?.uid ?? '');
   }), []);
 
   useEffect(() => {
-    const handleRefreshRooms = () => setRefreshVersion((version) => version + 1);
+    const handleRefreshRooms = () => {
+      setRefreshVersion((version) => {
+        const nextVersion = version + 1;
+        pendingRefreshVersionRef.current = nextVersion;
+        return nextVersion;
+      });
+    };
     window.addEventListener('yut:refresh-rooms', handleRefreshRooms);
     return () => window.removeEventListener('yut:refresh-rooms', handleRefreshRooms);
   }, []);
@@ -28,7 +35,12 @@ export function useRooms(options: UseRoomsOptions = {}) {
     const controller = createRoomListSubscriptionController({
       subscribeRooms: subscribeActiveRooms,
       subscribePlayers: subscribeRoomPlayers,
-      onRooms: setRooms,
+      onRooms: (nextRooms) => {
+        setRooms(nextRooms);
+        if (pendingRefreshVersionRef.current !== refreshVersion) return;
+        pendingRefreshVersionRef.current = null;
+        window.dispatchEvent(new Event('yut:rooms-refreshed'));
+      },
       getCurrentUserId: () => currentUserId,
     });
     controller.start();
