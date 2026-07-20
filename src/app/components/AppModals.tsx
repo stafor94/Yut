@@ -1,9 +1,14 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { ItemCard } from '../../features/items/components/ItemCard';
 import { isItemType } from '../../features/items/logic/items';
 import { ROOM_CAPACITY_FULL_EVENT } from '../../features/room/services/roomAvailabilityPolicy';
 import { auth } from '../../services/firebase/firebaseAuth';
 import { getStoredText, NICKNAME_MAX_LENGTH, STORAGE_KEYS, type PendingItemPickup } from '../appState';
+import {
+  GAME_STATE_SYNC_LOADING_MESSAGE,
+  getGameStateSyncPresentation,
+  subscribeGameStateSyncPresentation,
+} from '../flows/gameStateSyncPresentation';
 import {
   processPendingStoredRoomExit,
   requestStoredRoomExitAndReload,
@@ -53,6 +58,15 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     !getStoredText(STORAGE_KEYS.nickname, '').trim()
   ));
   const [roomCapacityFullDialogOpen, setRoomCapacityFullDialogOpen] = useState(false);
+  const gameStateSyncPresentation = useSyncExternalStore(
+    subscribeGameStateSyncPresentation,
+    getGameStateSyncPresentation,
+    getGameStateSyncPresentation,
+  );
+  const gameStateSyncLoadingMessage = screen === 'game' && gameStateSyncPresentation.status === 'loading'
+    ? GAME_STATE_SYNC_LOADING_MESSAGE
+    : '';
+  const effectiveLoadingMessage = loadingMessage || gameStateSyncLoadingMessage;
   const nicknameSetupDialogOpen = screen === 'lobby' && (nicknameDialogOpen || initialNicknameDialogOpen);
   const canExitStoredRoom = loadingMessage === STORED_ROOM_RECOVERY_MESSAGE;
   const canShowPendingItemPickup = Boolean(
@@ -88,7 +102,7 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
   };
 
   return <>
-    {loadingMessage && <div className="loading-modal-backdrop" role="presentation"><section className={`loading-modal panel ${canExitStoredRoom ? 'stored-room-recovery-modal' : ''}`} role={canExitStoredRoom ? 'dialog' : 'status'} aria-modal={canExitStoredRoom || undefined} aria-live={canExitStoredRoom ? undefined : 'polite'} aria-label={loadingMessage}>{canExitStoredRoom && <button data-testid="stored-room-recovery-close" className="stored-room-recovery-close" type="button" aria-label="참여 중이던 방에서 나가기" onClick={requestStoredRoomExitAndReload}>닫기</button>}<span className="loading-modal-spinner" aria-hidden="true"></span><p aria-live={canExitStoredRoom ? 'polite' : undefined}>{splitMessageBySentence(loadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
+    {effectiveLoadingMessage && <div className="loading-modal-backdrop" role="presentation"><section data-testid={gameStateSyncLoadingMessage && !loadingMessage ? 'game-state-sync-loading' : undefined} className={`loading-modal panel ${canExitStoredRoom ? 'stored-room-recovery-modal' : ''}`} role={canExitStoredRoom ? 'dialog' : 'status'} aria-modal={canExitStoredRoom || undefined} aria-live={canExitStoredRoom ? undefined : 'polite'} aria-label={effectiveLoadingMessage}>{canExitStoredRoom && <button data-testid="stored-room-recovery-close" className="stored-room-recovery-close" type="button" aria-label="참여 중이던 방에서 나가기" onClick={requestStoredRoomExitAndReload}>닫기</button>}<span className="loading-modal-spinner" aria-hidden="true"></span><p aria-live={canExitStoredRoom ? 'polite' : undefined}>{splitMessageBySentence(effectiveLoadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
 
     {actionErrorDialog && <div className="modal-backdrop" role="presentation" onMouseDown={onClearActionErrorDialog}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label="액션 오류" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">오류</p><h2>요청을 처리할 수 없습니다</h2><p>{actionErrorDialog}</p><div className="modal-actions"><button onClick={onClearActionErrorDialog}>확인</button></div></section></div>}
     {roomCapacityFullDialogOpen && <div className="modal-backdrop" role="presentation" onMouseDown={() => setRoomCapacityFullDialogOpen(false)}><section className="nickname-modal panel" role="alertdialog" aria-modal="true" aria-label="방 정원이 찼습니다" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">방 알림</p><h2>방 정원이 찼습니다</h2><p>다른 방에 참여하거나 자리가 생긴 뒤 다시 시도해주세요.</p><div className="modal-actions"><button onClick={() => setRoomCapacityFullDialogOpen(false)}>확인</button></div></section></div>}

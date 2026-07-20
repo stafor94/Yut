@@ -4,6 +4,7 @@ import type { PieceCount, PlayMode, Seat } from '../appTypes';
 import { STORAGE_KEYS } from '../preferences/localPreferences';
 import { createSeats, seatsWithJoinedPlayer } from '../selectors/seatSelectors';
 import { CREATE_ROOM_AUTH_TIMEOUT_MS } from '../config/gameTimings';
+import { beginGameStateSync } from './gameStateSyncPresentation';
 import { isRoomTransitionInProgress } from './roomCreationFlow';
 
 export type EnterableRoom = Pick<RoomSummary, 'title' | 'itemMode' | 'stackedRollMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & Partial<Pick<RoomSummary, 'id' | 'hostId' | 'status'>>;
@@ -108,7 +109,9 @@ export async function openWaitingRoomForEntry(params: RoomEntryControllerParams 
     if (joinResult?.role === 'player' && joiningUser) params.onSeatsChange(seatsWithJoinedPlayer([], joiningUser.uid, params.nickname, room.playMode, nextMaxPlayers, joinResult.seatIndex));
     else if (asHost && roomUser) params.onSeatsChange(nextSeats.map((seat) => seat.isHost ? { ...seat, id: roomUser.uid } : seat));
     else params.onSeatsChange(nextSeats);
-    params.onScreenChange(room.id && !asHost && runtime.isRoomInGame(room as RoomSummary) ? 'game' : 'waitingRoom');
+    const nextScreen: Screen = room.id && !asHost && runtime.isRoomInGame(room as RoomSummary) ? 'game' : 'waitingRoom';
+    if (nextScreen === 'game' && room.id) beginGameStateSync(room.id);
+    params.onScreenChange(nextScreen);
     params.onLoadingMessage('');
     params.onMessage(params.nextMessage ?? '');
     if (asHost && roomUser && room.id) void runtime.leaveDuplicatePlayerRooms(roomUser.uid, room.id).catch((cleanupError) => console.warn('새 방 입장 후 중복 방 정리에 실패했습니다. 현재 방은 유지합니다.', cleanupError));

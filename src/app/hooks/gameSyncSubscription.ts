@@ -1,3 +1,4 @@
+import { beginGameStateSync, clearGameStateSync, completeGameStateSync } from '../flows/gameStateSyncPresentation';
 import { waitForNextRenderTask } from '../flows/renderTaskBoundary';
 import { notifySequenceRecoveryProgress } from './sequenceRecoveryWatchdog';
 
@@ -149,12 +150,16 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
         const localStateVersion = latestRuntime.lastAppliedStateVersionRef.current;
         if (stateVersion > 0 && stateVersion <= localStateVersion && remoteSequence <= localSequence) {
           rememberAppliedSnapshotKey(snapshotKey);
+          latestRuntime.scheduleApplyingReset(() => {
+            if (isCurrentRoom(roomId)) completeGameStateSync(roomId);
+          });
           return;
         }
 
         applyingOperationCount += 1;
         const applyingRef = latestRuntime.applyingSyncedStateRef;
         applyingRef.current = true;
+        let appliedCurrentSnapshot = false;
         try {
           if (remoteSequence > localSequence) {
             const sequenceGap = remoteSequence - localSequence;
@@ -174,12 +179,16 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
           } else {
             latestRuntime.applySyncedStateSnapshot(state);
           }
-          if (isCurrentRoom(roomId)) rememberAppliedSnapshotKey(snapshotKey);
+          if (isCurrentRoom(roomId)) {
+            rememberAppliedSnapshotKey(snapshotKey);
+            appliedCurrentSnapshot = true;
+          }
         } finally {
           latestRuntime.scheduleApplyingReset(() => {
             applyingOperationCount = Math.max(0, applyingOperationCount - 1);
             applyingRef.current = false;
             if (runtime?.applyingSyncedStateRef) runtime.applyingSyncedStateRef.current = applyingOperationCount > 0;
+            if (appliedCurrentSnapshot && isCurrentRoom(roomId)) completeGameStateSync(roomId);
           });
         }
       });
@@ -194,13 +203,18 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
     },
     syncRoom(roomId, subscribe) {
       if (roomId === subscribedRoomId) return;
+      const previousRoomId = subscribedRoomId;
       unsubscribe?.();
       unsubscribe = null;
       subscribedRoomId = roomId;
       appliedSnapshotKeys.clear();
       pendingSnapshotKeys.clear();
       clearDeferredPreparedSnapshots();
-      if (!roomId) return;
+      if (!roomId) {
+        clearGameStateSync(previousRoomId);
+        return;
+      }
+      beginGameStateSync(roomId);
       unsubscribe = subscribe(roomId, (state) => {
         void handleSnapshot(roomId, state);
       });
