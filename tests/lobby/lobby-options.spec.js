@@ -17,9 +17,12 @@ test.describe('lobby QA', () => {
       await expect(page.getByRole('button', { name: `닉네임 수정: ${nickname}` })).toHaveCount(0);
       await page.getByRole('button', { name: '방 만들기', exact: true }).click();
       const createDialog = page.getByRole('dialog', { name: '방 만들기' });
+      const closeButton = createDialog.getByRole('button', { name: '닫기', exact: true });
+      const roomTitleInput = page.getByTestId('room-title-input');
       await expect(createDialog).toBeVisible();
-      await expect(page.getByTestId('room-title-input')).toBeVisible();
-      await expect(page.getByTestId('room-title-input')).toBeFocused();
+      await expect(roomTitleInput).toBeVisible();
+      await expect(closeButton).toBeFocused();
+      await expect(roomTitleInput).not.toBeFocused();
       await expect(page.getByTestId('create-room-button')).toBeEnabled();
 
       const geometry = await createDialog.evaluate((dialog) => {
