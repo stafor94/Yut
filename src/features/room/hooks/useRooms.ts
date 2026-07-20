@@ -11,10 +11,17 @@ export function useRooms(options: UseRoomsOptions = {}) {
   const enabled = options.enabled ?? true;
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [currentUserId, setCurrentUserId] = useState(() => auth?.currentUser?.uid ?? '');
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
   useEffect(() => listenAuthState((user) => {
     setCurrentUserId(user?.uid ?? '');
   }), []);
+
+  useEffect(() => {
+    const handleRefreshRooms = () => setRefreshVersion((version) => version + 1);
+    window.addEventListener('yut:refresh-rooms', handleRefreshRooms);
+    return () => window.removeEventListener('yut:refresh-rooms', handleRefreshRooms);
+  }, []);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -26,7 +33,7 @@ export function useRooms(options: UseRoomsOptions = {}) {
     });
     controller.start();
     return () => controller.dispose();
-  }, [currentUserId, enabled]);
+  }, [currentUserId, enabled, refreshVersion]);
 
   return rooms;
 }

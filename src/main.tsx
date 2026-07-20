@@ -15,6 +15,7 @@ import './styles/render-error.css';
 import './styles/lobby-start.css';
 import './styles/lobby-compact-polish.css';
 import './styles/lobby-portrait-fit.css';
+import './styles/lobby-requested-polish.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

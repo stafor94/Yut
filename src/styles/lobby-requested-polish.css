@@ -1,0 +1,181 @@
+/* Final lobby interaction and popup refinements requested for the compact start screen. */
+.screen-lobby > .hero.panel .nickname-chip:disabled,
+.screen-lobby > .hero.panel .sound-toggle:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.screen-lobby > .hero.panel .nickname-chip:disabled:active,
+.screen-lobby > .hero.panel .sound-toggle:disabled:active {
+  transform: none;
+}
+
+.screen-lobby .lobby-brand-title-row {
+  min-height: 96px;
+  padding-block: 8px 4px;
+  overflow: visible;
+}
+
+.screen-lobby .lobby-brand h1 {
+  padding-top: .08em;
+  line-height: 1.04;
+}
+
+.screen-lobby .lobby-brand-stick-left,
+.screen-lobby .lobby-brand-stick-right {
+  top: 50%;
+  transform: translateY(-50%) rotate(-14deg);
+}
+
+.screen-lobby .lobby-brand-stick-right {
+  transform: translateY(-50%) rotate(10deg);
+}
+
+.screen-lobby .lobby-primary-actions {
+  gap: 21px;
+}
+
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet),
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-join-sheet) {
+  align-items: center;
+  justify-items: center;
+}
+
+.screen-lobby .lobby-create-sheet,
+.screen-lobby .lobby-join-sheet {
+  width: min(620px, 100%);
+}
+
+.screen-lobby .lobby-simple-sheet-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: -2px 0 16px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid rgba(92, 52, 24, .2);
+}
+
+.screen-lobby .lobby-simple-sheet-heading > div {
+  min-width: 0;
+  text-align: left;
+}
+
+.screen-lobby .lobby-simple-sheet-heading .section-kicker {
+  margin: 0 0 3px;
+  color: #a4511e;
+  font-size: .72rem;
+  letter-spacing: .1em;
+}
+
+.screen-lobby .lobby-simple-sheet-heading h2 {
+  margin: 0;
+  color: #4d2c18;
+  font-size: clamp(1.55rem, 4vw, 2rem);
+  line-height: 1.05;
+  letter-spacing: -.04em;
+}
+
+.screen-lobby .lobby-simple-sheet-heading .sheet-close {
+  position: static;
+  align-self: center;
+  justify-self: end;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.screen-lobby .lobby-room-refresh-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.screen-lobby .lobby-room-refresh-row p {
+  margin: 0;
+  color: #76563e;
+  font-size: .86rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.screen-lobby .lobby-room-refresh-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgba(47, 107, 79, .24);
+  border-radius: 12px;
+  background: rgba(232, 245, 235, .88);
+  color: #28533f;
+  font-size: .8rem;
+  font-weight: 1000;
+  box-shadow: 0 5px 12px rgba(34, 66, 54, .1), inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+
+.screen-lobby .lobby-room-refresh-row button:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 700px) and (orientation: portrait) {
+  .screen-lobby .lobby-brand-title-row {
+    min-height: 68px;
+    padding-block: 5px 2px;
+  }
+
+  .screen-lobby .lobby-brand h1 {
+    padding-top: .1em;
+    line-height: 1.02;
+  }
+
+  .screen-lobby .lobby-primary-actions {
+    gap: 15px;
+  }
+
+  .screen-lobby .lobby-sheet-backdrop:has(.lobby-create-sheet),
+  .screen-lobby .lobby-sheet-backdrop:has(.lobby-join-sheet) {
+    align-items: center;
+    padding: 7px;
+  }
+
+  .screen-lobby .lobby-simple-sheet-heading {
+    margin-bottom: 12px;
+    padding-bottom: 11px;
+  }
+
+  .screen-lobby .lobby-simple-sheet-heading h2 {
+    font-size: 1.42rem;
+  }
+
+  .screen-lobby .lobby-simple-sheet-heading .sheet-close {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    font-size: 1.05rem;
+  }
+
+  .screen-lobby .lobby-room-refresh-row {
+    margin-bottom: 9px;
+  }
+
+  .screen-lobby .lobby-room-refresh-row p {
+    font-size: .76rem;
+  }
+
+  .screen-lobby .lobby-room-refresh-row button {
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: .74rem;
+  }
+}
