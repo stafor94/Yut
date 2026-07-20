@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { RollAnimation } from '../../src/app/appState.js';
+import type { YutResult, YutStick } from '../../src/game-core/roll.js';
 import {
   applyRollPresentationInput,
   markRollPresentationCompleted,
   shouldPreserveRollPresentation,
 } from '../../src/app/flows/rollPresentationSession.js';
 
-const sticks = [
+const sticks: YutStick[] = [
   { flat: true, marked: false },
   { flat: false, marked: false },
   { flat: false, marked: false },
   { flat: false, marked: false },
 ];
-const fallResult = { name: '낙', steps: 0 } as const;
+const fallResult: YutResult = { name: '도', steps: 1 };
 
 const primary = (id = 100): RollAnimation => ({
   id,
