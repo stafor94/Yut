@@ -4,7 +4,7 @@ import type { User } from 'firebase/auth';
 import { claimRoomHostIfMissing, scheduleEmptyRoomDeletion, subscribeRoomPlayers, type RoomPlayer } from '../../features/room/services/roomService';
 import { ROOM_PLAYER_MISSING_GRACE_MS } from '../flows/presenceRecovery';
 import { makeRoomHostClaimKey, resolveLocalRoomPlayerSnapshot, shouldIgnoreRoomPlayersSnapshot } from '../flows/roomPlayersSubscriptionFlow';
-import { preserveLockedGameSeats, seatsFromRoomPlayers, spectatorsFromRoomPlayers, type PlayMode, type Screen, type Seat } from '../appState';
+import { preserveLockedGameSeats, seatsFromRoomPlayers, spectatorsFromRoomPlayers, STORAGE_KEYS, type PlayMode, type Screen, type Seat } from '../appState';
 
 interface RoomPlayerAiState { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }
 
@@ -62,6 +62,17 @@ export function useRoomPlayersSubscription(params: UseRoomPlayersSubscriptionPar
       const currentUserId = (userRef.current ?? currentUser)?.uid;
       const { localPresencePlayer, hasCurrentUserInSnapshot, presenceCleanupEligible: nextPresenceCleanupEligible } = resolveLocalRoomPlayerSnapshot(players, currentUserId ?? '');
       setPresenceCleanupEligibility((current) => current.roomId === activeRoomId && current.eligible === nextPresenceCleanupEligible ? current : { roomId: activeRoomId, eligible: nextPresenceCleanupEligible });
+      if (screen === 'waitingRoom' && !isRoomManager && confirmedRoomPlayerRef.current && players.length === 0) {
+        confirmedRoomPlayerRef.current = false;
+        activeRoomIdRef.current = '';
+        if (missingRoomPlayerTimerRef.current !== null) { window.clearTimeout(missingRoomPlayerTimerRef.current); missingRoomPlayerTimerRef.current = null; }
+        window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+        window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+        setScreen('lobby'); setActiveRoomId(''); setActiveRoomTitle(''); setActiveRoomHostId(''); setIsRoomHost(false); setCountdown(-1);
+        setMessage('방장이 방을 나가 방이 종료되었습니다.');
+        setRoomNoticeDialog({ title: '방장이 방을 나갔습니다.', message: '방이 종료되어 로비로 이동했습니다.' });
+        return;
+      }
       if (hasCurrentUserInSnapshot) {
         confirmedRoomPlayerRef.current = true;
         if (missingRoomPlayerTimerRef.current !== null) { window.clearTimeout(missingRoomPlayerTimerRef.current); missingRoomPlayerTimerRef.current = null; }
