@@ -147,6 +147,8 @@ export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', p
 
 export async function createRoomFromLobby(page, roomTitle) {
   await expectAppShell(page);
+  await page.getByRole('button', { name: '방 만들기', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
   await page.getByTestId('room-title-input').fill(roomTitle);
   await page.getByTestId('create-room-button').click();
   await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
@@ -155,6 +157,8 @@ export async function createRoomFromLobby(page, roomTitle) {
 export async function joinRoomFromLobby(page, roomTitle) {
   await expectAppShell(page);
   await waitForBlockingOverlayToDisappear(page);
+  await page.getByRole('button', { name: '게임 참가', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '게임 참가' })).toBeVisible();
   const roomCard = page.locator('.lobby-room-card').filter({ hasText: roomTitle }).first();
   await expect(roomCard).toBeVisible({ timeout: 25_000 });
   const joinButton = roomCard.locator('.lobby-room-action');
