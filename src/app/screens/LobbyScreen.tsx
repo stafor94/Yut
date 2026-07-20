@@ -101,7 +101,6 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
   const [joinMessage, setJoinMessage] = useState('');
   const [isRefreshingRooms, setIsRefreshingRooms] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState(nickname);
-  const [settingsMessage, setSettingsMessage] = useState('');
   const dialogRef = useRef<HTMLElement | null>(null);
   const createRoomButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -137,7 +136,6 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
   }, [resetRoomRefreshState]);
   const openSettings = useCallback(() => {
     setSettingsDraft(nickname);
-    setSettingsMessage('');
     openDialog('settings');
   }, [nickname, openDialog]);
 
@@ -248,7 +246,7 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
   const saveSettingsNickname = () => {
     if (!nicknameValidation.valid) return;
     onNicknameChange(nicknameValidation.value);
-    setSettingsMessage('닉네임이 저장되었습니다.');
+    closeDialog();
   };
   const refreshRooms = () => {
     if (isRefreshingRooms) return;
@@ -344,12 +342,12 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
         <header className="lobby-sheet-heading">
           <span className="lobby-sheet-emblem" aria-hidden="true"><LobbyActionIcon type="settings" /></span>
           <div><p className="section-kicker">내 게임 환경</p><h2>설정</h2><p className="lobby-sheet-lead">닉네임과 효과음을 한곳에서 관리합니다.</p></div>
-          <button className="sheet-close" type="button" onClick={closeDialog} aria-label="취소">×</button>
+          <button className="sheet-close" data-dialog-autofocus type="button" onClick={closeDialog} aria-label="취소">×</button>
         </header>
         <div className="settings-card-grid">
           <section className="settings-card settings-profile-card">
             <div className="settings-card-heading"><span aria-hidden="true">👤</span><div><strong>플레이어 정보</strong><small>게임에서 표시할 이름</small></div></div>
-            <label className="settings-field" htmlFor="settings-nickname">닉네임<input id="settings-nickname" data-dialog-autofocus value={settingsDraft} maxLength={NICKNAME_MAX_LENGTH} onChange={(event) => { setSettingsDraft(event.target.value); setSettingsMessage(''); }} onKeyDown={(event) => { if (event.key === 'Enter') saveSettingsNickname(); }} aria-invalid={!nicknameValidation.valid} /></label>
+            <label className="settings-field" htmlFor="settings-nickname">닉네임<input id="settings-nickname" value={settingsDraft} maxLength={NICKNAME_MAX_LENGTH} onChange={(event) => setSettingsDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') saveSettingsNickname(); }} aria-invalid={!nicknameValidation.valid} /></label>
             <div className={`settings-validation ${nicknameValidation.valid ? 'valid' : 'invalid'}`}><span aria-hidden="true">{nicknameValidation.valid ? '✓' : '!'}</span><p className="nickname-helper">{nicknameValidation.valid ? '사용 가능한 닉네임입니다.' : nicknameValidation.message}</p><small>{settingsDraft.length}/{NICKNAME_MAX_LENGTH}</small></div>
           </section>
           <section className="settings-card settings-sound-card">
@@ -357,7 +355,7 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
             <label className="lobby-sound-switch"><span className="sound-switch-copy"><b>게임 효과음</b><small>{soundEnabled ? '생생한 소리와 함께 플레이합니다.' : '모든 게임 효과음을 끕니다.'}</small></span><input type="checkbox" checked={soundEnabled} onChange={(event) => onSoundEnabledChange(event.target.checked)} /><span className="sound-switch-track" aria-hidden="true"><span></span></span><strong>{soundEnabled ? '켜짐' : '꺼짐'}</strong></label>
           </section>
         </div>
-        <div className="settings-actions"><button className="primary-cta settings-save-button" type="button" aria-label="닉네임 저장" onClick={saveSettingsNickname} disabled={!nicknameValidation.valid}>변경사항 저장</button>{settingsMessage && <p className="settings-feedback" role="status"><span aria-hidden="true">✓</span>{settingsMessage}</p>}</div>
+        <div className="settings-actions"><button className="primary-cta settings-save-button" type="button" aria-label="닉네임 저장" onClick={saveSettingsNickname} disabled={!nicknameValidation.valid}>변경사항 저장</button></div>
       </section>
     </div>}
   </section>;
