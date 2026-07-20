@@ -167,6 +167,8 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
 export {
   STORAGE_KEYS,
   NICKNAME_MAX_LENGTH,
+  NICKNAME_MIN_LENGTH,
+  NICKNAME_PATTERN,
   RANDOM_NICKNAME_BASES,
   RANDOM_NICKNAME_PREFIXES,
   getInitialNickname,
@@ -176,6 +178,8 @@ export {
   getStoredText,
   makeRandomNickname,
   normalizeNickname,
+  normalizeNicknameForSave,
+  validateNickname,
 } from './preferences/localPreferences';
 
 export {

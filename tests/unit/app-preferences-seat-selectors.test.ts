@@ -42,7 +42,7 @@ test('reads local preferences without requiring a browser global', () => {
   assert.equal(getStoredText('missing', 'fallback'), 'fallback');
   assert.equal(getStoredBoolean('missing', true), true);
   assert.equal(getStoredNumber('missing', 4, [2, 3, 4] as const), 4);
-  assert.equal(normalizeNickname(' 123456789 '), '1234567');
+  assert.equal(normalizeNickname('123456789'), '1234567');
   assert.equal(STORAGE_KEYS.activeRoomId, 'yut-online:activeRoomId');
 });
 

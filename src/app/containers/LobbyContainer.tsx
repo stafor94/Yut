@@ -9,9 +9,13 @@ type LobbyContainerProps = {
   isFirebaseConfigured: boolean;
   currentUser: User | null;
   resumableRoomId: string;
+  nickname: string;
+  soundEnabled: boolean;
   onTitleChange: (title: string) => void;
   onCreateRoom: () => void;
   onOpenWaitingRoom: (room: RoomSummary) => Promise<void>;
+  onNicknameChange: (nickname: string) => void;
+  onSoundEnabledChange: (enabled: boolean) => void;
 };
 
 export function LobbyContainer({
@@ -21,9 +25,13 @@ export function LobbyContainer({
   isFirebaseConfigured,
   currentUser,
   resumableRoomId,
+  nickname,
+  soundEnabled,
   onTitleChange,
   onCreateRoom,
   onOpenWaitingRoom,
+  onNicknameChange,
+  onSoundEnabledChange,
 }: LobbyContainerProps) {
   return <LobbyScreen
     title={title}
@@ -32,8 +40,12 @@ export function LobbyContainer({
     isFirebaseConfigured={isFirebaseConfigured}
     currentUser={currentUser}
     resumableRoomId={resumableRoomId}
+    nickname={nickname}
+    soundEnabled={soundEnabled}
     onTitleChange={onTitleChange}
     onCreateRoom={onCreateRoom}
     onOpenWaitingRoom={(room) => { void onOpenWaitingRoom(room); }}
+    onNicknameChange={onNicknameChange}
+    onSoundEnabledChange={onSoundEnabledChange}
   />;
 }
