@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { isRoomInGame, type RoomSummary } from '../../features/room/services/roomService';
 import { getRoomRuleBadges, normalizeMaxPlayers } from '../appUtils';
@@ -16,7 +16,6 @@ type LobbyScreenProps = {
   onTitleChange: (title: string) => void;
   onCreateRoom: () => void;
   onOpenWaitingRoom: (room: RoomSummary) => Promise<void>;
-  onJoinRoomByCode: (code: string) => Promise<void>;
   onNicknameChange: (nickname: string) => void;
   onSoundEnabledChange: (enabled: boolean) => void;
 };
@@ -91,11 +90,8 @@ function LobbyHeroScene() {
   </div>;
 }
 
-export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured, currentUser, resumableRoomId, nickname, soundEnabled, onTitleChange, onCreateRoom, onOpenWaitingRoom, onJoinRoomByCode, onNicknameChange, onSoundEnabledChange }: LobbyScreenProps) {
+export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured, currentUser, resumableRoomId, nickname, soundEnabled, onTitleChange, onCreateRoom, onOpenWaitingRoom, onNicknameChange, onSoundEnabledChange }: LobbyScreenProps) {
   const [dialog, setDialog] = useState<LobbyDialog>(null);
-  const [waitingOnly, setWaitingOnly] = useState(false);
-  const [includeSpectatable, setIncludeSpectatable] = useState(true);
-  const [code, setCode] = useState('');
   const [joinPending, setJoinPending] = useState(false);
   const [joiningRoomId, setJoiningRoomId] = useState('');
   const [joinMessage, setJoinMessage] = useState('');
@@ -118,17 +114,12 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
   }, [nickname, openDialog]);
 
   useEffect(() => {
-    const handleOpenSettings = () => openSettings();
-    window.addEventListener('yut:lobby-settings', handleOpenSettings);
-    return () => window.removeEventListener('yut:lobby-settings', handleOpenSettings);
-  }, [openSettings]);
-
-  useEffect(() => {
     if (!dialog) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const frame = window.requestAnimationFrame(() => {
-      const initialFocus = dialogRef.current?.querySelector<HTMLElement>('[data-dialog-autofocus], input, button, [href], select, textarea');
+      const autofocusTarget = dialogRef.current?.querySelector<HTMLElement>('[data-dialog-autofocus]');
+      const initialFocus = autofocusTarget ?? dialogRef.current?.querySelector<HTMLElement>('input, button, [href], select, textarea');
       initialFocus?.focus();
     });
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -159,7 +150,6 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
     };
   }, [closeDialog, dialog]);
 
-  const visibleRooms = useMemo(() => rooms.filter((room) => (!waitingOnly || !isRoomInGame(room)) && (includeSpectatable || !isRoomInGame(room))), [includeSpectatable, rooms, waitingOnly]);
   const getLobbyRoomBadges = (room: RoomSummary) => getRoomRuleBadges(room.playMode, normalizeMaxPlayers(room.maxPlayers, room.playMode), room.pieceCount ?? 4, room.itemMode, Boolean(room.stackedRollMode));
   const getLobbyRoomOccupancy = (room: RoomSummary) => {
     const maxPlayers = normalizeMaxPlayers(room.maxPlayers, room.playMode);
@@ -177,17 +167,9 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
     onNicknameChange(nicknameValidation.value);
     setSettingsMessage('닉네임이 저장되었습니다.');
   };
-  const submitCode = async () => {
-    if (joinPending) return;
-    setJoinPending(true);
+  const refreshRooms = () => {
     setJoinMessage('');
-    try {
-      await onJoinRoomByCode(code);
-    } catch (error) {
-      setJoinMessage(getErrorMessage(error));
-    } finally {
-      setJoinPending(false);
-    }
+    window.dispatchEvent(new Event('yut:refresh-rooms'));
   };
   const openRoom = async (room: RoomSummary) => {
     if (joinPending) return;
@@ -213,14 +195,14 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
       <LobbyHeroScene />
       <div className="lobby-primary-actions" aria-label="로비 주요 기능">
         <button className="lobby-main-action lobby-create-action" type="button" aria-label="방 만들기" onClick={() => openDialog('create')}><span className="lobby-action-icon"><LobbyActionIcon type="create" /></span><span className="lobby-action-copy"><strong>방 만들기</strong><small>새 게임을 시작해요</small></span><span className="lobby-action-arrow" aria-hidden="true">›</span></button>
-        <button className="lobby-main-action lobby-join-action" type="button" aria-label="게임 참가" onClick={() => openDialog('join')}><span className="lobby-action-icon"><LobbyActionIcon type="join" /></span><span className="lobby-action-copy"><strong>방 코드로 참가</strong><small>초대받은 방에 들어가요</small></span><span className="lobby-action-arrow" aria-hidden="true">›</span></button>
+        <button className="lobby-main-action lobby-join-action" type="button" aria-label="게임 참가" onClick={() => openDialog('join')}><span className="lobby-action-icon"><LobbyActionIcon type="join" /></span><span className="lobby-action-copy"><strong>방 참가</strong><small>공개 방을 찾아 들어가요</small></span><span className="lobby-action-arrow" aria-hidden="true">›</span></button>
       </div>
       <nav className="lobby-secondary-actions" aria-label="로비 보조 기능"><button type="button" aria-label="게임 방법" onClick={() => openDialog('howto')}><LobbyActionIcon type="guide" /><span>게임 방법 보기</span></button><span className="lobby-action-divider" aria-hidden="true"></span><button type="button" aria-label="설정" onClick={openSettings}><LobbyActionIcon type="settings" /><span>설정</span></button></nav>
     </section>
 
-    {dialog === 'create' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}><section ref={dialogRef} className="panel lobby-sheet" role="dialog" aria-modal="true" aria-label="방 만들기" onMouseDown={(event) => event.stopPropagation()}><button className="sheet-close" type="button" onClick={closeDialog} aria-label="닫기">×</button><p className="section-kicker">방 만들기</p><h2>새 방 만들기</h2><div className="form-grid lobby-form"><label htmlFor="room-title-input">방 제목<input id="room-title-input" data-testid="room-title-input" data-dialog-autofocus value={title} onChange={(event) => onTitleChange(event.target.value)} placeholder="친구들과 윷놀이" /></label><button data-testid="create-room-button" className="primary-cta create-room-submit-button" onClick={onCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '생성 중...' : '방 생성하기'}</button></div></section></div>}
+    {dialog === 'create' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}><section ref={dialogRef} className="panel lobby-sheet lobby-create-sheet" role="dialog" aria-modal="true" aria-label="방 만들기" onMouseDown={(event) => event.stopPropagation()}><header className="lobby-simple-sheet-heading"><div><p className="section-kicker">새 게임</p><h2>방 만들기</h2></div><button className="sheet-close" type="button" onClick={closeDialog} aria-label="닫기">×</button></header><div className="form-grid lobby-form"><label htmlFor="room-title-input">방 제목<input id="room-title-input" data-testid="room-title-input" data-dialog-autofocus value={title} onChange={(event) => onTitleChange(event.target.value)} placeholder="친구들과 윷놀이" /></label><button data-testid="create-room-button" className="primary-cta create-room-submit-button" onClick={onCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '생성 중...' : '방 생성하기'}</button></div></section></div>}
 
-    {dialog === 'join' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}><section ref={dialogRef} className="panel lobby-sheet lobby-join-sheet" role="dialog" aria-modal="true" aria-label="게임 참가" onMouseDown={(event) => event.stopPropagation()}><button className="sheet-close" type="button" onClick={closeDialog} aria-label="닫기">×</button><p className="section-kicker">게임 참가</p><h2>공개 방 찾기</h2><div className="code-join-row"><input data-dialog-autofocus value={code} onChange={(event) => { setCode(event.target.value); setJoinMessage(''); }} onKeyDown={(event) => { if (event.key === 'Enter') void submitCode(); }} placeholder="방 코드 입력" aria-label="방 코드 입력" /><button onClick={() => { void submitCode(); }} disabled={!code.trim() || joinPending}>{joinPending && !joiningRoomId ? '확인 중...' : '참가'}</button></div><div className="lobby-filter-row"><label><input type="checkbox" checked={waitingOnly} onChange={(event) => setWaitingOnly(event.target.checked)} /> 대기 중인 방만</label><label><input type="checkbox" checked={includeSpectatable} onChange={(event) => setIncludeSpectatable(event.target.checked)} /> 관전 가능 포함</label><span className="lobby-live-status" role="status">실시간 자동 갱신</span></div>{joinMessage && <p className="settings-feedback" role="alert">{joinMessage}</p>}<div className="room-list lobby-room-list">{visibleRooms.length ? visibleRooms.map((room) => { const badges = getLobbyRoomBadges(room); const occupancy = getLobbyRoomOccupancy(room); const roomStatus = isRoomInGame(room) ? '게임중' : '대기중'; return <article className="room-card lobby-room-card" key={room.id}><div className="lobby-room-content"><div className="lobby-room-main"><div className="lobby-room-title-row"><span className={`lobby-room-state-dot ${isRoomInGame(room) ? 'in-game' : 'waiting'}`} role="img" aria-label={roomStatus} title={roomStatus}></span><b>{room.title}</b></div><span className="lobby-room-meta" aria-label={`방 옵션: ${badges.map((badge) => badge.label).join(', ')}, 현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{roomStatus} · {badges.map((badge) => badge.label).join(' · ')}</span></div><span className="lobby-room-occupancy" aria-label={`현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{occupancy.label}</span><button className="lobby-room-action" disabled={(isFirebaseConfigured && !currentUser) || joinPending} onClick={() => { void openRoom(room); }}>{joiningRoomId === room.id ? '입장 중...' : getRoomActionText(room)}</button></div></article>; }) : <div className="empty-lobby-room"><strong>표시할 공개 방이 없습니다</strong><p>방 목록은 실시간으로 갱신됩니다. 직접 방을 만들어 보세요.</p></div>}</div></section></div>}
+    {dialog === 'join' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}><section ref={dialogRef} className="panel lobby-sheet lobby-join-sheet" role="dialog" aria-modal="true" aria-label="게임 참가" onMouseDown={(event) => event.stopPropagation()}><header className="lobby-simple-sheet-heading"><div><p className="section-kicker">공개 방 목록</p><h2>게임 참가</h2></div><button className="sheet-close" type="button" onClick={closeDialog} aria-label="닫기">×</button></header><div className="lobby-room-refresh-row"><p>참가할 공개 방을 선택하세요.</p><button data-testid="refresh-room-list-button" data-dialog-autofocus type="button" onClick={refreshRooms} aria-label="방 목록 새로고침"><span aria-hidden="true">↻</span>새로고침</button></div>{joinMessage && <p className="settings-feedback" role="alert">{joinMessage}</p>}<div className="room-list lobby-room-list">{rooms.length ? rooms.map((room) => { const badges = getLobbyRoomBadges(room); const occupancy = getLobbyRoomOccupancy(room); const roomStatus = isRoomInGame(room) ? '게임중' : '대기중'; return <article className="room-card lobby-room-card" key={room.id}><div className="lobby-room-content"><div className="lobby-room-main"><div className="lobby-room-title-row"><span className={`lobby-room-state-dot ${isRoomInGame(room) ? 'in-game' : 'waiting'}`} role="img" aria-label={roomStatus} title={roomStatus}></span><b>{room.title}</b></div><span className="lobby-room-meta" aria-label={`방 옵션: ${badges.map((badge) => badge.label).join(', ')}, 현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{roomStatus} · {badges.map((badge) => badge.label).join(' · ')}</span></div><span className="lobby-room-occupancy" aria-label={`현재 인원 ${occupancy.currentPlayers}/${occupancy.maxPlayers}`}>{occupancy.label}</span><button className="lobby-room-action" disabled={(isFirebaseConfigured && !currentUser) || joinPending} onClick={() => { void openRoom(room); }}>{joiningRoomId === room.id ? '입장 중...' : getRoomActionText(room)}</button></div></article>; }) : <div className="empty-lobby-room"><strong>표시할 공개 방이 없습니다</strong><p>새로고침으로 공개 방을 다시 확인하거나 직접 방을 만들어 보세요.</p></div>}</div></section></div>}
 
     {dialog === 'howto' && <div className="lobby-sheet-backdrop" role="presentation" onMouseDown={closeDialog}>
       <section ref={dialogRef} className="panel lobby-sheet lobby-howto-sheet" role="dialog" aria-modal="true" aria-label="게임 방법" onMouseDown={(event) => event.stopPropagation()}>
@@ -231,7 +213,7 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isFirebaseConfigured
         </header>
         <div className="howto-result-strip" aria-label="윷 결과 이동 칸 수"><span><b>도</b>1칸</span><span><b>개</b>2칸</span><span><b>걸</b>3칸</span><span><b>윷</b>4칸</span><span><b>모</b>5칸</span></div>
         <div className="howto-list">
-          <article><span className="howto-step">01</span><div className="howto-icon" role="img" aria-label="방 만들기 도식">＋</div><div><h3>방에 모이기</h3><p>방을 만들거나 방 코드로 참가합니다. 방장은 인원과 규칙을 정한 뒤 게임을 시작합니다.</p></div></article>
+          <article><span className="howto-step">01</span><div className="howto-icon" role="img" aria-label="방 만들기 도식">＋</div><div><h3>방에 모이기</h3><p>방을 만들거나 공개 방 목록에서 참가합니다. 방장은 인원과 규칙을 정한 뒤 게임을 시작합니다.</p></div></article>
           <article><span className="howto-step">02</span><div className="howto-icon howto-yut-icon" role="img" aria-label="윷 결과 도식">도개걸<br />윷모</div><div><h3>윷 던지기</h3><p>결과만큼 이동합니다. 윷·모가 나오거나 상대 말을 잡으면 한 번 더 던질 수 있습니다.</p></div></article>
           <article><span className="howto-step">03</span><div className="howto-icon" role="img" aria-label="말 이동 도식">●→●</div><div><h3>말 이동하기</h3><p>갈림길에서 경로를 고르고, 같은 편 말은 업어서 함께 이동합니다. 낙이면 이동하지 못합니다.</p></div></article>
           <article><span className="howto-step">04</span><div className="howto-icon" role="img" aria-label="재접속 도식">↻</div><div><h3>재접속과 관전</h3><p>잠시 나가도 AI가 이어서 진행하고, 돌아오면 통제권을 복구합니다. 진행 중인 방은 관전할 수 있습니다.</p></div></article>
