@@ -36,7 +36,7 @@ export function useStoredRoomRecoveryController(params: UseStoredRoomRecoveryCon
 
   useEffect(() => {
     const currentUser = params.currentUser;
-    const storedRoomId = getStoredRoomRecoveryTarget({ currentUser, activeRoomId: params.activeRoomId, localStorage: window.localStorage });
+    const storedRoomId = getStoredRoomRecoveryTarget({ currentUser, activeRoomId: params.activeRoomId, nickname: params.nickname, localStorage: window.localStorage });
     if (!currentUser || !storedRoomId || recoveringRoomIdRef.current === storedRoomId) return;
     let cancelled = false;
     recoveringRoomIdRef.current = storedRoomId;
