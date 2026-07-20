@@ -103,8 +103,8 @@ async function startFallTimingObservation(page) {
   });
 }
 
-async function readRollStageOpacity(page) {
-  return page.locator('.roll-stage').evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
+async function readOpacity(locator) {
+  return locator.evaluate((element) => Number.parseFloat(getComputedStyle(element).opacity));
 }
 
 test.describe('remote fall presentation QA', () => {
@@ -114,7 +114,7 @@ test.describe('remote fall presentation QA', () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('상대 플레이어 낙은 렌더러 완료 전 종료되지 않고 상단 전체 턴 정보를 유지한다', async ({ page: hostPage, context: hostContext, browser }, testInfo) => {
+  test('상대 플레이어 낙의 실제 윷판은 렌더러 완료 전 사라지지 않고 상단 전체 턴 정보를 유지한다', async ({ page: hostPage, context: hostContext, browser }, testInfo) => {
     testInfo.setTimeout(180_000);
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'fall-host'));
     const guestName = normalizeQaNickname(makeQaName(testInfo, 'fall-guest'));
@@ -196,16 +196,21 @@ test.describe('remote fall presentation QA', () => {
         await expect(stage, '실제 렌더러 settle 전에는 낙 연출이 제거되면 안 됩니다.').toBeVisible();
         await expect(label, '실제 렌더러 settle 전에는 낙 결과가 공개되면 안 됩니다.').toBeHidden();
         await expect(stage).toHaveAttribute('data-settle-source', 'pending');
-        await expect.poll(() => readRollStageOpacity(observer.page), {
+        await expect.poll(() => readOpacity(stage), {
           timeout: 2_000,
-          message: '기존 3.8초 페이드 시점 이후에도 낙 연출은 실제 화면에서 완전히 불투명해야 합니다.',
+          message: '기존 3.8초 페이드 시점 이후에도 낙 연출 컨테이너는 완전히 불투명해야 합니다.',
+        }).toBeGreaterThanOrEqual(0.99);
+        await expect.poll(() => readOpacity(fallMat), {
+          timeout: 2_000,
+          message: '고정 mat-pop 타이머가 끝난 뒤에도 실제 낙 윷판은 완전히 불투명해야 합니다.',
         }).toBeGreaterThanOrEqual(0.99);
 
         await expect(stage, '실제 렌더러 콜백으로만 결과 유지 단계에 진입해야 합니다.').toHaveAttribute('data-settle-source', /^(three-renderer|css-animation-end)$/, { timeout: 8_000 });
         await expect(label, '윷이 매트 밖으로 빠지는 실제 settle 이후 낙 결과가 표시되어야 합니다.').toHaveText('낙!', { timeout: 2_000 });
         await expect(currentBadge, '결과 유지 중에도 던진 상대의 턴 표시가 유지되어야 합니다.').toHaveText(roller.name);
         await expect(neighbors, '결과 유지 중에도 전체 턴 정보가 유지되어야 합니다.').toHaveCount(2);
-        expect(await readRollStageOpacity(observer.page), '낙 결과 유지 중에도 연출이 투명해지면 안 됩니다.').toBeGreaterThanOrEqual(0.99);
+        expect(await readOpacity(stage), '낙 결과 유지 중에도 연출 컨테이너가 투명해지면 안 됩니다.').toBeGreaterThanOrEqual(0.99);
+        expect(await readOpacity(fallMat), '낙 결과 유지 중에도 실제 윷판이 투명해지면 안 됩니다.').toBeGreaterThanOrEqual(0.99);
         await expect(stage, '낙 결과 유지가 끝난 뒤에만 연출이 종료되어야 합니다.').toBeHidden({ timeout: 6_000 });
 
         await expect.poll(() => observer.page.evaluate(() => window.__YUT_QA_REMOTE_FALL_TIMING__?.endedAt ?? 0), {
