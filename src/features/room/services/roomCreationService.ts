@@ -1,17 +1,18 @@
-import { collection, doc, getDoc, runTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
 import { spawnInitialBoardItems } from '../../../game-core/board/board';
 import {
   createRoom as createRoomCore,
   type RoomPlayer,
 } from './roomServiceCore';
+import { hasActiveHumanRoomSummary } from './roomCreationPolicy';
 import {
-  cleanupDeletionCandidatesBeforeCreate,
   getActivePlayerRoomMemberships,
-  getActiveRoomsWithPlayers,
+  getActiveRoomSummaries,
+  getRoomPlayer,
   type ManagedRoomSummary,
 } from './roomLifecycleStore';
-import { hasActiveHumanLifecyclePlayer, hasResumablePlayerForUser } from './roomLifecyclePolicy';
+import { hasResumablePlayerForUser } from './roomLifecyclePolicy';
 import { removeRoomPlayerNow } from './roomExitService';
 import { leavePlayerRoomsBeforeCreate } from './roomCreationCleanup';
 import { waitForRoomCreationLock } from './roomCreationLock';
@@ -103,16 +104,16 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
     throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
   }
 
-  await acquireRoomCreationLock(params.hostId, requestId, ownerToken);
-  try {
-    await cleanupDeletionCandidatesBeforeCreate(roomRef.id);
-    const memberships = await getActivePlayerRoomMemberships(params.hostId);
-    await leavePlayerRoomsBeforeCreate({
-      playerId: params.hostId,
-      memberships,
-      leaveRoom: removeRoomPlayerNow,
-    });
+  const memberships = await getActivePlayerRoomMemberships(params.hostId);
+  await leavePlayerRoomsBeforeCreate({
+    playerId: params.hostId,
+    memberships,
+    leaveRoom: removeRoomPlayerNow,
+  });
 
+  await acquireRoomCreationLock(params.hostId, requestId, ownerToken);
+  let lockReleasedWithRoomCommit = false;
+  try {
     const idempotentSnapshot = await getDoc(roomRef);
     if (idempotentSnapshot.exists()) {
       const existing = idempotentSnapshot.data() as ManagedRoomSummary;
@@ -120,69 +121,99 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
       throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
     }
 
-    const activeRoomCandidates = await getActiveRoomsWithPlayers();
-    const ownResumableRoom = activeRoomCandidates.some(({ room, players }) => (
-      room.hostId === params.hostId && hasResumablePlayerForUser(players, params.hostId)
+    const now = Date.now();
+    const activeRoomCandidates = (await getActiveRoomSummaries(now)).filter((room) => room.id !== roomRef.id);
+    const ownHostRooms = activeRoomCandidates.filter((room) => room.hostId === params.hostId);
+    const ownHostPlayers = await Promise.all(ownHostRooms.map((room) => getRoomPlayer(room.id, params.hostId)));
+    const ownResumableRoom = ownHostPlayers.some((player) => (
+      player ? hasResumablePlayerForUser([player], params.hostId) : false
     ));
     if (ownResumableRoom) throw new Error(ACTIVE_HOST_ROOM_ERROR);
-    const now = Date.now();
+
     const activeUserRooms = activeRoomCandidates
-      .filter(({ players }) => hasActiveHumanLifecyclePlayer(players, now))
-      .map(({ room }) => room)
+      .filter((room) => hasActiveHumanRoomSummary(room, now))
       .filter((room) => !isQaRoomTitle(room.title));
     if (!isQaRoomTitle(normalizedTitle) && activeUserRooms.length >= 3) throw new Error(ACTIVE_ROOM_LIMIT_ERROR);
     if (activeUserRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error(DUPLICATE_ROOM_TITLE_ERROR);
 
-    const batch = writeBatch(db);
-    batch.set(roomRef, {
-      title: normalizedTitle,
-      hostId: params.hostId,
-      maxPlayers: params.maxPlayers,
-      itemMode: params.itemMode,
-      stackedRollMode: Boolean(params.stackedRollMode),
-      playMode: params.playMode,
-      pieceCount: params.pieceCount,
-      hasPassword: Boolean(params.password),
-      passwordHint: params.password ? '설정됨' : '',
-      status: 'waiting',
-      startStatus: 'idle',
-      emptySince: null,
-      lastHumanSeenAt: serverTimestamp(),
-      currentPlayers: 1,
-      deletingAt: null,
-      lastActivityAt: now,
-      createdAt: serverTimestamp(),
-      ...(params.createRequestId ? { createRequestId: params.createRequestId } : {}),
-      ...(QA_RUN_ID ? { qaRunId: QA_RUN_ID } : {}),
+    const lockRef = doc(db, 'rooms', ROOM_CREATION_LOCK_ID);
+    const playerRef = doc(db, 'rooms', roomRef.id, 'players', params.hostId);
+    const seatRef = doc(db, 'rooms', roomRef.id, 'seats', '0');
+    const initialBoardItems = params.itemMode ? spawnInitialBoardItems() : [];
+    await runTransaction(db, async (transaction) => {
+      const [lockSnapshot, currentRoomSnapshot] = await Promise.all([
+        transaction.get(lockRef),
+        transaction.get(roomRef),
+      ]);
+      const lock = lockSnapshot.exists() ? lockSnapshot.data() as ManagedRoomSummary : null;
+      if (!lock || lock.lockRequestId !== requestId || lock.lockOwnerToken !== ownerToken) {
+        throw new Error(CREATE_IN_PROGRESS_ERROR);
+      }
+      if (currentRoomSnapshot.exists()) {
+        const existing = currentRoomSnapshot.data() as ManagedRoomSummary;
+        if (existing.hostId !== params.hostId || existing.createRequestId !== params.createRequestId) {
+          throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
+        }
+      } else {
+        transaction.set(roomRef, {
+          title: normalizedTitle,
+          hostId: params.hostId,
+          maxPlayers: params.maxPlayers,
+          itemMode: params.itemMode,
+          stackedRollMode: Boolean(params.stackedRollMode),
+          playMode: params.playMode,
+          pieceCount: params.pieceCount,
+          hasPassword: Boolean(params.password),
+          passwordHint: params.password ? '설정됨' : '',
+          status: 'waiting',
+          startStatus: 'idle',
+          emptySince: null,
+          lastHumanSeenAt: serverTimestamp(),
+          currentPlayers: 1,
+          deletingAt: null,
+          lastActivityAt: now,
+          createdAt: serverTimestamp(),
+          ...(params.createRequestId ? { createRequestId: params.createRequestId } : {}),
+          ...(QA_RUN_ID ? { qaRunId: QA_RUN_ID } : {}),
+        });
+        transaction.set(playerRef, {
+          nickname: params.nickname,
+          ready: true,
+          color: COLORS[0],
+          seatIndex: 0,
+          team: '청팀' satisfies RoomPlayer['team'],
+          joinedAt: serverTimestamp(),
+          lastSeen: serverTimestamp(),
+        });
+        transaction.set(seatRef, {
+          playerId: params.hostId,
+          originalPlayerId: params.hostId,
+          currentPlayerId: params.hostId,
+          nickname: params.nickname,
+          color: COLORS[0],
+          team: '청팀',
+          seatIndex: 0,
+          label: 'P1',
+          isHost: true,
+          aiActive: false,
+          status: 'human',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        initialBoardItems.forEach((item) => transaction.set(doc(db!, 'rooms', roomRef.id, 'boardItems', item.id), item));
+      }
+      transaction.set(lockRef, {
+        status: 'finished',
+        currentPlayers: 0,
+        lockExpiresAt: 0,
+        lastActivityAt: now,
+      }, { merge: true });
     });
-    batch.set(doc(db, 'rooms', roomRef.id, 'players', params.hostId), {
-      nickname: params.nickname,
-      ready: true,
-      color: COLORS[0],
-      seatIndex: 0,
-      team: '청팀' satisfies RoomPlayer['team'],
-      joinedAt: serverTimestamp(),
-      lastSeen: serverTimestamp(),
-    });
-    batch.set(doc(db, 'rooms', roomRef.id, 'seats', '0'), {
-      playerId: params.hostId,
-      originalPlayerId: params.hostId,
-      currentPlayerId: params.hostId,
-      nickname: params.nickname,
-      color: COLORS[0],
-      team: '청팀',
-      seatIndex: 0,
-      label: 'P1',
-      isHost: true,
-      aiActive: false,
-      status: 'human',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    if (params.itemMode) spawnInitialBoardItems().forEach((item) => batch.set(doc(db!, 'rooms', roomRef.id, 'boardItems', item.id), item));
-    await batch.commit();
+    lockReleasedWithRoomCommit = true;
     return roomRef.id;
   } finally {
-    await releaseRoomCreationLock(requestId, ownerToken).catch((error) => console.warn('방 생성 잠금 해제에 실패했습니다.', error));
+    if (!lockReleasedWithRoomCommit) {
+      await releaseRoomCreationLock(requestId, ownerToken).catch((error) => console.warn('방 생성 잠금 해제에 실패했습니다.', error));
+    }
   }
 }
