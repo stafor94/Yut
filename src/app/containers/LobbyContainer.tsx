@@ -1,5 +1,6 @@
 import type { User } from 'firebase/auth';
-import type { RoomSummary } from '../../features/room/services/roomService';
+import { getRoom, type RoomSummary } from '../../features/room/services/roomService';
+import { resolveRoomCodeEntry } from '../flows/lobbyRoomEntry';
 import { LobbyScreen } from '../screens/LobbyScreen';
 
 type LobbyContainerProps = {
@@ -44,7 +45,11 @@ export function LobbyContainer({
     soundEnabled={soundEnabled}
     onTitleChange={onTitleChange}
     onCreateRoom={onCreateRoom}
-    onOpenWaitingRoom={(room) => { void onOpenWaitingRoom(room); }}
+    onOpenWaitingRoom={onOpenWaitingRoom}
+    onJoinRoomByCode={async (code) => {
+      const room = await resolveRoomCodeEntry(code, getRoom);
+      await onOpenWaitingRoom(room);
+    }}
     onNicknameChange={onNicknameChange}
     onSoundEnabledChange={onSoundEnabledChange}
   />;
