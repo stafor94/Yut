@@ -27,7 +27,7 @@ const baseParams = (overrides: Partial<StoredRoomRecoveryFlowParams> = {}) => {
   };
   const params: StoredRoomRecoveryFlowParams = {
     currentUser: user('current-1'),
-    nickname: '나',
+    nickname: '나나',
     hostingRoomUserIdRef: { current: 'host-old' },
     storedRoomId: 'stored-room',
     isCancelled: () => false,
@@ -52,17 +52,27 @@ const baseParams = (overrides: Partial<StoredRoomRecoveryFlowParams> = {}) => {
 
 test('저장된 방 ID가 없으면 복구를 시작하지 않는다', () => {
   const storage = { getItem: () => null };
-  assert.equal(getStoredRoomRecoveryTarget({ currentUser: user('current-1'), activeRoomId: '', localStorage: storage }), '');
+  assert.equal(getStoredRoomRecoveryTarget({ currentUser: user('current-1'), activeRoomId: '', nickname: '가나', localStorage: storage }), '');
 });
 
 test('현재 사용자가 없으면 복구를 시작하지 않는다', () => {
   const storage = { getItem: () => 'stored-room' };
-  assert.equal(getStoredRoomRecoveryTarget({ currentUser: null, activeRoomId: '', localStorage: storage }), '');
+  assert.equal(getStoredRoomRecoveryTarget({ currentUser: null, activeRoomId: '', nickname: '가나', localStorage: storage }), '');
 });
 
 test('이미 active room이 있으면 복구를 시작하지 않는다', () => {
   const storage = { getItem: () => 'stored-room' };
-  assert.equal(getStoredRoomRecoveryTarget({ currentUser: user('current-1'), activeRoomId: 'active-room', localStorage: storage }), '');
+  assert.equal(getStoredRoomRecoveryTarget({ currentUser: user('current-1'), activeRoomId: 'active-room', nickname: '가나', localStorage: storage }), '');
+});
+
+test('닉네임이 유효하지 않으면 저장된 방이 있어도 복구를 시작하지 않는다', () => {
+  const storage = { getItem: () => 'stored-room' };
+  assert.equal(getStoredRoomRecoveryTarget({ currentUser: user('current-1'), activeRoomId: '', nickname: '가', localStorage: storage }), '');
+});
+
+test('사용자와 닉네임이 유효하면 저장된 방을 복구 대상으로 반환한다', () => {
+  const storage = { getItem: () => 'stored-room' };
+  assert.equal(getStoredRoomRecoveryTarget({ currentUser: user('current-1'), activeRoomId: '', nickname: '가나', localStorage: storage }), 'stored-room');
 });
 
 test('방을 찾지 못하면 storage와 loading을 정리하고 기존 메시지를 표시한다', async () => {
