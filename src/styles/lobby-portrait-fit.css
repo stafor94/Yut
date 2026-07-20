@@ -1,5 +1,10 @@
 /* Preserve the 740:500 hero composition while keeping the full portrait lobby in one viewport. */
 @media (max-width: 700px) and (orientation: portrait) {
+  .screen-lobby > .hero.panel .sound-controls span:last-child,
+  .screen-lobby > .hero.panel .status-card .status-text {
+    display: inline-flex;
+  }
+
   .screen-lobby .lobby-hero-panel {
     grid-template-rows: auto auto auto auto;
     align-content: start;
