@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = readFileSync('src/app/containers/RollStage.tsx', 'utf8');
+const sessionSource = readFileSync('src/app/flows/rollPresentationSession.ts', 'utf8');
+const sessionTestSource = readFileSync('tests/unit/rollPresentationSession.test.ts', 'utf8');
 
 test('RollStage는 입력 snapshot과 화면 표시 수명주기를 presentation session으로 분리한다', () => {
   assert.match(source, /presentationSessionByIdRef/);
@@ -40,4 +42,11 @@ test('authoritative 결과가 유실되어 sequence가 취소되면 보존 프�
   assert.ok(cancelledIndex > waitIndex);
   assert.ok(sameSourceIndex > cancelledIndex);
   assert.ok(clearIndex > sameSourceIndex);
+});
+
+test('상태 머신 단위 테스트는 appState의 TSX·DOM·Firebase 의존 그래프를 가져오지 않는다', () => {
+  assert.doesNotMatch(sessionSource, /from ['"]\.\.\/appState['"]/);
+  assert.match(sessionSource, /from ['"]\.\.\/types\/rollAnimation['"]/);
+  assert.doesNotMatch(sessionTestSource, /appState\.js/);
+  assert.match(sessionTestSource, /types\/rollAnimation\.js/);
 });
