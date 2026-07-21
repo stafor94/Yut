@@ -9,16 +9,24 @@
 
 .screen-lobby .lobby-stage .lobby-secondary-actions::after {
   content: "© 2026 stafor94. All rights reserved.";
-  grid-column: 1 / -1;
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
   display: block;
-  padding: 0 8px 4px;
-  color: rgba(63, 39, 23, .72);
+  box-sizing: border-box;
+  padding: 10px 16px max(8px, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(218, 174, 105, .32);
+  background: linear-gradient(to bottom, rgba(55, 29, 15, 0), rgba(45, 23, 12, .68));
+  color: #F8EBD7;
   text-align: center;
-  text-shadow: 0 1px 0 rgba(255, 252, 244, .72);
-  font-size: clamp(.68rem, 2.7vw, .82rem);
-  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.35;
   letter-spacing: .035em;
+  pointer-events: none;
 }
 
 @media (max-height: 700px) {
