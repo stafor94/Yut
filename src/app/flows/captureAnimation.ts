@@ -28,6 +28,105 @@ export function getCaptureEffectDurationMs(pieceCount: number) {
   return CAPTURE_EFFECT_MS + Math.max(0, pieceCount - 1) * getCaptureStaggerMs(pieceCount);
 }
 
+export type CaptureMotionProfile = {
+  arcBaseHeight: number;
+  arcStepHeight: number;
+  attackerJumpX: number;
+  attackerJumpY: number;
+  attackerSettleX: number;
+  attackerSettleY: number;
+  shakePrimaryX: number;
+  shakePrimaryY: number;
+  shakePrimaryRotation: number;
+  shakeSecondaryX: number;
+  shakeSecondaryY: number;
+  shakeSecondaryRotation: number;
+  shakeTertiaryX: number;
+  shakeTertiaryY: number;
+  shakeTertiaryRotation: number;
+};
+
+const CAPTURE_MOTION_PROFILES: Record<1 | 2 | 3 | 4, CaptureMotionProfile> = {
+  1: {
+    arcBaseHeight: 22,
+    arcStepHeight: 4,
+    attackerJumpX: -7,
+    attackerJumpY: -2,
+    attackerSettleX: 3,
+    attackerSettleY: 1,
+    shakePrimaryX: 5,
+    shakePrimaryY: 2,
+    shakePrimaryRotation: 0.35,
+    shakeSecondaryX: 3,
+    shakeSecondaryY: 1,
+    shakeSecondaryRotation: 0.2,
+    shakeTertiaryX: 2,
+    shakeTertiaryY: 1,
+    shakeTertiaryRotation: 0.15,
+  },
+  2: {
+    arcBaseHeight: 34,
+    arcStepHeight: 5,
+    attackerJumpX: -9,
+    attackerJumpY: -16,
+    attackerSettleX: 4,
+    attackerSettleY: 2,
+    shakePrimaryX: 7,
+    shakePrimaryY: 3,
+    shakePrimaryRotation: 0.5,
+    shakeSecondaryX: 4,
+    shakeSecondaryY: 2,
+    shakeSecondaryRotation: 0.3,
+    shakeTertiaryX: 3,
+    shakeTertiaryY: 1.5,
+    shakeTertiaryRotation: 0.22,
+  },
+  3: {
+    arcBaseHeight: 46,
+    arcStepHeight: 6,
+    attackerJumpX: -11,
+    attackerJumpY: -24,
+    attackerSettleX: 5,
+    attackerSettleY: 2,
+    shakePrimaryX: 10,
+    shakePrimaryY: 4,
+    shakePrimaryRotation: 0.75,
+    shakeSecondaryX: 6,
+    shakeSecondaryY: 2,
+    shakeSecondaryRotation: 0.45,
+    shakeTertiaryX: 4,
+    shakeTertiaryY: 2,
+    shakeTertiaryRotation: 0.32,
+  },
+  4: {
+    arcBaseHeight: 58,
+    arcStepHeight: 7,
+    attackerJumpX: -14,
+    attackerJumpY: -34,
+    attackerSettleX: 7,
+    attackerSettleY: 3,
+    shakePrimaryX: 14,
+    shakePrimaryY: 6,
+    shakePrimaryRotation: 1,
+    shakeSecondaryX: 8,
+    shakeSecondaryY: 3,
+    shakeSecondaryRotation: 0.6,
+    shakeTertiaryX: 6,
+    shakeTertiaryY: 2.5,
+    shakeTertiaryRotation: 0.45,
+  },
+};
+
+export function getCaptureMotionProfile(pieceCount: number) {
+  const level = Math.min(4, Math.max(1, Math.round(pieceCount))) as 1 | 2 | 3 | 4;
+  return CAPTURE_MOTION_PROFILES[level];
+}
+
+export function getCaptureArcHeightPx(pieceCount: number, pieceIndex = 0) {
+  const profile = getCaptureMotionProfile(pieceCount);
+  return -(profile.arcBaseHeight + Math.max(0, pieceIndex) * profile.arcStepHeight);
+}
+
 export type CaptureVisualPiece = Pick<CaptureAnimationPiece, 'id' | 'label' | 'color' | 'ownerId'> & {
   sourceLeft: number;
   sourceTop: number;
@@ -167,7 +266,7 @@ export function createCaptureVisualEffect(params: {
       rotation: target.rotation,
       midRotation: Math.round(target.rotation * 0.28),
       delayMs: index * staggerMs,
-      arcHeight: -(22 + index * 4),
+      arcHeight: getCaptureArcHeightPx(capturedPieces.length, index),
       endScale: Number((0.68 + (index === capturedPieces.length - 1 ? 0.1 : index * 0.02)).toFixed(2)),
     };
   });
