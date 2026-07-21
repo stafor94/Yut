@@ -27,6 +27,13 @@ async function readStableEmptyAiCardLayout(emptyCard, buttonTestId) {
   return stableLayout;
 }
 
+async function expectHistoryGuard(page, screen) {
+  await expect.poll(async () => page.evaluate(() => window.history.state?.yutScreenGuard ?? ''), {
+    timeout: 10_000,
+    message: `${screen} 뒤로가기 보호 history state가 등록되어야 합니다.`,
+  }).toBe(screen);
+}
+
 test.describe('online room QA', () => {
   let roomId;
 
@@ -121,44 +128,54 @@ test.describe('online room QA', () => {
     }
   });
 
-
-  test('브라우저 뒤로가기 확인 취소와 정상 퇴장이 대기실 참가자 정리를 보장한다', async ({ page, context }, testInfo) => {
+  test('브라우저 뒤로가기 커스텀 팝업의 취소와 정상 퇴장이 대기실 참가자 정리를 보장한다', async ({ page, context }, testInfo) => {
     expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'back-wait-host'));
     const roomTitle = makeQaName(testInfo, 'back-wait-room');
+    let nativeDialogCount = 0;
+    page.on('dialog', async (dialog) => {
+      nativeDialogCount += 1;
+      await dialog.dismiss();
+    });
     await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
-    await runQaStep(testInfo, '대기실 뒤로가기 취소 후 연속 뒤로가기 확인 퇴장', async () => {
+    await runQaStep(testInfo, '대기실 뒤로가기 커스텀 팝업 취소 후 연속 뒤로가기 퇴장', async () => {
       await createRoomFromLobby(page, roomTitle);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
       expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
+      await expectHistoryGuard(page, 'waitingRoom');
 
-      page.once('dialog', async (dialog) => {
-        expect(dialog.message()).toBe('방을 나가시겠습니까?');
-        await dialog.dismiss();
-      });
       await page.goBack();
+      const backExitDialog = page.getByRole('dialog', { name: '방 나가기 확인' });
+      await expect(backExitDialog).toBeVisible({ timeout: 10_000 });
+      await expect(backExitDialog).toContainText('현재 방에서 나가 로비로 이동합니다.');
+      await backExitDialog.getByRole('button', { name: '계속하기', exact: true }).click();
       await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 10_000 });
       await expect.poll(async () => (await getRoomPlayersForQa(roomId)).some((player) => player.id), { timeout: 10_000 }).toBe(true);
+      await expectHistoryGuard(page, 'waitingRoom');
 
-      page.once('dialog', async (dialog) => {
-        expect(dialog.message()).toBe('방을 나가시겠습니까?');
-        await dialog.accept();
-      });
       await page.goBack();
+      await expect(backExitDialog).toBeVisible({ timeout: 10_000 });
+      await backExitDialog.getByRole('button', { name: '나가기', exact: true }).click();
       await expect(page.getByTestId('lobby-screen')).toBeVisible({ timeout: 25_000 });
       await expect.poll(async () => findRoomIdByTitle(roomTitle), { timeout: 25_000 }).toBeNull();
+      expect(nativeDialogCount, '브라우저 기본 confirm은 표시되지 않아야 합니다.').toBe(0);
       roomId = null;
     });
   });
 
-  test('인게임 브라우저 뒤로가기 확인 취소와 정상 퇴장이 AI 대체 정리를 보장한다', async ({ page, context }, testInfo) => {
+  test('인게임 브라우저 뒤로가기 커스텀 팝업이 기존 종료 로직과 AI 대체 정리를 재사용한다', async ({ page, context }, testInfo) => {
     expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'back-game-host'));
     const roomTitle = makeQaName(testInfo, 'back-game-room');
+    let nativeDialogCount = 0;
+    page.on('dialog', async (dialog) => {
+      nativeDialogCount += 1;
+      await dialog.dismiss();
+    });
     await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
 
-    await runQaStep(testInfo, '인게임 뒤로가기 취소 후 확인 퇴장과 AI 대체 확인', async () => {
+    await runQaStep(testInfo, '인게임 뒤로가기 커스텀 팝업 취소 후 기존 종료 로직으로 퇴장', async () => {
       await createRoomFromLobby(page, roomTitle);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
       expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
@@ -166,24 +183,25 @@ test.describe('online room QA', () => {
       await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
       await page.getByTestId('start-game-button').click();
       await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+      await expectHistoryGuard(page, 'game');
 
-      page.once('dialog', async (dialog) => {
-        expect(dialog.message()).toBe('게임을 종료하고 나가시겠습니까?');
-        await dialog.dismiss();
-      });
       await page.goBack();
+      const backExitDialog = page.getByRole('dialog', { name: '게임 나가기 확인' });
+      await expect(backExitDialog).toBeVisible({ timeout: 10_000 });
+      await expect(backExitDialog).toContainText('현재 방에서 나가 로비로 이동합니다.');
+      await backExitDialog.getByRole('button', { name: '계속하기', exact: true }).click();
       await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 10_000 });
+      await expectHistoryGuard(page, 'game');
 
-      page.once('dialog', async (dialog) => {
-        expect(dialog.message()).toBe('게임을 종료하고 나가시겠습니까?');
-        await dialog.accept();
-      });
       await page.goBack();
+      await expect(backExitDialog).toBeVisible({ timeout: 10_000 });
+      await backExitDialog.getByRole('button', { name: '나가기', exact: true }).click();
       await expect(page.getByTestId('lobby-screen')).toBeVisible({ timeout: 25_000 });
       await expect.poll(async () => {
         const players = await getRoomPlayersForQa(roomId);
         return players.find((player) => player.nickname === nickname)?.isSubstitutedByAI ?? false;
       }, { timeout: 25_000 }).toBe(true);
+      expect(nativeDialogCount, '브라우저 기본 confirm은 표시되지 않아야 합니다.').toBe(0);
     });
   });
 

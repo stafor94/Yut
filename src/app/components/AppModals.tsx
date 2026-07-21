@@ -14,6 +14,11 @@ import {
   requestStoredRoomExitAndReload,
   STORED_ROOM_RECOVERY_MESSAGE,
 } from '../flows/storedRoomRecoveryExit';
+import {
+  getBackNavigationExitScreen,
+  WAITING_ROOM_BACK_EXIT_EVENT,
+  type BackNavigationExitScreen,
+} from '../flows/backNavigationExit';
 import { splitMessageBySentence } from '../appUtils';
 
 type RoomNoticeDialog = {
@@ -58,6 +63,7 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     !validateNickname(getStoredText(STORAGE_KEYS.nickname, '')).valid
   ));
   const [roomCapacityFullDialogOpen, setRoomCapacityFullDialogOpen] = useState(false);
+  const [backNavigationExitScreen, setBackNavigationExitScreen] = useState<BackNavigationExitScreen | null>(null);
   const nicknameDialogRef = useRef<HTMLElement | null>(null);
   const nicknameDialogPreviousFocusRef = useRef<HTMLElement | null>(null);
   const gameStateSyncPresentation = useSyncExternalStore(
@@ -90,6 +96,27 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     return () => window.removeEventListener(ROOM_CAPACITY_FULL_EVENT, openRoomCapacityFullDialog);
   }, []);
 
+  useEffect(() => {
+    const previousConfirm = window.confirm;
+    const showBackNavigationExitDialog = (message?: string) => {
+      const requestedScreen = getBackNavigationExitScreen(String(message ?? ''));
+      if (!requestedScreen || requestedScreen !== screen) return previousConfirm.call(window, message);
+      if (!(requestedScreen === 'game' && endGameDialogOpen)) {
+        setBackNavigationExitScreen((current) => current ?? requestedScreen);
+      }
+      return false;
+    };
+    window.confirm = showBackNavigationExitDialog;
+    return () => {
+      if (window.confirm === showBackNavigationExitDialog) window.confirm = previousConfirm;
+    };
+  }, [endGameDialogOpen, screen]);
+
+  useEffect(() => {
+    if (!backNavigationExitScreen || backNavigationExitScreen === screen) return;
+    setBackNavigationExitScreen(null);
+  }, [backNavigationExitScreen, screen]);
+
   const nicknameValidation = validateNickname(nicknameDraft);
   const isRequiredNicknameDialog = initialNicknameDialogOpen;
   const closeNicknameDialog = () => {
@@ -100,6 +127,16 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     if (!nicknameValidation.valid) return;
     setInitialNicknameDialogOpen(false);
     onSaveNickname();
+  };
+  const closeBackNavigationExitDialog = () => setBackNavigationExitScreen(null);
+  const confirmBackNavigationExit = () => {
+    const exitScreen = backNavigationExitScreen;
+    setBackNavigationExitScreen(null);
+    if (exitScreen === 'game') {
+      onFinishGame();
+      return;
+    }
+    if (exitScreen === 'waitingRoom') window.dispatchEvent(new Event(WAITING_ROOM_BACK_EXIT_EVENT));
   };
 
   useEffect(() => {
@@ -136,6 +173,11 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     };
   }, [isRequiredNicknameDialog, nicknameSetupDialogOpen]);
 
+  const backNavigationExitDialogVisible = Boolean(backNavigationExitScreen && backNavigationExitScreen === screen);
+  const backNavigationExitDialogLabel = backNavigationExitScreen === 'game' ? '게임 나가기 확인' : '방 나가기 확인';
+  const backNavigationExitDialogTitle = backNavigationExitScreen === 'game' ? '게임을 종료할까요?' : '방을 나갈까요?';
+  const backNavigationExitDescription = backNavigationExitScreen === 'game' ? gameExitDescription : '현재 방에서 나가 로비로 이동합니다.';
+
   return <>
     {effectiveLoadingMessage && <div className="loading-modal-backdrop" role="presentation"><section data-testid={gameStateSyncLoadingMessage && !loadingMessage ? 'game-state-sync-loading' : undefined} className={`loading-modal panel ${canExitStoredRoom ? 'stored-room-recovery-modal' : ''}`} role={canExitStoredRoom ? 'dialog' : 'status'} aria-modal={canExitStoredRoom || undefined} aria-live={canExitStoredRoom ? undefined : 'polite'} aria-label={effectiveLoadingMessage}>{canExitStoredRoom && <button data-testid="stored-room-recovery-close" className="stored-room-recovery-close" type="button" aria-label="참여 중이던 방에서 나가기" onClick={requestStoredRoomExitAndReload}>닫기</button>}<span className="loading-modal-spinner" aria-hidden="true"></span><p aria-live={canExitStoredRoom ? 'polite' : undefined}>{splitMessageBySentence(effectiveLoadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
 
@@ -149,6 +191,8 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     {nicknameSetupDialogOpen && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={closeNicknameDialog}><section ref={nicknameDialogRef} className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 설정" onMouseDown={(event) => event.stopPropagation()}><h2>{isRequiredNicknameDialog ? '반가워요!' : '닉네임 설정'}</h2><p>{isRequiredNicknameDialog ? '게임에서 사용할 닉네임을 설정해 주세요.' : '한글·영문·숫자 2~7글자만 사용할 수 있어요.'}</p><input value={nicknameDraft} onChange={(event) => onNicknameDraftChange(event.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(event) => { if (event.key === 'Enter') saveNickname(); if (event.key === 'Escape') closeNicknameDialog(); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" aria-invalid={!nicknameValidation.valid} /><p className="nickname-helper">{nicknameDraft.length}/{NICKNAME_MAX_LENGTH} · {nicknameValidation.valid ? '사용 가능한 닉네임입니다.' : nicknameValidation.message}</p><div className="modal-actions"><button onClick={saveNickname} disabled={!nicknameValidation.valid}>{isRequiredNicknameDialog ? '시작하기' : '저장'}</button>{!isRequiredNicknameDialog && <button className="secondary" onClick={closeNicknameDialog}>취소</button>}</div></section></div>}
 
     {canShowPendingItemPickup && pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>같은 사용 조건의 아이템은 1개만 보유할 수 있습니다. 10초 뒤 자동으로 유지합니다.</p><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${Math.max(0, pendingItemPickup.deadline - itemPickupClock)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="item-replace-preview"><div><strong>기존 아이템</strong><ItemCard type={pendingItemPickup.existingItem} /></div><div><strong>새 아이템</strong><ItemCard type={pendingItemPickup.item} /></div></div><div className="inline-item-actions"><button onClick={onReplacePendingItemPickup}>교체</button><button className="secondary" onClick={onKeepPendingItemPickup}>유지</button></div></section></div>}
+
+    {backNavigationExitDialogVisible && <div className="modal-backdrop" role="presentation" onMouseDown={closeBackNavigationExitDialog}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label={backNavigationExitDialogLabel} onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">{backNavigationExitScreen === 'game' ? '게임 종료' : '방 나가기'}</p><h2>{backNavigationExitDialogTitle}</h2><p>{backNavigationExitDescription}</p><div className="modal-actions"><button className="danger" onClick={confirmBackNavigationExit}>나가기</button><button className="secondary" onClick={closeBackNavigationExitDialog}>계속하기</button></div></section></div>}
 
     {endGameDialogOpen && screen === 'game' && <div className="modal-backdrop" role="presentation" onMouseDown={onCloseEndGameDialog}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="게임 종료 확인" onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">게임 종료</p><h2>정말 윷판을 정리할까요?</h2><p>{gameExitDescription}</p><div className="modal-actions"><button className="danger" onClick={onFinishGame}>게임 종료</button><button className="secondary" onClick={onCloseEndGameDialog}>계속하기</button></div></section></div>}
   </>;

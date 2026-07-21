@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PieceCount, PlayMode, Seat, Team } from '../appState';
 import { RoomRuleBadges } from '../components/RoomRuleBadges';
 import { getWaitingRoomStartHint } from '../flows/gameStartFlow';
+import { WAITING_ROOM_BACK_EXIT_EVENT } from '../flows/backNavigationExit';
 import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 
@@ -81,6 +82,12 @@ export function WaitingRoomContainer({
     teamCounts,
     readyMissingCount,
   });
+
+  useEffect(() => {
+    const handleBackNavigationExit = () => onLeaveRoom();
+    window.addEventListener(WAITING_ROOM_BACK_EXIT_EVENT, handleBackNavigationExit);
+    return () => window.removeEventListener(WAITING_ROOM_BACK_EXIT_EVENT, handleBackNavigationExit);
+  }, [onLeaveRoom]);
 
   useEffect(() => {
     if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return undefined;
