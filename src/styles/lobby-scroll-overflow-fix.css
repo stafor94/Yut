@@ -1,0 +1,5 @@
+/* Explicitly clear the vertical overflow left by earlier overflow shorthands. */
+.screen-lobby.lobby-shell.shell,
+.screen-lobby .lobby-stage {
+  overflow-y: visible;
+}
