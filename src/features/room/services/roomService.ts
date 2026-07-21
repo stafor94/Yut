@@ -1,7 +1,9 @@
 import {
   collection,
   doc,
+  limit,
   onSnapshot,
+  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -15,18 +17,22 @@ import { waitForGamePresentationBeforeAction } from '../../../shared/gamePresent
 import {
   commitAuthoritativeGameAction as commitAuthoritativeGameActionCore,
   createRoom as createRoomCore,
+  getGameSequencesSince as getGameSequencesSinceCore,
   getProcessedGameAction as getProcessedGameActionCore,
   initializeGameState as initializeGameStateCore,
   isRoomInGame as isRoomInGameCore,
   joinRoom as joinRoomCore,
   removeRoomPlayer as removeRoomPlayerCore,
+  subscribeGameState as subscribeGameStateCore,
   updateRoomPlayer as updateRoomPlayerCore,
   updateRoomStatus as updateRoomStatusCore,
   type CommitAuthoritativeGameActionResult,
   type GameAction,
+  type GameSequence,
   type JoinRoomResult,
   type RoomPlayer,
   type RoomSummary,
+  type SyncedGameState,
 } from './roomServiceCore';
 import { settleAuthoritativeCommit } from './authoritativeCommitTimeout';
 import {
@@ -60,11 +66,92 @@ import {
   removeRoomPlayerNow,
   removeRoomPlayerSafely,
 } from './roomExitService';
+import {
+  clearCachedGameSequences,
+  getCachedGameSequencesForReplay,
+  hasCachedGameSequence,
+  replaceCachedGameSequences,
+} from './roomSequenceReplayCache';
 
 export * from './roomServiceCore';
 export * from './roomExitPolicy';
 export * from './roomAvailabilityPolicy';
 export * from './roomLifecyclePolicy';
+export { withGameSequenceReplayCache } from './roomSequenceReplayCache';
+
+const RECENT_GAME_SEQUENCE_CACHE_LIMIT = 8;
+
+export function subscribeGameState(roomId: string, callback: (state: SyncedGameState | null) => void): Unsubscribe {
+  if (!db) return subscribeGameStateCore(roomId, callback);
+
+  let pendingState: SyncedGameState | null | undefined;
+  let deliveredInitialState = false;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearFlushTimer = () => {
+    if (flushTimer === null) return;
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  };
+  const flushPendingState = () => {
+    if (pendingState === undefined) return;
+    const state = pendingState;
+    pendingState = undefined;
+    clearFlushTimer();
+    deliveredInitialState = true;
+    callback(state);
+  };
+  const flushWhenSequenceReady = () => {
+    if (pendingState === undefined) return;
+    if (!pendingState) {
+      flushPendingState();
+      return;
+    }
+    const targetSequence = Number(pendingState.lastSequence ?? 0);
+    if (targetSequence <= 0 || hasCachedGameSequence(roomId, targetSequence)) flushPendingState();
+  };
+
+  const recentSequencesQuery = query(
+    collection(db, 'rooms', roomId, 'sequences'),
+    orderBy('sequence', 'desc'),
+    limit(RECENT_GAME_SEQUENCE_CACHE_LIMIT),
+  );
+  const unsubscribeSequences = onSnapshot(recentSequencesQuery, (snapshot) => {
+    replaceCachedGameSequences(
+      roomId,
+      snapshot.docs.map((sequenceDoc) => ({ id: sequenceDoc.id, ...(sequenceDoc.data() as Omit<GameSequence, 'id'>) })),
+      RECENT_GAME_SEQUENCE_CACHE_LIMIT,
+    );
+    flushWhenSequenceReady();
+  });
+  const unsubscribeState = subscribeGameStateCore(roomId, (state) => {
+    pendingState = state;
+    if (!deliveredInitialState || !state) {
+      flushPendingState();
+      return;
+    }
+    flushWhenSequenceReady();
+    if (pendingState !== undefined && flushTimer === null) {
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        flushPendingState();
+      }, 0);
+    }
+  });
+
+  return () => {
+    clearFlushTimer();
+    unsubscribeState();
+    unsubscribeSequences();
+    clearCachedGameSequences(roomId);
+  };
+}
+
+export async function getGameSequencesSince(roomId: string, afterSequence: number): Promise<GameSequence[]> {
+  const cachedSequences = getCachedGameSequencesForReplay<GameSequence>(roomId, afterSequence);
+  if (cachedSequences) return cachedSequences;
+  return getGameSequencesSinceCore(roomId, afterSequence);
+}
 
 export function isRoomInGame(room: Parameters<typeof isRoomInGameCore>[0]) {
   return room.status === 'finished' || isRoomInGameCore(room);
