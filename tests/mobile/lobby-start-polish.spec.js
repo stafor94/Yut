@@ -73,7 +73,8 @@ test.describe('mobile lobby polish QA', () => {
       expect(layout.scrollHeight, '로비는 세로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
       expect(layout.shellBackground, '첨부한 로비 배경 이미지가 앱 셸에 적용되어야 합니다.').toContain('lobby-background-original.png');
       expect(layout.shellBackgroundSize, '배경은 비율을 유지하며 화면 높이에 맞춰야 합니다.').toContain('auto 100%');
-      expect(layout.shellBackgroundPosition, '배경 구도는 중앙 상단 기준을 유지해야 합니다.').toContain('center top');
+      const imageBackgroundPosition = layout.shellBackgroundPosition.split(',').at(-1)?.trim();
+      expect(imageBackgroundPosition, '배경 이미지 레이어는 중앙 상단 기준을 유지해야 합니다.').toMatch(/^(?:center|50%) (?:top|0%)$/u);
       const backgroundUrl = /url\(["']?(.*?lobby-background-original\.png)["']?\)/u.exec(layout.shellBackground)?.[1];
       expect(backgroundUrl, '로비가 실제 원본 배경 URL을 로드해야 합니다.').toBeTruthy();
       const naturalSize = await page.evaluate(async (src) => {
