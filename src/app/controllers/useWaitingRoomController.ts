@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState, type MutableRefObject, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject, type Dispatch, type SetStateAction } from 'react';
 import { deleteRoom, removeRoomPlayer, shouldDeleteWaitingRoomOnHostExit, updateRoomOptions, updateRoomPlayer, type RoomPlayer } from '../../features/room/services/roomService';
 import { createSeats, STORAGE_KEYS, type PieceCount, type PlayMode, type Seat, type Team } from '../appState';
 import { makeUniqueAIName } from '../flows/aiName';
+import { getChangedWaitingRoomOptions, resolveWaitingRoomOptions, type WaitingRoomOptionPatch, type WaitingRoomOptions } from '../flows/waitingRoomOptions';
 
 type Params = {
   activeRoomId: string; localSeatId: string; screen: 'lobby' | 'waitingRoom' | 'game'; nickname: string; playMode: PlayMode; maxPlayers: 2 | 3 | 4; itemMode: boolean; stackedRollMode: boolean; pieceCount: PieceCount; seats: Seat[]; canManageRoom: boolean; isRoomManager: boolean; activeRoomIdRef: MutableRefObject<string>; leavingRoomRef: MutableRefObject<boolean>; confirmedRoomPlayerRef: MutableRefObject<boolean>; hostingRoomUserIdRef: MutableRefObject<string>; addLog: (text: string) => void; setSeats: Dispatch<SetStateAction<Seat[]>>; setMessage: (message: string) => void; setScreen: (screen: 'lobby' | 'waitingRoom' | 'game') => void; setActiveRoomId: (id: string) => void; setActiveRoomTitle: (title: string) => void; setActiveRoomHostId: (id: string) => void; setIsRoomHost: (isHost: boolean) => void; setCountdown: (countdown: number) => void; setTurnOrderIds: (ids: string[]) => void; setGameStartedAt: (startedAt: number | null) => void; setPlayMode: (mode: PlayMode) => void; setMaxPlayers: (count: 2 | 3 | 4) => void; setItemMode: (enabled: boolean) => void; setStackedRollMode: (enabled: boolean) => void; setPieceCount: (count: PieceCount) => void;
@@ -15,9 +16,34 @@ export const getSubstitutedRoomPlayerUpdate = (seat: Seat): Partial<Omit<RoomPla
 export function useWaitingRoomController(p: Params) {
   const [pendingAiSeatCount, setPendingAiSeatCount] = useState(0);
   const pendingAiSeatIdsRef = useRef<Set<string>>(new Set());
+  const waitingOptionsRef = useRef<WaitingRoomOptions>({ playMode: p.playMode, maxPlayers: p.maxPlayers, itemMode: p.itemMode, stackedRollMode: p.stackedRollMode, pieceCount: p.pieceCount });
+  const waitingOptionsRoomIdRef = useRef(p.activeRoomId);
+  const waitingOptionsUpdateQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingWaitingOptionsUpdateCountRef = useRef(0);
   const sync = () => setPendingAiSeatCount(pendingAiSeatIdsRef.current.size);
   const addPendingAiSeat = (id: string) => { if (id) { pendingAiSeatIdsRef.current.add(id); sync(); } };
   const clearPendingAiSeat = (id: string) => { if (id && pendingAiSeatIdsRef.current.delete(id)) sync(); };
+
+  useEffect(() => {
+    const renderedOptions = { playMode: p.playMode, maxPlayers: p.maxPlayers, itemMode: p.itemMode, stackedRollMode: p.stackedRollMode, pieceCount: p.pieceCount };
+    if (waitingOptionsRoomIdRef.current !== p.activeRoomId) {
+      waitingOptionsRoomIdRef.current = p.activeRoomId;
+      waitingOptionsRef.current = renderedOptions;
+      return;
+    }
+    if (pendingWaitingOptionsUpdateCountRef.current === 0) waitingOptionsRef.current = renderedOptions;
+  }, [p.activeRoomId, p.itemMode, p.maxPlayers, p.pieceCount, p.playMode, p.stackedRollMode]);
+
+  const enqueueWaitingOptionsUpdate = useCallback((roomId: string, patch: WaitingRoomOptionPatch) => {
+    pendingWaitingOptionsUpdateCountRef.current += 1;
+    const update = waitingOptionsUpdateQueueRef.current
+      .catch(() => undefined)
+      .then(() => updateRoomOptions(roomId, patch));
+    waitingOptionsUpdateQueueRef.current = update.catch(() => undefined);
+    return update.finally(() => {
+      pendingWaitingOptionsUpdateCountRef.current = Math.max(0, pendingWaitingOptionsUpdateCountRef.current - 1);
+    });
+  }, []);
 
   const toggleMyReady = useCallback(async () => {
     if (p.isRoomManager) return;
@@ -45,13 +71,24 @@ export function useWaitingRoomController(p: Params) {
     finally { p.leavingRoomRef.current = false; }
   }, [p]);
 
-  const changeWaitingOptions = useCallback(async (next: { itemMode?: boolean; stackedRollMode?: boolean; pieceCount?: PieceCount; playMode?: PlayMode; maxPlayers?: 2 | 3 | 4 }) => {
-    const nextPlayMode = next.playMode ?? p.playMode; const nextMaxPlayers = nextPlayMode === 'team' ? 4 : next.maxPlayers ?? p.maxPlayers; const nextItemMode = next.itemMode ?? p.itemMode; const nextStackedRollMode = next.stackedRollMode ?? p.stackedRollMode; const nextPieceCount = next.pieceCount ?? (next.playMode === 'team' && p.playMode !== 'team' ? 2 : p.pieceCount);
+  const changeWaitingOptions = useCallback(async (requested: WaitingRoomOptionPatch) => {
+    const current = waitingOptionsRef.current;
+    const next = resolveWaitingRoomOptions(current, requested);
     const activePlayerCount = p.seats.filter((seat) => !seat.isEmpty && !seat.isSpectator).length;
-    if (nextMaxPlayers < activePlayerCount) { p.setMessage(`현재 참가 인원 ${activePlayerCount}명보다 적게 인원을 줄일 수 없습니다.`); return; }
-    p.setPlayMode(nextPlayMode); p.setMaxPlayers(nextMaxPlayers); p.setItemMode(nextItemMode); p.setStackedRollMode(nextStackedRollMode); p.setPieceCount(nextPieceCount);
-    if (p.canManageRoom && p.activeRoomId) await updateRoomOptions(p.activeRoomId, { playMode: nextPlayMode, maxPlayers: nextMaxPlayers, itemMode: nextItemMode, stackedRollMode: nextStackedRollMode, pieceCount: nextPieceCount });
-  }, [p]);
+    if (next.maxPlayers < activePlayerCount) { p.setMessage(`현재 참가 인원 ${activePlayerCount}명보다 적게 인원을 줄일 수 없습니다.`); return; }
+    const patch = getChangedWaitingRoomOptions(current, next);
+    if (Object.keys(patch).length === 0) return;
+    waitingOptionsRef.current = next;
+    if (patch.playMode !== undefined) p.setPlayMode(next.playMode);
+    if (patch.maxPlayers !== undefined) p.setMaxPlayers(next.maxPlayers);
+    if (patch.itemMode !== undefined) p.setItemMode(next.itemMode);
+    if (patch.stackedRollMode !== undefined) p.setStackedRollMode(next.stackedRollMode);
+    if (patch.pieceCount !== undefined) p.setPieceCount(next.pieceCount);
+    if (p.canManageRoom && p.activeRoomId) {
+      try { await enqueueWaitingOptionsUpdate(p.activeRoomId, patch); }
+      catch (error) { p.setMessage(error instanceof Error ? error.message : '방 옵션 변경에 실패했습니다. 잠시 뒤 다시 시도해주세요.'); }
+    }
+  }, [enqueueWaitingOptionsUpdate, p]);
 
   const markPlayerAsAI = useCallback((playerId: string) => { if (pendingAiSeatIdsRef.current.has(playerId)) return; p.setSeats((current) => { const name = makeUniqueAIName(current); const target = current.find((seat) => seat.id === playerId); if (p.activeRoomId && target) { addPendingAiSeat(playerId); void updateRoomPlayer(p.activeRoomId, playerId, aiUpdate(target, name)).catch((error) => { console.warn('AI 추가에 실패했습니다.', error); p.setMessage('AI 추가에 실패했습니다. 잠시 뒤 다시 시도해주세요.'); p.setSeats((latest) => latest.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat)); }).finally(() => clearPendingAiSeat(playerId)); } return current.map((seat) => seat.id === playerId ? { ...seat, name, ready: true, isAI: true, isSubstitutedByAI: false, isEmpty: false } : seat); }); }, [p]);
   const cancelAISeat = useCallback((playerId: string) => { clearPendingAiSeat(playerId); if (p.activeRoomId) void removeRoomPlayer(p.activeRoomId, playerId); p.setSeats((current) => current.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat)); }, [p]);
