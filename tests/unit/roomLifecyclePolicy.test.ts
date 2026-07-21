@@ -7,6 +7,7 @@ import {
   getRoomDerivedEmptySinceMillis,
   getRoomLastActivityMillis,
   hasActiveHumanLifecyclePlayer,
+  hasActiveRoomPlayerForUser,
   hasCreationBlockingHumanPlayer,
   hasHumanLifecyclePlayer,
   hasResumablePlayerForUser,
@@ -111,12 +112,15 @@ test('대기실에서는 삭제된 좌석과 disconnected 좌석만 재사용한
   assert.equal(isReusableWaitingRoomSeat({ status: 'ai_substitute', aiActive: true, isSubstitutedByAI: true }), false);
 });
 
-test('방 생성 제한은 관전자를 포함한 인간 방을 계산하고 본인의 AI 대체 방은 복귀 대상으로 판정한다', () => {
+test('AI 대체 방은 복귀 대상으로 유지하되 새 방 생성 차단 대상에서는 제외한다', () => {
   const otherAiRoomPlayers = [{ id: 'other', isAI: true, isSubstitutedByAI: true }];
   const ownAiRoomPlayers = [{ id: 'viewer', isAI: true, isSubstitutedByAI: true }];
+  const ownActivePlayers = [{ id: 'viewer', isAI: false }];
   assert.equal(hasCreationBlockingHumanPlayer(otherAiRoomPlayers), false);
   assert.equal(hasResumablePlayerForUser(otherAiRoomPlayers, 'viewer'), false);
   assert.equal(hasResumablePlayerForUser(ownAiRoomPlayers, 'viewer'), true);
+  assert.equal(hasActiveRoomPlayerForUser(ownAiRoomPlayers, 'viewer'), false);
+  assert.equal(hasActiveRoomPlayerForUser(ownActivePlayers, 'viewer'), true);
   assert.equal(hasCreationBlockingHumanPlayer([{ id: 'spectator', isSpectator: true }]), true);
 });
 
