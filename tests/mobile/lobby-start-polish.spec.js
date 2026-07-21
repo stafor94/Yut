@@ -117,28 +117,40 @@ test.describe('mobile lobby polish QA', () => {
     });
   });
 
-  test('짧은 모바일 높이에서는 로비 문서 세로 스크롤이 가능하고 가로 스크롤은 생기지 않는다', async ({ page, context }, testInfo) => {
+  test('짧은 모바일 높이에서도 로비 문서 세로 스크롤을 잠그지 않고 가로 스크롤은 만들지 않는다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 560 });
     await primeLobbyStorage(context, { nickname: '스크롤QA' });
 
-    await runQaStep(testInfo, '짧은 모바일 로비 자연 스크롤 확인', async () => {
+    await runQaStep(testInfo, '짧은 모바일 로비 문서 스크롤 잠금 해제 확인', async () => {
       await expectAppShell(page);
       await waitForBlockingOverlayToDisappear(page);
 
-      const before = await page.evaluate(() => ({
-        clientWidth: document.documentElement.clientWidth,
-        scrollWidth: document.documentElement.scrollWidth,
-        scrollHeight: document.documentElement.scrollHeight,
-        viewportHeight: window.innerHeight,
-        scrollY: window.scrollY,
-      }));
+      const before = await page.evaluate(() => {
+        const probe = document.createElement('div');
+        probe.dataset.qaLobbyScrollProbe = 'true';
+        probe.style.width = '1px';
+        probe.style.height = '320px';
+        probe.style.pointerEvents = 'none';
+        probe.setAttribute('aria-hidden', 'true');
+        document.body.append(probe);
+
+        return {
+          clientWidth: document.documentElement.clientWidth,
+          scrollWidth: document.documentElement.scrollWidth,
+          scrollHeight: document.documentElement.scrollHeight,
+          viewportHeight: window.innerHeight,
+          scrollY: window.scrollY,
+        };
+      });
 
       expect(before.scrollWidth, '짧은 높이에서도 로비는 가로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(before.clientWidth + 1);
-      expect(before.scrollHeight, '내용이 viewport보다 길면 문서 높이가 viewport보다 커져야 합니다.').toBeGreaterThan(before.viewportHeight + 1);
+      expect(before.scrollHeight, '검증용 콘텐츠가 추가되면 문서 높이가 viewport보다 커져야 합니다.').toBeGreaterThan(before.viewportHeight + 1);
       expect(before.scrollY, '초기 로비 스크롤 위치는 상단이어야 합니다.').toBe(0);
 
       await page.mouse.wheel(0, 360);
       await expect.poll(() => page.evaluate(() => window.scrollY), { message: '로비의 세로 문서 스크롤이 잠기면 안 됩니다.' }).toBeGreaterThan(0);
+
+      await page.evaluate(() => document.querySelector('[data-qa-lobby-scroll-probe="true"]')?.remove());
     });
   });
 
