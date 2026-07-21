@@ -34,7 +34,12 @@ test.describe('mobile lobby polish QA', () => {
         return {
           viewportWidth: window.innerWidth,
           viewportHeight: window.innerHeight,
+          documentClientWidth: document.documentElement.clientWidth,
+          documentScrollWidth: document.documentElement.scrollWidth,
           scrollHeight: document.documentElement.scrollHeight,
+          bodyOverflow: getComputedStyle(document.body).overflow,
+          htmlOverflow: getComputedStyle(document.documentElement).overflow,
+          rootOverflow: getComputedStyle(document.getElementById('root')).overflow,
           stage: rect(stage),
           scene: rect(scene),
           primary: rect(primary),
@@ -70,9 +75,12 @@ test.describe('mobile lobby polish QA', () => {
       });
 
       expect(layout, '모바일 로비 통합 영역을 읽을 수 있어야 합니다.').not.toBeNull();
-      expect(layout.scrollHeight, '로비는 세로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
+      expect(layout.documentScrollWidth, '로비는 가로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(layout.documentClientWidth + 1);
+      expect(layout.bodyOverflow, '로비 진입만으로 body 스크롤을 잠그면 안 됩니다.').not.toBe('hidden');
+      expect(layout.htmlOverflow, '로비 진입만으로 html 스크롤을 잠그면 안 됩니다.').not.toBe('hidden');
+      expect(layout.rootOverflow, '로비 진입만으로 root 스크롤을 잠그면 안 됩니다.').not.toBe('hidden');
       expect(layout.shellBackground, '첨부한 로비 배경 이미지가 앱 셸에 적용되어야 합니다.').toContain('lobby-background-original.png');
-      expect(layout.shellBackgroundSize, '배경은 비율을 유지하며 화면 높이에 맞춰야 합니다.').toContain('auto 100%');
+      expect(layout.shellBackgroundSize, '배경 이미지는 모바일 viewport 좌우를 덮어야 합니다.').toContain('cover');
       const imageBackgroundPosition = layout.shellBackgroundPosition.split(',').at(-1)?.trim();
       expect(imageBackgroundPosition, '배경 이미지 레이어는 중앙 상단 기준을 유지해야 합니다.').toMatch(/^(?:center|50%) (?:top|0%)$/u);
       const backgroundUrl = /url\(["']?(.*?lobby-background-original\.png)["']?\)/u.exec(layout.shellBackground)?.[1];
@@ -85,7 +93,7 @@ test.describe('mobile lobby polish QA', () => {
       }, backgroundUrl);
       expect(naturalSize, '브라우저가 로드한 배경 이미지의 원본 픽셀 크기를 유지해야 합니다.').toEqual({ width: 768, height: 1334 });
       expect(layout.stageBackground, '장면과 버튼 뒤의 투명 통합 영역을 유지해야 합니다.').toContain('gradient');
-      expect(layout.stageOverflow, '통합 영역 밖으로 액션이 넘치면 안 됩니다.').toBe('hidden');
+      expect(layout.stageOverflow, '통합 영역은 로비 세로 스크롤을 막지 않아야 합니다.').not.toBe('hidden');
       expect(layout.sceneOpacity, '기존 SVG 장면은 첨부 배경과 중복 노출되면 안 됩니다.').toBe('0');
       expect(layout.sceneBorderWidth, '배경 위에 별도 장면 카드 테두리가 있으면 안 됩니다.').toBe(0);
       expect(layout.sceneBoxShadow, '배경 위에 별도 장면 카드 그림자가 있으면 안 됩니다.').toBe('none');
@@ -106,6 +114,31 @@ test.describe('mobile lobby polish QA', () => {
         expect(button.svg?.height ?? 0, '게임 방법과 설정 아이콘 높이도 충분히 커야 합니다.').toBeGreaterThanOrEqual(24);
         expect(button.svg?.flexShrink ?? 1, '보조 버튼의 아이콘은 텍스트 공간 때문에 축소되면 안 됩니다.').toBe(0);
       });
+    });
+  });
+
+  test('짧은 모바일 높이에서는 로비 문서 세로 스크롤이 가능하고 가로 스크롤은 생기지 않는다', async ({ page, context }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 560 });
+    await primeLobbyStorage(context, { nickname: '스크롤QA' });
+
+    await runQaStep(testInfo, '짧은 모바일 로비 자연 스크롤 확인', async () => {
+      await expectAppShell(page);
+      await waitForBlockingOverlayToDisappear(page);
+
+      const before = await page.evaluate(() => ({
+        clientWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        scrollHeight: document.documentElement.scrollHeight,
+        viewportHeight: window.innerHeight,
+        scrollY: window.scrollY,
+      }));
+
+      expect(before.scrollWidth, '짧은 높이에서도 로비는 가로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(before.clientWidth + 1);
+      expect(before.scrollHeight, '내용이 viewport보다 길면 문서 높이가 viewport보다 커져야 합니다.').toBeGreaterThan(before.viewportHeight + 1);
+      expect(before.scrollY, '초기 로비 스크롤 위치는 상단이어야 합니다.').toBe(0);
+
+      await page.mouse.wheel(0, 360);
+      await expect.poll(() => page.evaluate(() => window.scrollY), { message: '로비의 세로 문서 스크롤이 잠기면 안 됩니다.' }).toBeGreaterThan(0);
     });
   });
 
