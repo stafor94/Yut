@@ -23,6 +23,7 @@ import './styles/lobby-background-reference.css';
 import './styles/control-geometry.css';
 import './styles/lobby-scroll-overflow-fix.css';
 import './styles/lobby-footer.css';
+import './styles/lobby-header-badges.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

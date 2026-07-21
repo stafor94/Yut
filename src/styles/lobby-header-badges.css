@@ -1,0 +1,16 @@
+/* Keep the three lobby utility badges visually consistent after legacy styles. */
+.screen-lobby > .hero.panel .hero-actions > button {
+  justify-content: center;
+  gap: 7px;
+  font-size: .82rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.screen-lobby > .hero.panel .nickname-chip > span:last-child,
+.screen-lobby > .hero.panel .sound-label,
+.screen-lobby > .hero.panel .status-text {
+  font-size: inherit;
+  line-height: inherit;
+  text-align: center;
+}
