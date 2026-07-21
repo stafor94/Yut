@@ -6,6 +6,7 @@
   --utility-header-gap: 8px;
   --utility-header-sound-width: clamp(86px, 20%, 164px);
   --utility-header-status-width: clamp(108px, 24%, 196px);
+  --utility-header-compact-width: clamp(54px, 12%, 98px);
 }
 
 .screen-lobby > .hero.panel .hero-actions,
@@ -32,8 +33,8 @@
   grid-template-columns:
     minmax(0, 1fr)
     var(--utility-header-sound-width)
-    calc(var(--utility-header-status-width) / 2)
-    calc(var(--utility-header-status-width) / 2);
+    var(--utility-header-compact-width)
+    var(--utility-header-compact-width);
 }
 
 .screen-lobby > .hero.panel .hero-actions > button,
@@ -169,6 +170,7 @@
     --utility-header-gap: 5px;
     --utility-header-sound-width: 76px;
     --utility-header-status-width: 96px;
+    --utility-header-compact-width: 48px;
   }
 
   .screen-lobby > .hero.panel .hero-actions > button,
