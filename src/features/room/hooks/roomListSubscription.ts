@@ -8,6 +8,7 @@ import { ROOM_LIST_CANDIDATE_LIMIT } from '../services/roomLifecyclePolicy';
 
 export type RoomListSummary = RoomAvailabilityRoom & {
   id: string;
+  hostId?: string;
   currentPlayers?: number;
   playerIds?: string[];
 };
@@ -43,6 +44,8 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
 
   const publishRooms = () => {
     if (!running) return;
+    const currentUserId = getCurrentUserId();
+    const visibleHostIds = new Set<string>();
     const visibleRooms = activeRooms
       .map((room) => {
         const availability = roomAvailability.get(room.id);
@@ -54,6 +57,14 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
         } as TRoom;
       })
       .filter((room): room is TRoom => Boolean(room))
+      .filter((room) => {
+        if (currentUserId && room.playerIds?.includes(currentUserId)) return true;
+        const hostId = room.hostId?.trim();
+        if (!hostId) return true;
+        if (visibleHostIds.has(hostId)) return false;
+        visibleHostIds.add(hostId);
+        return true;
+      })
       .slice(0, 3);
     onRooms(visibleRooms);
   };
