@@ -1,5 +1,4 @@
 import type { YutResult } from '../../game-core/roll';
-import { rollYutResult } from '../../game-core/roll';
 import { TURN_ORDER_PRESENTATION_PREPARE_MS, getTurnOrderSlotRevealDurationMs } from './turnOrderPresentation';
 
 export type TurnOrderTeam = '청팀' | '홍팀';
@@ -43,44 +42,8 @@ export function buildAlternatingTeamTurnOrder<TSeat extends TurnOrderSeat>(ranke
   return turnOrder;
 }
 
-export function getTurnOrderFromRolls<TSeat extends TurnOrderSeat>(rolls: TurnOrderRollEntry<TSeat>[], playMode: 'individual' | 'team') {
-  const rankedRolls = [...rolls].sort((left, right) => getTurnOrderScore(right.result) - getTurnOrderScore(left.result));
-  const turnOrder = playMode === 'team'
-    ? buildAlternatingTeamTurnOrder(rankedRolls)
-    : rankedRolls.map((entry) => entry.seat);
-  return { rankedRolls, turnOrder };
-}
-
-type ResolveTurnOrderRollsOptions<TSeat extends TurnOrderSeat> = {
-  getSeatDisplayName: (seat: TSeat) => string;
-  onTie: (message: string) => void;
-};
-
-export function resolveTurnOrderRolls<TSeat extends TurnOrderSeat>(targetSeats: TSeat[], options: ResolveTurnOrderRollsOptions<TSeat>, rollOffRound = 1): TurnOrderRollEntry<TSeat>[] {
-  const firstRolls = targetSeats.map((seat) => ({ ...rollYutResult(undefined, false), seat }));
-  const grouped = firstRolls.reduce<Record<number, typeof firstRolls>>((acc, rollEntry) => {
-    const score = getTurnOrderScore(rollEntry.result);
-    return { ...acc, [score]: [...(acc[score] ?? []), rollEntry] };
-  }, {});
-
-  return Object.entries(grouped)
-    .flatMap(([, entries]) => {
-      if (entries.length === 1) return [{ seat: entries[0].seat, result: entries[0].result, rollOffRound }];
-      options.onTie(`${entries.map((entry) => options.getSeatDisplayName(entry.seat)).join(', ')}님이 ${entries[0].result.name}로 비겨 재윷을 던집니다.`);
-      return resolveTurnOrderRolls(entries.map((entry) => entry.seat), options, rollOffRound + 1);
-    })
-    .sort((left, right) => getTurnOrderScore(right.result) - getTurnOrderScore(left.result));
-}
-
 export const formatTurnOrderSummary = <TSeat extends TurnOrderSeat>(turnOrder: TSeat[], getSeatDisplayName: (seat: TSeat) => string) => `순서: ${turnOrder.map((seat) => getSeatDisplayName(seat)).join(' > ')}`;
 
-export function getTurnOrderLogTexts<TSeat extends TurnOrderSeat>(rankedRolls: TurnOrderRollEntry<TSeat>[], turnOrder: TSeat[], getSeatDisplayName: (seat: TSeat) => string) {
-  const rollSummary = rankedRolls.map((entry) => `${getSeatDisplayName(entry.seat)} ${entry.result.name}${entry.rollOffRound > 1 ? `(${entry.rollOffRound}차)` : ''}`).join(' · ');
-  return [
-    `순서 정하기: ${rollSummary}`,
-    formatTurnOrderSummary(turnOrder, getSeatDisplayName),
-  ];
-}
 
 export function shuffleSeatsForGame<TSeat extends TurnOrderSeat>(targetSeats: TSeat[]) {
   const shuffledSeats = [...targetSeats];
