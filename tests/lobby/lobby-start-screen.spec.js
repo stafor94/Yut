@@ -216,7 +216,7 @@ test.describe('lobby start screen QA', () => {
       return {
         dialogCenterY: dialogRect.top + dialogRect.height / 2,
         viewportCenterY: window.innerHeight / 2,
-        titleCenterY: titleRect.top + titleRect.height / 2,
+        headingCenterY: headingRect.top + headingRect.height / 2,
         closeCenterY: closeRect.top + closeRect.height / 2,
         closeWidth: closeRect.width,
         closeRight: closeRect.right,
@@ -225,7 +225,7 @@ test.describe('lobby start screen QA', () => {
     });
     expect(joinGeometry, '방 참가 팝업 위치와 헤더를 읽을 수 있어야 합니다.').not.toBeNull();
     expect(Math.abs(joinGeometry.dialogCenterY - joinGeometry.viewportCenterY), '방 참가 팝업은 화면 중앙에 배치되어야 합니다.').toBeLessThanOrEqual(80);
-    expect(Math.abs(joinGeometry.titleCenterY - joinGeometry.closeCenterY), '닫기 버튼은 방 참가 타이틀과 같은 행에 있어야 합니다.').toBeLessThanOrEqual(10);
+    expect(Math.abs(joinGeometry.headingCenterY - joinGeometry.closeCenterY), '닫기 버튼은 제목과 안내 문구를 포함한 헤더 중앙에 정렬되어야 합니다.').toBeLessThanOrEqual(10);
     expect(joinGeometry.closeWidth, '방 참가 닫기 버튼은 작게 유지해야 합니다.').toBeLessThanOrEqual(34);
     expect(joinGeometry.headingRight - joinGeometry.closeRight, '닫기 버튼은 헤더 우측 끝에 있어야 합니다.').toBeLessThanOrEqual(2);
 
