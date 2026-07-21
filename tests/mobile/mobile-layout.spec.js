@@ -47,7 +47,7 @@ test.describe('mobile layout QA', () => {
     await runQaStep(testInfo, '모바일 로비 핵심 UI 확인', async () => {
       await expectAppShell(page);
       await expect(page.getByRole('button', { name: '방 만들기', exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: '게임 참가', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '방 참가', exact: true })).toBeVisible();
       await page.getByRole('button', { name: '방 만들기', exact: true }).click();
       await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
       await expect(page.getByTestId('room-title-input')).toBeVisible();
@@ -205,8 +205,8 @@ test.describe('mobile layout QA', () => {
 
         await expectAppShell(page);
         await waitForBlockingOverlayToDisappear(page);
-        await page.getByRole('button', { name: '게임 참가', exact: true }).click();
-        await expect(page.getByRole('dialog', { name: '게임 참가' })).toBeVisible();
+        await page.getByRole('button', { name: '방 참가', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: '방 참가' })).toBeVisible();
         const roomCard = page.locator('.lobby-room-card').filter({ hasText: roomTitle }).first();
         await expect(roomCard).toBeVisible({ timeout: 20_000 });
 
