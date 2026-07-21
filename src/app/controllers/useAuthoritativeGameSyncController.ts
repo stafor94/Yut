@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { commitAuthoritativeGameAction, type GameAction } from '../../features/room/services/roomService';
+import { commitAuthoritativeGameAction, withGameSequenceReplayCache, type GameAction } from '../../features/room/services/roomService';
 import type { SequenceStateSnapshot } from '../appState';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { buildAuthoritativeApplyWakeSnapshot } from '../flows/authoritativeApplyWakeFlow';
@@ -97,7 +97,12 @@ export function useAuthoritativeGameSyncController(params: Params) {
     lastAppliedSequenceRef: params.lastAppliedSequenceRef,
     lastAppliedStateVersionRef: params.lastAppliedStateVersionRef,
     applyingSyncedStateRef: params.applyingSyncedStateRef,
-    replayMissingSequencesThenApply: params.replayMissingSequencesThenApply,
+    replayMissingSequencesThenApply: (state, localSequence, remoteSequence) => withGameSequenceReplayCache(
+      params.activeRoomId,
+      localSequence,
+      remoteSequence,
+      () => params.replayMissingSequencesThenApply(state, localSequence, remoteSequence),
+    ),
     applySyncedStateSnapshot: rememberAndApplySyncedStateSnapshot,
     enqueueAuthoritativeResultApplication: (applyResult) => enqueueAuthoritativeResultApplication(params.activeRoomId, applyResult),
     onSnapshotReceived: () => {
