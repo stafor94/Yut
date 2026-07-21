@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -97,6 +97,7 @@ test.describe('mobile lobby scroll reset QA', () => {
   });
 
   test('인게임에서 종료해 로비로 나오면 문서 스크롤을 제거하되 뷰포트를 잠그지 않는다', async ({ page, context }, testInfo) => {
+    test.slow();
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'scroll-game-host'));
     const roomTitle = makeQaName(testInfo, 'scroll-game-room');
     let roomId;
@@ -113,7 +114,21 @@ test.describe('mobile lobby scroll reset QA', () => {
       try {
         roomId = await createRoom(page, roomTitle);
         await page.getByTestId('add-ai-P2').click();
-        await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 10_000 });
+        await expect.poll(async () => {
+          const state = await collectScreenState(page);
+          return {
+            pendingAiSeatCount: Number(state.yutDebug?.pendingAiSeatCount ?? 0),
+            allReady: Boolean(state.yutDebug?.allReady),
+            startDisabled: Boolean(state.startButton.disabled),
+          };
+        }, {
+          timeout: 25_000,
+          message: 'AI 추가 동기화가 완료되어 시작 버튼이 활성화되어야 합니다.',
+        }).toEqual({
+          pendingAiSeatCount: 0,
+          allReady: true,
+          startDisabled: false,
+        });
         await page.getByTestId('start-game-button').click();
         await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
         await forceDocumentScroll(page, 'game-screen');
