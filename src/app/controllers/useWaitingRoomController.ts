@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject, type D
 import { deleteRoom, removeRoomPlayer, shouldDeleteWaitingRoomOnHostExit, updateRoomOptions, updateRoomPlayer, type RoomPlayer } from '../../features/room/services/roomService';
 import { createSeats, STORAGE_KEYS, type PieceCount, type PlayMode, type Seat, type Team } from '../appState';
 import { makeUniqueAIName } from '../flows/aiName';
-import { getChangedWaitingRoomOptions, resolveWaitingRoomOptions, type WaitingRoomOptionPatch, type WaitingRoomOptions } from '../flows/waitingRoomOptions';
+import { getChangedWaitingRoomOptions, normalizeWaitingRoomSeatTeams, resolveWaitingRoomOptions, type WaitingRoomOptionPatch, type WaitingRoomOptions } from '../flows/waitingRoomOptions';
 
 type Params = {
   activeRoomId: string; localSeatId: string; screen: 'lobby' | 'waitingRoom' | 'game'; nickname: string; playMode: PlayMode; maxPlayers: 2 | 3 | 4; itemMode: boolean; stackedRollMode: boolean; pieceCount: PieceCount; seats: Seat[]; canManageRoom: boolean; isRoomManager: boolean; activeRoomIdRef: MutableRefObject<string>; leavingRoomRef: MutableRefObject<boolean>; confirmedRoomPlayerRef: MutableRefObject<boolean>; hostingRoomUserIdRef: MutableRefObject<string>; addLog: (text: string) => void; setSeats: Dispatch<SetStateAction<Seat[]>>; setMessage: (message: string) => void; setScreen: (screen: 'lobby' | 'waitingRoom' | 'game') => void; setActiveRoomId: (id: string) => void; setActiveRoomTitle: (title: string) => void; setActiveRoomHostId: (id: string) => void; setIsRoomHost: (isHost: boolean) => void; setCountdown: (countdown: number) => void; setTurnOrderIds: (ids: string[]) => void; setGameStartedAt: (startedAt: number | null) => void; setPlayMode: (mode: PlayMode) => void; setMaxPlayers: (count: 2 | 3 | 4) => void; setItemMode: (enabled: boolean) => void; setStackedRollMode: (enabled: boolean) => void; setPieceCount: (count: PieceCount) => void;
@@ -79,7 +79,10 @@ export function useWaitingRoomController(p: Params) {
     const patch = getChangedWaitingRoomOptions(current, next);
     if (Object.keys(patch).length === 0) return;
     waitingOptionsRef.current = next;
-    if (patch.playMode !== undefined) p.setPlayMode(next.playMode);
+    if (patch.playMode !== undefined) {
+      p.setPlayMode(next.playMode);
+      p.setSeats((seats) => normalizeWaitingRoomSeatTeams(seats, next.playMode));
+    }
     if (patch.maxPlayers !== undefined) p.setMaxPlayers(next.maxPlayers);
     if (patch.itemMode !== undefined) p.setItemMode(next.itemMode);
     if (patch.stackedRollMode !== undefined) p.setStackedRollMode(next.stackedRollMode);

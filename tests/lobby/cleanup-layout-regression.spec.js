@@ -32,6 +32,8 @@ test.describe('cleanup/layout regression QA', () => {
       await page.locator('.piece-count-group').getByText('2개').click();
       await page.locator('.stacked-roll-mode-group').getByText('ON').click();
       await expect(waitingBadges).toHaveText(['팀전', '4인', '팀별 말 2개', '누적']);
+      const p2Card = page.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
+      await expect(p2Card.locator('.team-card-option.red')).toHaveClass(/active/, { timeout: 10_000 });
       const waitingRuleLayout = await page.locator('.waiting-room-rule-badges').evaluate((element) => {
         const bodyWidth = document.documentElement.clientWidth;
         const box = element.getBoundingClientRect();
@@ -49,6 +51,9 @@ test.describe('cleanup/layout regression QA', () => {
       await page.getByTestId('add-ai-P2').click();
       await page.getByTestId('add-ai-P3').click();
       await page.getByTestId('add-ai-P4').click();
+      const teamChecklist = page.locator('.team-checklist');
+      await expect(teamChecklist).toContainText('청팀 2/2', { timeout: 15_000 });
+      await expect(teamChecklist).toContainText('홍팀 2/2', { timeout: 15_000 });
       await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
     });
 
