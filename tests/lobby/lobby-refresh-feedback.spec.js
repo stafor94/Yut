@@ -14,10 +14,11 @@ test.describe('lobby room refresh feedback QA', () => {
       });
     });
 
-    await page.getByRole('button', { name: '게임 참가', exact: true }).click();
+    await page.getByRole('button', { name: '방 참가', exact: true }).click();
     const refreshButton = page.getByTestId('refresh-room-list-button');
     await expect(refreshButton).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.__yutQaRefreshCount)).toBe(1);
+    await expect(refreshButton).toBeEnabled({ timeout: 2_000 });
     await refreshButton.click();
 
     await expect(refreshButton).toBeDisabled();

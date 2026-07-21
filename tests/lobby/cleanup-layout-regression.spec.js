@@ -86,8 +86,8 @@ test.describe('cleanup/layout regression QA', () => {
           lobbyGuestPage.getByRole('button', { name: /서버 상태: 온라인/ }),
           '게스트의 익명 인증과 방 목록 구독이 완료되어야 합니다.',
         ).toBeVisible({ timeout: 30_000 });
-        await lobbyGuestPage.getByRole('button', { name: '게임 참가', exact: true }).click();
-        await expect(lobbyGuestPage.getByRole('dialog', { name: '게임 참가' })).toBeVisible();
+        await lobbyGuestPage.getByRole('button', { name: '방 참가', exact: true }).click();
+        await expect(lobbyGuestPage.getByRole('dialog', { name: '방 참가' })).toBeVisible();
         const roomCard = lobbyGuestPage.locator('.lobby-room-card').filter({ hasText: lobbyRoomTitle }).first();
         await expect(roomCard).toBeVisible({ timeout: 25_000 });
         const stateDot = roomCard.locator('.lobby-room-state-dot');

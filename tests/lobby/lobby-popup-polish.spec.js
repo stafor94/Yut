@@ -7,40 +7,36 @@ test.describe('lobby popup visual polish QA', () => {
     await expectAppShell(page);
     await waitForBlockingOverlayToDisappear(page);
 
-    await page.getByRole('button', { name: '게임 참가', exact: true }).click();
-    const joinDialog = page.getByRole('dialog', { name: '게임 참가' });
+    await page.getByRole('button', { name: '방 참가', exact: true }).click();
+    const joinDialog = page.getByRole('dialog', { name: '방 참가' });
     const refreshIcon = joinDialog.locator('.lobby-room-refresh-icon');
     await expect(refreshIcon).toBeVisible();
 
     const refreshDrawing = await refreshIcon.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
-      const circle = getComputedStyle(element, '::before');
-      const arrow = getComputedStyle(element, '::after');
+      const svg = element.querySelector('svg');
+      const path = svg?.querySelector('path');
+      const svgRect = svg?.getBoundingClientRect();
+      const pathStyle = path ? getComputedStyle(path) : null;
       return {
         width: rect.width,
         height: rect.height,
         fontSize: Number.parseFloat(style.fontSize),
-        circleContent: circle.content,
-        circleRadius: Number.parseFloat(circle.borderRadius),
-        circleBorderWidth: Number.parseFloat(circle.borderTopWidth),
-        circleLeftColor: circle.borderLeftColor,
-        arrowContent: arrow.content,
-        arrowTopWidth: Number.parseFloat(arrow.borderTopWidth),
-        arrowRightWidth: Number.parseFloat(arrow.borderRightWidth),
+        svgWidth: svgRect?.width ?? 0,
+        svgHeight: svgRect?.height ?? 0,
+        strokeWidth: pathStyle ? Number.parseFloat(pathStyle.strokeWidth) : 0,
+        pathData: path?.getAttribute('d') ?? '',
       };
     });
 
     expect(refreshDrawing.width, '새로고침 아이콘은 버튼 안에서 식별 가능한 크기여야 합니다.').toBeGreaterThanOrEqual(16);
     expect(refreshDrawing.height).toBeGreaterThanOrEqual(16);
     expect(refreshDrawing.fontSize, '유니코드 글자를 그대로 노출하지 않고 도형으로 그려야 합니다.').toBe(0);
-    expect(refreshDrawing.circleContent).not.toBe('none');
-    expect(refreshDrawing.circleRadius, '새로고침 본체는 원형이어야 합니다.').toBeGreaterThanOrEqual(6);
-    expect(refreshDrawing.circleBorderWidth, '원형 화살표 선이 충분히 선명해야 합니다.').toBeGreaterThanOrEqual(2);
-    expect(refreshDrawing.circleLeftColor, '원형 선 일부는 열려 있어 화살표 흐름이 보여야 합니다.').toContain('0)');
-    expect(refreshDrawing.arrowContent).not.toBe('none');
-    expect(refreshDrawing.arrowTopWidth).toBeGreaterThanOrEqual(2);
-    expect(refreshDrawing.arrowRightWidth).toBeGreaterThanOrEqual(2);
+    expect(refreshDrawing.svgWidth, '새로고침 SVG는 버튼 안에서 식별 가능한 크기여야 합니다.').toBeGreaterThanOrEqual(18);
+    expect(refreshDrawing.svgHeight).toBeGreaterThanOrEqual(18);
+    expect(refreshDrawing.strokeWidth, 'SVG 새로고침 선이 충분히 선명해야 합니다.').toBeGreaterThanOrEqual(2);
+    expect(refreshDrawing.pathData, '유니코드가 아니라 표준 새로고침 SVG path가 있어야 합니다.').toContain('M21 12');
 
     await joinDialog.getByRole('button', { name: '닫기', exact: true }).click();
     await page.getByRole('button', { name: '게임 방법', exact: true }).click();
