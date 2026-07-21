@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Create, update, or close CI failure issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           RUN_ID: ${{ github.event.workflow_run.id }}
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
@@ -130,7 +130,7 @@ jobs:
                   repo,
                   issue_number: duplicate.number,
                   state: 'closed',
-                  state_reason: 'duplicate',
+                  state_reason: 'not_planned',
                 });
               }
               core.info(`Updated issue #${issue.number}.`);
