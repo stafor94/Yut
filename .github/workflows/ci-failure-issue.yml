@@ -1,0 +1,146 @@
+name: Main QA Failure Issue
+
+on:
+  workflow_run:
+    workflows: ["Main Branch QA"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  sync-ci-failure-issue:
+    name: Sync CI failure issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create, update, or close CI failure issue
+        uses: actions/github-script@v8
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
+          RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const label = 'ci-failure';
+            const title = '[CI] Main Branch QA 실패';
+            const marker = '<!-- ci-failure:main-branch-qa -->';
+            const runId = process.env.RUN_ID;
+            const runAttempt = process.env.RUN_ATTEMPT;
+            const runUrl = process.env.RUN_URL;
+            const runEvent = process.env.RUN_EVENT;
+            const conclusion = process.env.RUN_CONCLUSION;
+            const headBranch = process.env.HEAD_BRANCH;
+            const headSha = process.env.HEAD_SHA;
+            const workflowName = process.env.WORKFLOW_NAME;
+            const commitUrl = `${context.serverUrl}/${owner}/${repo}/commit/${headSha}`;
+
+            const openIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: 'open',
+              labels: label,
+              per_page: 100,
+            });
+            const matchingIssues = openIssues.filter(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
+
+            if (conclusion === 'success') {
+              for (const issue of matchingIssues) {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  body: [
+                    '후속 Main Branch QA가 성공하여 자동으로 종료합니다.',
+                    '',
+                    `- Run: ${runUrl}`,
+                    `- Run ID: \`${runId}\` (attempt ${runAttempt})`,
+                    `- Head SHA: [\`${headSha}\`](${commitUrl})`,
+                  ].join('\n'),
+                });
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                });
+              }
+              core.info(`Closed ${matchingIssues.length} CI failure issue(s).`);
+              return;
+            }
+
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: label });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: label,
+                color: 'B60205',
+                description: 'Main Branch QA failure requiring investigation',
+              });
+            }
+
+            const body = [
+              marker,
+              'Main Branch QA 실패를 자동 감지했습니다.',
+              '',
+              `- Workflow: \`${workflowName}\``,
+              `- Conclusion: \`${conclusion}\``,
+              `- Event: \`${runEvent}\``,
+              `- Branch: \`${headBranch}\``,
+              `- Head SHA: [\`${headSha}\`](${commitUrl})`,
+              `- Run ID: \`${runId}\` (attempt ${runAttempt})`,
+              `- Run: ${runUrl}`,
+              '',
+              '이 이슈는 후속 Main Branch QA 성공 시 자동으로 종료됩니다.',
+            ].join('\n');
+
+            if (matchingIssues.length > 0) {
+              const [issue, ...duplicates] = matchingIssues;
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body,
+              });
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body: `새 실패 Run 감지: ${runUrl} (\`${headSha}\`, \`${conclusion}\`)`,
+              });
+              for (const duplicate of duplicates) {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: duplicate.number,
+                  state: 'closed',
+                  state_reason: 'not_planned',
+                });
+              }
+              core.info(`Updated issue #${issue.number}.`);
+            } else {
+              const { data: issue } = await github.rest.issues.create({
+                owner,
+                repo,
+                title,
+                body,
+                labels: [label],
+              });
+              core.info(`Created issue #${issue.number}.`);
+            }
