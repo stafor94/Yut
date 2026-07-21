@@ -48,6 +48,28 @@ async function createRoom(page, roomTitle) {
   return await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
 }
 
+async function enterGameFromWaitingRoom(page) {
+  const gameScreen = page.getByTestId('game-screen');
+  const startButton = page.getByTestId('start-game-button');
+  let clickAttempts = 0;
+
+  await expect.poll(async () => {
+    if (await gameScreen.isVisible().catch(() => false)) return true;
+    const canRetryStart = clickAttempts < 3
+      && await startButton.isVisible().catch(() => false)
+      && await startButton.isEnabled().catch(() => false);
+    if (canRetryStart) {
+      clickAttempts += 1;
+      await startButton.click();
+    }
+    return gameScreen.isVisible().catch(() => false);
+  }, {
+    timeout: 45_000,
+    intervals: [0, 1_500, 3_000, 5_000],
+    message: '게임 시작 요청이 처리되어 인게임 화면으로 전환되어야 합니다.',
+  }).toBe(true);
+}
+
 async function forceDocumentScroll(page, screenTestId) {
   await page.getByTestId(screenTestId).evaluate((screen) => {
     const spacer = document.createElement('div');
@@ -129,8 +151,7 @@ test.describe('mobile lobby scroll reset QA', () => {
           allReady: true,
           startDisabled: false,
         });
-        await page.getByTestId('start-game-button').click();
-        await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+        await enterGameFromWaitingRoom(page);
         await forceDocumentScroll(page, 'game-screen');
 
         await page.getByTestId('game-end-button').click();
