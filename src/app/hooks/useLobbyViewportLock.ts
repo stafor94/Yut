@@ -15,29 +15,11 @@ export function useLobbyViewportLock(screen: Screen) {
     const html = document.documentElement;
     const body = document.body;
     const root = document.getElementById('root');
-    const shouldLock = screen === 'lobby';
     const lockTargets = [html, body, root].filter((target): target is HTMLElement => target instanceof HTMLElement);
 
-    lockTargets.forEach((target) => target.classList.toggle(LOBBY_VIEWPORT_LOCK_CLASS, shouldLock));
-    if (!shouldLock) return;
+    lockTargets.forEach((target) => target.classList.remove(LOBBY_VIEWPORT_LOCK_CLASS));
+    if (screen !== 'lobby') return;
 
     resetDocumentScroll();
-    let secondFrameId = 0;
-    const firstFrameId = window.requestAnimationFrame(() => {
-      secondFrameId = window.requestAnimationFrame(resetDocumentScroll);
-    });
-    const delayedResetId = window.setTimeout(resetDocumentScroll, 150);
-    const visualViewport = window.visualViewport;
-    visualViewport?.addEventListener('resize', resetDocumentScroll);
-    window.addEventListener('pageshow', resetDocumentScroll);
-
-    return () => {
-      window.cancelAnimationFrame(firstFrameId);
-      if (secondFrameId) window.cancelAnimationFrame(secondFrameId);
-      window.clearTimeout(delayedResetId);
-      visualViewport?.removeEventListener('resize', resetDocumentScroll);
-      window.removeEventListener('pageshow', resetDocumentScroll);
-      lockTargets.forEach((target) => target.classList.remove(LOBBY_VIEWPORT_LOCK_CLASS));
-    };
   }, [screen]);
 }

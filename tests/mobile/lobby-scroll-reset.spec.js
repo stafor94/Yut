@@ -3,7 +3,7 @@ import { expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
-async function expectLobbyViewportLocked(page) {
+async function expectLobbyViewportUnlocked(page) {
   const viewportState = await page.evaluate(() => {
     const html = document.documentElement;
     const body = document.body;
@@ -26,23 +26,16 @@ async function expectLobbyViewportLocked(page) {
     };
   });
 
-  expect(viewportState, '로비 뷰포트 잠금 상태를 읽을 수 있어야 합니다.').not.toBeNull();
-  expect(viewportState.htmlLocked).toBe(true);
-  expect(viewportState.bodyLocked).toBe(true);
-  expect(viewportState.rootLocked).toBe(true);
-  expect(viewportState.htmlOverflowY).toBe('hidden');
-  expect(viewportState.bodyOverflowY).toBe('hidden');
-  expect(viewportState.rootOverflowY).toBe('hidden');
-  expect(viewportState.shellOverflowY).toBe('hidden');
+  expect(viewportState, '로비 뷰포트 잠금 해제 상태를 읽을 수 있어야 합니다.').not.toBeNull();
+  expect(viewportState.htmlLocked).toBe(false);
+  expect(viewportState.bodyLocked).toBe(false);
+  expect(viewportState.rootLocked).toBe(false);
+  expect(viewportState.htmlOverflowY).not.toBe('hidden');
+  expect(viewportState.bodyOverflowY).not.toBe('hidden');
+  expect(viewportState.rootOverflowY).not.toBe('hidden');
+  expect(viewportState.shellOverflowY).not.toBe('hidden');
   expect(viewportState.shellHeight).toBeGreaterThanOrEqual(viewportState.viewportHeight - 1);
-  expect(viewportState.shellHeight).toBeLessThanOrEqual(viewportState.viewportHeight + 1);
   expect(viewportState.bottomViewportIsInsideShell, '로비 하단 뷰포트가 앱 셸 밖의 빈 영역을 보여서는 안 됩니다.').toBe(true);
-
-  await page.evaluate(() => window.scrollTo(0, 1000));
-  await expect.poll(() => page.evaluate(() => window.scrollY), {
-    timeout: 2_000,
-    message: '로비에서는 프로그램 방식으로도 문서 스크롤이 다시 생기면 안 됩니다.',
-  }).toBe(0);
 }
 
 async function createRoom(page, roomTitle) {
@@ -72,7 +65,7 @@ async function forceDocumentScroll(page, screenTestId) {
 }
 
 test.describe('mobile lobby scroll reset QA', () => {
-  test('대기실에서 로비로 나오면 문서 스크롤을 제거하고 뷰포트를 잠근다', async ({ page, context }, testInfo) => {
+  test('대기실에서 로비로 나오면 문서 스크롤을 제거하되 뷰포트를 잠그지 않는다', async ({ page, context }, testInfo) => {
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'scroll-reset-host'));
     const roomTitle = makeQaName(testInfo, 'scroll-reset-room');
     let roomId;
@@ -85,7 +78,7 @@ test.describe('mobile lobby scroll reset QA', () => {
       pieceCount: '4',
     });
 
-    await runQaStep(testInfo, '대기실에서 로비 복귀 시 모바일 문서 스크롤 제거와 뷰포트 잠금 확인', async () => {
+    await runQaStep(testInfo, '대기실에서 로비 복귀 시 모바일 문서 스크롤 제거와 뷰포트 잠금 해제 확인', async () => {
       try {
         roomId = await createRoom(page, roomTitle);
         await forceDocumentScroll(page, 'waiting-room');
@@ -96,14 +89,14 @@ test.describe('mobile lobby scroll reset QA', () => {
           timeout: 5_000,
           message: '로비 전환 후 문서 스크롤은 상단으로 초기화되어야 합니다.',
         }).toBe(0);
-        await expectLobbyViewportLocked(page);
+        await expectLobbyViewportUnlocked(page);
       } finally {
         if (roomId) await deleteRoomForQa(roomId);
       }
     });
   });
 
-  test('인게임에서 종료해 로비로 나오면 문서 스크롤을 제거하고 뷰포트를 잠근다', async ({ page, context }, testInfo) => {
+  test('인게임에서 종료해 로비로 나오면 문서 스크롤을 제거하되 뷰포트를 잠그지 않는다', async ({ page, context }, testInfo) => {
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'scroll-game-host'));
     const roomTitle = makeQaName(testInfo, 'scroll-game-room');
     let roomId;
@@ -116,7 +109,7 @@ test.describe('mobile lobby scroll reset QA', () => {
       pieceCount: '4',
     });
 
-    await runQaStep(testInfo, '인게임 종료 후 로비 복귀 시 모바일 문서 스크롤 제거와 뷰포트 잠금 확인', async () => {
+    await runQaStep(testInfo, '인게임 종료 후 로비 복귀 시 모바일 문서 스크롤 제거와 뷰포트 잠금 해제 확인', async () => {
       try {
         roomId = await createRoom(page, roomTitle);
         await page.getByTestId('add-ai-P2').click();
@@ -134,7 +127,7 @@ test.describe('mobile lobby scroll reset QA', () => {
           timeout: 5_000,
           message: '인게임 종료 후 로비 문서 스크롤은 상단으로 초기화되어야 합니다.',
         }).toBe(0);
-        await expectLobbyViewportLocked(page);
+        await expectLobbyViewportUnlocked(page);
       } finally {
         if (roomId) await deleteRoomForQa(roomId);
       }
