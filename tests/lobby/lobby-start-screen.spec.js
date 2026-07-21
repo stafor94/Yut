@@ -178,7 +178,7 @@ test.describe('lobby start screen QA', () => {
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:activeRoomId'))).toBe('invalid-nickname-recovery-target');
   });
 
-  test('게임 참가 팝업은 최초 조회와 수동 새로고침 목록 및 중앙 정렬 헤더를 제공한다', async ({ page, context }) => {
+  test('방 참가 팝업은 최초 조회와 수동 새로고침 목록 및 중앙 정렬 헤더를 제공한다', async ({ page, context }) => {
     await primeLobbyStorage(context, { nickname: '가나' });
     await expectAppShell(page);
     await waitForBlockingOverlayToDisappear(page);
@@ -198,7 +198,7 @@ test.describe('lobby start screen QA', () => {
     await expect(joinDialog).not.toContainText('실시간 자동 갱신');
     const refreshButton = joinDialog.getByRole('button', { name: '방 목록 새로고침' });
     await expect(refreshButton).toBeVisible();
-    await expect(refreshButton).toBeFocused();
+    await expect(refreshButton).toHaveAttribute('data-dialog-autofocus', 'true');
     await expect.poll(() => page.evaluate(() => window.__yutQaRefreshCount)).toBe(1);
     await expect(refreshButton).toBeEnabled({ timeout: 2_000 });
     await refreshButton.click();
@@ -223,10 +223,10 @@ test.describe('lobby start screen QA', () => {
         headingRight: headingRect.right,
       };
     });
-    expect(joinGeometry, '게임 참가 팝업 위치와 헤더를 읽을 수 있어야 합니다.').not.toBeNull();
-    expect(Math.abs(joinGeometry.dialogCenterY - joinGeometry.viewportCenterY), '게임 참가 팝업은 화면 중앙에 배치되어야 합니다.').toBeLessThanOrEqual(80);
-    expect(Math.abs(joinGeometry.titleCenterY - joinGeometry.closeCenterY), '닫기 버튼은 게임 참가 타이틀과 같은 행에 있어야 합니다.').toBeLessThanOrEqual(10);
-    expect(joinGeometry.closeWidth, '게임 참가 닫기 버튼은 작게 유지해야 합니다.').toBeLessThanOrEqual(34);
+    expect(joinGeometry, '방 참가 팝업 위치와 헤더를 읽을 수 있어야 합니다.').not.toBeNull();
+    expect(Math.abs(joinGeometry.dialogCenterY - joinGeometry.viewportCenterY), '방 참가 팝업은 화면 중앙에 배치되어야 합니다.').toBeLessThanOrEqual(80);
+    expect(Math.abs(joinGeometry.titleCenterY - joinGeometry.closeCenterY), '닫기 버튼은 방 참가 타이틀과 같은 행에 있어야 합니다.').toBeLessThanOrEqual(10);
+    expect(joinGeometry.closeWidth, '방 참가 닫기 버튼은 작게 유지해야 합니다.').toBeLessThanOrEqual(34);
     expect(joinGeometry.headingRight - joinGeometry.closeRight, '닫기 버튼은 헤더 우측 끝에 있어야 합니다.').toBeLessThanOrEqual(2);
 
     await page.keyboard.press('Escape');
