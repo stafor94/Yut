@@ -31,6 +31,24 @@ test('방 생성 전 기존 모든 방을 중복 없이 병렬 정리한다', as
   assert.deepEqual(await pending, ['room-a', 'room-b']);
 });
 
+test('AI가 대신 진행 중인 복귀 가능 방은 새 방 생성 전 정리에서 제외한다', async () => {
+  const attemptedRoomIds: string[] = [];
+  const cleanedRoomIds = await leavePlayerRoomsBeforeCreate({
+    playerId: 'player-a',
+    memberships: [
+      { room: { id: 'waiting-room' }, player: { isAI: false } },
+      { room: { id: 'resume-room' }, player: { isAI: true, isSubstitutedByAI: true } },
+      { room: { id: ' waiting-room ' }, player: { isAI: false } },
+    ],
+    leaveRoom: async (roomId) => {
+      attemptedRoomIds.push(roomId);
+    },
+  });
+
+  assert.deepEqual(cleanedRoomIds, ['waiting-room']);
+  assert.deepEqual(attemptedRoomIds, ['waiting-room']);
+});
+
 test('기존 방 하나의 퇴장이 실패해도 모든 독립 퇴장을 시작한 뒤 오류를 전달한다', async () => {
   const attemptedRoomIds: string[] = [];
 

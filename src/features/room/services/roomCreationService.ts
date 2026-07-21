@@ -12,7 +12,7 @@ import {
   getRoomPlayer,
   type ManagedRoomSummary,
 } from './roomLifecycleStore';
-import { hasResumablePlayerForUser } from './roomLifecyclePolicy';
+import { hasActiveRoomPlayerForUser } from './roomLifecyclePolicy';
 import { removeRoomPlayerNow } from './roomExitService';
 import { leavePlayerRoomsBeforeCreate } from './roomCreationCleanup';
 import { waitForRoomCreationLock } from './roomCreationLock';
@@ -125,10 +125,10 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
     const activeRoomCandidates = (await getActiveRoomSummaries(now)).filter((room) => room.id !== roomRef.id);
     const ownHostRooms = activeRoomCandidates.filter((room) => room.hostId === params.hostId);
     const ownHostPlayers = await Promise.all(ownHostRooms.map((room) => getRoomPlayer(room.id, params.hostId)));
-    const ownResumableRoom = ownHostPlayers.some((player) => (
-      player ? hasResumablePlayerForUser([player], params.hostId) : false
+    const ownActiveRoom = ownHostPlayers.some((player) => (
+      player ? hasActiveRoomPlayerForUser([player], params.hostId) : false
     ));
-    if (ownResumableRoom) throw new Error(ACTIVE_HOST_ROOM_ERROR);
+    if (ownActiveRoom) throw new Error(ACTIVE_HOST_ROOM_ERROR);
 
     const activeUserRooms = activeRoomCandidates
       .filter((room) => hasActiveHumanRoomSummary(room, now))

@@ -29,6 +29,11 @@ async function readHeaderBadgeLayout(page, screenClass) {
         fontSize: Number.parseFloat(computed.fontSize),
         justifyContent: computed.justifyContent,
         textAlign: computed.textAlign,
+        backgroundColor: computed.backgroundColor,
+        backgroundImage: computed.backgroundImage,
+        color: computed.color,
+        boxShadow: computed.boxShadow,
+        textShadow: computed.textShadow,
       };
     };
     const orderedControls = [
@@ -43,6 +48,7 @@ async function readHeaderBadgeLayout(page, screenClass) {
       soundLabel: sound.querySelector('.sound-label')?.textContent?.trim() ?? '',
       chevrons: header.querySelectorAll('.lobby-chip-chevron, .lobby-status-chevron').length,
       controlStyles: controls.map(style),
+      soundStyle: style(sound),
       nickname: rect(nickname),
       sound: rect(sound),
       status: rect(status),
@@ -83,6 +89,11 @@ function expectLobbyPresentationMatch(lobby, target) {
     expect(value.borderTopWidth, '상단 배지 테두리 두께는 로비와 같아야 합니다.').toBe(lobbyStyle.borderTopWidth);
     expect(value.fontSize, '상단 배지 글자 크기는 로비와 같아야 합니다.').toBeCloseTo(lobbyStyle.fontSize, 1);
   });
+  expect(target.soundStyle.backgroundColor, '효과음 배지 배경색은 로비와 같아야 합니다.').toBe(lobby.soundStyle.backgroundColor);
+  expect(target.soundStyle.backgroundImage, '효과음 배지 배경 이미지는 로비와 같아야 합니다.').toBe(lobby.soundStyle.backgroundImage);
+  expect(target.soundStyle.color, '효과음 배지 글자색은 로비와 같아야 합니다.').toBe(lobby.soundStyle.color);
+  expect(target.soundStyle.boxShadow, '효과음 배지 그림자는 로비와 같아야 합니다.').toBe(lobby.soundStyle.boxShadow);
+  expect(target.soundStyle.textShadow, '효과음 배지 텍스트 그림자는 로비와 같아야 합니다.').toBe(lobby.soundStyle.textShadow);
 }
 
 test.describe('mobile shared header badge QA', () => {

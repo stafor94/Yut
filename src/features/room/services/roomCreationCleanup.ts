@@ -2,6 +2,10 @@ export type RoomCreationMembership = {
   room: {
     id: string;
   };
+  player?: {
+    isAI?: boolean;
+    isSubstitutedByAI?: boolean;
+  };
 };
 
 export type LeaveRoomBeforeCreate = (
@@ -16,6 +20,7 @@ export async function leavePlayerRoomsBeforeCreate(params: {
 }) {
   const roomIds = Array.from(new Set(
     params.memberships
+      .filter(({ player }) => !(player?.isAI && player.isSubstitutedByAI))
       .map(({ room }) => room.id.trim())
       .filter(Boolean),
   ));
