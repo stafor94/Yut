@@ -121,6 +121,72 @@ test.describe('online room QA', () => {
     }
   });
 
+
+  test('브라우저 뒤로가기 확인 취소와 정상 퇴장이 대기실 참가자 정리를 보장한다', async ({ page, context }, testInfo) => {
+    expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
+    const nickname = normalizeQaNickname(makeQaName(testInfo, 'back-wait-host'));
+    const roomTitle = makeQaName(testInfo, 'back-wait-room');
+    await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+
+    await runQaStep(testInfo, '대기실 뒤로가기 취소 후 연속 뒤로가기 확인 퇴장', async () => {
+      await createRoomFromLobby(page, roomTitle);
+      roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
+      expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
+
+      page.once('dialog', async (dialog) => {
+        expect(dialog.message()).toBe('방을 나가시겠습니까?');
+        await dialog.dismiss();
+      });
+      await page.goBack();
+      await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 10_000 });
+      await expect.poll(async () => (await getRoomPlayersForQa(roomId)).some((player) => player.id), { timeout: 10_000 }).toBe(true);
+
+      page.once('dialog', async (dialog) => {
+        expect(dialog.message()).toBe('방을 나가시겠습니까?');
+        await dialog.accept();
+      });
+      await page.goBack();
+      await expect(page.getByTestId('lobby-screen')).toBeVisible({ timeout: 25_000 });
+      await expect.poll(async () => findRoomIdByTitle(roomTitle), { timeout: 25_000 }).toBeNull();
+      roomId = null;
+    });
+  });
+
+  test('인게임 브라우저 뒤로가기 확인 취소와 정상 퇴장이 AI 대체 정리를 보장한다', async ({ page, context }, testInfo) => {
+    expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
+    const nickname = normalizeQaNickname(makeQaName(testInfo, 'back-game-host'));
+    const roomTitle = makeQaName(testInfo, 'back-game-room');
+    await primeLobbyStorage(context, { nickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+
+    await runQaStep(testInfo, '인게임 뒤로가기 취소 후 확인 퇴장과 AI 대체 확인', async () => {
+      await createRoomFromLobby(page, roomTitle);
+      roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
+      expect(roomId, '생성된 QA 방 ID가 필요합니다.').toBeTruthy();
+      await page.getByTestId('add-ai-P2').click();
+      await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await page.getByTestId('start-game-button').click();
+      await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+
+      page.once('dialog', async (dialog) => {
+        expect(dialog.message()).toBe('게임을 종료하고 나가시겠습니까?');
+        await dialog.dismiss();
+      });
+      await page.goBack();
+      await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 10_000 });
+
+      page.once('dialog', async (dialog) => {
+        expect(dialog.message()).toBe('게임을 종료하고 나가시겠습니까?');
+        await dialog.accept();
+      });
+      await page.goBack();
+      await expect(page.getByTestId('lobby-screen')).toBeVisible({ timeout: 25_000 });
+      await expect.poll(async () => {
+        const players = await getRoomPlayersForQa(roomId);
+        return players.find((player) => player.nickname === nickname)?.isSubstitutedByAI ?? false;
+      }, { timeout: 25_000 }).toBe(true);
+    });
+  });
+
   test('AI 배지와 방장 전용 액션이 요청한 대기실 배치와 인게임 난이도에 반영된다', async ({ page, context }, testInfo) => {
     expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'ai-level-host'));
