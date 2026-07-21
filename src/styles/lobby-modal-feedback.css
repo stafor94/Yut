@@ -17,6 +17,11 @@
   scroll-margin-block: 12px;
 }
 
+.screen-lobby .lobby-simple-sheet-heading .sheet-close {
+  position: relative;
+  top: -4px;
+}
+
 .screen-lobby .lobby-room-refresh-row button:disabled {
   cursor: wait;
   opacity: .72;
