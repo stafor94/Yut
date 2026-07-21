@@ -67,6 +67,8 @@ export function WaitingRoomContainer({
   const transitionTimerRef = useRef<number | null>(null);
   const transitionPendingRef = useRef(false);
   const transitionOverlayRef = useRef<HTMLDivElement | null>(null);
+  const countdownStartPlayedRef = useRef(false);
+  const startFlowActiveRef = useRef(startFlowBusy || initialGameEntryPending || roomInGame);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
   const [countdownTransitionOverlayVisible, setCountdownTransitionOverlayVisible] = useState(false);
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
@@ -88,6 +90,10 @@ export function WaitingRoomContainer({
     window.addEventListener(WAITING_ROOM_BACK_EXIT_EVENT, handleBackNavigationExit);
     return () => window.removeEventListener(WAITING_ROOM_BACK_EXIT_EVENT, handleBackNavigationExit);
   }, [onLeaveRoom]);
+
+  useEffect(() => {
+    startFlowActiveRef.current = startFlowBusy || initialGameEntryPending || roomInGame;
+  }, [initialGameEntryPending, roomInGame, startFlowBusy]);
 
   useEffect(() => {
     if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') return undefined;
@@ -126,7 +132,18 @@ export function WaitingRoomContainer({
       const countdownElement = document.querySelector<HTMLElement>('[data-testid="start-countdown-overlay"] strong');
       if (!countdownElement) {
         lastCountdownValueRef.current = null;
-        if (transitionPendingRef.current) setTransitionOverlayVisible(true);
+        if (transitionPendingRef.current) {
+          if (!startFlowActiveRef.current) {
+            clearCompletedCountdown();
+            countdownStartPlayedRef.current = false;
+            return;
+          }
+          setTransitionOverlayVisible(true);
+          if (!countdownStartPlayedRef.current) {
+            countdownStartPlayedRef.current = true;
+            playStoredSoundEffect('countdownStart');
+          }
+        }
         return;
       }
 
@@ -136,7 +153,10 @@ export function WaitingRoomContainer({
       if (lastCountdownValueRef.current === value) return;
       lastCountdownValueRef.current = value;
       if (value === 0) {
-        playStoredSoundEffect('countdownStart');
+        if (!countdownStartPlayedRef.current) {
+          countdownStartPlayedRef.current = true;
+          playStoredSoundEffect('countdownStart');
+        }
         armCompletedCountdown();
         return;
       }
@@ -152,6 +172,7 @@ export function WaitingRoomContainer({
       if (!(target instanceof Element) || !target.closest('[data-testid="cancel-start-button"]')) return;
       clearCompletedCountdown();
       lastCountdownValueRef.current = null;
+      countdownStartPlayedRef.current = false;
     };
 
     inspectCountdown();
@@ -163,6 +184,7 @@ export function WaitingRoomContainer({
       document.removeEventListener('click', handleCountdownCancel, true);
       clearTransitionTimer();
       transitionPendingRef.current = false;
+      countdownStartPlayedRef.current = false;
     };
   }, []);
 

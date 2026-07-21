@@ -43,10 +43,6 @@ import {
   buildAlternatingTeamTurnOrder,
   createTurnOrderIntro,
   formatTurnOrderSummary,
-  getTurnOrderFromRolls,
-  getTurnOrderLogTexts,
-  getTurnOrderScore,
-  resolveTurnOrderRolls,
   shuffleSeatsForGame,
 } from './flows/turnOrderFlow';
 import {
@@ -83,7 +79,6 @@ import {
   type TrapNode,
   type TurnOrderIntro,
   type TurnOrderPhase,
-  type TurnOrderRoll,
 } from './appState';
 import {
   delay,
@@ -126,12 +121,9 @@ import {
   TRAP_EFFECT_MS,
   TURN_DELAY_MS,
   NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS,
-  TURN_ORDER_AI_DELAY_SPREAD_MS,
-  TURN_ORDER_AI_MIN_DELAY_MS,
   TURN_ORDER_FINAL_HOLD_MS,
   TURN_ORDER_PRESENCE_FALLBACK_MS,
   TURN_ORDER_ROLL_ANIMATION_MS,
-  TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS,
 } from './config/gameTimings';
 import { getQaInitializeGameStateDelayMs, getQaRequestRoomGameStartDelayMs, getQaRollYutActionDelayMs } from './config/qaDelays';
 import { getSequenceRefetchAfter } from './utils/sequenceRefetch';
@@ -724,12 +716,7 @@ export function App() {
       .filter((log) => !preservedLogIds || preservedLogIds.has(log.id))
       .sort((left, right) => right.id - left.id);
   }, [activeTurnOrderIntro, logs, shouldHidePendingRollResultState]);
-  const rolledTurnOrderSeatIds = useMemo(() => new Set(turnOrderPhase.rolls.map((rollEntry) => rollEntry.seat.id)), [turnOrderPhase.rolls]);
-  const localTurnOrderSeatRolled = rolledTurnOrderSeatIds.has(localSeatId);
-  const canRollForTurnOrderNow = Boolean(turnOrderPhase.active && turnOrderClock >= turnOrderPhase.readyAt && localSeatId && !localTurnOrderSeatRolled && playableSeats.some((seat) => seat.id === localSeatId && !seat.isAI));
-  const isTurnOrderTimedOut = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline && playableSeats.some((seat) => !rolledTurnOrderSeatIds.has(seat.id)));
-  const isTurnOrderFallbackDue = Boolean(turnOrderPhase.active && turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline + TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS);
-  const canForceTurnOrderProgress = Boolean(isTurnOrderTimedOut && canCoordinateOnlineGame);
+  const canRollForTurnOrderNow = false;
   liveTurnGuardRef.current = {
     activeSeatId: activeSeat?.id ?? '',
     winner,
@@ -739,15 +726,6 @@ export function App() {
     turnOrderIntro: Boolean(activeTurnOrderIntro),
   };
 
-  const turnOrderTimerText = (() => {
-    if (!turnOrderPhase.active) return '';
-    if (turnOrderPhase.readyAt > turnOrderClock) {
-      return `시작까지 ${Math.max(0, Math.floor((turnOrderPhase.readyAt - turnOrderClock) / 1000))}초`;
-    }
-    if (turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline + TURN_ORDER_TIMEOUT_FALLBACK_GRACE_MS) return '자동 확정 중...';
-    if (turnOrderPhase.deadline > 0 && turnOrderClock >= turnOrderPhase.deadline && playableSeats.some((seat) => !rolledTurnOrderSeatIds.has(seat.id))) return '자동 진행 중...';
-    return `남은 시간 ${Math.max(0, Math.floor((turnOrderPhase.deadline - turnOrderClock) / 1000))}초`;
-  })();
   const showBottomBranchControls = Boolean(canUseMoveButton && selectedMoveSteps > 0 && activeMovablePiece?.started && BRANCH_NODE_IDS.includes(activeMovablePiece.nodeId as typeof BRANCH_NODE_IDS[number]));
   const roomInGame = startStatus === 'entering' || startStatus === 'playing';
   const startCountdownActive = startStatus === 'requested' && startCountdownEndsAt > Date.now();
@@ -2439,10 +2417,10 @@ export function App() {
     logs, turnOrderPhase, turnOrderClock, activeTurnOrderIntro, soundEnabled, canCoordinateOnlineGame,
     refs: { pendingStartRequestIdRef, appliedGameStartKeyRef, startRequestInFlightRef, startRequestVersionRef, startRequestIdRef, startStatusRef, startedGameRequestVersionsRef, savingStateFingerprintRef, enteredGamePresenceKeyRef, logIdRef, lastAppliedSequenceRef, lastAppliedStateVersionRef, pendingSequenceMetaRef, resolvedItemPromptKeysRef, completingTurnOrderIntroRef },
     setters: { setIsRoomHost, setInitialGameEntryPending, setStartRequestPending, setMessage, setStartRequestVersion, setStartRequestId, setStartCountdownStartsAt, setStartCountdownEndsAt, setStartStatus, setCountdown, setScreen, setInitialGameStateSaveDiagnostic, setCoordinatorStateSaveKey, setLogs, setTurnOrderIds, setInitialTurnOrderIds, setTurnOrderIntro, setWaitingForPlayersReady, setAuthoritativeWinner, setGameStartedAt, setPieces, setBoardItems, setOwnedItems, setTrapNodes, setShieldedPieceIds, setLastMovedPieceIds, setLastMovedSeatId, setRevealedItems, setSelectedPieceId, setMovingPieceId, setTurnIndex, setRollStack, setSelectedRollStackIndex, setRollStackClosed, setForcedRoll, setGoldenYutPickerOpen, setItemPromptTiming, setBranchChoice, setCaptureEffect, setTrapEffect, setPendingTrapPlacement, setPendingAfterMoveTurnIndex, setCompletedSeatIds, setRankingSeatIds, setGameEndMode, setLastFinishedSeatId, setContinuationRound, setTurnOrderPhase, setRollAnimation, setTurnOrderClock },
-    helpers: { measureFirebaseLatency, delay, getQaRequestRoomGameStartDelayMs, getQaInitializeGameStateDelayMs, getStartGameBlockMessage, makePieces, gameSeatSnapshotsFromSeats, spawnInitialBoardItems, getSeededTurnOrderSeats, buildAlternatingTeamTurnOrder, createTurnOrderIntro, getSeatPieceColor, formatTurnOrderSummary, getSeatDisplayName, makeLog, makeGameStateFingerprint, applySyncedStateSnapshot, replayMissingSequencesThenApply, getLocalActionKey, withActorLogPayload, playSfx, clearRoll },
+    helpers: { measureFirebaseLatency, delay, getQaRequestRoomGameStartDelayMs, getQaInitializeGameStateDelayMs, getStartGameBlockMessage, makePieces, gameSeatSnapshotsFromSeats, spawnInitialBoardItems, getSeededTurnOrderSeats, buildAlternatingTeamTurnOrder, createTurnOrderIntro, getSeatPieceColor, formatTurnOrderSummary, getSeatDisplayName, makeLog, makeGameStateFingerprint, applySyncedStateSnapshot, replayMissingSequencesThenApply, clearRoll },
     services: { requestRoomGameStart, cancelRoomGameStart, initializeGameState, getLatestGameState, getGameSequencesSince, updateRoomPlayer, resolveTurnOrderIntro, completeTurnOrderIntro },
   });
-  const { handleStartGame, cancelStartCountdown, rollForTurnOrder } = gameStartController;
+  const { handleStartGame, cancelStartCountdown } = gameStartController;
 
   function resetGameBoard(nextPieces: BoardPiece[]) {
     setPieces(nextPieces);
