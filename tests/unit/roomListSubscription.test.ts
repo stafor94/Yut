@@ -102,14 +102,14 @@ test('같은 방장의 새 방이 있어도 현재 사용자의 AI 대체 진행
   assert.deepEqual((getLatestPublishedRooms(harness.published) ?? []).map((room) => room.id), ['room-new', 'room-old']);
 });
 
-test('현재 사용자 복귀 대상이 아닌 같은 방장의 중복 방은 첫 방만 표시한다', () => {
+test('현재 사용자 방 뒤의 같은 방장 비복귀 중복 방은 숨긴다', () => {
   const harness = createHarness('viewer');
   harness.controller.start();
   harness.emitRooms([
-    { ...waitingRoom('room-new', '새 방'), hostId: 'other-host' },
-    { ...playingRoom('room-old', '이전 방'), hostId: 'other-host' },
+    { ...waitingRoom('room-new', '새 방'), hostId: 'viewer' },
+    { ...playingRoom('room-old', '이전 방'), hostId: 'viewer' },
   ]);
-  harness.emitPlayers('room-new', [{ id: 'human-new' }]);
+  harness.emitPlayers('room-new', [{ id: 'viewer' }]);
   harness.emitPlayers('room-old', [{ id: 'human-old' }]);
   assert.deepEqual((getLatestPublishedRooms(harness.published) ?? []).map((room) => room.id), ['room-new']);
 });
