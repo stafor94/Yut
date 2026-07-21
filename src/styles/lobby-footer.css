@@ -1,0 +1,29 @@
+/* Extra breathing room and copyright below the lobby action buttons. */
+.screen-lobby .lobby-stage .lobby-secondary-actions {
+  grid-template-rows: 48px auto;
+  height: auto;
+  min-height: 48px;
+  row-gap: 18px;
+  margin-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+.screen-lobby .lobby-stage .lobby-secondary-actions::after {
+  content: "© 2026 stafor94. All rights reserved.";
+  grid-column: 1 / -1;
+  display: block;
+  padding: 0 8px 4px;
+  color: rgba(63, 39, 23, .72);
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 252, 244, .72);
+  font-size: clamp(.68rem, 2.7vw, .82rem);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: .035em;
+}
+
+@media (max-height: 700px) {
+  .screen-lobby .lobby-stage .lobby-secondary-actions {
+    grid-template-rows: 44px auto;
+    row-gap: 14px;
+  }
+}
