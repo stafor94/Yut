@@ -4,6 +4,7 @@ import type { SequenceStateSnapshot } from '../appState';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { buildAuthoritativeApplyWakeSnapshot } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
+import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
 
 export type AuthoritativeCommitResult = Awaited<ReturnType<typeof commitAuthoritativeGameAction>>;
 
@@ -101,6 +102,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
       params.activeRoomId,
       localSequence,
       remoteSequence,
+      getSequenceRefetchAfter(localSequence),
       () => params.replayMissingSequencesThenApply(state, localSequence, remoteSequence),
     ),
     applySyncedStateSnapshot: rememberAndApplySyncedStateSnapshot,
