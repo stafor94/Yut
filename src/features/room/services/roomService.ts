@@ -36,8 +36,6 @@ import {
 import { isAiSubstitutionUpdate } from './roomExitPolicy';
 import { ROOM_LIST_CANDIDATE_LIMIT, getRoomLastActivityMillis, isRoomSummaryInactive } from './roomLifecyclePolicy';
 import {
-  cleanupDeletionCandidatesBeforeCreate,
-  countActivePlayers,
   deleteRoomSafely,
   getManagedRoom,
   getRoomPlayers,
@@ -64,6 +62,8 @@ export * from './roomLifecyclePolicy';
 export function isRoomInGame(room: Parameters<typeof isRoomInGameCore>[0]) {
   return room.status === 'finished' || isRoomInGameCore(room);
 }
+
+const countConnectedParticipants = (players: RoomPlayer[]) => players.filter((player) => !player.isSpectator && !player.isAI).length;
 
 const keepNewestRoomPerHost = (rooms: RoomSummary[]) => {
   const latestRoomsByHost = new Map<string, RoomSummary>();
@@ -151,6 +151,14 @@ export async function initializeGameState(...args: Parameters<typeof initializeG
 export async function joinRoom(...args: Parameters<typeof joinRoomCore>): Promise<JoinRoomResult> {
   const [roomId, params] = args;
   const result = await joinRoomSafely(...args);
+  const players = await getRoomPlayers(roomId);
+  if (db) {
+    await setDoc(doc(db, 'rooms', roomId), {
+      currentPlayers: countConnectedParticipants(players),
+      emptySince: null,
+      lastActivityAt: Date.now(),
+    }, { merge: true });
+  }
   void leaveDuplicatePlayerRoomsSafely(params.userId, roomId).catch((error) => console.warn('입장 후 중복 방 정리에 실패했습니다.', error));
   return result;
 }
@@ -196,7 +204,16 @@ export async function updateRoomPlayer(roomId: string, playerId: string, params:
     if (atomicAiSubstitution) queuePendingRoomCleanup({ roomId, playerId, preservePlayingSeatAsAi: true });
     throw error;
   }
-  if (atomicAiSubstitution) return;
+  if (atomicAiSubstitution) {
+    const players = await getRoomPlayers(roomId);
+    if (db) {
+      await setDoc(doc(db, 'rooms', roomId), {
+        currentPlayers: countConnectedParticipants(players),
+        lastActivityAt: Date.now(),
+      }, { merge: true });
+    }
+    return;
+  }
   if (db) await setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now() }, { merge: true });
 }
 
@@ -216,7 +233,7 @@ export async function updateRoomStatus(roomId: string, status: RoomSummary['stat
       if (!player.isAI && player.id !== room?.hostId && player.ready) batch.set(doc(db!, 'rooms', roomId, 'players', player.id), { ready: false }, { merge: true });
     });
     batch.set(doc(db, 'rooms', roomId), {
-      currentPlayers: countActivePlayers(remainingPlayers),
+      currentPlayers: countConnectedParticipants(remainingPlayers),
       emptySince: null,
       deletingAt: null,
       lastActivityAt: Date.now(),
@@ -245,7 +262,7 @@ export async function cleanupCurrentRoomPresence(...args: Parameters<typeof clea
       });
     }
     batch.set(doc(db, 'rooms', roomId), {
-      currentPlayers: countActivePlayers(playersAfter),
+      currentPlayers: countConnectedParticipants(playersAfter),
       lastActivityAt: Date.now(),
     }, { merge: true });
     await batch.commit();
