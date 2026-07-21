@@ -1080,6 +1080,46 @@ export function App() {
   useEffect(() => { screenRef.current = screen; }, [screen]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    if (screen === 'lobby') return undefined;
+
+    const protectedScreen = screen;
+    const protectedRoomId = activeRoomId;
+    const state = window.history.state;
+    if (!state || state.yutScreenGuard !== protectedScreen || state.yutRoomId !== protectedRoomId) {
+      window.history.pushState({ ...(state && typeof state === 'object' ? state : {}), yutScreenGuard: protectedScreen, yutRoomId: protectedRoomId }, '', window.location.href);
+    }
+
+    let handlingPopstate = false;
+    const handlePopstate = () => {
+      if (handlingPopstate) return;
+      if (screenRef.current === 'lobby') return;
+      const currentScreen = screenRef.current;
+      const message = currentScreen === 'game' ? '게임을 종료하고 나가시겠습니까?' : '방을 나가시겠습니까?';
+      const confirmed = window.confirm(message);
+      if (!confirmed) {
+        window.history.pushState({ yutScreenGuard: currentScreen, yutRoomId: activeRoomIdRef.current }, '', window.location.href);
+        return;
+      }
+      handlingPopstate = true;
+      void leaveRoom().finally(() => { handlingPopstate = false; });
+    };
+
+    window.addEventListener('popstate', handlePopstate);
+    return () => window.removeEventListener('popstate', handlePopstate);
+  }, [activeRoomId, leaveRoom, screen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || screen === 'lobby') return undefined;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [screen]);
+
+  useEffect(() => {
     const previousActiveRoomId = activeRoomIdRef.current;
     activeRoomIdRef.current = activeRoomId;
     onlineGameCoordinatorSeatIdRef.current = '';
