@@ -36,6 +36,7 @@ import {
 import { isAiSubstitutionUpdate } from './roomExitPolicy';
 import { ROOM_LIST_CANDIDATE_LIMIT, getRoomLastActivityMillis, isRoomSummaryInactive } from './roomLifecyclePolicy';
 import {
+  cleanupDeletionCandidatesBeforeCreate,
   deleteRoomSafely,
   getManagedRoom,
   getRoomPlayers,
