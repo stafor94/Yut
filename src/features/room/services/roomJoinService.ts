@@ -13,7 +13,13 @@ import {
   ROOM_CAPACITY_FULL_ERROR_MESSAGE,
   ROOM_CAPACITY_FULL_EVENT,
 } from './roomAvailabilityPolicy';
-import { isReusableWaitingRoomSeat, isRoomDeletionExpired, isSystemRoom } from './roomLifecyclePolicy';
+import {
+  countConnectedHumanRoomSeats,
+  countConnectedHumanRoomSeatsAfterClaim,
+  isReusableWaitingRoomSeat,
+  isRoomDeletionExpired,
+  isSystemRoom,
+} from './roomLifecyclePolicy';
 import type { ManagedRoomSummary } from './roomLifecycleStore';
 import { updateGameSeatControlState } from './roomPresenceGameSeat';
 
@@ -70,10 +76,13 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     const maxPlayers = room.maxPlayers as 2 | 3 | 4;
     const seatRefs = Array.from({ length: maxPlayers }, (_, index) => doc(db!, 'rooms', roomId, 'seats', String(index)));
     const seatSnapshots = await Promise.all(seatRefs.map((seatRef) => transaction.get(seatRef)));
+    const seatStates = seatSnapshots.map((seatSnapshot) => (
+      seatSnapshot.exists() ? seatSnapshot.data() as RoomSeat : null
+    ));
+    const connectedHumanSeatCount = countConnectedHumanRoomSeats(seatStates);
     const isAvailableSeat = (seatSnapshot: SeatSnapshot) => (
       isReusableWaitingRoomSeat(seatSnapshot.exists() ? seatSnapshot.data() as RoomSeat : null)
     );
-    const occupiedSeatCount = seatSnapshots.filter((seatSnapshot) => !isAvailableSeat(seatSnapshot)).length;
     const matchingLockedSeatIndex = seatSnapshots.findIndex((seatSnapshot) => {
       if (!seatSnapshot.exists()) return false;
       const seat = seatSnapshot.data() as RoomSeat;
@@ -95,7 +104,6 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
       const restoredTeam = player?.team ?? seat?.team ?? (params.playMode === 'team' ? TEAMS[seatIndex] : '청팀');
       const restoredColor = player?.color ?? seat?.color ?? COLORS[seatIndex] ?? 'black';
       const restoredNickname = wasSubstituted ? (player?.nickname || seat?.nickname || params.nickname) : params.nickname;
-      const seatWasAvailable = isAvailableSeat(seatSnapshots[seatIndex]);
       let gameState: SyncedGameState | null = null;
       const syncRestoredGameSeat = wasSubstituted && !player;
       if (wasSubstituted && player) {
@@ -148,7 +156,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         lastHumanSeenAt: serverTimestamp(),
         deletingAt: null,
         lastActivityAt: Date.now(),
-        currentPlayers: occupiedSeatCount + (seatWasAvailable ? 1 : 0),
+        currentPlayers: countConnectedHumanRoomSeatsAfterClaim(seatStates, seatIndex),
       }, { merge: true });
       return {
         role: 'player',
@@ -184,7 +192,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
           joinedAt: existingData.joinedAt ?? serverTimestamp(),
           lastSeen: serverTimestamp(),
         }, { merge: true });
-        transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: occupiedSeatCount, lastActivityAt: Date.now() }, { merge: true });
+        transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: connectedHumanSeatCount, lastActivityAt: Date.now() }, { merge: true });
         return { role: 'spectator', seatIndex: null };
       }
       const seatIndex = seatSnapshots.findIndex(isAvailableSeat);
@@ -217,7 +225,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: occupiedSeatCount + 1, lastActivityAt: Date.now() }, { merge: true });
+      transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: countConnectedHumanRoomSeatsAfterClaim(seatStates, seatIndex), lastActivityAt: Date.now() }, { merge: true });
       return { role: 'player', seatIndex };
     }
 
@@ -239,7 +247,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         joinedAt: serverTimestamp(),
         lastSeen: serverTimestamp(),
       }, { merge: true });
-      transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: occupiedSeatCount, lastActivityAt: Date.now() }, { merge: true });
+      transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: connectedHumanSeatCount, lastActivityAt: Date.now() }, { merge: true });
       return { role: 'spectator', seatIndex: null };
     }
 
@@ -273,7 +281,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: occupiedSeatCount + 1, lastActivityAt: Date.now() }, { merge: true });
+    transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: countConnectedHumanRoomSeatsAfterClaim(seatStates, seatIndex), lastActivityAt: Date.now() }, { merge: true });
     return { role: 'player', seatIndex };
   }).catch((error) => {
     if (isRoomCapacityFullError(error) && typeof window !== 'undefined') {

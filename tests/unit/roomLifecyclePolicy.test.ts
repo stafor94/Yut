@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   ROOM_EMPTY_DELETE_GRACE_MS,
   ROOM_MAX_IDLE_MS,
+  countConnectedHumanRoomSeats,
+  countConnectedHumanRoomSeatsAfterClaim,
   getRoomDeletionDeadlineMillis,
   getRoomDerivedEmptySinceMillis,
   getRoomLastActivityMillis,
@@ -11,6 +13,7 @@ import {
   hasCreationBlockingHumanPlayer,
   hasHumanLifecyclePlayer,
   hasResumablePlayerForUser,
+  isConnectedHumanRoomSeat,
   isRoomDeletionExpired,
   isRoomDeletionGraceActive,
   isRoomSummaryInactive,
@@ -110,6 +113,21 @@ test('대기실에서는 삭제된 좌석과 disconnected 좌석만 재사용한
   assert.equal(isReusableWaitingRoomSeat({ status: 'disconnected', aiActive: false, isSubstitutedByAI: false }), true);
   assert.equal(isReusableWaitingRoomSeat({ status: 'human' }), false);
   assert.equal(isReusableWaitingRoomSeat({ status: 'ai_substitute', aiActive: true, isSubstitutedByAI: true }), false);
+});
+
+test('연결 인원은 실제 사람 좌석만 세고 AI 대체 좌석 복귀 시 한 명만 증가한다', () => {
+  const seats = [
+    { status: 'ai_substitute' as const, aiActive: true, isSubstitutedByAI: true },
+    { status: 'human' as const, aiActive: true, isSubstitutedByAI: false },
+    { status: 'human' as const, aiActive: false, isSubstitutedByAI: false },
+    null,
+  ];
+  assert.equal(isConnectedHumanRoomSeat(seats[0]), false);
+  assert.equal(isConnectedHumanRoomSeat(seats[1]), false);
+  assert.equal(isConnectedHumanRoomSeat(seats[2]), true);
+  assert.equal(countConnectedHumanRoomSeats(seats), 1);
+  assert.equal(countConnectedHumanRoomSeatsAfterClaim(seats, 0), 2);
+  assert.equal(countConnectedHumanRoomSeatsAfterClaim(seats, 2), 1);
 });
 
 test('AI 대체 방은 복귀 대상으로 유지하되 새 방 생성 차단 대상에서는 제외한다', () => {
