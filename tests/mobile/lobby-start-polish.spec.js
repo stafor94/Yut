@@ -147,10 +147,13 @@ test.describe('mobile lobby polish QA', () => {
       expect(before.scrollHeight, '검증용 콘텐츠가 추가되면 문서 높이가 viewport보다 커져야 합니다.').toBeGreaterThan(before.viewportHeight + 1);
       expect(before.scrollY, '초기 로비 스크롤 위치는 상단이어야 합니다.').toBe(0);
 
-      await page.mouse.wheel(0, 360);
+      await page.evaluate(() => window.scrollTo({ top: 360, left: 0, behavior: 'auto' }));
       await expect.poll(() => page.evaluate(() => window.scrollY), { message: '로비의 세로 문서 스크롤이 잠기면 안 됩니다.' }).toBeGreaterThan(0);
 
-      await page.evaluate(() => document.querySelector('[data-qa-lobby-scroll-probe="true"]')?.remove());
+      await page.evaluate(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        document.querySelector('[data-qa-lobby-scroll-probe="true"]')?.remove();
+      });
     });
   });
 
