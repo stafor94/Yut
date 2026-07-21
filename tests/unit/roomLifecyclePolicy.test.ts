@@ -16,6 +16,7 @@ import {
   hasResumablePlayerForUser,
   isConnectedHumanRoomPlayer,
   isConnectedHumanRoomSeat,
+  isManualAiSeatPlayerUpdate,
   isRoomDeletionExpired,
   isRoomDeletionGraceActive,
   isRoomSummaryInactive,
@@ -146,6 +147,14 @@ test('연결 인원 요약은 사람 플레이어만 세고 수동 AI·AI 대체
   assert.equal(isConnectedHumanRoomPlayer(players[3]), false);
   assert.equal(isConnectedHumanRoomPlayer(players[4]), false);
   assert.equal(countConnectedHumanRoomPlayers(players), 1);
+});
+
+test('빈 좌석의 수동 AI 추가만 연결 인원 재계산을 생략할 수 있다', () => {
+  assert.equal(isManualAiSeatPlayerUpdate('slot-2', { seatIndex: 1, isAI: true, isSubstitutedByAI: false }), true);
+  assert.equal(isManualAiSeatPlayerUpdate('human-user', { seatIndex: 1, isAI: true, isSubstitutedByAI: false }), false);
+  assert.equal(isManualAiSeatPlayerUpdate('slot-2', { seatIndex: 1, isAI: true, isSubstitutedByAI: true }), false);
+  assert.equal(isManualAiSeatPlayerUpdate('slot-2', { isAI: true, isSubstitutedByAI: false }), false);
+  assert.equal(isManualAiSeatPlayerUpdate('slot-2', { seatIndex: 1, isAI: true, isSpectator: true }), false);
 });
 
 test('AI 대체 방은 복귀 대상으로 유지하되 새 방 생성 차단 대상에서는 제외한다', () => {

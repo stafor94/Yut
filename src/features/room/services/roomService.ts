@@ -38,6 +38,7 @@ import {
   ROOM_LIST_CANDIDATE_LIMIT,
   countConnectedHumanRoomPlayers,
   getRoomLastActivityMillis,
+  isManualAiSeatPlayerUpdate,
   isRoomSummaryInactive,
 } from './roomLifecyclePolicy';
 import {
@@ -184,11 +185,42 @@ export async function heartbeatRoomPlayer(roomId: string, playerId: string) {
   }
 }
 
+const updateManualAiSeatPlayer = async (
+  roomId: string,
+  playerId: string,
+  params: Partial<Omit<RoomPlayer, 'id'>>,
+) => {
+  if (!db || typeof params.seatIndex !== 'number') throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  const seatIndex = params.seatIndex;
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'rooms', roomId, 'players', playerId), params, { merge: true });
+  batch.set(doc(db, 'rooms', roomId, 'seats', String(seatIndex)), {
+    playerId,
+    originalPlayerId: playerId,
+    currentPlayerId: playerId,
+    ...(params.nickname ? { nickname: params.nickname } : {}),
+    ...(params.color ? { color: params.color } : {}),
+    ...(params.team ? { team: params.team } : {}),
+    seatIndex,
+    label: `P${seatIndex + 1}`,
+    aiActive: true,
+    isSubstitutedByAI: false,
+    ...(params.nickname ? { aiName: params.nickname } : {}),
+    status: 'human',
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+  batch.set(doc(db, 'rooms', roomId), { lastActivityAt: Date.now() }, { merge: true });
+  await batch.commit();
+};
+
 export async function updateRoomPlayer(roomId: string, playerId: string, params: Partial<Omit<RoomPlayer, 'id'>>) {
   const atomicAiSubstitution = isAiSubstitutionUpdate(params);
+  const manualAiSeatUpdate = isManualAiSeatPlayerUpdate(playerId, params);
   try {
     if (atomicAiSubstitution) {
       await removeRoomPlayerNow(roomId, playerId, { preservePlayingSeatAsAi: true });
+    } else if (manualAiSeatUpdate) {
+      await updateManualAiSeatPlayer(roomId, playerId, params);
     } else {
       await updateRoomPlayerCore(roomId, playerId, params);
     }
@@ -196,6 +228,7 @@ export async function updateRoomPlayer(roomId: string, playerId: string, params:
     if (atomicAiSubstitution) queuePendingRoomCleanup({ roomId, playerId, preservePlayingSeatAsAi: true });
     throw error;
   }
+  if (manualAiSeatUpdate) return;
   const players = await getRoomPlayers(roomId);
   if (db) {
     await setDoc(doc(db, 'rooms', roomId), {

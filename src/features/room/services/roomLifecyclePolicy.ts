@@ -79,6 +79,17 @@ export const countConnectedHumanRoomPlayers = (players: RoomLifecyclePlayer[]) =
   players.filter(isConnectedHumanRoomPlayer).length
 );
 
+export const isManualAiSeatPlayerUpdate = (
+  playerId: string,
+  update: Partial<Pick<RoomLifecyclePlayer, 'isAI' | 'isSubstitutedByAI' | 'isSpectator'>> & { seatIndex?: number },
+) => (
+  playerId.startsWith('slot-')
+  && Number.isInteger(update.seatIndex)
+  && update.isAI === true
+  && update.isSubstitutedByAI !== true
+  && update.isSpectator !== true
+);
+
 export const hasRecoverableLifecyclePlayer = (players: RoomLifecyclePlayer[]) => players.some((player) => (
   !player.isAI || player.isSubstitutedByAI === true
 ));
