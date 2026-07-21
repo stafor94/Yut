@@ -34,7 +34,12 @@ import {
   shouldWaitForGamePresentationBeforeCommit,
 } from './fallPresentationCommitPolicy';
 import { isAiSubstitutionUpdate } from './roomExitPolicy';
-import { ROOM_LIST_CANDIDATE_LIMIT, getRoomLastActivityMillis, isRoomSummaryInactive } from './roomLifecyclePolicy';
+import {
+  ROOM_LIST_CANDIDATE_LIMIT,
+  countConnectedHumanRoomPlayers,
+  getRoomLastActivityMillis,
+  isRoomSummaryInactive,
+} from './roomLifecyclePolicy';
 import {
   cleanupDeletionCandidatesBeforeCreate,
   deleteRoomSafely,
@@ -63,8 +68,6 @@ export * from './roomLifecyclePolicy';
 export function isRoomInGame(room: Parameters<typeof isRoomInGameCore>[0]) {
   return room.status === 'finished' || isRoomInGameCore(room);
 }
-
-const countConnectedParticipants = (players: RoomPlayer[]) => players.filter((player) => !player.isSpectator && !player.isAI).length;
 
 const sortRoomsByLastActivity = (rooms: RoomSummary[]) => [...rooms]
   .sort((left, right) => getRoomLastActivityMillis(right) - getRoomLastActivityMillis(left));
@@ -143,7 +146,7 @@ export async function joinRoom(...args: Parameters<typeof joinRoomCore>): Promis
   const players = await getRoomPlayers(roomId);
   if (db) {
     await setDoc(doc(db, 'rooms', roomId), {
-      currentPlayers: countConnectedParticipants(players),
+      currentPlayers: countConnectedHumanRoomPlayers(players),
       emptySince: null,
       lastActivityAt: Date.now(),
     }, { merge: true });
@@ -193,17 +196,13 @@ export async function updateRoomPlayer(roomId: string, playerId: string, params:
     if (atomicAiSubstitution) queuePendingRoomCleanup({ roomId, playerId, preservePlayingSeatAsAi: true });
     throw error;
   }
-  if (atomicAiSubstitution) {
-    const players = await getRoomPlayers(roomId);
-    if (db) {
-      await setDoc(doc(db, 'rooms', roomId), {
-        currentPlayers: countConnectedParticipants(players),
-        lastActivityAt: Date.now(),
-      }, { merge: true });
-    }
-    return;
+  const players = await getRoomPlayers(roomId);
+  if (db) {
+    await setDoc(doc(db, 'rooms', roomId), {
+      currentPlayers: countConnectedHumanRoomPlayers(players),
+      lastActivityAt: Date.now(),
+    }, { merge: true });
   }
-  if (db) await setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now() }, { merge: true });
 }
 
 export async function updateRoomStatus(roomId: string, status: RoomSummary['status']) {
@@ -222,7 +221,7 @@ export async function updateRoomStatus(roomId: string, status: RoomSummary['stat
       if (!player.isAI && player.id !== room?.hostId && player.ready) batch.set(doc(db!, 'rooms', roomId, 'players', player.id), { ready: false }, { merge: true });
     });
     batch.set(doc(db, 'rooms', roomId), {
-      currentPlayers: countConnectedParticipants(remainingPlayers),
+      currentPlayers: countConnectedHumanRoomPlayers(remainingPlayers),
       emptySince: null,
       deletingAt: null,
       lastActivityAt: Date.now(),
@@ -251,7 +250,7 @@ export async function cleanupCurrentRoomPresence(...args: Parameters<typeof clea
       });
     }
     batch.set(doc(db, 'rooms', roomId), {
-      currentPlayers: countConnectedParticipants(playersAfter),
+      currentPlayers: countConnectedHumanRoomPlayers(playersAfter),
       lastActivityAt: Date.now(),
     }, { merge: true });
     await batch.commit();
