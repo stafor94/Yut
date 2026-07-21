@@ -159,8 +159,8 @@ export async function createRoomFromLobby(page, roomTitle) {
 export async function joinRoomFromLobby(page, roomTitle) {
   await expectAppShell(page);
   await waitForBlockingOverlayToDisappear(page);
-  await page.getByRole('button', { name: '게임 참가', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: '게임 참가' })).toBeVisible();
+  await page.getByRole('button', { name: '방 참가', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '방 참가' })).toBeVisible();
   const roomListLoading = page.getByTestId('room-list-loading');
   await expect(roomListLoading).toBeVisible();
   await expect(page.locator('.lobby-room-card')).toHaveCount(0);

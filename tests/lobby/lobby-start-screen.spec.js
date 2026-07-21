@@ -30,7 +30,7 @@ test.describe('lobby start screen QA', () => {
     await expect(nicknameDialog).toBeHidden();
     await expect.poll(() => page.evaluate(() => window.localStorage.getItem('yut-online:nickname'))).toBe('가나');
     await expect(page.getByRole('button', { name: '방 만들기', exact: true })).toBeEnabled();
-    await expect(page.getByRole('button', { name: '게임 참가', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '방 참가', exact: true })).toBeEnabled();
   });
 
   test('로비는 브랜드, 윷판 장면, 네 개의 윷가락과 계층화된 시작 액션을 제공한다', async ({ page, context }) => {
@@ -41,7 +41,7 @@ test.describe('lobby start screen QA', () => {
     const lobby = page.getByTestId('lobby-screen');
     const heroArt = lobby.getByTestId('lobby-hero-art');
     const createButton = lobby.getByRole('button', { name: '방 만들기', exact: true });
-    const joinButton = lobby.getByRole('button', { name: '게임 참가', exact: true });
+    const joinButton = lobby.getByRole('button', { name: '방 참가', exact: true });
 
     await expect(lobby.getByRole('heading', { name: '윷놀이', exact: true })).toBeVisible();
     await expect(lobby).toContainText('친구들과 바로 즐기는');
@@ -60,7 +60,7 @@ test.describe('lobby start screen QA', () => {
       };
       const art = element.querySelector('[data-testid="lobby-hero-art"]');
       const create = element.querySelector('[aria-label="방 만들기"]');
-      const join = element.querySelector('[aria-label="게임 참가"]');
+      const join = element.querySelector('[aria-label="방 참가"]');
       if (!(art instanceof HTMLElement) || !(create instanceof HTMLElement) || !(join instanceof HTMLElement)) return null;
       return {
         viewportWidth: window.innerWidth,
@@ -111,7 +111,7 @@ test.describe('lobby start screen QA', () => {
       const title = brandRow?.querySelector('h1');
       const sticks = brandRow ? Array.from(brandRow.querySelectorAll('.lobby-brand-stick')) : [];
       const create = document.querySelector('[aria-label="방 만들기"]');
-      const join = document.querySelector('[aria-label="게임 참가"]');
+      const join = document.querySelector('[aria-label="방 참가"]');
       if (!(shell instanceof HTMLElement) || !(secondary instanceof HTMLElement) || utilities.length !== 3 || !(brandRow instanceof HTMLElement) || !(title instanceof HTMLElement) || sticks.length !== 2 || !(create instanceof HTMLElement) || !(join instanceof HTMLElement)) return null;
       const utilityRects = utilities.map((element) => element.getBoundingClientRect());
       const shellRect = shell.getBoundingClientRect();
@@ -183,7 +183,7 @@ test.describe('lobby start screen QA', () => {
     await expectAppShell(page);
     await waitForBlockingOverlayToDisappear(page);
 
-    const joinTrigger = page.getByRole('button', { name: '게임 참가', exact: true });
+    const joinTrigger = page.getByRole('button', { name: '방 참가', exact: true });
     await page.evaluate(() => {
       window.__yutQaRefreshCount = 0;
       window.addEventListener('yut:refresh-rooms', () => {
@@ -191,7 +191,7 @@ test.describe('lobby start screen QA', () => {
       });
     });
     await joinTrigger.click();
-    const joinDialog = page.getByRole('dialog', { name: '게임 참가' });
+    const joinDialog = page.getByRole('dialog', { name: '방 참가' });
     await expect(joinDialog).toBeVisible();
     await expect(joinDialog.getByRole('textbox')).toHaveCount(0);
     await expect(joinDialog.getByRole('checkbox')).toHaveCount(0);
@@ -200,6 +200,7 @@ test.describe('lobby start screen QA', () => {
     await expect(refreshButton).toBeVisible();
     await expect(refreshButton).toBeFocused();
     await expect.poll(() => page.evaluate(() => window.__yutQaRefreshCount)).toBe(1);
+    await expect(refreshButton).toBeEnabled({ timeout: 2_000 });
     await refreshButton.click();
     await expect.poll(() => page.evaluate(() => window.__yutQaRefreshCount)).toBe(2);
 

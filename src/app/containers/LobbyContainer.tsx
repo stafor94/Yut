@@ -91,7 +91,7 @@ export function LobbyContainer({
     const handleLobbyClick = (event: Event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest('button[aria-label="게임 참가"]')) {
+      if (target.closest('button[aria-label="방 참가"]')) {
         startInitialRoomQuery();
         return;
       }
@@ -112,6 +112,7 @@ export function LobbyContainer({
       title={title}
       rooms={isInitialRoomQuerying ? [] : rooms}
       isCreatingRoom={isCreatingRoom}
+      isInitialRoomQuerying={isInitialRoomQuerying}
       isFirebaseConfigured={isFirebaseConfigured}
       currentUser={currentUser}
       resumableRoomId={resumableRoomId}
@@ -123,10 +124,5 @@ export function LobbyContainer({
       onNicknameChange={onNicknameChange}
       onSoundEnabledChange={onSoundEnabledChange}
     />
-    {isInitialRoomQuerying && <div className="join-room-query-status" data-testid="room-list-loading" role="status" aria-live="polite">
-      <span className="join-room-query-spinner" aria-hidden="true"></span>
-      <strong>방 목록 조회 중</strong>
-      <p>조회가 끝나면 참가 가능한 방을 보여드릴게요.</p>
-    </div>}
   </>;
 }

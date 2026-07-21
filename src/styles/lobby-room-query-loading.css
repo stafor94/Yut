@@ -1,9 +1,3 @@
-html.yut-room-list-querying .lobby-join-sheet .lobby-room-list {
-  visibility: hidden;
-  min-height: 156px;
-  pointer-events: none;
-}
-
 html.yut-room-list-querying .lobby-join-sheet [data-testid="refresh-room-list-button"] {
   pointer-events: none;
 }
@@ -21,43 +15,72 @@ html.yut-room-list-querying .lobby-join-sheet [data-testid="refresh-room-list-bu
   font-size: .82rem;
 }
 
-.join-room-query-status {
-  position: fixed;
-  z-index: 10020;
-  top: 54%;
-  left: 50%;
+.screen-lobby .lobby-join-sheet {
+  max-height: min(88dvh, 620px);
+}
+
+.screen-lobby .lobby-join-sheet .lobby-room-list {
+  max-height: min(46dvh, 420px);
+  overflow-y: auto;
+}
+
+.screen-lobby .lobby-join-sheet .empty-lobby-room {
+  min-height: 0;
+  gap: 10px;
+  padding: 24px 18px;
+  border: 0;
+  background: linear-gradient(180deg, rgba(255, 248, 234, .8), rgba(255, 253, 247, .92));
+}
+
+.screen-lobby .lobby-join-sheet .empty-lobby-room p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: .95rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.screen-lobby .lobby-join-sheet .empty-lobby-room-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(201, 79, 8, .12);
+  color: #c94f08;
+}
+
+.screen-lobby .lobby-join-sheet .empty-lobby-room-icon svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.screen-lobby .lobby-join-sheet .empty-lobby-create-button {
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 0 22px;
+}
+
+.lobby-join-sheet .join-room-query-status {
   display: grid;
   justify-items: center;
-  gap: 7px;
-  width: min(320px, calc(100vw - 64px));
+  gap: 6px;
+  min-height: 92px;
   padding: 18px 20px;
-  border: 1px solid rgba(104, 68, 38, .16);
   border-radius: 18px;
-  background: rgba(255, 250, 240, .96);
+  background: rgba(255, 250, 240, .72);
   color: #4c2b18;
   text-align: center;
-  box-shadow: 0 12px 32px rgba(67, 39, 19, .16);
-  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
-.join-room-query-status strong {
+.lobby-join-sheet .join-room-query-status strong {
   font-size: 1rem;
-}
-
-.join-room-query-status p {
-  margin: 0;
-  color: #7c6048;
-  font-size: .84rem;
-}
-
-.join-room-query-spinner {
-  width: 27px;
-  height: 27px;
-  border: 3px solid rgba(201, 79, 8, .2);
-  border-top-color: #c94f08;
-  border-radius: 50%;
-  animation: lobby-initial-room-query-spin .8s linear infinite;
 }
 
 @keyframes lobby-initial-room-query-spin {
@@ -65,9 +88,7 @@ html.yut-room-list-querying .lobby-join-sheet [data-testid="refresh-room-list-bu
 }
 
 @media (max-width: 520px) {
-  .join-room-query-status {
-    top: 52%;
-    width: min(286px, calc(100vw - 44px));
+  .lobby-join-sheet .join-room-query-status {
     padding: 16px 18px;
   }
 }

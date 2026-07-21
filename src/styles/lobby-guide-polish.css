@@ -33,6 +33,11 @@
   transform: rotate(10deg);
 }
 
+.screen-lobby .lobby-room-refresh-row .lobby-room-refresh-icon:has(svg)::before,
+.screen-lobby .lobby-room-refresh-row .lobby-room-refresh-icon:has(svg)::after {
+  content: none;
+}
+
 .screen-lobby .lobby-howto-sheet {
   width: min(700px, 100%);
   max-height: min(90dvh, 760px);
