@@ -1,16 +1,195 @@
-/* Keep the three lobby utility badges visually consistent after legacy styles. */
-.screen-lobby > .hero.panel .hero-actions > button {
+/* Final utility-header contract shared by the lobby, waiting room, and game. */
+.screen-lobby > .hero.panel,
+.screen-waitingRoom > .hero.panel,
+.screen-game.game-shell > .hero.panel.game-header-with-end {
+  --utility-header-control-height: 34px;
+  --utility-header-gap: 8px;
+  --utility-header-sound-width: clamp(86px, 20%, 164px);
+  --utility-header-status-width: clamp(108px, 24%, 196px);
+}
+
+.screen-lobby > .hero.panel .hero-actions,
+.screen-waitingRoom > .hero.panel .hero-actions,
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--utility-header-sound-width) var(--utility-header-status-width);
+  align-items: center;
+  justify-content: stretch;
+  gap: var(--utility-header-gap);
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.screen-game.game-shell > .hero.panel.game-header-with-end {
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 0;
+}
+
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  grid-template-columns:
+    minmax(0, 1fr)
+    var(--utility-header-sound-width)
+    calc(var(--utility-header-status-width) / 2)
+    calc(var(--utility-header-status-width) / 2);
+}
+
+.screen-lobby > .hero.panel .hero-actions > button,
+.screen-waitingRoom > .hero.panel .hero-actions > button,
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > button {
+  position: static;
+  inset: auto;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  width: 100%;
+  min-width: 0;
+  height: var(--utility-header-control-height);
+  min-height: var(--utility-header-control-height);
+  max-height: var(--utility-header-control-height);
+  margin: 0;
+  padding: 4px 9px;
   gap: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(106, 71, 41, .14);
+  border-radius: 999px;
+  background: rgba(255, 250, 240, .86);
+  color: #4d3423;
+  opacity: 1;
+  box-shadow:
+    0 4px 12px rgba(62, 34, 16, .09),
+    inset 0 1px 0 rgba(255, 255, 255, .86);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   font-size: .82rem;
+  font-weight: 900;
   line-height: 1;
   text-align: center;
+  text-shadow: none;
+  transform: none;
+}
+
+.screen-lobby > .hero.panel .hero-actions > button:not(:disabled):active,
+.screen-waitingRoom > .hero.panel .hero-actions > button:not(:disabled):active,
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > button:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow:
+    0 2px 7px rgba(62, 34, 16, .1),
+    inset 0 1px 0 rgba(255, 255, 255, .8);
+}
+
+.screen-lobby > .hero.panel .nickname-chip,
+.screen-waitingRoom > .hero.panel .nickname-chip,
+.screen-game.game-shell > .hero.panel.game-header-with-end .nickname-chip {
+  max-width: none;
+}
+
+.screen-lobby > .hero.panel .nickname-chip .nickname-avatar,
+.screen-waitingRoom > .hero.panel .nickname-chip .nickname-avatar,
+.screen-game.game-shell > .hero.panel.game-header-with-end .nickname-chip .nickname-avatar {
+  display: grid;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid rgba(124, 80, 42, .25);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #f3d7b5, #c58a57);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .65);
+  font-size: 13px;
+  line-height: 1;
 }
 
 .screen-lobby > .hero.panel .nickname-chip > span:last-child,
+.screen-waitingRoom > .hero.panel .nickname-chip > span:last-child,
+.screen-game.game-shell > .hero.panel.game-header-with-end .nickname-chip > span:last-child,
 .screen-lobby > .hero.panel .sound-label,
-.screen-lobby > .hero.panel .status-text {
+.screen-waitingRoom > .hero.panel .sound-label,
+.screen-game.game-shell > .hero.panel.game-header-with-end .sound-label,
+.screen-lobby > .hero.panel .status-text,
+.screen-waitingRoom > .hero.panel .status-text,
+.screen-game.game-shell > .hero.panel.game-header-with-end .status-text {
+  min-width: 0;
+  overflow: hidden;
   font-size: inherit;
   line-height: inherit;
   text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-lobby > .hero.panel .sound-icon,
+.screen-waitingRoom > .hero.panel .sound-icon,
+.screen-game.game-shell > .hero.panel.game-header-with-end .sound-icon {
+  flex: 0 0 auto;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.screen-lobby > .hero.panel .status-dot,
+.screen-waitingRoom > .hero.panel .status-dot,
+.screen-game.game-shell > .hero.panel.game-header-with-end .status-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  margin: 0;
+}
+
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > .status-card,
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > .game-end-button {
+  padding-inline: 4px;
+  gap: 4px;
+}
+
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > .game-end-button {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .14), transparent 34%),
+    linear-gradient(145deg, #de5942, #b93629 68%, #8e251d);
+  color: #fff8df;
+  text-shadow: 0 1px 1px rgba(76, 21, 15, .46);
+  box-shadow:
+    0 4px 10px rgba(76, 21, 15, .16),
+    inset 0 1px 0 rgba(255, 234, 199, .32);
+}
+
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > .game-end-button:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow:
+    0 2px 6px rgba(76, 21, 15, .16),
+    inset 0 1px 0 rgba(255, 234, 199, .26);
+}
+
+@media (max-width: 360px) {
+  .screen-lobby > .hero.panel,
+  .screen-waitingRoom > .hero.panel,
+  .screen-game.game-shell > .hero.panel.game-header-with-end {
+    --utility-header-gap: 5px;
+    --utility-header-sound-width: 76px;
+    --utility-header-status-width: 96px;
+  }
+
+  .screen-lobby > .hero.panel .hero-actions > button,
+  .screen-waitingRoom > .hero.panel .hero-actions > button,
+  .screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > button {
+    padding-inline: 5px;
+    gap: 4px;
+    font-size: .72rem;
+  }
+
+  .screen-lobby > .hero.panel .nickname-chip .nickname-avatar,
+  .screen-waitingRoom > .hero.panel .nickname-chip .nickname-avatar,
+  .screen-game.game-shell > .hero.panel.game-header-with-end .nickname-chip .nickname-avatar {
+    flex-basis: 22px;
+    width: 22px;
+    height: 22px;
+  }
+
+  .screen-lobby > .hero.panel .sound-icon,
+  .screen-waitingRoom > .hero.panel .sound-icon,
+  .screen-game.game-shell > .hero.panel.game-header-with-end .sound-icon {
+    font-size: 15px;
+  }
 }
