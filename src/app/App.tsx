@@ -1339,7 +1339,6 @@ export function App() {
   function playSyncedRollSoundOnce(result: YutResult, soundKey: string, clientMutationId?: unknown) {
     if (!soundKey || hasOptimisticallyPlayedLocalAction(clientMutationId) || lastSyncedRollSoundKeyRef.current === soundKey) return;
     lastSyncedRollSoundKeyRef.current = soundKey;
-    playSfx('roll');
     if (result.bonus) window.setTimeout(() => playSfx('bonus'), 420);
   }
 
@@ -2714,7 +2713,6 @@ export function App() {
     if (options.recordSequence !== false) {
       pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut:${seat.id}:${turnIndex}:${nextRoll.name}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name, rollTimingZone: timingZone }, action: sourceAction ?? null };
     }
-    playSfx('roll');
     if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
     window.setTimeout(() => {
       rollInProgressRef.current = false;
@@ -2743,7 +2741,6 @@ export function App() {
     if (options.recordSequence !== false) {
       pendingSequenceMetaRef.current = { type: 'roll_yut', actorId: seat.id, clientMutationId: sourceAction && typeof sourceAction.payload?.clientActionId === 'string' ? sourceAction.payload.clientActionId : `roll_yut_stack:${seat.id}:${turnIndex}:${nextRoll.name}:${Date.now()}`, payload: { turnIndex, activeSeatId: seat.id, rollName: nextRoll.name, rollTimingZone: timingZone, rollStackMode: true }, action: sourceAction ?? null };
     }
-    playSfx('roll');
     if (nextRoll.bonus) window.setTimeout(() => playSfx('bonus'), 420);
     window.setTimeout(() => {
       rollInProgressRef.current = false;
@@ -2776,7 +2773,6 @@ export function App() {
     setFallEffect({ id: fallStartedAt, seatId: seat.id, timingZone });
     setLastRollTimingZone(timingZone);
     playRollAnimationOnce(displayRoll, makeDisplaySticks(displayRoll), `fall:${seat.id}:${turnIndex}:${fallStartedAt}`, false, fallCount, timingZone);
-    playSfx('roll');
     window.setTimeout(() => {
       rollInProgressRef.current = false;
       rollInProgressStartedAtRef.current = 0;
@@ -3164,7 +3160,6 @@ export function App() {
           sticks: makeDisplaySticks(clientRollResult),
           fallCount,
         });
-        playSfx('roll');
       };
       const qaRollYutActionDelayMs = getQaRollYutActionDelayMs();
       if (qaRollYutActionDelayMs > 0) {
