@@ -10,7 +10,9 @@ async function readHeaderBadgeLayout(page, screenClass) {
     const nickname = actions?.querySelector('.nickname-chip');
     const sound = actions?.querySelector('.sound-toggle');
     const status = actions?.querySelector('.status-card');
-    const end = actions?.querySelector('.game-end-button');
+    const end = header instanceof HTMLElement
+      ? Array.from(header.children).find((element) => element.classList.contains('game-end-button'))
+      : null;
     const controls = [nickname, sound, status, end].filter((control) => control instanceof HTMLElement);
     if (!(header instanceof HTMLElement) || !(actions instanceof HTMLElement) || !(nickname instanceof HTMLElement) || !(sound instanceof HTMLElement) || !(status instanceof HTMLElement)) return null;
 
@@ -29,10 +31,15 @@ async function readHeaderBadgeLayout(page, screenClass) {
         textAlign: computed.textAlign,
       };
     };
+    const orderedControls = [
+      ...Array.from(actions.children),
+      ...(end instanceof HTMLElement ? [end] : []),
+    ];
 
     return {
       actionDisplay: getComputedStyle(actions).display,
       actionGap: Number.parseFloat(getComputedStyle(actions).columnGap),
+      endGap: Number.parseFloat(getComputedStyle(header).columnGap),
       soundLabel: sound.querySelector('.sound-label')?.textContent?.trim() ?? '',
       chevrons: header.querySelectorAll('.lobby-chip-chevron, .lobby-status-chevron').length,
       controlStyles: controls.map(style),
@@ -40,7 +47,7 @@ async function readHeaderBadgeLayout(page, screenClass) {
       sound: rect(sound),
       status: rect(status),
       end: end instanceof HTMLElement ? rect(end) : null,
-      controlOrder: Array.from(actions.children).map((element) => {
+      controlOrder: orderedControls.map((element) => {
         if (element.classList.contains('nickname-chip')) return 'nickname';
         if (element.classList.contains('sound-toggle')) return 'sound';
         if (element.classList.contains('status-card')) return 'status';
@@ -151,7 +158,7 @@ test.describe('mobile shared header badge QA', () => {
         expect(gameLayout.status.width * 2, '인게임 온라인 배지는 로비·대기실 온라인 배지의 절반 폭이어야 합니다.').toBeCloseTo(waitingLayout.status.width, 1);
         expect(gameLayout.end.width, '종료 버튼은 축소된 온라인 배지와 같은 폭이어야 합니다.').toBeCloseTo(gameLayout.status.width, 1);
         expect(gameLayout.end.height, '종료 버튼은 온라인 배지와 같은 높이여야 합니다.').toBeCloseTo(gameLayout.status.height, 1);
-        expect(gameLayout.end.x, '종료 버튼은 온라인 배지 바로 오른쪽에 있어야 합니다.').toBeCloseTo(gameLayout.status.right + gameLayout.actionGap, 1);
+        expect(gameLayout.end.x, '종료 버튼은 온라인 배지 바로 오른쪽에 있어야 합니다.').toBeCloseTo(gameLayout.status.right + gameLayout.endGap, 1);
       } finally {
         if (roomId) await deleteRoomForQa(roomId);
       }
