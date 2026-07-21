@@ -3,6 +3,30 @@ import { hasFirebaseConfig, makeQaName, normalizeQaNickname } from '../helpers/e
 import { createRoomFromLobby, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomPlayersForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
+async function readStableEmptyAiCardLayout(emptyCard, buttonTestId) {
+  let stableLayout = null;
+  await expect.poll(async () => {
+    try {
+      const layout = await emptyCard.evaluate((element, testId) => {
+        const button = element.querySelector(`[data-testid="${testId}"]`);
+        if (!(button instanceof HTMLElement)) return null;
+        const cardRect = element.getBoundingClientRect();
+        const buttonRect = button.getBoundingClientRect();
+        return {
+          card: { x: cardRect.x, y: cardRect.y, width: cardRect.width, height: cardRect.height },
+          add: { x: buttonRect.x, y: buttonRect.y, width: buttonRect.width, height: buttonRect.height },
+        };
+      }, buttonTestId);
+      const isStable = Boolean(layout && layout.card.width > 0 && layout.card.height > 0 && layout.add.width > 0 && layout.add.height > 0);
+      if (isStable) stableLayout = layout;
+      return isStable;
+    } catch {
+      return false;
+    }
+  }, { timeout: 15_000, message: '대기실 구독 갱신 후 AI 추가 버튼의 실제 배치가 안정되어야 합니다.' }).toBe(true);
+  return stableLayout;
+}
+
 test.describe('online room QA', () => {
   let roomId;
 
@@ -110,17 +134,10 @@ test.describe('online room QA', () => {
 
       const emptyCard = page.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
       const addButton = page.getByTestId('add-ai-P2');
+      await expect(page.locator('.waiting-room-rule-badges')).toHaveAttribute('aria-label', /2인/);
+      await expect(page.locator('.compact-ready-card')).toHaveCount(2);
       await expect(addButton).toBeVisible();
-      const addLayout = await emptyCard.evaluate((element) => {
-        const button = element.querySelector('[data-testid="add-ai-P2"]');
-        if (!(button instanceof HTMLElement)) throw new Error('AI 추가 버튼을 찾지 못했습니다.');
-        const cardRect = element.getBoundingClientRect();
-        const buttonRect = button.getBoundingClientRect();
-        return {
-          card: { x: cardRect.x, y: cardRect.y, width: cardRect.width, height: cardRect.height },
-          add: { x: buttonRect.x, y: buttonRect.y, width: buttonRect.width, height: buttonRect.height },
-        };
-      });
+      const addLayout = await readStableEmptyAiCardLayout(emptyCard, 'add-ai-P2');
 
       await addButton.click();
       const card = page.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
