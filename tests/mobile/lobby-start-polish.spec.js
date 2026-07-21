@@ -16,7 +16,7 @@ test.describe('mobile lobby polish QA', () => {
         const scene = document.querySelector('.lobby-scene');
         const primary = document.querySelector('.lobby-primary-actions');
         const create = document.querySelector('[aria-label="방 만들기"]');
-        const join = document.querySelector('[aria-label="게임 참가"]');
+        const join = document.querySelector('[aria-label="방 참가"]');
         const sound = document.querySelector('.screen-lobby > .hero.panel .sound-toggle');
         const status = document.querySelector('.screen-lobby > .hero.panel .status-card');
         const secondary = document.querySelector('.lobby-secondary-actions');
