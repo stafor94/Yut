@@ -52,6 +52,22 @@ export const isReusableWaitingRoomSeat = (seat: RoomLifecycleSeat | null | undef
   !seat || (seat.status === 'disconnected' && !seat.aiActive && !seat.isSubstitutedByAI)
 );
 
+export const isConnectedHumanRoomSeat = (seat: RoomLifecycleSeat | null | undefined) => Boolean(
+  seat
+  && seat.status === 'human'
+  && !seat.aiActive
+  && !seat.isSubstitutedByAI
+);
+
+export const countConnectedHumanRoomSeats = (seats: Array<RoomLifecycleSeat | null | undefined>) => (
+  seats.filter(isConnectedHumanRoomSeat).length
+);
+
+export const countConnectedHumanRoomSeatsAfterClaim = (
+  seats: Array<RoomLifecycleSeat | null | undefined>,
+  seatIndex: number,
+) => countConnectedHumanRoomSeats(seats) + (isConnectedHumanRoomSeat(seats[seatIndex]) ? 0 : 1);
+
 export const hasRecoverableLifecyclePlayer = (players: RoomLifecyclePlayer[]) => players.some((player) => (
   !player.isAI || player.isSubstitutedByAI === true
 ));
