@@ -1,0 +1,12 @@
+/* Final sound-badge presentation override shared by lobby, waiting room, and game. */
+.screen-lobby > .hero.panel .hero-actions > .sound-toggle.active,
+.screen-waitingRoom > .hero.panel .hero-actions > .sound-toggle.active,
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > .sound-toggle.active {
+  border-color: rgba(106, 71, 41, .14);
+  background: rgba(255, 250, 240, .86);
+  color: #4d3423;
+  text-shadow: none;
+  box-shadow:
+    0 4px 12px rgba(62, 34, 16, .09),
+    inset 0 1px 0 rgba(255, 255, 255, .86);
+}
