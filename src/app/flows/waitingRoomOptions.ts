@@ -1,4 +1,4 @@
-import type { PieceCount, PlayMode } from '../appTypes';
+import type { PieceCount, PlayMode, Seat, Team } from '../appTypes';
 
 export type WaitingRoomOptions = {
   playMode: PlayMode;
@@ -9,6 +9,21 @@ export type WaitingRoomOptions = {
 };
 
 export type WaitingRoomOptionPatch = Partial<WaitingRoomOptions>;
+
+const getDefaultSeatTeam = (index: number, playMode: PlayMode): Team => (
+  playMode === 'team' && index % 2 === 1 ? '홍팀' : '청팀'
+);
+
+export function normalizeWaitingRoomSeatTeams(seats: Seat[], playMode: PlayMode): Seat[] {
+  let changed = false;
+  const normalized = seats.map((seat, index) => {
+    const team = getDefaultSeatTeam(index, playMode);
+    if (seat.team === team) return seat;
+    changed = true;
+    return { ...seat, team };
+  });
+  return changed ? normalized : seats;
+}
 
 export function resolveWaitingRoomOptions(current: WaitingRoomOptions, requested: WaitingRoomOptionPatch): WaitingRoomOptions {
   const playMode = requested.playMode ?? current.playMode;
