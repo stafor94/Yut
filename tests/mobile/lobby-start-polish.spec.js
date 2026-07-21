@@ -31,6 +31,8 @@ test.describe('mobile lobby polish QA', () => {
         const sceneStyle = getComputedStyle(scene);
         const createStyle = getComputedStyle(create);
         const joinStyle = getComputedStyle(join);
+        const secondaryStyle = getComputedStyle(secondary);
+        const copyrightStyle = getComputedStyle(secondary, '::after');
         return {
           viewportWidth: window.innerWidth,
           viewportHeight: window.innerHeight,
@@ -71,6 +73,8 @@ test.describe('mobile lobby polish QA', () => {
           joinBackground: joinStyle.backgroundImage,
           soundText: sound.textContent?.replace(/\s+/g, ' ').trim() ?? '',
           statusMedallions: status.querySelectorAll('.lobby-status-medallion').length,
+          copyrightContent: copyrightStyle.content,
+          secondaryRowGap: Number.parseFloat(secondaryStyle.rowGap),
         };
       });
 
@@ -98,13 +102,16 @@ test.describe('mobile lobby polish QA', () => {
       expect(layout.sceneBorderWidth, '배경 위에 별도 장면 카드 테두리가 있으면 안 됩니다.').toBe(0);
       expect(layout.sceneBoxShadow, '배경 위에 별도 장면 카드 그림자가 있으면 안 됩니다.').toBe('none');
       expect(layout.soundText, '로비 상단 소리 배지는 상태값 대신 효과음 라벨을 보여야 합니다.').toContain('효과음');
-      expect(layout.statusMedallions, '온라인 배지에는 금색 상태 메달이 있어야 합니다.').toBe(1);
+      expect(layout.statusMedallions, '온라인 배지 왼쪽의 S 메달은 제거되어야 합니다.').toBe(0);
+      expect(layout.copyrightContent, '하단 버튼 아래에 저작권 문구가 표시되어야 합니다.').toContain('2026 stafor94');
+      expect(layout.secondaryRowGap, '하단 버튼과 저작권 문구 사이에 여백이 있어야 합니다.').toBeGreaterThanOrEqual(14);
+      expect(layout.secondary.height, '보조 버튼 영역은 저작권 문구를 위한 추가 높이를 확보해야 합니다.').toBeGreaterThan(layout.secondaryButtons[0].height + 14);
       expect(layout.createBackground, '방 만들기 버튼은 주황 계열 그라데이션이어야 합니다.').toContain('gradient');
       expect(layout.joinBackground, '방 참가 버튼은 파랑 계열 그라데이션이어야 합니다.').toContain('gradient');
       expect(layout.create.x, '방 만들기 버튼은 통합 영역 안에 있어야 합니다.').toBeGreaterThanOrEqual(layout.stage.x);
       expect(layout.join.right, '방 참가 버튼은 통합 영역 안에 있어야 합니다.').toBeLessThanOrEqual(layout.stage.right);
       expect(layout.join.y, '방 참가 버튼은 방 만들기 버튼 아래에 있어야 합니다.').toBeGreaterThan(layout.create.bottom);
-      expect(layout.secondary.bottom, '보조 버튼도 통합 영역 안에 있어야 합니다.').toBeLessThanOrEqual(layout.stage.bottom + 1);
+      expect(layout.secondary.bottom, '보조 버튼과 저작권 문구도 통합 영역 안에 있어야 합니다.').toBeLessThanOrEqual(layout.stage.bottom + 1);
       expect(layout.primary.width / layout.viewportWidth, '주요 버튼 영역은 화면 너비의 약 80%여야 합니다.').toBeGreaterThanOrEqual(.78);
       expect(layout.primary.width / layout.viewportWidth, '주요 버튼 영역은 화면 너비의 약 80%여야 합니다.').toBeLessThanOrEqual(.82);
       layout.secondaryButtons.forEach((button) => {
