@@ -1,4 +1,4 @@
-import type { PieceCount, PlayMode } from '../appState';
+import type { PieceCount, PlayMode } from '../appTypes';
 
 export type WaitingRoomOptions = {
   playMode: PlayMode;
