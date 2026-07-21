@@ -4,6 +4,7 @@ type ReplayTarget = {
   token: symbol;
   localSequence: number;
   remoteSequence: number;
+  afterSequence: number;
 };
 
 const DEFAULT_SEQUENCE_CACHE_LIMIT = 8;
@@ -53,12 +54,11 @@ export function getCachedGameSequencesForReplay<TSequence extends CachedGameSequ
   roomId: string,
   afterSequence: number,
 ): TSequence[] | null {
-  const replayTargets = replayTargetsByRoom.get(roomId);
-  const replayTarget = replayTargets?.[replayTargets.length - 1];
-  if (!replayTarget) return null;
-
   const normalizedAfterSequence = Math.max(0, Math.floor(Number(afterSequence) || 0));
-  if (normalizedAfterSequence > replayTarget.localSequence || replayTarget.remoteSequence <= replayTarget.localSequence) return null;
+  const matchingTargets = (replayTargetsByRoom.get(roomId) ?? [])
+    .filter((target) => target.afterSequence === normalizedAfterSequence);
+  const replayTarget = matchingTargets[matchingTargets.length - 1];
+  if (!replayTarget) return null;
 
   const cachedBySequence = new Map<number, CachedGameSequence>();
   (sequencesByRoom.get(roomId) ?? []).forEach((sequence) => {
@@ -79,16 +79,19 @@ export async function withGameSequenceReplayCache<TResult>(
   roomId: string,
   localSequence: number,
   remoteSequence: number,
+  afterSequence: number,
   operation: () => Promise<TResult> | TResult,
 ): Promise<TResult> {
   const normalizedLocalSequence = Math.max(0, Math.floor(Number(localSequence) || 0));
   const normalizedRemoteSequence = Math.max(0, Math.floor(Number(remoteSequence) || 0));
+  const normalizedAfterSequence = Math.max(0, Math.floor(Number(afterSequence) || 0));
   if (!roomId || normalizedRemoteSequence <= normalizedLocalSequence) return await operation();
 
   const target: ReplayTarget = {
     token: Symbol(roomId),
     localSequence: normalizedLocalSequence,
     remoteSequence: normalizedRemoteSequence,
+    afterSequence: normalizedAfterSequence,
   };
   const targets = replayTargetsByRoom.get(roomId) ?? [];
   targets.push(target);
