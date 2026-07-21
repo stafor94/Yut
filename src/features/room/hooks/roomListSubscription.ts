@@ -58,9 +58,13 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
       })
       .filter((room): room is TRoom => Boolean(room))
       .filter((room) => {
-        if (currentUserId && room.playerIds?.includes(currentUserId)) return true;
+        const isCurrentUserRoom = Boolean(currentUserId && room.playerIds?.includes(currentUserId));
         const hostId = room.hostId?.trim();
         if (!hostId) return true;
+        if (isCurrentUserRoom) {
+          visibleHostIds.add(hostId);
+          return true;
+        }
         if (visibleHostIds.has(hostId)) return false;
         visibleHostIds.add(hostId);
         return true;
