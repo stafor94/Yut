@@ -16,7 +16,7 @@ test('snapshot replay 대상 범위가 연속으로 캐시되어 있으면 Fires
     { sequence: 9, value: 'nine' },
   ]);
 
-  const cached = await withGameSequenceReplayCache(roomId, 7, 9, async () => (
+  const cached = await withGameSequenceReplayCache(roomId, 7, 9, 5, async () => (
     getCachedGameSequencesForReplay<{ sequence: number; value: string }>(roomId, 5)
   ));
 
@@ -32,7 +32,7 @@ test('replay 범위 중 한 건이라도 없으면 기존 Firestore 조회 fallb
     { sequence: 10 },
   ]);
 
-  const cached = await withGameSequenceReplayCache(roomId, 7, 10, async () => (
+  const cached = await withGameSequenceReplayCache(roomId, 7, 10, 5, async () => (
     getCachedGameSequencesForReplay(roomId, 5)
   ));
 
@@ -47,7 +47,7 @@ test('snapshot replay scope 밖의 일반 sequence 조회는 캐시를 사용하
   clearCachedGameSequences(roomId);
 });
 
-test('동일 방 replay scope가 겹쳐도 각 비동기 작업의 최신 target을 분리한다', async () => {
+test('동일 방 replay scope가 겹쳐도 조회 afterSequence에 맞는 target을 선택한다', async () => {
   const roomId = 'room-overlapping-scope';
   replaceCachedGameSequences(roomId, [
     { sequence: 4 },
@@ -55,18 +55,14 @@ test('동일 방 replay scope가 겹쳐도 각 비동기 작업의 최신 target
     { sequence: 6 },
   ]);
 
-  let releaseOuter: (() => void) | undefined;
-  const outerPause = new Promise<void>((resolve) => { releaseOuter = resolve; });
-  const outer = withGameSequenceReplayCache(roomId, 3, 5, async () => {
-    await outerPause;
-    return getCachedGameSequencesForReplay<{ sequence: number }>(roomId, 1)?.map((sequence) => sequence.sequence);
+  await withGameSequenceReplayCache(roomId, 3, 5, 1, async () => {
+    await withGameSequenceReplayCache(roomId, 5, 6, 3, async () => {
+      const outerCached = getCachedGameSequencesForReplay<{ sequence: number }>(roomId, 1);
+      const innerCached = getCachedGameSequencesForReplay<{ sequence: number }>(roomId, 3);
+      assert.deepEqual(outerCached?.map((sequence) => sequence.sequence), [4, 5]);
+      assert.deepEqual(innerCached?.map((sequence) => sequence.sequence), [6]);
+    });
   });
-  const inner = await withGameSequenceReplayCache(roomId, 5, 6, async () => (
-    getCachedGameSequencesForReplay<{ sequence: number }>(roomId, 3)?.map((sequence) => sequence.sequence)
-  ));
-  releaseOuter?.();
 
-  assert.deepEqual(inner, [6]);
-  assert.deepEqual(await outer, [4, 5]);
   clearCachedGameSequences(roomId);
 });
