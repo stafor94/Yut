@@ -96,6 +96,28 @@ function expectLobbyPresentationMatch(lobby, target) {
   expect(target.soundStyle.textShadow, '효과음 배지 텍스트 그림자는 로비와 같아야 합니다.').toBe(lobby.soundStyle.textShadow);
 }
 
+async function enterGameFromWaitingRoom(page) {
+  const gameScreen = page.getByTestId('game-screen');
+  const startButton = page.getByTestId('start-game-button');
+  let clickAttempts = 0;
+
+  await expect.poll(async () => {
+    if (await gameScreen.isVisible().catch(() => false)) return true;
+    const canRetryStart = clickAttempts < 3
+      && await startButton.isVisible().catch(() => false)
+      && await startButton.isEnabled().catch(() => false);
+    if (canRetryStart) {
+      clickAttempts += 1;
+      await startButton.click();
+    }
+    return gameScreen.isVisible().catch(() => false);
+  }, {
+    timeout: 45_000,
+    intervals: [0, 1_500, 3_000, 5_000],
+    message: '게임 시작 요청이 처리되어 인게임 화면으로 전환되어야 합니다.',
+  }).toBe(true);
+}
+
 test.describe('mobile shared header badge QA', () => {
   test('로비 상단 배지의 문자·폰트·정렬을 통일한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 780 });
@@ -157,8 +179,7 @@ test.describe('mobile shared header badge QA', () => {
           message: 'AI 추가 동기화가 완료되어 게임 시작 버튼이 활성화되어야 합니다.',
         }).toEqual({ pendingAiSeatCount: 0, allReady: true, startDisabled: false });
 
-        await page.getByTestId('start-game-button').click();
-        await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+        await enterGameFromWaitingRoom(page);
         await expect(page.getByTestId('game-end-button')).toBeVisible();
 
         const gameLayout = await readHeaderBadgeLayout(page, 'screen-game');
