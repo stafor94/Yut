@@ -22,6 +22,7 @@ import './styles/lobby-room-query-loading.css';
 import './styles/lobby-background-reference.css';
 import './styles/control-geometry.css';
 import './styles/lobby-scroll-overflow-fix.css';
+import './styles/lobby-footer.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
