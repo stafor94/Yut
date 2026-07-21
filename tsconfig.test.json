@@ -25,6 +25,7 @@
     "src/features/room/services/roomAuthoritativeReducer.ts",
     "src/features/room/services/roomPresenceCleanupPolicy.ts",
     "src/features/room/services/roomGamePreparationPolicy.ts",
+    "src/features/room/services/roomSequenceReplayCache.ts",
     "src/features/room/services/roomTiming.ts",
     "src/game-core/aiDifficulty.ts",
     "src/game-core/aiStrategy.ts",
