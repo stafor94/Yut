@@ -66,20 +66,8 @@ export function isRoomInGame(room: Parameters<typeof isRoomInGameCore>[0]) {
 
 const countConnectedParticipants = (players: RoomPlayer[]) => players.filter((player) => !player.isSpectator && !player.isAI).length;
 
-const keepNewestRoomPerHost = (rooms: RoomSummary[]) => {
-  const latestRoomsByHost = new Map<string, RoomSummary>();
-  const roomsWithoutHost: RoomSummary[] = [];
-  rooms.forEach((room) => {
-    if (!room.hostId) {
-      roomsWithoutHost.push(room);
-      return;
-    }
-    const currentRoom = latestRoomsByHost.get(room.hostId);
-    if (!currentRoom || getRoomLastActivityMillis(room) > getRoomLastActivityMillis(currentRoom)) latestRoomsByHost.set(room.hostId, room);
-  });
-  return [...latestRoomsByHost.values(), ...roomsWithoutHost]
-    .sort((left, right) => getRoomLastActivityMillis(right) - getRoomLastActivityMillis(left));
-};
+const sortRoomsByLastActivity = (rooms: RoomSummary[]) => [...rooms]
+  .sort((left, right) => getRoomLastActivityMillis(right) - getRoomLastActivityMillis(left));
 
 export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): Unsubscribe {
   if (!db) { callback([]); return () => undefined; }
@@ -90,7 +78,7 @@ export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): 
     const rooms = snapshot.docs
       .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
       .filter((room) => !isRoomSummaryInactive(room as ManagedRoomSummary));
-    callback(keepNewestRoomPerHost(rooms).slice(0, ROOM_LIST_CANDIDATE_LIMIT));
+    callback(sortRoomsByLastActivity(rooms).slice(0, ROOM_LIST_CANDIDATE_LIMIT));
   }, () => callback([]));
 }
 

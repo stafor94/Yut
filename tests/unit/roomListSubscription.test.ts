@@ -90,6 +90,30 @@ test('현재 사용자의 AI 대체 자리만 남은 진행 방은 복귀를 위
   assert.deepEqual(getLatestPublishedRooms(harness.published), [{ id: 'room-a', title: 'A', status: 'playing', maxPlayers: 4, currentPlayers: 2, playerIds: ['viewer'] }]);
 });
 
+test('같은 방장의 새 방이 있어도 현재 사용자의 AI 대체 진행 방은 함께 표시한다', () => {
+  const harness = createHarness('viewer');
+  harness.controller.start();
+  harness.emitRooms([
+    { ...waitingRoom('room-new', '새 방'), hostId: 'viewer' },
+    { ...playingRoom('room-old', '복귀 방'), hostId: 'viewer' },
+  ]);
+  harness.emitPlayers('room-new', [{ id: 'viewer' }]);
+  harness.emitPlayers('room-old', [{ id: 'viewer', isAI: true, isSubstitutedByAI: true }, { id: 'regular-ai', isAI: true }]);
+  assert.deepEqual((getLatestPublishedRooms(harness.published) ?? []).map((room) => room.id), ['room-new', 'room-old']);
+});
+
+test('현재 사용자 방 뒤의 같은 방장 비복귀 중복 방은 숨긴다', () => {
+  const harness = createHarness('viewer');
+  harness.controller.start();
+  harness.emitRooms([
+    { ...waitingRoom('room-new', '새 방'), hostId: 'viewer' },
+    { ...playingRoom('room-old', '이전 방'), hostId: 'viewer' },
+  ]);
+  harness.emitPlayers('room-new', [{ id: 'viewer' }]);
+  harness.emitPlayers('room-old', [{ id: 'human-old' }]);
+  assert.deepEqual((getLatestPublishedRooms(harness.published) ?? []).map((room) => room.id), ['room-new']);
+});
+
 test('3분 유예가 만료된 다른 사용자의 AI 대체 방은 목록에서 숨긴다', () => {
   const harness = createHarness('viewer');
   harness.controller.start();
