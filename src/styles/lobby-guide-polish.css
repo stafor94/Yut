@@ -385,3 +385,110 @@
     animation: none;
   }
 }
+
+/* Scroll-contained expanded game guide. */
+.screen-lobby .lobby-howto-sheet {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(720px, 100%);
+  max-height: min(92dvh, calc(var(--app-viewport-height, 100vh) - 16px), 780px);
+  padding: 0;
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-fixed-header {
+  position: relative;
+  top: auto;
+  z-index: 2;
+  margin: 0;
+  padding: clamp(16px, 2.4vw, 24px) clamp(16px, 2.7vw, 26px) 13px;
+  border-bottom: 1px solid rgba(107, 64, 31, .14);
+  background: inherit;
+  box-shadow: 0 8px 18px rgba(80, 43, 19, .08);
+}
+
+.screen-lobby .lobby-howto-sheet .howto-scroll-body {
+  min-height: 0;
+  padding: 14px clamp(16px, 2.7vw, 26px) 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-fixed-footer {
+  padding: 12px clamp(16px, 2.7vw, 26px) clamp(14px, 2vw, 18px);
+  border-top: 1px solid rgba(107, 64, 31, .16);
+  background: linear-gradient(180deg, rgba(255, 250, 232, .95), rgba(246, 223, 174, .98));
+  box-shadow: 0 -10px 20px rgba(80, 43, 19, .1);
+}
+
+.screen-lobby .lobby-howto-sheet .howto-confirm-button {
+  position: static;
+  min-height: 50px;
+  margin: 0;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-section + .howto-section { margin-top: 16px; }
+.screen-lobby .lobby-howto-sheet .howto-section-title {
+  margin: 0 0 9px;
+  color: #4d2c18;
+  font-size: 1rem;
+  font-weight: 1000;
+  letter-spacing: -.025em;
+}
+
+.screen-lobby .howto-result-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 0; }
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(4) { border-color: rgba(110, 65, 30, .1); background: rgba(255, 251, 231, .68); color: #806047; }
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(5),
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(6) { border-color: rgba(47, 107, 79, .19); background: rgba(233, 245, 232, .72); color: #35654e; }
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(4)::after { content: none; }
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(5)::after,
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(6)::after { content: "한 번 더"; }
+
+.screen-lobby .lobby-howto-sheet .howto-list h4 { margin: 0 0 5px; color: #4d2c18; font-size: .98rem; font-weight: 1000; letter-spacing: -.025em; }
+.screen-lobby .lobby-howto-sheet .howto-list p + p { margin-top: 5px; }
+
+.screen-lobby .lobby-howto-sheet .howto-compact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.screen-lobby .lobby-howto-sheet .howto-compact-grid p,
+.screen-lobby .lobby-howto-sheet .howto-mini-card {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(115, 66, 29, .14);
+  border-radius: 14px;
+  background: rgba(255, 248, 222, .64);
+  color: #76563e;
+  font-size: .82rem;
+  font-weight: 700;
+  line-height: 1.42;
+}
+.screen-lobby .lobby-howto-sheet .howto-compact-grid strong { display: block; margin-bottom: 3px; color: #4d2c18; font-weight: 1000; }
+.screen-lobby .lobby-howto-sheet .howto-compact-grid span { display: block; }
+.screen-lobby .lobby-howto-sheet .howto-mini-card { margin-top: 9px; background: rgba(255, 251, 232, .72); }
+.screen-lobby .lobby-howto-sheet .howto-mini-card h4 { margin: 0 0 6px; color: #4d2c18; font-size: .95rem; }
+.screen-lobby .lobby-howto-sheet .howto-mini-card ul { margin: 0; padding-left: 18px; }
+.screen-lobby .lobby-howto-sheet .howto-mini-card li + li { margin-top: 4px; }
+
+@media (max-width: 700px) and (orientation: portrait) {
+  .screen-lobby .lobby-howto-sheet { width: calc(100% - 2px); max-height: calc(var(--app-viewport-height, 100vh) - 14px); padding: 0; }
+  .screen-lobby .lobby-howto-sheet .howto-fixed-header { grid-template-columns: 42px minmax(0, 1fr) 32px; padding: 13px 13px 10px; }
+  .screen-lobby .lobby-howto-sheet .howto-scroll-body { padding: 12px 13px 14px; }
+  .screen-lobby .lobby-howto-sheet .howto-fixed-footer { padding: 10px 13px 12px; }
+  .screen-lobby .howto-result-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; }
+  .screen-lobby .lobby-howto-sheet .howto-result-strip span { min-height: 45px; padding: 7px 1px 5px; font-size: .55rem; white-space: normal; }
+  .screen-lobby .lobby-howto-sheet .howto-result-strip b { font-size: .72rem; }
+  .screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(5)::after,
+  .screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(6)::after { top: -4px; right: 0; padding: 1px 2px; font-size: .38rem; }
+  .screen-lobby .lobby-howto-sheet .howto-list p,
+  .screen-lobby .lobby-howto-sheet .howto-compact-grid p,
+  .screen-lobby .lobby-howto-sheet .howto-mini-card { font-size: .68rem; line-height: 1.36; }
+  .screen-lobby .lobby-howto-sheet .howto-list h4 { font-size: .84rem; }
+  .screen-lobby .lobby-howto-sheet .howto-compact-grid { gap: 7px; }
+}
+
+@media (max-width: 350px) and (orientation: portrait) {
+  .screen-lobby .howto-result-strip,
+  .screen-lobby .lobby-howto-sheet .howto-list,
+  .screen-lobby .lobby-howto-sheet .howto-compact-grid { grid-template-columns: 1fr; }
+}

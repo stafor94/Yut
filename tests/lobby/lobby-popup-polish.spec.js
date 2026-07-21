@@ -44,39 +44,64 @@ test.describe('lobby popup visual polish QA', () => {
     const guideDialog = page.getByRole('dialog', { name: '게임 방법' });
     await expect(guideDialog).toBeVisible();
     await expect(guideDialog.locator('.howto-list article')).toHaveCount(4);
-    await expect(guideDialog.locator('.howto-result-strip span')).toHaveCount(5);
-    await expect(guideDialog).toContainText('윷·모가 나오거나 상대 말을 잡으면 한 번 더 던질 수 있습니다.');
+    await expect(guideDialog.locator('.howto-result-strip span')).toHaveCount(6);
+    await expect(guideDialog.locator('.howto-result-strip span').first()).toContainText('빽도-1칸');
+    await expect(guideDialog.locator('.howto-result-strip span').nth(4)).toContainText('윷4칸');
+    await expect(guideDialog.locator('.howto-result-strip span').nth(5)).toContainText('모5칸');
+    await expect(guideDialog).toContainText('Perfect는 낙이 발생하지 않고 윷·모 확률이 조금 높아집니다.');
     await expect(guideDialog).toContainText('승리 조건');
 
     const guideLayout = await guideDialog.evaluate((dialog) => {
       const cards = Array.from(dialog.querySelectorAll('.howto-list article'));
       const button = dialog.querySelector('.howto-confirm-button');
-      if (cards.length !== 4 || !(button instanceof HTMLElement)) return null;
+      const header = dialog.querySelector('.howto-fixed-header');
+      const body = dialog.querySelector('.howto-scroll-body');
+      const footer = dialog.querySelector('.howto-fixed-footer');
+      const results = Array.from(dialog.querySelectorAll('.howto-result-strip span'));
+      if (cards.length !== 4 || results.length !== 6 || !(button instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement)) return null;
       const dialogRect = dialog.getBoundingClientRect();
       const cardRects = cards.map((card) => card.getBoundingClientRect());
       const buttonRect = button.getBoundingClientRect();
       const dialogStyle = getComputedStyle(dialog);
+      body.scrollTop = 40;
+      const changedScrollTop = body.scrollTop;
+      body.scrollTop = body.scrollHeight;
+      const last = dialog.querySelector('.howto-section:last-of-type');
       const buttonStyle = getComputedStyle(button);
+      const bodyStyle = getComputedStyle(body);
       return {
         viewportHeight: window.innerHeight,
         dialogTop: dialogRect.top,
         dialogBottom: dialogRect.bottom,
         overflowY: dialogStyle.overflowY,
+        bodyOverflowY: bodyStyle.overflowY,
+        bodyScrollHeight: body.scrollHeight,
+        bodyClientHeight: body.clientHeight,
+        changedScrollTop,
+        lastContentBottom: last?.getBoundingClientRect().bottom ?? 0,
+        bodyBottom: body.getBoundingClientRect().bottom,
         firstRowSpread: Math.abs(cardRects[0].top - cardRects[1].top),
         secondRowStartsAfterFirst: cardRects[2].top > cardRects[0].top,
         buttonTop: buttonRect.top,
         buttonBottom: buttonRect.bottom,
         buttonPosition: buttonStyle.position,
+        headerTop: header.getBoundingClientRect().top,
+        headerBottom: header.getBoundingClientRect().bottom,
+        footerTop: footer.getBoundingClientRect().top,
       };
     });
 
     expect(guideLayout, '게임 방법 팝업의 카드와 하단 동작을 읽을 수 있어야 합니다.').not.toBeNull();
     expect(guideLayout.dialogTop, '팝업 상단이 화면 밖으로 잘리면 안 됩니다.').toBeGreaterThanOrEqual(-1);
     expect(guideLayout.dialogBottom, '팝업 하단이 화면 밖으로 잘리면 안 됩니다.').toBeLessThanOrEqual(guideLayout.viewportHeight + 1);
-    expect(guideLayout.overflowY, '내용이 길어질 때 팝업 내부에서 스크롤할 수 있어야 합니다.').toBe('auto');
+    expect(guideLayout.overflowY, '팝업 전체가 스크롤 컨테이너가 되면 안 됩니다.').toBe('hidden');
+    expect(guideLayout.bodyOverflowY, '중앙 영역에서만 스크롤할 수 있어야 합니다.').toBe('auto');
+    expect(guideLayout.bodyScrollHeight).toBeGreaterThan(guideLayout.bodyClientHeight);
+    expect(guideLayout.changedScrollTop).toBeGreaterThan(0);
+    expect(guideLayout.lastContentBottom).toBeLessThanOrEqual(guideLayout.bodyBottom + 1);
     expect(guideLayout.firstRowSpread, '설명 카드는 두 장씩 정렬되어 한눈에 비교할 수 있어야 합니다.').toBeLessThanOrEqual(1);
     expect(guideLayout.secondRowStartsAfterFirst).toBe(true);
-    expect(guideLayout.buttonPosition, '확인 버튼은 스크롤 중에도 접근 가능해야 합니다.').toBe('sticky');
+    expect(guideLayout.buttonPosition, '확인 버튼은 footer 안에서 기본 버튼 디자인을 유지해야 합니다.').toBe('static');
     expect(guideLayout.buttonTop).toBeGreaterThanOrEqual(guideLayout.dialogTop);
     expect(guideLayout.buttonBottom).toBeLessThanOrEqual(guideLayout.viewportHeight + 1);
   });

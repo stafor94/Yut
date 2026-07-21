@@ -236,9 +236,9 @@ test.describe('lobby start screen QA', () => {
     await page.getByRole('button', { name: '게임 방법', exact: true }).click();
     const howToDialog = page.getByRole('dialog', { name: '게임 방법' });
     await expect(howToDialog).toBeVisible();
-    await expect(howToDialog).toContainText('재접속과 관전');
+    await expect(howToDialog).toContainText('온라인 플레이');
     await expect(howToDialog.locator('.howto-list article')).toHaveCount(4);
-    await expect(howToDialog.locator('.howto-result-strip span')).toHaveCount(5);
+    await expect(howToDialog.locator('.howto-result-strip span')).toHaveCount(6);
     const howToSurface = await howToDialog.locator('.howto-list article').first().evaluate((element) => {
       const style = getComputedStyle(element);
       return { backgroundImage: style.backgroundImage, borderRadius: Number.parseFloat(style.borderRadius), boxShadow: style.boxShadow };
@@ -246,7 +246,7 @@ test.describe('lobby start screen QA', () => {
     expect(howToSurface.backgroundImage, '게임 방법 카드는 입체 그라데이션 표면이어야 합니다.').toContain('gradient');
     expect(howToSurface.borderRadius, '게임 방법 카드는 충분히 다듬어진 모서리를 사용해야 합니다.').toBeGreaterThanOrEqual(15);
     expect(howToSurface.boxShadow, '게임 방법 카드는 깊이감을 가져야 합니다.').not.toBe('none');
-    await howToDialog.getByRole('button', { name: '확인하고 시작하기' }).click();
+    await howToDialog.getByRole('button', { name: '확인' }).click();
     await expect(howToDialog).toBeHidden();
 
     await page.getByRole('button', { name: '설정', exact: true }).click();
