@@ -7,8 +7,10 @@ import {
   CAPTURE_IMPACT_DELAY_MS,
   CAPTURE_SLOW_MOTION_MS,
   createCaptureVisualEffect,
+  getCaptureArcHeightPx,
   getCaptureEffectDurationMs,
   getCaptureExitTarget,
+  getCaptureMotionProfile,
   getCaptureStaggerMs,
   inferCapturedPieceIds,
 } from '../../src/app/flows/captureAnimation.js';
@@ -35,6 +37,61 @@ test('chain capture timing tightens as the captured stack grows', () => {
   assert.equal(getCaptureStaggerMs(3), 75);
   assert.equal(getCaptureStaggerMs(4), 60);
   assert.equal(getCaptureEffectDurationMs(4), CAPTURE_EFFECT_MS + 180);
+});
+
+test('capture jump and board shake intensity increase by captured piece count', () => {
+  const one = getCaptureMotionProfile(1);
+  const two = getCaptureMotionProfile(2);
+  const three = getCaptureMotionProfile(3);
+  const four = getCaptureMotionProfile(4);
+
+  assert.deepEqual({
+    arcBaseHeight: one.arcBaseHeight,
+    arcStepHeight: one.arcStepHeight,
+    attackerJumpX: one.attackerJumpX,
+    attackerJumpY: one.attackerJumpY,
+    shakePrimaryX: one.shakePrimaryX,
+    shakePrimaryY: one.shakePrimaryY,
+    shakePrimaryRotation: one.shakePrimaryRotation,
+    shakeSecondaryX: one.shakeSecondaryX,
+    shakeSecondaryY: one.shakeSecondaryY,
+    shakeSecondaryRotation: one.shakeSecondaryRotation,
+    shakeTertiaryX: one.shakeTertiaryX,
+    shakeTertiaryY: one.shakeTertiaryY,
+    shakeTertiaryRotation: one.shakeTertiaryRotation,
+  }, {
+    arcBaseHeight: 22,
+    arcStepHeight: 4,
+    attackerJumpX: -7,
+    attackerJumpY: -2,
+    shakePrimaryX: 5,
+    shakePrimaryY: 2,
+    shakePrimaryRotation: 0.35,
+    shakeSecondaryX: 3,
+    shakeSecondaryY: 1,
+    shakeSecondaryRotation: 0.2,
+    shakeTertiaryX: 2,
+    shakeTertiaryY: 1,
+    shakeTertiaryRotation: 0.15,
+  });
+
+  assert.deepEqual(
+    [one, two, three, four].map((profile) => profile.arcBaseHeight),
+    [22, 34, 46, 58],
+  );
+  assert.deepEqual(
+    [one, two, three, four].map((profile) => profile.attackerJumpY),
+    [-2, -16, -24, -34],
+  );
+  assert.deepEqual(
+    [one, two, three, four].map((profile) => profile.shakePrimaryX),
+    [5, 7, 10, 14],
+  );
+  assert.deepEqual(
+    [1, 2, 3, 4].map((pieceCount) => getCaptureArcHeightPx(pieceCount)),
+    [-22, -34, -46, -58],
+  );
+  assert.equal(getCaptureMotionProfile(8), four);
 });
 
 test('outer corners eject pieces through the nearest natural board edge', () => {
@@ -75,6 +132,7 @@ test('stacked captured pieces leave in a timed sequence and the last piece trave
   if (!effect) throw new Error('capture effect was not created');
   assert.equal(effect.pieces.length, 3);
   assert.deepEqual(effect.pieces.map((piece) => piece.delayMs), [0, 75, 150]);
+  assert.deepEqual(effect.pieces.map((piece) => piece.arcHeight), [-46, -52, -58]);
   assert.equal(effect.durationMs, CAPTURE_EFFECT_MS + 150);
   assert.deepEqual(effect.attackerPieceIds, ['attacker']);
   assert.equal(new Set(effect.pieces.map((piece) => `${piece.targetLeft}:${piece.targetTop}`)).size, 3);

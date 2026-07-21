@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
-import { CAPTURE_IMPACT_DELAY_MS, type CaptureVisualEffect } from '../../../app/flows/captureAnimation';
+import { CAPTURE_IMPACT_DELAY_MS, getCaptureMotionProfile, type CaptureVisualEffect } from '../../../app/flows/captureAnimation';
 import type { FinishVisualEffect } from '../../../app/flows/finishAnimation';
 import type { BoardItem, BoardNode, BranchChoice } from '../../../game-core/board/board';
 import { BOARD_NODES, FINISH_NODE_ID } from '../../../game-core/board/board';
@@ -167,6 +167,7 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
   const visualCapturePieceIds = new Set(captureEffect?.pieceIds ?? []);
   const captureAttackerPieceIds = new Set(captureEffect?.attackerPieceIds ?? []);
   const finishPieceIds = new Set(finishEffect?.pieceIds ?? []);
+  const captureMotion = getCaptureMotionProfile(captureEffect?.pieceCount ?? 1);
   const movingAnchor = movingPieceId ? pieces.find((piece) => piece.id === movingPieceId) : undefined;
   const movingSideKey = movingAnchor ? getPieceGroupKey(movingAnchor) : '';
   const movingStackPeers = movingAnchor && !movingAnchor.finished
@@ -197,7 +198,28 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
     data-testid="game-board"
     className={`board ${boardShaking ? 'capture-shake' : ''}`}
     aria-label="윷놀이 말판"
-    style={{ '--capture-total-duration': `${captureEffect?.durationMs ?? 720}ms` } as CSSProperties}
+    style={{
+      '--capture-total-duration': `${captureEffect?.durationMs ?? 720}ms`,
+      '--capture-attacker-jump-x': `${captureMotion.attackerJumpX}px`,
+      '--capture-attacker-jump-y': `${captureMotion.attackerJumpY}px`,
+      '--capture-attacker-settle-x': `${captureMotion.attackerSettleX}px`,
+      '--capture-attacker-settle-y': `${captureMotion.attackerSettleY}px`,
+      '--capture-shake-left': `${-captureMotion.shakePrimaryX}px`,
+      '--capture-shake-right': `${captureMotion.shakePrimaryX}px`,
+      '--capture-shake-down': `${captureMotion.shakePrimaryY}px`,
+      '--capture-shake-up': `${-captureMotion.shakePrimaryY}px`,
+      '--capture-shake-rotate-left': `${-captureMotion.shakePrimaryRotation}deg`,
+      '--capture-shake-rotate-right': `${captureMotion.shakePrimaryRotation}deg`,
+      '--capture-shake-secondary-left': `${-captureMotion.shakeSecondaryX}px`,
+      '--capture-shake-secondary-right': `${captureMotion.shakeSecondaryX}px`,
+      '--capture-shake-secondary-down': `${captureMotion.shakeSecondaryY}px`,
+      '--capture-shake-secondary-up': `${-captureMotion.shakeSecondaryY}px`,
+      '--capture-shake-secondary-rotate-left': `${-captureMotion.shakeSecondaryRotation}deg`,
+      '--capture-shake-secondary-rotate-right': `${captureMotion.shakeSecondaryRotation}deg`,
+      '--capture-shake-tertiary-right': `${captureMotion.shakeTertiaryX}px`,
+      '--capture-shake-tertiary-up': `${-captureMotion.shakeTertiaryY}px`,
+      '--capture-shake-tertiary-rotate-right': `${captureMotion.shakeTertiaryRotation}deg`,
+    } as CSSProperties}
   >
     <svg className="board-route-lines" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
       <rect x="8" y="8" width="84" height="84" rx="0" />
