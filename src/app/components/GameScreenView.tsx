@@ -30,7 +30,7 @@ import {
   shouldDeferRollDerivedContent,
   type RollPresentationState,
 } from '../flows/rollPresentationVisibility';
-import { getRollOutcomeSoundEffect, shouldPlayPerfectRollSound } from '../flows/rollSound';
+import { getRollLandingSoundDelayMs, getRollLandingSoundEffect, getRollOutcomeSoundEffect, shouldPlayPerfectRollSound } from '../flows/rollSound';
 import { BoardPanel, GameScreen } from '../screens/GameScreen';
 import { GameLogPanelView, GamePlayersPanel } from '../containers/GamePanels';
 import { BoardMessageStack, GoldenYutPicker, RollStage, TurnIndicator, WinnerOverlay } from '../containers/GameBoardOverlays';
@@ -141,6 +141,7 @@ const FALL_COMPLETION_RETRY_MS = 800;
 
 export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canRollForTurnOrderNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, moveSelectionTimedOut, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, shieldedPieceIds, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenSequenceExportDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   const lastRollAnimationIdRef = useRef('');
+  const rollLandingSoundTimerRef = useRef<number | null>(null);
   const lastRollOutcomeKeyRef = useRef('');
   const lastPerfectRollKeyRef = useRef('');
   const previousPieceNodeIdsRef = useRef<Map<string, string>>(new Map());
@@ -339,6 +340,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     if (captureClearTimerRef.current !== null) window.clearTimeout(captureClearTimerRef.current);
     if (captureSoundTimerRef.current !== null) window.clearTimeout(captureSoundTimerRef.current);
     if (finishClearTimerRef.current !== null) window.clearTimeout(finishClearTimerRef.current);
+    if (rollLandingSoundTimerRef.current !== null) window.clearTimeout(rollLandingSoundTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -367,11 +369,6 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   useEffect(() => {
     if (!rollAnimation) return;
     const animationId = String(rollAnimation.id);
-    if (lastRollAnimationIdRef.current !== animationId) {
-      lastRollAnimationIdRef.current = animationId;
-      playStoredSoundEffect('roll');
-    }
-
     const resolvedAnimation = rollAnimation as RollAnimation & { result?: YutResult; fallCount?: number; turnOrder?: boolean };
     const rollSoundState = {
       phase: rollAnimation.phase,
@@ -380,6 +377,19 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       timingZone: rollAnimation.timingZone,
       turnOrder: resolvedAnimation.turnOrder,
     };
+    if (lastRollAnimationIdRef.current !== animationId) {
+      const landingEffect = getRollLandingSoundEffect(rollSoundState);
+      const delayMs = landingEffect ? getRollLandingSoundDelayMs(rollSoundState, Number(rollAnimation.id)) : null;
+      if (landingEffect && delayMs !== null) {
+        lastRollAnimationIdRef.current = animationId;
+        if (rollLandingSoundTimerRef.current !== null) window.clearTimeout(rollLandingSoundTimerRef.current);
+        rollLandingSoundTimerRef.current = window.setTimeout(() => {
+          playStoredSoundEffect(landingEffect);
+          rollLandingSoundTimerRef.current = null;
+        }, delayMs);
+      }
+    }
+
     const perfectKey = shouldPlayPerfectRollSound(rollSoundState) ? `${animationId}:perfect` : '';
     if (perfectKey && lastPerfectRollKeyRef.current !== perfectKey) {
       lastPerfectRollKeyRef.current = perfectKey;
