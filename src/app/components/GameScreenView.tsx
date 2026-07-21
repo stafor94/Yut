@@ -142,6 +142,7 @@ const FALL_COMPLETION_RETRY_MS = 800;
 export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorRollStack, branchChoice, canContinueRace, canRequestMove, canRollNow, canRollForTurnOrderNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, moveSelectionTimedOut, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, shieldedPieceIds, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementSecondsLeft, turnActionTimeoutMs, turnOrderClock, turnOrderPhase, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenSequenceExportDialog, onRollYut, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   const lastRollAnimationIdRef = useRef('');
   const rollLandingSoundTimerRef = useRef<number | null>(null);
+  const cancelRollFallSoundRef = useRef<(() => void) | null>(null);
   const lastRollOutcomeKeyRef = useRef('');
   const lastPerfectRollKeyRef = useRef('');
   const previousPieceNodeIdsRef = useRef<Map<string, string>>(new Map());
@@ -341,6 +342,8 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     if (captureSoundTimerRef.current !== null) window.clearTimeout(captureSoundTimerRef.current);
     if (finishClearTimerRef.current !== null) window.clearTimeout(finishClearTimerRef.current);
     if (rollLandingSoundTimerRef.current !== null) window.clearTimeout(rollLandingSoundTimerRef.current);
+    cancelRollFallSoundRef.current?.();
+    cancelRollFallSoundRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -383,9 +386,30 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       if (landingEffect && delayMs !== null) {
         lastRollAnimationIdRef.current = animationId;
         if (rollLandingSoundTimerRef.current !== null) window.clearTimeout(rollLandingSoundTimerRef.current);
+        cancelRollFallSoundRef.current?.();
+        cancelRollFallSoundRef.current = null;
+        const shouldPlayFallAfterRoll = (resolvedAnimation.fallCount ?? 0) > 0;
         rollLandingSoundTimerRef.current = window.setTimeout(() => {
-          playStoredSoundEffect(landingEffect);
           rollLandingSoundTimerRef.current = null;
+          cancelRollFallSoundRef.current?.();
+          cancelRollFallSoundRef.current = null;
+          if (!shouldPlayFallAfterRoll) {
+            playStoredSoundEffect(landingEffect);
+            return;
+          }
+          let cancelled = false;
+          const playFallOnce = () => {
+            if (cancelled) return;
+            cancelled = true;
+            cancelRollFallSoundRef.current = null;
+            playStoredSoundEffect('fall');
+          };
+          const cancelRollSound = playStoredSoundEffect('roll', playFallOnce);
+          cancelRollFallSoundRef.current = () => {
+            cancelled = true;
+            cancelRollSound?.();
+            cancelRollFallSoundRef.current = null;
+          };
         }, delayMs);
       }
     }

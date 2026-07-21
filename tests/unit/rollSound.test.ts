@@ -7,9 +7,9 @@ test('윷과 모는 결과가 노출된 뒤 긍정 효과음을 선택한다', (
   assert.equal(getRollOutcomeSoundEffect({ phase: 'resolved', resultName: '모' }), 'bonus');
 });
 
-test('착지 시점에는 낙 효과음이 roll 효과음보다 우선한다', () => {
-  assert.equal(getRollLandingSoundEffect({ phase: 'landing', resultName: '윷', fallCount: 2 }), 'fall');
-  assert.equal(getRollLandingSoundEffect({ resultName: '도', fallCount: 1 }), 'fall');
+test('착지 시점에는 낙이 있어도 roll 효과음이 먼저 재생된다', () => {
+  assert.equal(getRollLandingSoundEffect({ phase: 'landing', resultName: '윷', fallCount: 2 }), 'roll');
+  assert.equal(getRollLandingSoundEffect({ resultName: '도', fallCount: 1 }), 'roll');
   assert.equal(getRollLandingSoundEffect({ phase: 'landing', resultName: '도', fallCount: 0 }), 'roll');
   assert.equal(getRollOutcomeSoundEffect({ phase: 'result-hold', resultName: '윷', fallCount: 2 }), null);
 });
