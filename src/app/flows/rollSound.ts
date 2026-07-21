@@ -40,7 +40,7 @@ export const getRollLandingSoundDelayMs = (state: RollSoundState, animationId: n
 
 export const getRollLandingSoundEffect = (state: RollSoundState): 'roll' | 'fall' | null => {
   if (state.turnOrder) return null;
-  return (state.fallCount ?? 0) > 0 ? 'fall' : 'roll';
+  return 'roll';
 };
 
 export const getRollOutcomeSoundEffect = (state: RollSoundState): 'bonus' | null => {

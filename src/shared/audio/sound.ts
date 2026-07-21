@@ -57,14 +57,46 @@ const getEffectAudio = (effect: keyof typeof WAV_EFFECT_SOURCES) => {
   return audio;
 };
 
-const playWavEffect = (effect: keyof typeof WAV_EFFECT_SOURCES) => {
+const playWavEffect = (effect: keyof typeof WAV_EFFECT_SOURCES, onEnded?: () => void) => {
   const audio = getEffectAudio(effect);
-  if (!audio) return;
+  if (!audio) {
+    onEnded?.();
+    return undefined;
+  }
+
+  let completed = false;
+  let fallbackTimer: number | null = null;
+  const cleanup = () => {
+    audio.removeEventListener('ended', handleEnded);
+    if (fallbackTimer !== null) {
+      window.clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+  };
+  const complete = () => {
+    if (completed) return;
+    completed = true;
+    cleanup();
+    onEnded?.();
+  };
+  function handleEnded() {
+    complete();
+  }
+
   audio.pause();
   audio.currentTime = 0;
   audio.muted = false;
   audio.volume = SOUND_EFFECT_VOLUME;
-  void audio.play().catch(() => undefined);
+  if (onEnded) {
+    audio.addEventListener('ended', handleEnded, { once: true });
+    const fallbackDelayMs = Number.isFinite(audio.duration) && audio.duration > 0
+      ? Math.ceil(audio.duration * 1000) + 250
+      : 1600;
+    fallbackTimer = window.setTimeout(complete, fallbackDelayMs);
+  }
+
+  void audio.play().catch(() => complete());
+  return cleanup;
 };
 
 const getAudioContext = () => {
@@ -160,21 +192,29 @@ export const isStoredSoundEnabled = () => {
 
 bindYutResultSpeech(isStoredSoundEnabled);
 
-export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
-  if (!enabled) return;
+export const playSoundEffect = (effect: SoundEffect, enabled: boolean, onEnded?: () => void) => {
+  if (!enabled) {
+    onEnded?.();
+    return undefined;
+  }
 
   const now = typeof performance === 'undefined' ? Date.now() / 1000 : performance.now() / 1000;
   const lastPlayedAt = lastPlayedEffectAt.get(effect) ?? -Infinity;
-  if (now - lastPlayedAt < getEffectDedupeWindow(effect)) return;
+  if (now - lastPlayedAt < getEffectDedupeWindow(effect)) {
+    onEnded?.();
+    return undefined;
+  }
   lastPlayedEffectAt.set(effect, now);
 
   if (effect in WAV_EFFECT_SOURCES) {
-    playWavEffect(effect as keyof typeof WAV_EFFECT_SOURCES);
-    return;
+    return playWavEffect(effect as keyof typeof WAV_EFFECT_SOURCES, onEnded);
   }
 
   const context = getAudioContext();
-  if (!context) return;
+  if (!context) {
+    onEnded?.();
+    return undefined;
+  }
 
   const play = () => {
     if (context.state === 'suspended') return;
@@ -190,16 +230,21 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean) => {
       default:
         break;
     }
+    onEnded?.();
   };
 
   if (context.state === 'suspended') {
-    void context.resume().then(() => window.setTimeout(play, 0)).catch(() => undefined);
-    return;
+    void context.resume().then(() => window.setTimeout(play, 0)).catch(() => onEnded?.());
+    return undefined;
   }
   play();
+  return undefined;
 };
 
-export const playStoredSoundEffect = (effect: SoundEffect | null) => {
-  if (!effect) return;
-  playSoundEffect(effect, isStoredSoundEnabled());
+export const playStoredSoundEffect = (effect: SoundEffect | null, onEnded?: () => void) => {
+  if (!effect) {
+    onEnded?.();
+    return undefined;
+  }
+  return playSoundEffect(effect, isStoredSoundEnabled(), onEnded);
 };
