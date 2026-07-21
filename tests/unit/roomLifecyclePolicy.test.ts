@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   ROOM_EMPTY_DELETE_GRACE_MS,
   ROOM_MAX_IDLE_MS,
+  countConnectedHumanRoomPlayers,
   countConnectedHumanRoomSeats,
   countConnectedHumanRoomSeatsAfterClaim,
   getRoomDeletionDeadlineMillis,
@@ -13,6 +14,7 @@ import {
   hasCreationBlockingHumanPlayer,
   hasHumanLifecyclePlayer,
   hasResumablePlayerForUser,
+  isConnectedHumanRoomPlayer,
   isConnectedHumanRoomSeat,
   isRoomDeletionExpired,
   isRoomDeletionGraceActive,
@@ -128,6 +130,22 @@ test('연결 인원은 실제 사람 좌석만 세고 AI 대체 좌석 복귀 �
   assert.equal(countConnectedHumanRoomSeats(seats), 1);
   assert.equal(countConnectedHumanRoomSeatsAfterClaim(seats, 0), 2);
   assert.equal(countConnectedHumanRoomSeatsAfterClaim(seats, 2), 1);
+});
+
+test('연결 인원 요약은 사람 플레이어만 세고 수동 AI·AI 대체·관전자는 제외한다', () => {
+  const players = [
+    { id: 'human' },
+    { id: 'manual-ai', isAI: true },
+    { id: 'substituted', isAI: true, isSubstitutedByAI: true },
+    { id: 'spectator', isSpectator: true },
+    { id: 'inconsistent-substitute', isSubstitutedByAI: true },
+  ];
+  assert.equal(isConnectedHumanRoomPlayer(players[0]), true);
+  assert.equal(isConnectedHumanRoomPlayer(players[1]), false);
+  assert.equal(isConnectedHumanRoomPlayer(players[2]), false);
+  assert.equal(isConnectedHumanRoomPlayer(players[3]), false);
+  assert.equal(isConnectedHumanRoomPlayer(players[4]), false);
+  assert.equal(countConnectedHumanRoomPlayers(players), 1);
 });
 
 test('AI 대체 방은 복귀 대상으로 유지하되 새 방 생성 차단 대상에서는 제외한다', () => {

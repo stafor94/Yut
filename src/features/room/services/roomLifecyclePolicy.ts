@@ -68,6 +68,17 @@ export const countConnectedHumanRoomSeatsAfterClaim = (
   seatIndex: number,
 ) => countConnectedHumanRoomSeats(seats) + (isConnectedHumanRoomSeat(seats[seatIndex]) ? 0 : 1);
 
+export const isConnectedHumanRoomPlayer = (player: RoomLifecyclePlayer | null | undefined) => Boolean(
+  player
+  && !player.isSpectator
+  && !player.isAI
+  && !player.isSubstitutedByAI
+);
+
+export const countConnectedHumanRoomPlayers = (players: RoomLifecyclePlayer[]) => (
+  players.filter(isConnectedHumanRoomPlayer).length
+);
+
 export const hasRecoverableLifecyclePlayer = (players: RoomLifecyclePlayer[]) => players.some((player) => (
   !player.isAI || player.isSubstitutedByAI === true
 ));
