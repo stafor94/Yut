@@ -24,6 +24,7 @@ import './styles/control-geometry.css';
 import './styles/lobby-scroll-overflow-fix.css';
 import './styles/lobby-footer.css';
 import './styles/lobby-header-badges.css';
+import './styles/shared-sound-badge.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
