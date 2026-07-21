@@ -65,6 +65,13 @@ export const hasResumablePlayerForUser = (players: RoomLifecyclePlayer[], userId
   && (!player.isAI || player.isSubstitutedByAI === true)
 ));
 
+export const hasActiveRoomPlayerForUser = (players: RoomLifecyclePlayer[], userId: string) => players.some((player) => (
+  Boolean(userId)
+  && player.id === userId
+  && !player.isSpectator
+  && !player.isAI
+));
+
 export const hasHumanLifecyclePlayer = (players: RoomLifecyclePlayer[]) => players.some((player) => !player.isAI);
 
 export const isActiveHumanLifecyclePlayer = (
