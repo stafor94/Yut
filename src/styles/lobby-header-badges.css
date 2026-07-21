@@ -23,23 +23,23 @@
 }
 
 .screen-game.game-shell > .hero.panel.game-header-with-end {
-  grid-template-columns: minmax(0, 1fr);
-  column-gap: 0;
+  grid-template-columns: minmax(0, 1fr) var(--utility-header-compact-width);
+  column-gap: var(--utility-header-gap);
 }
 
 .screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions {
-  grid-column: 1 / -1;
+  grid-column: 1;
   grid-row: 1;
   grid-template-columns:
     minmax(0, 1fr)
     var(--utility-header-sound-width)
-    var(--utility-header-compact-width)
     var(--utility-header-compact-width);
 }
 
 .screen-lobby > .hero.panel .hero-actions > button,
 .screen-waitingRoom > .hero.panel .hero-actions > button,
-.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > button {
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > button,
+.screen-game.game-shell > .hero.panel.game-header-with-end > .game-end-button {
   position: static;
   inset: auto;
   box-sizing: border-box;
@@ -75,7 +75,8 @@
 
 .screen-lobby > .hero.panel .hero-actions > button:not(:disabled):active,
 .screen-waitingRoom > .hero.panel .hero-actions > button:not(:disabled):active,
-.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > button:not(:disabled):active {
+.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > button:not(:disabled):active,
+.screen-game.game-shell > .hero.panel.game-header-with-end > .game-end-button:not(:disabled):active {
   transform: translateY(1px);
   box-shadow:
     0 2px 7px rgba(62, 34, 16, .1),
@@ -140,12 +141,16 @@
 }
 
 .screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > .status-card,
-.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > .game-end-button {
+.screen-game.game-shell > .hero.panel.game-header-with-end > .game-end-button {
   padding-inline: 4px;
   gap: 4px;
 }
 
-.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > .game-end-button {
+.screen-game.game-shell > .hero.panel.game-header-with-end > .game-end-button {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: stretch;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, .14), transparent 34%),
     linear-gradient(145deg, #de5942, #b93629 68%, #8e251d);
@@ -156,7 +161,7 @@
     inset 0 1px 0 rgba(255, 234, 199, .32);
 }
 
-.screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > .game-end-button:not(:disabled):active {
+.screen-game.game-shell > .hero.panel.game-header-with-end > .game-end-button:not(:disabled):active {
   transform: translateY(1px);
   box-shadow:
     0 2px 6px rgba(76, 21, 15, .16),
@@ -175,7 +180,8 @@
 
   .screen-lobby > .hero.panel .hero-actions > button,
   .screen-waitingRoom > .hero.panel .hero-actions > button,
-  .screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > button {
+  .screen-game.game-shell > .hero.panel.game-header-with-end > .hero-actions.game-actions > button,
+  .screen-game.game-shell > .hero.panel.game-header-with-end > .game-end-button {
     padding-inline: 5px;
     gap: 4px;
     font-size: .72rem;
