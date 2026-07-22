@@ -6,10 +6,12 @@ import {
 import {
   TURN_ACTION_TIMEOUT_MS,
   TURN_ITEM_PROMPT_TIMEOUT_MS,
+  TURN_NETWORK_GRACE_MS,
   getTurnActionTimeoutMsForCount,
   incrementTurnActionTimeoutCount,
   normalizeTurnActionTimeoutCount,
 } from './roomTiming';
+import { isManualTurnActionDeadlineExpired } from './turnDeadlinePolicy';
 
 export * from './roomAuthoritativeReducerCore';
 
@@ -57,6 +59,27 @@ const rejectRollBeforePresentationGateEnds = (args: AuthoritativeArgs): Authorit
   const readyAt = Number(state.rollResultReadyAt ?? 0);
   if (!Number.isFinite(readyAt) || readyAt <= Date.now()) return null;
   return { status: 'rejected', reason: '이전 윷 결과 표출이 끝난 뒤 던질 수 있습니다.' };
+};
+
+const rejectExpiredManualRoll = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const [state, action] = args;
+  if (action.type !== 'roll_yut'
+    || action.payload?.completeFallPresentation === true
+    || action.payload?.timedOut === true
+    || action.payload?.timeoutRecoveredBy !== undefined
+    || action.payload?.timeoutDeadlineAt !== undefined) return null;
+
+  const clientActionId = action.payload?.clientActionId;
+  if (typeof clientActionId === 'string' && clientActionId.startsWith('roll_yut_ai')) return null;
+  if (!isManualTurnActionDeadlineExpired({
+    deadlineAt: state.turnDeadlineAt,
+    deadlineKind: state.turnDeadlineKind,
+    expectedKind: 'roll',
+    clientActionId,
+    networkGraceMs: TURN_NETWORK_GRACE_MS,
+  })) return null;
+
+  return { status: 'rejected', reason: '윷 던지기 제한 시간이 만료되었습니다.' };
 };
 
 const applyFallPresentationGate = (
@@ -328,6 +351,9 @@ export function reduceAuthoritativeGameAction(
 
   const presentationGateRejection = rejectRollBeforePresentationGateEnds(args);
   if (presentationGateRejection) return presentationGateRejection;
+
+  const expiredManualRollRejection = rejectExpiredManualRoll(args);
+  if (expiredManualRollRejection) return expiredManualRollRejection;
 
   let reduction = reduceCoreAuthoritativeGameAction(...args);
   reduction = retryRollAfterResolvedBeforeRollPrompt(args, reduction);
