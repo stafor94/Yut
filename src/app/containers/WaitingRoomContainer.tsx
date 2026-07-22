@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PieceCount, PlayMode, Seat, Team } from '../appState';
+import { RoomRuleBadges } from '../components/RoomRuleBadges';
 import { getWaitingRoomStartHint } from '../flows/gameStartFlow';
 import { WAITING_ROOM_BACK_EXIT_EVENT } from '../flows/backNavigationExit';
 import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
@@ -70,7 +71,7 @@ export function WaitingRoomContainer({
   const startFlowActiveRef = useRef(startFlowBusy || initialGameEntryPending || roomInGame);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
   const [countdownTransitionOverlayVisible, setCountdownTransitionOverlayVisible] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => typeof window !== 'undefined' ? !window.matchMedia('(max-width: 720px)').matches : false);
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const effectiveStartFlowBusy = startFlowBusy || countdownTransitionPending;
@@ -201,6 +202,7 @@ export function WaitingRoomContainer({
       <div>
         <h2 className="room-title">{activeRoomTitle || title}</h2>
       </div>
+      <RoomRuleBadges mode={playMode} players={maxPlayers} pieces={pieceCount} itemsEnabled={itemMode} stackedRollEnabled={stackedRollMode} className="waiting-room-rule-badges" />
     </header>
 
     <div className="waiting-main-grid">
