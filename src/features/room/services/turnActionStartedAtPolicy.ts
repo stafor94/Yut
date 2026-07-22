@@ -11,17 +11,29 @@ const DEADLINE_ACTION_TYPES = new Set([
   'item_pickup_decision',
 ]);
 
-const isRecoveryOrAutomatedPayload = (payload: Record<string, unknown>) => Boolean(
-  payload.completeFallPresentation === true
-  || payload.timedOut === true
-  || payload.recoveredByCoordinator === true
-  || payload.itemPromptTimeoutRecovery === true
-  || payload.itemPickupTimeoutRecovery === true
-  || payload.trapPlacementTimeoutRecovery === true
-  || payload.timeoutRecoveredBy !== undefined
-  || payload.timeoutDeadlineAt !== undefined
-  || payload.coordinatorSeatId !== undefined
-);
+const AI_ACTION_ID_PREFIXES = [
+  'roll_yut_ai',
+  'move_piece_ai',
+  'use_item_ai',
+  'place_trap_ai',
+  'item_pickup_ai',
+];
+
+const isRecoveryOrAutomatedPayload = (payload: Record<string, unknown>) => {
+  const clientActionId = typeof payload.clientActionId === 'string' ? payload.clientActionId : '';
+  return Boolean(
+    payload.completeFallPresentation === true
+    || payload.timedOut === true
+    || payload.recoveredByCoordinator === true
+    || payload.itemPromptTimeoutRecovery === true
+    || payload.itemPickupTimeoutRecovery === true
+    || payload.trapPlacementTimeoutRecovery === true
+    || payload.timeoutRecoveredBy !== undefined
+    || payload.timeoutDeadlineAt !== undefined
+    || payload.coordinatorSeatId !== undefined
+    || AI_ACTION_ID_PREFIXES.some((prefix) => clientActionId.startsWith(prefix))
+  );
+};
 
 export const shouldAttachClientActionStartedAt = (action: TurnActionLike) => {
   if (!DEADLINE_ACTION_TYPES.has(action.type)) return false;
