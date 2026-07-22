@@ -5,8 +5,9 @@ import {
   getFallChanceForTimingZone,
   getRollTimingPositionPercent,
   getRollTimingZone,
+  normalizeRollTimingZone,
   rollYutResultWithTiming,
-  type RollTimingZone,
+  type RollTimingGrade,
 } from '../../src/game-core/roll';
 
 const sequenceRandom = (...values: number[]) => {
@@ -23,7 +24,7 @@ test('화면의 2초 왕복 주기와 타이밍 위치 계산이 일치한다', 
 });
 
 test('Perfect, Nice, Good, Bad 경계값을 빠짐없이 판정한다', () => {
-  const cases: Array<[number, RollTimingZone]> = [
+  const cases: Array<[number, RollTimingGrade]> = [
     [0, 'bad'], [19.999, 'bad'], [20, 'good'], [39.999, 'good'],
     [40, 'nice'], [44.999, 'nice'], [45, 'perfect'], [55, 'perfect'],
     [55.001, 'nice'], [60, 'nice'], [60.001, 'good'], [80, 'good'],
@@ -37,6 +38,16 @@ test('타이밍 등급별 낙 확률을 적용한다', () => {
   assert.equal(getFallChanceForTimingZone('nice'), 0.1);
   assert.equal(getFallChanceForTimingZone('good'), 0.2);
   assert.equal(getFallChanceForTimingZone('bad'), 0.6);
+});
+
+test('레거시 Normal은 새 등급을 추가하지 않고 Bad로 처리한다', () => {
+  assert.equal(normalizeRollTimingZone('normal'), 'bad');
+  assert.equal(getFallChanceForTimingZone('normal'), 0.6);
+  const values = [0.2, 0.8, 0.2, 0.8];
+  assert.deepEqual(
+    rollYutResultWithTiming('normal', sequenceRandom(...values)),
+    rollYutResultWithTiming('bad', sequenceRandom(...values)),
+  );
 });
 
 test('쉬움 AI는 10/20/50/20 비율의 경계로 등급을 고른다', () => {
