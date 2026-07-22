@@ -26,38 +26,28 @@ test.describe('cleanup/layout regression QA', () => {
       await createRoomFromLobby(page, waitingRoomTitle);
       const roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(waitingRoomTitle);
       if (roomId) roomIds.push(roomId);
-      const expectedWaitingBadges = ['팀전', '4인', '팀별 말 2개', '누적'];
-      const waitingBadges = page.locator('.waiting-room-rule-badges .room-rule-badge');
-      await expect(waitingBadges).toHaveText(['개인전', '2인', '말 4개']);
+      const settingsToggle = page.getByTestId('waiting-room-settings-toggle');
+      await expect(page.locator('.waiting-room-rule-badges')).toHaveCount(0);
+      await expect(settingsToggle).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByRole('group', { name: '진행' })).toBeVisible();
+      await expect(page.getByTestId('waiting-room-settings-summary')).toHaveText('개인전 · 2인 · 말 4개 · 아이템 OFF · 누적 OFF');
       await page.locator('.play-mode-group').getByText('팀전').click();
       await page.locator('.piece-count-group').getByText('2개').click();
       await page.locator('.stacked-roll-mode-group').getByText('ON').click();
-      await expect(waitingBadges).toHaveText(expectedWaitingBadges);
+      await expect(page.getByTestId('waiting-room-settings-summary')).toHaveText('팀전 · 4인 · 말 2개 · 아이템 OFF · 누적 ON');
+      const setupLayout = await page.locator('.waiting-setup-card').evaluate((element) => {
+        const bodyWidth = document.documentElement.clientWidth;
+        const box = element.getBoundingClientRect();
+        return {
+          right: box.right,
+          bodyWidth,
+          documentScrollWidth: document.documentElement.scrollWidth,
+        };
+      });
+      expect(setupLayout.right, '대기실 방 설정 카드는 화면 밖으로 넘치면 안 됩니다.').toBeLessThanOrEqual(setupLayout.bodyWidth + 1);
+      expect(setupLayout.documentScrollWidth, '대기실 방 설정 카드는 가로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(setupLayout.bodyWidth + 1);
       const p2Card = page.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
       await expect(p2Card.locator('.team-card-option.red')).toHaveClass(/active/, { timeout: 10_000 });
-      let waitingRuleLayout;
-      await expect.poll(async () => {
-        try {
-          const layout = await page.locator('.waiting-room-rule-badges').evaluate((element) => {
-            const bodyWidth = document.documentElement.clientWidth;
-            const box = element.getBoundingClientRect();
-            const badges = Array.from(element.querySelectorAll('.room-rule-badge')).map((badge) => badge.textContent?.trim());
-            return {
-              badges,
-              right: box.right,
-              bodyWidth,
-              documentScrollWidth: document.documentElement.scrollWidth,
-            };
-          });
-          const stable = JSON.stringify(layout.badges) === JSON.stringify(expectedWaitingBadges);
-          if (stable) waitingRuleLayout = layout;
-          return stable;
-        } catch {
-          return false;
-        }
-      }, { timeout: 10_000, message: '최종 방 옵션 배지 DOM과 레이아웃 측정값이 안정되어야 합니다.' }).toBe(true);
-      expect(waitingRuleLayout.right, '대기실 옵션 배지는 화면 밖으로 넘치면 안 됩니다.').toBeLessThanOrEqual(waitingRuleLayout.bodyWidth + 1);
-      expect(waitingRuleLayout.documentScrollWidth, '대기실 옵션 배지는 가로 스크롤을 만들면 안 됩니다.').toBeLessThanOrEqual(waitingRuleLayout.bodyWidth + 1);
       await page.getByTestId('add-ai-P2').click();
       await page.getByTestId('add-ai-P3').click();
       await page.getByTestId('add-ai-P4').click();
@@ -114,6 +104,9 @@ test.describe('cleanup/layout regression QA', () => {
         await waitForBlockingOverlayToDisappear(lobbyGuestPage);
         await joinButton.click();
         await expect(lobbyGuestPage.getByTestId('waiting-room')).toBeVisible({ timeout: 20_000 });
+        await expect(lobbyGuestPage.getByTestId('waiting-room-settings-toggle')).toHaveCount(0);
+        await expect(lobbyGuestPage.getByTestId('waiting-room-settings-label')).toBeVisible();
+        await expect(lobbyGuestPage.getByRole('group', { name: '진행' })).toHaveCount(0);
       } finally {
         await lobbyGuestContext.close();
         await lobbyHostContext.close();
