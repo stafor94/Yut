@@ -41,5 +41,5 @@ export const attachClientActionStartedAt = <T extends TurnActionLike>(action: T,
       ...action.payload,
       clientActionStartedAt: startedAt,
     },
-  };
+  } as T;
 };
