@@ -26,8 +26,8 @@ test.describe('mobile lobby guide polish QA', () => {
         const header = element.querySelector('.howto-fixed-header');
         const body = element.querySelector('.howto-scroll-body');
         const footer = element.querySelector('.howto-fixed-footer');
-        const timingHeading = cards[0]?.querySelector('h4');
-        const timingParagraphs = cards[0] ? Array.from(cards[0].querySelectorAll('p')) : [];
+        const timingHeading = cards[1]?.querySelector('h4');
+        const timingParagraphs = cards[1] ? Array.from(cards[1].querySelectorAll('p')) : [];
         const splitRuleParagraphs = cards[3] ? Array.from(cards[3].querySelectorAll('p')) : [];
         if (cards.length !== 4 || resultItems.length !== 6 || timingParagraphs.length < 2 || splitRuleParagraphs.length !== 2 || !(timingHeading instanceof HTMLElement) || !(confirm instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement)) return null;
         const rect = (target) => {
