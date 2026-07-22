@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getClientActionStartedAt,
+  getDeadlineTimerAnimationState,
   getTurnActionDeadlineDelayMs,
   getTurnActionStartedAt,
   isManualTurnActionDeadlineExpired,
@@ -22,6 +23,37 @@ test('authoritative deadline이 있으면 로컬 전체 duration 대신 남은 �
   assert.equal(getTurnActionDeadlineDelayMs({ deadlineAt: 10_000, deadlineKind: 'move', phase: 'roll', fallbackMs: 15_000, now: 7_500 }), 15_000);
   assert.equal(getTurnActionDeadlineDelayMs({ deadlineAt: 10_000, deadlineKind: 'roll', phase: 'roll', fallbackMs: 15_000, now: 10_500 }), 0);
   assert.equal(getTurnActionDeadlineDelayMs({ deadlineAt: 10_000, deadlineKind: 'item_prompt', phase: 'item_prompt', fallbackMs: 10_000, now: 7_500 }), 2_500);
+});
+
+test('제한시간 막대는 늦게 표시돼도 absolute deadline 진행률에서 시작한다', () => {
+  assert.deepEqual(getDeadlineTimerAnimationState({ deadlineAt: 20_000, durationMs: 10_000, now: 10_000 }), {
+    durationMs: 10_000,
+    remainingMs: 10_000,
+    delayMs: 0,
+  });
+  assert.deepEqual(getDeadlineTimerAnimationState({ deadlineAt: 20_000, durationMs: 10_000, now: 17_500 }), {
+    durationMs: 10_000,
+    remainingMs: 2_500,
+    delayMs: -7_500,
+  });
+  assert.deepEqual(getDeadlineTimerAnimationState({ deadlineAt: 20_000, durationMs: 10_000, now: 20_500 }), {
+    durationMs: 10_000,
+    remainingMs: 0,
+    delayMs: -10_000,
+  });
+});
+
+test('제한시간 막대 진행률은 전체 duration 범위를 벗어나지 않는다', () => {
+  assert.deepEqual(getDeadlineTimerAnimationState({ deadlineAt: 30_000, durationMs: 10_000, now: 10_000 }), {
+    durationMs: 10_000,
+    remainingMs: 10_000,
+    delayMs: 0,
+  });
+  assert.deepEqual(getDeadlineTimerAnimationState({ deadlineAt: 0, durationMs: 10_000, now: 10_000 }), {
+    durationMs: 10_000,
+    remainingMs: 10_000,
+    delayMs: 0,
+  });
 });
 
 test('명시 payload를 우선하고 action id에서는 실제 epoch만 시작 시각으로 사용한다', () => {
