@@ -1,6 +1,7 @@
 import type { MutableRefObject } from 'react';
 import type { User } from 'firebase/auth';
 import type { PieceCount, PlayMode } from '../appTypes';
+import { validateRoomTitle } from './roomTitle';
 
 type RoomSummary = { id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: PlayMode; pieceCount: PieceCount; createRequestId?: string };
 import {
@@ -104,7 +105,9 @@ export async function findCreatedRoomWithTimeout(
 export async function requestRoomCreation(params: RequestRoomCreationParams) {
   const runtime = params.runtime;
   if (!runtime.signInAsGuest || !runtime.createRoom || !runtime.getRoom || !runtime.makeRequestToken || runtime.firebaseConfigured === undefined) throw new Error('방 생성 의존성이 준비되지 않았습니다.');
-  const normalizedTitle = params.title.trim();
+  const titleValidation = validateRoomTitle(params.title);
+  if (!titleValidation.valid) { params.onMessage(titleValidation.message); return; }
+  const normalizedTitle = titleValidation.value;
   if (!params.nickname.trim()) { params.onMessage('닉네임을 먼저 정해주세요.'); return; }
   params.onMessage('');
   params.onLoadingMessage(runtime.firebaseConfigured && !params.currentUser ? '입장 준비를 마친 뒤 방을 만드는 중입니다...' : '방을 만드는 중입니다. 잠시만 기다려주세요...');
