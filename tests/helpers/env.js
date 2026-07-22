@@ -74,13 +74,24 @@ function normalizeQaRunId(value) {
     .slice(0, 48);
 }
 
+function hashQaName(value) {
+  let hash = 2166136261;
+  for (const character of String(value ?? '')) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36).padStart(7, '0').slice(0, 7);
+}
+
 export const QA_NICKNAME_MAX_LENGTH = 7;
+export const QA_ROOM_TITLE_MAX_LENGTH = 20;
 
 export function makeQaName(testInfo, suffix) {
   const project = testInfo.project.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'project';
   const runId = normalizeQaRunId(process.env.QA_RUN_ID);
-  const runPrefix = runId ? `${runId}-` : '';
-  return `QA-${runPrefix}${formatQaTimestamp()}-${project}-${suffix}`;
+  const timestamp = formatQaTimestamp().replace(/\D/g, '').slice(-8);
+  const identityHash = hashQaName(`${runId}|${project}|${suffix}`);
+  return `QA-${timestamp}-${identityHash}`.slice(0, QA_ROOM_TITLE_MAX_LENGTH);
 }
 
 export function normalizeQaNickname(value) {
