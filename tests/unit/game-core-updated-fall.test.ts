@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { chooseAiRollTimingZone, getFallChanceForTimingZone, getRollTimingZone } from '../../src/game-core/roll';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
 import { TURN_NETWORK_GRACE_MS } from '../../src/features/room/services/roomTiming';
 import type { EngineState } from '../../src/game-core/gameEngine';
@@ -43,6 +44,30 @@ const baseState = (): EngineState => ({
 });
 
 const replacementTests = new Map<string, () => void>([
+  ['윷 던지기 타이밍 구간은 중앙 Perfect와 좌우 Good을 판정한다', () => {
+    assert.equal(getRollTimingZone(0), 'bad');
+    assert.equal(getRollTimingZone(20), 'good');
+    assert.equal(getRollTimingZone(40), 'nice');
+    assert.equal(getRollTimingZone(45), 'perfect');
+    assert.equal(getRollTimingZone(55), 'perfect');
+    assert.equal(getRollTimingZone(60), 'nice');
+    assert.equal(getRollTimingZone(80), 'good');
+    assert.equal(getRollTimingZone(80.001), 'bad');
+  }],
+  ['AI 윷 던지기 타이밍은 30% Perfect, 40% Good, 30% Normal 기준으로 판정한다', () => {
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.2999), 'perfect');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.3), 'nice');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.6999), 'nice');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.7), 'good');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.8999), 'good');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.9), 'bad');
+  }],
+  ['타이밍 구간별 낙 확률을 적용한다', () => {
+    assert.equal(getFallChanceForTimingZone('perfect'), 0);
+    assert.equal(getFallChanceForTimingZone('nice'), 0.1);
+    assert.equal(getFallChanceForTimingZone('good'), 0.2);
+    assert.equal(getFallChanceForTimingZone('bad'), 0.6);
+  }],
   ['온라인 누적 AI 낙 후 다음 플레이어가 황금 윷을 보유하면 before_roll 선택 대기를 연다', () => withMockRandom([0.9, 0.9, 0.9, 0.9, 0], () => {
     const fall = reduceAuthoritativeGameAction(
       {
@@ -50,7 +75,7 @@ const replacementTests = new Map<string, () => void>([
         ownedItems: { 'seat-2': ['golden_yut'] },
         logs: [],
       },
-      { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'normal' } },
+      { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'bad' } },
       { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
     );
 
@@ -72,7 +97,7 @@ const replacementTests = new Map<string, () => void>([
         ownedItems: {},
         logs: [],
       },
-      { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'normal' } },
+      { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'bad' } },
       { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
     );
 
