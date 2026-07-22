@@ -15,7 +15,7 @@ import {
 } from '../flows/rollPresentationEvents';
 import { STORAGE_KEYS, type ToastMessage } from '../appState';
 
-const GOLDEN_YUT_AUTO_SELECT_LEAD_MS = 100;
+const GOLDEN_YUT_AUTO_SELECT_LEAD_MS = 160;
 
 export { RollStage } from './RollStage';
 export type { RollPresentationState } from '../flows/rollPresentationVisibility';
@@ -59,10 +59,14 @@ type GoldenYutPickerProps = {
 export function GoldenYutPicker({ isOpen, choices, onSelect }: GoldenYutPickerProps) {
   const isOpenRef = useRef(isOpen);
   const autoSelectionKeyRef = useRef('');
+  const onSelectRef = useRef(onSelect);
+  const choicesRef = useRef(choices);
   const [presentationState, setPresentationState] = useState(EMPTY_GOLDEN_YUT_PICKER_PRESENTATION_STATE);
   const [deadlineAt, setDeadlineAt] = useState(0);
   const [selectionExpired, setSelectionExpired] = useState(false);
   isOpenRef.current = isOpen;
+  onSelectRef.current = onSelect;
+  choicesRef.current = choices;
 
   useEffect(() => subscribeRollPresentationCompleted(() => {
     setPresentationState((current) => syncGoldenYutPickerOpenState(
@@ -91,25 +95,29 @@ export function GoldenYutPicker({ isOpen, choices, onSelect }: GoldenYutPickerPr
   }, []);
 
   const pickerVisible = shouldShowGoldenYutPicker(presentationState, isOpen);
+  const selectionKey = `${deadlineAt}:${choices.map((choice) => `${choice.name}:${choice.steps}`).join('|')}`;
+
   useEffect(() => {
     setSelectionExpired(false);
+  }, [selectionKey]);
+
+  useEffect(() => {
     if (!pickerVisible || !deadlineAt || typeof window === 'undefined') return undefined;
-    const selectionKey = `${deadlineAt}:${choices.map((choice) => `${choice.name}:${choice.steps}`).join('|')}`;
     const selectMo = () => {
       if (autoSelectionKeyRef.current === selectionKey) return;
       if (Date.now() >= deadlineAt) {
         setSelectionExpired(true);
         return;
       }
-      const mo = choices.find((choice) => choice.name === '모') ?? { name: '모', steps: 5, bonus: true } as YutResult;
+      const mo = choicesRef.current.find((choice) => choice.name === '모') ?? { name: '모', steps: 5, bonus: true } as YutResult;
       autoSelectionKeyRef.current = selectionKey;
       setSelectionExpired(true);
       setPresentationState(dismissGoldenYutPicker());
-      onSelect(mo);
+      onSelectRef.current(mo);
     };
     const timer = window.setTimeout(selectMo, Math.max(0, deadlineAt - Date.now() - GOLDEN_YUT_AUTO_SELECT_LEAD_MS));
     return () => window.clearTimeout(timer);
-  }, [choices, deadlineAt, onSelect, pickerVisible]);
+  }, [deadlineAt, pickerVisible, selectionKey]);
 
   if (!pickerVisible) return null;
   const remainingMs = deadlineAt ? Math.max(0, deadlineAt - Date.now()) : 0;
