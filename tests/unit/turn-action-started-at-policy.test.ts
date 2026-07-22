@@ -43,9 +43,10 @@ test('자동 입력 marker는 actor와 action type이 일치할 때만 소비한
   markNextDeadlineAutoAction({ actionType: 'use_item', actorId: 'seat-1', deadlineAt: 10_000, now: 9_900 });
   const wrongActor = { type: 'use_item', actorId: 'seat-2', payload: { clientActionId: 'use:seat-2:auto' } };
   const attached = attachClientActionStartedAt(wrongActor, 9_920);
-  assert.equal(attached.payload?.deadlineAutoSubmitted, undefined);
+  assert.equal((attached.payload as Record<string, unknown> | undefined)?.deadlineAutoSubmitted, undefined);
   const nextAction = { type: 'use_item', actorId: 'seat-1', payload: { clientActionId: 'use:seat-1:next' } };
-  assert.equal(attachClientActionStartedAt(nextAction, 9_930).payload?.deadlineAutoSubmitted, undefined);
+  const nextAttached = attachClientActionStartedAt(nextAction, 9_930);
+  assert.equal((nextAttached.payload as Record<string, unknown> | undefined)?.deadlineAutoSubmitted, undefined);
 });
 
 test('timeout recovery와 자동 action에는 일반 입력 시작 시각을 붙이지 않는다', () => {
