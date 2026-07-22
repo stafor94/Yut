@@ -95,6 +95,7 @@
 .screen-waitingRoom .compact-ready-card .human-seat-copy {
   display: grid;
   align-content: center;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
