@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createRoomFromLobby, expectAppShell, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
-import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
+import { makeQaName } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 async function readHumanRoleLayout(card) {
@@ -42,8 +42,8 @@ test.describe('requested waiting-room title and role layout QA', () => {
 
   test('방 제목·설정 옵션·사람 역할 배지가 모바일 대기실 카드 안에 정상 배치된다', async ({ page, context, browser }, testInfo) => {
     test.slow();
-    const hostNickname = normalizeQaNickname(makeQaName(testInfo, 'title-role-host'));
-    const guestNickname = normalizeQaNickname(makeQaName(testInfo, 'title-role-guest'));
+    const hostNickname = '방장검증';
+    const guestNickname = '참가검증';
     const roomTitle = makeQaName(testInfo, 'title-role-room');
     let roomId;
     let guestContext;
