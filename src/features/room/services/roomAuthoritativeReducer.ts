@@ -18,6 +18,12 @@ export * from './roomAuthoritativeReducerCore';
 type AuthoritativeArgs = Parameters<typeof reduceCoreAuthoritativeGameAction>;
 type AuthoritativeReduction = ReturnType<typeof reduceCoreAuthoritativeGameAction>;
 
+const normalizeLegacyRollTimingArgs = (args: AuthoritativeArgs): AuthoritativeArgs => {
+  const [state, action, room, sides] = args;
+  if (action.type !== 'roll_yut' || action.payload?.rollTimingZone !== 'normal') return args;
+  return [state, { ...action, payload: { ...action.payload, rollTimingZone: 'bad' } }, room, sides];
+};
+
 type PendingFallEffectShape = {
   id?: unknown;
   seatId?: unknown;
@@ -412,8 +418,9 @@ const applyTurnActionTimeoutPolicy = (
 };
 
 export function reduceAuthoritativeGameAction(
-  ...args: AuthoritativeArgs
+  ...inputArgs: AuthoritativeArgs
 ): AuthoritativeReduction {
+  const args = normalizeLegacyRollTimingArgs(inputArgs);
   const acknowledgedFall = acknowledgeFallPresentationCompletion(args);
   if (acknowledgedFall) return acknowledgedFall;
 
