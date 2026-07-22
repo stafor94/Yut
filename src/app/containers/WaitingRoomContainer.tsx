@@ -67,6 +67,8 @@ export function WaitingRoomContainer({
   const transitionPendingRef = useRef(false);
   const transitionOverlayRef = useRef<HTMLDivElement | null>(null);
   const countdownStartPlayedRef = useRef(false);
+  const onLeaveRoomRef = useRef(onLeaveRoom);
+  onLeaveRoomRef.current = onLeaveRoom;
   const startFlowActiveRef = useRef(startFlowBusy || initialGameEntryPending || roomInGame);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
   const [countdownTransitionOverlayVisible, setCountdownTransitionOverlayVisible] = useState(false);
@@ -98,10 +100,10 @@ export function WaitingRoomContainer({
   }, [canManageRoom]);
 
   useEffect(() => {
-    const handleBackNavigationExit = () => onLeaveRoom();
+    const handleBackNavigationExit = () => onLeaveRoomRef.current();
     window.addEventListener(WAITING_ROOM_BACK_EXIT_EVENT, handleBackNavigationExit);
     return () => window.removeEventListener(WAITING_ROOM_BACK_EXIT_EVENT, handleBackNavigationExit);
-  }, [onLeaveRoom]);
+  }, []);
 
   useEffect(() => {
     startFlowActiveRef.current = startFlowBusy || initialGameEntryPending || roomInGame;
