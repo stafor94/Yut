@@ -92,8 +92,8 @@ test.describe('mobile lobby guide polish QA', () => {
       expect(layout.changedScrollTop).toBeGreaterThan(0);
       expect(layout.lastContentBottom).toBeLessThanOrEqual(layout.bodyBottom + 1);
       expect(Math.abs(layout.cardRects[0].y - layout.cardRects[1].y), '첫 두 단계는 같은 행에서 비교할 수 있어야 합니다.').toBeLessThanOrEqual(1);
-      expect(Math.abs(layout.cardRects[2].y - layout.cardRects[3].y), '다음 두 단계도 같은 행에 있어야 합니다.').toBeLessThanOrEqual(1);
       expect(layout.cardRects[2].y, '두 번째 카드 행은 첫 번째 행 아래에 있어야 합니다.').toBeGreaterThan(layout.cardRects[0].y);
+      expect(layout.cardRects[3].y, '빽도와 완주 구획은 말 이동 규칙 아래의 독립 행이어야 합니다.').toBeGreaterThan(layout.cardRects[2].y);
       layout.cardRects.forEach((card) => {
         expect(card.x, '설명 카드가 팝업 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.dialog.x);
         expect(card.right, '설명 카드가 팝업 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.dialog.right + 1);
