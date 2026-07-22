@@ -1,10 +1,9 @@
-export type TurnDeadlineKind = 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
+export type TurnDeadlineKind = 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
 export type TurnActionPhase = 'roll' | 'move';
 
 const VALID_TURN_DEADLINE_KINDS = new Set<TurnDeadlineKind>([
   'roll',
   'move',
-  'turn_order',
   'item_prompt',
   'trap_placement',
   '',
@@ -90,4 +89,19 @@ export const isManualTurnActionDeadlineExpired = ({
   if (!startedAt) return false;
   if (startedAt >= normalizedDeadlineAt) return true;
   return now >= normalizedDeadlineAt + Math.max(0, networkGraceMs);
+};
+
+
+export const getTurnDeadlineRemainingMs = (deadlineAt: unknown, now = Date.now()) => Math.max(0, normalizeTurnDeadlineAt(deadlineAt) - now);
+
+export const hasTurnDeadlineExpired = (deadlineAt: unknown, now = Date.now()) => {
+  const normalizedDeadlineAt = normalizeTurnDeadlineAt(deadlineAt);
+  return Boolean(normalizedDeadlineAt && now >= normalizedDeadlineAt);
+};
+
+export const isWithinTurnNetworkGrace = ({ startedAt, receivedAt = Date.now(), deadlineAt, networkGraceMs }: { startedAt: unknown; receivedAt?: number; deadlineAt: unknown; networkGraceMs: number }) => {
+  const normalizedDeadlineAt = normalizeTurnDeadlineAt(deadlineAt);
+  const normalizedStartedAt = Number(startedAt ?? 0);
+  if (!normalizedDeadlineAt || !Number.isFinite(normalizedStartedAt) || normalizedStartedAt <= 0) return false;
+  return normalizedStartedAt < normalizedDeadlineAt && receivedAt < normalizedDeadlineAt + Math.max(0, networkGraceMs);
 };

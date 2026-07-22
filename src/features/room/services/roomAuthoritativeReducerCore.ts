@@ -31,7 +31,7 @@ type SyncedGameStateShape = {
   pendingTrapPlacement?: unknown;
   pendingItemPickup?: unknown;
   turnDeadlineAt?: number;
-  turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
+  turnDeadlineKind?: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
   itemPromptTiming?: unknown;
   pendingAfterMoveTurnIndex?: number;
   lastMovedPieceIds?: string[];
@@ -43,7 +43,7 @@ type SyncedGameStateShape = {
   lastRollTimingZone?: unknown;
   pendingGoldenYutSelection?: unknown;
 };
-type GameActionShape = { id: string; type: 'turn_order_roll' | 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
+type GameActionShape = { id: string; type: 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
 export type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string; patch?: GameStatePatch; payload?: Record<string, unknown> };
 type AuthoritativeCommitReduction = { status: 'committed'; patch: GameStatePatch; payload: Record<string, unknown> };
 export type AuthoritativeReduction = AuthoritativeCommitReduction | Exclude<AuthoritativeActionResult, { status: 'committed' }>;
@@ -224,7 +224,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
   if (pendingGoldenYutSelection && clientFallOccurred === true) return makeActionReject('황금 윷은 낙이 될 수 없습니다.');
   if (timingZone === 'perfect' && clientFallOccurred === true) return makeActionReject('Perfect 결과는 낙이 될 수 없습니다.');
   const nextRoll = pendingGoldenYutSelection && selectedGoldenYutResult === undefined && pendingGoldenTimedOut
-    ? GOLDEN_YUT_CHOICES.find((choice) => choice.name === '도') ?? GOLDEN_YUT_CHOICES[0]
+    ? GOLDEN_YUT_CHOICES.find((choice) => choice.name === '모') ?? { name: '모', steps: 5, bonus: true }
     : getAuthoritativeRoll(action.payload);
   const fallOccurred = pendingGoldenYutSelection ? false : typeof clientFallOccurred === 'boolean' ? clientFallOccurred : shouldFallForTimingZone(timingZone);
   const fallCount = fallOccurred ? typeof clientFallCount === 'number' ? clientFallCount : Math.floor(Math.random() * 4) + 1 : 0;
@@ -255,7 +255,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
       shieldedPieceIds,
       ...(shouldPromptFallReroll ? { roll: nextRoll, turnIndex: Number(state.turnIndex ?? 0), pendingAfterMoveTurnIndex: nextTurnIndexAfterFall, logs: nextLogs } : {}),
       turnDeadlineAt: shouldPromptAfterRoll || shouldPromptFallReroll ? now + 2600 + TURN_ACTION_TIMEOUT_MS : fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: shouldPromptAfterRoll || shouldPromptFallReroll || shouldPromptBeforeRollAfterFall ? 'item_prompt' : fallOccurred ? 'roll' : 'move',
+      turnDeadlineKind: shouldPromptAfterRoll || shouldPromptFallReroll || shouldPromptBeforeRollAfterFall ? 'item_prompt' : fallOccurred || nextRoll.bonus ? 'roll' : 'move',
       itemPromptTiming: shouldPromptAfterRoll || shouldPromptFallReroll ? 'after_roll' : shouldPromptBeforeRollAfterFall ? 'before_roll' : null,
       pendingGoldenYutSelection: null,
       ...(pendingReroll ? { selectedRollStackIndex: null } : {}),

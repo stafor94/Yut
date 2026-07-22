@@ -234,7 +234,7 @@ const finalizeIndividualWinner = (
   };
 };
 
-type TurnDeadlineKind = 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
+type TurnDeadlineKind = 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
 type TimeoutCountState = {
   turnOrderIds?: unknown[];
   turnIndex?: unknown;
@@ -327,7 +327,7 @@ const applyTurnActionTimeoutPolicy = (
   const mergedState = { ...currentState, ...patch, turnActionTimeoutCountBySeatId: timeoutCounts } as TimeoutCountState;
   const deadlineKind = (mergedState.turnDeadlineKind ?? '') as TurnDeadlineKind;
 
-  if (previousDeadline > 0 && deadlineKind && deadlineKind !== 'turn_order') {
+  if (previousDeadline > 0 && deadlineKind) {
     const targetSeatId = getTimeoutTargetSeatId(mergedState);
     const coreBaseTimeoutMs = getCoreDeadlineBaseMs(deadlineKind);
     const visibleBaseTimeoutMs = getVisibleDeadlineBaseMs(deadlineKind);
