@@ -1,6 +1,14 @@
 type TurnActionLike = {
   type: string;
+  actorId?: string;
   payload?: Record<string, unknown>;
+};
+
+type DeadlineAutoActionMarker = {
+  actionType: string;
+  actorId: string;
+  deadlineAt: number;
+  expiresAt: number;
 };
 
 const DEADLINE_ACTION_TYPES = new Set([
@@ -19,6 +27,9 @@ const AI_ACTION_ID_PREFIXES = [
   'item_pickup_ai',
 ];
 
+const DEADLINE_AUTO_ACTION_MARKER_TTL_MS = 1_500;
+let nextDeadlineAutoAction: DeadlineAutoActionMarker | null = null;
+
 const isRecoveryOrAutomatedPayload = (payload: Record<string, unknown>) => {
   const clientActionId = typeof payload.clientActionId === 'string' ? payload.clientActionId : '';
   return Boolean(
@@ -35,6 +46,47 @@ const isRecoveryOrAutomatedPayload = (payload: Record<string, unknown>) => {
   );
 };
 
+export const markNextDeadlineAutoAction = ({
+  actionType,
+  actorId = '',
+  deadlineAt,
+  now = Date.now(),
+}: {
+  actionType: string;
+  actorId?: string;
+  deadlineAt: number;
+  now?: number;
+}) => {
+  if (!DEADLINE_ACTION_TYPES.has(actionType) || !Number.isFinite(deadlineAt) || deadlineAt <= now) {
+    nextDeadlineAutoAction = null;
+    return false;
+  }
+  nextDeadlineAutoAction = {
+    actionType,
+    actorId,
+    deadlineAt,
+    expiresAt: now + DEADLINE_AUTO_ACTION_MARKER_TTL_MS,
+  };
+  return true;
+};
+
+export const clearNextDeadlineAutoAction = () => {
+  nextDeadlineAutoAction = null;
+};
+
+const consumeDeadlineAutoAction = (action: TurnActionLike, now: number) => {
+  const marker = nextDeadlineAutoAction;
+  if (!marker) return null;
+  if (marker.expiresAt < now) {
+    nextDeadlineAutoAction = null;
+    return null;
+  }
+  const actorMatches = !marker.actorId || marker.actorId === action.actorId;
+  const actionMatches = marker.actionType === action.type;
+  nextDeadlineAutoAction = null;
+  return actionMatches && actorMatches ? marker : null;
+};
+
 export const shouldAttachClientActionStartedAt = (action: TurnActionLike) => {
   if (!DEADLINE_ACTION_TYPES.has(action.type)) return false;
   const payload = action.payload;
@@ -46,12 +98,21 @@ export const shouldAttachClientActionStartedAt = (action: TurnActionLike) => {
 };
 
 export const attachClientActionStartedAt = <T extends TurnActionLike>(action: T, startedAt = Date.now()): T => {
-  if (!shouldAttachClientActionStartedAt(action)) return action;
+  const payload = action.payload;
+  if (!payload || isRecoveryOrAutomatedPayload(payload)) return action;
+  const autoMarker = consumeDeadlineAutoAction(action, startedAt);
+  const attachStartedAt = shouldAttachClientActionStartedAt(action);
+  if (!attachStartedAt && !autoMarker) return action;
+  const existingStartedAt = Number(payload.clientActionStartedAt ?? 0);
   return {
     ...action,
     payload: {
-      ...action.payload,
-      clientActionStartedAt: startedAt,
+      ...payload,
+      clientActionStartedAt: Number.isFinite(existingStartedAt) && existingStartedAt > 0 ? existingStartedAt : startedAt,
+      ...(autoMarker ? {
+        deadlineAutoSubmitted: true,
+        autoSubmittedDeadlineAt: autoMarker.deadlineAt,
+      } : {}),
     },
   } as T;
 };
