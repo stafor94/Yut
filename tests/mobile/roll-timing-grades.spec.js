@@ -68,10 +68,10 @@ test.describe('mobile roll timing grades QA', () => {
       expect(presentation.meterBackground).toContain('55%');
       expect(presentation.meterBackground).toContain('60%');
       expect(presentation.meterBackground).toContain('80%');
-      expect(presentation.meterBackground).toContain('rgb(17, 24, 39)');
-      expect(presentation.meterBackground).toContain('rgb(183, 228, 108)');
-      expect(presentation.meterBackground).toContain('rgb(125, 211, 252)');
-      expect(presentation.meterBackground).toContain('rgb(142, 68, 173)');
+      expect(presentation.meterBackground).toContain('rgb(48, 40, 36)');
+      expect(presentation.meterBackground).toContain('rgb(169, 201, 107)');
+      expect(presentation.meterBackground).toContain('rgb(101, 185, 211)');
+      expect(presentation.meterBackground).toContain('rgb(149, 104, 199)');
       expect(presentation.orbBorderColor).toBe('rgb(255, 255, 255)');
       expect(presentation.legacyZoneDisplays).toEqual(['none', 'none', 'none']);
 
