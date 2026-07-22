@@ -116,6 +116,22 @@ const getManualDeadlineGuard = (args: AuthoritativeArgs): { deadlineAt: unknown;
   return null;
 };
 
+const rejectInvalidDeadlineAutoAction = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const action = args[1];
+  if (action.payload?.deadlineAutoSubmitted !== true) return null;
+  const guard = getManualDeadlineGuard(args);
+  const expectedDeadlineAt = Number(guard?.deadlineAt ?? 0);
+  const submittedDeadlineAt = Number(action.payload?.autoSubmittedDeadlineAt ?? 0);
+  if (!guard || !expectedDeadlineAt || submittedDeadlineAt !== expectedDeadlineAt) {
+    return { status: 'rejected', reason: '자동 입력 대상 제한시간이 현재 상태와 일치하지 않습니다.' };
+  }
+  const startedAt = Number(action.payload?.clientActionStartedAt ?? 0);
+  if (!Number.isFinite(startedAt) || startedAt <= 0 || startedAt >= expectedDeadlineAt) {
+    return { status: 'rejected', reason: guard.reason };
+  }
+  return null;
+};
+
 const rejectExpiredManualTurnAction = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
   const [state, action] = args;
   const guard = getManualDeadlineGuard(args);
@@ -327,7 +343,9 @@ const getTimeoutTargetSeatId = (state: TimeoutCountState) => {
 
 const isTimeoutRecoveryAction = (action: AuthoritativeArgs[1]) => {
   const payload = action.payload;
-  if (!payload || typeof payload.timeoutDeadlineAt !== 'number') return false;
+  if (!payload) return false;
+  if (payload.deadlineAutoSubmitted === true && typeof payload.autoSubmittedDeadlineAt === 'number') return true;
+  if (typeof payload.timeoutDeadlineAt !== 'number') return false;
   return payload.timedOut === true
     || payload.recoveredByCoordinator === true
     || payload.itemPromptTimeoutRecovery === true
@@ -401,6 +419,9 @@ export function reduceAuthoritativeGameAction(
 
   const presentationGateRejection = rejectRollBeforePresentationGateEnds(args);
   if (presentationGateRejection) return presentationGateRejection;
+
+  const invalidDeadlineAutoActionRejection = rejectInvalidDeadlineAutoAction(args);
+  if (invalidDeadlineAutoActionRejection) return invalidDeadlineAutoActionRejection;
 
   const expiredManualActionRejection = rejectExpiredManualTurnAction(args);
   if (expiredManualActionRejection) return expiredManualActionRejection;
