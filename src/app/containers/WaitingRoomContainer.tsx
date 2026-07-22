@@ -71,7 +71,7 @@ export function WaitingRoomContainer({
   const startFlowActiveRef = useRef(startFlowBusy || initialGameEntryPending || roomInGame);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
   const [countdownTransitionOverlayVisible, setCountdownTransitionOverlayVisible] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(() => typeof window !== 'undefined' ? !window.matchMedia('(max-width: 720px)').matches : false);
+  const [settingsOpen, setSettingsOpen] = useState(() => typeof window !== 'undefined' ? !window.matchMedia('(max-width: 1024px)').matches : false);
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const effectiveStartFlowBusy = startFlowBusy || countdownTransitionPending;

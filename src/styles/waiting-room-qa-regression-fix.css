@@ -1,0 +1,54 @@
+/* Keep collapsible waiting-room controls directly operable and preserve stable AI card geometry. */
+.screen-waitingRoom .host-room-options.compact-options .radio-group label {
+  position: relative;
+  cursor: pointer;
+}
+
+.screen-waitingRoom .host-room-options.compact-options .radio-group label > input[type='radio'] {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.screen-waitingRoom .host-room-options.compact-options.readonly .radio-group label,
+.screen-waitingRoom .host-room-options.compact-options .radio-group label.disabled,
+.screen-waitingRoom .host-room-options.compact-options .radio-group label:has(input:disabled) {
+  cursor: default;
+}
+
+.screen-waitingRoom .compact-ready-card {
+  min-height: 86px;
+}
+
+.screen-waitingRoom .compact-ready-card:not(:has(.team-card-selector)) {
+  height: 86px;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-row {
+  min-height: 58px;
+}
+
+.screen-waitingRoom .compact-ready-card .ai-seat-actions {
+  align-self: stretch;
+  height: 100%;
+  align-items: center;
+}
+
+@media (max-width: 520px) {
+  .screen-waitingRoom .compact-ready-card {
+    min-height: 82px;
+  }
+
+  .screen-waitingRoom .compact-ready-card:not(:has(.team-card-selector)) {
+    height: 82px;
+  }
+
+  .screen-waitingRoom .compact-ready-card .seat-row {
+    min-height: 56px;
+  }
+}
