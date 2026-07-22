@@ -25,6 +25,28 @@ export const normalizeTurnDeadlineKind = (value: unknown): TurnDeadlineKind => (
     : ''
 );
 
+export const getDeadlineTimerAnimationState = ({
+  deadlineAt,
+  durationMs,
+  now = Date.now(),
+}: {
+  deadlineAt: unknown;
+  durationMs: unknown;
+  now?: number;
+}) => {
+  const rawDurationMs = Number(durationMs ?? 0);
+  const normalizedDurationMs = Number.isFinite(rawDurationMs) && rawDurationMs > 0 ? rawDurationMs : 0;
+  const normalizedDeadlineAt = normalizeTurnDeadlineAt(deadlineAt);
+  const remainingMs = normalizedDeadlineAt
+    ? Math.max(0, Math.min(normalizedDurationMs, normalizedDeadlineAt - now))
+    : normalizedDurationMs;
+  return {
+    durationMs: normalizedDurationMs,
+    remainingMs,
+    delayMs: remainingMs - normalizedDurationMs,
+  };
+};
+
 export const isTurnActionDeadlineExpired = ({
   deadlineAt,
   deadlineKind,
