@@ -38,11 +38,8 @@ export function WaitingRoomScreen({ canManageRoom, children }: WaitingRoomScreen
 }
 
 export function WaitingRoomSettingsPanel({ roomTitle, isOpen, canToggle, summary, onToggle, children }: WaitingRoomSettingsPanelProps) {
+  const title = <span className="waiting-settings-title" data-testid="waiting-room-title">{roomTitle}</span>;
   return <section className="waiting-setup-card" aria-label="방 설정">
-    <div className="waiting-room-title-block">
-      <span>방 제목</span>
-      <h2 data-testid="waiting-room-title">{roomTitle}</h2>
-    </div>
     {canToggle ? <button
       type="button"
       className="waiting-settings-toggle"
@@ -51,10 +48,10 @@ export function WaitingRoomSettingsPanel({ roomTitle, isOpen, canToggle, summary
       data-testid="waiting-room-settings-toggle"
       onClick={onToggle}
     >
-      <span>방 설정</span>
+      {title}
       <span aria-hidden="true">{isOpen ? '▲' : '▼'}</span>
     </button> : <div className="waiting-settings-toggle waiting-settings-static" data-testid="waiting-room-settings-label" style={{ cursor: 'default' }}>
-      <span>방 설정</span>
+      {title}
     </div>}
     <p className="waiting-settings-summary" data-testid="waiting-room-settings-summary">{summary}</p>
     {isOpen ? <div id="waiting-room-settings-content" className="waiting-settings-content">{children}</div> : null}
