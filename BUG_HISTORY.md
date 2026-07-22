@@ -3326,3 +3326,50 @@ Future Codex tasks must actually follow these files; the rules reduce repeated m
 - [x] `npm run test:unit` succeeds
 - [x] `npm run build` succeeds
 - [ ] GitHub Actions rerun checked
+
+## 2026-07-22 - Main Branch QA live Firebase 병렬 job 경합 재발
+
+### Symptom
+
+- Actions run `29883467598`에서 `QA online flow`와 `QA mobile and tablet layout` job이 동시에 실패했다.
+- `Build and unit tests`, `QA roll and movement`, `QA desktop lobby`는 성공했고 `Summarize QA result`는 선행 job 실패 결과를 집계하며 실패했다.
+
+### Expected behavior
+
+- 운영 Firebase를 사용하는 QA job은 서로의 방 생성, 구독, cleanup, 인증 상태에 영향을 주지 않고 안정적으로 실행되어야 한다.
+
+### Actual behavior
+
+- workflow가 운영 Firebase 기반 Playwright QA job들을 같은 `build-and-unit` 완료 직후 병렬 실행했다.
+- 일부 mobile QA도 실제 Firebase 방을 생성/참가하므로 online-flow QA와 동시에 실행될 때 원격 상태/타이밍 경합에 노출될 수 있었다.
+
+### Suspected root cause
+
+- live Firebase를 공유하는 상태ful QA job 간 병렬 실행 경합.
+
+### Confirmed root cause
+
+- 실패 run의 공개 Actions 요약에서 `QA online flow`와 `QA mobile and tablet layout`이 실패했고, 이 workflow의 두 job은 모두 `needs: build-and-unit`로 동시에 시작 가능했다.
+- 저장소의 기존 bug history에도 live Firebase 기반 QA 병렬 실행이 game-flow timeout을 만든 전례가 있다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 개별 test script 안에서 일부 Playwright 파일 실행을 `--workers=1`로 순차화했다.
+  - Why it failed: workflow job 자체는 여전히 병렬이어서 서로 다른 QA job 사이의 live Firebase 경합은 막지 못했다.
+
+### Do not try again
+
+- 운영 Firebase를 사용하는 QA job들을 같은 push에서 병렬 실행하지 않는다.
+- Playwright timeout만 늘려 원격 상태 경합을 덮지 않는다.
+
+### Correct fix plan
+
+- 운영 Firebase를 사용하는 QA job을 workflow `needs` 체인으로 순차 실행한다.
+- deploy-pages는 마지막 QA job과 cleanup 완료 후에만 실행되도록 의존성을 단순화한다.
+
+### Verification checklist
+
+- [x] Workflow syntax/manual inspection
+- [x] Build succeeds
+- [ ] main push workflow rerun checked
