@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { subscribeGameState } from '../../features/room/services/roomService';
+import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
 import type { YutResult } from '../../game-core/roll';
 import {
   dismissGoldenYutPicker,
@@ -113,6 +114,7 @@ export function GoldenYutPicker({ isOpen, choices, onSelect }: GoldenYutPickerPr
       autoSelectionKeyRef.current = selectionKey;
       setSelectionExpired(true);
       setPresentationState(dismissGoldenYutPicker());
+      markNextDeadlineAutoAction({ actionType: 'roll_yut', deadlineAt });
       onSelectRef.current(mo);
     };
     const timer = window.setTimeout(selectMo, Math.max(0, deadlineAt - Date.now() - GOLDEN_YUT_AUTO_SELECT_LEAD_MS));
