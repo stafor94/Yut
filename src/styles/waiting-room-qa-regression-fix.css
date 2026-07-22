@@ -1,6 +1,58 @@
-/* Keep collapsible waiting-room controls directly operable and preserve stable AI card geometry. */
+/* Keep collapsible waiting-room controls directly operable and preserve stable player card geometry. */
+.screen-waitingRoom .waiting-setup-card,
+.screen-waitingRoom .waiting-settings-content,
+.screen-waitingRoom .host-room-options.compact-options,
+.screen-waitingRoom .host-room-options.compact-options .option-row {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+}
+
+.screen-waitingRoom .waiting-room-title-block {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(35, 83, 63, .14);
+}
+
+.screen-waitingRoom .waiting-room-title-block > span {
+  color: #6f624f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.screen-waitingRoom .waiting-room-title-block > h2 {
+  min-width: 0;
+  margin: 0;
+  color: #183c2f;
+  font-size: 19px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.screen-waitingRoom .host-room-options.compact-options .radio-group {
+  box-sizing: border-box;
+  min-inline-size: 0;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+}
+
+.screen-waitingRoom .host-room-options.compact-options .radio-group legend {
+  float: none;
+  width: auto;
+  max-width: 100%;
+  padding: 0;
+}
+
 .screen-waitingRoom .host-room-options.compact-options .radio-group label {
   position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
   cursor: pointer;
   pointer-events: none;
 }
@@ -38,6 +90,25 @@
 
 .screen-waitingRoom .compact-ready-card .seat-row {
   min-height: 58px;
+}
+
+.screen-waitingRoom .compact-ready-card .human-seat-copy {
+  display: grid;
+  align-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.screen-waitingRoom .compact-ready-card .human-seat-copy > .seat-role-badge {
+  justify-self: start;
+}
+
+.screen-waitingRoom .compact-ready-card .human-seat-copy > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
 }
 
 .screen-waitingRoom .compact-ready-card .ai-seat-actions {

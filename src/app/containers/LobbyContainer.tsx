@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import type { RoomSummary } from '../../features/room/services/roomService';
+import { truncateRoomTitle } from '../flows/roomTitle';
 import { LobbyScreen } from '../screens/LobbyScreen';
 
 const ROOM_QUERY_MIN_VISIBLE_MS = 600;
@@ -118,7 +119,7 @@ export function LobbyContainer({
       resumableRoomId={resumableRoomId}
       nickname={nickname}
       soundEnabled={soundEnabled}
-      onTitleChange={onTitleChange}
+      onTitleChange={(nextTitle) => onTitleChange(truncateRoomTitle(nextTitle))}
       onCreateRoom={onCreateRoom}
       onOpenWaitingRoom={onOpenWaitingRoom}
       onNicknameChange={onNicknameChange}

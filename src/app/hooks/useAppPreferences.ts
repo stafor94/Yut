@@ -9,11 +9,12 @@ import {
   type PieceCount,
   type PlayMode,
 } from '../appState';
+import { truncateRoomTitle } from '../flows/roomTitle';
 
 export function useAppPreferences() {
   const [nickname, setNickname] = useState(() => getInitialNickname());
   const [nicknameDraft, setNicknameDraft] = useState(() => getInitialNickname());
-  const [title, setTitle] = useState(() => getStoredText(STORAGE_KEYS.title, '친구들과 윷놀이'));
+  const [title, setTitle] = useState(() => truncateRoomTitle(getStoredText(STORAGE_KEYS.title, '친구들과 윷놀이')));
   const [playMode, setPlayMode] = useState<PlayMode>(() => getStoredPlayMode());
   const [maxPlayers, setMaxPlayers] = useState<2 | 3 | 4>(() => getStoredNumber(STORAGE_KEYS.maxPlayers, 4, [2, 3, 4] as const));
   const [itemMode, setItemMode] = useState(() => getStoredBoolean(STORAGE_KEYS.itemMode, true));
