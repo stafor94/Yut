@@ -262,7 +262,7 @@ export function GameBoardControls({
   }, [itemPromptDeadlineKey]);
 
   useEffect(() => {
-    if (!turnActionTimerVisible || typeof window === 'undefined') return undefined;
+    if (!turnActionTimerVisible || !authoritativeTurnDeadline.at || typeof window === 'undefined') return undefined;
     const remainingMs = getTurnActionDeadlineDelayMs({
       deadlineAt: authoritativeTurnDeadline.at,
       deadlineKind: authoritativeTurnDeadline.kind,
@@ -275,7 +275,7 @@ export function GameBoardControls({
     }
     const runAutomaticAction = () => {
       if (autoTurnActionKeyRef.current === turnActionDeadlineKey) return;
-      if (authoritativeTurnDeadline.at > 0 && Date.now() >= authoritativeTurnDeadline.at) {
+      if (Date.now() >= authoritativeTurnDeadline.at) {
         markTurnActionTimedOut();
         return;
       }
@@ -297,14 +297,14 @@ export function GameBoardControls({
   }, [authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, canRequestMove, canRollNow, roll, rollStack.length, selectedRollStackIndex, showRollStackPicker, timerDurationMs, timerSeatId, turnActionDeadlineKey, turnActionPhase, turnActionTimerVisible]);
 
   useEffect(() => {
-    if (isOpponentTurn || activeItemPromptTypes.length === 0 || !localSeatId || typeof window === 'undefined') return undefined;
+    if (isOpponentTurn || activeItemPromptTypes.length === 0 || !localSeatId || !authoritativeTurnDeadline.at || typeof window === 'undefined') return undefined;
     if (itemPromptTimerDurationMs <= 0) {
       setItemPromptTimedOut(true);
       return undefined;
     }
     const runAutomaticSkip = () => {
       if (autoItemPromptKeyRef.current === itemPromptDeadlineKey) return;
-      if (authoritativeTurnDeadline.at > 0 && Date.now() >= authoritativeTurnDeadline.at) {
+      if (Date.now() >= authoritativeTurnDeadline.at) {
         setItemPromptTimedOut(true);
         return;
       }
