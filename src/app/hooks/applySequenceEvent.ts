@@ -10,11 +10,35 @@ type SequenceEventLike = {
   clientMutationId?: string;
   stateAfter?: SequencePatchState | null;
   patch?: SequencePatchState | null;
+  payload?: Record<string, unknown>;
   logEntries?: unknown[];
 };
 
+type PresentationTimingGrade = 'perfect' | 'nice' | 'good' | 'bad';
+
 const MAX_STORED_LOGS = 200;
 const hasOwn = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
+
+const normalizePresentationTimingGrade = (value: unknown): PresentationTimingGrade | undefined => {
+  if (value === 'normal') return 'bad';
+  if (value === 'perfect' || value === 'nice' || value === 'good' || value === 'bad') return value;
+  return undefined;
+};
+
+const withPresentationTimingGrade = (value: unknown, timingGrade: PresentationTimingGrade | undefined) => {
+  if (!timingGrade || !value || typeof value !== 'object' || Array.isArray(value)) return value;
+  return { ...(value as Record<string, unknown>), presentationTimingGrade: timingGrade };
+};
+
+const preserveSequenceRollTimingGrade = (sequence: SequenceEventLike, state: SequencePatchState) => {
+  const timingGrade = normalizePresentationTimingGrade(sequence.payload?.timingZone ?? sequence.payload?.rollTimingZone ?? state.lastRollTimingZone);
+  if (!timingGrade) return state;
+  if (sequence.payload && sequence.payload.displayRoll) {
+    sequence.payload.displayRoll = withPresentationTimingGrade(sequence.payload.displayRoll, timingGrade);
+  }
+  if (!state.roll) return state;
+  return { ...state, roll: withPresentationTimingGrade(state.roll, timingGrade) };
+};
 
 const getLogKey = (log: unknown) => {
   const id = (log as { id?: unknown } | null)?.id;
@@ -34,13 +58,13 @@ export function applySequenceEvent<TState extends SequencePatchState>(state: TSt
   if (currentSequence >= sequenceNumber) return state ?? null;
 
   if (sequence.stateAfter) {
-    return { ...sequence.stateAfter, lastSequence: sequenceNumber } as TState;
+    return preserveSequenceRollTimingGrade(sequence, { ...sequence.stateAfter, lastSequence: sequenceNumber }) as TState;
   }
 
   if (!state || currentSequence !== sequenceNumber - 1) return null;
 
   const patch = (sequence.patch ?? {}) as SequencePatchState;
-  const nextState = { ...state, ...patch, lastSequence: sequenceNumber } as TState;
+  let nextState = { ...state, ...patch, lastSequence: sequenceNumber } as TState;
 
   if (!hasOwn(patch, 'turnVersion')) {
     nextState.turnVersion = Number(state.turnVersion ?? 0) + 1;
@@ -64,6 +88,7 @@ export function applySequenceEvent<TState extends SequencePatchState>(state: TSt
     nextState.logs = patch.logs;
   }
 
+  nextState = preserveSequenceRollTimingGrade(sequence, nextState) as TState;
   return nextState;
 }
 

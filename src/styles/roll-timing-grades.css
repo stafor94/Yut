@@ -60,7 +60,8 @@
   content: 'Good!';
 }
 
-.roll-timing-feedback.bad::before {
+.roll-timing-feedback.bad::before,
+.roll-timing-feedback.normal::before {
   color: #111827;
   content: 'Bad!';
 }

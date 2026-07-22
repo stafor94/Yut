@@ -72,6 +72,7 @@ import {
   hasCachedGameSequence,
   replaceCachedGameSequences,
 } from './roomSequenceReplayCache';
+import { normalizeLegacyRollTimingAction } from './rollTimingActionCompatibility';
 
 export * from './roomServiceCore';
 export * from './roomExitPolicy';
@@ -179,10 +180,11 @@ const settleRoomAction = (
   roomId: string,
   action: CommittableGameAction,
 ): Promise<CommitAuthoritativeGameActionResult> => {
-  const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
+  const normalizedAction = normalizeLegacyRollTimingAction(action);
+  const clientActionId = typeof normalizedAction.payload?.clientActionId === 'string' ? normalizedAction.payload.clientActionId : '';
   return settleAuthoritativeCommit({
-    actionType: action.type,
-    commit: () => commitAuthoritativeGameActionCore(roomId, action),
+    actionType: normalizedAction.type,
+    commit: () => commitAuthoritativeGameActionCore(roomId, normalizedAction),
     recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
   });
 };
