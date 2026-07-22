@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { collectScreenState, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -39,12 +39,7 @@ async function expectLobbyViewportUnlocked(page) {
 }
 
 async function createRoom(page, roomTitle) {
-  await expectAppShell(page);
-  await page.getByRole('button', { name: '방 만들기', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
-  await page.getByTestId('room-title-input').fill(roomTitle);
-  await page.getByTestId('create-room-button').click();
-  await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 20_000 });
+  await createRoomFromLobby(page, roomTitle);
   return await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
 }
 

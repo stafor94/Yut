@@ -13,7 +13,7 @@
     "test:qa-online-turn-recovery": "playwright test --workers=2 --timeout=150000 --project=desktop-chromium --grep-invert \"timeout 벌칙은 오프라인 로컬 timeout에만 적용된다\" tests/regression/bug-history-smoke.spec.js tests/regression/roll-mat-surface.spec.js tests/regression/remote-fall-presentation.spec.js tests/regression/bonus-roll-result-glow.spec.js",
     "test:qa-cleanup-layout-regression": "playwright test --workers=1 --project=desktop-chromium tests/lobby",
     "test:qa-room-lifecycle": "playwright test --workers=2 --project=desktop-chromium tests/online/room-lifecycle.spec.js tests/online/room-exit-resume.spec.js",
-    "test:qa-mobile-layout": "playwright test --workers=1 tests/mobile/mobile-layout.spec.js tests/mobile/waiting-room-requested-layout.spec.js tests/mobile/lobby-start-polish.spec.js tests/mobile/lobby-guide-polish.spec.js tests/mobile/mobile-item-log-scroll.spec.js tests/mobile/game-header-log-alignment.spec.js tests/mobile/lobby-scroll-reset.spec.js tests/mobile/lobby-header-badges.spec.js"
+    "test:qa-mobile-layout": "playwright test --workers=1 tests/mobile/mobile-layout.spec.js tests/mobile/waiting-room-requested-layout.spec.js tests/mobile/waiting-room-empty-seat-layout.spec.js tests/mobile/lobby-start-polish.spec.js tests/mobile/lobby-guide-polish.spec.js tests/mobile/mobile-item-log-scroll.spec.js tests/mobile/game-header-log-alignment.spec.js tests/mobile/lobby-scroll-reset.spec.js tests/mobile/lobby-header-badges.spec.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "6.0.3",

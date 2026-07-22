@@ -147,13 +147,38 @@ export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', p
   }, { nickname: normalizedNickname, maxPlayers, playMode, itemMode, pieceCount });
 }
 
+async function waitForRoomCreationResult(page, { timeout = 45_000, maxSubmitAttempts = 3 } = {}) {
+  const waitingRoom = page.getByTestId('waiting-room');
+  const createButton = page.getByTestId('create-room-button');
+  const retryAlert = page.getByRole('alertdialog', { name: '방 생성에 실패했습니다' });
+  let submitAttempts = 1;
+
+  await expect.poll(async () => {
+    if (await waitingRoom.isVisible().catch(() => false)) return true;
+    const canRetry = submitAttempts < maxSubmitAttempts
+      && await retryAlert.isVisible().catch(() => false);
+    if (!canRetry) return false;
+
+    await retryAlert.getByRole('button', { name: '확인', exact: true }).click();
+    await expect(retryAlert).toBeHidden({ timeout: 5_000 });
+    await expect(createButton).toBeEnabled({ timeout: 10_000 });
+    submitAttempts += 1;
+    await createButton.click();
+    return waitingRoom.isVisible().catch(() => false);
+  }, {
+    timeout,
+    intervals: [0, 1_000, 2_000, 3_000, 5_000],
+    message: `방 생성 완료 조건을 확인하고 응답 지연 시 동일 요청을 최대 ${maxSubmitAttempts}회 재시도해야 합니다.`,
+  }).toBe(true);
+}
+
 export async function createRoomFromLobby(page, roomTitle) {
   await expectAppShell(page);
   await page.getByRole('button', { name: '방 만들기', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
   await page.getByTestId('room-title-input').fill(roomTitle);
   await page.getByTestId('create-room-button').click();
-  await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 25_000 });
+  await waitForRoomCreationResult(page);
 }
 
 export async function joinRoomFromLobby(page, roomTitle) {
