@@ -8,27 +8,26 @@
   width: 100%;
 }
 
-.screen-waitingRoom .waiting-room-title-block {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(35, 83, 63, .14);
+.screen-waitingRoom .waiting-setup-card,
+.screen-waitingRoom .waiting-settings-content,
+.screen-waitingRoom .host-room-options.compact-options,
+.screen-waitingRoom .host-room-options.compact-options .radio-group {
+  overflow: visible;
 }
 
-.screen-waitingRoom .waiting-room-title-block > span {
-  color: #6f624f;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.screen-waitingRoom .waiting-room-title-block > h2 {
+.screen-waitingRoom .waiting-settings-title {
   min-width: 0;
-  margin: 0;
+  overflow: hidden;
   color: #183c2f;
   font-size: 19px;
+  font-weight: 900;
   line-height: 1.25;
   overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.screen-waitingRoom .waiting-settings-content {
+  padding-inline: 2px;
 }
 
 .screen-waitingRoom .host-room-options.compact-options .radio-group {
@@ -38,13 +37,13 @@
   margin: 0;
   padding: 0;
   border: 0;
-  overflow: visible;
 }
 
 .screen-waitingRoom .host-room-options.compact-options .radio-group legend {
   float: none;
   width: auto;
   max-width: 100%;
+  margin-inline: 0;
   padding: 0;
 }
 
@@ -78,6 +77,38 @@
 .screen-waitingRoom .host-room-options.compact-options .radio-group label.disabled,
 .screen-waitingRoom .host-room-options.compact-options .radio-group label:has(input:disabled) {
   cursor: default;
+}
+
+.screen-waitingRoom .compact-ready-card.blue-team {
+  border-left-color: #2563eb;
+}
+
+.screen-waitingRoom .compact-ready-card.red-team {
+  border-left-color: #d64545;
+}
+
+.screen-waitingRoom .team-card-option.blue {
+  border-color: rgba(37, 99, 235, .52);
+  background: #eef5ff;
+  color: #1d4ed8;
+}
+
+.screen-waitingRoom .team-card-option.red {
+  border-color: rgba(214, 69, 69, .52);
+  background: #fff1f1;
+  color: #b72f38;
+}
+
+.screen-waitingRoom .team-card-option.blue.active {
+  border-color: #1d4ed8;
+  background: #2563eb;
+  color: #fff;
+}
+
+.screen-waitingRoom .team-card-option.red.active {
+  border-color: #b72f38;
+  background: #d64545;
+  color: #fff;
 }
 
 .screen-waitingRoom .compact-ready-card {
