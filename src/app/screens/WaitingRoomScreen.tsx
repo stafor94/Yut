@@ -10,6 +10,7 @@ type WaitingRoomScreenProps = {
 };
 
 type WaitingRoomSettingsPanelProps = {
+  roomTitle: string;
   isOpen: boolean;
   canToggle: boolean;
   summary: string;
@@ -36,8 +37,12 @@ export function WaitingRoomScreen({ canManageRoom, children }: WaitingRoomScreen
   return <section data-testid="waiting-room" className={`panel waiting-room compact-waiting-room ${canManageRoom ? 'host-view' : 'player-view'}`} aria-label="방 대기 화면">{children}</section>;
 }
 
-export function WaitingRoomSettingsPanel({ isOpen, canToggle, summary, onToggle, children }: WaitingRoomSettingsPanelProps) {
+export function WaitingRoomSettingsPanel({ roomTitle, isOpen, canToggle, summary, onToggle, children }: WaitingRoomSettingsPanelProps) {
   return <section className="waiting-setup-card" aria-label="방 설정">
+    <div className="waiting-room-title-block">
+      <span>방 제목</span>
+      <h2 data-testid="waiting-room-title">{roomTitle}</h2>
+    </div>
     {canToggle ? <button
       type="button"
       className="waiting-settings-toggle"
@@ -107,10 +112,10 @@ export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSea
             {seat.isEmpty ? <span className="empty-seat-badge">빈 자리</span> : seat.isAI ? <span className="ai-seat-copy">
               <em className="seat-role-badge">{getAiDifficultyBadgeLabel(aiDifficulty)}</em>
               <strong>{seat.name}</strong>
-            </span> : <>
+            </span> : <span className="human-seat-copy">
+              <em className="seat-role-badge">{seat.isHost ? '방장' : '플레이어'}</em>
               <strong>{seat.name}</strong>
-              {seat.isHost ? <em className="seat-role-badge">방장</em> : null}
-            </>}
+            </span>}
           </div>
           <span className={`seat-status-actions ${seat.isAI ? 'ai-seat-actions' : ''}`}>
             {canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => onKickPlayer(seat)}>강퇴</button>}
