@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { subscribeRoomPlayers, updateRoomPlayer, type RoomPlayer } from '../../features/room/services/roomService';
 import { canManageAiDifficulty, getAiDifficultyBadgeLabel, getEffectiveAiDifficulty, type AiDifficulty } from '../../game-core/aiDifficulty';
+import { makeUniqueAIName } from '../flows/aiName';
 import { STORAGE_KEYS, type Seat, type Team } from '../appState';
 
 type WaitingRoomScreenProps = {
@@ -62,7 +63,8 @@ export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSea
     setAiDifficultyBySeatId((current) => ({ ...current, [seat.id]: difficulty }));
     setPendingDifficultySeatIds((current) => new Set(current).add(seat.id));
     try {
-      await updateRoomPlayer(roomId, seat.id, { aiDifficulty: difficulty } as Partial<Omit<RoomPlayerWithDifficulty, 'id'>>);
+      const nickname = makeUniqueAIName(seats.filter((candidate) => candidate.id !== seat.id), difficulty);
+      await updateRoomPlayer(roomId, seat.id, { aiDifficulty: difficulty, nickname } as Partial<Omit<RoomPlayerWithDifficulty, 'id'>>);
     } catch (error) {
       console.warn('AI 난이도 변경에 실패했습니다.', error);
       setAiDifficultyBySeatId((current) => ({ ...current, [seat.id]: previous }));

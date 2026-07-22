@@ -1,24 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AI_NAME_BASES, AI_NAME_PREFIXES } from '../../src/app/constants/playerPresentation.js';
-import { makeUniqueAIName } from '../../src/app/flows/aiName.js';
+import { AI_NICKNAME_CANDIDATES, makeUniqueAIName } from '../../src/app/flows/aiName.js';
 
-test('waiting room AI uses an unused adjective and zodiac animal name', () => {
+test('waiting room AI uses a difficulty-specific nickname without screen prefixes', () => {
   const name = makeUniqueAIName([
-    { name: `${AI_NAME_PREFIXES[0]} ${AI_NAME_BASES[0]}`, isEmpty: false },
+    { name: AI_NICKNAME_CANDIDATES.hard[0], isEmpty: false },
     { name: '빈 자리', isEmpty: true },
-  ], () => 0);
+  ], 'hard', () => 0);
 
-  assert.equal(name, `${AI_NAME_PREFIXES[1]} ${AI_NAME_BASES[0]}`);
-  assert.ok(AI_NAME_PREFIXES.some((prefix) => name.startsWith(`${prefix} `)));
-  assert.ok(AI_NAME_BASES.some((base) => name.endsWith(` ${base}`)));
+  assert.equal(name, AI_NICKNAME_CANDIDATES.hard[1]);
+  assert.ok(!name.startsWith('AI_'));
+  assert.ok(!name.startsWith('[AI]'));
 });
 
-test('waiting room AI falls back only after every adjective and zodiac name is used', () => {
-  const occupied = AI_NAME_BASES.flatMap((base) => AI_NAME_PREFIXES.map((prefix) => ({
-    name: `${prefix} ${base}`,
-    isEmpty: false,
-  })));
+test('waiting room AI allows duplicates only after every difficulty nickname is used', () => {
+  const occupied = AI_NICKNAME_CANDIDATES.easy.map((name) => ({ name, isEmpty: false }));
 
-  assert.equal(makeUniqueAIName(occupied, () => 0), 'AI 친구 1');
+  assert.equal(makeUniqueAIName(occupied, 'easy', () => 0), AI_NICKNAME_CANDIDATES.easy[0]);
 });

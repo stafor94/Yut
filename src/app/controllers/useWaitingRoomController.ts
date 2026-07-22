@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type Dispatch, type SetStateAction } from 'react';
 import { deleteRoom, removeRoomPlayer, shouldDeleteWaitingRoomOnHostExit, updateRoomOptions, updateRoomPlayer, type RoomPlayer } from '../../features/room/services/roomService';
 import { createSeats, STORAGE_KEYS, type PieceCount, type PlayMode, type Seat, type Team } from '../appState';
+import { DEFAULT_AI_DIFFICULTY } from '../../game-core/aiDifficulty';
 import { makeUniqueAIName } from '../flows/aiName';
 import { getChangedWaitingRoomOptions, normalizeWaitingRoomSeatTeams, resolveWaitingRoomOptions, type WaitingRoomOptionPatch, type WaitingRoomOptions } from '../flows/waitingRoomOptions';
 
@@ -10,7 +11,7 @@ type Params = {
 
 const colors = ['red', 'blue', 'green', 'yellow'];
 const seatIndex = (seat: Seat) => Number(seat.label.replace('P', '')) - 1;
-const aiUpdate = (seat: Seat, nickname: string): Partial<Omit<RoomPlayer, 'id'>> => ({ nickname, ready: true, isAI: true, isSubstitutedByAI: false, seatIndex: seatIndex(seat), color: colors[seatIndex(seat)] ?? 'black', team: seat.team });
+const aiUpdate = (seat: Seat, nickname: string): Partial<Omit<RoomPlayer, 'id'>> => ({ nickname, ready: true, isAI: true, isSubstitutedByAI: false, aiDifficulty: DEFAULT_AI_DIFFICULTY, seatIndex: seatIndex(seat), color: colors[seatIndex(seat)] ?? 'black', team: seat.team });
 export const getSubstitutedRoomPlayerUpdate = (seat: Seat): Partial<Omit<RoomPlayer, 'id'>> => ({ nickname: seat.name, ready: true, isAI: true, isSubstitutedByAI: true, seatIndex: seatIndex(seat), color: colors[seatIndex(seat)] ?? 'black', team: seat.team });
 
 export function useWaitingRoomController(p: Params) {
@@ -93,7 +94,7 @@ export function useWaitingRoomController(p: Params) {
     }
   }, [enqueueWaitingOptionsUpdate, p]);
 
-  const markPlayerAsAI = useCallback((playerId: string) => { if (pendingAiSeatIdsRef.current.has(playerId)) return; p.setSeats((current) => { const name = makeUniqueAIName(current); const target = current.find((seat) => seat.id === playerId); if (p.activeRoomId && target) { addPendingAiSeat(playerId); void updateRoomPlayer(p.activeRoomId, playerId, aiUpdate(target, name)).catch((error) => { console.warn('AI 추가에 실패했습니다.', error); p.setMessage('AI 추가에 실패했습니다. 잠시 뒤 다시 시도해주세요.'); p.setSeats((latest) => latest.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat)); }).finally(() => clearPendingAiSeat(playerId)); } return current.map((seat) => seat.id === playerId ? { ...seat, name, ready: true, isAI: true, isSubstitutedByAI: false, isEmpty: false } : seat); }); }, [p]);
+  const markPlayerAsAI = useCallback((playerId: string) => { if (pendingAiSeatIdsRef.current.has(playerId)) return; p.setSeats((current) => { const name = makeUniqueAIName(current, DEFAULT_AI_DIFFICULTY); const target = current.find((seat) => seat.id === playerId); if (p.activeRoomId && target) { addPendingAiSeat(playerId); void updateRoomPlayer(p.activeRoomId, playerId, aiUpdate(target, name)).catch((error) => { console.warn('AI 추가에 실패했습니다.', error); p.setMessage('AI 추가에 실패했습니다. 잠시 뒤 다시 시도해주세요.'); p.setSeats((latest) => latest.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat)); }).finally(() => clearPendingAiSeat(playerId)); } return current.map((seat) => seat.id === playerId ? { ...seat, name, ready: true, isAI: true, isSubstitutedByAI: false, isEmpty: false } : seat); }); }, [p]);
   const cancelAISeat = useCallback((playerId: string) => { clearPendingAiSeat(playerId); if (p.activeRoomId) void removeRoomPlayer(p.activeRoomId, playerId); p.setSeats((current) => current.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat)); }, [p]);
   const kickWaitingPlayer = useCallback(async (seat: Seat) => { if (!p.activeRoomId || !p.canManageRoom || seat.isEmpty || seat.isHost || seat.isAI) return; const previous = seat; p.setSeats((current) => current.map((s) => s.id === previous.id ? { ...s, id: `slot-${Number(s.label.replace('P', ''))}`, name: '빈 자리', ready: false, isEmpty: true } : s)); try { await removeRoomPlayer(p.activeRoomId, previous.id); p.setMessage(`${previous.name}님을 방에서 내보냈습니다.`); } catch (error) { p.setSeats((current) => current.map((s) => s.label === previous.label ? previous : s)); p.setMessage(error instanceof Error ? error.message : '플레이어 강퇴에 실패했습니다. 잠시 뒤 다시 시도해주세요.'); } }, [p]);
   const changeTeam = useCallback((playerId: string, team: Team) => { if (p.activeRoomId) void updateRoomPlayer(p.activeRoomId, playerId, { team }); p.setSeats((current) => current.map((seat) => seat.id === playerId ? { ...seat, team } : seat)); }, [p]);
