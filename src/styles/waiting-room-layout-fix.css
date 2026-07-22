@@ -199,3 +199,244 @@
     padding-inline: 9px;
   }
 }
+
+/* Compact mobile waiting room cards and collapsible settings. */
+.screen-waitingRoom .waiting-header {
+  min-width: 0;
+}
+
+.screen-waitingRoom .waiting-header .room-title {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.screen-waitingRoom .waiting-setup-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(35, 83, 63, .18);
+  border-radius: 16px;
+  background: rgba(255, 253, 247, .92);
+  box-shadow: 0 6px 16px rgba(35, 83, 63, .08);
+}
+
+.screen-waitingRoom .waiting-settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #183c2f;
+  font-size: 16px;
+  font-weight: 900;
+  box-shadow: none;
+}
+
+.screen-waitingRoom .waiting-settings-summary {
+  margin: 0;
+  color: #315a46;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.screen-waitingRoom .waiting-settings-content {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.screen-waitingRoom .host-room-options.compact-options {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.screen-waitingRoom .host-room-options.compact-options .option-row {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.screen-waitingRoom .host-room-options.compact-options .option-row-top,
+.screen-waitingRoom .host-room-options.compact-options .option-row-toggle {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.screen-waitingRoom .host-room-options.compact-options .radio-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  min-width: 0;
+}
+
+.screen-waitingRoom .host-room-options.compact-options .player-count-group,
+.screen-waitingRoom .host-room-options.compact-options .piece-count-group {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.screen-waitingRoom .host-room-options.compact-options .player-count-group label:first-of-type {
+  grid-column: auto;
+}
+
+.screen-waitingRoom .host-room-options.compact-options .radio-group legend {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+  color: #315a46;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.screen-waitingRoom .host-room-options.compact-options .radio-group label {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid rgba(35, 83, 63, .22);
+  border-radius: 12px;
+  background: #fffdf6;
+  color: #24513e;
+  font-size: 14px;
+  font-weight: 900;
+  box-shadow: none;
+  text-align: center;
+}
+
+.screen-waitingRoom .host-room-options.compact-options .radio-group label:has(input:checked) {
+  border-color: #183c2f;
+  background: #183c2f;
+  color: #fff8df;
+  box-shadow: none;
+}
+
+.screen-waitingRoom .host-room-options.compact-options.readonly .radio-group label,
+.screen-waitingRoom .host-room-options.compact-options .radio-group label.disabled,
+.screen-waitingRoom .host-room-options.compact-options .radio-group label:has(input:disabled) {
+  cursor: default;
+  opacity: .72;
+}
+
+.screen-waitingRoom .compact-ready-list {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  gap: 8px;
+}
+
+.screen-waitingRoom .compact-ready-card,
+.screen-waitingRoom .compact-ready-card:not(:has(.team-card-selector)) {
+  min-height: 68px;
+  height: auto;
+  padding: 8px 10px;
+  border: 1px solid rgba(35, 83, 63, .2);
+  border-left-width: 4px;
+  border-radius: 14px;
+  background: rgba(255, 253, 247, .94);
+  box-shadow: 0 4px 12px rgba(35, 83, 63, .08);
+}
+
+.screen-waitingRoom .compact-ready-card.empty {
+  border-style: dashed;
+  background: rgba(255, 253, 247, .7);
+  box-shadow: none;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-row {
+  min-height: 52px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-identity > strong,
+.screen-waitingRoom .compact-ready-card .ai-seat-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-identity > b {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+}
+
+.screen-waitingRoom .compact-ready-card .seat-status-actions .mini-button,
+.screen-waitingRoom .compact-ready-card .team-card-option {
+  min-height: 44px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.screen-waitingRoom .waiting-actions.role-actions {
+  position: sticky;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  z-index: 2;
+  padding: 8px;
+  border: 1px solid rgba(35, 83, 63, .16);
+  border-radius: 16px;
+  background: rgba(255, 253, 247, .96);
+  box-shadow: 0 -4px 16px rgba(35, 83, 63, .1);
+}
+
+.screen-waitingRoom .start-blocked-hint {
+  padding: 6px 8px;
+  font-size: 14px;
+}
+
+.screen-waitingRoom .waiting-action-buttons button {
+  min-height: 48px;
+  border-radius: 14px;
+}
+
+.screen-waitingRoom .waiting-action-buttons button:first-child {
+  border-color: #183c2f;
+  background: #183c2f;
+  color: #fff8df;
+  box-shadow: none;
+}
+
+.screen-waitingRoom .waiting-action-buttons .secondary {
+  border: 1px solid rgba(35, 83, 63, .28);
+  background: #fffdf6;
+  color: #183c2f;
+  box-shadow: none;
+}
+
+.screen-waitingRoom > .hero.panel .hero-actions {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(35, 83, 63, .18);
+  border-radius: 16px;
+  background: rgba(255, 253, 247, .94);
+}
+
+.screen-waitingRoom > .hero.panel .hero-actions > button {
+  min-height: 46px;
+  height: 46px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.screen-waitingRoom > .hero.panel .hero-actions > button + button {
+  border-left: 1px solid rgba(35, 83, 63, .16);
+}
+
+@media (max-width: 430px) {
+  .screen-waitingRoom .host-room-options.compact-options .option-row-top,
+  .screen-waitingRoom .host-room-options.compact-options .option-row-toggle {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
