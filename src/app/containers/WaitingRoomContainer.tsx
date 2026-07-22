@@ -201,14 +201,9 @@ export function WaitingRoomContainer({
   }, []);
 
   return <WaitingRoomScreen canManageRoom={canManageRoom}>
-    <header className="waiting-header">
-      <div>
-        <h2 className="room-title">{activeRoomTitle || title}</h2>
-      </div>
-    </header>
-
     <div className="waiting-main-grid">
       <WaitingRoomSettingsPanel
+        roomTitle={activeRoomTitle || title}
         isOpen={canManageRoom && settingsOpen}
         canToggle={canManageRoom}
         summary={roomSettingsSummary}
