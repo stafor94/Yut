@@ -218,7 +218,10 @@ test.describe('online room QA', () => {
 
       const emptyCard = page.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
       const addButton = page.getByTestId('add-ai-P2');
-      await expect(page.locator('.waiting-room-rule-badges')).toHaveAttribute('aria-label', /2인/);
+      await expect(page.locator('.waiting-room-rule-badges')).toHaveCount(0);
+      await expect(page.getByTestId('waiting-room-settings-toggle')).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByTestId('waiting-room-settings-summary')).toHaveText('개인전 · 2인 · 말 4개 · 아이템 OFF · 누적 OFF');
+      await expect(page.getByRole('group', { name: '진행' })).toBeVisible();
       await expect(page.locator('.compact-ready-card')).toHaveCount(2);
       await expect(addButton).toBeVisible();
       const addLayout = await readStableEmptyAiCardLayout(emptyCard, 'add-ai-P2');
