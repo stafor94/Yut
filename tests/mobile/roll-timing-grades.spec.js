@@ -19,11 +19,19 @@ test.describe('mobile roll timing grades QA', () => {
 
       const presentation = await page.evaluate(() => {
         const host = document.createElement('div');
+        host.className = 'game-shell';
         host.style.position = 'absolute';
         host.style.left = '0';
         host.style.top = '0';
         host.innerHTML = `
-          <div class="roll-timing-meter"><span class="roll-timing-orb"></span></div>
+          <div class="play-controls">
+            <div class="roll-timing-meter">
+              <span class="roll-timing-good left"></span>
+              <span class="roll-timing-perfect"></span>
+              <span class="roll-timing-good right"></span>
+              <span class="roll-timing-orb"></span>
+            </div>
+          </div>
           <span class="roll-timing-feedback perfect"></span>
           <span class="roll-timing-feedback nice"></span>
           <span class="roll-timing-feedback good"></span>
@@ -32,8 +40,10 @@ test.describe('mobile roll timing grades QA', () => {
         document.body.append(host);
 
         const meter = host.querySelector('.roll-timing-meter');
+        const orb = host.querySelector('.roll-timing-orb');
+        const legacyZones = Array.from(meter.querySelectorAll(':scope > span:not(.roll-timing-orb)'));
         const grades = ['perfect', 'nice', 'good', 'bad'].map((grade) => {
-          const element = host.querySelector(`.${grade}`);
+          const element = host.querySelector(`.roll-timing-feedback.${grade}`);
           const pseudo = getComputedStyle(element, '::before');
           return {
             grade,
@@ -44,6 +54,8 @@ test.describe('mobile roll timing grades QA', () => {
         });
         const result = {
           meterBackground: getComputedStyle(meter).backgroundImage,
+          orbBorderColor: getComputedStyle(orb).borderTopColor,
+          legacyZoneDisplays: legacyZones.map((zone) => getComputedStyle(zone).display),
           grades,
         };
         host.remove();
@@ -60,6 +72,8 @@ test.describe('mobile roll timing grades QA', () => {
       expect(presentation.meterBackground).toContain('rgb(183, 228, 108)');
       expect(presentation.meterBackground).toContain('rgb(125, 211, 252)');
       expect(presentation.meterBackground).toContain('rgb(142, 68, 173)');
+      expect(presentation.orbBorderColor).toBe('rgb(255, 255, 255)');
+      expect(presentation.legacyZoneDisplays).toEqual(['none', 'none', 'none']);
 
       for (const grade of presentation.grades) {
         expect(grade.content.toLowerCase()).toContain(grade.grade);
