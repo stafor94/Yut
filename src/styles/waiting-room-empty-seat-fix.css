@@ -1,0 +1,5 @@
+/* Keep empty waiting-room cards visually complete at the lower edge. */
+.screen-waitingRoom .compact-ready-card.empty {
+  overflow: visible;
+  box-shadow: 0 4px 12px rgba(35, 83, 63, .08);
+}
