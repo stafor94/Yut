@@ -106,7 +106,8 @@ test('현재 deadline 직전 자동 이동은 반영하면서 timeout 횟수를 
   ));
   assert.equal(result.status, 'committed');
   if (result.status !== 'committed') return;
-  assert.equal((result.patch.turnActionTimeoutCountBySeatId as Record<string, number>)['seat-1'], 1);
+  const patch = result.patch as Record<string, unknown>;
+  assert.equal((patch.turnActionTimeoutCountBySeatId as Record<string, number>)['seat-1'], 1);
 });
 
 test('이전 deadline을 가장한 자동 입력은 거부한다', () => {
