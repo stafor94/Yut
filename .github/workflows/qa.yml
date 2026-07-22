@@ -107,7 +107,7 @@ jobs:
 
   qa-roll-movement:
     name: QA roll and movement
-    needs: build-and-unit
+    needs: qa-online-flow
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
@@ -159,7 +159,7 @@ jobs:
 
   qa-lobby-desktop:
     name: QA desktop lobby
-    needs: build-and-unit
+    needs: qa-roll-movement
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -211,7 +211,7 @@ jobs:
 
   qa-mobile-layout:
     name: QA mobile and tablet layout
-    needs: build-and-unit
+    needs: qa-lobby-desktop
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -299,7 +299,7 @@ jobs:
 
   deploy-pages:
     name: Deploy GitHub Pages
-    needs: [build-and-unit, qa-online-flow, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout, qa-orphan-cleanup]
+    needs: [build-and-unit, qa-mobile-layout, qa-orphan-cleanup]
     if: github.ref == 'refs/heads/main' && success()
     runs-on: ubuntu-latest
     timeout-minutes: 10
