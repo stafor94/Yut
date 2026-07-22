@@ -16,13 +16,16 @@ test('기존 시작 시각은 덮어쓰지 않는다', () => {
   assert.equal(attachClientActionStartedAt(action, 9_999), action);
 });
 
-test('timeout recovery와 coordinator action에는 일반 입력 시작 시각을 붙이지 않는다', () => {
+test('timeout recovery와 자동 action에는 일반 입력 시작 시각을 붙이지 않는다', () => {
   const timeoutAction = { type: 'roll_yut', payload: { clientActionId: 'timeout:room:roll:seat-1:1000', timedOut: true, timeoutDeadlineAt: 1_000 } };
   const coordinatorAction = { type: 'move_piece', payload: { clientActionId: 'move-ai', coordinatorSeatId: 'seat-2' } };
+  const aiAction = { type: 'roll_yut', payload: { clientActionId: 'roll_yut_ai:seat-1:1' } };
   assert.equal(shouldAttachClientActionStartedAt(timeoutAction), false);
   assert.equal(shouldAttachClientActionStartedAt(coordinatorAction), false);
+  assert.equal(shouldAttachClientActionStartedAt(aiAction), false);
   assert.equal(attachClientActionStartedAt(timeoutAction, 9_999), timeoutAction);
   assert.equal(attachClientActionStartedAt(coordinatorAction, 9_999), coordinatorAction);
+  assert.equal(attachClientActionStartedAt(aiAction, 9_999), aiAction);
 });
 
 test('deadline과 무관한 action은 변경하지 않는다', () => {
