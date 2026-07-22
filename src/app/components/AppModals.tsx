@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties }
 import { ItemCard } from '../../features/items/components/ItemCard';
 import { isItemType } from '../../features/items/logic/items';
 import { ROOM_CAPACITY_FULL_EVENT } from '../../features/room/services/roomAvailabilityPolicy';
+import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
 import { auth } from '../../services/firebase/firebaseAuth';
 import { getStoredText, NICKNAME_MAX_LENGTH, STORAGE_KEYS, validateNickname, type PendingItemPickup } from '../appState';
 import {
@@ -140,6 +141,11 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
       }
       itemPickupAutoDecisionKeyRef.current = decisionKey;
       setItemPickupExpired(true);
+      markNextDeadlineAutoAction({
+        actionType: 'item_pickup_decision',
+        actorId: pendingItemPickup.seatId,
+        deadlineAt: pendingItemPickup.deadline,
+      });
       onKeepPendingItemPickupRef.current();
     }, Math.max(0, remainingMs - ITEM_PICKUP_AUTO_DECISION_LEAD_MS));
     return () => window.clearTimeout(timer);
