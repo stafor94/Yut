@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PieceCount, PlayMode, Seat, Team } from '../appState';
-import { RoomRuleBadges } from '../components/RoomRuleBadges';
 import { getWaitingRoomStartHint } from '../flows/gameStartFlow';
 import { WAITING_ROOM_BACK_EXIT_EVENT } from '../flows/backNavigationExit';
 import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
@@ -71,6 +70,7 @@ export function WaitingRoomContainer({
   const startFlowActiveRef = useRef(startFlowBusy || initialGameEntryPending || roomInGame);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
   const [countdownTransitionOverlayVisible, setCountdownTransitionOverlayVisible] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const effectiveStartFlowBusy = startFlowBusy || countdownTransitionPending;
@@ -84,6 +84,14 @@ export function WaitingRoomContainer({
     teamCounts,
     readyMissingCount,
   });
+  const roomSettingsSummary = `${playMode === 'team' ? '팀전' : '개인전'} · ${maxPlayers}인 · 말 ${pieceCount}개 · 아이템 ${itemMode ? 'ON' : 'OFF'} · 누적 ${stackedRollMode ? 'ON' : 'OFF'}`;
+  const optionDisabled = !canManageRoom;
+  const renderOption = <T extends string | number | boolean,>(name: string, value: T, label: string, checked: boolean, onChange: () => void, disabled = optionDisabled, title?: string) => (
+    <label key={String(value)} className={disabled ? 'disabled' : ''} title={title}>
+      <input type="radio" name={name} checked={checked} disabled={disabled} onChange={onChange} />
+      {label}
+    </label>
+  );
 
   useEffect(() => {
     const handleBackNavigationExit = () => onLeaveRoom();
@@ -193,25 +201,27 @@ export function WaitingRoomContainer({
       <div>
         <h2 className="room-title">{activeRoomTitle || title}</h2>
       </div>
-      <RoomRuleBadges mode={playMode} players={maxPlayers} pieces={pieceCount} itemsEnabled={itemMode} stackedRollEnabled={stackedRollMode} className="waiting-room-rule-badges" />
     </header>
 
     <div className="waiting-main-grid">
-      <WaitingRoomSettingsPanel isVisible={canManageRoom || playMode === 'team'}>
+      <WaitingRoomSettingsPanel isOpen={settingsOpen} summary={roomSettingsSummary} onToggle={() => setSettingsOpen((open) => !open)}>
         {playMode === 'team' && <div className="team-checklist" aria-label="팀전 시작 조건"><strong>팀 균형</strong><span className={teamCounts.청팀 === 2 ? 'ok' : ''}>청팀 {teamCounts.청팀}/2</span><span className={teamCounts.홍팀 === 2 ? 'ok' : ''}>홍팀 {teamCounts.홍팀}/2</span></div>}
-        {canManageRoom ? <div className="host-room-options compact-options">
+        <div className={`host-room-options compact-options ${canManageRoom ? '' : 'readonly'}`} aria-label={canManageRoom ? '방 설정 변경' : '방 설정 읽기 전용'}>
           <div className="option-row option-row-top">
-            <fieldset className="radio-group play-mode-group" aria-label="진행"><legend>진행</legend>{(['individual', 'team'] as PlayMode[]).map((mode) => <label key={mode}><input type="radio" name="playMode" checked={playMode === mode} onChange={() => onChangeOptions({ playMode: mode })} />{mode === 'team' ? '팀전' : '개인전'}</label>)}</fieldset>
-            <fieldset className="radio-group player-count-group" aria-label="인원"><legend>인원</legend>{([2, 3, 4] as const).map((count) => <label key={count} className={playMode === 'team' && count !== 4 ? 'disabled' : ''} title={playMode === 'team' && count !== 4 ? '팀전은 4인만 가능합니다.' : undefined}><input type="radio" name="maxPlayers" checked={maxPlayers === count} disabled={playMode === 'team' && count !== 4} onChange={() => onChangeOptions({ maxPlayers: count })} />{count}인</label>)}</fieldset>
+            <fieldset className="radio-group play-mode-group" aria-label="진행"><legend>진행</legend>{(['individual', 'team'] as PlayMode[]).map((mode) => renderOption('playMode', mode, mode === 'team' ? '팀전' : '개인전', playMode === mode, () => onChangeOptions({ playMode: mode })))}</fieldset>
+            <fieldset className="radio-group player-count-group" aria-label="인원"><legend>인원</legend>{([2, 3, 4] as const).map((count) => {
+              const disabled = optionDisabled || (playMode === 'team' && count !== 4);
+              return renderOption('maxPlayers', count, `${count}인`, maxPlayers === count, () => onChangeOptions({ maxPlayers: count }), disabled, playMode === 'team' && count !== 4 ? '팀전은 4인만 가능합니다.' : undefined);
+            })}</fieldset>
           </div>
           <div className="option-row option-row-piece">
-            <fieldset className="radio-group piece-count-group" aria-label="말"><legend>말</legend>{([1, 2, 3, 4] as const).map((count) => <label key={count}><input type="radio" name="pieceCount" checked={pieceCount === count} onChange={() => onChangeOptions({ pieceCount: count })} />{count}개</label>)}</fieldset>
+            <fieldset className="radio-group piece-count-group" aria-label="말"><legend>말</legend>{([1, 2, 3, 4] as const).map((count) => renderOption('pieceCount', count, `${count}개`, pieceCount === count, () => onChangeOptions({ pieceCount: count })))}</fieldset>
           </div>
           <div className="option-row option-row-toggle">
-            <fieldset className="radio-group item-mode-group" aria-label="아이템"><legend>아이템</legend>{([true, false] as const).map((enabled) => <label key={String(enabled)}><input type="radio" name="itemMode" checked={itemMode === enabled} onChange={() => onChangeOptions({ itemMode: enabled })} />{enabled ? 'ON' : 'OFF'}</label>)}</fieldset>
-            <fieldset className="radio-group stacked-roll-mode-group" aria-label="누적던지기"><legend>누적던지기</legend>{([true, false] as const).map((enabled) => <label key={String(enabled)}><input type="radio" name="stackedRollMode" checked={stackedRollMode === enabled} onChange={() => onChangeOptions({ stackedRollMode: enabled })} />{enabled ? 'ON' : 'OFF'}</label>)}</fieldset>
+            <fieldset className="radio-group item-mode-group" aria-label="아이템"><legend>아이템</legend>{([true, false] as const).map((enabled) => renderOption('itemMode', enabled, enabled ? 'ON' : 'OFF', itemMode === enabled, () => onChangeOptions({ itemMode: enabled })))}</fieldset>
+            <fieldset className="radio-group stacked-roll-mode-group" aria-label="누적던지기"><legend>누적던지기</legend>{([true, false] as const).map((enabled) => renderOption('stackedRollMode', enabled, enabled ? 'ON' : 'OFF', stackedRollMode === enabled, () => onChangeOptions({ stackedRollMode: enabled })))}</fieldset>
           </div>
-        </div> : null}
+        </div>
       </WaitingRoomSettingsPanel>
 
       <WaitingRoomSeatList seats={seats} roomInGame={roomInGame} canManageRoom={canManageRoom} localSeatId={localSeatId} playMode={playMode} getSeatPieceColor={getSeatPieceColor} onKickPlayer={onKickPlayer} onAddAI={onAddAI} onRemoveAI={onRemoveAI} onChangeTeam={onChangeTeam} />

@@ -104,6 +104,16 @@ test.describe('mobile layout QA', () => {
         await createRoomFromLobby(page, roomTitle);
         roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
 
+        const settingsToggle = page.getByTestId('waiting-room-settings-toggle');
+        await expect(settingsToggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.getByTestId('waiting-room-settings-summary')).toHaveText('개인전 · 3인 · 말 4개 · 아이템 OFF · 누적 OFF');
+        await expect(page.getByRole('group', { name: '진행' })).toHaveCount(0);
+        await settingsToggle.click();
+        await expect(settingsToggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.getByRole('group', { name: '진행' })).toBeVisible();
+        await page.getByRole('radio', { name: '팀전' }).check();
+        await expect(page.getByTestId('waiting-room-settings-summary')).toContainText('팀전');
+
         const emptyCard = page.locator('.compact-ready-card').filter({ hasText: 'P3' }).first();
         const addButton = page.getByTestId('add-ai-P3');
         await expect(addButton).toBeVisible();

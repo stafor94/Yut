@@ -10,7 +10,9 @@ type WaitingRoomScreenProps = {
 };
 
 type WaitingRoomSettingsPanelProps = {
-  isVisible: boolean;
+  isOpen: boolean;
+  summary: string;
+  onToggle: () => void;
   children: ReactNode;
 };
 
@@ -33,9 +35,22 @@ export function WaitingRoomScreen({ canManageRoom, children }: WaitingRoomScreen
   return <section data-testid="waiting-room" className={`panel waiting-room compact-waiting-room ${canManageRoom ? 'host-view' : 'player-view'}`} aria-label="방 대기 화면">{children}</section>;
 }
 
-export function WaitingRoomSettingsPanel({ isVisible, children }: WaitingRoomSettingsPanelProps) {
-  if (!isVisible) return null;
-  return <section className="waiting-setup-card" aria-label="방 설정과 시작 조건">{children}</section>;
+export function WaitingRoomSettingsPanel({ isOpen, summary, onToggle, children }: WaitingRoomSettingsPanelProps) {
+  return <section className="waiting-setup-card" aria-label="방 설정">
+    <button
+      type="button"
+      className="waiting-settings-toggle"
+      aria-expanded={isOpen}
+      aria-controls="waiting-room-settings-content"
+      data-testid="waiting-room-settings-toggle"
+      onClick={onToggle}
+    >
+      <span>방 설정</span>
+      <span aria-hidden="true">{isOpen ? '▲' : '▼'}</span>
+    </button>
+    <p className="waiting-settings-summary" data-testid="waiting-room-settings-summary">{summary}</p>
+    {isOpen ? <div id="waiting-room-settings-content" className="waiting-settings-content">{children}</div> : null}
+  </section>;
 }
 
 export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSeatId, playMode, getSeatPieceColor, onKickPlayer, onAddAI, onRemoveAI, onChangeTeam }: WaitingRoomSeatListProps) {
@@ -91,7 +106,7 @@ export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSea
               <strong>{seat.name}</strong>
             </span> : <>
               <strong>{seat.name}</strong>
-              <em className="seat-role-badge">{seat.isHost ? '방장' : '플레이어'}</em>
+              {seat.isHost ? <em className="seat-role-badge">방장</em> : null}
             </>}
           </div>
           <span className={`seat-status-actions ${seat.isAI ? 'ai-seat-actions' : ''}`}>
