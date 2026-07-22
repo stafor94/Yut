@@ -1,4 +1,4 @@
-.roll-timing-meter {
+.game-shell .roll-timing-meter {
   background: linear-gradient(
     90deg,
     #111827 0%,
@@ -20,12 +20,12 @@
 }
 
 /* The grade colors are rendered by the meter gradient, replacing the old 3-zone spans. */
-.roll-timing-meter > .roll-timing-good,
-.roll-timing-meter > .roll-timing-perfect {
+.game-shell .roll-timing-meter > .roll-timing-good,
+.game-shell .roll-timing-meter > .roll-timing-perfect {
   display: none;
 }
 
-.roll-timing-orb {
+.game-shell .roll-timing-orb {
   border-color: #fff;
   box-shadow: 0 1px 7px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(17, 24, 39, 0.35);
 }
