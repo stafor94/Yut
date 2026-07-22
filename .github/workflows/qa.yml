@@ -64,6 +64,7 @@ jobs:
       QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-online-flow
       QA_ROLE: online-flow
       QA_ALLOW_PRODUCTION_FIREBASE: '1'
+      QA_CLEANUP_MODE: current-run
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -99,7 +100,7 @@ jobs:
           name: qa-online-flow-results
           path: |
             test-results
-            playwright-qa-online-*.log
+            playwright-qa-*.log
             qa-cleanup-online-flow.log
             console-log.txt
           if-no-files-found: ignore
@@ -107,7 +108,7 @@ jobs:
 
   qa-roll-movement:
     name: QA roll and movement
-    needs: qa-online-flow
+    needs: build-and-unit
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
@@ -120,6 +121,7 @@ jobs:
       QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-roll-movement
       QA_ROLE: roll-movement
       QA_ALLOW_PRODUCTION_FIREBASE: '1'
+      QA_CLEANUP_MODE: current-run
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -159,7 +161,7 @@ jobs:
 
   qa-lobby-desktop:
     name: QA desktop lobby
-    needs: qa-roll-movement
+    needs: build-and-unit
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -172,6 +174,7 @@ jobs:
       QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-lobby-desktop
       QA_ROLE: lobby-desktop
       QA_ALLOW_PRODUCTION_FIREBASE: '1'
+      QA_CLEANUP_MODE: current-run
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -211,7 +214,7 @@ jobs:
 
   qa-mobile-layout:
     name: QA mobile and tablet layout
-    needs: qa-lobby-desktop
+    needs: build-and-unit
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -224,6 +227,7 @@ jobs:
       QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-mobile-layout
       QA_ROLE: mobile-layout
       QA_ALLOW_PRODUCTION_FIREBASE: '1'
+      QA_CLEANUP_MODE: current-run
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -299,7 +303,7 @@ jobs:
 
   deploy-pages:
     name: Deploy GitHub Pages
-    needs: [build-and-unit, qa-mobile-layout, qa-orphan-cleanup]
+    needs: [build-and-unit, qa-online-flow, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout, qa-orphan-cleanup]
     if: github.ref == 'refs/heads/main' && success()
     runs-on: ubuntu-latest
     timeout-minutes: 10
