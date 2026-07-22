@@ -38,6 +38,28 @@ type RollStageProps = {
   onPresentationChange?: (state: RollPresentationState) => void;
 };
 
+type PresentationTimingGrade = 'perfect' | 'nice' | 'good' | 'bad';
+
+const TIMING_GRADE_LABELS: Record<PresentationTimingGrade, string> = {
+  perfect: 'Perfect!',
+  nice: 'Nice!',
+  good: 'Good!',
+  bad: 'Bad!',
+};
+
+const normalizePresentationTimingGrade = (value: unknown): PresentationTimingGrade | undefined => {
+  if (value === 'normal') return 'bad';
+  if (value === 'perfect' || value === 'nice' || value === 'good' || value === 'bad') return value;
+  return undefined;
+};
+
+const getPresentationTimingGrade = (animation: RollAnimation): PresentationTimingGrade | undefined => {
+  const directGrade = normalizePresentationTimingGrade(animation.timingZone);
+  if (directGrade) return directGrade;
+  if (!('result' in animation) || !animation.result || typeof animation.result !== 'object') return undefined;
+  return normalizePresentationTimingGrade((animation.result as unknown as Record<string, unknown>).presentationTimingGrade);
+};
+
 const isResolvedRollAnimation = (animation: RollAnimation) => animation.phase === undefined || animation.phase === 'resolved';
 
 type PresentationSettleSource = 'pending' | Exclude<RollPresentationVisualResult, 'cancelled'>;
@@ -358,6 +380,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const isLanding = presentedAnimation.phase === 'landing';
   const isResultHold = presentedAnimation.phase === 'result-hold';
   const result = 'result' in presentedAnimation ? presentedAnimation.result : undefined;
+  const timingGrade = getPresentationTimingGrade(presentedAnimation);
   const fallCount = 'fallCount' in presentedAnimation ? presentedAnimation.fallCount ?? 0 : 0;
   const turnOrder = 'turnOrder' in presentedAnimation ? presentedAnimation.turnOrder : false;
   const hasSettled = settledAnimationId === presentedAnimation.id;
@@ -389,7 +412,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
         <span className="roll-mat-leg roll-mat-leg-left"></span>
         <span className="roll-mat-leg roll-mat-leg-right"></span>
       </span>
-      {presentedAnimation.timingZone && <span className={`roll-timing-feedback roll-stage-timing ${presentedAnimation.timingZone}`}>{presentedAnimation.timingZone === 'perfect' ? 'Perfect!' : presentedAnimation.timingZone === 'good' ? 'Good!' : 'Normal'}</span>}
+      {timingGrade && <span className={`roll-timing-feedback roll-stage-timing ${timingGrade}`}>{TIMING_GRADE_LABELS[timingGrade]}</span>}
       {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{fallCount ? '낙!' : result.name}</span>}
       <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={() => {
         const scene = rollStageRef.current?.querySelector<HTMLElement>('[data-testid="yut-roll-scene"]');
