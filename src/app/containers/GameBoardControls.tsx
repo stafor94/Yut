@@ -21,7 +21,8 @@ import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { STORAGE_KEYS } from '../appState';
 import { getRollControlPresentation, shouldAutoScrollGameControls } from '../flows/rollControlPresentation';
 
-const AUTO_ACTION_LEAD_MS = 40;
+const AUTO_ACTION_LEAD_MS = 80;
+const STACK_SELECTION_SETTLE_MS = 16;
 
 type GameBoardControlsProps = {
   roll: YutResult | null;
@@ -95,6 +96,15 @@ export function GameBoardControls({
   const timeoutRecordedKeyRef = useRef('');
   const autoTurnActionKeyRef = useRef('');
   const autoItemPromptKeyRef = useRef('');
+  const onRollYutRef = useRef(onRollYut);
+  const onMoveSelectedPieceRef = useRef(onMoveSelectedPiece);
+  const onSelectRollStackIndexRef = useRef(onSelectRollStackIndex);
+  const onSkipItemPromptRef = useRef(onSkipItemPrompt);
+  onRollYutRef.current = onRollYut;
+  onMoveSelectedPieceRef.current = onMoveSelectedPiece;
+  onSelectRollStackIndexRef.current = onSelectRollStackIndex;
+  onSkipItemPromptRef.current = onSkipItemPrompt;
+
   const [turnActionTimedOut, setTurnActionTimedOut] = useState(false);
   const [itemPromptTimedOut, setItemPromptTimedOut] = useState(false);
   const [timeoutCountBySeatId, setTimeoutCountBySeatId] = useState<Record<string, number>>({});
@@ -108,6 +118,7 @@ export function GameBoardControls({
     showBottomBranchControls,
     canRequestMove,
   });
+
   const getVisibleRollTimingPositionPercent = () => {
     const meter = rollTimingMeterRef.current;
     const orb = rollTimingOrbRef.current;
@@ -244,6 +255,13 @@ export function GameBoardControls({
 
   useEffect(() => {
     setTurnActionTimedOut(false);
+  }, [turnActionDeadlineKey]);
+
+  useEffect(() => {
+    setItemPromptTimedOut(false);
+  }, [itemPromptDeadlineKey]);
+
+  useEffect(() => {
     if (!turnActionTimerVisible || typeof window === 'undefined') return undefined;
     const remainingMs = getTurnActionDeadlineDelayMs({
       deadlineAt: authoritativeTurnDeadline.at,
@@ -263,19 +281,22 @@ export function GameBoardControls({
       }
       autoTurnActionKeyRef.current = turnActionDeadlineKey;
       if (turnActionPhase === 'roll' && canRollNow && !roll) {
-        onRollYut(getVisibleRollTimingPositionPercent());
+        onRollYutRef.current(getVisibleRollTimingPositionPercent());
       } else if (turnActionPhase === 'move' && canRequestMove) {
-        if (showRollStackPicker && rollStack.length > 0) onMoveRollStackIndex(selectedRollStackIndex ?? 0);
-        else onMoveSelectedPiece();
+        if (showRollStackPicker && rollStack.length > 0) {
+          onSelectRollStackIndexRef.current(selectedRollStackIndex ?? 0);
+          window.setTimeout(() => onMoveSelectedPieceRef.current(), STACK_SELECTION_SETTLE_MS);
+        } else {
+          onMoveSelectedPieceRef.current();
+        }
       }
       markTurnActionTimedOut();
     };
     const timer = window.setTimeout(runAutomaticAction, Math.max(0, remainingMs - AUTO_ACTION_LEAD_MS));
     return () => window.clearTimeout(timer);
-  }, [authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, canRequestMove, canRollNow, onMoveRollStackIndex, onMoveSelectedPiece, onRollYut, roll, rollStack.length, selectedRollStackIndex, showRollStackPicker, timerDurationMs, timerSeatId, turnActionDeadlineKey, turnActionPhase, turnActionTimerVisible]);
+  }, [authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, canRequestMove, canRollNow, roll, rollStack.length, selectedRollStackIndex, showRollStackPicker, timerDurationMs, timerSeatId, turnActionDeadlineKey, turnActionPhase, turnActionTimerVisible]);
 
   useEffect(() => {
-    setItemPromptTimedOut(false);
     if (isOpponentTurn || activeItemPromptTypes.length === 0 || !localSeatId || typeof window === 'undefined') return undefined;
     if (itemPromptTimerDurationMs <= 0) {
       setItemPromptTimedOut(true);
@@ -290,11 +311,11 @@ export function GameBoardControls({
       autoItemPromptKeyRef.current = itemPromptDeadlineKey;
       setItemPromptTimedOut(true);
       recordTimeout(localSeatId);
-      onSkipItemPrompt({ timedOut: true });
+      onSkipItemPromptRef.current({ timedOut: true });
     };
     const timer = window.setTimeout(runAutomaticSkip, Math.max(0, itemPromptTimerDurationMs - AUTO_ACTION_LEAD_MS));
     return () => window.clearTimeout(timer);
-  }, [activeItemPromptTypes.length, authoritativeTurnDeadline.at, isOpponentTurn, itemPromptDeadlineKey, itemPromptTimerDurationMs, localSeatId, onSkipItemPrompt]);
+  }, [activeItemPromptTypes.length, authoritativeTurnDeadline.at, isOpponentTurn, itemPromptDeadlineKey, itemPromptTimerDurationMs, localSeatId]);
 
   const handleRollButtonClick = () => {
     runTurnAction(() => {
@@ -321,6 +342,7 @@ export function GameBoardControls({
   void getItemPromptTimeoutMs;
   void getTurnActionTimeoutMs;
   void moveSelectionTimedOut;
+  void onMoveRollStackIndex;
 
   return <div ref={controlsRef} className={`play-controls ${isOpponentTurn ? 'opponent-turn' : 'local-turn'} ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
     {isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
