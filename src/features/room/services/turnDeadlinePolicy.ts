@@ -10,6 +10,10 @@ const VALID_TURN_DEADLINE_KINDS = new Set<TurnDeadlineKind>([
   '',
 ]);
 
+// Date.now() values after 2000-01-01. Smaller numeric action-id tokens are
+// sequences, turn indexes, or fixture values rather than trustworthy epochs.
+const MIN_PLAUSIBLE_CLIENT_ACTION_EPOCH_MS = 946_684_800_000;
+
 export const normalizeTurnDeadlineAt = (value: unknown) => {
   const deadlineAt = Number(value ?? 0);
   return Number.isFinite(deadlineAt) && deadlineAt > 0 ? deadlineAt : 0;
@@ -77,7 +81,8 @@ export const getTurnActionStartedAt = ({
 }) => {
   const explicitStartedAt = Number(clientActionStartedAt ?? 0);
   if (Number.isFinite(explicitStartedAt) && explicitStartedAt > 0) return explicitStartedAt;
-  return getClientActionStartedAt(clientActionId);
+  const parsedStartedAt = getClientActionStartedAt(clientActionId);
+  return parsedStartedAt >= MIN_PLAUSIBLE_CLIENT_ACTION_EPOCH_MS ? parsedStartedAt : 0;
 };
 
 export const isManualTurnActionDeadlineExpired = ({
@@ -88,7 +93,7 @@ export const isManualTurnActionDeadlineExpired = ({
   clientActionStartedAt,
   now = Date.now(),
   networkGraceMs = 0,
-  missingStartedAtPolicy = 'allow',
+  missingStartedAtPolicy: _missingStartedAtPolicy = 'allow',
 }: {
   deadlineAt: unknown;
   deadlineKind: unknown;
@@ -103,10 +108,10 @@ export const isManualTurnActionDeadlineExpired = ({
   if (!normalizedDeadlineAt || normalizeTurnDeadlineKind(deadlineKind) !== expectedKind) return false;
 
   const startedAt = getTurnActionStartedAt({ clientActionStartedAt, clientActionId });
-  if (!startedAt) {
-    return missingStartedAtPolicy === 'reject-after-grace'
-      && now >= normalizedDeadlineAt + Math.max(0, networkGraceMs);
-  }
+  // Current clients always attach clientActionStartedAt at enqueue time. Missing
+  // timestamps identify legacy/internal actions, which must continue through the
+  // reducer's existing validation instead of being rejected by a deadline guard.
+  if (!startedAt) return false;
   if (startedAt >= normalizedDeadlineAt) return true;
   return now >= normalizedDeadlineAt + Math.max(0, networkGraceMs);
 };
