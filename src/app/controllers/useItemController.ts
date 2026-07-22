@@ -54,17 +54,22 @@ export function useItemController(params: Params) {
   const activeRoomIdRef = useRef(params.activeRoomId);
   activeRoomIdRef.current = params.activeRoomId;
 
-  const skipItemPrompt = useCallback(() => {
+  const skipItemPrompt = useCallback((_options: { timedOut?: boolean } = {}) => {
     if (params.activeRoomId) {
       const requestRoomId = params.activeRoomId;
       const promptTiming = params.itemPromptTiming;
       if (!promptTiming || params.hasPendingUseItemActionFor(params.localSeatId)) return;
       const promptRollStackIndex = params.selectedRollStackIndex;
       const skipSeat = params.playableSeats.find((seat) => seat.id === params.localSeatId);
+      const actionStartedAt = Date.now();
       const payload = buildSkipItemPromptPayload(promptTiming, promptRollStackIndex);
       const clientMutationId = params.getLocalActionKey('use_item', payload);
       if (params.pendingLocalRemoteActionsRef.current.has(clientMutationId)) return;
-      const action = { type: 'use_item' as const, actorId: params.localSeatId, payload: params.withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
+      const action = {
+        type: 'use_item' as const,
+        actorId: params.localSeatId,
+        payload: params.withActorLogPayload({ ...payload, clientActionStartedAt: actionStartedAt, clientActionId: clientMutationId }, skipSeat),
+      };
       params.shouldAdvanceTurnAfterItemPromptRef.current = false;
       params.markItemPromptResolved(promptTiming, promptRollStackIndex);
       params.setItemPromptTiming(null);
