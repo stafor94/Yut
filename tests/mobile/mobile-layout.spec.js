@@ -168,8 +168,8 @@ test.describe('mobile layout QA', () => {
         expect(Math.abs(layout.remove.x - (layout.easy.x + layout.easy.width) - 12), '난이도 선택과 AI 제거 버튼 사이 간격은 12px이어야 합니다.').toBeLessThanOrEqual(1);
         expect(Math.abs(layout.remove.width - addLayout.add.width), 'AI 제거 버튼 폭은 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
         expect(Math.abs(layout.remove.height - addLayout.add.height), 'AI 제거 버튼 높이는 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
-        expect(Math.abs(layout.remove.x - addLayout.add.x), 'AI 제거 버튼 가로 위치는 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
-        expect(Math.abs(layout.remove.y - addLayout.add.y), 'AI 제거 버튼 세로 위치는 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
+        expect(Math.abs((layout.remove.x - layout.card.x) - (addLayout.add.x - addLayout.card.x)), 'AI 제거 버튼의 카드 내 가로 위치는 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
+        expect(Math.abs((layout.remove.y - layout.card.y) - (addLayout.add.y - addLayout.card.y)), 'AI 제거 버튼의 카드 내 세로 위치는 AI 추가 버튼과 같아야 합니다.').toBeLessThanOrEqual(1);
         expect(Math.abs(layout.card.height - addLayout.card.height), 'AI 추가 전후 카드 높이는 같아야 합니다.').toBeLessThanOrEqual(1);
         expect(layout.nicknameStyles).toEqual({ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 
