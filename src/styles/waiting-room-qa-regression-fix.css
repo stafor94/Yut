@@ -93,22 +93,46 @@
 }
 
 .screen-waitingRoom .compact-ready-card .human-seat-copy {
-  display: grid;
-  align-content: center;
-  flex: 1 1 auto;
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-self: stretch;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.screen-waitingRoom .compact-ready-card .human-seat-copy > .seat-role-badge,
+.screen-waitingRoom .compact-ready-card .human-seat-copy > strong {
+  position: static;
+  inset: auto;
+  align-self: flex-start;
+  margin: 0;
+  transform: none;
+  translate: none;
 }
 
 .screen-waitingRoom .compact-ready-card .human-seat-copy > .seat-role-badge {
-  justify-self: start;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+  line-height: 1;
 }
 
 .screen-waitingRoom .compact-ready-card .human-seat-copy > strong {
+  display: block;
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 16px;
+  line-height: 1.15;
 }
 
 .screen-waitingRoom .compact-ready-card .ai-seat-actions {
@@ -118,6 +142,10 @@
 }
 
 @media (max-width: 520px) {
+  .screen-waitingRoom .compact-ready-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .screen-waitingRoom .compact-ready-card {
     min-height: 82px;
   }
@@ -128,5 +156,9 @@
 
   .screen-waitingRoom .compact-ready-card .seat-row {
     min-height: 56px;
+  }
+
+  .screen-waitingRoom .compact-ready-card .human-seat-copy {
+    gap: 3px;
   }
 }
