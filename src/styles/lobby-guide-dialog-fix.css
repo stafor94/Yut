@@ -1,0 +1,146 @@
+/* Keep the game guide compact, centered, and visually separate its backdo/completion rules. */
+.screen-lobby .lobby-sheet-backdrop:has(.lobby-howto-sheet) {
+  align-items: center;
+  justify-items: center;
+}
+
+.screen-lobby .lobby-howto-sheet {
+  height: min(70dvh, 780px);
+  max-height: min(70dvh, 780px);
+}
+
+.screen-lobby .lobby-howto-sheet .howto-fixed-footer {
+  border-top: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas: none;
+  gap: 9px;
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  background: none;
+  box-shadow: none;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) > .howto-step,
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) > .howto-icon {
+  display: none;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) > div:last-child {
+  display: contents;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) h4 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p {
+  position: relative;
+  min-height: 112px;
+  margin: 0;
+  padding: 40px 14px 14px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 255, 255, .84), transparent 35%),
+    linear-gradient(145deg, rgba(255, 247, 218, .98), rgba(226, 190, 125, .76));
+  box-shadow: 0 8px 18px rgba(85, 44, 17, .1), inset 0 1px 0 rgba(255, 255, 255, .94);
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p::before {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  color: #4d2c18;
+  font-size: .98rem;
+  font-weight: 1000;
+  letter-spacing: -.025em;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p::after {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(116, 67, 31, .07);
+  color: rgba(83, 46, 22, .36);
+  font-size: .68rem;
+  font-weight: 1000;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p:first-of-type::before {
+  content: "빽도";
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p:first-of-type::after {
+  content: "04";
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p:last-of-type::before {
+  content: "완주";
+}
+
+.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p:last-of-type::after {
+  content: "05";
+}
+
+@supports not (height: 1dvh) {
+  .screen-lobby .lobby-howto-sheet {
+    height: min(70vh, 780px);
+    max-height: min(70vh, 780px);
+  }
+}
+
+@media (max-width: 700px) and (orientation: portrait) {
+  .screen-lobby .lobby-howto-sheet {
+    height: 70dvh;
+    max-height: 70dvh;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p {
+    min-height: 126px;
+    padding: 35px 10px 10px;
+    border-radius: 14px;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p::before {
+    top: 10px;
+    left: 10px;
+    font-size: .84rem;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p::after {
+    top: 7px;
+    right: 7px;
+    font-size: .57rem;
+  }
+}
+
+@media (max-width: 350px) and (orientation: portrait) {
+  .screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) {
+    grid-template-columns: 1fr;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) p {
+    min-height: 0;
+  }
+}
