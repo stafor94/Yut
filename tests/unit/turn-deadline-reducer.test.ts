@@ -84,3 +84,49 @@ test('deadline 이후 시작된 아이템 교체 선택을 거부한다', () => 
   ));
   assert.deepEqual(result, { status: 'rejected', reason: '아이템 교체 제한 시간이 만료되었습니다.' });
 });
+
+test('현재 deadline 직전 자동 이동은 반영하면서 timeout 횟수를 증가시킨다', () => {
+  const deadlineAt = 10_000;
+  const result = withMockNow(9_950, () => reduceAuthoritativeGameAction(
+    makeState(deadlineAt, 'move') as never,
+    {
+      type: 'move_piece',
+      actorId: 'seat-1',
+      payload: {
+        pieceId: 'p1',
+        branchChoice: 'outer',
+        clientActionStartedAt: 9_920,
+        clientActionId: 'move-piece-auto',
+        deadlineAutoSubmitted: true,
+        autoSubmittedDeadlineAt: deadlineAt,
+      },
+    } as never,
+    room,
+    sides,
+  ));
+  assert.equal(result.status, 'committed');
+  if (result.status !== 'committed') return;
+  assert.equal((result.patch.turnActionTimeoutCountBySeatId as Record<string, number>)['seat-1'], 1);
+});
+
+test('이전 deadline을 가장한 자동 입력은 거부한다', () => {
+  const deadlineAt = 10_000;
+  const result = withMockNow(9_950, () => reduceAuthoritativeGameAction(
+    makeState(deadlineAt, 'move') as never,
+    {
+      type: 'move_piece',
+      actorId: 'seat-1',
+      payload: {
+        pieceId: 'p1',
+        branchChoice: 'outer',
+        clientActionStartedAt: 9_920,
+        clientActionId: 'move-piece-stale-auto',
+        deadlineAutoSubmitted: true,
+        autoSubmittedDeadlineAt: deadlineAt - 1,
+      },
+    } as never,
+    room,
+    sides,
+  ));
+  assert.deepEqual(result, { status: 'rejected', reason: '자동 입력 대상 제한시간이 현재 상태와 일치하지 않습니다.' });
+});
