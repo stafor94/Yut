@@ -1,0 +1,85 @@
+.roll-timing-meter {
+  background: linear-gradient(
+    90deg,
+    #111827 0%,
+    #111827 20%,
+    #b7e46c 20%,
+    #b7e46c 40%,
+    #7dd3fc 40%,
+    #7dd3fc 45%,
+    #8e44ad 45%,
+    #8e44ad 55%,
+    #7dd3fc 55%,
+    #7dd3fc 60%,
+    #b7e46c 60%,
+    #b7e46c 80%,
+    #111827 80%,
+    #111827 100%
+  );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38), 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+/* The grade colors are rendered by the meter gradient, replacing the old 3-zone spans. */
+.roll-timing-meter > .roll-timing-good,
+.roll-timing-meter > .roll-timing-perfect {
+  display: none;
+}
+
+.roll-timing-orb {
+  border-color: #fff;
+  box-shadow: 0 1px 7px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(17, 24, 39, 0.35);
+}
+
+.roll-timing-feedback {
+  min-height: 2.35rem;
+  font-size: 0;
+  line-height: 0.95;
+  white-space: nowrap;
+  letter-spacing: -0.035em;
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.94), 0 4px 12px rgba(0, 0, 0, 0.24);
+}
+
+.roll-timing-feedback::before {
+  display: block;
+  font-size: clamp(2.2rem, 6.5vw, 3.45rem);
+  line-height: 0.95;
+}
+
+.roll-timing-feedback.perfect::before {
+  color: #8e44ad;
+  content: 'Perfect!';
+}
+
+.roll-timing-feedback.nice::before {
+  color: #0284c7;
+  content: 'Nice!';
+}
+
+.roll-timing-feedback.good::before {
+  color: #3f7d20;
+  content: 'Good!';
+}
+
+.roll-timing-feedback.bad::before {
+  color: #111827;
+  content: 'Bad!';
+}
+
+.roll-stage-timing {
+  top: clamp(-4.5rem, -8vw, -3.6rem);
+  z-index: 7;
+}
+
+@media (max-width: 640px) {
+  .roll-timing-feedback {
+    min-height: 2rem;
+  }
+
+  .roll-timing-feedback::before {
+    font-size: clamp(1.9rem, 9vw, 2.75rem);
+  }
+
+  .roll-stage-timing {
+    top: -3.55rem;
+  }
+}

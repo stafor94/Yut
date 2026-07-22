@@ -26,8 +26,10 @@ test.describe('mobile lobby guide polish QA', () => {
         const header = element.querySelector('.howto-fixed-header');
         const body = element.querySelector('.howto-scroll-body');
         const footer = element.querySelector('.howto-fixed-footer');
+        const timingHeading = cards[0]?.querySelector('h4');
+        const timingParagraphs = cards[0] ? Array.from(cards[0].querySelectorAll('p')) : [];
         const splitRuleParagraphs = cards[3] ? Array.from(cards[3].querySelectorAll('p')) : [];
-        if (cards.length !== 4 || resultItems.length !== 6 || splitRuleParagraphs.length !== 2 || !(confirm instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement)) return null;
+        if (cards.length !== 4 || resultItems.length !== 6 || timingParagraphs.length < 2 || splitRuleParagraphs.length !== 2 || !(timingHeading instanceof HTMLElement) || !(confirm instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement)) return null;
         const rect = (target) => {
           const box = target.getBoundingClientRect();
           return { x: box.x, y: box.y, width: box.width, height: box.height, right: box.right, bottom: box.bottom };
@@ -37,6 +39,8 @@ test.describe('mobile lobby guide polish QA', () => {
         const resultRects = resultItems.map(rect);
         const splitRuleRects = splitRuleParagraphs.map(rect);
         const splitRuleLabels = splitRuleParagraphs.map((paragraph) => getComputedStyle(paragraph, '::before').content);
+        const timingHeadingContent = getComputedStyle(timingHeading, '::after').content;
+        const timingParagraphContents = timingParagraphs.slice(0, 2).map((paragraph) => getComputedStyle(paragraph, '::after').content);
         const confirmRect = rect(confirm);
         const footerStyle = getComputedStyle(footer);
         body.scrollTop = 42;
@@ -65,6 +69,8 @@ test.describe('mobile lobby guide polish QA', () => {
           footerBorderTopWidth: Number.parseFloat(footerStyle.borderTopWidth),
           cardRects,
           resultRects,
+          timingHeadingContent,
+          timingParagraphContents,
           splitRuleRects,
           splitRuleLabels,
           confirm: confirmRect,
@@ -98,6 +104,13 @@ test.describe('mobile lobby guide polish QA', () => {
         expect(card.x, '설명 카드가 팝업 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.dialog.x);
         expect(card.right, '설명 카드가 팝업 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.dialog.right + 1);
       });
+      expect(layout.timingHeadingContent).toContain('윷 던지기와 타이밍');
+      expect(layout.timingParagraphContents[0]).toContain('Perfect');
+      expect(layout.timingParagraphContents[0]).toContain('Nice');
+      expect(layout.timingParagraphContents[0]).toContain('Good');
+      expect(layout.timingParagraphContents[0]).toContain('Bad');
+      expect(layout.timingParagraphContents[0]).toContain('45~55%');
+      expect(layout.timingParagraphContents[1]).toContain('10%·20%·60%');
       expect(layout.splitRuleLabels[0]).toContain('빽도');
       expect(layout.splitRuleLabels[1]).toContain('완주');
       expect(Math.abs(layout.splitRuleRects[0].y - layout.splitRuleRects[1].y), '빽도와 완주는 별도 카드로 같은 행에 구획되어야 합니다.').toBeLessThanOrEqual(1);

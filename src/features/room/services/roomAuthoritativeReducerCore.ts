@@ -60,7 +60,7 @@ const getNextLogId = (logs: unknown[]) => logs.reduce<number>((maxId, log) => {
   return maxId;
 }, 0) + 1;
 const makeAuthoritativeLog = (logs: unknown[], text: string): AuthoritativeLog => ({ id: getNextLogId(logs), text });
-const isValidRollTimingZone = (value: unknown): value is RollTimingZone => value === 'perfect' || value === 'good' || value === 'normal';
+const isValidRollTimingZone = (value: unknown): value is RollTimingZone => value === 'perfect' || value === 'nice' || value === 'good' || value === 'bad';
 const isAllowedGoldenYutResult = (value: unknown): value is YutResult => {
   if (!value || typeof value !== 'object') return false;
   const result = value as Partial<YutResult>;
@@ -71,7 +71,7 @@ const getAuthoritativeRoll = (payload: Record<string, unknown> | undefined) => {
   if (isAllowedGoldenYutResult(selectedGoldenYutResult)) return selectedGoldenYutResult;
   const clientRollResult = payload?.clientRollResult;
   if (isAllowedGoldenYutResult(clientRollResult)) return clientRollResult;
-  const timingZone = isValidRollTimingZone(payload?.rollTimingZone) ? payload.rollTimingZone : 'normal';
+  const timingZone = isValidRollTimingZone(payload?.rollTimingZone) ? payload.rollTimingZone : 'bad';
   return rollYutResultWithTiming(timingZone).result;
 };
 const makeActionReject = (reason: string): AuthoritativeActionResult => ({ status: 'rejected', reason });
@@ -637,7 +637,6 @@ function reduceUseItem(state: SyncedGameStateShape, action: Omit<GameActionShape
       payload: { activeSeatId: action.actorId, itemType, pieceId: piece.id, nodeIds },
     };
   }
-
   if (itemType === 'move_plus_one' || itemType === 'move_minus_one') {
     const delta = itemType === 'move_plus_one' ? 1 : -1;
     const stackIndex = room.stackedRollMode ? (typeof action.payload?.rollStackIndex === 'number' ? Number(action.payload.rollStackIndex) : getSelectedStackIndex(state)) : null;

@@ -28,6 +28,8 @@ import './styles/lobby-header-badges.css';
 import './styles/shared-sound-badge.css';
 import './styles/waiting-room-qa-regression-fix.css';
 import './styles/waiting-room-empty-seat-fix.css';
+import './styles/roll-timing-grades.css';
+import './styles/lobby-guide-timing-grades.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
