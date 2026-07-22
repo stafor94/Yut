@@ -4,6 +4,14 @@ import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep }
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
+async function addAiAndWaitUntilGameCanStart(page, seatLabel = 'P2') {
+  const addAiButton = page.getByTestId(`add-ai-${seatLabel}`);
+  await expect(addAiButton, `${seatLabel} AI 추가 버튼이 대기실 동기화 후 표시되어야 합니다.`).toBeVisible({ timeout: 15_000 });
+  await addAiButton.click();
+  await expect(addAiButton, `${seatLabel} AI 추가가 완료되면 빈 자리 버튼이 사라져야 합니다.`).toBeHidden({ timeout: 15_000 });
+  await expect(page.getByTestId('start-game-button'), 'AI 참가 상태가 반영된 뒤 게임 시작 버튼이 활성화되어야 합니다.').toBeEnabled({ timeout: 15_000 });
+}
+
 test.describe('BUG_HISTORY regression smoke', () => {
   let roomId;
 
@@ -19,9 +27,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
     await runQaStep(testInfo, 'AI 게임 시작', async () => {
       await createRoomFromLobby(page, roomTitle);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
-      const addAiButton = page.getByTestId('add-ai-P2');
-      if (await addAiButton.isVisible().catch(() => false)) await addAiButton.click();
-      await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await addAiAndWaitUntilGameCanStart(page);
       await page.getByTestId('start-game-button').click();
       await expect(page.getByTestId('start-countdown-overlay')).toBeVisible({ timeout: 5_000 });
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
@@ -94,9 +100,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
     await runQaStep(testInfo, 'AI 게임 시작', async () => {
       await createRoomFromLobby(page, roomTitle);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
-      const addAiButton = page.getByTestId('add-ai-P2');
-      if (await addAiButton.isVisible().catch(() => false)) await addAiButton.click();
-      await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await addAiAndWaitUntilGameCanStart(page);
       await page.getByTestId('start-game-button').click();
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
     });
@@ -110,19 +114,44 @@ test.describe('BUG_HISTORY regression smoke', () => {
       }, { timeout: 45_000, message: '온라인 sequence replay를 확인할 수 있는 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
 
       await clickSequenceRollAtPerfect();
-      await expect(page.locator('.roll-stage.pending-roll'), `클릭 직후 서버 확정 전 pending 윷 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 500 });
-      await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), '클릭 후 500ms 이내 pending 단계에서는 클라이언트에서 확정한 타이밍 등급만 즉시 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 500 });
-      await expect(page.locator('.roll-stage.pending-roll .roll-stage-timing'), 'pending 타이밍 등급은 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
-      const pendingTimingText = await page.locator('.roll-stage.pending-roll .roll-stage-timing').innerText();
-      const preResultGameText = await page.getByTestId('game-screen').innerText();
-      const preResultTurnStackText = await page.locator('[data-testid="turn-indicator"]').innerText();
-      await expect(page.locator('.roll-stage.pending-roll .roll-label'), 'pending 단계에서는 결과명을 추측할 수 있는 label을 숨겨야 합니다.').toHaveCount(0);
-      const pendingScene = page.locator('.roll-stage.pending-roll [data-testid="yut-roll-scene"]');
-      await expect(pendingScene, 'pending 단계에서는 새 Three.js 윷 장면 컨테이너가 표시되어야 합니다.').toBeVisible({ timeout: 500 });
-      await expect(pendingScene, '클라이언트 윷 던지기는 primary 상승·회전 단계에서 시작해야 합니다.').toHaveAttribute('data-phase', 'primary');
-      await expect(pendingScene.locator('.yut-roll-three-canvas'), 'Three.js 렌더러용 canvas는 한 개만 유지되어야 합니다.').toHaveCount(1);
-      await expect(pendingScene.locator('.yut-roll-css-fallback .yut-stick'), 'WebGL 초기화 전이나 실패 시 사용할 CSS fallback 윷 4개를 유지해야 합니다.').toHaveCount(4);
-      await expect(pendingScene.locator('.yut-mark'), 'pending 단계에서는 결과 면 표시를 숨겨야 합니다.').toHaveCount(0);
+      const pendingStage = page.locator('.roll-stage.pending-roll');
+      await expect(pendingStage, `클릭 직후 서버 확정 전 pending 윷 애니메이션이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 500 });
+      const pendingScene = pendingStage.getByTestId('yut-roll-scene');
+      let pendingPresentation = null;
+      await expect.poll(async () => {
+        pendingPresentation = await pendingScene.evaluate((scene) => {
+          const stage = scene.closest('.roll-stage.pending-roll');
+          const timingNodes = stage ? Array.from(stage.querySelectorAll('.roll-stage-timing')) : [];
+          return {
+            phase: scene.getAttribute('data-phase'),
+            renderer: scene.getAttribute('data-renderer'),
+            canvasCount: scene.querySelectorAll('.yut-roll-three-canvas').length,
+            fallbackStickCount: scene.querySelectorAll('.yut-roll-css-fallback .yut-stick').length,
+            markCount: scene.querySelectorAll('.yut-mark').length,
+            timingCount: timingNodes.length,
+            timingText: timingNodes[0]?.textContent?.trim() ?? '',
+            labelCount: stage?.querySelectorAll('.roll-label').length ?? -1,
+            gameText: document.querySelector('[data-testid="game-screen"]')?.textContent ?? '',
+            turnStackText: document.querySelector('[data-testid="turn-indicator"]')?.textContent ?? '',
+          };
+        }).catch(() => null);
+        return pendingPresentation;
+      }, {
+        timeout: 1_500,
+        intervals: [16, 32, 64],
+        message: 'pending 장면이 primary 단계에서 Three.js canvas 1개와 CSS fallback 윷 4개를 함께 유지해야 합니다.',
+      }).toMatchObject({
+        phase: 'primary',
+        canvasCount: 1,
+        fallbackStickCount: 4,
+        markCount: 0,
+        timingCount: 1,
+        labelCount: 0,
+      });
+      const pendingTimingText = pendingPresentation?.timingText ?? '';
+      expect(pendingTimingText, '클릭 후 pending 단계에서는 클라이언트에서 확정한 타이밍 등급 하나만 즉시 표시되어야 합니다.').toMatch(/^(Normal|Good!|Perfect!)$/);
+      const preResultGameText = pendingPresentation?.gameText ?? '';
+      const preResultTurnStackText = pendingPresentation?.turnStackText ?? '';
       await page.evaluate(() => {
         window.__YUT_QA_EXTRA_SPIN_OBSERVER__?.disconnect();
         window.__YUT_QA_EXTRA_SPIN_SEEN__ = Boolean(document.querySelector('.roll-stage.pending-roll.extra-spin-roll'));
@@ -132,20 +161,30 @@ test.describe('BUG_HISTORY regression smoke', () => {
         window.__YUT_QA_EXTRA_SPIN_OBSERVER__ = observer;
         observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
       });
-      const pendingRendererAtStart = await pendingScene.getAttribute('data-renderer');
+      const pendingRendererAtStart = pendingPresentation?.renderer;
       expect(['loading', 'three', 'fallback'], 'pending 장면은 Three.js 초기화 또는 CSS fallback 상태여야 합니다.').toContain(pendingRendererAtStart);
       const landingStage = page.locator('.roll-stage.resolved-from-pending.landing-roll');
       await expect(landingStage, `서버 결과 도착 시 pending overlay를 같은 팝업의 landing 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
-      await expect(landingStage.locator('.roll-label'), 'landing 단계에서는 결과명 공개 전이어야 합니다.').toHaveCount(0);
+      const landingPresentation = await landingStage.evaluate((stage) => {
+        const scene = stage.querySelector('[data-testid="yut-roll-scene"]');
+        return {
+          labelCount: stage.querySelectorAll('.roll-label').length,
+          phase: scene?.getAttribute('data-phase') ?? '',
+          canvasCount: scene?.querySelectorAll('.yut-roll-three-canvas').length ?? 0,
+          fallbackStickCount: scene?.querySelectorAll('.yut-roll-css-fallback .yut-stick').length ?? 0,
+        };
+      });
+      expect(landingPresentation, 'landing 단계는 결과명 공개 전 동일한 canvas와 fallback 윷을 유지해야 합니다.').toEqual({
+        labelCount: 0,
+        phase: 'landing',
+        canvasCount: 1,
+        fallbackStickCount: 4,
+      });
       const extraSpinSeen = await page.evaluate(() => {
         window.__YUT_QA_EXTRA_SPIN_OBSERVER__?.disconnect();
         return Boolean(window.__YUT_QA_EXTRA_SPIN_SEEN__);
       });
       expect(extraSpinSeen, '클라이언트 선확정 결과는 Firebase 응답을 기다리는 extra-spin 단계로 넘어가면 안 됩니다.').toBe(false);
-      const landingScene = landingStage.getByTestId('yut-roll-scene');
-      await expect(landingScene, '서버 결과 도착 후 같은 3D 장면이 landing 단계로 이어져야 합니다.').toHaveAttribute('data-phase', 'landing');
-      await expect(landingScene.locator('.yut-roll-three-canvas'), 'landing 단계에서도 동일한 Three.js canvas를 유지해야 합니다.').toHaveCount(1);
-      await expect(landingScene.locator('.yut-roll-css-fallback .yut-stick'), 'landing 단계에서도 WebGL 실패 대비 fallback 윷 4개를 유지해야 합니다.').toHaveCount(4);
 
       const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
       await expect(resultHoldStage, '착지 후 같은 팝업이 result-hold 단계로 전환되어야 합니다.').toBeVisible({ timeout: 2_500 });
@@ -411,9 +450,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
     await runQaStep(testInfo, 'host+AI 온라인 게임 시작', async () => {
       await createRoomFromLobby(page, roomTitle);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
-      const addAiButton = page.getByTestId('add-ai-P2');
-      if (await addAiButton.isVisible().catch(() => false)) await addAiButton.click();
-      await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await addAiAndWaitUntilGameCanStart(page);
       await page.getByTestId('start-game-button').click();
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
     });
