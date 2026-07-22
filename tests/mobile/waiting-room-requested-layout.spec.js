@@ -40,7 +40,7 @@ test.describe('requested waiting-room title and role layout QA', () => {
     });
   });
 
-  test('방 제목·설정 옵션·사람 역할 배지가 모바일 대기실 카드 안에 정상 배치된다', async ({ page, context, browser }, testInfo) => {
+  test('방 제목·설정 옵션·팀 색상·사람 역할 배지가 모바일 대기실 카드 안에 정상 배치된다', async ({ page, context, browser }, testInfo) => {
     test.slow();
     const hostNickname = '방장검증';
     const guestNickname = '참가검증';
@@ -49,33 +49,46 @@ test.describe('requested waiting-room title and role layout QA', () => {
     let guestContext;
 
     await primeLobbyStorage(context, { nickname: hostNickname, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
-    await runQaStep(testInfo, '방 설정 카드와 사람 역할 배지 geometry 확인', async () => {
+    await runQaStep(testInfo, '방 설정 카드, 팀 색상과 사람 역할 배지 geometry 확인', async () => {
       try {
         await createRoomFromLobby(page, roomTitle);
         roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
 
         const setupCard = page.locator('.waiting-setup-card');
+        const settingsToggle = page.getByTestId('waiting-room-settings-toggle');
         await expect(page.locator('.waiting-header')).toHaveCount(0);
-        await expect(setupCard.getByTestId('waiting-room-title')).toHaveText(roomTitle);
+        await expect(setupCard.locator('.waiting-room-title-block')).toHaveCount(0);
+        await expect(setupCard.getByText('방 제목', { exact: true })).toHaveCount(0);
+        await expect(settingsToggle.getByTestId('waiting-room-title')).toHaveText(roomTitle);
         await expect(page.getByTestId('waiting-room-title')).toHaveCount(1);
-        await expect(page.getByTestId('waiting-room-settings-toggle')).toHaveAttribute('aria-expanded', 'true');
+        await expect(settingsToggle).toHaveAttribute('aria-expanded', 'true');
         await expect(page.getByRole('group', { name: '진행' })).toBeVisible();
 
         const settingsLayout = await setupCard.evaluate((element) => {
           const title = element.querySelector('[data-testid="waiting-room-title"]');
           const progressLegend = element.querySelector('.play-mode-group legend');
           const stackedOff = element.querySelector('.stacked-roll-mode-group label:has(input:checked)');
-          if (!(title instanceof HTMLElement) || !(progressLegend instanceof HTMLElement) || !(stackedOff instanceof HTMLElement)) return null;
+          const settingsContent = element.querySelector('.waiting-settings-content');
+          if (!(title instanceof HTMLElement) || !(progressLegend instanceof HTMLElement) || !(stackedOff instanceof HTMLElement) || !(settingsContent instanceof HTMLElement)) return null;
           const box = (target) => {
             const rect = target.getBoundingClientRect();
             return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height };
           };
+          const cardBox = box(element);
+          const cardStyle = getComputedStyle(element);
+          const contentStyle = getComputedStyle(settingsContent);
+          const innerLeft = cardBox.left + Number.parseFloat(cardStyle.borderLeftWidth) + Number.parseFloat(cardStyle.paddingLeft);
+          const innerRight = cardBox.right - Number.parseFloat(cardStyle.borderRightWidth) - Number.parseFloat(cardStyle.paddingRight);
           return {
-            card: box(element),
+            card: cardBox,
             title: box(title),
             progressLegend: box(progressLegend),
             stackedOff: box(stackedOff),
             stackedOffText: stackedOff.textContent?.trim() ?? '',
+            innerLeft,
+            innerRight,
+            cardOverflow: cardStyle.overflow,
+            contentOverflow: contentStyle.overflow,
             clientWidth: document.documentElement.clientWidth,
             scrollWidth: document.documentElement.scrollWidth,
           };
@@ -89,12 +102,34 @@ test.describe('requested waiting-room title and role layout QA', () => {
           expect(target.top, `${key} 위쪽이 카드 밖으로 잘리면 안 됩니다.`).toBeGreaterThanOrEqual(settingsLayout.card.top - 1);
           expect(target.bottom, `${key} 아래쪽이 카드 밖으로 잘리면 안 됩니다.`).toBeLessThanOrEqual(settingsLayout.card.bottom + 1);
         }
+        for (const key of ['progressLegend', 'stackedOff']) {
+          const target = settingsLayout[key];
+          expect(target.left, `${key} 왼쪽이 카드의 둥근 모서리 안쪽 여백을 침범하면 안 됩니다.`).toBeGreaterThanOrEqual(settingsLayout.innerLeft - 1);
+          expect(target.right, `${key} 오른쪽이 카드의 둥근 모서리 안쪽 여백을 침범하면 안 됩니다.`).toBeLessThanOrEqual(settingsLayout.innerRight + 1);
+        }
+        expect(settingsLayout.cardOverflow).toBe('visible');
+        expect(settingsLayout.contentOverflow).toBe('visible');
         expect(settingsLayout.stackedOffText).toBe('OFF');
         expect(settingsLayout.scrollWidth, '방 설정 옵션 때문에 가로 스크롤이 생기면 안 됩니다.').toBeLessThanOrEqual(settingsLayout.clientWidth);
 
         const hostCard = page.locator('.compact-ready-card').filter({ hasText: 'P1' }).first();
         await expect(hostCard).toContainText(hostNickname);
         expectRoleAboveNickname(await readHumanRoleLayout(hostCard), '방장', hostNickname);
+
+        await page.getByRole('radio', { name: '팀전' }).check();
+        await expect(page.getByTestId('waiting-room-settings-summary')).toContainText('팀전');
+        const blueTeamCard = page.locator('.compact-ready-card.blue-team').filter({ hasText: 'P1' }).first();
+        const redTeamCard = page.locator('.compact-ready-card.red-team').filter({ hasText: 'P2' }).first();
+        const activeBlue = blueTeamCard.locator('.team-card-option.blue.active');
+        const activeRed = redTeamCard.locator('.team-card-option.red.active');
+        await expect(activeBlue).toHaveText('청팀');
+        await expect(activeRed).toHaveText('홍팀');
+        const teamColors = await Promise.all([
+          activeBlue.evaluate((element) => getComputedStyle(element).backgroundColor),
+          activeRed.evaluate((element) => getComputedStyle(element).backgroundColor),
+        ]);
+        expect(teamColors[0]).toBe('rgb(37, 99, 235)');
+        expect(teamColors[1]).toBe('rgb(214, 69, 69)');
 
         guestContext = await browser.newContext({
           baseURL: testInfo.project.use.baseURL,
@@ -105,10 +140,12 @@ test.describe('requested waiting-room title and role layout QA', () => {
         await joinRoomFromLobby(guestPage, roomTitle);
 
         const guestSetupCard = guestPage.locator('.waiting-setup-card');
+        const guestSettingsLabel = guestPage.getByTestId('waiting-room-settings-label');
         await expect(guestPage.locator('.waiting-header')).toHaveCount(0);
-        await expect(guestSetupCard.getByTestId('waiting-room-title')).toHaveText(roomTitle);
+        await expect(guestSetupCard.locator('.waiting-room-title-block')).toHaveCount(0);
+        await expect(guestSettingsLabel.getByTestId('waiting-room-title')).toHaveText(roomTitle);
         await expect(guestPage.getByTestId('waiting-room-settings-toggle')).toHaveCount(0);
-        await expect(guestPage.getByTestId('waiting-room-settings-label')).toBeVisible();
+        await expect(guestSettingsLabel).toBeVisible();
 
         const guestHostCard = guestPage.locator('.compact-ready-card').filter({ hasText: 'P1' }).first();
         const guestPlayerCard = guestPage.locator('.compact-ready-card').filter({ hasText: 'P2' }).first();
