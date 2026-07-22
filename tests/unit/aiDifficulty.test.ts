@@ -42,23 +42,27 @@ test('runtime difficulty is kept per AI seat', () => {
   clearRuntimeAiDifficulties();
 });
 
-test('easy AI roll timing uses 20/40/40 boundaries', () => {
-  assert.equal(chooseAiRollTimingZone('easy', () => 0.1999), 'perfect');
-  assert.equal(chooseAiRollTimingZone('easy', () => 0.2), 'good');
-  assert.equal(chooseAiRollTimingZone('easy', () => 0.5999), 'good');
-  assert.equal(chooseAiRollTimingZone('easy', () => 0.6), 'normal');
+test('easy AI roll timing uses 10/20/50/20 boundaries', () => {
+  assert.equal(chooseAiRollTimingZone('easy', () => 0.0999), 'perfect');
+  assert.equal(chooseAiRollTimingZone('easy', () => 0.1), 'nice');
+  assert.equal(chooseAiRollTimingZone('easy', () => 0.2999), 'nice');
+  assert.equal(chooseAiRollTimingZone('easy', () => 0.3), 'good');
+  assert.equal(chooseAiRollTimingZone('easy', () => 0.7999), 'good');
+  assert.equal(chooseAiRollTimingZone('easy', () => 0.8), 'bad');
 });
 
-test('hard AI roll timing keeps 30/40/30 boundaries', () => {
+test('hard AI roll timing uses 30/40/20/10 boundaries', () => {
   assert.equal(chooseAiRollTimingZone('hard', () => 0.2999), 'perfect');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.3), 'good');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.6999), 'good');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.7), 'normal');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.3), 'nice');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.6999), 'nice');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.7), 'good');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.8999), 'good');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.9), 'bad');
 });
 
 test('legacy no-difficulty call reads the active AI difficulty', () => {
   setCurrentAiRollDifficulty('easy');
-  assert.equal(chooseAiRollTimingZone(() => 0.25), 'good');
+  assert.equal(chooseAiRollTimingZone(() => 0.25), 'nice');
   setCurrentAiRollDifficulty('hard');
   assert.equal(chooseAiRollTimingZone(() => 0.25), 'perfect');
 });
