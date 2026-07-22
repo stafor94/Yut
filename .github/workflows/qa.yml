@@ -49,8 +49,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  qa-online-flow:
-    name: QA online flow
+  qa-online-game-flow:
+    name: QA online game flow
     needs: build-and-unit
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -61,8 +61,8 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
       options: --user 1001
     env:
-      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-online-flow
-      QA_ROLE: online-flow
+      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-online-game-flow
+      QA_ROLE: online-game-flow
       QA_ALLOW_PRODUCTION_FIREBASE: '1'
       QA_CLEANUP_MODE: current-run
     steps:
@@ -83,25 +83,74 @@ jobs:
       - name: Run online start and authority QA
         run: |
           set -o pipefail
-          npm run test:qa-basic-flow -- --output=test-results/online-basic 2>&1 | tee playwright-qa-online-basic.log
-      - name: Run room lifecycle QA
-        run: |
-          set -o pipefail
-          npm run test:qa-room-lifecycle -- --output=test-results/room-lifecycle 2>&1 | tee playwright-qa-room-lifecycle.log
-      - name: Cleanup online-flow QA rooms
+          npm run test:qa-basic-flow -- --output=test-results/online-game-flow 2>&1 | tee playwright-qa-online-game-flow.log
+      - name: Cleanup online game-flow QA rooms
         if: always()
         run: |
           set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-online-flow.log
-      - name: Upload online-flow artifacts
+          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-online-game-flow.log
+      - name: Upload online game-flow artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-online-flow-results
+          name: qa-online-game-flow-results
           path: |
             test-results
-            playwright-qa-*.log
-            qa-cleanup-online-flow.log
+            playwright-qa-online-game-flow.log
+            qa-cleanup-online-game-flow.log
+            console-log.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+  qa-online-room-lifecycle:
+    name: QA online room lifecycle
+    needs: build-and-unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --user 1001
+    env:
+      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-online-room-lifecycle
+      QA_ROLE: online-room-lifecycle
+      QA_ALLOW_PRODUCTION_FIREBASE: '1'
+      QA_CLEANUP_MODE: current-run
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Download built app
+        uses: actions/download-artifact@v4
+        with:
+          name: build-and-unit
+      - name: Verify dist exists
+        run: test -d dist
+      - name: Prepare production Firebase helper environment
+        run: node .github/scripts/write-firebase-env.mjs
+      - name: Run room lifecycle QA
+        run: |
+          set -o pipefail
+          npm run test:qa-room-lifecycle -- --output=test-results/online-room-lifecycle 2>&1 | tee playwright-qa-online-room-lifecycle.log
+      - name: Cleanup room-lifecycle QA rooms
+        if: always()
+        run: |
+          set -o pipefail
+          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-online-room-lifecycle.log
+      - name: Upload room-lifecycle artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-online-room-lifecycle-results
+          path: |
+            test-results
+            playwright-qa-online-room-lifecycle.log
+            qa-cleanup-online-room-lifecycle.log
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
@@ -213,8 +262,18 @@ jobs:
           retention-days: 7
 
   qa-mobile-layout:
-    name: QA mobile and tablet layout
+    name: QA ${{ matrix.label }} layout
     needs: build-and-unit
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: mobile-galaxy
+            label: Galaxy
+            role: mobile-galaxy
+          - project: tablet-ipad
+            label: iPad
+            role: tablet-ipad
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -224,8 +283,8 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
       options: --user 1001
     env:
-      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-mobile-layout
-      QA_ROLE: mobile-layout
+      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.role }}
+      QA_ROLE: ${{ matrix.role }}
       QA_ALLOW_PRODUCTION_FIREBASE: '1'
       QA_CLEANUP_MODE: current-run
     steps:
@@ -243,24 +302,24 @@ jobs:
         run: test -d dist
       - name: Prepare production Firebase helper environment
         run: node .github/scripts/write-firebase-env.mjs
-      - name: Run Galaxy and iPad layout QA
+      - name: Run ${{ matrix.label }} layout QA
         run: |
           set -o pipefail
-          npm run test:qa-mobile-layout -- --output=test-results/mobile-layout 2>&1 | tee playwright-qa-mobile-layout.log
-      - name: Cleanup mobile-layout QA rooms
+          npm run test:qa-mobile-layout -- --project=${{ matrix.project }} --output=test-results/${{ matrix.role }} 2>&1 | tee playwright-qa-${{ matrix.role }}.log
+      - name: Cleanup ${{ matrix.label }} QA rooms
         if: always()
         run: |
           set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-mobile-layout.log
-      - name: Upload mobile-layout artifacts
+          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-${{ matrix.role }}.log
+      - name: Upload ${{ matrix.label }} artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-mobile-layout-results
+          name: qa-${{ matrix.role }}-results
           path: |
             test-results
-            playwright-qa-mobile-layout.log
-            qa-cleanup-mobile-layout.log
+            playwright-qa-${{ matrix.role }}.log
+            qa-cleanup-${{ matrix.role }}.log
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
@@ -268,7 +327,7 @@ jobs:
   qa-orphan-cleanup:
     name: Cleanup current and orphan QA rooms
     if: always()
-    needs: [qa-online-flow, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout]
+    needs: [qa-online-game-flow, qa-online-room-lifecycle, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -303,7 +362,7 @@ jobs:
 
   deploy-pages:
     name: Deploy GitHub Pages
-    needs: [build-and-unit, qa-online-flow, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout, qa-orphan-cleanup]
+    needs: [build-and-unit, qa-online-game-flow, qa-online-room-lifecycle, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout, qa-orphan-cleanup]
     if: github.ref == 'refs/heads/main' && success()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -330,7 +389,7 @@ jobs:
   summarize-qa-result:
     name: Summarize QA result
     if: always()
-    needs: [build-and-unit, qa-online-flow, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout, qa-orphan-cleanup, deploy-pages]
+    needs: [build-and-unit, qa-online-game-flow, qa-online-room-lifecycle, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout, qa-orphan-cleanup, deploy-pages]
     runs-on: ubuntu-latest
     steps:
       - name: Download QA artifacts
@@ -342,7 +401,8 @@ jobs:
       - name: Write QA summary
         env:
           BUILD_RESULT: ${{ needs.build-and-unit.result }}
-          ONLINE_RESULT: ${{ needs.qa-online-flow.result }}
+          ONLINE_GAME_RESULT: ${{ needs.qa-online-game-flow.result }}
+          ONLINE_LIFECYCLE_RESULT: ${{ needs.qa-online-room-lifecycle.result }}
           ROLL_RESULT: ${{ needs.qa-roll-movement.result }}
           LOBBY_RESULT: ${{ needs.qa-lobby-desktop.result }}
           MOBILE_RESULT: ${{ needs.qa-mobile-layout.result }}
@@ -355,7 +415,8 @@ jobs:
             echo '| 단계 | 결과 |'
             echo '|---|---|'
             echo "| Build and unit | \`$BUILD_RESULT\` |"
-            echo "| Online flow | \`$ONLINE_RESULT\` |"
+            echo "| Online game flow | \`$ONLINE_GAME_RESULT\` |"
+            echo "| Online room lifecycle | \`$ONLINE_LIFECYCLE_RESULT\` |"
             echo "| Roll and movement | \`$ROLL_RESULT\` |"
             echo "| Desktop lobby | \`$LOBBY_RESULT\` |"
             echo "| Mobile and tablet | \`$MOBILE_RESULT\` |"
