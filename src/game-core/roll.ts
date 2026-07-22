@@ -3,7 +3,7 @@ import { getCurrentAiRollDifficulty, type AiDifficulty } from './aiDifficulty';
 export type YutResultName = '빽도' | '도' | '개' | '걸' | '윷' | '모' | '황금 윷';
 export type YutResult = { name: YutResultName; steps: number; bonus?: boolean };
 export type YutStick = { flat: boolean; marked: boolean };
-export type RollTimingZone = 'perfect' | 'good' | 'normal';
+export type RollTimingZone = 'perfect' | 'nice' | 'good' | 'bad';
 
 export const STANDARD_YUT_RESULTS: YutResult[] = [
   { name: '도', steps: 1 },
@@ -37,8 +37,9 @@ export function rollYutResult(random = Math.random, useBackDo = true) {
   return { sticks, result: getYutResultFromSticks(sticks, useBackDo) };
 }
 
+/** The visible timing orb takes 1 second per direction, so a full round trip is 2 seconds. */
 export function getRollTimingPositionPercent(elapsedMs: number) {
-  const cycleMs = 1000;
+  const cycleMs = 2000;
   const halfCycleMs = cycleMs / 2;
   const cyclePosition = ((elapsedMs % cycleMs) + cycleMs) % cycleMs;
   const ratio = cyclePosition <= halfCycleMs ? cyclePosition / halfCycleMs : (cycleMs - cyclePosition) / halfCycleMs;
@@ -47,14 +48,16 @@ export function getRollTimingPositionPercent(elapsedMs: number) {
 
 export function getRollTimingZone(positionPercent: number): RollTimingZone {
   if (positionPercent >= 45 && positionPercent <= 55) return 'perfect';
-  if ((positionPercent >= 35 && positionPercent < 45) || (positionPercent > 55 && positionPercent <= 65)) return 'good';
-  return 'normal';
+  if ((positionPercent >= 40 && positionPercent < 45) || (positionPercent > 55 && positionPercent <= 60)) return 'nice';
+  if ((positionPercent >= 20 && positionPercent < 40) || (positionPercent > 60 && positionPercent <= 80)) return 'good';
+  return 'bad';
 }
 
 export function getFallChanceForTimingZone(zone: RollTimingZone) {
   if (zone === 'perfect') return 0;
-  if (zone === 'good') return 0.1;
-  return 0.4;
+  if (zone === 'nice') return 0.1;
+  if (zone === 'good') return 0.2;
+  return 0.6;
 }
 
 export function shouldFallForTimingZone(zone: RollTimingZone, random = Math.random) {
@@ -67,14 +70,19 @@ export function chooseAiRollTimingZone(difficultyOrRandom?: AiDifficulty | (() =
   const difficulty = typeof difficultyOrRandom === 'string' ? difficultyOrRandom : getCurrentAiRollDifficulty();
   const random = typeof difficultyOrRandom === 'function' ? difficultyOrRandom : providedRandom;
   const roll = random();
-  const perfectUpperBound = difficulty === 'easy' ? 0.2 : 0.3;
-  const goodUpperBound = difficulty === 'easy' ? 0.6 : 0.7;
-  if (roll < perfectUpperBound) return 'perfect';
-  if (roll < goodUpperBound) return 'good';
-  return 'normal';
+  if (difficulty === 'easy') {
+    if (roll < 0.1) return 'perfect';
+    if (roll < 0.3) return 'nice';
+    if (roll < 0.8) return 'good';
+    return 'bad';
+  }
+  if (roll < 0.3) return 'perfect';
+  if (roll < 0.7) return 'nice';
+  if (roll < 0.9) return 'good';
+  return 'bad';
 }
 
-export function rollYutResultWithTiming(zone: RollTimingZone = 'normal', random = Math.random, useBackDo = true) {
+export function rollYutResultWithTiming(zone: RollTimingZone = 'bad', random = Math.random, useBackDo = true) {
   if (zone !== 'perfect') return rollYutResult(random, useBackDo);
   const resultRoll = random();
   const backDoChance = useBackDo ? 0.0625 : 0;
