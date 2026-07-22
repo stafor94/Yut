@@ -26,7 +26,8 @@ test.describe('mobile lobby guide polish QA', () => {
         const header = element.querySelector('.howto-fixed-header');
         const body = element.querySelector('.howto-scroll-body');
         const footer = element.querySelector('.howto-fixed-footer');
-        if (cards.length !== 4 || resultItems.length !== 6 || !(confirm instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement)) return null;
+        const splitRuleParagraphs = cards[3] ? Array.from(cards[3].querySelectorAll('p')) : [];
+        if (cards.length !== 4 || resultItems.length !== 6 || splitRuleParagraphs.length !== 2 || !(confirm instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement)) return null;
         const rect = (target) => {
           const box = target.getBoundingClientRect();
           return { x: box.x, y: box.y, width: box.width, height: box.height, right: box.right, bottom: box.bottom };
@@ -34,7 +35,10 @@ test.describe('mobile lobby guide polish QA', () => {
         const dialogRect = element.getBoundingClientRect();
         const cardRects = cards.map(rect);
         const resultRects = resultItems.map(rect);
+        const splitRuleRects = splitRuleParagraphs.map(rect);
+        const splitRuleLabels = splitRuleParagraphs.map((paragraph) => getComputedStyle(paragraph, '::before').content);
         const confirmRect = rect(confirm);
+        const footerStyle = getComputedStyle(footer);
         body.scrollTop = 42;
         const changedScrollTop = body.scrollTop;
         body.scrollTop = body.scrollHeight;
@@ -56,13 +60,19 @@ test.describe('mobile lobby guide polish QA', () => {
           bodyBottom: body.getBoundingClientRect().bottom,
           header: rect(header),
           footer: rect(footer),
+          footerBackgroundImage: footerStyle.backgroundImage,
+          footerBoxShadow: footerStyle.boxShadow,
+          footerBorderTopWidth: Number.parseFloat(footerStyle.borderTopWidth),
           cardRects,
           resultRects,
+          splitRuleRects,
+          splitRuleLabels,
           confirm: confirmRect,
           confirmPosition: getComputedStyle(confirm).position,
           yutBonusContent: yutBonus.content,
           moBonusContent: moBonus.content,
           dialogHeight: dialogRect.height,
+          dialogCenterOffset: Math.abs((dialogRect.top + dialogRect.bottom) / 2 - window.innerHeight / 2),
         };
       });
 
@@ -73,7 +83,9 @@ test.describe('mobile lobby guide polish QA', () => {
       expect(layout.dialog.right, '팝업 오른쪽이 화면 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewportWidth + 1);
       expect(layout.dialog.y, '팝업 상단이 화면 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
       expect(layout.dialog.bottom, '팝업 하단이 화면 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
-      expect(layout.dialogHeight, '게임 방법 팝업이 화면 전체를 과도하게 덮으면 안 됩니다.').toBeLessThanOrEqual(layout.viewportHeight - 12);
+      expect(layout.dialogHeight, '게임 방법 팝업 높이는 화면의 약 70%여야 합니다.').toBeGreaterThanOrEqual(layout.viewportHeight * 0.68);
+      expect(layout.dialogHeight, '게임 방법 팝업 높이는 화면의 약 70%여야 합니다.').toBeLessThanOrEqual(layout.viewportHeight * 0.72);
+      expect(layout.dialogCenterOffset, '게임 방법 팝업은 화면 중앙에 배치되어야 합니다.').toBeLessThanOrEqual(2);
       expect(layout.overflowY, '팝업 전체가 스크롤 컨테이너가 되면 안 됩니다.').toBe('hidden');
       expect(layout.bodyOverflowY, '중앙 영역에서만 스크롤할 수 있어야 합니다.').toBe('auto');
       expect(layout.bodyScrollHeight).toBeGreaterThan(layout.bodyClientHeight);
@@ -86,6 +98,13 @@ test.describe('mobile lobby guide polish QA', () => {
         expect(card.x, '설명 카드가 팝업 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.dialog.x);
         expect(card.right, '설명 카드가 팝업 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.dialog.right + 1);
       });
+      expect(layout.splitRuleLabels[0]).toContain('빽도');
+      expect(layout.splitRuleLabels[1]).toContain('완주');
+      expect(Math.abs(layout.splitRuleRects[0].y - layout.splitRuleRects[1].y), '빽도와 완주는 별도 카드로 같은 행에 구획되어야 합니다.').toBeLessThanOrEqual(1);
+      expect(layout.splitRuleRects[1].x, '완주 구획은 빽도 구획 오른쪽에 분리되어야 합니다.').toBeGreaterThan(layout.splitRuleRects[0].right);
+      expect(layout.footerBackgroundImage, '확인 버튼 주위에 별도 사각 배경이 없어야 합니다.').toBe('none');
+      expect(layout.footerBoxShadow, '확인 버튼 주위에 별도 그림자가 없어야 합니다.').toBe('none');
+      expect(layout.footerBorderTopWidth, '확인 버튼 주위에 별도 경계선이 없어야 합니다.').toBe(0);
       expect(layout.confirmPosition, '확인 버튼은 footer 안에서 접근 가능해야 합니다.').toBe('static');
       expect(layout.confirm.bottom, '확인 버튼은 처음부터 화면 안에 보여야 합니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
       expect(layout.yutBonusContent).toContain('한 번 더');
