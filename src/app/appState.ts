@@ -74,7 +74,7 @@ export type SequenceStateSnapshot = Partial<{
   turnOrderPhase: TurnOrderPhase | null;
   waitingForPlayersReady: boolean;
   turnDeadlineAt: number;
-  turnDeadlineKind: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
+  turnDeadlineKind: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
   gameSeats: GameSeatSnapshot[];
   startRequestVersion: number;
   turnVersion: number;
@@ -114,7 +114,7 @@ export type GameStateFingerprintInput = {
   turnOrderPhase: TurnOrderPhase | null;
   waitingForPlayersReady: boolean;
   turnDeadlineAt?: number;
-  turnDeadlineKind?: 'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | '';
+  turnDeadlineKind?: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
   startRequestVersion: number;
   startRequestId?: string;
   fallEffect?: FallEffect | null;

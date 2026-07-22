@@ -5,6 +5,7 @@ import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getAdjacentBoardNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
+import { makeTimeoutActionKey, resolveGoldenYutTimeout, resolveMoveTimeout, resolveRollTimeout } from '../features/room/services/timeoutResolvers';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
 import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, requestRoomGameStart, resolveTurnOrderIntro, updateRoomOptions, updateRoomPlayer, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
 import { useRooms } from '../features/room/hooks/useRooms';
@@ -223,7 +224,7 @@ export function App() {
   const [turnOrderIntro, setTurnOrderIntro] = useState<TurnOrderIntro | null>(null);
   const [waitingForPlayersReady, setWaitingForPlayersReady] = useState(false);
   const [turnDeadlineAt, setTurnDeadlineAt] = useState(0);
-  const [turnDeadlineKind, setTurnDeadlineKind] = useState<'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | ''>('');
+  const [turnDeadlineKind, setTurnDeadlineKind] = useState<'roll' | 'move' | 'item_prompt' | 'trap_placement' | ''>('');
   const [turnOrderClock, setTurnOrderClock] = useState(() => Date.now());
   const [rollAnimation, setRollAnimation] = useState<RollAnimation | null>(null);
   const piecesRef = useRef<BoardPiece[]>([]);
@@ -2333,7 +2334,6 @@ export function App() {
     const turnKey = `${lastAppliedSequenceRef.current}:${turnIndex}:${roll ? `${roll.name}:${roll.steps}` : 'ready'}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (type === 'roll_yut') return `${type}:${localSeatId}:${turnKey}`;
     if (type === 'move_piece') return `${type}:${localSeatId}:${turnKey}:${payload.pieceId ?? ''}:${payload.extraSteps ?? 0}:${payload.branchChoice ?? ''}:stack:${payload.rollStackIndex ?? 'none'}`;
-    if (type === 'turn_order_roll') return `${type}:${payload.actorId ?? localSeatId}:${turnOrderPhase.index}:${turnOrderPhase.rolls.length}`;
     if (type === 'place_trap') return `${type}:${localSeatId}:${pendingTrapPlacement?.pieceId ?? ''}:${payload.nodeId ?? ''}`;
     return `${type}:${localSeatId}:${turnKey}:${payload.itemType ?? ''}:${payload.pieceId ?? ''}:stack:${payload.rollStackIndex ?? 'none'}:${payload.skipBeforeRollItem ? 'skip-before' : payload.skipAfterRollItem ? 'skip-after' : payload.skipAfterMoveItem ? 'skip-move' : ''}`;
   };
@@ -2920,8 +2920,9 @@ export function App() {
     if (turnRecoveryInFlightRef.current?.roomId === activeRoomId || timeoutRecoveryKeysRef.current.has(recoveryKey)) return false;
     turnRecoveryInFlightRef.current = { roomId: activeRoomId, token: recoveryToken };
     timeoutRecoveryKeysRef.current.add(recoveryKey);
-    const rollTimingZone: RollTimingZone = 'normal';
-    const actionKey = `roll_timeout:${recoveryKey}`;
+    const { rollTimingZone } = resolveRollTimeout(turnDeadlineAt);
+    const selectedGoldenYutResult = pendingGoldenYutSelection?.actorId === activeSeat.id ? resolveGoldenYutTimeout() : null;
+    const actionKey = makeTimeoutActionKey({ roomId: activeRoomId, stage: selectedGoldenYutResult ? 'golden_yut' : 'roll', actorId: activeSeat.id, timeoutDeadlineAt: turnDeadlineAt, sequence: lastAppliedSequenceRef.current, extra: recoveryKey });
     const action = {
       type: 'roll_yut' as const,
       actorId: activeSeat.id,
@@ -2931,6 +2932,7 @@ export function App() {
         timeoutRecoveredBy: localSeatId,
         timeoutSource: options.source ?? 'deadline',
         timeoutDeadlineAt: turnDeadlineAt,
+        ...(selectedGoldenYutResult ? { selectedGoldenYutResult } : {}),
         clientActionId: actionKey,
       }, activeSeat),
     };
@@ -2967,12 +2969,20 @@ export function App() {
 
     turnRecoveryInFlightRef.current = { roomId: activeRoomId, token: recoveryToken };
     stalledTurnRecoveryKeyRef.current = recoveryKey;
-    const payload = {
-      pieceId: stalledTurnFallbackPiece.id,
-      extraSteps: 0,
+    const timeoutMove = resolveMoveTimeout({
+      pieces,
+      selectedPieceId,
+      steps: roll.steps,
+      canControlPiece: (piece) => canSeatControlPiece(activeSeat, piece),
+      isSameSidePiece: (piece, selected) => isSameSide(getSeatById(piece.ownerId), getSeatById(selected.ownerId)),
       branchChoice: getEffectiveBranchChoice(stalledTurnFallbackPiece.nodeId, 'outer'),
+    });
+    const payload = {
+      pieceId: timeoutMove.reason === 'pass' ? '' : timeoutMove.pieceId,
+      extraSteps: 0,
+      branchChoice: timeoutMove.branchChoice,
       rollStackIndex: stalledTurnRollStackIndex,
-      clientActionId: `move_piece_recovery:${recoveryKey}:${stalledTurnFallbackPiece.id}`,
+      clientActionId: makeTimeoutActionKey({ roomId: activeRoomId, stage: 'move', actorId: activeSeat.id, timeoutDeadlineAt: turnDeadlineAt, sequence: lastAppliedSequenceRef.current, extra: `${recoveryKey}:${timeoutMove.pieceId}` }),
       recoveredByCoordinator: true,
       coordinatorSeatId: localSeatId,
       reason: options.source === 'manual-sync' ? 'manual-sync-stalled-roll-move-timeout' : 'stalled-roll-move-timeout',
@@ -3053,7 +3063,7 @@ export function App() {
       return;
     }
     if (!activeRoomId && !rollOptions.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
-    const rollTimingZone = rollOptions.timedOut ? 'normal' : getCurrentRollTimingZone(rollOptions.timingPositionPercent);
+    const rollTimingZone = rollOptions.timedOut && turnDeadlineAt ? resolveRollTimeout(turnDeadlineAt).rollTimingZone : getCurrentRollTimingZone(rollOptions.timingPositionPercent);
     setRollTimingFeedback(rollTimingZone);
     const clientRollResult = forcedRoll ?? rollYutResultWithTiming(rollTimingZone).result;
     const fallOccurred = !forcedRoll && shouldFallForTimingZone(rollTimingZone);
@@ -3066,6 +3076,7 @@ export function App() {
         clientFallOccurred: fallOccurred,
         clientFallCount: fallCount,
         ...(forcedRoll ? { selectedGoldenYutResult: forcedRoll } : {}),
+        ...(rollOptions.timedOut && turnDeadlineAt ? { timedOut: true, timeoutDeadlineAt: turnDeadlineAt, timeoutRecoveredBy: localSeatId } : {}),
       };
       const actionKey = `${getLocalActionKey('roll_yut', rollPayload)}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
       if (pendingLocalRemoteActionsRef.current.has(actionKey)) {

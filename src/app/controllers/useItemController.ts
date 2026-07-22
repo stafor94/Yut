@@ -44,7 +44,7 @@ type Params = {
   setItemPromptTiming: React.Dispatch<React.SetStateAction<ItemTiming | null>>;
   setPendingItemPromptChoice: React.Dispatch<React.SetStateAction<PendingItemPromptChoice>>;
   setTurnDeadlineAt: React.Dispatch<React.SetStateAction<number>>;
-  setTurnDeadlineKind: React.Dispatch<React.SetStateAction<'roll' | 'move' | 'turn_order' | 'item_prompt' | 'trap_placement' | ''>>;
+  setTurnDeadlineKind: React.Dispatch<React.SetStateAction<'roll' | 'move' | 'item_prompt' | 'trap_placement' | ''>>;
   setTurnIndex: React.Dispatch<React.SetStateAction<number>>;
   setPendingAfterMoveTurnIndex: React.Dispatch<React.SetStateAction<number | null>>;
   setFallEffect: React.Dispatch<React.SetStateAction<FallEffect | null>>;

@@ -33,7 +33,6 @@ test('fall turn advances and bonus rerolls share the same presentation lock', ()
   assert.equal(shouldWaitForGamePresentation('use_item'), true);
   assert.equal(shouldWaitForGamePresentation('place_trap'), true);
   assert.equal(shouldWaitForGamePresentation('item_pickup_decision'), true);
-  assert.equal(shouldWaitForGamePresentation('turn_order_roll'), false);
   assert.equal(shouldWaitForGamePresentation('continue_race'), false);
 });
 
@@ -93,7 +92,7 @@ test('non-gameplay actions do not wait for a roll presentation', async () => {
   const lock = createGamePresentationLock();
   const release = lock.acquire();
 
-  await waitForGamePresentationBeforeAction('turn_order_roll', lock);
+  await waitForGamePresentationBeforeAction('continue_race', lock);
   assert.equal(lock.isLocked(), true);
 
   release();
