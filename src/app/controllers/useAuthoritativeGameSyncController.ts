@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { commitAuthoritativeGameAction, withGameSequenceReplayCache, type GameAction } from '../../features/room/services/roomService';
+import { attachClientActionStartedAt } from '../../features/room/services/turnActionStartedAtPolicy';
 import type { SequenceStateSnapshot } from '../appState';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { buildAuthoritativeApplyWakeSnapshot } from '../flows/authoritativeApplyWakeFlow';
@@ -11,6 +12,7 @@ export type AuthoritativeCommitResult = Awaited<ReturnType<typeof commitAuthorit
 type RemoteActionType = GameAction['type'];
 type PendingMeta = { type?: RemoteActionType; actorId?: string; createdSequence?: number; createdTurnIndex?: number; optimisticApplied?: boolean };
 type SnapshotApplyOptions = { allowMoveAnimation?: boolean; allowRollAnimation?: boolean; updateVersion?: boolean; updateSequence?: boolean };
+type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
 
 type Params = {
   activeRoomId: string;
@@ -70,7 +72,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     }, 0);
   }, [clearAuthoritativeApplyWake, params.activeRoomIdRef, params.lastAppliedSequenceRef]);
 
-  const queuesRef = useRef<ReturnType<typeof createAuthoritativeGameActionQueues<Omit<GameAction, 'id' | 'createdAt' | 'processed'>, AuthoritativeCommitResult>> | null>(null);
+  const queuesRef = useRef<ReturnType<typeof createAuthoritativeGameActionQueues<CommittableGameAction, AuthoritativeCommitResult>> | null>(null);
   if (!queuesRef.current) {
     queuesRef.current = createAuthoritativeGameActionQueues({
       activeRoomIdRef: params.activeRoomIdRef,
@@ -112,8 +114,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
     },
   });
 
-  const commitQueuedAuthoritativeGameAction = useCallback((roomId: string, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => {
-    return queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, action);
+  const commitQueuedAuthoritativeGameAction = useCallback((roomId: string, action: CommittableGameAction) => {
+    return queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, attachClientActionStartedAt(action));
   }, []);
 
   const enqueueAuthoritativeResultApplication = useCallback(<T,>(roomId: string, applyResult: () => Promise<T> | T): Promise<T | null> => {
@@ -122,12 +124,12 @@ export function useAuthoritativeGameSyncController(params: Params) {
 
   const enqueueAuthoritativeGameAction = useCallback((
     roomId: string,
-    action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>,
+    action: CommittableGameAction,
     handleResult: (result: AuthoritativeCommitResult) => Promise<void> | void,
     handleError: (error: unknown) => void,
     handleFinally: () => void,
   ) => {
-    queuesRef.current!.enqueueAuthoritativeGameAction(roomId, action, { handleResult, handleError, handleFinally });
+    queuesRef.current!.enqueueAuthoritativeGameAction(roomId, attachClientActionStartedAt(action), { handleResult, handleError, handleFinally });
   }, []);
 
   return {

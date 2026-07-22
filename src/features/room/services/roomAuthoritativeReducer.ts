@@ -11,7 +11,7 @@ import {
   incrementTurnActionTimeoutCount,
   normalizeTurnActionTimeoutCount,
 } from './roomTiming';
-import { isManualTurnActionDeadlineExpired } from './turnDeadlinePolicy';
+import { isManualTurnActionDeadlineExpired, type TurnActionPhase } from './turnDeadlinePolicy';
 
 export * from './roomAuthoritativeReducerCore';
 
@@ -61,25 +61,91 @@ const rejectRollBeforePresentationGateEnds = (args: AuthoritativeArgs): Authorit
   return { status: 'rejected', reason: '이전 윷 결과 표출이 끝난 뒤 던질 수 있습니다.' };
 };
 
-const rejectExpiredManualRoll = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
-  const [state, action] = args;
-  if (action.type !== 'roll_yut'
-    || action.payload?.completeFallPresentation === true
-    || action.payload?.timedOut === true
-    || action.payload?.timeoutRecoveredBy !== undefined
-    || action.payload?.timeoutDeadlineAt !== undefined) return null;
+const getNestedDeadline = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 0;
+  const deadline = Number((value as { deadline?: unknown }).deadline ?? 0);
+  return Number.isFinite(deadline) && deadline > 0 ? deadline : 0;
+};
 
+const isDeadlineRecoveryAction = (action: AuthoritativeArgs[1]) => {
+  const payload = action.payload;
+  return Boolean(payload && (
+    payload.timedOut === true
+    || payload.recoveredByCoordinator === true
+    || payload.itemPromptTimeoutRecovery === true
+    || payload.itemPickupTimeoutRecovery === true
+    || payload.trapPlacementTimeoutRecovery === true
+    || payload.timeoutRecoveredBy !== undefined
+    || payload.timeoutDeadlineAt !== undefined
+  ));
+};
+
+const isAutomatedAction = (action: AuthoritativeArgs[1]) => {
   const clientActionId = action.payload?.clientActionId;
-  if (typeof clientActionId === 'string' && clientActionId.startsWith('roll_yut_ai')) return null;
-  if (!isManualTurnActionDeadlineExpired({
-    deadlineAt: state.turnDeadlineAt,
-    deadlineKind: state.turnDeadlineKind,
-    expectedKind: 'roll',
-    clientActionId,
-    networkGraceMs: TURN_NETWORK_GRACE_MS,
-  })) return null;
+  return action.payload?.coordinatorSeatId !== undefined
+    || (typeof clientActionId === 'string' && (
+      clientActionId.startsWith('roll_yut_ai')
+      || clientActionId.startsWith('move_piece_ai')
+      || clientActionId.startsWith('use_item_ai')
+      || clientActionId.startsWith('place_trap_ai')
+    ));
+};
 
-  return { status: 'rejected', reason: '윷 던지기 제한 시간이 만료되었습니다.' };
+const getManualDeadlineGuard = (args: AuthoritativeArgs): { deadlineAt: unknown; expectedKind: TurnActionPhase; reason: string } | null => {
+  const [state, action] = args;
+  if (isDeadlineRecoveryAction(action) || isAutomatedAction(action)) return null;
+  if (action.type === 'roll_yut') {
+    if (action.payload?.completeFallPresentation === true) return null;
+    return { deadlineAt: state.turnDeadlineAt, expectedKind: 'roll', reason: '윷 던지기 제한 시간이 만료되었습니다.' };
+  }
+  if (action.type === 'move_piece') {
+    return { deadlineAt: state.turnDeadlineAt, expectedKind: 'move', reason: '말 이동 제한 시간이 만료되었습니다.' };
+  }
+  if (action.type === 'use_item') {
+    if (action.payload?.cancelTrapPlacement === true) {
+      return { deadlineAt: getNestedDeadline(state.pendingTrapPlacement) || state.turnDeadlineAt, expectedKind: 'trap_placement', reason: '함정 설치 제한 시간이 만료되었습니다.' };
+    }
+    return { deadlineAt: state.turnDeadlineAt, expectedKind: 'item_prompt', reason: '아이템 선택 제한 시간이 만료되었습니다.' };
+  }
+  if (action.type === 'place_trap') {
+    return { deadlineAt: getNestedDeadline(state.pendingTrapPlacement) || state.turnDeadlineAt, expectedKind: 'trap_placement', reason: '함정 설치 제한 시간이 만료되었습니다.' };
+  }
+  if (action.type === 'item_pickup_decision') {
+    return { deadlineAt: getNestedDeadline(state.pendingItemPickup) || state.turnDeadlineAt, expectedKind: 'item_prompt', reason: '아이템 교체 제한 시간이 만료되었습니다.' };
+  }
+  return null;
+};
+
+const rejectInvalidDeadlineAutoAction = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const action = args[1];
+  if (action.payload?.deadlineAutoSubmitted !== true) return null;
+  const guard = getManualDeadlineGuard(args);
+  const expectedDeadlineAt = Number(guard?.deadlineAt ?? 0);
+  const submittedDeadlineAt = Number(action.payload?.autoSubmittedDeadlineAt ?? 0);
+  if (!guard || !expectedDeadlineAt || submittedDeadlineAt !== expectedDeadlineAt) {
+    return { status: 'rejected', reason: '자동 입력 대상 제한시간이 현재 상태와 일치하지 않습니다.' };
+  }
+  const startedAt = Number(action.payload?.clientActionStartedAt ?? 0);
+  if (!Number.isFinite(startedAt) || startedAt <= 0 || startedAt >= expectedDeadlineAt) {
+    return { status: 'rejected', reason: guard.reason };
+  }
+  return null;
+};
+
+const rejectExpiredManualTurnAction = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const [state, action] = args;
+  const guard = getManualDeadlineGuard(args);
+  if (!guard) return null;
+  if (!isManualTurnActionDeadlineExpired({
+    deadlineAt: guard.deadlineAt,
+    deadlineKind: state.turnDeadlineKind,
+    expectedKind: guard.expectedKind,
+    clientActionId: action.payload?.clientActionId,
+    clientActionStartedAt: action.payload?.clientActionStartedAt,
+    networkGraceMs: TURN_NETWORK_GRACE_MS,
+    missingStartedAtPolicy: action.type === 'roll_yut' ? 'allow' : 'reject-after-grace',
+  })) return null;
+  return { status: 'rejected', reason: guard.reason };
 };
 
 const applyFallPresentationGate = (
@@ -277,7 +343,9 @@ const getTimeoutTargetSeatId = (state: TimeoutCountState) => {
 
 const isTimeoutRecoveryAction = (action: AuthoritativeArgs[1]) => {
   const payload = action.payload;
-  if (!payload || typeof payload.timeoutDeadlineAt !== 'number') return false;
+  if (!payload) return false;
+  if (payload.deadlineAutoSubmitted === true && typeof payload.autoSubmittedDeadlineAt === 'number') return true;
+  if (typeof payload.timeoutDeadlineAt !== 'number') return false;
   return payload.timedOut === true
     || payload.recoveredByCoordinator === true
     || payload.itemPromptTimeoutRecovery === true
@@ -352,8 +420,11 @@ export function reduceAuthoritativeGameAction(
   const presentationGateRejection = rejectRollBeforePresentationGateEnds(args);
   if (presentationGateRejection) return presentationGateRejection;
 
-  const expiredManualRollRejection = rejectExpiredManualRoll(args);
-  if (expiredManualRollRejection) return expiredManualRollRejection;
+  const invalidDeadlineAutoActionRejection = rejectInvalidDeadlineAutoAction(args);
+  if (invalidDeadlineAutoActionRejection) return invalidDeadlineAutoActionRejection;
+
+  const expiredManualActionRejection = rejectExpiredManualTurnAction(args);
+  if (expiredManualActionRejection) return expiredManualActionRejection;
 
   let reduction = reduceCoreAuthoritativeGameAction(...args);
   reduction = retryRollAfterResolvedBeforeRollPrompt(args, reduction);

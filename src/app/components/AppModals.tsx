@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties }
 import { ItemCard } from '../../features/items/components/ItemCard';
 import { isItemType } from '../../features/items/logic/items';
 import { ROOM_CAPACITY_FULL_EVENT } from '../../features/room/services/roomAvailabilityPolicy';
+import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
 import { auth } from '../../services/firebase/firebaseAuth';
 import { getStoredText, NICKNAME_MAX_LENGTH, STORAGE_KEYS, validateNickname, type PendingItemPickup } from '../appState';
 import {
@@ -20,6 +21,8 @@ import {
   type BackNavigationExitScreen,
 } from '../flows/backNavigationExit';
 import { splitMessageBySentence } from '../appUtils';
+
+const ITEM_PICKUP_AUTO_DECISION_LEAD_MS = 40;
 
 type RoomNoticeDialog = {
   title: string;
@@ -64,8 +67,12 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
   ));
   const [roomCapacityFullDialogOpen, setRoomCapacityFullDialogOpen] = useState(false);
   const [backNavigationExitScreen, setBackNavigationExitScreen] = useState<BackNavigationExitScreen | null>(null);
+  const [itemPickupExpired, setItemPickupExpired] = useState(false);
   const nicknameDialogRef = useRef<HTMLElement | null>(null);
   const nicknameDialogPreviousFocusRef = useRef<HTMLElement | null>(null);
+  const itemPickupAutoDecisionKeyRef = useRef('');
+  const onKeepPendingItemPickupRef = useRef(onKeepPendingItemPickup);
+  onKeepPendingItemPickupRef.current = onKeepPendingItemPickup;
   const gameStateSyncPresentation = useSyncExternalStore(
     subscribeGameStateSyncPresentation,
     getGameStateSyncPresentation,
@@ -116,6 +123,33 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     if (!backNavigationExitScreen || backNavigationExitScreen === screen) return;
     setBackNavigationExitScreen(null);
   }, [backNavigationExitScreen, screen]);
+
+  useEffect(() => {
+    setItemPickupExpired(false);
+    if (!canShowPendingItemPickup || !pendingItemPickup || typeof window === 'undefined') return undefined;
+    const decisionKey = `${pendingItemPickup.seatId}:${pendingItemPickup.itemId}:${pendingItemPickup.deadline}`;
+    const remainingMs = pendingItemPickup.deadline - Date.now();
+    if (remainingMs <= 0) {
+      setItemPickupExpired(true);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      if (itemPickupAutoDecisionKeyRef.current === decisionKey) return;
+      if (Date.now() >= pendingItemPickup.deadline) {
+        setItemPickupExpired(true);
+        return;
+      }
+      itemPickupAutoDecisionKeyRef.current = decisionKey;
+      setItemPickupExpired(true);
+      markNextDeadlineAutoAction({
+        actionType: 'item_pickup_decision',
+        actorId: pendingItemPickup.seatId,
+        deadlineAt: pendingItemPickup.deadline,
+      });
+      onKeepPendingItemPickupRef.current();
+    }, Math.max(0, remainingMs - ITEM_PICKUP_AUTO_DECISION_LEAD_MS));
+    return () => window.clearTimeout(timer);
+  }, [canShowPendingItemPickup, pendingItemPickup?.deadline, pendingItemPickup?.itemId, pendingItemPickup?.seatId]);
 
   const nicknameValidation = validateNickname(nicknameDraft);
   const isRequiredNicknameDialog = initialNicknameDialogOpen;
@@ -177,6 +211,11 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
   const backNavigationExitDialogLabel = backNavigationExitScreen === 'game' ? '게임 나가기 확인' : '방 나가기 확인';
   const backNavigationExitDialogTitle = backNavigationExitScreen === 'game' ? '게임을 종료할까요?' : '방을 나갈까요?';
   const backNavigationExitDescription = backNavigationExitScreen === 'game' ? gameExitDescription : '현재 방에서 나가 로비로 이동합니다.';
+  const pendingItemPickupDeadlineExpired = Boolean(pendingItemPickup && (itemPickupExpired || itemPickupClock >= pendingItemPickup.deadline));
+  const runPendingItemPickupChoice = (action: () => void) => {
+    if (pendingItemPickupDeadlineExpired) return;
+    action();
+  };
 
   return <>
     {effectiveLoadingMessage && <div className="loading-modal-backdrop" role="presentation"><section data-testid={gameStateSyncLoadingMessage && !loadingMessage ? 'game-state-sync-loading' : undefined} className={`loading-modal panel ${canExitStoredRoom ? 'stored-room-recovery-modal' : ''}`} role={canExitStoredRoom ? 'dialog' : 'status'} aria-modal={canExitStoredRoom || undefined} aria-live={canExitStoredRoom ? undefined : 'polite'} aria-label={effectiveLoadingMessage}>{canExitStoredRoom && <button data-testid="stored-room-recovery-close" className="stored-room-recovery-close" type="button" aria-label="참여 중이던 방에서 나가기" onClick={requestStoredRoomExitAndReload}>닫기</button>}<span className="loading-modal-spinner" aria-hidden="true"></span><p aria-live={canExitStoredRoom ? 'polite' : undefined}>{splitMessageBySentence(effectiveLoadingMessage).map((sentence) => <span key={sentence}>{sentence}</span>)}</p></section></div>}
@@ -190,7 +229,7 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
 
     {nicknameSetupDialogOpen && <div className="modal-backdrop nickname-dialog-backdrop" role="presentation" onMouseDown={closeNicknameDialog}><section ref={nicknameDialogRef} className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="닉네임 설정" onMouseDown={(event) => event.stopPropagation()}><h2>{isRequiredNicknameDialog ? '반가워요!' : '닉네임 설정'}</h2><p>{isRequiredNicknameDialog ? '게임에서 사용할 닉네임을 설정해 주세요.' : '한글·영문·숫자 2~7글자만 사용할 수 있어요.'}</p><input value={nicknameDraft} onChange={(event) => onNicknameDraftChange(event.target.value.slice(0, NICKNAME_MAX_LENGTH))} onKeyDown={(event) => { if (event.key === 'Enter') saveNickname(); if (event.key === 'Escape') closeNicknameDialog(); }} autoFocus maxLength={NICKNAME_MAX_LENGTH} placeholder="닉네임" aria-invalid={!nicknameValidation.valid} /><p className="nickname-helper">{nicknameDraft.length}/{NICKNAME_MAX_LENGTH} · {nicknameValidation.valid ? '사용 가능한 닉네임입니다.' : nicknameValidation.message}</p><div className="modal-actions"><button onClick={saveNickname} disabled={!nicknameValidation.valid}>{isRequiredNicknameDialog ? '시작하기' : '저장'}</button>{!isRequiredNicknameDialog && <button className="secondary" onClick={closeNicknameDialog}>취소</button>}</div></section></div>}
 
-    {canShowPendingItemPickup && pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>같은 사용 조건의 아이템은 1개만 보유할 수 있습니다. 10초 뒤 자동으로 유지합니다.</p><div className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${Math.max(0, pendingItemPickup.deadline - itemPickupClock)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="item-replace-preview"><div><strong>기존 아이템</strong><ItemCard type={pendingItemPickup.existingItem} /></div><div><strong>새 아이템</strong><ItemCard type={pendingItemPickup.item} /></div></div><div className="inline-item-actions"><button onClick={onReplacePendingItemPickup}>교체</button><button className="secondary" onClick={onKeepPendingItemPickup}>유지</button></div></section></div>}
+    {canShowPendingItemPickup && pendingItemPickup && <div className="modal-backdrop" role="presentation"><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label="아이템 교체 선택"><p className="section-kicker">아이템 한도</p><h2>아이템을 교체할까요?</h2><p>같은 사용 조건의 아이템은 1개만 보유할 수 있습니다. 10초 뒤 자동으로 유지합니다.</p><div key={pendingItemPickup.deadline} className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${Math.max(0, pendingItemPickup.deadline - itemPickupClock)}ms` } as CSSProperties} aria-hidden="true"><span></span></div><div className="item-replace-preview"><div><strong>기존 아이템</strong><ItemCard type={pendingItemPickup.existingItem} /></div><div><strong>새 아이템</strong><ItemCard type={pendingItemPickup.item} /></div></div><div className="inline-item-actions"><button onClick={() => runPendingItemPickupChoice(onReplacePendingItemPickup)} disabled={pendingItemPickupDeadlineExpired}>교체</button><button className="secondary" onClick={() => runPendingItemPickupChoice(onKeepPendingItemPickup)} disabled={pendingItemPickupDeadlineExpired}>유지</button></div></section></div>}
 
     {backNavigationExitDialogVisible && <div className="modal-backdrop" role="presentation" onMouseDown={closeBackNavigationExitDialog}><section className="nickname-modal panel" role="dialog" aria-modal="true" aria-label={backNavigationExitDialogLabel} onMouseDown={(event) => event.stopPropagation()}><p className="section-kicker">{backNavigationExitScreen === 'game' ? '게임 종료' : '방 나가기'}</p><h2>{backNavigationExitDialogTitle}</h2><p>{backNavigationExitDescription}</p><div className="modal-actions"><button className="danger" onClick={confirmBackNavigationExit}>나가기</button><button className="secondary" onClick={closeBackNavigationExitDialog}>계속하기</button></div></section></div>}
 

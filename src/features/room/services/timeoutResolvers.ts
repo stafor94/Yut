@@ -1,8 +1,15 @@
 import { GOLDEN_YUT_CHOICES, getRollTimingPositionPercent, getRollTimingZone, type RollTimingZone, type YutResult } from '../../../game-core/roll';
 import type { BranchChoice } from '../../../game-core/board/board';
+import { TURN_ACTION_TIMEOUT_MS } from './roomTiming';
 
-export const resolveRollTimeout = (deadlineAt: number): { rollTimingZone: RollTimingZone; timingPositionPercent: number } => {
-  const timingPositionPercent = getRollTimingPositionPercent(Math.max(0, deadlineAt));
+/**
+ * Coordinator recovery cannot observe another client's live timing orb. Use the
+ * deterministic end-of-window position instead of treating an epoch timestamp
+ * as animation elapsed time. The active client submits the actual visible orb
+ * position through the normal roll path just before the deadline.
+ */
+export const resolveRollTimeout = (_deadlineAt: number, timeoutWindowMs = TURN_ACTION_TIMEOUT_MS): { rollTimingZone: RollTimingZone; timingPositionPercent: number } => {
+  const timingPositionPercent = getRollTimingPositionPercent(Math.max(0, timeoutWindowMs));
   return { rollTimingZone: getRollTimingZone(timingPositionPercent), timingPositionPercent };
 };
 
@@ -41,6 +48,7 @@ export const resolveGoldenYutTimeout = (): YutResult => {
   return mo;
 };
 
+/** One authoritative timeout action per room, stage, actor, and deadline. */
 export const makeTimeoutActionKey = (params: {
   roomId?: string;
   stage: string;
@@ -55,7 +63,4 @@ export const makeTimeoutActionKey = (params: {
   params.stage,
   params.actorId,
   params.timeoutDeadlineAt,
-  params.turnVersion ?? '',
-  params.sequence ?? '',
-  params.extra ?? '',
 ].join(':');
