@@ -291,7 +291,7 @@ test.describe('mobile layout QA', () => {
             expect(contentBox, '컴팩트 grid content bounding box').not.toBeNull();
             expect(titleRowBox, '방 제목 행 bounding box').not.toBeNull();
             expect(titleBox, '방 제목 bounding box').not.toBeNull();
-            expect(stateDotBox, '상태 점 bounding box').not.toBeNull();
+            expect(stateDotBox, '방 상태 점 bounding box').not.toBeNull();
             expect(metaBox, '옵션 텍스트 bounding box').not.toBeNull();
             expect(occupancyBox, '현재 인원 bounding box').not.toBeNull();
             expect(actionBox, '참여 버튼 bounding box').not.toBeNull();
