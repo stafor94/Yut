@@ -36,7 +36,8 @@ for (const timingZone of ['nice', 'bad'] as const) {
     );
 
     assert.equal(result.status, 'committed');
-    if (result.status !== 'committed') return;
+    assert.ok(result.patch);
+    assert.ok(result.payload);
     assert.equal(result.patch.lastRollTimingZone, timingZone);
     assert.equal(result.payload.timingZone, timingZone);
   });
