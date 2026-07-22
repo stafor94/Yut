@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ROOM_TITLE_MAX_LENGTH, getRoomTitleLength, truncateRoomTitle, validateRoomTitle } from '../../src/app/flows/roomTitle';
+import { ROOM_TITLE_MAX_LENGTH, getRoomTitleLength, truncateRoomTitle, validateRoomTitle } from '../../src/app/flows/roomTitle.js';
 
 test('방 제목은 한글 기준 최대 20글자까지만 유지한다', () => {
   const expected = '가'.repeat(ROOM_TITLE_MAX_LENGTH);
