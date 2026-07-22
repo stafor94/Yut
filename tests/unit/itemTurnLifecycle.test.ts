@@ -156,7 +156,7 @@ test('a roll expires only shields controlled by the rolling actor', () => {
     {
       type: 'roll_yut',
       actorId: 'p1',
-      payload: { rollTimingZone: 'normal', clientFallOccurred: false, clientFallCount: 0 },
+      payload: { rollTimingZone: 'bad', clientFallOccurred: false, clientFallCount: 0 },
     } as never,
     room,
     sides,
@@ -170,7 +170,7 @@ test('fall offers only reroll and keeps the actor turn until the choice resolves
     {
       type: 'roll_yut',
       actorId: 'p1',
-      payload: { rollTimingZone: 'normal', clientFallOccurred: true, clientFallCount: 1 },
+      payload: { rollTimingZone: 'bad', clientFallOccurred: true, clientFallCount: 1 },
     } as never,
     room,
     sides,
