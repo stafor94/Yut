@@ -87,7 +87,7 @@ export const isManualTurnActionDeadlineExpired = ({
   if (!normalizedDeadlineAt || normalizeTurnDeadlineKind(deadlineKind) !== expectedKind) return false;
 
   const startedAt = getClientActionStartedAt(clientActionId);
+  if (!startedAt) return false;
   if (startedAt >= normalizedDeadlineAt) return true;
-  if (!startedAt && now >= normalizedDeadlineAt) return true;
   return now >= normalizedDeadlineAt + Math.max(0, networkGraceMs);
 };
