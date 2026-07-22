@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createRoomFromLobby, expectAppShell, joinRoomFromLobby, primeLobbyStorage, runQaStep, waitForBlockingOverlayToDisappear } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { createLobbyRoomFixtureForQa, deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
+import { createLobbyRoomFixtureForQa, deleteRoomForQa, findRoomIdByTitle, getRoomForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 function boxesOverlap(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
@@ -116,6 +116,11 @@ test.describe('mobile layout QA', () => {
         await expect(settingsToggle).toHaveAttribute('aria-expanded', 'true');
         await page.getByRole('radio', { name: '팀전' }).check();
         await expect(page.getByTestId('waiting-room-settings-summary')).toContainText('팀전');
+        await expect.poll(async () => {
+          const room = roomId ? await getRoomForQa(roomId) : null;
+          return { playMode: room?.playMode ?? '', maxPlayers: Number(room?.maxPlayers ?? 0) };
+        }, { message: '팀전과 4인 설정이 Firestore에 반영되어야 합니다.', timeout: 15_000 }).toEqual({ playMode: 'team', maxPlayers: 4 });
+        await expect(page.getByTestId('waiting-room-settings-summary')).toHaveText('팀전 · 4인 · 말 4개 · 아이템 OFF · 누적 OFF');
 
         const emptyCard = page.locator('.compact-ready-card').filter({ hasText: 'P3' }).first();
         const addButton = page.getByTestId('add-ai-P3');
