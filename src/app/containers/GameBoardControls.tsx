@@ -9,6 +9,7 @@ import {
 } from '../../features/room/services/roomTiming';
 import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
 import {
+  getDeadlineTimerAnimationState,
   getTurnActionDeadlineDelayMs,
   isTurnActionDeadlineExpired,
   normalizeTurnDeadlineAt,
@@ -193,18 +194,14 @@ export function GameBoardControls({
   );
   const turnActionDeadlineKey = `${turnActionTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
   const itemPromptDeadlineKey = `${itemPromptTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
-  const turnActionTimerDurationMs = useMemo(() => getTurnActionDeadlineDelayMs({
-    deadlineAt: authoritativeTurnDeadline.at,
-    deadlineKind: authoritativeTurnDeadline.kind,
-    phase: turnActionPhase,
-    fallbackMs: timerDurationMs,
-  }), [authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, timerDurationMs, turnActionPhase]);
-  const itemPromptTimerDurationMs = useMemo(() => getTurnActionDeadlineDelayMs({
-    deadlineAt: authoritativeTurnDeadline.at,
-    deadlineKind: authoritativeTurnDeadline.kind,
-    phase: 'item_prompt',
-    fallbackMs: itemPromptFallbackDurationMs,
-  }), [authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, itemPromptFallbackDurationMs]);
+  const turnActionTimerAnimation = getDeadlineTimerAnimationState({
+    deadlineAt: authoritativeTurnDeadline.kind === turnActionPhase ? authoritativeTurnDeadline.at : 0,
+    durationMs: timerDurationMs,
+  });
+  const itemPromptTimerAnimation = getDeadlineTimerAnimationState({
+    deadlineAt: authoritativeTurnDeadline.kind === 'item_prompt' ? authoritativeTurnDeadline.at : 0,
+    durationMs: itemPromptFallbackDurationMs,
+  });
 
   const recordTimeout = (seatId: string) => {
     if (!seatId) return;
@@ -301,7 +298,13 @@ export function GameBoardControls({
 
   useEffect(() => {
     if (isOpponentTurn || activeItemPromptTypes.length === 0 || !localSeatId || !authoritativeTurnDeadline.at || typeof window === 'undefined') return undefined;
-    if (itemPromptTimerDurationMs <= 0) {
+    const remainingMs = getTurnActionDeadlineDelayMs({
+      deadlineAt: authoritativeTurnDeadline.at,
+      deadlineKind: authoritativeTurnDeadline.kind,
+      phase: 'item_prompt',
+      fallbackMs: itemPromptFallbackDurationMs,
+    });
+    if (remainingMs <= 0) {
       setItemPromptTimedOut(true);
       return undefined;
     }
@@ -317,9 +320,9 @@ export function GameBoardControls({
       markNextDeadlineAutoAction({ actionType: 'use_item', actorId: localSeatId, deadlineAt: authoritativeTurnDeadline.at });
       onSkipItemPromptRef.current({ timedOut: true });
     };
-    const timer = window.setTimeout(runAutomaticSkip, Math.max(0, itemPromptTimerDurationMs - AUTO_ACTION_LEAD_MS));
+    const timer = window.setTimeout(runAutomaticSkip, Math.max(0, remainingMs - AUTO_ACTION_LEAD_MS));
     return () => window.clearTimeout(timer);
-  }, [activeItemPromptTypes.length, authoritativeTurnDeadline.at, isOpponentTurn, itemPromptDeadlineKey, itemPromptTimerDurationMs, localSeatId]);
+  }, [activeItemPromptTypes.length, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, isOpponentTurn, itemPromptDeadlineKey, itemPromptFallbackDurationMs, localSeatId]);
 
   const handleRollButtonClick = () => {
     runTurnAction(() => {
@@ -346,10 +349,15 @@ export function GameBoardControls({
   void getItemPromptTimeoutMs;
   void getTurnActionTimeoutMs;
 
+  const turnActionTimerStyle = { '--timer-duration': `${turnActionTimerAnimation.durationMs}ms` } as CSSProperties;
+  const turnActionTimerFillStyle = { animationDelay: `${turnActionTimerAnimation.delayMs}ms` } as CSSProperties;
+  const itemPromptTimerStyle = { '--timer-duration': `${itemPromptTimerAnimation.durationMs}ms` } as CSSProperties;
+  const itemPromptTimerFillStyle = { animationDelay: `${itemPromptTimerAnimation.delayMs}ms` } as CSSProperties;
+
   return <div ref={controlsRef} className={`play-controls ${isOpponentTurn ? 'opponent-turn' : 'local-turn'} ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
     {isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
       <div><strong>아이템을 사용할까요?</strong></div>
-      <div key={itemPromptDeadlineKey} className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${itemPromptTimerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>
+      <div key={itemPromptDeadlineKey} className="time-limit-bar item-prompt-timer" style={itemPromptTimerStyle} aria-hidden="true"><span style={itemPromptTimerFillStyle}></span></div>
       <div className="inline-item-actions">
         {activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => runItemPromptAction(() => onUseItem(type))} disabled={itemPromptTimedOut}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}
         <button className="secondary" onClick={() => runItemPromptAction(() => onSkipItemPrompt())} disabled={itemPromptTimedOut}>사용 안 함</button>
@@ -357,10 +365,10 @@ export function GameBoardControls({
     </div> : showBottomBranchControls ? <div className="bottom-branch-controls" aria-label="이동 방향 선택">
       <button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => runTurnAction(() => onBranchChoiceChange('outer'))} disabled={turnActionTimedOut}>바깥길</button>
       <button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => runTurnAction(() => onBranchChoiceChange('shortcut'))} disabled={turnActionTimedOut}>지름길</button>
-      {canRequestMove && <div key={turnActionDeadlineKey} className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${turnActionTimerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
+      {canRequestMove && <div key={turnActionDeadlineKey} className="time-limit-bar turn-action-timer" style={turnActionTimerStyle} aria-hidden="true"><span style={turnActionTimerFillStyle}></span></div>}
       <button type="button" data-testid="move-piece-button" className="branch-move-button" onClick={() => runTurnAction(onMoveSelectedPiece)} disabled={turnActionTimedOut || !canRequestMove}>선택한 말 이동</button>
     </div> : <>
-      {turnActionTimerVisible && <div key={turnActionDeadlineKey} className="time-limit-bar turn-action-timer" style={{ '--timer-duration': `${turnActionTimerDurationMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
+      {turnActionTimerVisible && <div key={turnActionDeadlineKey} className="time-limit-bar turn-action-timer" style={turnActionTimerStyle} aria-hidden="true"><span style={turnActionTimerFillStyle}></span></div>}
       {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => runTurnAction(() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index))} disabled={turnActionTimedOut}>{entry.name}</button>)}</div></div>}
       {rollControlPresentation.showTimingMeter && !turnActionTimedOut && <div ref={rollTimingMeterRef} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대"><span className="roll-timing-good left" aria-hidden="true"></span><span className="roll-timing-perfect" aria-hidden="true"></span><span className="roll-timing-good right" aria-hidden="true"></span><span ref={rollTimingOrbRef} className="roll-timing-orb" aria-hidden="true"></span></div>}
       {!showRollStackPicker && <button data-testid={rollControlPresentation.actionButtonTestId} className={!roll ? 'roll-button' : undefined} onClick={handleRollButtonClick} disabled={turnActionTimedOut || (!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton && !turnActionTimedOut ? '선택한 말 이동' : actionButtonText}</button>}
