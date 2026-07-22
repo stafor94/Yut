@@ -46,7 +46,7 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
     if (!running) return;
     const currentUserId = getCurrentUserId();
     const visibleHostIds = new Set<string>();
-    const visibleRooms = activeRooms
+    const availableRooms = activeRooms
       .map((room) => {
         const availability = roomAvailability.get(room.id);
         if (!availability?.visible) return null;
@@ -56,7 +56,14 @@ export function createRoomListSubscriptionController<TRoom extends RoomListSumma
           playerIds: availability.playerIds,
         } as TRoom;
       })
-      .filter((room): room is TRoom => Boolean(room))
+      .filter((room): room is TRoom => Boolean(room));
+    const prioritizedRooms = currentUserId
+      ? [
+          ...availableRooms.filter((room) => room.playerIds?.includes(currentUserId)),
+          ...availableRooms.filter((room) => !room.playerIds?.includes(currentUserId)),
+        ]
+      : availableRooms;
+    const visibleRooms = prioritizedRooms
       .filter((room) => {
         const isCurrentUserRoom = Boolean(currentUserId && room.playerIds?.includes(currentUserId));
         const hostId = room.hostId?.trim();
