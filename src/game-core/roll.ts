@@ -3,7 +3,11 @@ import { getCurrentAiRollDifficulty, type AiDifficulty } from './aiDifficulty';
 export type YutResultName = '빽도' | '도' | '개' | '걸' | '윷' | '모' | '황금 윷';
 export type YutResult = { name: YutResultName; steps: number; bonus?: boolean };
 export type YutStick = { flat: boolean; marked: boolean };
-export type RollTimingZone = 'perfect' | 'nice' | 'good' | 'bad';
+export type RollTimingGrade = 'perfect' | 'nice' | 'good' | 'bad';
+/** `normal` is accepted only while older clients and saved sequences are being upgraded. */
+export type RollTimingZone = RollTimingGrade | 'normal';
+
+export const normalizeRollTimingZone = (zone: RollTimingZone): RollTimingGrade => zone === 'normal' ? 'bad' : zone;
 
 export const STANDARD_YUT_RESULTS: YutResult[] = [
   { name: '도', steps: 1 },
@@ -46,7 +50,7 @@ export function getRollTimingPositionPercent(elapsedMs: number) {
   return Math.max(0, Math.min(100, ratio * 100));
 }
 
-export function getRollTimingZone(positionPercent: number): RollTimingZone {
+export function getRollTimingZone(positionPercent: number): RollTimingGrade {
   if (positionPercent >= 45 && positionPercent <= 55) return 'perfect';
   if ((positionPercent >= 40 && positionPercent < 45) || (positionPercent > 55 && positionPercent <= 60)) return 'nice';
   if ((positionPercent >= 20 && positionPercent < 40) || (positionPercent > 60 && positionPercent <= 80)) return 'good';
@@ -54,9 +58,10 @@ export function getRollTimingZone(positionPercent: number): RollTimingZone {
 }
 
 export function getFallChanceForTimingZone(zone: RollTimingZone) {
-  if (zone === 'perfect') return 0;
-  if (zone === 'nice') return 0.1;
-  if (zone === 'good') return 0.2;
+  const grade = normalizeRollTimingZone(zone);
+  if (grade === 'perfect') return 0;
+  if (grade === 'nice') return 0.1;
+  if (grade === 'good') return 0.2;
   return 0.6;
 }
 
@@ -64,9 +69,9 @@ export function shouldFallForTimingZone(zone: RollTimingZone, random = Math.rand
   return random() < getFallChanceForTimingZone(zone);
 }
 
-export function chooseAiRollTimingZone(random?: () => number): RollTimingZone;
-export function chooseAiRollTimingZone(difficulty: AiDifficulty, random?: () => number): RollTimingZone;
-export function chooseAiRollTimingZone(difficultyOrRandom?: AiDifficulty | (() => number), providedRandom = Math.random): RollTimingZone {
+export function chooseAiRollTimingZone(random?: () => number): RollTimingGrade;
+export function chooseAiRollTimingZone(difficulty: AiDifficulty, random?: () => number): RollTimingGrade;
+export function chooseAiRollTimingZone(difficultyOrRandom?: AiDifficulty | (() => number), providedRandom = Math.random): RollTimingGrade {
   const difficulty = typeof difficultyOrRandom === 'string' ? difficultyOrRandom : getCurrentAiRollDifficulty();
   const random = typeof difficultyOrRandom === 'function' ? difficultyOrRandom : providedRandom;
   const roll = random();
@@ -83,7 +88,7 @@ export function chooseAiRollTimingZone(difficultyOrRandom?: AiDifficulty | (() =
 }
 
 export function rollYutResultWithTiming(zone: RollTimingZone = 'bad', random = Math.random, useBackDo = true) {
-  if (zone !== 'perfect') return rollYutResult(random, useBackDo);
+  if (normalizeRollTimingZone(zone) !== 'perfect') return rollYutResult(random, useBackDo);
   const resultRoll = random();
   const backDoChance = useBackDo ? 0.0625 : 0;
   const baseWeights = [
