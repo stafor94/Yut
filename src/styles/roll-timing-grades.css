@@ -1,22 +1,25 @@
 .game-shell .roll-timing-meter {
   background: linear-gradient(
     90deg,
-    #111827 0%,
-    #111827 20%,
-    #b7e46c 20%,
-    #b7e46c 40%,
-    #7dd3fc 40%,
-    #7dd3fc 45%,
-    #8e44ad 45%,
-    #8e44ad 55%,
-    #7dd3fc 55%,
-    #7dd3fc 60%,
-    #b7e46c 60%,
-    #b7e46c 80%,
-    #111827 80%,
-    #111827 100%
+    #302824 0%,
+    #302824 20%,
+    #a9c96b 20%,
+    #a9c96b 40%,
+    #65b9d3 40%,
+    #65b9d3 45%,
+    #9568c7 45%,
+    #9568c7 55%,
+    #65b9d3 55%,
+    #65b9d3 60%,
+    #a9c96b 60%,
+    #a9c96b 80%,
+    #302824 80%,
+    #302824 100%
   );
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.38), 0 2px 8px rgba(0, 0, 0, 0.18);
+  box-shadow:
+    inset 0 1px 2px rgba(255, 255, 255, 0.35),
+    inset 0 -1px 2px rgba(58, 34, 20, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.18);
 }
 
 /* The grade colors are rendered by the meter gradient, replacing the old 3-zone spans. */
