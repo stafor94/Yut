@@ -7,6 +7,7 @@ import {
   incrementTurnActionTimeoutCount,
   normalizeTurnActionTimeoutCount,
 } from '../../features/room/services/roomTiming';
+import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
 import {
   getTurnActionDeadlineDelayMs,
   isTurnActionDeadlineExpired,
@@ -281,12 +282,17 @@ export function GameBoardControls({
       }
       autoTurnActionKeyRef.current = turnActionDeadlineKey;
       if (turnActionPhase === 'roll' && canRollNow && !roll) {
+        markNextDeadlineAutoAction({ actionType: 'roll_yut', actorId: localSeatId, deadlineAt: authoritativeTurnDeadline.at });
         onRollYutRef.current(getVisibleRollTimingPositionPercent());
       } else if (turnActionPhase === 'move' && canRequestMove) {
         if (showRollStackPicker && rollStack.length > 0) {
           onSelectRollStackIndexRef.current(selectedRollStackIndex ?? 0);
-          window.setTimeout(() => onMoveSelectedPieceRef.current(), STACK_SELECTION_SETTLE_MS);
+          window.setTimeout(() => {
+            markNextDeadlineAutoAction({ actionType: 'move_piece', actorId: localSeatId, deadlineAt: authoritativeTurnDeadline.at });
+            onMoveSelectedPieceRef.current();
+          }, STACK_SELECTION_SETTLE_MS);
         } else {
+          markNextDeadlineAutoAction({ actionType: 'move_piece', actorId: localSeatId, deadlineAt: authoritativeTurnDeadline.at });
           onMoveSelectedPieceRef.current();
         }
       }
@@ -294,7 +300,7 @@ export function GameBoardControls({
     };
     const timer = window.setTimeout(runAutomaticAction, Math.max(0, remainingMs - AUTO_ACTION_LEAD_MS));
     return () => window.clearTimeout(timer);
-  }, [authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, canRequestMove, canRollNow, roll, rollStack.length, selectedRollStackIndex, showRollStackPicker, timerDurationMs, timerSeatId, turnActionDeadlineKey, turnActionPhase, turnActionTimerVisible]);
+  }, [authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, canRequestMove, canRollNow, localSeatId, roll, rollStack.length, selectedRollStackIndex, showRollStackPicker, timerDurationMs, timerSeatId, turnActionDeadlineKey, turnActionPhase, turnActionTimerVisible]);
 
   useEffect(() => {
     if (isOpponentTurn || activeItemPromptTypes.length === 0 || !localSeatId || !authoritativeTurnDeadline.at || typeof window === 'undefined') return undefined;
@@ -311,6 +317,7 @@ export function GameBoardControls({
       autoItemPromptKeyRef.current = itemPromptDeadlineKey;
       setItemPromptTimedOut(true);
       recordTimeout(localSeatId);
+      markNextDeadlineAutoAction({ actionType: 'use_item', actorId: localSeatId, deadlineAt: authoritativeTurnDeadline.at });
       onSkipItemPromptRef.current({ timedOut: true });
     };
     const timer = window.setTimeout(runAutomaticSkip, Math.max(0, itemPromptTimerDurationMs - AUTO_ACTION_LEAD_MS));
