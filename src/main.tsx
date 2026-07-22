@@ -26,6 +26,7 @@ import './styles/lobby-footer.css';
 import './styles/lobby-header-badges.css';
 import './styles/shared-sound-badge.css';
 import './styles/waiting-room-qa-regression-fix.css';
+import './styles/waiting-room-empty-seat-fix.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
