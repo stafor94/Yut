@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PieceCount, PlayMode, Seat, Team } from '../appState';
-import { RoomRuleBadges } from '../components/RoomRuleBadges';
 import { getWaitingRoomStartHint } from '../flows/gameStartFlow';
 import { WAITING_ROOM_BACK_EXIT_EVENT } from '../flows/backNavigationExit';
 import { WaitingRoomScreen, WaitingRoomSeatList, WaitingRoomSettingsPanel } from '../screens/WaitingRoomScreen';
@@ -71,7 +70,7 @@ export function WaitingRoomContainer({
   const startFlowActiveRef = useRef(startFlowBusy || initialGameEntryPending || roomInGame);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
   const [countdownTransitionOverlayVisible, setCountdownTransitionOverlayVisible] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(() => typeof window !== 'undefined' ? !window.matchMedia('(max-width: 1024px)').matches : false);
+  const [settingsOpen, setSettingsOpen] = useState(canManageRoom);
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const effectiveStartFlowBusy = startFlowBusy || countdownTransitionPending;
@@ -93,6 +92,10 @@ export function WaitingRoomContainer({
       {label}
     </label>
   );
+
+  useEffect(() => {
+    setSettingsOpen(canManageRoom);
+  }, [canManageRoom]);
 
   useEffect(() => {
     const handleBackNavigationExit = () => onLeaveRoom();
@@ -202,11 +205,17 @@ export function WaitingRoomContainer({
       <div>
         <h2 className="room-title">{activeRoomTitle || title}</h2>
       </div>
-      <RoomRuleBadges mode={playMode} players={maxPlayers} pieces={pieceCount} itemsEnabled={itemMode} stackedRollEnabled={stackedRollMode} className="waiting-room-rule-badges" />
     </header>
 
     <div className="waiting-main-grid">
-      <WaitingRoomSettingsPanel isOpen={settingsOpen} summary={roomSettingsSummary} onToggle={() => setSettingsOpen((open) => !open)}>
+      <WaitingRoomSettingsPanel
+        isOpen={canManageRoom && settingsOpen}
+        canToggle={canManageRoom}
+        summary={roomSettingsSummary}
+        onToggle={() => {
+          if (canManageRoom) setSettingsOpen((open) => !open);
+        }}
+      >
         {playMode === 'team' && <div className="team-checklist" aria-label="팀전 시작 조건"><strong>팀 균형</strong><span className={teamCounts.청팀 === 2 ? 'ok' : ''}>청팀 {teamCounts.청팀}/2</span><span className={teamCounts.홍팀 === 2 ? 'ok' : ''}>홍팀 {teamCounts.홍팀}/2</span></div>}
         <div className={`host-room-options compact-options ${canManageRoom ? '' : 'readonly'}`} aria-label={canManageRoom ? '방 설정 변경' : '방 설정 읽기 전용'}>
           <div className="option-row option-row-top">

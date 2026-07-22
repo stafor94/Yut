@@ -11,6 +11,7 @@ type WaitingRoomScreenProps = {
 
 type WaitingRoomSettingsPanelProps = {
   isOpen: boolean;
+  canToggle: boolean;
   summary: string;
   onToggle: () => void;
   children: ReactNode;
@@ -35,9 +36,9 @@ export function WaitingRoomScreen({ canManageRoom, children }: WaitingRoomScreen
   return <section data-testid="waiting-room" className={`panel waiting-room compact-waiting-room ${canManageRoom ? 'host-view' : 'player-view'}`} aria-label="방 대기 화면">{children}</section>;
 }
 
-export function WaitingRoomSettingsPanel({ isOpen, summary, onToggle, children }: WaitingRoomSettingsPanelProps) {
+export function WaitingRoomSettingsPanel({ isOpen, canToggle, summary, onToggle, children }: WaitingRoomSettingsPanelProps) {
   return <section className="waiting-setup-card" aria-label="방 설정">
-    <button
+    {canToggle ? <button
       type="button"
       className="waiting-settings-toggle"
       aria-expanded={isOpen}
@@ -47,7 +48,9 @@ export function WaitingRoomSettingsPanel({ isOpen, summary, onToggle, children }
     >
       <span>방 설정</span>
       <span aria-hidden="true">{isOpen ? '▲' : '▼'}</span>
-    </button>
+    </button> : <div className="waiting-settings-toggle waiting-settings-static" data-testid="waiting-room-settings-label" style={{ cursor: 'default' }}>
+      <span>방 설정</span>
+    </div>}
     <p className="waiting-settings-summary" data-testid="waiting-room-settings-summary">{summary}</p>
     {isOpen ? <div id="waiting-room-settings-content" className="waiting-settings-content">{children}</div> : null}
   </section>;

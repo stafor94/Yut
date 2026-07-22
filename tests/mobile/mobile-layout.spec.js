@@ -105,12 +105,15 @@ test.describe('mobile layout QA', () => {
         roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
 
         const settingsToggle = page.getByTestId('waiting-room-settings-toggle');
-        await expect(settingsToggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.locator('.waiting-room-rule-badges')).toHaveCount(0);
+        await expect(settingsToggle).toHaveAttribute('aria-expanded', 'true');
         await expect(page.getByTestId('waiting-room-settings-summary')).toHaveText('개인전 · 3인 · 말 4개 · 아이템 OFF · 누적 OFF');
+        await expect(page.getByRole('group', { name: '진행' })).toBeVisible();
+        await settingsToggle.click();
+        await expect(settingsToggle).toHaveAttribute('aria-expanded', 'false');
         await expect(page.getByRole('group', { name: '진행' })).toHaveCount(0);
         await settingsToggle.click();
         await expect(settingsToggle).toHaveAttribute('aria-expanded', 'true');
-        await expect(page.getByRole('group', { name: '진행' })).toBeVisible();
         await page.getByRole('radio', { name: '팀전' }).check();
         await expect(page.getByTestId('waiting-room-settings-summary')).toContainText('팀전');
 
@@ -175,6 +178,10 @@ test.describe('mobile layout QA', () => {
         await primeLobbyStorage(guestContext, { nickname: guestNickname, maxPlayers: '3', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
         const guestPage = await guestContext.newPage();
         await joinRoomFromLobby(guestPage, roomTitle);
+        await expect(guestPage.getByTestId('waiting-room-settings-toggle')).toHaveCount(0);
+        await expect(guestPage.getByTestId('waiting-room-settings-label')).toBeVisible();
+        await expect(guestPage.getByTestId('waiting-room-settings-summary')).toContainText('팀전');
+        await expect(guestPage.getByRole('group', { name: '진행' })).toHaveCount(0);
         const guestCard = guestPage.locator('.compact-ready-card').filter({ hasText: 'P3' }).first();
         await expect(guestCard).toBeVisible();
         await expect(guestCard.locator('.ai-difficulty-selector')).toHaveCount(0);
