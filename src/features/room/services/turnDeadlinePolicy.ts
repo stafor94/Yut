@@ -1,5 +1,6 @@
 export type TurnDeadlineKind = 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
-export type TurnActionPhase = 'roll' | 'move';
+export type TurnActionPhase = Exclude<TurnDeadlineKind, ''>;
+export type MissingActionStartedAtPolicy = 'allow' | 'reject-after-grace';
 
 const VALID_TURN_DEADLINE_KINDS = new Set<TurnDeadlineKind>([
   'roll',
@@ -67,30 +68,48 @@ export const getClientActionStartedAt = (clientActionId: unknown) => {
   return Number.isFinite(startedAt) && startedAt > 0 ? startedAt : 0;
 };
 
+export const getTurnActionStartedAt = ({
+  clientActionStartedAt,
+  clientActionId,
+}: {
+  clientActionStartedAt?: unknown;
+  clientActionId?: unknown;
+}) => {
+  const explicitStartedAt = Number(clientActionStartedAt ?? 0);
+  if (Number.isFinite(explicitStartedAt) && explicitStartedAt > 0) return explicitStartedAt;
+  return getClientActionStartedAt(clientActionId);
+};
+
 export const isManualTurnActionDeadlineExpired = ({
   deadlineAt,
   deadlineKind,
   expectedKind,
   clientActionId,
+  clientActionStartedAt,
   now = Date.now(),
   networkGraceMs = 0,
+  missingStartedAtPolicy = 'allow',
 }: {
   deadlineAt: unknown;
   deadlineKind: unknown;
   expectedKind: TurnActionPhase;
-  clientActionId: unknown;
+  clientActionId?: unknown;
+  clientActionStartedAt?: unknown;
   now?: number;
   networkGraceMs?: number;
+  missingStartedAtPolicy?: MissingActionStartedAtPolicy;
 }) => {
   const normalizedDeadlineAt = normalizeTurnDeadlineAt(deadlineAt);
   if (!normalizedDeadlineAt || normalizeTurnDeadlineKind(deadlineKind) !== expectedKind) return false;
 
-  const startedAt = getClientActionStartedAt(clientActionId);
-  if (!startedAt) return false;
+  const startedAt = getTurnActionStartedAt({ clientActionStartedAt, clientActionId });
+  if (!startedAt) {
+    return missingStartedAtPolicy === 'reject-after-grace'
+      && now >= normalizedDeadlineAt + Math.max(0, networkGraceMs);
+  }
   if (startedAt >= normalizedDeadlineAt) return true;
   return now >= normalizedDeadlineAt + Math.max(0, networkGraceMs);
 };
-
 
 export const getTurnDeadlineRemainingMs = (deadlineAt: unknown, now = Date.now()) => Math.max(0, normalizeTurnDeadlineAt(deadlineAt) - now);
 
