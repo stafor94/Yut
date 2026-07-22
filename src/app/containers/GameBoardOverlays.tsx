@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { subscribeGameState } from '../../features/room/services/roomService';
 import type { YutResult } from '../../game-core/roll';
 import {
   dismissGoldenYutPicker,
@@ -12,7 +13,9 @@ import {
   subscribeFallPresentationActive,
   subscribeRollPresentationCompleted,
 } from '../flows/rollPresentationEvents';
-import type { ToastMessage } from '../appState';
+import { STORAGE_KEYS, type ToastMessage } from '../appState';
+
+const GOLDEN_YUT_AUTO_SELECT_LEAD_MS = 100;
 
 export { RollStage } from './RollStage';
 export type { RollPresentationState } from '../flows/rollPresentationVisibility';
@@ -55,7 +58,10 @@ type GoldenYutPickerProps = {
 
 export function GoldenYutPicker({ isOpen, choices, onSelect }: GoldenYutPickerProps) {
   const isOpenRef = useRef(isOpen);
+  const autoSelectionKeyRef = useRef('');
   const [presentationState, setPresentationState] = useState(EMPTY_GOLDEN_YUT_PICKER_PRESENTATION_STATE);
+  const [deadlineAt, setDeadlineAt] = useState(0);
+  const [selectionExpired, setSelectionExpired] = useState(false);
   isOpenRef.current = isOpen;
 
   useEffect(() => subscribeRollPresentationCompleted(() => {
@@ -67,16 +73,59 @@ export function GoldenYutPicker({ isOpen, choices, onSelect }: GoldenYutPickerPr
 
   useEffect(() => {
     setPresentationState((current) => syncGoldenYutPickerOpenState(current, isOpen));
+    if (!isOpen) {
+      setDeadlineAt(0);
+      setSelectionExpired(false);
+    }
   }, [isOpen]);
 
-  if (!shouldShowGoldenYutPicker(presentationState, isOpen)) return null;
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
+    if (!roomId) return undefined;
+    return subscribeGameState(roomId, (state) => {
+      const pending = (state as { pendingGoldenYutSelection?: { deadline?: unknown } | null } | null)?.pendingGoldenYutSelection;
+      const nextDeadlineAt = Number(pending?.deadline ?? 0);
+      setDeadlineAt(Number.isFinite(nextDeadlineAt) && nextDeadlineAt > 0 ? nextDeadlineAt : 0);
+    });
+  }, []);
+
+  const pickerVisible = shouldShowGoldenYutPicker(presentationState, isOpen);
+  useEffect(() => {
+    setSelectionExpired(false);
+    if (!pickerVisible || !deadlineAt || typeof window === 'undefined') return undefined;
+    const selectionKey = `${deadlineAt}:${choices.map((choice) => `${choice.name}:${choice.steps}`).join('|')}`;
+    const selectMo = () => {
+      if (autoSelectionKeyRef.current === selectionKey) return;
+      if (Date.now() >= deadlineAt) {
+        setSelectionExpired(true);
+        return;
+      }
+      const mo = choices.find((choice) => choice.name === '모') ?? { name: '모', steps: 5, bonus: true } as YutResult;
+      autoSelectionKeyRef.current = selectionKey;
+      setSelectionExpired(true);
+      setPresentationState(dismissGoldenYutPicker());
+      onSelect(mo);
+    };
+    const timer = window.setTimeout(selectMo, Math.max(0, deadlineAt - Date.now() - GOLDEN_YUT_AUTO_SELECT_LEAD_MS));
+    return () => window.clearTimeout(timer);
+  }, [choices, deadlineAt, onSelect, pickerVisible]);
+
+  if (!pickerVisible) return null;
+  const remainingMs = deadlineAt ? Math.max(0, deadlineAt - Date.now()) : 0;
+  const choose = (choice: YutResult) => {
+    if (selectionExpired || (deadlineAt > 0 && Date.now() >= deadlineAt)) {
+      setSelectionExpired(true);
+      return;
+    }
+    setPresentationState(dismissGoldenYutPicker());
+    onSelect(choice);
+  };
   return <div data-testid="golden-yut-picker" className="golden-yut-picker" role="dialog" aria-modal="true" aria-label="황금 윷 결과 선택">
     <h2>황금 윷 결과 선택</h2>
     <p>원하는 결과를 고르면 다음 윷 던지기가 반드시 그 결과로 나옵니다.</p>
-    <div>{choices.map((choice) => <button key={choice.name} onClick={() => {
-      setPresentationState(dismissGoldenYutPicker());
-      onSelect(choice);
-    }}>{choice.name}</button>)}</div>
+    {deadlineAt > 0 && <div key={deadlineAt} className="time-limit-bar item-prompt-timer" style={{ '--timer-duration': `${remainingMs}ms` } as CSSProperties} aria-hidden="true"><span></span></div>}
+    <div>{choices.map((choice) => <button key={choice.name} onClick={() => choose(choice)} disabled={selectionExpired}>{choice.name}</button>)}</div>
   </div>;
 }
 
