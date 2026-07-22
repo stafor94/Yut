@@ -147,7 +147,7 @@ export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', p
   }, { nickname: normalizedNickname, maxPlayers, playMode, itemMode, pieceCount });
 }
 
-async function waitForRoomCreationResult(page, { timeout = 75_000, maxSubmitAttempts = 3 } = {}) {
+async function waitForRoomCreationResult(page, { timeout = 45_000, maxSubmitAttempts = 3 } = {}) {
   const waitingRoom = page.getByTestId('waiting-room');
   const createButton = page.getByTestId('create-room-button');
   const retryAlert = page.getByRole('alertdialog', { name: '방 생성에 실패했습니다' });
