@@ -4,6 +4,7 @@ import {
   getDoc,
   getDocs,
   limit as firestoreLimit,
+  orderBy,
   query,
   where,
   type QueryDocumentSnapshot,
@@ -19,6 +20,7 @@ import {
   QA_ROOM_LIMIT,
   TOTAL_ROOM_LIMIT,
   USER_ROOM_LIMIT,
+  classifyRoomKind,
   type RoomKind,
 } from './roomCapacityPolicy';
 import type { RoomPlayer, RoomSummary } from './roomServiceCore';
@@ -53,15 +55,34 @@ const uniqueRooms = (rooms: CapacityRoomSummary[]) => {
   return [...byId.values()];
 };
 
-export async function getRoomDocumentsByKind(roomKind: RoomKind) {
+const getRecentLegacyRoomDocuments = async () => {
   if (!db) return [];
-  const roomLimit = roomKind === 'qa' ? QA_ROOM_LIMIT : USER_ROOM_LIMIT;
   const snapshot = await getDocs(query(
     collection(db, 'rooms'),
-    where('roomKind', '==', roomKind),
-    firestoreLimit(roomLimit + 1),
+    orderBy('lastActivityAt', 'desc'),
+    firestoreLimit(LEGACY_ROOM_SCAN_LIMIT),
   ));
-  return snapshot.docs.map(roomFromSnapshot);
+  return snapshot.docs
+    .map(roomFromSnapshot)
+    .filter((room) => room.roomKind !== 'user' && room.roomKind !== 'qa');
+};
+
+export async function getRoomDocumentsByKind(roomKind: RoomKind, now = Date.now()) {
+  if (!db) return [];
+  const roomLimit = roomKind === 'qa' ? QA_ROOM_LIMIT : USER_ROOM_LIMIT;
+  const [kindSnapshot, legacyRooms] = await Promise.all([
+    getDocs(query(
+      collection(db, 'rooms'),
+      where('roomKind', '==', roomKind),
+      firestoreLimit(roomLimit + 1),
+    )),
+    getRecentLegacyRoomDocuments(),
+  ]);
+  const explicitRooms = kindSnapshot.docs.map(roomFromSnapshot);
+  const matchingLegacyRooms = legacyRooms
+    .filter((room) => isRoomCreationCandidate(room, now))
+    .filter((room) => classifyRoomKind(room) === roomKind);
+  return uniqueRooms([...explicitRooms, ...matchingLegacyRooms]);
 }
 
 export async function getActiveHostRoomSummaries(hostId: string, now = Date.now()) {
@@ -91,19 +112,15 @@ export async function getDuplicateRoomTitleSummaries(title: string, titleKey: st
 export async function getCappedActivePlayerRoomMemberships(playerId: string): Promise<CapacityPlayerRoomMembership[]> {
   if (!db || !playerId) return [];
   const now = Date.now();
-  const [userRoomsSnapshot, qaRoomsSnapshot, legacyRoomsSnapshot] = await Promise.all([
+  const [userRoomsSnapshot, qaRoomsSnapshot, legacyRooms] = await Promise.all([
     getDocs(query(collection(db, 'rooms'), where('roomKind', '==', 'user'), firestoreLimit(USER_ROOM_LIMIT))),
     getDocs(query(collection(db, 'rooms'), where('roomKind', '==', 'qa'), firestoreLimit(QA_ROOM_LIMIT))),
-    getDocs(query(
-      collection(db, 'rooms'),
-      where('status', 'in', ['waiting', 'playing', 'finished']),
-      firestoreLimit(LEGACY_ROOM_SCAN_LIMIT),
-    )),
+    getRecentLegacyRoomDocuments(),
   ]);
   const candidateRooms = uniqueRooms([
     ...userRoomsSnapshot.docs.map(roomFromSnapshot),
     ...qaRoomsSnapshot.docs.map(roomFromSnapshot),
-    ...legacyRoomsSnapshot.docs.map(roomFromSnapshot),
+    ...legacyRooms,
   ]).filter((room) => isRoomCreationCandidate(room, now));
 
   const memberships = await Promise.all(candidateRooms.map(async (room) => {
