@@ -40,8 +40,8 @@ test.describe('mobile roll timing grades QA', () => {
             </div>
           </div>
           <div class="roll-stage resolved-from-pending result-hold-roll">
+            <span class="roll-timing-feedback roll-stage-timing transient perfect">PERFECT</span>
             <div class="roll-result-presentation">
-              <span class="roll-timing-feedback roll-stage-timing transient perfect">PERFECT</span>
               <span class="roll-label roll-result-card standard">
                 <strong class="roll-result-name"><span>걸</span></strong>
                 <small class="roll-result-description">3칸 이동</small>
