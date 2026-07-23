@@ -117,7 +117,7 @@
   justify-self: center;
   width: max-content;
   margin: 0;
-  translate: -50% 0;
+  translate: var(--roll-timing-grade-offset-x, -50%) 0;
   transform: none;
   text-align: center;
   pointer-events: none;
