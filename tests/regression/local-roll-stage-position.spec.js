@@ -10,7 +10,7 @@ import {
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
-const readRollGeometry = async (page) => page.evaluate(() => {
+const readRollGeometry = async (page, { requireResult = false } = {}) => page.evaluate(({ requireResult }) => {
   const board = document.querySelector('[data-testid="game-board"]');
   const stage = document.querySelector('.roll-stage');
   const mat = document.querySelector('[data-testid="roll-mat"]');
@@ -18,9 +18,49 @@ const readRollGeometry = async (page) => page.evaluate(() => {
   const resultPresentation = document.querySelector('[data-testid="roll-result-presentation"]');
   const resultCard = document.querySelector('[data-testid="roll-result-card"]');
   const surface = document.querySelector('[data-testid="roll-mat-surface"]');
-  if (!board || !stage || !mat || !grade) return null;
+  const missing = [
+    ['board', board],
+    ['stage', stage],
+    ['mat', mat],
+    ['grade', grade],
+    ...(requireResult ? [
+      ['resultPresentation', resultPresentation],
+      ['resultCard', resultCard],
+      ['surface', surface],
+    ] : []),
+  ].filter(([, element]) => !element).map(([name]) => name);
+
+  if (missing.length > 0) {
+    return {
+      missing,
+      attached: {
+        board: Boolean(board),
+        stage: Boolean(stage),
+        mat: Boolean(mat),
+        grade: Boolean(grade),
+        resultPresentation: Boolean(resultPresentation),
+        resultCard: Boolean(resultCard),
+        surface: Boolean(surface),
+      },
+      stageClassName: stage?.getAttribute('class') ?? null,
+      bodyText: document.body.textContent?.trim().slice(0, 500) ?? '',
+    };
+  }
 
   const centerX = (rect) => rect.left + rect.width / 2;
+  const layoutRect = (element) => {
+    const rect = element.getBoundingClientRect();
+    if (!(element instanceof HTMLElement) || !element.offsetParent) return rect;
+    const parentRect = element.offsetParent.getBoundingClientRect();
+    return {
+      left: parentRect.left + element.offsetLeft,
+      top: parentRect.top + element.offsetTop,
+      width: element.offsetWidth,
+      height: element.offsetHeight,
+      right: parentRect.left + element.offsetLeft + element.offsetWidth,
+      bottom: parentRect.top + element.offsetTop + element.offsetHeight,
+    };
+  };
   const boardRect = board.getBoundingClientRect();
   const stageRect = stage.getBoundingClientRect();
   const matRect = mat.getBoundingClientRect();
@@ -28,7 +68,7 @@ const readRollGeometry = async (page) => page.evaluate(() => {
   const stageStyle = getComputedStyle(stage);
   const gradeStyle = getComputedStyle(grade);
   const resultStyle = resultPresentation ? getComputedStyle(resultPresentation) : null;
-  const cardRect = resultCard?.getBoundingClientRect() ?? null;
+  const cardRect = resultCard ? layoutRect(resultCard) : null;
   const surfaceRect = surface?.getBoundingClientRect() ?? null;
 
   return {
@@ -45,8 +85,9 @@ const readRollGeometry = async (page) => page.evaluate(() => {
     resultTop: resultStyle ? Number.parseFloat(resultStyle.top) : null,
     gradeResultGap: cardRect ? cardRect.top - gradeRect.bottom : null,
     resultSurfaceGap: cardRect && surfaceRect ? surfaceRect.top - cardRect.bottom : null,
+    missing: [],
   };
-});
+}, { requireResult });
 
 test.describe('local roll stage position regression', () => {
   let roomId;
@@ -110,8 +151,7 @@ test.describe('local roll stage position regression', () => {
         await expect(page.getByTestId('roll-timing-grade')).toBeAttached();
 
         const geometry = await readRollGeometry(page);
-        expect(geometry, '윷 던지기 위치 요소를 모두 찾을 수 있어야 합니다.').not.toBeNull();
-        if (!geometry) throw new Error('윷 던지기 위치 요소를 찾지 못했습니다.');
+        expect(geometry.missing, `윷 던지기 위치 요소를 모두 찾을 수 있어야 합니다: ${JSON.stringify(geometry, null, 2)}`).toEqual([]);
         expect(geometry.anchored).toBe('true');
         expect(geometry.stageCenterOffset).toBeLessThanOrEqual(2);
         expect(geometry.matCenterOffset).toBeLessThanOrEqual(2);
@@ -124,24 +164,28 @@ test.describe('local roll stage position regression', () => {
       await runQaStep(testInfo, '결과 카드 중앙 정렬과 매트 간격 확인', async () => {
         const resultCard = page.getByTestId('roll-result-card');
         await expect(resultCard).toBeVisible({ timeout: 10_000 });
-        await resultCard.evaluate(async (element) => {
-          await Promise.all(element.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
-        });
-        const geometry = await readRollGeometry(page);
-        expect(geometry, '결과 표시 위치 요소를 모두 찾을 수 있어야 합니다.').not.toBeNull();
-        if (!geometry) throw new Error('결과 표시 위치 요소를 찾지 못했습니다.');
+        await expect.poll(async () => {
+          const current = await readRollGeometry(page, { requireResult: true });
+          return current.missing;
+        }, {
+          timeout: 2_000,
+          intervals: [0, 50, 100, 200],
+          message: '결과 hold 구간에서 roll-stage와 결과 카드 geometry를 읽어야 합니다.',
+        }).toEqual([]);
+        const latestGeometry = await readRollGeometry(page, { requireResult: true });
+        expect(latestGeometry.missing, `결과 표시 위치 요소를 모두 찾을 수 있어야 합니다: ${JSON.stringify(latestGeometry, null, 2)}`).toEqual([]);
 
-        expect(geometry.stageCenterOffset).toBeLessThanOrEqual(2);
-        expect(geometry.matCenterOffset).toBeLessThanOrEqual(2);
-        expect(geometry.gradeCenterOffset).toBeLessThanOrEqual(2);
-        expect(geometry.resultCenterOffset).not.toBeNull();
-        expect(geometry.resultCenterOffset).toBeLessThanOrEqual(2);
-        expect(geometry.stageWidth).toBeGreaterThanOrEqual(geometry.matWidth - 1);
-        expect(geometry.gradeTop).toBe(20);
-        expect(geometry.resultTop).toBe(55);
-        expect(geometry.gradeResultGap).toBeGreaterThanOrEqual(0);
-        expect(geometry.gradeResultGap).toBeLessThanOrEqual(8);
-        expect(geometry.resultSurfaceGap).toBeLessThanOrEqual(100);
+        expect(latestGeometry.stageCenterOffset).toBeLessThanOrEqual(2);
+        expect(latestGeometry.matCenterOffset).toBeLessThanOrEqual(2);
+        expect(latestGeometry.gradeCenterOffset).toBeLessThanOrEqual(2);
+        expect(latestGeometry.resultCenterOffset).not.toBeNull();
+        expect(latestGeometry.resultCenterOffset).toBeLessThanOrEqual(2);
+        expect(latestGeometry.stageWidth).toBeGreaterThanOrEqual(latestGeometry.matWidth - 1);
+        expect(latestGeometry.gradeTop).toBe(20);
+        expect(latestGeometry.resultTop).toBe(55);
+        expect(latestGeometry.gradeResultGap).toBeGreaterThanOrEqual(0);
+        expect(latestGeometry.gradeResultGap).toBeLessThanOrEqual(8);
+        expect(latestGeometry.resultSurfaceGap).toBeLessThanOrEqual(100);
       });
     } finally {
       await guestContext.close();
