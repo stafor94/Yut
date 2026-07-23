@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: branch-room-cleanup-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -42,6 +46,7 @@ jobs:
           node --check scripts/cleanup-production-room-backlog.mjs
           node --check tests/helpers/cleanup-qa-rooms.js
           node --check tests/helpers/run-qa-emulator-suite.mjs
+          node --check tests/helpers/qa-emulator-fetch-shim.mjs
           ruby -e "require 'yaml'; YAML.load_file('.github/workflows/qa.yml'); puts 'qa.yml ok'"
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
