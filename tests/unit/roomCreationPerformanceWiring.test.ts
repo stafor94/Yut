@@ -33,6 +33,25 @@ test('최종 검증은 종류별 상한·호스트 방·중복 제목과 해당 
   assert.match(source, /isRoomLimitReached\(roomKind, capacityRooms\.length\)/);
 });
 
+test('종류별 상한 조회는 bounded equality query 뒤 실제 활성 인간 방만 포함한다', () => {
+  const source = read('src/features/room/services/roomCapacityStore.ts');
+  assert.match(source, /where\('roomKind', '==', roomKind\)/);
+  assert.match(source, /where\('status', 'in', ACTIVE_ROOM_STATUSES\)/);
+  assert.match(source, /firestoreLimit\(roomLimit \+ LEGACY_ROOM_SCAN_LIMIT\)/);
+  assert.match(source, /filter\(\(room\) => hasActiveHumanRoomSummary\(room, now\)\)/);
+});
+
+test('로비 구독은 최근 활동 순으로 제한한 뒤 대기·진행 방만 노출한다', () => {
+  const source = read('src/features/room/services/roomListStore.ts');
+  const orderIndex = source.indexOf("orderBy('lastActivityAt', 'desc')");
+  const limitIndex = source.indexOf('limit(ROOM_LIST_QUERY_LIMIT)');
+
+  assert.ok(orderIndex >= 0);
+  assert.ok(limitIndex > orderIndex);
+  assert.match(source, /room\.status === 'waiting' \|\| room\.status === 'playing'/);
+  assert.doesNotMatch(source, /where\('status', 'in'/);
+});
+
 test('성공 경로는 잠금 소유권과 방 ID를 transaction에서 재검증하고 잠금을 함께 해제한다', () => {
   const source = read('src/features/room/services/roomCreationService.ts');
   assert.match(source, /transaction\.get\(lockRef\)/);
