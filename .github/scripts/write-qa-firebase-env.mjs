@@ -7,7 +7,9 @@ if (!qaRunId) throw new Error('QA_RUN_ID가 필요합니다.');
 if (!/^demo-[a-z0-9-]+$/u.test(projectId)) throw new Error(`QA_PROJECT_ID는 demo- namespace여야 합니다: ${projectId || '없음'}`);
 
 const values = {
-  VITE_FIREBASE_API_KEY: 'demo-api-key',
+  // Firebase 12.x validates the public API key shape before connecting to Auth Emulator.
+  // This is a format-valid, non-production key used only by the isolated demo project.
+  VITE_FIREBASE_API_KEY: 'AIzaSyA12345678901234567890123456789012',
   VITE_FIREBASE_AUTH_DOMAIN: `${projectId}.firebaseapp.com`,
   VITE_FIREBASE_PROJECT_ID: projectId,
   VITE_FIREBASE_STORAGE_BUCKET: `${projectId}.appspot.com`,
