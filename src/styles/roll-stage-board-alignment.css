@@ -1,0 +1,30 @@
+/* Final roll-stage geometry overrides.
+   The stage is measured from the board, but a local roll can start while the
+   controls are still changing the board panel layout. Keep the measured size
+   and vertical anchor while centering the stage against the panel itself. */
+.roll-stage[data-board-anchored='true'] {
+  left: 50% !important;
+  right: auto !important;
+  translate: var(--roll-stage-center-offset-x, -50%) 0;
+}
+
+/* Keep the timing grade and result together near the upper edge of the mat. */
+.roll-stage .roll-stage-timing,
+.roll-stage .roll-stage-timing-preview {
+  top: 18px;
+}
+
+.roll-stage .roll-result-presentation {
+  top: 58px;
+}
+
+@media (max-width: 640px) {
+  .roll-stage .roll-stage-timing,
+  .roll-stage .roll-stage-timing-preview {
+    top: 18px;
+  }
+
+  .roll-stage .roll-result-presentation {
+    top: 54px;
+  }
+}
