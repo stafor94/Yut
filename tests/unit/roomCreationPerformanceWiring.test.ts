@@ -41,13 +41,18 @@ test('종류별 상한 조회는 bounded equality query 뒤 실제 활성 인간
   assert.match(source, /filter\(\(room\) => hasActiveHumanRoomSummary\(room, now\)\)/);
 });
 
-test('로비 구독은 최근 활동 순으로 제한한 뒤 대기·진행 방만 노출한다', () => {
+test('로비 구독은 최근 활동 방과 최근 레거시 방을 bounded 조회한 뒤 대기·진행 방만 노출한다', () => {
   const source = read('src/features/room/services/roomListStore.ts');
-  const orderIndex = source.indexOf("orderBy('lastActivityAt', 'desc')");
-  const limitIndex = source.indexOf('limit(ROOM_LIST_QUERY_LIMIT)');
+  const activityOrderIndex = source.indexOf("orderBy('lastActivityAt', 'desc')");
+  const activityLimitIndex = source.indexOf('limit(ROOM_LIST_QUERY_LIMIT)');
+  const legacyOrderIndex = source.indexOf("orderBy('createdAt', 'desc')");
+  const legacyLimitIndex = source.indexOf('limit(LEGACY_ROOM_SCAN_LIMIT)');
 
-  assert.ok(orderIndex >= 0);
-  assert.ok(limitIndex > orderIndex);
+  assert.ok(activityOrderIndex >= 0);
+  assert.ok(activityLimitIndex > activityOrderIndex);
+  assert.ok(legacyOrderIndex >= 0);
+  assert.ok(legacyLimitIndex > legacyOrderIndex);
+  assert.match(source, /getDocs\(query\(/);
   assert.match(source, /room\.status === 'waiting' \|\| room\.status === 'playing'/);
   assert.doesNotMatch(source, /where\('status', 'in'/);
 });
