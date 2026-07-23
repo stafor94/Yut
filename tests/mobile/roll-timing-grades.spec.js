@@ -111,7 +111,7 @@ test.describe('mobile roll timing grades QA', () => {
         expect(grade.text).toBe(EXPECTED_LABELS[grade.grade]);
         expect(grade.backgroundColor).toBe(EXPECTED_BADGE_COLORS[grade.grade]);
         expect(grade.color).toBe('rgb(255, 255, 255)');
-        expect(grade.display).toBe('inline-flex');
+        expect(grade.display).toBe(grade.grade === 'perfect' ? 'flex' : 'inline-flex');
         expect(grade.fontSize).toBeGreaterThanOrEqual(11);
         expect(grade.pseudoDisplay).toBe('none');
       }
