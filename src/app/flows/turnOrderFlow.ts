@@ -1,10 +1,60 @@
-import type { YutResult } from '../../game-core/roll';
-import type {
-  TurnOrderBracket,
-  TurnOrderIntro,
-  TurnOrderRound,
-  TurnOrderSubmission,
-} from '../appState';
+import type { RollTimingZone, YutResult, YutResultName, YutStick } from '../../game-core/roll';
+import type { PlayMode, Team } from '../appTypes';
+
+export type TurnOrderResultName = Exclude<YutResultName, '황금 윷'> | '낙';
+export type TurnOrderSubmissionSource = 'manual' | 'auto';
+export type TurnOrderSubmission = {
+  seatId: string;
+  roundId: string;
+  resultName: TurnOrderResultName;
+  displayResult: YutResult;
+  sticks: YutStick[];
+  fallCount: number;
+  timingZone: RollTimingZone;
+  source: TurnOrderSubmissionSource;
+  submittedAt: number;
+};
+export type TurnOrderBracket = {
+  id: string;
+  rankStart: number;
+  seatIds: string[];
+};
+export type TurnOrderRound = {
+  id: string;
+  index: number;
+  startAt: number;
+  deadlineAt: number;
+  eligibleSeatIds: string[];
+  brackets: TurnOrderBracket[];
+  submissions: TurnOrderSubmission[];
+  status: 'collecting' | 'reveal-pending';
+  aggregatedAt?: number;
+  revealAt?: number;
+};
+export type TurnOrderIntroEntry = {
+  seatId: string;
+  label: string;
+  name: string;
+  color: string;
+  team: Team;
+  isAI?: boolean;
+};
+export type TurnOrderIntro = {
+  version: 3;
+  roomId: string;
+  sessionId: string;
+  playMode: PlayMode;
+  order: TurnOrderIntroEntry[];
+  visible: boolean;
+  readyAt: number;
+  placements: Record<string, number>;
+  currentRound: TurnOrderRound;
+  nextRound?: TurnOrderRound | null;
+  finalIndividualOrderIds?: string[];
+  finalTurnOrderIds?: string[];
+  finalOrderAt?: number;
+  gameStartAt?: number;
+};
 
 export type TurnOrderTeam = '청팀' | '홍팀';
 export type TurnOrderSeat = {
