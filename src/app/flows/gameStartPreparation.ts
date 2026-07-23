@@ -148,7 +148,7 @@ export function buildPreparedRoomGameState(params: {
   const { roomId, room, players, startRequestVersion, startRequestId, countdownEndsAt } = params;
   const seats = getPreparedSeats(room, players);
   const requestedAt = Number(room.startRequestedAt ?? 0);
-  const turnOrderStartAt = Math.max(countdownEndsAt, requestedAt > 0 ? requestedAt + TURN_ORDER_INITIAL_DELAY_MS : countdownEndsAt);
+  const turnOrderStartAt = requestedAt > 0 ? requestedAt + TURN_ORDER_INITIAL_DELAY_MS : countdownEndsAt;
   const { intro: turnOrderIntro } = createTurnOrderIntro(seats, {
     roomId,
     startRequestVersion,
