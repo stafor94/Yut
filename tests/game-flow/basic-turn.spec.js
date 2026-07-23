@@ -17,6 +17,8 @@ test.describe('game flow QA', () => {
     await context.addInitScript(() => {
       window.__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__ = 2500;
       window.__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__ = 2500;
+      window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
+      window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
     });
 
     await runQaStep(testInfo, '방 생성', async () => {
