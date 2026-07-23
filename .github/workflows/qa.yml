@@ -208,8 +208,15 @@ jobs:
           retention-days: 7
       - name: Fail when a required stage failed
         env:
-          RESULTS: ${{ join(needs.*.result, ' ') }}
+          BUILD_RESULT: ${{ needs.build-and-unit.result }}
+          EMULATOR_RESULT: ${{ needs.qa-firebase-emulator.result }}
+          DEPLOY_RESULT: ${{ needs.deploy-pages.result }}
+          CURRENT_REF: ${{ github.ref }}
         run: |
-          for result in $RESULTS; do
-            test "$result" = success || exit 1
-          done
+          test "$BUILD_RESULT" = success
+          test "$EMULATOR_RESULT" = success
+          if [ "$CURRENT_REF" = refs/heads/main ]; then
+            test "$DEPLOY_RESULT" = success
+          else
+            test "$DEPLOY_RESULT" = skipped -o "$DEPLOY_RESULT" = success
+          fi
