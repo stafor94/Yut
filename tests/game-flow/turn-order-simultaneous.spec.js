@@ -143,4 +143,76 @@ test.describe('simultaneous turn-order QA', () => {
       await qa.hostContext.close();
     }
   });
+
+  test('AI는 동률 재대결 라운드가 시작되면 즉시 자동 제출되어 던지는 중에 머물지 않는다', async ({ browser }, testInfo) => {
+    const hostContext = await browser.newContext();
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'ai-host'));
+    const roomTitle = makeQaName(testInfo, 'ai-tie-room');
+    await primeLobbyStorage(hostContext, {
+      nickname: hostName,
+      maxPlayers: '2',
+      playMode: 'individual',
+      itemMode: 'false',
+      pieceCount: '4',
+    });
+    await hostContext.addInitScript(() => {
+      window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['도', '걸'];
+      window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도', '개'];
+    });
+    const hostPage = await hostContext.newPage();
+
+    try {
+      await createRoomFromLobby(hostPage, roomTitle);
+      roomId = await rememberRoomIdFromPage(hostPage) ?? await findRoomIdByTitle(roomTitle);
+      await hostPage.getByTestId('add-ai-P2').click();
+      await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await hostPage.getByTestId('start-game-button').click();
+      await expect(hostPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+
+      const readAiEntry = async () => {
+        const state = await getRoomStateForQa(roomId);
+        return state?.turnOrderIntro?.order?.find((entry) => entry.isAI) ?? null;
+      };
+      await expect.poll(async () => Boolean(await readAiEntry()), { timeout: 5_000 }).toBe(true);
+      const aiEntry = await readAiEntry();
+      expect(aiEntry).not.toBeNull();
+      const aiSeatId = aiEntry?.seatId ?? '';
+      const aiCard = hostPage.getByTestId('turn-order-result-grid').locator('.turn-order-result-card').filter({ hasText: aiEntry?.name ?? 'AI' });
+
+      await runQaStep(testInfo, '첫 라운드 AI 즉시 자동 제출과 동률 공개', async () => {
+        const hostButton = hostPage.getByTestId('turn-order-roll-button');
+        await expect(hostButton).toBeVisible({ timeout: 10_000 });
+        await expect.poll(async () => {
+          const round = await readTurnOrderRound(roomId);
+          return round?.submissions?.find((entry) => entry.seatId === aiSeatId)?.source ?? '';
+        }, { timeout: 5_000 }).toBe('auto');
+        await expect(aiCard).toContainText('결과 대기');
+        await expect(aiCard).not.toContainText('던지는 중');
+
+        await hostButton.click();
+        await expect(hostPage.getByTestId('turn-order-own-result')).toContainText('도');
+        await expect.poll(async () => (await readTurnOrderRound(roomId))?.status ?? '', { timeout: 12_000 }).toBe('reveal-pending');
+        await expect(aiCard).toContainText('도', { timeout: 6_000 });
+        await expect(hostPage.getByTestId('turn-order-tie-notice')).toBeVisible();
+      });
+
+      await runQaStep(testInfo, '재대결 라운드 AI 즉시 자동 제출', async () => {
+        const hostButton = hostPage.getByTestId('turn-order-roll-button');
+        await expect(hostButton).toBeVisible({ timeout: 10_000 });
+        await expect.poll(async () => {
+          const round = await readTurnOrderRound(roomId);
+          if (round?.index !== 2) return '';
+          return round.submissions?.find((entry) => entry.seatId === aiSeatId)?.source ?? '';
+        }, { timeout: 5_000 }).toBe('auto');
+        await expect(aiCard).toContainText('결과 대기');
+        await expect(aiCard).not.toContainText('던지는 중');
+
+        await hostButton.click();
+        await expect(hostPage.getByTestId('turn-order-own-result')).toContainText('걸');
+        await expect(hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
+      });
+    } finally {
+      await hostContext.close();
+    }
+  });
 });
