@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { auth, listenAuthState } from '../../../services/firebase/firebaseAuth';
-import { subscribeActiveRooms, subscribeRoomPlayers, type RoomSummary } from '../services/roomService';
+import { subscribeRoomPlayers, type RoomSummary } from '../services/roomService';
+import { subscribeCappedActiveRooms } from '../services/roomListStore';
 import { createRoomListSubscriptionController } from './roomListSubscription';
 
 type UseRoomsOptions = {
@@ -33,7 +34,7 @@ export function useRooms(options: UseRoomsOptions = {}) {
   useEffect(() => {
     if (!enabled) return undefined;
     const controller = createRoomListSubscriptionController({
-      subscribeRooms: subscribeActiveRooms,
+      subscribeRooms: subscribeCappedActiveRooms,
       subscribePlayers: subscribeRoomPlayers,
       onRooms: (nextRooms) => {
         setRooms(nextRooms);
