@@ -93,6 +93,14 @@
   background: #34373d;
 }
 
+.roll-timing-feedback.perfect,
+.roll-timing-feedback.nice,
+.roll-timing-feedback.good,
+.roll-timing-feedback.bad,
+.roll-timing-feedback.normal {
+  color: #fff;
+}
+
 .roll-stage-timing {
   position: static;
   inset: auto;
