@@ -201,7 +201,11 @@ export const activateNextTurnOrderRound = (intro: TurnOrderIntro, now = Date.now
   if (!intro.nextRound || now < intro.nextRound.startAt) return intro;
   return {
     ...intro,
-    currentRound: intro.nextRound,
+    currentRound: {
+      ...intro.nextRound,
+      aggregatedAt: 0,
+      revealAt: 0,
+    },
     nextRound: null,
   };
 };
