@@ -50,13 +50,26 @@ jobs:
           retention-days: 7
 
   qa-firebase-emulator:
-    name: QA Firebase emulator suite
+    name: QA ${{ matrix.label }}
     needs: build-and-unit
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: online-core
+            code: core
+            label: Online core
+          - group: desktop-regression
+            code: desk
+            label: Desktop regression
+          - group: mobile-galaxy
+            code: mobile
+            label: Mobile Galaxy
     env:
-      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
-      QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ github.run_attempt }}
+      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
+      QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ matrix.code }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -78,26 +91,39 @@ jobs:
         run: |
           set -o pipefail
           npm run build:qa 2>&1 | tee qa-build.log
-      - name: Run QA against Auth and Firestore emulators
+      - id: emulator-qa
+        name: Run ${{ matrix.label }} against Auth and Firestore emulators
         run: |
           set -o pipefail
           npx --yes firebase-tools@latest emulators:exec \
             --config firebase.qa.json \
             --project "$QA_PROJECT_ID" \
             --only auth,firestore \
-            "npm run qa:emulator-suite" 2>&1 | tee qa-emulator-suite.log
-      - name: Upload emulator QA artifacts
+            "npm run qa:emulator-suite -- --group ${{ matrix.group }}" 2>&1 | tee qa-emulator-suite.log
+      - name: Collect shard artifacts
+        if: always()
+        env:
+          SHARD_CODE: ${{ matrix.code }}
+          SHARD_GROUP: ${{ matrix.group }}
+          SHARD_RESULT: ${{ job.status }}
+        run: |
+          target="qa-artifacts/$SHARD_CODE"
+          mkdir -p "$target"
+          printf '%s\n' "$SHARD_GROUP" > "$target/group.txt"
+          printf '%s\n' "$SHARD_RESULT" > "$target/result.txt"
+          for pattern in test-results playwright-*.log qa-*.log firestore-debug.log firebase-debug.log console-log.txt; do
+            for file in $pattern; do
+              if [ -e "$file" ]; then
+                cp -R "$file" "$target/"
+              fi
+            done
+          done
+      - name: Upload ${{ matrix.label }} artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-firebase-emulator-results
-          path: |
-            test-results
-            playwright-*.log
-            qa-*.log
-            firestore-debug.log
-            firebase-debug.log
-            console-log.txt
+          name: qa-${{ matrix.code }}-results
+          path: qa-artifacts
           if-no-files-found: ignore
           retention-days: 7
 
@@ -145,26 +171,34 @@ jobs:
           EMULATOR_RESULT: ${{ needs.qa-firebase-emulator.result }}
           DEPLOY_RESULT: ${{ needs.deploy-pages.result }}
         run: |
+          CORE_RESULT=$(cat core/result.txt 2>/dev/null || printf 'unavailable')
+          DESKTOP_RESULT=$(cat desk/result.txt 2>/dev/null || printf 'unavailable')
+          MOBILE_RESULT=$(cat mobile/result.txt 2>/dev/null || printf 'unavailable')
           {
             echo '## Main Branch QA 결과'
             echo
             echo '| 단계 | 결과 |'
             echo '|---|---|'
             echo "| Build and unit | \`$BUILD_RESULT\` |"
-            echo "| Firebase emulator QA suite | \`$EMULATOR_RESULT\` |"
+            echo "| QA online core | \`$CORE_RESULT\` |"
+            echo "| QA desktop regression | \`$DESKTOP_RESULT\` |"
+            echo "| QA mobile Galaxy | \`$MOBILE_RESULT\` |"
+            echo "| Firebase emulator QA matrix | \`$EMULATOR_RESULT\` |"
             echo "| Deploy Pages | \`$DEPLOY_RESULT\` |"
           } | tee qa-summary.md
           cat qa-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Combine QA logs
         if: always()
-        run: cat playwright-*.log qa-*.log unit.log build.log > playwright.log 2>/dev/null || touch playwright.log
+        run: find core desk mobile -type f \( -name 'playwright-*.log' -o -name 'qa-*.log' \) -print0 2>/dev/null | xargs -0 cat > playwright.log || touch playwright.log
       - name: Upload QA summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: qa-summary
           path: |
-            test-results
+            core
+            desk
+            mobile
             build.log
             unit.log
             playwright.log
