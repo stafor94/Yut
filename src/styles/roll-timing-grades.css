@@ -33,57 +33,208 @@
   box-shadow: 0 1px 7px rgba(0, 0, 0, 0.58), 0 0 0 1px rgba(17, 24, 39, 0.35);
 }
 
+.roll-result-presentation {
+  position: absolute;
+  top: clamp(-4.15rem, -7vw, -3.55rem);
+  left: 50%;
+  z-index: 7;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: max-content;
+  max-width: min(82vw, 240px);
+  translate: -50% 0;
+  pointer-events: none;
+}
+
+.roll-result-presentation[hidden] {
+  display: none;
+}
+
 .roll-timing-feedback {
-  min-height: 2.35rem;
-  font-size: 0;
-  line-height: 0.95;
-  white-space: nowrap;
-  letter-spacing: -0.035em;
-  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.94), 0 4px 12px rgba(0, 0, 0, 0.24);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 5px 13px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 999px;
+  color: #fff;
+  font-size: clamp(0.72rem, 2.1vw, 0.84rem);
+  font-weight: 1000;
+  line-height: 1;
+  letter-spacing: 0.075em;
+  text-shadow: 0 1px 2px rgba(20, 16, 14, 0.34);
+  box-shadow:
+    0 4px 0 rgba(44, 34, 29, 0.24),
+    0 8px 18px rgba(40, 30, 24, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 
 .roll-timing-feedback::before {
-  display: block;
-  font-size: clamp(2.2rem, 6.5vw, 3.45rem);
-  line-height: 0.95;
+  display: none;
+  content: none;
 }
 
-.roll-timing-feedback.perfect::before {
-  color: #8e44ad;
-  content: 'Perfect!';
+.roll-timing-feedback.perfect {
+  background: #6d4aff;
 }
 
-.roll-timing-feedback.nice::before {
-  color: #0284c7;
-  content: 'Nice!';
+.roll-timing-feedback.nice {
+  background: #249ed1;
 }
 
-.roll-timing-feedback.good::before {
-  color: #3f7d20;
-  content: 'Good!';
+.roll-timing-feedback.good {
+  background: #55a84f;
 }
 
-.roll-timing-feedback.bad::before,
-.roll-timing-feedback.normal::before {
-  color: #111827;
-  content: 'Bad!';
+.roll-timing-feedback.bad,
+.roll-timing-feedback.normal {
+  background: #34373d;
 }
 
 .roll-stage-timing {
-  top: clamp(-4.5rem, -8vw, -3.6rem);
-  z-index: 7;
+  position: static;
+  inset: auto;
+  grid-column: auto;
+  justify-self: center;
+  width: max-content;
+  margin: 0;
+  transform: none;
+  text-align: center;
+}
+
+.roll-stage .roll-result-card,
+.roll-stage.resolved-from-pending .roll-result-card {
+  position: static;
+  top: auto;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 144px;
+  max-width: min(82vw, 220px);
+  margin: 0;
+  padding: 8px 16px 9px;
+  border: 2px solid #7b4b2a;
+  border-radius: 14px;
+  background:
+    repeating-linear-gradient(0deg, rgba(105, 61, 27, 0.035) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #fff9e9 0%, #fff4d8 60%, #edcf96 100%);
+  color: #4f2d19;
+  opacity: 1;
+  transform: none;
+  text-align: center;
+  text-shadow: none;
+  box-shadow:
+    0 5px 0 #6a3a20,
+    0 11px 22px rgba(54, 31, 18, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    inset 0 -2px 4px rgba(112, 67, 28, 0.13);
+  animation: roll-result-card-enter 180ms cubic-bezier(0.2, 0.9, 0.25, 1.18) both;
+}
+
+.roll-result-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: inherit;
+  font-size: clamp(1.75rem, 6vw, 2.15rem);
+  font-weight: 1000;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.roll-result-description {
+  color: rgba(79, 45, 25, 0.74);
+  font-size: clamp(0.72rem, 2.5vw, 0.84rem);
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.roll-result-symbol {
+  color: currentColor;
+  font-size: 0.72em;
+  line-height: 1;
+}
+
+.roll-result-card.bonus {
+  border-color: #b37a22;
+  color: #956000;
+  box-shadow:
+    0 5px 0 #805414,
+    0 11px 24px rgba(113, 75, 19, 0.3),
+    0 0 20px rgba(235, 181, 69, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    inset 0 -2px 4px rgba(135, 84, 20, 0.14);
+}
+
+.roll-result-card.bonus .roll-result-symbol {
+  animation: roll-result-symbol-twinkle 820ms ease-in-out infinite alternate;
+}
+
+.roll-result-card.backdo {
+  color: #c25b2b;
+}
+
+.roll-result-card.fall {
+  border-color: #8f352b;
+  color: #b23a2f;
+  background:
+    repeating-linear-gradient(0deg, rgba(114, 40, 31, 0.035) 0 1px, transparent 1px 4px),
+    linear-gradient(180deg, #fff6e5 0%, #f5d5ad 100%);
+}
+
+@keyframes roll-result-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes roll-result-symbol-twinkle {
+  from {
+    opacity: 0.58;
+    transform: scale(0.86) rotate(-8deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.1) rotate(6deg);
+  }
 }
 
 @media (max-width: 640px) {
-  .roll-timing-feedback {
-    min-height: 2rem;
-  }
-
-  .roll-timing-feedback::before {
-    font-size: clamp(1.9rem, 9vw, 2.75rem);
-  }
-
-  .roll-stage-timing {
+  .roll-result-presentation {
     top: -3.55rem;
+    gap: 5px;
+  }
+
+  .roll-timing-feedback {
+    min-height: 26px;
+    padding: 5px 11px 4px;
+    font-size: 0.7rem;
+  }
+
+  .roll-stage .roll-result-card,
+  .roll-stage.resolved-from-pending .roll-result-card {
+    min-width: 132px;
+    padding: 7px 14px 8px;
+  }
+
+  .roll-result-name {
+    font-size: clamp(1.65rem, 8vw, 2rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roll-stage .roll-result-card,
+  .roll-stage.resolved-from-pending .roll-result-card,
+  .roll-result-card.bonus .roll-result-symbol {
+    animation: none;
   }
 }
