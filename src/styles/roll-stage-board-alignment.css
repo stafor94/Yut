@@ -1,19 +1,13 @@
 /* Final roll-stage geometry overrides.
-   The stage is measured from the board, but a local roll can start while the
-   controls are still changing the board panel layout. Keep the measured size
-   and vertical anchor while centering the stage against the panel itself. */
+   The stage is measured from the board, but the roll mat can be wider than the
+   measured board on mobile and tablet. Give the centered stage enough width
+   for the full mat and center the implicit grid track, not only its child. */
 .roll-stage[data-board-anchored='true'] {
   left: 50% !important;
   right: auto !important;
+  width: max(100%, min(96vw, 700px)) !important;
+  justify-content: center;
   translate: var(--roll-stage-center-offset-x, -50%) 0;
-}
-
-/* An anchored stage is board-width while the mat can be wider on mobile/tablet.
-   Force an unsafe geometric center instead of grid's overflow-safe start edge. */
-.roll-stage[data-board-anchored='true'] .roll-mat {
-  left: 50%;
-  justify-self: start;
-  translate: var(--roll-mat-center-offset-x, -50%) 0;
 }
 
 /* Keep the timing grade and result together near the upper edge of the mat. */
