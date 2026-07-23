@@ -112,7 +112,8 @@
   top: clamp(-4.15rem, -7vw, -3.55rem);
   left: 50%;
   z-index: 8;
-  inset-inline: auto;
+  right: auto;
+  bottom: auto;
   justify-self: center;
   width: max-content;
   margin: 0;
