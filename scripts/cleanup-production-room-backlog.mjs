@@ -64,13 +64,19 @@ function isSystemRoom(room) {
   return Boolean(String(room.systemRoomType ?? '').trim());
 }
 
-function isInactiveRoom(room, now = Date.now()) {
+function isInactiveRoom(room, now = Date.now(), { allowOldPositivePlayers = false } = {}) {
   const timestamp = roomTimestamp(room);
   const oldEnough = timestamp > 0 && now - timestamp >= MIN_INACTIVE_AGE_MS;
+  const hasPlayerCount = room.currentPlayers !== null
+    && room.currentPlayers !== undefined
+    && Number.isFinite(Number(room.currentPlayers));
+  const playerCount = hasPlayerCount ? Number(room.currentPlayers) : null;
+  const hasPositivePlayers = playerCount !== null && playerCount > 0;
+  const isExplicitlyEmpty = playerCount !== null && playerCount <= 0;
   return room.status === 'finished'
-    || Number(room.currentPlayers ?? 0) <= 0
+    || isExplicitlyEmpty
     || Boolean(room.deletingAt)
-    || oldEnough;
+    || (oldEnough && (allowOldPositivePlayers || !hasPositivePlayers));
 }
 
 async function firestoreRequest(url, options = {}) {
@@ -137,7 +143,10 @@ function buildCleanupPlan(rooms, now = Date.now()) {
   const qaRooms = rooms.filter((room) => !isSystemRoom(room) && isQaRoom(room));
   const newestQaRooms = [...qaRooms].sort((left, right) => roomTimestamp(right) - roomTimestamp(left));
   const qaOverflowIds = new Set(newestQaRooms.slice(QA_ROOM_LIMIT).map((room) => room.id));
-  const qaTargets = newestQaRooms.filter((room) => isInactiveRoom(room, now) || qaOverflowIds.has(room.id));
+  const qaTargets = newestQaRooms.filter((room) => (
+    isInactiveRoom(room, now, { allowOldPositivePlayers: true })
+    || qaOverflowIds.has(room.id)
+  ));
   const userTargets = ordinaryRooms.filter((room) => isInactiveRoom(room, now));
   return {
     qaRooms,
