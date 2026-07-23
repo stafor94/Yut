@@ -30,6 +30,7 @@ import {
   isRollPresentationResultVisible,
   type RollPresentationState,
 } from '../flows/rollPresentationVisibility';
+import { getRollResultPresentation } from '../flows/rollResultPresentation';
 import type { RollAnimation } from '../appState';
 
 type RollStageProps = {
@@ -41,10 +42,10 @@ type RollStageProps = {
 type PresentationTimingGrade = 'perfect' | 'nice' | 'good' | 'bad';
 
 const TIMING_GRADE_LABELS: Record<PresentationTimingGrade, string> = {
-  perfect: 'Perfect!',
-  nice: 'Nice!',
-  good: 'Good!',
-  bad: 'Bad!',
+  perfect: 'PERFECT',
+  nice: 'NICE',
+  good: 'GOOD',
+  bad: 'BAD',
 };
 
 const normalizePresentationTimingGrade = (value: unknown): PresentationTimingGrade | undefined => {
@@ -388,6 +389,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const shouldShowResult = Boolean(result) && hasSettled && !isPreResult && !isLanding;
   const hasResolvedResult = (isLanding || isResultHold || Boolean(result)) && Boolean(result);
   const isBonusResult = hasResolvedResult && !turnOrder && !fallCount && (result?.name === '윷' || result?.name === '모');
+  const resultPresentation = result ? getRollResultPresentation({ result, fallCount, turnOrder }) : null;
   const phaseClass = isPreResult ? `pending-roll ${presentedAnimation.phase === 'extra-spin' ? 'extra-spin-roll' : 'primary-roll'}` : isVisualLanding ? 'resolved-from-pending resolved-roll landing-roll' : isResultHold ? 'resolved-from-pending resolved-roll result-hold-roll' : 'resolved-roll';
   return <div ref={rollStageRef} className={`roll-stage ${phaseClass}`} data-settle-source={settleSource} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
@@ -412,8 +414,17 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
         <span className="roll-mat-leg roll-mat-leg-left"></span>
         <span className="roll-mat-leg roll-mat-leg-right"></span>
       </span>
-      {timingGrade && <span className={`roll-timing-feedback roll-stage-timing ${timingGrade}`}>{TIMING_GRADE_LABELS[timingGrade]}</span>}
-      {hasResolvedResult && result && <span className={shouldShowResult ? 'roll-label' : 'roll-label-placeholder'} hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>{fallCount ? '낙!' : result.name}</span>}
+      {hasResolvedResult && resultPresentation && <div data-testid="roll-result-presentation" className="roll-result-presentation" hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>
+        {timingGrade && <span data-testid="roll-timing-grade" className={`roll-timing-feedback roll-stage-timing ${timingGrade}`}>{TIMING_GRADE_LABELS[timingGrade]}</span>}
+        <span data-testid="roll-result-card" className={`roll-label roll-result-card ${resultPresentation.tone}`}>
+          <strong className="roll-result-name">
+            {resultPresentation.leadingSymbol && <span className="roll-result-symbol" aria-hidden="true">{resultPresentation.leadingSymbol}</span>}
+            <span>{resultPresentation.label}</span>
+            {resultPresentation.trailingSymbol && <span className="roll-result-symbol" aria-hidden="true">{resultPresentation.trailingSymbol}</span>}
+          </strong>
+          <small className="roll-result-description">{resultPresentation.description}</small>
+        </span>
+      </div>}
       <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={() => {
         const scene = rollStageRef.current?.querySelector<HTMLElement>('[data-testid="yut-roll-scene"]');
         if (scene?.dataset.renderer === 'fallback') {
