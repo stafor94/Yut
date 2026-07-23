@@ -29,7 +29,7 @@
 }
 
 .roll-stage .roll-result-presentation {
-  top: 48px;
+  top: 49.5px;
   left: 0;
   right: 0;
   margin-inline: auto;
@@ -43,6 +43,6 @@
   }
 
   .roll-stage .roll-result-presentation {
-    top: 48px;
+    top: 49.5px;
   }
 }
