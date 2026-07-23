@@ -124,7 +124,10 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(qa.hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 12_000 });
         await expect(qa.guestPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 12_000 });
         const finalState = await getRoomStateForQa(qa.roomId);
-        expect(finalState?.turnOrderIds).toEqual([qa.hostPage ? finalState?.gameSeats?.[0]?.id : '', finalState?.gameSeats?.[1]?.id]);
+        expect(finalState?.turnOrderIds).toEqual([
+          finalState?.gameSeats?.[0]?.id,
+          finalState?.gameSeats?.[1]?.id,
+        ]);
         expect(Number(finalState?.gameStartAt ?? finalState?.turnOrderIntro?.gameStartAt ?? 0)).toBeGreaterThan(0);
         expect(Number(finalState?.turnOrderIntro?.gameStartAt ?? 0) - Number(finalState?.turnOrderIntro?.finalOrderAt ?? 0)).toBe(3_000);
 
