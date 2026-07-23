@@ -96,7 +96,7 @@ export function buildAlternatingTeamTurnOrder<TSeat extends TurnOrderSeat>(ranke
   let preferredTeam: TurnOrderTeam = firstTeam;
 
   while (teamQueues.청팀.length || teamQueues.홍팀.length) {
-    const previousTeam = turnOrder[turnOrder.length - 1]?.team;
+    const previousTeam = turnOrder[turnOrder.length - 1]?.seat.team;
     const oppositeTeam = previousTeam === '청팀' ? '홍팀' : '청팀';
     const nextTeam = previousTeam && teamQueues[oppositeTeam].length
       ? oppositeTeam
@@ -201,7 +201,11 @@ export const activateNextTurnOrderRound = (intro: TurnOrderIntro, now = Date.now
   if (!intro.nextRound || now < intro.nextRound.startAt) return intro;
   return {
     ...intro,
-    currentRound: intro.nextRound,
+    currentRound: {
+      ...intro.nextRound,
+      aggregatedAt: 0,
+      revealAt: 0,
+    },
     nextRound: null,
   };
 };
