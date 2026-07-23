@@ -95,6 +95,8 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const [localSubmission, setLocalSubmission] = useState<TurnOrderSubmission | null>(null);
   const [localRollAnimation, setLocalRollAnimation] = useState<RollAnimation | null>(null);
   const submittedRoundIdRef = useRef('');
+  const fallbackRoundIdRef = useRef('');
+  const aggregatingRoundIdRef = useRef('');
   const completionSoundSessionRef = useRef('');
 
   useEffect(() => {
@@ -134,6 +136,16 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     setLocalRollAnimation(null);
     submittedRoundIdRef.current = storedLocalSubmission ? roundId : '';
   }, [localSubmission?.roundId, roundId, storedLocalSubmission]);
+
+  useEffect(() => {
+    if (!round || round.status !== 'collecting') {
+      fallbackRoundIdRef.current = '';
+      aggregatingRoundIdRef.current = '';
+      return;
+    }
+    if (fallbackRoundIdRef.current && fallbackRoundIdRef.current !== round.id) fallbackRoundIdRef.current = '';
+    if (aggregatingRoundIdRef.current && aggregatingRoundIdRef.current !== round.id) aggregatingRoundIdRef.current = '';
+  }, [round, roundId]);
 
   useEffect(() => {
     if (!sourceIntro?.nextRound || now < sourceIntro.nextRound.startAt || sourceIntro.currentRound.id === sourceIntro.nextRound.id) return;
@@ -183,6 +195,9 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
 
   useEffect(() => {
     if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.deadlineAt + AUTO_ROLL_FALLBACK_DELAY_MS) return;
+    const allSubmitted = round.eligibleSeatIds.every((seatId) => round.submissions.some((submission) => submission.seatId === seatId));
+    if (allSubmitted || fallbackRoundIdRef.current === round.id) return;
+    fallbackRoundIdRef.current = round.id;
     void updateTurnOrderState(intro.roomId, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
       if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
@@ -200,15 +215,19 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
         }), Date.now());
       });
       return next.currentRound.submissions.length === activated.currentRound.submissions.length ? null : { turnOrderIntro: next };
+    }).catch(() => {
+      if (fallbackRoundIdRef.current === round.id) fallbackRoundIdRef.current = '';
     });
   }, [intro, isCoordinator, now, round]);
 
   useEffect(() => {
-    if (!intro || !canAggregateTurnOrderRound(intro)) return;
+    if (!intro || !round || !canAggregateTurnOrderRound(intro, now) || aggregatingRoundIdRef.current === round.id) return;
+    aggregatingRoundIdRef.current = round.id;
     void updateTurnOrderState(intro.roomId, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
-      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId || !canAggregateTurnOrderRound(current)) return null;
-      const next = aggregateTurnOrderRound(current, Date.now());
+      const transactionNow = Date.now();
+      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId || !canAggregateTurnOrderRound(current, transactionNow)) return null;
+      const next = aggregateTurnOrderRound(current, transactionNow);
       if (!isTurnOrderFinalized(next)) return { turnOrderIntro: next };
       const entryById = new Map(next.order.map((entry) => [entry.seatId, entry]));
       const orderedEntries = (next.finalTurnOrderIds ?? []).map((seatId) => entryById.get(seatId)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
@@ -229,8 +248,10 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
         waitingForPlayersReady: false,
         logs,
       };
+    }).catch(() => {
+      if (aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
     });
-  }, [intro]);
+  }, [intro, now, round]);
 
   useEffect(() => {
     if (!intro || !isTurnOrderFinalized(intro) || !intro.finalOrderAt || now < intro.finalOrderAt) return;
@@ -248,12 +269,23 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const remainingSeconds = isPreparing ? getRemainingSeconds(round.startAt, now) : getRemainingSeconds(round.deadlineAt, now);
   const revealSeconds = revealAt ? getRemainingSeconds(revealAt, now) : 0;
   const nextTieSeatIds = new Set(intro.nextRound?.eligibleSeatIds ?? []);
+  const heading = finalOrderVisible
+    ? '최종 순서 확정'
+    : isPreparing
+      ? '잠시 후 순서 정하기가 시작됩니다'
+      : isCollecting
+        ? `${round.index}라운드 · 동시에 던지세요`
+        : round.status === 'collecting'
+          ? '자동 던지기 결과를 모으는 중입니다'
+          : revealReady
+            ? '전체 결과 공개'
+            : '전체 결과를 모으는 중입니다';
 
   return <>
     <div className="turn-order-ready-overlay" data-testid="turn-order-overlay" role="status" aria-live="polite">
       <div className="turn-order-presentation-heading">
         <span>순서 정하기</span>
-        <strong>{finalOrderVisible ? '최종 순서 확정' : isPreparing ? '잠시 후 순서 정하기가 시작됩니다' : round.status === 'collecting' ? `${round.index}라운드 · 동시에 던지세요` : revealReady ? '전체 결과 공개' : '전체 결과를 모으는 중입니다'}</strong>
+        <strong>{heading}</strong>
       </div>
 
       {finalOrderVisible ? <div className="turn-order-final-list" data-testid="turn-order-final-order">
