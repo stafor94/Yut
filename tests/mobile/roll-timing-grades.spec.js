@@ -61,6 +61,7 @@ test.describe('mobile roll timing grades QA', () => {
           const element = host.querySelector(`.roll-timing-feedback.${grade}`);
           const style = getComputedStyle(element);
           const pseudo = getComputedStyle(element, '::before');
+          const rect = element.getBoundingClientRect();
           return {
             grade,
             text: element.textContent,
@@ -68,6 +69,8 @@ test.describe('mobile roll timing grades QA', () => {
             color: style.color,
             display: style.display,
             fontSize: Number.parseFloat(style.fontSize),
+            width: rect.width,
+            height: rect.height,
             pseudoDisplay: pseudo.display,
           };
         });
@@ -75,6 +78,8 @@ test.describe('mobile roll timing grades QA', () => {
         const card = host.querySelector('.roll-result-card');
         const name = host.querySelector('.roll-result-name');
         const description = host.querySelector('.roll-result-description');
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const cardRect = card.getBoundingClientRect();
         const cardStyle = getComputedStyle(card);
         const result = {
           meterBackground: getComputedStyle(meter).backgroundImage,
@@ -83,6 +88,8 @@ test.describe('mobile roll timing grades QA', () => {
           grades,
           wrapperPosition: getComputedStyle(wrapper).position,
           cardDisplay: cardStyle.display,
+          cardTranslate: cardStyle.translate,
+          cardCenterOffset: Math.abs((cardRect.left + cardRect.width / 2) - (wrapperRect.left + wrapperRect.width / 2)),
           cardBackground: cardStyle.backgroundImage,
           cardBorderColor: cardStyle.borderTopColor,
           cardBorderRadius: Number.parseFloat(cardStyle.borderTopLeftRadius),
@@ -112,12 +119,16 @@ test.describe('mobile roll timing grades QA', () => {
         expect(grade.backgroundColor).toBe(EXPECTED_BADGE_COLORS[grade.grade]);
         expect(grade.color).toBe('rgb(255, 255, 255)');
         expect(grade.display).toBe(grade.grade === 'perfect' ? 'flex' : 'inline-flex');
-        expect(grade.fontSize).toBeGreaterThanOrEqual(11);
+        expect(grade.fontSize).toBeGreaterThanOrEqual(14);
+        expect(grade.width).toBeGreaterThanOrEqual(82);
+        expect(grade.height).toBeGreaterThanOrEqual(34);
         expect(grade.pseudoDisplay).toBe('none');
       }
 
       expect(presentation.wrapperPosition).toBe('absolute');
       expect(presentation.cardDisplay).toBe('grid');
+      expect(presentation.cardTranslate).toBe('none');
+      expect(presentation.cardCenterOffset).toBeLessThanOrEqual(1);
       expect(presentation.cardBackground).not.toBe('none');
       expect(presentation.cardBorderColor).toBe('rgb(123, 75, 42)');
       expect(presentation.cardBorderRadius).toBeGreaterThanOrEqual(12);
