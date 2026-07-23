@@ -1,0 +1,53 @@
+name: Branch room cleanup format
+
+on:
+  push:
+    branches:
+      - agent/limit-room-counts-and-fix-qa-cleanup
+
+permissions:
+  contents: write
+
+concurrency:
+  group: branch-room-cleanup-format
+  cancel-in-progress: true
+
+jobs:
+  format-regression-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/limit-room-counts-and-fix-qa-cleanup
+          fetch-depth: 0
+      - name: Restore block indentation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/regression/bug-history-smoke.spec.js')
+          text = path.read_text()
+          start_marker = "await expect.poll(async () => {\n  resultHoldPresentation = await resultHoldStage.evaluate"
+          end_marker = "      await expect(page.locator('.roll-stage'), 'result-hold 팝업은 정상적으로 종료되어야 합니다.')"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('atomic result-hold block markers were not found')
+          block = text[start:end]
+          indented = ''.join(('      ' + line if line.strip() else line) for line in block.splitlines(keepends=True))
+          path.write_text(text[:start] + indented + text[end:])
+          PY
+          node --check tests/regression/bug-history-smoke.spec.js
+          git diff --check
+      - name: Commit formatting fix
+        run: |
+          if git diff --quiet; then
+            echo "No formatting patch required."
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tests/regression/bug-history-smoke.spec.js
+          git commit -m "style: restore regression test indentation"
+          git push origin HEAD:agent/limit-room-counts-and-fix-qa-cleanup
