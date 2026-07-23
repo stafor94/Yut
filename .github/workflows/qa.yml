@@ -49,317 +49,61 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  qa-online-game-flow:
-    name: QA online game flow
+  qa-firebase-emulator:
+    name: QA Firebase emulator suite
     needs: build-and-unit
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
-      options: --user 1001
+    timeout-minutes: 75
     env:
-      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-online-game-flow
-      QA_ROLE: online-game-flow
-      QA_ALLOW_PRODUCTION_FIREBASE: '1'
-      QA_CLEANUP_MODE: current-run
+      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+      QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - name: Download built app
-        uses: actions/download-artifact@v4
+      - uses: actions/setup-java@v4
         with:
-          name: build-and-unit
-      - name: Verify dist exists
-        run: test -d dist
-      - name: Prepare production Firebase helper environment
-        run: node .github/scripts/write-firebase-env.mjs
-      - name: Run online start and authority QA
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Prepare isolated QA Firebase environment
+        run: node .github/scripts/write-qa-firebase-env.mjs
+      - name: Reject production Firebase configuration
+        run: node .github/scripts/verify-qa-emulator-config.mjs
+      - name: Build isolated QA app
         run: |
           set -o pipefail
-          npm run test:qa-basic-flow -- --output=test-results/online-game-flow 2>&1 | tee playwright-qa-online-game-flow.log
-      - name: Cleanup online game-flow QA rooms
-        if: always()
+          npm run build:qa 2>&1 | tee qa-build.log
+      - name: Run QA against Auth and Firestore emulators
         run: |
           set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-online-game-flow.log
-      - name: Upload online game-flow artifacts
+          npx --yes firebase-tools@latest emulators:exec \
+            --config firebase.qa.json \
+            --project "$QA_PROJECT_ID" \
+            --only auth,firestore \
+            "npm run qa:emulator-suite" 2>&1 | tee qa-emulator-suite.log
+      - name: Upload emulator QA artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-online-game-flow-results
+          name: qa-firebase-emulator-results
           path: |
             test-results
-            playwright-qa-online-game-flow.log
-            qa-cleanup-online-game-flow.log
+            playwright-*.log
+            qa-*.log
+            firestore-debug.log
+            firebase-debug.log
             console-log.txt
-          if-no-files-found: ignore
-          retention-days: 7
-
-  qa-online-room-lifecycle:
-    name: QA online room lifecycle
-    needs: build-and-unit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
-      options: --user 1001
-    env:
-      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-online-room-lifecycle
-      QA_ROLE: online-room-lifecycle
-      QA_ALLOW_PRODUCTION_FIREBASE: '1'
-      QA_CLEANUP_MODE: current-run
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Download built app
-        uses: actions/download-artifact@v4
-        with:
-          name: build-and-unit
-      - name: Verify dist exists
-        run: test -d dist
-      - name: Prepare production Firebase helper environment
-        run: node .github/scripts/write-firebase-env.mjs
-      - name: Run room lifecycle QA
-        run: |
-          set -o pipefail
-          npm run test:qa-room-lifecycle -- --output=test-results/online-room-lifecycle 2>&1 | tee playwright-qa-online-room-lifecycle.log
-      - name: Cleanup room-lifecycle QA rooms
-        if: always()
-        run: |
-          set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-online-room-lifecycle.log
-      - name: Upload room-lifecycle artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-online-room-lifecycle-results
-          path: |
-            test-results
-            playwright-qa-online-room-lifecycle.log
-            qa-cleanup-online-room-lifecycle.log
-            console-log.txt
-          if-no-files-found: ignore
-          retention-days: 7
-
-  qa-roll-movement:
-    name: QA roll and movement
-    needs: build-and-unit
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
-      options: --user 1001
-    env:
-      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-roll-movement
-      QA_ROLE: roll-movement
-      QA_ALLOW_PRODUCTION_FIREBASE: '1'
-      QA_CLEANUP_MODE: current-run
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Download built app
-        uses: actions/download-artifact@v4
-        with:
-          name: build-and-unit
-      - name: Verify dist exists
-        run: test -d dist
-      - name: Prepare production Firebase helper environment
-        run: node .github/scripts/write-firebase-env.mjs
-      - name: Run roll, turn recovery and movement QA
-        run: |
-          set -o pipefail
-          npm run test:qa-online-turn-recovery -- --output=test-results/roll-movement 2>&1 | tee playwright-qa-roll-movement.log
-      - name: Cleanup roll-movement QA rooms
-        if: always()
-        run: |
-          set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-roll-movement.log
-      - name: Upload roll-movement artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-roll-movement-results
-          path: |
-            test-results
-            playwright-qa-roll-movement.log
-            qa-cleanup-roll-movement.log
-            console-log.txt
-          if-no-files-found: ignore
-          retention-days: 7
-
-  qa-lobby-desktop:
-    name: QA desktop lobby
-    needs: build-and-unit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
-      options: --user 1001
-    env:
-      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-lobby-desktop
-      QA_ROLE: lobby-desktop
-      QA_ALLOW_PRODUCTION_FIREBASE: '1'
-      QA_CLEANUP_MODE: current-run
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Download built app
-        uses: actions/download-artifact@v4
-        with:
-          name: build-and-unit
-      - name: Verify dist exists
-        run: test -d dist
-      - name: Prepare production Firebase helper environment
-        run: node .github/scripts/write-firebase-env.mjs
-      - name: Run desktop lobby QA
-        run: |
-          set -o pipefail
-          npm run test:qa-cleanup-layout-regression -- --output=test-results/lobby-desktop 2>&1 | tee playwright-qa-lobby-desktop.log
-      - name: Cleanup desktop-lobby QA rooms
-        if: always()
-        run: |
-          set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-lobby-desktop.log
-      - name: Upload desktop-lobby artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-lobby-desktop-results
-          path: |
-            test-results
-            playwright-qa-lobby-desktop.log
-            qa-cleanup-lobby-desktop.log
-            console-log.txt
-          if-no-files-found: ignore
-          retention-days: 7
-
-  qa-mobile-layout:
-    name: QA ${{ matrix.label }} layout
-    needs: build-and-unit
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - project: mobile-galaxy
-            label: Galaxy
-            role: mobile-galaxy
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        shell: bash
-    container:
-      image: mcr.microsoft.com/playwright:v1.61.1-noble
-      options: --user 1001
-    env:
-      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.role }}
-      QA_ROLE: ${{ matrix.role }}
-      QA_ALLOW_PRODUCTION_FIREBASE: '1'
-      QA_CLEANUP_MODE: current-run
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Download built app
-        uses: actions/download-artifact@v4
-        with:
-          name: build-and-unit
-      - name: Verify dist exists
-        run: test -d dist
-      - name: Prepare production Firebase helper environment
-        run: node .github/scripts/write-firebase-env.mjs
-      - name: Run ${{ matrix.label }} layout QA
-        run: |
-          set -o pipefail
-          npm run test:qa-mobile-layout -- --project=${{ matrix.project }} --output=test-results/${{ matrix.role }} 2>&1 | tee playwright-qa-${{ matrix.role }}.log
-      - name: Cleanup ${{ matrix.label }} QA rooms
-        if: always()
-        run: |
-          set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-cleanup-${{ matrix.role }}.log
-      - name: Upload ${{ matrix.label }} artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-${{ matrix.role }}-results
-          path: |
-            test-results
-            playwright-qa-${{ matrix.role }}.log
-            qa-cleanup-${{ matrix.role }}.log
-            console-log.txt
-          if-no-files-found: ignore
-          retention-days: 7
-
-  qa-orphan-cleanup:
-    name: Cleanup current and orphan QA rooms
-    if: always()
-    needs: [qa-online-game-flow, qa-online-room-lifecycle, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-orphan-cleanup
-      QA_ROLE: orphan-cleanup
-      QA_ALLOW_PRODUCTION_FIREBASE: '1'
-      QA_CLEANUP_MODE: orphans
-      QA_WORKFLOW_PREFIX: gh-${{ github.run_id }}-${{ github.run_attempt }}-
-      QA_ORPHAN_MAX_AGE_MS: '7200000'
-      QA_CLEANUP_REPORT_REMAINING: '1'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Prepare production Firebase helper environment
-        run: node .github/scripts/write-firebase-env.mjs
-      - name: Remove current workflow leftovers and old QA rooms
-        run: |
-          set -o pipefail
-          npm run qa:cleanup-rooms 2>&1 | tee qa-orphan-cleanup.log
-      - name: Upload cleanup report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-orphan-cleanup-results
-          path: qa-orphan-cleanup.log
           if-no-files-found: ignore
           retention-days: 7
 
   deploy-pages:
     name: Deploy GitHub Pages
-    needs: [build-and-unit, qa-online-game-flow, qa-online-room-lifecycle, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout, qa-orphan-cleanup]
+    needs: [build-and-unit, qa-firebase-emulator]
     if: github.ref == 'refs/heads/main' && success()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -386,7 +130,7 @@ jobs:
   summarize-qa-result:
     name: Summarize QA result
     if: always()
-    needs: [build-and-unit, qa-online-game-flow, qa-online-room-lifecycle, qa-roll-movement, qa-lobby-desktop, qa-mobile-layout, qa-orphan-cleanup, deploy-pages]
+    needs: [build-and-unit, qa-firebase-emulator, deploy-pages]
     runs-on: ubuntu-latest
     steps:
       - name: Download QA artifacts
@@ -398,12 +142,7 @@ jobs:
       - name: Write QA summary
         env:
           BUILD_RESULT: ${{ needs.build-and-unit.result }}
-          ONLINE_GAME_RESULT: ${{ needs.qa-online-game-flow.result }}
-          ONLINE_LIFECYCLE_RESULT: ${{ needs.qa-online-room-lifecycle.result }}
-          ROLL_RESULT: ${{ needs.qa-roll-movement.result }}
-          LOBBY_RESULT: ${{ needs.qa-lobby-desktop.result }}
-          MOBILE_RESULT: ${{ needs.qa-mobile-layout.result }}
-          CLEANUP_RESULT: ${{ needs.qa-orphan-cleanup.result }}
+          EMULATOR_RESULT: ${{ needs.qa-firebase-emulator.result }}
           DEPLOY_RESULT: ${{ needs.deploy-pages.result }}
         run: |
           {
@@ -412,12 +151,7 @@ jobs:
             echo '| 단계 | 결과 |'
             echo '|---|---|'
             echo "| Build and unit | \`$BUILD_RESULT\` |"
-            echo "| Online game flow | \`$ONLINE_GAME_RESULT\` |"
-            echo "| Online room lifecycle | \`$ONLINE_LIFECYCLE_RESULT\` |"
-            echo "| Roll and movement | \`$ROLL_RESULT\` |"
-            echo "| Desktop lobby | \`$LOBBY_RESULT\` |"
-            echo "| Mobile and tablet | \`$MOBILE_RESULT\` |"
-            echo "| QA room cleanup | \`$CLEANUP_RESULT\` |"
+            echo "| Firebase emulator QA suite | \`$EMULATOR_RESULT\` |"
             echo "| Deploy Pages | \`$DEPLOY_RESULT\` |"
           } | tee qa-summary.md
           cat qa-summary.md >> "$GITHUB_STEP_SUMMARY"
