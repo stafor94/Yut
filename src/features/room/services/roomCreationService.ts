@@ -49,10 +49,14 @@ const getQaRoomContext = (title: string) => {
   const runtimeContext = typeof window === 'undefined'
     ? undefined
     : (window as QaRuntimeWindow).__YUT_QA_CONTEXT__;
+  const runtimeRunId = String(runtimeContext?.runId ?? '').trim().toLowerCase();
+  const matchingRuntimeRole = runtimeRunId === BUILD_QA_RUN_ID.toLowerCase()
+    ? runtimeContext?.role
+    : undefined;
   return resolveQaRoomContext({
     title,
-    runId: runtimeContext?.runId ?? BUILD_QA_RUN_ID,
-    role: runtimeContext?.role ?? BUILD_QA_ROLE,
+    runId: BUILD_QA_RUN_ID,
+    role: matchingRuntimeRole ?? BUILD_QA_ROLE,
   });
 };
 
