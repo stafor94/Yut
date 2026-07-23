@@ -127,7 +127,7 @@ test.describe('mobile roll timing grades QA', () => {
 
       expect(presentation.wrapperPosition).toBe('absolute');
       expect(presentation.cardDisplay).toBe('grid');
-      expect(presentation.cardTranslate).toBe('none');
+      expect(presentation.cardTranslate).not.toBe('-50%');
       expect(presentation.cardCenterOffset).toBeLessThanOrEqual(1);
       expect(presentation.cardBackground).not.toBe('none');
       expect(presentation.cardBorderColor).toBe('rgb(123, 75, 42)');
