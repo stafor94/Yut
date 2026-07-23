@@ -87,10 +87,11 @@ async function startFallTimingObservation(page) {
     const sample = () => {
       const stage = document.querySelector('.roll-stage');
       const fallMat = document.querySelector('.roll-stage .roll-mat.fall-roll');
-      const label = document.querySelector('.roll-stage .roll-label');
+      const resultPresentation = document.querySelector('[data-testid="roll-result-presentation"]');
+      const resultName = resultPresentation?.querySelector('.roll-result-name > span:not(.roll-result-symbol)');
       const now = performance.now();
       if (stage && fallMat && timing.stageStartedAt === 0) timing.stageStartedAt = now;
-      if (label && label.textContent?.trim() === '낙!' && timing.labelStartedAt === 0) timing.labelStartedAt = now;
+      if (resultPresentation instanceof HTMLElement && !resultPresentation.hidden && resultName?.textContent?.trim() === '낙' && timing.labelStartedAt === 0) timing.labelStartedAt = now;
       if (!stage && timing.stageStartedAt > 0 && timing.endedAt === 0) {
         timing.endedAt = now;
         window.__YUT_QA_REMOTE_FALL_OBSERVER__?.disconnect();
@@ -170,7 +171,9 @@ test.describe('remote fall presentation QA', () => {
       await runQaStep(testInfo, '상대 화면 낙 전체 연출과 턴 표시 확인', async () => {
         const stage = observer.page.locator('.roll-stage');
         const fallMat = observer.page.locator('.roll-stage .roll-mat.fall-roll');
-        const label = observer.page.locator('.roll-stage .roll-label');
+        const resultCard = observer.page.getByTestId('roll-result-card');
+        const resultName = resultCard.locator('.roll-result-name > span:not(.roll-result-symbol)');
+        const resultDescription = resultCard.locator('.roll-result-description');
         const scene = observer.page.locator('.roll-stage [data-testid="yut-roll-scene"]');
         const indicator = observer.page.getByTestId('turn-indicator');
         const currentBadge = indicator.locator('.turn-current-badge');
@@ -194,7 +197,7 @@ test.describe('remote fall presentation QA', () => {
           message: '기존 3.8초 CSS 페이드 종료 시점 이후까지 렌더러 프레임을 지연해야 합니다.',
         }).toBeGreaterThanOrEqual(4_200);
         await expect(stage, '실제 렌더러 settle 전에는 낙 연출이 제거되면 안 됩니다.').toBeVisible();
-        await expect(label, '실제 렌더러 settle 전에는 낙 결과가 공개되면 안 됩니다.').toBeHidden();
+        await expect(resultCard, '실제 렌더러 settle 전에는 낙 결과 카드가 공개되면 안 됩니다.').toBeHidden();
         await expect(stage).toHaveAttribute('data-settle-source', 'pending');
         await expect.poll(() => readOpacity(stage), {
           timeout: 2_000,
@@ -206,7 +209,9 @@ test.describe('remote fall presentation QA', () => {
         }).toBeGreaterThanOrEqual(0.99);
 
         await expect(stage, '실제 렌더러 콜백으로만 결과 유지 단계에 진입해야 합니다.').toHaveAttribute('data-settle-source', /^(three-renderer|css-animation-end)$/, { timeout: 8_000 });
-        await expect(label, '윷이 매트 밖으로 빠지는 실제 settle 이후 낙 결과가 표시되어야 합니다.').toHaveText('낙!', { timeout: 2_000 });
+        await expect(resultCard, '윷이 매트 밖으로 빠지는 실제 settle 이후 낙 결과 카드가 표시되어야 합니다.').toBeVisible({ timeout: 2_000 });
+        await expect(resultName, '낙 결과 카드에는 결과명이 표시되어야 합니다.').toHaveText('낙');
+        await expect(resultDescription, '낙 결과 카드에는 실패 설명이 표시되어야 합니다.').toHaveText('던지기 실패');
         await expect(currentBadge, '결과 유지 중에도 던진 상대의 턴 표시가 유지되어야 합니다.').toHaveText(roller.name);
         await expect(neighbors, '결과 유지 중에도 전체 턴 정보가 유지되어야 합니다.').toHaveCount(2);
         expect(await readOpacity(stage), '낙 결과 유지 중에도 연출 컨테이너가 투명해지면 안 됩니다.').toBeGreaterThanOrEqual(0.99);
