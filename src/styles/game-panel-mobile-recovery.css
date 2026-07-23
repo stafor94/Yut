@@ -178,6 +178,10 @@
     gap: 5px;
   }
 
+  .turn-order-ready-overlay {
+    border-width: 5px;
+  }
+
   .game-shell .hero-actions.game-actions button {
     min-height: 48px;
     padding-inline: 5px;
