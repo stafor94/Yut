@@ -5,7 +5,7 @@ export type RollResultTone = 'standard' | 'bonus' | 'backdo' | 'fall';
 type RollResultPresentationInput = {
   result: YutResult;
   fallCount: number;
-  turnOrder: boolean;
+  turnOrder?: boolean;
 };
 
 export type RollResultPresentation = {
