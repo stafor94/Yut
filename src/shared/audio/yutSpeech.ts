@@ -144,9 +144,16 @@ const clearHiddenResult = () => {
   currentVisibleLabel = null;
 };
 
+const findVisibleResultLabel = () => Array.from(document.querySelectorAll<HTMLElement>('.roll-label'))
+  .find((label) => !label.closest('[hidden], [aria-hidden="true"]')) ?? null;
+
+const getResultLabelText = (label: HTMLElement) => label
+  .querySelector<HTMLElement>('.roll-result-name > span:not(.roll-result-symbol)')
+  ?.textContent ?? label.textContent ?? '';
+
 const playVisibleResultOnce = (isEnabled: () => boolean) => {
-  const label = document.querySelector<HTMLElement>('.roll-label:not([hidden])');
-  if (!label || label.getAttribute('aria-hidden') === 'true') {
+  const label = findVisibleResultLabel();
+  if (!label) {
     clearHiddenResult();
     return;
   }
@@ -158,7 +165,7 @@ const playVisibleResultOnce = (isEnabled: () => boolean) => {
     queuedByElement.delete(currentVisibleLabel);
   }
   currentVisibleLabel = label;
-  const result = normalizeSpokenYutResult(label.textContent ?? '');
+  const result = normalizeSpokenYutResult(getResultLabelText(label));
   if (!result || playedByElement.get(label) === result || queuedByElement.get(label) === result) return;
   playResult(label, result, isEnabled);
 };
