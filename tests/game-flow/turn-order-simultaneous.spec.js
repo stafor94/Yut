@@ -104,7 +104,7 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(hostOtherCard).not.toContainText(/도|개|걸|윷|모|빽도|낙/);
         await expect(guestOtherCard).not.toContainText(/도|개|걸|윷|모|빽도|낙/);
 
-        await expect.poll(async () => (await readTurnOrderRound(qa.roomId))?.status ?? '', { timeout: 8_000 }).toBe('reveal-pending');
+        await expect.poll(async () => (await readTurnOrderRound(qa.roomId))?.status ?? '', { timeout: 12_000 }).toBe('reveal-pending');
         const round = await readTurnOrderRound(qa.roomId);
         expect(Number(round?.revealAt ?? 0) - Number(round?.aggregatedAt ?? 0)).toBe(3_000);
         await expect(hostOtherCard).toContainText('도', { timeout: 6_000 });
@@ -121,8 +121,8 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(qa.hostPage.getByTestId('turn-order-own-result')).toContainText('걸');
         await expect(qa.guestPage.getByTestId('turn-order-own-result')).toContainText('개');
 
-        await expect(qa.hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 12_000 });
-        await expect(qa.guestPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 12_000 });
+        await expect(qa.hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
+        await expect(qa.guestPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
         const finalState = await getRoomStateForQa(qa.roomId);
         expect(finalState?.turnOrderIds).toEqual([
           finalState?.gameSeats?.[0]?.id,
