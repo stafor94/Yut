@@ -70,6 +70,19 @@ function showRoomCreationFailure(
   onRoomNotice({ title: '방 생성에 실패했습니다', message: messageText });
 }
 
+async function findCreatedRoomOnce(
+  request: { roomId: string; createRequestId: string },
+  hostId: string,
+  getRoomById: RoomCreationRuntime['getRoom'],
+) {
+  try {
+    const room = await getRoomById(request.roomId);
+    return isMatchingCreatedRoom(room, { ...request, hostId }) ? room : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function findCreatedRoomWithTimeout(
   request: { roomId: string; createRequestId: string },
   hostId: string,
@@ -81,12 +94,8 @@ export async function findCreatedRoomWithTimeout(
   const wait = options.wait ?? waitForRoomCreationRecovery;
   const pollForCreatedRoom = async () => {
     while (!stopped) {
-      try {
-        const room = await getRoomById(request.roomId);
-        if (isMatchingCreatedRoom(room, { ...request, hostId })) return room;
-      } catch {
-        // Firestore가 생성 직후 일시적으로 조회되지 않으면 recovery 제한 시간 안에서 다시 확인한다.
-      }
+      const room = await findCreatedRoomOnce(request, hostId, getRoomById);
+      if (room) return room;
       if (stopped) break;
       await wait(pollIntervalMs);
     }
@@ -144,7 +153,13 @@ export async function requestRoomCreation(params: RequestRoomCreationParams) {
     params.pendingRoomCreationRef.current = null;
     await params.onRoomCreated({ id: roomId, title: normalizedTitle, itemMode: params.itemMode, stackedRollMode: params.stackedRollMode, maxPlayers: roomMaxPlayers, playMode: params.playMode, pieceCount: params.pieceCount }, roomHost);
   } catch (error) {
-    if (runtime.firebaseConfigured && roomHost && error instanceof RoomCreationTimeoutError && error.operation === 'create') {
+    const immediatelyRecoveredRoom = runtime.firebaseConfigured && roomHost
+      ? await findCreatedRoomOnce(request, roomHost.uid, runtime.getRoom)
+      : null;
+    if (immediatelyRecoveredRoom && roomHost) {
+      params.pendingRoomCreationRef.current = null;
+      await params.onRoomCreated(immediatelyRecoveredRoom, roomHost, '방 생성은 완료되어 대기실로 이동했습니다.');
+    } else if (runtime.firebaseConfigured && roomHost && error instanceof RoomCreationTimeoutError && error.operation === 'create') {
       params.onLoadingMessage('응답이 지연되어 생성된 방을 확인하고 있습니다...');
       const recoveredRoom = await findCreatedRoomWithTimeout(request, roomHost.uid, runtime.getRoom);
       if (recoveredRoom) {
