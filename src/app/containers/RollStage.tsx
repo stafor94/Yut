@@ -40,6 +40,7 @@ type RollStageProps = {
 };
 
 type PresentationTimingGrade = 'perfect' | 'nice' | 'good' | 'bad';
+type RollStageLayout = { top: number; left: number; width: number; height: number };
 
 const TIMING_GRADE_LABELS: Record<PresentationTimingGrade, string> = {
   perfect: 'PERFECT',
@@ -63,6 +64,14 @@ const getPresentationTimingGrade = (animation: RollAnimation): PresentationTimin
 
 const isResolvedRollAnimation = (animation: RollAnimation) => animation.phase === undefined || animation.phase === 'resolved';
 
+const isSameRollStageLayout = (current: RollStageLayout | null, next: RollStageLayout) => Boolean(
+  current
+  && Math.abs(current.top - next.top) < 0.5
+  && Math.abs(current.left - next.left) < 0.5
+  && Math.abs(current.width - next.width) < 0.5
+  && Math.abs(current.height - next.height) < 0.5,
+);
+
 type PresentationSettleSource = 'pending' | Exclude<RollPresentationVisualResult, 'cancelled'>;
 
 export function RollStage({ rollAnimation, presentationActorId = '', onPresentationChange }: RollStageProps) {
@@ -84,6 +93,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const [presentedAnimation, setPresentedAnimation] = useState<RollAnimation | null>(rollAnimation);
   const [settledAnimationId, setSettledAnimationId] = useState<number | null>(null);
   const [settleSource, setSettleSource] = useState<PresentationSettleSource>('pending');
+  const [rollStageLayout, setRollStageLayout] = useState<RollStageLayout | null>(null);
   onPresentationChangeRef.current = onPresentationChange;
 
   const emitPresentationChange = (state: RollPresentationState) => {
@@ -259,6 +269,54 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   }, [Boolean(presentedAnimation)]);
 
   useLayoutEffect(() => {
+    const stage = rollStageRef.current;
+    const boardPanel = stage?.parentElement;
+    const board = boardPanel?.querySelector<HTMLElement>('[data-testid="game-board"]');
+    if (!presentedAnimation || !stage || !boardPanel || !board) {
+      setRollStageLayout(null);
+      return undefined;
+    }
+
+    let animationFrame = 0;
+    const updateLayout = () => {
+      animationFrame = 0;
+      const boardRect = board.getBoundingClientRect();
+      const panelRect = boardPanel.getBoundingClientRect();
+      const nextLayout = {
+        top: boardRect.top - panelRect.top - boardPanel.clientTop,
+        left: boardRect.left - panelRect.left - boardPanel.clientLeft,
+        width: boardRect.width,
+        height: boardRect.height,
+      };
+      setRollStageLayout((current) => isSameRollStageLayout(current, nextLayout) ? current : nextLayout);
+    };
+    const scheduleLayoutUpdate = () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(updateLayout);
+    };
+
+    updateLayout();
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleLayoutUpdate);
+    resizeObserver?.observe(boardPanel);
+    resizeObserver?.observe(board);
+    const mutationObserver = new MutationObserver(scheduleLayoutUpdate);
+    mutationObserver.observe(boardPanel, {
+      attributes: true,
+      childList: true,
+      subtree: true,
+      attributeFilter: ['class', 'hidden', 'style'],
+    });
+    window.addEventListener('resize', scheduleLayoutUpdate);
+
+    return () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      resizeObserver?.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener('resize', scheduleLayoutUpdate);
+    };
+  }, [Boolean(presentedAnimation)]);
+
+  useLayoutEffect(() => {
     const hasPresentedAnimation = Boolean(presentedAnimation);
     if (hadPresentedAnimationRef.current && !hasPresentedAnimation) notifyRollPresentationCompleted();
     hadPresentedAnimationRef.current = hasPresentedAnimation;
@@ -382,6 +440,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const isResultHold = presentedAnimation.phase === 'result-hold';
   const result = 'result' in presentedAnimation ? presentedAnimation.result : undefined;
   const timingGrade = getPresentationTimingGrade(presentedAnimation);
+  const timingGradeSourceId = presentedSourceAnimationIdRef.current ?? presentedAnimation.id;
   const fallCount = 'fallCount' in presentedAnimation ? presentedAnimation.fallCount ?? 0 : 0;
   const turnOrder = 'turnOrder' in presentedAnimation ? presentedAnimation.turnOrder : false;
   const hasSettled = settledAnimationId === presentedAnimation.id;
@@ -391,7 +450,14 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const isBonusResult = hasResolvedResult && !turnOrder && !fallCount && (result?.name === '윷' || result?.name === '모');
   const resultPresentation = result ? getRollResultPresentation({ result, fallCount, turnOrder }) : null;
   const phaseClass = isPreResult ? `pending-roll ${presentedAnimation.phase === 'extra-spin' ? 'extra-spin-roll' : 'primary-roll'}` : isVisualLanding ? 'resolved-from-pending resolved-roll landing-roll' : isResultHold ? 'resolved-from-pending resolved-roll result-hold-roll' : 'resolved-roll';
-  return <div ref={rollStageRef} className={`roll-stage ${phaseClass}`} data-settle-source={settleSource} role="status" aria-live="polite">
+  const anchoredStageStyle = rollStageLayout ? {
+    inset: 'auto',
+    top: rollStageLayout.top,
+    left: rollStageLayout.left,
+    width: rollStageLayout.width,
+    height: rollStageLayout.height,
+  } as CSSProperties : undefined;
+  return <div ref={rollStageRef} className={`roll-stage ${phaseClass}`} style={anchoredStageStyle} data-settle-source={settleSource} data-board-anchored={rollStageLayout ? 'true' : 'false'} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${presentedAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
     <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`} onAnimationEnd={(event) => {
@@ -414,8 +480,8 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
         <span className="roll-mat-leg roll-mat-leg-left"></span>
         <span className="roll-mat-leg roll-mat-leg-right"></span>
       </span>
+      {timingGrade && <span key={`${timingGradeSourceId}:${timingGrade}`} data-testid="roll-timing-grade" className={`roll-timing-feedback ${hasResolvedResult ? 'roll-stage-timing' : 'roll-stage-timing-preview'} transient ${timingGrade}`}>{TIMING_GRADE_LABELS[timingGrade]}</span>}
       {hasResolvedResult && resultPresentation && <div data-testid="roll-result-presentation" className="roll-result-presentation" hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>
-        {timingGrade && <span data-testid="roll-timing-grade" className={`roll-timing-feedback roll-stage-timing ${timingGrade}`}>{TIMING_GRADE_LABELS[timingGrade]}</span>}
         <span data-testid="roll-result-card" className={`roll-label roll-result-card ${resultPresentation.tone}`}>
           <strong className="roll-result-name">
             {resultPresentation.leadingSymbol && <span className="roll-result-symbol" aria-hidden="true">{resultPresentation.leadingSymbol}</span>}
