@@ -30,7 +30,10 @@ const readRollGeometry = async (page) => page.evaluate(() => {
     matCenterOffset: Math.abs(centerX(matRect) - centerX(boardRect)),
     gradeCenterOffset: Math.abs(centerX(gradeRect) - centerX(boardRect)),
     resultCenterOffset: cardRect ? Math.abs(centerX(cardRect) - centerX(boardRect)) : null,
+    stageWidth: stageRect.width,
+    matWidth: matRect.width,
     stageTranslate: stageStyle.translate,
+    stageJustifyContent: stageStyle.justifyContent,
     gradeTop: Number.parseFloat(gradeStyle.top),
     resultTop: resultStyle ? Number.parseFloat(resultStyle.top) : null,
     gradeResultGap: cardRect ? cardRect.top - gradeRect.bottom : null,
@@ -82,7 +85,9 @@ test.describe('local roll stage position regression', () => {
       expect(geometry.stageCenterOffset).toBeLessThanOrEqual(2);
       expect(geometry.matCenterOffset).toBeLessThanOrEqual(2);
       expect(geometry.gradeCenterOffset).toBeLessThanOrEqual(2);
+      expect(geometry.stageWidth).toBeGreaterThanOrEqual(geometry.matWidth - 1);
       expect(geometry.stageTranslate).not.toBe('none');
+      expect(geometry.stageJustifyContent).toBe('center');
     });
 
     await runQaStep(testInfo, '결과 카드 중앙 정렬과 매트 간격 확인', async () => {
@@ -96,6 +101,7 @@ test.describe('local roll stage position regression', () => {
       expect(geometry.gradeCenterOffset).toBeLessThanOrEqual(2);
       expect(geometry.resultCenterOffset).not.toBeNull();
       expect(geometry.resultCenterOffset).toBeLessThanOrEqual(2);
+      expect(geometry.stageWidth).toBeGreaterThanOrEqual(geometry.matWidth - 1);
       expect(geometry.gradeTop).toBe(20);
       expect(geometry.resultTop).toBe(48);
       expect(geometry.gradeResultGap).toBeGreaterThanOrEqual(0);
