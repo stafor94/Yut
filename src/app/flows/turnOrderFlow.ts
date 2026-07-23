@@ -196,12 +196,13 @@ const getFinalTurnOrderIds = (intro: TurnOrderIntro, individualOrderIds: string[
   return buildAlternatingTeamTurnOrder(rankedEntries).map((entry) => entry.id);
 };
 
-export const canAggregateTurnOrderRound = (intro: TurnOrderIntro) => intro.currentRound.status === 'collecting'
+export const canAggregateTurnOrderRound = (intro: TurnOrderIntro, now = Date.now()) => intro.currentRound.status === 'collecting'
+  && now >= intro.currentRound.deadlineAt
   && intro.currentRound.eligibleSeatIds.every((seatId) => intro.currentRound.submissions.some((submission) => submission.seatId === seatId));
 
 export const aggregateTurnOrderRound = (intro: TurnOrderIntro, now = Date.now()): TurnOrderIntro => {
   const activeIntro = activateNextTurnOrderRound(intro, now);
-  if (!canAggregateTurnOrderRound(activeIntro)) return activeIntro;
+  if (!canAggregateTurnOrderRound(activeIntro, now)) return activeIntro;
 
   const round = activeIntro.currentRound;
   const placements = { ...activeIntro.placements };
