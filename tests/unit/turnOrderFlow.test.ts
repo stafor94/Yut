@@ -115,6 +115,19 @@ test('같은 결과별로 독립된 재대결 bracket을 만들고 확정 순위
   assert.equal(intro.readyAt, intro.gameStartAt);
 });
 
+test('재대결 라운드 활성화 시 이전 라운드 공개 시각을 초기화한다', () => {
+  let intro = createIntro();
+  intro = submitRound(intro, { p1: '도', p2: '도', p3: '걸', p4: '개' }, 18_000);
+  intro = aggregateAfterDeadline(intro);
+
+  const nextRoundStartAt = Number(intro.nextRound?.startAt);
+  const activated = activateNextTurnOrderRound(intro, nextRoundStartAt);
+  assert.equal(activated.currentRound.index, 2);
+  assert.equal(activated.currentRound.status, 'collecting');
+  assert.equal(activated.currentRound.aggregatedAt, 0);
+  assert.equal(activated.currentRound.revealAt, 0);
+});
+
 test('재대결에서 다시 동률이면 해당 참가자만 다음 라운드로 반복한다', () => {
   const twoSeats = seats.slice(0, 2);
   let intro = createTurnOrderIntro(twoSeats, {
