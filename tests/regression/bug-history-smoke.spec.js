@@ -145,11 +145,10 @@ test.describe('BUG_HISTORY regression smoke', () => {
         canvasCount: 1,
         fallbackStickCount: 4,
         markCount: 0,
-        timingCount: 1,
+        timingCount: 0,
         labelCount: 0,
       });
-      const pendingTimingText = pendingPresentation?.timingText ?? '';
-      expect(pendingTimingText, '클릭 후 pending 단계에서는 클라이언트에서 확정한 타이밍 등급 하나만 즉시 표시되어야 합니다.').toMatch(/^(Normal|Good!|Perfect!)$/);
+      expect(pendingPresentation?.timingText ?? '', 'pending 단계에서는 서버 authoritative 결과가 확정되기 전 타이밍 등급을 공개하지 않아야 합니다.').toBe('');
       const preResultGameText = pendingPresentation?.gameText ?? '';
       const preResultTurnStackText = pendingPresentation?.turnStackText ?? '';
       await page.evaluate(() => {
@@ -167,15 +166,18 @@ test.describe('BUG_HISTORY regression smoke', () => {
       await expect(landingStage, `서버 결과 도착 시 pending overlay를 같은 팝업의 landing 단계로 이어서 전환해야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
       const landingPresentation = await landingStage.evaluate((stage) => {
         const scene = stage.querySelector('[data-testid="yut-roll-scene"]');
+        const resultPresentation = stage.querySelector('[data-testid="roll-result-presentation"]');
         return {
           labelCount: stage.querySelectorAll('.roll-label').length,
+          presentationHidden: resultPresentation?.hidden ?? false,
           phase: scene?.getAttribute('data-phase') ?? '',
           canvasCount: scene?.querySelectorAll('.yut-roll-three-canvas').length ?? 0,
           fallbackStickCount: scene?.querySelectorAll('.yut-roll-css-fallback .yut-stick').length ?? 0,
         };
       });
-      expect(landingPresentation, 'landing 단계는 결과명 공개 전 동일한 canvas와 fallback 윷을 유지해야 합니다.').toEqual({
-        labelCount: 0,
+      expect(landingPresentation, 'landing 단계는 결과 카드를 DOM에 유지하되 공개 전 숨기고 동일한 canvas와 fallback 윷을 유지해야 합니다.').toEqual({
+        labelCount: 1,
+        presentationHidden: true,
         phase: 'landing',
         canvasCount: 1,
         fallbackStickCount: 4,
@@ -214,8 +216,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
         expect(rendererPresentation.status, 'WebGL 초기화 실패 시 fallback 상태로 확정되어야 합니다.').toBe('fallback');
         expect(rendererPresentation.fallbackVisibility, 'fallback 렌더러가 선택되면 CSS 윷 장면이 보여야 합니다.').toBe('visible');
       }
-      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '서버 authoritative 타이밍 등급이 확정 결과와 함께 표시되어야 합니다.').toHaveText(/^(Normal|Good!|Perfect!)$/, { timeout: 5_000 });
-      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), 'pending부터 resolved 전환까지 같은 타이밍 등급이 유지되어야 합니다.').toHaveText(pendingTimingText);
+      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '서버 authoritative 타이밍 등급이 확정 결과와 함께 표시되어야 합니다.').toHaveText(/^(BAD|GOOD|NICE|PERFECT)$/, { timeout: 5_000 });
       await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), 'resolved 타이밍 등급도 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
       const timingBox = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').boundingBox();
       const matBox = await page.locator('.roll-stage.resolved-from-pending .roll-mat').boundingBox();
@@ -224,11 +225,14 @@ test.describe('BUG_HISTORY regression smoke', () => {
       if (!timingBox || !matBox) return;
       const centerDeltaPx = Math.abs((timingBox.x + timingBox.width / 2) - (matBox.x + matBox.width / 2));
       expect(centerDeltaPx, `타이밍 등급과 윷 매트의 가로 중심 오차는 2px 이내여야 합니다. 실제: ${centerDeltaPx}px`).toBeLessThanOrEqual(2);
-      const resolvedLabel = page.locator('.roll-stage.resolved-from-pending .roll-label');
-      await expect(resolvedLabel, `서버 authoritative 윷 결과 label이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
-      await expect(resolvedLabel, 'authoritative 결과 label은 한 번만 표시되어야 합니다.').toHaveCount(1);
-      const timingTextAfterReveal = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').innerText();
-      const labelTextAfterReveal = await resolvedLabel.innerText();
+      const resolvedCard = page.getByTestId('roll-result-card');
+      const resolvedName = resolvedCard.locator('.roll-result-name > span:not(.roll-result-symbol)');
+      const resolvedDescription = resolvedCard.locator('.roll-result-description');
+      await expect(resolvedCard, `서버 authoritative 윷 결과 카드가 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
+      await expect(resolvedCard, 'authoritative 결과 카드는 한 번만 표시되어야 합니다.').toHaveCount(1);
+      await expect(resolvedName, '결과 카드에는 윷 결과명이 표시되어야 합니다.').toBeVisible();
+      await expect(resolvedDescription, '결과 카드에는 이동 또는 실패 설명이 표시되어야 합니다.').not.toHaveText('');
+      const resultNameAfterReveal = await resolvedName.innerText();
       const postResultGameText = await page.getByTestId('game-screen').innerText();
       const postResultTurnStackText = await page.locator('[data-testid="turn-indicator"]').innerText();
       expect(postResultGameText.length, '결과명 표시 순간부터 최신 진행 기록이 공개되어 게임 화면 텍스트가 갱신되어야 합니다.').toBeGreaterThanOrEqual(preResultGameText.length);
@@ -244,10 +248,10 @@ test.describe('BUG_HISTORY regression smoke', () => {
           message: 'pending에서 확정된 bonus/fall 매트는 class 추가 후에도 팝업 재시작 animation 없이 고정되어야 합니다.',
         }).toBe('none/1/matrix(1, 0, 0, 1, 0, 0)');
       }
-      if (labelTextAfterReveal === '낙!') {
+      if (resultNameAfterReveal === '낙') {
         expect(resolvedMatClasses, '낙 결과는 fall-roll만 적용하고 내부 display result가 윷/모여도 bonus-roll을 적용하지 않아야 합니다.').toContain('fall-roll');
         expect(resolvedMatClasses, '낙 결과는 bonus-roll을 절대 적용하지 않아야 합니다.').not.toContain('bonus-roll');
-      } else if (labelTextAfterReveal === '윷' || labelTextAfterReveal === '모') {
+      } else if (resultNameAfterReveal === '윷' || resultNameAfterReveal === '모') {
         expect(resolvedMatClasses, '정상 윷/모 결과만 bonus-roll을 적용해야 합니다.').toContain('bonus-roll');
         expect(resolvedMatClasses, '정상 윷/모 결과는 fall-roll을 적용하지 않아야 합니다.').not.toContain('fall-roll');
       } else {
