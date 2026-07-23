@@ -69,7 +69,7 @@ jobs:
             label: Mobile Galaxy
     env:
       QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
-      QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ matrix.code }}
+      QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
