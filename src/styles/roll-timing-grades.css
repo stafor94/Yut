@@ -35,12 +35,11 @@
 
 .roll-result-presentation {
   position: absolute;
-  top: clamp(-4.15rem, -7vw, -3.55rem);
+  top: calc(clamp(-4.15rem, -7vw, -3.55rem) + 38px);
   left: 50%;
   z-index: 7;
   display: grid;
   justify-items: center;
-  gap: 6px;
   width: max-content;
   max-width: min(82vw, 240px);
   translate: -50% 0;
@@ -70,6 +69,11 @@
     0 4px 0 rgba(44, 34, 29, 0.24),
     0 8px 18px rgba(40, 30, 24, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+
+.roll-timing-feedback.transient {
+  animation: roll-timing-grade-fade 220ms ease 1500ms forwards;
+  will-change: opacity, transform;
 }
 
 .roll-timing-feedback::before {
@@ -102,15 +106,20 @@
   color: #fff;
 }
 
-.roll-stage-timing {
-  position: static;
-  inset: auto;
-  grid-column: auto;
+.roll-stage-timing,
+.roll-stage-timing-preview {
+  position: absolute;
+  top: clamp(-4.15rem, -7vw, -3.55rem);
+  left: 50%;
+  z-index: 8;
+  inset-inline: auto;
   justify-self: center;
   width: max-content;
   margin: 0;
+  translate: -50% 0;
   transform: none;
   text-align: center;
+  pointer-events: none;
 }
 
 .roll-stage .roll-result-card,
@@ -197,6 +206,22 @@
     linear-gradient(180deg, #fff6e5 0%, #f5d5ad 100%);
 }
 
+@keyframes roll-timing-grade-fade {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+@keyframes roll-timing-grade-fade-reduced {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 @keyframes roll-result-card-enter {
   from {
     opacity: 0;
@@ -221,8 +246,12 @@
 
 @media (max-width: 640px) {
   .roll-result-presentation {
+    top: calc(-3.55rem + 39px);
+  }
+
+  .roll-stage-timing,
+  .roll-stage-timing-preview {
     top: -3.55rem;
-    gap: 5px;
   }
 
   .roll-timing-feedback {
@@ -244,6 +273,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .roll-timing-feedback.transient {
+    animation-name: roll-timing-grade-fade-reduced;
+  }
+
   .roll-stage .roll-result-card,
   .roll-stage.resolved-from-pending .roll-result-card,
   .roll-result-card.bonus .roll-result-symbol {
