@@ -5,10 +5,20 @@ import {
   createRoom as createRoomCore,
   type RoomPlayer,
 } from './roomServiceCore';
-import { hasActiveHumanRoomSummary } from './roomCreationPolicy';
 import {
-  getActivePlayerRoomMemberships,
-  getActiveRoomSummaries,
+  getActiveHostRoomSummaries,
+  getCappedActivePlayerRoomMemberships,
+  getDuplicateRoomTitleSummaries,
+  getRoomDocumentsByKind,
+} from './roomCapacityStore';
+import {
+  getRoomLimit,
+  isRoomLimitReached,
+  normalizeRoomTitleKey,
+  resolveQaRoomContext,
+  type RoomKind,
+} from './roomCapacityPolicy';
+import {
   getRoomPlayer,
   type ManagedRoomSummary,
 } from './roomLifecycleStore';
@@ -19,17 +29,42 @@ import { waitForRoomCreationLock } from './roomCreationLock';
 import { ROOM_CREATION_TIMEOUT_MS } from './roomCreationTiming';
 
 const ACTIVE_HOST_ROOM_ERROR = '이미 진행 중인 방이 있습니다. 기존 방으로 돌아간 뒤 새 방을 만들어주세요.';
-const ACTIVE_ROOM_LIMIT_ERROR = '방은 최대 3개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.';
 const DUPLICATE_ROOM_TITLE_ERROR = '이미 존재하는 방 제목입니다. 다른 제목을 입력해주세요.';
 const CREATE_IN_PROGRESS_ERROR = '다른 방 생성 요청을 처리 중입니다. 잠시 뒤 다시 시도해주세요.';
 // Firestore reserves document IDs that match the __.*__ pattern.
 const ROOM_CREATION_LOCK_ID = 'system-room-creation-lock';
 const ROOM_CREATION_LOCK_MS = ROOM_CREATION_TIMEOUT_MS;
-const QA_ROOM_TITLE_PREFIX = 'QA-';
-const QA_RUN_ID = String(import.meta.env.VITE_QA_RUN_ID ?? '').trim();
+const BUILD_QA_RUN_ID = String(import.meta.env.VITE_QA_RUN_ID ?? '').trim();
+const BUILD_QA_ROLE = String(import.meta.env.VITE_QA_ROLE ?? '').trim();
 const COLORS = ['red', 'blue', 'green', 'yellow'] as const;
 
-const isQaRoomTitle = (title: unknown) => typeof title === 'string' && title.startsWith(QA_ROOM_TITLE_PREFIX);
+type QaRuntimeWindow = typeof window & {
+  __YUT_QA_CONTEXT__?: {
+    runId?: unknown;
+    role?: unknown;
+  };
+};
+
+const getQaRoomContext = (title: string) => {
+  const runtimeContext = typeof window === 'undefined'
+    ? undefined
+    : (window as QaRuntimeWindow).__YUT_QA_CONTEXT__;
+  const runtimeRunId = String(runtimeContext?.runId ?? '').trim().toLowerCase();
+  const matchingRuntimeRole = runtimeRunId === BUILD_QA_RUN_ID.toLowerCase()
+    ? runtimeContext?.role
+    : undefined;
+  return resolveQaRoomContext({
+    title,
+    runId: BUILD_QA_RUN_ID,
+    role: matchingRuntimeRole ?? BUILD_QA_ROLE,
+  });
+};
+
+const getRoomLimitError = (roomKind: RoomKind) => (
+  roomKind === 'qa'
+    ? `QA 방은 최대 ${getRoomLimit(roomKind)}개까지만 만들 수 있습니다. 기존 QA 방을 정리한 뒤 다시 시도해주세요.`
+    : `방은 최대 ${getRoomLimit(roomKind)}개까지만 만들 수 있습니다. 기존 방에 참여하거나 잠시 뒤 다시 시도해주세요.`
+);
 
 const createLockOwnerToken = (requestId: string) => `${requestId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 
@@ -92,6 +127,9 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const normalizedTitle = params.title.trim();
   if (!normalizedTitle) throw new Error('방 제목을 입력해주세요.');
+  const qaContext = getQaRoomContext(normalizedTitle);
+  const roomKind: RoomKind = qaContext ? 'qa' : 'user';
+  const titleKey = normalizeRoomTitleKey(normalizedTitle);
   const roomsRef = collection(db, 'rooms');
   const roomRef = params.roomId ? doc(roomsRef, params.roomId) : doc(roomsRef);
   const requestId = params.createRequestId || roomRef.id;
@@ -104,7 +142,7 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
     throw new Error('같은 방 식별자가 이미 다른 요청에 사용되었습니다. 다시 시도해주세요.');
   }
 
-  const memberships = await getActivePlayerRoomMemberships(params.hostId);
+  const memberships = await getCappedActivePlayerRoomMemberships(params.hostId);
   await leavePlayerRoomsBeforeCreate({
     playerId: params.hostId,
     memberships,
@@ -122,19 +160,20 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
     }
 
     const now = Date.now();
-    const activeRoomCandidates = (await getActiveRoomSummaries(now)).filter((room) => room.id !== roomRef.id);
-    const ownHostRooms = activeRoomCandidates.filter((room) => room.hostId === params.hostId);
+    const [ownHostRooms, roomKindDocuments, duplicateTitleRooms] = await Promise.all([
+      getActiveHostRoomSummaries(params.hostId, now),
+      getRoomDocumentsByKind(roomKind),
+      getDuplicateRoomTitleSummaries(normalizedTitle, titleKey, now),
+    ]);
     const ownHostPlayers = await Promise.all(ownHostRooms.map((room) => getRoomPlayer(room.id, params.hostId)));
     const ownActiveRoom = ownHostPlayers.some((player) => (
       player ? hasActiveRoomPlayerForUser([player], params.hostId) : false
     ));
     if (ownActiveRoom) throw new Error(ACTIVE_HOST_ROOM_ERROR);
 
-    const activeUserRooms = activeRoomCandidates
-      .filter((room) => hasActiveHumanRoomSummary(room, now))
-      .filter((room) => !isQaRoomTitle(room.title));
-    if (!isQaRoomTitle(normalizedTitle) && activeUserRooms.length >= 3) throw new Error(ACTIVE_ROOM_LIMIT_ERROR);
-    if (activeUserRooms.some((room) => room.title.trim().toLocaleLowerCase() === normalizedTitle.toLocaleLowerCase())) throw new Error(DUPLICATE_ROOM_TITLE_ERROR);
+    const capacityRooms = roomKindDocuments.filter((room) => room.id !== roomRef.id && !room.systemRoomType);
+    if (isRoomLimitReached(roomKind, capacityRooms.length)) throw new Error(getRoomLimitError(roomKind));
+    if (duplicateTitleRooms.some((room) => room.id !== roomRef.id)) throw new Error(DUPLICATE_ROOM_TITLE_ERROR);
 
     const lockRef = doc(db, 'rooms', ROOM_CREATION_LOCK_ID);
     const playerRef = doc(db, 'rooms', roomRef.id, 'players', params.hostId);
@@ -157,6 +196,9 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
       } else {
         transaction.set(roomRef, {
           title: normalizedTitle,
+          titleKey,
+          roomKind,
+          isQaRoom: roomKind === 'qa',
           hostId: params.hostId,
           maxPlayers: params.maxPlayers,
           itemMode: params.itemMode,
@@ -174,7 +216,11 @@ export async function createRoomSafely(params: Parameters<typeof createRoomCore>
           lastActivityAt: now,
           createdAt: serverTimestamp(),
           ...(params.createRequestId ? { createRequestId: params.createRequestId } : {}),
-          ...(QA_RUN_ID ? { qaRunId: QA_RUN_ID } : {}),
+          ...(qaContext ? {
+            qaRunId: qaContext.runId,
+            qaRole: qaContext.role,
+            qaCreatedAt: serverTimestamp(),
+          } : {}),
         });
         transaction.set(playerRef, {
           nickname: params.nickname,

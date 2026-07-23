@@ -3,6 +3,41 @@ import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep }
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
+async function waitForLocalRollAfterTurnOrder(page) {
+  const startedAt = Date.now();
+  let deadlineAt = startedAt + 45_000;
+  const hardDeadlineAt = startedAt + 120_000;
+  let lastState = null;
+
+  while (Date.now() < Math.min(deadlineAt, hardDeadlineAt)) {
+    lastState = await collectScreenState(page);
+    if (lastState.rollButton.visible && !lastState.rollButton.disabled) return;
+
+    const intro = lastState.yutDebug?.activeTurnOrderIntro;
+    const round = intro?.currentRound;
+    const scheduledTimes = [
+      round?.deadlineAt,
+      round?.revealAt,
+      intro?.finalOrderAt,
+      intro?.gameStartAt,
+      intro?.readyAt,
+    ]
+      .map(Number)
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (scheduledTimes.length) {
+      deadlineAt = Math.min(
+        hardDeadlineAt,
+        Math.max(deadlineAt, Math.max(...scheduledTimes) + 10_000),
+      );
+    }
+    await page.waitForTimeout(100);
+  }
+
+  throw new Error(
+    `매트 회귀를 확인할 수 있는 내 차례 윷 던지기 버튼이 활성화되어야 합니다.\n${JSON.stringify(lastState, null, 2)}`,
+  );
+}
+
 test.describe('roll mat surface regression', () => {
   let roomId;
 
@@ -30,11 +65,7 @@ test.describe('roll mat surface regression', () => {
     });
 
     await runQaStep(testInfo, '원목 UI와 축소된 매트 표면 확인', async () => {
-      await expect.poll(async () => {
-        const state = await collectScreenState(page);
-        if (state.rollButton.visible && !state.rollButton.disabled) return 'ready';
-        return JSON.stringify(state, null, 2);
-      }, { timeout: 45_000, message: '매트 회귀를 확인할 수 있는 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      await waitForLocalRollAfterTurnOrder(page);
 
       const board = page.getByTestId('game-board');
       const turnIndicator = page.getByTestId('turn-indicator');

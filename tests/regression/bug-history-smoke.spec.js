@@ -190,64 +190,93 @@ test.describe('BUG_HISTORY regression smoke', () => {
 
       const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
       await expect(resultHoldStage, '착지 후 같은 팝업이 result-hold 단계로 전환되어야 합니다.').toBeVisible({ timeout: 2_500 });
-      const resultHoldScene = resultHoldStage.getByTestId('yut-roll-scene');
-      await expect(resultHoldScene, '착지 완료 후 동일한 3D 장면이 result-hold 단계로 전환되어야 합니다.').toHaveAttribute('data-phase', 'result-hold');
-      await expect.poll(async () => resultHoldScene.getAttribute('data-renderer'), {
-        timeout: 5_000,
-        message: 'Three.js 또는 CSS fallback 렌더러가 최종 확정되어야 합니다.',
-      }).toMatch(/^(three|fallback)$/);
-      const rendererPresentation = await resultHoldScene.evaluate((node) => {
-        const canvas = node.querySelector('.yut-roll-three-canvas');
-        const fallback = node.querySelector('.yut-roll-css-fallback');
-        return {
-          status: node.getAttribute('data-renderer'),
-          canvasOpacity: canvas ? Number.parseFloat(getComputedStyle(canvas).opacity) : -1,
-          fallbackVisibility: fallback ? getComputedStyle(fallback).visibility : 'missing',
-          width: node.getBoundingClientRect().width,
-          height: node.getBoundingClientRect().height,
-        };
-      });
-      expect(rendererPresentation.width, '결과 유지 장면은 실제 표시 너비를 가져야 합니다.').toBeGreaterThan(0);
-      expect(rendererPresentation.height, '결과 유지 장면은 실제 표시 높이를 가져야 합니다.').toBeGreaterThan(0);
-      if (rendererPresentation.status === 'three') {
-        expect(rendererPresentation.canvasOpacity, 'Three.js 렌더러가 선택되면 canvas가 불투명하게 표시되어야 합니다.').toBeGreaterThan(0.9);
-        expect(rendererPresentation.fallbackVisibility, 'Three.js 렌더러가 선택되면 CSS fallback은 숨겨야 합니다.').toBe('hidden');
+      let resultHoldPresentation = null;
+      await expect.poll(async () => {
+        resultHoldPresentation = await resultHoldStage.evaluate((stage) => {
+          const scene = stage.querySelector('[data-testid="yut-roll-scene"]');
+          const canvas = scene?.querySelector('.yut-roll-three-canvas');
+          const fallback = scene?.querySelector('.yut-roll-css-fallback');
+          const timing = stage.querySelector('.roll-stage-timing');
+          const mat = stage.querySelector('.roll-mat');
+          const resultCard = stage.querySelector('[data-testid="roll-result-card"]');
+          const resultName = resultCard?.querySelector('.roll-result-name > span:not(.roll-result-symbol)');
+          const resultDescription = resultCard?.querySelector('.roll-result-description');
+          if (!scene || !timing || !mat || !resultCard || !resultName || !resultDescription) return null;
+
+          const toBox = (node) => {
+            const rect = node.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0
+              ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+              : null;
+          };
+          const matStyle = getComputedStyle(mat);
+          const canvasStyle = canvas ? getComputedStyle(canvas) : null;
+          const fallbackStyle = fallback ? getComputedStyle(fallback) : null;
+          return {
+            phase: scene.getAttribute('data-phase') ?? '',
+            renderer: scene.getAttribute('data-renderer') ?? '',
+            canvasOpacity: canvasStyle ? Number.parseFloat(canvasStyle.opacity) : -1,
+            fallbackVisibility: fallbackStyle?.visibility ?? 'missing',
+            sceneBox: toBox(scene),
+            timingCount: stage.querySelectorAll('.roll-stage-timing').length,
+            timingText: timing.textContent?.trim() ?? '',
+            timingBox: toBox(timing),
+            matBox: toBox(mat),
+            resultCardCount: stage.querySelectorAll('[data-testid="roll-result-card"]').length,
+            resultCardBox: toBox(resultCard),
+            resultName: resultName.textContent?.trim() ?? '',
+            resultDescription: resultDescription.textContent?.trim() ?? '',
+            matClassName: mat.getAttribute('class') ?? '',
+            matAnimation: `${matStyle.animationName}/${matStyle.opacity}/${matStyle.transform}`,
+            gameText: document.querySelector('[data-testid="game-screen"]')?.textContent ?? '',
+            turnStackText: document.querySelector('[data-testid="turn-indicator"]')?.textContent ?? '',
+          };
+        }).catch(() => null);
+        if (!resultHoldPresentation) return null;
+        if (resultHoldPresentation.phase !== 'result-hold') return null;
+        if (!/^(three|fallback)$/u.test(resultHoldPresentation.renderer)) return null;
+        if (!/^(BAD|GOOD|NICE|PERFECT)$/u.test(resultHoldPresentation.timingText)) return null;
+        if (!resultHoldPresentation.resultName || !resultHoldPresentation.resultDescription) return null;
+        const classes = resultHoldPresentation.matClassName.split(/\s+/u);
+        if ((classes.includes('bonus-roll') || classes.includes('fall-roll'))
+          && resultHoldPresentation.matAnimation !== 'none/1/matrix(1, 0, 0, 1, 0, 0)') return null;
+        return resultHoldPresentation;
+      }, {
+        timeout: 1_500,
+        intervals: [16, 32, 64],
+        message: 'result-hold가 표시되는 동안 렌더러·배치·결과·매트 상태를 한 snapshot으로 확인해야 합니다.',
+      }).not.toBeNull();
+      if (!resultHoldPresentation) throw new Error('result-hold snapshot을 수집하지 못했습니다.');
+
+      expect(resultHoldPresentation.sceneBox, '결과 유지 장면은 실제 표시 영역을 가져야 합니다.').not.toBeNull();
+      if (!resultHoldPresentation.sceneBox) throw new Error('결과 유지 장면 boundingBox가 없습니다.');
+      expect(resultHoldPresentation.sceneBox.width, '결과 유지 장면은 실제 표시 너비를 가져야 합니다.').toBeGreaterThan(0);
+      expect(resultHoldPresentation.sceneBox.height, '결과 유지 장면은 실제 표시 높이를 가져야 합니다.').toBeGreaterThan(0);
+      if (resultHoldPresentation.renderer === 'three') {
+        expect(resultHoldPresentation.canvasOpacity, 'Three.js 렌더러가 선택되면 canvas가 불투명하게 표시되어야 합니다.').toBeGreaterThan(0.9);
+        expect(resultHoldPresentation.fallbackVisibility, 'Three.js 렌더러가 선택되면 CSS fallback은 숨겨야 합니다.').toBe('hidden');
       } else {
-        expect(rendererPresentation.status, 'WebGL 초기화 실패 시 fallback 상태로 확정되어야 합니다.').toBe('fallback');
-        expect(rendererPresentation.fallbackVisibility, 'fallback 렌더러가 선택되면 CSS 윷 장면이 보여야 합니다.').toBe('visible');
+        expect(resultHoldPresentation.renderer, 'WebGL 초기화 실패 시 fallback 상태로 확정되어야 합니다.').toBe('fallback');
+        expect(resultHoldPresentation.fallbackVisibility, 'fallback 렌더러가 선택되면 CSS 윷 장면이 보여야 합니다.').toBe('visible');
       }
-      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), '서버 authoritative 타이밍 등급이 확정 결과와 함께 표시되어야 합니다.').toHaveText(/^(BAD|GOOD|NICE|PERFECT)$/, { timeout: 5_000 });
-      await expect(page.locator('.roll-stage.resolved-from-pending .roll-stage-timing'), 'resolved 타이밍 등급도 중복 렌더링하지 않아야 합니다.').toHaveCount(1);
-      const timingBox = await page.locator('.roll-stage.resolved-from-pending .roll-stage-timing').boundingBox();
-      const matBox = await page.locator('.roll-stage.resolved-from-pending .roll-mat').boundingBox();
-      expect(timingBox, '타이밍 등급 boundingBox를 확인할 수 있어야 합니다.').not.toBeNull();
-      expect(matBox, '윷 매트 boundingBox를 확인할 수 있어야 합니다.').not.toBeNull();
-      if (!timingBox || !matBox) return;
-      const centerDeltaPx = Math.abs((timingBox.x + timingBox.width / 2) - (matBox.x + matBox.width / 2));
+      expect(resultHoldPresentation.timingCount, 'resolved 타이밍 등급도 중복 렌더링하지 않아야 합니다.').toBe(1);
+      expect(resultHoldPresentation.timingBox, '타이밍 등급 boundingBox를 확인할 수 있어야 합니다.').not.toBeNull();
+      expect(resultHoldPresentation.matBox, '윷 매트 boundingBox를 확인할 수 있어야 합니다.').not.toBeNull();
+      if (!resultHoldPresentation.timingBox || !resultHoldPresentation.matBox) throw new Error('result-hold 정렬 boundingBox가 없습니다.');
+      const centerDeltaPx = Math.abs(
+        (resultHoldPresentation.timingBox.x + resultHoldPresentation.timingBox.width / 2)
+        - (resultHoldPresentation.matBox.x + resultHoldPresentation.matBox.width / 2),
+      );
       expect(centerDeltaPx, `타이밍 등급과 윷 매트의 가로 중심 오차는 2px 이내여야 합니다. 실제: ${centerDeltaPx}px`).toBeLessThanOrEqual(2);
-      const resolvedCard = page.getByTestId('roll-result-card');
-      const resolvedName = resolvedCard.locator('.roll-result-name > span:not(.roll-result-symbol)');
-      const resolvedDescription = resolvedCard.locator('.roll-result-description');
-      await expect(resolvedCard, `서버 authoritative 윷 결과 카드가 표시되어야 합니다: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 5_000 });
-      await expect(resolvedCard, 'authoritative 결과 카드는 한 번만 표시되어야 합니다.').toHaveCount(1);
-      await expect(resolvedName, '결과 카드에는 윷 결과명이 표시되어야 합니다.').toBeVisible();
-      await expect(resolvedDescription, '결과 카드에는 이동 또는 실패 설명이 표시되어야 합니다.').not.toHaveText('');
-      const resultNameAfterReveal = await resolvedName.innerText();
-      const postResultGameText = await page.getByTestId('game-screen').innerText();
-      const postResultTurnStackText = await page.locator('[data-testid="turn-indicator"]').innerText();
-      expect(postResultGameText.length, '결과명 표시 순간부터 최신 진행 기록이 공개되어 게임 화면 텍스트가 갱신되어야 합니다.').toBeGreaterThanOrEqual(preResultGameText.length);
-      expect(postResultTurnStackText.length, '결과명 표시 순간부터 상단 이동 스택이 최신 상태로 공개되어야 합니다.').toBeGreaterThanOrEqual(preResultTurnStackText.length);
-      const resolvedMatClassName = await page.locator('.roll-stage.resolved-from-pending .roll-mat').getAttribute('class');
-      const resolvedMatClasses = (resolvedMatClassName ?? '').split(/\s+/);
-      if (resolvedMatClasses.includes('bonus-roll') || resolvedMatClasses.includes('fall-roll')) {
-        await expect.poll(async () => page.locator('.roll-stage.resolved-from-pending .roll-mat').evaluate((node) => {
-          const style = getComputedStyle(node);
-          return `${style.animationName}/${style.opacity}/${style.transform}`;
-        }), {
-          timeout: 1_000,
-          message: 'pending에서 확정된 bonus/fall 매트는 class 추가 후에도 팝업 재시작 animation 없이 고정되어야 합니다.',
-        }).toBe('none/1/matrix(1, 0, 0, 1, 0, 0)');
-      }
+      expect(resultHoldPresentation.resultCardCount, 'authoritative 결과 카드는 한 번만 표시되어야 합니다.').toBe(1);
+      expect(resultHoldPresentation.resultCardBox, '서버 authoritative 윷 결과 카드가 표시되어야 합니다.').not.toBeNull();
+      expect(resultHoldPresentation.resultName, '결과 카드에는 윷 결과명이 표시되어야 합니다.').not.toBe('');
+      expect(resultHoldPresentation.resultDescription, '결과 카드에는 이동 또는 실패 설명이 표시되어야 합니다.').not.toBe('');
+      expect(resultHoldPresentation.gameText.length, '결과명 표시 순간부터 최신 진행 기록이 공개되어 게임 화면 텍스트가 갱신되어야 합니다.').toBeGreaterThanOrEqual(preResultGameText.length);
+      expect(resultHoldPresentation.turnStackText.length, '결과명 표시 순간부터 상단 이동 스택이 최신 상태로 공개되어야 합니다.').toBeGreaterThanOrEqual(preResultTurnStackText.length);
+
+      const resultNameAfterReveal = resultHoldPresentation.resultName;
+      const resolvedMatClasses = resultHoldPresentation.matClassName.split(/\s+/u);
       if (resultNameAfterReveal === '낙') {
         expect(resolvedMatClasses, '낙 결과는 fall-roll만 적용하고 내부 display result가 윷/모여도 bonus-roll을 적용하지 않아야 합니다.').toContain('fall-roll');
         expect(resolvedMatClasses, '낙 결과는 bonus-roll을 절대 적용하지 않아야 합니다.').not.toContain('bonus-roll');

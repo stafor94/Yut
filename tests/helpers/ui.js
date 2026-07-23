@@ -5,6 +5,20 @@ import { normalizeQaNickname } from './env.js';
 
 export const consoleLogPath = path.join(process.cwd(), 'console-log.txt');
 
+const getQaRuntimeContext = () => {
+  const runId = String(process.env.QA_RUN_ID ?? '').trim().toLowerCase();
+  const role = String(process.env.QA_ROLE ?? 'qa').trim().toLowerCase();
+  return runId ? { runId, role: role || 'qa' } : null;
+};
+
+async function addQaRuntimeContext(target) {
+  const qaContext = getQaRuntimeContext();
+  if (!qaContext) return;
+  await target.addInitScript((value) => {
+    window.__YUT_QA_CONTEXT__ = value;
+  }, qaContext);
+}
+
 export async function appendQaLog(testInfo, status, step, details = '') {
   const suffix = details ? ` - ${details}` : '';
   await fs.appendFile(consoleLogPath, `[${new Date().toISOString()}] [${testInfo.project.name}] [${status}] ${step}${suffix}\n`);
@@ -124,6 +138,7 @@ export async function expectAppShell(page, { timeout = 45_000 } = {}) {
 
 export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', playMode = 'individual', itemMode = 'false', pieceCount = '4' }) {
   const normalizedNickname = normalizeQaNickname(nickname);
+  await addQaRuntimeContext(context);
   await context.addInitScript((values) => {
     window.localStorage.setItem('yut-online:nickname', values.nickname);
     window.localStorage.setItem('yut-online:maxPlayers', values.maxPlayers);
@@ -173,6 +188,7 @@ async function waitForRoomCreationResult(page, { timeout = 45_000, maxSubmitAtte
 }
 
 export async function createRoomFromLobby(page, roomTitle) {
+  await addQaRuntimeContext(page);
   if (roomTitle.includes('ai-seq-room')) {
     await page.addInitScript(() => {
       window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
