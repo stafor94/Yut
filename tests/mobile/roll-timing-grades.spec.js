@@ -16,7 +16,7 @@ const EXPECTED_LABELS = {
 };
 
 test.describe('mobile roll timing grades QA', () => {
-  test('타이밍 등급은 고대비 배지, 윷 결과는 이동 설명이 있는 한지 카드로 표시한다', async ({ page, context }, testInfo) => {
+  test('타이밍 등급은 1.5초 후 페이드되고 윷 결과는 이동 설명이 있는 한지 카드로 표시한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 780 });
     await primeLobbyStorage(context, { nickname: '타이밍QA' });
 
@@ -41,16 +41,16 @@ test.describe('mobile roll timing grades QA', () => {
           </div>
           <div class="roll-stage resolved-from-pending result-hold-roll">
             <div class="roll-result-presentation">
-              <span class="roll-timing-feedback roll-stage-timing perfect">PERFECT</span>
+              <span class="roll-timing-feedback roll-stage-timing transient perfect">PERFECT</span>
               <span class="roll-label roll-result-card standard">
                 <strong class="roll-result-name"><span>걸</span></strong>
                 <small class="roll-result-description">3칸 이동</small>
               </span>
             </div>
           </div>
-          <span class="roll-timing-feedback nice">NICE</span>
-          <span class="roll-timing-feedback good">GOOD</span>
-          <span class="roll-timing-feedback bad">BAD</span>
+          <span class="roll-timing-feedback transient nice">NICE</span>
+          <span class="roll-timing-feedback transient good">GOOD</span>
+          <span class="roll-timing-feedback transient bad">BAD</span>
         `;
         document.body.append(host);
 
@@ -71,15 +71,21 @@ test.describe('mobile roll timing grades QA', () => {
             fontSize: Number.parseFloat(style.fontSize),
             width: rect.width,
             height: rect.height,
+            animationName: style.animationName,
+            animationDelay: style.animationDelay,
+            animationDuration: style.animationDuration,
+            animationFillMode: style.animationFillMode,
             pseudoDisplay: pseudo.display,
           };
         });
         const wrapper = host.querySelector('.roll-result-presentation');
         const card = host.querySelector('.roll-result-card');
+        const grade = host.querySelector('.roll-stage-timing');
         const name = host.querySelector('.roll-result-name');
         const description = host.querySelector('.roll-result-description');
         const wrapperRect = wrapper.getBoundingClientRect();
         const cardRect = card.getBoundingClientRect();
+        const gradeRect = grade.getBoundingClientRect();
         const cardStyle = getComputedStyle(card);
         const result = {
           meterBackground: getComputedStyle(meter).backgroundImage,
@@ -90,6 +96,8 @@ test.describe('mobile roll timing grades QA', () => {
           cardDisplay: cardStyle.display,
           cardTranslate: cardStyle.translate,
           cardCenterOffset: Math.abs((cardRect.left + cardRect.width / 2) - (wrapperRect.left + wrapperRect.width / 2)),
+          gradeCenterOffset: Math.abs((gradeRect.left + gradeRect.width / 2) - (cardRect.left + cardRect.width / 2)),
+          gradeAboveCard: gradeRect.bottom <= cardRect.top + 1,
           cardBackground: cardStyle.backgroundImage,
           cardBorderColor: cardStyle.borderTopColor,
           cardBorderRadius: Number.parseFloat(cardStyle.borderTopLeftRadius),
@@ -122,6 +130,10 @@ test.describe('mobile roll timing grades QA', () => {
         expect(grade.fontSize).toBeGreaterThanOrEqual(14);
         expect(grade.width).toBeGreaterThanOrEqual(82);
         expect(grade.height).toBeGreaterThanOrEqual(34);
+        expect(grade.animationName).toBe('roll-timing-grade-fade');
+        expect(grade.animationDelay).toBe('1.5s');
+        expect(grade.animationDuration).toBe('0.22s');
+        expect(grade.animationFillMode).toBe('forwards');
         expect(grade.pseudoDisplay).toBe('none');
       }
 
@@ -129,6 +141,8 @@ test.describe('mobile roll timing grades QA', () => {
       expect(presentation.cardDisplay).toBe('grid');
       expect(presentation.cardTranslate).not.toBe('-50%');
       expect(presentation.cardCenterOffset).toBeLessThanOrEqual(1);
+      expect(presentation.gradeCenterOffset).toBeLessThanOrEqual(1);
+      expect(presentation.gradeAboveCard).toBe(true);
       expect(presentation.cardBackground).not.toBe('none');
       expect(presentation.cardBorderColor).toBe('rgb(123, 75, 42)');
       expect(presentation.cardBorderRadius).toBeGreaterThanOrEqual(12);
