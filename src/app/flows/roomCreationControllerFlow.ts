@@ -126,6 +126,8 @@ export async function requestRoomCreation(params: RequestRoomCreationParams) {
     ? existingRequest
     : { ...createRoomRequestIdentity(runtime.makeRequestToken()), title: normalizedTitle };
   params.pendingRoomCreationRef.current = request;
+  let createAttempted = false;
+  let createCommitCompleted = false;
   try {
     const roomMaxPlayers = normalizeRoomCreationMaxPlayers(params.maxPlayers, params.playMode);
     if (roomMaxPlayers !== params.maxPlayers) params.onMaxPlayersChange(roomMaxPlayers);
@@ -138,6 +140,7 @@ export async function requestRoomCreation(params: RequestRoomCreationParams) {
     roomHost = roomHost ?? await withOperationTimeout(runtime.signInAsGuest(), CREATE_ROOM_AUTH_TIMEOUT_MS, 'auth');
     if (!roomHost) throw new Error('입장 준비가 끝난 뒤 다시 시도하세요.');
     params.rememberUser(roomHost);
+    createAttempted = true;
     const roomId = await withOperationTimeout(runtime.createRoom({
       title: normalizedTitle,
       hostId: roomHost.uid,
@@ -150,10 +153,11 @@ export async function requestRoomCreation(params: RequestRoomCreationParams) {
       roomId: request.roomId,
       createRequestId: request.createRequestId,
     }), CREATE_ROOM_COMMIT_TIMEOUT_MS, 'create');
+    createCommitCompleted = true;
     params.pendingRoomCreationRef.current = null;
     await params.onRoomCreated({ id: roomId, title: normalizedTitle, itemMode: params.itemMode, stackedRollMode: params.stackedRollMode, maxPlayers: roomMaxPlayers, playMode: params.playMode, pieceCount: params.pieceCount }, roomHost);
   } catch (error) {
-    const immediatelyRecoveredRoom = runtime.firebaseConfigured && roomHost
+    const immediatelyRecoveredRoom = runtime.firebaseConfigured && roomHost && createAttempted && !createCommitCompleted
       ? await findCreatedRoomOnce(request, roomHost.uid, runtime.getRoom)
       : null;
     if (immediatelyRecoveredRoom && roomHost) {
