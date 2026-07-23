@@ -226,7 +226,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     void updateTurnOrderState(intro.roomId, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
       const transactionNow = Date.now();
-      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId || !canAggregateTurnOrderRound(current, transactionNow)) return null;
+      if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId || !canAggregateTurnOrderRound(current, transactionNow)) return null;
       const next = aggregateTurnOrderRound(current, transactionNow);
       if (!isTurnOrderFinalized(next)) return { turnOrderIntro: next };
       const entryById = new Map(next.order.map((entry) => [entry.seatId, entry]));
