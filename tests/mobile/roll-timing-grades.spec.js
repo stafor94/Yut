@@ -1,19 +1,26 @@
 import { test, expect } from '@playwright/test';
 import { expectAppShell, primeLobbyStorage, runQaStep, waitForBlockingOverlayToDisappear } from '../helpers/ui.js';
 
-const EXPECTED_COLORS = {
-  perfect: 'rgb(142, 68, 173)',
-  nice: 'rgb(2, 132, 199)',
-  good: 'rgb(63, 125, 32)',
-  bad: 'rgb(17, 24, 39)',
+const EXPECTED_BADGE_COLORS = {
+  perfect: 'rgb(109, 74, 255)',
+  nice: 'rgb(36, 158, 209)',
+  good: 'rgb(85, 168, 79)',
+  bad: 'rgb(52, 55, 61)',
+};
+
+const EXPECTED_LABELS = {
+  perfect: 'PERFECT',
+  nice: 'NICE',
+  good: 'GOOD',
+  bad: 'BAD',
 };
 
 test.describe('mobile roll timing grades QA', () => {
-  test('타이밍 막대와 결과 문구는 4단계 범위·색상·확대 글꼴을 사용한다', async ({ page, context }, testInfo) => {
+  test('타이밍 등급은 고대비 배지, 윷 결과는 이동 설명이 있는 한지 카드로 표시한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 780 });
     await primeLobbyStorage(context, { nickname: '타이밍QA' });
 
-    await runQaStep(testInfo, '타이밍 막대 시각 계약 확인', async () => {
+    await runQaStep(testInfo, '타이밍 막대와 통합 결과 카드 시각 계약 확인', async () => {
       await expectAppShell(page);
       await waitForBlockingOverlayToDisappear(page);
 
@@ -32,10 +39,18 @@ test.describe('mobile roll timing grades QA', () => {
               <span class="roll-timing-orb"></span>
             </div>
           </div>
-          <span class="roll-timing-feedback perfect"></span>
-          <span class="roll-timing-feedback nice"></span>
-          <span class="roll-timing-feedback good"></span>
-          <span class="roll-timing-feedback bad"></span>
+          <div class="roll-stage resolved-from-pending result-hold-roll">
+            <div class="roll-result-presentation">
+              <span class="roll-timing-feedback roll-stage-timing perfect">PERFECT</span>
+              <span class="roll-label roll-result-card standard">
+                <strong class="roll-result-name"><span>걸</span></strong>
+                <small class="roll-result-description">3칸 이동</small>
+              </span>
+            </div>
+          </div>
+          <span class="roll-timing-feedback nice">NICE</span>
+          <span class="roll-timing-feedback good">GOOD</span>
+          <span class="roll-timing-feedback bad">BAD</span>
         `;
         document.body.append(host);
 
@@ -44,19 +59,36 @@ test.describe('mobile roll timing grades QA', () => {
         const legacyZones = Array.from(meter.querySelectorAll(':scope > span:not(.roll-timing-orb)'));
         const grades = ['perfect', 'nice', 'good', 'bad'].map((grade) => {
           const element = host.querySelector(`.roll-timing-feedback.${grade}`);
+          const style = getComputedStyle(element);
           const pseudo = getComputedStyle(element, '::before');
           return {
             grade,
-            content: pseudo.content,
-            color: pseudo.color,
-            fontSize: Number.parseFloat(pseudo.fontSize),
+            text: element.textContent,
+            backgroundColor: style.backgroundColor,
+            color: style.color,
+            display: style.display,
+            fontSize: Number.parseFloat(style.fontSize),
+            pseudoDisplay: pseudo.display,
           };
         });
+        const wrapper = host.querySelector('.roll-result-presentation');
+        const card = host.querySelector('.roll-result-card');
+        const name = host.querySelector('.roll-result-name');
+        const description = host.querySelector('.roll-result-description');
+        const cardStyle = getComputedStyle(card);
         const result = {
           meterBackground: getComputedStyle(meter).backgroundImage,
           orbBorderColor: getComputedStyle(orb).borderTopColor,
           legacyZoneDisplays: legacyZones.map((zone) => getComputedStyle(zone).display),
           grades,
+          wrapperPosition: getComputedStyle(wrapper).position,
+          cardDisplay: cardStyle.display,
+          cardBackground: cardStyle.backgroundImage,
+          cardBorderColor: cardStyle.borderTopColor,
+          cardBorderRadius: Number.parseFloat(cardStyle.borderTopLeftRadius),
+          cardText: card.textContent.replace(/\s+/g, ' ').trim(),
+          nameFontSize: Number.parseFloat(getComputedStyle(name).fontSize),
+          descriptionFontSize: Number.parseFloat(getComputedStyle(description).fontSize),
         };
         host.remove();
         return result;
@@ -76,10 +108,22 @@ test.describe('mobile roll timing grades QA', () => {
       expect(presentation.legacyZoneDisplays).toEqual(['none', 'none', 'none']);
 
       for (const grade of presentation.grades) {
-        expect(grade.content.toLowerCase()).toContain(grade.grade);
-        expect(grade.color).toBe(EXPECTED_COLORS[grade.grade]);
-        expect(grade.fontSize, `${grade.grade} 결과 문구는 기존보다 약 3단계 크게 보여야 합니다.`).toBeGreaterThanOrEqual(30);
+        expect(grade.text).toBe(EXPECTED_LABELS[grade.grade]);
+        expect(grade.backgroundColor).toBe(EXPECTED_BADGE_COLORS[grade.grade]);
+        expect(grade.color).toBe('rgb(255, 255, 255)');
+        expect(grade.display).toBe('inline-flex');
+        expect(grade.fontSize).toBeGreaterThanOrEqual(11);
+        expect(grade.pseudoDisplay).toBe('none');
       }
+
+      expect(presentation.wrapperPosition).toBe('absolute');
+      expect(presentation.cardDisplay).toBe('grid');
+      expect(presentation.cardBackground).not.toBe('none');
+      expect(presentation.cardBorderColor).toBe('rgb(123, 75, 42)');
+      expect(presentation.cardBorderRadius).toBeGreaterThanOrEqual(12);
+      expect(presentation.cardText).toBe('걸 3칸 이동');
+      expect(presentation.nameFontSize).toBeGreaterThanOrEqual(26);
+      expect(presentation.descriptionFontSize).toBeGreaterThanOrEqual(11);
     });
   });
 });
