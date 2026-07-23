@@ -10,8 +10,14 @@
   translate: var(--roll-stage-center-offset-x, -50%) 0;
 }
 
-/* Center absolute overlays with equal inline insets. This remains stable when
-   the live roll scene expands the mat's implicit grid track. */
+/* Do not let the live renderer's min-content width enlarge the mat grid track.
+   The scene may overflow visually, but the track and absolute overlays keep the
+   same center as the mat and board. */
+.roll-stage .roll-mat {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Center absolute overlays with equal inline insets inside the stable track. */
 .roll-stage .roll-stage-timing,
 .roll-stage .roll-stage-timing-preview {
   top: 20px;
