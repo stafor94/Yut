@@ -2,8 +2,8 @@ import {
   collection,
   limit,
   onSnapshot,
+  orderBy,
   query,
-  where,
   type QuerySnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
@@ -20,6 +20,7 @@ const ROOM_LIST_QUERY_LIMIT = Math.max(ROOM_LIST_CANDIDATE_LIMIT * 2, TOTAL_ROOM
 
 const roomsFromSnapshot = (snapshot: QuerySnapshot) => snapshot.docs
   .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
+  .filter((room) => room.status === 'waiting' || room.status === 'playing')
   .filter((room) => !isRoomSummaryInactive(room))
   .sort((left, right) => getRoomLastActivityMillis(right) - getRoomLastActivityMillis(left))
   .slice(0, ROOM_LIST_CANDIDATE_LIMIT);
@@ -33,7 +34,7 @@ export function subscribeCappedActiveRooms(callback: (rooms: RoomSummary[]) => v
   return onSnapshot(
     query(
       collection(db, 'rooms'),
-      where('status', 'in', ['waiting', 'playing']),
+      orderBy('lastActivityAt', 'desc'),
       limit(ROOM_LIST_QUERY_LIMIT),
     ),
     (snapshot) => callback(roomsFromSnapshot(snapshot)),
