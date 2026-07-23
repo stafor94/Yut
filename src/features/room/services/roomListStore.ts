@@ -2,12 +2,13 @@ import {
   collection,
   limit,
   onSnapshot,
+  orderBy,
   query,
-  where,
   type QuerySnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
+import { TOTAL_ROOM_LIMIT } from './roomCapacityPolicy';
 import {
   ROOM_LIST_CANDIDATE_LIMIT,
   getRoomLastActivityMillis,
@@ -15,22 +16,14 @@ import {
 } from './roomLifecyclePolicy';
 import type { RoomSummary } from './roomServiceCore';
 
-type RoomBucket = 'waiting' | 'playing';
-
-type RoomListState = Record<RoomBucket, RoomSummary[]>;
-type RoomListReadyState = Record<RoomBucket, boolean>;
+const ROOM_LIST_QUERY_LIMIT = Math.max(ROOM_LIST_CANDIDATE_LIMIT * 2, TOTAL_ROOM_LIMIT + 1);
 
 const roomsFromSnapshot = (snapshot: QuerySnapshot) => snapshot.docs
   .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<RoomSummary, 'id'>) }))
-  .filter((room) => !isRoomSummaryInactive(room));
-
-const mergeRooms = (state: RoomListState) => {
-  const rooms = new Map<string, RoomSummary>();
-  [...state.waiting, ...state.playing].forEach((room) => rooms.set(room.id, room));
-  return [...rooms.values()]
-    .sort((left, right) => getRoomLastActivityMillis(right) - getRoomLastActivityMillis(left))
-    .slice(0, ROOM_LIST_CANDIDATE_LIMIT);
-};
+  .filter((room) => ['waiting', 'playing'].includes(room.status))
+  .filter((room) => !isRoomSummaryInactive(room))
+  .sort((left, right) => getRoomLastActivityMillis(right) - getRoomLastActivityMillis(left))
+  .slice(0, ROOM_LIST_CANDIDATE_LIMIT);
 
 export function subscribeCappedActiveRooms(callback: (rooms: RoomSummary[]) => void): Unsubscribe {
   if (!db) {
@@ -38,39 +31,13 @@ export function subscribeCappedActiveRooms(callback: (rooms: RoomSummary[]) => v
     return () => undefined;
   }
 
-  const state: RoomListState = { waiting: [], playing: [] };
-  const ready: RoomListReadyState = { waiting: false, playing: false };
-  let active = true;
-
-  const publish = () => {
-    if (!active || !ready.waiting || !ready.playing) return;
-    callback(mergeRooms(state));
-  };
-
-  const subscribeBucket = (status: RoomBucket) => onSnapshot(
+  return onSnapshot(
     query(
-      collection(db!, 'rooms'),
-      where('status', '==', status),
-      limit(ROOM_LIST_CANDIDATE_LIMIT),
+      collection(db, 'rooms'),
+      orderBy('lastActivityAt', 'desc'),
+      limit(ROOM_LIST_QUERY_LIMIT),
     ),
-    (snapshot) => {
-      state[status] = roomsFromSnapshot(snapshot);
-      ready[status] = true;
-      publish();
-    },
-    () => {
-      state[status] = [];
-      ready[status] = true;
-      publish();
-    },
+    (snapshot) => callback(roomsFromSnapshot(snapshot)),
+    () => callback([]),
   );
-
-  const unsubscribeWaiting = subscribeBucket('waiting');
-  const unsubscribePlaying = subscribeBucket('playing');
-
-  return () => {
-    active = false;
-    unsubscribeWaiting();
-    unsubscribePlaying();
-  };
 }
