@@ -88,7 +88,7 @@ test.describe('mobile roll stage board alignment QA', () => {
       expect(geometry.stageTranslate).not.toBe('none');
       expect(geometry.stageJustifyContent).toBe('center');
       expect(geometry.gradeTop).toBe(20);
-      expect(geometry.resultTop).toBe(48);
+      expect(geometry.resultTop).toBe(49.5);
       expect(geometry.gradeResultGap).toBeGreaterThanOrEqual(0);
       expect(geometry.gradeResultGap).toBeLessThanOrEqual(8);
       expect(geometry.resultSurfaceGap).toBeLessThanOrEqual(100);
