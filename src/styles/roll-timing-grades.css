@@ -132,7 +132,7 @@
     linear-gradient(180deg, #fff9e9 0%, #fff4d8 60%, #edcf96 100%);
   color: #4f2d19;
   opacity: 1;
-  translate: 0 0;
+  translate: var(--roll-result-card-offset-x, 0px) 0;
   transform: none;
   text-align: center;
   text-shadow: none;
