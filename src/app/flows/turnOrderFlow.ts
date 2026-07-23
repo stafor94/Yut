@@ -96,7 +96,7 @@ export function buildAlternatingTeamTurnOrder<TSeat extends TurnOrderSeat>(ranke
   let preferredTeam: TurnOrderTeam = firstTeam;
 
   while (teamQueues.청팀.length || teamQueues.홍팀.length) {
-    const previousTeam = turnOrder[turnOrder.length - 1]?.seat.team;
+    const previousTeam = turnOrder[turnOrder.length - 1]?.team;
     const oppositeTeam = previousTeam === '청팀' ? '홍팀' : '청팀';
     const nextTeam = previousTeam && teamQueues[oppositeTeam].length
       ? oppositeTeam
