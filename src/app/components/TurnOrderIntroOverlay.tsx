@@ -1,121 +1,318 @@
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { updateTurnOrderState } from '../../features/room/services/roomService';
+import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
+import {
+  chooseAiRollTimingZone,
+  getRollTimingPositionPercent,
+  getRollTimingZone,
+  makeDisplaySticks,
+  rollYutResultWithTiming,
+  shouldFallForTimingZone,
+  type RollTimingZone,
+  type YutResult,
+} from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
-import type { TurnOrderIntro } from '../appState';
-import { buildTurnOrderSlotReel, getTurnOrderSlotRevealDurationMs, getTurnOrderStoppedSlotCount } from '../flows/turnOrderPresentation';
+import type { RollAnimation, TurnOrderIntro, TurnOrderResultName, TurnOrderSubmission } from '../appState';
+import {
+  activateNextTurnOrderRound,
+  aggregateTurnOrderRound,
+  canAggregateTurnOrderRound,
+  formatTurnOrderSummary,
+  getTurnOrderScore,
+  isTurnOrderFinalized,
+  submitTurnOrderResult,
+} from '../flows/turnOrderFlow';
+import { RollStage } from '../containers/RollStage';
 
-type TurnOrderIntroOverlayProps = {
+ type TurnOrderIntroOverlayProps = {
   activeTurnOrderIntro: TurnOrderIntro | null;
   localSeatId: string;
   turnOrderClock: number;
   finalHoldMs: number;
 };
 
-const TURN_ORDER_EXIT_MS = 420;
+type QaTurnOrderWindow = Window & {
+  __YUT_QA_TURN_ORDER_RESULT_QUEUE__?: TurnOrderResultName[];
+};
 
-export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnOrderClock, finalHoldMs }: TurnOrderIntroOverlayProps) {
-  const previousStoppedCountRef = useRef(0);
-  const completionSoundTimerRef = useRef<number | null>(null);
-  const order = activeTurnOrderIntro?.order ?? [];
-  const orderKey = order.map((entry) => `${entry.seatId}:${entry.label}:${entry.name}:${entry.color}`).join('|');
-  const reels = useMemo(() => order.map((_, slotIndex) => buildTurnOrderSlotReel(order, slotIndex)), [orderKey]);
-  const slotUntil = activeTurnOrderIntro?.slotUntil ?? ((activeTurnOrderIntro?.readyAt ?? 0) - finalHoldMs);
-  const slotRevealDurationMs = getTurnOrderSlotRevealDurationMs(order.length);
-  const slotStartedAt = slotUntil - slotRevealDurationMs;
-  const isWaitingToStart = Boolean(activeTurnOrderIntro?.visible && turnOrderClock < slotStartedAt);
-  const elapsedRevealMs = Math.max(0, turnOrderClock - slotStartedAt);
-  const stoppedCount = activeTurnOrderIntro?.visible ? getTurnOrderStoppedSlotCount(order.length, elapsedRevealMs) : 0;
-  const isFinalized = order.length > 0 && stoppedCount >= order.length;
-  const isExiting = Boolean(activeTurnOrderIntro?.visible && isFinalized && activeTurnOrderIntro.readyAt - turnOrderClock <= TURN_ORDER_EXIT_MS);
-  const starter = order[0];
+const AUTO_ROLL_FALLBACK_DELAY_MS = 500;
+const SCORE_LABELS: Record<TurnOrderResultName, string> = {
+  모: '5',
+  윷: '4',
+  걸: '3',
+  개: '2',
+  도: '1',
+  빽도: '-1',
+  낙: '-2',
+};
+
+const getForcedResult = (name: TurnOrderResultName): { result: YutResult; fallCount: number } => {
+  if (name === '낙') return { result: { name: '도', steps: 1 }, fallCount: 2 };
+  if (name === '빽도') return { result: { name: '빽도', steps: -1 }, fallCount: 0 };
+  const steps = { 도: 1, 개: 2, 걸: 3, 윷: 4, 모: 5 }[name];
+  return { result: { name, steps, ...(name === '윷' || name === '모' ? { bonus: true } : {}) }, fallCount: 0 };
+};
+
+const takeQaResult = () => {
+  if (typeof window === 'undefined') return null;
+  const queue = (window as QaTurnOrderWindow).__YUT_QA_TURN_ORDER_RESULT_QUEUE__;
+  return Array.isArray(queue) && queue.length ? queue.shift() ?? null : null;
+};
+
+const createTurnOrderSubmission = (params: {
+  seatId: string;
+  roundId: string;
+  timingZone: RollTimingZone;
+  source: TurnOrderSubmission['source'];
+  now?: number;
+  allowQaOverride?: boolean;
+}): TurnOrderSubmission => {
+  const forcedName = params.allowQaOverride === false ? null : takeQaResult();
+  const rolled = forcedName ? getForcedResult(forcedName) : { ...rollYutResultWithTiming(params.timingZone), fallCount: 0 };
+  const fallCount = forcedName
+    ? rolled.fallCount
+    : shouldFallForTimingZone(params.timingZone)
+      ? Math.floor(Math.random() * 4) + 1
+      : 0;
+  const resultName = (fallCount > 0 ? '낙' : rolled.result.name) as TurnOrderResultName;
+  return {
+    seatId: params.seatId,
+    roundId: params.roundId,
+    resultName,
+    displayResult: rolled.result,
+    sticks: makeDisplaySticks(rolled.result),
+    fallCount,
+    timingZone: params.timingZone,
+    source: params.source,
+    submittedAt: params.now ?? Date.now(),
+  };
+};
+
+const getRemainingSeconds = (targetAt: number, now: number) => Math.max(0, Math.ceil((targetAt - now) / 1000));
+
+export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnOrderClock }: TurnOrderIntroOverlayProps) {
+  const [clock, setClock] = useState(() => Date.now());
+  const [localSubmission, setLocalSubmission] = useState<TurnOrderSubmission | null>(null);
+  const [localRollAnimation, setLocalRollAnimation] = useState<RollAnimation | null>(null);
+  const submittedRoundIdRef = useRef('');
+  const finalizedSessionRef = useRef('');
+  const completionSoundSessionRef = useRef('');
 
   useEffect(() => {
-    previousStoppedCountRef.current = 0;
-    if (completionSoundTimerRef.current !== null) {
-      window.clearTimeout(completionSoundTimerRef.current);
-      completionSoundTimerRef.current = null;
-    }
-  }, [activeTurnOrderIntro?.readyAt, orderKey]);
-
-  useEffect(() => () => {
-    if (completionSoundTimerRef.current !== null) window.clearTimeout(completionSoundTimerRef.current);
+    setClock(Date.now());
+    const timer = window.setInterval(() => setClock(Date.now()), 50);
+    const syncClock = () => setClock(Date.now());
+    document.addEventListener('visibilitychange', syncClock);
+    window.addEventListener('focus', syncClock);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', syncClock);
+      window.removeEventListener('focus', syncClock);
+    };
   }, []);
 
+  const sourceIntro = activeTurnOrderIntro?.version === 3 ? activeTurnOrderIntro : null;
+  const now = Math.max(clock, turnOrderClock);
+  const intro = useMemo(() => sourceIntro ? activateNextTurnOrderRound(sourceIntro, now) : null, [now, sourceIntro]);
+  const round = intro?.currentRound;
+  const roundId = round?.id ?? '';
+  const isLocalEligible = Boolean(round?.eligibleSeatIds.includes(localSeatId));
+  const storedLocalSubmission = round?.submissions.find((submission) => submission.seatId === localSeatId) ?? null;
+  const visibleLocalSubmission = localSubmission?.roundId === roundId ? localSubmission : storedLocalSubmission;
+  const coordinatorSeatId = intro?.order.find((entry) => !entry.isAI)?.seatId ?? intro?.order[0]?.seatId ?? '';
+  const isCoordinator = Boolean(localSeatId && localSeatId === coordinatorSeatId);
+  const isPreparing = Boolean(round && now < round.startAt);
+  const isCollecting = Boolean(round && round.status === 'collecting' && now >= round.startAt);
+  const revealAt = Number(round?.revealAt ?? 0);
+  const revealReady = Boolean(revealAt && now >= revealAt);
+  const finalOrderVisible = Boolean(intro?.finalOrderAt && intro?.gameStartAt && now >= intro.finalOrderAt && now < intro.gameStartAt);
+  const timingPosition = round ? getRollTimingPositionPercent(Math.max(0, now - round.startAt)) : 0;
+  const timingZone = getRollTimingZone(timingPosition);
+
   useEffect(() => {
-    if (!activeTurnOrderIntro?.visible || !order.length || isWaitingToStart) return;
-    const previousStoppedCount = previousStoppedCountRef.current;
-    if (stoppedCount <= previousStoppedCount) return;
+    if (localSubmission?.roundId === roundId) return;
+    setLocalSubmission(storedLocalSubmission);
+    setLocalRollAnimation(null);
+    submittedRoundIdRef.current = storedLocalSubmission ? roundId : '';
+  }, [localSubmission?.roundId, roundId, storedLocalSubmission]);
 
-    playStoredSoundEffect(previousStoppedCount === 0 ? 'arrive' : 'move');
-    previousStoppedCountRef.current = stoppedCount;
-    if (stoppedCount !== order.length) return;
+  useEffect(() => {
+    if (!sourceIntro?.nextRound || now < sourceIntro.nextRound.startAt || sourceIntro.currentRound.id === sourceIntro.nextRound.id) return;
+    void updateTurnOrderState(sourceIntro.roomId, (state) => {
+      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
+      if (!current || current.version !== 3 || current.sessionId !== sourceIntro.sessionId) return null;
+      const next = activateNextTurnOrderRound(current, Date.now());
+      return next.currentRound.id === current.currentRound.id ? null : { turnOrderIntro: next };
+    });
+  }, [now, sourceIntro]);
 
-    if (completionSoundTimerRef.current !== null) window.clearTimeout(completionSoundTimerRef.current);
-    completionSoundTimerRef.current = window.setTimeout(() => {
-      playStoredSoundEffect('countdownStart');
-      completionSoundTimerRef.current = null;
-    }, 180);
-  }, [activeTurnOrderIntro?.visible, isWaitingToStart, order.length, stoppedCount]);
+  const commitSubmission = useCallback((source: TurnOrderSubmission['source'], zone: RollTimingZone) => {
+    if (!intro || !round || !isLocalEligible || round.status !== 'collecting') return;
+    if (submittedRoundIdRef.current === round.id || visibleLocalSubmission) return;
+    submittedRoundIdRef.current = round.id;
+    const submission = createTurnOrderSubmission({ seatId: localSeatId, roundId: round.id, timingZone: zone, source });
+    setLocalSubmission(submission);
+    setLocalRollAnimation({
+      id: submission.submittedAt,
+      phase: 'resolved',
+      result: submission.displayResult,
+      sticks: submission.sticks,
+      turnOrder: true,
+      fallCount: submission.fallCount,
+      timingZone: submission.timingZone,
+    });
+    playStoredSoundEffect('move');
+    void updateTurnOrderState(intro.roomId, (state) => {
+      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
+      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
+      const next = submitTurnOrderResult(current, submission, Date.now());
+      const currentSubmissionCount = current.currentRound.submissions.length;
+      if (next.currentRound.id === current.currentRound.id && next.currentRound.submissions.length === currentSubmissionCount) return null;
+      return { turnOrderIntro: next };
+    }).catch(() => {
+      submittedRoundIdRef.current = '';
+    });
+  }, [intro, isLocalEligible, localSeatId, round, visibleLocalSubmission]);
 
-  if (!activeTurnOrderIntro?.visible) return null;
+  useEffect(() => {
+    if (!round || !isCollecting || !isLocalEligible || visibleLocalSubmission || submittedRoundIdRef.current === round.id) return undefined;
+    const autoRoll = () => {
+      if (Date.now() < round.deadlineAt) return;
+      commitSubmission('auto', chooseAiRollTimingZone());
+    };
+    autoRoll();
+    const timer = window.setTimeout(autoRoll, Math.max(0, round.deadlineAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [commitSubmission, isCollecting, isLocalEligible, round, visibleLocalSubmission]);
 
-  const announcement = isWaitingToStart
-    ? '순서 정하기를 준비하고 있습니다.'
-    : isFinalized
-      ? `최종 순서가 정해졌습니다. ${order.map((entry, index) => `${index + 1}위 ${entry.name}`).join(', ')}. ${starter?.name ?? ''}님부터 시작합니다.`
-      : `순서를 섞는 중입니다. ${stoppedCount}명의 순서가 공개되었습니다.`;
+  useEffect(() => {
+    if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.deadlineAt + AUTO_ROLL_FALLBACK_DELAY_MS) return;
+    void updateTurnOrderState(intro.roomId, (state) => {
+      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
+      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
+      const activated = activateNextTurnOrderRound(current, Date.now());
+      if (activated.currentRound.status !== 'collecting' || Date.now() < activated.currentRound.deadlineAt) return null;
+      let next = activated;
+      activated.currentRound.eligibleSeatIds.forEach((seatId) => {
+        if (next.currentRound.submissions.some((submission) => submission.seatId === seatId)) return;
+        next = submitTurnOrderResult(next, createTurnOrderSubmission({
+          seatId,
+          roundId: next.currentRound.id,
+          timingZone: chooseAiRollTimingZone(),
+          source: 'auto',
+          allowQaOverride: false,
+        }), Date.now());
+      });
+      return next.currentRound.submissions.length === activated.currentRound.submissions.length ? null : { turnOrderIntro: next };
+    });
+  }, [intro, isCoordinator, now, round]);
 
-  return <div className={`turn-order-ready-overlay slot-machine ${isWaitingToStart ? 'waiting' : ''} ${isFinalized ? 'finalized' : ''} ${isExiting ? 'exiting' : ''}`} role="status" aria-live="polite">
-    <div className="turn-order-presentation-heading">
-      <span>순서 정하기</span>
-      <strong>{isWaitingToStart ? '잠시 후 순서를 정합니다' : isFinalized ? '최종 순서 확정' : '순서를 섞는 중...'}</strong>
-    </div>
-    {isWaitingToStart
-      ? <div className="turn-order-waiting-panel" data-testid="turn-order-waiting-panel" aria-hidden="true">
-        <span className="turn-order-waiting-cards"><i></i><i></i><i></i></span>
-        <span>참가자 순서를 준비하고 있습니다</span>
+  useEffect(() => {
+    if (!intro || !canAggregateTurnOrderRound(intro)) return;
+    void updateTurnOrderState(intro.roomId, (state) => {
+      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
+      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId || !canAggregateTurnOrderRound(current)) return null;
+      const next = aggregateTurnOrderRound(current, Date.now());
+      if (!isTurnOrderFinalized(next)) return { turnOrderIntro: next };
+      const entryById = new Map(next.order.map((entry) => [entry.seatId, entry]));
+      const orderedEntries = (next.finalTurnOrderIds ?? []).map((seatId) => entryById.get(seatId)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+      const currentLogs = Array.isArray(state.logs) ? state.logs as Array<{ id?: number; text?: string }> : [];
+      const maxLogId = currentLogs.reduce((max, log) => Math.max(max, Number(log.id ?? 0)), 0);
+      const summary = formatTurnOrderSummary(
+        orderedEntries.map((entry) => ({ id: entry.seatId, label: entry.label, name: entry.name, color: entry.color, team: entry.team, isAI: entry.isAI })),
+        (entry) => entry.name || entry.label,
+      );
+      const logs = [{ id: maxLogId + 1, text: summary }, ...currentLogs.filter((log) => typeof log.text !== 'string' || !log.text.startsWith('순서:'))];
+      return {
+        turnOrderIntro: next,
+        turnOrderIds: next.finalTurnOrderIds,
+        initialTurnOrderIds: next.finalTurnOrderIds,
+        gameStartedAt: next.gameStartAt,
+        turnDeadlineAt: Number(next.gameStartAt ?? 0) + TURN_ACTION_TIMEOUT_MS,
+        turnDeadlineKind: 'roll',
+        waitingForPlayersReady: false,
+        logs,
+      };
+    });
+  }, [intro]);
+
+  useEffect(() => {
+    if (!intro || !isTurnOrderFinalized(intro) || !intro.finalOrderAt || now < intro.finalOrderAt) return;
+    if (completionSoundSessionRef.current === intro.sessionId) return;
+    completionSoundSessionRef.current = intro.sessionId;
+    playStoredSoundEffect('countdownStart');
+  }, [intro, now]);
+
+  useEffect(() => {
+    if (!intro || !isTurnOrderFinalized(intro) || finalizedSessionRef.current === intro.sessionId) return;
+    finalizedSessionRef.current = intro.sessionId;
+  }, [intro]);
+
+  if (!intro?.visible || !round) return null;
+
+  const orderedFinalEntries = (intro.finalTurnOrderIds ?? [])
+    .map((seatId) => intro.order.find((entry) => entry.seatId === seatId))
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  const submittedSeatIds = new Set(round.submissions.map((submission) => submission.seatId));
+  const remainingSeconds = isPreparing ? getRemainingSeconds(round.startAt, now) : getRemainingSeconds(round.deadlineAt, now);
+  const revealSeconds = revealAt ? getRemainingSeconds(revealAt, now) : 0;
+  const nextTieSeatIds = new Set(intro.nextRound?.eligibleSeatIds ?? []);
+
+  return <>
+    <div className="turn-order-ready-overlay" data-testid="turn-order-overlay" role="status" aria-live="polite">
+      <div className="turn-order-presentation-heading">
+        <span>순서 정하기</span>
+        <strong>{finalOrderVisible ? '최종 순서 확정' : isPreparing ? '잠시 후 순서 정하기가 시작됩니다' : round.status === 'collecting' ? `${round.index}라운드 · 동시에 던지세요` : revealReady ? '전체 결과 공개' : '전체 결과를 모으는 중입니다'}</strong>
       </div>
-      : <div className="turn-order-slot-list" data-testid="turn-order-slot-list" aria-hidden="true">
-        {order.map((entry, columnIndex) => {
-          const isStopped = columnIndex < stoppedCount;
-          const reel = reels[columnIndex] ?? { rows: [], targetRow: 0 };
-          return <div
-            className={`turn-order-slot-window ${isStopped ? 'stopped' : ''} ${columnIndex === 0 ? 'starter' : ''}`}
-            key={entry.seatId}
-            style={{
-              '--slot-index': columnIndex,
-              '--slot-row-count': Math.max(order.length, 1),
-              '--slot-target-row': reel.targetRow,
-              '--slot-color': entry.color,
-            } as CSSProperties}
-          >
-            <div className="turn-order-slot-reel">
-              {reel.rows.map((slotEntry, rowIndex) => {
-                const isTargetRow = rowIndex === reel.targetRow;
-                const isFinalCard = isStopped && isTargetRow;
-                const isMine = isFinalCard && slotEntry.seatId === localSeatId;
-                return <span
-                  className={`turn-order-slot-card ${isFinalCard ? 'final-card' : ''}`}
-                  style={{
-                    backgroundColor: slotEntry.color,
-                    borderColor: isMine ? '#fff' : slotEntry.color,
-                    color: '#fff',
-                    boxShadow: isMine ? 'inset 0 0 0 3px rgba(255, 255, 255, .96), 0 7px 18px rgba(42, 30, 23, .16)' : undefined,
-                  }}
-                  key={`${entry.seatId}-${slotEntry.seatId}-${rowIndex}`}
-                >
-                  {isTargetRow && <b className="turn-order-rank-medal">{columnIndex + 1}</b>}
-                  <span
-                    className="turn-order-slot-name"
-                    style={{ color: '#fff', textShadow: '0 1px 2px rgba(0, 0, 0, .38)' }}
-                  >{slotEntry.name}</span>
-                  {isMine && <em className="turn-order-slot-badge mine-badge" style={{ color: slotEntry.color, borderColor: '#fff' }}>나</em>}
-                </span>;
-              })}
-            </div>
-          </div>;
-        })}
-      </div>}
-    {isFinalized && starter && <p className="turn-order-final-summary"><span aria-hidden="true">★</span><strong>{starter.name}</strong>님부터 시작합니다.</p>}
-    <p className="turn-order-live-summary">{announcement}</p>
-  </div>;
+
+      {finalOrderVisible ? <div className="turn-order-final-list" data-testid="turn-order-final-order">
+        {orderedFinalEntries.map((entry, index) => <div className={`turn-order-final-entry ${entry.seatId === localSeatId ? 'mine' : ''}`} key={entry.seatId} style={{ '--player-color': entry.color } as CSSProperties}>
+          <strong>{index + 1}</strong><span>{entry.name}</span>{entry.seatId === localSeatId && <em>나</em>}
+        </div>)}
+        <p>게임 시작까지 {getRemainingSeconds(Number(intro.gameStartAt ?? 0), now)}초</p>
+      </div> : isPreparing ? <div className="turn-order-waiting-panel" data-testid="turn-order-preparing">
+        <span className="turn-order-waiting-yut" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <strong>{remainingSeconds}초 후 시작</strong>
+        <span>모든 참가자가 같은 시각에 윷을 던집니다.</span>
+      </div> : <>
+        <div className="turn-order-round-status">
+          <span>{round.status === 'collecting' ? `남은 시간 ${remainingSeconds}초` : revealReady ? '결과가 공개되었습니다' : `전체 공개까지 ${revealSeconds}초`}</span>
+          <small>{round.eligibleSeatIds.length === intro.order.length ? '전체 참가자 라운드' : '동률 참가자 재대결'}</small>
+        </div>
+
+        {round.status === 'collecting' && isLocalEligible && !visibleLocalSubmission && <div className="turn-order-timing-panel" data-testid="turn-order-timing-panel">
+          <div className="turn-order-timing-track" aria-label={`현재 타이밍 ${Math.round(timingPosition)}%`}>
+            <span className="turn-order-timing-perfect"></span>
+            <i style={{ left: `${timingPosition}%` }}></i>
+          </div>
+          <button type="button" data-testid="turn-order-roll-button" onClick={() => commitSubmission('manual', timingZone)}>윷 던지기</button>
+        </div>}
+
+        {round.status === 'collecting' && isLocalEligible && visibleLocalSubmission && <p className="turn-order-own-result" data-testid="turn-order-own-result">
+          내 결과 <strong>{visibleLocalSubmission.resultName}</strong> <span>{SCORE_LABELS[visibleLocalSubmission.resultName]}점</span>
+        </p>}
+
+        {!isLocalEligible && round.status === 'collecting' && <div className="turn-order-spectating" data-testid="turn-order-spectating">
+          <span className="turn-order-waiting-yut" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <strong>동률 재대결이 진행 중입니다</strong>
+        </div>}
+
+        <div className="turn-order-result-grid" data-testid="turn-order-result-grid">
+          {intro.order.map((entry) => {
+            const submission = round.submissions.find((item) => item.seatId === entry.seatId) ?? (localSubmission?.seatId === entry.seatId && localSubmission.roundId === round.id ? localSubmission : null);
+            const canReveal = Boolean(submission && (entry.seatId === localSeatId || revealReady));
+            const isRoundParticipant = round.eligibleSeatIds.includes(entry.seatId);
+            return <div className={`turn-order-result-card ${entry.seatId === localSeatId ? 'mine' : ''} ${nextTieSeatIds.has(entry.seatId) && revealReady ? 'tie' : ''}`} key={entry.seatId} style={{ '--player-color': entry.color } as CSSProperties}>
+              <span>{entry.name}</span>
+              {!isRoundParticipant ? <strong>순위 확정</strong> : canReveal && submission ? <><strong>{submission.resultName}</strong><small>{getTurnOrderScore(submission)}점 · {submission.source === 'auto' ? '자동 던지기' : '직접 던지기'}</small></> : submittedSeatIds.has(entry.seatId) || (entry.seatId === localSeatId && localSubmission) ? <strong>결과 대기</strong> : <strong>던지는 중</strong>}
+            </div>;
+          })}
+        </div>
+
+        {round.status === 'reveal-pending' && revealReady && intro.nextRound && <p className="turn-order-tie-notice" data-testid="turn-order-tie-notice">같은 결과가 나온 참가자끼리 다시 던집니다.</p>}
+        {round.status === 'reveal-pending' && !revealReady && <div className="turn-order-reveal-wait" aria-hidden="true"><i></i><i></i><i></i><i></i></div>}
+      </>}
+    </div>
+    <RollStage rollAnimation={localRollAnimation} presentationActorId={localSeatId} />
+  </>;
 }
