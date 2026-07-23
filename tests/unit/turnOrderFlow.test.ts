@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { makeDisplaySticks, type RollTimingZone, type YutResult } from '../../src/game-core/roll.js';
-import type { TurnOrderIntro, TurnOrderResultName, TurnOrderSubmission } from '../../src/app/appState.js';
 import {
   activateNextTurnOrderRound,
   aggregateTurnOrderRound,
@@ -14,6 +13,9 @@ import {
   TURN_ORDER_REVEAL_DELAY_MS,
   TURN_ORDER_RESULT_HOLD_MS,
   TURN_ORDER_ROUND_DURATION_MS,
+  type TurnOrderIntro,
+  type TurnOrderResultName,
+  type TurnOrderSubmission,
 } from '../../src/app/flows/turnOrderFlow.js';
 
 const seats = [
