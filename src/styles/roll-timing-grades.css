@@ -106,8 +106,8 @@
   color: #fff;
 }
 
-.roll-stage-timing,
-.roll-stage-timing-preview {
+.roll-stage .roll-stage-timing,
+.roll-stage .roll-stage-timing-preview {
   position: absolute;
   top: clamp(-4.15rem, -7vw, -3.55rem);
   left: 50%;
@@ -250,8 +250,8 @@
     top: calc(-3.55rem + 39px);
   }
 
-  .roll-stage-timing,
-  .roll-stage-timing-preview {
+  .roll-stage .roll-stage-timing,
+  .roll-stage .roll-stage-timing-preview {
     top: -3.55rem;
   }
 
