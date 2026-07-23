@@ -55,12 +55,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
-  padding: 5px 13px 4px;
+  min-width: 80px;
+  min-height: 32px;
+  padding: 6px 14px 5px;
   border: 1px solid rgba(255, 255, 255, 0.46);
   border-radius: 999px;
   color: #fff;
-  font-size: clamp(0.72rem, 2.1vw, 0.84rem);
+  font-size: clamp(0.82rem, 2.6vw, 0.94rem);
   font-weight: 1000;
   line-height: 1;
   letter-spacing: 0.075em;
@@ -115,9 +116,10 @@
 .roll-stage .roll-result-card,
 .roll-stage.resolved-from-pending .roll-result-card {
   position: static;
-  top: auto;
+  inset: auto;
   display: grid;
   justify-items: center;
+  justify-self: center;
   gap: 2px;
   min-width: 144px;
   max-width: min(82vw, 220px);
@@ -130,6 +132,7 @@
     linear-gradient(180deg, #fff9e9 0%, #fff4d8 60%, #edcf96 100%);
   color: #4f2d19;
   opacity: 1;
+  translate: none;
   transform: none;
   text-align: center;
   text-shadow: none;
@@ -223,9 +226,10 @@
   }
 
   .roll-timing-feedback {
-    min-height: 26px;
-    padding: 5px 11px 4px;
-    font-size: 0.7rem;
+    min-width: 82px;
+    min-height: 34px;
+    padding: 7px 15px 6px;
+    font-size: 0.9rem;
   }
 
   .roll-stage .roll-result-card,
