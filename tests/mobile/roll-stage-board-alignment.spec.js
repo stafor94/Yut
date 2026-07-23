@@ -64,8 +64,11 @@ test.describe('mobile roll stage board alignment QA', () => {
           matCenterOffset: Math.abs(centerX(matRect) - centerX(boardRect)),
           gradeCenterOffset: Math.abs(centerX(gradeRect) - centerX(boardRect)),
           resultCenterOffset: Math.abs(centerX(cardRect) - centerX(boardRect)),
+          stageWidth: stageRect.width,
+          matWidth: matRect.width,
           stageLeft: Number.parseFloat(stageStyle.left),
           stageTranslate: stageStyle.translate,
+          stageJustifyContent: stageStyle.justifyContent,
           gradeTop: Number.parseFloat(gradeStyle.top),
           resultTop: Number.parseFloat(resultStyle.top),
           gradeResultGap: cardRect.top - gradeRect.bottom,
@@ -80,8 +83,10 @@ test.describe('mobile roll stage board alignment QA', () => {
       expect(geometry.matCenterOffset).toBeLessThanOrEqual(1);
       expect(geometry.gradeCenterOffset).toBeLessThanOrEqual(1);
       expect(geometry.resultCenterOffset).toBeLessThanOrEqual(1);
+      expect(geometry.stageWidth).toBeGreaterThanOrEqual(geometry.matWidth - 1);
       expect(geometry.stageLeft).toBeGreaterThan(0);
       expect(geometry.stageTranslate).not.toBe('none');
+      expect(geometry.stageJustifyContent).toBe('center');
       expect(geometry.gradeTop).toBe(20);
       expect(geometry.resultTop).toBe(48);
       expect(geometry.gradeResultGap).toBeGreaterThanOrEqual(0);
