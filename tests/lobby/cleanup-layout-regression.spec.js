@@ -89,17 +89,31 @@ test.describe('cleanup/layout regression QA', () => {
         await expect(joinButton).toBeVisible({ timeout: 10_000 });
         await expect(joinButton).toBeEnabled({ timeout: 10_000 });
 
-        const titleBox = await roomCard.locator('.lobby-room-title-row').boundingBox();
-        const metaBox = await roomCard.locator('.lobby-room-meta').boundingBox();
-        const occupancyBox = await occupancy.boundingBox();
-        const actionBox = await joinButton.boundingBox();
-        expect(titleBox, '방 제목 행 bounding box').not.toBeNull();
-        expect(metaBox, '방 옵션 행 bounding box').not.toBeNull();
-        expect(occupancyBox, '현재 인원 bounding box').not.toBeNull();
-        expect(actionBox, '참여 버튼 bounding box').not.toBeNull();
-        expect(titleBox.x + titleBox.width, '방 제목은 현재 인원 영역을 침범하면 안 됩니다.').toBeLessThanOrEqual(occupancyBox.x + 1);
-        expect(occupancyBox.x + occupancyBox.width, '현재 인원은 참여 버튼 영역을 침범하면 안 됩니다.').toBeLessThanOrEqual(actionBox.x + 1);
-        expect(metaBox.x + metaBox.width, '방 옵션은 참여 버튼 영역을 침범하면 안 됩니다.').toBeLessThanOrEqual(actionBox.x + 1);
+        let geometry = null;
+        await expect.poll(async () => {
+          geometry = await roomCard.evaluate((card) => {
+            const title = card.querySelector('.lobby-room-title-row');
+            const meta = card.querySelector('.lobby-room-meta');
+            const currentOccupancy = card.querySelector('.lobby-room-occupancy');
+            const action = card.querySelector('.lobby-room-action');
+            if (!card.isConnected || !title || !meta || !currentOccupancy || !action) return null;
+            const toBox = (element) => {
+              const box = element.getBoundingClientRect();
+              return { x: box.x, width: box.width };
+            };
+            return {
+              title: toBox(title),
+              meta: toBox(meta),
+              occupancy: toBox(currentOccupancy),
+              action: toBox(action),
+            };
+          }).catch(() => null);
+          return geometry ? 'ready' : 'waiting';
+        }, { timeout: 10_000, message: '실시간 방 목록 갱신 후 카드 기하 정보를 한 번에 읽을 수 있어야 합니다.' }).toBe('ready');
+        if (!geometry) throw new Error('로비 방 카드 기하 정보를 읽지 못했습니다.');
+        expect(geometry.title.x + geometry.title.width, '방 제목은 현재 인원 영역을 침범하면 안 됩니다.').toBeLessThanOrEqual(geometry.occupancy.x + 1);
+        expect(geometry.occupancy.x + geometry.occupancy.width, '현재 인원은 참여 버튼 영역을 침범하면 안 됩니다.').toBeLessThanOrEqual(geometry.action.x + 1);
+        expect(geometry.meta.x + geometry.meta.width, '방 옵션은 참여 버튼 영역을 침범하면 안 됩니다.').toBeLessThanOrEqual(geometry.action.x + 1);
 
         await waitForBlockingOverlayToDisappear(lobbyGuestPage);
         await joinButton.click();

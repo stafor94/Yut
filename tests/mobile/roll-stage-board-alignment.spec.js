@@ -9,7 +9,7 @@ test.describe('mobile roll stage board alignment QA', () => {
       await expectAppShell(page);
       await waitForBlockingOverlayToDisappear(page);
 
-      const geometry = await page.evaluate(() => {
+      const geometry = await page.evaluate(async () => {
         const host = document.createElement('div');
         host.className = 'game-shell';
         host.style.cssText = 'position:relative;width:100%;min-height:560px;';
@@ -45,6 +45,8 @@ test.describe('mobile roll stage board alignment QA', () => {
         const card = host.querySelector('[data-testid="roll-result-card"]');
         const surface = host.querySelector('[data-testid="roll-mat-surface"]');
         if (!panel || !board || !stage || !mat || !grade || !resultPresentation || !card || !surface) throw new Error('모바일 윷 던지기 fixture 생성에 실패했습니다.');
+
+        await Promise.all(card.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
 
         const centerX = (rect) => rect.left + rect.width / 2;
         const panelRect = panel.getBoundingClientRect();
@@ -88,7 +90,7 @@ test.describe('mobile roll stage board alignment QA', () => {
       expect(geometry.stageTranslate).not.toBe('none');
       expect(geometry.stageJustifyContent).toBe('center');
       expect(geometry.gradeTop).toBe(20);
-      expect(geometry.resultTop).toBe(49.5);
+      expect(geometry.resultTop).toBe(55);
       expect(geometry.gradeResultGap).toBeGreaterThanOrEqual(0);
       expect(geometry.gradeResultGap).toBeLessThanOrEqual(8);
       expect(geometry.resultSurfaceGap).toBeLessThanOrEqual(100);
