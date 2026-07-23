@@ -208,25 +208,27 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     const pendingAiSeatIds = round.eligibleSeatIds.filter((seatId) => aiSeatIds.has(seatId)
       && !round.submissions.some((submission) => submission.seatId === seatId));
     if (!pendingAiSeatIds.length || aiSubmittingRoundIdRef.current === round.id) return;
+    const submissionNow = Math.max(Date.now(), now);
+    const aiSubmissions = pendingAiSeatIds.map((seatId) => createTurnOrderSubmission({
+      seatId,
+      roundId: round.id,
+      timingZone: chooseAiRollTimingZone(),
+      source: 'auto',
+      now: submissionNow,
+      qaResultQueue: 'ai',
+    }));
     aiSubmittingRoundIdRef.current = round.id;
     void updateTurnOrderState(intro.roomId, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
-      const transactionNow = Math.max(Date.now(), now);
+      const transactionNow = Math.max(Date.now(), submissionNow);
       if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
       const activated = activateNextTurnOrderRound(current, transactionNow);
       if (activated.currentRound.status !== 'collecting' || transactionNow < activated.currentRound.startAt) return null;
       const currentAiSeatIds = new Set(activated.order.filter((entry) => entry.isAI).map((entry) => entry.seatId));
       let next = activated;
-      activated.currentRound.eligibleSeatIds.forEach((seatId) => {
-        if (!currentAiSeatIds.has(seatId) || next.currentRound.submissions.some((submission) => submission.seatId === seatId)) return;
-        next = submitTurnOrderResult(next, createTurnOrderSubmission({
-          seatId,
-          roundId: next.currentRound.id,
-          timingZone: chooseAiRollTimingZone(),
-          source: 'auto',
-          now: transactionNow,
-          qaResultQueue: 'ai',
-        }), transactionNow);
+      aiSubmissions.forEach((submission) => {
+        if (!currentAiSeatIds.has(submission.seatId) || next.currentRound.submissions.some((entry) => entry.seatId === submission.seatId)) return;
+        next = submitTurnOrderResult(next, submission, transactionNow);
       });
       return next.currentRound.submissions.length === activated.currentRound.submissions.length ? null : { turnOrderIntro: next };
     }).catch(() => {
@@ -238,22 +240,28 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.deadlineAt + AUTO_ROLL_FALLBACK_DELAY_MS) return;
     const allSubmitted = round.eligibleSeatIds.every((seatId) => round.submissions.some((submission) => submission.seatId === seatId));
     if (allSubmitted || fallbackRoundIdRef.current === round.id) return;
+    const submissionNow = Math.max(Date.now(), round.deadlineAt);
+    const fallbackSubmissions = round.eligibleSeatIds
+      .filter((seatId) => !round.submissions.some((submission) => submission.seatId === seatId))
+      .map((seatId) => createTurnOrderSubmission({
+        seatId,
+        roundId: round.id,
+        timingZone: chooseAiRollTimingZone(),
+        source: 'auto',
+        now: submissionNow,
+        qaResultQueue: 'none',
+      }));
     fallbackRoundIdRef.current = round.id;
     void updateTurnOrderState(intro.roomId, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
+      const transactionNow = Math.max(Date.now(), submissionNow);
       if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
-      const activated = activateNextTurnOrderRound(current, Date.now());
-      if (activated.currentRound.status !== 'collecting' || Date.now() < activated.currentRound.deadlineAt) return null;
+      const activated = activateNextTurnOrderRound(current, transactionNow);
+      if (activated.currentRound.status !== 'collecting' || transactionNow < activated.currentRound.deadlineAt) return null;
       let next = activated;
-      activated.currentRound.eligibleSeatIds.forEach((seatId) => {
-        if (next.currentRound.submissions.some((submission) => submission.seatId === seatId)) return;
-        next = submitTurnOrderResult(next, createTurnOrderSubmission({
-          seatId,
-          roundId: next.currentRound.id,
-          timingZone: chooseAiRollTimingZone(),
-          source: 'auto',
-          qaResultQueue: 'none',
-        }), Date.now());
+      fallbackSubmissions.forEach((submission) => {
+        if (next.currentRound.submissions.some((entry) => entry.seatId === submission.seatId)) return;
+        next = submitTurnOrderResult(next, submission, transactionNow);
       });
       return next.currentRound.submissions.length === activated.currentRound.submissions.length ? null : { turnOrderIntro: next };
     }).catch(() => {

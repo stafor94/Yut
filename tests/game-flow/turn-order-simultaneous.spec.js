@@ -184,8 +184,9 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(hostButton).toBeVisible({ timeout: 10_000 });
         await expect.poll(async () => {
           const round = await readTurnOrderRound(roomId);
-          return round?.submissions?.find((entry) => entry.seatId === aiSeatId)?.source ?? '';
-        }, { timeout: 5_000 }).toBe('auto');
+          const submission = round?.submissions?.find((entry) => entry.seatId === aiSeatId);
+          return submission ? `${submission.source}:${submission.resultName}` : '';
+        }, { timeout: 5_000 }).toBe('auto:도');
         await expect(aiCard).toContainText('결과 대기');
         await expect(aiCard).not.toContainText('던지는 중');
 
@@ -202,8 +203,9 @@ test.describe('simultaneous turn-order QA', () => {
         await expect.poll(async () => {
           const round = await readTurnOrderRound(roomId);
           if (round?.index !== 2) return '';
-          return round.submissions?.find((entry) => entry.seatId === aiSeatId)?.source ?? '';
-        }, { timeout: 5_000 }).toBe('auto');
+          const submission = round.submissions?.find((entry) => entry.seatId === aiSeatId);
+          return submission ? `${submission.source}:${submission.resultName}` : '';
+        }, { timeout: 5_000 }).toBe('auto:개');
         await expect(aiCard).toContainText('결과 대기');
         await expect(aiCard).not.toContainText('던지는 중');
 
