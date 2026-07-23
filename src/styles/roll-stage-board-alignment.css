@@ -10,14 +10,24 @@
   translate: var(--roll-stage-center-offset-x, -50%) 0;
 }
 
-/* Keep the timing grade and result together near the upper edge of the mat. */
+/* Center absolute overlays with equal inline insets. This remains stable when
+   the live roll scene expands the mat's implicit grid track. */
 .roll-stage .roll-stage-timing,
 .roll-stage .roll-stage-timing-preview {
   top: 20px;
+  left: 0;
+  right: 0;
+  width: max-content;
+  margin-inline: auto;
+  translate: none;
 }
 
 .roll-stage .roll-result-presentation {
   top: 48px;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  translate: none;
 }
 
 @media (max-width: 640px) {
