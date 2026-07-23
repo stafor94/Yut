@@ -1,10 +1,8 @@
 import { spawnInitialBoardItems } from '../../game-core/board/board';
 import { ROOM_START_CANCEL_LOCK_MS } from '../../features/room/services/roomGamePreparationPolicy';
-import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
-import { buildAlternatingTeamTurnOrder, createTurnOrderIntro, formatTurnOrderSummary } from './turnOrderFlow';
+import { createTurnOrderIntro, TURN_ORDER_INITIAL_DELAY_MS } from './turnOrderFlow';
 
 export { ROOM_START_CANCEL_LOCK_MS };
-const TURN_ORDER_FINAL_HOLD_MS = 3_000;
 const PLAYER_COLORS = ['#d94a38', '#3a78c2', '#2f9e6f', '#d6a11d'] as const;
 const TEAM_COLORS: Record<GameStartPreparationPlayer['team'], string> = { 청팀: '#3a78c2', 홍팀: '#d94a38' };
 const ROOM_COLOR_LABELS: Record<string, string> = { red: '빨강', blue: '파랑', green: '초록', yellow: '노랑' };
@@ -16,6 +14,7 @@ export type GameStartPreparationRoom = {
   itemMode: boolean;
   playMode: 'individual' | 'team';
   pieceCount: 1 | 2 | 3 | 4;
+  startRequestedAt?: number;
 };
 
 export type GameStartPreparationPlayer = {
@@ -42,21 +41,6 @@ type PreparedSeat = {
   team: GameStartPreparationPlayer['team'];
   seatIndex: number;
 };
-
-const getStableTurnOrderScore = (seed: string, seatId: string) => {
-  const value = `${seed}:${seatId}`;
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-};
-
-const getSeededTurnOrderSeats = (targetSeats: PreparedSeat[], seed: string) => [...targetSeats].sort((left, right) => {
-  const scoreDiff = getStableTurnOrderScore(seed, left.id) - getStableTurnOrderScore(seed, right.id);
-  return scoreDiff || left.label.localeCompare(right.label, undefined, { numeric: true });
-});
 
 const getActiveRoomGamePlayers = (room: GameStartPreparationRoom, players: GameStartPreparationPlayer[]) => players
   .filter((player) => !player.isSpectator && Number.isInteger(Number(player.seatIndex)) && Number(player.seatIndex) >= 0 && Number(player.seatIndex) < room.maxPlayers);
@@ -163,18 +147,16 @@ export function buildPreparedRoomGameState(params: {
 }) {
   const { roomId, room, players, startRequestVersion, startRequestId, countdownEndsAt } = params;
   const seats = getPreparedSeats(room, players);
-  const seededSeats = getSeededTurnOrderSeats(seats, `${roomId}:${startRequestVersion}`);
-  const orderedSeats = room.playMode === 'team'
-    ? buildAlternatingTeamTurnOrder(seededSeats.map((seat) => ({ seat, result: { name: '도' as const, steps: 1, bonus: false }, rollOffRound: 1 })))
-    : seededSeats;
-  const turnOrderIds = orderedSeats.map((seat) => seat.id);
-  const { intro: turnOrderIntro } = createTurnOrderIntro(orderedSeats, {
+  const requestedAt = Number(room.startRequestedAt ?? 0);
+  const turnOrderStartAt = requestedAt > 0 ? requestedAt + TURN_ORDER_INITIAL_DELAY_MS : countdownEndsAt;
+  const { intro: turnOrderIntro } = createTurnOrderIntro(seats, {
+    roomId,
+    startRequestVersion,
     getSeatPieceColor: (seat) => PLAYER_COLORS[seat.seatIndex] ?? '#2a1e17',
     playMode: room.playMode,
-    finalHoldMs: TURN_ORDER_FINAL_HOLD_MS,
+    startAt: turnOrderStartAt,
     now: countdownEndsAt,
   });
-  const gameStartedAt = turnOrderIntro.readyAt;
   const gameSeats = seats.map((seat) => ({
     id: seat.id,
     label: seat.label,
@@ -190,8 +172,8 @@ export function buildPreparedRoomGameState(params: {
   return {
     pieces: makePreparedPieces(seats, room.pieceCount, room.playMode),
     turnIndex: 0,
-    turnOrderIds,
-    initialTurnOrderIds: turnOrderIds,
+    turnOrderIds: [] as string[],
+    initialTurnOrderIds: [] as string[],
     completedSeatIds: [] as string[],
     rankingSeatIds: [] as string[],
     gameEndMode: '' as const,
@@ -205,13 +187,13 @@ export function buildPreparedRoomGameState(params: {
     ownedItems: {} as Record<string, unknown[]>,
     trapNodes: [] as unknown[],
     shieldedPieceIds: [] as string[],
-    logs: [{ id: 1, text: formatTurnOrderSummary(orderedSeats, (seat) => seat.name || seat.label) }],
+    logs: [{ id: 1, text: '순서 정하기를 준비합니다.' }],
     winner: '',
     captureEffect: null,
     trapEffect: null,
     fallEffect: null,
     pendingGoldenYutSelection: null,
-    gameStartedAt,
+    gameStartedAt: null,
     turnOrderIntro,
     pendingTrapPlacement: null,
     pendingItemPickup: null,
@@ -225,8 +207,8 @@ export function buildPreparedRoomGameState(params: {
     turnOrderPhase: { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
     waitingForPlayersReady: false,
     turnActionTimeoutCountBySeatId: {} as Record<string, number>,
-    turnDeadlineAt: gameStartedAt + TURN_ACTION_TIMEOUT_MS,
-    turnDeadlineKind: 'roll' as const,
+    turnDeadlineAt: 0,
+    turnDeadlineKind: '' as const,
     startRequestVersion,
     startRequestId,
     startCountdownEndsAt: countdownEndsAt,

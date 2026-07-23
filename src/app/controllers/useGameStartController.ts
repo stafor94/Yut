@@ -4,9 +4,8 @@ import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { RoomSummary } from '../../features/room/services/roomService';
 import { applySequenceEvents } from '../hooks/applySequenceEvent';
 import { useTurnOrderClock, useTurnOrderPortraitScroll } from '../hooks/useTurnOrderTimers';
-import type { Seat, SequenceStateSnapshot } from '../appState';
-import { START_REQUEST_TIMEOUT_MS, TURN_ORDER_FINAL_HOLD_MS, TURN_ORDER_PRESENCE_FALLBACK_MS } from '../config/gameTimings';
-import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
+import type { SequenceStateSnapshot } from '../appState';
+import { START_REQUEST_TIMEOUT_MS, TURN_ORDER_PRESENCE_FALLBACK_MS } from '../config/gameTimings';
 
 export function useGameStartController(ctx: any) {
   const { refs, setters, helpers, services } = ctx;
@@ -25,12 +24,15 @@ export function useGameStartController(ctx: any) {
     setCaptureEffect, setTrapEffect, setPendingTrapPlacement, setPendingAfterMoveTurnIndex, setCompletedSeatIds, setRankingSeatIds,
     setGameEndMode, setLastFinishedSeatId, setContinuationRound, setTurnOrderPhase, setRollAnimation, setTurnOrderClock,
   } = setters;
-  const { measureFirebaseLatency, delay, getQaRequestRoomGameStartDelayMs, getQaInitializeGameStateDelayMs, getStartGameBlockMessage,
-    makePieces, gameSeatSnapshotsFromSeats, spawnInitialBoardItems, getSeededTurnOrderSeats, buildAlternatingTeamTurnOrder,
-    createTurnOrderIntro, getSeatPieceColor, formatTurnOrderSummary, getSeatDisplayName, makeLog, makeGameStateFingerprint,
-    applySyncedStateSnapshot, replayMissingSequencesThenApply, clearRoll,
+  const {
+    measureFirebaseLatency, delay, getQaRequestRoomGameStartDelayMs, getQaInitializeGameStateDelayMs, getStartGameBlockMessage,
+    makePieces, gameSeatSnapshotsFromSeats, spawnInitialBoardItems, createTurnOrderIntro,
+    getSeatPieceColor, makeLog, makeGameStateFingerprint, applySyncedStateSnapshot, replayMissingSequencesThenApply, clearRoll,
   } = helpers;
-  const { requestRoomGameStart, cancelRoomGameStart, initializeGameState, getLatestGameState, getGameSequencesSince, updateRoomPlayer, resolveTurnOrderIntro, completeTurnOrderIntro } = services;
+  const {
+    requestRoomGameStart, cancelRoomGameStart, initializeGameState, getLatestGameState, getGameSequencesSince, updateRoomPlayer,
+    resolveTurnOrderIntro, completeTurnOrderIntro,
+  } = services;
 
   const applyAuthoritativeStartRequest = (startState: Pick<RoomSummary, 'startRequestVersion' | 'startRequestedAt' | 'startCountdownStartsAt' | 'startCountdownEndsAt' | 'startRequestId' | 'startStatus'>, requestId = pendingStartRequestIdRef.current) => {
     if (!requestId || pendingStartRequestIdRef.current !== requestId) return false;
@@ -116,23 +118,43 @@ export function useGameStartController(ctx: any) {
   }
 
   function beginTurnOrderIntro() {
-    const shuffledSeats = getSeededTurnOrderSeats(ctx.playableSeats, `${ctx.activeRoomId}:${ctx.startRequestVersion}`);
-    const orderedSeats = ctx.playModeForTurnOrder === 'team' ? buildAlternatingTeamTurnOrder(shuffledSeats.map((seat: Seat) => ({ seat, result: { name: '도', steps: 1, bonus: false }, rollOffRound: 1 }))) : shuffledSeats;
-    const nextTurnOrderIds = orderedSeats.map((seat: { id: string }) => seat.id);
-    const { slotUntil, intro: nextTurnOrderIntro } = createTurnOrderIntro(orderedSeats, { getSeatPieceColor, playMode: ctx.playModeForTurnOrder, finalHoldMs: TURN_ORDER_FINAL_HOLD_MS });
-    const nextGameStartedAt = nextTurnOrderIntro.readyAt;
-    const introLog = makeLog(formatTurnOrderSummary(orderedSeats, getSeatDisplayName));
-    const nextLogs = [introLog, ...ctx.logs];
+    const { intro } = createTurnOrderIntro(ctx.playableSeats, {
+      roomId: ctx.activeRoomId,
+      startRequestVersion: ctx.startRequestVersion,
+      getSeatPieceColor,
+      playMode: ctx.playModeForTurnOrder,
+      startAt: Math.max(Date.now(), Number(ctx.startCountdownEndsAt ?? 0)),
+    });
     if (ctx.activeRoomId) {
       const clientMutationId = `turn_order_intro:${ctx.activeRoomId}:${ctx.startRequestVersion}`;
-      void measureFirebaseLatency(() => resolveTurnOrderIntro(ctx.activeRoomId, { turnOrderIds: nextTurnOrderIds, initialTurnOrderIds: nextTurnOrderIds, logs: nextLogs, gameStartedAt: nextGameStartedAt, turnOrderIntro: nextTurnOrderIntro, turnOrderPhase: { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 }, waitingForPlayersReady: false }, { actorId: ctx.localSeatId, clientMutationId, startRequestVersion: ctx.startRequestVersion, payload: { startRequestVersion: ctx.startRequestVersion, turnOrderIds: nextTurnOrderIds, slotUntil, readyAt: nextTurnOrderIntro.readyAt } })).then((result: any) => {
+      void measureFirebaseLatency(() => resolveTurnOrderIntro(ctx.activeRoomId, {
+        turnOrderIds: [],
+        initialTurnOrderIds: [],
+        gameStartedAt: null,
+        turnOrderIntro: intro,
+        turnOrderPhase: { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 },
+        waitingForPlayersReady: false,
+        turnDeadlineAt: 0,
+        turnDeadlineKind: '',
+      }, {
+        actorId: ctx.localSeatId,
+        clientMutationId,
+        startRequestVersion: ctx.startRequestVersion,
+        payload: { startRequestVersion: ctx.startRequestVersion, roundId: intro.currentRound.id, startAt: intro.currentRound.startAt },
+      })).then((result: any) => {
         if (typeof result.lastSequence === 'number') lastAppliedSequenceRef.current = Math.max(lastAppliedSequenceRef.current, result.lastSequence);
         if (result.turnVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, result.turnVersion);
-        if (result.status !== 'committed' && result.status !== 'duplicate') setMessage('순서 정하기 결과 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
-      }).catch((error: unknown) => setMessage(error instanceof Error ? error.message : '순서 정하기 결과 저장에 실패했습니다.'));
+        if (result.status !== 'committed' && result.status !== 'duplicate') setMessage('순서 정하기 상태 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+      }).catch((error: unknown) => setMessage(error instanceof Error ? error.message : '순서 정하기 상태 저장에 실패했습니다.'));
       return;
     }
-    setLogs(nextLogs); setTurnOrderIds(nextTurnOrderIds); setInitialTurnOrderIds(nextTurnOrderIds); setTurnOrderIntro(nextTurnOrderIntro); setWaitingForPlayersReady(false); setAuthoritativeWinner(''); setGameStartedAt(nextGameStartedAt);
+    setLogs([makeLog('순서 정하기를 준비합니다.'), ...ctx.logs]);
+    setTurnOrderIds([]);
+    setInitialTurnOrderIds([]);
+    setTurnOrderIntro(intro);
+    setWaitingForPlayersReady(false);
+    setAuthoritativeWinner('');
+    setGameStartedAt(null);
   }
 
   function startLocalGame(confirmedStartRequestVersion: number, confirmedStartRequestId: string) {
@@ -140,41 +162,184 @@ export function useGameStartController(ctx: any) {
     if (!confirmedStartRequestVersion || !confirmedStartRequestId) { setMessage('게임 시작 버전을 확인할 수 없어 최신 시작 정보를 기다리고 있습니다.'); setScreen('waitingRoom'); return; }
     const startRequestKey = `${confirmedStartRequestVersion}:${confirmedStartRequestId}`;
     if (startedGameRequestVersionsRef.current.has(startRequestKey)) return;
-    logIdRef.current = 0; startedGameRequestVersionsRef.current.add(startRequestKey);
+    logIdRef.current = 0;
+    startedGameRequestVersionsRef.current.add(startRequestKey);
     const nextPieces = makePieces(ctx.playableSeats, ctx.pieceCount, ctx.playModeForTurnOrder);
     const nextGameSeats = gameSeatSnapshotsFromSeats(ctx.playableSeats);
     const nextBoardItems = ctx.itemMode ? spawnInitialBoardItems(4, 8) : [];
     const initialTurnOrderPhase = { active: false, index: 0, rolls: [], deadline: 0, readyAt: 0 };
-    const shuffledSeats = getSeededTurnOrderSeats(ctx.playableSeats, `${ctx.activeRoomId}:${confirmedStartRequestVersion}`);
-    const orderedSeats = ctx.playModeForTurnOrder === 'team' ? buildAlternatingTeamTurnOrder(shuffledSeats.map((seat: Seat) => ({ seat, result: { name: '도', steps: 1, bonus: false }, rollOffRound: 1 }))) : shuffledSeats;
-    const initialTurnOrderIds = orderedSeats.map((seat: { id: string }) => seat.id);
-    const { intro: initialTurnOrderIntro } = createTurnOrderIntro(orderedSeats, { getSeatPieceColor, playMode: ctx.playModeForTurnOrder, finalHoldMs: TURN_ORDER_FINAL_HOLD_MS });
-    const initialGameStartedAt = initialTurnOrderIntro.readyAt;
-    const initialTurnDeadlineAt = initialGameStartedAt + TURN_ACTION_TIMEOUT_MS;
-    const prepLog = makeLog(formatTurnOrderSummary(orderedSeats, getSeatDisplayName));
-    const initialSyncedState = { pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '' as const, lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], logs: [prepLog], winner: '', captureEffect: null, trapEffect: null, fallEffect: null, gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', itemPromptTiming: null, branchChoice: 'outer', rollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, turnDeadlineAt: initialTurnDeadlineAt, turnDeadlineKind: 'roll' as const, gameSeats: nextGameSeats, startRequestVersion: confirmedStartRequestVersion, startRequestId: confirmedStartRequestId };
-    const initialStateFingerprint = makeGameStateFingerprint({ pieces: nextPieces, turnIndex: 0, turnOrderIds: initialTurnOrderIds, initialTurnOrderIds, completedSeatIds: [], rankingSeatIds: [], gameEndMode: '', lastFinishedSeatId: '', continuationRound: 0, roll: null, rollStack: [], selectedRollStackIndex: null, rollStackClosed: false, boardItems: nextBoardItems, ownedItems: {}, trapNodes: [], shieldedPieceIds: [], winner: '', gameStartedAt: initialGameStartedAt, turnOrderIntro: initialTurnOrderIntro, pendingTrapPlacement: null, itemPromptTiming: null, pendingAfterMoveTurnIndex: null, rollLockUntil: 0, lastMovedPieceIds: [], lastMovedSeatId: '', effectiveRollResultReadyAt: 0, turnOrderPhase: initialTurnOrderPhase, waitingForPlayersReady: false, turnDeadlineAt: initialTurnDeadlineAt, turnDeadlineKind: 'roll', startRequestVersion: confirmedStartRequestVersion, startRequestId: confirmedStartRequestId, logs: [prepLog], gameSeats: nextGameSeats });
+    const { intro: initialTurnOrderIntro } = createTurnOrderIntro(ctx.playableSeats, {
+      roomId: ctx.activeRoomId,
+      startRequestVersion: confirmedStartRequestVersion,
+      getSeatPieceColor,
+      playMode: ctx.playModeForTurnOrder,
+      startAt: Math.max(Date.now(), Number(ctx.startCountdownEndsAt ?? 0)),
+    });
+    const prepLog = makeLog('순서 정하기를 준비합니다.');
+    const initialSyncedState = {
+      pieces: nextPieces,
+      turnIndex: 0,
+      turnOrderIds: [],
+      initialTurnOrderIds: [],
+      completedSeatIds: [],
+      rankingSeatIds: [],
+      gameEndMode: '' as const,
+      lastFinishedSeatId: '',
+      continuationRound: 0,
+      roll: null,
+      rollStack: [],
+      selectedRollStackIndex: null,
+      rollStackClosed: false,
+      boardItems: nextBoardItems,
+      ownedItems: {},
+      trapNodes: [],
+      shieldedPieceIds: [],
+      logs: [prepLog],
+      winner: '',
+      captureEffect: null,
+      trapEffect: null,
+      fallEffect: null,
+      gameStartedAt: null,
+      turnOrderIntro: initialTurnOrderIntro,
+      pendingTrapPlacement: null,
+      rollLockUntil: 0,
+      lastMovedPieceIds: [],
+      lastMovedSeatId: '',
+      itemPromptTiming: null,
+      branchChoice: 'outer',
+      rollResultReadyAt: 0,
+      turnOrderPhase: initialTurnOrderPhase,
+      waitingForPlayersReady: false,
+      turnDeadlineAt: 0,
+      turnDeadlineKind: '' as const,
+      gameSeats: nextGameSeats,
+      startRequestVersion: confirmedStartRequestVersion,
+      startRequestId: confirmedStartRequestId,
+    };
+    const initialStateFingerprint = makeGameStateFingerprint({
+      ...initialSyncedState,
+      pendingItemPickup: null,
+      pendingGoldenYutSelection: null,
+      pendingAfterMoveTurnIndex: null,
+      effectiveRollResultReadyAt: 0,
+    });
     savingStateFingerprintRef.current = initialStateFingerprint;
     const initialGameStateSaveStartedAt = Date.now();
     setInitialGameStateSaveDiagnostic({ status: 'pending', turnVersion: 0, lastSequence: 0, startedAt: initialGameStateSaveStartedAt, completedAt: 0, source: 'initializeGameState', message: '', fingerprint: initialStateFingerprint.slice(0, 24) });
-    void measureFirebaseLatency(async () => { const initializeDelayMs = getQaInitializeGameStateDelayMs(); if (initializeDelayMs > 0) await delay(initializeDelayMs); return initializeGameState(ctx.activeRoomId, initialSyncedState, { actorId: ctx.localSeatId, startRequestVersion: confirmedStartRequestVersion, startRequestId: confirmedStartRequestId, initializedAt: initialGameStateSaveStartedAt, clientMutationId: `game_initialized:${ctx.activeRoomId}:${confirmedStartRequestVersion}:${confirmedStartRequestId}`, payload: { startRequestVersion: confirmedStartRequestVersion, startRequestId: confirmedStartRequestId, initializedAt: initialGameStateSaveStartedAt } }); }).then(async (result: any) => {
-      const lastSequence = Number(result.lastSequence ?? 0); const turnVersion = Number(result.turnVersion ?? 0); const completedAt = Date.now();
+    void measureFirebaseLatency(async () => {
+      const initializeDelayMs = getQaInitializeGameStateDelayMs();
+      if (initializeDelayMs > 0) await delay(initializeDelayMs);
+      return initializeGameState(ctx.activeRoomId, initialSyncedState, {
+        actorId: ctx.localSeatId,
+        startRequestVersion: confirmedStartRequestVersion,
+        startRequestId: confirmedStartRequestId,
+        initializedAt: initialGameStateSaveStartedAt,
+        clientMutationId: `game_initialized:${ctx.activeRoomId}:${confirmedStartRequestVersion}:${confirmedStartRequestId}`,
+        payload: { startRequestVersion: confirmedStartRequestVersion, startRequestId: confirmedStartRequestId, initializedAt: initialGameStateSaveStartedAt },
+      });
+    }).then(async (result: any) => {
+      const lastSequence = Number(result.lastSequence ?? 0);
+      const turnVersion = Number(result.turnVersion ?? 0);
+      const completedAt = Date.now();
       setInitialGameStateSaveDiagnostic({ status: result.status, turnVersion, lastSequence, startedAt: initialGameStateSaveStartedAt, completedAt, source: 'initializeGameState', message: '', fingerprint: initialStateFingerprint.slice(0, 24) });
-      if (result.status === 'committed' || result.status === 'duplicate') { savingStateFingerprintRef.current = ''; setCoordinatorStateSaveKey(''); const latestState = await measureFirebaseLatency(() => getLatestGameState(ctx.activeRoomId)); if (latestState) applySyncedStateSnapshot(latestState as SequenceStateSnapshot, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true }); return; }
+      if (result.status === 'committed' || result.status === 'duplicate') {
+        savingStateFingerprintRef.current = '';
+        setCoordinatorStateSaveKey('');
+        const latestState = await measureFirebaseLatency(() => getLatestGameState(ctx.activeRoomId));
+        if (latestState) applySyncedStateSnapshot(latestState as SequenceStateSnapshot, { allowMoveAnimation: false, allowRollAnimation: false, updateVersion: true, updateSequence: true });
+        return;
+      }
       startedGameRequestVersionsRef.current.delete(startRequestKey);
-      if (lastSequence > 0) { const sequences = await measureFirebaseLatency(() => getGameSequencesSince(ctx.activeRoomId, 0)); const latestState = applySequenceEvents({ lastSequence: 0 }, sequences.filter((sequence: any) => Number(sequence.sequence ?? 0) <= lastSequence)) ?? (await measureFirebaseLatency(() => getLatestGameState(ctx.activeRoomId)) as SequenceStateSnapshot | null) ?? undefined; if (latestState) { await replayMissingSequencesThenApply(latestState, 0, lastSequence); setInitialGameStateSaveDiagnostic((current: any) => current ? { ...current, source: `${current.source}:sequence-replay`, message: '초기 저장 불일치 후 최신 sequence를 적용했습니다.' } : current); return; } }
-      setInitialGameEntryPending(false); setMessage(result.status === 'sequence_mismatch' ? '게임 시작 정보가 갱신되어 최신 게임 상태를 기다리고 있습니다.' : '게임 상태 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
-    }).catch((error: unknown) => { setInitialGameStateSaveDiagnostic({ status: 'error', turnVersion: 0, lastSequence: 0, startedAt: initialGameStateSaveStartedAt, completedAt: Date.now(), source: 'initializeGameState', message: error instanceof Error ? error.message : '게임 상태 저장 중 알 수 없는 오류가 발생했습니다.', fingerprint: initialStateFingerprint.slice(0, 24) }); startedGameRequestVersionsRef.current.delete(startRequestKey); setInitialGameEntryPending(false); setMessage(error instanceof Error ? error.message : '게임 상태 저장에 실패했습니다. 잠시 후 다시 시도해주세요.'); }).finally(() => { if (savingStateFingerprintRef.current === initialStateFingerprint) savingStateFingerprintRef.current = ''; });
+      if (lastSequence > 0) {
+        const sequences = await measureFirebaseLatency(() => getGameSequencesSince(ctx.activeRoomId, 0));
+        const latestState = applySequenceEvents({ lastSequence: 0 }, sequences.filter((sequence: any) => Number(sequence.sequence ?? 0) <= lastSequence))
+          ?? (await measureFirebaseLatency(() => getLatestGameState(ctx.activeRoomId)) as SequenceStateSnapshot | null)
+          ?? undefined;
+        if (latestState) {
+          await replayMissingSequencesThenApply(latestState, 0, lastSequence);
+          setInitialGameStateSaveDiagnostic((current: any) => current ? { ...current, source: `${current.source}:sequence-replay`, message: '초기 저장 불일치 후 최신 sequence를 적용했습니다.' } : current);
+          return;
+        }
+      }
+      setInitialGameEntryPending(false);
+      setMessage(result.status === 'sequence_mismatch' ? '게임 시작 정보가 갱신되어 최신 게임 상태를 기다리고 있습니다.' : '게임 상태 저장이 지연되고 있습니다. 잠시 후 다시 시도해주세요.');
+    }).catch((error: unknown) => {
+      setInitialGameStateSaveDiagnostic({ status: 'error', turnVersion: 0, lastSequence: 0, startedAt: initialGameStateSaveStartedAt, completedAt: Date.now(), source: 'initializeGameState', message: error instanceof Error ? error.message : '게임 상태 저장 중 알 수 없는 오류가 발생했습니다.', fingerprint: initialStateFingerprint.slice(0, 24) });
+      startedGameRequestVersionsRef.current.delete(startRequestKey);
+      setInitialGameEntryPending(false);
+      setMessage(error instanceof Error ? error.message : '게임 상태 저장에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }).finally(() => {
+      if (savingStateFingerprintRef.current === initialStateFingerprint) savingStateFingerprintRef.current = '';
+    });
   }
 
   useTurnOrderClock({ activeTurnOrderIntro: ctx.activeTurnOrderIntro, turnOrderPhase: ctx.turnOrderPhase, setTurnOrderClock });
   useTurnOrderPortraitScroll(ctx.screen, ctx.turnOrderPhase.active || Boolean(ctx.activeTurnOrderIntro));
-  useEffect(() => { if (!ctx.turnOrderIntro) return undefined; const now = Date.now(); const hideDelay = Math.max(0, ctx.turnOrderIntro.readyAt - now); const readyDelay = hideDelay; const hideTimer = window.setTimeout(() => setTurnOrderIntro((current: any) => current ? { ...current, visible: false } : current), hideDelay); const readyTimer = window.setTimeout(() => { setTurnOrderIntro(null); setGameStartedAt((current: number | null) => current ?? Date.now()); }, readyDelay); return () => { window.clearTimeout(hideTimer); window.clearTimeout(readyTimer); }; }, [ctx.turnOrderIntro?.readyAt]);
-  useEffect(() => { if (!ctx.activeRoomId || !ctx.canCompleteInitialOnlineTurnOrderIntro || ctx.screen !== 'game' || !ctx.turnOrderIntro?.readyAt) return undefined; const readyAt = ctx.turnOrderIntro.readyAt; const completeIntro = () => { if (completingTurnOrderIntroRef.current.has(readyAt)) return; completingTurnOrderIntroRef.current.add(readyAt); void completeTurnOrderIntro(ctx.activeRoomId, { readyAt, actorId: ctx.localSeatId }).then((version: number) => { if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version); }).finally(() => completingTurnOrderIntroRef.current.delete(readyAt)); }; const delayMs = Math.max(0, readyAt - Date.now()); const timer = window.setTimeout(completeIntro, delayMs); return () => window.clearTimeout(timer); }, [ctx.activeRoomId, ctx.canCompleteInitialOnlineTurnOrderIntro, ctx.localSeatId, ctx.screen, ctx.turnOrderIntro?.readyAt]);
-  useEffect(() => { if (!ctx.startCountdownEffectActive) { if (ctx.countdown >= 0 && ctx.startStatus !== 'requested') setCountdown(-1); return undefined; } let completed = false; const enterGameOnce = () => { const confirmedStartRequestVersion = ctx.startRequestVersion; if (completed) return; completed = true; const confirmedStartRequestId = startRequestIdRef.current || ctx.startRequestId; setCountdown(-1); setInitialGameEntryPending(true); if (ctx.isInitialGameCoordinator) startLocalGame(confirmedStartRequestVersion, confirmedStartRequestId); }; const updateCountdown = () => { const now = Date.now(); if (now >= ctx.startCountdownEndsAt) { enterGameOnce(); return; } if (now < ctx.startCountdownStartsAt) setCountdown(-1); else setCountdown(Math.max(0, Math.ceil((ctx.startCountdownEndsAt - now) / 1000))); }; updateCountdown(); const timer = window.setInterval(updateCountdown, 250); return () => window.clearInterval(timer); }, [ctx.isInitialGameCoordinator, ctx.startCountdownEffectActive, ctx.startCountdownEndsAt, ctx.startCountdownStartsAt, ctx.startRequestId, ctx.startRequestVersion, ctx.startStatus]);
-  useEffect(() => { if (!ctx.activeRoomId || !ctx.currentUserId || ctx.screen !== 'game' || !ctx.startRequestVersion) return; const presenceKey = `${ctx.activeRoomId}:${ctx.currentUserId}:${ctx.startRequestVersion}`; if (enteredGamePresenceKeyRef.current === presenceKey) return; enteredGamePresenceKeyRef.current = presenceKey; void measureFirebaseLatency(() => updateRoomPlayer(ctx.activeRoomId, ctx.currentUserId, { enteredGameAt: Date.now(), enteredStartVersion: ctx.startRequestVersion, lastGamePresenceAt: Date.now() })).catch(() => { if (enteredGamePresenceKeyRef.current === presenceKey) enteredGamePresenceKeyRef.current = ''; }); }, [ctx.activeRoomId, ctx.currentUserId, ctx.screen, ctx.startRequestVersion]);
-  useEffect(() => { if (!ctx.activeRoomId || !ctx.canResolveInitialOnlineTurnOrder || ctx.screen !== 'game' || !ctx.waitingForPlayersReady || ctx.turnOrderIntro || ctx.turnOrderIds.length > 0 || !ctx.startRequestVersion || !ctx.allHumansEnteredGame) return; beginTurnOrderIntro(); }, [ctx.activeRoomId, ctx.allHumansEnteredGame, ctx.canResolveInitialOnlineTurnOrder, ctx.screen, ctx.startRequestVersion, ctx.turnOrderIds.length, ctx.turnOrderIntro, ctx.waitingForPlayersReady]);
-  useEffect(() => { if (!ctx.activeRoomId || !ctx.canResolveInitialOnlineTurnOrder || ctx.screen !== 'game' || !ctx.waitingForPlayersReady || ctx.turnOrderIntro || ctx.turnOrderIds.length > 0 || !ctx.startRequestVersion || ctx.allHumansEnteredGame || !ctx.allReadyForFallback || !ctx.piecesLength) return undefined; const timer = window.setTimeout(() => { if (!ctx.allHumansEnteredGame) beginTurnOrderIntro(); }, TURN_ORDER_PRESENCE_FALLBACK_MS); return () => window.clearTimeout(timer); }, [ctx.activeRoomId, ctx.allHumansEnteredGame, ctx.allReadyForFallback, ctx.canResolveInitialOnlineTurnOrder, ctx.piecesLength, ctx.screen, ctx.startRequestVersion, ctx.turnOrderIds.length, ctx.turnOrderIntro, ctx.waitingForPlayersReady]);
+  useEffect(() => {
+    if (!ctx.turnOrderIntro) return undefined;
+    const hideDelay = Math.max(0, ctx.turnOrderIntro.readyAt - Date.now());
+    const hideTimer = window.setTimeout(() => setTurnOrderIntro((current: any) => current ? { ...current, visible: false } : current), hideDelay);
+    const readyTimer = window.setTimeout(() => {
+      setTurnOrderIntro(null);
+      setGameStartedAt((current: number | null) => current ?? Date.now());
+    }, hideDelay);
+    return () => { window.clearTimeout(hideTimer); window.clearTimeout(readyTimer); };
+  }, [ctx.turnOrderIntro?.readyAt]);
+  useEffect(() => {
+    if (!ctx.activeRoomId || !ctx.canCompleteInitialOnlineTurnOrderIntro || ctx.screen !== 'game' || !ctx.turnOrderIntro?.readyAt) return undefined;
+    const readyAt = ctx.turnOrderIntro.readyAt;
+    const completeIntro = () => {
+      if (completingTurnOrderIntroRef.current.has(readyAt)) return;
+      completingTurnOrderIntroRef.current.add(readyAt);
+      void completeTurnOrderIntro(ctx.activeRoomId, { readyAt, actorId: ctx.localSeatId })
+        .then((version: number) => { if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version); })
+        .finally(() => completingTurnOrderIntroRef.current.delete(readyAt));
+    };
+    const timer = window.setTimeout(completeIntro, Math.max(0, readyAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [ctx.activeRoomId, ctx.canCompleteInitialOnlineTurnOrderIntro, ctx.localSeatId, ctx.screen, ctx.turnOrderIntro?.readyAt]);
+  useEffect(() => {
+    if (!ctx.startCountdownEffectActive) {
+      if (ctx.countdown >= 0 && ctx.startStatus !== 'requested') setCountdown(-1);
+      return undefined;
+    }
+    let completed = false;
+    const enterGameOnce = () => {
+      const confirmedStartRequestVersion = ctx.startRequestVersion;
+      if (completed) return;
+      completed = true;
+      const confirmedStartRequestId = startRequestIdRef.current || ctx.startRequestId;
+      setCountdown(-1);
+      setInitialGameEntryPending(true);
+      if (ctx.isInitialGameCoordinator) startLocalGame(confirmedStartRequestVersion, confirmedStartRequestId);
+    };
+    const updateCountdown = () => {
+      const now = Date.now();
+      if (now >= ctx.startCountdownEndsAt) { enterGameOnce(); return; }
+      if (now < ctx.startCountdownStartsAt) setCountdown(-1);
+      else setCountdown(Math.max(0, Math.ceil((ctx.startCountdownEndsAt - now) / 1000)));
+    };
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(timer);
+  }, [ctx.isInitialGameCoordinator, ctx.startCountdownEffectActive, ctx.startCountdownEndsAt, ctx.startCountdownStartsAt, ctx.startRequestId, ctx.startRequestVersion, ctx.startStatus]);
+  useEffect(() => {
+    if (!ctx.activeRoomId || !ctx.currentUserId || ctx.screen !== 'game' || !ctx.startRequestVersion) return;
+    const presenceKey = `${ctx.activeRoomId}:${ctx.currentUserId}:${ctx.startRequestVersion}`;
+    if (enteredGamePresenceKeyRef.current === presenceKey) return;
+    enteredGamePresenceKeyRef.current = presenceKey;
+    void measureFirebaseLatency(() => updateRoomPlayer(ctx.activeRoomId, ctx.currentUserId, { enteredGameAt: Date.now(), enteredStartVersion: ctx.startRequestVersion, lastGamePresenceAt: Date.now() }))
+      .catch(() => { if (enteredGamePresenceKeyRef.current === presenceKey) enteredGamePresenceKeyRef.current = ''; });
+  }, [ctx.activeRoomId, ctx.currentUserId, ctx.screen, ctx.startRequestVersion]);
+  useEffect(() => {
+    if (!ctx.activeRoomId || !ctx.canResolveInitialOnlineTurnOrder || ctx.screen !== 'game' || !ctx.waitingForPlayersReady || ctx.turnOrderIntro || ctx.turnOrderIds.length > 0 || !ctx.startRequestVersion || !ctx.allHumansEnteredGame) return;
+    beginTurnOrderIntro();
+  }, [ctx.activeRoomId, ctx.allHumansEnteredGame, ctx.canResolveInitialOnlineTurnOrder, ctx.screen, ctx.startRequestVersion, ctx.turnOrderIds.length, ctx.turnOrderIntro, ctx.waitingForPlayersReady]);
+  useEffect(() => {
+    if (!ctx.activeRoomId || !ctx.canResolveInitialOnlineTurnOrder || ctx.screen !== 'game' || !ctx.waitingForPlayersReady || ctx.turnOrderIntro || ctx.turnOrderIds.length > 0 || !ctx.startRequestVersion || ctx.allHumansEnteredGame || !ctx.allReadyForFallback || !ctx.piecesLength) return undefined;
+    const timer = window.setTimeout(() => { if (!ctx.allHumansEnteredGame) beginTurnOrderIntro(); }, TURN_ORDER_PRESENCE_FALLBACK_MS);
+    return () => window.clearTimeout(timer);
+  }, [ctx.activeRoomId, ctx.allHumansEnteredGame, ctx.allReadyForFallback, ctx.canResolveInitialOnlineTurnOrder, ctx.piecesLength, ctx.screen, ctx.startRequestVersion, ctx.turnOrderIds.length, ctx.turnOrderIntro, ctx.waitingForPlayersReady]);
 
   return { handleStartGame, cancelStartCountdown, countdown: ctx.countdown, startRequestPending: ctx.startRequestPending, initialGameEntryPending: ctx.initialGameEntryPending };
 }

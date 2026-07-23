@@ -1,7 +1,7 @@
 import type { BoardPiece } from '../features/game/components/GameBoard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../game-core/board/board';
-import type { RollTimingZone, YutResult, YutStick } from '../game-core/roll';
+import type { RollTimingZone, YutResult, YutResultName, YutStick } from '../game-core/roll';
 import type { GameSeatSnapshot } from '../features/room/services/roomService';
 import type { PieceCount, PlayMode, Seat, Team } from './appTypes';
 
@@ -17,7 +17,60 @@ export type RollAnimation =
   | { id: number; phase?: 'resolved'; result: YutResult; sticks: YutStick[]; turnOrder?: boolean; fallCount?: number; timingZone?: RollTimingZone };
 export type TurnOrderRoll = { seat: Seat; result: YutResult; rollOffRound: number };
 export type TurnOrderPhase = { active: boolean; index: number; rolls: TurnOrderRoll[]; deadline: number; readyAt: number };
-export type TurnOrderIntro = { order: { seatId: string; label: string; name: string; color: string }[]; visible: boolean; readyAt: number; slotUntil?: number };
+export type TurnOrderResultName = Exclude<YutResultName, '황금 윷'> | '낙';
+export type TurnOrderSubmissionSource = 'manual' | 'auto';
+export type TurnOrderSubmission = {
+  seatId: string;
+  roundId: string;
+  resultName: TurnOrderResultName;
+  displayResult: YutResult;
+  sticks: YutStick[];
+  fallCount: number;
+  timingZone: RollTimingZone;
+  source: TurnOrderSubmissionSource;
+  submittedAt: number;
+};
+export type TurnOrderBracket = {
+  id: string;
+  rankStart: number;
+  seatIds: string[];
+};
+export type TurnOrderRound = {
+  id: string;
+  index: number;
+  startAt: number;
+  deadlineAt: number;
+  eligibleSeatIds: string[];
+  brackets: TurnOrderBracket[];
+  submissions: TurnOrderSubmission[];
+  status: 'collecting' | 'reveal-pending';
+  aggregatedAt?: number;
+  revealAt?: number;
+};
+export type TurnOrderIntroEntry = {
+  seatId: string;
+  label: string;
+  name: string;
+  color: string;
+  team: Team;
+  isAI?: boolean;
+};
+export type TurnOrderIntro = {
+  version: 3;
+  roomId: string;
+  sessionId: string;
+  playMode: PlayMode;
+  order: TurnOrderIntroEntry[];
+  visible: boolean;
+  readyAt: number;
+  placements: Record<string, number>;
+  currentRound: TurnOrderRound;
+  nextRound?: TurnOrderRound | null;
+  finalIndividualOrderIds?: string[];
+  finalTurnOrderIds?: string[];
+  finalOrderAt?: number;
+  gameStartAt?: number;
+};
 export type CaptureEffect = { id: number; pieceIds: string[] };
 export type TrapEffect = { id: number; nodeId: string; pieceIds: string[] };
 export type FallEffect = { id: number; seatId: string; timingZone?: RollTimingZone };

@@ -3,7 +3,8 @@ import { BRANCH_NODE_IDS, FINISH_NODE_ID, getMovePathNodeIdsWithPrevious, type B
 import type { YutResult } from '../game-core/roll';
 import type { GameLog, PieceCount, PlayMode } from './appState';
 
-export { getTurnOrderSlotRevealDurationMs, getTurnOrderStoppedSlotCount } from './flows/turnOrderPresentation';
+/* Kept only for the legacy App import boundary; the simultaneous flow has no stopped reels. */
+export const getTurnOrderStoppedSlotCount = () => 0;
 
 const ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_GRACE_MS = 1200;
