@@ -51,6 +51,13 @@ test('신규 방 문서는 종류와 QA 식별 metadata를 생성 transaction에
   assert.match(source, /qaCreatedAt: serverTimestamp\(\)/);
 });
 
+test('런타임 전역값만으로 production 방을 QA 방으로 우회할 수 없다', () => {
+  const source = read('src/features/room/services/roomCreationService.ts');
+  assert.match(source, /runId: BUILD_QA_RUN_ID/);
+  assert.match(source, /runtimeRunId === BUILD_QA_RUN_ID\.toLowerCase\(\)/);
+  assert.doesNotMatch(source, /runId: runtimeContext\?\.runId \?\? BUILD_QA_RUN_ID/);
+});
+
 test('기존 방 퇴장은 독립 room transaction을 병렬 실행한다', () => {
   const source = read('src/features/room/services/roomCreationCleanup.ts');
   assert.match(source, /await Promise\.all\(roomIds\.map/);
