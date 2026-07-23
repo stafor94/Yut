@@ -138,17 +138,18 @@ test.describe('game flow QA', () => {
       });
       await expect(page.getByTestId('players-panel')).toContainText(hostName);
       await expect(page.getByTestId('game-board')).toBeVisible();
-      await expect(page.locator('.turn-order-ready-overlay.slot-machine')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('turn-order-overlay')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('turn-order-preparing')).toBeVisible({ timeout: 10_000 });
       await expect(page.getByTestId('turn-indicator')).toBeHidden();
     });
 
     await runQaStep(testInfo, '모바일 순서 정하기 카드 겹침 확인', async () => {
       const originalViewport = page.viewportSize();
       await page.setViewportSize({ width: 390, height: 844 });
-      const overlay = page.locator('.turn-order-ready-overlay.slot-machine');
-      const slotList = page.getByTestId('turn-order-slot-list');
+      const overlay = page.getByTestId('turn-order-overlay');
+      const resultGrid = page.getByTestId('turn-order-result-grid');
       await expect(overlay).toBeVisible({ timeout: 10_000 });
-      await expect(slotList).toBeVisible({ timeout: 10_000 });
+      await expect(resultGrid).toBeVisible({ timeout: 12_000 });
       await overlay.scrollIntoViewIfNeeded();
       await expect(page.getByTestId('turn-indicator')).toBeHidden();
 
@@ -157,15 +158,16 @@ test.describe('game flow QA', () => {
           const rect = target.getBoundingClientRect();
           return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
         };
-        const windows = Array.from(element.querySelectorAll('.turn-order-slot-window'));
+        const grid = element.querySelector('.turn-order-result-grid');
+        const cards = Array.from(element.querySelectorAll('.turn-order-result-card'));
         const style = getComputedStyle(element);
         return {
           overlayBox: toBox(element),
           viewport: { width: window.innerWidth, height: window.innerHeight },
           borderWidth: Number.parseFloat(style.borderTopWidth),
           backgroundImage: style.backgroundImage,
-          windowBoxes: windows.map(toBox),
-          windowOverflow: windows.map((target) => getComputedStyle(target).overflow),
+          gridBox: grid ? toBox(grid) : null,
+          cardBoxes: cards.map(toBox),
         };
       });
 
@@ -175,14 +177,16 @@ test.describe('game flow QA', () => {
       expect(layout.overlayBox.y, '순서 정하기 팝업 위쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
       expect(layout.overlayBox.x + layout.overlayBox.width, '순서 정하기 팝업 오른쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewport.width);
       expect(layout.overlayBox.y + layout.overlayBox.height, '순서 정하기 팝업 아래쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewport.height);
-      expect(layout.windowBoxes.length, '2인 순서 정하기에는 슬롯 카드 2개가 있어야 합니다.').toBe(2);
-      expect(layout.windowOverflow.every((value) => value === 'hidden'), '각 슬롯은 회전 중인 다른 카드를 경계 안에서 잘라야 합니다.').toBe(true);
+      expect(layout.gridBox, '동시 윷 던지기 결과 그리드가 있어야 합니다.').not.toBeNull();
+      expect(layout.cardBoxes.length, '2인 순서 정하기에는 결과 카드 2개가 있어야 합니다.').toBe(2);
+      expect(layout.gridBox.x, '결과 그리드가 팝업 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.overlayBox.x);
+      expect(layout.gridBox.x + layout.gridBox.width, '결과 그리드가 팝업 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.overlayBox.x + layout.overlayBox.width);
 
-      for (let index = 0; index < layout.windowBoxes.length; index += 1) {
-        const box = layout.windowBoxes[index];
-        expect(box.x, '슬롯 카드가 팝업 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.overlayBox.x);
-        expect(box.x + box.width, '슬롯 카드가 팝업 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.overlayBox.x + layout.overlayBox.width);
-        if (index > 0) expect(boxesOverlap(layout.windowBoxes[index - 1], box), '순서 슬롯 카드끼리 겹치면 안 됩니다.').toBe(false);
+      for (let index = 0; index < layout.cardBoxes.length; index += 1) {
+        const box = layout.cardBoxes[index];
+        expect(box.x, '결과 카드가 그리드 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.gridBox.x);
+        expect(box.x + box.width, '결과 카드가 그리드 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.gridBox.x + layout.gridBox.width);
+        if (index > 0) expect(boxesOverlap(layout.cardBoxes[index - 1], box), '순서 결과 카드끼리 겹치면 안 됩니다.').toBe(false);
       }
 
       if (originalViewport) await page.setViewportSize(originalViewport);
