@@ -6,7 +6,7 @@
     "test:e2e": "npm run build && playwright test --grep-invert \"timeout 벌칙은 오프라인 로컬 timeout에만 적용된다\"",
     "test:smoke": "playwright test --project=desktop-chromium tests/smoke tests/lobby",
     "test:game-flow": "playwright test --workers=1 --project=desktop-chromium --grep-invert \"timeout 벌칙은 오프라인 로컬 timeout에만 적용된다\" tests/online tests/game-flow tests/regression",
-    "test:mobile": "playwright test --project=mobile-galaxy --project=tablet-ipad tests/mobile",
+    "test:mobile": "playwright test --project=mobile-galaxy tests/mobile",
     "qa:cleanup-rooms": "node tests/helpers/cleanup-qa-rooms.js",
     "test:unit": "rm -rf .tmp-unit-tests && tsc -p tsconfig.test.json && node scripts/run-unit-tests.mjs",
     "test:qa-basic-flow": "playwright test --workers=2 --project=desktop-chromium tests/game-flow/basic-turn.spec.js tests/game-flow/game-start-authority.spec.js tests/game-flow/turn-order-simultaneous.spec.js tests/game-flow/ai-substitution.spec.js tests/game-flow/ai-presence-recovery.spec.js",

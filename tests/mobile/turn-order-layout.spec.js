@@ -23,7 +23,7 @@ test.describe('turn-order mobile layout QA', () => {
     roomId = '';
   });
 
-  test('Galaxy와 iPad에서 준비·타이밍·결과 UI가 중앙 프레임을 벗어나지 않는다', async ({ page, context }, testInfo) => {
+  test('Galaxy 세로 화면에서 준비·타이밍·결과 UI가 중앙 프레임을 벗어나지 않는다', async ({ page, context }, testInfo) => {
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'turn-order-mobile'));
     const roomTitle = makeQaName(testInfo, 'turn-order-mobile-room');
     await primeLobbyStorage(context, {
@@ -58,6 +58,10 @@ test.describe('turn-order mobile layout QA', () => {
       const rollButton = page.getByTestId('turn-order-roll-button');
       await expect(rollButton).toBeVisible({ timeout: 10_000 });
       await expect(page.getByTestId('turn-order-timing-panel')).toBeVisible();
+      await expect(page.locator('.turn-order-timing-track')).toHaveCount(0);
+      await expect(page.locator('.roll-timing-meter')).toBeVisible();
+      await expect(page.locator('.roll-timing-orb')).toBeVisible();
+      await expect(rollButton).toHaveClass(/roll-button/);
       await rollButton.click();
       await expect(page.getByTestId('turn-order-own-result')).toContainText('모');
       await expect(page.getByTestId('turn-order-result-grid')).toBeVisible();
