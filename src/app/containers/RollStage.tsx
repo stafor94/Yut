@@ -283,8 +283,8 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       const boardRect = board.getBoundingClientRect();
       const panelRect = boardPanel.getBoundingClientRect();
       const nextLayout = {
-        top: boardRect.top - panelRect.top,
-        left: boardRect.left - panelRect.left,
+        top: boardRect.top - panelRect.top - boardPanel.clientTop,
+        left: boardRect.left - panelRect.left - boardPanel.clientLeft,
         width: boardRect.width,
         height: boardRect.height,
       };
