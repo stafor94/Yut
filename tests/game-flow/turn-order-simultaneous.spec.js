@@ -18,8 +18,8 @@ import {
 async function prepareTurnOrderRoom(browser, testInfo) {
   const hostContext = await browser.newContext();
   const guestContext = await browser.newContext();
-  const hostName = normalizeQaNickname(makeQaName(testInfo, 'turn-order-host'));
-  const guestName = normalizeQaNickname(makeQaName(testInfo, 'turn-order-guest'));
+  const hostName = normalizeQaNickname(makeQaName(testInfo, 'to-host'));
+  const guestName = normalizeQaNickname(makeQaName(testInfo, 'to-guest'));
   const roomTitle = makeQaName(testInfo, 'turn-order-room');
 
   await primeLobbyStorage(hostContext, {
