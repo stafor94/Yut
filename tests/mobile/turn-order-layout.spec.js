@@ -36,7 +36,6 @@ test.describe('turn-order mobile layout QA', () => {
   });
 
   test('Galaxy 세로 화면에서 순서 정하기·인게임 상단·진행 기록 레이아웃을 검증한다', async ({ page, context }, testInfo) => {
-    await page.setViewportSize({ width: 390, height: 844 });
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'turn-order-mobile'));
     const roomTitle = makeQaName(testInfo, 'turn-order-mobile-room');
     await primeLobbyStorage(context, {
