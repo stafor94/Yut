@@ -3,7 +3,6 @@ import { updateTurnOrderState } from '../../features/room/services/roomService';
 import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
 import {
   chooseAiRollTimingZone,
-  getRollTimingPositionPercent,
   getRollTimingZone,
   makeDisplaySticks,
   rollYutResultWithTiming,
@@ -23,6 +22,7 @@ import {
   submitTurnOrderResult,
 } from '../flows/turnOrderFlow';
 import { RollStage } from '../containers/RollStage';
+import { RollTimingControl } from './RollTimingControl';
 
 type TurnOrderIntroOverlayProps = {
   activeTurnOrderIntro: TurnOrderIntro | null;
@@ -134,8 +134,6 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const revealAt = Number(round?.revealAt ?? 0);
   const revealReady = Boolean(revealAt && now >= revealAt);
   const finalOrderVisible = Boolean(intro?.finalOrderAt && intro?.gameStartAt && now >= intro.finalOrderAt && now < intro.gameStartAt);
-  const timingPosition = round ? getRollTimingPositionPercent(Math.max(0, now - round.startAt)) : 0;
-  const timingZone = getRollTimingZone(timingPosition);
 
   useEffect(() => {
     if (localSubmission?.roundId === roundId) return;
@@ -195,6 +193,11 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
       submittedRoundIdRef.current = '';
     });
   }, [intro, isLocalEligible, localSeatId, round, visibleLocalSubmission]);
+
+
+  const handleManualRoll = useCallback((timingPositionPercent?: number) => {
+    commitSubmission('manual', getRollTimingZone(timingPositionPercent ?? 50));
+  }, [commitSubmission]);
 
   useEffect(() => {
     if (!round || round.status !== 'collecting' || !isLocalEligible || visibleLocalSubmission || submittedRoundIdRef.current === round.id) return;
@@ -353,11 +356,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
         </div>
 
         {isCollecting && isLocalEligible && !visibleLocalSubmission && <div className="turn-order-timing-panel" data-testid="turn-order-timing-panel">
-          <div className="turn-order-timing-track" aria-label={`현재 타이밍 ${Math.round(timingPosition)}%`}>
-            <span className="turn-order-timing-perfect"></span>
-            <i style={{ left: `${timingPosition}%` }}></i>
-          </div>
-          <button type="button" data-testid="turn-order-roll-button" onClick={() => commitSubmission('manual', timingZone)}>윷 던지기</button>
+          <RollTimingControl resetKey={round.id} buttonTestId="turn-order-roll-button" buttonText="윷 던지기" onRoll={handleManualRoll} />
         </div>}
 
         {round.status === 'collecting' && isLocalEligible && visibleLocalSubmission && <p className="turn-order-own-result" data-testid="turn-order-own-result">

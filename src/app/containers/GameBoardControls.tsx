@@ -21,6 +21,7 @@ import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { STORAGE_KEYS } from '../appState';
+import { RollTimingControl } from '../components/RollTimingControl';
 import { getRollControlPresentation, shouldAutoScrollGameControls } from '../flows/rollControlPresentation';
 
 const AUTO_ACTION_LEAD_MS = 80;
@@ -91,8 +92,6 @@ export function GameBoardControls({
   canRollForTurnOrderNow,
 }: GameBoardControlsProps) {
   const controlsRef = useRef<HTMLDivElement | null>(null);
-  const rollTimingMeterRef = useRef<HTMLDivElement | null>(null);
-  const rollTimingOrbRef = useRef<HTMLSpanElement | null>(null);
   const wasLocalTurnActiveRef = useRef(false);
   const timeoutRecordedKeyRef = useRef('');
   const autoTurnActionKeyRef = useRef('');
@@ -119,17 +118,6 @@ export function GameBoardControls({
     showBottomBranchControls,
     canRequestMove,
   });
-
-  const getVisibleRollTimingPositionPercent = () => {
-    const meter = rollTimingMeterRef.current;
-    const orb = rollTimingOrbRef.current;
-    if (!meter || !orb) return undefined;
-    const meterRect = meter.getBoundingClientRect();
-    const orbRect = orb.getBoundingClientRect();
-    if (meterRect.width <= 0) return undefined;
-    const orbCenterX = orbRect.left + orbRect.width / 2;
-    return Math.max(0, Math.min(100, ((orbCenterX - meterRect.left) / meterRect.width) * 100));
-  };
 
   useEffect(() => {
     if (!localTurnActive) {
@@ -279,7 +267,7 @@ export function GameBoardControls({
       autoTurnActionKeyRef.current = turnActionDeadlineKey;
       if (turnActionPhase === 'roll' && canRollNow && !roll) {
         markNextDeadlineAutoAction({ actionType: 'roll_yut', actorId: localSeatId, deadlineAt: authoritativeTurnDeadline.at });
-        onRollYutRef.current(getVisibleRollTimingPositionPercent());
+        onRollYutRef.current();
       } else if (turnActionPhase === 'move' && canRequestMove) {
         if (showRollStackPicker && rollStack.length > 0) {
           const rollStackIndex = selectedRollStackIndex ?? 0;
@@ -324,13 +312,13 @@ export function GameBoardControls({
     return () => window.clearTimeout(timer);
   }, [activeItemPromptTypes.length, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, isOpponentTurn, itemPromptDeadlineKey, itemPromptFallbackDurationMs, localSeatId]);
 
-  const handleRollButtonClick = () => {
+  const handleRollButtonClick = (timingPositionPercent?: number) => {
     runTurnAction(() => {
       if (roll) {
         onMoveSelectedPiece();
         return;
       }
-      onRollYut(getVisibleRollTimingPositionPercent());
+      onRollYut(timingPositionPercent);
     });
   };
 
@@ -370,8 +358,8 @@ export function GameBoardControls({
     </div> : <>
       {turnActionTimerVisible && <div key={turnActionDeadlineKey} className="time-limit-bar turn-action-timer" style={turnActionTimerStyle} aria-hidden="true"><span style={turnActionTimerFillStyle}></span></div>}
       {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => runTurnAction(() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index))} disabled={turnActionTimedOut}>{entry.name}</button>)}</div></div>}
-      {rollControlPresentation.showTimingMeter && !turnActionTimedOut && <div ref={rollTimingMeterRef} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대"><span className="roll-timing-good left" aria-hidden="true"></span><span className="roll-timing-perfect" aria-hidden="true"></span><span className="roll-timing-good right" aria-hidden="true"></span><span ref={rollTimingOrbRef} className="roll-timing-orb" aria-hidden="true"></span></div>}
-      {!showRollStackPicker && <button data-testid={rollControlPresentation.actionButtonTestId} className={!roll ? 'roll-button' : undefined} onClick={handleRollButtonClick} disabled={turnActionTimedOut || (!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton && !turnActionTimedOut ? '선택한 말 이동' : actionButtonText}</button>}
+      {rollControlPresentation.showTimingMeter && !turnActionTimedOut && <RollTimingControl resetKey={turnActionDeadlineKey} buttonTestId={rollControlPresentation.actionButtonTestId} buttonText={actionButtonText} onRoll={handleRollButtonClick} disabled={turnActionTimedOut || !canRollNow} />}
+      {!rollControlPresentation.showTimingMeter && !showRollStackPicker && <button data-testid={rollControlPresentation.actionButtonTestId} className={!roll ? 'roll-button' : undefined} onClick={() => handleRollButtonClick()} disabled={turnActionTimedOut || (!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton && !turnActionTimedOut ? '선택한 말 이동' : actionButtonText}</button>}
     </>}
   </div>;
 }

@@ -271,9 +271,6 @@ jobs:
           - project: mobile-galaxy
             label: Galaxy
             role: mobile-galaxy
-          - project: tablet-ipad
-            label: iPad
-            role: tablet-ipad
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

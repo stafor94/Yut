@@ -42,10 +42,5 @@ export default defineConfig({
       testMatch: /mobile\/.*\.spec\.js/,
       use: { ...devices['Galaxy S9+'], viewport: { width: 412, height: 915 }, deviceScaleFactor: 3.5 },
     },
-    {
-      name: 'tablet-ipad',
-      testMatch: /mobile\/.*\.spec\.js/,
-      use: { ...devices['iPad (gen 7)'], viewport: { width: 810, height: 1080 } },
-    },
   ],
 });

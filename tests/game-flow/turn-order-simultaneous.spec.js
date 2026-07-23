@@ -95,6 +95,10 @@ test.describe('simultaneous turn-order QA', () => {
         const guestButton = qa.guestPage.getByTestId('turn-order-roll-button');
         await expect(hostButton).toBeVisible({ timeout: 10_000 });
         await expect(guestButton).toBeVisible({ timeout: 10_000 });
+        await expect(qa.hostPage.locator('.turn-order-timing-track')).toHaveCount(0);
+        await expect(qa.hostPage.locator('.roll-timing-meter')).toBeVisible();
+        await expect(qa.hostPage.locator('.roll-timing-orb')).toBeVisible();
+        await expect(hostButton).toHaveClass(/roll-button/);
         await Promise.all([hostButton.click(), guestButton.click()]);
 
         await expect(qa.hostPage.getByTestId('turn-order-own-result')).toContainText('도');
@@ -117,6 +121,9 @@ test.describe('simultaneous turn-order QA', () => {
         const guestButton = qa.guestPage.getByTestId('turn-order-roll-button');
         await expect(hostButton).toBeVisible({ timeout: 10_000 });
         await expect(guestButton).toBeVisible({ timeout: 10_000 });
+        await expect(qa.hostPage.locator('.roll-timing-meter')).toBeVisible();
+        const firstOrbAnimationName = await qa.hostPage.locator('.roll-timing-orb').evaluate((element) => getComputedStyle(element).animationName);
+        expect(firstOrbAnimationName).toContain('roll-timing-orb');
         await Promise.all([hostButton.click(), guestButton.click()]);
         await expect(qa.hostPage.getByTestId('turn-order-own-result')).toContainText('걸');
         await expect(qa.guestPage.getByTestId('turn-order-own-result')).toContainText('개');
