@@ -33,7 +33,10 @@ type TurnOrderIntroOverlayProps = {
 
 type QaTurnOrderWindow = Window & {
   __YUT_QA_TURN_ORDER_RESULT_QUEUE__?: TurnOrderResultName[];
+  __YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__?: TurnOrderResultName[];
 };
+
+type QaResultQueue = 'local' | 'ai' | 'none';
 
 const AUTO_ROLL_FALLBACK_DELAY_MS = 500;
 const SCORE_LABELS: Record<TurnOrderResultName, string> = {
@@ -53,9 +56,12 @@ const getForcedResult = (name: TurnOrderResultName): { result: YutResult; fallCo
   return { result: { name, steps, ...(name === '윷' || name === '모' ? { bonus: true } : {}) }, fallCount: 0 };
 };
 
-const takeQaResult = () => {
+const takeQaResult = (queueType: Exclude<QaResultQueue, 'none'>) => {
   if (typeof window === 'undefined') return null;
-  const queue = (window as QaTurnOrderWindow).__YUT_QA_TURN_ORDER_RESULT_QUEUE__;
+  const qaWindow = window as QaTurnOrderWindow;
+  const queue = queueType === 'ai'
+    ? qaWindow.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__
+    : qaWindow.__YUT_QA_TURN_ORDER_RESULT_QUEUE__;
   return Array.isArray(queue) && queue.length ? queue.shift() ?? null : null;
 };
 
@@ -65,9 +71,9 @@ const createTurnOrderSubmission = (params: {
   timingZone: RollTimingZone;
   source: TurnOrderSubmission['source'];
   now?: number;
-  allowQaOverride?: boolean;
+  qaResultQueue?: QaResultQueue;
 }): TurnOrderSubmission => {
-  const forcedName = params.allowQaOverride === false ? null : takeQaResult();
+  const forcedName = params.qaResultQueue === 'none' ? null : takeQaResult(params.qaResultQueue ?? 'local');
   const rolled = forcedName ? getForcedResult(forcedName) : { ...rollYutResultWithTiming(params.timingZone), fallCount: 0 };
   const fallCount = forcedName
     ? rolled.fallCount
@@ -95,6 +101,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const [localSubmission, setLocalSubmission] = useState<TurnOrderSubmission | null>(null);
   const [localRollAnimation, setLocalRollAnimation] = useState<RollAnimation | null>(null);
   const submittedRoundIdRef = useRef('');
+  const aiSubmittingRoundIdRef = useRef('');
   const fallbackRoundIdRef = useRef('');
   const aggregatingRoundIdRef = useRef('');
   const completionSoundSessionRef = useRef('');
@@ -139,10 +146,12 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
 
   useEffect(() => {
     if (!round || round.status !== 'collecting') {
+      aiSubmittingRoundIdRef.current = '';
       fallbackRoundIdRef.current = '';
       aggregatingRoundIdRef.current = '';
       return;
     }
+    if (aiSubmittingRoundIdRef.current && aiSubmittingRoundIdRef.current !== round.id) aiSubmittingRoundIdRef.current = '';
     if (fallbackRoundIdRef.current && fallbackRoundIdRef.current !== round.id) fallbackRoundIdRef.current = '';
     if (aggregatingRoundIdRef.current && aggregatingRoundIdRef.current !== round.id) aggregatingRoundIdRef.current = '';
   }, [round, roundId]);
@@ -194,6 +203,38 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   }, [commitSubmission, isLocalEligible, now, round, visibleLocalSubmission]);
 
   useEffect(() => {
+    if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.startAt) return;
+    const aiSeatIds = new Set(intro.order.filter((entry) => entry.isAI).map((entry) => entry.seatId));
+    const pendingAiSeatIds = round.eligibleSeatIds.filter((seatId) => aiSeatIds.has(seatId)
+      && !round.submissions.some((submission) => submission.seatId === seatId));
+    if (!pendingAiSeatIds.length || aiSubmittingRoundIdRef.current === round.id) return;
+    aiSubmittingRoundIdRef.current = round.id;
+    void updateTurnOrderState(intro.roomId, (state) => {
+      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
+      const transactionNow = Math.max(Date.now(), now);
+      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
+      const activated = activateNextTurnOrderRound(current, transactionNow);
+      if (activated.currentRound.status !== 'collecting' || transactionNow < activated.currentRound.startAt) return null;
+      const currentAiSeatIds = new Set(activated.order.filter((entry) => entry.isAI).map((entry) => entry.seatId));
+      let next = activated;
+      activated.currentRound.eligibleSeatIds.forEach((seatId) => {
+        if (!currentAiSeatIds.has(seatId) || next.currentRound.submissions.some((submission) => submission.seatId === seatId)) return;
+        next = submitTurnOrderResult(next, createTurnOrderSubmission({
+          seatId,
+          roundId: next.currentRound.id,
+          timingZone: chooseAiRollTimingZone(),
+          source: 'auto',
+          now: transactionNow,
+          qaResultQueue: 'ai',
+        }), transactionNow);
+      });
+      return next.currentRound.submissions.length === activated.currentRound.submissions.length ? null : { turnOrderIntro: next };
+    }).catch(() => {
+      if (aiSubmittingRoundIdRef.current === round.id) aiSubmittingRoundIdRef.current = '';
+    });
+  }, [intro, isCoordinator, now, round]);
+
+  useEffect(() => {
     if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.deadlineAt + AUTO_ROLL_FALLBACK_DELAY_MS) return;
     const allSubmitted = round.eligibleSeatIds.every((seatId) => round.submissions.some((submission) => submission.seatId === seatId));
     if (allSubmitted || fallbackRoundIdRef.current === round.id) return;
@@ -211,7 +252,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
           roundId: next.currentRound.id,
           timingZone: chooseAiRollTimingZone(),
           source: 'auto',
-          allowQaOverride: false,
+          qaResultQueue: 'none',
         }), Date.now());
       });
       return next.currentRound.submissions.length === activated.currentRound.submissions.length ? null : { turnOrderIntro: next };
