@@ -173,6 +173,12 @@ async function waitForRoomCreationResult(page, { timeout = 45_000, maxSubmitAtte
 }
 
 export async function createRoomFromLobby(page, roomTitle) {
+  if (roomTitle.includes('ai-seq-room')) {
+    await page.addInitScript(() => {
+      window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
+      window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
+    });
+  }
   await expectAppShell(page);
   await page.getByRole('button', { name: '방 만들기', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
