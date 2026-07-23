@@ -1,9 +1,6 @@
 name: Branch room cleanup validation
 
 on:
-  push:
-    branches:
-      - agent/limit-room-counts-and-fix-qa-cleanup
   pull_request:
     branches:
       - main
@@ -12,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: branch-room-cleanup-validation-${{ github.ref }}
+  group: ${{ github.workflow }}-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
