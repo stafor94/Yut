@@ -24,7 +24,7 @@ import {
 } from '../flows/turnOrderFlow';
 import { RollStage } from '../containers/RollStage';
 
- type TurnOrderIntroOverlayProps = {
+type TurnOrderIntroOverlayProps = {
   activeTurnOrderIntro: TurnOrderIntro | null;
   localSeatId: string;
   turnOrderClock: number;
@@ -95,7 +95,6 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const [localSubmission, setLocalSubmission] = useState<TurnOrderSubmission | null>(null);
   const [localRollAnimation, setLocalRollAnimation] = useState<RollAnimation | null>(null);
   const submittedRoundIdRef = useRef('');
-  const finalizedSessionRef = useRef('');
   const completionSoundSessionRef = useRef('');
 
   useEffect(() => {
@@ -122,7 +121,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const coordinatorSeatId = intro?.order.find((entry) => !entry.isAI)?.seatId ?? intro?.order[0]?.seatId ?? '';
   const isCoordinator = Boolean(localSeatId && localSeatId === coordinatorSeatId);
   const isPreparing = Boolean(round && now < round.startAt);
-  const isCollecting = Boolean(round && round.status === 'collecting' && now >= round.startAt);
+  const isCollecting = Boolean(round && round.status === 'collecting' && now >= round.startAt && now < round.deadlineAt);
   const revealAt = Number(round?.revealAt ?? 0);
   const revealReady = Boolean(revealAt && now >= revealAt);
   const finalOrderVisible = Boolean(intro?.finalOrderAt && intro?.gameStartAt && now >= intro.finalOrderAt && now < intro.gameStartAt);
@@ -148,6 +147,8 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
 
   const commitSubmission = useCallback((source: TurnOrderSubmission['source'], zone: RollTimingZone) => {
     if (!intro || !round || !isLocalEligible || round.status !== 'collecting') return;
+    if (source === 'manual' && Date.now() >= round.deadlineAt) return;
+    if (source === 'auto' && Date.now() < round.deadlineAt) return;
     if (submittedRoundIdRef.current === round.id || visibleLocalSubmission) return;
     submittedRoundIdRef.current = round.id;
     const submission = createTurnOrderSubmission({ seatId: localSeatId, roundId: round.id, timingZone: zone, source });
@@ -161,7 +162,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
       fallCount: submission.fallCount,
       timingZone: submission.timingZone,
     });
-    playStoredSoundEffect('move');
+    playStoredSoundEffect('roll');
     void updateTurnOrderState(intro.roomId, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
       if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
@@ -175,15 +176,10 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   }, [intro, isLocalEligible, localSeatId, round, visibleLocalSubmission]);
 
   useEffect(() => {
-    if (!round || !isCollecting || !isLocalEligible || visibleLocalSubmission || submittedRoundIdRef.current === round.id) return undefined;
-    const autoRoll = () => {
-      if (Date.now() < round.deadlineAt) return;
-      commitSubmission('auto', chooseAiRollTimingZone());
-    };
-    autoRoll();
-    const timer = window.setTimeout(autoRoll, Math.max(0, round.deadlineAt - Date.now()));
-    return () => window.clearTimeout(timer);
-  }, [commitSubmission, isCollecting, isLocalEligible, round, visibleLocalSubmission]);
+    if (!round || round.status !== 'collecting' || !isLocalEligible || visibleLocalSubmission || submittedRoundIdRef.current === round.id) return;
+    if (now < round.deadlineAt) return;
+    commitSubmission('auto', chooseAiRollTimingZone());
+  }, [commitSubmission, isLocalEligible, now, round, visibleLocalSubmission]);
 
   useEffect(() => {
     if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.deadlineAt + AUTO_ROLL_FALLBACK_DELAY_MS) return;
@@ -243,11 +239,6 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     playStoredSoundEffect('countdownStart');
   }, [intro, now]);
 
-  useEffect(() => {
-    if (!intro || !isTurnOrderFinalized(intro) || finalizedSessionRef.current === intro.sessionId) return;
-    finalizedSessionRef.current = intro.sessionId;
-  }, [intro]);
-
   if (!intro?.visible || !round) return null;
 
   const orderedFinalEntries = (intro.finalTurnOrderIds ?? [])
@@ -280,7 +271,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
           <small>{round.eligibleSeatIds.length === intro.order.length ? '전체 참가자 라운드' : '동률 참가자 재대결'}</small>
         </div>
 
-        {round.status === 'collecting' && isLocalEligible && !visibleLocalSubmission && <div className="turn-order-timing-panel" data-testid="turn-order-timing-panel">
+        {isCollecting && isLocalEligible && !visibleLocalSubmission && <div className="turn-order-timing-panel" data-testid="turn-order-timing-panel">
           <div className="turn-order-timing-track" aria-label={`현재 타이밍 ${Math.round(timingPosition)}%`}>
             <span className="turn-order-timing-perfect"></span>
             <i style={{ left: `${timingPosition}%` }}></i>
