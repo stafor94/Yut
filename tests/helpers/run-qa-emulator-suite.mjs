@@ -5,12 +5,21 @@ const qaRunId = String(process.env.QA_RUN_ID ?? '').trim();
 const qaProjectId = String(process.env.QA_PROJECT_ID ?? '').trim();
 if (!qaRunId || !qaProjectId.startsWith('demo-')) throw new Error('격리된 QA_RUN_ID와 demo-* QA_PROJECT_ID가 필요합니다.');
 
+const qaNodeOptions = [
+  '--import=./tests/helpers/qa-emulator-fetch-shim.mjs',
+  String(process.env.NODE_OPTIONS ?? '').trim(),
+].filter(Boolean).join(' ');
+
 async function runCommand(label, command, args, logPath, extraEnv = {}) {
   console.log(`\n===== ${label} =====`);
   const log = fs.createWriteStream(logPath, { flags: 'w' });
   const exitCode = await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      env: { ...process.env, ...extraEnv },
+      env: {
+        ...process.env,
+        NODE_OPTIONS: qaNodeOptions,
+        ...extraEnv,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     child.stdout.on('data', (chunk) => {
