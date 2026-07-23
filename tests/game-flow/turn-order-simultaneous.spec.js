@@ -18,8 +18,8 @@ import {
 async function prepareTurnOrderRoom(browser, testInfo) {
   const hostContext = await browser.newContext();
   const guestContext = await browser.newContext();
-  const hostName = normalizeQaNickname(makeQaName(testInfo, 'turn-order-host'));
-  const guestName = normalizeQaNickname(makeQaName(testInfo, 'turn-order-guest'));
+  const hostName = normalizeQaNickname(makeQaName(testInfo, 'to-host'));
+  const guestName = normalizeQaNickname(makeQaName(testInfo, 'to-guest'));
   const roomTitle = makeQaName(testInfo, 'turn-order-room');
 
   await primeLobbyStorage(hostContext, {
@@ -58,6 +58,11 @@ const readTurnOrderRound = async (roomId) => {
   const state = await getRoomStateForQa(roomId);
   return state?.turnOrderIntro?.currentRound ?? null;
 };
+
+const findResultCard = (page, nickname) => page
+  .getByTestId('turn-order-result-grid')
+  .locator('.turn-order-result-card')
+  .filter({ has: page.getByText(nickname, { exact: true }) });
 
 test.describe('simultaneous turn-order QA', () => {
   let roomId = '';
@@ -99,8 +104,10 @@ test.describe('simultaneous turn-order QA', () => {
 
         await expect(qa.hostPage.getByTestId('turn-order-own-result')).toContainText('도');
         await expect(qa.guestPage.getByTestId('turn-order-own-result')).toContainText('도');
-        const hostOtherCard = qa.hostPage.getByTestId('turn-order-result-grid').locator('.turn-order-result-card').filter({ hasText: qa.guestName });
-        const guestOtherCard = qa.guestPage.getByTestId('turn-order-result-grid').locator('.turn-order-result-card').filter({ hasText: qa.hostName });
+        const hostOtherCard = findResultCard(qa.hostPage, qa.guestName);
+        const guestOtherCard = findResultCard(qa.guestPage, qa.hostName);
+        await expect(hostOtherCard).toHaveCount(1);
+        await expect(guestOtherCard).toHaveCount(1);
         await expect(hostOtherCard).not.toContainText(/도|개|걸|윷|모|빽도|낙/);
         await expect(guestOtherCard).not.toContainText(/도|개|걸|윷|모|빽도|낙/);
 
