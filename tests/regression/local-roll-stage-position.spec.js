@@ -91,7 +91,11 @@ test.describe('local roll stage position regression', () => {
     });
 
     await runQaStep(testInfo, '결과 카드 중앙 정렬과 매트 간격 확인', async () => {
-      await expect(page.getByTestId('roll-result-card')).toBeVisible({ timeout: 10_000 });
+      const resultCard = page.getByTestId('roll-result-card');
+      await expect(resultCard).toBeVisible({ timeout: 10_000 });
+      await resultCard.evaluate(async (element) => {
+        await Promise.all(element.getAnimations().map((animation) => animation.finished.catch(() => undefined)));
+      });
       const geometry = await readRollGeometry(page);
       expect(geometry, '결과 표시 위치 요소를 모두 찾을 수 있어야 합니다.').not.toBeNull();
       if (!geometry) throw new Error('결과 표시 위치 요소를 찾지 못했습니다.');
@@ -103,7 +107,7 @@ test.describe('local roll stage position regression', () => {
       expect(geometry.resultCenterOffset).toBeLessThanOrEqual(2);
       expect(geometry.stageWidth).toBeGreaterThanOrEqual(geometry.matWidth - 1);
       expect(geometry.gradeTop).toBe(20);
-      expect(geometry.resultTop).toBe(49.5);
+      expect(geometry.resultTop).toBe(55);
       expect(geometry.gradeResultGap).toBeGreaterThanOrEqual(0);
       expect(geometry.gradeResultGap).toBeLessThanOrEqual(8);
       expect(geometry.resultSurfaceGap).toBeLessThanOrEqual(100);
