@@ -96,9 +96,8 @@ test.describe('local roll stage position regression', () => {
       expect(geometry.gradeCenterOffset).toBeLessThanOrEqual(2);
       expect(geometry.resultCenterOffset).not.toBeNull();
       expect(geometry.resultCenterOffset).toBeLessThanOrEqual(2);
-      expect(geometry.gradeTop).toBe(18);
-      expect(geometry.resultTop).toBeGreaterThanOrEqual(50);
-      expect(geometry.resultTop).toBeLessThanOrEqual(60);
+      expect(geometry.gradeTop).toBe(20);
+      expect(geometry.resultTop).toBe(48);
       expect(geometry.gradeResultGap).toBeGreaterThanOrEqual(0);
       expect(geometry.gradeResultGap).toBeLessThanOrEqual(8);
       expect(geometry.resultSurfaceGap).toBeLessThanOrEqual(100);

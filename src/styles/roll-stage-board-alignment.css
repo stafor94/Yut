@@ -8,23 +8,31 @@
   translate: var(--roll-stage-center-offset-x, -50%) 0;
 }
 
+/* An anchored stage is board-width while the mat can be wider on mobile/tablet.
+   Force an unsafe geometric center instead of grid's overflow-safe start edge. */
+.roll-stage[data-board-anchored='true'] .roll-mat {
+  left: 50%;
+  justify-self: start;
+  translate: var(--roll-mat-center-offset-x, -50%) 0;
+}
+
 /* Keep the timing grade and result together near the upper edge of the mat. */
 .roll-stage .roll-stage-timing,
 .roll-stage .roll-stage-timing-preview {
-  top: 18px;
+  top: 20px;
 }
 
 .roll-stage .roll-result-presentation {
-  top: 58px;
+  top: 48px;
 }
 
 @media (max-width: 640px) {
   .roll-stage .roll-stage-timing,
   .roll-stage .roll-stage-timing-preview {
-    top: 18px;
+    top: 20px;
   }
 
   .roll-stage .roll-result-presentation {
-    top: 54px;
+    top: 48px;
   }
 }
