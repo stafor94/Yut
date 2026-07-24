@@ -1,4 +1,5 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
@@ -186,6 +187,42 @@ service cloud.firestore {
         || deletingWithParentRoom(roomId);
     }
 
+    // 사용자 신원이나 문서 스키마를 별도로 검증해야 하는 컬렉션만 전용 규칙을 유지한다.
+    function requiresExplicitRoomDataRule(collectionId) {
+      return collectionId in [
+        'players',
+        'actions',
+        'sequences',
+        'turnOrderSubmissions'
+      ];
+    }
+
+    // 그 외 방 직속 컬렉션은 공통 권한 정책을 자동 적용한다.
+    function canReadStandardRoomData(roomId, collectionId) {
+      return !requiresExplicitRoomDataRule(collectionId)
+        && (
+          collectionId == 'seats'
+            ? signedIn()
+            : canReadRoomData(roomId)
+        );
+    }
+
+    function canWriteStandardRoomData(roomId, collectionId) {
+      return !requiresExplicitRoomDataRule(collectionId)
+        && (
+          canWriteRoomData(roomId)
+          || (
+            collectionId in ['seats', 'state']
+            && isPresenceCleanupLeaseOwner(roomId)
+          )
+        );
+    }
+
+    function canDeleteStandardRoomData(roomId, collectionId) {
+      return !requiresExplicitRoomDataRule(collectionId)
+        && canDeleteRoomData(roomId);
+    }
+
     match /rooms/{roomId} {
       allow read: if signedIn();
 
@@ -236,29 +273,11 @@ service cloud.firestore {
           );
       }
 
-      match /seats/{seatId} {
-        allow read: if signedIn();
-        allow create, update: if canWriteRoomData(roomId) || isPresenceCleanupLeaseOwner(roomId);
-        allow delete: if canDeleteRoomData(roomId);
-      }
-
-      match /state/{stateId} {
-        allow read: if canReadRoomData(roomId);
-        allow create, update: if canWriteRoomData(roomId) || isPresenceCleanupLeaseOwner(roomId);
-        allow delete: if canDeleteRoomData(roomId);
-      }
-
       match /actions/{actionId} {
         allow read: if canReadRoomData(roomId);
         allow create: if canWriteRoomData(roomId)
           && request.resource.data.actorId is string;
         allow update: if canWriteRoomData(roomId);
-        allow delete: if canDeleteRoomData(roomId);
-      }
-
-      match /processedActions/{actionId} {
-        allow read: if canReadRoomData(roomId);
-        allow create, update: if canWriteRoomData(roomId);
         allow delete: if canDeleteRoomData(roomId);
       }
 
@@ -295,16 +314,10 @@ service cloud.firestore {
         allow delete: if canDeleteRoomData(roomId);
       }
 
-      match /boardItems/{itemId} {
-        allow read: if canReadRoomData(roomId);
-        allow create, update: if canWriteRoomData(roomId);
-        allow delete: if canDeleteRoomData(roomId);
-      }
-
-      match /rooms/{nestedRoomId} {
-        allow read: if canReadRoomData(roomId);
-        allow create, update: if canWriteRoomData(roomId);
-        allow delete: if canDeleteRoomData(roomId);
+      match /{collectionId}/{documentId} {
+        allow read: if canReadStandardRoomData(roomId, collectionId);
+        allow create, update: if canWriteStandardRoomData(roomId, collectionId);
+        allow delete: if canDeleteStandardRoomData(roomId, collectionId);
       }
 
       match /{document=**} {
