@@ -9,6 +9,8 @@ import {
   createTurnOrderIntro,
   getTurnOrderScore,
   isTurnOrderFinalized,
+  makeTurnOrderSubmissionId,
+  submitAndMaybeAggregateTurnOrderRound,
   submitTurnOrderResult,
   TURN_ORDER_PRESENTATION_FINAL_HOLD_MS,
   TURN_ORDER_REVEAL_DELAY_MS,
@@ -35,6 +37,7 @@ const resultFromName = (name: Exclude<TurnOrderResultName, '낙'>): YutResult =>
 const submission = (roundId: string, seatId: string, name: TurnOrderResultName, submittedAt: number, timingZone: RollTimingZone = 'good'): TurnOrderSubmission => {
   const displayResult = name === '낙' ? { name: '도' as const, steps: 1 } : resultFromName(name);
   return {
+    submissionId: makeTurnOrderSubmissionId(roundId, seatId),
     roundId,
     seatId,
     resultName: name,
@@ -92,6 +95,19 @@ test('전원이 일찍 제출하면 제한시간 전에도 즉시 집계하고 3
   assert.equal(aggregated.currentRound.status, 'reveal-pending');
   assert.equal(aggregated.currentRound.aggregatedAt, aggregatedAt);
   assert.equal(aggregated.currentRound.revealAt, aggregatedAt + TURN_ORDER_REVEAL_DELAY_MS);
+});
+
+test('마지막 제출은 같은 상태 전환에서 저장과 집계를 함께 완료한다', () => {
+  let intro = createIntro('individual', 10_000);
+  intro = submitRound(intro, { p1: '모', p2: '걸', p3: '개' }, 11_000);
+  const finalSubmission = submission(intro.currentRound.id, 'p4', '도', 11_500);
+  const next = submitAndMaybeAggregateTurnOrderRound(intro, finalSubmission, 11_500);
+
+  assert.equal(finalSubmission.submissionId, `${intro.currentRound.id}:p4`);
+  assert.equal(next.currentRound.submissions.length, 4);
+  assert.equal(next.currentRound.status, 'reveal-pending');
+  assert.equal(next.currentRound.aggregatedAt, 11_500);
+  assert.equal(next.currentRound.revealAt, 11_500 + TURN_ORDER_REVEAL_DELAY_MS);
 });
 
 test('일부 참가자가 미제출이면 제한시간이 지나도 결과를 집계하지 않는다', () => {

@@ -20,6 +20,7 @@ export type TurnOrderPhase = { active: boolean; index: number; rolls: TurnOrderR
 export type TurnOrderResultName = Exclude<YutResultName, '황금 윷'> | '낙';
 export type TurnOrderSubmissionSource = 'manual' | 'auto';
 export type TurnOrderSubmission = {
+  submissionId?: string;
   seatId: string;
   roundId: string;
   resultName: TurnOrderResultName;

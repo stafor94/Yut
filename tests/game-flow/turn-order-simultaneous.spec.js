@@ -145,6 +145,8 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(qa.hostPage.locator('.roll-timing-meter')).toBeVisible();
         await expect(qa.hostPage.locator('.roll-timing-orb')).toBeVisible();
         await expect(hostButton).toHaveClass(/roll-button/);
+        const beforeSubmissions = await getRoomStateForQa(qa.roomId);
+        const turnVersionBeforeSubmissions = Number(beforeSubmissions?.turnVersion ?? 0);
         await Promise.all([hostButton.click(), guestButton.click()]);
 
         await expect(qa.hostPage.getByTestId('turn-order-own-result')).toContainText('도');
@@ -163,9 +165,11 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(guestOtherCard).not.toContainText(/도|개|걸|윷|모|빽도|낙/);
 
         await expect.poll(async () => (await readTurnOrderRound(qa.roomId))?.status ?? '', { timeout: 12_000 }).toBe('reveal-pending');
-        const round = await readTurnOrderRound(qa.roomId);
+        const aggregatedState = await getRoomStateForQa(qa.roomId);
+        const round = aggregatedState?.turnOrderIntro?.currentRound ?? null;
         expect(Number(round?.aggregatedAt ?? 0)).toBeLessThan(Number(round?.deadlineAt ?? 0));
         expect(Number(round?.revealAt ?? 0) - Number(round?.aggregatedAt ?? 0)).toBe(3_000);
+        expect(Number(aggregatedState?.turnVersion ?? 0) - turnVersionBeforeSubmissions).toBe(2);
         await expect(hostOtherCard).toContainText('도', { timeout: 6_000 });
         await expect(guestOtherCard).toContainText('도', { timeout: 6_000 });
         await expect(qa.hostPage.getByTestId('turn-order-tie-notice')).toBeVisible();
@@ -179,6 +183,8 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(qa.hostPage.locator('.roll-timing-meter')).toBeVisible();
         const firstOrbAnimationName = await qa.hostPage.locator('.roll-timing-orb').evaluate((element) => getComputedStyle(element).animationName);
         expect(firstOrbAnimationName).toContain('roll-timing-orb');
+        const beforeRematchSubmissions = await getRoomStateForQa(qa.roomId);
+        const turnVersionBeforeRematchSubmissions = Number(beforeRematchSubmissions?.turnVersion ?? 0);
         await Promise.all([hostButton.click(), guestButton.click()]);
         await expect(qa.hostPage.getByTestId('turn-order-own-result')).toContainText('걸');
         await expect(qa.guestPage.getByTestId('turn-order-own-result')).toContainText('개');
@@ -192,10 +198,12 @@ test.describe('simultaneous turn-order QA', () => {
         }).toBe(1);
 
         await expect.poll(async () => (await readTurnOrderRound(qa.roomId))?.status ?? '', { timeout: 8_000 }).toBe('reveal-pending');
-        const rematchRound = await readTurnOrderRound(qa.roomId);
+        const rematchState = await getRoomStateForQa(qa.roomId);
+        const rematchRound = rematchState?.turnOrderIntro?.currentRound ?? null;
         expect(rematchRound?.index).toBe(2);
         expect(Number(rematchRound?.aggregatedAt ?? 0)).toBeLessThan(Number(rematchRound?.deadlineAt ?? 0));
         expect(Number(rematchRound?.revealAt ?? 0) - Number(rematchRound?.aggregatedAt ?? 0)).toBe(3_000);
+        expect(Number(rematchState?.turnVersion ?? 0) - turnVersionBeforeRematchSubmissions).toBe(2);
 
         await expect(qa.hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
         await expect(qa.guestPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
@@ -266,12 +274,16 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(aiCard).toContainText('결과 대기');
         await expect(aiCard).not.toContainText('던지는 중');
 
+        const beforeHostSubmission = await getRoomStateForQa(roomId);
+        const turnVersionBeforeHostSubmission = Number(beforeHostSubmission?.turnVersion ?? 0);
         await hostButton.click();
         await expect(hostPage.getByTestId('turn-order-own-result')).toContainText('도');
         await expect.poll(async () => (await readTurnOrderRound(roomId))?.status ?? '', { timeout: 8_000 }).toBe('reveal-pending');
-        const round = await readTurnOrderRound(roomId);
+        const aggregatedState = await getRoomStateForQa(roomId);
+        const round = aggregatedState?.turnOrderIntro?.currentRound ?? null;
         expect(Number(round?.aggregatedAt ?? 0)).toBeLessThan(Number(round?.deadlineAt ?? 0));
         expect(Number(round?.revealAt ?? 0) - Number(round?.aggregatedAt ?? 0)).toBe(3_000);
+        expect(Number(aggregatedState?.turnVersion ?? 0) - turnVersionBeforeHostSubmission).toBe(1);
         await expect(aiCard).toContainText('도', { timeout: 6_000 });
         await expect(hostPage.getByTestId('turn-order-tie-notice')).toBeVisible();
       });
@@ -288,13 +300,17 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(aiCard).toContainText('결과 대기');
         await expect(aiCard).not.toContainText('던지는 중');
 
+        const beforeHostSubmission = await getRoomStateForQa(roomId);
+        const turnVersionBeforeHostSubmission = Number(beforeHostSubmission?.turnVersion ?? 0);
         await hostButton.click();
         await expect(hostPage.getByTestId('turn-order-own-result')).toContainText('걸');
         await expect.poll(async () => (await readTurnOrderRound(roomId))?.status ?? '', { timeout: 8_000 }).toBe('reveal-pending');
-        const rematchRound = await readTurnOrderRound(roomId);
+        const rematchState = await getRoomStateForQa(roomId);
+        const rematchRound = rematchState?.turnOrderIntro?.currentRound ?? null;
         expect(rematchRound?.index).toBe(2);
         expect(Number(rematchRound?.aggregatedAt ?? 0)).toBeLessThan(Number(rematchRound?.deadlineAt ?? 0));
         expect(Number(rematchRound?.revealAt ?? 0) - Number(rematchRound?.aggregatedAt ?? 0)).toBe(3_000);
+        expect(Number(rematchState?.turnVersion ?? 0) - turnVersionBeforeHostSubmission).toBe(1);
         await expect(hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
       });
     } finally {
