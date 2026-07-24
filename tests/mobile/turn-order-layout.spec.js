@@ -101,18 +101,53 @@ test.describe('turn-order mobile layout QA', () => {
       }
     });
 
-    await runQaStep(testInfo, '모바일 인게임 상단과 플레이어 목록 접기 레이아웃 확인', async () => {
+    await runQaStep(testInfo, '모바일 인게임 상단과 플레이어 목록 기본 접힘 레이아웃 확인', async () => {
       const header = page.locator('.game-shell .hero');
       const playersPanel = page.getByTestId('players-panel');
-      const expandedToggle = page.getByTestId('game-room-info-toggle');
+      const collapsedToggle = page.getByTestId('game-room-info-toggle');
       const playTimer = page.getByTestId('play-timer');
       await expect(header).toBeVisible();
-      await expect(playersPanel).toBeVisible();
+      await expect(playersPanel).toHaveCount(0);
+      await expect(collapsedToggle).toBeVisible();
+      await expect(collapsedToggle).toHaveAttribute('aria-expanded', 'false');
+      await expect(collapsedToggle).toHaveText('▼펼치기');
+      await expect(page.getByTestId('game-screen')).toHaveAttribute('data-room-info-collapsed', 'true');
+      await expect(playTimer).toBeVisible();
+      await expect(page.getByTestId('owned-items-panel')).toHaveCount(0);
+
+      const collapsedLayout = await header.evaluate((element) => {
+        const toggleElement = element.querySelector('[data-testid="game-room-info-toggle"]');
+        if (!(toggleElement instanceof HTMLElement)) throw new Error('접힘 상태 펼치기 탭을 찾지 못했습니다.');
+        const headerBox = element.getBoundingClientRect();
+        const toggleBox = toggleElement.getBoundingClientRect();
+        const style = getComputedStyle(toggleElement);
+        return {
+          headerCenter: headerBox.x + headerBox.width / 2,
+          headerBottom: headerBox.y + headerBox.height,
+          toggleCenter: toggleBox.x + toggleBox.width / 2,
+          toggleTop: toggleBox.y,
+          toggleBottom: toggleBox.y + toggleBox.height,
+          toggleText: toggleElement.textContent,
+          toggleColor: style.color,
+          toggleBorderColor: style.borderTopColor,
+          toggleBackgroundImage: style.backgroundImage,
+        };
+      });
+      expect(Math.abs(collapsedLayout.toggleCenter - collapsedLayout.headerCenter), '펼치기 탭은 최상단 패널 하단 중앙에 있어야 합니다.').toBeLessThanOrEqual(1);
+      expect(collapsedLayout.toggleTop, '펼치기 탭 위쪽 절반은 최상단 패널 안쪽에 걸쳐야 합니다.').toBeLessThan(collapsedLayout.headerBottom);
+      expect(collapsedLayout.toggleBottom, '펼치기 탭 아래쪽 절반은 최상단 패널 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(collapsedLayout.headerBottom);
+      expect(collapsedLayout.toggleText).toBe('▼펼치기');
+      expect(collapsedLayout.toggleColor).toBe('rgb(79, 45, 25)');
+      expect(collapsedLayout.toggleBorderColor).toBe('rgb(141, 90, 45)');
+      expect(collapsedLayout.toggleBackgroundImage).toContain('gradient');
+
+      await collapsedToggle.click();
+      await expect(page.getByTestId('players-panel')).toBeVisible();
+      const expandedToggle = page.getByTestId('game-room-info-toggle');
       await expect(expandedToggle).toBeVisible();
       await expect(expandedToggle).toHaveAttribute('aria-expanded', 'true');
       await expect(expandedToggle).toHaveText('▲접기');
-      await expect(playTimer).toBeVisible();
-      await expect(page.getByTestId('owned-items-panel')).toHaveCount(0);
+      await expect(page.getByTestId('game-screen')).toHaveAttribute('data-room-info-collapsed', 'false');
 
       const expandedLayout = await page.locator('.game-shell').evaluate((shell) => {
         const headerElement = shell.querySelector('.hero');
@@ -173,41 +208,9 @@ test.describe('turn-order mobile layout QA', () => {
 
       await expandedToggle.click();
       await expect(page.getByTestId('players-panel')).toHaveCount(0);
-      const collapsedToggle = page.getByTestId('game-room-info-toggle');
-      await expect(collapsedToggle).toBeVisible();
-      await expect(collapsedToggle).toHaveAttribute('aria-expanded', 'false');
-      await expect(collapsedToggle).toHaveText('▼펼치기');
+      await expect(page.getByTestId('game-room-info-toggle')).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByTestId('game-room-info-toggle')).toHaveText('▼펼치기');
       await expect(page.getByTestId('game-screen')).toHaveAttribute('data-room-info-collapsed', 'true');
-      const collapsedLayout = await header.evaluate((element) => {
-        const toggleElement = element.querySelector('[data-testid="game-room-info-toggle"]');
-        if (!(toggleElement instanceof HTMLElement)) throw new Error('접힘 상태 펼치기 탭을 찾지 못했습니다.');
-        const headerBox = element.getBoundingClientRect();
-        const toggleBox = toggleElement.getBoundingClientRect();
-        const style = getComputedStyle(toggleElement);
-        return {
-          headerCenter: headerBox.x + headerBox.width / 2,
-          headerBottom: headerBox.y + headerBox.height,
-          toggleCenter: toggleBox.x + toggleBox.width / 2,
-          toggleTop: toggleBox.y,
-          toggleBottom: toggleBox.y + toggleBox.height,
-          toggleText: toggleElement.textContent,
-          toggleColor: style.color,
-          toggleBorderColor: style.borderTopColor,
-          toggleBackgroundImage: style.backgroundImage,
-        };
-      });
-      expect(Math.abs(collapsedLayout.toggleCenter - collapsedLayout.headerCenter), '펼치기 탭은 최상단 패널 하단 중앙에 있어야 합니다.').toBeLessThanOrEqual(1);
-      expect(collapsedLayout.toggleTop, '펼치기 탭 위쪽 절반은 최상단 패널 안쪽에 걸쳐야 합니다.').toBeLessThan(collapsedLayout.headerBottom);
-      expect(collapsedLayout.toggleBottom, '펼치기 탭 아래쪽 절반은 최상단 패널 테두리 밖으로 돌출되어야 합니다.').toBeGreaterThan(collapsedLayout.headerBottom);
-      expect(collapsedLayout.toggleText).toBe('▼펼치기');
-      expect(collapsedLayout.toggleColor).toBe('rgb(79, 45, 25)');
-      expect(collapsedLayout.toggleBorderColor).toBe('rgb(141, 90, 45)');
-      expect(collapsedLayout.toggleBackgroundImage).toContain('gradient');
-      await collapsedToggle.click();
-      await expect(page.getByTestId('game-room-info-toggle')).toHaveAttribute('aria-expanded', 'true');
-      await expect(page.getByTestId('game-room-info-toggle')).toHaveText('▲접기');
-      await expect(page.getByTestId('players-panel')).toBeVisible();
-      await expect(page.getByTestId('game-screen')).toHaveAttribute('data-room-info-collapsed', 'false');
     });
 
     await runQaStep(testInfo, '모바일 진행 기록 4개 표시 높이 확인', async () => {
