@@ -33,3 +33,19 @@ test('일반 액션 커밋은 room lastActivityAt 추가 쓰기를 만들지 않
   assert.match(service, /ROOM_SUMMARY_HEARTBEAT_INTERVAL_MS = 30_000/);
   assert.match(service, /refreshRoomSummary/);
 });
+
+test('게임 도중 AI 대행 전환은 액션 read set을 늘리지 않고 제어 snapshot만 갱신한다', () => {
+  const service = read('src/features/room/services/roomService.ts');
+  const persistence = read('src/app/hooks/useGameStatePersistence.ts');
+
+  const controlSync = service.slice(
+    service.indexOf('export async function syncGameSeatControlSnapshot'),
+    service.indexOf('export function subscribeGameState'),
+  );
+  assert.match(controlSync, /state', 'current'/);
+  assert.match(controlSync, /gameSeats:/);
+  assert.match(controlSync, /coordinatorSeatId/);
+  assert.match(controlSync, /\{ merge: true \}/);
+  assert.doesNotMatch(controlSync, /runTransaction|transaction\.get/);
+  assert.match(persistence, /syncGameSeatControlSnapshot\(activeRoomId, gameSeats, coordinatorSeatId\)/);
+});
