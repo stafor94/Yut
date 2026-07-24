@@ -1,0 +1,72 @@
+name: Verify Named Firestore
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-named-firestore:
+    name: Verify yut-prod-stafor94 access
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create, read, and delete a probe room
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { initializeApp, deleteApp } from 'firebase/app';
+          import { getAuth, signInAnonymously, signOut } from 'firebase/auth';
+          import {
+            collection,
+            deleteDoc,
+            doc,
+            getDoc,
+            initializeFirestore,
+            serverTimestamp,
+            setDoc,
+          } from 'firebase/firestore';
+
+          const config = JSON.parse(readFileSync('firebase.production.json', 'utf8'));
+          const app = initializeApp(config, `named-firestore-probe-${Date.now()}`);
+          const auth = getAuth(app);
+          const credential = await signInAnonymously(auth);
+          const db = initializeFirestore(app, {}, 'yut-prod-stafor94');
+          const roomId = `ci-named-db-probe-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+          const roomRef = doc(collection(db, 'rooms'), roomId);
+
+          try {
+            await setDoc(roomRef, {
+              hostId: credential.user.uid,
+              status: 'waiting',
+              title: 'CI named database probe',
+              maxPlayers: 2,
+              playMode: 'individual',
+              pieceCount: 1,
+              currentPlayers: 1,
+              createdAt: serverTimestamp(),
+              lastActivityAt: serverTimestamp(),
+            });
+
+            const created = await getDoc(roomRef);
+            if (!created.exists()) throw new Error('Probe room was not readable after creation.');
+
+            await deleteDoc(roomRef);
+            const deleted = await getDoc(roomRef);
+            if (deleted.exists()) throw new Error('Probe room still exists after deletion.');
+
+            console.log(`Verified authenticated create/read/delete on yut-prod-stafor94: ${roomId}`);
+          } finally {
+            await deleteDoc(roomRef).catch(() => undefined);
+            await signOut(auth).catch(() => undefined);
+            await deleteApp(app).catch(() => undefined);
+          }
+          NODE
