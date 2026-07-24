@@ -1,7 +1,7 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react';
 import { requestGameEndDialogOpen } from '../flows/gameEndDialogPresentation';
 import { publishPlayTimePresentation } from '../flows/playTimePresentation';
-import { getRoomInfoCollapsed, resetRoomInfoCollapsed, subscribeRoomInfoPresentation, toggleRoomInfoCollapsed } from '../flows/roomInfoPresentation';
+import { getRoomInfoCollapsed, setRoomInfoCollapsed, subscribeRoomInfoPresentation, toggleRoomInfoCollapsed } from '../flows/roomInfoPresentation';
 import { useLobbyViewportLock } from '../hooks/useLobbyViewportLock';
 
 type AppShellHeaderProps = {
@@ -31,8 +31,8 @@ export function AppShellHeader({ activeRoomId, manualSequenceSyncing, nickname, 
     });
   }, [playTimeText, screen, winner]);
 
-  useEffect(() => {
-    if (screen !== 'game') resetRoomInfoCollapsed();
+  useLayoutEffect(() => {
+    setRoomInfoCollapsed(screen === 'game');
   }, [screen]);
 
   const isLobby = screen === 'lobby';
