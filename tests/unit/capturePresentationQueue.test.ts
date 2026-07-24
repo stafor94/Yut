@@ -12,10 +12,12 @@ const createDeferred = () => {
   return { promise, resolve };
 };
 
-const flushMicrotasks = async () => {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+const waitForCondition = async (predicate: () => boolean, message: string) => {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (predicate()) return;
+    await Promise.resolve();
+  }
+  assert.fail(message);
 };
 
 test('capture presentation waits for movement, blocks following animations, and holds the action lock', async () => {
@@ -49,20 +51,19 @@ test('capture presentation waits for movement, blocks following animations, and 
     order.push('following-move');
   });
 
-  await flushMicrotasks();
+  await waitForCondition(() => order.length >= 1, 'movement task did not start');
   assert.deepEqual(order, ['move-start']);
   assert.equal(lock.isLocked(), true);
 
   movementGate.resolve();
-  await flushMicrotasks();
+  await waitForCondition(() => order.length >= 4, 'capture task did not start after movement');
   assert.deepEqual(order, ['move-start', 'move-end', 'capture-start', 'capture-hold']);
   assert.equal(lock.isLocked(), true);
 
   captureGate.resolve();
   await Promise.all([movement, capture, following]);
   assert.deepEqual(order, ['move-start', 'move-end', 'capture-start', 'capture-hold', 'capture-end', 'following-move']);
-  await flushMicrotasks();
-  assert.equal(lock.isLocked(), false);
+  await waitForCondition(() => !lock.isLocked(), 'capture presentation lock did not release');
 });
 
 test('a capture task can cancel before presentation without waiting for its duration', async () => {
@@ -82,6 +83,5 @@ test('a capture task can cancel before presentation without waiting for its dura
   });
 
   assert.equal(waitCount, 0);
-  await flushMicrotasks();
-  assert.equal(lock.isLocked(), false);
+  await waitForCondition(() => !lock.isLocked(), 'cancelled capture presentation lock did not release');
 });
