@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   saveGameState,
-  syncGameSeatControlSnapshot,
   type GameAction,
   type GameSequenceType,
 } from '../../features/room/services/roomService';
@@ -36,8 +35,6 @@ export function useGameStatePersistence({
   const pendingSequenceMetaRef = useRef<PendingSequenceMeta | null>(null);
   const lastSavedStateFingerprintRef = useRef('');
   const savingStateFingerprintRef = useRef('');
-  const queuedGameSeatControlFingerprintRef = useRef('');
-  const gameSeatControlSyncQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const coordinatorSaveRetryRef = useRef<{ roomId: string; fingerprint: string; count: number; timer: number }>({ roomId: '', fingerprint: '', count: 0, timer: 0 });
 
   syncPendingStackedBonusRoll({
@@ -55,26 +52,8 @@ export function useGameStatePersistence({
     if (!activeRoomId || coordinatorSaveRetryRef.current.roomId !== activeRoomId) {
       if (coordinatorSaveRetryRef.current.timer) window.clearTimeout(coordinatorSaveRetryRef.current.timer);
       coordinatorSaveRetryRef.current = { roomId: activeRoomId ?? '', fingerprint: '', count: 0, timer: 0 };
-      queuedGameSeatControlFingerprintRef.current = '';
     }
   }, [activeRoomId]);
-
-  useEffect(() => {
-    if (!activeRoomId || screen !== 'game' || !canCoordinateOnlineGame || !Array.isArray(gameSeats)) return;
-    const coordinatorSeatId = gameSeats.find((seat) => !seat.isAI)?.id ?? '';
-    if (!coordinatorSeatId) return;
-    const fingerprint = JSON.stringify({ roomId: activeRoomId, coordinatorSeatId, gameSeats });
-    if (queuedGameSeatControlFingerprintRef.current === fingerprint) return;
-    queuedGameSeatControlFingerprintRef.current = fingerprint;
-    gameSeatControlSyncQueueRef.current = gameSeatControlSyncQueueRef.current
-      .catch(() => undefined)
-      .then(() => syncGameSeatControlSnapshot(activeRoomId, gameSeats, coordinatorSeatId))
-      .catch(() => {
-        if (queuedGameSeatControlFingerprintRef.current === fingerprint) {
-          queuedGameSeatControlFingerprintRef.current = '';
-        }
-      });
-  }, [activeRoomId, canCoordinateOnlineGame, gameSeats, screen]);
 
   useEffect(() => {
     if (!activeRoomId || screen !== 'game' || !canCoordinateOnlineGame || applyingSyncedStateRef.current) return;

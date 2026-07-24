@@ -26,7 +26,7 @@ export type GameSeatSnapshot = { id: string; label: string; name: string; color:
 export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollStack?: unknown[]; selectedRollStackIndex?: number | null; rollStackClosed?: boolean; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; fallEffect?: unknown | null; lastRollTimingZone?: unknown | null; pendingGoldenYutSelection?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; pendingItemPickup?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; pendingAfterMoveTurnIndex?: number; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; turnDeadlineAt?: number; turnDeadlineKind?: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | ''; turnActionTimeoutCountBySeatId?: Record<string, number>; playMode?: 'individual' | 'team'; itemMode?: boolean; stackedRollMode?: boolean; pieceCount?: 1 | 2 | 3 | 4; startRequestVersion?: number; startRequestId?: string; coordinatorSeatId?: string; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt'>>;
 export interface GameAction { id: string; type: 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
-export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'item_pickup_decided' | 'game_finished';
+export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_updated' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'item_pickup_decided' | 'game_finished';
 export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; schemaVersion?: 1 | 2; eventSchemaVersion?: number; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; patch?: GameStatePatch | null; logEntries?: unknown[]; stateBefore?: SyncedGameState | null; stateAfter?: Omit<SyncedGameState, 'updatedAt'>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
 export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; clientMutationId?: string; clientCreatedAt?: number; expectedPreviousSequence?: number };
 export type TurnOrderSubmissionRecord = {
@@ -772,8 +772,33 @@ export async function updateTurnOrderState(roomId: string, patcher: (state: Sync
     const patch = patcher(currentState);
     if (!patch) return null;
     const currentVersion = Number(currentState?.turnVersion ?? 0);
+    const currentSequence = Number(currentState?.lastSequence ?? 0);
     const nextVersion = currentVersion + 1;
-    transaction.set(gameStateRef, { ...makeFirestoreStateData(patch), updatedAt: serverTimestamp(), turnVersion: nextVersion }, { merge: true });
+    const nextSequence = currentSequence + 1;
+    const stateAfter = {
+      ...(currentState ?? {}),
+      ...patch,
+      turnVersion: nextVersion,
+      lastSequence: nextSequence,
+    };
+    const actorId = auth?.currentUser?.uid ?? currentState?.coordinatorSeatId ?? 'system';
+    const sequenceRef = doc(db!, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
+    transaction.set(sequenceRef, {
+      sequence: nextSequence,
+      type: 'turn_order_updated',
+      actorId,
+      payload: sanitizeForFirestore({ event: 'turn_order_state_updated' }) as Record<string, unknown>,
+      ...makeSequenceEventFields({ stateBefore: currentState, stateAfter, patch }),
+      expectedPreviousSequence: currentSequence,
+      clientCreatedAt: Date.now(),
+      createdAt: serverTimestamp(),
+    });
+    transaction.set(gameStateRef, {
+      ...makeFirestoreStateData(patch),
+      updatedAt: serverTimestamp(),
+      turnVersion: nextVersion,
+      lastSequence: nextSequence,
+    }, { merge: true });
     return nextVersion;
   });
 }

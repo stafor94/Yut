@@ -43,3 +43,16 @@ test('state checkpoint 로그는 최근 200개로 제한한다', () => {
   assert.match(core, /MAX_CHECKPOINT_LOGS = 200/);
   assert.match(core, /state\.logs\.slice\(0, MAX_CHECKPOINT_LOGS\)/);
 });
+
+test('순서 정하기 상태 전환은 checkpoint와 sequence를 같은 트랜잭션에 기록한다', () => {
+  const core = read('src/features/room/services/roomServiceCore.ts');
+  const updateTurnOrderState = core.slice(
+    core.indexOf('export async function updateTurnOrderState'),
+    core.indexOf('export async function submitTurnOrderSubmission'),
+  );
+
+  assert.match(updateTurnOrderState, /makeSequenceDocId\(nextSequence\)/);
+  assert.match(updateTurnOrderState, /type: 'turn_order_updated'/);
+  assert.match(updateTurnOrderState, /transaction\.set\(sequenceRef/);
+  assert.match(updateTurnOrderState, /lastSequence: nextSequence/);
+});

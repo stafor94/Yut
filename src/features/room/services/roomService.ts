@@ -29,14 +29,12 @@ import {
   updateRoomStatus as updateRoomStatusCore,
   type CommitAuthoritativeGameActionResult,
   type GameAction,
-  type GameSeatSnapshot,
   type GameSequence,
   type JoinRoomResult,
   type RoomPlayer,
   type RoomSummary,
   type SyncedGameState,
 } from './roomServiceCore';
-import { sanitizeForFirestore } from './roomFirestore';
 import { settleAuthoritativeCommit } from './authoritativeCommitTimeout';
 import {
   resolveFallPresentationCompletionLocally,
@@ -87,20 +85,6 @@ export { withGameSequenceReplayCache } from './roomSequenceReplayCache';
 const RECENT_GAME_SEQUENCE_CACHE_LIMIT = 8;
 const ROOM_SUMMARY_HEARTBEAT_INTERVAL_MS = 30_000;
 const roomSummaryHeartbeatAtByRoomId = new Map<string, number>();
-
-export async function syncGameSeatControlSnapshot(
-  roomId: string,
-  gameSeats: GameSeatSnapshot[],
-  coordinatorSeatId: string,
-) {
-  if (!db || !roomId || !coordinatorSeatId || !gameSeats.some((seat) => seat.id === coordinatorSeatId)) return false;
-  await setDoc(doc(db, 'rooms', roomId, 'state', 'current'), {
-    gameSeats: sanitizeForFirestore(gameSeats),
-    coordinatorSeatId,
-    gameSeatControlUpdatedAt: serverTimestamp(),
-  }, { merge: true });
-  return true;
-}
 
 export function subscribeGameState(roomId: string, callback: (state: SyncedGameState | null) => void): Unsubscribe {
   if (!db) return subscribeGameStateCore(roomId, callback);
