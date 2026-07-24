@@ -4,6 +4,7 @@ import type { PlayMode, Team } from '../appTypes';
 export type TurnOrderResultName = Exclude<YutResultName, '황금 윷'> | '낙';
 export type TurnOrderSubmissionSource = 'manual' | 'auto';
 export type TurnOrderSubmission = {
+  submissionId?: string;
   seatId: string;
   roundId: string;
   resultName: TurnOrderResultName;
@@ -125,6 +126,7 @@ export function shuffleSeatsForGame<TSeat extends TurnOrderSeat>(targetSeats: TS
 
 const makeRoundId = (sessionId: string, index: number) => `${sessionId}:round:${index}`;
 const makeBracketId = (roundIndex: number, rankStart: number, seatIds: string[]) => `r${roundIndex}:rank${rankStart}:${seatIds.join('-')}`;
+export const makeTurnOrderSubmissionId = (roundId: string, seatId: string) => `${roundId}:${seatId}`;
 
 export function createTurnOrderRound(params: {
   sessionId: string;
@@ -313,6 +315,17 @@ export const aggregateTurnOrderRound = (intro: TurnOrderIntro, now = Date.now())
     gameStartAt,
     readyAt: gameStartAt,
   };
+};
+
+export const submitAndMaybeAggregateTurnOrderRound = (
+  intro: TurnOrderIntro,
+  submissions: TurnOrderSubmission | TurnOrderSubmission[],
+  now = Date.now(),
+): TurnOrderIntro => {
+  const activeIntro = activateNextTurnOrderRound(intro, now);
+  const next = (Array.isArray(submissions) ? submissions : [submissions])
+    .reduce((current, submission) => submitTurnOrderResult(current, submission, now), activeIntro);
+  return canAggregateTurnOrderRound(next, now) ? aggregateTurnOrderRound(next, now) : next;
 };
 
 export const isTurnOrderFinalized = (intro: TurnOrderIntro) => Boolean(

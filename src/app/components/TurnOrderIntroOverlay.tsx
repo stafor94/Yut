@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { updateTurnOrderState } from '../../features/room/services/roomService';
+import {
+  updateTurnOrderState,
+  type GameStatePatch,
+  type SyncedGameState,
+} from '../../features/room/services/roomService';
 import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
 import { getDeadlineTimerAnimationState } from '../../features/room/services/turnDeadlinePolicy';
 import {
@@ -20,7 +24,8 @@ import {
   formatTurnOrderSummary,
   getTurnOrderScore,
   isTurnOrderFinalized,
-  submitTurnOrderResult,
+  makeTurnOrderSubmissionId,
+  submitAndMaybeAggregateTurnOrderRound,
 } from '../flows/turnOrderFlow';
 import { RollStage } from '../containers/RollStage';
 import { RollTimingControl } from './RollTimingControl';
@@ -28,6 +33,7 @@ import { RollTimingControl } from './RollTimingControl';
 type TurnOrderIntroOverlayProps = {
   activeTurnOrderIntro: TurnOrderIntro | null;
   localSeatId: string;
+  onlineGameCoordinatorSeatId: string;
   turnOrderClock: number;
   finalHoldMs: number;
 };
@@ -40,6 +46,8 @@ type QaTurnOrderWindow = Window & {
 type QaResultQueue = 'local' | 'ai' | 'none';
 
 const AUTO_ROLL_FALLBACK_DELAY_MS = 500;
+const SUBMISSION_MAX_ATTEMPTS = 2;
+const SUBMISSION_RETRY_DELAY_MS = 250;
 const SCORE_LABELS: Record<TurnOrderResultName, string> = {
   모: '5',
   윷: '4',
@@ -83,6 +91,7 @@ const createTurnOrderSubmission = (params: {
       : 0;
   const resultName = (fallCount > 0 ? '낙' : rolled.result.name) as TurnOrderResultName;
   return {
+    submissionId: makeTurnOrderSubmissionId(params.roundId, params.seatId),
     seatId: params.seatId,
     roundId: params.roundId,
     resultName,
@@ -97,9 +106,35 @@ const createTurnOrderSubmission = (params: {
 
 const getRemainingSeconds = (targetAt: number, now: number) => Math.max(0, Math.ceil((targetAt - now) / 1000));
 
-export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnOrderClock }: TurnOrderIntroOverlayProps) {
+const makeTurnOrderStatePatch = (state: SyncedGameState, next: TurnOrderIntro): GameStatePatch => {
+  if (!isTurnOrderFinalized(next)) return { turnOrderIntro: next };
+  const entryById = new Map(next.order.map((entry) => [entry.seatId, entry]));
+  const orderedEntries = (next.finalTurnOrderIds ?? [])
+    .map((seatId) => entryById.get(seatId))
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  const currentLogs = Array.isArray(state.logs) ? state.logs as Array<{ id?: number; text?: string }> : [];
+  const maxLogId = currentLogs.reduce((max, log) => Math.max(max, Number(log.id ?? 0)), 0);
+  const summary = formatTurnOrderSummary(
+    orderedEntries.map((entry) => ({ id: entry.seatId, label: entry.label, name: entry.name, color: entry.color, team: entry.team, isAI: entry.isAI })),
+    (entry) => entry.name || entry.label,
+  );
+  const logs = [{ id: maxLogId + 1, text: summary }, ...currentLogs.filter((log) => typeof log.text !== 'string' || !log.text.startsWith('순서:'))];
+  return {
+    turnOrderIntro: next,
+    turnOrderIds: next.finalTurnOrderIds,
+    initialTurnOrderIds: next.finalTurnOrderIds,
+    gameStartedAt: next.gameStartAt,
+    turnDeadlineAt: Number(next.gameStartAt ?? 0) + TURN_ACTION_TIMEOUT_MS,
+    turnDeadlineKind: 'roll',
+    waitingForPlayersReady: false,
+    logs,
+  };
+};
+
+export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlineGameCoordinatorSeatId, turnOrderClock }: TurnOrderIntroOverlayProps) {
   const [clock, setClock] = useState(() => Date.now());
   const [localSubmission, setLocalSubmission] = useState<TurnOrderSubmission | null>(null);
+  const [localSubmissionStatus, setLocalSubmissionStatus] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>('idle');
   const [localRollAnimation, setLocalRollAnimation] = useState<RollAnimation | null>(null);
   const submittedRoundIdRef = useRef('');
   const aiSubmittingRoundIdRef = useRef('');
@@ -132,9 +167,8 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   }, [round?.deadlineAt, round?.startAt, roundTimerStarted]);
   const isLocalEligible = Boolean(round?.eligibleSeatIds.includes(localSeatId));
   const storedLocalSubmission = round?.submissions.find((submission) => submission.seatId === localSeatId) ?? null;
-  const visibleLocalSubmission = localSubmission?.roundId === roundId ? localSubmission : storedLocalSubmission;
-  const coordinatorSeatId = intro?.order.find((entry) => !entry.isAI)?.seatId ?? intro?.order[0]?.seatId ?? '';
-  const isCoordinator = Boolean(localSeatId && localSeatId === coordinatorSeatId);
+  const visibleLocalSubmission = localSubmissionStatus !== 'failed' && localSubmission?.roundId === roundId ? localSubmission : storedLocalSubmission;
+  const isCoordinator = Boolean(localSeatId && localSeatId === onlineGameCoordinatorSeatId);
   const isPreparing = Boolean(round && now < round.startAt);
   const isCollecting = Boolean(round && round.status === 'collecting' && now >= round.startAt && now < round.deadlineAt);
   const revealAt = Number(round?.revealAt ?? 0);
@@ -142,10 +176,17 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const finalOrderVisible = Boolean(intro?.finalOrderAt && intro?.gameStartAt && now >= intro.finalOrderAt && now < intro.gameStartAt);
 
   useEffect(() => {
+    if (storedLocalSubmission) {
+      setLocalSubmission(storedLocalSubmission);
+      setLocalSubmissionStatus('confirmed');
+      submittedRoundIdRef.current = roundId;
+      return;
+    }
     if (localSubmission?.roundId === roundId) return;
     setLocalSubmission(storedLocalSubmission);
+    setLocalSubmissionStatus('idle');
     setLocalRollAnimation(null);
-    submittedRoundIdRef.current = storedLocalSubmission ? roundId : '';
+    submittedRoundIdRef.current = '';
   }, [localSubmission?.roundId, roundId, storedLocalSubmission]);
 
   useEffect(() => {
@@ -178,6 +219,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     submittedRoundIdRef.current = round.id;
     const submission = createTurnOrderSubmission({ seatId: localSeatId, roundId: round.id, timingZone: zone, source });
     setLocalSubmission(submission);
+    setLocalSubmissionStatus('pending');
     setLocalRollAnimation({
       id: submission.submittedAt,
       phase: 'resolved',
@@ -188,16 +230,32 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
       timingZone: submission.timingZone,
     });
     playStoredSoundEffect('roll');
-    void updateTurnOrderState(intro.roomId, (state) => {
-      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
-      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
-      const next = submitTurnOrderResult(current, submission, Date.now());
-      const currentSubmissionCount = current.currentRound.submissions.length;
-      if (next.currentRound.id === current.currentRound.id && next.currentRound.submissions.length === currentSubmissionCount) return null;
-      return { turnOrderIntro: next };
-    }).catch(() => {
+    void (async () => {
+      for (let attempt = 1; attempt <= SUBMISSION_MAX_ATTEMPTS; attempt += 1) {
+        try {
+          let authoritativeSubmissionSeen = false;
+          const committedVersion = await updateTurnOrderState(intro.roomId, (state) => {
+            const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
+            if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
+            authoritativeSubmissionSeen = current.currentRound.submissions.some((entry) => entry.seatId === submission.seatId);
+            const next = submitAndMaybeAggregateTurnOrderRound(current, submission, Date.now());
+            return next === current ? null : makeTurnOrderStatePatch(state, next);
+          });
+          if (committedVersion === null && !authoritativeSubmissionSeen) throw new Error('순서 정하기 제출이 authoritative 상태에 반영되지 않았습니다.');
+          if (submittedRoundIdRef.current === submission.roundId) setLocalSubmissionStatus('confirmed');
+          return;
+        } catch {
+          if (attempt < SUBMISSION_MAX_ATTEMPTS) {
+            await new Promise((resolve) => window.setTimeout(resolve, SUBMISSION_RETRY_DELAY_MS));
+          }
+        }
+      }
+      if (submittedRoundIdRef.current !== submission.roundId) return;
       submittedRoundIdRef.current = '';
-    });
+      setLocalSubmissionStatus('failed');
+      setLocalSubmission(null);
+      setLocalRollAnimation(null);
+    })();
   }, [intro, isLocalEligible, localSeatId, round, visibleLocalSubmission]);
 
   const handleManualRoll = useCallback((timingPositionPercent?: number) => {
@@ -229,16 +287,13 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     void updateTurnOrderState(intro.roomId, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
       const transactionNow = Math.max(Date.now(), submissionNow);
-      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
+      if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
       const activated = activateNextTurnOrderRound(current, transactionNow);
       if (activated.currentRound.status !== 'collecting' || transactionNow < activated.currentRound.startAt) return null;
       const currentAiSeatIds = new Set(activated.order.filter((entry) => entry.isAI).map((entry) => entry.seatId));
-      let next = activated;
-      aiSubmissions.forEach((submission) => {
-        if (!currentAiSeatIds.has(submission.seatId) || next.currentRound.submissions.some((entry) => entry.seatId === submission.seatId)) return;
-        next = submitTurnOrderResult(next, submission, transactionNow);
-      });
-      return next.currentRound.submissions.length === activated.currentRound.submissions.length ? null : { turnOrderIntro: next };
+      const eligibleSubmissions = aiSubmissions.filter((submission) => currentAiSeatIds.has(submission.seatId));
+      const next = submitAndMaybeAggregateTurnOrderRound(activated, eligibleSubmissions, transactionNow);
+      return next === current ? null : makeTurnOrderStatePatch(state, next);
     }).catch(() => {
       if (aiSubmittingRoundIdRef.current === round.id) aiSubmittingRoundIdRef.current = '';
     });
@@ -263,52 +318,29 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     void updateTurnOrderState(intro.roomId, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
       const transactionNow = Math.max(Date.now(), submissionNow);
-      if (!current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
+      if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
       const activated = activateNextTurnOrderRound(current, transactionNow);
       if (activated.currentRound.status !== 'collecting' || transactionNow < activated.currentRound.deadlineAt) return null;
-      let next = activated;
-      fallbackSubmissions.forEach((submission) => {
-        if (next.currentRound.submissions.some((entry) => entry.seatId === submission.seatId)) return;
-        next = submitTurnOrderResult(next, submission, transactionNow);
-      });
-      return next.currentRound.submissions.length === activated.currentRound.submissions.length ? null : { turnOrderIntro: next };
+      const next = submitAndMaybeAggregateTurnOrderRound(activated, fallbackSubmissions, transactionNow);
+      return next === current ? null : makeTurnOrderStatePatch(state, next);
     }).catch(() => {
       if (fallbackRoundIdRef.current === round.id) fallbackRoundIdRef.current = '';
     });
   }, [intro, isCoordinator, now, round]);
 
   useEffect(() => {
-    if (!intro || !round || !canAggregateTurnOrderRound(intro, now) || aggregatingRoundIdRef.current === round.id) return;
+    if (!intro || !round || !isCoordinator || !canAggregateTurnOrderRound(intro, now) || aggregatingRoundIdRef.current === round.id) return;
     aggregatingRoundIdRef.current = round.id;
     void updateTurnOrderState(intro.roomId, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
       const transactionNow = Date.now();
       if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId || !canAggregateTurnOrderRound(current, transactionNow)) return null;
       const next = aggregateTurnOrderRound(current, transactionNow);
-      if (!isTurnOrderFinalized(next)) return { turnOrderIntro: next };
-      const entryById = new Map(next.order.map((entry) => [entry.seatId, entry]));
-      const orderedEntries = (next.finalTurnOrderIds ?? []).map((seatId) => entryById.get(seatId)).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-      const currentLogs = Array.isArray(state.logs) ? state.logs as Array<{ id?: number; text?: string }> : [];
-      const maxLogId = currentLogs.reduce((max, log) => Math.max(max, Number(log.id ?? 0)), 0);
-      const summary = formatTurnOrderSummary(
-        orderedEntries.map((entry) => ({ id: entry.seatId, label: entry.label, name: entry.name, color: entry.color, team: entry.team, isAI: entry.isAI })),
-        (entry) => entry.name || entry.label,
-      );
-      const logs = [{ id: maxLogId + 1, text: summary }, ...currentLogs.filter((log) => typeof log.text !== 'string' || !log.text.startsWith('순서:'))];
-      return {
-        turnOrderIntro: next,
-        turnOrderIds: next.finalTurnOrderIds,
-        initialTurnOrderIds: next.finalTurnOrderIds,
-        gameStartedAt: next.gameStartAt,
-        turnDeadlineAt: Number(next.gameStartAt ?? 0) + TURN_ACTION_TIMEOUT_MS,
-        turnDeadlineKind: 'roll',
-        waitingForPlayersReady: false,
-        logs,
-      };
+      return makeTurnOrderStatePatch(state, next);
     }).catch(() => {
       if (aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
     });
-  }, [intro, now, round]);
+  }, [intro, isCoordinator, now, round]);
 
   useEffect(() => {
     if (!intro || !isTurnOrderFinalized(intro) || !intro.finalOrderAt || now < intro.finalOrderAt) return;

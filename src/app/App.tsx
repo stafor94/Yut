@@ -4365,6 +4365,7 @@ export function App() {
       highlightedNodeId={highlightedNodeId}
       isMyTurn={isMyTurn}
       localSeatId={localSeatId}
+      onlineGameCoordinatorSeatId={onlineGameCoordinatorSeatId}
       logs={visibleLogs}
       movingPieceId={movingPieceId}
       ownedItems={ownedItems}
