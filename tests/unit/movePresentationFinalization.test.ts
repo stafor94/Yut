@@ -5,6 +5,7 @@ import {
   createMovePresentationSession,
   getMovePresentationFinalization,
   type MovePresentationPiece,
+  type MovePresentationSession,
 } from '../../src/app/flows/movePresentation.js';
 
 type TestPiece = MovePresentationPiece & { ownerId: string };
@@ -18,8 +19,9 @@ const piece = (id: string, ownerId: string, nodeId: string, started = true): Tes
 });
 
 const finalizeMove = (initial: TestPiece[], movingPieceId: string, frames: TestPiece[][], settled: TestPiece[]) => {
-  let session = createMovePresentationSession(initial, movingPieceId, sideKey);
-  assert.ok(session);
+  const initialSession = createMovePresentationSession(initial, movingPieceId, sideKey);
+  assert.ok(initialSession);
+  let session: MovePresentationSession<TestPiece> = initialSession;
   for (const frame of frames) {
     const accepted = acceptMovePresentationFrame(session, frame);
     assert.equal(accepted.accepted, true);
