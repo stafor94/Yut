@@ -58,6 +58,7 @@ export type PlayerRoomMembership = {
 };
 
 const ROOM_LIFETIME_CLEANUP_LIMIT = 24;
+const ROOM_DELETION_CLAIM_STALE_MS = 5 * 60 * 1000;
 const roomDeletionInFlight = new Set<string>();
 
 export const countActivePlayers = (players: RoomPlayer[]) => players.filter((player) => !player.isSpectator).length;
@@ -123,7 +124,8 @@ async function claimRoomDeletion(roomId: string, guard: RoomDeletionGuard = {}) 
     if (guard.expectedEmptySince !== undefined && getRoomEmptySinceMillis(room) !== guard.expectedEmptySince) return false;
     if (guard.expectedStatus !== undefined && room.status !== guard.expectedStatus) return false;
     if (guard.expectedLifetimeStartedAt !== undefined && getRoomLifetimeStartedAtMillis(room) !== guard.expectedLifetimeStartedAt) return false;
-    if (room.status === 'finished' || room.deletingAt) return true;
+    const deletingAt = getRoomTimestampMillis(room.deletingAt);
+    if (deletingAt && Date.now() - deletingAt < ROOM_DELETION_CLAIM_STALE_MS) return false;
     transaction.set(roomRef, { status: 'finished', deletingAt: serverTimestamp(), lastActivityAt: serverTimestamp() }, { merge: true });
     return true;
   });
