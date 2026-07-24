@@ -16,6 +16,7 @@ import {
 import {
   ROOM_LIST_CANDIDATE_LIMIT,
   getRoomLastActivityMillis,
+  isRoomLifetimeExpired,
   isRoomSummaryInactive,
 } from './roomLifecyclePolicy';
 import { cleanupExpiredRoomLifetimes } from './roomLifecycleStore';
@@ -33,7 +34,7 @@ const roomsFromSnapshots = (...snapshots: RoomListSnapshot[]) => {
   }));
   return [...roomsById.values()]
     .filter((room) => room.status === 'waiting' || room.status === 'playing')
-    .filter((room) => !isRoomSummaryInactive(room))
+    .filter((room) => !isRoomSummaryInactive(room) && !isRoomLifetimeExpired(room))
     .sort((left, right) => getRoomLastActivityMillis(right) - getRoomLastActivityMillis(left))
     .slice(0, ROOM_LIST_CANDIDATE_LIMIT);
 };
