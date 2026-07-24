@@ -173,7 +173,7 @@ test('일반 턴 종료는 다음 플레이어 deadline에 앞뒤 1초 버퍼를
   ));
 
   assert.equal(result.status, 'committed');
-  if (result.status !== 'committed') return;
+  if (result.status !== 'committed' || !result.patch) return;
   assert.equal(result.patch.turnIndex, 1);
   assert.equal(result.patch.turnDeadlineKind, 'roll');
   assert.equal(result.patch.turnDeadlineAt, now + TURN_ACTION_TIMEOUT_MS + TURN_TRANSITION_DELAY_MS);
