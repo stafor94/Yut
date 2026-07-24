@@ -7,7 +7,8 @@ test.describe('완주 한 칸 이동 애니메이션 회귀', () => {
     const engineSource = readFileSync('src/game-core/gameEngineCore.ts', 'utf8');
     const appSource = readFileSync('src/app/App.tsx', 'utf8');
 
-    expect(boardSource).toMatch(/if \(nextNodeId === 'n01'\) \{[\s\S]*?step \+ 1 < forwardSteps[\s\S]*?pathNodeIds\.push\(FINISH_NODE_ID\)/);
+    expect(boardSource).toMatch(/const pathNodeIds = getMovePathNodeIds\(startNodeId, steps, branchChoice\);[\s\S]*?pathNodeIds\[pathNodeIds\.length - 1\] === 'n01'[\s\S]*?pathNodeIds\.length < steps[\s\S]*?\[\.\.\.pathNodeIds, FINISH_NODE_ID\]/);
+    expect(boardSource).toMatch(/const forward = getMovePathNodeIds\(nodeId, range\)/);
     expect(engineSource).toMatch(/pathNodeIds:\s*movePathNodeIds/);
     expect(appSource).toMatch(/const pathNodeIds = Array\.isArray\(payload\.pathNodeIds\)[\s\S]*?for \(const nextNodeId of pathNodeIds\)/);
     expect(appSource).toMatch(/started: nextNodeId !== 'finish', finished: nextNodeId === 'finish'/);
