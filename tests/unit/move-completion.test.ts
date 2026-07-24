@@ -39,7 +39,7 @@ test('출발점에 도착해 있던 말의 다음 양수 이동은 즉시 완주
   assert.deepEqual(getMovePathNodeIdsWithPrevious('n01', 1, 'outer', 'n20'), [FINISH_NODE_ID]);
 });
 
-test('서버 이동 payload는 완주 뒤 말판 칸을 전달하지 않는다', () => {
+test('서버 이동 payload는 마지막 말판 칸 뒤에 finish 단계를 전달한다', () => {
   const result = reduceMoveCommand({
     state: makeState(),
     actorId: 'seat-1',
@@ -52,7 +52,7 @@ test('서버 이동 payload는 완주 뒤 말판 칸을 전달하지 않는다',
   });
 
   if (!result.ok) assert.fail(result.message);
-  assert.deepEqual(result.payload.pathNodeIds, ['n20', 'n01']);
+  assert.deepEqual(result.payload.pathNodeIds, ['n20', 'n01', FINISH_NODE_ID]);
   const movedPiece = (result.patch.pieces as EngineState['pieces']).find((piece) => piece.id === 'p1');
   assert.equal(movedPiece?.nodeId, FINISH_NODE_ID);
   assert.equal(movedPiece?.finished, true);
