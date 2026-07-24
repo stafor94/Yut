@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   AI_TURN_READY_BOUNDARY_BUFFER_MS,
@@ -101,4 +102,11 @@ test('AI 예약 지연 live binding은 유효한 값만 반영하고 잘못된 �
   assert.equal(TURN_DELAY_MS, 2_081);
   setScheduledAiTurnDelayMs(Number.NaN);
   assert.equal(TURN_DELAY_MS, DEFAULT_TURN_DELAY_MS);
+});
+
+test('계산된 지연은 실제 AI effect의 TURN_DELAY_MS 예약 경로에 연결된다', () => {
+  const appSource = readFileSync('src/app/App.tsx', 'utf8');
+  const syncHookSource = readFileSync('src/app/hooks/useGameSync.ts', 'utf8');
+  assert.match(appSource, /window\.setTimeout\(\(\) => \{[\s\S]*?autoPlayTurn\(activeSeat, actionKey\);[\s\S]*?\}, TURN_DELAY_MS\);/);
+  assert.match(syncHookSource, /setScheduledAiTurnDelayMs\(getAiTurnScheduleDelayFromDiagnosticState\(diagnosticState, DEFAULT_TURN_DELAY_MS\)\)/);
 });
