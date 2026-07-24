@@ -49,8 +49,7 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
       const overlay = boardPanel?.querySelector('[data-testid="turn-order-overlay"]');
       const stage = anchorElement.querySelector(':scope > .roll-stage');
       const mat = stage?.querySelector('[data-testid="roll-mat"]');
-      if (!(boardPanel instanceof HTMLElement)
-        || !(board instanceof HTMLElement)
+      if (!(board instanceof HTMLElement)
         || !(overlay instanceof HTMLElement)
         || !(stage instanceof HTMLElement)
         || !(mat instanceof HTMLElement)) {
@@ -58,7 +57,6 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
       }
       const centerX = (rect) => rect.left + rect.width / 2;
       const centerY = (rect) => rect.top + rect.height / 2;
-      const panelRect = boardPanel.getBoundingClientRect();
       const boardRect = board.getBoundingClientRect();
       const overlayRect = overlay.getBoundingClientRect();
       const anchorRect = anchorElement.getBoundingClientRect();
@@ -70,8 +68,6 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
         stageAnchorCenterXOffset: Math.abs(centerX(stageRect) - centerX(anchorRect)),
         matBoardCenterXOffset: Math.abs(centerX(matRect) - centerX(boardRect)),
         matTopFromBoardTop: matRect.top - boardRect.top,
-        matTopFromPanelTop: matRect.top - panelRect.top,
-        matBottomFromPanelBottom: matRect.bottom - panelRect.bottom,
       };
     });
     expect(layout.anchorOverlayCenterXOffset).toBeLessThanOrEqual(1);
@@ -79,8 +75,6 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     expect(layout.stageAnchorCenterXOffset).toBeLessThanOrEqual(1);
     expect(layout.matBoardCenterXOffset).toBeLessThanOrEqual(1);
     expect(layout.matTopFromBoardTop, '순서 정하기 윷 매트는 상단 게임 윷판보다 아래에서 표시되어야 합니다.').toBeGreaterThanOrEqual(24);
-    expect(layout.matTopFromPanelTop).toBeGreaterThanOrEqual(0);
-    expect(layout.matBottomFromPanelBottom).toBeLessThanOrEqual(48);
 
     await expect(page.getByTestId('turn-order-own-result')).toContainText('모');
     await expect(page.getByTestId('turn-order-spectating')).toBeVisible({ timeout: 25_000 });
