@@ -39,16 +39,21 @@ function makeState(nodeId: string, nodeIndex: number, steps: number): EngineStat
   };
 }
 
-test('완주에 필요한 남은 칸이 있으면 n01 뒤에 finish 단계를 포함한다', () => {
-  assert.deepEqual(getMovePathNodeIds('n19', 3), ['n20', 'n01', FINISH_NODE_ID]);
-  assert.deepEqual(getMovePathNodeIds('n20', 2), ['n01', FINISH_NODE_ID]);
-  assert.deepEqual(getMovePathNodeIds('d04', 2), ['n01', FINISH_NODE_ID]);
+test('완주에 필요한 남은 칸이 있으면 실제 이동 경로에 n01 뒤 finish 단계를 포함한다', () => {
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('n19', 3), ['n20', 'n01', FINISH_NODE_ID]);
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('n20', 2), ['n01', FINISH_NODE_ID]);
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('d04', 2), ['n01', FINISH_NODE_ID]);
 });
 
 test('n01에 정확히 도착한 이동은 finish를 추가하지 않는다', () => {
-  assert.deepEqual(getMovePathNodeIds('n19', 2), ['n20', 'n01']);
-  assert.deepEqual(getMovePathNodeIds('n20', 1), ['n01']);
-  assert.deepEqual(getMovePathNodeIds('d04', 1), ['n01']);
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('n19', 2), ['n20', 'n01']);
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('n20', 1), ['n01']);
+  assert.deepEqual(getMovePathNodeIdsWithPrevious('d04', 1), ['n01']);
+});
+
+test('말판 주변 탐색용 기본 경로에는 가상 finish 노드를 섞지 않는다', () => {
+  assert.deepEqual(getMovePathNodeIds('n19', 3), ['n20', 'n01']);
+  assert.deepEqual(getMovePathNodeIds('d04', 2), ['n01']);
 });
 
 test('한 바퀴를 돈 말이 n01에서 전진하면 finish로 이동한다', () => {
