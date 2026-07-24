@@ -81,8 +81,9 @@ export function getMovePathNodeIds(startNodeId: string, steps: number, branchCho
   const pathNodeIds: string[] = [];
   let currentNodeId = startNodeId;
   let activeRoute: string[] | null = null;
+  const forwardSteps = Math.max(0, steps);
 
-  for (let step = 0; step < Math.max(0, steps); step += 1) {
+  for (let step = 0; step < forwardSteps; step += 1) {
     if (!activeRoute) {
       if (branchChoice === 'shortcut' && SHORTCUTS[currentNodeId]) {
         activeRoute = [currentNodeId, ...SHORTCUTS[currentNodeId]];
@@ -102,7 +103,10 @@ export function getMovePathNodeIds(startNodeId: string, steps: number, branchCho
 
     pathNodeIds.push(nextNodeId);
     currentNodeId = nextNodeId;
-    if (nextNodeId === 'n01') break;
+    if (nextNodeId === 'n01') {
+      if (step + 1 < forwardSteps) pathNodeIds.push(FINISH_NODE_ID);
+      break;
+    }
   }
 
   return pathNodeIds;
