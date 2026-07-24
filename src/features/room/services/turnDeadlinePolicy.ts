@@ -1,5 +1,6 @@
 export type TurnDeadlineKind = 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
 export type TurnActionPhase = Exclude<TurnDeadlineKind, ''>;
+export type TurnTransitionPhase = 'ending' | 'starting' | 'ready';
 export type MissingActionStartedAtPolicy = 'allow' | 'reject-after-grace';
 
 const VALID_TURN_DEADLINE_KINDS = new Set<TurnDeadlineKind>([
@@ -19,11 +20,61 @@ export const normalizeTurnDeadlineAt = (value: unknown) => {
   return Number.isFinite(deadlineAt) && deadlineAt > 0 ? deadlineAt : 0;
 };
 
+const normalizeDurationMs = (value: unknown) => {
+  const durationMs = Number(value ?? 0);
+  return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
+};
+
 export const normalizeTurnDeadlineKind = (value: unknown): TurnDeadlineKind => (
   typeof value === 'string' && VALID_TURN_DEADLINE_KINDS.has(value as TurnDeadlineKind)
     ? value as TurnDeadlineKind
     : ''
 );
+
+export const getTurnActionReadyAt = ({
+  deadlineAt,
+  durationMs,
+}: {
+  deadlineAt: unknown;
+  durationMs: unknown;
+}) => {
+  const normalizedDeadlineAt = normalizeTurnDeadlineAt(deadlineAt);
+  const normalizedDurationMs = normalizeDurationMs(durationMs);
+  return normalizedDeadlineAt && normalizedDurationMs
+    ? Math.max(0, normalizedDeadlineAt - normalizedDurationMs)
+    : 0;
+};
+
+export const getTurnDisplayAt = ({
+  deadlineAt,
+  durationMs,
+  startDelayMs,
+}: {
+  deadlineAt: unknown;
+  durationMs: unknown;
+  startDelayMs: unknown;
+}) => {
+  const readyAt = getTurnActionReadyAt({ deadlineAt, durationMs });
+  const normalizedStartDelayMs = normalizeDurationMs(startDelayMs);
+  return readyAt ? Math.max(0, readyAt - normalizedStartDelayMs) : 0;
+};
+
+export const getTurnTransitionPhase = ({
+  deadlineAt,
+  durationMs,
+  startDelayMs,
+  now = Date.now(),
+}: {
+  deadlineAt: unknown;
+  durationMs: unknown;
+  startDelayMs: unknown;
+  now?: number;
+}): TurnTransitionPhase => {
+  const readyAt = getTurnActionReadyAt({ deadlineAt, durationMs });
+  if (!readyAt || now >= readyAt) return 'ready';
+  const displayAt = getTurnDisplayAt({ deadlineAt, durationMs, startDelayMs });
+  return displayAt && now < displayAt ? 'ending' : 'starting';
+};
 
 export const getDeadlineTimerAnimationState = ({
   deadlineAt,
@@ -34,8 +85,7 @@ export const getDeadlineTimerAnimationState = ({
   durationMs: unknown;
   now?: number;
 }) => {
-  const rawDurationMs = Number(durationMs ?? 0);
-  const normalizedDurationMs = Number.isFinite(rawDurationMs) && rawDurationMs > 0 ? rawDurationMs : 0;
+  const normalizedDurationMs = normalizeDurationMs(durationMs);
   const normalizedDeadlineAt = normalizeTurnDeadlineAt(deadlineAt);
   const remainingMs = normalizedDeadlineAt
     ? Math.max(0, Math.min(normalizedDurationMs, normalizedDeadlineAt - now))

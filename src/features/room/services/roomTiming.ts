@@ -3,6 +3,9 @@ export const TURN_ITEM_PROMPT_TIMEOUT_MS = 10000;
 export const TURN_ACTION_TIMEOUT_STEP_MS = 5000;
 export const TURN_ACTION_TIMEOUT_MIN_MS = 5000;
 export const TURN_NETWORK_GRACE_MS = 1000;
+export const TURN_END_HOLD_MS = 1000;
+export const TURN_START_DELAY_MS = 1000;
+export const TURN_TRANSITION_DELAY_MS = TURN_END_HOLD_MS + TURN_START_DELAY_MS;
 
 export const normalizeTurnActionTimeoutCount = (count: unknown) => {
   const normalized = Number(count ?? 0);

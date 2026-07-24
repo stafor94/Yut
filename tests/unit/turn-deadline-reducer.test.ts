@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
-import { TURN_NETWORK_GRACE_MS } from '../../src/features/room/services/roomTiming';
+import {
+  TURN_ACTION_TIMEOUT_MS,
+  TURN_NETWORK_GRACE_MS,
+  TURN_TRANSITION_DELAY_MS,
+} from '../../src/features/room/services/roomTiming';
 
 const room = { playMode: 'individual' as const, pieceCount: 4 as const, stackedRollMode: false };
-const sides = [{ id: 'seat-1', team: '청팀' as const }];
+const sides = [
+  { id: 'seat-1', team: '청팀' as const },
+  { id: 'seat-2', team: '홍팀' as const },
+];
 
 const withMockNow = <T>(now: number, callback: () => T): T => {
   const originalNow = Date.now;
@@ -141,4 +148,74 @@ test('이전 deadline을 가장한 자동 입력은 거부한다', () => {
     sides,
   ));
   assert.deepEqual(result, { status: 'rejected', reason: '자동 입력 대상 제한시간이 현재 상태와 일치하지 않습니다.' });
+});
+
+test('일반 턴 종료는 다음 플레이어 deadline에 앞뒤 1초 버퍼를 추가한다', () => {
+  const now = 10_000;
+  const state = {
+    ...makeState(now + TURN_ACTION_TIMEOUT_MS, 'move'),
+    turnOrderIds: ['seat-1', 'seat-2'],
+  };
+  const result = withMockNow(now, () => reduceAuthoritativeGameAction(
+    state as never,
+    {
+      type: 'move_piece',
+      actorId: 'seat-1',
+      payload: {
+        pieceId: 'p1',
+        branchChoice: 'outer',
+        clientActionStartedAt: now,
+        clientActionId: 'move-and-advance-turn',
+      },
+    } as never,
+    room,
+    sides,
+  ));
+
+  assert.equal(result.status, 'committed');
+  if (result.status !== 'committed') return;
+  assert.equal(result.patch.turnIndex, 1);
+  assert.equal(result.patch.turnDeadlineKind, 'roll');
+  assert.equal(result.patch.turnDeadlineAt, now + TURN_ACTION_TIMEOUT_MS + TURN_TRANSITION_DELAY_MS);
+});
+
+test('다음 플레이어는 종료 유지와 턴 시작 대기가 끝나기 전에 행동할 수 없다', () => {
+  const readyAt = 12_000;
+  const deadlineAt = readyAt + TURN_ACTION_TIMEOUT_MS;
+  const state = {
+    ...makeState(deadlineAt, 'roll'),
+    turnIndex: 1,
+    turnOrderIds: ['seat-1', 'seat-2'],
+  };
+  const earlyResult = withMockNow(readyAt - 500, () => reduceAuthoritativeGameAction(
+    state as never,
+    {
+      type: 'roll_yut',
+      actorId: 'seat-2',
+      payload: {
+        rollTimingZone: 'good',
+        clientActionStartedAt: readyAt - 500,
+        clientActionId: 'roll-before-turn-ready',
+      },
+    } as never,
+    room,
+    sides,
+  ));
+  assert.deepEqual(earlyResult, { status: 'rejected', reason: '턴 전환 중입니다. 잠시 후 행동해주세요.' });
+
+  const readyResult = withMockNow(readyAt, () => reduceAuthoritativeGameAction(
+    state as never,
+    {
+      type: 'roll_yut',
+      actorId: 'seat-2',
+      payload: {
+        rollTimingZone: 'good',
+        clientActionStartedAt: readyAt,
+        clientActionId: 'roll-after-turn-ready',
+      },
+    } as never,
+    room,
+    sides,
+  ));
+  assert.equal(readyResult.status, 'committed');
 });

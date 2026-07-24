@@ -7,11 +7,18 @@ import {
   TURN_ACTION_TIMEOUT_MS,
   TURN_ITEM_PROMPT_TIMEOUT_MS,
   TURN_NETWORK_GRACE_MS,
+  TURN_TRANSITION_DELAY_MS,
   getTurnActionTimeoutMsForCount,
   incrementTurnActionTimeoutCount,
   normalizeTurnActionTimeoutCount,
 } from './roomTiming';
-import { isManualTurnActionDeadlineExpired, type TurnActionPhase } from './turnDeadlinePolicy';
+import {
+  getTurnActionReadyAt,
+  getTurnActionStartedAt,
+  isManualTurnActionDeadlineExpired,
+  normalizeTurnDeadlineKind,
+  type TurnActionPhase,
+} from './turnDeadlinePolicy';
 
 export * from './roomAuthoritativeReducerCore';
 
@@ -97,9 +104,8 @@ const isAutomatedAction = (action: AuthoritativeArgs[1]) => {
     ));
 };
 
-const getManualDeadlineGuard = (args: AuthoritativeArgs): { deadlineAt: unknown; expectedKind: TurnActionPhase; reason: string } | null => {
+const getActionDeadlineGuard = (args: AuthoritativeArgs): { deadlineAt: unknown; expectedKind: TurnActionPhase; reason: string } | null => {
   const [state, action] = args;
-  if (isDeadlineRecoveryAction(action) || isAutomatedAction(action)) return null;
   if (action.type === 'roll_yut') {
     if (action.payload?.completeFallPresentation === true) return null;
     return { deadlineAt: state.turnDeadlineAt, expectedKind: 'roll', reason: '윷 던지기 제한 시간이 만료되었습니다.' };
@@ -122,10 +128,16 @@ const getManualDeadlineGuard = (args: AuthoritativeArgs): { deadlineAt: unknown;
   return null;
 };
 
+const getManualDeadlineGuard = (args: AuthoritativeArgs) => {
+  const action = args[1];
+  if (isDeadlineRecoveryAction(action) || isAutomatedAction(action)) return null;
+  return getActionDeadlineGuard(args);
+};
+
 const rejectInvalidDeadlineAutoAction = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
   const action = args[1];
   if (action.payload?.deadlineAutoSubmitted !== true) return null;
-  const guard = getManualDeadlineGuard(args);
+  const guard = getActionDeadlineGuard(args);
   const expectedDeadlineAt = Number(guard?.deadlineAt ?? 0);
   const submittedDeadlineAt = Number(action.payload?.autoSubmittedDeadlineAt ?? 0);
   if (!guard || !expectedDeadlineAt || submittedDeadlineAt !== expectedDeadlineAt) {
@@ -376,6 +388,28 @@ const getVisibleDeadlineBaseMs = (kind: TurnDeadlineKind) => (
     : TURN_ACTION_TIMEOUT_MS
 );
 
+const rejectTurnActionBeforeReady = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const [state, action] = args;
+  if (isDeadlineRecoveryAction(action)) return null;
+  const guard = getActionDeadlineGuard(args);
+  if (!guard || normalizeTurnDeadlineKind(state.turnDeadlineKind) !== guard.expectedKind) return null;
+  const deadlineAt = Number(guard.deadlineAt ?? 0);
+  if (!Number.isFinite(deadlineAt) || deadlineAt <= 0) return null;
+  const timeoutState = state as TimeoutCountState;
+  const targetSeatId = getTimeoutTargetSeatId(timeoutState);
+  const timeoutCounts = getTimeoutCountMap(timeoutState.turnActionTimeoutCountBySeatId);
+  const durationMs = getTurnActionTimeoutMsForCount(timeoutCounts[targetSeatId], getVisibleDeadlineBaseMs(guard.expectedKind));
+  const readyAt = getTurnActionReadyAt({ deadlineAt, durationMs });
+  if (!readyAt) return null;
+  const startedAt = getTurnActionStartedAt({
+    clientActionId: action.payload?.clientActionId,
+    clientActionStartedAt: action.payload?.clientActionStartedAt,
+  }) || Date.now();
+  return startedAt < readyAt
+    ? { status: 'rejected', reason: '턴 전환 중입니다. 잠시 후 행동해주세요.' }
+    : null;
+};
+
 const applyTurnActionTimeoutPolicy = (
   args: AuthoritativeArgs,
   reduction: AuthoritativeReduction,
@@ -402,11 +436,13 @@ const applyTurnActionTimeoutPolicy = (
   const deadlineKind = (mergedState.turnDeadlineKind ?? '') as TurnDeadlineKind;
 
   if (previousDeadline > 0 && deadlineKind) {
+    const currentTurnSeatId = getTimeoutTargetSeatId(currentState);
     const targetSeatId = getTimeoutTargetSeatId(mergedState);
     const coreBaseTimeoutMs = getCoreDeadlineBaseMs(deadlineKind);
     const visibleBaseTimeoutMs = getVisibleDeadlineBaseMs(deadlineKind);
     const nextTimeoutMs = getTurnActionTimeoutMsForCount(timeoutCounts[targetSeatId], visibleBaseTimeoutMs);
-    const nextDeadline = previousDeadline - coreBaseTimeoutMs + nextTimeoutMs;
+    const startsNextTurn = action.type === 'continue_race' || Boolean(targetSeatId && targetSeatId !== currentTurnSeatId);
+    const nextDeadline = previousDeadline - coreBaseTimeoutMs + nextTimeoutMs + (startsNextTurn ? TURN_TRANSITION_DELAY_MS : 0);
     patch.turnDeadlineAt = nextDeadline;
     if ('pendingTrapPlacement' in patch) patch.pendingTrapPlacement = replaceNestedDeadline(patch.pendingTrapPlacement, nextDeadline);
     if ('pendingGoldenYutSelection' in patch) patch.pendingGoldenYutSelection = replaceNestedDeadline(patch.pendingGoldenYutSelection, nextDeadline);
@@ -426,6 +462,9 @@ export function reduceAuthoritativeGameAction(
 
   const presentationGateRejection = rejectRollBeforePresentationGateEnds(args);
   if (presentationGateRejection) return presentationGateRejection;
+
+  const transitionGateRejection = rejectTurnActionBeforeReady(args);
+  if (transitionGateRejection) return transitionGateRejection;
 
   const invalidDeadlineAutoActionRejection = rejectInvalidDeadlineAutoAction(args);
   if (invalidDeadlineAutoActionRejection) return invalidDeadlineAutoActionRejection;
