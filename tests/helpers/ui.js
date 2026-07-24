@@ -122,6 +122,20 @@ export async function waitForBlockingOverlayToDisappear(page, { timeout = 20_000
   await expect(page.locator('.loading-modal-backdrop')).toBeHidden({ timeout });
 }
 
+export async function ensureGamePlayerListExpanded(page, { timeout = 15_000 } = {}) {
+  await expect(page.getByTestId('game-screen')).toBeVisible({ timeout });
+  const playersPanel = page.getByTestId('players-panel');
+  if (await playersPanel.isVisible().catch(() => false)) return playersPanel;
+
+  const toggle = page.getByTestId('game-room-info-toggle');
+  await expect(toggle).toBeVisible({ timeout });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(playersPanel).toBeVisible({ timeout });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  return playersPanel;
+}
+
 export async function expectAppShell(page, { timeout = 45_000 } = {}) {
   const targetUrl = String(process.env.PLAYWRIGHT_BASE_URL ?? '').trim() || '/Yut/';
   const appShell = page.getByTestId('app-shell');
