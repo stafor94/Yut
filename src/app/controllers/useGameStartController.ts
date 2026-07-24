@@ -177,6 +177,10 @@ export function useGameStartController(ctx: any) {
     });
     const prepLog = makeLog('순서 정하기를 준비합니다.');
     const initialSyncedState = {
+      playMode: ctx.playModeForTurnOrder,
+      itemMode: ctx.itemMode,
+      stackedRollMode: ctx.stackedRollMode,
+      pieceCount: ctx.pieceCount,
       pieces: nextPieces,
       turnIndex: 0,
       turnOrderIds: [],
@@ -212,6 +216,7 @@ export function useGameStartController(ctx: any) {
       waitingForPlayersReady: false,
       turnDeadlineAt: 0,
       turnDeadlineKind: '' as const,
+      coordinatorSeatId: nextGameSeats.find((seat: { id: string; isAI?: boolean }) => !seat.isAI)?.id ?? '',
       gameSeats: nextGameSeats,
       startRequestVersion: confirmedStartRequestVersion,
       startRequestId: confirmedStartRequestId,

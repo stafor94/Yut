@@ -12,6 +12,7 @@ import {
   findRoomIdByTitle,
   getRoomForQa,
   getRoomStateForQa,
+  getRoomTurnOrderSubmissionsForQa,
   rememberRoomIdFromPage,
 } from '../helpers/rooms.js';
 
@@ -171,7 +172,11 @@ test.describe('simultaneous turn-order QA', () => {
         const round = aggregatedState?.turnOrderIntro?.currentRound ?? null;
         expect(Number(round?.aggregatedAt ?? 0)).toBeLessThan(Number(round?.deadlineAt ?? 0));
         expect(Number(round?.revealAt ?? 0) - Number(round?.aggregatedAt ?? 0)).toBe(3_000);
-        expect(Number(aggregatedState?.turnVersion ?? 0) - turnVersionBeforeSubmissions).toBe(2);
+        expect(Number(aggregatedState?.turnVersion ?? 0) - turnVersionBeforeSubmissions).toBe(1);
+        const firstRoundSubmissions = (await getRoomTurnOrderSubmissionsForQa(qa.roomId))
+          .filter((submission) => submission.roundId === round?.id);
+        expect(firstRoundSubmissions).toHaveLength(2);
+        expect(new Set(firstRoundSubmissions.map((submission) => submission.seatId)).size).toBe(2);
         await expect(hostOtherCard).toContainText('도', { timeout: 6_000 });
         await expect(guestOtherCard).toContainText('도', { timeout: 6_000 });
         await expect(qa.hostPage.getByTestId('turn-order-tie-notice')).toBeVisible();
@@ -208,7 +213,11 @@ test.describe('simultaneous turn-order QA', () => {
         expect(rematchRound?.index).toBe(2);
         expect(Number(rematchRound?.aggregatedAt ?? 0)).toBeLessThan(Number(rematchRound?.deadlineAt ?? 0));
         expect(Number(rematchRound?.revealAt ?? 0) - Number(rematchRound?.aggregatedAt ?? 0)).toBe(3_000);
-        expect(Number(rematchState?.turnVersion ?? 0) - turnVersionBeforeRematchSubmissions).toBe(2);
+        expect(Number(rematchState?.turnVersion ?? 0) - turnVersionBeforeRematchSubmissions).toBe(1);
+        const rematchSubmissions = (await getRoomTurnOrderSubmissionsForQa(qa.roomId))
+          .filter((submission) => submission.roundId === rematchRound?.id);
+        expect(rematchSubmissions).toHaveLength(2);
+        expect(new Set(rematchSubmissions.map((submission) => submission.seatId)).size).toBe(2);
 
         await expect(qa.hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
         await expect(qa.guestPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
@@ -273,7 +282,8 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(hostButton).toBeVisible({ timeout: 10_000 });
         await expect.poll(async () => {
           const round = await readTurnOrderRound(roomId);
-          const submission = round?.submissions?.find((entry) => entry.seatId === aiSeatId);
+          const submissions = await getRoomTurnOrderSubmissionsForQa(roomId);
+          const submission = submissions.find((entry) => entry.roundId === round?.id && entry.seatId === aiSeatId);
           return submission ? `${submission.source}:${submission.resultName}` : '';
         }, { timeout: 5_000 }).toBe('auto:도');
         await expect(aiCard).toContainText('결과 대기');
@@ -301,7 +311,8 @@ test.describe('simultaneous turn-order QA', () => {
         await expect.poll(async () => {
           const round = await readTurnOrderRound(roomId);
           if (round?.index !== 2) return '';
-          const submission = round.submissions?.find((entry) => entry.seatId === aiSeatId);
+          const submissions = await getRoomTurnOrderSubmissionsForQa(roomId);
+          const submission = submissions.find((entry) => entry.roundId === round.id && entry.seatId === aiSeatId);
           return submission ? `${submission.source}:${submission.resultName}` : '';
         }, { timeout: 5_000 }).toBe('auto:개');
         await expect(aiCard).toContainText('결과 대기');
@@ -324,6 +335,62 @@ test.describe('simultaneous turn-order QA', () => {
       });
     } finally {
       await hostContext.close();
+    }
+  });
+
+  test('4개 클라이언트의 동시 제출은 좌석별 문서 4개와 집계 1회로 확정된다', async ({ browser }, testInfo) => {
+    const contexts = await Promise.all(Array.from({ length: 4 }, () => browser.newContext()));
+    const pages = [];
+    const resultNames = ['모', '윷', '걸', '개'];
+    const playerNames = resultNames.map((_, index) => normalizeQaNickname(makeQaName(testInfo, `four-${index + 1}`)));
+    const roomTitle = makeQaName(testInfo, 'four-player-turn-order');
+
+    try {
+      await Promise.all(contexts.map((context, index) => primeLobbyStorage(context, {
+        nickname: playerNames[index],
+        maxPlayers: '4',
+        playMode: 'individual',
+        itemMode: 'false',
+        pieceCount: '4',
+      })));
+      await Promise.all(contexts.map((context, index) => context.addInitScript((resultName) => {
+        window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = [resultName];
+      }, resultNames[index])));
+      for (const context of contexts) pages.push(await context.newPage());
+
+      await createRoomFromLobby(pages[0], roomTitle);
+      roomId = await rememberRoomIdFromPage(pages[0]) ?? await findRoomIdByTitle(roomTitle);
+      for (const guestPage of pages.slice(1)) {
+        await joinRoomFromLobby(guestPage, roomTitle);
+        await markGuestReady(guestPage);
+      }
+      await expect(pages[0].getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await pages[0].getByTestId('start-game-button').click();
+      await Promise.all(pages.map((page) => expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 })));
+      const buttons = pages.map((page) => page.getByTestId('turn-order-roll-button'));
+      await Promise.all(buttons.map((button) => expect(button).toBeVisible({ timeout: 10_000 })));
+
+      const beforeState = await getRoomStateForQa(roomId);
+      const beforeVersion = Number(beforeState?.turnVersion ?? 0);
+      await Promise.all(buttons.flatMap((button, index) => [
+        expect(pages[index].getByTestId('turn-order-own-result')).toContainText(resultNames[index]),
+        button.click(),
+      ]));
+      await expect.poll(async () => (await readTurnOrderRound(roomId))?.status ?? '', { timeout: 10_000 }).toBe('reveal-pending');
+
+      const aggregatedState = await getRoomStateForQa(roomId);
+      const round = aggregatedState?.turnOrderIntro?.currentRound ?? null;
+      const submissions = (await getRoomTurnOrderSubmissionsForQa(roomId))
+        .filter((submission) => submission.roundId === round?.id);
+      expect(submissions).toHaveLength(4);
+      expect(new Set(submissions.map((submission) => submission.seatId)).size).toBe(4);
+      expect(new Set(submissions.map((submission) => submission.id)).size).toBe(4);
+      expect(Number(aggregatedState?.turnVersion ?? 0) - beforeVersion).toBe(1);
+      expect(Number(round?.aggregatedAt ?? 0)).toBeLessThan(Number(round?.deadlineAt ?? 0));
+      expect(Number(round?.revealAt ?? 0) - Number(round?.aggregatedAt ?? 0)).toBe(3_000);
+      await Promise.all(pages.map((page) => expect(page.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 })));
+    } finally {
+      await Promise.all(contexts.map((context) => context.close()));
     }
   });
 });

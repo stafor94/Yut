@@ -13,6 +13,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/rooms/$(roomId)/players/$(playerId);
     }
 
+    function gameStatePath(roomId) {
+      return /databases/$(database)/documents/rooms/$(roomId)/state/current;
+    }
+
     function roomExists(roomId) {
       return exists(roomPath(roomId));
     }
@@ -66,6 +70,12 @@ service cloud.firestore {
         || isActiveRoomMemberAfter(roomId)
         || isRoomHost(roomId)
         || isRoomHostAfter(roomId);
+    }
+
+    function isGameCoordinator(roomId) {
+      return signedIn()
+        && exists(gameStatePath(roomId))
+        && get(gameStatePath(roomId)).data.coordinatorSeatId == request.auth.uid;
     }
 
     function hasExpiredEmptyGrace(roomId) {
@@ -249,6 +259,28 @@ service cloud.firestore {
       match /processedActions/{actionId} {
         allow read: if canReadRoomData(roomId);
         allow create, update: if canWriteRoomData(roomId);
+        allow delete: if canDeleteRoomData(roomId);
+      }
+
+      match /turnOrderSubmissions/{submissionId} {
+        allow read: if canReadRoomData(roomId);
+        allow create: if canWriteRoomData(roomId)
+          && request.resource.data.sessionId is string
+          && request.resource.data.roundId is string
+          && request.resource.data.seatId is string
+          && request.resource.data.submissionId is string
+          && request.resource.data.resultName is string
+          && request.resource.data.source in ['manual', 'auto']
+          && request.resource.data.submittedBy == request.auth.uid
+          && (
+            request.resource.data.seatId == request.auth.uid
+            || (
+              request.resource.data.source == 'auto'
+              && isGameCoordinator(roomId)
+              && request.resource.data.coordinatorSeatId == request.auth.uid
+            )
+          );
+        allow update: if false;
         allow delete: if canDeleteRoomData(roomId);
       }
 

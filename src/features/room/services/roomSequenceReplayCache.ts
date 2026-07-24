@@ -37,6 +37,18 @@ export function replaceCachedGameSequences<TSequence extends CachedGameSequence>
   );
 }
 
+export function mergeCachedGameSequences<TSequence extends CachedGameSequence>(
+  roomId: string,
+  sequences: TSequence[],
+  limit = DEFAULT_SEQUENCE_CACHE_LIMIT,
+) {
+  replaceCachedGameSequences(
+    roomId,
+    [...(sequencesByRoom.get(roomId) ?? []), ...sequences] as TSequence[],
+    limit,
+  );
+}
+
 export function clearCachedGameSequences(roomId: string) {
   if (!roomId) return;
   sequencesByRoom.delete(roomId);

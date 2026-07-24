@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { subscribeGameState } from '../../features/room/services/roomService';
 import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
 import type { YutResult } from '../../game-core/roll';
 import {
@@ -14,7 +13,7 @@ import {
   subscribeFallPresentationActive,
   subscribeRollPresentationCompleted,
 } from '../flows/rollPresentationEvents';
-import { STORAGE_KEYS, type ToastMessage } from '../appState';
+import { type ToastMessage } from '../appState';
 
 const GOLDEN_YUT_AUTO_SELECT_LEAD_MS = 160;
 
@@ -54,16 +53,16 @@ export function WinnerOverlay({ winner, winnerText, onReturnToWaitingRoom, onExi
 type GoldenYutPickerProps = {
   isOpen: boolean;
   choices: YutResult[];
+  deadlineAt: number;
   onSelect: (choice: YutResult) => void;
 };
 
-export function GoldenYutPicker({ isOpen, choices, onSelect }: GoldenYutPickerProps) {
+export function GoldenYutPicker({ isOpen, choices, deadlineAt, onSelect }: GoldenYutPickerProps) {
   const isOpenRef = useRef(isOpen);
   const autoSelectionKeyRef = useRef('');
   const onSelectRef = useRef(onSelect);
   const choicesRef = useRef(choices);
   const [presentationState, setPresentationState] = useState(EMPTY_GOLDEN_YUT_PICKER_PRESENTATION_STATE);
-  const [deadlineAt, setDeadlineAt] = useState(0);
   const [selectionExpired, setSelectionExpired] = useState(false);
   isOpenRef.current = isOpen;
   onSelectRef.current = onSelect;
@@ -79,21 +78,9 @@ export function GoldenYutPicker({ isOpen, choices, onSelect }: GoldenYutPickerPr
   useEffect(() => {
     setPresentationState((current) => syncGoldenYutPickerOpenState(current, isOpen));
     if (!isOpen) {
-      setDeadlineAt(0);
       setSelectionExpired(false);
     }
   }, [isOpen]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
-    if (!roomId) return undefined;
-    return subscribeGameState(roomId, (state) => {
-      const pending = (state as { pendingGoldenYutSelection?: { deadline?: unknown } | null } | null)?.pendingGoldenYutSelection;
-      const nextDeadlineAt = Number(pending?.deadline ?? 0);
-      setDeadlineAt(Number.isFinite(nextDeadlineAt) && nextDeadlineAt > 0 ? nextDeadlineAt : 0);
-    });
-  }, []);
 
   const pickerVisible = shouldShowGoldenYutPicker(presentationState, isOpen);
   const selectionKey = `${deadlineAt}:${choices.map((choice) => `${choice.name}:${choice.steps}`).join('|')}`;

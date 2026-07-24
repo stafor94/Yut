@@ -3,7 +3,7 @@ import { getAuth, signInAnonymously } from 'firebase/auth';
 import { Timestamp, collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { loadFirebaseConfig } from './env.js';
 
-const roomSubcollections = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'];
+const roomSubcollections = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions', 'turnOrderSubmissions'];
 const oldRoomMaxAgeMs = 2 * 60 * 60 * 1000;
 const roomDeleteBatchSize = 25;
 let dbPromise;
@@ -396,6 +396,15 @@ export async function getRoomSequencesForQa(roomId) {
   const accessToken = roomAccessTokens.get(roomId);
   if (accessToken) return listRestDocuments(['rooms', roomId], 'sequences', accessToken);
   const snapshot = await getDocs(collection(db, 'rooms', roomId, 'sequences'));
+  return snapshot.docs.map((documentSnapshot) => ({ id: documentSnapshot.id, ...documentSnapshot.data() }));
+}
+
+export async function getRoomTurnOrderSubmissionsForQa(roomId) {
+  const db = await getTestDb();
+  if (!db || !roomId) return [];
+  const accessToken = roomAccessTokens.get(roomId);
+  if (accessToken) return listRestDocuments(['rooms', roomId], 'turnOrderSubmissions', accessToken);
+  const snapshot = await getDocs(collection(db, 'rooms', roomId, 'turnOrderSubmissions'));
   return snapshot.docs.map((documentSnapshot) => ({ id: documentSnapshot.id, ...documentSnapshot.data() }));
 }
 

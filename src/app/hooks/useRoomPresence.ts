@@ -8,8 +8,9 @@ import {
   ROOM_PRESENCE_CLEANUP_INTERVAL_MS,
 } from '../../features/room/services/roomPresenceCleanupPolicy';
 
-export function useRoomPresence(activeRoomId: string, localSeatId: string, options: { canCleanup?: boolean } = {}) {
+export function useRoomPresence(activeRoomId: string, localSeatId: string, options: { canCleanup?: boolean; canRefreshRoomSummary?: boolean } = {}) {
   const canCleanup = Boolean(options.canCleanup);
+  const canRefreshRoomSummary = Boolean(options.canRefreshRoomSummary);
 
   useEffect(() => {
     if (!activeRoomId || !localSeatId) return undefined;
@@ -20,7 +21,7 @@ export function useRoomPresence(activeRoomId: string, localSeatId: string, optio
       if (disposed || cycleInFlight) return;
       cycleInFlight = true;
       try {
-        const heartbeatSucceeded = await heartbeatRoomPlayer(activeRoomId, localSeatId);
+        const heartbeatSucceeded = await heartbeatRoomPlayer(activeRoomId, localSeatId, { refreshRoomSummary: canRefreshRoomSummary });
         if (!disposed && heartbeatSucceeded && canCleanup) {
           await cleanupCurrentRoomPresence(activeRoomId, localSeatId);
         }
@@ -50,5 +51,5 @@ export function useRoomPresence(activeRoomId: string, localSeatId: string, optio
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (canCleanup) void releaseRoomPresenceCleanupLease(activeRoomId, localSeatId);
     };
-  }, [activeRoomId, canCleanup, localSeatId]);
+  }, [activeRoomId, canCleanup, canRefreshRoomSummary, localSeatId]);
 }

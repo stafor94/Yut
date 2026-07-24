@@ -12,6 +12,7 @@ export type GameStartPreparationRoom = {
   hostId?: string;
   maxPlayers: number;
   itemMode: boolean;
+  stackedRollMode?: boolean;
   playMode: 'individual' | 'team';
   pieceCount: 1 | 2 | 3 | 4;
   startRequestedAt?: number;
@@ -168,8 +169,13 @@ export function buildPreparedRoomGameState(params: {
     isSubstitutedByAI: seat.isSubstitutedByAI,
     seatIndex: seat.seatIndex,
   }));
+  const coordinatorSeatId = seats.find((seat) => !seat.isAI)?.id ?? '';
 
   return {
+    playMode: room.playMode,
+    itemMode: room.itemMode,
+    stackedRollMode: Boolean(room.stackedRollMode),
+    pieceCount: room.pieceCount,
     pieces: makePreparedPieces(seats, room.pieceCount, room.playMode),
     turnIndex: 0,
     turnOrderIds: [] as string[],
@@ -212,6 +218,7 @@ export function buildPreparedRoomGameState(params: {
     startRequestVersion,
     startRequestId,
     startCountdownEndsAt: countdownEndsAt,
+    coordinatorSeatId,
     gameSeats,
   };
 }

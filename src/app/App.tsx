@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { User } from 'firebase/auth';
 import type { BoardPiece } from '../features/game/components/GameBoard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
 import { ITEM_DEFINITIONS } from '../features/items/logic/items';
+import { DEFAULT_AI_DIFFICULTY, getRuntimeAiDifficultyForSeat, setCurrentAiRollDifficulty } from '../game-core/aiDifficulty';
 import { BOARD_NODES, BRANCH_NODE_IDS, getBoardNodeById, getMovePathNodeIds, getMovePathNodeIdsWithPrevious, getAdjacentBoardNodeIds, spawnInitialBoardItems, type BoardItem, type BranchChoice } from '../game-core/board/board';
 import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercent, getRollTimingZone, rollYutResultWithTiming, makeDisplaySticks, rollYutResult, shouldFallForTimingZone, type RollTimingZone, type YutResult, type YutStick } from '../game-core/roll';
 import { makeTimeoutActionKey, resolveGoldenYutTimeout, resolveMoveTimeout, resolveRollTimeout } from '../features/room/services/timeoutResolvers';
@@ -22,6 +23,13 @@ import { useGameStartController } from './controllers/useGameStartController';
 import { useItemController } from './controllers/useItemController';
 import { useAuthSession } from './hooks/useAuthSession';
 import { useGameSyncDebugState } from './hooks/useGameSync';
+import {
+  getGameConnectionPresentation,
+  getGameConnectionSnapshot,
+  publishGameConnectionState,
+  shouldRecoverGameConnectionOnResume,
+  subscribeGameConnectionState,
+} from './hooks/gameConnectionState';
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
 import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
@@ -95,7 +103,7 @@ import {
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
 import { makeBugReportSequenceExport, makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
-import { TURN_ACTION_TIMEOUT_MS, getTurnRecoveryDeadlineAt } from '../features/room/services/roomTiming';
+import { TURN_ACTION_TIMEOUT_MS, getTurnRecoveryDeadlineAt, normalizeTurnActionTimeoutCount } from '../features/room/services/roomTiming';
 import {
   AI_AUTHORITATIVE_ACTION_RETRY_DELAY_MS,
   AI_AUTHORITATIVE_ACTION_RETRY_LIMIT,
@@ -225,6 +233,7 @@ export function App() {
   const [waitingForPlayersReady, setWaitingForPlayersReady] = useState(false);
   const [turnDeadlineAt, setTurnDeadlineAt] = useState(0);
   const [turnDeadlineKind, setTurnDeadlineKind] = useState<'roll' | 'move' | 'item_prompt' | 'trap_placement' | ''>('');
+  const [turnActionTimeoutCountBySeatId, setTurnActionTimeoutCountBySeatId] = useState<Record<string, number>>({});
   const [turnOrderClock, setTurnOrderClock] = useState(() => Date.now());
   const [rollAnimation, setRollAnimation] = useState<RollAnimation | null>(null);
   const piecesRef = useRef<BoardPiece[]>([]);
@@ -377,8 +386,19 @@ export function App() {
   const currentUser = userRef.current ?? user;
   const currentUserId = currentUser?.uid ?? '';
   const rooms = useRooms({ enabled: screen === 'lobby' && Boolean(currentUser) });
-  const serverStatus = isFirebaseConfigured ? (currentUser ? '온라인' : '연결 중') : '연결 정보 확인 필요';
-  const serverStatusTone = isFirebaseConfigured ? (currentUser ? 'online' : 'pending') : 'offline';
+  const gameConnection = useSyncExternalStore(subscribeGameConnectionState, getGameConnectionSnapshot, getGameConnectionSnapshot);
+  const gameConnectionPresentation = getGameConnectionPresentation(gameConnection);
+  const showGameConnection = Boolean(activeRoomId && screen === 'game' && gameConnection.roomId === activeRoomId);
+  const serverStatus = !isFirebaseConfigured
+    ? '연결 정보 확인 필요'
+    : showGameConnection
+      ? gameConnectionPresentation.label
+      : currentUser ? '온라인' : '연결 중';
+  const serverStatusTone = !isFirebaseConfigured
+    ? 'offline'
+    : showGameConnection
+      ? gameConnectionPresentation.tone
+      : currentUser ? 'online' : 'pending';
   const displaySeats = useMemo(() => screen === 'game' ? seats.map((seat) => ({ ...seat, isHost: false })) : seats, [screen, seats]);
   const playableSeats = useMemo(() => displaySeats.filter((seat) => !seat.isEmpty), [displaySeats]);
   const syncedGameSeats = useMemo(() => gameSeatSnapshotsFromSeats(playableSeats), [playableSeats]);
@@ -397,6 +417,11 @@ export function App() {
     return orderedSeats.length ? [...orderedSeats, ...remainingSeats] : playableSeats;
   }, [initialTurnOrderIds, playableSeats, turnOrderIds]);
   const activeSeat = turnSeats[turnIndex % turnSeats.length];
+  useEffect(() => {
+    setCurrentAiRollDifficulty(activeSeat?.isAI || activeSeat?.isSubstitutedByAI
+      ? getRuntimeAiDifficultyForSeat(activeSeat.id, activeSeat)
+      : DEFAULT_AI_DIFFICULTY);
+  }, [activeSeat?.id, activeSeat?.isAI, activeSeat?.isSubstitutedByAI]);
   const waitingRoomHostSeatId = (!activeRoomId || screen === 'waitingRoom') ? playableSeats.find((seat) => seat.isHost)?.id ?? (activeRoomHostId || 'host') : '';
   const localSeatId = activeRoomId ? currentUserId : waitingRoomHostSeatId;
   const isSpectator = Boolean(activeRoomId && currentUserId && spectators.some((spectator) => spectator.id === currentUserId));
@@ -987,7 +1012,9 @@ export function App() {
       }
       const stalledResolution = getStalledTurnSyncResolution();
       if (stalledResolution.status === 'recoverable') void recoverStalledTurnMove(stalledResolution.recoveryKey, { source: 'page-resume' });
-      void sequenceRecoveryWatchdogRef.current?.triggerNow();
+      if (shouldRecoverGameConnectionOnResume(getGameConnectionSnapshot(), activeRoomId)) {
+        void sequenceRecoveryWatchdogRef.current?.triggerNow();
+      }
     };
     window.addEventListener('focus', handleResume);
     window.addEventListener('pageshow', handleResume);
@@ -1134,6 +1161,7 @@ export function App() {
     setWaitingForPlayersReady(false);
     setTurnDeadlineAt(0);
     setTurnDeadlineKind('');
+    setTurnActionTimeoutCountBySeatId({});
     startRequestVersionRef.current = 0;
     startRequestIdRef.current = '';
     pendingStartRequestIdRef.current = '';
@@ -1186,7 +1214,10 @@ export function App() {
     onLoadingMessage: setLoadingMessage,
   });
 
-  useRoomPresence(activeRoomId, localSeatId, { canCleanup: canOwnRoomPresenceCleanup });
+  useRoomPresence(activeRoomId, localSeatId, {
+    canCleanup: canOwnRoomPresenceCleanup,
+    canRefreshRoomSummary: canCoordinateOnlineGame,
+  });
   const { handlePresencePlayerSnapshot } = usePresenceRecovery({
     activeRoomId,
     screen,
@@ -1586,6 +1617,12 @@ export function App() {
     setWaitingForPlayersReady(Boolean(state.waitingForPlayersReady));
     setTurnDeadlineAt(Number(state.turnDeadlineAt ?? 0));
     setTurnDeadlineKind((state.turnDeadlineKind as typeof turnDeadlineKind | undefined) ?? '');
+    const syncedTimeoutCounts = state.turnActionTimeoutCountBySeatId;
+    setTurnActionTimeoutCountBySeatId(
+      syncedTimeoutCounts && typeof syncedTimeoutCounts === 'object' && !Array.isArray(syncedTimeoutCounts)
+        ? Object.fromEntries(Object.entries(syncedTimeoutCounts).map(([seatId, count]) => [seatId, normalizeTurnActionTimeoutCount(count)]))
+        : {},
+    );
     if (typeof state.startRequestVersion === 'number') setStartRequestVersion(Number(state.startRequestVersion));
     if (stateStartRequestId) setStartRequestId(stateStartRequestId);
     if (updateVersion && stateVersion) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, stateVersion);
@@ -1930,8 +1967,11 @@ export function App() {
     const localSequence = lastAppliedSequenceRef.current;
     void showToast('동기화 중...', '최신 게임 상태를 확인하고 있습니다.', '🔄');
     setManualSequenceSyncing(true);
+    publishGameConnectionState({ roomId: activeRoomId, status: 'recovering' });
+    let serverConfirmed = false;
     try {
       const sequences = await measureFirebaseLatency(() => getGameSequencesSince(activeRoomId, getSequenceRefetchAfter(localSequence)));
+      serverConfirmed = true;
       const orderedSequences = sequences
         .filter((sequence) => Number(sequence.sequence ?? 0) > localSequence)
         .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
@@ -1982,6 +2022,11 @@ export function App() {
       setMessage(error instanceof Error ? error.message : '최신 게임 상태 동기화에 실패했습니다.');
     } finally {
       setManualSequenceSyncing(false);
+      publishGameConnectionState({
+        roomId: activeRoomId,
+        status: serverConfirmed ? 'online' : (typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'reconnecting'),
+        ...(serverConfirmed ? { lastServerConfirmedAt: Date.now(), hasPendingWrites: false } : {}),
+      });
     }
   }
 
@@ -4361,6 +4406,7 @@ export function App() {
       getTurnActionTimeoutMs={getTurnActionTimeoutMs}
       goldenYutChoices={GOLDEN_YUT_CHOICES}
       goldenYutPickerOpen={goldenYutPickerOpen}
+      goldenYutDeadlineAt={pendingGoldenYutSelection?.deadline ?? 0}
       hasActiveTurnOrderIntro={Boolean(activeTurnOrderIntro)}
       highlightedNodeId={highlightedNodeId}
       isMyTurn={isMyTurn}
@@ -4410,10 +4456,14 @@ export function App() {
       trapEffect={trapEffect}
       trapNodes={trapNodes}
       trapPlacementNodeIds={trapPlacementNodeIds}
+      trapPlacementDeadlineAt={pendingTrapPlacement?.deadline ?? 0}
       trapPlacementSecondsLeft={Math.max(0, Math.ceil(((pendingTrapPlacement?.deadline ?? 0) - trapPlacementClock) / 1000))}
       turnActionTimeoutMs={TURN_ACTION_TIMEOUT_MS}
       turnOrderClock={turnOrderClock}
       turnOrderPhase={turnOrderPhase}
+      turnDeadlineAt={turnDeadlineAt}
+      turnDeadlineKind={turnDeadlineKind}
+      turnActionTimeoutCountBySeatId={turnActionTimeoutCountBySeatId}
       turnToast={turnToast}
       waitingForOnlineTurnOrder={waitingForOnlineTurnOrder}
       winner={winner}

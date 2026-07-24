@@ -26,6 +26,7 @@ const room: GameStartPreparationRoom = {
   hostId: 'player-1',
   maxPlayers: 3,
   itemMode: false,
+  stackedRollMode: true,
   playMode: 'individual',
   pieceCount: 2,
   startRequestedAt: 95_000,
@@ -99,6 +100,11 @@ test('순서 정하기는 게임 시작 요청 시각 8초 뒤에 시작하고 �
   assert.equal(state.turnDeadlineAt, 0);
   assert.equal(state.turnDeadlineKind, '');
   assert.equal(state.pieces.length, players.length * room.pieceCount);
+  assert.equal(state.playMode, room.playMode);
+  assert.equal(state.itemMode, room.itemMode);
+  assert.equal(state.stackedRollMode, room.stackedRollMode);
+  assert.equal(state.pieceCount, room.pieceCount);
+  assert.equal(state.coordinatorSeatId, 'player-1');
   assert.equal(state.startRequestVersion, 7);
   assert.equal(state.startRequestId, 'request-7');
   assert.equal(state.startCountdownEndsAt, countdownEndsAt);

@@ -23,6 +23,7 @@ import {
   isRoomInGame as isRoomInGameCore,
   joinRoom as joinRoomCore,
   removeRoomPlayer as removeRoomPlayerCore,
+  subscribeGameSequences as subscribeGameSequencesCore,
   subscribeGameState as subscribeGameStateCore,
   updateRoomPlayer as updateRoomPlayerCore,
   updateRoomStatus as updateRoomStatusCore,
@@ -70,6 +71,7 @@ import {
   clearCachedGameSequences,
   getCachedGameSequencesForReplay,
   hasCachedGameSequence,
+  mergeCachedGameSequences,
   replaceCachedGameSequences,
 } from './roomSequenceReplayCache';
 import { normalizeLegacyRollTimingAction } from './rollTimingActionCompatibility';
@@ -81,6 +83,8 @@ export * from './roomLifecyclePolicy';
 export { withGameSequenceReplayCache } from './roomSequenceReplayCache';
 
 const RECENT_GAME_SEQUENCE_CACHE_LIMIT = 8;
+const ROOM_SUMMARY_HEARTBEAT_INTERVAL_MS = 30_000;
+const roomSummaryHeartbeatAtByRoomId = new Map<string, number>();
 
 export function subscribeGameState(roomId: string, callback: (state: SyncedGameState | null) => void): Unsubscribe {
   if (!db) return subscribeGameStateCore(roomId, callback);
@@ -148,6 +152,18 @@ export function subscribeGameState(roomId: string, callback: (state: SyncedGameS
   };
 }
 
+export function subscribeGameSequences(
+  roomId: string,
+  afterSequence: number,
+  callback: Parameters<typeof subscribeGameSequencesCore>[2],
+  onError?: Parameters<typeof subscribeGameSequencesCore>[3],
+): Unsubscribe {
+  return subscribeGameSequencesCore(roomId, afterSequence, (sequences, meta) => {
+    if (sequences.length) mergeCachedGameSequences(roomId, sequences, RECENT_GAME_SEQUENCE_CACHE_LIMIT);
+    callback(sequences, meta);
+  }, onError);
+}
+
 export async function getGameSequencesSince(roomId: string, afterSequence: number): Promise<GameSequence[]> {
   const cachedSequences = getCachedGameSequencesForReplay<GameSequence>(roomId, afterSequence);
   if (cachedSequences) return cachedSequences;
@@ -199,11 +215,7 @@ export async function commitAuthoritativeGameAction(
   if (shouldWaitForGamePresentationBeforeCommit(action)) {
     await waitForGamePresentationBeforeAction(action.type);
   }
-  const result = await settleRoomAction(roomId, action);
-  if (db && (result.status === 'committed' || result.status === 'duplicate')) {
-    void setDoc(doc(db, 'rooms', roomId), { lastActivityAt: Date.now() }, { merge: true }).catch(() => undefined);
-  }
-  return result;
+  return settleRoomAction(roomId, action);
 }
 
 export async function createRoom(params: Parameters<typeof createRoomCore>[0]) {
@@ -257,9 +269,18 @@ export async function deleteRoom(roomId: string, guard: RoomDeletionGuard = {}) 
   return deleteRoomSafely(roomId, guard);
 }
 
-export async function heartbeatRoomPlayer(roomId: string, playerId: string) {
+export async function heartbeatRoomPlayer(roomId: string, playerId: string, options: { refreshRoomSummary?: boolean; now?: number } = {}) {
   if (!db || !roomId || !playerId) return false;
   try {
+    const now = options.now ?? Date.now();
+    const shouldRefreshRoomSummary = Boolean(
+      options.refreshRoomSummary
+      && now - Number(roomSummaryHeartbeatAtByRoomId.get(roomId) ?? 0) >= ROOM_SUMMARY_HEARTBEAT_INTERVAL_MS,
+    );
+    if (!shouldRefreshRoomSummary) {
+      await setDoc(doc(db, 'rooms', roomId, 'players', playerId), { lastSeen: serverTimestamp() }, { merge: true });
+      return true;
+    }
     const batch = writeBatch(db);
     batch.set(doc(db, 'rooms', roomId, 'players', playerId), { lastSeen: serverTimestamp() }, { merge: true });
     batch.set(doc(db, 'rooms', roomId), {
@@ -268,6 +289,7 @@ export async function heartbeatRoomPlayer(roomId: string, playerId: string) {
       lastActivityAt: serverTimestamp(),
     }, { merge: true });
     await batch.commit();
+    roomSummaryHeartbeatAtByRoomId.set(roomId, now);
     return true;
   } catch {
     return false;

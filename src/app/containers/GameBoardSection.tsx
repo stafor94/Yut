@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GameBoard, type BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
-import { subscribeGameState } from '../../features/room/services/roomService';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
 import type { CaptureVisualEffect } from '../flows/captureAnimation';
 import type { FinishVisualEffect } from '../flows/finishAnimation';
@@ -10,7 +9,7 @@ import {
   gameAnimationQueue,
   waitForGameAnimation,
 } from '../flows/gameAnimationQueue';
-import { STORAGE_KEYS, type FallEffect, type Seat, type TrapEffect, type TrapNode } from '../appState';
+import { type FallEffect, type Seat, type TrapEffect, type TrapNode } from '../appState';
 
 type GameBoardSectionProps = {
   pieces: BoardPiece[];
@@ -37,6 +36,7 @@ type GameBoardSectionProps = {
   trapEffect: TrapEffect | null;
   fallEffect: FallEffect | null;
   trapPlacementNodeIds: string[];
+  trapPlacementDeadlineAt: number;
   onSelectTrapNode: (nodeId: string) => void;
 };
 
@@ -69,12 +69,12 @@ export function GameBoardSection({
   trapEffect,
   fallEffect,
   trapPlacementNodeIds,
+  trapPlacementDeadlineAt,
   onSelectTrapNode,
 }: GameBoardSectionProps) {
   const mountedRef = useRef(true);
   const [presentedPieces, setPresentedPieces] = useState<BoardPiece[]>(() => pieces.map((piece) => ({ ...piece })));
   const [presentedMovingPieceId, setPresentedMovingPieceId] = useState(movingPieceId);
-  const [trapPlacementDeadlineAt, setTrapPlacementDeadlineAt] = useState(0);
   const [trapPlacementClock, setTrapPlacementClock] = useState(() => Date.now());
 
   useLayoutEffect(() => {
@@ -106,17 +106,8 @@ export function GameBoardSection({
   }, [movingPieceId, pieces]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
-    if (!roomId) return undefined;
-    return subscribeGameState(roomId, (state) => {
-      const syncedState = state as { turnDeadlineAt?: unknown; turnDeadlineKind?: unknown; pendingTrapPlacement?: { deadline?: unknown } | null } | null;
-      const deadline = Number(syncedState?.pendingTrapPlacement?.deadline ?? syncedState?.turnDeadlineAt ?? 0);
-      const isTrapDeadline = syncedState?.turnDeadlineKind === 'trap_placement';
-      setTrapPlacementDeadlineAt(isTrapDeadline && Number.isFinite(deadline) && deadline > 0 ? deadline : 0);
-      setTrapPlacementClock(Date.now());
-    });
-  }, []);
+    setTrapPlacementClock(Date.now());
+  }, [trapPlacementDeadlineAt]);
 
   useEffect(() => {
     if (!trapPlacementNodeIds.length || !trapPlacementDeadlineAt || typeof window === 'undefined') return undefined;
