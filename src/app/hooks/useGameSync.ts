@@ -13,6 +13,8 @@ import { activatePreparedRoomGame, prepareRoomGameState } from '../../features/r
 import { auth } from '../../services/firebase/firebaseAuth';
 import { STORAGE_KEYS, type SequenceStateSnapshot } from '../appState';
 import { showCustomAlert } from '../components/CustomAlertHost';
+import { DEFAULT_TURN_DELAY_MS, setScheduledAiTurnDelayMs } from '../config/gameTimings';
+import { getAiTurnScheduleDelayFromDiagnosticState } from '../flows/aiTurnScheduling';
 import {
   buildPreparedRoomGameState,
   getGameStartCoordinatorPlayerId,
@@ -57,6 +59,7 @@ function getLatestGameStateWithTimeout(roomId: string) {
 }
 
 export function useGameSyncDebugState(diagnosticState: Record<string, unknown>) {
+  setScheduledAiTurnDelayMs(getAiTurnScheduleDelayFromDiagnosticState(diagnosticState, DEFAULT_TURN_DELAY_MS));
   syncPendingRemoteActionItemPromptTiming(diagnosticState.itemPromptTiming);
   useEffect(() => {
     (window as typeof window & { __YUT_DEBUG_STATE__?: Record<string, unknown> }).__YUT_DEBUG_STATE__ = diagnosticState;

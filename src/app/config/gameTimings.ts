@@ -1,4 +1,13 @@
-export const TURN_DELAY_MS = 1000;
+export const DEFAULT_TURN_DELAY_MS = 1000;
+export let TURN_DELAY_MS = DEFAULT_TURN_DELAY_MS;
+
+export const setScheduledAiTurnDelayMs = (delayMs: unknown) => {
+  const normalizedDelayMs = Number(delayMs ?? 0);
+  TURN_DELAY_MS = Number.isFinite(normalizedDelayMs) && normalizedDelayMs > 0
+    ? Math.ceil(normalizedDelayMs)
+    : DEFAULT_TURN_DELAY_MS;
+};
+
 export const START_CANCEL_LOCK_MS = 2000;
 export const SEQUENCE_RECOVERY_INITIAL_DELAY_MS = 5000;
 export const SEQUENCE_RECOVERY_RETRY_DELAYS_MS = [5000, 10000, 20000] as const;
