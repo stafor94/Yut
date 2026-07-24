@@ -4,7 +4,10 @@ import {
   getClientActionStartedAt,
   getDeadlineTimerAnimationState,
   getTurnActionDeadlineDelayMs,
+  getTurnActionReadyAt,
   getTurnActionStartedAt,
+  getTurnDisplayAt,
+  getTurnTransitionPhase,
   isManualTurnActionDeadlineExpired,
   isTurnActionDeadlineExpired,
   normalizeTurnDeadlineKind,
@@ -23,6 +26,22 @@ test('authoritative deadline이 있으면 로컬 전체 duration 대신 남은 �
   assert.equal(getTurnActionDeadlineDelayMs({ deadlineAt: 10_000, deadlineKind: 'move', phase: 'roll', fallbackMs: 15_000, now: 7_500 }), 15_000);
   assert.equal(getTurnActionDeadlineDelayMs({ deadlineAt: 10_000, deadlineKind: 'roll', phase: 'roll', fallbackMs: 15_000, now: 10_500 }), 0);
   assert.equal(getTurnActionDeadlineDelayMs({ deadlineAt: 10_000, deadlineKind: 'item_prompt', phase: 'item_prompt', fallbackMs: 10_000, now: 7_500 }), 2_500);
+});
+
+test('다음 턴은 종료 1초와 시작 1초를 거쳐 제한시간이 시작된다', () => {
+  const deadlineAt = 27_000;
+  const durationMs = 15_000;
+  assert.equal(getTurnActionReadyAt({ deadlineAt, durationMs }), 12_000);
+  assert.equal(getTurnDisplayAt({ deadlineAt, durationMs, startDelayMs: 1_000 }), 11_000);
+  assert.equal(getTurnTransitionPhase({ deadlineAt, durationMs, startDelayMs: 1_000, now: 10_999 }), 'ending');
+  assert.equal(getTurnTransitionPhase({ deadlineAt, durationMs, startDelayMs: 1_000, now: 11_000 }), 'starting');
+  assert.equal(getTurnTransitionPhase({ deadlineAt, durationMs, startDelayMs: 1_000, now: 11_999 }), 'starting');
+  assert.equal(getTurnTransitionPhase({ deadlineAt, durationMs, startDelayMs: 1_000, now: 12_000 }), 'ready');
+});
+
+test('전환 여유가 없는 기존 deadline은 즉시 ready 상태로 처리된다', () => {
+  assert.equal(getTurnTransitionPhase({ deadlineAt: 25_000, durationMs: 15_000, startDelayMs: 1_000, now: 10_000 }), 'ready');
+  assert.equal(getTurnTransitionPhase({ deadlineAt: 0, durationMs: 15_000, startDelayMs: 1_000, now: 10_000 }), 'ready');
 });
 
 test('제한시간 막대는 늦게 표시돼도 absolute deadline 진행률에서 시작한다', () => {
