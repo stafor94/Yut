@@ -1,4 +1,16 @@
-import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit as firestoreLimit,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+  Timestamp,
+  where,
+} from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
 import {
   deleteRoom as deleteRoomCore,
@@ -7,11 +19,14 @@ import {
 } from './roomServiceCore';
 import { isRoomCreationCandidate } from './roomCreationPolicy';
 import {
+  ROOM_MAX_LIFETIME_MS,
   getRoomEmptySinceMillis,
   getRoomLastActivityMillis,
+  getRoomLifetimeStartedAtMillis,
   getRoomTimestampMillis,
   hasActiveHumanLifecyclePlayer,
   isRoomDeletionExpired,
+  isRoomLifetimeExpired,
   isSystemRoom,
   shouldDeleteRoomSnapshot,
   shouldStartRoomDeletionGrace,
@@ -19,6 +34,7 @@ import {
 
 export type ManagedRoomSummary = RoomSummary & {
   deletingAt?: unknown;
+  gameStartedAt?: unknown;
   lastActivityAt?: unknown;
   lastHumanSeenAt?: unknown;
   systemRoomType?: string;
@@ -31,6 +47,8 @@ export type RoomDeletionGuard = {
   expectedCurrentPlayers?: number;
   expectedLastActivityAt?: number;
   expectedEmptySince?: number;
+  expectedStatus?: RoomSummary['status'];
+  expectedLifetimeStartedAt?: number;
 };
 
 export type PlayerRoomMembership = {
@@ -38,6 +56,9 @@ export type PlayerRoomMembership = {
   player: RoomPlayer;
   joinedAt: number;
 };
+
+const ROOM_LIFETIME_CLEANUP_LIMIT = 24;
+const roomDeletionInFlight = new Set<string>();
 
 export const countActivePlayers = (players: RoomPlayer[]) => players.filter((player) => !player.isSpectator).length;
 
@@ -100,6 +121,8 @@ async function claimRoomDeletion(roomId: string, guard: RoomDeletionGuard = {}) 
     if (guard.expectedCurrentPlayers !== undefined && Number(room.currentPlayers ?? 0) !== guard.expectedCurrentPlayers) return false;
     if (guard.expectedLastActivityAt !== undefined && getRoomLastActivityMillis(room) !== guard.expectedLastActivityAt) return false;
     if (guard.expectedEmptySince !== undefined && getRoomEmptySinceMillis(room) !== guard.expectedEmptySince) return false;
+    if (guard.expectedStatus !== undefined && room.status !== guard.expectedStatus) return false;
+    if (guard.expectedLifetimeStartedAt !== undefined && getRoomLifetimeStartedAtMillis(room) !== guard.expectedLifetimeStartedAt) return false;
     if (room.status === 'finished' || room.deletingAt) return true;
     transaction.set(roomRef, { status: 'finished', deletingAt: serverTimestamp(), lastActivityAt: serverTimestamp() }, { merge: true });
     return true;
@@ -107,10 +130,16 @@ async function claimRoomDeletion(roomId: string, guard: RoomDeletionGuard = {}) 
 }
 
 export async function deleteRoomSafely(roomId: string, guard: RoomDeletionGuard = {}) {
-  const claimed = await claimRoomDeletion(roomId, guard);
-  if (!claimed) return false;
-  await deleteRoomCore(roomId);
-  return true;
+  if (roomDeletionInFlight.has(roomId)) return false;
+  roomDeletionInFlight.add(roomId);
+  try {
+    const claimed = await claimRoomDeletion(roomId, guard);
+    if (!claimed) return false;
+    await deleteRoomCore(roomId);
+    return true;
+  } finally {
+    roomDeletionInFlight.delete(roomId);
+  }
 }
 
 async function clearRoomDeletionGrace(roomId: string, room: ManagedRoomSummary) {
@@ -155,7 +184,7 @@ export async function reconcileRoomDeletionGrace(
   const [room, players] = await Promise.all([getManagedRoom(roomId), getRoomPlayers(roomId)]);
   if (!room || isSystemRoom(room)) return false;
 
-  if (hasActiveHumanLifecyclePlayer(players, now)) {
+  if (!isRoomLifetimeExpired(room, now) && hasActiveHumanLifecyclePlayer(players, now)) {
     if (options.allowGraceClear) await clearRoomDeletionGrace(roomId, room);
     return false;
   }
@@ -165,6 +194,8 @@ export async function reconcileRoomDeletionGrace(
       expectedCurrentPlayers: Number(room.currentPlayers ?? countActivePlayers(players)),
       expectedLastActivityAt: getRoomLastActivityMillis(room),
       expectedEmptySince: getRoomEmptySinceMillis(room) || undefined,
+      expectedStatus: room.status,
+      expectedLifetimeStartedAt: getRoomLifetimeStartedAtMillis(room) || undefined,
     });
   }
 
@@ -176,6 +207,36 @@ export async function reconcileRoomDeletionGrace(
 
 export async function deleteRoomWhenNoNonAiPlayersRemain(roomId: string) {
   return reconcileRoomDeletionGrace(roomId, Date.now(), { allowGraceStart: true });
+}
+
+export async function cleanupExpiredRoomLifetimes(protectedRoomId = '') {
+  if (!db) return [];
+  const now = Date.now();
+  const cutoff = Timestamp.fromMillis(now - ROOM_MAX_LIFETIME_MS);
+  const roomsSnapshot = await getDocs(query(
+    collection(db, 'rooms'),
+    where('createdAt', '<=', cutoff),
+    orderBy('createdAt', 'asc'),
+    firestoreLimit(ROOM_LIFETIME_CLEANUP_LIMIT),
+  ));
+  const candidates = roomsSnapshot.docs
+    .map((roomDoc) => ({ id: roomDoc.id, ...(roomDoc.data() as Omit<ManagedRoomSummary, 'id'>) }))
+    .filter((room) => room.id !== protectedRoomId)
+    .filter((room) => isRoomLifetimeExpired(room, now));
+
+  const deletedRoomIds: string[] = [];
+  await Promise.all(candidates.map(async (room) => {
+    try {
+      const deleted = await deleteRoomSafely(room.id, {
+        expectedStatus: room.status,
+        expectedLifetimeStartedAt: getRoomLifetimeStartedAtMillis(room) || undefined,
+      });
+      if (deleted) deletedRoomIds.push(room.id);
+    } catch (error) {
+      console.warn('1시간 만료 방 정리에 실패했습니다.', room.id, error);
+    }
+  }));
+  return deletedRoomIds;
 }
 
 export async function cleanupDeletionCandidatesBeforeCreate(protectedRoomId = '') {
@@ -202,7 +263,7 @@ export async function getActiveRoomsWithPlayers() {
   const snapshot = await getDocs(query(collection(db, 'rooms'), where('status', 'in', ['waiting', 'playing', 'finished'])));
   const rooms = await Promise.all(snapshot.docs.map(async (roomDoc) => {
     const room = { id: roomDoc.id, ...(roomDoc.data() as Omit<ManagedRoomSummary, 'id'>) };
-    if (isSystemRoom(room) || room.deletingAt) return null;
+    if (isSystemRoom(room) || room.deletingAt || isRoomLifetimeExpired(room, now)) return null;
     const players = await getRoomPlayers(room.id);
     if (isRoomDeletionExpired(room, now) && !hasActiveHumanLifecyclePlayer(players, now)) return null;
     return { room, players };
