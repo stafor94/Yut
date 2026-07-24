@@ -194,7 +194,6 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
     });
   }, [intro, isLocalEligible, localSeatId, round, visibleLocalSubmission]);
 
-
   const handleManualRoll = useCallback((timingPositionPercent?: number) => {
     commitSubmission('manual', getRollTimingZone(timingPositionPercent ?? 50));
   }, [commitSubmission]);
@@ -373,9 +372,10 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
             const submission = round.submissions.find((item) => item.seatId === entry.seatId) ?? (localSubmission?.seatId === entry.seatId && localSubmission.roundId === round.id ? localSubmission : null);
             const canReveal = Boolean(submission && (entry.seatId === localSeatId || revealReady));
             const isRoundParticipant = round.eligibleSeatIds.includes(entry.seatId);
+            const placement = intro.placements[entry.seatId];
             return <div className={`turn-order-result-card ${entry.seatId === localSeatId ? 'mine' : ''} ${nextTieSeatIds.has(entry.seatId) && revealReady ? 'tie' : ''}`} key={entry.seatId} style={{ '--player-color': entry.color } as CSSProperties}>
               <span>{entry.name}</span>
-              {!isRoundParticipant ? <strong>순위 확정</strong> : canReveal && submission ? <><strong>{submission.resultName}</strong><small>{getTurnOrderScore(submission)}점 · {submission.source === 'auto' ? '자동 던지기' : '직접 던지기'}</small></> : submittedSeatIds.has(entry.seatId) || (entry.seatId === localSeatId && localSubmission) ? <strong>결과 대기</strong> : <strong>던지는 중</strong>}
+              {!isRoundParticipant ? placement ? <><strong>{placement}번째</strong><small>순서 확정</small></> : <strong>순위 확정</strong> : canReveal && submission ? <><strong>{submission.resultName}</strong><small>{getTurnOrderScore(submission)}점 · {submission.source === 'auto' ? '자동 던지기' : '직접 던지기'}</small></> : submittedSeatIds.has(entry.seatId) || (entry.seatId === localSeatId && localSubmission) ? <strong>결과 대기</strong> : <strong>던지는 중</strong>}
             </div>;
           })}
         </div>
@@ -384,6 +384,8 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
         {round.status === 'reveal-pending' && !revealReady && <div className="turn-order-reveal-wait" aria-hidden="true"><i></i><i></i><i></i><i></i></div>}
       </>}
     </div>
-    <RollStage rollAnimation={localRollAnimation} presentationActorId={localSeatId} />
+    <div className="turn-order-roll-stage-anchor" data-testid="turn-order-roll-stage-anchor">
+      <RollStage rollAnimation={localRollAnimation} presentationActorId={localSeatId} />
+    </div>
   </>;
 }
