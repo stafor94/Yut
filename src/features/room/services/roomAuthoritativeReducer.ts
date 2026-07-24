@@ -436,13 +436,12 @@ const applyTurnActionTimeoutPolicy = (
   const deadlineKind = (mergedState.turnDeadlineKind ?? '') as TurnDeadlineKind;
 
   if (previousDeadline > 0 && deadlineKind) {
+    const currentTurnSeatId = getTimeoutTargetSeatId(currentState);
     const targetSeatId = getTimeoutTargetSeatId(mergedState);
     const coreBaseTimeoutMs = getCoreDeadlineBaseMs(deadlineKind);
     const visibleBaseTimeoutMs = getVisibleDeadlineBaseMs(deadlineKind);
     const nextTimeoutMs = getTurnActionTimeoutMsForCount(timeoutCounts[targetSeatId], visibleBaseTimeoutMs);
-    const currentTurnIndex = Number(currentState.turnIndex ?? 0);
-    const nextTurnIndex = Number(mergedState.turnIndex ?? currentTurnIndex);
-    const startsNextTurn = action.type === 'continue_race' || nextTurnIndex !== currentTurnIndex;
+    const startsNextTurn = action.type === 'continue_race' || Boolean(targetSeatId && targetSeatId !== currentTurnSeatId);
     const nextDeadline = previousDeadline - coreBaseTimeoutMs + nextTimeoutMs + (startsNextTurn ? TURN_TRANSITION_DELAY_MS : 0);
     patch.turnDeadlineAt = nextDeadline;
     if ('pendingTrapPlacement' in patch) patch.pendingTrapPlacement = replaceNestedDeadline(patch.pendingTrapPlacement, nextDeadline);
