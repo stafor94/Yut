@@ -44,37 +44,49 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     await expect(rollStage).toBeVisible({ timeout: 5_000 });
     await expect(rollMat).toBeVisible();
     const layout = await anchor.evaluate((anchorElement) => {
-      const boardPanel = anchorElement.parentElement;
-      const board = boardPanel?.querySelector('[data-testid="game-board"]');
-      const overlay = boardPanel?.querySelector('[data-testid="turn-order-overlay"]');
+      const overlay = document.querySelector('[data-testid="turn-order-overlay"]');
       const stage = anchorElement.querySelector(':scope > .roll-stage');
       const mat = stage?.querySelector('[data-testid="roll-mat"]');
-      if (!(board instanceof HTMLElement)
-        || !(overlay instanceof HTMLElement)
+      if (!(overlay instanceof HTMLElement)
         || !(stage instanceof HTMLElement)
         || !(mat instanceof HTMLElement)) {
         throw new Error('순서 정하기 윷 연출 위치 기준 요소를 찾지 못했습니다.');
       }
       const centerX = (rect) => rect.left + rect.width / 2;
       const centerY = (rect) => rect.top + rect.height / 2;
-      const boardRect = board.getBoundingClientRect();
       const overlayRect = overlay.getBoundingClientRect();
       const anchorRect = anchorElement.getBoundingClientRect();
       const stageRect = stage.getBoundingClientRect();
       const matRect = mat.getBoundingClientRect();
       return {
+        anchorPosition: getComputedStyle(anchorElement).position,
+        anchorTop: anchorRect.top,
+        anchorLeft: anchorRect.left,
+        anchorRightGap: window.innerWidth - anchorRect.right,
+        anchorBottomGap: window.innerHeight - anchorRect.bottom,
         anchorOverlayCenterXOffset: Math.abs(centerX(anchorRect) - centerX(overlayRect)),
         anchorOverlayCenterYOffset: Math.abs(centerY(anchorRect) - centerY(overlayRect)),
         stageAnchorCenterXOffset: Math.abs(centerX(stageRect) - centerX(anchorRect)),
-        matBoardCenterXOffset: Math.abs(centerX(matRect) - centerX(boardRect)),
-        matTopFromBoardTop: matRect.top - boardRect.top,
+        stageAnchorCenterYOffset: Math.abs(centerY(stageRect) - centerY(anchorRect)),
+        matOverlayCenterXOffset: Math.abs(centerX(matRect) - centerX(overlayRect)),
+        matOverlayCenterYOffset: Math.abs(centerY(matRect) - centerY(overlayRect)),
+        matTop: matRect.top,
+        matBottomGap: window.innerHeight - matRect.bottom,
       };
     });
+    expect(layout.anchorPosition).toBe('fixed');
+    expect(Math.abs(layout.anchorTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.anchorLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.anchorRightGap)).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.anchorBottomGap)).toBeLessThanOrEqual(1);
     expect(layout.anchorOverlayCenterXOffset).toBeLessThanOrEqual(1);
     expect(layout.anchorOverlayCenterYOffset).toBeLessThanOrEqual(1);
     expect(layout.stageAnchorCenterXOffset).toBeLessThanOrEqual(1);
-    expect(layout.matBoardCenterXOffset).toBeLessThanOrEqual(1);
-    expect(layout.matTopFromBoardTop, '순서 정하기 윷 매트는 상단 게임 윷판보다 아래에서 표시되어야 합니다.').toBeGreaterThanOrEqual(24);
+    expect(layout.stageAnchorCenterYOffset).toBeLessThanOrEqual(1);
+    expect(layout.matOverlayCenterXOffset).toBeLessThanOrEqual(2);
+    expect(layout.matOverlayCenterYOffset).toBeLessThanOrEqual(2);
+    expect(layout.matTop, '순서 정하기 윷 매트 위쪽이 화면 밖으로 잘리면 안 됩니다.').toBeGreaterThanOrEqual(-1);
+    expect(layout.matBottomGap, '순서 정하기 윷 매트 아래쪽이 화면 밖으로 잘리면 안 됩니다.').toBeGreaterThanOrEqual(-1);
 
     await expect(page.getByTestId('turn-order-own-result')).toContainText('모');
     await expect(page.getByTestId('turn-order-spectating')).toBeVisible({ timeout: 25_000 });
