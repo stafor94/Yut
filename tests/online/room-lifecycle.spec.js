@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { hasFirebaseConfig, makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { createRoomFromLobby, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { createRoomFromLobby, ensureGamePlayerListExpanded, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomPlayersForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 async function readStableEmptyAiCardLayout(emptyCard, buttonTestId) {
@@ -283,6 +283,7 @@ test.describe('online room QA', () => {
       await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
       await page.getByTestId('start-game-button').click();
       await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+      await ensureGamePlayerListExpanded(page);
       const inGameAiCard = page.locator('.game-player-card.ai').first();
       await expect(inGameAiCard).toBeVisible();
       await expect(inGameAiCard.locator('.game-player-status')).toHaveText('쉬움 AI');

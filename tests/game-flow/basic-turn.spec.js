@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { collectScreenState, createRoomFromLobby, ensureGamePlayerListExpanded, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomForQa, getRoomPlayersForQa, getRoomSeatsForQa, getRoomSequencesForQa, getRoomStateForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -134,7 +134,8 @@ test.describe('game flow QA', () => {
         scrimCount: 0,
         overlayVisible: false,
       });
-      await expect(page.getByTestId('players-panel')).toContainText(hostName);
+      const playersPanel = await ensureGamePlayerListExpanded(page);
+      await expect(playersPanel).toContainText(hostName);
       await expect(page.getByTestId('game-board')).toBeVisible();
       await expect(page.getByTestId('turn-order-overlay')).toBeVisible({ timeout: 10_000 });
       await expect(page.getByTestId('turn-order-preparing')).toBeVisible({ timeout: 10_000 });
@@ -152,7 +153,7 @@ test.describe('game flow QA', () => {
       }, { timeout: 35_000, message: '순서 정하기가 완료되고 대기/오버레이가 사라져야 합니다.' }).toBe('resolved');
 
       await expect(page.getByTestId('turn-indicator')).toBeVisible();
-      await expect(page.getByTestId('players-panel')).toContainText(hostName);
+      await expect(await ensureGamePlayerListExpanded(page)).toContainText(hostName);
       await expect.poll(async () => {
         const state = await collectScreenState(page);
         const debug = state.yutDebug ?? {};
