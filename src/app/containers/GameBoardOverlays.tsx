@@ -226,7 +226,7 @@ export function TurnIndicator(props: TurnIndicatorProps) {
   const frozenSnapshotKey = getTurnIndicatorSnapshotKey(displayedCurrentText);
   const storedNeighbors = neighborsByCurrentTextRef.current.get(frozenSnapshotKey);
   if (keepNeighborsVisible && frozenSnapshotKey) preservedFallTurnKeyRef.current = frozenSnapshotKey;
-  if (showNeighbors && preservedFallTurnKeyRef.current && preservedFallTurnKeyRef.current !== frozenSnapshotKey) {
+  if (preservedFallTurnKeyRef.current && preservedFallTurnKeyRef.current !== frozenSnapshotKey) {
     preservedFallTurnKeyRef.current = '';
   }
   const renderNeighbors = shouldRenderTurnIndicatorNeighbors({
