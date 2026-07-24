@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GameBoard, type BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
-import type { CaptureVisualEffect } from '../flows/captureAnimation';
+import { playConfirmedStackSoundEffect } from '../../shared/audio/sound';
+import { createCaptureVisualEffect, type CaptureVisualEffect } from '../flows/captureAnimation';
 import { enqueueCapturePresentation } from '../flows/capturePresentationQueue';
 import type { FinishVisualEffect } from '../flows/finishAnimation';
 import {
@@ -14,6 +15,7 @@ import {
   acceptMovePresentationFrame,
   createMovePresentationSession,
   getCapturePresentationSignature,
+  getMovePresentationFinalization,
   getMovePresentationFrameKey,
   type MovePresentationSession,
 } from '../flows/movePresentation';
@@ -50,6 +52,7 @@ type GameBoardSectionProps = {
 
 const clonePieces = (pieces: BoardPiece[]) => pieces.map((piece) => ({ ...piece }));
 const CAPTURE_DUPLICATE_WINDOW_MS = 3000;
+const STACK_SOUND_DELAY_MS = 120;
 
 export function GameBoardSection({
   pieces,
@@ -161,17 +164,31 @@ export function GameBoardSection({
       moveFinalizationScheduledRef.current = true;
       queueMicrotask(() => {
         if (!mountedRef.current || moveSessionRef.current !== activeSession) return;
-        const queuedEffect = pendingCaptureEffectRef.current;
+        const settlementPieces = clonePieces(pendingSettlementPiecesRef.current);
+        const finalization = getMovePresentationFinalization(activeSession, settlementPieces, getPieceSideKey);
+        let queuedEffect = pendingCaptureEffectRef.current;
         pendingCaptureEffectRef.current = null;
+        if (!queuedEffect && finalization.capturedPieceIds.length) {
+          queuedEffect = createCaptureVisualEffect({
+            id: Date.now(),
+            pieceIds: finalization.capturedPieceIds,
+            pieces: activeSession.acceptedPieces,
+            attackerPieceId: activeSession.pieceId,
+            getPieceGroupKey: getPieceSideKey,
+          });
+        }
         if (queuedEffect) queueCaptureEffect(queuedEffect);
 
-        const settlementKey = getMovePresentationFrameKey(pendingSettlementPiecesRef.current);
+        const settlementKey = getMovePresentationFrameKey(settlementPieces);
         void gameAnimationQueue.enqueue(`move:settled:${activeSession.pieceId}:${settlementKey}`, async () => {
           if (!mountedRef.current || moveSessionRef.current !== activeSession) return;
-          setPresentedPieces(clonePieces(pendingSettlementPiecesRef.current));
+          setPresentedPieces(settlementPieces);
           setPresentedMovingPieceId('');
           moveSessionRef.current = null;
           moveFinalizationScheduledRef.current = false;
+          if (finalization.shouldPlayStackSound) {
+            window.setTimeout(playConfirmedStackSoundEffect, STACK_SOUND_DELAY_MS);
+          }
         });
       });
       return;

@@ -14,6 +14,7 @@ import {
   subscribeFallPresentationActive,
   subscribeRollPresentationCompleted,
 } from '../flows/rollPresentationEvents';
+import { shouldRenderTurnIndicatorNeighbors } from '../flows/turnIndicatorPresentation';
 import { type ToastMessage } from '../appState';
 
 const GOLDEN_YUT_AUTO_SELECT_LEAD_MS = 160;
@@ -163,6 +164,7 @@ export function TurnIndicator(props: TurnIndicatorProps) {
   };
   const lastVisibleNeighborsRef = useRef<TurnNeighborSnapshot>(initialNeighbors);
   const neighborsByCurrentTextRef = useRef<Map<string, TurnNeighborSnapshot>>(new Map());
+  const preservedFallTurnKeyRef = useRef('');
   const [keepNeighborsVisible, setKeepNeighborsVisible] = useState(getFallPresentationActive);
 
   useEffect(() => subscribeFallPresentationActive(setKeepNeighborsVisible), []);
@@ -221,11 +223,24 @@ export function TurnIndicator(props: TurnIndicatorProps) {
     if (snapshotKey) neighborsByCurrentTextRef.current.set(snapshotKey, visibleNeighbors);
   }
 
-  const renderNeighbors = showNeighbors || keepNeighborsVisible;
   const frozenSnapshotKey = getTurnIndicatorSnapshotKey(displayedCurrentText);
+  const storedNeighbors = neighborsByCurrentTextRef.current.get(frozenSnapshotKey);
+  if (keepNeighborsVisible && frozenSnapshotKey) preservedFallTurnKeyRef.current = frozenSnapshotKey;
+  if (showNeighbors && preservedFallTurnKeyRef.current && preservedFallTurnKeyRef.current !== frozenSnapshotKey) {
+    preservedFallTurnKeyRef.current = '';
+  }
+  const renderNeighbors = shouldRenderTurnIndicatorNeighbors({
+    showNeighbors,
+    fallPresentationActive: keepNeighborsVisible,
+    preserveFallNeighborsForDisplayedTurn: Boolean(
+      storedNeighbors
+      && frozenSnapshotKey
+      && preservedFallTurnKeyRef.current === frozenSnapshotKey,
+    ),
+  });
   const visibleNeighbors = showNeighbors
     ? { previousText, previousColor, nextText, nextColor }
-    : neighborsByCurrentTextRef.current.get(frozenSnapshotKey) ?? lastVisibleNeighborsRef.current;
+    : storedNeighbors ?? lastVisibleNeighborsRef.current;
 
   return <div data-testid="turn-indicator" className="turn-indicator">
     {renderNeighbors && <span className="turn-neighbor previous-turn" style={{ color: visibleNeighbors.previousColor }}>{visibleNeighbors.previousText}</span>}

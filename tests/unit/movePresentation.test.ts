@@ -4,6 +4,7 @@ import {
   acceptMovePresentationFrame,
   createMovePresentationSession,
   getCapturePresentationSignature,
+  getMovePresentationFinalization,
   isSequentialMovePresentationNode,
   type MovePresentationPiece,
 } from '../../src/app/flows/movePresentation.js';
@@ -61,6 +62,81 @@ test('one-step authoritative landing is allowed but non-moving pieces stay froze
   if (!landing.accepted) return;
   assert.equal(landing.pieces.find((item) => item.id === 'red-1')?.nodeId, 'n03');
   assert.equal(landing.pieces.find((item) => item.id === 'blue-1')?.nodeId, 'n03');
+});
+
+test('move finalization infers capture before a delayed capture effect arrives', () => {
+  const initial = [piece('red-1', 'red', 'n02'), piece('blue-1', 'blue', 'n03'), piece('blue-2', 'blue', 'n03')];
+  const session = createMovePresentationSession(initial, 'red-1', sideKey);
+  assert.ok(session);
+
+  const landing = acceptMovePresentationFrame(session, [piece('red-1', 'red', 'n03'), piece('blue-1', 'blue', 'n01', false), piece('blue-2', 'blue', 'n01', false)]);
+  assert.equal(landing.accepted, true);
+  if (!landing.accepted) return;
+
+  const finalization = getMovePresentationFinalization(
+    landing.session,
+    [piece('red-1', 'red', 'n03'), piece('blue-1', 'blue', 'n01', false), piece('blue-2', 'blue', 'n01', false)],
+    sideKey,
+  );
+  assert.deepEqual(finalization.capturedPieceIds, ['blue-1', 'blue-2']);
+  assert.equal(finalization.shouldPlayStackSound, false);
+});
+
+test('stack sound is emitted only when the moving group finally joins a stationary same-side piece', () => {
+  const initial = [piece('red-1', 'red', 'n02'), piece('red-2', 'red', 'n04'), piece('blue-1', 'blue', 'n06')];
+  const session = createMovePresentationSession(initial, 'red-1', sideKey);
+  assert.ok(session);
+
+  const middle = acceptMovePresentationFrame(session, [piece('red-1', 'red', 'n03'), piece('red-2', 'red', 'n04'), piece('blue-1', 'blue', 'n06')]);
+  assert.equal(middle.accepted, true);
+  if (!middle.accepted) return;
+  const landing = acceptMovePresentationFrame(middle.session, [piece('red-1', 'red', 'n04'), piece('red-2', 'red', 'n04'), piece('blue-1', 'blue', 'n06')]);
+  assert.equal(landing.accepted, true);
+  if (!landing.accepted) return;
+
+  const finalization = getMovePresentationFinalization(
+    landing.session,
+    [piece('red-1', 'red', 'n04'), piece('red-2', 'red', 'n04'), piece('blue-1', 'blue', 'n06')],
+    sideKey,
+  );
+  assert.equal(finalization.shouldPlayStackSound, true);
+});
+
+test('moving an existing stack to an empty node does not count as a new stack', () => {
+  const initial = [piece('red-1', 'red', 'n02'), piece('red-2', 'red', 'n02'), piece('blue-1', 'blue', 'n06')];
+  const session = createMovePresentationSession(initial, 'red-1', sideKey);
+  assert.ok(session);
+
+  const landing = acceptMovePresentationFrame(session, [piece('red-1', 'red', 'n03'), piece('red-2', 'red', 'n03'), piece('blue-1', 'blue', 'n06')]);
+  assert.equal(landing.accepted, true);
+  if (!landing.accepted) return;
+
+  const finalization = getMovePresentationFinalization(
+    landing.session,
+    [piece('red-1', 'red', 'n03'), piece('red-2', 'red', 'n03'), piece('blue-1', 'blue', 'n06')],
+    sideKey,
+  );
+  assert.equal(finalization.shouldPlayStackSound, false);
+});
+
+test('passing over a same-side piece does not count as a final stack', () => {
+  const initial = [piece('red-1', 'red', 'n02'), piece('red-2', 'red', 'n03'), piece('blue-1', 'blue', 'n06')];
+  const session = createMovePresentationSession(initial, 'red-1', sideKey);
+  assert.ok(session);
+
+  const middle = acceptMovePresentationFrame(session, [piece('red-1', 'red', 'n03'), piece('red-2', 'red', 'n03'), piece('blue-1', 'n06')]);
+  assert.equal(middle.accepted, true);
+  if (!middle.accepted) return;
+  const landing = acceptMovePresentationFrame(middle.session, [piece('red-1', 'red', 'n04'), piece('red-2', 'red', 'n03'), piece('blue-1', 'blue', 'n06')]);
+  assert.equal(landing.accepted, true);
+  if (!landing.accepted) return;
+
+  const finalization = getMovePresentationFinalization(
+    landing.session,
+    [piece('red-1', 'red', 'n04'), piece('red-2', 'red', 'n03'), piece('blue-1', 'blue', 'n06')],
+    sideKey,
+  );
+  assert.equal(finalization.shouldPlayStackSound, false);
 });
 
 test('finish transition and capture signature are deterministic', () => {
