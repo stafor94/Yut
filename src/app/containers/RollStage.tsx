@@ -282,9 +282,10 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       animationFrame = 0;
       const boardRect = board.getBoundingClientRect();
       const panelRect = boardPanel.getBoundingClientRect();
+      const isFixed = getComputedStyle(stage).position === 'fixed';
       const nextLayout = {
-        top: boardRect.top - panelRect.top - boardPanel.clientTop,
-        left: boardRect.left - panelRect.left - boardPanel.clientLeft,
+        top: isFixed ? boardRect.top : boardRect.top - panelRect.top - boardPanel.clientTop,
+        left: isFixed ? boardRect.left : boardRect.left - panelRect.left - boardPanel.clientLeft,
         width: boardRect.width,
         height: boardRect.height,
       };
