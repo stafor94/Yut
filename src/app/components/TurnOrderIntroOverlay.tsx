@@ -29,6 +29,10 @@ import {
   makeTurnOrderSubmissionId,
   submitAndMaybeAggregateTurnOrderRound,
 } from '../flows/turnOrderFlow';
+import {
+  shouldReleaseTurnOrderSubmissionLockAfterFailure,
+  shouldResetTurnOrderSubmissionLockForRound,
+} from '../flows/turnOrderSubmissionPolicy';
 import { RollStage } from '../containers/RollStage';
 import { RollTimingControl } from './RollTimingControl';
 
@@ -202,7 +206,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     setLocalSubmission(storedLocalSubmission);
     setLocalSubmissionStatus('idle');
     setLocalRollAnimation(null);
-    submittedRoundIdRef.current = '';
+    if (shouldResetTurnOrderSubmissionLockForRound(submittedRoundIdRef.current, roundId)) submittedRoundIdRef.current = '';
   }, [localSubmission?.roundId, roundId, storedLocalSubmission]);
 
   useEffect(() => {
@@ -284,7 +288,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
         }
       }
       if (submittedRoundIdRef.current !== submission.roundId) return;
-      submittedRoundIdRef.current = '';
+      if (shouldReleaseTurnOrderSubmissionLockAfterFailure(source)) submittedRoundIdRef.current = '';
       setLocalSubmissionStatus('failed');
       setLocalSubmission(null);
       setLocalRollAnimation(null);
