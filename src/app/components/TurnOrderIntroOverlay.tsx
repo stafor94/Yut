@@ -8,7 +8,7 @@ import {
   type SyncedGameState,
   type TurnOrderSubmissionRecord,
 } from '../../features/room/services/roomService';
-import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
+import { TURN_ACTION_TIMEOUT_MS, TURN_START_DELAY_MS } from '../../features/room/services/roomTiming';
 import { getDeadlineTimerAnimationState } from '../../features/room/services/turnDeadlinePolicy';
 import {
   chooseAiRollTimingZone,
@@ -143,7 +143,7 @@ const makeTurnOrderStatePatch = (state: SyncedGameState, next: TurnOrderIntro): 
     turnOrderIds: next.finalTurnOrderIds,
     initialTurnOrderIds: next.finalTurnOrderIds,
     gameStartedAt: next.gameStartAt,
-    turnDeadlineAt: Number(next.gameStartAt ?? 0) + TURN_ACTION_TIMEOUT_MS,
+    turnDeadlineAt: Number(next.gameStartAt ?? 0) + TURN_START_DELAY_MS + TURN_ACTION_TIMEOUT_MS,
     turnDeadlineKind: 'roll',
     waitingForPlayersReady: false,
     logs,
