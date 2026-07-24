@@ -149,6 +149,7 @@ const makeTurnIndicatorSnapshot = (props: TurnIndicatorProps): TurnIndicatorSnap
 
 export function TurnIndicator(props: TurnIndicatorProps) {
   const { currentText } = props;
+  const nextTurnKey = getTurnIndicatorSnapshotKey(currentText);
   const initialSnapshot = makeTurnIndicatorSnapshot(props);
   const visibleSnapshotRef = useRef<TurnIndicatorSnapshot>(initialSnapshot);
   const pendingSnapshotRef = useRef<TurnIndicatorSnapshot | null>(null);
@@ -169,24 +170,23 @@ export function TurnIndicator(props: TurnIndicatorProps) {
   useEffect(() => {
     const nextSnapshot = makeTurnIndicatorSnapshot(props);
     const visibleKey = getTurnIndicatorSnapshotKey(visibleSnapshotRef.current.currentText);
-    const nextKey = getTurnIndicatorSnapshotKey(currentText);
-    if (!visibleKey || !nextKey || visibleKey === nextKey) {
+    if (!visibleKey || !nextTurnKey || visibleKey === nextTurnKey) {
       pendingSnapshotRef.current = null;
-      if (transitionTimerRef.current !== null) {
-        window.clearTimeout(transitionTimerRef.current);
-        transitionTimerRef.current = null;
-      }
       visibleSnapshotRef.current = nextSnapshot;
       setVisibleSnapshot(nextSnapshot);
-      return undefined;
+      return;
     }
-
     pendingSnapshotRef.current = nextSnapshot;
+  }, [nextTurnKey, props.color, props.currentRollStack, props.currentText, props.nextColor, props.nextText, props.previousColor, props.previousText, props.showNeighbors]);
+
+  useEffect(() => {
+    const visibleKey = getTurnIndicatorSnapshotKey(visibleSnapshotRef.current.currentText);
+    if (!visibleKey || !nextTurnKey || visibleKey === nextTurnKey) return undefined;
     if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
     transitionTimerRef.current = window.setTimeout(() => {
       transitionTimerRef.current = null;
       const pendingSnapshot = pendingSnapshotRef.current;
-      if (!pendingSnapshot) return;
+      if (!pendingSnapshot || getTurnIndicatorSnapshotKey(pendingSnapshot.currentText) !== nextTurnKey) return;
       pendingSnapshotRef.current = null;
       visibleSnapshotRef.current = pendingSnapshot;
       setVisibleSnapshot(pendingSnapshot);
@@ -197,7 +197,7 @@ export function TurnIndicator(props: TurnIndicatorProps) {
         transitionTimerRef.current = null;
       }
     };
-  }, [props.color, props.currentRollStack, props.currentText, props.nextColor, props.nextText, props.previousColor, props.previousText, props.showNeighbors]);
+  }, [nextTurnKey]);
 
   useEffect(() => () => {
     if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
