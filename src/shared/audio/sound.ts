@@ -241,8 +241,16 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean, onEnded?:
   return undefined;
 };
 
+export const playConfirmedStackSoundEffect = () => playSoundEffect('stack', isStoredSoundEnabled());
+
 export const playStoredSoundEffect = (effect: SoundEffect | null, onEnded?: () => void) => {
   if (!effect) {
+    onEnded?.();
+    return undefined;
+  }
+  // Stack audio is only valid after a move session confirms a final same-side join.
+  // Legacy piece-count observers call this generic path during intermediate movement frames.
+  if (effect === 'stack') {
     onEnded?.();
     return undefined;
   }

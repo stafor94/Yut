@@ -16,6 +16,11 @@ export type MovePresentationSession<TPiece extends MovePresentationPiece> = {
   acceptedFrameKey: string;
 };
 
+export type MovePresentationFinalization = {
+  capturedPieceIds: string[];
+  shouldPlayStackSound: boolean;
+};
+
 const clonePieces = <TPiece extends MovePresentationPiece>(pieces: TPiece[]) => pieces.map((piece) => ({ ...piece }));
 
 export function getMovePresentationFrameKey<TPiece extends MovePresentationPiece>(pieces: TPiece[]) {
@@ -86,6 +91,44 @@ export function acceptMovePresentationFrame<TPiece extends MovePresentationPiece
       acceptedFrameKey,
     },
   };
+}
+
+export function getMovePresentationFinalization<TPiece extends MovePresentationPiece>(
+  session: MovePresentationSession<TPiece>,
+  settledPieces: TPiece[],
+  getPieceSideKey: (piece: TPiece) => string,
+): MovePresentationFinalization {
+  const movingGroupIdSet = new Set(session.movingGroupIds);
+  const settledById = new Map(settledPieces.map((piece) => [piece.id, piece]));
+  const settledMovingPiece = settledById.get(session.pieceId);
+  const movingSideKey = settledMovingPiece ? getPieceSideKey(settledMovingPiece) : '';
+
+  const capturedPieceIds = session.acceptedPieces
+    .filter((previousPiece) => {
+      if (movingGroupIdSet.has(previousPiece.id) || !previousPiece.started || previousPiece.finished) return false;
+      if (!settledMovingPiece?.started || settledMovingPiece.finished || previousPiece.nodeId !== settledMovingPiece.nodeId) return false;
+      if (getPieceSideKey(previousPiece) === movingSideKey) return false;
+      const settledPiece = settledById.get(previousPiece.id);
+      return Boolean(settledPiece
+        && !settledPiece.started
+        && !settledPiece.finished
+        && settledPiece.nodeId === 'n01');
+    })
+    .map((piece) => piece.id);
+
+  const shouldPlayStackSound = Boolean(
+    settledMovingPiece?.started
+    && !settledMovingPiece.finished
+    && settledMovingPiece.nodeId
+    && settledMovingPiece.nodeId !== FINISH_NODE_ID
+    && settledPieces.some((piece) => !movingGroupIdSet.has(piece.id)
+      && piece.started
+      && !piece.finished
+      && piece.nodeId === settledMovingPiece.nodeId
+      && getPieceSideKey(piece) === movingSideKey),
+  );
+
+  return { capturedPieceIds, shouldPlayStackSound };
 }
 
 export function getCapturePresentationSignature(effect: { nodeId: string; pieceIds: string[] }) {
