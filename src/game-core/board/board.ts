@@ -113,7 +113,10 @@ const CENTER_ADJACENT_NODE_IDS = ['d02', 'd03', 'd06', 'd07'] as const;
 export function getMovePathNodeIdsWithPrevious(startNodeId: string, steps: number, branchChoice: BranchChoice = 'outer', previousNodeId?: string) {
   if (steps > 0 && startNodeId === 'n01' && previousNodeId) return [FINISH_NODE_ID];
   if (steps >= 0 || startNodeId !== 'c01' || !previousNodeId || !CENTER_ADJACENT_NODE_IDS.includes(previousNodeId as typeof CENTER_ADJACENT_NODE_IDS[number])) {
-    return getMovePathNodeIds(startNodeId, steps, branchChoice);
+    const pathNodeIds = getMovePathNodeIds(startNodeId, steps, branchChoice);
+    return steps > 0 && pathNodeIds[pathNodeIds.length - 1] === 'n01' && pathNodeIds.length < steps
+      ? [...pathNodeIds, FINISH_NODE_ID]
+      : pathNodeIds;
   }
 
   const pathNodeIds = [previousNodeId];
