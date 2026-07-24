@@ -3,6 +3,7 @@ import { GameBoard, type BoardPiece } from '../../features/game/components/GameB
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
 import type { CaptureVisualEffect } from '../flows/captureAnimation';
+import { enqueueCapturePresentation } from '../flows/capturePresentationQueue';
 import type { FinishVisualEffect } from '../flows/finishAnimation';
 import {
   MOVE_FRAME_PRESENTATION_MS,
@@ -75,6 +76,7 @@ export function GameBoardSection({
   const mountedRef = useRef(true);
   const [presentedPieces, setPresentedPieces] = useState<BoardPiece[]>(() => pieces.map((piece) => ({ ...piece })));
   const [presentedMovingPieceId, setPresentedMovingPieceId] = useState(movingPieceId);
+  const [presentedCaptureEffect, setPresentedCaptureEffect] = useState<CaptureVisualEffect | null>(null);
   const [trapPlacementClock, setTrapPlacementClock] = useState(() => Date.now());
 
   useLayoutEffect(() => {
@@ -104,6 +106,25 @@ export function GameBoardSection({
       if (movingPieceId) await waitForGameAnimation(MOVE_FRAME_PRESENTATION_MS);
     });
   }, [movingPieceId, pieces]);
+
+  useLayoutEffect(() => {
+    if (!captureEffect) return;
+    let presented = false;
+    const queuedEffect = captureEffect;
+
+    void enqueueCapturePresentation({
+      key: `capture:${queuedEffect.id}`,
+      durationMs: queuedEffect.durationMs,
+      start: () => {
+        if (!mountedRef.current) return false;
+        presented = true;
+        setPresentedCaptureEffect(queuedEffect);
+      },
+    }).finally(() => {
+      if (!presented || !mountedRef.current) return;
+      setPresentedCaptureEffect((current) => current?.id === queuedEffect.id ? null : current);
+    });
+  }, [captureEffect]);
 
   useEffect(() => {
     setTrapPlacementClock(Date.now());
@@ -146,7 +167,7 @@ export function GameBoardSection({
     onBranchChoiceChange={onBranchChoiceChange}
     showBranchControls={false}
     capturedPieceIds={trapAffectedPieceIds}
-    captureEffect={captureEffect}
+    captureEffect={presentedCaptureEffect}
     captureDestinationNodeId={captureDestinationNodeId}
     finishEffect={finishEffect}
     trapEffectNodeId={trapEffect?.nodeId}
@@ -155,7 +176,7 @@ export function GameBoardSection({
       if (trapPlacementExpired || (trapPlacementDeadlineAt && Date.now() >= trapPlacementDeadlineAt)) return;
       onSelectTrapNode(nodeId);
     }}
-    boardShaking={Boolean(captureEffect)}
+    boardShaking={Boolean(presentedCaptureEffect)}
     showFallEffect={Boolean(fallEffect)}
     isPieceSelectable={(piece) => Boolean(isMyTurn && activeSeat && canSeatControlPiece(activeSeat, piece))}
   />;

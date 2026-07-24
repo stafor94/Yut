@@ -8,7 +8,6 @@ import {
 } from '../../features/room/services/roomTiming';
 import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
 import {
-  getDeadlineTimerAnimationState,
   getTurnActionDeadlineDelayMs,
   isTurnActionDeadlineExpired,
   normalizeTurnDeadlineAt,
@@ -20,6 +19,7 @@ import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { RollTimingControl } from '../components/RollTimingControl';
+import { createDeadlineTimerAnimationCache } from '../flows/deadlineTimerAnimation';
 import { getRollControlPresentation, shouldAutoScrollGameControls } from '../flows/rollControlPresentation';
 
 const AUTO_ACTION_LEAD_MS = 80;
@@ -111,6 +111,8 @@ export function GameBoardControls({
 
   const [turnActionTimedOut, setTurnActionTimedOut] = useState(false);
   const [itemPromptTimedOut, setItemPromptTimedOut] = useState(false);
+  const [turnActionTimerAnimationCache] = useState(() => createDeadlineTimerAnimationCache());
+  const [itemPromptTimerAnimationCache] = useState(() => createDeadlineTimerAnimationCache());
   const [timeoutCountBySeatId, setTimeoutCountBySeatId] = useState<Record<string, number>>(authoritativeTimeoutCountBySeatId);
   const authoritativeTurnDeadline = {
     at: normalizeTurnDeadlineAt(turnDeadlineAt),
@@ -172,11 +174,13 @@ export function GameBoardControls({
   );
   const turnActionDeadlineKey = `${turnActionTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
   const itemPromptDeadlineKey = `${itemPromptTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
-  const turnActionTimerAnimation = getDeadlineTimerAnimationState({
+  const turnActionTimerAnimation = turnActionTimerAnimationCache.get({
+    key: turnActionDeadlineKey,
     deadlineAt: authoritativeTurnDeadline.kind === turnActionPhase ? authoritativeTurnDeadline.at : 0,
     durationMs: timerDurationMs,
   });
-  const itemPromptTimerAnimation = getDeadlineTimerAnimationState({
+  const itemPromptTimerAnimation = itemPromptTimerAnimationCache.get({
+    key: itemPromptDeadlineKey,
     deadlineAt: authoritativeTurnDeadline.kind === 'item_prompt' ? authoritativeTurnDeadline.at : 0,
     durationMs: itemPromptFallbackDurationMs,
   });
