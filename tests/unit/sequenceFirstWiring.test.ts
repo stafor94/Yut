@@ -23,6 +23,21 @@ test('정상 원격 동기화는 state listener 대신 sequence-first subscriber
   assert.match(core, /includeMetadataChanges: true/);
 });
 
+test('브라우저 타이머는 host 메서드를 unbound 상태로 보관하지 않는다', () => {
+  const subscription = read('src/app/hooks/sequenceFirstGameStateSubscription.ts');
+
+  assert.doesNotMatch(subscription, /setTimeout:\s*globalThis\.setTimeout/);
+  assert.doesNotMatch(subscription, /clearTimeout:\s*globalThis\.clearTimeout/);
+  assert.match(
+    subscription,
+    /setTimeout:\s*\(callback, delayMs\) => globalThis\.setTimeout\(callback, delayMs\)/,
+  );
+  assert.match(
+    subscription,
+    /clearTimeout:\s*\(timer\) => globalThis\.clearTimeout\(timer\)/,
+  );
+});
+
 test('state checkpoint 로그는 최근 200개로 제한한다', () => {
   const core = read('src/features/room/services/roomServiceCore.ts');
   assert.match(core, /MAX_CHECKPOINT_LOGS = 200/);

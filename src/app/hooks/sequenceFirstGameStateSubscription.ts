@@ -20,15 +20,18 @@ type SequenceFirstDependencies = {
     callback: (sequences: GameSequence[], meta?: GameSequenceSnapshotMeta) => void,
     onError?: (error: Error) => void,
   ) => Unsubscribe;
-  setTimeout: typeof globalThis.setTimeout;
-  clearTimeout: typeof globalThis.clearTimeout;
+  setTimeout: (
+    callback: () => void,
+    delayMs: number,
+  ) => ReturnType<typeof globalThis.setTimeout>;
+  clearTimeout: (timer: ReturnType<typeof globalThis.setTimeout>) => void;
 };
 
 const defaultDependencies: SequenceFirstDependencies = {
   getLatestState: getLatestGameState,
   subscribeSequences: subscribeGameSequences,
-  setTimeout: globalThis.setTimeout,
-  clearTimeout: globalThis.clearTimeout,
+  setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+  clearTimeout: (timer) => globalThis.clearTimeout(timer),
 };
 
 const getBrowserRuntime = () => globalThis as typeof globalThis & {
