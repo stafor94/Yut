@@ -4,6 +4,10 @@ export type RoomLifecycleRoom = {
   status?: 'waiting' | 'playing' | 'finished';
   startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing';
   createdAt?: unknown;
+  gameStartedAt?: unknown;
+  startRequestedAt?: unknown;
+  startCountdownEndsAt?: unknown;
+  startCountdownUntil?: unknown;
   lastActivityAt?: unknown;
   deletingAt?: unknown;
   emptySince?: unknown;
@@ -28,6 +32,7 @@ export type RoomLifecyclePlayer = {
 };
 
 export const ROOM_MAX_IDLE_MS = 2 * 60 * 60 * 1000;
+export const ROOM_MAX_LIFETIME_MS = 60 * 60 * 1000;
 export const ROOM_EMPTY_DELETE_GRACE_MS = 3 * 60 * 1000;
 export const ROOM_LIST_CANDIDATE_LIMIT = 10;
 
@@ -136,6 +141,39 @@ export const getRoomEmptySinceMillis = (room: RoomLifecycleRoom) => getRoomTimes
 
 export const getRoomLastHumanSeenMillis = (room: RoomLifecycleRoom) => getRoomTimestampMillis(room.lastHumanSeenAt);
 
+export const getRoomGameStartedAtMillis = (room: RoomLifecycleRoom) => (
+  getRoomTimestampMillis(room.gameStartedAt)
+  || getRoomTimestampMillis(room.startCountdownEndsAt)
+  || getRoomTimestampMillis(room.startCountdownUntil)
+  || getRoomTimestampMillis(room.startRequestedAt)
+);
+
+export const getRoomLifetimeStartedAtMillis = (room: RoomLifecycleRoom) => {
+  const createdAt = getRoomTimestampMillis(room.createdAt);
+  if (isRoomInGameLifecycle(room) || room.status === 'finished') {
+    return getRoomGameStartedAtMillis(room) || createdAt;
+  }
+  return room.status === 'waiting' ? createdAt : 0;
+};
+
+export const getRoomLifetimeDeadlineMillis = (
+  room: RoomLifecycleRoom,
+  maxLifetimeMs = ROOM_MAX_LIFETIME_MS,
+) => {
+  const startedAt = getRoomLifetimeStartedAtMillis(room);
+  return startedAt ? startedAt + maxLifetimeMs : 0;
+};
+
+export const isRoomLifetimeExpired = (
+  room: RoomLifecycleRoom,
+  now = Date.now(),
+  maxLifetimeMs = ROOM_MAX_LIFETIME_MS,
+) => {
+  if (isSystemRoom(room)) return false;
+  const deadline = getRoomLifetimeDeadlineMillis(room, maxLifetimeMs);
+  return Boolean(deadline && now >= deadline);
+};
+
 export const getRoomDerivedEmptySinceMillis = (
   room: RoomLifecycleRoom,
   staleMs = ROOM_PRESENCE_STALE_MS,
@@ -190,6 +228,7 @@ export const shouldStartRoomDeletionGrace = (
 ) => (
   !isSystemRoom(room)
   && !isRoomDeleting(room)
+  && !isRoomLifetimeExpired(room, now)
   && !getRoomEmptySinceMillis(room)
   && !getRoomLastHumanSeenMillis(room)
   && !hasActiveHumanLifecyclePlayer(players, now)
@@ -202,6 +241,7 @@ export const shouldDeleteRoomSnapshot = (
 ) => {
   if (isSystemRoom(room)) return false;
   if (isRoomDeleting(room)) return true;
+  if (isRoomLifetimeExpired(room, now)) return true;
   if (hasActiveHumanLifecyclePlayer(players, now)) return false;
   if (!getRoomTimestampMillis(room.createdAt)) return true;
   return isRoomDeletionExpired(room, now);
