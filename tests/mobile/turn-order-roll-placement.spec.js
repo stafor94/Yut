@@ -75,7 +75,11 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     expect(timerAnimation.animationDelaySeconds).toBeLessThanOrEqual(0);
     expect(timerAnimation.animationDelaySeconds).toBeGreaterThan(-8.1);
 
-    await rollButton.click();
+    const ownResult = page.getByTestId('turn-order-own-result');
+    await Promise.all([
+      expect(ownResult).toContainText('모'),
+      rollButton.click(),
+    ]);
 
     const anchor = page.getByTestId('turn-order-roll-stage-anchor');
     const rollStage = anchor.locator(':scope > .roll-stage');
@@ -127,7 +131,6 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     expect(layout.matTop, '순서 정하기 윷 매트 위쪽이 화면 밖으로 잘리면 안 됩니다.').toBeGreaterThanOrEqual(-1);
     expect(layout.matBottomGap, '순서 정하기 윷 매트 아래쪽이 화면 밖으로 잘리면 안 됩니다.').toBeGreaterThanOrEqual(-1);
 
-    await expect(page.getByTestId('turn-order-own-result')).toContainText('모');
     await expect(page.getByTestId('turn-order-spectating')).toBeVisible({ timeout: 25_000 });
     const ownCard = page.getByTestId('turn-order-result-grid').locator('.turn-order-result-card').filter({ hasText: nickname });
     await expect(ownCard).toContainText('1번째');
