@@ -1,7 +1,11 @@
 import { useEffect } from 'react';
 import type { MutableRefObject } from 'react';
 import type { User } from 'firebase/auth';
-import { isRoomInGame, subscribeRoom } from '../../features/room/services/roomService';
+import { deleteRoom, isRoomInGame, subscribeRoom } from '../../features/room/services/roomService';
+import {
+  getRoomLifetimeDeadlineMillis,
+  getRoomLifetimeStartedAtMillis,
+} from '../../features/room/services/roomLifecyclePolicy';
 import type { ItemTiming } from '../../features/items/logic/items';
 import type { PieceCount, PlayMode } from '../appTypes';
 import type { Screen, TurnOrderIntro } from '../appState';
@@ -55,8 +59,31 @@ export function useRoomSummarySubscription(params: UseRoomSummarySubscriptionPar
   useEffect(() => {
     if (!params.activeRoomId) return undefined;
     const subscribedRoomId = params.activeRoomId;
-    return subscribeRoom(subscribedRoomId, (room: Parameters<typeof applyRoomSummarySnapshot>[0]['room']) => {
+    let lifetimeTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearLifetimeTimer = () => {
+      if (lifetimeTimer === null) return;
+      clearTimeout(lifetimeTimer);
+      lifetimeTimer = null;
+    };
+    const unsubscribe = subscribeRoom(subscribedRoomId, (room: Parameters<typeof applyRoomSummarySnapshot>[0]['room']) => {
       if (!shouldApplyRoomSummarySnapshot({ subscribedRoomId, currentActiveRoomId: params.activeRoomIdRef.current })) return;
+      clearLifetimeTimer();
+      if (room) {
+        const lifetimeStartedAt = getRoomLifetimeStartedAtMillis(room);
+        const lifetimeDeadline = getRoomLifetimeDeadlineMillis(room);
+        if (lifetimeStartedAt && lifetimeDeadline) {
+          const requestExpiredRoomDeletion = () => {
+            lifetimeTimer = null;
+            void deleteRoom(subscribedRoomId, {
+              expectedStatus: room.status,
+              expectedLifetimeStartedAt: lifetimeStartedAt,
+            }).catch((error) => console.warn('현재 방 1시간 만료 정리에 실패했습니다.', error));
+          };
+          const remainingMs = lifetimeDeadline - Date.now();
+          if (remainingMs <= 0) requestExpiredRoomDeletion();
+          else lifetimeTimer = setTimeout(requestExpiredRoomDeletion, remainingMs + 1000);
+        }
+      }
       applyRoomSummarySnapshot({
         ...params,
         room,
@@ -64,6 +91,10 @@ export function useRoomSummarySubscription(params: UseRoomSummarySubscriptionPar
         runtime: { now: Date.now, isRoomInGame },
       });
     });
+    return () => {
+      clearLifetimeTimer();
+      unsubscribe();
+    };
   }, [
     params.activeRoomId,
     params.activeRoomIdRef,

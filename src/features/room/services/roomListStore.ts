@@ -16,11 +16,14 @@ import {
 import {
   ROOM_LIST_CANDIDATE_LIMIT,
   getRoomLastActivityMillis,
+  isRoomLifetimeExpired,
   isRoomSummaryInactive,
 } from './roomLifecyclePolicy';
+import { cleanupExpiredRoomLifetimes } from './roomLifecycleStore';
 import type { RoomSummary } from './roomServiceCore';
 
 const ROOM_LIST_QUERY_LIMIT = Math.max(ROOM_LIST_CANDIDATE_LIMIT * 2, TOTAL_ROOM_LIMIT + 1);
+const ROOM_LIFETIME_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
 type RoomListSnapshot = Pick<QuerySnapshot, 'docs'>;
 
@@ -31,7 +34,7 @@ const roomsFromSnapshots = (...snapshots: RoomListSnapshot[]) => {
   }));
   return [...roomsById.values()]
     .filter((room) => room.status === 'waiting' || room.status === 'playing')
-    .filter((room) => !isRoomSummaryInactive(room))
+    .filter((room) => !isRoomSummaryInactive(room) && !isRoomLifetimeExpired(room))
     .sort((left, right) => getRoomLastActivityMillis(right) - getRoomLastActivityMillis(left))
     .slice(0, ROOM_LIST_CANDIDATE_LIMIT);
 };
@@ -41,6 +44,12 @@ export function subscribeCappedActiveRooms(callback: (rooms: RoomSummary[]) => v
     callback([]);
     return () => undefined;
   }
+
+  const runLifetimeCleanup = () => {
+    void cleanupExpiredRoomLifetimes().catch((error) => console.warn('1시간 만료 방 자동 정리에 실패했습니다.', error));
+  };
+  runLifetimeCleanup();
+  const lifetimeCleanupTimer = setInterval(runLifetimeCleanup, ROOM_LIFETIME_CLEANUP_INTERVAL_MS);
 
   let active = true;
   let activitySnapshot: RoomListSnapshot = { docs: [] };
@@ -73,6 +82,7 @@ export function subscribeCappedActiveRooms(callback: (rooms: RoomSummary[]) => v
 
   return () => {
     active = false;
+    clearInterval(lifetimeCleanupTimer);
     unsubscribe();
   };
 }

@@ -3,6 +3,7 @@ import {
   getRoomEmptySinceMillis,
   getRoomLastHumanSeenMillis,
   isRoomDeletionExpired,
+  isRoomLifetimeExpired,
   isRoomSummaryInactive,
   type RoomLifecycleRoom,
 } from './roomLifecyclePolicy';
@@ -10,7 +11,7 @@ import {
 export const isRoomCreationCandidate = (
   room: RoomLifecycleRoom,
   now = Date.now(),
-) => !isRoomSummaryInactive(room) && !isRoomDeletionExpired(room, now);
+) => !isRoomSummaryInactive(room) && !isRoomDeletionExpired(room, now) && !isRoomLifetimeExpired(room, now);
 
 export const hasActiveHumanRoomSummary = (
   room: RoomLifecycleRoom,

@@ -54,7 +54,42 @@ test('로비 구독은 최근 활동 방과 최근 레거시 방을 bounded 조�
   assert.ok(legacyLimitIndex > legacyOrderIndex);
   assert.match(source, /getDocs\(query\(/);
   assert.match(source, /room\.status === 'waiting' \|\| room\.status === 'playing'/);
+  assert.match(source, /!isRoomLifetimeExpired\(room\)/);
   assert.doesNotMatch(source, /where\('status', 'in'/);
+});
+
+test('로비의 1시간 만료 정리는 createdAt 오래된 후보만 제한 조회하고 5분 주기로 반복한다', () => {
+  const listSource = read('src/features/room/services/roomListStore.ts');
+  const lifecycleStoreSource = read('src/features/room/services/roomLifecycleStore.ts');
+  const cleanupStart = lifecycleStoreSource.indexOf('export async function cleanupExpiredRoomLifetimes');
+  const cleanupEnd = lifecycleStoreSource.indexOf('export async function cleanupDeletionCandidatesBeforeCreate');
+  const cleanupSource = lifecycleStoreSource.slice(cleanupStart, cleanupEnd);
+
+  assert.match(listSource, /cleanupExpiredRoomLifetimes\(\)/);
+  assert.match(listSource, /setInterval\(runLifetimeCleanup, ROOM_LIFETIME_CLEANUP_INTERVAL_MS\)/);
+  assert.match(listSource, /clearInterval\(lifetimeCleanupTimer\)/);
+  assert.match(cleanupSource, /where\('createdAt', '<=', cutoff\)/);
+  assert.match(cleanupSource, /orderBy\('createdAt', 'asc'\)/);
+  assert.match(cleanupSource, /firestoreLimit\(ROOM_LIFETIME_CLEANUP_LIMIT\)/);
+  assert.doesNotMatch(cleanupSource, /getDocs\(collection\(db, 'rooms'\)\)/);
+});
+
+test('재귀 삭제 claim은 동시 실행을 차단하고 중단된 claim만 5분 후 재회수한다', () => {
+  const source = read('src/features/room/services/roomLifecycleStore.ts');
+  assert.match(source, /ROOM_DELETION_CLAIM_STALE_MS = 5 \* 60 \* 1000/);
+  assert.match(source, /if \(deletingAt && Date\.now\(\) - deletingAt < ROOM_DELETION_CLAIM_STALE_MS\) return false/);
+  assert.match(source, /roomDeletionInFlight\.has\(roomId\)/);
+  assert.doesNotMatch(source, /if \(room\.status === 'finished' \|\| room\.deletingAt\) return true/);
+});
+
+test('현재 방 구독은 수명 마감 시각에 맞춰 상태·기준 시각 guard와 함께 삭제를 요청한다', () => {
+  const source = read('src/app/controllers/useRoomSummarySubscription.ts');
+  assert.match(source, /getRoomLifetimeStartedAtMillis\(room\)/);
+  assert.match(source, /getRoomLifetimeDeadlineMillis\(room\)/);
+  assert.match(source, /setTimeout\(requestExpiredRoomDeletion, remainingMs \+ 1000\)/);
+  assert.match(source, /expectedStatus: room\.status/);
+  assert.match(source, /expectedLifetimeStartedAt: lifetimeStartedAt/);
+  assert.match(source, /clearLifetimeTimer\(\)/);
 });
 
 test('성공 경로는 잠금 소유권과 방 ID를 transaction에서 재검증하고 잠금을 함께 해제한다', () => {
