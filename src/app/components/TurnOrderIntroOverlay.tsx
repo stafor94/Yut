@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
+  getTurnOrderSubmission,
+  submitTurnOrderSubmission,
+  subscribeTurnOrderSubmissions,
   updateTurnOrderState,
   type GameStatePatch,
   type SyncedGameState,
+  type TurnOrderSubmissionRecord,
 } from '../../features/room/services/roomService';
 import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
 import { getDeadlineTimerAnimationState } from '../../features/room/services/turnDeadlinePolicy';
@@ -19,8 +23,6 @@ import { playStoredSoundEffect } from '../../shared/audio/sound';
 import type { RollAnimation, TurnOrderIntro, TurnOrderResultName, TurnOrderSubmission } from '../appState';
 import {
   activateNextTurnOrderRound,
-  aggregateTurnOrderRound,
-  canAggregateTurnOrderRound,
   formatTurnOrderSummary,
   getTurnOrderScore,
   isTurnOrderFinalized,
@@ -106,6 +108,19 @@ const createTurnOrderSubmission = (params: {
 
 const getRemainingSeconds = (targetAt: number, now: number) => Math.max(0, Math.ceil((targetAt - now) / 1000));
 
+const toTurnOrderSubmission = (submission: TurnOrderSubmissionRecord): TurnOrderSubmission => ({
+  submissionId: submission.submissionId,
+  seatId: submission.seatId,
+  roundId: submission.roundId,
+  resultName: submission.resultName as TurnOrderResultName,
+  displayResult: submission.displayResult as YutResult,
+  sticks: submission.sticks as TurnOrderSubmission['sticks'],
+  fallCount: submission.fallCount,
+  timingZone: submission.timingZone as RollTimingZone,
+  source: submission.source,
+  submittedAt: submission.submittedAt,
+});
+
 const makeTurnOrderStatePatch = (state: SyncedGameState, next: TurnOrderIntro): GameStatePatch => {
   if (!isTurnOrderFinalized(next)) return { turnOrderIntro: next };
   const entryById = new Map(next.order.map((entry) => [entry.seatId, entry]));
@@ -136,6 +151,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
   const [localSubmission, setLocalSubmission] = useState<TurnOrderSubmission | null>(null);
   const [localSubmissionStatus, setLocalSubmissionStatus] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>('idle');
   const [localRollAnimation, setLocalRollAnimation] = useState<RollAnimation | null>(null);
+  const [storedSubmissionSeatIds, setStoredSubmissionSeatIds] = useState<string[]>([]);
   const submittedRoundIdRef = useRef('');
   const aiSubmittingRoundIdRef = useRef('');
   const fallbackRoundIdRef = useRef('');
@@ -190,6 +206,25 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
   }, [localSubmission?.roundId, roundId, storedLocalSubmission]);
 
   useEffect(() => {
+    if (!intro || !round || !isLocalEligible || storedLocalSubmission || localSubmission?.roundId === round.id) return;
+    let disposed = false;
+    void getTurnOrderSubmission(intro.roomId, intro.sessionId, round.id, localSeatId)
+      .then((stored) => {
+        if (disposed || !stored) return;
+        const submission = toTurnOrderSubmission(stored);
+        setLocalSubmission(submission);
+        setLocalSubmissionStatus('confirmed');
+        submittedRoundIdRef.current = round.id;
+      })
+      .catch(() => undefined);
+    return () => { disposed = true; };
+  }, [intro, isLocalEligible, localSeatId, localSubmission?.roundId, round, storedLocalSubmission]);
+
+  useEffect(() => {
+    setStoredSubmissionSeatIds([]);
+  }, [roundId]);
+
+  useEffect(() => {
     if (!round || round.status !== 'collecting') {
       aiSubmittingRoundIdRef.current = '';
       fallbackRoundIdRef.current = '';
@@ -233,15 +268,13 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     void (async () => {
       for (let attempt = 1; attempt <= SUBMISSION_MAX_ATTEMPTS; attempt += 1) {
         try {
-          let authoritativeSubmissionSeen = false;
-          const committedVersion = await updateTurnOrderState(intro.roomId, (state) => {
-            const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
-            if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
-            authoritativeSubmissionSeen = current.currentRound.submissions.some((entry) => entry.seatId === submission.seatId);
-            const next = submitAndMaybeAggregateTurnOrderRound(current, submission, Date.now());
-            return next === current ? null : makeTurnOrderStatePatch(state, next);
+          const result = await submitTurnOrderSubmission(intro.roomId, {
+            ...submission,
+            submissionId: submission.submissionId ?? makeTurnOrderSubmissionId(submission.roundId, submission.seatId),
+            sessionId: intro.sessionId,
+            coordinatorSeatId: onlineGameCoordinatorSeatId,
           });
-          if (committedVersion === null && !authoritativeSubmissionSeen) throw new Error('순서 정하기 제출이 authoritative 상태에 반영되지 않았습니다.');
+          if (result.status !== 'committed' && result.status !== 'duplicate') throw new Error('순서 정하기 제출이 authoritative 상태에 반영되지 않았습니다.');
           if (submittedRoundIdRef.current === submission.roundId) setLocalSubmissionStatus('confirmed');
           return;
         } catch {
@@ -256,7 +289,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       setLocalSubmission(null);
       setLocalRollAnimation(null);
     })();
-  }, [intro, isLocalEligible, localSeatId, round, visibleLocalSubmission]);
+  }, [intro, isLocalEligible, localSeatId, onlineGameCoordinatorSeatId, round, visibleLocalSubmission]);
 
   const handleManualRoll = useCallback((timingPositionPercent?: number) => {
     commitSubmission('manual', getRollTimingZone(timingPositionPercent ?? 50));
@@ -284,20 +317,15 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       qaResultQueue: 'ai',
     }));
     aiSubmittingRoundIdRef.current = round.id;
-    void updateTurnOrderState(intro.roomId, (state) => {
-      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
-      const transactionNow = Math.max(Date.now(), submissionNow);
-      if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
-      const activated = activateNextTurnOrderRound(current, transactionNow);
-      if (activated.currentRound.status !== 'collecting' || transactionNow < activated.currentRound.startAt) return null;
-      const currentAiSeatIds = new Set(activated.order.filter((entry) => entry.isAI).map((entry) => entry.seatId));
-      const eligibleSubmissions = aiSubmissions.filter((submission) => currentAiSeatIds.has(submission.seatId));
-      const next = submitAndMaybeAggregateTurnOrderRound(activated, eligibleSubmissions, transactionNow);
-      return next === current ? null : makeTurnOrderStatePatch(state, next);
-    }).catch(() => {
+    void Promise.all(aiSubmissions.map((submission) => submitTurnOrderSubmission(intro.roomId, {
+      ...submission,
+      submissionId: submission.submissionId ?? makeTurnOrderSubmissionId(submission.roundId, submission.seatId),
+      sessionId: intro.sessionId,
+      coordinatorSeatId: onlineGameCoordinatorSeatId,
+    }))).catch(() => {
       if (aiSubmittingRoundIdRef.current === round.id) aiSubmittingRoundIdRef.current = '';
     });
-  }, [intro, isCoordinator, now, round]);
+  }, [intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
 
   useEffect(() => {
     if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.deadlineAt + AUTO_ROLL_FALLBACK_DELAY_MS) return;
@@ -315,32 +343,40 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
         qaResultQueue: 'none',
       }));
     fallbackRoundIdRef.current = round.id;
-    void updateTurnOrderState(intro.roomId, (state) => {
-      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
-      const transactionNow = Math.max(Date.now(), submissionNow);
-      if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId) return null;
-      const activated = activateNextTurnOrderRound(current, transactionNow);
-      if (activated.currentRound.status !== 'collecting' || transactionNow < activated.currentRound.deadlineAt) return null;
-      const next = submitAndMaybeAggregateTurnOrderRound(activated, fallbackSubmissions, transactionNow);
-      return next === current ? null : makeTurnOrderStatePatch(state, next);
-    }).catch(() => {
+    void Promise.all(fallbackSubmissions.map((submission) => submitTurnOrderSubmission(intro.roomId, {
+      ...submission,
+      submissionId: submission.submissionId ?? makeTurnOrderSubmissionId(submission.roundId, submission.seatId),
+      sessionId: intro.sessionId,
+      coordinatorSeatId: onlineGameCoordinatorSeatId,
+    }))).catch(() => {
       if (fallbackRoundIdRef.current === round.id) fallbackRoundIdRef.current = '';
     });
-  }, [intro, isCoordinator, now, round]);
+  }, [intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
 
   useEffect(() => {
-    if (!intro || !round || !isCoordinator || !canAggregateTurnOrderRound(intro, now) || aggregatingRoundIdRef.current === round.id) return;
-    aggregatingRoundIdRef.current = round.id;
-    void updateTurnOrderState(intro.roomId, (state) => {
-      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
-      const transactionNow = Date.now();
-      if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId || !canAggregateTurnOrderRound(current, transactionNow)) return null;
-      const next = aggregateTurnOrderRound(current, transactionNow);
-      return makeTurnOrderStatePatch(state, next);
-    }).catch(() => {
+    if (!intro || !round || !isCoordinator || round.status !== 'collecting') return undefined;
+    const eligibleSeatIds = new Set(round.eligibleSeatIds);
+    return subscribeTurnOrderSubmissions(intro.roomId, intro.sessionId, round.id, (storedSubmissions) => {
+      const submissions = storedSubmissions
+        .filter((submission) => eligibleSeatIds.has(submission.seatId))
+        .map(toTurnOrderSubmission);
+      setStoredSubmissionSeatIds(submissions.map((submission) => submission.seatId));
+      if (aggregatingRoundIdRef.current === round.id) return;
+      if (!round.eligibleSeatIds.every((seatId) => submissions.some((submission) => submission.seatId === seatId))) return;
+      aggregatingRoundIdRef.current = round.id;
+      void updateTurnOrderState(intro.roomId, (state) => {
+        const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
+        const transactionNow = Date.now();
+        if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId || current.currentRound.id !== round.id || current.currentRound.status !== 'collecting') return null;
+        const next = submitAndMaybeAggregateTurnOrderRound(current, submissions, transactionNow);
+        return next === current ? null : makeTurnOrderStatePatch(state, next);
+      }).catch(() => {
+        if (aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
+      });
+    }, () => {
       if (aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
     });
-  }, [intro, isCoordinator, now, round]);
+  }, [intro, isCoordinator, round]);
 
   useEffect(() => {
     if (!intro || !isTurnOrderFinalized(intro) || !intro.finalOrderAt || now < intro.finalOrderAt) return;
@@ -354,7 +390,10 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
   const orderedFinalEntries = (intro.finalTurnOrderIds ?? [])
     .map((seatId) => intro.order.find((entry) => entry.seatId === seatId))
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-  const submittedSeatIds = new Set(round.submissions.map((submission) => submission.seatId));
+  const submittedSeatIds = new Set([
+    ...round.submissions.map((submission) => submission.seatId),
+    ...storedSubmissionSeatIds,
+  ]);
   const remainingSeconds = isPreparing ? getRemainingSeconds(round.startAt, now) : getRemainingSeconds(round.deadlineAt, now);
   const revealSeconds = revealAt ? getRemainingSeconds(revealAt, now) : 0;
   const nextTieSeatIds = new Set(intro.nextRound?.eligibleSeatIds ?? []);

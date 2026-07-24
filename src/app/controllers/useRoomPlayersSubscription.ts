@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { User } from 'firebase/auth';
 import { claimRoomHostIfMissing, scheduleEmptyRoomDeletion, subscribeRoomPlayers, type RoomPlayer } from '../../features/room/services/roomService';
+import { clearRuntimeAiDifficulties, replaceRuntimeAiDifficulties } from '../../game-core/aiDifficulty';
 import { ROOM_PLAYER_MISSING_GRACE_MS } from '../flows/presenceRecovery';
 import { makeRoomHostClaimKey, resolveLocalRoomPlayerSnapshot, shouldIgnoreRoomPlayersSnapshot } from '../flows/roomPlayersSubscriptionFlow';
 import { preserveLockedGameSeats, seatsFromRoomPlayers, spectatorsFromRoomPlayers, STORAGE_KEYS, type PlayMode, type Screen, type Seat } from '../appState';
@@ -58,6 +59,7 @@ export function useRoomPlayersSubscription(params: UseRoomPlayersSubscriptionPar
     roomPlayerAiStatesRef.current = new Map();
     const unsubscribe = subscribeRoomPlayers(activeRoomId, (players) => {
       if (shouldIgnoreRoomPlayersSnapshot(activeRoomId, activeRoomIdRef.current)) return;
+      replaceRuntimeAiDifficulties(players.filter((player) => player.isAI || player.isSubstitutedByAI));
       const nextSeats = seatsFromRoomPlayers(players, playMode, maxPlayers, activeRoomHostId);
       const currentUserId = (userRef.current ?? currentUser)?.uid;
       const { localPresencePlayer, hasCurrentUserInSnapshot, presenceCleanupEligible: nextPresenceCleanupEligible } = resolveLocalRoomPlayerSnapshot(players, currentUserId ?? '');
@@ -127,6 +129,6 @@ export function useRoomPlayersSubscription(params: UseRoomPlayersSubscriptionPar
       setSpectators(nextSpectators);
       if (!players.length) void scheduleEmptyRoomDeletion(activeRoomId);
     });
-    return () => { if (missingRoomPlayerTimerRef.current !== null) { window.clearTimeout(missingRoomPlayerTimerRef.current); missingRoomPlayerTimerRef.current = null; } unsubscribe(); };
+    return () => { if (missingRoomPlayerTimerRef.current !== null) { window.clearTimeout(missingRoomPlayerTimerRef.current); missingRoomPlayerTimerRef.current = null; } clearRuntimeAiDifficulties(); unsubscribe(); };
   }, [activeRoomHostId, activeRoomId, activeRoomIdRef, canCoordinateOnlineGame, confirmedRoomPlayerRef, currentUser, isRoomManager, leavingRoomRef, localSeatId, maxPlayers, missingRoomPlayerTimerRef, pendingAiSeatIdsRef, pendingSequenceMetaRef, playMode, roomHostClaimKeyRef, roomPlayerAiStatesRef, screen, setActiveRoomHostId, setActiveRoomId, setActiveRoomTitle, setCountdown, setCoordinatorStateSaveKey, setIsRoomHost, setMessage, setPresenceCleanupEligibility, setRoomNoticeDialog, setScreen, setSeats, setSpectators, spectatorIdsRef, userRef]);
 }

@@ -173,5 +173,19 @@ test.describe('game flow QA', () => {
         return JSON.stringify({ state, latestSequence, initializedSequenceCount: initializedSequences.length }, null, 2);
       }, { timeout: 20_000, message: '초기 state/sequences 저장 후 첫 턴 조작/대기 UI가 보여야 합니다.' }).toBe('ready');
     });
+
+    await runQaStep(testInfo, '오프라인 상태와 비차단 재연결 복구 확인', async () => {
+      const serverStatus = page.locator('.status-card');
+      await context.setOffline(true);
+      await expect(serverStatus).toContainText('오프라인', { timeout: 5_000 });
+      await expect(page.getByTestId('game-screen')).toBeVisible();
+      await expect(page.getByTestId('game-board')).toBeVisible();
+
+      await context.setOffline(false);
+      await expect(serverStatus).toContainText(/재연결 중|복구 중|서버 확인 중|온라인/, { timeout: 5_000 });
+      await expect(serverStatus).toContainText('온라인', { timeout: 15_000 });
+      await expect(page.getByTestId('game-screen')).toBeVisible();
+      await expect(page.getByTestId('game-board')).toBeVisible();
+    });
   });
 });

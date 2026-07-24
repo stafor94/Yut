@@ -1,7 +1,7 @@
 import { doc } from 'firebase/firestore';
 import { db } from '../../../services/firebase/firebaseDb';
 
-export const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'] as const;
+export const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions', 'turnOrderSubmissions'] as const;
 export const DELETE_BATCH_SIZE = 25;
 const SEQUENCE_ID_PAD_LENGTH = 12;
 
@@ -26,6 +26,10 @@ export const makeFirestoreSafeId = (value: string) => {
 };
 
 export const getClientMutationDocRef = (roomId: string, clientMutationId: string) => doc(db!, 'rooms', roomId, 'processedActions', makeFirestoreSafeId(clientMutationId));
+
+export const getTurnOrderSubmissionDocRef = (roomId: string, _sessionId: string, roundId: string, seatId: string) => (
+  doc(db!, 'rooms', roomId, 'turnOrderSubmissions', `${roundId}:${seatId}`)
+);
 
 export const sanitizeForFirestore = (value: unknown): unknown => {
   if (value === undefined) return null;

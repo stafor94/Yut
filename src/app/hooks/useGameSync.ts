@@ -3,7 +3,6 @@ import type { Unsubscribe } from 'firebase/firestore';
 import {
   getLatestGameState,
   removeRoomPlayer,
-  subscribeGameState,
   subscribeRoom,
   subscribeRoomPlayers,
   type RoomPlayer,
@@ -27,6 +26,8 @@ import {
   type GameSyncSubscriptionController,
 } from './gameSyncSubscription';
 import { syncPendingRemoteActionItemPromptTiming } from './pendingRemoteActionPolicy';
+import { publishGameConnectionState } from './gameConnectionState';
+import { subscribeSequenceFirstGameState } from './sequenceFirstGameStateSubscription';
 import {
   notifySequenceRecoveryProgress,
   SEQUENCE_RECOVERY_FATAL_EVENT,
@@ -74,7 +75,7 @@ type GameSyncSubscriptionParams = {
   subscribe?: (roomId: string, callback: (state: SyncedGameState | null) => void) => Unsubscribe;
 };
 
-export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, lastAppliedStateVersionRef, applyingSyncedStateRef, replayMissingSequencesThenApply, applySyncedStateSnapshot, enqueueAuthoritativeResultApplication, onSnapshotReceived, subscribe = subscribeGameState }: GameSyncSubscriptionParams) {
+export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, lastAppliedStateVersionRef, applyingSyncedStateRef, replayMissingSequencesThenApply, applySyncedStateSnapshot, enqueueAuthoritativeResultApplication, onSnapshotReceived, subscribe = subscribeSequenceFirstGameState }: GameSyncSubscriptionParams) {
   const subscribeRef = useRef(subscribe);
   subscribeRef.current = subscribe;
   const activeRoomIdRef = useRef(activeRoomId);
@@ -99,11 +100,14 @@ export function useGameSyncSubscription({ activeRoomId, lastAppliedSequenceRef, 
     if (escalationRecoveryRef.current) return escalationRecoveryRef.current;
     const recovery = (async () => {
       if (!roomId || activeRoomIdRef.current !== roomId) return false;
+      publishGameConnectionState({ roomId, status: 'recovering' });
       const latestState = await getLatestGameStateWithTimeout(roomId);
       if (!latestState || activeRoomIdRef.current !== roomId) return false;
       const localSequence = lastAppliedSequenceRef.current;
       const remoteSequence = Number(latestState.lastSequence ?? 0);
-      if (!Number.isFinite(remoteSequence) || remoteSequence <= localSequence) return false;
+      if (!Number.isFinite(remoteSequence)) return false;
+      publishGameConnectionState({ roomId, status: 'online', lastServerConfirmedAt: Date.now(), hasPendingWrites: false });
+      if (remoteSequence <= localSequence) return false;
       await replayMissingSequencesThenApply(latestState as SequenceStateSnapshot, localSequence, remoteSequence);
       notifySequenceRecoveryProgress(roomId, remoteSequence);
       return true;

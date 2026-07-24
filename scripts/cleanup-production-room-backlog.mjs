@@ -11,7 +11,7 @@ const ACCESS_TOKEN = String(process.env.GOOGLE_OAUTH_ACCESS_TOKEN ?? '').trim();
 const APPLY = process.argv.includes('--apply');
 const CONFIRMED = process.env.ALLOW_PRODUCTION_ROOM_CLEANUP === '1';
 const MIN_INACTIVE_AGE_MS = Number(process.env.ROOM_CLEANUP_MIN_AGE_MS ?? 2 * 60 * 60 * 1000);
-const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions'];
+const ROOM_SUBCOLLECTIONS = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions', 'turnOrderSubmissions'];
 
 if (PROJECT_ID !== 'yut-online') throw new Error(`예상하지 못한 production projectId: ${PROJECT_ID || '없음'}`);
 if (!ACCESS_TOKEN) throw new Error('GOOGLE_OAUTH_ACCESS_TOKEN이 필요합니다. gcloud auth application-default print-access-token 등의 제한된 관리자 토큰을 사용하세요.');

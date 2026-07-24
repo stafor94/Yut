@@ -90,6 +90,10 @@ export type ManualSyncResolution = StalledTurnSyncResolution & {
   result: string;
 };
 export type SequenceStateSnapshot = Partial<{
+  playMode: PlayMode;
+  itemMode: boolean;
+  stackedRollMode: boolean;
+  pieceCount: 1 | 2 | 3 | 4;
   pieces: BoardPiece[];
   turnIndex: number;
   turnOrderIds: string[];
@@ -129,6 +133,8 @@ export type SequenceStateSnapshot = Partial<{
   waitingForPlayersReady: boolean;
   turnDeadlineAt: number;
   turnDeadlineKind: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
+  turnActionTimeoutCountBySeatId: Record<string, number>;
+  coordinatorSeatId: string;
   gameSeats: GameSeatSnapshot[];
   startRequestVersion: number;
   turnVersion: number;

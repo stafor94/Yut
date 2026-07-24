@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
-import { subscribeGameState } from '../../features/room/services/roomService';
 import {
   TURN_ITEM_PROMPT_TIMEOUT_MS,
   getTurnActionTimeoutMsForCount,
@@ -20,7 +19,6 @@ import {
 import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
-import { STORAGE_KEYS } from '../appState';
 import { RollTimingControl } from '../components/RollTimingControl';
 import { getRollControlPresentation, shouldAutoScrollGameControls } from '../flows/rollControlPresentation';
 
@@ -57,6 +55,9 @@ type GameBoardControlsProps = {
   waitingForOnlineTurnOrder: boolean;
   hasActiveTurnOrderIntro: boolean;
   canRollForTurnOrderNow: boolean;
+  turnDeadlineAt: number;
+  turnDeadlineKind: TurnDeadlineKind;
+  timeoutCountBySeatId: Record<string, number>;
 };
 
 export function GameBoardControls({
@@ -90,6 +91,9 @@ export function GameBoardControls({
   waitingForOnlineTurnOrder,
   hasActiveTurnOrderIntro,
   canRollForTurnOrderNow,
+  turnDeadlineAt,
+  turnDeadlineKind,
+  timeoutCountBySeatId: authoritativeTimeoutCountBySeatId,
 }: GameBoardControlsProps) {
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const wasLocalTurnActiveRef = useRef(false);
@@ -107,8 +111,11 @@ export function GameBoardControls({
 
   const [turnActionTimedOut, setTurnActionTimedOut] = useState(false);
   const [itemPromptTimedOut, setItemPromptTimedOut] = useState(false);
-  const [timeoutCountBySeatId, setTimeoutCountBySeatId] = useState<Record<string, number>>({});
-  const [authoritativeTurnDeadline, setAuthoritativeTurnDeadline] = useState<{ at: number; kind: TurnDeadlineKind }>({ at: 0, kind: '' });
+  const [timeoutCountBySeatId, setTimeoutCountBySeatId] = useState<Record<string, number>>(authoritativeTimeoutCountBySeatId);
+  const authoritativeTurnDeadline = {
+    at: normalizeTurnDeadlineAt(turnDeadlineAt),
+    kind: normalizeTurnDeadlineKind(turnDeadlineKind),
+  };
   const localTurnActive = Boolean(activeSeatId && activeSeatId === localSeatId && !waitingForOnlineTurnOrder && !hasActiveTurnOrderIntro);
   const shouldAutoScrollControls = shouldAutoScrollGameControls({
     hasRoll: Boolean(roll),
@@ -139,28 +146,11 @@ export function GameBoardControls({
   }, [activeSeatId, canRequestMove, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll, shouldAutoScrollControls, showBottomBranchControls]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
-    if (!roomId) return undefined;
-    return subscribeGameState(roomId, (state) => {
-      const syncedState = state as { turnActionTimeoutCountBySeatId?: unknown; turnDeadlineAt?: unknown; turnDeadlineKind?: unknown } | null;
-      const nextDeadlineAt = normalizeTurnDeadlineAt(syncedState?.turnDeadlineAt);
-      const nextDeadlineKind = normalizeTurnDeadlineKind(syncedState?.turnDeadlineKind);
-      setAuthoritativeTurnDeadline((current) => current.at === nextDeadlineAt && current.kind === nextDeadlineKind
-        ? current
-        : { at: nextDeadlineAt, kind: nextDeadlineKind });
-
-      const rawCounts = syncedState?.turnActionTimeoutCountBySeatId;
-      if (!rawCounts || typeof rawCounts !== 'object' || Array.isArray(rawCounts)) {
-        setTimeoutCountBySeatId({});
-        return;
-      }
-      setTimeoutCountBySeatId(Object.fromEntries(
-        Object.entries(rawCounts as Record<string, unknown>)
-          .map(([seatId, count]) => [seatId, normalizeTurnActionTimeoutCount(count)]),
-      ));
-    });
-  }, [localSeatId]);
+    setTimeoutCountBySeatId(Object.fromEntries(
+      Object.entries(authoritativeTimeoutCountBySeatId)
+        .map(([seatId, count]) => [seatId, normalizeTurnActionTimeoutCount(count)]),
+    ));
+  }, [authoritativeTimeoutCountBySeatId]);
 
   const isOpponentTurn = Boolean(activeSeatId && activeSeatId !== localSeatId);
   const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;

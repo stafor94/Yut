@@ -2,7 +2,7 @@ name: Main Branch QA
 
 on:
   push:
-    branches: [main]
+    branches: [main, firebase-smooth-integration]
   workflow_dispatch:
 
 permissions:

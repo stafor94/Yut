@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { saveGameState, type GameAction, type GameSequenceType } from '../../features/room/services/roomService';
+import {
+  saveGameState,
+  type GameAction,
+  type GameSequenceType,
+} from '../../features/room/services/roomService';
 import { clearPendingStackedBonusRoll, syncPendingStackedBonusRoll } from '../../game-core/stackedRollTurnGuard';
 import { makeGameStateFingerprint } from '../appState';
 

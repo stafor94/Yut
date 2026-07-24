@@ -1,7 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './app/App';
-import { AiDifficultyRuntimeBridge } from './app/components/AiDifficultyRuntimeBridge';
 import { AppErrorBoundary } from './app/components/AppErrorBoundary';
 import { CustomAlertHost } from './app/components/CustomAlertHost';
 import './styles/mobile-item-log-recovery.css';
@@ -36,7 +35,6 @@ import './styles/lobby-guide-timing-grades.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AppErrorBoundary>
-      <AiDifficultyRuntimeBridge />
       <App />
       <CustomAlertHost />
     </AppErrorBoundary>
