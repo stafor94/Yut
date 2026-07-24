@@ -251,7 +251,7 @@ const getFinalTurnOrderIds = (intro: TurnOrderIntro, individualOrderIds: string[
 };
 
 export const canAggregateTurnOrderRound = (intro: TurnOrderIntro, now = Date.now()) => intro.currentRound.status === 'collecting'
-  && now >= intro.currentRound.deadlineAt
+  && now >= intro.currentRound.startAt
   && intro.currentRound.eligibleSeatIds.every((seatId) => intro.currentRound.submissions.some((submission) => submission.seatId === seatId));
 
 export const aggregateTurnOrderRound = (intro: TurnOrderIntro, now = Date.now()): TurnOrderIntro => {
