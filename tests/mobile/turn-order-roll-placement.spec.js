@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createRoomFromLobby, primeLobbyStorage } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
+import { deleteRoomForQa, findRoomIdByTitle, getRoomStateForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 test.describe('turn-order roll placement and confirmed rank QA', () => {
   let roomId = '';
@@ -131,10 +131,33 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     expect(layout.matTop, '순서 정하기 윷 매트 위쪽이 화면 밖으로 잘리면 안 됩니다.').toBeGreaterThanOrEqual(-1);
     expect(layout.matBottomGap, '순서 정하기 윷 매트 아래쪽이 화면 밖으로 잘리면 안 됩니다.').toBeGreaterThanOrEqual(-1);
 
-    await expect(page.getByTestId('turn-order-spectating')).toBeVisible({ timeout: 25_000 });
     const ownCard = page.getByTestId('turn-order-result-grid').locator('.turn-order-result-card').filter({ hasText: nickname });
-    await expect(ownCard).toContainText('1번째');
-    await expect(ownCard).toContainText('순서 확정');
-    await expect(ownCard).not.toContainText('순위 확정');
+    await Promise.all([
+      expect(ownCard).toContainText('1번째', { timeout: 25_000 }),
+      expect(ownCard).toContainText('순서 확정', { timeout: 25_000 }),
+      expect(ownCard).not.toContainText('순위 확정', { timeout: 25_000 }),
+      expect.poll(async () => {
+        const state = await getRoomStateForQa(roomId);
+        const intro = state?.turnOrderIntro;
+        const round = intro?.currentRound;
+        const ownEntry = intro?.order?.find((entry) => entry.name === nickname);
+        if (!intro || !round || !ownEntry || round.index !== 2) return 'waiting';
+        const allAiSubmitted = round.eligibleSeatIds.every((seatId) => {
+          const entry = intro.order.find((item) => item.seatId === seatId);
+          const submission = round.submissions.find((item) => item.seatId === seatId);
+          return entry?.isAI && submission?.source === 'auto';
+        });
+        const aggregatedAt = Number(round.aggregatedAt ?? 0);
+        const deadlineAt = Number(round.deadlineAt ?? 0);
+        return !round.eligibleSeatIds.includes(ownEntry.seatId)
+          && Number(intro.placements?.[ownEntry.seatId] ?? 0) === 1
+          && allAiSubmitted
+          && round.status === 'reveal-pending'
+          && aggregatedAt > 0
+          && aggregatedAt < deadlineAt
+          ? 'confirmed'
+          : 'waiting';
+      }, { timeout: 25_000, message: 'AI 동률 재대결은 즉시 자동 제출·조기 집계되고 로컬 1위가 유지되어야 합니다.' }).toBe('confirmed'),
+    ]);
   });
 });
