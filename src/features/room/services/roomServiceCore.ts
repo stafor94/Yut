@@ -7,6 +7,7 @@ import { spawnInitialBoardItems, type BoardItem } from '../../../game-core/board
 import { type YutResult } from '../../../game-core/roll';
 import { TURN_NETWORK_GRACE_MS } from './roomTiming';
 import { decideRoomPresenceCleanupLease, getRoomPresenceCleanupAction, isEligiblePresenceCleanupCandidate, isStaleHumanPresencePlayer, ROOM_PRESENCE_CLEANUP_LEASE_MS, ROOM_PRESENCE_STALE_MS } from './roomPresenceCleanupPolicy';
+import { shouldDeliverRoomSnapshot } from './roomSnapshotDeliveryPolicy';
 
 export interface RoomSummary {
   id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; startRequestId?: string; roomConfigVersion?: number; presenceCleanupLeaseOwnerId?: string; presenceCleanupLeaseExpiresAt?: number; presenceCleanupLeaseVersion?: number; presenceCleanupLeaseUpdatedAt?: unknown; qaRunId?: string; createRequestId?: string;
@@ -1065,7 +1066,8 @@ export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): 
 
 export function subscribeRoom(roomId: string, callback: (room: RoomSummary | null) => void): Unsubscribe {
   if (!db) { callback(null); return () => undefined; }
-  return onSnapshot(doc(db, 'rooms', roomId), (snapshot) => {
+  return onSnapshot(doc(db, 'rooms', roomId), { includeMetadataChanges: true }, (snapshot) => {
+    if (!shouldDeliverRoomSnapshot(snapshot.exists(), snapshot.metadata.fromCache)) return;
     callback(snapshot.exists() ? { id: snapshot.id, ...(snapshot.data() as Omit<RoomSummary, 'id'>) } : null);
   });
 }
