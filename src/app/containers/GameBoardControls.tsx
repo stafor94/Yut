@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import {
+  TURN_END_HOLD_MS,
   TURN_ITEM_PROMPT_TIMEOUT_MS,
+  TURN_START_DELAY_MS,
   getTurnActionTimeoutMsForCount,
   incrementTurnActionTimeoutCount,
   normalizeTurnActionTimeoutCount,
@@ -9,11 +11,14 @@ import {
 import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
 import {
   getTurnActionDeadlineDelayMs,
+  getTurnActionReadyAt,
+  getTurnDisplayAt,
   isTurnActionDeadlineExpired,
   normalizeTurnDeadlineAt,
   normalizeTurnDeadlineKind,
   type TurnActionPhase,
   type TurnDeadlineKind,
+  type TurnTransitionPhase,
 } from '../../features/room/services/turnDeadlinePolicy';
 import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
@@ -60,6 +65,12 @@ type GameBoardControlsProps = {
   timeoutCountBySeatId: Record<string, number>;
 };
 
+type LocalTurnTransition = {
+  key: string;
+  displayAt: number;
+  readyAt: number;
+};
+
 export function GameBoardControls({
   roll,
   stackedRollMode,
@@ -96,7 +107,7 @@ export function GameBoardControls({
   timeoutCountBySeatId: authoritativeTimeoutCountBySeatId,
 }: GameBoardControlsProps) {
   const controlsRef = useRef<HTMLDivElement | null>(null);
-  const wasLocalTurnActiveRef = useRef(false);
+  const wasLocalTurnDisplayedRef = useRef(false);
   const timeoutRecordedKeyRef = useRef('');
   const autoTurnActionKeyRef = useRef('');
   const autoItemPromptKeyRef = useRef('');
@@ -104,6 +115,7 @@ export function GameBoardControls({
   const onMoveSelectedPieceRef = useRef(onMoveSelectedPiece);
   const onMoveRollStackIndexRef = useRef(onMoveRollStackIndex);
   const onSkipItemPromptRef = useRef(onSkipItemPrompt);
+  const localTransitionRef = useRef<LocalTurnTransition>({ key: '', displayAt: 0, readyAt: 0 });
   onRollYutRef.current = onRollYut;
   onMoveSelectedPieceRef.current = onMoveSelectedPiece;
   onMoveRollStackIndexRef.current = onMoveRollStackIndex;
@@ -114,47 +126,24 @@ export function GameBoardControls({
   const [turnActionTimerAnimationCache] = useState(() => createDeadlineTimerAnimationCache());
   const [itemPromptTimerAnimationCache] = useState(() => createDeadlineTimerAnimationCache());
   const [timeoutCountBySeatId, setTimeoutCountBySeatId] = useState<Record<string, number>>(authoritativeTimeoutCountBySeatId);
+  const [, setTransitionClock] = useState(() => Date.now());
   const authoritativeTurnDeadline = {
     at: normalizeTurnDeadlineAt(turnDeadlineAt),
     kind: normalizeTurnDeadlineKind(turnDeadlineKind),
   };
-  const localTurnActive = Boolean(activeSeatId && activeSeatId === localSeatId && !waitingForOnlineTurnOrder && !hasActiveTurnOrderIntro);
-  const shouldAutoScrollControls = shouldAutoScrollGameControls({
-    hasRoll: Boolean(roll),
-    canRollNow,
-    canRollForTurnOrderNow,
-    hasActiveTurnOrderIntro,
-    showBottomBranchControls,
-    canRequestMove,
-  });
+  const actionableTurnKey = activeSeatId && !waitingForOnlineTurnOrder && !hasActiveTurnOrderIntro ? activeSeatId : '';
+  if (localTransitionRef.current.key !== actionableTurnKey) {
+    const now = Date.now();
+    const hadPreviousTurn = Boolean(localTransitionRef.current.key && actionableTurnKey);
+    localTransitionRef.current = {
+      key: actionableTurnKey,
+      displayAt: actionableTurnKey ? now + (hadPreviousTurn ? TURN_END_HOLD_MS : 0) : 0,
+      readyAt: actionableTurnKey ? now + (hadPreviousTurn ? TURN_END_HOLD_MS : 0) + TURN_START_DELAY_MS : 0,
+    };
+  }
 
-  useEffect(() => {
-    if (!localTurnActive) {
-      wasLocalTurnActiveRef.current = false;
-      return;
-    }
-    if (wasLocalTurnActiveRef.current) return;
-    wasLocalTurnActiveRef.current = true;
-    playStoredSoundEffect('turn');
-  }, [localTurnActive]);
-
-  useEffect(() => {
-    if (!shouldAutoScrollControls || typeof window === 'undefined') return undefined;
-    if (!window.matchMedia('(orientation: portrait)').matches) return undefined;
-    const timer = window.setTimeout(() => {
-      controlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
-    }, 120);
-    return () => window.clearTimeout(timer);
-  }, [activeSeatId, canRequestMove, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll, shouldAutoScrollControls, showBottomBranchControls]);
-
-  useEffect(() => {
-    setTimeoutCountBySeatId(Object.fromEntries(
-      Object.entries(authoritativeTimeoutCountBySeatId)
-        .map(([seatId, count]) => [seatId, normalizeTurnActionTimeoutCount(count)]),
-    ));
-  }, [authoritativeTimeoutCountBySeatId]);
-
-  const isOpponentTurn = Boolean(activeSeatId && activeSeatId !== localSeatId);
+  const localTurnActive = Boolean(actionableTurnKey && activeSeatId === localSeatId);
+  const isOpponentTurn = Boolean(actionableTurnKey && activeSeatId !== localSeatId);
   const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;
   const showRollStackPicker = canShowLocalRollStack && rollStack.length >= 2 && selectedRollStackIndex === null;
   const showRollStackMoveButton = canShowLocalRollStack && rollStack.length > 0 && !showRollStackPicker;
@@ -172,6 +161,23 @@ export function GameBoardControls({
     () => getTurnActionTimeoutMsForCount(localTimeoutCount, TURN_ITEM_PROMPT_TIMEOUT_MS),
     [itemPromptTimerKey, localSeatId, localTimeoutCount],
   );
+  const deadlinePhase = activeItemPromptTypes.length > 0 ? 'item_prompt' : turnActionPhase;
+  const deadlineDurationMs = activeItemPromptTypes.length > 0 ? itemPromptFallbackDurationMs : timerDurationMs;
+  const authoritativeReadyAt = authoritativeTurnDeadline.kind === deadlinePhase
+    ? getTurnActionReadyAt({ deadlineAt: authoritativeTurnDeadline.at, durationMs: deadlineDurationMs })
+    : 0;
+  const authoritativeDisplayAt = authoritativeReadyAt
+    ? getTurnDisplayAt({ deadlineAt: authoritativeTurnDeadline.at, durationMs: deadlineDurationMs, startDelayMs: TURN_START_DELAY_MS })
+    : 0;
+  const now = Date.now();
+  const useAuthoritativeTransition = authoritativeReadyAt > now;
+  const transitionDisplayAt = useAuthoritativeTransition ? authoritativeDisplayAt : localTransitionRef.current.displayAt;
+  const transitionReadyAt = useAuthoritativeTransition ? authoritativeReadyAt : localTransitionRef.current.readyAt;
+  const transitionPhase: TurnTransitionPhase = !actionableTurnKey || !transitionReadyAt || now >= transitionReadyAt
+    ? 'ready'
+    : transitionDisplayAt && now < transitionDisplayAt ? 'ending' : 'starting';
+  const actionReady = transitionPhase === 'ready';
+  const localTurnDisplayed = localTurnActive && transitionPhase !== 'ending';
   const turnActionDeadlineKey = `${turnActionTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
   const itemPromptDeadlineKey = `${itemPromptTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
   const turnActionTimerAnimation = turnActionTimerAnimationCache.get({
@@ -184,6 +190,49 @@ export function GameBoardControls({
     deadlineAt: authoritativeTurnDeadline.kind === 'item_prompt' ? authoritativeTurnDeadline.at : 0,
     durationMs: itemPromptFallbackDurationMs,
   });
+  const shouldAutoScrollControls = actionReady && shouldAutoScrollGameControls({
+    hasRoll: Boolean(roll),
+    canRollNow,
+    canRollForTurnOrderNow,
+    hasActiveTurnOrderIntro,
+    showBottomBranchControls,
+    canRequestMove,
+  });
+
+  useEffect(() => {
+    const timestamps = [transitionDisplayAt, transitionReadyAt]
+      .filter((timestamp) => timestamp > Date.now())
+      .sort((left, right) => left - right);
+    if (!timestamps.length || typeof window === 'undefined') return undefined;
+    const timers = timestamps.map((timestamp) => window.setTimeout(() => setTransitionClock(Date.now()), Math.max(0, timestamp - Date.now())));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [actionableTurnKey, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, transitionDisplayAt, transitionReadyAt]);
+
+  useEffect(() => {
+    if (!localTurnDisplayed) {
+      wasLocalTurnDisplayedRef.current = false;
+      return;
+    }
+    if (wasLocalTurnDisplayedRef.current) return;
+    wasLocalTurnDisplayedRef.current = true;
+    playStoredSoundEffect('turn');
+  }, [localTurnDisplayed]);
+
+  useEffect(() => {
+    if (!shouldAutoScrollControls || typeof window === 'undefined') return undefined;
+    if (!window.matchMedia('(orientation: portrait)').matches) return undefined;
+    const timer = window.setTimeout(() => {
+      controlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [activeSeatId, actionReady, canRequestMove, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll, shouldAutoScrollControls, showBottomBranchControls]);
+
+  useEffect(() => {
+    setTimeoutCountBySeatId(Object.fromEntries(
+      Object.entries(authoritativeTimeoutCountBySeatId)
+        .map(([seatId, count]) => [seatId, normalizeTurnActionTimeoutCount(count)]),
+    ));
+  }, [authoritativeTimeoutCountBySeatId]);
 
   const recordTimeout = (seatId: string) => {
     if (!seatId) return;
@@ -210,23 +259,23 @@ export function GameBoardControls({
     phase,
   });
   const runTurnAction = (action: () => void, seatId = timerSeatId) => {
-    if (turnActionTimedOut || hasExpired(turnActionPhase)) {
-      markTurnActionTimedOut();
+    if (!actionReady || turnActionTimedOut || hasExpired(turnActionPhase)) {
+      if (actionReady && (turnActionTimedOut || hasExpired(turnActionPhase))) markTurnActionTimedOut();
       return;
     }
     resetTimeoutPenalty(seatId);
     action();
   };
   const runItemPromptAction = (action: () => void) => {
-    if (itemPromptTimedOut || hasExpired('item_prompt')) {
-      setItemPromptTimedOut(true);
+    if (!actionReady || itemPromptTimedOut || hasExpired('item_prompt')) {
+      if (actionReady && (itemPromptTimedOut || hasExpired('item_prompt'))) setItemPromptTimedOut(true);
       return;
     }
     resetTimeoutPenalty(localSeatId);
     action();
   };
 
-  const turnActionTimerVisible = !isOpponentTurn && activeItemPromptTypes.length === 0 && (
+  const turnActionTimerVisible = actionReady && !isOpponentTurn && activeItemPromptTypes.length === 0 && (
     showBottomBranchControls
       ? canRequestMove
       : showRollStackPicker || ((!roll && canRollNow) || (roll && canRequestMove))
@@ -241,7 +290,7 @@ export function GameBoardControls({
   }, [itemPromptDeadlineKey]);
 
   useEffect(() => {
-    if (!turnActionTimerVisible || !authoritativeTurnDeadline.at || typeof window === 'undefined') return undefined;
+    if (!actionReady || !turnActionTimerVisible || !authoritativeTurnDeadline.at || typeof window === 'undefined') return undefined;
     const remainingMs = getTurnActionDeadlineDelayMs({
       deadlineAt: authoritativeTurnDeadline.at,
       deadlineKind: authoritativeTurnDeadline.kind,
@@ -276,10 +325,10 @@ export function GameBoardControls({
     };
     const timer = window.setTimeout(runAutomaticAction, Math.max(0, remainingMs - AUTO_ACTION_LEAD_MS));
     return () => window.clearTimeout(timer);
-  }, [authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, canRequestMove, canRollNow, localSeatId, roll, rollStack.length, selectedRollStackIndex, showRollStackPicker, timerDurationMs, timerSeatId, turnActionDeadlineKey, turnActionPhase, turnActionTimerVisible]);
+  }, [actionReady, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, canRequestMove, canRollNow, localSeatId, roll, rollStack.length, selectedRollStackIndex, showRollStackPicker, timerDurationMs, timerSeatId, turnActionDeadlineKey, turnActionPhase, turnActionTimerVisible]);
 
   useEffect(() => {
-    if (isOpponentTurn || activeItemPromptTypes.length === 0 || !localSeatId || !authoritativeTurnDeadline.at || typeof window === 'undefined') return undefined;
+    if (!actionReady || isOpponentTurn || activeItemPromptTypes.length === 0 || !localSeatId || !authoritativeTurnDeadline.at || typeof window === 'undefined') return undefined;
     const remainingMs = getTurnActionDeadlineDelayMs({
       deadlineAt: authoritativeTurnDeadline.at,
       deadlineKind: authoritativeTurnDeadline.kind,
@@ -304,7 +353,7 @@ export function GameBoardControls({
     };
     const timer = window.setTimeout(runAutomaticSkip, Math.max(0, remainingMs - AUTO_ACTION_LEAD_MS));
     return () => window.clearTimeout(timer);
-  }, [activeItemPromptTypes.length, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, isOpponentTurn, itemPromptDeadlineKey, itemPromptFallbackDurationMs, localSeatId]);
+  }, [actionReady, activeItemPromptTypes.length, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, isOpponentTurn, itemPromptDeadlineKey, itemPromptFallbackDurationMs, localSeatId]);
 
   const handleRollButtonClick = (timingPositionPercent?: number) => {
     runTurnAction(() => {
@@ -322,11 +371,15 @@ export function GameBoardControls({
     showRollStackPicker,
     timedOut: turnActionTimedOut,
   });
-  const actionButtonText = roll
-    ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동')
-    : pendingTrapPlacement ? '함정 설치 대기 중'
-      : waitingForOnlineTurnOrder ? '게임 시작 대기 중'
-        : hasActiveTurnOrderIntro ? '결과 확인 중' : '윷 던지기';
+  const actionButtonText = transitionPhase === 'ending'
+    ? '턴 전환 중...'
+    : transitionPhase === 'starting'
+      ? '잠시 후 행동 가능'
+      : roll
+        ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동')
+        : pendingTrapPlacement ? '함정 설치 대기 중'
+          : waitingForOnlineTurnOrder ? '게임 시작 대기 중'
+            : hasActiveTurnOrderIntro ? '결과 확인 중' : '윷 던지기';
 
   void getItemPromptTimeoutMs;
   void getTurnActionTimeoutMs;
@@ -337,23 +390,23 @@ export function GameBoardControls({
   const itemPromptTimerFillStyle = { animationDelay: `${itemPromptTimerAnimation.delayMs}ms` } as CSSProperties;
 
   return <div ref={controlsRef} className={`play-controls ${isOpponentTurn ? 'opponent-turn' : 'local-turn'} ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
-    {isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
+    {transitionPhase === 'ending' ? <button data-testid="turn-transition-button" className="roll-button" disabled>턴 전환 중...</button> : isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
       <div><strong>아이템을 사용할까요?</strong></div>
-      <div key={itemPromptDeadlineKey} className="time-limit-bar item-prompt-timer" style={itemPromptTimerStyle} aria-hidden="true"><span style={itemPromptTimerFillStyle}></span></div>
+      {actionReady && <div key={itemPromptDeadlineKey} className="time-limit-bar item-prompt-timer" style={itemPromptTimerStyle} aria-hidden="true"><span style={itemPromptTimerFillStyle}></span></div>}
       <div className="inline-item-actions">
-        {activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => runItemPromptAction(() => onUseItem(type))} disabled={itemPromptTimedOut}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}
-        <button className="secondary" onClick={() => runItemPromptAction(() => onSkipItemPrompt())} disabled={itemPromptTimedOut}>사용 안 함</button>
+        {activeItemPromptTypes.map((type, index) => <button className="inline-item-button" key={`${type}-${index}`} onClick={() => runItemPromptAction(() => onUseItem(type))} disabled={!actionReady || itemPromptTimedOut}><span>{ITEM_DEFINITIONS[type].icon}</span>{ITEM_DEFINITIONS[type].name}</button>)}
+        <button className="secondary" onClick={() => runItemPromptAction(() => onSkipItemPrompt())} disabled={!actionReady || itemPromptTimedOut}>사용 안 함</button>
       </div>
     </div> : showBottomBranchControls ? <div className="bottom-branch-controls" aria-label="이동 방향 선택">
-      <button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => runTurnAction(() => onBranchChoiceChange('outer'))} disabled={turnActionTimedOut}>바깥길</button>
-      <button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => runTurnAction(() => onBranchChoiceChange('shortcut'))} disabled={turnActionTimedOut}>지름길</button>
-      {canRequestMove && <div key={turnActionDeadlineKey} className="time-limit-bar turn-action-timer" style={turnActionTimerStyle} aria-hidden="true"><span style={turnActionTimerFillStyle}></span></div>}
-      <button type="button" data-testid="move-piece-button" className="branch-move-button" onClick={() => runTurnAction(onMoveSelectedPiece)} disabled={turnActionTimedOut || !canRequestMove}>선택한 말 이동</button>
+      <button type="button" className={displayBranchChoice === 'outer' ? 'active' : ''} onClick={() => runTurnAction(() => onBranchChoiceChange('outer'))} disabled={!actionReady || turnActionTimedOut}>바깥길</button>
+      <button type="button" className={displayBranchChoice === 'shortcut' ? 'active' : ''} onClick={() => runTurnAction(() => onBranchChoiceChange('shortcut'))} disabled={!actionReady || turnActionTimedOut}>지름길</button>
+      {turnActionTimerVisible && <div key={turnActionDeadlineKey} className="time-limit-bar turn-action-timer" style={turnActionTimerStyle} aria-hidden="true"><span style={turnActionTimerFillStyle}></span></div>}
+      <button type="button" data-testid="move-piece-button" className="branch-move-button" onClick={() => runTurnAction(onMoveSelectedPiece)} disabled={!actionReady || turnActionTimedOut || !canRequestMove}>{actionButtonText}</button>
     </div> : <>
       {turnActionTimerVisible && <div key={turnActionDeadlineKey} className="time-limit-bar turn-action-timer" style={turnActionTimerStyle} aria-hidden="true"><span style={turnActionTimerFillStyle}></span></div>}
-      {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => runTurnAction(() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index))} disabled={turnActionTimedOut}>{entry.name}</button>)}</div></div>}
-      {rollControlPresentation.showTimingMeter && !turnActionTimedOut && <RollTimingControl resetKey={turnActionDeadlineKey} buttonTestId={rollControlPresentation.actionButtonTestId} buttonText={actionButtonText} onRoll={handleRollButtonClick} disabled={turnActionTimedOut || !canRollNow} />}
-      {!rollControlPresentation.showTimingMeter && !showRollStackPicker && <button data-testid={rollControlPresentation.actionButtonTestId} className={!roll ? 'roll-button' : undefined} onClick={() => handleRollButtonClick()} disabled={turnActionTimedOut || (!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton && !turnActionTimedOut ? '선택한 말 이동' : actionButtonText}</button>}
+      {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => runTurnAction(() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index))} disabled={!actionReady || turnActionTimedOut}>{entry.name}</button>)}</div></div>}
+      {rollControlPresentation.showTimingMeter && actionReady && !turnActionTimedOut && <RollTimingControl resetKey={turnActionDeadlineKey} buttonTestId={rollControlPresentation.actionButtonTestId} buttonText={actionButtonText} onRoll={handleRollButtonClick} disabled={turnActionTimedOut || !canRollNow} />}
+      {(!rollControlPresentation.showTimingMeter || !actionReady) && !showRollStackPicker && <button data-testid={rollControlPresentation.actionButtonTestId} className={!roll ? 'roll-button' : undefined} onClick={() => handleRollButtonClick()} disabled={!actionReady || turnActionTimedOut || (!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton && actionReady && !turnActionTimedOut ? '선택한 말 이동' : actionButtonText}</button>}
     </>}
   </div>;
 }
