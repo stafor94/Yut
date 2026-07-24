@@ -1,0 +1,24 @@
+/* 순서 정하기의 윷 연출은 상단의 실제 게임 윷판이 아니라
+   보드 패널 전체 중앙을 기준으로 배치한다. */
+.turn-order-roll-stage-anchor {
+  position: absolute;
+  inset: 14px;
+  z-index: 85;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.turn-order-roll-stage-anchor > .roll-stage {
+  position: absolute;
+  inset: 0 auto 0 50%;
+  width: max(100%, min(96vw, 700px));
+  justify-content: center;
+  translate: -50% 0;
+}
+
+@media (max-width: 640px) {
+  .turn-order-roll-stage-anchor {
+    inset: 12px;
+  }
+}
