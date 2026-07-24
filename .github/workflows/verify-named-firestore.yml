@@ -22,7 +22,7 @@ jobs:
       - name: Create, read, and delete a probe room
         run: |
           node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
+          import { readFileSync, writeFileSync } from 'node:fs';
           import { initializeApp, deleteApp } from 'firebase/app';
           import { getAuth, signInAnonymously, signOut } from 'firebase/auth';
           import {
@@ -64,9 +64,23 @@ jobs:
             if (deleted.exists()) throw new Error('Probe room still exists after deletion.');
 
             console.log(`Verified authenticated create/read/delete on yut-prod-stafor94: ${roomId}`);
+          } catch (error) {
+            const details = error instanceof Error
+              ? `${error.name}: ${error.message}\n${error.stack ?? ''}\n`
+              : `${String(error)}\n`;
+            writeFileSync('named-firestore-probe-error.log', details);
+            throw error;
           } finally {
             await deleteDoc(roomRef).catch(() => undefined);
             await signOut(auth).catch(() => undefined);
             await deleteApp(app).catch(() => undefined);
           }
           NODE
+      - name: Upload probe error
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: named-firestore-probe-error
+          path: named-firestore-probe-error.log
+          if-no-files-found: error
+          retention-days: 1
