@@ -69,6 +69,7 @@ type LocalTurnTransition = {
   key: string;
   displayAt: number;
   readyAt: number;
+  holdFromReceipt: boolean;
 };
 
 export function GameBoardControls({
@@ -115,7 +116,7 @@ export function GameBoardControls({
   const onMoveSelectedPieceRef = useRef(onMoveSelectedPiece);
   const onMoveRollStackIndexRef = useRef(onMoveRollStackIndex);
   const onSkipItemPromptRef = useRef(onSkipItemPrompt);
-  const localTransitionRef = useRef<LocalTurnTransition>({ key: '', displayAt: 0, readyAt: 0 });
+  const localTransitionRef = useRef<LocalTurnTransition>({ key: '', displayAt: 0, readyAt: 0, holdFromReceipt: false });
   onRollYutRef.current = onRollYut;
   onMoveSelectedPieceRef.current = onMoveSelectedPiece;
   onMoveRollStackIndexRef.current = onMoveRollStackIndex;
@@ -139,6 +140,7 @@ export function GameBoardControls({
       key: actionableTurnKey,
       displayAt: actionableTurnKey ? now + (hadPreviousTurn ? TURN_END_HOLD_MS : 0) : 0,
       readyAt: actionableTurnKey ? now + (hadPreviousTurn ? TURN_END_HOLD_MS : 0) + TURN_START_DELAY_MS : 0,
+      holdFromReceipt: hadPreviousTurn,
     };
   }
 
@@ -163,16 +165,24 @@ export function GameBoardControls({
   );
   const deadlinePhase = activeItemPromptTypes.length > 0 ? 'item_prompt' : turnActionPhase;
   const deadlineDurationMs = activeItemPromptTypes.length > 0 ? itemPromptFallbackDurationMs : timerDurationMs;
-  const authoritativeReadyAt = authoritativeTurnDeadline.kind === deadlinePhase
+  const hasAuthoritativeDeadline = authoritativeTurnDeadline.kind === deadlinePhase && authoritativeTurnDeadline.at > 0;
+  const authoritativeReadyAt = hasAuthoritativeDeadline
     ? getTurnActionReadyAt({ deadlineAt: authoritativeTurnDeadline.at, durationMs: deadlineDurationMs })
     : 0;
   const authoritativeDisplayAt = authoritativeReadyAt
     ? getTurnDisplayAt({ deadlineAt: authoritativeTurnDeadline.at, durationMs: deadlineDurationMs, startDelayMs: TURN_START_DELAY_MS })
     : 0;
   const now = Date.now();
-  const useAuthoritativeTransition = authoritativeReadyAt > now;
-  const transitionDisplayAt = useAuthoritativeTransition ? authoritativeDisplayAt : localTransitionRef.current.displayAt;
-  const transitionReadyAt = useAuthoritativeTransition ? authoritativeReadyAt : localTransitionRef.current.readyAt;
+  const transitionDisplayAt = hasAuthoritativeDeadline
+    ? localTransitionRef.current.holdFromReceipt
+      ? Math.max(authoritativeDisplayAt, localTransitionRef.current.displayAt)
+      : authoritativeDisplayAt
+    : localTransitionRef.current.displayAt;
+  const transitionReadyAt = hasAuthoritativeDeadline
+    ? localTransitionRef.current.holdFromReceipt
+      ? Math.max(authoritativeReadyAt, localTransitionRef.current.readyAt)
+      : authoritativeReadyAt
+    : localTransitionRef.current.readyAt;
   const transitionPhase: TurnTransitionPhase = !actionableTurnKey || !transitionReadyAt || now >= transitionReadyAt
     ? 'ready'
     : transitionDisplayAt && now < transitionDisplayAt ? 'ending' : 'starting';
