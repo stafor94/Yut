@@ -11,7 +11,7 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     roomId = '';
   });
 
-  test('Galaxy 세로 화면에서 순서 정하기 윷 연출을 낮추고 확정 순서 번호를 표시한다', async ({ page, context }, testInfo) => {
+  test('Galaxy 세로 화면에서 순서 정하기 조작부·제한시간·윷 연출과 확정 순서를 검증한다', async ({ page, context }, testInfo) => {
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'turn-order-placement'));
     const roomTitle = makeQaName(testInfo, 'turn-order-placement-room');
     await primeLobbyStorage(context, {
@@ -35,7 +35,46 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
 
     const rollButton = page.getByTestId('turn-order-roll-button');
+    const roundTimer = page.getByTestId('turn-order-round-timer');
     await expect(rollButton).toBeVisible({ timeout: 10_000 });
+    await expect(roundTimer).toBeVisible();
+    await expect(roundTimer).toHaveClass(/time-limit-bar/);
+    await expect(roundTimer).toHaveClass(/turn-action-timer/);
+    await expect(page.locator('.turn-order-round-status')).not.toContainText('남은 시간');
+
+    const controlsLayout = await page.getByTestId('turn-order-overlay').evaluate((overlay) => {
+      const grid = overlay.querySelector('[data-testid="turn-order-result-grid"]');
+      const timing = overlay.querySelector('[data-testid="turn-order-timing-panel"]');
+      const cards = grid ? Array.from(grid.querySelectorAll('.turn-order-result-card')) : [];
+      if (!(grid instanceof HTMLElement) || !(timing instanceof HTMLElement) || cards.length !== 3) {
+        throw new Error('순서 정하기 결과 카드 또는 조작부를 찾지 못했습니다.');
+      }
+      const gridRect = grid.getBoundingClientRect();
+      const timingRect = timing.getBoundingClientRect();
+      const lastCardRect = cards[cards.length - 1].getBoundingClientRect();
+      return {
+        gridBottom: gridRect.bottom,
+        lastCardBottom: lastCardRect.bottom,
+        timingTop: timingRect.top,
+      };
+    });
+    expect(controlsLayout.timingTop, '타이밍 막대와 윷 던지기 버튼은 결과 카드 그리드 아래에 있어야 합니다.').toBeGreaterThanOrEqual(controlsLayout.gridBottom - 1);
+    expect(controlsLayout.timingTop, '타이밍 막대와 윷 던지기 버튼은 마지막 결과 카드 아래에 있어야 합니다.').toBeGreaterThanOrEqual(controlsLayout.lastCardBottom - 1);
+
+    const timerAnimation = await roundTimer.locator('span').evaluate((fill) => {
+      const style = getComputedStyle(fill);
+      return {
+        animationName: style.animationName,
+        animationDurationSeconds: Number.parseFloat(style.animationDuration),
+        animationDelaySeconds: Number.parseFloat(style.animationDelay),
+      };
+    });
+    expect(timerAnimation.animationName).toContain('turn-action-countdown');
+    expect(timerAnimation.animationDurationSeconds).toBeGreaterThanOrEqual(7.9);
+    expect(timerAnimation.animationDurationSeconds).toBeLessThanOrEqual(8.1);
+    expect(timerAnimation.animationDelaySeconds).toBeLessThanOrEqual(0);
+    expect(timerAnimation.animationDelaySeconds).toBeGreaterThan(-8.1);
+
     await rollButton.click();
 
     const anchor = page.getByTestId('turn-order-roll-stage-anchor');

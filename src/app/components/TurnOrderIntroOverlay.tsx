@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { updateTurnOrderState } from '../../features/room/services/roomService';
 import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
+import { getDeadlineTimerAnimationState } from '../../features/room/services/turnDeadlinePolicy';
 import {
   chooseAiRollTimingZone,
   getRollTimingZone,
@@ -124,6 +125,11 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const intro = useMemo(() => sourceIntro ? activateNextTurnOrderRound(sourceIntro, now) : null, [now, sourceIntro]);
   const round = intro?.currentRound;
   const roundId = round?.id ?? '';
+  const roundTimerStarted = Boolean(round && now >= round.startAt);
+  const roundTimerAnimation = useMemo(() => {
+    const durationMs = round ? Math.max(0, round.deadlineAt - round.startAt) : 0;
+    return getDeadlineTimerAnimationState({ deadlineAt: round?.deadlineAt ?? 0, durationMs, now });
+  }, [round?.deadlineAt, round?.startAt, roundTimerStarted]);
   const isLocalEligible = Boolean(round?.eligibleSeatIds.includes(localSeatId));
   const storedLocalSubmission = round?.submissions.find((submission) => submission.seatId === localSeatId) ?? null;
   const visibleLocalSubmission = localSubmission?.roundId === roundId ? localSubmission : storedLocalSubmission;
@@ -320,6 +326,9 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
   const remainingSeconds = isPreparing ? getRemainingSeconds(round.startAt, now) : getRemainingSeconds(round.deadlineAt, now);
   const revealSeconds = revealAt ? getRemainingSeconds(revealAt, now) : 0;
   const nextTieSeatIds = new Set(intro.nextRound?.eligibleSeatIds ?? []);
+  const roundTimerKey = `${round.id}:${round.startAt}:${round.deadlineAt}`;
+  const roundTimerStyle = { '--timer-duration': `${roundTimerAnimation.durationMs}ms` } as CSSProperties;
+  const roundTimerFillStyle = { animationDelay: `${roundTimerAnimation.delayMs}ms` } as CSSProperties;
   const heading = finalOrderVisible
     ? '최종 순서 확정'
     : isPreparing
@@ -350,13 +359,11 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
         <span>모든 참가자가 같은 시각에 윷을 던집니다.</span>
       </div> : <>
         <div className="turn-order-round-status">
-          <span>{round.status === 'collecting' ? `남은 시간 ${remainingSeconds}초` : revealReady ? '결과가 공개되었습니다' : `전체 공개까지 ${revealSeconds}초`}</span>
+          {round.status === 'collecting'
+            ? <div key={roundTimerKey} className="time-limit-bar turn-action-timer turn-order-round-timer" data-testid="turn-order-round-timer" style={roundTimerStyle} role="img" aria-label={`남은 시간 ${remainingSeconds}초`}><span style={roundTimerFillStyle}></span></div>
+            : <span>{revealReady ? '결과가 공개되었습니다' : `전체 공개까지 ${revealSeconds}초`}</span>}
           <small>{round.eligibleSeatIds.length === intro.order.length ? '전체 참가자 라운드' : '동률 참가자 재대결'}</small>
         </div>
-
-        {isCollecting && isLocalEligible && !visibleLocalSubmission && <div className="turn-order-timing-panel" data-testid="turn-order-timing-panel">
-          <RollTimingControl resetKey={round.id} buttonTestId="turn-order-roll-button" buttonText="윷 던지기" onRoll={handleManualRoll} />
-        </div>}
 
         {round.status === 'collecting' && isLocalEligible && visibleLocalSubmission && <p className="turn-order-own-result" data-testid="turn-order-own-result">
           내 결과 <strong>{visibleLocalSubmission.resultName}</strong> <span>{SCORE_LABELS[visibleLocalSubmission.resultName]}점</span>
@@ -379,6 +386,10 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, turnO
             </div>;
           })}
         </div>
+
+        {isCollecting && isLocalEligible && !visibleLocalSubmission && <div className="turn-order-timing-panel" data-testid="turn-order-timing-panel">
+          <RollTimingControl resetKey={round.id} buttonTestId="turn-order-roll-button" buttonText="윷 던지기" onRoll={handleManualRoll} />
+        </div>}
 
         {round.status === 'reveal-pending' && revealReady && intro.nextRound && <p className="turn-order-tie-notice" data-testid="turn-order-tie-notice">같은 결과가 나온 참가자끼리 다시 던집니다.</p>}
         {round.status === 'reveal-pending' && !revealReady && <div className="turn-order-reveal-wait" aria-hidden="true"><i></i><i></i><i></i><i></i></div>}
