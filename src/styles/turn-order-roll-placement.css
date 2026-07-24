@@ -12,6 +12,16 @@
   inset: 0;
 }
 
+/* 순서 정하기 제한시간도 기본 인게임 제한시간 막대를 재사용한다. */
+.turn-order-round-timer {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 72px;
+  max-width: 260px;
+  justify-self: auto;
+  grid-column: auto;
+}
+
 @media (orientation: portrait) and (max-width: 900px) {
   .turn-order-roll-stage-anchor {
     position: fixed;
