@@ -441,7 +441,8 @@ const applyTurnActionTimeoutPolicy = (
     const coreBaseTimeoutMs = getCoreDeadlineBaseMs(deadlineKind);
     const visibleBaseTimeoutMs = getVisibleDeadlineBaseMs(deadlineKind);
     const nextTimeoutMs = getTurnActionTimeoutMsForCount(timeoutCounts[targetSeatId], visibleBaseTimeoutMs);
-    const startsNextTurn = action.type === 'continue_race' || Boolean(targetSeatId && targetSeatId !== currentTurnSeatId);
+    // continue_race is a user-confirmed phase restart, not an automatic turn handoff.
+    const startsNextTurn = action.type !== 'continue_race' && Boolean(targetSeatId && targetSeatId !== currentTurnSeatId);
     const nextDeadline = previousDeadline - coreBaseTimeoutMs + nextTimeoutMs + (startsNextTurn ? TURN_TRANSITION_DELAY_MS : 0);
     patch.turnDeadlineAt = nextDeadline;
     if ('pendingTrapPlacement' in patch) patch.pendingTrapPlacement = replaceNestedDeadline(patch.pendingTrapPlacement, nextDeadline);

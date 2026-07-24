@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FALL_PRESENTATION_GATE_MS, reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
-import { TURN_ACTION_TIMEOUT_MS, TURN_ITEM_PROMPT_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
+import { TURN_ACTION_TIMEOUT_MS, TURN_ITEM_PROMPT_TIMEOUT_MS, TURN_TRANSITION_DELAY_MS } from '../../src/features/room/services/roomTiming';
 
 const makeState = () => ({
   pieces: [
@@ -49,7 +49,7 @@ const rollFall = (state = makeState()) => reduceAuthoritativeGameAction(
   room,
 );
 
-test('온라인 낙 확정은 서버 턴을 한 번만 전환하고 공통 presentation gate를 저장한다', () => {
+test('온라인 낙 확정은 서버 턴을 한 번만 전환하고 presentation gate와 턴 전환 여유를 저장한다', () => {
   const now = 1_700_000_000_000;
   const originalNow = Date.now;
   Date.now = () => now;
@@ -61,7 +61,7 @@ test('온라인 낙 확정은 서버 턴을 한 번만 전환하고 공통 prese
     assert.equal(result.patch?.roll, null);
     assert.equal((result.patch?.fallEffect as { seatId?: string } | null)?.seatId, 'seat-1');
     assert.equal(result.patch?.rollResultReadyAt, now + FALL_PRESENTATION_GATE_MS);
-    assert.equal(result.patch?.turnDeadlineAt, now + FALL_PRESENTATION_GATE_MS + TURN_ACTION_TIMEOUT_MS);
+    assert.equal(result.patch?.turnDeadlineAt, now + FALL_PRESENTATION_GATE_MS + TURN_TRANSITION_DELAY_MS + TURN_ACTION_TIMEOUT_MS);
     assert.equal(result.payload?.turnAdvancedIndependently, true);
     assert.equal(result.payload?.fallPresentationReadyAt, now + FALL_PRESENTATION_GATE_MS);
     assert.match(String((result.patch?.logs as Array<{ text?: string }> | undefined)?.[0]?.text ?? ''), /P1님이 낙이 나와 차례를 넘깁니다/);
@@ -125,7 +125,7 @@ test('presentation gate 전에는 다음 플레이어의 윷 액션을 authorita
   }
 });
 
-test('presentation gate 이후에는 완료 callback 없이 다음 플레이어가 진행하고 기존 event를 교체한다', () => {
+test('presentation gate 이후에도 턴 전환 여유가 끝난 뒤 다음 플레이어가 진행하고 기존 event를 교체한다', () => {
   const startedAt = 1_700_000_000_000;
   let now = startedAt;
   const originalNow = Date.now;
@@ -134,22 +134,24 @@ test('presentation gate 이후에는 완료 callback 없이 다음 플레이어�
     const fall = rollFall();
     assert.equal(fall.status, 'committed');
     const stateAfterFall = { ...makeState(), ...fall.patch };
-    now = startedAt + FALL_PRESENTATION_GATE_MS;
-
-    const result = reduceAuthoritativeGameAction(
-      stateAfterFall,
-      {
-        type: 'roll_yut',
-        actorId: 'seat-2',
-        payload: {
-          rollTimingZone: 'perfect',
-          clientRollResult: { name: '도', steps: 1 },
-          clientFallOccurred: false,
-          clientFallCount: 0,
-        },
+    const action = {
+      type: 'roll_yut' as const,
+      actorId: 'seat-2',
+      payload: {
+        rollTimingZone: 'perfect' as const,
+        clientRollResult: { name: '도' as const, steps: 1 },
+        clientFallOccurred: false,
+        clientFallCount: 0,
       },
-      room,
-    );
+    };
+
+    now = startedAt + FALL_PRESENTATION_GATE_MS;
+    const transitionResult = reduceAuthoritativeGameAction(stateAfterFall, action, room);
+    assert.equal(transitionResult.status, 'rejected');
+    assert.equal(transitionResult.reason, '턴 전환 중입니다. 잠시 후 행동해주세요.');
+
+    now = startedAt + FALL_PRESENTATION_GATE_MS + TURN_TRANSITION_DELAY_MS;
+    const result = reduceAuthoritativeGameAction(stateAfterFall, action, room);
 
     assert.equal(result.status, 'committed');
     assert.equal(result.patch?.turnIndex, undefined);
@@ -159,7 +161,7 @@ test('presentation gate 이후에는 완료 callback 없이 다음 플레이어�
   }
 });
 
-test('다음 플레이어의 before_roll 아이템 시간은 presentation gate 뒤부터 계산한다', () => {
+test('다음 플레이어의 before_roll 아이템 시간은 presentation gate와 턴 전환 여유 뒤부터 계산한다', () => {
   const now = 1_700_000_000_000;
   const originalNow = Date.now;
   Date.now = () => now;
@@ -173,7 +175,7 @@ test('다음 플레이어의 before_roll 아이템 시간은 presentation gate �
     assert.equal(fall.patch?.turnIndex, 1);
     assert.equal(fall.patch?.turnDeadlineKind, 'item_prompt');
     assert.equal(fall.patch?.itemPromptTiming, 'before_roll');
-    assert.equal(fall.patch?.turnDeadlineAt, now + FALL_PRESENTATION_GATE_MS + TURN_ITEM_PROMPT_TIMEOUT_MS);
+    assert.equal(fall.patch?.turnDeadlineAt, now + FALL_PRESENTATION_GATE_MS + TURN_TRANSITION_DELAY_MS + TURN_ITEM_PROMPT_TIMEOUT_MS);
   } finally {
     Date.now = originalNow;
   }
