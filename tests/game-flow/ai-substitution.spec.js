@@ -12,6 +12,7 @@ import {
   findRoomIdByTitle,
   getRoomPlayersForQa,
   getRoomSeatsForQa,
+  getRoomStateForQa,
   rememberRoomIdFromPage,
 } from '../helpers/rooms.js';
 
@@ -69,6 +70,15 @@ async function expectGuestSubstitutedByAi(qa, guestPlayerId) {
     } : null;
   }, { timeout: 15_000 }).toEqual({ aiActive: true, isSubstitutedByAI: true, status: 'ai_substitute' });
 
+  await expect.poll(async () => {
+    const state = await getRoomStateForQa(qa.roomId);
+    const gameSeat = state?.gameSeats?.find((candidate) => candidate.id === guestPlayerId);
+    return gameSeat ? {
+      isAI: gameSeat.isAI === true,
+      isSubstitutedByAI: gameSeat.isSubstitutedByAI === true,
+    } : null;
+  }, { timeout: 15_000 }).toEqual({ isAI: true, isSubstitutedByAI: true });
+
   const substitutedCard = qa.hostPage.locator('.game-player-card.ai').filter({ hasText: qa.guestName }).first();
   await expect(substitutedCard).toBeVisible({ timeout: 15_000 });
   await expect(substitutedCard.locator('.game-player-status')).toHaveText('나감 · 어려움 AI');
@@ -94,6 +104,15 @@ async function expectGuestRestoredAsHuman(qa, guestPlayerId) {
       status: seat.status,
     } : null;
   }, { timeout: 15_000 }).toEqual({ aiActive: false, isSubstitutedByAI: false, status: 'human' });
+
+  await expect.poll(async () => {
+    const state = await getRoomStateForQa(qa.roomId);
+    const gameSeat = state?.gameSeats?.find((candidate) => candidate.id === guestPlayerId);
+    return gameSeat ? {
+      isAI: gameSeat.isAI === true,
+      isSubstitutedByAI: gameSeat.isSubstitutedByAI === true,
+    } : null;
+  }, { timeout: 15_000 }).toEqual({ isAI: false, isSubstitutedByAI: false });
 
   await expect(qa.hostPage.locator('.game-player-card.ai').filter({ hasText: qa.guestName })).toHaveCount(0, { timeout: 15_000 });
   await expect(qa.hostPage.locator('.game-player-card').filter({ hasText: qa.guestName }).first()).toBeVisible({ timeout: 15_000 });
