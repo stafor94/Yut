@@ -27,8 +27,8 @@ export const makeFirestoreSafeId = (value: string) => {
 
 export const getClientMutationDocRef = (roomId: string, clientMutationId: string) => doc(db!, 'rooms', roomId, 'processedActions', makeFirestoreSafeId(clientMutationId));
 
-export const getTurnOrderSubmissionDocRef = (roomId: string, sessionId: string, roundId: string, seatId: string) => (
-  doc(db!, 'rooms', roomId, 'turnOrderSubmissions', makeFirestoreSafeId(`${sessionId}:${roundId}:${seatId}`))
+export const getTurnOrderSubmissionDocRef = (roomId: string, _sessionId: string, roundId: string, seatId: string) => (
+  doc(db!, 'rooms', roomId, 'turnOrderSubmissions', `${roundId}:${seatId}`)
 );
 
 export const sanitizeForFirestore = (value: unknown): unknown => {

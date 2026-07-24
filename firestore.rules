@@ -269,6 +269,8 @@ service cloud.firestore {
           && request.resource.data.roundId is string
           && request.resource.data.seatId is string
           && request.resource.data.submissionId is string
+          && request.resource.data.submissionId == submissionId
+          && submissionId == request.resource.data.roundId + ':' + request.resource.data.seatId
           && request.resource.data.resultName is string
           && request.resource.data.source in ['manual', 'auto']
           && request.resource.data.submittedBy == request.auth.uid
