@@ -44,8 +44,18 @@ async function startAiTimingGame(page, context, testInfo) {
   return resolvedRoomId;
 }
 
-async function dispatchTimingGesture(page, { releaseInside }) {
-  return page.evaluate(({ releaseInside: shouldReleaseInside }) => {
+async function dispatchTimingGesture(page, {
+  releaseInside,
+  pointerDownTime = 390,
+  pointerUpTime = 500,
+  visibleOffsetPercent = 0,
+}) {
+  return page.evaluate(({
+    releaseInside: shouldReleaseInside,
+    pointerDownTime: downTime,
+    pointerUpTime: upTime,
+    visibleOffsetPercent: visualOffset,
+  }) => {
     const meter = document.querySelector('.roll-timing-meter');
     const track = document.querySelector('.roll-timing-orb-track');
     const orb = document.querySelector('.roll-timing-orb');
@@ -62,7 +72,7 @@ async function dispatchTimingGesture(page, { releaseInside }) {
     };
 
     animation.pause();
-    animation.currentTime = 390;
+    animation.currentTime = downTime;
     const pointerDownPositionPercent = readPositionPercent();
     const buttonRect = button.getBoundingClientRect();
     const buttonCenterX = buttonRect.left + buttonRect.width / 2;
@@ -82,8 +92,12 @@ async function dispatchTimingGesture(page, { releaseInside }) {
       clientY: buttonCenterY,
     }));
 
-    animation.currentTime = 500;
+    animation.currentTime = upTime;
+    if (visualOffset) {
+      orb.style.left = `${meter.getBoundingClientRect().width * (visualOffset / 100)}px`;
+    }
     const pointerUpPositionPercent = readPositionPercent();
+    const animationCurrentTime = Number(animation.currentTime);
     button.dispatchEvent(new PointerEvent('pointerup', {
       bubbles: true,
       cancelable: true,
@@ -102,8 +116,89 @@ async function dispatchTimingGesture(page, { releaseInside }) {
       composed: true,
       detail: 1,
     }));
+    return { pointerDownPositionPercent, pointerUpPositionPercent, animationCurrentTime };
+  }, {
+    releaseInside,
+    pointerDownTime,
+    pointerUpTime,
+    visibleOffsetPercent,
+  });
+}
+
+async function dispatchLiveTimingGesture(page) {
+  return page.evaluate(async () => {
+    const meter = document.querySelector('.roll-timing-meter');
+    const track = document.querySelector('.roll-timing-orb-track');
+    const orb = document.querySelector('.roll-timing-orb');
+    const button = document.querySelector('[data-testid="roll-yut-button"]');
+    if (!(meter instanceof HTMLElement) || !(track instanceof HTMLElement) || !(orb instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) {
+      throw new Error('타이밍 막대 또는 던지기 버튼을 찾지 못했습니다.');
+    }
+    const animation = track.getAnimations()[0];
+    if (!animation) throw new Error('타이밍 orb track animation을 찾지 못했습니다.');
+    const readPositionPercent = () => {
+      const meterRect = meter.getBoundingClientRect();
+      const orbRect = orb.getBoundingClientRect();
+      return ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100;
+    };
+    const waitForPosition = (minimum, maximum) => new Promise((resolve, reject) => {
+      let frameCount = 0;
+      const check = () => {
+        const positionPercent = readPositionPercent();
+        if (positionPercent >= minimum && positionPercent <= maximum) {
+          resolve(positionPercent);
+          return;
+        }
+        frameCount += 1;
+        if (frameCount > 240) {
+          reject(new Error(`실시간 타이밍 위치 대기 실패: ${positionPercent}`));
+          return;
+        }
+        requestAnimationFrame(check);
+      };
+      requestAnimationFrame(check);
+    });
+
+    animation.play();
+    const pointerDownPositionPercent = await waitForPosition(34, 39);
+    const buttonRect = button.getBoundingClientRect();
+    const buttonCenterX = buttonRect.left + buttonRect.width / 2;
+    const buttonCenterY = buttonRect.top + buttonRect.height / 2;
+    const pointerId = 23;
+    button.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      pointerId,
+      pointerType: 'touch',
+      isPrimary: true,
+      button: 0,
+      buttons: 1,
+      clientX: buttonCenterX,
+      clientY: buttonCenterY,
+    }));
+
+    const pointerUpPositionPercent = await waitForPosition(57, 59.5);
+    button.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      pointerId,
+      pointerType: 'touch',
+      isPrimary: true,
+      button: 0,
+      buttons: 0,
+      clientX: buttonCenterX,
+      clientY: buttonCenterY,
+    }));
+    button.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      detail: 1,
+    }));
     return { pointerDownPositionPercent, pointerUpPositionPercent };
-  }, { releaseInside });
+  });
 }
 
 test.describe('mobile roll timing release regression', () => {
@@ -117,7 +212,45 @@ test.describe('mobile roll timing release regression', () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('터치 시작이 Good이어도 손을 뗀 시점이 Perfect이면 화면과 동일하게 Perfect로 판정한다', async ({ page, context }, testInfo) => {
+  test('애니메이션 시간은 Perfect여도 화면 구슬이 Nice이면 화면 기준으로 Nice 판정한다', async ({ page, context }, testInfo) => {
+    roomId = await startAiTimingGame(page, context, testInfo);
+
+    const sampledPositions = await runQaStep(testInfo, 'animation timeline과 실제 화면 위치를 강제로 분리', async () => dispatchTimingGesture(page, {
+      releaseInside: true,
+      pointerDownTime: 390,
+      pointerUpTime: 500,
+      visibleOffsetPercent: 8.5,
+    }));
+    expect(sampledPositions.animationCurrentTime).toBe(500);
+    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(58);
+    expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(59.5);
+
+    await runQaStep(testInfo, '화면 좌표와 제출된 타이밍 등급 확인', async () => {
+      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
+      await expect(resultHoldStage).toBeVisible({ timeout: 8_000 });
+      await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('NICE', { timeout: 2_000 });
+      await page.waitForTimeout(150);
+      await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('NICE');
+    });
+  });
+
+  test('실시간으로 이동 중인 구슬을 Nice 위치에서 놓으면 화면과 동일하게 Nice로 판정한다', async ({ page, context }, testInfo) => {
+    roomId = await startAiTimingGame(page, context, testInfo);
+
+    const sampledPositions = await runQaStep(testInfo, '실시간 Good 위치에서 누르고 Nice 위치에서 손을 뗀 화면 좌표 확인', async () => dispatchLiveTimingGesture(page));
+    expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(34);
+    expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(39);
+    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(57);
+    expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(59.5);
+
+    await runQaStep(testInfo, '실시간 화면 위치와 제출된 타이밍 등급 확인', async () => {
+      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
+      await expect(resultHoldStage).toBeVisible({ timeout: 8_000 });
+      await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('NICE', { timeout: 2_000 });
+    });
+  });
+
+  test('터치 시작이 Good이어도 손을 뗀 화면 위치가 Perfect이면 Perfect로 판정한다', async ({ page, context }, testInfo) => {
     roomId = await startAiTimingGame(page, context, testInfo);
 
     const sampledPositions = await runQaStep(testInfo, 'Good에서 누르고 Perfect에서 손을 뗀 위치 확인', async () => dispatchTimingGesture(page, { releaseInside: true }));
@@ -126,7 +259,7 @@ test.describe('mobile roll timing release regression', () => {
     expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(49);
     expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(51);
 
-    await runQaStep(testInfo, '손을 뗀 위치와 제출된 타이밍 등급 확인', async () => {
+    await runQaStep(testInfo, '손을 뗀 화면 위치와 제출된 타이밍 등급 확인', async () => {
       const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
       await expect(resultHoldStage).toBeVisible({ timeout: 8_000 });
       await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('PERFECT', { timeout: 2_000 });
