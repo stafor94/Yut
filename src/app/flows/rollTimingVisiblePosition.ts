@@ -22,9 +22,9 @@ export function getVisibleRollTimingPositionPercent(
 }
 
 export function getVisibleRollTimingTrackOffsetPx(
-  meterRect: HorizontalClientRect,
   trackRect: HorizontalClientRect,
+  trackLayoutLeftPx: number,
 ) {
-  if (!hasFiniteHorizontalRect(meterRect) || !hasFiniteHorizontalRect(trackRect)) return undefined;
-  return trackRect.left - meterRect.left;
+  if (!hasFiniteHorizontalRect(trackRect) || !Number.isFinite(trackLayoutLeftPx)) return undefined;
+  return trackRect.left - trackLayoutLeftPx;
 }
