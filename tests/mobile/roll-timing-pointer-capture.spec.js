@@ -3,6 +3,7 @@ import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep }
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
+const TIMING_SAMPLE_PLAYBACK_RATE = 0.25;
 const GOOD_PRESS_RANGE = Object.freeze([34, 39]);
 const NICE_RELEASE_RANGE = Object.freeze([40.5, 44.5]);
 const PERFECT_RELEASE_RANGE = Object.freeze([46, 54]);
@@ -128,6 +129,7 @@ async function dispatchLiveTimingGesture(page, {
       readSubmission();
     });
 
+    animation.playbackRate = TIMING_SAMPLE_PLAYBACK_RATE;
     animation.play();
     const pointerDownPositionPercent = await waitForPosition(downRange[0], downRange[1]);
     const buttonRect = button.getBoundingClientRect();
