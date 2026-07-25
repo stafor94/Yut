@@ -92,7 +92,7 @@ export const qaSuiteManifest = Object.freeze({
   'safari-timing': Object.freeze({
     label: 'Safari timing',
     code: 'safari',
-    workers: 2,
+    workers: 3,
     browsers: Object.freeze(['webkit']),
     projects: Object.freeze(['mobile-webkit-timing']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
