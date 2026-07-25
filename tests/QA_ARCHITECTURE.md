@@ -32,9 +32,12 @@ Playwright project의 `testMatch` 계약은 `tests/qa/project-contracts.mjs`에�
 
 - `online-core`: 방 생성·참가·게임 시작·presence·room lifecycle 등 온라인 핵심 흐름
 - `desktop-regression`: 윷 던지기·이동·연출·로비 desktop 회귀
-- `mobile-galaxy`: Galaxy viewport 전체 모바일 QA와 WebKit 타이밍 입력 QA
+- `mobile-galaxy`: Galaxy viewport 레이아웃과 모바일 일반 동작 QA
+- `mobile-timing`: Galaxy와 WebKit의 타이밍 입력·pointer release 회귀
 
-모바일 lane은 하나의 Playwright invocation에서 `desktop-chromium`, `mobile-galaxy`, `mobile-webkit-timing` project를 함께 실행한다. desktop project는 Firebase browser isolation spec만 실행하고, 모바일 spec은 각 project의 `testMatch`에 따라 Galaxy 또는 WebKit에서 실행된다.
+`mobile-galaxy`와 `mobile-timing`은 별도 GitHub Actions matrix job과 독립 Firebase Emulator namespace에서 동시에 실행한다. layout 변경이 긴 WebKit timing 실행을 기다리지 않으며, timing 실패가 일반 모바일 spec의 artifact와 로그를 섞지 않는다.
+
+각 모바일 lane은 Firebase browser isolation spec을 `desktop-chromium`에서 실행한다. 실제 모바일 spec은 project의 `testMatch`에 따라 Galaxy 또는 WebKit에서만 실행된다.
 
 현재 앱 shell은 시작 시 Firebase Auth·Firestore 초기화를 수행한다. 따라서 DOM·레이아웃 중심 spec도 별도의 검증된 Firebase-free bootstrap이 생기기 전까지 emulator lane에서 유지한다. 단순 속도 개선을 위해 제품 초기화 계약을 mock으로 대체하지 않는다.
 
@@ -54,6 +57,7 @@ Playwright project의 `testMatch` 계약은 `tests/qa/project-contracts.mjs`에�
 - cleanup은 lane 시작 전과 종료 후에만 전체 namespace를 대상으로 수행한다.
 - 각 spec의 `afterEach` cleanup은 자신이 만든 room만 삭제한다.
 - worker 수는 manifest에서만 조정하며 최대 4로 제한한다.
+- hosted runner에서 짧은 전이 상태를 놓친 Online·Desktop lane은 2 workers를 기준으로 유지한다. 추가 병렬화는 worker를 무조건 올리지 않고 독립 matrix lane 분리를 우선한다.
 - cleanup 병렬 삭제는 환경 변수로 제한하며 최대 8을 넘기지 않는다.
 
 ## 자동 구조 검증
