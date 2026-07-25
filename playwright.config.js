@@ -42,5 +42,10 @@ export default defineConfig({
       testMatch: /mobile\/.*\.spec\.js/,
       use: { ...devices['Galaxy S9+'], viewport: { width: 412, height: 915 }, deviceScaleFactor: 3.5 },
     },
+    {
+      name: 'mobile-webkit-timing',
+      testMatch: /mobile\/roll-timing-pointer-capture\.spec\.js/,
+      use: { ...devices['iPhone 13'] },
+    },
   ],
 });
