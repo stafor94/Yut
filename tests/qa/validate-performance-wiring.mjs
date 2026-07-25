@@ -1,16 +1,15 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { QA_PERFORMANCE_BUDGETS_MS } from '../../.github/scripts/validate-qa-performance.mjs';
 
 const root = process.cwd();
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/qa.yml'), 'utf8');
 const performanceScript = fs.readFileSync(path.join(root, '.github/scripts/validate-qa-performance.mjs'), 'utf8');
 
-assert.equal(QA_PERFORMANCE_BUDGETS_MS.overall, 300_000, '전체 Main Branch QA 성능 목표는 5분이어야 합니다.');
-assert.ok(QA_PERFORMANCE_BUDGETS_MS.summaryReserve > 0, 'summary job 완료 여유 시간이 필요합니다.');
+assert.match(performanceScript, /overall: 300_000/u, '전체 Main Branch QA 성능 목표는 5분이어야 합니다.');
+assert.match(performanceScript, /summaryReserve: [1-9][0-9_]*/u, 'summary job 완료 여유 시간이 필요합니다.');
 for (const code of ['build', 'core', 'seq', 'desk', 'galaxy', 'safvis', 'safari']) {
-  assert.ok(Number.isFinite(QA_PERFORMANCE_BUDGETS_MS[code]), `${code} lane 성능 예산이 필요합니다.`);
+  assert.match(performanceScript, new RegExp(`\\n  ${code}: [1-9][0-9_]*,`, 'u'), `${code} lane 성능 예산이 필요합니다.`);
   assert.match(performanceScript, new RegExp(`code: '${code}'`, 'u'), `${code} lane이 성능 보고서에 등록되어야 합니다.`);
 }
 
