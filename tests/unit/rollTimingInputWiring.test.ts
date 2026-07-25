@@ -14,7 +14,7 @@ test('타이밍 판정은 합성 애니메이션의 pointerup 시점을 제출�
   assert.match(controlSource, /onPointerCancel=\{handlePointerCancel\}/);
   assert.match(controlSource, /setPointerCapture/);
   assert.match(controlSource, /submitCurrentTiming\(\)/);
-  assert.match(controlSource, /submittedPointerTimingRef/);
+  assert.match(controlSource, /releasedPointerTimingRef/);
   assert.match(controlSource, /event\.detail > 0/);
   assert.match(controlSource, /event\.clientX/);
   assert.match(controlSource, /event\.clientY/);
