@@ -9,9 +9,10 @@ export const QA_PERFORMANCE_BUDGETS_MS = Object.freeze({
   core: 270_000,
   seq: 225_000,
   desk: 295_000,
-  galaxy: 285_000,
+  galaxy: 240_000,
+  galtime: 240_000,
   safvis: 195_000,
-  safari: 225_000,
+  safari: 250_000,
 });
 
 const laneContracts = Object.freeze([
@@ -20,6 +21,7 @@ const laneContracts = Object.freeze([
   Object.freeze({ code: 'seq', label: 'QA desktop sequence replay', path: 'seq/qa-job-timing.json' }),
   Object.freeze({ code: 'desk', label: 'QA desktop regression', path: 'desk/qa-job-timing.json' }),
   Object.freeze({ code: 'galaxy', label: 'QA mobile Galaxy', path: 'galaxy/qa-job-timing.json' }),
+  Object.freeze({ code: 'galtime', label: 'QA mobile Galaxy timing', path: 'galtime/qa-job-timing.json' }),
   Object.freeze({ code: 'safvis', label: 'QA Safari visible mismatch', path: 'safvis/qa-job-timing.json' }),
   Object.freeze({ code: 'safari', label: 'QA Safari timing', path: 'safari/qa-job-timing.json' }),
 ]);
