@@ -28,6 +28,7 @@ import './styles/shared-sound-badge.css';
 import './styles/waiting-room-qa-regression-fix.css';
 import './styles/waiting-room-empty-seat-fix.css';
 import './styles/roll-timing-grades.css';
+import './styles/roll-timing-ios-smoothness.css';
 import './styles/roll-stage-board-alignment.css';
 import './styles/turn-order-roll-placement.css';
 import './styles/lobby-guide-timing-grades.css';
