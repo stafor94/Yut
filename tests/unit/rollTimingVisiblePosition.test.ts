@@ -37,7 +37,8 @@ test('화면 좌표 판정은 등급 경계와 일치한다', () => {
   }
 });
 
-test('화면에 표시된 track 이동량을 픽셀 단위로 고정할 수 있다', () => {
-  assert.equal(getVisibleRollTimingTrackOffsetPx(meterRect, { left: 217, width: 200 }), 117);
-  assert.equal(getVisibleRollTimingTrackOffsetPx(meterRect, { left: Number.NaN, width: 200 }), undefined);
+test('track의 실제 화면 위치와 변환 전 layout 원점 차이를 픽셀 고정값으로 계산한다', () => {
+  assert.equal(getVisibleRollTimingTrackOffsetPx({ left: 217, width: 200 }, 104), 113);
+  assert.equal(getVisibleRollTimingTrackOffsetPx({ left: Number.NaN, width: 200 }, 104), undefined);
+  assert.equal(getVisibleRollTimingTrackOffsetPx({ left: 217, width: 200 }, Number.NaN), undefined);
 });
