@@ -9,6 +9,7 @@ test('타이밍 판정은 합성 애니메이션 시간과 pointerdown 캡처를
   assert.match(controlSource, /getAnimations\(\)\[0\]/);
   assert.match(controlSource, /animation\?\.currentTime/);
   assert.match(controlSource, /onPointerDown=\{handlePointerDown\}/);
+  assert.match(controlSource, /onPointerUp=\{handlePointerUp\}/);
   assert.match(controlSource, /onPointerCancel=\{handlePointerCancel\}/);
   assert.match(controlSource, /capturedPointerTimingRef/);
   assert.doesNotMatch(controlSource, /getBoundingClientRect/);
