@@ -5,6 +5,7 @@ import { getRoomPlayer } from '../../features/room/services/roomLifecycleStore';
 import type { ItemTiming } from '../../features/items/logic/items';
 import { createSeats, STORAGE_KEYS, type PendingItemPickup, type PlayMode, type Screen, type Seat, type SequenceStateSnapshot } from '../appState';
 import { isActiveHumanRoomHost } from '../flows/gameEndRoomReturn';
+import { publishRoomNotice } from '../flows/roomNoticeEvent';
 import { applySequenceEvents } from '../hooks/applySequenceEvent';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
 import { getSubstitutedRoomPlayerUpdate } from './useWaitingRoomController';
@@ -69,14 +70,9 @@ export function useGameLifecycleController(params: GameLifecycleControllerParams
         return;
       }
 
-      const currentHostSeat = params.seats.find((seat) => seat.id === params.activeRoomHostId && !seat.isEmpty);
-      let hasActiveHumanHost = isActiveHumanRoomHost(currentHostSeat);
       try {
-        if (!hasActiveHumanHost) {
-          const authoritativeHostPlayer = await getRoomPlayer(finishedRoomId, params.activeRoomHostId);
-          hasActiveHumanHost = isActiveHumanRoomHost(authoritativeHostPlayer);
-        }
-        if (!hasActiveHumanHost) {
+        const authoritativeHostPlayer = await getRoomPlayer(finishedRoomId, params.activeRoomHostId);
+        if (!isActiveHumanRoomHost(authoritativeHostPlayer)) {
           const deleted = await deleteRoom(finishedRoomId);
           if (!deleted) {
             const remainingRoom = await getRoom(finishedRoomId) as (RoomSummary & { deletingAt?: unknown }) | null;
@@ -85,13 +81,27 @@ export function useGameLifecycleController(params: GameLifecycleControllerParams
               return;
             }
           }
+
+          params.hostingRoomUserIdRef.current = '';
+          params.activeRoomIdRef.current = '';
+          params.confirmedRoomPlayerRef.current = false;
+          window.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+          window.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
+          params.setScreen('lobby');
+          params.setActiveRoomId('');
+          params.setActiveRoomTitle('');
+          params.setActiveRoomHostId('');
+          params.setIsRoomHost(false);
+          params.setSeats(createSeats(params.nickname, params.playMode, params.maxPlayers));
           params.setCountdown(-1);
+          params.setTurnOrderIds([]);
+          params.setGameStartedAt(null);
           params.setItemPromptTiming(null);
           params.setPendingItemPickup(null);
           params.pendingItemPickupRef.current = null;
           params.setEndGameDialogOpen(false);
-          params.setMessage('방장이 방을 나가 방 종료를 확인하고 있습니다.');
-          params.setScreen('waitingRoom');
+          params.setMessage('방장이 방을 나가 방이 종료되었습니다.');
+          publishRoomNotice({ title: '방장이 방을 나갔습니다.', message: '방이 종료되어 로비로 이동했습니다.' });
           return;
         }
       } catch (error) {
