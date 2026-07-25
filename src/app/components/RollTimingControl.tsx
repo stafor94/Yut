@@ -76,7 +76,10 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     if (capturedTiming?.pointerId !== event.pointerId || capturedTiming.resetKey !== resetKey) return;
     capturedPointerTimingRef.current = null;
     releasePointerCapture(event);
-    submittedPointerTimingRef.current = submitCurrentTiming()
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    const releasedInsideButton = event.clientX >= targetRect.left && event.clientX <= targetRect.right
+      && event.clientY >= targetRect.top && event.clientY <= targetRect.bottom;
+    submittedPointerTimingRef.current = releasedInsideButton && submitCurrentTiming()
       ? { releasedAt: performance.now() }
       : null;
   };
@@ -97,7 +100,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     submittedPointerTimingRef.current = null;
     capturedPointerTimingRef.current = null;
     if (isFollowUpPointerClick) return;
-    onRoll(getCurrentTimingPositionPercent());
+    if (!submitCurrentTiming()) onRoll();
   };
 
   return <>
