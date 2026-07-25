@@ -46,9 +46,9 @@ Galaxy와 Safari 계열은 별도 GitHub Actions matrix entry로 실행한다. C
 
 `mobile-galaxy`는 `desktop-chromium` project에서 Firebase browser isolation spec만 실행하고 `mobile-galaxy` project에서 모바일 spec을 실행한다.
 
-`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. 다만 화면 NICE 위치와 보고된 timeline PERFECT를 강제로 불일치시키는 시나리오는 Run `30162254392`에서 다른 WebKit test와 동일 runner CPU를 공유할 때 측정 뒤 실제 `pointerup` 전 프레임이 GOOD으로 이동했다. 이 시나리오는 `safari-visible-mismatch` 1-worker runner에서 isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 나머지 세 pointer 시나리오를 2 workers에 분산한다. 테스트의 화면 release 등급 의미와 서버 제출 assertion은 유지한다.
+`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. 화면 NICE 위치와 보고된 timeline PERFECT를 강제로 불일치시키는 시나리오는 Run `30162254392`에서 다른 WebKit test와 동일 runner CPU를 공유할 때 측정 뒤 실제 `pointerup` 전 프레임이 GOOD으로 이동했으므로 `safari-visible-mismatch` 1-worker runner에서 isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 나머지 세 pointer 시나리오를 3 workers에 분산한다. 테스트의 화면 release 등급 의미와 서버 제출 assertion은 유지한다.
 
-Safari pointer 회귀는 CSS 애니메이션의 한 프레임 중앙값을 맞히는 테스트가 아니라 실제 화면 등급 구간에서 release했을 때 같은 등급이 서버 제출 경로에 전달되는지를 검증한다. 따라서 `requestAnimationFrame` 샘플은 GOOD·NICE·PERFECT 각 등급의 경계에서 떨어진 내부 구간을 사용한다. 1초 편도 애니메이션에서 2% 중앙 구간만 기다리면 CI WebKit 프레임 간격이 해당 구간을 건너뛸 수 있으므로, 특정 중심 좌표를 요구하거나 timeout만 늘리는 방식으로 회귀를 만들지 않는다.
+Safari·Galaxy pointer 회귀는 CSS 애니메이션의 특정 프레임을 맞히는 테스트가 아니라 화면에 배치된 구슬 위치에서 release했을 때 같은 등급이 서버 제출 경로에 전달되는지를 검증한다. Run `30163126624`의 WebKit과 Run `30177639266`의 Galaxy Chromium은 `requestAnimationFrame`을 240회 관찰해도 목표 구간을 건너뛰었다. 따라서 WAAPI animation을 pause한 뒤 첫 iteration의 `currentTime`을 이진 탐색하고, 매 단계의 실제 `getBoundingClientRect()`를 읽어 GOOD·NICE·PERFECT 내부 구간에 구슬을 확정한다. timeout 증가, playback rate 조정, 프레임 수 증가는 사용하지 않는다.
 
 현재 앱 shell은 시작 시 Firebase Auth·Firestore 초기화를 수행한다. 따라서 DOM·레이아웃 중심 spec도 별도의 검증된 Firebase-free bootstrap이 생기기 전까지 emulator lane에서 유지한다. 단순 속도 개선을 위해 제품 초기화 계약을 mock으로 대체하지 않는다.
 
@@ -78,13 +78,13 @@ Safari pointer 회귀는 CSS 애니메이션의 한 프레임 중앙값을 맞�
 - `desktop-regression`: 2 workers
 - `mobile-galaxy`: 3 workers
 - `safari-visible-mismatch`: 1 worker
-- `safari-timing`: 2 workers
+- `safari-timing`: 3 workers
 
 온라인·일반 desktop lane은 여러 브라우저 context, Firebase polling, 3D 애니메이션을 동시에 사용한다. 4 workers에서는 브라우저가 진행되는 동안 테스트 프로세스가 지연되어 순서 정하기 준비 상태와 pending roll stage 같은 실제 중간 화면을 놓치는 회귀가 확인됐다. assertion 삭제나 timeout 증가로 숨기지 않고 검증된 자원 범위로 제한한다.
 
 `desktop-sequence`는 1 worker를 고정한다. Run `30160293177`에서 `bug-history-smoke`가 다른 desktop 테스트와 2-worker runner를 공유하는 동안 2초 move 시작 상태를 놓쳤으므로, 동일 파일을 별도 runner에 격리해 전체 workflow 병렬성은 유지하고 파일 내부 관찰 순서는 보장한다.
 
-Safari 계열은 test title 기준으로 겹치지 않게 분리한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 강제 불일치 test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 강제 불일치 title을 제외해야 한다. worker나 lane 구성을 다시 합치려면 최소 3회 연속 실행해 화면 release 등급, room 잔존, Firebase 요청 오류와 p95 시간을 확인한다.
+Safari 계열은 test title 기준으로 겹치지 않게 분리한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 강제 불일치 test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 강제 불일치 title을 제외해야 한다. `safari-timing` 3-worker 구성은 각 test가 고유 browser context·room을 사용하고 화면 위치를 결정적으로 확정하는 계약을 전제로 한다. 최소 3회 연속 실행해 화면 release 등급, room 잔존, Firebase 요청 오류와 p95 시간을 확인한다.
 
 ## 성능 예산
 
