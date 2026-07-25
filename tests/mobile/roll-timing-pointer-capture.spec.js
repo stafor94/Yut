@@ -81,6 +81,8 @@ async function dispatchVisibleTimingGesture(page, {
     if (!Number.isFinite(iterationDuration) || iterationDuration <= 0) {
       throw new Error(`타이밍 animation duration을 확인하지 못했습니다: ${String(computedTiming?.duration)}`);
     }
+    await animation.ready;
+    animation.pause();
 
     const gradeNames = new Set(['PERFECT', 'NICE', 'GOOD', 'BAD']);
     const readPositionPercent = () => {
@@ -89,16 +91,16 @@ async function dispatchVisibleTimingGesture(page, {
       return ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100;
     };
     const placeAtVisiblePosition = (minimum, maximum) => {
-      animation.pause();
       let lowerTime = 0;
       let upperTime = iterationDuration;
       let positionPercent = readPositionPercent();
       for (let attempt = 0; attempt < 16; attempt += 1) {
-        animation.currentTime = (lowerTime + upperTime) / 2;
+        const candidateTime = (lowerTime + upperTime) / 2;
+        animation.currentTime = candidateTime;
         positionPercent = readPositionPercent();
         if (positionPercent >= minimum && positionPercent <= maximum) return positionPercent;
-        if (positionPercent < minimum) lowerTime = Number(animation.currentTime);
-        else upperTime = Number(animation.currentTime);
+        if (positionPercent < minimum) lowerTime = candidateTime;
+        else upperTime = candidateTime;
       }
       throw new Error(`화면 타이밍 위치 설정 실패: target=${minimum}-${maximum}, actual=${positionPercent}`);
     };
