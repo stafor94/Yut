@@ -14,4 +14,12 @@ test.describe('완주 한 칸 이동 애니메이션 회귀', () => {
     expect(appSource).toMatch(/started: nextNodeId !== 'finish', finished: nextNodeId === 'finish'/);
     expect(appSource).toMatch(/const movePathNodeIds = getMovePathNodeIdsWithPrevious\([\s\S]*?for \(const nextNodeId of movePathNodeIds\)/);
   });
+
+  test('완주 효과가 준비되기 전 첫 프레임에는 최종 보관 위치를 숨긴다', () => {
+    const finishEffectsSource = readFileSync('src/styles/finish-effects.css', 'utf8');
+
+    expect(finishEffectsSource).toMatch(/\.piece-token\.finished:not\(\.finish-arrival\)/);
+    expect(finishEffectsSource).toMatch(/animation:\s*finish-pending-reveal\s+60ms\s+step-end\s+both/);
+    expect(finishEffectsSource).toMatch(/@keyframes finish-pending-reveal[\s\S]*?from\s*\{[\s\S]*?opacity:\s*0[\s\S]*?to\s*\{[\s\S]*?opacity:\s*1/);
+  });
 });
