@@ -19,7 +19,7 @@
   box-shadow: 0 0 0 0 rgba(255, 224, 100, 0), 0 0 0 rgba(242, 184, 75, 0);
 }
 
-.roll-stage .roll-mat.bonus-roll:has(.roll-label:not([hidden])) .roll-mat-surface::after {
+.roll-stage .roll-mat.bonus-roll:has(.roll-result-presentation:not([hidden]) .roll-label) .roll-mat-surface::after {
   animation: bonus-result-gold-glow 1.4s cubic-bezier(.2, .78, .24, 1) both;
 }
 
@@ -57,7 +57,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .roll-stage .roll-mat.bonus-roll:has(.roll-label:not([hidden])) .roll-mat-surface::after {
+  .roll-stage .roll-mat.bonus-roll:has(.roll-result-presentation:not([hidden]) .roll-label) .roll-mat-surface::after {
     animation: none;
     opacity: .72;
     transform: scale(1.01);
