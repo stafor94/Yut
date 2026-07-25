@@ -11,14 +11,14 @@ async function addAiAndWaitUntilGameCanStart(page) {
   await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
 }
 
-test.describe('mobile roll timing pointer capture regression', () => {
+test.describe('mobile roll timing release regression', () => {
   let roomId;
 
   test.afterEach(async () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('Galaxy 터치 시작 시점이 Perfect이고 click 처리 시점이 Good이어도 Perfect로 판정한다', async ({ page, context }, testInfo) => {
+  test('터치 시작이 Good이어도 손을 뗀 시점이 Perfect이면 화면과 동일하게 Perfect로 판정한다', async ({ page, context }, testInfo) => {
     testInfo.setTimeout(120_000);
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'timing-host'));
     const roomTitle = makeQaName(testInfo, 'timing-room');
@@ -48,7 +48,7 @@ test.describe('mobile roll timing pointer capture regression', () => {
       }, { timeout: 20_000, message: '순서 정하기 완료 후 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
     });
 
-    const sampledPositions = await runQaStep(testInfo, 'pointerdown 시점과 click 시점 분리', async () => page.evaluate(() => {
+    const sampledPositions = await runQaStep(testInfo, 'Good에서 누르고 Perfect에서 손을 뗀 위치 확인', async () => page.evaluate(() => {
       const meter = document.querySelector('.roll-timing-meter');
       const track = document.querySelector('.roll-timing-orb-track');
       const orb = document.querySelector('.roll-timing-orb');
@@ -65,7 +65,7 @@ test.describe('mobile roll timing pointer capture regression', () => {
       };
 
       animation.pause();
-      animation.currentTime = 500;
+      animation.currentTime = 390;
       const pointerDownPositionPercent = readPositionPercent();
       const pointerId = 17;
       button.dispatchEvent(new PointerEvent('pointerdown', {
@@ -79,8 +79,8 @@ test.describe('mobile roll timing pointer capture regression', () => {
         buttons: 1,
       }));
 
-      animation.currentTime = 800;
-      const clickPositionPercent = readPositionPercent();
+      animation.currentTime = 500;
+      const pointerUpPositionPercent = readPositionPercent();
       button.dispatchEvent(new PointerEvent('pointerup', {
         bubbles: true,
         cancelable: true,
@@ -91,19 +91,26 @@ test.describe('mobile roll timing pointer capture regression', () => {
         button: 0,
         buttons: 0,
       }));
-      button.click();
-      return { pointerDownPositionPercent, clickPositionPercent };
+      button.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        detail: 1,
+      }));
+      return { pointerDownPositionPercent, pointerUpPositionPercent };
     }));
 
-    expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(49);
-    expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(51);
-    expect(sampledPositions.clickPositionPercent).toBeGreaterThanOrEqual(79);
-    expect(sampledPositions.clickPositionPercent).toBeLessThanOrEqual(81);
+    expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(38);
+    expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(40);
+    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(49);
+    expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(51);
 
-    await runQaStep(testInfo, '제출된 타이밍 등급 확인', async () => {
+    await runQaStep(testInfo, '손을 뗀 위치와 제출된 타이밍 등급 확인', async () => {
       const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
       await expect(resultHoldStage).toBeVisible({ timeout: 8_000 });
       await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('PERFECT', { timeout: 2_000 });
+      await page.waitForTimeout(150);
+      await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('PERFECT');
     });
   });
 });
