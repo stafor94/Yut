@@ -46,7 +46,9 @@ Galaxy와 Safari 계열은 별도 GitHub Actions matrix entry로 실행한다. C
 
 `mobile-galaxy`는 `desktop-chromium` project에서 Firebase browser isolation spec만 실행하고 `mobile-galaxy` project에서 모바일 spec을 실행한다.
 
-`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. 다만 화면 NICE 위치와 보고된 timeline PERFECT를 강제로 불일치시키는 시나리오는 Run `30162254392`에서 다른 WebKit test와 동일 runner CPU를 공유할 때 측정 뒤 실제 `pointerup` 전 프레임이 GOOD으로 이동했다. 이 시나리오는 `safari-visible-mismatch` 1-worker runner에서 isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 나머지 세 pointer 시나리오를 2 workers에 분산한다. 테스트의 화면 release 의미나 assertion은 변경하지 않는다.
+`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. 다만 화면 NICE 위치와 보고된 timeline PERFECT를 강제로 불일치시키는 시나리오는 Run `30162254392`에서 다른 WebKit test와 동일 runner CPU를 공유할 때 측정 뒤 실제 `pointerup` 전 프레임이 GOOD으로 이동했다. 이 시나리오는 `safari-visible-mismatch` 1-worker runner에서 isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 나머지 세 pointer 시나리오를 2 workers에 분산한다. 테스트의 화면 release 등급 의미와 서버 제출 assertion은 유지한다.
+
+Safari pointer 회귀는 CSS 애니메이션의 한 프레임 중앙값을 맞히는 테스트가 아니라 실제 화면 등급 구간에서 release했을 때 같은 등급이 서버 제출 경로에 전달되는지를 검증한다. 따라서 `requestAnimationFrame` 샘플은 GOOD·NICE·PERFECT 각 등급의 경계에서 떨어진 내부 구간을 사용한다. 1초 편도 애니메이션에서 2% 중앙 구간만 기다리면 CI WebKit 프레임 간격이 해당 구간을 건너뛸 수 있으므로, 특정 중심 좌표를 요구하거나 timeout만 늘리는 방식으로 회귀를 만들지 않는다.
 
 현재 앱 shell은 시작 시 Firebase Auth·Firestore 초기화를 수행한다. 따라서 DOM·레이아웃 중심 spec도 별도의 검증된 Firebase-free bootstrap이 생기기 전까지 emulator lane에서 유지한다. 단순 속도 개선을 위해 제품 초기화 계약을 mock으로 대체하지 않는다.
 
@@ -84,6 +86,22 @@ Galaxy와 Safari 계열은 별도 GitHub Actions matrix entry로 실행한다. C
 
 Safari 계열은 test title 기준으로 겹치지 않게 분리한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 강제 불일치 test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 강제 불일치 title을 제외해야 한다. worker나 lane 구성을 다시 합치려면 최소 3회 연속 실행해 화면 release 등급, room 잔존, Firebase 요청 오류와 p95 시간을 확인한다.
 
+## 성능 예산
+
+`.github/scripts/validate-qa-performance.mjs`가 각 runner의 첫 단계부터 artifact 수집 직전까지의 전체 job 시간과 workflow 시작부터 summary 예상 완료까지의 시간을 검증한다. Playwright 테스트 내부 시간만 합산한 `qa-duration.json`은 진단용으로 유지하지만 설치·빌드·emulator 시작 비용을 제외하므로 성능 합격 판정에는 사용하지 않는다.
+
+- 전체 Main Branch QA 목표: 300초
+- summary 완료 여유: 10초
+- Build and unit: 90초
+- Online core: 270초
+- Desktop sequence replay: 225초
+- Desktop regression: 295초
+- Mobile Galaxy: 285초
+- Safari visible mismatch: 195초
+- Safari timing: 225초
+
+각 lane은 `qa-job-timing.json`을 artifact에 남기고 summary job은 `qa-performance.json`, `qa-performance.md`를 생성한다. 보고서 누락, GitHub Run 시작 시각 조회 실패, lane 예산 초과, 전체 5분 목표 초과는 모두 필수 QA 실패로 처리한다. 성능 예산을 늘릴 때는 느려진 원인과 최근 성공 Run의 실제 시간을 먼저 검토한다.
+
 ## Pages 배포 분리
 
 `Main Branch QA`는 build, unit, Firebase emulator QA와 결과 요약까지만 담당한다. GitHub Pages 환경 승인·직렬화·deployment queue가 길어져도 QA workflow의 terminal conclusion과 자동 실패 이슈 처리가 막히지 않아야 한다.
@@ -118,6 +136,7 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 - desktop sequence lane 또는 summary 결과 누락
 - Galaxy와 Safari 계열의 순차 job 재결합
 - Safari visible mismatch와 Safari timing summary 결과 누락
+- lane 전체 시간 artifact, 5분 성능 예산 검증 또는 필수 실패 연결 누락
 - Main Branch QA에 Pages 배포 또는 Pages 결과 의존성 재결합
 - 별도 Pages workflow의 성공 QA·main·push·triggering Run artifact 계약 누락
 
@@ -133,6 +152,7 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 - project 내부 병렬화 대상이 고유 context·room·cleanup을 사용하는지 확인
 - production Firebase 설정이 QA에 유입되지 않는지 확인
 - QA room 잔존과 다른 worker·lane room 삭제가 없는지 확인
-- lane별 `qa-duration.json`과 전체 임계 경로를 이전 Run과 비교
+- lane별 `qa-duration.json`, `qa-job-timing.json`과 workflow 시작→summary 완료 시간을 이전 Run과 비교
+- 성능 예산 검증이 필수 실패 조건에 연결됐고 전체 시간이 5분 이내인지 확인
 - Galaxy와 두 Safari lane이 서로 다른 runner에서 실제 동시 실행됐는지 확인
 - Main Branch QA terminal 결과와 별도 Pages deployment 결과를 구분해 확인
