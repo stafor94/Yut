@@ -66,6 +66,19 @@ Playwright project의 `testMatch` 계약은 `tests/qa/project-contracts.mjs`에�
 
 worker를 다시 높이려면 변경된 lane을 최소 3회 연속 실행해 transient UI, room 잔존, Firebase 요청 오류가 없고 p95 실행 시간이 실제로 개선되는지 확인한다.
 
+## Pages 배포 분리
+
+`Main Branch QA`는 build, unit, Firebase emulator QA와 결과 요약까지만 담당한다. GitHub Pages 환경 승인·직렬화·deployment queue가 길어져도 QA workflow의 terminal conclusion과 자동 실패 이슈 처리가 막히지 않아야 한다.
+
+`.github/workflows/deploy-pages.yml`은 성공한 `Main Branch QA`의 `workflow_run` 이벤트만 받는다. 다음 조건을 모두 만족할 때 triggering Run의 `build-and-unit` artifact를 Run ID로 고정해 다운로드하고 배포한다.
+
+- conclusion이 `success`
+- event가 `push`
+- head branch가 `main`
+- artifact source가 `github.event.workflow_run.id`
+
+Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작되면 오래된 대기 배포를 취소한다. QA workflow에 `github-pages` environment, `actions/deploy-pages`, Pages 결과 의존성을 다시 넣지 않는다.
+
 ## 자동 구조 검증
 
 `npm run qa:validate-architecture`는 다음을 차단한다.
@@ -80,6 +93,8 @@ worker를 다시 높이려면 변경된 lane을 최소 3회 연속 실행해 tra
 - QA matrix의 build 선행 의존성 재도입
 - `firebase-tools@latest` 재도입
 - workflow matrix lane·artifact code·duration artifact 연결 누락
+- Main Branch QA에 Pages 배포 또는 Pages 결과 의존성 재결합
+- 별도 Pages workflow의 성공 QA·main·push·triggering Run artifact 계약 누락
 
 ## 변경 검토 체크리스트
 
@@ -90,3 +105,4 @@ worker를 다시 높이려면 변경된 lane을 최소 3회 연속 실행해 tra
 - production Firebase 설정이 QA에 유입되지 않는지 확인
 - QA room 잔존과 다른 worker room 삭제가 없는지 확인
 - lane별 `qa-duration.json`과 전체 임계 경로를 이전 Run과 비교
+- Main Branch QA terminal 결과와 별도 Pages deployment 결과를 구분해 확인

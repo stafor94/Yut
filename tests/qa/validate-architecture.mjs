@@ -16,6 +16,7 @@ const packageJson = JSON.parse(read('package.json'));
 const playwrightConfig = read('playwright.config.js');
 const runnerSource = read('tests/helpers/run-qa-emulator-suite.mjs');
 const workflowSource = read('.github/workflows/qa.yml');
+const deployWorkflowSource = read('.github/workflows/deploy-pages.yml');
 const seenTestTargets = new Map();
 const concreteSpecs = new Map();
 
@@ -140,6 +141,25 @@ for (const suiteName of qaSuiteNames) {
 }
 if (!workflowSource.includes('npm run qa:validate-architecture')) fail('qa.yml build job이 QA architecture validator를 실행하지 않습니다.');
 if (!workflowSource.includes('qa-duration.json')) fail('qa.yml artifact가 lane별 duration 보고서를 수집하지 않습니다.');
+if (/^\s{2}deploy-pages:/mu.test(workflowSource) || workflowSource.includes('actions/deploy-pages@')) {
+  fail('Main Branch QA에 Pages 배포 job을 다시 결합하지 마세요. 별도 deploy-pages.yml을 사용해야 합니다.');
+}
+if (workflowSource.includes('needs.deploy-pages') || workflowSource.includes('DEPLOY_RESULT')) {
+  fail('Main Branch QA summary가 Pages 배포 결과를 기다리면 terminal conclusion이 환경 대기에 막힙니다.');
+}
+if (!deployWorkflowSource.includes('workflow_run:') || !deployWorkflowSource.includes('workflows: [Main Branch QA]')) {
+  fail('deploy-pages.yml은 Main Branch QA 완료를 workflow_run으로 받아야 합니다.');
+}
+if (!deployWorkflowSource.includes("github.event.workflow_run.conclusion == 'success'")) fail('Pages 배포는 성공한 QA Run에만 연결해야 합니다.');
+if (!deployWorkflowSource.includes("github.event.workflow_run.event == 'push'")) fail('Pages 배포는 push로 실행된 QA Run만 허용해야 합니다.');
+if (!deployWorkflowSource.includes("github.event.workflow_run.head_branch == 'main'")) fail('Pages 배포는 main QA Run만 허용해야 합니다.');
+if (!deployWorkflowSource.includes('actions/download-artifact@v4')) fail('Pages 배포 workflow가 검증된 build artifact를 다운로드하지 않습니다.');
+if (!deployWorkflowSource.includes('run-id: ${{ github.event.workflow_run.id }}')) fail('Pages 배포 artifact는 triggering QA Run ID로 고정해야 합니다.');
+if (!deployWorkflowSource.includes('github-token: ${{ secrets.GITHUB_TOKEN }}')) fail('다른 workflow Run artifact 다운로드에 GitHub token이 필요합니다.');
+if (!deployWorkflowSource.includes('actions/deploy-pages@v4')) fail('Pages 배포 action 연결이 없습니다.');
+if (!deployWorkflowSource.includes('group: github-pages-deploy') || !deployWorkflowSource.includes('cancel-in-progress: true')) {
+  fail('Pages 배포 workflow는 stale deployment를 취소하는 전용 concurrency 계약이 필요합니다.');
+}
 
 if (failures.length > 0) {
   console.error(`QA architecture validation failed (${failures.length})`);
