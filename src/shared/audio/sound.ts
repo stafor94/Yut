@@ -156,7 +156,7 @@ const playTone = (context: AudioContext, frequency: number, start: number, durat
   oscillator.detune.linearRampToValueAtTime(5, start + duration * 0.55);
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(Math.max(420, frequency * 2.8), start);
-  filter.Q.setValueAtTime(0.7);
+  filter.Q.setValueAtTime(0.7, start);
   oscillator.connect(filter);
   filter.connect(makeGain(context, volume, start, duration));
   oscillator.start(start);
