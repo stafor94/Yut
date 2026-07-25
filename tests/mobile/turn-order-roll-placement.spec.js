@@ -11,7 +11,7 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     roomId = '';
   });
 
-  test('Galaxy 세로 화면에서 순서 정하기 조작부·제한시간·윷 연출과 확정 순서를 검증한다', async ({ page, context }, testInfo) => {
+  test('Galaxy 세로 화면에서 순서 정하기 버튼·제한시간·윷 연출과 확정 순서를 검증한다', async ({ page, context }, testInfo) => {
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'turn-order-placement'));
     const roomTitle = makeQaName(testInfo, 'turn-order-placement-room');
     await primeLobbyStorage(context, {
@@ -41,25 +41,30 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     await expect(roundTimer).toHaveClass(/time-limit-bar/);
     await expect(roundTimer).toHaveClass(/turn-action-timer/);
     await expect(page.locator('.turn-order-round-status')).not.toContainText('남은 시간');
+    await expect(page.locator('.turn-order-timing-panel .roll-timing-meter')).toHaveCount(0);
+    await expect(page.locator('.turn-order-timing-panel .roll-timing-orb')).toHaveCount(0);
 
     const controlsLayout = await page.getByTestId('turn-order-overlay').evaluate((overlay) => {
       const grid = overlay.querySelector('[data-testid="turn-order-result-grid"]');
       const timing = overlay.querySelector('[data-testid="turn-order-timing-panel"]');
+      const button = timing?.querySelector('[data-testid="turn-order-roll-button"]');
       const cards = grid ? Array.from(grid.querySelectorAll('.turn-order-result-card')) : [];
-      if (!(grid instanceof HTMLElement) || !(timing instanceof HTMLElement) || cards.length !== 3) {
-        throw new Error('순서 정하기 결과 카드 또는 조작부를 찾지 못했습니다.');
+      if (!(grid instanceof HTMLElement) || !(timing instanceof HTMLElement) || !(button instanceof HTMLElement) || cards.length !== 3) {
+        throw new Error('순서 정하기 결과 카드 또는 던지기 버튼을 찾지 못했습니다.');
       }
       const gridRect = grid.getBoundingClientRect();
       const timingRect = timing.getBoundingClientRect();
+      const buttonRect = button.getBoundingClientRect();
       const lastCardRect = cards[cards.length - 1].getBoundingClientRect();
       return {
         gridBottom: gridRect.bottom,
         lastCardBottom: lastCardRect.bottom,
         timingTop: timingRect.top,
+        buttonTop: buttonRect.top,
       };
     });
-    expect(controlsLayout.timingTop, '타이밍 막대와 윷 던지기 버튼은 결과 카드 그리드 아래에 있어야 합니다.').toBeGreaterThanOrEqual(controlsLayout.gridBottom - 1);
-    expect(controlsLayout.timingTop, '타이밍 막대와 윷 던지기 버튼은 마지막 결과 카드 아래에 있어야 합니다.').toBeGreaterThanOrEqual(controlsLayout.lastCardBottom - 1);
+    expect(controlsLayout.timingTop, '윷 던지기 버튼 영역은 결과 카드 그리드 아래에 있어야 합니다.').toBeGreaterThanOrEqual(controlsLayout.gridBottom - 1);
+    expect(controlsLayout.buttonTop, '윷 던지기 버튼은 마지막 결과 카드 아래에 있어야 합니다.').toBeGreaterThanOrEqual(controlsLayout.lastCardBottom - 1);
 
     const timerAnimation = await roundTimer.locator('span').evaluate((fill) => {
       const style = getComputedStyle(fill);
@@ -86,6 +91,7 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     const rollMat = page.getByTestId('roll-mat');
     await expect(rollStage).toBeVisible({ timeout: 5_000 });
     await expect(rollMat).toBeVisible();
+    await expect(anchor.locator('.roll-timing-feedback')).toHaveCount(0);
     const layout = await anchor.evaluate((anchorElement) => {
       const overlay = document.querySelector('[data-testid="turn-order-overlay"]');
       const stage = anchorElement.querySelector(':scope > .roll-stage');
