@@ -2,6 +2,10 @@
   animation: finish-piece-arrival 900ms cubic-bezier(.16, 1, .3, 1) var(--finish-delay, 0ms) both;
 }
 
+.piece-token.finished:not(.finish-arrival) {
+  animation: finish-pending-reveal 60ms step-end both;
+}
+
 .piece-token.finish-ghost {
   z-index: 26;
   pointer-events: none;
@@ -36,6 +40,16 @@
   box-shadow: 0 10px 24px rgba(242, 184, 75, .42);
   pointer-events: none;
   animation: finish-complete-label 900ms cubic-bezier(.16, 1, .3, 1) both;
+}
+
+@keyframes finish-pending-reveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes finish-piece-jump {
