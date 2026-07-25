@@ -1,4 +1,5 @@
 import { bindYutResultSpeech } from './yutSpeech';
+import { getChainedSoundDelayMs } from './soundTiming';
 import arriveAudioSource from './assets/effects/arrive-original.wav';
 import captureAudioSource from './assets/effects/capture-original.wav';
 import countdownAudioSource from './assets/effects/countdown-original.wav';
@@ -155,7 +156,7 @@ const playTone = (context: AudioContext, frequency: number, start: number, durat
   oscillator.detune.linearRampToValueAtTime(5, start + duration * 0.55);
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(Math.max(420, frequency * 2.8), start);
-  filter.Q.setValueAtTime(0.7, start);
+  filter.Q.setValueAtTime(0.7);
   oscillator.connect(filter);
   filter.connect(makeGain(context, volume, start, duration));
   oscillator.start(start);
@@ -173,7 +174,7 @@ const playNoise = (context: AudioContext, start: number, duration: number, volum
   const filter = context.createBiquadFilter();
   filter.type = 'bandpass';
   filter.frequency.setValueAtTime(filterFrequency, start);
-  filter.Q.setValueAtTime(1.8, start);
+  filter.Q.setValueAtTime(1.8);
   source.buffer = buffer;
   source.connect(filter);
   filter.connect(makeGain(context, volume, start, duration, 0.85));
@@ -185,6 +186,26 @@ const getEffectDedupeWindow = (effect: SoundEffect) => {
   if (effect === 'move') return 0.08;
   if (effect === 'countdown' || effect === 'countdownStart') return 0.15;
   return 0.18;
+};
+
+const scheduleSoundFollowUp = (delayMs: number, onEnded: () => void, cancelPlayback?: () => void) => {
+  if (typeof window === 'undefined') {
+    onEnded();
+    cancelPlayback?.();
+    return undefined;
+  }
+  let completed = false;
+  const timer = window.setTimeout(() => {
+    if (completed) return;
+    completed = true;
+    onEnded();
+  }, delayMs);
+  return () => {
+    if (completed) return;
+    completed = true;
+    window.clearTimeout(timer);
+    cancelPlayback?.();
+  };
 };
 
 export const isStoredSoundEnabled = () => {
@@ -200,15 +221,21 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean, onEnded?:
     return undefined;
   }
 
+  const chainedDelayMs = getChainedSoundDelayMs(effect, Boolean(onEnded));
   const now = typeof performance === 'undefined' ? Date.now() / 1000 : performance.now() / 1000;
   const lastPlayedAt = lastPlayedEffectAt.get(effect) ?? -Infinity;
   if (now - lastPlayedAt < getEffectDedupeWindow(effect)) {
+    if (chainedDelayMs !== null && onEnded) return scheduleSoundFollowUp(chainedDelayMs, onEnded);
     onEnded?.();
     return undefined;
   }
   lastPlayedEffectAt.set(effect, now);
 
   if (effect in WAV_EFFECT_SOURCES) {
+    if (chainedDelayMs !== null && onEnded) {
+      const cancelPlayback = playWavEffect(effect as keyof typeof WAV_EFFECT_SOURCES);
+      return scheduleSoundFollowUp(chainedDelayMs, onEnded, cancelPlayback);
+    }
     return playWavEffect(effect as keyof typeof WAV_EFFECT_SOURCES, onEnded);
   }
 
