@@ -350,6 +350,10 @@ test.describe('BUG_HISTORY regression smoke', () => {
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'ai-seq-host'));
     const roomTitle = makeQaName(testInfo, 'ai-seq-room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    await context.addInitScript(() => {
+      window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
+      window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
+    });
     const knownAiMoveMutationIds = new Set();
 
     const getMovingPieces = () => page.evaluate(() => {
