@@ -55,17 +55,6 @@ export async function hasFirebaseConfig() {
   return Boolean(await loadFirebaseConfig());
 }
 
-function formatQaTimestamp(date = new Date()) {
-  const pad = (value) => String(value).padStart(2, '0');
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
-  return `${year}.${month}.${day}_${hours}${minutes}${seconds}`;
-}
-
 function normalizeQaRunId(value) {
   return String(value ?? '')
     .toLowerCase()
@@ -94,7 +83,16 @@ export function makeQaName(testInfo, suffix) {
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 11) || 'room';
-  const identityHash = hashQaName(`${runId}|${formatQaTimestamp()}|${project}|${suffix}`).slice(0, 5);
+  const identity = [
+    runId,
+    project,
+    String(testInfo.testId ?? ''),
+    String(testInfo.workerIndex ?? ''),
+    String(testInfo.parallelIndex ?? ''),
+    String(testInfo.retry ?? ''),
+    String(suffix ?? ''),
+  ].join('|');
+  const identityHash = hashQaName(identity).slice(0, 5);
   return `QA-${safeSuffix}-${identityHash}`.slice(0, QA_ROOM_TITLE_MAX_LENGTH);
 }
 
