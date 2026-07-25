@@ -16,6 +16,7 @@ const suiteContracts = Object.freeze({
   'desktop-sequence': Object.freeze({ code: 'seq', label: 'Desktop sequence replay', browsers: Object.freeze(['chromium']) }),
   'desktop-regression': Object.freeze({ code: 'desk', label: 'Desktop regression', browsers: Object.freeze(['chromium']) }),
   'mobile-galaxy': Object.freeze({ code: 'galaxy', label: 'Mobile Galaxy', browsers: Object.freeze(['chromium']) }),
+  'safari-visible-mismatch': Object.freeze({ code: 'safvis', label: 'Safari visible mismatch', browsers: Object.freeze(['webkit']) }),
   'safari-timing': Object.freeze({ code: 'safari', label: 'Safari timing', browsers: Object.freeze(['webkit']) }),
 });
 
@@ -92,6 +93,7 @@ for (const suiteName of qaSuiteNames) {
   }
   if (!Array.isArray(suite.tests) || suite.tests.length === 0) fail(`${suiteName}: 테스트 대상이 필요합니다.`);
   if (!suite.browserIsolationTest) fail(`${suiteName}: browser isolation test가 필요합니다.`);
+  if (suite.grep && suite.grepInvert) fail(`${suiteName}: grep과 grepInvert를 동시에 사용하지 마세요.`);
   if (suite.sharedTargets && !Array.isArray(suite.sharedTargets)) fail(`${suiteName}: sharedTargets는 배열이어야 합니다.`);
   for (const sharedTarget of suite.sharedTargets ?? []) {
     if (!suite.tests.includes(sharedTarget) && suite.browserIsolationTest !== sharedTarget) {
@@ -104,6 +106,18 @@ for (const suiteName of qaSuiteNames) {
     fail(`${suiteName}: Playwright command prefix가 올바르지 않습니다.`);
   }
   if (!commandArgs.includes(`--workers=${suite.workers}`)) fail(`${suiteName}: runner command의 worker 수가 manifest와 다릅니다.`);
+  const grepIndex = commandArgs.indexOf('--grep');
+  if (suite.grep) {
+    if (grepIndex < 0 || commandArgs[grepIndex + 1] !== suite.grep) fail(`${suiteName}: runner command의 grep이 manifest와 다릅니다.`);
+  } else if (grepIndex >= 0) {
+    fail(`${suiteName}: manifest에 없는 grep이 runner command에 포함됐습니다.`);
+  }
+  const grepInvertIndex = commandArgs.indexOf('--grep-invert');
+  if (suite.grepInvert) {
+    if (grepInvertIndex < 0 || commandArgs[grepInvertIndex + 1] !== suite.grepInvert) fail(`${suiteName}: runner command의 grepInvert가 manifest와 다릅니다.`);
+  } else if (grepInvertIndex >= 0) {
+    fail(`${suiteName}: manifest에 없는 grepInvert가 runner command에 포함됐습니다.`);
+  }
   for (const projectName of suite.projects ?? []) {
     if (commandArgs.filter((argument) => argument === `--project=${projectName}`).length !== 1) {
       fail(`${suiteName}: runner command의 project 연결이 올바르지 않습니다: ${projectName}`);
@@ -171,8 +185,9 @@ for (const suiteName of qaSuiteNames) {
 }
 if (!workflowSource.includes('npm run qa:validate-architecture')) fail('qa.yml build job이 QA architecture validator를 실행하지 않습니다.');
 if (!workflowSource.includes('qa-duration.json')) fail('qa.yml artifact가 lane별 duration 보고서를 수집하지 않습니다.');
-if (!workflowSource.includes('seq/result.txt') || !workflowSource.includes('galaxy/result.txt') || !workflowSource.includes('safari/result.txt')) {
-  fail('qa.yml summary가 분리된 sequence, Galaxy와 Safari 결과를 모두 집계하지 않습니다.');
+if (!workflowSource.includes('seq/result.txt') || !workflowSource.includes('galaxy/result.txt')
+  || !workflowSource.includes('safvis/result.txt') || !workflowSource.includes('safari/result.txt')) {
+  fail('qa.yml summary가 분리된 sequence, Galaxy, Safari visible mismatch와 Safari timing 결과를 모두 집계하지 않습니다.');
 }
 if (/^\s{2}deploy-pages:/mu.test(workflowSource) || workflowSource.includes('actions/deploy-pages@')) {
   fail('Main Branch QA에 Pages 배포 job을 다시 결합하지 마세요. 별도 deploy-pages.yml을 사용해야 합니다.');
@@ -212,6 +227,8 @@ const report = {
       workers: suite.workers,
       browsers: suite.browsers,
       projects: suite.projects,
+      grep: suite.grep ?? null,
+      grepInvert: suite.grepInvert ?? null,
       sharedTargets: suite.sharedTargets ?? [],
       targets: [suite.browserIsolationTest, ...suite.tests],
     }];
