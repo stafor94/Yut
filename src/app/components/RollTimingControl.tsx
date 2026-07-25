@@ -39,7 +39,6 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   const releasedPointerTimingRef = useRef<ReleasedPointerTiming | null>(null);
 
   const getTimingAnimation = () => trackRef.current?.getAnimations()[0];
-  const getCurrentTimingPositionPercent = () => getAnimationPositionPercent(getTimingAnimation());
 
   const submitCurrentTiming = () => {
     const animation = getTimingAnimation();
