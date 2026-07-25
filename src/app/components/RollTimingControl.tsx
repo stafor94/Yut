@@ -12,10 +12,10 @@ type RollTimingControlProps = {
 type CapturedPointerTiming = {
   pointerId: number;
   positionPercent: number;
-  capturedAt: number;
+  releasedAt: number | null;
 };
 
-const POINTER_TIMING_CAPTURE_MAX_AGE_MS = 1000;
+const POINTER_RELEASE_CLICK_MAX_DELAY_MS = 1000;
 const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
 
 const getAnimationPositionPercent = (animation: Animation | undefined) => {
@@ -41,7 +41,14 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const positionPercent = getCurrentTimingPositionPercent();
     capturedPointerTimingRef.current = positionPercent === undefined
       ? null
-      : { pointerId: event.pointerId, positionPercent, capturedAt: performance.now() };
+      : { pointerId: event.pointerId, positionPercent, releasedAt: null };
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const capturedTiming = capturedPointerTimingRef.current;
+    if (capturedTiming?.pointerId === event.pointerId) {
+      capturedTiming.releasedAt = performance.now();
+    }
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -52,7 +59,8 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
 
   const handleClick = () => {
     const capturedTiming = capturedPointerTimingRef.current;
-    const capturedPosition = capturedTiming && performance.now() - capturedTiming.capturedAt <= POINTER_TIMING_CAPTURE_MAX_AGE_MS
+    const capturedPosition = capturedTiming && typeof capturedTiming.releasedAt === 'number'
+      && performance.now() - capturedTiming.releasedAt <= POINTER_RELEASE_CLICK_MAX_DELAY_MS
       ? capturedTiming.positionPercent
       : undefined;
     capturedPointerTimingRef.current = null;
@@ -68,6 +76,6 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
         <span className="roll-timing-orb"></span>
       </span>
     </div>
-    <button type="button" data-testid={buttonTestId} className="roll-button" onPointerDown={handlePointerDown} onPointerCancel={handlePointerCancel} onClick={handleClick} disabled={disabled}>{buttonText}</button>
+    <button type="button" data-testid={buttonTestId} className="roll-button" onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onClick={handleClick} disabled={disabled}>{buttonText}</button>
   </>;
 }
