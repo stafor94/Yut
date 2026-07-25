@@ -3,9 +3,10 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { User } from 'firebase/auth';
 import { claimRoomHostIfMissing, scheduleEmptyRoomDeletion, subscribeRoomPlayers, type RoomPlayer } from '../../features/room/services/roomService';
 import { clearRuntimeAiDifficulties, replaceRuntimeAiDifficulties } from '../../game-core/aiDifficulty';
+import { preserveLockedGameSeats, seatsFromRoomPlayers, spectatorsFromRoomPlayers, STORAGE_KEYS, type PlayMode, type Screen, type Seat } from '../appState';
 import { ROOM_PLAYER_MISSING_GRACE_MS } from '../flows/presenceRecovery';
 import { makeRoomHostClaimKey, resolveLocalRoomPlayerSnapshot, shouldIgnoreRoomPlayersSnapshot } from '../flows/roomPlayersSubscriptionFlow';
-import { preserveLockedGameSeats, seatsFromRoomPlayers, spectatorsFromRoomPlayers, STORAGE_KEYS, type PlayMode, type Screen, type Seat } from '../appState';
+import { subscribeRoomNotice } from '../flows/roomNoticeEvent';
 
 interface RoomPlayerAiState { isAI: boolean; isSubstitutedByAI: boolean; isSpectator: boolean; nickname: string }
 
@@ -52,6 +53,8 @@ export function useRoomPlayersSubscription(params: UseRoomPlayersSubscriptionPar
   const handlePresencePlayerSnapshotRef = useRef(handlePresencePlayerSnapshot);
   addLogsRef.current = addLogs;
   handlePresencePlayerSnapshotRef.current = handlePresencePlayerSnapshot;
+
+  useEffect(() => subscribeRoomNotice(setRoomNoticeDialog), [setRoomNoticeDialog]);
 
   useEffect(() => {
     if (!activeRoomId) return undefined;
