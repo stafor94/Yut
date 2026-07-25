@@ -15,7 +15,7 @@ Main Branch QA의 실행 목록과 병렬 설정을 한 곳에서 관리하고, 
 - Firebase browser isolation spec
 - 의도적으로 여러 browser lane에서 공유하는 target
 
-Playwright project의 `testMatch` 계약은 `tests/qa/project-contracts.mjs`에서 관리한다. 실제 CLI 인자는 `tests/qa/playwright-command.mjs`에서 생성한다. `playwright.config.js`와 architecture validator가 같은 계약을 사용하므로 manifest에 등록했지만 실제 project에서 누락되는 상태를 방지한다.
+Playwright project의 `testMatch`와 project 내부 병렬 실행 계약은 `tests/qa/project-contracts.mjs`에서 관리한다. 실제 CLI 인자는 `tests/qa/playwright-command.mjs`에서 생성한다. `playwright.config.js`와 architecture validator가 같은 계약을 사용하므로 manifest에 등록했지만 실제 project에서 누락되는 상태를 방지한다.
 
 `package.json`, `tests/helpers/run-qa-emulator-suite.mjs`, `.github/workflows/qa.yml`에 spec 경로를 중복해서 작성하지 않는다.
 
@@ -25,7 +25,7 @@ Playwright project의 `testMatch` 계약은 `tests/qa/project-contracts.mjs`에�
 2. 실제 제품 동작과 같은 Firebase Auth·Firestore 흐름이 필요하면 emulator lane에 둔다.
 3. 대상 파일 또는 디렉터리를 `suite-manifest.mjs`의 정확한 lane에 한 번만 등록한다.
 4. 동일 spec을 여러 browser lane에서 의도적으로 실행해야 하면 관련 모든 suite의 `sharedTargets`에 명시한다.
-5. 해당 Playwright project의 `testMatch`, 브라우저, viewport를 `project-contracts.mjs`와 `playwright.config.js`에서 확인한다.
+5. 해당 Playwright project의 `testMatch`, 브라우저, viewport와 `fullyParallel` 값을 `project-contracts.mjs`와 `playwright.config.js`에서 확인한다.
 6. `npm run qa:validate-architecture`를 실행한다.
 7. 생성된 `test-results/qa-architecture-report.json`에서 spec → lane → project 연결을 확인한다.
 8. 변경된 lane을 실행하고 테스트가 실제 목록에 포함됐는지 로그에서 확인한다.
@@ -39,7 +39,7 @@ Playwright project의 `testMatch` 계약은 `tests/qa/project-contracts.mjs`에�
 
 Galaxy와 Safari timing은 별도 GitHub Actions matrix entry로 실행한다. 두 browser 실행을 한 runner에서 순차 실행하지 않는다. 각 lane은 고유 `QA_RUN_ID`, `QA_PROJECT_ID`, room namespace와 cleanup 범위를 사용한다.
 
-`mobile-galaxy`는 `desktop-chromium` project에서 Firebase browser isolation spec만 실행하고 `mobile-galaxy` project에서 모바일 spec을 실행한다. `safari-timing`은 `mobile-webkit-timing` project에서 WebKit browser isolation과 타이밍 pointer spec을 실행한다.
+`mobile-galaxy`는 `desktop-chromium` project에서 Firebase browser isolation spec만 실행하고 `mobile-galaxy` project에서 모바일 spec을 실행한다. `safari-timing`은 `mobile-webkit-timing` project에서 WebKit browser isolation과 타이밍 pointer spec을 실행한다. 이 WebKit project만 `fullyParallel: true`를 사용해 한 파일의 네 시나리오를 2 workers에 분산하며, 전역·Galaxy·desktop project는 기존 순차 파일 실행을 유지한다.
 
 현재 앱 shell은 시작 시 Firebase Auth·Firestore 초기화를 수행한다. 따라서 DOM·레이아웃 중심 spec도 별도의 검증된 Firebase-free bootstrap이 생기기 전까지 emulator lane에서 유지한다. 단순 속도 개선을 위해 제품 초기화 계약을 mock으로 대체하지 않는다.
 
@@ -71,9 +71,9 @@ Galaxy와 Safari timing은 별도 GitHub Actions matrix entry로 실행한다. �
 
 온라인·desktop lane은 여러 브라우저 context, Firebase polling, 3D 애니메이션을 동시에 사용한다. 4 workers에서는 브라우저가 진행되는 동안 테스트 프로세스가 지연되어 순서 정하기 준비 상태와 pending roll stage 같은 실제 중간 화면을 놓치는 회귀가 확인됐다. assertion 삭제나 timeout 증가로 숨기지 않고 검증된 자원 범위로 제한한다.
 
-Safari timing은 Galaxy와 runner를 분리한 상태에서 최대 2 workers만 사용한다. shared target은 테스트별 room namespace와 browser context가 격리된 경우에만 병렬 실행한다.
+Safari timing은 Galaxy와 runner를 분리한 상태에서 최대 2 workers만 사용한다. 각 테스트가 고유 context, room 이름, 익명 사용자와 `afterEach` cleanup을 사용하므로 해당 project에만 파일 내부 병렬 실행을 허용한다. 다른 project의 `fullyParallel`은 false로 고정한다.
 
-worker를 다시 높이려면 변경된 lane을 최소 3회 연속 실행해 transient UI, room 잔존, Firebase 요청 오류가 없고 p95 실행 시간이 실제로 개선되는지 확인한다.
+worker나 project 병렬 범위를 다시 높이려면 변경된 lane을 최소 3회 연속 실행해 transient UI, room 잔존, Firebase 요청 오류가 없고 p95 실행 시간이 실제로 개선되는지 확인한다.
 
 ## Pages 배포 분리
 
@@ -100,6 +100,8 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 - `package.json`의 legacy `test:qa-*` 목록 재도입
 - runner의 spec 경로 또는 legacy suite map 하드코딩
 - manifest와 runner CLI의 worker·project·target 연결 불일치
+- project별 `fullyParallel` 계약 누락 또는 Playwright config 직접 하드코딩
+- 전역 `fullyParallel: true` 재도입
 - QA matrix의 build 선행 의존성 재도입
 - `firebase-tools@latest` 재도입
 - workflow matrix lane·label·artifact code·browser·duration artifact 연결 누락
@@ -115,6 +117,7 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 - 기존 browser isolation 검증이 각 lane에서 유지되는지 확인
 - 기존 테스트 수와 browser execution 수가 줄지 않았는지 확인
 - 의도적인 lane 간 중복 target이 `sharedTargets`로 선언됐는지 확인
+- project 내부 병렬화 대상이 고유 context·room·cleanup을 사용하는지 확인
 - production Firebase 설정이 QA에 유입되지 않는지 확인
 - QA room 잔존과 다른 worker·lane room 삭제가 없는지 확인
 - lane별 `qa-duration.json`과 전체 임계 경로를 이전 Run과 비교
