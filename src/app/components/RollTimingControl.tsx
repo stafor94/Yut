@@ -62,9 +62,15 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const positionPercent = getVisibleRollTimingPositionPercent(meterRect, orbRect);
     if (positionPercent === undefined) return undefined;
 
-    const trackOffsetPx = track
-      ? getVisibleRollTimingTrackOffsetPx(meterRect, track.getBoundingClientRect())
-      : undefined;
+    let trackOffsetPx: number | undefined;
+    if (track) {
+      const offsetParent = track.offsetParent;
+      if (offsetParent instanceof HTMLElement) {
+        const offsetParentRect = offsetParent.getBoundingClientRect();
+        const trackLayoutLeftPx = offsetParentRect.left + offsetParent.clientLeft + track.offsetLeft;
+        trackOffsetPx = getVisibleRollTimingTrackOffsetPx(track.getBoundingClientRect(), trackLayoutLeftPx);
+      }
+    }
     return { positionPercent, trackOffsetPx };
   };
 
