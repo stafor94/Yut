@@ -174,7 +174,7 @@ const playNoise = (context: AudioContext, start: number, duration: number, volum
   const filter = context.createBiquadFilter();
   filter.type = 'bandpass';
   filter.frequency.setValueAtTime(filterFrequency, start);
-  filter.Q.setValueAtTime(1.8);
+  filter.Q.setValueAtTime(1.8, start);
   source.buffer = buffer;
   source.connect(filter);
   filter.connect(makeGain(context, volume, start, duration, 0.85));
