@@ -3,6 +3,10 @@ import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep }
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
+const GOOD_PRESS_RANGE = Object.freeze([34, 39]);
+const NICE_RELEASE_RANGE = Object.freeze([40.5, 44.5]);
+const PERFECT_RELEASE_RANGE = Object.freeze([46, 54]);
+
 async function addAiAndWaitUntilGameCanStart(page) {
   const addAiButton = page.getByTestId('add-ai-P2');
   await expect(addAiButton).toBeVisible({ timeout: 15_000 });
@@ -50,8 +54,8 @@ async function startAiTimingGame(page, context, testInfo) {
 
 async function dispatchLiveTimingGesture(page, {
   releaseInside = true,
-  pointerDownRange = [34, 39],
-  pointerUpRange = [57, 59.5],
+  pointerDownRange = GOOD_PRESS_RANGE,
+  pointerUpRange = NICE_RELEASE_RANGE,
   reportedAnimationCurrentTime,
   awaitSubmission = true,
 } = {}) {
@@ -88,7 +92,7 @@ async function dispatchLiveTimingGesture(page, {
         }
         frameCount += 1;
         if (frameCount > 240) {
-          reject(new Error(`실시간 타이밍 위치 대기 실패: ${positionPercent}`));
+          reject(new Error(`실시간 타이밍 위치 대기 실패: target=${minimum}-${maximum}, actual=${positionPercent}`));
           return;
         }
         requestAnimationFrame(check);
@@ -211,12 +215,11 @@ test.describe('mobile roll timing release regression', () => {
     roomId = await startAiTimingGame(page, context, testInfo);
 
     const sampledPositions = await runQaStep(testInfo, '실시간 화면은 Nice이고 보고된 animation timeline은 Perfect인 상태 제출', async () => dispatchLiveTimingGesture(page, {
-      pointerUpRange: [57, 59.5],
       reportedAnimationCurrentTime: 500,
     }));
     expect(sampledPositions.animationCurrentTime).toBe(500);
-    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(57);
-    expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(59.5);
+    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(NICE_RELEASE_RANGE[0]);
+    expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(NICE_RELEASE_RANGE[1]);
     expect(sampledPositions.submittedGrade).toBe('NICE');
     expect(sampledPositions.rollLog).toContain('던졌습니다.');
   });
@@ -225,10 +228,10 @@ test.describe('mobile roll timing release regression', () => {
     roomId = await startAiTimingGame(page, context, testInfo);
 
     const sampledPositions = await runQaStep(testInfo, '실시간 Good 위치에서 누르고 Nice 위치에서 손을 뗀 화면 좌표와 등급 확인', async () => dispatchLiveTimingGesture(page));
-    expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(34);
-    expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(39);
-    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(57);
-    expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(59.5);
+    expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(GOOD_PRESS_RANGE[0]);
+    expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(GOOD_PRESS_RANGE[1]);
+    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(NICE_RELEASE_RANGE[0]);
+    expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(NICE_RELEASE_RANGE[1]);
     expect(sampledPositions.submittedGrade).toBe('NICE');
     expect(sampledPositions.rollLog).toContain('던졌습니다.');
   });
@@ -237,12 +240,12 @@ test.describe('mobile roll timing release regression', () => {
     roomId = await startAiTimingGame(page, context, testInfo);
 
     const sampledPositions = await runQaStep(testInfo, '실시간 Good에서 누르고 Perfect에서 손을 뗀 화면 좌표와 등급 확인', async () => dispatchLiveTimingGesture(page, {
-      pointerUpRange: [49, 51],
+      pointerUpRange: PERFECT_RELEASE_RANGE,
     }));
-    expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(34);
-    expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(39);
-    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(49);
-    expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(51);
+    expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(GOOD_PRESS_RANGE[0]);
+    expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(GOOD_PRESS_RANGE[1]);
+    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(PERFECT_RELEASE_RANGE[0]);
+    expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(PERFECT_RELEASE_RANGE[1]);
     expect(sampledPositions.submittedGrade).toBe('PERFECT');
     expect(sampledPositions.rollLog).toContain('던졌습니다.');
   });
@@ -253,7 +256,7 @@ test.describe('mobile roll timing release regression', () => {
     const rollLogCountBefore = await rollLogLocator.count();
 
     await runQaStep(testInfo, '실시간 버튼 밖 release와 후속 click 입력', async () => {
-      await dispatchLiveTimingGesture(page, { releaseInside: false, pointerUpRange: [49, 51], awaitSubmission: false });
+      await dispatchLiveTimingGesture(page, { releaseInside: false, pointerUpRange: PERFECT_RELEASE_RANGE, awaitSubmission: false });
       await page.waitForTimeout(500);
     });
 
