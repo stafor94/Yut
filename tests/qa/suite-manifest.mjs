@@ -60,7 +60,6 @@ export const qaSuiteManifest = Object.freeze({
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    sharedTargets: Object.freeze([timingPointerSpec]),
     tests: Object.freeze([
       'tests/mobile/mobile-layout.spec.js',
       'tests/mobile/waiting-room-requested-layout.spec.js',
@@ -68,7 +67,6 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/lobby-start-polish.spec.js',
       'tests/mobile/lobby-guide-polish.spec.js',
       'tests/mobile/roll-timing-grades.spec.js',
-      timingPointerSpec,
       'tests/mobile/roll-stage-board-alignment.spec.js',
       'tests/mobile/turn-order-layout.spec.js',
       'tests/mobile/turn-order-roll-placement.spec.js',
@@ -77,6 +75,16 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/lobby-scroll-reset.spec.js',
       'tests/mobile/lobby-header-badges.spec.js',
     ]),
+  }),
+  'mobile-galaxy-timing': Object.freeze({
+    label: 'Mobile Galaxy timing',
+    code: 'galtime',
+    workers: 3,
+    browsers: Object.freeze(['chromium']),
+    projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
+    browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
+    sharedTargets: Object.freeze([timingPointerSpec]),
+    tests: Object.freeze([timingPointerSpec]),
   }),
   'safari-visible-mismatch': Object.freeze({
     label: 'Safari visible mismatch',
