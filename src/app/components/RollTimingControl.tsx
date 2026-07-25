@@ -28,6 +28,7 @@ type VisibleTimingSnapshot = {
 };
 
 const POINTER_RELEASE_CLICK_MAX_DELAY_MS = 1000;
+const ROLL_TIMING_RESULT_HOLD_MS = 1000;
 const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
 
 const getAnimationPositionPercent = (animation: Animation | undefined) => {
@@ -48,8 +49,19 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   const orbRef = useRef<HTMLSpanElement | null>(null);
   const capturedPointerTimingRef = useRef<CapturedPointerTiming | null>(null);
   const releasedPointerTimingRef = useRef<ReleasedPointerTiming | null>(null);
+  const resultHoldTimerRef = useRef<number | null>(null);
+  const resultHoldElementRef = useRef<HTMLElement | null>(null);
 
   const getTimingAnimation = () => trackRef.current?.getAnimations()[0];
+
+  const clearResultHold = () => {
+    if (resultHoldTimerRef.current !== null) {
+      window.clearTimeout(resultHoldTimerRef.current);
+      resultHoldTimerRef.current = null;
+    }
+    resultHoldElementRef.current?.remove();
+    resultHoldElementRef.current = null;
+  };
 
   const getVisibleTimingSnapshot = (): VisibleTimingSnapshot | undefined => {
     const meter = meterRef.current;
@@ -89,12 +101,40 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     }
   };
 
+  const holdVisibleTimingResult = () => {
+    const meter = meterRef.current;
+    const track = trackRef.current;
+    if (!meter || !track || typeof document === 'undefined') return;
+
+    clearResultHold();
+    const meterRect = meter.getBoundingClientRect();
+    const heldMeter = meter.cloneNode(true) as HTMLDivElement;
+    const heldTrack = heldMeter.querySelector<HTMLElement>('.roll-timing-orb-track');
+    if (heldTrack) heldTrack.style.animation = 'none';
+    heldMeter.dataset.testid = 'roll-timing-result-hold';
+    heldMeter.setAttribute('aria-label', '멈춘 윷 던지기 정확도 위치');
+    Object.assign(heldMeter.style, {
+      position: 'fixed',
+      top: `${meterRect.top}px`,
+      left: `${meterRect.left}px`,
+      width: `${meterRect.width}px`,
+      height: `${meterRect.height}px`,
+      margin: '0',
+      pointerEvents: 'none',
+      zIndex: '1000',
+    });
+    document.body.appendChild(heldMeter);
+    resultHoldElementRef.current = heldMeter;
+    resultHoldTimerRef.current = window.setTimeout(clearResultHold, ROLL_TIMING_RESULT_HOLD_MS);
+  };
+
   const submitCurrentTiming = () => {
     const animation = getTimingAnimation();
     const visibleSnapshot = getVisibleTimingSnapshot();
     const positionPercent = visibleSnapshot?.positionPercent ?? getAnimationPositionPercent(animation);
     if (positionPercent === undefined) return false;
     freezeTimingTrack(animation, visibleSnapshot?.trackOffsetPx);
+    holdVisibleTimingResult();
     onRoll(positionPercent);
     return true;
   };
