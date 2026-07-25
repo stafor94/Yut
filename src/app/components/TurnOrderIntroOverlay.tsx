@@ -11,11 +11,8 @@ import {
 import { TURN_ACTION_TIMEOUT_MS, TURN_START_DELAY_MS } from '../../features/room/services/roomTiming';
 import { getDeadlineTimerAnimationState } from '../../features/room/services/turnDeadlinePolicy';
 import {
-  chooseAiRollTimingZone,
-  getRollTimingZone,
   makeDisplaySticks,
-  rollYutResultWithTiming,
-  shouldFallForTimingZone,
+  rollYutResult,
   type RollTimingZone,
   type YutResult,
 } from '../../game-core/roll';
@@ -34,7 +31,6 @@ import {
   shouldResetTurnOrderSubmissionLockForRound,
 } from '../flows/turnOrderSubmissionPolicy';
 import { RollStage } from '../containers/RollStage';
-import { RollTimingControl } from './RollTimingControl';
 
 type TurnOrderIntroOverlayProps = {
   activeTurnOrderIntro: TurnOrderIntro | null;
@@ -54,6 +50,7 @@ type QaResultQueue = 'local' | 'ai' | 'none';
 const AUTO_ROLL_FALLBACK_DELAY_MS = 500;
 const SUBMISSION_MAX_ATTEMPTS = 2;
 const SUBMISSION_RETRY_DELAY_MS = 250;
+const TURN_ORDER_TIMING_ZONE: RollTimingZone = 'normal';
 const SCORE_LABELS: Record<TurnOrderResultName, string> = {
   모: '5',
   윷: '4',
@@ -83,28 +80,25 @@ const takeQaResult = (queueType: Exclude<QaResultQueue, 'none'>) => {
 const createTurnOrderSubmission = (params: {
   seatId: string;
   roundId: string;
-  timingZone: RollTimingZone;
   source: TurnOrderSubmission['source'];
   now?: number;
   qaResultQueue?: QaResultQueue;
 }): TurnOrderSubmission => {
   const forcedName = params.qaResultQueue === 'none' ? null : takeQaResult(params.qaResultQueue ?? 'local');
-  const rolled = forcedName ? getForcedResult(forcedName) : { ...rollYutResultWithTiming(params.timingZone), fallCount: 0 };
-  const fallCount = forcedName
-    ? rolled.fallCount
-    : shouldFallForTimingZone(params.timingZone)
-      ? Math.floor(Math.random() * 4) + 1
-      : 0;
-  const resultName = (fallCount > 0 ? '낙' : rolled.result.name) as TurnOrderResultName;
+  const forced = forcedName ? getForcedResult(forcedName) : null;
+  const rolled = forced
+    ? { result: forced.result, sticks: makeDisplaySticks(forced.result), fallCount: forced.fallCount }
+    : { ...rollYutResult(), fallCount: 0 };
+  const resultName = (rolled.fallCount > 0 ? '낙' : rolled.result.name) as TurnOrderResultName;
   return {
     submissionId: makeTurnOrderSubmissionId(params.roundId, params.seatId),
     seatId: params.seatId,
     roundId: params.roundId,
     resultName,
     displayResult: rolled.result,
-    sticks: makeDisplaySticks(rolled.result),
-    fallCount,
-    timingZone: params.timingZone,
+    sticks: rolled.sticks,
+    fallCount: rolled.fallCount,
+    timingZone: TURN_ORDER_TIMING_ZONE,
     source: params.source,
     submittedAt: params.now ?? Date.now(),
   };
@@ -250,13 +244,13 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     });
   }, [now, sourceIntro]);
 
-  const commitSubmission = useCallback((source: TurnOrderSubmission['source'], zone: RollTimingZone) => {
+  const commitSubmission = useCallback((source: TurnOrderSubmission['source']) => {
     if (!intro || !round || !isLocalEligible || round.status !== 'collecting') return;
     if (source === 'manual' && Date.now() >= round.deadlineAt) return;
     if (source === 'auto' && Date.now() < round.deadlineAt) return;
     if (submittedRoundIdRef.current === round.id || visibleLocalSubmission) return;
     submittedRoundIdRef.current = round.id;
-    const submission = createTurnOrderSubmission({ seatId: localSeatId, roundId: round.id, timingZone: zone, source });
+    const submission = createTurnOrderSubmission({ seatId: localSeatId, roundId: round.id, source });
     setLocalSubmission(submission);
     setLocalSubmissionStatus('pending');
     setLocalRollAnimation({
@@ -266,7 +260,6 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       sticks: submission.sticks,
       turnOrder: true,
       fallCount: submission.fallCount,
-      timingZone: submission.timingZone,
     });
     playStoredSoundEffect('roll');
     void (async () => {
@@ -295,14 +288,14 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     })();
   }, [intro, isLocalEligible, localSeatId, onlineGameCoordinatorSeatId, round, visibleLocalSubmission]);
 
-  const handleManualRoll = useCallback((timingPositionPercent?: number) => {
-    commitSubmission('manual', getRollTimingZone(timingPositionPercent ?? 50));
+  const handleManualRoll = useCallback(() => {
+    commitSubmission('manual');
   }, [commitSubmission]);
 
   useEffect(() => {
     if (!round || round.status !== 'collecting' || !isLocalEligible || visibleLocalSubmission || submittedRoundIdRef.current === round.id) return;
     if (now < round.deadlineAt) return;
-    commitSubmission('auto', chooseAiRollTimingZone());
+    commitSubmission('auto');
   }, [commitSubmission, isLocalEligible, now, round, visibleLocalSubmission]);
 
   useEffect(() => {
@@ -315,7 +308,6 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     const aiSubmissions = pendingAiSeatIds.map((seatId) => createTurnOrderSubmission({
       seatId,
       roundId: round.id,
-      timingZone: chooseAiRollTimingZone(),
       source: 'auto',
       now: submissionNow,
       qaResultQueue: 'ai',
@@ -341,7 +333,6 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       .map((seatId) => createTurnOrderSubmission({
         seatId,
         roundId: round.id,
-        timingZone: chooseAiRollTimingZone(),
         source: 'auto',
         now: submissionNow,
         qaResultQueue: 'none',
@@ -386,7 +377,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     if (!intro || !isTurnOrderFinalized(intro) || !intro.finalOrderAt || now < intro.finalOrderAt) return;
     if (completionSoundSessionRef.current === intro.sessionId) return;
     completionSoundSessionRef.current = intro.sessionId;
-    playStoredSoundEffect('countdownStart');
+    playStoredSoundEffect('doorBang');
   }, [intro, now]);
 
   if (!intro?.visible || !round) return null;
@@ -463,7 +454,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
         </div>
 
         {isCollecting && isLocalEligible && !visibleLocalSubmission && <div className="turn-order-timing-panel" data-testid="turn-order-timing-panel">
-          <RollTimingControl resetKey={round.id} buttonTestId="turn-order-roll-button" buttonText="윷 던지기" onRoll={handleManualRoll} />
+          <button type="button" data-testid="turn-order-roll-button" className="roll-button" onClick={handleManualRoll}>윷 던지기</button>
         </div>}
 
         {round.status === 'reveal-pending' && revealReady && intro.nextRound && <p className="turn-order-tie-notice" data-testid="turn-order-tie-notice">같은 결과가 나온 참가자끼리 다시 던집니다.</p>}
