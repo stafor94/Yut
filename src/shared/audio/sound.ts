@@ -3,6 +3,7 @@ import arriveAudioSource from './assets/effects/arrive-original.wav';
 import captureAudioSource from './assets/effects/capture-original.wav';
 import countdownAudioSource from './assets/effects/countdown-original.wav';
 import countdownStartAudioSource from './assets/effects/countdown-start-original.wav';
+import doorBangAudioSource from './assets/effects/door-bang.wav';
 import fallAudioSource from './assets/effects/fall-original.wav';
 import itemPickupAudioSource from './assets/effects/item-pickup-original.wav';
 import itemUseAudioSource from './assets/effects/item-use-original.wav';
@@ -16,7 +17,7 @@ import trapAudioSource from './assets/effects/trap-original.wav';
 import turnAudioSource from './assets/effects/turn-original.wav';
 import winAudioSource from './assets/effects/win-original.wav';
 
-export type SoundEffect = 'countdown' | 'countdownStart' | 'turn' | 'roll' | 'bonus' | 'perfect' | 'fall' | 'move' | 'arrive' | 'stack' | 'capture' | 'itemPickup' | 'itemUse' | 'trap' | 'shield' | 'win' | 'toast';
+export type SoundEffect = 'countdown' | 'countdownStart' | 'doorBang' | 'turn' | 'roll' | 'bonus' | 'perfect' | 'fall' | 'move' | 'arrive' | 'stack' | 'capture' | 'itemPickup' | 'itemUse' | 'trap' | 'shield' | 'win' | 'toast';
 
 const SOUND_ENABLED_STORAGE_KEY = 'yut-online:soundEnabled';
 const SOUND_EFFECT_VOLUME = 0.38;
@@ -26,6 +27,7 @@ const WAV_EFFECT_SOURCES = {
   capture: captureAudioSource,
   countdown: countdownAudioSource,
   countdownStart: countdownStartAudioSource,
+  doorBang: doorBangAudioSource,
   fall: fallAudioSource,
   itemPickup: itemPickupAudioSource,
   itemUse: itemUseAudioSource,

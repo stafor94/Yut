@@ -41,6 +41,7 @@ const installAudioMock = async (context) => {
       play() {
         this.paused = false;
         window.__YUT_QA_AUDIO_EVENTS__.push({ type: 'play', src: this.src, muted: this.muted });
+        queueMicrotask(() => this.dispatchEvent(new Event('ended')));
         return Promise.resolve();
       }
     }
@@ -84,10 +85,10 @@ async function prepareTurnOrderRoom(browser, testInfo) {
     pieceCount: '4',
   });
   await hostContext.addInitScript(() => {
-    window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['도', '걸'];
+    window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['윷', '걸'];
   });
   await guestContext.addInitScript(() => {
-    window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['도', '개'];
+    window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['윷', '개'];
   });
 
   const hostPage = await hostContext.newPage();
@@ -143,25 +144,34 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(hostButton).toBeVisible({ timeout: 10_000 });
         await expect(guestButton).toBeVisible({ timeout: 10_000 });
         await expect(qa.hostPage.locator('.turn-order-timing-track')).toHaveCount(0);
-        await expect(qa.hostPage.locator('.roll-timing-meter')).toBeVisible();
-        await expect(qa.hostPage.locator('.roll-timing-orb')).toBeVisible();
+        await expect(qa.hostPage.locator('.roll-timing-meter')).toHaveCount(0);
+        await expect(qa.hostPage.locator('.roll-timing-orb')).toHaveCount(0);
         await expect(hostButton).toHaveClass(/roll-button/);
         const beforeSubmissions = await getRoomStateForQa(qa.roomId);
         const turnVersionBeforeSubmissions = Number(beforeSubmissions?.turnVersion ?? 0);
         await Promise.all([
-          expect(qa.hostPage.getByTestId('turn-order-own-result')).toContainText('도'),
-          expect(qa.guestPage.getByTestId('turn-order-own-result')).toContainText('도'),
+          expect(qa.hostPage.getByTestId('turn-order-own-result')).toContainText('윷'),
+          expect(qa.guestPage.getByTestId('turn-order-own-result')).toContainText('윷'),
           hostButton.click(),
           guestButton.click(),
         ]);
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.hostPage, 'do'), {
+        await expect(qa.hostPage.getByTestId('turn-order-roll-stage-anchor').locator('.roll-timing-feedback')).toHaveCount(0);
+        await expect.poll(() => countUnmutedAudioPlayEvents(qa.hostPage, 'yut'), {
           timeout: 5_000,
-          message: '호스트 순서 정하기 도 결과 공개 시 do.wav가 한 번 재생되어야 합니다.',
+          message: '호스트 순서 정하기 윷 결과 공개 시 yut.wav가 한 번 재생되어야 합니다.',
         }).toBe(1);
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.guestPage, 'do'), {
+        await expect.poll(() => countUnmutedAudioPlayEvents(qa.guestPage, 'yut'), {
           timeout: 5_000,
-          message: '게스트 순서 정하기 도 결과 공개 시 do.wav가 한 번 재생되어야 합니다.',
+          message: '게스트 순서 정하기 윷 결과 공개 시 yut.wav가 한 번 재생되어야 합니다.',
         }).toBe(1);
+        await expect.poll(() => countUnmutedAudioPlayEvents(qa.hostPage, 'bonus'), {
+          timeout: 2_000,
+          message: '순서 정하기의 윷 결과에는 bonus.wav가 재생되면 안 됩니다.',
+        }).toBe(0);
+        await expect.poll(() => countUnmutedAudioPlayEvents(qa.guestPage, 'bonus'), {
+          timeout: 2_000,
+          message: '순서 정하기의 윷 결과에는 bonus.wav가 재생되면 안 됩니다.',
+        }).toBe(0);
         const hostOtherCard = qa.hostPage.getByTestId('turn-order-result-grid').locator('.turn-order-result-card').filter({ hasText: qa.guestName });
         const guestOtherCard = qa.guestPage.getByTestId('turn-order-result-grid').locator('.turn-order-result-card').filter({ hasText: qa.hostName });
         await expect(hostOtherCard).not.toContainText(/도|개|걸|윷|모|빽도|낙/);
@@ -177,8 +187,9 @@ test.describe('simultaneous turn-order QA', () => {
           .filter((submission) => submission.roundId === round?.id);
         expect(firstRoundSubmissions).toHaveLength(2);
         expect(new Set(firstRoundSubmissions.map((submission) => submission.seatId)).size).toBe(2);
-        await expect(hostOtherCard).toContainText('도', { timeout: 6_000 });
-        await expect(guestOtherCard).toContainText('도', { timeout: 6_000 });
+        expect(firstRoundSubmissions.every((submission) => submission.fallCount === 0 && submission.timingZone === 'normal')).toBe(true);
+        await expect(hostOtherCard).toContainText('윷', { timeout: 6_000 });
+        await expect(guestOtherCard).toContainText('윷', { timeout: 6_000 });
         await expect(qa.hostPage.getByTestId('turn-order-tie-notice')).toBeVisible();
       });
 
@@ -187,9 +198,8 @@ test.describe('simultaneous turn-order QA', () => {
         const guestButton = qa.guestPage.getByTestId('turn-order-roll-button');
         await expect(hostButton).toBeVisible({ timeout: 10_000 });
         await expect(guestButton).toBeVisible({ timeout: 10_000 });
-        await expect(qa.hostPage.locator('.roll-timing-meter')).toBeVisible();
-        const firstOrbAnimationName = await qa.hostPage.locator('.roll-timing-orb').evaluate((element) => getComputedStyle(element).animationName);
-        expect(firstOrbAnimationName).toContain('roll-timing-orb');
+        await expect(qa.hostPage.locator('.roll-timing-meter')).toHaveCount(0);
+        await expect(qa.hostPage.locator('.roll-timing-orb')).toHaveCount(0);
         const beforeRematchSubmissions = await getRoomStateForQa(qa.roomId);
         const turnVersionBeforeRematchSubmissions = Number(beforeRematchSubmissions?.turnVersion ?? 0);
         await Promise.all([
@@ -218,9 +228,18 @@ test.describe('simultaneous turn-order QA', () => {
           .filter((submission) => submission.roundId === rematchRound?.id);
         expect(rematchSubmissions).toHaveLength(2);
         expect(new Set(rematchSubmissions.map((submission) => submission.seatId)).size).toBe(2);
+        expect(rematchSubmissions.every((submission) => submission.fallCount === 0 && submission.timingZone === 'normal')).toBe(true);
 
         await expect(qa.hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
         await expect(qa.guestPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
+        await expect.poll(() => countUnmutedAudioPlayEvents(qa.hostPage, 'door-bang'), {
+          timeout: 3_000,
+          message: '호스트 최종 순서 확정 화면에서 door-bang.wav가 한 번 재생되어야 합니다.',
+        }).toBe(1);
+        await expect.poll(() => countUnmutedAudioPlayEvents(qa.guestPage, 'door-bang'), {
+          timeout: 3_000,
+          message: '게스트 최종 순서 확정 화면에서 door-bang.wav가 한 번 재생되어야 합니다.',
+        }).toBe(1);
         const finalState = await getRoomStateForQa(qa.roomId);
         expect(finalState?.turnOrderIds).toEqual([
           finalState?.gameSeats?.[0]?.id,
