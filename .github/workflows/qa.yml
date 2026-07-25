@@ -15,6 +15,9 @@ concurrency:
   group: main-branch-qa-${{ github.ref_name || github.ref }}
   cancel-in-progress: true
 
+env:
+  FIREBASE_TOOLS_VERSION: 15.24.0
+
 jobs:
   build-and-unit:
     name: Build and unit tests
@@ -27,6 +30,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Validate QA architecture
+        run: npm run qa:validate-architecture
       - name: Prepare canonical production Firebase environment
         run: node .github/scripts/write-firebase-env.mjs
       - name: Build app
@@ -46,12 +51,12 @@ jobs:
             dist
             build.log
             unit.log
+            test-results/qa-architecture-report.json
           if-no-files-found: ignore
           retention-days: 7
 
   qa-firebase-emulator:
     name: QA ${{ matrix.label }}
-    needs: build-and-unit
     runs-on: ubuntu-latest
     timeout-minutes: 75
     strategy:
@@ -61,12 +66,15 @@ jobs:
           - group: online-core
             code: core
             label: Online core
+            browsers: chromium
           - group: desktop-regression
             code: desk
             label: Desktop regression
+            browsers: chromium
           - group: mobile-galaxy
             code: mobile
             label: Mobile Galaxy + Safari timing
+            browsers: chromium webkit
     env:
       QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
       QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
@@ -81,11 +89,13 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: npm ci
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Install Playwright WebKit for Safari timing QA
-        if: matrix.group == 'mobile-galaxy'
-        run: npx playwright install --with-deps webkit
+      - name: Cache Firebase emulator binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ env.FIREBASE_TOOLS_VERSION }}-${{ hashFiles('firebase.qa.json') }}
+      - name: Install required Playwright browsers
+        run: npx playwright install --with-deps ${{ matrix.browsers }}
       - name: Prepare isolated QA Firebase environment
         run: node .github/scripts/write-qa-firebase-env.mjs
       - name: Reject production Firebase configuration
@@ -98,7 +108,7 @@ jobs:
         name: Run ${{ matrix.label }} against Auth and Firestore emulators
         run: |
           set -o pipefail
-          npx --yes firebase-tools@latest emulators:exec \
+          npx --yes firebase-tools@${FIREBASE_TOOLS_VERSION} emulators:exec \
             --config firebase.qa.json \
             --project "$QA_PROJECT_ID" \
             --only auth,firestore \
@@ -114,7 +124,7 @@ jobs:
           mkdir -p "$target"
           printf '%s\n' "$SHARD_GROUP" > "$target/group.txt"
           printf '%s\n' "$SHARD_RESULT" > "$target/result.txt"
-          for pattern in test-results playwright-*.log qa-*.log firestore-debug.log firebase-debug.log console-log.txt; do
+          for pattern in test-results playwright-*.log qa-*.log qa-duration.json firestore-debug.log firebase-debug.log console-log.txt; do
             for file in $pattern; do
               if [ -e "$file" ]; then
                 cp -R "$file" "$target/"
@@ -177,17 +187,23 @@ jobs:
           CORE_RESULT=$(cat core/result.txt 2>/dev/null || printf 'unavailable')
           DESKTOP_RESULT=$(cat desk/result.txt 2>/dev/null || printf 'unavailable')
           MOBILE_RESULT=$(cat mobile/result.txt 2>/dev/null || printf 'unavailable')
+          duration() {
+            node -e "const fs=require('fs'); try { const value=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const ms=value.durations.reduce((sum, item) => sum + Number(item.durationMs || 0), 0); process.stdout.write((ms / 1000).toFixed(1) + 's'); } catch { process.stdout.write('unavailable'); }" "$1"
+          }
+          CORE_DURATION=$(duration core/qa-duration.json)
+          DESKTOP_DURATION=$(duration desk/qa-duration.json)
+          MOBILE_DURATION=$(duration mobile/qa-duration.json)
           {
             echo '## Main Branch QA 결과'
             echo
-            echo '| 단계 | 결과 |'
-            echo '|---|---|'
-            echo "| Build and unit | \`$BUILD_RESULT\` |"
-            echo "| QA online core | \`$CORE_RESULT\` |"
-            echo "| QA desktop regression | \`$DESKTOP_RESULT\` |"
-            echo "| QA mobile Galaxy + Safari timing | \`$MOBILE_RESULT\` |"
-            echo "| Firebase emulator QA matrix | \`$EMULATOR_RESULT\` |"
-            echo "| Deploy Pages | \`$DEPLOY_RESULT\` |"
+            echo '| 단계 | 결과 | 실행 시간 |'
+            echo '|---|---|---:|'
+            echo "| Build and unit | \`$BUILD_RESULT\` | - |"
+            echo "| QA online core | \`$CORE_RESULT\` | $CORE_DURATION |"
+            echo "| QA desktop regression | \`$DESKTOP_RESULT\` | $DESKTOP_DURATION |"
+            echo "| QA mobile Galaxy + Safari timing | \`$MOBILE_RESULT\` | $MOBILE_DURATION |"
+            echo "| Firebase emulator QA matrix | \`$EMULATOR_RESULT\` | - |"
+            echo "| Deploy Pages | \`$DEPLOY_RESULT\` | - |"
           } | tee qa-summary.md
           cat qa-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Combine QA logs
@@ -204,6 +220,7 @@ jobs:
             mobile
             build.log
             unit.log
+            test-results/qa-architecture-report.json
             playwright.log
             qa-summary.md
             console-log.txt

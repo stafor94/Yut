@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { qaProjectTestMatches } from './tests/qa/project-contracts.mjs';
 
 const isCi = Boolean(process.env.CI);
 const remoteBaseUrl = String(process.env.PLAYWRIGHT_BASE_URL ?? '').trim();
@@ -28,23 +29,17 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
-      testMatch: [
-        /smoke\/.*\.spec\.js/,
-        /lobby\/.*\.spec\.js/,
-        /online\/.*\.spec\.js/,
-        /game-flow\/.*\.spec\.js/,
-        /regression\/.*\.spec\.js/,
-      ],
+      testMatch: qaProjectTestMatches['desktop-chromium'],
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
     },
     {
       name: 'mobile-galaxy',
-      testMatch: /mobile\/.*\.spec\.js/,
+      testMatch: qaProjectTestMatches['mobile-galaxy'],
       use: { ...devices['Galaxy S9+'], viewport: { width: 412, height: 915 }, deviceScaleFactor: 3.5 },
     },
     {
       name: 'mobile-webkit-timing',
-      testMatch: /mobile\/roll-timing-pointer-capture\.spec\.js/,
+      testMatch: qaProjectTestMatches['mobile-webkit-timing'],
       use: { ...devices['iPhone 13'] },
     },
   ],

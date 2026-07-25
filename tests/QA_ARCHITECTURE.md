@@ -1,0 +1,82 @@
+# QA architecture
+
+## 목적
+
+Main Branch QA의 실행 목록과 병렬 설정을 한 곳에서 관리하고, 제품 변경 때 테스트 파일·npm script·runner·workflow에 같은 정보를 반복 추가하지 않도록 한다.
+
+## 단일 실행 기준
+
+`tests/qa/suite-manifest.mjs`가 Main Branch QA lane의 단일 실행 기준이다.
+
+- 테스트 파일 또는 디렉터리
+- Playwright project
+- worker 수
+- timeout 및 grep 조건
+- Firebase browser isolation spec
+
+Playwright project의 `testMatch` 계약은 `tests/qa/project-contracts.mjs`에서 관리한다. 실제 CLI 인자는 `tests/qa/playwright-command.mjs`에서 생성한다. `playwright.config.js`와 architecture validator가 같은 계약을 사용하므로 manifest에 등록했지만 실제 project에서 누락되는 상태를 방지한다.
+
+`package.json`, `tests/helpers/run-qa-emulator-suite.mjs`, `.github/workflows/qa.yml`에 spec 경로를 중복해서 작성하지 않는다.
+
+## 테스트 추가 절차
+
+1. 기존 기능 영역의 spec에 추가할지 새 spec으로 분리할지 결정한다.
+2. 실제 제품 동작과 같은 Firebase Auth·Firestore 흐름이 필요하면 emulator lane에 둔다.
+3. 대상 파일 또는 디렉터리를 `suite-manifest.mjs`의 정확한 lane에 한 번만 등록한다.
+4. 해당 Playwright project의 `testMatch`, 브라우저, viewport를 `project-contracts.mjs`와 `playwright.config.js`에서 확인한다.
+5. `npm run qa:validate-architecture`를 실행한다.
+6. 생성된 `test-results/qa-architecture-report.json`에서 spec → lane → project 연결을 확인한다.
+7. 변경된 lane을 실행하고 테스트가 실제 목록에 포함됐는지 로그에서 확인한다.
+
+## Lane 계약
+
+- `online-core`: 방 생성·참가·게임 시작·presence·room lifecycle 등 온라인 핵심 흐름
+- `desktop-regression`: 윷 던지기·이동·연출·로비 desktop 회귀
+- `mobile-galaxy`: Galaxy viewport 전체 모바일 QA와 WebKit 타이밍 입력 QA
+
+모바일 lane은 하나의 Playwright invocation에서 `desktop-chromium`, `mobile-galaxy`, `mobile-webkit-timing` project를 함께 실행한다. desktop project는 Firebase browser isolation spec만 실행하고, 모바일 spec은 각 project의 `testMatch`에 따라 Galaxy 또는 WebKit에서 실행된다.
+
+현재 앱 shell은 시작 시 Firebase Auth·Firestore 초기화를 수행한다. 따라서 DOM·레이아웃 중심 spec도 별도의 검증된 Firebase-free bootstrap이 생기기 전까지 emulator lane에서 유지한다. 단순 속도 개선을 위해 제품 초기화 계약을 mock으로 대체하지 않는다.
+
+## Helper 규칙
+
+- 방 생성·게임 시작·턴 준비 같은 반복 흐름은 `tests/helpers`의 공통 helper를 우선 사용한다.
+- 테스트 파일에서 QA room metadata와 cleanup 범위를 새로 구현하지 않는다.
+- 새로운 전역 `window.__YUT_QA_*`를 임의로 추가하지 않는다. 기존 QA runtime 진입점을 재사용하거나 공통 helper에 계약을 추가한다.
+- 고정 sleep보다 실제 완료 조건을 `expect.poll`, locator assertion으로 기다린다.
+- timeout 증가는 실제 제품 계약상 필요한 대기인지 확인하고 테스트에 사유를 남긴다.
+- 하나의 helper가 화면 이동·Firebase 조작·assertion을 모두 새로 담당하지 않도록 기존 책임별 helper에 기능을 추가한다.
+
+## 병렬 안전성
+
+- QA 방 이름 계약은 `tests/qa/namespace.mjs`에서 관리하며 run, project, test id, worker, retry, 호출 sequence가 반영돼야 한다.
+- lane 실행 중 하위 suite별 전체 cleanup을 실행하지 않는다.
+- cleanup은 lane 시작 전과 종료 후에만 전체 namespace를 대상으로 수행한다.
+- 각 spec의 `afterEach` cleanup은 자신이 만든 room만 삭제한다.
+- worker 수는 manifest에서만 조정하며 최대 4로 제한한다.
+- cleanup 병렬 삭제는 환경 변수로 제한하며 최대 8을 넘기지 않는다.
+
+## 자동 구조 검증
+
+`npm run qa:validate-architecture`는 다음을 차단한다.
+
+- manifest target 또는 browser isolation spec 누락
+- 존재하지 않는 spec·directory
+- 선택된 Playwright project의 `testMatch`에 포함되지 않는 spec
+- 동일 lane/project에서 같은 spec 중복 실행
+- `package.json`의 legacy `test:qa-*` 목록 재도입
+- runner의 spec 경로 또는 legacy suite map 하드코딩
+- manifest와 runner CLI의 worker·project·target 연결 불일치
+- QA matrix의 build 선행 의존성 재도입
+- `firebase-tools@latest` 재도입
+- workflow matrix lane·artifact code·duration artifact 연결 누락
+
+## 변경 검토 체크리스트
+
+- 테스트 파일 → manifest → runner → workflow matrix → Playwright project 연결 확인
+- 신규·수정 테스트가 의도한 Chromium/WebKit과 viewport에서 실행되는지 확인
+- 기존 browser isolation 검증이 각 lane에서 유지되는지 확인
+- 기존 테스트 수가 줄지 않았는지 확인
+- production Firebase 설정이 QA에 유입되지 않는지 확인
+- QA room 잔존과 다른 worker room 삭제가 없는지 확인
+- lane별 `qa-duration.json`과 전체 임계 경로를 이전 Run과 비교
