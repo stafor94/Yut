@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
+import { createQaPlaywrightArgs } from '../qa/playwright-command.mjs';
 import { getQaSuite, qaSuiteNames } from '../qa/suite-manifest.mjs';
 
 const qaRunId = String(process.env.QA_RUN_ID ?? '').trim();
@@ -23,7 +24,13 @@ async function runCommand(label, command, args, logPath, extraEnv = {}) {
   console.log(`\n===== ${label} =====`);
   const startedAt = Date.now();
   const log = fs.createWriteStream(logPath, { flags: 'w' });
-  const exitCode = await new Promise((resolve, reject) => {
+  const exitCode = await new Promise((resolve) => {
+    let settled = false;
+    const finish = (code) => {
+      if (settled) return;
+      settled = true;
+      resolve(code);
+    };
     const child = spawn(command, args, {
       env: {
         ...process.env,
@@ -40,8 +47,13 @@ async function runCommand(label, command, args, logPath, extraEnv = {}) {
       process.stderr.write(chunk);
       log.write(chunk);
     });
-    child.once('error', reject);
-    child.once('close', resolve);
+    child.once('error', (error) => {
+      const message = `${command} 실행 실패: ${error instanceof Error ? error.stack || error.message : String(error)}\n`;
+      process.stderr.write(message);
+      log.write(message);
+      finish(1);
+    });
+    child.once('close', (code) => finish(code));
   });
   log.end();
   const durationMs = Date.now() - startedAt;
@@ -69,39 +81,15 @@ async function cleanup(label, logPath, reportRemaining = false) {
   );
 }
 
-function makePlaywrightArgs() {
-  const args = [
-    'playwright',
-    'test',
-    `--workers=${suite.workers}`,
-    `--output=test-results/${selectedGroup}`,
-  ];
-  if (suite.timeoutMs) args.push(`--timeout=${suite.timeoutMs}`);
-  if (suite.grepInvert) args.push('--grep-invert', suite.grepInvert);
-  for (const projectName of suite.projects) args.push(`--project=${projectName}`);
-  args.push(...suite.tests);
-  return args;
-}
-
 console.log(`QA emulator suite group=${selectedGroup}, project=${qaProjectId}, run=${qaRunId}, workers=${suite.workers}, projects=${suite.projects.join(',')}`);
 await record('Verify emulator runtime', process.execPath, ['.github/scripts/verify-qa-emulator-config.mjs', '--runtime'], 'qa-emulator-guard.log');
 await cleanup('Cleanup current QA namespace before tests', 'qa-cleanup-before.log', true);
-
-if (failures.length === 0 && suite.browserIsolationGuard) {
-  await record(
-    'Browser Firebase isolation guard',
-    'npx',
-    ['playwright', 'test', '--workers=1', '--project=desktop-chromium', '--output=test-results/firebase-isolation', 'tests/smoke/firebase-emulator-isolation.spec.js'],
-    'playwright-qa-firebase-isolation.log',
-    { QA_ROLE: `${selectedGroup}-firebase-isolation` },
-  );
-}
 
 if (failures.length === 0) {
   await record(
     `QA ${suite.label}`,
     'npx',
-    makePlaywrightArgs(),
+    createQaPlaywrightArgs(selectedGroup),
     `playwright-qa-${selectedGroup}.log`,
     { QA_ROLE: selectedGroup },
   );
