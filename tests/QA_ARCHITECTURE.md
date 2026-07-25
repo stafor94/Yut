@@ -36,7 +36,8 @@ Playwright project의 `testMatch`와 project 내부 병렬 실행 계약은 `tes
 - `online-core`: 방 생성·참가·게임 시작·presence·room lifecycle 등 온라인 핵심 흐름
 - `desktop-sequence`: sequence replay, pending/result-hold, 이동 연출처럼 짧은 중간 상태를 관찰하는 timing-sensitive desktop 회귀
 - `desktop-regression`: 윷 던지기·이동·연출·로비의 나머지 desktop 회귀
-- `mobile-galaxy`: Galaxy Chromium viewport 전체 모바일 QA
+- `mobile-galaxy`: Galaxy Chromium viewport의 레이아웃·로비·대기실·순서·결과 표시 QA
+- `mobile-galaxy-timing`: 화면 좌표·pointer capture·취소·서버 제출을 검증하는 Galaxy Chromium timing QA
 - `safari-visible-mismatch`: 화면 좌표와 animation timeline을 의도적으로 불일치시키는 단일 WebKit 회귀
 - `safari-timing`: 나머지 실제 pointer release·취소 WebKit 회귀
 
@@ -44,7 +45,7 @@ Galaxy와 Safari 계열은 별도 GitHub Actions matrix entry로 실행한다. C
 
 `desktop-sequence`는 `bug-history-smoke.spec.js`를 1 worker에서 독립 실행한다. 해당 spec은 3D 렌더링과 짧은 pending·result-hold·move 시작 상태를 연속 관찰하므로 다른 장시간 browser context와 worker를 공유하지 않는다. 테스트 assertion이나 timeout을 완화하지 않고 runner 격리로 관찰 경쟁을 제거한다.
 
-`mobile-galaxy`는 `desktop-chromium` project에서 Firebase browser isolation spec만 실행하고 `mobile-galaxy` project에서 모바일 spec을 실행한다.
+`mobile-galaxy`와 `mobile-galaxy-timing`은 각각 `desktop-chromium` project에서 Firebase browser isolation spec을 실행하고 `mobile-galaxy` project에서 담당 모바일 spec을 실행한다. Run `30178219787`에서 전체 26건은 성공했지만 pointer 4건이 각각 31~37초로 lane의 마지막 실행 꼬리를 형성해 전체 job이 284.2초가 됐다. 테스트 삭제·timeout 완화 대신 pointer spec을 독립 runner로 분리해 두 범위를 동시에 실행한다.
 
 `mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. 화면 NICE 위치와 보고된 timeline PERFECT를 강제로 불일치시키는 시나리오는 Run `30162254392`에서 다른 WebKit test와 동일 runner CPU를 공유할 때 측정 뒤 실제 `pointerup` 전 프레임이 GOOD으로 이동했으므로 `safari-visible-mismatch` 1-worker runner에서 isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 나머지 세 pointer 시나리오를 3 workers에 분산한다. 테스트의 화면 release 등급 의미와 서버 제출 assertion은 유지한다.
 
@@ -77,6 +78,7 @@ Safari·Galaxy pointer 회귀는 CSS 애니메이션의 특정 프레임을 맞�
 - `desktop-sequence`: 1 worker
 - `desktop-regression`: 2 workers
 - `mobile-galaxy`: 3 workers
+- `mobile-galaxy-timing`: 3 workers
 - `safari-visible-mismatch`: 1 worker
 - `safari-timing`: 3 workers
 
@@ -84,7 +86,7 @@ Safari·Galaxy pointer 회귀는 CSS 애니메이션의 특정 프레임을 맞�
 
 `desktop-sequence`는 1 worker를 고정한다. Run `30160293177`에서 `bug-history-smoke`가 다른 desktop 테스트와 2-worker runner를 공유하는 동안 2초 move 시작 상태를 놓쳤으므로, 동일 파일을 별도 runner에 격리해 전체 workflow 병렬성은 유지하고 파일 내부 관찰 순서는 보장한다.
 
-Safari 계열은 test title 기준으로 겹치지 않게 분리한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 강제 불일치 test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 강제 불일치 title을 제외해야 한다. `safari-timing` 3-worker 구성은 각 test가 고유 browser context·room을 사용하고 화면 위치를 결정적으로 확정하는 계약을 전제로 한다. 최소 3회 연속 실행해 화면 release 등급, room 잔존, Firebase 요청 오류와 p95 시간을 확인한다.
+Galaxy timing과 Safari 계열은 같은 pointer spec을 서로 다른 browser lane에서 실행하므로 `sharedTargets`를 세 lane 모두에 선언한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 강제 불일치 test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 강제 불일치 title을 제외해야 한다. 각 test는 고유 browser context·room을 사용하고 화면 위치를 결정적으로 확정한다. 변경된 병렬 구성은 최소 3회 연속 실행해 화면 release 등급, room 잔존, Firebase 요청 오류와 p95 시간을 확인한다.
 
 ## 성능 예산
 
@@ -96,9 +98,12 @@ Safari 계열은 test title 기준으로 겹치지 않게 분리한다. `safari-
 - Online core: 270초
 - Desktop sequence replay: 225초
 - Desktop regression: 295초
-- Mobile Galaxy: 285초
+- Mobile Galaxy: 240초
+- Mobile Galaxy timing: 240초
 - Safari visible mismatch: 195초
-- Safari timing: 225초
+- Safari timing: 250초
+
+Run `30178219787`은 모든 기능 QA가 성공했고 workflow 시작부터 성능 검증까지 304.5초였다. Safari timing 전체 job은 232.9초로 기능 실패 없이 기존 225초 예산만 초과했다. Safari 예산은 실측 설치·WebKit 실행 비용을 반영해 250초로 보정하되 전체 300초 제한은 유지한다. Galaxy는 pointer 분리 후 각 lane이 240초를 넘으면 성능 회귀로 차단한다.
 
 각 lane은 `qa-job-timing.json`을 artifact에 남기고 summary job은 `qa-performance.json`, `qa-performance.md`를 생성한다. 보고서 누락, GitHub Run 시작 시각 조회 실패, lane 예산 초과, 전체 5분 목표 초과는 모두 필수 QA 실패로 처리한다. 성능 예산을 늘릴 때는 느려진 원인과 최근 성공 Run의 실제 시간을 먼저 검토한다.
 
@@ -133,9 +138,8 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 - QA matrix의 build 선행 의존성 재도입
 - `firebase-tools@latest` 재도입
 - workflow matrix lane·label·artifact code·browser·duration artifact 연결 누락
-- desktop sequence lane 또는 summary 결과 누락
+- desktop sequence, Galaxy timing 또는 Safari lane summary 결과 누락
 - Galaxy와 Safari 계열의 순차 job 재결합
-- Safari visible mismatch와 Safari timing summary 결과 누락
 - lane 전체 시간 artifact, 5분 성능 예산 검증 또는 필수 실패 연결 누락
 - Main Branch QA에 Pages 배포 또는 Pages 결과 의존성 재결합
 - 별도 Pages workflow의 성공 QA·main·push·triggering Run artifact 계약 누락
@@ -154,5 +158,5 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 - QA room 잔존과 다른 worker·lane room 삭제가 없는지 확인
 - lane별 `qa-duration.json`, `qa-job-timing.json`과 workflow 시작→summary 완료 시간을 이전 Run과 비교
 - 성능 예산 검증이 필수 실패 조건에 연결됐고 전체 시간이 5분 이내인지 확인
-- Galaxy와 두 Safari lane이 서로 다른 runner에서 실제 동시 실행됐는지 확인
+- Galaxy, Galaxy timing과 두 Safari lane이 서로 다른 runner에서 실제 동시 실행됐는지 확인
 - Main Branch QA terminal 결과와 별도 Pages deployment 결과를 구분해 확인

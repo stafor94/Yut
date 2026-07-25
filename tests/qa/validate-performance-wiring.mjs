@@ -8,7 +8,7 @@ const performanceScript = fs.readFileSync(path.join(root, '.github/scripts/valid
 
 assert.match(performanceScript, /overall: 300_000/u, '전체 Main Branch QA 성능 목표는 5분이어야 합니다.');
 assert.match(performanceScript, /summaryReserve: [1-9][0-9_]*/u, 'summary job 완료 여유 시간이 필요합니다.');
-for (const code of ['build', 'core', 'seq', 'desk', 'galaxy', 'safvis', 'safari']) {
+for (const code of ['build', 'core', 'seq', 'desk', 'galaxy', 'galtime', 'safvis', 'safari']) {
   assert.match(performanceScript, new RegExp(`\\n  ${code}: [1-9][0-9_]*,`, 'u'), `${code} lane 성능 예산이 필요합니다.`);
   assert.match(performanceScript, new RegExp(`code: '${code}'`, 'u'), `${code} lane이 성능 보고서에 등록되어야 합니다.`);
 }
