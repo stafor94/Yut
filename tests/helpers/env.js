@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { makeQaName, QA_NICKNAME_MAX_LENGTH, QA_ROOM_TITLE_MAX_LENGTH } from '../qa/namespace.mjs';
 
 const firebaseConfigKeyMap = {
   apiKey: 'VITE_FIREBASE_API_KEY',
@@ -55,46 +56,7 @@ export async function hasFirebaseConfig() {
   return Boolean(await loadFirebaseConfig());
 }
 
-function normalizeQaRunId(value) {
-  return String(value ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48);
-}
-
-function hashQaName(value) {
-  let hash = 2166136261;
-  for (const character of String(value ?? '')) {
-    hash ^= character.codePointAt(0) ?? 0;
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36).padStart(7, '0');
-}
-
-export const QA_NICKNAME_MAX_LENGTH = 7;
-export const QA_ROOM_TITLE_MAX_LENGTH = 20;
-
-export function makeQaName(testInfo, suffix) {
-  const project = testInfo.project.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'project';
-  const runId = normalizeQaRunId(process.env.QA_RUN_ID);
-  const safeSuffix = String(suffix ?? '')
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 11) || 'room';
-  const identity = [
-    runId,
-    project,
-    String(testInfo.testId ?? ''),
-    String(testInfo.workerIndex ?? ''),
-    String(testInfo.parallelIndex ?? ''),
-    String(testInfo.retry ?? ''),
-    String(suffix ?? ''),
-  ].join('|');
-  const identityHash = hashQaName(identity).slice(0, 5);
-  return `QA-${safeSuffix}-${identityHash}`.slice(0, QA_ROOM_TITLE_MAX_LENGTH);
-}
+export { makeQaName, QA_NICKNAME_MAX_LENGTH, QA_ROOM_TITLE_MAX_LENGTH };
 
 export function normalizeQaNickname(value) {
   const normalized = String(value ?? '')
