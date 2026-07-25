@@ -131,9 +131,12 @@ test.describe('local roll stage position regression', () => {
         const guestOrderButton = guestPage.getByTestId('turn-order-roll-button');
         await expect(hostOrderButton).toBeVisible({ timeout: 12_000 });
         await expect(guestOrderButton).toBeVisible({ timeout: 12_000 });
-        await Promise.all([hostOrderButton.click(), guestOrderButton.click()]);
-        await expect(page.getByTestId('turn-order-own-result')).toContainText('걸');
-        await expect(guestPage.getByTestId('turn-order-own-result')).toContainText('개');
+        await Promise.all([
+          expect(page.getByTestId('turn-order-own-result')).toContainText('걸'),
+          expect(guestPage.getByTestId('turn-order-own-result')).toContainText('개'),
+          hostOrderButton.click(),
+          guestOrderButton.click(),
+        ]);
         await expect(page.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 20_000 });
         await expect(page.getByTestId('turn-order-overlay')).toBeHidden({ timeout: 8_000 });
 
