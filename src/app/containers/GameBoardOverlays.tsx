@@ -260,9 +260,10 @@ type BoardMessageStackProps = {
 };
 
 export function BoardMessageStack({ turnToast, toast }: BoardMessageStackProps) {
-  if (!turnToast && !toast) return null;
+  const visibleTurnToast = turnToast?.text === '한 번 더!' ? turnToast : null;
+  if (!visibleTurnToast && !toast) return null;
   return <div className="board-message-stack" aria-live="polite">
-    {turnToast && <div className="turn-toast board-toast" key={turnToast.id} role="status">{turnToast.text}</div>}
+    {visibleTurnToast && <div className="turn-toast board-toast" key={visibleTurnToast.id} role="status">{visibleTurnToast.text}</div>}
     {toast && <div className="toast-message board-toast" role="status"><strong>{toast.icon} {toast.title}</strong>{toast.description && <span>{toast.description}</span>}</div>}
   </div>;
 }
