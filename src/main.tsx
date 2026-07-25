@@ -31,7 +31,6 @@ import './styles/roll-timing-grades.css';
 import './styles/roll-stage-board-alignment.css';
 import './styles/turn-order-roll-placement.css';
 import './styles/lobby-guide-timing-grades.css';
-import './styles/finish-transition-guard.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
