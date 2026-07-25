@@ -46,7 +46,7 @@ Galaxy와 Safari 계열은 별도 GitHub Actions matrix entry로 실행한다. C
 
 `mobile-galaxy`는 `desktop-chromium` project에서 Firebase browser isolation spec만 실행하고 `mobile-galaxy` project에서 모바일 spec을 실행한다.
 
-`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. 다만 화면 NICE 위치와 보고된 timeline PERFECT를 강제로 불일치시키는 시나리오는 Run `30162254392`에서 다른 WebKit test와 동일 runner CPU를 공유할 때 측정 뒤 실제 `pointerup` 전 프레임이 GOOD으로 이동했다. 이 시나리오는 `safari-visible-mismatch` 1-worker runner에서 isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 나머지 세 pointer 시나리오를 2 workers에 분산한다. 테스트의 화면 release 의미나 assertion은 변경하지 않는다.
+`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. 다만 화면 NICE 위치와 보고된 timeline PERFECT를 강제로 불일치시키는 시나리오는 Run `30162254392`에서 다른 WebKit test와 동일 runner CPU를 공유할 때 측정 뒤 실제 `pointerup` 전 프레임이 GOOD으로 이동했다. 이 시나리오는 `safari-visible-mismatch` 1-worker runner에서 isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 나머지 세 pointer 시나리오를 2 workers에 분산한다. 테스트의 화면 release 등급 의미와 서버 제출 assertion은 유지한다.
 
 Safari pointer 회귀는 CSS 애니메이션의 한 프레임 중앙값을 맞히는 테스트가 아니라 실제 화면 등급 구간에서 release했을 때 같은 등급이 서버 제출 경로에 전달되는지를 검증한다. 따라서 `requestAnimationFrame` 샘플은 GOOD·NICE·PERFECT 각 등급의 경계에서 떨어진 내부 구간을 사용한다. 1초 편도 애니메이션에서 2% 중앙 구간만 기다리면 CI WebKit 프레임 간격이 해당 구간을 건너뛸 수 있으므로, 특정 중심 좌표를 요구하거나 timeout만 늘리는 방식으로 회귀를 만들지 않는다.
 
