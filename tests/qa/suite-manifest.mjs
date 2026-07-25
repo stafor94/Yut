@@ -4,7 +4,7 @@ export const qaSuiteManifest = Object.freeze({
   'online-core': Object.freeze({
     label: 'Online core',
     code: 'core',
-    workers: 4,
+    workers: 2,
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
@@ -22,7 +22,7 @@ export const qaSuiteManifest = Object.freeze({
   'desktop-regression': Object.freeze({
     label: 'Desktop regression',
     code: 'desk',
-    workers: 4,
+    workers: 2,
     browsers: Object.freeze(['chromium']),
     timeoutMs: 150_000,
     projects: Object.freeze(['desktop-chromium']),
@@ -39,11 +39,11 @@ export const qaSuiteManifest = Object.freeze({
     ]),
   }),
   'mobile-galaxy': Object.freeze({
-    label: 'Mobile Galaxy + Safari timing',
+    label: 'Mobile Galaxy layout',
     code: 'mobile',
     workers: 3,
-    browsers: Object.freeze(['chromium', 'webkit']),
-    projects: Object.freeze(['desktop-chromium', 'mobile-galaxy', 'mobile-webkit-timing']),
+    browsers: Object.freeze(['chromium']),
+    projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     tests: Object.freeze([
       'tests/mobile/mobile-layout.spec.js',
@@ -52,7 +52,6 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/lobby-start-polish.spec.js',
       'tests/mobile/lobby-guide-polish.spec.js',
       'tests/mobile/roll-timing-grades.spec.js',
-      'tests/mobile/roll-timing-pointer-capture.spec.js',
       'tests/mobile/roll-stage-board-alignment.spec.js',
       'tests/mobile/turn-order-layout.spec.js',
       'tests/mobile/turn-order-roll-placement.spec.js',
@@ -60,6 +59,17 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/game-header-log-alignment.spec.js',
       'tests/mobile/lobby-scroll-reset.spec.js',
       'tests/mobile/lobby-header-badges.spec.js',
+    ]),
+  }),
+  'mobile-timing': Object.freeze({
+    label: 'Mobile timing Galaxy + Safari',
+    code: 'timing',
+    workers: 3,
+    browsers: Object.freeze(['chromium', 'webkit']),
+    projects: Object.freeze(['desktop-chromium', 'mobile-galaxy', 'mobile-webkit-timing']),
+    browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
+    tests: Object.freeze([
+      'tests/mobile/roll-timing-pointer-capture.spec.js',
     ]),
   }),
 });
