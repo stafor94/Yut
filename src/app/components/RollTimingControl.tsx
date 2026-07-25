@@ -1,5 +1,9 @@
 import { useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { getRollTimingPositionPercent } from '../../game-core/roll';
+import {
+  getVisibleRollTimingPositionPercent,
+  getVisibleRollTimingTrackOffsetPx,
+} from '../flows/rollTimingVisiblePosition';
 
 type RollTimingControlProps = {
   disabled?: boolean;
@@ -18,6 +22,11 @@ type ReleasedPointerTiming = {
   releasedAt: number;
 };
 
+type VisibleTimingSnapshot = {
+  positionPercent: number;
+  trackOffsetPx?: number;
+};
+
 const POINTER_RELEASE_CLICK_MAX_DELAY_MS = 1000;
 const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
 
@@ -34,17 +43,52 @@ const getAnimationPositionPercent = (animation: Animation | undefined) => {
 };
 
 export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', onRoll }: RollTimingControlProps) {
+  const meterRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLSpanElement | null>(null);
+  const orbRef = useRef<HTMLSpanElement | null>(null);
   const capturedPointerTimingRef = useRef<CapturedPointerTiming | null>(null);
   const releasedPointerTimingRef = useRef<ReleasedPointerTiming | null>(null);
 
   const getTimingAnimation = () => trackRef.current?.getAnimations()[0];
 
+  const getVisibleTimingSnapshot = (): VisibleTimingSnapshot | undefined => {
+    const meter = meterRef.current;
+    const track = trackRef.current;
+    const orb = orbRef.current;
+    if (!meter || !orb) return undefined;
+
+    const meterRect = meter.getBoundingClientRect();
+    const orbRect = orb.getBoundingClientRect();
+    const positionPercent = getVisibleRollTimingPositionPercent(meterRect, orbRect);
+    if (positionPercent === undefined) return undefined;
+
+    const trackOffsetPx = track
+      ? getVisibleRollTimingTrackOffsetPx(meterRect, track.getBoundingClientRect())
+      : undefined;
+    return { positionPercent, trackOffsetPx };
+  };
+
+  const freezeTimingTrack = (animation: Animation | undefined, trackOffsetPx?: number) => {
+    const track = trackRef.current;
+    if (!track || typeof trackOffsetPx !== 'number' || !Number.isFinite(trackOffsetPx)) {
+      animation?.pause();
+      return;
+    }
+
+    track.style.transform = `translate3d(${trackOffsetPx}px, 0, 0)`;
+    try {
+      animation?.cancel();
+    } catch {
+      animation?.pause();
+    }
+  };
+
   const submitCurrentTiming = () => {
     const animation = getTimingAnimation();
-    const positionPercent = getAnimationPositionPercent(animation);
+    const visibleSnapshot = getVisibleTimingSnapshot();
+    const positionPercent = visibleSnapshot?.positionPercent ?? getAnimationPositionPercent(animation);
     if (positionPercent === undefined) return false;
-    animation?.pause();
+    freezeTimingTrack(animation, visibleSnapshot?.trackOffsetPx);
     onRoll(positionPercent);
     return true;
   };
@@ -74,12 +118,12 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const capturedTiming = capturedPointerTimingRef.current;
     if (capturedTiming?.pointerId !== event.pointerId || capturedTiming.resetKey !== resetKey) return;
     capturedPointerTimingRef.current = null;
-    releasePointerCapture(event);
     releasedPointerTimingRef.current = { releasedAt: performance.now() };
     const targetRect = event.currentTarget.getBoundingClientRect();
     const releasedInsideButton = event.clientX >= targetRect.left && event.clientX <= targetRect.right
       && event.clientY >= targetRect.top && event.clientY <= targetRect.bottom;
     if (releasedInsideButton) submitCurrentTiming();
+    releasePointerCapture(event);
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -102,12 +146,12 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   };
 
   return <>
-    <div key={`meter:${resetKey}`} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대">
+    <div key={`meter:${resetKey}`} ref={meterRef} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대">
       <span className="roll-timing-good left" aria-hidden="true"></span>
       <span className="roll-timing-perfect" aria-hidden="true"></span>
       <span className="roll-timing-good right" aria-hidden="true"></span>
       <span ref={trackRef} className="roll-timing-orb-track" aria-hidden="true">
-        <span className="roll-timing-orb"></span>
+        <span ref={orbRef} className="roll-timing-orb"></span>
       </span>
     </div>
     <button type="button" data-testid={buttonTestId} className="roll-button" onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onClick={handleClick} disabled={disabled}>{buttonText}</button>
