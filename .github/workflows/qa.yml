@@ -73,7 +73,11 @@ jobs:
             browsers: chromium
           - group: mobile-galaxy
             code: mobile
-            label: Mobile Galaxy + Safari timing
+            label: Mobile Galaxy layout
+            browsers: chromium
+          - group: mobile-timing
+            code: timing
+            label: Mobile timing Galaxy + Safari
             browsers: chromium webkit
     env:
       QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
@@ -187,12 +191,14 @@ jobs:
           CORE_RESULT=$(cat core/result.txt 2>/dev/null || printf 'unavailable')
           DESKTOP_RESULT=$(cat desk/result.txt 2>/dev/null || printf 'unavailable')
           MOBILE_RESULT=$(cat mobile/result.txt 2>/dev/null || printf 'unavailable')
+          TIMING_RESULT=$(cat timing/result.txt 2>/dev/null || printf 'unavailable')
           duration() {
             node -e "const fs=require('fs'); try { const value=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const ms=value.durations.reduce((sum, item) => sum + Number(item.durationMs || 0), 0); process.stdout.write((ms / 1000).toFixed(1) + 's'); } catch { process.stdout.write('unavailable'); }" "$1"
           }
           CORE_DURATION=$(duration core/qa-duration.json)
           DESKTOP_DURATION=$(duration desk/qa-duration.json)
           MOBILE_DURATION=$(duration mobile/qa-duration.json)
+          TIMING_DURATION=$(duration timing/qa-duration.json)
           {
             echo '## Main Branch QA 결과'
             echo
@@ -201,14 +207,15 @@ jobs:
             echo "| Build and unit | \`$BUILD_RESULT\` | - |"
             echo "| QA online core | \`$CORE_RESULT\` | $CORE_DURATION |"
             echo "| QA desktop regression | \`$DESKTOP_RESULT\` | $DESKTOP_DURATION |"
-            echo "| QA mobile Galaxy + Safari timing | \`$MOBILE_RESULT\` | $MOBILE_DURATION |"
+            echo "| QA mobile Galaxy layout | \`$MOBILE_RESULT\` | $MOBILE_DURATION |"
+            echo "| QA mobile timing Galaxy + Safari | \`$TIMING_RESULT\` | $TIMING_DURATION |"
             echo "| Firebase emulator QA matrix | \`$EMULATOR_RESULT\` | - |"
             echo "| Deploy Pages | \`$DEPLOY_RESULT\` | - |"
           } | tee qa-summary.md
           cat qa-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Combine QA logs
         if: always()
-        run: find core desk mobile -type f \( -name 'playwright-*.log' -o -name 'qa-*.log' \) -print0 2>/dev/null | xargs -0 cat > playwright.log || touch playwright.log
+        run: find core desk mobile timing -type f \( -name 'playwright-*.log' -o -name 'qa-*.log' \) -print0 2>/dev/null | xargs -0 cat > playwright.log || touch playwright.log
       - name: Upload QA summary
         if: always()
         uses: actions/upload-artifact@v4
@@ -218,6 +225,7 @@ jobs:
             core
             desk
             mobile
+            timing
             build.log
             unit.log
             test-results/qa-architecture-report.json
