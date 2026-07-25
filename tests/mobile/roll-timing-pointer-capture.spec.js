@@ -23,8 +23,12 @@ test.describe('mobile roll timing pointer capture regression', () => {
     const hostName = normalizeQaNickname(makeQaName(testInfo, 'timing-host'));
     const roomTitle = makeQaName(testInfo, 'timing-room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    await context.addInitScript(() => {
+      window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
+      window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
+    });
 
-    await runQaStep(testInfo, 'AI 게임 시작과 내 던지기 차례 대기', async () => {
+    await runQaStep(testInfo, 'AI 게임 시작과 순서 정하기 완료 후 내 던지기 차례 대기', async () => {
       await createRoomFromLobby(page, roomTitle);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
       await addAiAndWaitUntilGameCanStart(page);
@@ -32,8 +36,16 @@ test.describe('mobile roll timing pointer capture regression', () => {
       await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
       await expect.poll(async () => {
         const state = await collectScreenState(page);
+        const debug = state.yutDebug ?? {};
+        const hasTurnOrder = Array.isArray(debug.turnOrderIds) && debug.turnOrderIds.length >= 2;
+        const orderingCleared = !debug.turnOrderPhase?.active && !debug.turnOrderIntro
+          && !state.turnOrder.phaseOverlayVisible && !state.turnOrder.introOverlayVisible && !state.turnOrder.lockVisible;
+        return hasTurnOrder && orderingCleared ? 'resolved' : JSON.stringify(state, null, 2);
+      }, { timeout: 35_000, message: '고정된 순서 결과로 순서 정하기가 완료되어야 합니다.' }).toBe('resolved');
+      await expect.poll(async () => {
+        const state = await collectScreenState(page);
         return state.rollButton.visible && !state.rollButton.disabled ? 'ready' : JSON.stringify(state, null, 2);
-      }, { timeout: 45_000, message: '내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
+      }, { timeout: 20_000, message: '순서 정하기 완료 후 내 차례 윷 던지기 버튼이 활성화되어야 합니다.' }).toBe('ready');
     });
 
     const sampledPositions = await runQaStep(testInfo, 'pointerdown 시점과 click 시점 분리', async () => page.evaluate(() => {
