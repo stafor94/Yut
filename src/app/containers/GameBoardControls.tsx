@@ -26,6 +26,7 @@ import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { RollTimingControl } from '../components/RollTimingControl';
 import { createDeadlineTimerAnimationCache } from '../flows/deadlineTimerAnimation';
 import { getRollControlPresentation, shouldAutoScrollGameControls } from '../flows/rollControlPresentation';
+import { shouldPlayLocalTurnSound } from '../flows/turnSound';
 
 const AUTO_ACTION_LEAD_MS = 80;
 
@@ -108,7 +109,7 @@ export function GameBoardControls({
   timeoutCountBySeatId: authoritativeTimeoutCountBySeatId,
 }: GameBoardControlsProps) {
   const controlsRef = useRef<HTMLDivElement | null>(null);
-  const wasLocalTurnDisplayedRef = useRef(false);
+  const previousActiveSeatIdRef = useRef('');
   const timeoutRecordedKeyRef = useRef('');
   const autoTurnActionKeyRef = useRef('');
   const autoItemPromptKeyRef = useRef('');
@@ -144,7 +145,6 @@ export function GameBoardControls({
     };
   }
 
-  const localTurnActive = Boolean(actionableTurnKey && activeSeatId === localSeatId);
   const isOpponentTurn = Boolean(actionableTurnKey && activeSeatId !== localSeatId);
   const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;
   const showRollStackPicker = canShowLocalRollStack && rollStack.length >= 2 && selectedRollStackIndex === null;
@@ -187,7 +187,6 @@ export function GameBoardControls({
     ? 'ready'
     : transitionDisplayAt && now < transitionDisplayAt ? 'ending' : 'starting';
   const actionReady = transitionPhase === 'ready';
-  const localTurnDisplayed = localTurnActive && transitionPhase !== 'ending';
   const turnActionDeadlineKey = `${turnActionTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
   const itemPromptDeadlineKey = `${itemPromptTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
   const turnActionTimerAnimation = turnActionTimerAnimationCache.get({
@@ -219,14 +218,17 @@ export function GameBoardControls({
   }, [actionableTurnKey, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, transitionDisplayAt, transitionReadyAt]);
 
   useEffect(() => {
-    if (!localTurnDisplayed) {
-      wasLocalTurnDisplayedRef.current = false;
+    if (waitingForOnlineTurnOrder || hasActiveTurnOrderIntro) {
+      previousActiveSeatIdRef.current = '';
       return;
     }
-    if (wasLocalTurnDisplayedRef.current) return;
-    wasLocalTurnDisplayedRef.current = true;
-    playStoredSoundEffect('turn');
-  }, [localTurnDisplayed]);
+    if (!activeSeatId) return;
+    const previousActiveSeatId = previousActiveSeatIdRef.current;
+    previousActiveSeatIdRef.current = activeSeatId;
+    if (shouldPlayLocalTurnSound({ previousActiveSeatId, currentActiveSeatId: activeSeatId, localSeatId })) {
+      playStoredSoundEffect('turn');
+    }
+  }, [activeSeatId, hasActiveTurnOrderIntro, localSeatId, waitingForOnlineTurnOrder]);
 
   useEffect(() => {
     if (!shouldAutoScrollControls || typeof window === 'undefined') return undefined;
