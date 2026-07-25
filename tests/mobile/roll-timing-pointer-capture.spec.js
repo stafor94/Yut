@@ -67,6 +67,9 @@ test.describe('mobile roll timing release regression', () => {
       animation.pause();
       animation.currentTime = 390;
       const pointerDownPositionPercent = readPositionPercent();
+      const buttonRect = button.getBoundingClientRect();
+      const buttonCenterX = buttonRect.left + buttonRect.width / 2;
+      const buttonCenterY = buttonRect.top + buttonRect.height / 2;
       const pointerId = 17;
       button.dispatchEvent(new PointerEvent('pointerdown', {
         bubbles: true,
@@ -77,6 +80,8 @@ test.describe('mobile roll timing release regression', () => {
         isPrimary: true,
         button: 0,
         buttons: 1,
+        clientX: buttonCenterX,
+        clientY: buttonCenterY,
       }));
 
       animation.currentTime = 500;
@@ -90,6 +95,8 @@ test.describe('mobile roll timing release regression', () => {
         isPrimary: true,
         button: 0,
         buttons: 0,
+        clientX: buttonCenterX,
+        clientY: buttonCenterY,
       }));
       button.dispatchEvent(new MouseEvent('click', {
         bubbles: true,
