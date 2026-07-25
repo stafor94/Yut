@@ -99,13 +99,17 @@ test.describe('bonus roll result glow regression', () => {
         <div class="roll-stage resolved-from-pending resolved-roll result-hold-roll" data-roll-path="local">
           <div class="roll-mat bonus-roll">
             <span class="roll-mat-surface"></span>
-            <span class="roll-label" hidden>윷</span>
+            <div class="roll-result-presentation" hidden aria-hidden="true">
+              <span class="roll-label roll-result-card bonus">윷</span>
+            </div>
           </div>
         </div>
         <div class="roll-stage resolved-roll" data-roll-path="remote">
           <div class="roll-mat bonus-roll">
             <span class="roll-mat-surface"></span>
-            <span class="roll-label" hidden>모</span>
+            <div class="roll-result-presentation" hidden aria-hidden="true">
+              <span class="roll-label roll-result-card bonus">모</span>
+            </div>
           </div>
         </div>
       `;
@@ -120,13 +124,14 @@ test.describe('bonus roll result glow regression', () => {
     for (const surface of [localSurface, remoteSurface]) {
       const beforeReveal = await readGlowState(surface);
       expect(beforeReveal.matAnimationName, '결과 공개 전에 기존 bonus-mat-pop이 먼저 실행되면 안 됩니다.').toBe('none');
-      expect(beforeReveal.animationName, '결과 텍스트가 숨겨진 동안 황금 결과 애니메이션을 시작하면 안 됩니다.').toBe('none');
+      expect(beforeReveal.animationName, '결과 presentation이 숨겨진 동안 황금 결과 애니메이션을 시작하면 안 됩니다.').toBe('none');
       expect(beforeReveal.opacity).toBe(0);
     }
 
     await page.evaluate(() => {
-      document.querySelectorAll('#qa-bonus-result-glow-root .roll-label').forEach((label) => {
-        label.hidden = false;
+      document.querySelectorAll('#qa-bonus-result-glow-root .roll-result-presentation').forEach((presentation) => {
+        presentation.hidden = false;
+        presentation.setAttribute('aria-hidden', 'false');
       });
     });
 
