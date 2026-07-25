@@ -68,11 +68,15 @@ test.describe('turn-order mobile layout QA', () => {
       expect(layout.bodyScrollWidth).toBeLessThanOrEqual(layout.viewport.width + 1);
 
       const rollButton = page.getByTestId('turn-order-roll-button');
+      const roundTimer = page.getByTestId('turn-order-round-timer');
       await expect(rollButton).toBeVisible({ timeout: 10_000 });
+      await expect(roundTimer).toBeVisible();
+      await expect(roundTimer).toHaveClass(/time-limit-bar/);
+      await expect(roundTimer).toHaveClass(/turn-action-timer/);
       await expect(page.getByTestId('turn-order-timing-panel')).toBeVisible();
       await expect(page.locator('.turn-order-timing-track')).toHaveCount(0);
-      await expect(page.locator('.roll-timing-meter')).toBeVisible();
-      await expect(page.locator('.roll-timing-orb')).toBeVisible();
+      await expect(page.locator('.roll-timing-meter')).toHaveCount(0);
+      await expect(page.locator('.roll-timing-orb')).toHaveCount(0);
       await expect(rollButton).toHaveClass(/roll-button/);
       await rollButton.click();
       await expect(page.getByTestId('turn-order-own-result')).toContainText('모');
