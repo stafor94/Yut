@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { getRollTimingPositionPercent } from '../../game-core/roll';
 
 type RollTimingControlProps = {
   disabled?: boolean;
@@ -8,32 +9,65 @@ type RollTimingControlProps = {
   onRoll: (timingPositionPercent?: number) => void;
 };
 
+type CapturedPointerTiming = {
+  pointerId: number;
+  positionPercent: number;
+  capturedAt: number;
+};
+
+const POINTER_TIMING_CAPTURE_MAX_AGE_MS = 1000;
 const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
 
-export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', onRoll }: RollTimingControlProps) {
-  const meterRef = useRef<HTMLDivElement | null>(null);
-  const orbRef = useRef<HTMLSpanElement | null>(null);
+const getAnimationPositionPercent = (animation: Animation | undefined) => {
+  const currentTime = animation?.currentTime;
+  if (typeof currentTime === 'number' && Number.isFinite(currentTime)) {
+    return getRollTimingPositionPercent(currentTime);
+  }
 
-  const getVisibleRollTimingPositionPercent = () => {
-    const meter = meterRef.current;
-    const orb = orbRef.current;
-    if (!meter || !orb) return undefined;
-    const meterRect = meter.getBoundingClientRect();
-    const orbRect = orb.getBoundingClientRect();
-    if (meterRect.width <= 0) return undefined;
-    const orbCenterX = orbRect.left + orbRect.width / 2;
-    return clampPercent(((orbCenterX - meterRect.left) / meterRect.width) * 100);
+  const progress = animation?.effect?.getComputedTiming().progress;
+  return typeof progress === 'number' && Number.isFinite(progress)
+    ? clampPercent(progress * 100)
+    : undefined;
+};
+
+export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', onRoll }: RollTimingControlProps) {
+  const trackRef = useRef<HTMLSpanElement | null>(null);
+  const capturedPointerTimingRef = useRef<CapturedPointerTiming | null>(null);
+
+  const getCurrentTimingPositionPercent = () => getAnimationPositionPercent(trackRef.current?.getAnimations()[0]);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (disabled || !event.isPrimary || event.button !== 0) return;
+    const positionPercent = getCurrentTimingPositionPercent();
+    capturedPointerTimingRef.current = positionPercent === undefined
+      ? null
+      : { pointerId: event.pointerId, positionPercent, capturedAt: performance.now() };
+  };
+
+  const handlePointerCancel = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (capturedPointerTimingRef.current?.pointerId === event.pointerId) {
+      capturedPointerTimingRef.current = null;
+    }
+  };
+
+  const handleClick = () => {
+    const capturedTiming = capturedPointerTimingRef.current;
+    const capturedPosition = capturedTiming && performance.now() - capturedTiming.capturedAt <= POINTER_TIMING_CAPTURE_MAX_AGE_MS
+      ? capturedTiming.positionPercent
+      : undefined;
+    capturedPointerTimingRef.current = null;
+    onRoll(capturedPosition ?? getCurrentTimingPositionPercent());
   };
 
   return <>
-    <div key={`meter:${resetKey}`} ref={meterRef} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대">
+    <div key={`meter:${resetKey}`} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대">
       <span className="roll-timing-good left" aria-hidden="true"></span>
       <span className="roll-timing-perfect" aria-hidden="true"></span>
       <span className="roll-timing-good right" aria-hidden="true"></span>
-      <span className="roll-timing-orb-track" aria-hidden="true">
-        <span ref={orbRef} className="roll-timing-orb"></span>
+      <span ref={trackRef} className="roll-timing-orb-track" aria-hidden="true">
+        <span className="roll-timing-orb"></span>
       </span>
     </div>
-    <button type="button" data-testid={buttonTestId} className="roll-button" onClick={() => onRoll(getVisibleRollTimingPositionPercent())} disabled={disabled}>{buttonText}</button>
+    <button type="button" data-testid={buttonTestId} className="roll-button" onPointerDown={handlePointerDown} onPointerCancel={handlePointerCancel} onClick={handleClick} disabled={disabled}>{buttonText}</button>
   </>;
 }
