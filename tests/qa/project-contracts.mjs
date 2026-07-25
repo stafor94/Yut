@@ -13,4 +13,10 @@ export const qaProjectTestMatches = Object.freeze({
   ]),
 });
 
+export const qaProjectExecutionOptions = Object.freeze({
+  'desktop-chromium': Object.freeze({ fullyParallel: false }),
+  'mobile-galaxy': Object.freeze({ fullyParallel: false }),
+  'mobile-webkit-timing': Object.freeze({ fullyParallel: true }),
+});
+
 export const qaProjectNames = Object.freeze(Object.keys(qaProjectTestMatches));
