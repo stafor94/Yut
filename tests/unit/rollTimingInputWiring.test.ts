@@ -11,6 +11,7 @@ test('타이밍 판정은 pointerup 순간 화면 좌표를 먼저 확정하고 
   assert.match(controlSource, /trackRef/);
   assert.match(controlSource, /orbRef/);
   assert.match(controlSource, /getBoundingClientRect\(\)/);
+  assert.match(controlSource, /const offsetParent = track\.offsetParent;[\s\S]*offsetParent\.clientLeft \+ track\.offsetLeft/);
   assert.match(controlSource, /const visibleSnapshot = getVisibleTimingSnapshot\(\);[\s\S]*visibleSnapshot\?\.positionPercent \?\? getAnimationPositionPercent\(animation\)/);
   assert.match(controlSource, /freezeTimingTrack\(animation, visibleSnapshot\?\.trackOffsetPx\);[\s\S]*onRoll\(positionPercent\)/);
   assert.match(controlSource, /track\.style\.transform = `translate3d\(\$\{trackOffsetPx\}px, 0, 0\)`;[\s\S]*animation\?\.cancel\(\)/);
