@@ -11,6 +11,12 @@ const fail = (message) => failures.push(message);
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const normalizePath = (value) => value.split(path.sep).join('/');
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+const expectedArtifactCodes = Object.freeze({
+  'online-core': 'core',
+  'desktop-regression': 'desk',
+  'mobile-galaxy': 'mobile',
+  'mobile-timing': 'timing',
+});
 
 const packageJson = JSON.parse(read('package.json'));
 const playwrightConfig = read('playwright.config.js');
@@ -59,8 +65,8 @@ for (const projectName of qaProjectNames) {
 
 for (const suiteName of qaSuiteNames) {
   const suite = qaSuiteManifest[suiteName];
-  if (suite.code !== ({ 'online-core': 'core', 'desktop-regression': 'desk', 'mobile-galaxy': 'mobile' })[suiteName]) {
-    fail(`${suiteName}: workflow artifact code가 기존 summary 계약과 다릅니다: ${suite.code}`);
+  if (suite.code !== expectedArtifactCodes[suiteName]) {
+    fail(`${suiteName}: workflow artifact code가 summary 계약과 다릅니다: ${suite.code}`);
   }
   if (!Number.isInteger(suite.workers) || suite.workers < 1 || suite.workers > 4) {
     fail(`${suiteName}: workers는 1~4 정수여야 합니다: ${suite.workers}`);
