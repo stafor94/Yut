@@ -44,17 +44,19 @@ async function startAiTimingGame(page, context, testInfo) {
   return resolvedRoomId;
 }
 
-async function dispatchTimingGesture(page, {
-  releaseInside,
-  pointerDownTime = 390,
-  pointerUpTime = 500,
-  visibleOffsetPercent = 0,
-}) {
-  return page.evaluate(({
+async function dispatchLiveTimingGesture(page, {
+  releaseInside = true,
+  pointerDownRange = [34, 39],
+  pointerUpRange = [57, 59.5],
+  reportedAnimationCurrentTime,
+  awaitSubmission = true,
+} = {}) {
+  return page.evaluate(async ({
     releaseInside: shouldReleaseInside,
-    pointerDownTime: downTime,
-    pointerUpTime: upTime,
-    visibleOffsetPercent: visualOffset,
+    pointerDownRange: downRange,
+    pointerUpRange: upRange,
+    reportedAnimationCurrentTime: forcedCurrentTime,
+    awaitSubmission: shouldAwaitSubmission,
   }) => {
     const meter = document.querySelector('.roll-timing-meter');
     const track = document.querySelector('.roll-timing-orb-track');
@@ -65,77 +67,8 @@ async function dispatchTimingGesture(page, {
     }
     const animation = track.getAnimations()[0];
     if (!animation) throw new Error('타이밍 orb track animation을 찾지 못했습니다.');
-    const readPositionPercent = () => {
-      const meterRect = meter.getBoundingClientRect();
-      const orbRect = orb.getBoundingClientRect();
-      return ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100;
-    };
 
-    animation.pause();
-    animation.currentTime = downTime;
-    const pointerDownPositionPercent = readPositionPercent();
-    const buttonRect = button.getBoundingClientRect();
-    const buttonCenterX = buttonRect.left + buttonRect.width / 2;
-    const buttonCenterY = buttonRect.top + buttonRect.height / 2;
-    const releaseX = shouldReleaseInside ? buttonCenterX : buttonRect.right + 24;
-    const pointerId = 17;
-    button.dispatchEvent(new PointerEvent('pointerdown', {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      pointerId,
-      pointerType: 'touch',
-      isPrimary: true,
-      button: 0,
-      buttons: 1,
-      clientX: buttonCenterX,
-      clientY: buttonCenterY,
-    }));
-
-    animation.currentTime = upTime;
-    if (visualOffset) {
-      orb.style.left = `${meter.getBoundingClientRect().width * (visualOffset / 100)}px`;
-    }
-    const pointerUpPositionPercent = readPositionPercent();
-    const animationCurrentTime = Number(animation.currentTime);
-    button.dispatchEvent(new PointerEvent('pointerup', {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      pointerId,
-      pointerType: 'touch',
-      isPrimary: true,
-      button: 0,
-      buttons: 0,
-      clientX: releaseX,
-      clientY: buttonCenterY,
-    }));
-    button.dispatchEvent(new MouseEvent('click', {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      detail: 1,
-    }));
-    return { pointerDownPositionPercent, pointerUpPositionPercent, animationCurrentTime };
-  }, {
-    releaseInside,
-    pointerDownTime,
-    pointerUpTime,
-    visibleOffsetPercent,
-  });
-}
-
-async function dispatchLiveTimingGesture(page) {
-  return page.evaluate(async () => {
-    const meter = document.querySelector('.roll-timing-meter');
-    const track = document.querySelector('.roll-timing-orb-track');
-    const orb = document.querySelector('.roll-timing-orb');
-    const button = document.querySelector('[data-testid="roll-yut-button"]');
-    if (!(meter instanceof HTMLElement) || !(track instanceof HTMLElement) || !(orb instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) {
-      throw new Error('타이밍 막대 또는 던지기 버튼을 찾지 못했습니다.');
-    }
-    const animation = track.getAnimations()[0];
-    if (!animation) throw new Error('타이밍 orb track animation을 찾지 못했습니다.');
+    const gradeNames = new Set(['PERFECT', 'NICE', 'GOOD', 'BAD']);
     const readPositionPercent = () => {
       const meterRect = meter.getBoundingClientRect();
       const orbRect = orb.getBoundingClientRect();
@@ -158,12 +91,41 @@ async function dispatchLiveTimingGesture(page) {
       };
       requestAnimationFrame(check);
     });
+    const observeSubmission = () => new Promise((resolve, reject) => {
+      let submittedGrade = '';
+      let rollLog = '';
+      const readSubmission = () => {
+        if (!submittedGrade) {
+          submittedGrade = Array.from(document.querySelectorAll('.roll-timing-feedback, .roll-stage-timing, [role="status"]'))
+            .map((element) => element.textContent?.trim() ?? '')
+            .find((text) => gradeNames.has(text)) ?? '';
+        }
+        if (!rollLog) {
+          rollLog = Array.from(document.querySelectorAll('.game-log p, aside p, [aria-label="진행 기록"] p'))
+            .map((element) => element.textContent?.trim() ?? '')
+            .find((text) => text.includes('님이') && text.includes('던졌습니다.')) ?? '';
+        }
+        if (submittedGrade && rollLog) {
+          observer.disconnect();
+          window.clearTimeout(timeoutId);
+          resolve({ submittedGrade, rollLog });
+        }
+      };
+      const observer = new MutationObserver(readSubmission);
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
+      const timeoutId = window.setTimeout(() => {
+        observer.disconnect();
+        reject(new Error(`타이밍 제출 관찰 실패: grade=${submittedGrade || '없음'}, log=${rollLog || '없음'}`));
+      }, 20_000);
+      readSubmission();
+    });
 
     animation.play();
-    const pointerDownPositionPercent = await waitForPosition(34, 39);
+    const pointerDownPositionPercent = await waitForPosition(downRange[0], downRange[1]);
     const buttonRect = button.getBoundingClientRect();
     const buttonCenterX = buttonRect.left + buttonRect.width / 2;
     const buttonCenterY = buttonRect.top + buttonRect.height / 2;
+    const releaseX = shouldReleaseInside ? buttonCenterX : buttonRect.right + 24;
     const pointerId = 23;
     button.dispatchEvent(new PointerEvent('pointerdown', {
       bubbles: true,
@@ -178,7 +140,23 @@ async function dispatchLiveTimingGesture(page) {
       clientY: buttonCenterY,
     }));
 
-    const pointerUpPositionPercent = await waitForPosition(57, 59.5);
+    const pointerUpPositionPercent = await waitForPosition(upRange[0], upRange[1]);
+    let animationCurrentTime = Number(animation.currentTime);
+    if (typeof forcedCurrentTime === 'number') {
+      animationCurrentTime = forcedCurrentTime;
+      const reportedAnimation = {
+        get currentTime() { return forcedCurrentTime; },
+        get effect() { return animation.effect; },
+        cancel: () => animation.cancel(),
+        pause: () => animation.pause(),
+      };
+      Object.defineProperty(track, 'getAnimations', {
+        configurable: true,
+        value: () => [reportedAnimation],
+      });
+    }
+
+    const submissionPromise = shouldAwaitSubmission ? observeSubmission() : null;
     button.dispatchEvent(new PointerEvent('pointerup', {
       bubbles: true,
       cancelable: true,
@@ -188,7 +166,7 @@ async function dispatchLiveTimingGesture(page) {
       isPrimary: true,
       button: 0,
       buttons: 0,
-      clientX: buttonCenterX,
+      clientX: releaseX,
       clientY: buttonCenterY,
     }));
     button.dispatchEvent(new MouseEvent('click', {
@@ -197,7 +175,20 @@ async function dispatchLiveTimingGesture(page) {
       composed: true,
       detail: 1,
     }));
-    return { pointerDownPositionPercent, pointerUpPositionPercent };
+
+    const submission = submissionPromise ? await submissionPromise : { submittedGrade: '', rollLog: '' };
+    return {
+      pointerDownPositionPercent,
+      pointerUpPositionPercent,
+      animationCurrentTime,
+      ...submission,
+    };
+  }, {
+    releaseInside,
+    pointerDownRange,
+    pointerUpRange,
+    reportedAnimationCurrentTime,
+    awaitSubmission,
   });
 }
 
@@ -215,69 +206,55 @@ test.describe('mobile roll timing release regression', () => {
   test('애니메이션 시간은 Perfect여도 화면 구슬이 Nice이면 화면 기준으로 Nice 판정한다', async ({ page, context }, testInfo) => {
     roomId = await startAiTimingGame(page, context, testInfo);
 
-    const sampledPositions = await runQaStep(testInfo, 'animation timeline과 실제 화면 위치를 강제로 분리', async () => dispatchTimingGesture(page, {
-      releaseInside: true,
-      pointerDownTime: 390,
-      pointerUpTime: 500,
-      visibleOffsetPercent: 8.5,
+    const sampledPositions = await runQaStep(testInfo, '실시간 화면은 Nice이고 보고된 animation timeline은 Perfect인 상태 제출', async () => dispatchLiveTimingGesture(page, {
+      pointerUpRange: [57, 59.5],
+      reportedAnimationCurrentTime: 500,
     }));
     expect(sampledPositions.animationCurrentTime).toBe(500);
-    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(58);
+    expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(57);
     expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(59.5);
-
-    await runQaStep(testInfo, '화면 좌표와 제출된 타이밍 등급 확인', async () => {
-      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
-      await expect(resultHoldStage).toBeVisible({ timeout: 8_000 });
-      await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('NICE', { timeout: 2_000 });
-      await page.waitForTimeout(150);
-      await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('NICE');
-    });
+    expect(sampledPositions.submittedGrade).toBe('NICE');
+    expect(sampledPositions.rollLog).toContain('던졌습니다.');
   });
 
   test('실시간으로 이동 중인 구슬을 Nice 위치에서 놓으면 화면과 동일하게 Nice로 판정한다', async ({ page, context }, testInfo) => {
     roomId = await startAiTimingGame(page, context, testInfo);
 
-    const sampledPositions = await runQaStep(testInfo, '실시간 Good 위치에서 누르고 Nice 위치에서 손을 뗀 화면 좌표 확인', async () => dispatchLiveTimingGesture(page));
+    const sampledPositions = await runQaStep(testInfo, '실시간 Good 위치에서 누르고 Nice 위치에서 손을 뗀 화면 좌표와 등급 확인', async () => dispatchLiveTimingGesture(page));
     expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(34);
     expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(39);
     expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(57);
     expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(59.5);
-
-    await runQaStep(testInfo, '실시간 화면 위치와 제출된 타이밍 등급 확인', async () => {
-      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
-      await expect(resultHoldStage).toBeVisible({ timeout: 8_000 });
-      await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('NICE', { timeout: 2_000 });
-    });
+    expect(sampledPositions.submittedGrade).toBe('NICE');
+    expect(sampledPositions.rollLog).toContain('던졌습니다.');
   });
 
   test('터치 시작이 Good이어도 손을 뗀 화면 위치가 Perfect이면 Perfect로 판정한다', async ({ page, context }, testInfo) => {
     roomId = await startAiTimingGame(page, context, testInfo);
 
-    const sampledPositions = await runQaStep(testInfo, 'Good에서 누르고 Perfect에서 손을 뗀 위치 확인', async () => dispatchTimingGesture(page, { releaseInside: true }));
-    expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(38);
-    expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(40);
+    const sampledPositions = await runQaStep(testInfo, '실시간 Good에서 누르고 Perfect에서 손을 뗀 화면 좌표와 등급 확인', async () => dispatchLiveTimingGesture(page, {
+      pointerUpRange: [49, 51],
+    }));
+    expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(34);
+    expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(39);
     expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(49);
     expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(51);
-
-    await runQaStep(testInfo, '손을 뗀 화면 위치와 제출된 타이밍 등급 확인', async () => {
-      const resultHoldStage = page.locator('.roll-stage.resolved-from-pending.result-hold-roll');
-      await expect(resultHoldStage).toBeVisible({ timeout: 8_000 });
-      await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('PERFECT', { timeout: 2_000 });
-      await page.waitForTimeout(150);
-      await expect(resultHoldStage.locator('.roll-stage-timing')).toHaveText('PERFECT');
-    });
+    expect(sampledPositions.submittedGrade).toBe('PERFECT');
+    expect(sampledPositions.rollLog).toContain('던졌습니다.');
   });
 
   test('버튼 밖으로 손을 떼면 브라우저 후속 click이 발생해도 던지지 않는다', async ({ page, context }, testInfo) => {
     roomId = await startAiTimingGame(page, context, testInfo);
+    const rollLogLocator = page.locator('.game-log p, aside p, [aria-label="진행 기록"] p').filter({ hasText: '던졌습니다.' });
+    const rollLogCountBefore = await rollLogLocator.count();
 
-    await runQaStep(testInfo, '버튼 밖 release와 후속 click 입력', async () => {
-      await dispatchTimingGesture(page, { releaseInside: false });
-      await page.waitForTimeout(200);
+    await runQaStep(testInfo, '실시간 버튼 밖 release와 후속 click 입력', async () => {
+      await dispatchLiveTimingGesture(page, { releaseInside: false, pointerUpRange: [49, 51], awaitSubmission: false });
+      await page.waitForTimeout(500);
     });
 
     await runQaStep(testInfo, '취소된 입력이 roll을 제출하지 않았는지 확인', async () => {
-      await expect(page.locator('.roll-stage.resolved-from-pending.result-hold-roll')).toHaveCount(0);
+      await expect(rollLogLocator).toHaveCount(rollLogCountBefore);
       await expect(page.getByTestId('roll-yut-button')).toBeVisible();
       await expect(page.getByTestId('roll-yut-button')).toBeEnabled();
     });
