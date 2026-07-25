@@ -16,11 +16,11 @@ const EXPECTED_LABELS = {
 };
 
 test.describe('mobile roll timing grades QA', () => {
-  test('타이밍 등급은 1.5초 후 페이드되고 윷 결과는 이동 설명이 있는 한지 카드로 표시한다', async ({ page, context }, testInfo) => {
+  test('타이밍 orb는 합성 레이어로 왕복하고 등급과 결과 카드는 기존 계약을 유지한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 780 });
     await primeLobbyStorage(context, { nickname: '타이밍QA' });
 
-    await runQaStep(testInfo, '타이밍 막대와 통합 결과 카드 시각 계약 확인', async () => {
+    await runQaStep(testInfo, '타이밍 막대 이동과 통합 결과 카드 시각 계약 확인', async () => {
       await expectAppShell(page);
       await waitForBlockingOverlayToDisappear(page);
 
@@ -36,7 +36,9 @@ test.describe('mobile roll timing grades QA', () => {
               <span class="roll-timing-good left"></span>
               <span class="roll-timing-perfect"></span>
               <span class="roll-timing-good right"></span>
-              <span class="roll-timing-orb"></span>
+              <span class="roll-timing-orb-track">
+                <span class="roll-timing-orb"></span>
+              </span>
             </div>
           </div>
           <div class="roll-stage resolved-from-pending result-hold-roll">
@@ -55,8 +57,24 @@ test.describe('mobile roll timing grades QA', () => {
         document.body.append(host);
 
         const meter = host.querySelector('.roll-timing-meter');
+        const track = host.querySelector('.roll-timing-orb-track');
         const orb = host.querySelector('.roll-timing-orb');
-        const legacyZones = Array.from(meter.querySelectorAll(':scope > span:not(.roll-timing-orb)'));
+        const legacyZones = Array.from(meter.querySelectorAll(':scope > .roll-timing-good, :scope > .roll-timing-perfect'));
+        const meterRect = meter.getBoundingClientRect();
+        const readOrbPositionPercent = () => {
+          const orbRect = orb.getBoundingClientRect();
+          return ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100;
+        };
+        const movementAnimation = track.getAnimations()[0];
+        movementAnimation.pause();
+        movementAnimation.currentTime = 0;
+        const startPositionPercent = readOrbPositionPercent();
+        movementAnimation.currentTime = 500;
+        const middlePositionPercent = readOrbPositionPercent();
+        movementAnimation.currentTime = 999;
+        const endPositionPercent = readOrbPositionPercent();
+        const trackStyle = getComputedStyle(track);
+        const orbStyle = getComputedStyle(orb);
         const grades = ['perfect', 'nice', 'good', 'bad'].map((grade) => {
           const element = host.querySelector(`.roll-timing-feedback.${grade}`);
           const style = getComputedStyle(element);
@@ -89,7 +107,19 @@ test.describe('mobile roll timing grades QA', () => {
         const cardStyle = getComputedStyle(card);
         const result = {
           meterBackground: getComputedStyle(meter).backgroundImage,
-          orbBorderColor: getComputedStyle(orb).borderTopColor,
+          orbBorderColor: orbStyle.borderTopColor,
+          orbTrackClass: orb.parentElement?.className ?? '',
+          trackPosition: trackStyle.position,
+          trackAnimationName: trackStyle.animationName,
+          trackAnimationDuration: trackStyle.animationDuration,
+          trackAnimationTimingFunction: trackStyle.animationTimingFunction,
+          trackAnimationIterationCount: trackStyle.animationIterationCount,
+          trackAnimationDirection: trackStyle.animationDirection,
+          trackWillChange: trackStyle.willChange,
+          trackBackfaceVisibility: trackStyle.backfaceVisibility,
+          orbAnimationName: orbStyle.animationName,
+          orbLeft: orbStyle.left,
+          orbMovementPositions: [startPositionPercent, middlePositionPercent, endPositionPercent],
           legacyZoneDisplays: legacyZones.map((zone) => getComputedStyle(zone).display),
           grades,
           wrapperPosition: getComputedStyle(wrapper).position,
@@ -120,6 +150,21 @@ test.describe('mobile roll timing grades QA', () => {
       expect(presentation.meterBackground).toContain('rgb(101, 185, 211)');
       expect(presentation.meterBackground).toContain('rgb(149, 104, 199)');
       expect(presentation.orbBorderColor).toBe('rgb(255, 255, 255)');
+      expect(presentation.orbTrackClass).toBe('roll-timing-orb-track');
+      expect(presentation.trackPosition).toBe('absolute');
+      expect(presentation.trackAnimationName).toBe('roll-timing-orb-track');
+      expect(presentation.trackAnimationDuration).toBe('1s');
+      expect(presentation.trackAnimationTimingFunction).toBe('linear');
+      expect(presentation.trackAnimationIterationCount).toBe('infinite');
+      expect(presentation.trackAnimationDirection).toBe('alternate');
+      expect(presentation.trackWillChange).toContain('transform');
+      expect(presentation.trackBackfaceVisibility).toBe('hidden');
+      expect(presentation.orbAnimationName).toBe('none');
+      expect(presentation.orbLeft).toBe('0px');
+      expect(presentation.orbMovementPositions[0]).toBeLessThanOrEqual(1);
+      expect(presentation.orbMovementPositions[1]).toBeGreaterThanOrEqual(49);
+      expect(presentation.orbMovementPositions[1]).toBeLessThanOrEqual(51);
+      expect(presentation.orbMovementPositions[2]).toBeGreaterThanOrEqual(98);
       expect(presentation.legacyZoneDisplays).toEqual(['none', 'none', 'none']);
 
       for (const grade of presentation.grades) {

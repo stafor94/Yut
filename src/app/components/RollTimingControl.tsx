@@ -30,7 +30,9 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
       <span className="roll-timing-good left" aria-hidden="true"></span>
       <span className="roll-timing-perfect" aria-hidden="true"></span>
       <span className="roll-timing-good right" aria-hidden="true"></span>
-      <span ref={orbRef} className="roll-timing-orb" aria-hidden="true"></span>
+      <span className="roll-timing-orb-track" aria-hidden="true">
+        <span ref={orbRef} className="roll-timing-orb"></span>
+      </span>
     </div>
     <button type="button" data-testid={buttonTestId} className="roll-button" onClick={() => onRoll(getVisibleRollTimingPositionPercent())} disabled={disabled}>{buttonText}</button>
   </>;

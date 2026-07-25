@@ -1,0 +1,30 @@
+.game-shell .roll-timing-meter > .roll-timing-orb-track {
+  position: absolute;
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: 0;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: visible;
+  pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  transform-origin: left center;
+  animation: roll-timing-orb-track 1s linear infinite alternate;
+  will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.game-shell .roll-timing-meter .roll-timing-orb {
+  left: 0;
+  animation: none;
+}
+
+@keyframes roll-timing-orb-track {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
+}
