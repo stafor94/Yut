@@ -25,10 +25,11 @@ Playwright project의 `testMatch`와 project 내부 병렬 실행 계약은 `tes
 2. 실제 제품 동작과 같은 Firebase Auth·Firestore 흐름이 필요하면 emulator lane에 둔다.
 3. 대상 파일 또는 디렉터리를 `suite-manifest.mjs`의 정확한 lane에 한 번만 등록한다.
 4. 동일 spec을 여러 browser lane에서 의도적으로 실행해야 하면 관련 모든 suite의 `sharedTargets`에 명시한다.
-5. 해당 Playwright project의 `testMatch`, 브라우저, viewport와 `fullyParallel` 값을 `project-contracts.mjs`와 `playwright.config.js`에서 확인한다.
-6. `npm run qa:validate-architecture`를 실행한다.
-7. 생성된 `test-results/qa-architecture-report.json`에서 spec → lane → project 연결을 확인한다.
-8. 변경된 lane을 실행하고 테스트가 실제 목록에 포함됐는지 로그에서 확인한다.
+5. suite별 `grep` 또는 `grepInvert`가 브라우저 isolation과 대상 test title을 실제로 포함하는지 확인한다.
+6. 해당 Playwright project의 `testMatch`, 브라우저, viewport와 `fullyParallel` 값을 `project-contracts.mjs`와 `playwright.config.js`에서 확인한다.
+7. `npm run qa:validate-architecture`를 실행한다.
+8. 생성된 `test-results/qa-architecture-report.json`에서 spec → lane → project 연결을 확인한다.
+9. 변경된 lane을 실행하고 테스트가 실제 목록에 포함됐는지 로그에서 확인한다.
 
 ## Lane 계약
 
@@ -36,13 +37,16 @@ Playwright project의 `testMatch`와 project 내부 병렬 실행 계약은 `tes
 - `desktop-sequence`: sequence replay, pending/result-hold, 이동 연출처럼 짧은 중간 상태를 관찰하는 timing-sensitive desktop 회귀
 - `desktop-regression`: 윷 던지기·이동·연출·로비의 나머지 desktop 회귀
 - `mobile-galaxy`: Galaxy Chromium viewport 전체 모바일 QA
-- `safari-timing`: iPhone WebKit에서 실제 pointer 입력과 화면 위치 판정 회귀 QA
+- `safari-visible-mismatch`: 화면 좌표와 animation timeline을 의도적으로 불일치시키는 단일 WebKit 회귀
+- `safari-timing`: 나머지 실제 pointer release·취소 WebKit 회귀
 
-Galaxy와 Safari timing은 별도 GitHub Actions matrix entry로 실행한다. 두 browser 실행을 한 runner에서 순차 실행하지 않는다. 각 lane은 고유 `QA_RUN_ID`, `QA_PROJECT_ID`, room namespace와 cleanup 범위를 사용한다.
+Galaxy와 Safari 계열은 별도 GitHub Actions matrix entry로 실행한다. Chromium과 WebKit을 한 runner에서 순차 실행하지 않는다. 각 lane은 고유 `QA_RUN_ID`, `QA_PROJECT_ID`, room namespace와 cleanup 범위를 사용한다.
 
 `desktop-sequence`는 `bug-history-smoke.spec.js`를 1 worker에서 독립 실행한다. 해당 spec은 3D 렌더링과 짧은 pending·result-hold·move 시작 상태를 연속 관찰하므로 다른 장시간 browser context와 worker를 공유하지 않는다. 테스트 assertion이나 timeout을 완화하지 않고 runner 격리로 관찰 경쟁을 제거한다.
 
-`mobile-galaxy`는 `desktop-chromium` project에서 Firebase browser isolation spec만 실행하고 `mobile-galaxy` project에서 모바일 spec을 실행한다. `safari-timing`은 `mobile-webkit-timing` project에서 WebKit browser isolation과 타이밍 pointer spec을 실행한다. 이 WebKit project만 `fullyParallel: true`를 사용해 한 파일의 네 시나리오를 2 workers에 분산하며, 전역·Galaxy·desktop project는 기존 순차 파일 실행을 유지한다.
+`mobile-galaxy`는 `desktop-chromium` project에서 Firebase browser isolation spec만 실행하고 `mobile-galaxy` project에서 모바일 spec을 실행한다.
+
+`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. 다만 화면 NICE 위치와 보고된 timeline PERFECT를 강제로 불일치시키는 시나리오는 Run `30162254392`에서 다른 WebKit test와 동일 runner CPU를 공유할 때 측정 뒤 실제 `pointerup` 전 프레임이 GOOD으로 이동했다. 이 시나리오는 `safari-visible-mismatch` 1-worker runner에서 isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 나머지 세 pointer 시나리오를 2 workers에 분산한다. 테스트의 화면 release 의미나 assertion은 변경하지 않는다.
 
 현재 앱 shell은 시작 시 Firebase Auth·Firestore 초기화를 수행한다. 따라서 DOM·레이아웃 중심 spec도 별도의 검증된 Firebase-free bootstrap이 생기기 전까지 emulator lane에서 유지한다. 단순 속도 개선을 위해 제품 초기화 계약을 mock으로 대체하지 않는다.
 
@@ -71,15 +75,14 @@ Galaxy와 Safari timing은 별도 GitHub Actions matrix entry로 실행한다. �
 - `desktop-sequence`: 1 worker
 - `desktop-regression`: 2 workers
 - `mobile-galaxy`: 3 workers
+- `safari-visible-mismatch`: 1 worker
 - `safari-timing`: 2 workers
 
 온라인·일반 desktop lane은 여러 브라우저 context, Firebase polling, 3D 애니메이션을 동시에 사용한다. 4 workers에서는 브라우저가 진행되는 동안 테스트 프로세스가 지연되어 순서 정하기 준비 상태와 pending roll stage 같은 실제 중간 화면을 놓치는 회귀가 확인됐다. assertion 삭제나 timeout 증가로 숨기지 않고 검증된 자원 범위로 제한한다.
 
 `desktop-sequence`는 1 worker를 고정한다. Run `30160293177`에서 `bug-history-smoke`가 다른 desktop 테스트와 2-worker runner를 공유하는 동안 2초 move 시작 상태를 놓쳤으므로, 동일 파일을 별도 runner에 격리해 전체 workflow 병렬성은 유지하고 파일 내부 관찰 순서는 보장한다.
 
-Safari timing은 Galaxy와 runner를 분리한 상태에서 최대 2 workers만 사용한다. 각 테스트가 고유 context, room 이름, 익명 사용자와 `afterEach` cleanup을 사용하므로 해당 project에만 파일 내부 병렬 실행을 허용한다. 다른 project의 `fullyParallel`은 false로 고정한다.
-
-worker나 project 병렬 범위를 다시 높이거나 lane을 합치려면 변경된 lane을 최소 3회 연속 실행해 transient UI, room 잔존, Firebase 요청 오류가 없고 p95 실행 시간이 실제로 개선되는지 확인한다.
+Safari 계열은 test title 기준으로 겹치지 않게 분리한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 강제 불일치 test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 강제 불일치 title을 제외해야 한다. worker나 lane 구성을 다시 합치려면 최소 3회 연속 실행해 화면 release 등급, room 잔존, Firebase 요청 오류와 p95 시간을 확인한다.
 
 ## Pages 배포 분리
 
@@ -105,15 +108,16 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 - 명시적 `sharedTargets` 계약이 없는 lane 간 target 중복
 - `package.json`의 legacy `test:qa-*` 목록 재도입
 - runner의 spec 경로 또는 legacy suite map 하드코딩
-- manifest와 runner CLI의 worker·project·target 연결 불일치
+- manifest와 runner CLI의 worker·project·target·grep 연결 불일치
+- 한 suite의 `grep`과 `grepInvert` 동시 사용
 - project별 `fullyParallel` 계약 누락 또는 Playwright config 직접 하드코딩
 - 전역 `fullyParallel: true` 재도입
 - QA matrix의 build 선행 의존성 재도입
 - `firebase-tools@latest` 재도입
 - workflow matrix lane·label·artifact code·browser·duration artifact 연결 누락
 - desktop sequence lane 또는 summary 결과 누락
-- Galaxy와 Safari timing의 순차 job 재결합
-- 분리된 Galaxy·Safari summary 결과 누락
+- Galaxy와 Safari 계열의 순차 job 재결합
+- Safari visible mismatch와 Safari timing summary 결과 누락
 - Main Branch QA에 Pages 배포 또는 Pages 결과 의존성 재결합
 - 별도 Pages workflow의 성공 QA·main·push·triggering Run artifact 계약 누락
 
@@ -121,13 +125,14 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 
 - 테스트 파일 → manifest → runner → workflow matrix → Playwright project 연결 확인
 - 신규·수정 테스트가 의도한 Chromium/WebKit과 viewport에서 실행되는지 확인
+- suite별 grep 결과가 누락·중복 없이 실제 test title을 분리하는지 확인
 - 기존 browser isolation 검증이 각 lane에서 유지되는지 확인
-- 기존 테스트 수와 browser execution 수가 줄지 않았는지 확인
+- 기존 테스트 범위와 browser execution이 줄지 않았는지 확인
 - 의도적인 lane 간 중복 target이 `sharedTargets`로 선언됐는지 확인
 - timing-sensitive desktop spec이 독립 1-worker lane에 유지되는지 확인
 - project 내부 병렬화 대상이 고유 context·room·cleanup을 사용하는지 확인
 - production Firebase 설정이 QA에 유입되지 않는지 확인
 - QA room 잔존과 다른 worker·lane room 삭제가 없는지 확인
 - lane별 `qa-duration.json`과 전체 임계 경로를 이전 Run과 비교
-- Galaxy와 Safari timing이 서로 다른 runner에서 실제 동시 실행됐는지 확인
+- Galaxy와 두 Safari lane이 서로 다른 runner에서 실제 동시 실행됐는지 확인
 - Main Branch QA terminal 결과와 별도 Pages deployment 결과를 구분해 확인
