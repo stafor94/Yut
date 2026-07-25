@@ -56,6 +56,16 @@ Playwright project의 `testMatch` 계약은 `tests/qa/project-contracts.mjs`에�
 - worker 수는 manifest에서만 조정하며 최대 4로 제한한다.
 - cleanup 병렬 삭제는 환경 변수로 제한하며 최대 8을 넘기지 않는다.
 
+### 검증된 worker 예산
+
+- `online-core`: 2 workers
+- `desktop-regression`: 2 workers
+- `mobile-galaxy`: 3 workers
+
+온라인·desktop lane은 여러 브라우저 context, Firebase polling, 3D 애니메이션을 동시에 사용한다. 4 workers에서는 브라우저가 진행되는 동안 테스트 프로세스가 지연되어 순서 정하기 준비 상태와 pending roll stage 같은 실제 중간 화면을 놓치는 회귀가 확인됐다. assertion 삭제나 timeout 증가로 숨기지 않고 검증된 자원 범위로 제한한다.
+
+worker를 다시 높이려면 변경된 lane을 최소 3회 연속 실행해 transient UI, room 잔존, Firebase 요청 오류가 없고 p95 실행 시간이 실제로 개선되는지 확인한다.
+
 ## 자동 구조 검증
 
 `npm run qa:validate-architecture`는 다음을 차단한다.
