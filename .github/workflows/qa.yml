@@ -87,6 +87,10 @@ jobs:
             code: galaxy
             label: Mobile Galaxy
             browsers: chromium
+          - group: mobile-galaxy-timing
+            code: galtime
+            label: Mobile Galaxy timing
+            browsers: chromium
           - group: safari-visible-mismatch
             code: safvis
             label: Safari visible mismatch
@@ -193,6 +197,7 @@ jobs:
           SEQUENCE_RESULT=$(cat seq/result.txt 2>/dev/null || printf 'unavailable')
           DESKTOP_RESULT=$(cat desk/result.txt 2>/dev/null || printf 'unavailable')
           GALAXY_RESULT=$(cat galaxy/result.txt 2>/dev/null || printf 'unavailable')
+          GALAXY_TIMING_RESULT=$(cat galtime/result.txt 2>/dev/null || printf 'unavailable')
           SAFARI_VISIBLE_RESULT=$(cat safvis/result.txt 2>/dev/null || printf 'unavailable')
           SAFARI_RESULT=$(cat safari/result.txt 2>/dev/null || printf 'unavailable')
           duration() {
@@ -202,6 +207,7 @@ jobs:
           SEQUENCE_DURATION=$(duration seq/qa-duration.json)
           DESKTOP_DURATION=$(duration desk/qa-duration.json)
           GALAXY_DURATION=$(duration galaxy/qa-duration.json)
+          GALAXY_TIMING_DURATION=$(duration galtime/qa-duration.json)
           SAFARI_VISIBLE_DURATION=$(duration safvis/qa-duration.json)
           SAFARI_DURATION=$(duration safari/qa-duration.json)
           {
@@ -214,6 +220,7 @@ jobs:
             echo "| QA desktop sequence replay | \`$SEQUENCE_RESULT\` | $SEQUENCE_DURATION |"
             echo "| QA desktop regression | \`$DESKTOP_RESULT\` | $DESKTOP_DURATION |"
             echo "| QA mobile Galaxy | \`$GALAXY_RESULT\` | $GALAXY_DURATION |"
+            echo "| QA mobile Galaxy timing | \`$GALAXY_TIMING_RESULT\` | $GALAXY_TIMING_DURATION |"
             echo "| QA Safari visible mismatch | \`$SAFARI_VISIBLE_RESULT\` | $SAFARI_VISIBLE_DURATION |"
             echo "| QA Safari timing | \`$SAFARI_RESULT\` | $SAFARI_DURATION |"
             echo "| Firebase emulator QA matrix | \`$EMULATOR_RESULT\` | - |"
@@ -224,7 +231,7 @@ jobs:
           fi
       - name: Combine QA logs
         if: always()
-        run: find core seq desk galaxy safvis safari -type f \( -name 'playwright-*.log' -o -name 'qa-*.log' \) -print0 2>/dev/null | xargs -0 cat > playwright.log || touch playwright.log
+        run: find core seq desk galaxy galtime safvis safari -type f \( -name 'playwright-*.log' -o -name 'qa-*.log' \) -print0 2>/dev/null | xargs -0 cat > playwright.log || touch playwright.log
       - name: Upload QA summary
         if: always()
         uses: actions/upload-artifact@v4
@@ -236,6 +243,7 @@ jobs:
             seq
             desk
             galaxy
+            galtime
             safvis
             safari
             build.log
