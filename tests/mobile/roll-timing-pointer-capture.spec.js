@@ -66,6 +66,7 @@ async function dispatchLiveTimingGesture(page, {
     pointerUpRange: upRange,
     reportedAnimationCurrentTime: forcedCurrentTime,
     awaitSubmission: shouldAwaitSubmission,
+    samplePlaybackRate,
   }) => {
     const meter = document.querySelector('.roll-timing-meter');
     const track = document.querySelector('.roll-timing-orb-track');
@@ -129,7 +130,7 @@ async function dispatchLiveTimingGesture(page, {
       readSubmission();
     });
 
-    animation.playbackRate = TIMING_SAMPLE_PLAYBACK_RATE;
+    animation.playbackRate = samplePlaybackRate;
     animation.play();
     const pointerDownPositionPercent = await waitForPosition(downRange[0], downRange[1]);
     const buttonRect = button.getBoundingClientRect();
@@ -199,6 +200,7 @@ async function dispatchLiveTimingGesture(page, {
     pointerUpRange,
     reportedAnimationCurrentTime,
     awaitSubmission,
+    samplePlaybackRate: TIMING_SAMPLE_PLAYBACK_RATE,
   });
 }
 
