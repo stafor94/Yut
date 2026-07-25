@@ -11,6 +11,12 @@ const fail = (message) => failures.push(message);
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const normalizePath = (value) => value.split(path.sep).join('/');
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+const suiteContracts = Object.freeze({
+  'online-core': Object.freeze({ code: 'core', label: 'Online core', browsers: Object.freeze(['chromium']) }),
+  'desktop-regression': Object.freeze({ code: 'desk', label: 'Desktop regression', browsers: Object.freeze(['chromium']) }),
+  'mobile-galaxy': Object.freeze({ code: 'galaxy', label: 'Mobile Galaxy', browsers: Object.freeze(['chromium']) }),
+  'safari-timing': Object.freeze({ code: 'safari', label: 'Safari timing', browsers: Object.freeze(['webkit']) }),
+});
 
 const packageJson = JSON.parse(read('package.json'));
 const playwrightConfig = read('playwright.config.js');
@@ -58,10 +64,21 @@ for (const projectName of qaProjectNames) {
   if (!playwrightConfig.includes(`qaProjectTestMatches['${projectName}']`)) fail(`playwright.config.js가 공통 testMatch 계약을 사용하지 않습니다: ${projectName}`);
 }
 
+if (qaSuiteNames.length !== Object.keys(suiteContracts).length) {
+  fail(`QA suite 수가 고정 lane 계약과 다릅니다: manifest=${qaSuiteNames.length}, expected=${Object.keys(suiteContracts).length}`);
+}
+
 for (const suiteName of qaSuiteNames) {
   const suite = qaSuiteManifest[suiteName];
-  if (suite.code !== ({ 'online-core': 'core', 'desktop-regression': 'desk', 'mobile-galaxy': 'mobile' })[suiteName]) {
-    fail(`${suiteName}: workflow artifact code가 기존 summary 계약과 다릅니다: ${suite.code}`);
+  const contract = suiteContracts[suiteName];
+  if (!contract) {
+    fail(`${suiteName}: 고정 lane 계약에 없는 suite입니다.`);
+  } else {
+    if (suite.code !== contract.code) fail(`${suiteName}: workflow artifact code가 lane 계약과 다릅니다: ${suite.code}`);
+    if (suite.label !== contract.label) fail(`${suiteName}: workflow label이 lane 계약과 다릅니다: ${suite.label}`);
+    if (JSON.stringify(suite.browsers) !== JSON.stringify(contract.browsers)) {
+      fail(`${suiteName}: 설치 browser가 lane 계약과 다릅니다: ${suite.browsers.join(', ')}`);
+    }
   }
   if (!Number.isInteger(suite.workers) || suite.workers < 1 || suite.workers > 4) {
     fail(`${suiteName}: workers는 1~4 정수여야 합니다: ${suite.workers}`);
@@ -74,6 +91,12 @@ for (const suiteName of qaSuiteNames) {
   }
   if (!Array.isArray(suite.tests) || suite.tests.length === 0) fail(`${suiteName}: 테스트 대상이 필요합니다.`);
   if (!suite.browserIsolationTest) fail(`${suiteName}: browser isolation test가 필요합니다.`);
+  if (suite.sharedTargets && !Array.isArray(suite.sharedTargets)) fail(`${suiteName}: sharedTargets는 배열이어야 합니다.`);
+  for (const sharedTarget of suite.sharedTargets ?? []) {
+    if (!suite.tests.includes(sharedTarget) && suite.browserIsolationTest !== sharedTarget) {
+      fail(`${suiteName}: sharedTargets가 suite target에 포함되지 않습니다: ${sharedTarget}`);
+    }
+  }
 
   const commandArgs = createQaPlaywrightArgs(suiteName);
   if (commandArgs.filter((argument) => argument === 'playwright').length !== 1 || commandArgs.filter((argument) => argument === 'test').length !== 1) {
@@ -111,7 +134,12 @@ for (const suiteName of qaSuiteNames) {
 
 for (const [target, owners] of seenTestTargets) {
   if (target.includes('firebase-emulator-isolation.spec.js')) continue;
-  if (owners.length > 1) fail(`테스트 대상이 여러 QA lane에 중복 등록됐습니다: ${target} -> ${owners.join(', ')}`);
+  if (owners.length > 1) {
+    const missingSharedDeclaration = owners.filter((suiteName) => !(qaSuiteManifest[suiteName].sharedTargets ?? []).includes(target));
+    if (missingSharedDeclaration.length > 0) {
+      fail(`테스트 대상이 명시적 sharedTargets 계약 없이 여러 QA lane에 등록됐습니다: ${target} -> ${owners.join(', ')}`);
+    }
+  }
 }
 
 for (const [specPath, executions] of concreteSpecs) {
@@ -131,6 +159,7 @@ if (/\.spec\.js/u.test(runnerSource)) fail('QA runner에 spec 경로를 직접 �
 if (/const\s+suiteGroups\s*=/u.test(runnerSource)) fail('QA runner에 legacy suiteGroups 정의가 남아 있습니다.');
 if (workflowSource.includes('needs: build-and-unit')) fail('QA matrix가 build-and-unit 완료를 기다려 임계 경로를 직렬화하고 있습니다.');
 if (workflowSource.includes('firebase-tools@latest')) fail('firebase-tools는 재현 가능한 고정 버전을 사용해야 합니다.');
+if (workflowSource.includes('Mobile Galaxy + Safari timing')) fail('Galaxy와 Safari timing을 하나의 순차 job으로 다시 결합하지 마세요.');
 for (const suiteName of qaSuiteNames) {
   const suite = qaSuiteManifest[suiteName];
   const matrixEntry = new RegExp(
@@ -141,6 +170,9 @@ for (const suiteName of qaSuiteNames) {
 }
 if (!workflowSource.includes('npm run qa:validate-architecture')) fail('qa.yml build job이 QA architecture validator를 실행하지 않습니다.');
 if (!workflowSource.includes('qa-duration.json')) fail('qa.yml artifact가 lane별 duration 보고서를 수집하지 않습니다.');
+if (!workflowSource.includes('galaxy/result.txt') || !workflowSource.includes('safari/result.txt')) {
+  fail('qa.yml summary가 분리된 Galaxy와 Safari 결과를 모두 집계하지 않습니다.');
+}
 if (/^\s{2}deploy-pages:/mu.test(workflowSource) || workflowSource.includes('actions/deploy-pages@')) {
   fail('Main Branch QA에 Pages 배포 job을 다시 결합하지 마세요. 별도 deploy-pages.yml을 사용해야 합니다.');
 }
@@ -179,6 +211,7 @@ const report = {
       workers: suite.workers,
       browsers: suite.browsers,
       projects: suite.projects,
+      sharedTargets: suite.sharedTargets ?? [],
       targets: [suite.browserIsolationTest, ...suite.tests],
     }];
   })),
