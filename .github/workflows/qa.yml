@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   issues: write
 
@@ -22,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Record job start
+        run: date +%s%3N > .qa-job-started-at-ms
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -40,6 +43,13 @@ jobs:
         run: |
           set -o pipefail
           npm run test:unit 2>&1 | tee unit.log
+      - name: Record build and unit timing
+        if: always()
+        run: |
+          mkdir -p build
+          STARTED_AT_MS=$(cat .qa-job-started-at-ms)
+          COMPLETED_AT_MS=$(date +%s%3N)
+          node -e "const fs=require('fs'); const startedAtMs=Number(process.argv[1]); const completedAtMs=Number(process.argv[2]); fs.writeFileSync('build/qa-job-timing.json', JSON.stringify({ code: 'build', label: 'Build and unit', startedAtMs, completedAtMs, durationMs: completedAtMs - startedAtMs }, null, 2) + '\n');" "$STARTED_AT_MS" "$COMPLETED_AT_MS"
       - name: Upload app and logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -47,6 +57,7 @@ jobs:
           name: build-and-unit
           path: |
             dist
+            build
             build.log
             unit.log
             test-results/qa-architecture-report.json
@@ -89,6 +100,8 @@ jobs:
       QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
       QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
     steps:
+      - name: Record job start
+        run: date +%s%3N > .qa-job-started-at-ms
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -128,12 +141,16 @@ jobs:
         env:
           SHARD_CODE: ${{ matrix.code }}
           SHARD_GROUP: ${{ matrix.group }}
+          SHARD_LABEL: ${{ matrix.label }}
           SHARD_RESULT: ${{ job.status }}
         run: |
           target="qa-artifacts/$SHARD_CODE"
           mkdir -p "$target"
           printf '%s\n' "$SHARD_GROUP" > "$target/group.txt"
           printf '%s\n' "$SHARD_RESULT" > "$target/result.txt"
+          STARTED_AT_MS=$(cat .qa-job-started-at-ms)
+          COMPLETED_AT_MS=$(date +%s%3N)
+          node -e "const fs=require('fs'); const [code,label,started,completed]=process.argv.slice(1); const startedAtMs=Number(started); const completedAtMs=Number(completed); fs.writeFileSync(process.argv[5], JSON.stringify({ code, label, startedAtMs, completedAtMs, durationMs: completedAtMs - startedAtMs }, null, 2) + '\n');" "$SHARD_CODE" "$SHARD_LABEL" "$STARTED_AT_MS" "$COMPLETED_AT_MS" "$target/qa-job-timing.json"
           for pattern in test-results playwright-*.log qa-*.log qa-duration.json firestore-debug.log firebase-debug.log console-log.txt; do
             for file in $pattern; do
               if [ -e "$file" ]; then
@@ -156,12 +173,19 @@ jobs:
     needs: [build-and-unit, qa-firebase-emulator]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Download QA artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: '*'
           merge-multiple: true
         continue-on-error: true
+      - id: performance
+        name: Validate QA performance budget
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/validate-qa-performance.mjs
       - name: Write QA summary
         env:
           BUILD_RESULT: ${{ needs.build-and-unit.result }}
@@ -185,7 +209,7 @@ jobs:
           {
             echo '## Main Branch QA 결과'
             echo
-            echo '| 단계 | 결과 | 실행 시간 |'
+            echo '| 단계 | 결과 | 테스트 실행 시간 |'
             echo '|---|---|---:|'
             echo "| Build and unit | \`$BUILD_RESULT\` | - |"
             echo "| QA online core | \`$CORE_RESULT\` | $CORE_DURATION |"
@@ -197,6 +221,9 @@ jobs:
             echo "| Firebase emulator QA matrix | \`$EMULATOR_RESULT\` | - |"
           } | tee qa-summary.md
           cat qa-summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f qa-performance.md ]; then
+            cat qa-performance.md >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Combine QA logs
         if: always()
         run: find core seq desk galaxy safvis safari -type f \( -name 'playwright-*.log' -o -name 'qa-*.log' \) -print0 2>/dev/null | xargs -0 cat > playwright.log || touch playwright.log
@@ -206,6 +233,7 @@ jobs:
         with:
           name: qa-summary
           path: |
+            build
             core
             seq
             desk
@@ -217,6 +245,8 @@ jobs:
             test-results/qa-architecture-report.json
             playwright.log
             qa-summary.md
+            qa-performance.json
+            qa-performance.md
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
@@ -224,6 +254,8 @@ jobs:
         env:
           BUILD_RESULT: ${{ needs.build-and-unit.result }}
           EMULATOR_RESULT: ${{ needs.qa-firebase-emulator.result }}
+          PERFORMANCE_RESULT: ${{ steps.performance.outcome }}
         run: |
           test "$BUILD_RESULT" = success
           test "$EMULATOR_RESULT" = success
+          test "$PERFORMANCE_RESULT" = success
