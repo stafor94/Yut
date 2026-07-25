@@ -52,6 +52,13 @@ const suiteGroups = {
       role: 'mobile-galaxy',
       extraArgs: ['--project=mobile-galaxy'],
     },
+    {
+      label: 'QA Safari timing input',
+      script: 'test:qa-mobile-timing-webkit',
+      output: 'mobile-webkit-timing',
+      log: 'playwright-qa-mobile-webkit-timing.log',
+      role: 'mobile-webkit-timing',
+    },
   ],
 };
 
