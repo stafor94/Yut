@@ -10,7 +10,15 @@ const PERFECT_RELEASE_RANGE = Object.freeze([46, 54]);
 async function addAiAndWaitUntilGameCanStart(page) {
   const addAiButton = page.getByTestId('add-ai-P2');
   await expect(addAiButton).toBeVisible({ timeout: 15_000 });
-  await addAiButton.click();
+  await expect(addAiButton).toBeEnabled({ timeout: 15_000 });
+
+  // This is setup for the timing gesture assertions below. WebKit can keep the
+  // mobile waiting-room card in sub-pixel layout motion long enough for
+  // Playwright's pointer actionability stability check to time out even though
+  // the visible, enabled button is ready. Trigger the same DOM click handler,
+  // then retain the user-visible state assertions as the completion condition.
+  await addAiButton.evaluate((button) => button.click());
+
   await expect(addAiButton).toBeHidden({ timeout: 15_000 });
   await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
 }
