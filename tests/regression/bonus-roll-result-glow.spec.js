@@ -95,6 +95,7 @@ test.describe('bonus roll result glow regression', () => {
       document.getElementById('qa-bonus-result-glow-root')?.remove();
       const root = document.createElement('div');
       root.id = 'qa-bonus-result-glow-root';
+      root.style.cssText = 'position: fixed; inset: 0; z-index: 2147483647; pointer-events: none;';
       root.innerHTML = `
         <div class="roll-stage resolved-from-pending resolved-roll result-hold-roll" data-roll-path="local">
           <div class="roll-mat bonus-roll">
@@ -122,6 +123,7 @@ test.describe('bonus roll result glow regression', () => {
     const remoteSurface = remoteStage.locator('.roll-mat-surface');
 
     for (const surface of [localSurface, remoteSurface]) {
+      await expect(surface, '황금 광원 fixture는 실제 렌더링 viewport 안에 있어야 합니다.').toBeInViewport();
       const beforeReveal = await readGlowState(surface);
       expect(beforeReveal.matAnimationName, '결과 공개 전에 기존 bonus-mat-pop이 먼저 실행되면 안 됩니다.').toBe('none');
       expect(beforeReveal.animationName, '결과 presentation이 숨겨진 동안 황금 결과 애니메이션을 시작하면 안 됩니다.').toBe('none');
