@@ -13,6 +13,7 @@ type CapturedPointerTiming = {
   pointerId: number;
   positionPercent: number;
   releasedAt: number | null;
+  resetKey: string;
 };
 
 const POINTER_RELEASE_CLICK_MAX_DELAY_MS = 1000;
@@ -41,12 +42,12 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const positionPercent = getCurrentTimingPositionPercent();
     capturedPointerTimingRef.current = positionPercent === undefined
       ? null
-      : { pointerId: event.pointerId, positionPercent, releasedAt: null };
+      : { pointerId: event.pointerId, positionPercent, releasedAt: null, resetKey };
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const capturedTiming = capturedPointerTimingRef.current;
-    if (capturedTiming?.pointerId === event.pointerId) {
+    if (capturedTiming?.pointerId === event.pointerId && capturedTiming.resetKey === resetKey) {
       capturedTiming.releasedAt = performance.now();
     }
   };
@@ -59,7 +60,8 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
 
   const handleClick = () => {
     const capturedTiming = capturedPointerTimingRef.current;
-    const capturedPosition = capturedTiming && typeof capturedTiming.releasedAt === 'number'
+    const capturedPosition = capturedTiming && capturedTiming.resetKey === resetKey
+      && typeof capturedTiming.releasedAt === 'number'
       && performance.now() - capturedTiming.releasedAt <= POINTER_RELEASE_CLICK_MAX_DELAY_MS
       ? capturedTiming.positionPercent
       : undefined;
