@@ -110,6 +110,7 @@ const playResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () =
   playSequence += 1;
   const sequence = playSequence;
   const audio = getResultAudio(result);
+  const isTurnOrderResult = Boolean(label.closest('[data-testid="turn-order-roll-stage-anchor"]'));
   queuedByElement.set(label, result);
 
   if (activeAudio && activeAudio !== audio) stopActiveAudio();
@@ -121,7 +122,7 @@ const playResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () =
 
   const handleEnded = () => {
     clearQueuedResult(label, result);
-    if (sequence === playSequence && (result === '윷' || result === '모')) playBonus(isEnabled, sequence);
+    if (!isTurnOrderResult && sequence === playSequence && (result === '윷' || result === '모')) playBonus(isEnabled, sequence);
   };
   const handleError = () => clearQueuedResult(label, result);
   audio.addEventListener('ended', handleEnded, { once: true });
