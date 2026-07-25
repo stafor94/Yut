@@ -14,7 +14,7 @@ type CapturedPointerTiming = {
   resetKey: string;
 };
 
-type SubmittedPointerTiming = {
+type ReleasedPointerTiming = {
   releasedAt: number;
 };
 
@@ -36,7 +36,7 @@ const getAnimationPositionPercent = (animation: Animation | undefined) => {
 export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', onRoll }: RollTimingControlProps) {
   const trackRef = useRef<HTMLSpanElement | null>(null);
   const capturedPointerTimingRef = useRef<CapturedPointerTiming | null>(null);
-  const submittedPointerTimingRef = useRef<SubmittedPointerTiming | null>(null);
+  const releasedPointerTimingRef = useRef<ReleasedPointerTiming | null>(null);
 
   const getTimingAnimation = () => trackRef.current?.getAnimations()[0];
   const getCurrentTimingPositionPercent = () => getAnimationPositionPercent(getTimingAnimation());
@@ -63,7 +63,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (disabled || !event.isPrimary || event.button !== 0) return;
     capturedPointerTimingRef.current = { pointerId: event.pointerId, resetKey };
-    submittedPointerTimingRef.current = null;
+    releasedPointerTimingRef.current = null;
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -76,28 +76,27 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     if (capturedTiming?.pointerId !== event.pointerId || capturedTiming.resetKey !== resetKey) return;
     capturedPointerTimingRef.current = null;
     releasePointerCapture(event);
+    releasedPointerTimingRef.current = { releasedAt: performance.now() };
     const targetRect = event.currentTarget.getBoundingClientRect();
     const releasedInsideButton = event.clientX >= targetRect.left && event.clientX <= targetRect.right
       && event.clientY >= targetRect.top && event.clientY <= targetRect.bottom;
-    submittedPointerTimingRef.current = releasedInsideButton && submitCurrentTiming()
-      ? { releasedAt: performance.now() }
-      : null;
+    if (releasedInsideButton) submitCurrentTiming();
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (capturedPointerTimingRef.current?.pointerId === event.pointerId) {
       capturedPointerTimingRef.current = null;
-      submittedPointerTimingRef.current = null;
+      releasedPointerTimingRef.current = null;
       releasePointerCapture(event);
     }
   };
 
   const handleClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
-    const submittedTiming = submittedPointerTimingRef.current;
+    const releasedTiming = releasedPointerTimingRef.current;
     const isFollowUpPointerClick = event.detail > 0
-      && typeof submittedTiming?.releasedAt === 'number'
-      && performance.now() - submittedTiming.releasedAt <= POINTER_RELEASE_CLICK_MAX_DELAY_MS;
-    submittedPointerTimingRef.current = null;
+      && typeof releasedTiming?.releasedAt === 'number'
+      && performance.now() - releasedTiming.releasedAt <= POINTER_RELEASE_CLICK_MAX_DELAY_MS;
+    releasedPointerTimingRef.current = null;
     capturedPointerTimingRef.current = null;
     if (isFollowUpPointerClick) return;
     if (!submitCurrentTiming()) onRoll();
