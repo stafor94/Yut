@@ -10,6 +10,7 @@ const cleanupMode = String(process.env.QA_CLEANUP_MODE ?? 'current-run').trim();
 const workflowPrefix = String(process.env.QA_WORKFLOW_PREFIX ?? '').trim();
 const orphanMaxAgeMs = Number(process.env.QA_ORPHAN_MAX_AGE_MS ?? 2 * 60 * 60 * 1000);
 const shouldReportRemainingRooms = process.env.QA_CLEANUP_REPORT_REMAINING === '1';
+const cleanupConcurrency = Number(process.env.QA_CLEANUP_CONCURRENCY ?? 4);
 const cleanupAuthRetryDelaysMs = [500, 1000, 2000, 4000];
 
 function formatDeletedCounts(deletedCounts) {
@@ -159,27 +160,40 @@ async function validateQaRoomLimit(db) {
   return candidates.length;
 }
 
+async function deleteRoomsWithBoundedConcurrency(rooms) {
+  const failures = [];
+  let nextIndex = 0;
+  const workerCount = Math.min(cleanupConcurrency, rooms.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < rooms.length) {
+      const room = rooms[nextIndex];
+      nextIndex += 1;
+      try {
+        const deletedCounts = await deleteRoomForQa(room.id);
+        const summary = formatDeletedCounts(deletedCounts);
+        console.log(`정리 완료: ${room.id} (${room.title || '제목 없음'})${summary ? ` - ${summary}` : ''}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failures.push(`${room.id}: ${message}`);
+        console.error(`정리 실패: ${room.id} - ${message}`);
+      }
+    }
+  });
+  await Promise.all(workers);
+  return failures;
+}
+
 async function cleanupQaRooms() {
   if (!qaRunId) throw new Error('QA_RUN_ID 없이 QA cleanup을 실행할 수 없습니다.');
   if (!Number.isFinite(orphanMaxAgeMs) || orphanMaxAgeMs < 60_000) throw new Error(`잘못된 QA_ORPHAN_MAX_AGE_MS: ${orphanMaxAgeMs}`);
   if (!Number.isInteger(qaRoomLimit) || qaRoomLimit < 1) throw new Error(`잘못된 QA room limit: ${qaRoomLimit}`);
+  if (!Number.isInteger(cleanupConcurrency) || cleanupConcurrency < 1 || cleanupConcurrency > 8) throw new Error(`잘못된 QA_CLEANUP_CONCURRENCY: ${cleanupConcurrency}`);
   const db = await getTestDb();
   if (!db) throw new Error('Firebase 설정이 없습니다.');
 
   const qaRooms = await getCleanupTargets(db);
-  console.log(`QA cleanup mode=${cleanupMode}, namespace=${qaRunId}, workflowPrefix=${workflowPrefix || '없음'}, rooms=${qaRooms.length}, limit=${qaRoomLimit}`);
-  const failures = [];
-  for (const room of qaRooms) {
-    try {
-      const deletedCounts = await deleteRoomForQa(room.id);
-      const summary = formatDeletedCounts(deletedCounts);
-      console.log(`정리 완료: ${room.id} (${room.title || '제목 없음'})${summary ? ` - ${summary}` : ''}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failures.push(`${room.id}: ${message}`);
-      console.error(`정리 실패: ${room.id} - ${message}`);
-    }
-  }
+  console.log(`QA cleanup mode=${cleanupMode}, namespace=${qaRunId}, workflowPrefix=${workflowPrefix || '없음'}, rooms=${qaRooms.length}, limit=${qaRoomLimit}, concurrency=${cleanupConcurrency}`);
+  const failures = await deleteRoomsWithBoundedConcurrency(qaRooms);
 
   const remainingRooms = await findRemainingTargets(db);
   const remainingQaCount = await validateQaRoomLimit(db);
