@@ -1,4 +1,5 @@
 const timeoutPenaltyTitle = 'timeout 벌칙은 오프라인 로컬 timeout에만 적용된다';
+const timingPointerSpec = 'tests/mobile/roll-timing-pointer-capture.spec.js';
 
 export const qaSuiteManifest = Object.freeze({
   'online-core': Object.freeze({
@@ -39,12 +40,13 @@ export const qaSuiteManifest = Object.freeze({
     ]),
   }),
   'mobile-galaxy': Object.freeze({
-    label: 'Mobile Galaxy + Safari timing',
-    code: 'mobile',
+    label: 'Mobile Galaxy',
+    code: 'galaxy',
     workers: 3,
-    browsers: Object.freeze(['chromium', 'webkit']),
-    projects: Object.freeze(['desktop-chromium', 'mobile-galaxy', 'mobile-webkit-timing']),
+    browsers: Object.freeze(['chromium']),
+    projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
+    sharedTargets: Object.freeze([timingPointerSpec]),
     tests: Object.freeze([
       'tests/mobile/mobile-layout.spec.js',
       'tests/mobile/waiting-room-requested-layout.spec.js',
@@ -52,7 +54,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/lobby-start-polish.spec.js',
       'tests/mobile/lobby-guide-polish.spec.js',
       'tests/mobile/roll-timing-grades.spec.js',
-      'tests/mobile/roll-timing-pointer-capture.spec.js',
+      timingPointerSpec,
       'tests/mobile/roll-stage-board-alignment.spec.js',
       'tests/mobile/turn-order-layout.spec.js',
       'tests/mobile/turn-order-roll-placement.spec.js',
@@ -61,6 +63,16 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/lobby-scroll-reset.spec.js',
       'tests/mobile/lobby-header-badges.spec.js',
     ]),
+  }),
+  'safari-timing': Object.freeze({
+    label: 'Safari timing',
+    code: 'safari',
+    workers: 2,
+    browsers: Object.freeze(['webkit']),
+    projects: Object.freeze(['mobile-webkit-timing']),
+    browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
+    sharedTargets: Object.freeze([timingPointerSpec]),
+    tests: Object.freeze([timingPointerSpec]),
   }),
 });
 
