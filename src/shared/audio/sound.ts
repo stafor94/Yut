@@ -1,4 +1,5 @@
 import { bindYutResultSpeech } from './yutSpeech';
+import { getChainedSoundDelayMs } from './soundTiming';
 import arriveAudioSource from './assets/effects/arrive-original.wav';
 import captureAudioSource from './assets/effects/capture-original.wav';
 import countdownAudioSource from './assets/effects/countdown-original.wav';
@@ -187,6 +188,26 @@ const getEffectDedupeWindow = (effect: SoundEffect) => {
   return 0.18;
 };
 
+const scheduleSoundFollowUp = (delayMs: number, onEnded: () => void, cancelPlayback?: () => void) => {
+  if (typeof window === 'undefined') {
+    onEnded();
+    cancelPlayback?.();
+    return undefined;
+  }
+  let completed = false;
+  const timer = window.setTimeout(() => {
+    if (completed) return;
+    completed = true;
+    onEnded();
+  }, delayMs);
+  return () => {
+    if (completed) return;
+    completed = true;
+    window.clearTimeout(timer);
+    cancelPlayback?.();
+  };
+};
+
 export const isStoredSoundEnabled = () => {
   if (typeof window === 'undefined') return false;
   return window.localStorage.getItem(SOUND_ENABLED_STORAGE_KEY) !== 'false';
@@ -200,15 +221,21 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean, onEnded?:
     return undefined;
   }
 
+  const chainedDelayMs = getChainedSoundDelayMs(effect, Boolean(onEnded));
   const now = typeof performance === 'undefined' ? Date.now() / 1000 : performance.now() / 1000;
   const lastPlayedAt = lastPlayedEffectAt.get(effect) ?? -Infinity;
   if (now - lastPlayedAt < getEffectDedupeWindow(effect)) {
+    if (chainedDelayMs !== null && onEnded) return scheduleSoundFollowUp(chainedDelayMs, onEnded);
     onEnded?.();
     return undefined;
   }
   lastPlayedEffectAt.set(effect, now);
 
   if (effect in WAV_EFFECT_SOURCES) {
+    if (chainedDelayMs !== null && onEnded) {
+      const cancelPlayback = playWavEffect(effect as keyof typeof WAV_EFFECT_SOURCES);
+      return scheduleSoundFollowUp(chainedDelayMs, onEnded, cancelPlayback);
+    }
     return playWavEffect(effect as keyof typeof WAV_EFFECT_SOURCES, onEnded);
   }
 
