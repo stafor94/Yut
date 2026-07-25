@@ -33,11 +33,14 @@ Playwright project의 `testMatch` 계약은 `tests/qa/project-contracts.mjs`에�
 ## Lane 계약
 
 - `online-core`: 방 생성·참가·게임 시작·presence·room lifecycle 등 온라인 핵심 흐름
-- `desktop-regression`: 윷 던지기·이동·연출·로비 desktop 회귀
+- `desktop-sequence`: sequence replay, pending/result-hold, 이동 연출처럼 짧은 중간 상태를 관찰하는 timing-sensitive desktop 회귀
+- `desktop-regression`: 윷 던지기·이동·연출·로비의 나머지 desktop 회귀
 - `mobile-galaxy`: Galaxy Chromium viewport 전체 모바일 QA
 - `safari-timing`: iPhone WebKit에서 실제 pointer 입력과 화면 위치 판정 회귀 QA
 
 Galaxy와 Safari timing은 별도 GitHub Actions matrix entry로 실행한다. 두 browser 실행을 한 runner에서 순차 실행하지 않는다. 각 lane은 고유 `QA_RUN_ID`, `QA_PROJECT_ID`, room namespace와 cleanup 범위를 사용한다.
+
+`desktop-sequence`는 `bug-history-smoke.spec.js`를 1 worker에서 독립 실행한다. 해당 spec은 3D 렌더링과 짧은 pending·result-hold·move 시작 상태를 연속 관찰하므로 다른 장시간 browser context와 worker를 공유하지 않는다. 테스트 assertion이나 timeout을 완화하지 않고 runner 격리로 관찰 경쟁을 제거한다.
 
 `mobile-galaxy`는 `desktop-chromium` project에서 Firebase browser isolation spec만 실행하고 `mobile-galaxy` project에서 모바일 spec을 실행한다. `safari-timing`은 `mobile-webkit-timing` project에서 WebKit browser isolation과 타이밍 pointer spec을 실행한다.
 
@@ -65,15 +68,18 @@ Galaxy와 Safari timing은 별도 GitHub Actions matrix entry로 실행한다. �
 ### 검증된 worker 예산
 
 - `online-core`: 2 workers
+- `desktop-sequence`: 1 worker
 - `desktop-regression`: 2 workers
 - `mobile-galaxy`: 3 workers
 - `safari-timing`: 2 workers
 
-온라인·desktop lane은 여러 브라우저 context, Firebase polling, 3D 애니메이션을 동시에 사용한다. 4 workers에서는 브라우저가 진행되는 동안 테스트 프로세스가 지연되어 순서 정하기 준비 상태와 pending roll stage 같은 실제 중간 화면을 놓치는 회귀가 확인됐다. assertion 삭제나 timeout 증가로 숨기지 않고 검증된 자원 범위로 제한한다.
+온라인·일반 desktop lane은 여러 브라우저 context, Firebase polling, 3D 애니메이션을 동시에 사용한다. 4 workers에서는 브라우저가 진행되는 동안 테스트 프로세스가 지연되어 순서 정하기 준비 상태와 pending roll stage 같은 실제 중간 화면을 놓치는 회귀가 확인됐다. assertion 삭제나 timeout 증가로 숨기지 않고 검증된 자원 범위로 제한한다.
+
+`desktop-sequence`는 1 worker를 고정한다. Run `30160293177`에서 `bug-history-smoke`가 다른 desktop 테스트와 2-worker runner를 공유하는 동안 2초 move 시작 상태를 놓쳤으므로, 동일 파일을 별도 runner에 격리해 전체 workflow 병렬성은 유지하고 파일 내부 관찰 순서는 보장한다.
 
 Safari timing은 Galaxy와 runner를 분리한 상태에서 최대 2 workers만 사용한다. shared target은 테스트별 room namespace와 browser context가 격리된 경우에만 병렬 실행한다.
 
-worker를 다시 높이려면 변경된 lane을 최소 3회 연속 실행해 transient UI, room 잔존, Firebase 요청 오류가 없고 p95 실행 시간이 실제로 개선되는지 확인한다.
+worker를 다시 높이거나 lane을 합치려면 변경된 lane을 최소 3회 연속 실행해 transient UI, room 잔존, Firebase 요청 오류가 없고 p95 실행 시간이 실제로 개선되는지 확인한다.
 
 ## Pages 배포 분리
 
@@ -103,6 +109,7 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 - QA matrix의 build 선행 의존성 재도입
 - `firebase-tools@latest` 재도입
 - workflow matrix lane·label·artifact code·browser·duration artifact 연결 누락
+- desktop sequence lane 또는 summary 결과 누락
 - Galaxy와 Safari timing의 순차 job 재결합
 - 분리된 Galaxy·Safari summary 결과 누락
 - Main Branch QA에 Pages 배포 또는 Pages 결과 의존성 재결합
@@ -115,6 +122,7 @@ Pages workflow는 별도 concurrency group을 사용하고 새 배포가 시작�
 - 기존 browser isolation 검증이 각 lane에서 유지되는지 확인
 - 기존 테스트 수와 browser execution 수가 줄지 않았는지 확인
 - 의도적인 lane 간 중복 target이 `sharedTargets`로 선언됐는지 확인
+- timing-sensitive desktop spec이 독립 1-worker lane에 유지되는지 확인
 - production Firebase 설정이 QA에 유입되지 않는지 확인
 - QA room 잔존과 다른 worker·lane room 삭제가 없는지 확인
 - lane별 `qa-duration.json`과 전체 임계 경로를 이전 Run과 비교

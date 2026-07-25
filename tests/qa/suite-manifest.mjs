@@ -20,6 +20,19 @@ export const qaSuiteManifest = Object.freeze({
       'tests/online/room-exit-resume.spec.js',
     ]),
   }),
+  'desktop-sequence': Object.freeze({
+    label: 'Desktop sequence replay',
+    code: 'seq',
+    workers: 1,
+    browsers: Object.freeze(['chromium']),
+    timeoutMs: 150_000,
+    projects: Object.freeze(['desktop-chromium']),
+    browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
+    grepInvert: timeoutPenaltyTitle,
+    tests: Object.freeze([
+      'tests/regression/bug-history-smoke.spec.js',
+    ]),
+  }),
   'desktop-regression': Object.freeze({
     label: 'Desktop regression',
     code: 'desk',
@@ -30,7 +43,6 @@ export const qaSuiteManifest = Object.freeze({
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     grepInvert: timeoutPenaltyTitle,
     tests: Object.freeze([
-      'tests/regression/bug-history-smoke.spec.js',
       'tests/regression/finish-step-animation.spec.js',
       'tests/regression/roll-mat-surface.spec.js',
       'tests/regression/local-roll-stage-position.spec.js',

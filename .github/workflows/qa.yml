@@ -65,6 +65,10 @@ jobs:
             code: core
             label: Online core
             browsers: chromium
+          - group: desktop-sequence
+            code: seq
+            label: Desktop sequence replay
+            browsers: chromium
           - group: desktop-regression
             code: desk
             label: Desktop regression
@@ -160,6 +164,7 @@ jobs:
           EMULATOR_RESULT: ${{ needs.qa-firebase-emulator.result }}
         run: |
           CORE_RESULT=$(cat core/result.txt 2>/dev/null || printf 'unavailable')
+          SEQUENCE_RESULT=$(cat seq/result.txt 2>/dev/null || printf 'unavailable')
           DESKTOP_RESULT=$(cat desk/result.txt 2>/dev/null || printf 'unavailable')
           GALAXY_RESULT=$(cat galaxy/result.txt 2>/dev/null || printf 'unavailable')
           SAFARI_RESULT=$(cat safari/result.txt 2>/dev/null || printf 'unavailable')
@@ -167,6 +172,7 @@ jobs:
             node -e "const fs=require('fs'); try { const value=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const ms=value.durations.reduce((sum, item) => sum + Number(item.durationMs || 0), 0); process.stdout.write((ms / 1000).toFixed(1) + 's'); } catch { process.stdout.write('unavailable'); }" "$1"
           }
           CORE_DURATION=$(duration core/qa-duration.json)
+          SEQUENCE_DURATION=$(duration seq/qa-duration.json)
           DESKTOP_DURATION=$(duration desk/qa-duration.json)
           GALAXY_DURATION=$(duration galaxy/qa-duration.json)
           SAFARI_DURATION=$(duration safari/qa-duration.json)
@@ -177,6 +183,7 @@ jobs:
             echo '|---|---|---:|'
             echo "| Build and unit | \`$BUILD_RESULT\` | - |"
             echo "| QA online core | \`$CORE_RESULT\` | $CORE_DURATION |"
+            echo "| QA desktop sequence replay | \`$SEQUENCE_RESULT\` | $SEQUENCE_DURATION |"
             echo "| QA desktop regression | \`$DESKTOP_RESULT\` | $DESKTOP_DURATION |"
             echo "| QA mobile Galaxy | \`$GALAXY_RESULT\` | $GALAXY_DURATION |"
             echo "| QA Safari timing | \`$SAFARI_RESULT\` | $SAFARI_DURATION |"
@@ -185,7 +192,7 @@ jobs:
           cat qa-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Combine QA logs
         if: always()
-        run: find core desk galaxy safari -type f \( -name 'playwright-*.log' -o -name 'qa-*.log' \) -print0 2>/dev/null | xargs -0 cat > playwright.log || touch playwright.log
+        run: find core seq desk galaxy safari -type f \( -name 'playwright-*.log' -o -name 'qa-*.log' \) -print0 2>/dev/null | xargs -0 cat > playwright.log || touch playwright.log
       - name: Upload QA summary
         if: always()
         uses: actions/upload-artifact@v4
@@ -193,6 +200,7 @@ jobs:
           name: qa-summary
           path: |
             core
+            seq
             desk
             galaxy
             safari

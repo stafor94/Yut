@@ -13,6 +13,7 @@ const normalizePath = (value) => value.split(path.sep).join('/');
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 const suiteContracts = Object.freeze({
   'online-core': Object.freeze({ code: 'core', label: 'Online core', browsers: Object.freeze(['chromium']) }),
+  'desktop-sequence': Object.freeze({ code: 'seq', label: 'Desktop sequence replay', browsers: Object.freeze(['chromium']) }),
   'desktop-regression': Object.freeze({ code: 'desk', label: 'Desktop regression', browsers: Object.freeze(['chromium']) }),
   'mobile-galaxy': Object.freeze({ code: 'galaxy', label: 'Mobile Galaxy', browsers: Object.freeze(['chromium']) }),
   'safari-timing': Object.freeze({ code: 'safari', label: 'Safari timing', browsers: Object.freeze(['webkit']) }),
@@ -170,8 +171,8 @@ for (const suiteName of qaSuiteNames) {
 }
 if (!workflowSource.includes('npm run qa:validate-architecture')) fail('qa.yml build job이 QA architecture validator를 실행하지 않습니다.');
 if (!workflowSource.includes('qa-duration.json')) fail('qa.yml artifact가 lane별 duration 보고서를 수집하지 않습니다.');
-if (!workflowSource.includes('galaxy/result.txt') || !workflowSource.includes('safari/result.txt')) {
-  fail('qa.yml summary가 분리된 Galaxy와 Safari 결과를 모두 집계하지 않습니다.');
+if (!workflowSource.includes('seq/result.txt') || !workflowSource.includes('galaxy/result.txt') || !workflowSource.includes('safari/result.txt')) {
+  fail('qa.yml summary가 분리된 sequence, Galaxy와 Safari 결과를 모두 집계하지 않습니다.');
 }
 if (/^\s{2}deploy-pages:/mu.test(workflowSource) || workflowSource.includes('actions/deploy-pages@')) {
   fail('Main Branch QA에 Pages 배포 job을 다시 결합하지 마세요. 별도 deploy-pages.yml을 사용해야 합니다.');
