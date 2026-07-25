@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Record job start
-        run: date +%s%3N > .qa-job-started-at-ms
+        run: echo "QA_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -47,9 +47,8 @@ jobs:
         if: always()
         run: |
           mkdir -p build
-          STARTED_AT_MS=$(cat .qa-job-started-at-ms)
           COMPLETED_AT_MS=$(date +%s%3N)
-          node -e "const fs=require('fs'); const startedAtMs=Number(process.argv[1]); const completedAtMs=Number(process.argv[2]); fs.writeFileSync('build/qa-job-timing.json', JSON.stringify({ code: 'build', label: 'Build and unit', startedAtMs, completedAtMs, durationMs: completedAtMs - startedAtMs }, null, 2) + '\n');" "$STARTED_AT_MS" "$COMPLETED_AT_MS"
+          node -e "const fs=require('fs'); const startedAtMs=Number(process.argv[1]); const completedAtMs=Number(process.argv[2]); fs.writeFileSync('build/qa-job-timing.json', JSON.stringify({ code: 'build', label: 'Build and unit', startedAtMs, completedAtMs, durationMs: completedAtMs - startedAtMs }, null, 2) + '\n');" "$QA_JOB_STARTED_AT_MS" "$COMPLETED_AT_MS"
       - name: Upload app and logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -101,7 +100,7 @@ jobs:
       QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
     steps:
       - name: Record job start
-        run: date +%s%3N > .qa-job-started-at-ms
+        run: echo "QA_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -148,9 +147,8 @@ jobs:
           mkdir -p "$target"
           printf '%s\n' "$SHARD_GROUP" > "$target/group.txt"
           printf '%s\n' "$SHARD_RESULT" > "$target/result.txt"
-          STARTED_AT_MS=$(cat .qa-job-started-at-ms)
           COMPLETED_AT_MS=$(date +%s%3N)
-          node -e "const fs=require('fs'); const [code,label,started,completed]=process.argv.slice(1); const startedAtMs=Number(started); const completedAtMs=Number(completed); fs.writeFileSync(process.argv[5], JSON.stringify({ code, label, startedAtMs, completedAtMs, durationMs: completedAtMs - startedAtMs }, null, 2) + '\n');" "$SHARD_CODE" "$SHARD_LABEL" "$STARTED_AT_MS" "$COMPLETED_AT_MS" "$target/qa-job-timing.json"
+          node -e "const fs=require('fs'); const [code,label,started,completed]=process.argv.slice(1); const startedAtMs=Number(started); const completedAtMs=Number(completed); fs.writeFileSync(process.argv[5], JSON.stringify({ code, label, startedAtMs, completedAtMs, durationMs: completedAtMs - startedAtMs }, null, 2) + '\n');" "$SHARD_CODE" "$SHARD_LABEL" "$QA_JOB_STARTED_AT_MS" "$COMPLETED_AT_MS" "$target/qa-job-timing.json"
           for pattern in test-results playwright-*.log qa-*.log qa-duration.json firestore-debug.log firebase-debug.log console-log.txt; do
             for file in $pattern; do
               if [ -e "$file" ]; then
