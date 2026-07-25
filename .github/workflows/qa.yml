@@ -66,7 +66,7 @@ jobs:
             label: Desktop regression
           - group: mobile-galaxy
             code: mobile
-            label: Mobile Galaxy
+            label: Mobile Galaxy + Safari timing
     env:
       QA_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
       QA_PROJECT_ID: demo-yut-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
@@ -83,6 +83,9 @@ jobs:
       - run: npm ci
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
+      - name: Install Playwright WebKit for Safari timing QA
+        if: matrix.group == 'mobile-galaxy'
+        run: npx playwright install --with-deps webkit
       - name: Prepare isolated QA Firebase environment
         run: node .github/scripts/write-qa-firebase-env.mjs
       - name: Reject production Firebase configuration
@@ -182,7 +185,7 @@ jobs:
             echo "| Build and unit | \`$BUILD_RESULT\` |"
             echo "| QA online core | \`$CORE_RESULT\` |"
             echo "| QA desktop regression | \`$DESKTOP_RESULT\` |"
-            echo "| QA mobile Galaxy | \`$MOBILE_RESULT\` |"
+            echo "| QA mobile Galaxy + Safari timing | \`$MOBILE_RESULT\` |"
             echo "| Firebase emulator QA matrix | \`$EMULATOR_RESULT\` |"
             echo "| Deploy Pages | \`$DEPLOY_RESULT\` |"
           } | tee qa-summary.md

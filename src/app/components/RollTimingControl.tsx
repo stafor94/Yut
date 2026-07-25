@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { getRollTimingPositionPercent } from '../../game-core/roll';
 
 type RollTimingControlProps = {
@@ -11,9 +11,11 @@ type RollTimingControlProps = {
 
 type CapturedPointerTiming = {
   pointerId: number;
-  positionPercent: number;
-  releasedAt: number | null;
   resetKey: string;
+};
+
+type ReleasedPointerTiming = {
+  releasedAt: number;
 };
 
 const POINTER_RELEASE_CLICK_MAX_DELAY_MS = 1000;
@@ -34,39 +36,69 @@ const getAnimationPositionPercent = (animation: Animation | undefined) => {
 export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', onRoll }: RollTimingControlProps) {
   const trackRef = useRef<HTMLSpanElement | null>(null);
   const capturedPointerTimingRef = useRef<CapturedPointerTiming | null>(null);
+  const releasedPointerTimingRef = useRef<ReleasedPointerTiming | null>(null);
 
-  const getCurrentTimingPositionPercent = () => getAnimationPositionPercent(trackRef.current?.getAnimations()[0]);
+  const getTimingAnimation = () => trackRef.current?.getAnimations()[0];
+
+  const submitCurrentTiming = () => {
+    const animation = getTimingAnimation();
+    const positionPercent = getAnimationPositionPercent(animation);
+    if (positionPercent === undefined) return false;
+    animation?.pause();
+    onRoll(positionPercent);
+    return true;
+  };
+
+  const releasePointerCapture = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    try {
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // Some mobile browsers can drop capture before React receives the terminal event.
+    }
+  };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (disabled || !event.isPrimary || event.button !== 0) return;
-    const positionPercent = getCurrentTimingPositionPercent();
-    capturedPointerTimingRef.current = positionPercent === undefined
-      ? null
-      : { pointerId: event.pointerId, positionPercent, releasedAt: null, resetKey };
+    capturedPointerTimingRef.current = { pointerId: event.pointerId, resetKey };
+    releasedPointerTimingRef.current = null;
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Touch browsers with implicit capture can reject an explicit capture request.
+    }
   };
 
   const handlePointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const capturedTiming = capturedPointerTimingRef.current;
-    if (capturedTiming?.pointerId === event.pointerId && capturedTiming.resetKey === resetKey) {
-      capturedTiming.releasedAt = performance.now();
-    }
+    if (capturedTiming?.pointerId !== event.pointerId || capturedTiming.resetKey !== resetKey) return;
+    capturedPointerTimingRef.current = null;
+    releasePointerCapture(event);
+    releasedPointerTimingRef.current = { releasedAt: performance.now() };
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    const releasedInsideButton = event.clientX >= targetRect.left && event.clientX <= targetRect.right
+      && event.clientY >= targetRect.top && event.clientY <= targetRect.bottom;
+    if (releasedInsideButton) submitCurrentTiming();
   };
 
   const handlePointerCancel = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (capturedPointerTimingRef.current?.pointerId === event.pointerId) {
       capturedPointerTimingRef.current = null;
+      releasedPointerTimingRef.current = null;
+      releasePointerCapture(event);
     }
   };
 
-  const handleClick = () => {
-    const capturedTiming = capturedPointerTimingRef.current;
-    const capturedPosition = capturedTiming && capturedTiming.resetKey === resetKey
-      && typeof capturedTiming.releasedAt === 'number'
-      && performance.now() - capturedTiming.releasedAt <= POINTER_RELEASE_CLICK_MAX_DELAY_MS
-      ? capturedTiming.positionPercent
-      : undefined;
+  const handleClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    const releasedTiming = releasedPointerTimingRef.current;
+    const isFollowUpPointerClick = event.detail > 0
+      && typeof releasedTiming?.releasedAt === 'number'
+      && performance.now() - releasedTiming.releasedAt <= POINTER_RELEASE_CLICK_MAX_DELAY_MS;
+    releasedPointerTimingRef.current = null;
     capturedPointerTimingRef.current = null;
-    onRoll(capturedPosition ?? getCurrentTimingPositionPercent());
+    if (isFollowUpPointerClick) return;
+    if (!submitCurrentTiming()) onRoll();
   };
 
   return <>
