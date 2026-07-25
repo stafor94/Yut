@@ -1,11 +1,12 @@
 import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
-import { removeRoomPlayer, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequence } from '../../features/room/services/roomService';
+import { deleteRoom, getRoom, removeRoomPlayer, updateRoomPlayer, updateRoomStatus, type GameAction, type GameSequence, type RoomSummary } from '../../features/room/services/roomService';
+import { getRoomPlayer } from '../../features/room/services/roomLifecycleStore';
+import type { ItemTiming } from '../../features/items/logic/items';
+import { createSeats, STORAGE_KEYS, type PendingItemPickup, type PlayMode, type Screen, type Seat, type SequenceStateSnapshot } from '../appState';
+import { isActiveHumanRoomHost } from '../flows/gameEndRoomReturn';
 import { applySequenceEvents } from '../hooks/applySequenceEvent';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
-import { createSeats, type PendingItemPickup, type PlayMode, type Screen, type Seat, type SequenceStateSnapshot } from '../appState';
-import type { ItemTiming } from '../../features/items/logic/items';
-import { STORAGE_KEYS } from '../appState';
 import { getSubstitutedRoomPlayerUpdate } from './useWaitingRoomController';
 
 export type GameLifecycleControllerParams = {
@@ -60,8 +61,46 @@ export type GameLifecycleControllerParams = {
 };
 
 export function useGameLifecycleController(params: GameLifecycleControllerParams) {
-  const returnToWaitingRoom = useCallback(() => {
+  const returnToWaitingRoom = useCallback(async () => {
     const finishedRoomId = params.activeRoomId;
+    if (finishedRoomId) {
+      if (!params.activeRoomHostId) {
+        params.setMessage('기존 방장 정보를 확인할 수 없어 대기실로 이동하지 않았습니다. 잠시 뒤 다시 시도해주세요.');
+        return;
+      }
+
+      const currentHostSeat = params.seats.find((seat) => seat.id === params.activeRoomHostId && !seat.isEmpty);
+      let hasActiveHumanHost = isActiveHumanRoomHost(currentHostSeat);
+      try {
+        if (!hasActiveHumanHost) {
+          const authoritativeHostPlayer = await getRoomPlayer(finishedRoomId, params.activeRoomHostId);
+          hasActiveHumanHost = isActiveHumanRoomHost(authoritativeHostPlayer);
+        }
+        if (!hasActiveHumanHost) {
+          const deleted = await deleteRoom(finishedRoomId);
+          if (!deleted) {
+            const remainingRoom = await getRoom(finishedRoomId) as (RoomSummary & { deletingAt?: unknown }) | null;
+            if (remainingRoom && !remainingRoom.deletingAt) {
+              params.setMessage('방장은 나갔지만 방 종료 처리에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
+              return;
+            }
+          }
+          params.setCountdown(-1);
+          params.setItemPromptTiming(null);
+          params.setPendingItemPickup(null);
+          params.pendingItemPickupRef.current = null;
+          params.setEndGameDialogOpen(false);
+          params.setMessage('방장이 방을 나가 방 종료를 확인하고 있습니다.');
+          params.setScreen('waitingRoom');
+          return;
+        }
+      } catch (error) {
+        console.warn('완주 후 방장 상태 확인에 실패했습니다.', error);
+        params.setMessage('방장 상태를 확인하지 못해 대기실로 이동하지 않았습니다. 잠시 뒤 다시 시도해주세요.');
+        return;
+      }
+    }
+
     params.setSeats((currentSeats) => currentSeats.map((seat) => {
       if (seat.isSubstitutedByAI) return { ...seat, id: `slot-${Number(seat.label.replace('P', ''))}`, name: '빈 자리', ready: false, isAI: false, isSubstitutedByAI: false, isEmpty: true, isHost: false };
       if (!seat.isAI && seat.id !== params.activeRoomHostId) return { ...seat, ready: false };
