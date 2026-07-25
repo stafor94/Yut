@@ -24,7 +24,11 @@ async function startAiTimingGame(page, context, testInfo) {
   let resolvedRoomId;
   await runQaStep(testInfo, 'AI 게임 시작과 순서 정하기 완료 후 내 던지기 차례 대기', async () => {
     await createRoomFromLobby(page, roomTitle);
-    resolvedRoomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
+    await expect.poll(async () => {
+      resolvedRoomId = await rememberRoomIdFromPage(page).catch(() => undefined);
+      return resolvedRoomId ?? '';
+    }, { timeout: 5_000, message: '생성된 방의 Firebase Auth 토큰과 QA cleanup 권한이 준비되어야 합니다.' }).not.toBe('');
+    resolvedRoomId ??= await findRoomIdByTitle(roomTitle);
     await addAiAndWaitUntilGameCanStart(page);
     await page.getByTestId('start-game-button').click();
     await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
