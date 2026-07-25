@@ -16,12 +16,10 @@ test.describe('완주 한 칸 이동 애니메이션 회귀', () => {
   });
 
   test('완주 효과가 준비되기 전 첫 프레임에는 최종 보관 위치를 숨긴다', () => {
-    const mainSource = readFileSync('src/main.tsx', 'utf8');
-    const guardSource = readFileSync('src/styles/finish-transition-guard.css', 'utf8');
+    const finishEffectsSource = readFileSync('src/styles/finish-effects.css', 'utf8');
 
-    expect(mainSource).toContain("import './styles/finish-transition-guard.css';");
-    expect(guardSource).toMatch(/\.piece-token\.finished:not\(\.finish-arrival\)/);
-    expect(guardSource).toMatch(/animation:\s*finish-pending-reveal\s+60ms\s+step-end\s+both/);
-    expect(guardSource).toMatch(/@keyframes finish-pending-reveal[\s\S]*?from\s*\{[\s\S]*?opacity:\s*0[\s\S]*?to\s*\{[\s\S]*?opacity:\s*1/);
+    expect(finishEffectsSource).toMatch(/\.piece-token\.finished:not\(\.finish-arrival\)/);
+    expect(finishEffectsSource).toMatch(/animation:\s*finish-pending-reveal\s+60ms\s+step-end\s+both/);
+    expect(finishEffectsSource).toMatch(/@keyframes finish-pending-reveal[\s\S]*?from\s*\{[\s\S]*?opacity:\s*0[\s\S]*?to\s*\{[\s\S]*?opacity:\s*1/);
   });
 });
