@@ -1,0 +1,28 @@
+name: Temporary source export
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive repository source
+        run: tar --exclude=.git --exclude=source-snapshot.tar.gz -czf source-snapshot.tar.gz .
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-snapshot-${{ github.run_id }}
+          path: source-snapshot.tar.gz
+          retention-days: 1
+      - name: Report export run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${{ github.repository }}/issues/1111/comments" -f body="Source export completed. Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} artifact: source-snapshot-${{ github.run_id }}"
