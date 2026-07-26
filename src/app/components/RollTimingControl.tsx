@@ -26,23 +26,24 @@ type ReleasedPointerTiming = {
   releasedAt: number;
 };
 
-type RollTimingSnapshot = {
+type RollTimingSnapshot = Readonly<{
   positionPercent: number;
   trackOffsetPx: number;
+  frozenTransform: string;
   capturedAt: number;
-};
+  resetKey: string;
+}>;
 
 type TimingSubmissionResult = 'submitted' | 'duplicate' | 'unavailable';
 
 const POINTER_RELEASE_CLICK_MAX_DELAY_MS = 1000;
+const IDENTITY_TRACK_TRANSFORM = 'matrix(1, 0, 0, 1, 0, 0)';
 
 export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', autoSubmitAt = 0, onRoll }: RollTimingControlProps) {
   const meterRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLSpanElement | null>(null);
   const orbRef = useRef<HTMLSpanElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const frameRequestRef = useRef<number | null>(null);
-  const lastRenderedSnapshotRef = useRef<RollTimingSnapshot | null>(null);
   const capturedPointerTimingRef = useRef<CapturedPointerTiming | null>(null);
   const releasedPointerTimingRef = useRef<ReleasedPointerTiming | null>(null);
   const resultHoldTimerRef = useRef<number | null>(null);
@@ -59,40 +60,50 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     resultHoldElementRef.current = null;
   };
 
-  const sampleRenderedFrame = (capturedAt: number) => {
+  const freezeAndCaptureTimingSnapshot = () => {
     const meter = meterRef.current;
     const track = trackRef.current;
     const orb = orbRef.current;
     if (!meter || !track || !orb) return undefined;
 
-    const positionPercent = getVisibleRollTimingPositionPercent(
-      meter.getBoundingClientRect(),
-      orb.getBoundingClientRect(),
-    );
+    const animations = track.getAnimations();
+    const computedTransform = window.getComputedStyle(track).transform;
+    const frozenTransform = computedTransform && computedTransform !== 'none'
+      ? computedTransform
+      : IDENTITY_TRACK_TRANSFORM;
+
+    track.style.transform = frozenTransform;
+    for (const animation of animations) {
+      try {
+        animation.cancel();
+      } catch {
+        try {
+          animation.pause();
+        } catch {
+          // The frozen inline transform remains authoritative if WebKit drops the animation handle.
+        }
+      }
+    }
+    track.style.animation = 'none';
+
+    const meterRect = meter.getBoundingClientRect();
+    const trackRect = track.getBoundingClientRect();
+    const orbRect = orb.getBoundingClientRect();
     const offsetParent = track.offsetParent;
-    if (positionPercent === undefined || !(offsetParent instanceof HTMLElement)) return undefined;
+    if (!(offsetParent instanceof HTMLElement)) return undefined;
     const offsetParentRect = offsetParent.getBoundingClientRect();
     const trackLayoutLeftPx = offsetParentRect.left + offsetParent.clientLeft + track.offsetLeft;
-    const trackOffsetPx = getVisibleRollTimingTrackOffsetPx(track.getBoundingClientRect(), trackLayoutLeftPx);
-    if (typeof trackOffsetPx !== 'number' || !Number.isFinite(trackOffsetPx)) return undefined;
+    const positionPercent = getVisibleRollTimingPositionPercent(meterRect, orbRect);
+    const trackOffsetPx = getVisibleRollTimingTrackOffsetPx(trackRect, trackLayoutLeftPx);
+    if (positionPercent === undefined || typeof trackOffsetPx !== 'number' || !Number.isFinite(trackOffsetPx)) return undefined;
 
-    const snapshot = { positionPercent, trackOffsetPx, capturedAt };
-    lastRenderedSnapshotRef.current = snapshot;
-    return snapshot;
-  };
-
-  const captureLastRenderedSnapshot = () => lastRenderedSnapshotRef.current ?? sampleRenderedFrame(performance.now());
-
-  const freezeTimingTrack = (snapshot: RollTimingSnapshot) => {
-    const track = trackRef.current;
-    if (!track) return;
-    const animation = track.getAnimations()[0];
-    track.style.transform = `translate3d(${snapshot.trackOffsetPx}px, 0, 0)`;
-    try {
-      animation?.cancel();
-    } catch {
-      animation?.pause();
-    }
+    return Object.freeze({
+      positionPercent,
+      trackOffsetPx,
+      frozenTransform,
+      capturedAt: performance.now(),
+      resetKey,
+    }) satisfies RollTimingSnapshot;
   };
 
   const holdTimingResult = (snapshot: RollTimingSnapshot) => {
@@ -104,52 +115,40 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     clearResultHold();
     const heldMeter = meter.cloneNode(true) as HTMLDivElement;
     const heldTrack = heldMeter.querySelector<HTMLElement>('.roll-timing-orb-track');
+    heldMeter.classList.remove('roll-timing-live-meter');
+    heldMeter.classList.add('roll-timing-result-hold');
     if (heldTrack) {
       heldTrack.style.animation = 'none';
-      heldTrack.style.transform = `translate3d(${snapshot.trackOffsetPx}px, 0, 0)`;
+      heldTrack.style.transform = snapshot.frozenTransform;
     }
     heldMeter.dataset.testid = 'roll-timing-result-hold';
     heldMeter.dataset.positionPercent = String(snapshot.positionPercent);
+    heldMeter.dataset.trackOffsetPx = String(snapshot.trackOffsetPx);
+    heldMeter.dataset.capturedAt = String(snapshot.capturedAt);
+    heldMeter.dataset.resetKey = snapshot.resetKey;
     heldMeter.setAttribute('aria-label', '멈춘 윷 던지기 정확도 위치');
     Object.assign(heldMeter.style, getRollTimingResultHoldStyle());
     parent.insertBefore(heldMeter, button);
+    heldMeter.dataset.holdStartedAt = String(performance.now());
     resultHoldElementRef.current = heldMeter;
     resultHoldTimerRef.current = window.setTimeout(clearResultHold, ROLL_TIMING_RESULT_HOLD_MS);
   };
 
   const submitCurrentTiming = (timedOut = false): TimingSubmissionResult => {
     if (submittedKeyRef.current === resetKey) return 'duplicate';
-    const snapshot = captureLastRenderedSnapshot();
+    const snapshot = freezeAndCaptureTimingSnapshot();
     if (!snapshot) return 'unavailable';
     submittedKeyRef.current = resetKey;
-    if (frameRequestRef.current !== null) {
-      window.cancelAnimationFrame(frameRequestRef.current);
-      frameRequestRef.current = null;
-    }
-    freezeTimingTrack(snapshot);
     holdTimingResult(snapshot);
     onRoll(snapshot.positionPercent, timedOut ? { timedOut: true } : undefined);
     return 'submitted';
   };
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
     submittedKeyRef.current = null;
     autoSubmittedKeyRef.current = '';
-    lastRenderedSnapshotRef.current = null;
-    const tick = (capturedAt: number) => {
-      sampleRenderedFrame(capturedAt);
-      frameRequestRef.current = window.requestAnimationFrame(tick);
-    };
-    frameRequestRef.current = window.requestAnimationFrame(tick);
-    return () => {
-      if (frameRequestRef.current !== null) {
-        window.cancelAnimationFrame(frameRequestRef.current);
-        frameRequestRef.current = null;
-      }
-      capturedPointerTimingRef.current = null;
-      releasedPointerTimingRef.current = null;
-    };
+    capturedPointerTimingRef.current = null;
+    releasedPointerTimingRef.current = null;
   }, [resetKey]);
 
   useEffect(() => {
@@ -158,8 +157,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const submitTimedOutRoll = () => {
       if (autoSubmittedKeyRef.current === autoSubmitKey) return;
       autoSubmittedKeyRef.current = autoSubmitKey;
-      const submissionResult = submitCurrentTiming(true);
-      if (submissionResult === 'unavailable') onRoll(undefined, { timedOut: true });
+      submitCurrentTiming(true);
     };
     const remainingMs = autoSubmitAt - Date.now();
     if (remainingMs <= 0) {
@@ -223,7 +221,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   };
 
   return <>
-    <div key={`meter:${resetKey}`} ref={meterRef} className="roll-timing-meter" aria-label="윷 던지기 정확도 막대">
+    <div key={`meter:${resetKey}`} ref={meterRef} className="roll-timing-meter roll-timing-live-meter" aria-label="윷 던지기 정확도 막대">
       <span className="roll-timing-good left" aria-hidden="true"></span>
       <span className="roll-timing-perfect" aria-hidden="true"></span>
       <span className="roll-timing-good right" aria-hidden="true"></span>
