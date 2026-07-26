@@ -85,3 +85,15 @@ Run `30179826939`가 Safari timing setup 클릭 안정성 문제로 실패했으
 - 자동 실패 이슈 #1087: 성공 Run 확인 후 자동 종료
 
 Run `30182059925`가 Safari visible mismatch의 방 생성 복구 조회 무기한 대기와 Galaxy 순서 결과 비결정성으로 실패했으므로 이 시퀀스도 초기화한다. 해당 원인 수정이 포함된 merge commit의 첫 terminal success부터 연속 성공 1/3을 다시 기록한다.
+
+## 최신 실패와 재실행 판정
+
+Run `30191334176` attempt 1은 Safari timing 4건 중 1건이 WebKit 내부 네트워크 오류 이후 Firebase Auth 상태를 잃어 순서 정하기 제출 전에 실패했다.
+
+- Head SHA: `499579747a139c41f7784250c865a2251915a791`
+- Attempt 1 Safari timing: 실패
+- 나머지 필수 lane: 성공
+- Attempt 2 실패 job 재실행: Safari timing 4건 전체 성공
+- 동일 코드와 동일 SHA에서 실패가 재현되지 않았으므로 일시적 WebKit/네트워크 인프라 오류로 분류한다.
+- Attempt 2 summary는 attempt 1 artifact와 재실행 경과시간을 함께 집계해 315.8초로 성능 예산을 실패 처리했으므로 fresh main push Run으로 전체 QA를 다시 확인한다.
+- 신규 기능·제품 코드·QA assertion·workflow 구성은 변경하지 않는다.
