@@ -125,11 +125,11 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     heldMeter.dataset.positionPercent = String(snapshot.positionPercent);
     heldMeter.dataset.trackOffsetPx = String(snapshot.trackOffsetPx);
     heldMeter.dataset.capturedAt = String(snapshot.capturedAt);
-    heldMeter.dataset.holdStartedAt = String(performance.now());
     heldMeter.dataset.resetKey = snapshot.resetKey;
     heldMeter.setAttribute('aria-label', '멈춘 윷 던지기 정확도 위치');
     Object.assign(heldMeter.style, getRollTimingResultHoldStyle());
     parent.insertBefore(heldMeter, button);
+    heldMeter.dataset.holdStartedAt = String(performance.now());
     resultHoldElementRef.current = heldMeter;
     resultHoldTimerRef.current = window.setTimeout(clearResultHold, ROLL_TIMING_RESULT_HOLD_MS);
   };
