@@ -2,14 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getRollTimingZone } from '../../src/game-core/roll.js';
 import {
+  getRollTimingTrackTransform,
   getVisibleRollTimingPositionPercent,
   getVisibleRollTimingTrackOffsetPx,
+  normalizeRollTimingPositionPercent,
 } from '../../src/app/flows/rollTimingVisiblePosition.js';
 
 const meterRect = { left: 100, width: 200 };
 const orbRectAt = (positionPercent: number) => ({
   left: meterRect.left + meterRect.width * (positionPercent / 100) - 6,
   width: 12,
+});
+
+test('canonical 타이밍 퍼센트 하나에서 표시 transform을 파생한다', () => {
+  assert.equal(normalizeRollTimingPositionPercent(45.12349), 45.123);
+  assert.equal(normalizeRollTimingPositionPercent(-1), 0);
+  assert.equal(normalizeRollTimingPositionPercent(101), 100);
+  assert.equal(getRollTimingTrackTransform(45.12349), 'translate3d(45.123%, 0, 0)');
 });
 
 test('화면에 보이는 구슬 중심 좌표를 막대 기준 퍼센트로 계산한다', () => {
