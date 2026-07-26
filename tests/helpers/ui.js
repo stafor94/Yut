@@ -203,7 +203,7 @@ async function waitForRoomCreationResult(page, { timeout = 45_000, maxSubmitAtte
 
 export async function createRoomFromLobby(page, roomTitle) {
   await addQaRuntimeContext(page);
-  if (roomTitle.includes('seq-room')) {
+  if (roomTitle.includes('seq-room') || roomTitle.includes('turn-order-mobile-room')) {
     await page.addInitScript(() => {
       window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
       window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];

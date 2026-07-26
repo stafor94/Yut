@@ -40,6 +40,23 @@ test('방 생성 timeout 복구는 일시 조회 오류와 null 이후 같은 �
   assert.deepEqual(recoveredRoom, createdRoom);
 });
 
+test('방 생성 timeout 복구는 완료되지 않는 조회를 제한하고 다음 polling에서 같은 생성 요청을 찾는다', async () => {
+  let calls = 0;
+  const recoveredRoom = await findCreatedRoomWithTimeout(
+    request,
+    'host-1',
+    async () => {
+      calls += 1;
+      if (calls === 1) return new Promise<never>(() => undefined);
+      return createdRoom;
+    },
+    { pollIntervalMs: 0, readTimeoutMs: 5, wait: noWait },
+  );
+
+  assert.equal(calls, 2);
+  assert.deepEqual(recoveredRoom, createdRoom);
+});
+
 test('방 생성 timeout 복구는 다른 host 또는 request 방을 무시하고 정확한 방까지 재조회한다', async () => {
   const rooms = [
     { ...createdRoom, hostId: 'host-2' },
