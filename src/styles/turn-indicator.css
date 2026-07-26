@@ -31,7 +31,7 @@
   pointer-events: none;
 }
 
-.game-shell .roll-stage ~ .play-controls .roll-timing-meter {
+.game-shell .roll-stage ~ .play-controls .roll-timing-live-meter {
   display: none;
 }
 
