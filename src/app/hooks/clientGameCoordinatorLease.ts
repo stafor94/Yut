@@ -20,10 +20,21 @@ const getLeaseExpiryMillis = (value: unknown) => {
   return Number.isFinite(millis) ? millis : 0;
 };
 
+const getLeaseEpoch = (value: unknown) => {
+  const epoch = Number(value ?? 0);
+  return Number.isFinite(epoch) && epoch > 0 ? Math.floor(epoch) : 0;
+};
+
 export const isEmptyClientGameCoordinatorLease = (lease: ClientGameCoordinatorLease) => Boolean(
   !lease.coordinatorSeatId
-  && !(Number.isFinite(Number(lease.coordinatorEpoch)) && Number(lease.coordinatorEpoch) > 0)
+  && getLeaseEpoch(lease.coordinatorEpoch) === 0
   && getLeaseExpiryMillis(lease.coordinatorLeaseExpiresAt) <= 0,
+);
+
+export const isCompleteClientGameCoordinatorLease = (lease: ClientGameCoordinatorLease) => Boolean(
+  lease.coordinatorSeatId
+  && getLeaseEpoch(lease.coordinatorEpoch) > 0
+  && getLeaseExpiryMillis(lease.coordinatorLeaseExpiresAt) > 0,
 );
 
 export const stabilizeClientGameCoordinatorLease = (
@@ -38,8 +49,8 @@ export const stabilizeClientGameCoordinatorLease = (
   );
   if (
     sameActiveGame
-    && isEmptyClientGameCoordinatorLease(next.lease)
-    && !isEmptyClientGameCoordinatorLease(previous.lease)
+    && !isCompleteClientGameCoordinatorLease(next.lease)
+    && isCompleteClientGameCoordinatorLease(previous.lease)
   ) {
     return { ...next, lease: previous.lease };
   }
