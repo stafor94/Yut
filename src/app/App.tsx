@@ -33,6 +33,7 @@ import {
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
 import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
+import { useGameCoordinatorLease, type ClientGameCoordinatorLease } from './hooks/useGameCoordinatorLease';
 import { useDeadlineReached } from './hooks/useDeadlineReached';
 import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';
 import { usePresenceRecovery } from './hooks/usePresenceRecovery';
@@ -202,6 +203,8 @@ export function App() {
   const [firebaseLatencySamples, setFirebaseLatencySamples] = useState<number[]>([]);
   const [spectators, setSpectators] = useState<Seat[]>([]);
   const [presenceCleanupEligibility, setPresenceCleanupEligibility] = useState({ roomId: '', eligible: false });
+  const [gameCoordinatorLease, setGameCoordinatorLease] = useState<ClientGameCoordinatorLease>({ coordinatorSeatId: '', coordinatorEpoch: 0, coordinatorLeaseExpiresAt: 0 });
+  const updateGameCoordinatorLease = useCallback((lease: ClientGameCoordinatorLease) => setGameCoordinatorLease(lease), []);
   const [pendingItemPickup, setPendingItemPickup] = useState<PendingItemPickup | null>(null);
   const [seats, setSeats] = useState<Seat[]>(() => createSeats('플레이어', 'individual', 4));
   const [pieces, setPieces] = useState<BoardPiece[]>(() => makePieces(createSeats('플레이어', 'individual', 4), 4));
@@ -447,13 +450,26 @@ export function App() {
   const onlineGameRole = !activeRoomId ? 'offline' : isSpectator ? 'spectator' : hasWaitingRoomHostAuthority ? 'waiting-room-host' : 'player';
   const isRoomManager = hasWaitingRoomHostAuthority || isWaitingRoomHost;
   const isOnlinePlayer = onlineGameRole === 'player';
-  const onlineGameCoordinatorSeatId = getOnlineGameCoordinatorSeatId(playableSeats, onlineGameCoordinatorSeatIdRef.current);
+  const fallbackOnlineGameCoordinatorSeatId = getOnlineGameCoordinatorSeatId(playableSeats, onlineGameCoordinatorSeatIdRef.current);
+  const coordinatorLease = useGameCoordinatorLease({
+    activeRoomId,
+    screen,
+    candidateSeatId: localSeatId,
+    candidateSeatIndex: Math.max(0, playableSeats.findIndex((seat) => seat.id === localSeatId)),
+    eligible: Boolean(activeRoomId && isOnlinePlayer && localSeatId && !autoPlayBySeatId[localSeatId]),
+    gameSeats: syncedGameSeats,
+    lease: gameCoordinatorLease,
+    onLeaseChange: updateGameCoordinatorLease,
+  });
+  const onlineGameCoordinatorSeatId = coordinatorLease.coordinatorSeatId || fallbackOnlineGameCoordinatorSeatId;
+  const coordinatorEpoch = coordinatorLease.coordinatorEpoch;
   onlineGameCoordinatorSeatIdRef.current = onlineGameCoordinatorSeatId;
-  const isInitialGameCoordinator = !activeRoomId || Boolean(!isSpectator && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
-  const canCoordinateOnlineGame = !activeRoomId || Boolean(isOnlinePlayer && localSeatId && localSeatId === onlineGameCoordinatorSeatId);
+  const isInitialGameCoordinator = !activeRoomId || Boolean(!isSpectator && localSeatId && localSeatId === fallbackOnlineGameCoordinatorSeatId);
+  const canCoordinateOnlineGame = !activeRoomId || coordinatorLease.canCoordinate;
+  const coordinatorLeasePayload = { coordinatorSeatId: onlineGameCoordinatorSeatId, coordinatorEpoch };
   const canOwnRoomPresenceCleanup = Boolean(activeRoomId && presenceCleanupEligibility.roomId === activeRoomId && presenceCleanupEligibility.eligible);
   const canResolveInitialOnlineTurnOrder = canCoordinateOnlineGame;
-  const canCompleteInitialOnlineTurnOrderIntro = canCoordinateOnlineGame || Boolean(activeRoomId && isOnlinePlayer);
+  const canCompleteInitialOnlineTurnOrderIntro = canCoordinateOnlineGame;
   const canManageRoom = isRoomManager;
   const {
     pendingAiSeatCount,
@@ -565,6 +581,8 @@ export function App() {
     activeRoomId,
     screen,
     canCoordinateOnlineGame,
+    coordinatorSeatId: onlineGameCoordinatorSeatId,
+    coordinatorEpoch,
     applyingSyncedStateRef,
     moveInProgressRef,
     movingPieceId,
@@ -1148,6 +1166,7 @@ export function App() {
     lastAppliedSequenceRef.current = 0;
     lastSequenceWatchdogAtRef.current = 0;
     setAuthoritativeGameStateReady(false);
+    setGameCoordinatorLease({ coordinatorSeatId: '', coordinatorEpoch: 0, coordinatorLeaseExpiresAt: 0 });
     setInitialGameEntryPending(false);
     if (missingRoomPlayerTimerRef.current !== null) {
       window.clearTimeout(missingRoomPlayerTimerRef.current);
@@ -1538,6 +1557,7 @@ export function App() {
     const stateStartKey = stateStartRequestVersion && stateStartRequestId ? `${stateStartRequestVersion}:${stateStartRequestId}` : '';
     if (activeRoomId && currentStartKey && stateStartKey !== currentStartKey) return;
     const stateVersion = Number('turnVersion' in state ? state.turnVersion ?? 0 : 0);
+    setGameCoordinatorLease({ coordinatorSeatId: String(state.coordinatorSeatId ?? ''), coordinatorEpoch: Number(state.coordinatorEpoch ?? 0), coordinatorLeaseExpiresAt: state.coordinatorLeaseExpiresAt ?? 0 });
     const itemPickupPending = Boolean(pendingItemPickupRef.current);
     const syncedRoll = (state.roll as YutResult | null | undefined) ?? null;
     const nextRoll = itemPickupPending ? currentRollRef.current : syncedRoll;
@@ -2478,7 +2498,7 @@ export function App() {
     isInitialGameCoordinator, currentUserId, screen, allHumansEnteredGame, canResolveInitialOnlineTurnOrder,
     canCompleteInitialOnlineTurnOrderIntro, waitingForPlayersReady, turnOrderIntro, turnOrderIds, allReadyForFallback: allReady,
     piecesLength: pieces.length, playableSeats, pieceCount, itemMode, localSeatId, playModeForTurnOrder: playMode,
-    logs, turnOrderPhase, activeTurnOrderIntro, soundEnabled, canCoordinateOnlineGame,
+    logs, turnOrderPhase, activeTurnOrderIntro, soundEnabled, canCoordinateOnlineGame, coordinatorEpoch,
     refs: { pendingStartRequestIdRef, appliedGameStartKeyRef, startRequestInFlightRef, startRequestVersionRef, startRequestIdRef, startStatusRef, startedGameRequestVersionsRef, savingStateFingerprintRef, enteredGamePresenceKeyRef, logIdRef, lastAppliedSequenceRef, lastAppliedStateVersionRef, pendingSequenceMetaRef, resolvedItemPromptKeysRef, completingTurnOrderIntroRef },
     setters: { setIsRoomHost, setInitialGameEntryPending, setStartRequestPending, setMessage, setStartRequestVersion, setStartRequestId, setStartCountdownStartsAt, setStartCountdownEndsAt, setStartStatus, setCountdown, setScreen, setInitialGameStateSaveDiagnostic, setCoordinatorStateSaveKey, setLogs, setTurnOrderIds, setInitialTurnOrderIds, setTurnOrderIntro, setWaitingForPlayersReady, setAuthoritativeWinner, setGameStartedAt, setPieces, setBoardItems, setOwnedItems, setTrapNodes, setShieldedPieceIds, setLastMovedPieceIds, setLastMovedSeatId, setRevealedItems, setSelectedPieceId, setMovingPieceId, setTurnIndex, setRollStack, setSelectedRollStackIndex, setRollStackClosed, setForcedRoll, setGoldenYutPickerOpen, setItemPromptTiming, setBranchChoice, setCaptureEffect, setTrapEffect, setPendingTrapPlacement, setPendingAfterMoveTurnIndex, setCompletedSeatIds, setRankingSeatIds, setGameEndMode, setLastFinishedSeatId, setContinuationRound, setTurnOrderPhase, setRollAnimation },
     helpers: { measureFirebaseLatency, delay, getQaRequestRoomGameStartDelayMs, getQaInitializeGameStateDelayMs, getStartGameBlockMessage, makePieces, gameSeatSnapshotsFromSeats, spawnInitialBoardItems, getSeededTurnOrderSeats, buildAlternatingTeamTurnOrder, createTurnOrderIntro, getSeatPieceColor, formatTurnOrderSummary, getSeatDisplayName, makeLog, makeGameStateFingerprint, applySyncedStateSnapshot, replayMissingSequencesThenApply, clearRoll },
@@ -2643,7 +2663,7 @@ export function App() {
   function submitPendingItemPickupDecision(pickup: PendingItemPickup, decision: 'keep' | 'replace', options: { timedOut?: boolean; automationSource?: 'timeout_ai' } = {}) {
     if (!activeRoomId) return false;
     const seat = getSeatById(pickup.seatId);
-    const payload = { decision, itemId: pickup.itemId, itemType: pickup.item, existingItemType: pickup.existingItem, ...(options.automationSource ? { automationSource: options.automationSource, coordinatorSeatId: localSeatId } : {}), ...(options.timedOut ? { itemPickupTimeoutRecovery: true, timeoutDeadlineAt: pickup.deadline, timeoutRecoveredBy: localSeatId } : {}) };
+    const payload = { decision, itemId: pickup.itemId, itemType: pickup.item, existingItemType: pickup.existingItem, ...(options.automationSource ? { automationSource: options.automationSource, ...coordinatorLeasePayload } : {}), ...(options.timedOut ? { itemPickupTimeoutRecovery: true, timeoutDeadlineAt: pickup.deadline, timeoutRecoveredBy: localSeatId } : {}) };
     const clientMutationId = getLocalActionKey('item_pickup_decision', payload);
     if (pendingLocalRemoteActionsRef.current.has(clientMutationId)) return false;
     const action = { type: 'item_pickup_decision' as const, actorId: pickup.seatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, seat) };
@@ -2934,7 +2954,12 @@ export function App() {
     clearPendingLocalRemoteActions,
     hasPendingCurrentTurnAction,
     pendingLocalRemoteActionCount,
-    onSnapshotReceived: () => {
+    onSnapshotReceived: (state) => {
+      setGameCoordinatorLease({
+        coordinatorSeatId: String(state.coordinatorSeatId ?? ''),
+        coordinatorEpoch: Number(state.coordinatorEpoch ?? 0),
+        coordinatorLeaseExpiresAt: state.coordinatorLeaseExpiresAt ?? 0,
+      });
       sequenceRecoveryWatchdogRef.current?.notifySnapshot();
     },
   });
@@ -3050,7 +3075,7 @@ export function App() {
       rollStackIndex: stalledTurnRollStackIndex,
       clientActionId: makeTimeoutActionKey({ roomId: activeRoomId, stage: 'move', actorId: activeSeat.id, timeoutDeadlineAt: turnDeadlineAt, sequence: lastAppliedSequenceRef.current, extra: `${recoveryKey}:${timeoutMove.pieceId}` }),
       recoveredByCoordinator: true,
-      coordinatorSeatId: localSeatId,
+      ...coordinatorLeasePayload,
       reason: options.source === 'manual-sync' ? 'manual-sync-stalled-roll-move-timeout' : 'stalled-roll-move-timeout',
       stalledForMs: getCurrentStalledTurnSyncAgeMs(),
       timeoutDeadlineAt: turnDeadlineAt,
@@ -3650,7 +3675,7 @@ export function App() {
       const offlineRoll = selectedGoldenYutResult ?? nextRoll;
       return offlineRoll && rollYutForStack(seat, offlineRoll, null, { timingZone }) ? offlineRoll : null;
     }
-    const rollPayload = { rollTimingZone: timingZone ?? 'normal', stackedRollMode: true, coordinatorSeatId: localSeatId, ...getAiAutomationPayload(seat), ...(selectedGoldenYutResult ? { selectedGoldenYutResult } : {}) };
+    const rollPayload = { rollTimingZone: timingZone ?? 'normal', stackedRollMode: true, ...coordinatorLeasePayload, ...getAiAutomationPayload(seat), ...(selectedGoldenYutResult ? { selectedGoldenYutResult } : {}) };
     const actionRollKey = selectedGoldenYutResult ?? nextRoll;
     const actionKey = `roll_yut_ai_stack:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${rollStack.length}:${actionRollKey?.name ?? 'server'}:${actionRollKey?.steps ?? 'server'}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return null;
@@ -3694,7 +3719,7 @@ export function App() {
       const offlineRoll = selectedGoldenYutResult ?? rollYutResultWithTiming(timingZone ?? 'normal').result;
       return rollYutFor(seat, offlineRoll, null, { timingZone }) ?? null;
     }
-    const rollPayload = { rollTimingZone: timingZone ?? 'normal', stackedRollMode: false, coordinatorSeatId: localSeatId, ...getAiAutomationPayload(seat), ...(selectedGoldenYutResult ? { selectedGoldenYutResult } : {}) };
+    const rollPayload = { rollTimingZone: timingZone ?? 'normal', stackedRollMode: false, ...coordinatorLeasePayload, ...getAiAutomationPayload(seat), ...(selectedGoldenYutResult ? { selectedGoldenYutResult } : {}) };
     const actionKey = `roll_yut_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${selectedGoldenYutResult?.name ?? 'server'}:${selectedGoldenYutResult?.steps ?? 'server'}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return null;
     const action = { type: 'roll_yut' as const, actorId: seat.id, payload: withActorLogPayload({ ...rollPayload, clientActionId: actionKey }, seat) };
@@ -3735,7 +3760,7 @@ export function App() {
       extraSteps: 0,
       branchChoice: 'outer' as BranchChoice,
       rollStackIndex,
-      coordinatorSeatId: localSeatId,
+      ...coordinatorLeasePayload,
       ...getAiAutomationPayload(seat),
     };
     const remainingRollStackKey = remainingRollsAfterSkip.map((roll) => `${roll.name}:${roll.steps}`).join('|');
@@ -3800,7 +3825,7 @@ export function App() {
     const itemKey = String(payload.itemType ?? (payload.skipBeforeRollItem ? 'skip_before_roll' : payload.skipAfterRollItem ? 'skip_after_roll' : payload.skipAfterMoveItem ? 'skip_after_move' : 'item'));
     const actionKey = `use_item_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${itemKey}:${payload.pieceId ?? ''}:${payload.rollStackIndex ?? ''}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return null;
-    const action = { type: 'use_item' as const, actorId: seat.id, payload: withActorLogPayload({ ...payload, coordinatorSeatId: localSeatId, ...getAiAutomationPayload(seat), clientActionId: actionKey }, seat) };
+    const action = { type: 'use_item' as const, actorId: seat.id, payload: withActorLogPayload({ ...payload, ...coordinatorLeasePayload, ...getAiAutomationPayload(seat), clientActionId: actionKey }, seat) };
     addPendingLocalRemoteAction(actionKey, { type: 'use_item', actorId: seat.id, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
     localClientMutationIdsRef.current.add(actionKey);
     try {
@@ -3836,7 +3861,7 @@ export function App() {
     if (!activeRoomId || !canCoordinateOnlineGame) { placePendingTrap(nodeId, seat.id); return true; }
     const actionKey = `place_trap_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${placement.pieceId}:${nodeId}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
-    const action = { type: 'place_trap' as const, actorId: seat.id, payload: withActorLogPayload({ nodeId, pieceId: placement.pieceId, coordinatorSeatId: localSeatId, ...getAiAutomationPayload(seat), clientActionId: actionKey }, seat) };
+    const action = { type: 'place_trap' as const, actorId: seat.id, payload: withActorLogPayload({ nodeId, pieceId: placement.pieceId, ...coordinatorLeasePayload, ...getAiAutomationPayload(seat), clientActionId: actionKey }, seat) };
     addPendingLocalRemoteAction(actionKey, { type: 'place_trap', actorId: seat.id, createdSequence: lastAppliedSequenceRef.current, createdTurnIndex: turnIndex, optimisticApplied: false });
     localClientMutationIdsRef.current.add(actionKey);
     try {
@@ -3881,7 +3906,7 @@ export function App() {
       await movePiece(pieceId, moveRoll, seat, 0, aiBranchChoice, typeof rollStackIndex === 'number' ? { consumeStackedRollIndex: rollStackIndex } : {});
       return null;
     }
-    const payload = { pieceId, extraSteps: 0, branchChoice: aiBranchChoice, rollStackIndex: typeof rollStackIndex === 'number' ? rollStackIndex : null, coordinatorSeatId: localSeatId, ...getAiAutomationPayload(seat) };
+    const payload = { pieceId, extraSteps: 0, branchChoice: aiBranchChoice, rollStackIndex: typeof rollStackIndex === 'number' ? rollStackIndex : null, ...coordinatorLeasePayload, ...getAiAutomationPayload(seat) };
     const actionKey = `move_piece_ai:${seat.id}:${lastAppliedSequenceRef.current}:${turnIndex}:${pieceId}:${moveRoll.name}:${moveRoll.steps}:${payload.rollStackIndex ?? ''}:${aiBranchChoice}`;
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return null;
     const action = { type: 'move_piece' as const, actorId: seat.id, payload: withActorLogPayload({ ...payload, clientActionId: actionKey }, seat) };
@@ -4495,6 +4520,7 @@ export function App() {
       isMyTurn={isMyTurn}
       localSeatId={localSeatId}
       onlineGameCoordinatorSeatId={onlineGameCoordinatorSeatId}
+      coordinatorEpoch={coordinatorEpoch}
       logs={visibleLogs}
       movingPieceId={movingPieceId}
       ownedItems={ownedItems}

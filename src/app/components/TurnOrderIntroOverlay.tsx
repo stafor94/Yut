@@ -36,6 +36,7 @@ type TurnOrderIntroOverlayProps = {
   activeTurnOrderIntro: TurnOrderIntro | null;
   localSeatId: string;
   onlineGameCoordinatorSeatId: string;
+  coordinatorEpoch: number;
   finalHoldMs: number;
 };
 
@@ -143,7 +144,7 @@ const makeTurnOrderStatePatch = (state: SyncedGameState, next: TurnOrderIntro): 
   };
 };
 
-export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlineGameCoordinatorSeatId }: TurnOrderIntroOverlayProps) {
+export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlineGameCoordinatorSeatId, coordinatorEpoch }: TurnOrderIntroOverlayProps) {
   const [clock, setClock] = useState(() => Date.now());
   const [localSubmission, setLocalSubmission] = useState<TurnOrderSubmission | null>(null);
   const [localSubmissionStatus, setLocalSubmissionStatus] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>('idle');
@@ -234,14 +235,14 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
   }, [round, roundId]);
 
   useEffect(() => {
-    if (!sourceIntro?.nextRound || now < sourceIntro.nextRound.startAt || sourceIntro.currentRound.id === sourceIntro.nextRound.id) return;
-    void updateTurnOrderState(sourceIntro.roomId, (state) => {
+    if (!isCoordinator || !sourceIntro?.nextRound || now < sourceIntro.nextRound.startAt || sourceIntro.currentRound.id === sourceIntro.nextRound.id) return;
+    void updateTurnOrderState(sourceIntro.roomId, { coordinatorSeatId: onlineGameCoordinatorSeatId, coordinatorEpoch }, (state) => {
       const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
       if (!current || current.version !== 3 || current.sessionId !== sourceIntro.sessionId) return null;
       const next = activateNextTurnOrderRound(current, Date.now());
       return next.currentRound.id === current.currentRound.id ? null : { turnOrderIntro: next };
     });
-  }, [now, sourceIntro]);
+  }, [coordinatorEpoch, isCoordinator, now, onlineGameCoordinatorSeatId, sourceIntro]);
 
   const commitSubmission = useCallback((source: TurnOrderSubmission['source']) => {
     if (!intro || !round || !isLocalEligible || round.status !== 'collecting') return;
@@ -269,6 +270,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
             submissionId: submission.submissionId ?? makeTurnOrderSubmissionId(submission.roundId, submission.seatId),
             sessionId: intro.sessionId,
             coordinatorSeatId: onlineGameCoordinatorSeatId,
+            coordinatorEpoch,
           });
           if (result.status !== 'committed' && result.status !== 'duplicate') throw new Error('순서 정하기 제출이 authoritative 상태에 반영되지 않았습니다.');
           if (submittedRoundIdRef.current === submission.roundId) setLocalSubmissionStatus('confirmed');
@@ -285,7 +287,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       setLocalSubmission(null);
       setLocalRollAnimation(null);
     })();
-  }, [intro, isLocalEligible, localSeatId, onlineGameCoordinatorSeatId, round, visibleLocalSubmission]);
+  }, [coordinatorEpoch, intro, isLocalEligible, localSeatId, onlineGameCoordinatorSeatId, round, visibleLocalSubmission]);
 
   const handleManualRoll = useCallback(() => {
     commitSubmission('manual');
@@ -317,10 +319,11 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       submissionId: submission.submissionId ?? makeTurnOrderSubmissionId(submission.roundId, submission.seatId),
       sessionId: intro.sessionId,
       coordinatorSeatId: onlineGameCoordinatorSeatId,
+      coordinatorEpoch,
     }))).catch(() => {
       if (aiSubmittingRoundIdRef.current === round.id) aiSubmittingRoundIdRef.current = '';
     });
-  }, [intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
+  }, [coordinatorEpoch, intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
 
   useEffect(() => {
     if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.deadlineAt + AUTO_ROLL_FALLBACK_DELAY_MS) return;
@@ -342,10 +345,11 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       submissionId: submission.submissionId ?? makeTurnOrderSubmissionId(submission.roundId, submission.seatId),
       sessionId: intro.sessionId,
       coordinatorSeatId: onlineGameCoordinatorSeatId,
+      coordinatorEpoch,
     }))).catch(() => {
       if (fallbackRoundIdRef.current === round.id) fallbackRoundIdRef.current = '';
     });
-  }, [intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
+  }, [coordinatorEpoch, intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
 
   useEffect(() => {
     if (!intro || !round || !isCoordinator || round.status !== 'collecting') return undefined;
@@ -358,7 +362,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       if (aggregatingRoundIdRef.current === round.id) return;
       if (!round.eligibleSeatIds.every((seatId) => submissions.some((submission) => submission.seatId === seatId))) return;
       aggregatingRoundIdRef.current = round.id;
-      void updateTurnOrderState(intro.roomId, (state) => {
+      void updateTurnOrderState(intro.roomId, { coordinatorSeatId: onlineGameCoordinatorSeatId, coordinatorEpoch }, (state) => {
         const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
         const transactionNow = Date.now();
         if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId || current.currentRound.id !== round.id || current.currentRound.status !== 'collecting') return null;
@@ -370,7 +374,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     }, () => {
       if (aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
     });
-  }, [intro, isCoordinator, round]);
+  }, [coordinatorEpoch, intro, isCoordinator, onlineGameCoordinatorSeatId, round]);
 
   useEffect(() => {
     if (!intro || !isTurnOrderFinalized(intro) || !intro.finalOrderAt || now < intro.finalOrderAt) return;

@@ -77,6 +77,7 @@ import {
 import { normalizeLegacyRollTimingAction } from './rollTimingActionCompatibility';
 
 export * from './roomServiceCore';
+export * from './roomCoordinatorLease';
 export * from './roomExitPolicy';
 export * from './roomAvailabilityPolicy';
 export * from './roomLifecyclePolicy';

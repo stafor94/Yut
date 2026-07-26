@@ -1,0 +1,45 @@
+
+> build
+> tsc -b && vite build
+
+[36mvite v8.1.3 [32mbuilding client environment for production...[36m[39m
+[2Ktransforming...
+/Yut/lobby-background-original.png referenced in /Yut/lobby-background-original.png didn't resolve at build time, it will remain unchanged to be resolved at runtime
+✓ 269 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                        0.37 kB │ gzip:   0.25 kB
+dist/assets/do-D8psGRkH.wav                           33.29 kB
+dist/assets/yut-DGe1P53P.wav                          36.82 kB
+dist/assets/geol-CkEjDT64.wav                         43.26 kB
+dist/assets/gae-CPQTwHeT.wav                          45.81 kB
+dist/assets/nak-B99xHVmE.wav                          54.99 kB
+dist/assets/countdown-original-e3DI4Axs.wav           60.92 kB
+dist/assets/mo-DCfjMI82.wav                           64.51 kB
+dist/assets/backdo-CcH1IPhY.wav                       75.89 kB
+dist/assets/bonus-DIdB7QjA.wav                        76.87 kB
+dist/assets/move-original-GTF5C1Sb.wav                92.23 kB
+dist/assets/stack-original-DnbMR6Io.wav              130.63 kB
+dist/assets/toast-original-CMJxqJmi.wav              130.63 kB
+dist/assets/item-pickup-original-wkdvHzbQ.wav        153.67 kB
+dist/assets/item-use-original-CY0LPDGn.wav           153.67 kB
+dist/assets/capture-original-MKrd5OCP.wav            169.03 kB
+dist/assets/shield-original-DBkBdPIV.wav             169.03 kB
+dist/assets/trap-original-DZo3v47b.wav               192.07 kB
+dist/assets/countdown-start-original-CMUA9y0t.wav    196.70 kB
+dist/assets/fall-original-DPHXh587.wav               207.43 kB
+dist/assets/door-bang-BsiIikP2.wav                   211.75 kB
+dist/assets/turn-original-BZMkfTDr.wav               214.60 kB
+dist/assets/roll_original-VJyX4D1T.wav               230.47 kB
+dist/assets/arrive-original-BlE_HL5x.wav             245.83 kB
+dist/assets/perfect-original-Bfc_MeFi.wav            261.19 kB
+dist/assets/win-original-Btp6Ge4L.wav                460.87 kB
+dist/assets/index-D32Avla9.css                       300.53 kB │ gzip:  54.50 kB
+dist/assets/index-VB57FT2P.js                      1,280.41 kB │ gzip: 378.53 kB
+
+[33m[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[32m✓ built in 602ms[39m
