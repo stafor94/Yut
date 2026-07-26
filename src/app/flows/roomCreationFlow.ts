@@ -17,6 +17,8 @@ export type RoomCreationTimeoutScheduler = {
   cancelAnimationFrame?: (frameId: number) => void;
 };
 
+type RuntimeAnimationFrameScheduler = Pick<RoomCreationTimeoutScheduler, 'requestAnimationFrame' | 'cancelAnimationFrame'>;
+
 export function resolveRoomCreationTimeoutMs(timeoutMs: number, operation: RoomCreationOperation) {
   const safeTimeoutMs = Math.max(0, timeoutMs);
   return operation === 'recover'
@@ -33,10 +35,11 @@ export function withOperationTimeout<T>(
   const now = scheduler.now ?? Date.now;
   const scheduleTimeout = scheduler.setTimeout ?? ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
   const cancelTimeout = scheduler.clearTimeout ?? ((timeoutId) => globalThis.clearTimeout(timeoutId));
+  const runtimeFrameScheduler = globalThis as unknown as RuntimeAnimationFrameScheduler;
   const scheduleFrame = scheduler.requestAnimationFrame
-    ?? (typeof globalThis.requestAnimationFrame === 'function' ? globalThis.requestAnimationFrame.bind(globalThis) : undefined);
+    ?? runtimeFrameScheduler.requestAnimationFrame?.bind(globalThis);
   const cancelFrame = scheduler.cancelAnimationFrame
-    ?? (typeof globalThis.cancelAnimationFrame === 'function' ? globalThis.cancelAnimationFrame.bind(globalThis) : undefined);
+    ?? runtimeFrameScheduler.cancelAnimationFrame?.bind(globalThis);
   const deadlineAt = now() + resolveRoomCreationTimeoutMs(timeoutMs, operation);
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   let frameId: number | undefined;
