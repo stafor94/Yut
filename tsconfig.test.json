@@ -35,6 +35,7 @@
     "src/game-core/board/board.ts",
     "src/game-core/gameEngine.ts",
     "src/game-core/roll.ts",
+    "src/app/hooks/clientGameCoordinatorLease.ts",
     "src/app/hooks/gameSyncSubscription.ts",
     "src/app/hooks/sequenceRecoveryWatchdog.ts",
     "src/app/flows/roomCreationFlow.ts",

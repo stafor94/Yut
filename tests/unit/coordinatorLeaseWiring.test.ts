@@ -53,5 +53,6 @@ test('client는 snapshot lease를 수신하고 delegated action과 turn-order wr
   const leaseHook = read('src/app/hooks/useGameCoordinatorLease.ts');
   assert.match(leaseHook, /autoPlayBySeatId/);
   assert.match(leaseHook, /isGameCoordinatorLeaseActive\(leaseState, now\)/);
+  assert.match(leaseHook, /stabilizeClientGameCoordinatorLease\(stableLeaseContextRef\.current, nextLeaseContext\)/);
   assert.match(leaseHook, /\[deadlineReached, leaseState, params\.activeRoomId/);
 });

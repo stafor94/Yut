@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   claimGameCoordinatorLease,
   GAME_COORDINATOR_RENEW_AHEAD_MS,
@@ -8,14 +8,15 @@ import {
   matchesActiveGameCoordinatorLease,
   type ClaimGameCoordinatorLeaseResult,
   type GameSeatSnapshot,
-  type SyncedGameState,
 } from '../../features/room/services/roomService';
+import {
+  stabilizeClientGameCoordinatorLease,
+  type ClientGameCoordinatorLease,
+  type ClientGameCoordinatorLeaseContext,
+} from './clientGameCoordinatorLease';
 import { useDeadlineReached } from './useDeadlineReached';
 
-export type ClientGameCoordinatorLease = Pick<
-  SyncedGameState,
-  'coordinatorSeatId' | 'coordinatorEpoch' | 'coordinatorLeaseExpiresAt'
->;
+export type { ClientGameCoordinatorLease } from './clientGameCoordinatorLease';
 
 type Params = {
   activeRoomId: string;
@@ -36,13 +37,26 @@ const resultToLease = (result: ClaimGameCoordinatorLeaseResult): ClientGameCoord
 });
 
 export function useGameCoordinatorLease(params: Params) {
-  const leaseState = useMemo(() => ({ ...params.lease, gameSeats: params.gameSeats, autoPlayBySeatId: params.autoPlayBySeatId }), [params.autoPlayBySeatId, params.gameSeats, params.lease]);
-  const snapshot = useMemo(() => getGameCoordinatorLeaseSnapshot(leaseState), [
-    params.lease.coordinatorEpoch,
-    params.lease.coordinatorLeaseExpiresAt,
-    params.lease.coordinatorSeatId,
-    leaseState,
+  const nextLeaseContext: ClientGameCoordinatorLeaseContext = {
+    roomId: params.activeRoomId,
+    screen: params.screen,
+    lease: params.lease,
+  };
+  const stableLeaseContextRef = useRef<ClientGameCoordinatorLeaseContext>(nextLeaseContext);
+  const stableLeaseContext = stabilizeClientGameCoordinatorLease(stableLeaseContextRef.current, nextLeaseContext);
+  useLayoutEffect(() => {
+    stableLeaseContextRef.current = stableLeaseContext;
+  }, [stableLeaseContext]);
+  const stableLease = stableLeaseContext.lease;
+
+  const leaseState = useMemo(() => ({ ...stableLease, gameSeats: params.gameSeats, autoPlayBySeatId: params.autoPlayBySeatId }), [
+    params.autoPlayBySeatId,
+    params.gameSeats,
+    stableLease.coordinatorEpoch,
+    stableLease.coordinatorLeaseExpiresAt,
+    stableLease.coordinatorSeatId,
   ]);
+  const snapshot = useMemo(() => getGameCoordinatorLeaseSnapshot(leaseState), [leaseState]);
   const deadlineReached = useDeadlineReached(snapshot.coordinatorLeaseExpiresAt);
   const [retryTick, setRetryTick] = useState(0);
 
