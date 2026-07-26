@@ -1,0 +1,30 @@
+[QA Firebase] Node helper requests are isolated to Auth http://127.0.0.1:9099 and Firestore http://127.0.0.1:8080.
+[QA Firebase] Node helper requests are isolated to Auth http://127.0.0.1:9099 and Firestore http://127.0.0.1:8080.
+
+Running 21 tests using 2 workers
+
+[QA Firebase] Node helper requests are isolated to Auth http://127.0.0.1:9099 and Firestore http://127.0.0.1:8080.
+[QA Firebase] Node helper requests are isolated to Auth http://127.0.0.1:9099 and Firestore http://127.0.0.1:8080.
+  ✓   1 [desktop-chromium] › tests/lobby/lobby-dialog-behavior.spec.js:22:7 › lobby guide and settings dialog behavior QA › 게임 방법과 설정은 중앙에 열리고 설정 저장 후 닫힌다 (2.3s)
+  ✓   3 [desktop-chromium] › tests/lobby/lobby-options.spec.js:6:7 › lobby QA › 로비 저장 옵션과 중앙 방 만들기 팝업이 현재 화면에 반영된다 (1.9s)
+  ✓   4 [desktop-chromium] › tests/lobby/lobby-popup-polish.spec.js:5:7 › lobby popup visual polish QA › 새로고침은 완성된 원형 화살표로 보이고 게임 방법은 한눈에 읽히는 계층을 유지한다 (2.3s)
+  ✓   5 [desktop-chromium] › tests/lobby/lobby-refresh-feedback.spec.js:5:7 › lobby room refresh feedback QA › 게임 참가 최초 조회 후 수동 새로고침은 조회 중 상태를 표시하고 중복 요청을 막는다 (3.4s)
+  ✓   6 [desktop-chromium] › tests/lobby/lobby-start-screen.spec.js:5:7 › lobby start screen QA › 최초 사용자는 유효한 닉네임을 저장해야 로비 기능을 사용할 수 있다 (2.1s)
+  ✓   7 [desktop-chromium] › tests/lobby/lobby-start-screen.spec.js:36:7 › lobby start screen QA › 로비는 브랜드, 윷판 장면, 네 개의 윷가락과 계층화된 시작 액션을 제공한다 (1.9s)
+  ✓   2 [desktop-chromium] › tests/lobby/cleanup-layout-regression.spec.js:17:7 › cleanup/layout regression QA › 대기실과 로비 주요 버튼은 force click 없이 클릭 가능하고 로비 컴팩트 카드 정렬을 유지한다 (14.3s)
+  ✓   8 [desktop-chromium] › tests/lobby/lobby-start-screen.spec.js:85:7 › lobby start screen QA › 세로 모바일 로비는 스크롤 없이 전체 시작 UI와 비활성 상태 바를 보여준다 (1.3s)
+  ✓   9 [desktop-chromium] › tests/lobby/nickname-setup.spec.js:7:7 › 닉네임 설정 팝업 › 최초 접속 시 닉네임 설정 팝업을 즉시 한 개 제목으로 표시한다 (1.4s)
+  ✓  11 [desktop-chromium] › tests/lobby/nickname-setup.spec.js:18:7 › 닉네임 설정 팝업 › 저장된 닉네임이 있는 기존 접속자는 설정 팝업을 자동 표시하지 않는다 (1.3s)
+  ✓  10 [desktop-chromium] › tests/lobby/lobby-start-screen.spec.js:167:7 › lobby start screen QA › 유효하지 않은 닉네임이면 저장된 방 ID가 있어도 자동 복구하지 않는다 (1.8s)
+  ✓  12 [desktop-chromium] › tests/regression/bonus-roll-result-glow.spec.js:90:7 › bonus roll result glow regression › 내 던지기와 상대 던지기 모두 윷·모 텍스트 공개 순간부터 같은 황금 애니메이션을 실행한다 (1.8s)
+  ✓  13 [desktop-chromium] › tests/lobby/lobby-start-screen.spec.js:181:7 › lobby start screen QA › 방 참가 팝업은 최초 조회와 수동 새로고침 목록 및 중앙 정렬 헤더를 제공한다 (3.5s)
+  ✓  15 [desktop-chromium] › tests/regression/finish-step-animation.spec.js:5:7 › 완주 한 칸 이동 애니메이션 회귀 › 공통 완주 경로가 authoritative payload와 원격 재생 경로에 연결된다 (8ms)
+  ✓  16 [desktop-chromium] › tests/regression/finish-step-animation.spec.js:18:7 › 완주 한 칸 이동 애니메이션 회귀 › 완주 효과가 준비되기 전 첫 프레임에는 최종 보관 위치를 숨긴다 (2ms)
+  ✓  14 [desktop-chromium] › tests/regression/bonus-roll-result-glow.spec.js:160:7 › bonus roll result glow regression › 일반·순서 정하기 결과 카드는 숨겨진 동안 재생하지 않고 실제 공개 시 결과별 음성을 한 번 재생한다 (3.3s)
+  ✓  18 [desktop-chromium] › tests/regression/bonus-roll-result-glow.spec.js:251:7 › bonus roll result glow regression › 결과 표시가 사라져도 음성을 중단하지 않고 윷 보너스 음성을 이어 재생한다 (2.0s)
+  ✓  17 [desktop-chromium] › tests/regression/local-roll-stage-position.spec.js:99:7 › local roll stage position regression › 내가 던질 때 매트와 결과를 윷판 중앙에 유지하고 결과 묶음을 매트 가까이 표시한다 (32.0s)
+  ✓  19 [desktop-chromium] › tests/regression/remote-fall-presentation.spec.js:118:7 › remote fall presentation QA › 상대 플레이어 낙의 실제 윷판은 렌더러 완료 전 사라지지 않고 상단 전체 턴 정보를 유지한다 (44.1s)
+  ✓  21 [desktop-chromium] › tests/smoke/firebase-emulator-isolation.spec.js:3:5 › QA browser app uses only the isolated Firebase emulators (1.1s)
+  ✓  20 [desktop-chromium] › tests/regression/roll-mat-surface.spec.js:48:7 › roll mat surface regression › 원목 게임 UI와 pending부터 결과 유지까지 축소된 매트를 계속 표시한다 (39.0s)
+
+  21 passed (1.6m)

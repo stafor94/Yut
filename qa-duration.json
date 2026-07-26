@@ -1,0 +1,29 @@
+{
+  "group": "desktop-regression",
+  "workers": 2,
+  "projects": [
+    "desktop-chromium"
+  ],
+  "durations": [
+    {
+      "label": "Verify emulator runtime",
+      "durationMs": 43,
+      "exitCode": 0
+    },
+    {
+      "label": "Cleanup current QA namespace before tests",
+      "durationMs": 1601,
+      "exitCode": 0
+    },
+    {
+      "label": "QA Desktop regression",
+      "durationMs": 95526,
+      "exitCode": 0
+    },
+    {
+      "label": "Cleanup current QA namespace after tests",
+      "durationMs": 403,
+      "exitCode": 0
+    }
+  ]
+}

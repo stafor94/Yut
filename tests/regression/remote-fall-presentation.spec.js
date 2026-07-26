@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { collectScreenState, createRoomFromLobby, joinRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import { collectScreenState, createRoomFromLobby, joinRoomFromLobby, primeLobbyStorage, primeTurnOrderResultQueues, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
@@ -121,6 +121,8 @@ test.describe('remote fall presentation QA', () => {
     const guestName = normalizeQaNickname(makeQaName(testInfo, 'fall-guest'));
     const roomTitle = makeQaName(testInfo, 'fall-room');
     const guestContext = await browser.newContext();
+    await primeTurnOrderResultQueues(hostContext, { human: ['모'] });
+    await primeTurnOrderResultQueues(guestContext, { human: ['도'] });
     await primeLobbyStorage(hostContext, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
     await primeLobbyStorage(guestContext, { nickname: guestName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
     const guestPage = await guestContext.newPage();
