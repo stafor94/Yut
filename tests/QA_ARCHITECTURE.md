@@ -37,9 +37,9 @@ Playwright project의 `testMatch`와 project 내부 병렬 실행 계약은 `tes
 - `desktop-sequence`: sequence replay, pending/result-hold, 이동 연출처럼 짧은 중간 상태를 관찰하는 timing-sensitive desktop 회귀
 - `desktop-regression`: 윷 던지기·이동·연출·로비의 나머지 desktop 회귀
 - `mobile-galaxy`: Galaxy Chromium viewport의 레이아웃·로비·대기실·순서·결과 표시 QA
-- `mobile-galaxy-timing`: 화면 좌표·pointer capture·취소·서버 제출을 검증하는 Galaxy Chromium timing QA
-- `safari-visible-mismatch`: 화면 좌표와 animation timeline을 의도적으로 불일치시키는 단일 WebKit 회귀
-- `safari-timing`: 나머지 실제 pointer release·취소 WebKit 회귀
+- `mobile-galaxy-timing`: pointerdown snapshot·취소·서버 제출을 검증하는 Galaxy Chromium timing QA
+- `safari-visible-mismatch`: Good pointerdown 뒤 Perfect 도달 시간이 지나도 같은 snapshot이 유지되는지 검증하는 단일 WebKit 회귀
+- `safari-timing`: 나머지 pointerdown snapshot·release·취소 WebKit 회귀
 
 Galaxy와 Safari 계열은 별도 GitHub Actions matrix entry로 실행한다. Chromium과 WebKit을 한 runner에서 순차 실행하지 않는다. 각 lane은 고유 `QA_RUN_ID`, `QA_PROJECT_ID`, room namespace와 cleanup 범위를 사용한다.
 
@@ -47,9 +47,9 @@ Galaxy와 Safari 계열은 별도 GitHub Actions matrix entry로 실행한다. C
 
 `mobile-galaxy`와 `mobile-galaxy-timing`은 각각 `desktop-chromium` project에서 Firebase browser isolation spec을 실행하고 `mobile-galaxy` project에서 담당 모바일 spec을 실행한다. Run `30178219787`에서 전체 26건은 성공했지만 pointer 4건이 각각 31~37초로 lane의 마지막 실행 꼬리를 형성해 전체 job이 284.2초가 됐다. 테스트 삭제·timeout 완화 대신 pointer spec을 독립 runner로 분리해 두 범위를 동시에 실행한다.
 
-`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. 화면 NICE 위치와 보고된 timeline PERFECT를 강제로 불일치시키는 시나리오는 Run `30162254392`에서 다른 WebKit test와 동일 runner CPU를 공유할 때 측정 뒤 실제 `pointerup` 전 프레임이 GOOD으로 이동했으므로 `safari-visible-mismatch` 1-worker runner에서 isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 나머지 세 pointer 시나리오를 3 workers에 분산한다. 테스트의 화면 release 등급 의미와 서버 제출 assertion은 유지한다.
+`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. `safari-visible-mismatch`는 exact title `pointerdown Good snapshot은 180ms 뒤 Perfect 시간이 지나도 화면·제출·sequence·최종 판정이 Good으로 일치한다`를 1-worker runner에서 browser isolation spec과 함께 실행한다. `safari-timing`은 해당 title을 `grepInvert`로 제외하고 Nice snapshot·버튼 밖 release·pointercancel 시나리오를 3 workers에 분산한다. Galaxy timing은 같은 spec 전체와 Galaxy 추가 반복을 실행한다.
 
-Safari·Galaxy pointer 회귀는 CSS 애니메이션의 특정 프레임을 맞히는 테스트가 아니라 화면에 배치된 구슬 위치에서 release했을 때 같은 등급이 서버 제출 경로에 전달되는지를 검증한다. Run `30163126624`의 WebKit과 Run `30177639266`의 Galaxy Chromium은 `requestAnimationFrame`을 240회 관찰해도 목표 구간을 건너뛰었다. 따라서 WAAPI animation을 pause한 뒤 첫 iteration의 `currentTime`을 이진 탐색하고, 매 단계의 실제 `getBoundingClientRect()`를 읽어 GOOD·NICE·PERFECT 내부 구간에 구슬을 확정한다. timeout 증가, playback rate 조정, 프레임 수 증가는 사용하지 않는다.
+Safari·Galaxy pointer 회귀는 CSS animation timeline이나 `animation.currentTime`을 조작하지 않는다. 제품의 단일 leaf rAF writer가 live meter에 기록한 canonical `positionPercent`와 `phaseMs`를 관찰해 상승 방향 GOOD 또는 NICE 구간에 도달한 실제 렌더 프레임에서 `pointerdown`을 발생시킨다. 이후 180ms 동안 여러 rAF가 지나도 live 오브가 pointerdown snapshot에 고정되는지, `pointerup` 뒤 result hold의 0ms·500ms·900ms 위치와 action·sequence·patch·최종 등급이 같은 snapshot인지 검증한다. 버튼 밖 `pointerup`과 `pointercancel`은 action/sequence를 만들지 않고 기존 phase와 진행 방향에서 rAF 이동이 재개되는지 함께 확인한다.
 
 현재 앱 shell은 시작 시 Firebase Auth·Firestore 초기화를 수행한다. 따라서 DOM·레이아웃 중심 spec도 별도의 검증된 Firebase-free bootstrap이 생기기 전까지 emulator lane에서 유지한다. 단순 속도 개선을 위해 제품 초기화 계약을 mock으로 대체하지 않는다.
 
@@ -86,7 +86,7 @@ Safari·Galaxy pointer 회귀는 CSS 애니메이션의 특정 프레임을 맞�
 
 `desktop-sequence`는 1 worker를 고정한다. Run `30160293177`에서 `bug-history-smoke`가 다른 desktop 테스트와 2-worker runner를 공유하는 동안 2초 move 시작 상태를 놓쳤으므로, 동일 파일을 별도 runner에 격리해 전체 workflow 병렬성은 유지하고 파일 내부 관찰 순서는 보장한다.
 
-Galaxy timing과 Safari 계열은 같은 pointer spec을 서로 다른 browser lane에서 실행하므로 `sharedTargets`를 세 lane 모두에 선언한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 강제 불일치 test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 강제 불일치 title을 제외해야 한다. 각 test는 고유 browser context·room을 사용하고 화면 위치를 결정적으로 확정한다. 변경된 병렬 구성은 최소 3회 연속 실행해 화면 release 등급, room 잔존, Firebase 요청 오류와 p95 시간을 확인한다.
+Galaxy timing과 Safari 계열은 같은 pointer spec을 서로 다른 browser lane에서 실행하므로 `sharedTargets`를 세 lane 모두에 선언한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 pointerdown Good 장기 press test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 title을 제외해야 한다. 각 test는 고유 browser context·room을 사용하고 제품 rAF snapshot을 실제 렌더 위치에서 관찰한다. worker 수와 성능 예산은 변경하지 않는다.
 
 ## 성능 예산
 
