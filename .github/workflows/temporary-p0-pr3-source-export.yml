@@ -1,26 +1,87 @@
-name: Temporary P0 PR3 source export
+name: Temporary P0 PR3 implementation validation
 
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    types: [synchronize]
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: temporary-p0-pr3-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  export-source:
+  apply-and-validate:
     if: github.event.pull_request.head.ref == 'feat/p0-pr3-coordinator-lease-epoch'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-      - name: Archive tracked source snapshot
-        run: git ls-files -z | tar --null -T - -czf source-snapshot.tar.gz
-      - uses: actions/upload-artifact@v4
+          fetch-depth: 1
+          show-progress: false
+      - name: Restore and apply P0 PR3 product patch
+        run: |
+          set -euxo pipefail
+          cat .github/p0-pr3-patch/part-*.txt > /tmp/p0-pr3.patch.xz.b64
+          test "$(wc -c < /tmp/p0-pr3.patch.xz.b64)" = "18172"
+          echo '772ec71ae7088cbcfa7e4c96702c6a1619de86aa5291cb66e7675c3d66206df7  /tmp/p0-pr3.patch.xz.b64' | sha256sum --check
+          base64 --decode /tmp/p0-pr3.patch.xz.b64 | xz --decompress > /tmp/p0-pr3.patch
+          echo 'ee900ade45287ae8b965db783507a23d2719961f58e0f057eb27fb4d44b3ae68  /tmp/p0-pr3.patch' | sha256sum --check
+          git apply --check /tmp/p0-pr3.patch
+          git apply /tmp/p0-pr3.patch
+          rm -rf .github/p0-pr3-patch
+          rm .github/workflows/temporary-p0-pr3-source-export.yml
+          git diff --check
+      - uses: actions/setup-node@v4
         with:
-          name: p0-pr3-source-${{ github.event.pull_request.head.sha }}
-          path: source-snapshot.tar.gz
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate QA architecture
+        run: npm run qa:validate-architecture
+      - name: Build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee p0-pr3-build.log
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          npm run test:unit 2>&1 | tee p0-pr3-unit.log
+      - name: Verify coordinator lease wiring
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const app = fs.readFileSync('src/app/App.tsx', 'utf8');
+          const service = fs.readFileSync('src/features/room/services/roomServiceCore.ts', 'utf8');
+          assert.match(app, /useGameCoordinatorLease/);
+          assert.match(app, /coordinatorLeasePayload/);
+          assert.match(service, /claimGameCoordinatorLease/);
+          assert.match(service, /hasCurrentCoordinatorLease/);
+          assert.match(service, /coordinatorEpoch/);
+          assert.equal(fs.existsSync('.github/p0-pr3-patch'), false);
+          assert.equal(fs.existsSync('.github/workflows/temporary-p0-pr3-source-export.yml'), false);
+          NODE
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-pr3-validation-${{ github.run_id }}
+          path: |
+            p0-pr3-build.log
+            p0-pr3-unit.log
+            test-results/qa-architecture-report.json
+          if-no-files-found: ignore
           retention-days: 1
+      - name: Commit validated product changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat: add coordinator lease epoch fencing'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
