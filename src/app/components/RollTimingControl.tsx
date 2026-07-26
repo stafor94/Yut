@@ -1,5 +1,8 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { getRollTimingPositionPercent } from '../../game-core/roll';
+import {
+  getVisibleRollTimingPositionPercent,
+  getVisibleRollTimingTrackOffsetPx,
+} from '../flows/rollTimingVisiblePosition';
 import {
   getRollTimingResultHoldStyle,
   ROLL_TIMING_RESULT_HOLD_MS,
@@ -25,6 +28,7 @@ type ReleasedPointerTiming = {
 
 type RollTimingSnapshot = {
   positionPercent: number;
+  trackOffsetPx: number;
   capturedAt: number;
 };
 
@@ -33,8 +37,8 @@ const POINTER_RELEASE_CLICK_MAX_DELAY_MS = 1000;
 export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', autoSubmitAt = 0, onRoll }: RollTimingControlProps) {
   const meterRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLSpanElement | null>(null);
+  const orbRef = useRef<HTMLSpanElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const frameStartedAtRef = useRef(0);
   const frameRequestRef = useRef<number | null>(null);
   const lastRenderedSnapshotRef = useRef<RollTimingSnapshot | null>(null);
   const capturedPointerTimingRef = useRef<CapturedPointerTiming | null>(null);
@@ -53,18 +57,41 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     resultHoldElementRef.current = null;
   };
 
-  const renderFrame = (capturedAt: number) => {
+  const sampleRenderedFrame = (capturedAt: number) => {
+    const meter = meterRef.current;
     const track = trackRef.current;
-    if (!track) return undefined;
-    const elapsedMs = Math.max(0, capturedAt - frameStartedAtRef.current);
-    const positionPercent = getRollTimingPositionPercent(elapsedMs);
-    track.style.transform = `translate3d(${positionPercent}%, 0, 0)`;
-    const snapshot = { positionPercent, capturedAt };
+    const orb = orbRef.current;
+    if (!meter || !track || !orb) return undefined;
+
+    const positionPercent = getVisibleRollTimingPositionPercent(
+      meter.getBoundingClientRect(),
+      orb.getBoundingClientRect(),
+    );
+    const offsetParent = track.offsetParent;
+    if (positionPercent === undefined || !(offsetParent instanceof HTMLElement)) return undefined;
+    const offsetParentRect = offsetParent.getBoundingClientRect();
+    const trackLayoutLeftPx = offsetParentRect.left + offsetParent.clientLeft + track.offsetLeft;
+    const trackOffsetPx = getVisibleRollTimingTrackOffsetPx(track.getBoundingClientRect(), trackLayoutLeftPx);
+    if (!Number.isFinite(trackOffsetPx)) return undefined;
+
+    const snapshot = { positionPercent, trackOffsetPx, capturedAt };
     lastRenderedSnapshotRef.current = snapshot;
     return snapshot;
   };
 
-  const captureLastRenderedSnapshot = () => lastRenderedSnapshotRef.current ?? renderFrame(performance.now());
+  const captureLastRenderedSnapshot = () => lastRenderedSnapshotRef.current ?? sampleRenderedFrame(performance.now());
+
+  const freezeTimingTrack = (snapshot: RollTimingSnapshot) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const animation = track.getAnimations()[0];
+    track.style.transform = `translate3d(${snapshot.trackOffsetPx}px, 0, 0)`;
+    try {
+      animation?.cancel();
+    } catch {
+      animation?.pause();
+    }
+  };
 
   const holdTimingResult = (snapshot: RollTimingSnapshot) => {
     const meter = meterRef.current;
@@ -77,7 +104,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const heldTrack = heldMeter.querySelector<HTMLElement>('.roll-timing-orb-track');
     if (heldTrack) {
       heldTrack.style.animation = 'none';
-      heldTrack.style.transform = `translate3d(${snapshot.positionPercent}%, 0, 0)`;
+      heldTrack.style.transform = `translate3d(${snapshot.trackOffsetPx}px, 0, 0)`;
     }
     heldMeter.dataset.testid = 'roll-timing-result-hold';
     heldMeter.dataset.positionPercent = String(snapshot.positionPercent);
@@ -97,6 +124,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
       window.cancelAnimationFrame(frameRequestRef.current);
       frameRequestRef.current = null;
     }
+    freezeTimingTrack(snapshot);
     holdTimingResult(snapshot);
     onRoll(snapshot.positionPercent, timedOut ? { timedOut: true } : undefined);
     return true;
@@ -107,9 +135,8 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     submittedKeyRef.current = '';
     autoSubmittedKeyRef.current = '';
     lastRenderedSnapshotRef.current = null;
-    frameStartedAtRef.current = performance.now();
     const tick = (capturedAt: number) => {
-      renderFrame(capturedAt);
+      sampleRenderedFrame(capturedAt);
       frameRequestRef.current = window.requestAnimationFrame(tick);
     };
     frameRequestRef.current = window.requestAnimationFrame(tick);
@@ -189,7 +216,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     releasedPointerTimingRef.current = null;
     capturedPointerTimingRef.current = null;
     if (isFollowUpPointerClick) return;
-    if (!submitCurrentTiming()) onRoll();
+    submitCurrentTiming();
   };
 
   return <>
@@ -198,7 +225,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
       <span className="roll-timing-perfect" aria-hidden="true"></span>
       <span className="roll-timing-good right" aria-hidden="true"></span>
       <span ref={trackRef} className="roll-timing-orb-track" aria-hidden="true">
-        <span className="roll-timing-orb"></span>
+        <span ref={orbRef} className="roll-timing-orb"></span>
       </span>
     </div>
     <button ref={buttonRef} type="button" data-testid={buttonTestId} className="roll-button" onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerCancel} onClick={handleClick} disabled={disabled}>{buttonText}</button>
