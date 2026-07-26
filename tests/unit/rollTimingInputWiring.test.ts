@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const controlSource = readFileSync('src/app/components/RollTimingControl.tsx', 'utf8');
 const boardControlsSource = readFileSync('src/app/containers/GameBoardControls.tsx', 'utf8');
+const appSource = readFileSync('src/app/App.tsx', 'utf8');
 
 test('타이밍 판정은 입력 이벤트에서 합성 transform을 동결한 단일 snapshot으로 정지 표시와 제출을 수행한다', () => {
   assert.match(controlSource, /getVisibleRollTimingPositionPercent/);
@@ -17,8 +18,7 @@ test('타이밍 판정은 입력 이벤트에서 합성 transform을 동결한 �
   assert.match(controlSource, /heldMeter\.classList\.remove\('roll-timing-live-meter'\);[\s\S]*heldMeter\.classList\.add\('roll-timing-result-hold'\)/);
   assert.match(controlSource, /heldTrack\.style\.transform = snapshot\.frozenTransform/);
   assert.match(controlSource, /heldMeter\.dataset\.positionPercent = String\(snapshot\.positionPercent\)/);
-  assert.match(controlSource, /parent\.insertBefore\(heldMeter, button\)/);
-  assert.match(controlSource, /const submissionResult = submitCurrentTiming\(true\);[\s\S]*submissionResult === 'unavailable'/);
+  assert.match(controlSource, /parent\.insertBefore\(heldMeter, button\);[\s\S]*heldMeter\.dataset\.holdStartedAt = String\(performance\.now\(\)\);[\s\S]*setTimeout\(clearResultHold, ROLL_TIMING_RESULT_HOLD_MS\)/);
   assert.match(controlSource, /onPointerDown=\{handlePointerDown\}/);
   assert.match(controlSource, /onPointerUp=\{handlePointerUp\}/);
   assert.match(controlSource, /onPointerCancel=\{handlePointerCancel\}/);
@@ -33,9 +33,11 @@ test('타이밍 판정은 입력 이벤트에서 합성 transform을 동결한 �
   assert.doesNotMatch(controlSource, /animation\.currentTime/);
 });
 
-test('시간초과 roll은 활성 클라이언트의 동일 동결 snapshot을 사용하고 측정 불가 시에만 기존 복구 fallback으로 넘긴다', () => {
+test('시간초과 roll은 활성 클라이언트의 동일 동결 snapshot만 제출하고 측정 실패 시 deadline 위치를 재계산하지 않는다', () => {
   assert.match(boardControlsSource, /autoSubmitAt=\{authoritativeTurnDeadline\.at\}/);
-  assert.match(controlSource, /const submissionResult = submitCurrentTiming\(true\);[\s\S]*if \(submissionResult === 'unavailable'\) onRoll\(undefined, \{ timedOut: true \}\)/);
+  assert.match(controlSource, /autoSubmittedKeyRef\.current = autoSubmitKey;[\s\S]*submitCurrentTiming\(true\)/);
+  assert.doesNotMatch(controlSource, /onRoll\(undefined, \{ timedOut: true \}\)/);
   assert.match(boardControlsSource, /markTurnActionTimedOut\(\);[\s\S]*window\.setTimeout\(\(\) => \{[\s\S]*onRollYutRef\.current\(\{ timedOut: true, timingPositionPercent \}\)/);
   assert.match(boardControlsSource, /\}, TURN_NETWORK_GRACE_MS\)/);
+  assert.match(appSource, /rollOptions\.timedOut && turnDeadlineAt && rollOptions\.timingPositionPercent === undefined[\s\S]*resolveRollTimeout\(turnDeadlineAt, getTurnActionTimeoutMs\(activeSeat\.id\)\)/);
 });
