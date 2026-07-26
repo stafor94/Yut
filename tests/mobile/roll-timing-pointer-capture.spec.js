@@ -462,6 +462,8 @@ async function runAndAssertTimingGesture(page, roomId, options = {}) {
 }
 
 test.describe('mobile roll timing release regression', () => {
+  test.describe.configure({ mode: 'parallel' });
+
   const roomIds = new Set();
 
   test.beforeEach(() => {
