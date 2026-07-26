@@ -17,7 +17,28 @@ type SequenceEventLike = {
 type PresentationTimingGrade = 'perfect' | 'nice' | 'good' | 'bad';
 
 const MAX_STORED_LOGS = 200;
+const COORDINATOR_LEASE_FIELDS = [
+  'coordinatorSeatId',
+  'coordinatorEpoch',
+  'coordinatorLeaseExpiresAt',
+  'coordinatorLeaseUpdatedAt',
+] as const;
 const hasOwn = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
+
+const preserveCoordinatorLeaseFields = (
+  currentState: SequencePatchState | null | undefined,
+  nextState: SequencePatchState,
+): SequencePatchState => {
+  const preservedState = { ...nextState };
+  for (const field of COORDINATOR_LEASE_FIELDS) {
+    if (currentState && hasOwn(currentState, field)) {
+      preservedState[field] = currentState[field];
+    } else {
+      delete preservedState[field];
+    }
+  }
+  return preservedState;
+};
 
 const normalizePresentationTimingGrade = (value: unknown): PresentationTimingGrade | undefined => {
   if (value === 'normal') return 'bad';
@@ -58,7 +79,8 @@ export function applySequenceEvent<TState extends SequencePatchState>(state: TSt
   if (currentSequence >= sequenceNumber) return state ?? null;
 
   if (sequence.stateAfter) {
-    return preserveSequenceRollTimingGrade(sequence, { ...sequence.stateAfter, lastSequence: sequenceNumber }) as TState;
+    const nextState = preserveCoordinatorLeaseFields(state, { ...sequence.stateAfter, lastSequence: sequenceNumber });
+    return preserveSequenceRollTimingGrade(sequence, nextState) as TState;
   }
 
   if (!state || currentSequence !== sequenceNumber - 1) return null;
@@ -88,6 +110,7 @@ export function applySequenceEvent<TState extends SequencePatchState>(state: TSt
     nextState.logs = patch.logs;
   }
 
+  nextState = preserveCoordinatorLeaseFields(state, nextState) as TState;
   nextState = preserveSequenceRollTimingGrade(sequence, nextState) as TState;
   return nextState;
 }
