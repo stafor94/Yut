@@ -537,15 +537,15 @@ test.describe('mobile roll timing release regression', () => {
     });
   });
 
-  test('Galaxy viewport에서 stale rAF Nice·Good 시나리오를 3회 반복해 동일 snapshot과 1초 정지를 유지한다', async ({ page, context }, testInfo) => {
-    test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy timing lane에서만 3회 반복합니다.');
+  test('Galaxy viewport에서 stale rAF Nice·Good 시나리오를 총 3회 검증해 동일 snapshot과 1초 정지를 유지한다', async ({ page, context }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy timing lane에서만 추가 반복합니다.');
     testInfo.setTimeout(420_000);
-    const attempts = [NICE_RELEASE_RANGE, GOOD_RELEASE_RANGE, NICE_RELEASE_RANGE];
+    const attempts = [NICE_RELEASE_RANGE];
 
     for (const [index, pointerUpRange] of attempts.entries()) {
       const roomId = await startAiTimingGame(page, context, testInfo, `repeat-${index + 1}`);
       roomIds.add(roomId);
-      await runQaStep(testInfo, `Galaxy stale rAF 회귀 ${index + 1}/3`, async () => runAndAssertTimingGesture(page, roomId, { pointerUpRange }));
+      await runQaStep(testInfo, `Galaxy stale rAF 추가 회귀 ${index + 1}/${attempts.length}`, async () => runAndAssertTimingGesture(page, roomId, { pointerUpRange }));
       await deleteRoomForQa(roomId).catch(() => undefined);
       roomIds.delete(roomId);
       await page.goto('/Yut/', { waitUntil: 'domcontentloaded' });
