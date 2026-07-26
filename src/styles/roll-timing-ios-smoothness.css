@@ -13,7 +13,7 @@
   pointer-events: none;
   transform: translate3d(0, 0, 0);
   transform-origin: left center;
-  animation: none;
+  animation: roll-timing-orb-track 1s linear infinite alternate;
   will-change: transform;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
