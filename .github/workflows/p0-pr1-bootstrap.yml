@@ -1,0 +1,73 @@
+name: P0 PR1 bootstrap
+
+on:
+  push:
+    branches:
+      - agent/p0-pr1-remove-build-source-transform
+
+permissions:
+  contents: write
+
+concurrency:
+  group: p0-pr1-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  patch-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Record baseline build
+        shell: bash
+        run: |
+          npm run build
+          BASELINE_BYTES=$(du -sb dist | cut -f1)
+          echo "BASELINE_BYTES=$BASELINE_BYTES" >> "$GITHUB_ENV"
+          echo "Baseline dist bytes: $BASELINE_BYTES" >> "$GITHUB_STEP_SUMMARY"
+      - name: Apply source patch
+        run: node scripts/p0-pr1-bootstrap.mjs
+      - name: Check patch integrity
+        shell: bash
+        run: |
+          git diff --check
+          test ! -e src/build/hoistTrapPlacementHelpers.ts
+          ! grep -R "transform(source, id)\|hoistTrapPlacementHelpers\|replaceUnsafeAppStorageReads" vite.config.ts src/app/App.tsx src/shared/storage tests/unit tsconfig.test.json
+      - name: Build and typecheck
+        run: npm run build
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Architecture validation
+        run: npm run qa:validate-architecture
+      - name: Verify Playwright execution wiring
+        shell: bash
+        run: |
+          npx playwright test --list --project=desktop-chromium tests/online tests/game-flow tests/regression > /tmp/desktop-tests.txt
+          npx playwright test --list --project=mobile-galaxy tests/mobile > /tmp/mobile-tests.txt
+          test -s /tmp/desktop-tests.txt
+          test -s /tmp/mobile-tests.txt
+          echo "Desktop listed tests: $(grep -c ':' /tmp/desktop-tests.txt || true)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Mobile listed tests: $(grep -c ':' /tmp/mobile-tests.txt || true)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Record updated build size
+        shell: bash
+        run: |
+          UPDATED_BYTES=$(du -sb dist | cut -f1)
+          echo "Updated dist bytes: $UPDATED_BYTES" >> "$GITHUB_STEP_SUMMARY"
+          echo "Dist byte delta: $((UPDATED_BYTES - BASELINE_BYTES))" >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit verified changes
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Remove build-time App source transforms"
+          git push origin HEAD
