@@ -26,7 +26,7 @@ type Params = {
   syncLatestAuthoritativeState: (reason: string, options?: { allowRollAnimation?: boolean; diagnosticType?: 'roll_yut' | 'move_piece' }) => Promise<boolean>;
   syncLatestSequencesFromBadge: () => Promise<void>;
   reconcilePendingLocalRemoteActions: (options?: { forceStaleClear?: boolean }) => Promise<boolean>;
-  onSnapshotReceived?: () => void;
+  onSnapshotReceived?: (state: SequenceStateSnapshot) => void;
   addPendingLocalRemoteAction: (actionKey: string, metadata?: PendingMeta) => void;
   acknowledgePendingLocalRemoteAction: (clientMutationId: unknown) => void;
   removeSettledPendingLocalRemoteAction: (actionKey: string) => void;
@@ -109,8 +109,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
     ),
     applySyncedStateSnapshot: rememberAndApplySyncedStateSnapshot,
     enqueueAuthoritativeResultApplication: (applyResult) => enqueueAuthoritativeResultApplication(params.activeRoomId, applyResult),
-    onSnapshotReceived: () => {
-      params.onSnapshotReceived?.();
+    onSnapshotReceived: (state) => {
+      params.onSnapshotReceived?.(state);
     },
   });
 

@@ -55,7 +55,9 @@ test('timeout 자동 플레이는 연결 종료 대체와 분리된 authoritativ
   assert.match(service, /state\.autoPlayBySeatId\?\.\[action\.actorId\]/);
   assert.match(service, /if \(action\.type === 'resume_human_control'\) return uid === action\.actorId/);
   assert.match(service, /action\.payload\?\.automationSource === 'timeout_ai'/);
-  assert.match(service, /uid === state\.coordinatorSeatId/);
+  assert.match(service, /hasCurrentCoordinatorLease\(state, leaseToken\)/);
+  assert.match(service, /coordinatorEpoch/);
+  assert.doesNotMatch(service, /state\.gameSeats\.filter\(\(seat\) => seat\.isHost\)/);
   assert.match(service, /본인의 AI 자동 플레이만 해제할 수 있습니다/);
   assert.match(service, /AI 자동 플레이 액션 권한을 확인할 수 없습니다/);
   assert.match(service, /human_control_resumed/);

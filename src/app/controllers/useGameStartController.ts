@@ -138,6 +138,7 @@ export function useGameStartController(ctx: any) {
         turnDeadlineKind: '',
       }, {
         actorId: ctx.localSeatId,
+        coordinatorEpoch: ctx.coordinatorEpoch,
         clientMutationId,
         startRequestVersion: ctx.startRequestVersion,
         payload: { startRequestVersion: ctx.startRequestVersion, roundId: intro.currentRound.id, startAt: intro.currentRound.startAt },
@@ -295,13 +296,13 @@ export function useGameStartController(ctx: any) {
     const completeIntro = () => {
       if (completingTurnOrderIntroRef.current.has(readyAt)) return;
       completingTurnOrderIntroRef.current.add(readyAt);
-      void completeTurnOrderIntro(ctx.activeRoomId, { readyAt, actorId: ctx.localSeatId })
+      void completeTurnOrderIntro(ctx.activeRoomId, { readyAt, actorId: ctx.localSeatId, coordinatorEpoch: ctx.coordinatorEpoch })
         .then((version: number) => { if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version); })
         .finally(() => completingTurnOrderIntroRef.current.delete(readyAt));
     };
     const timer = window.setTimeout(completeIntro, Math.max(0, readyAt - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [ctx.activeRoomId, ctx.canCompleteInitialOnlineTurnOrderIntro, ctx.localSeatId, ctx.screen, ctx.turnOrderIntro?.readyAt]);
+  }, [ctx.activeRoomId, ctx.canCompleteInitialOnlineTurnOrderIntro, ctx.coordinatorEpoch, ctx.localSeatId, ctx.screen, ctx.turnOrderIntro?.readyAt]);
   useEffect(() => {
     if (!ctx.startCountdownEffectActive) {
       if (ctx.countdown >= 0 && ctx.startStatus !== 'requested') setCountdown(-1);

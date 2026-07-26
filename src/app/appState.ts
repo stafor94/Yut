@@ -136,6 +136,9 @@ export type SequenceStateSnapshot = Partial<{
   turnActionTimeoutCountBySeatId: Record<string, number>;
   autoPlayBySeatId: Record<string, boolean>;
   coordinatorSeatId: string;
+  coordinatorEpoch: number;
+  coordinatorLeaseExpiresAt: unknown;
+  coordinatorLeaseUpdatedAt: unknown;
   gameSeats: GameSeatSnapshot[];
   startRequestVersion: number;
   turnVersion: number;
