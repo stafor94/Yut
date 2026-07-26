@@ -1,4 +1,4 @@
-import { GOLDEN_YUT_CHOICES, rollYutResultWithTiming, shouldFallForTimingZone, type RollTimingZone, type YutResult } from '../../../game-core/roll';
+import { GOLDEN_YUT_CHOICES, getRollTimingZone, rollYutResultWithTiming, shouldFallForTimingZone, type RollTimingZone, type YutResult } from '../../../game-core/roll';
 import { reduceMoveCommand, reduceRollCommand, type EngineState } from '../../../game-core/gameEngine';
 import { ITEM_DEFINITIONS, type ItemType } from '../../items/logic/items';
 import { getAdjacentBoardNodeIds, type BranchChoice } from '../../../game-core/board/board';
@@ -42,8 +42,11 @@ type SyncedGameStateShape = {
   fallEffect?: unknown;
   lastRollTimingZone?: unknown;
   pendingGoldenYutSelection?: unknown;
+  turnActionTimeoutCountBySeatId?: Record<string, number>;
+  autoPlayBySeatId?: Record<string, boolean>;
+  gameSeats?: Array<{ id?: string; isAI?: boolean; isSubstitutedByAI?: boolean }>;
 };
-type GameActionShape = { id: string; type: 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
+type GameActionShape = { id: string; type: 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision' | 'resume_human_control'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean };
 export type AuthoritativeActionResult = { status: 'committed' | 'duplicate' | 'rejected' | 'unsupported'; sequence?: number; turnVersion?: number; reason?: string; patch?: GameStatePatch; payload?: Record<string, unknown> };
 type AuthoritativeCommitReduction = { status: 'committed'; patch: GameStatePatch; payload: Record<string, unknown> };
 export type AuthoritativeReduction = AuthoritativeCommitReduction | Exclude<AuthoritativeActionResult, { status: 'committed' }>;
@@ -221,6 +224,15 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
   } else if (selectedGoldenYutResult !== undefined) return makeActionReject('황금 윷 선택 대기 상태가 아닙니다.');
   const timingZone = action.payload?.rollTimingZone;
   if (!isValidRollTimingZone(timingZone)) return makeActionReject('허용되지 않은 윷 입력 시간입니다.');
+  const timingPositionPercent = action.payload?.timingPositionPercent;
+  if (timingPositionPercent !== undefined) {
+    if (typeof timingPositionPercent !== 'number' || !Number.isFinite(timingPositionPercent) || timingPositionPercent < 0 || timingPositionPercent > 100) {
+      return makeActionReject('윷 타이밍 오브 위치가 유효하지 않습니다.');
+    }
+    if (getRollTimingZone(timingPositionPercent) !== timingZone) {
+      return makeActionReject('윷 타이밍 오브 위치와 판정이 일치하지 않습니다.');
+    }
+  }
   if (pendingGoldenYutSelection && clientFallOccurred === true) return makeActionReject('황금 윷은 낙이 될 수 없습니다.');
   if (timingZone === 'perfect' && clientFallOccurred === true) return makeActionReject('Perfect 결과는 낙이 될 수 없습니다.');
   const nextRoll = pendingGoldenYutSelection && selectedGoldenYutResult === undefined && pendingGoldenTimedOut
@@ -790,6 +802,66 @@ function reduceContinueRace(state: SyncedGameStateShape, action: Omit<GameAction
   };
 }
 
+const replaceDeadlineForActorPrompt = (
+  value: unknown,
+  actorId: string,
+  nextDeadline: number,
+) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const prompt = value as Record<string, unknown>;
+  const ownerId = typeof prompt.ownerId === 'string'
+    ? prompt.ownerId
+    : typeof prompt.actorId === 'string'
+      ? prompt.actorId
+      : '';
+  return ownerId === actorId && typeof prompt.deadline === 'number'
+    ? { ...prompt, deadline: nextDeadline }
+    : value;
+};
+
+function reduceResumeHumanControl(
+  state: SyncedGameStateShape,
+  action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>,
+): AuthoritativeReduction {
+  if (state.autoPlayBySeatId?.[action.actorId] !== true) {
+    return makeActionReject('현재 AI 자동 플레이 상태가 아닙니다.');
+  }
+
+  const autoPlayBySeatId = { ...(state.autoPlayBySeatId ?? {}), [action.actorId]: false };
+  const turnActionTimeoutCountBySeatId = {
+    ...(state.turnActionTimeoutCountBySeatId ?? {}),
+    [action.actorId]: 0,
+  };
+  const activeSeatId = (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)] ?? '';
+  const pendingTrapOwnerId = (state.pendingTrapPlacement as { ownerId?: unknown } | null | undefined)?.ownerId;
+  const pendingPickupOwnerId = (state.pendingItemPickup as { ownerId?: unknown } | null | undefined)?.ownerId;
+  const controlsCurrentPhase = activeSeatId === action.actorId
+    || pendingTrapOwnerId === action.actorId
+    || pendingPickupOwnerId === action.actorId
+    || (state.itemPromptTiming === 'after_move' && state.lastMovedSeatId === action.actorId);
+  if (!controlsCurrentPhase || !state.turnDeadlineKind) {
+    return {
+      status: 'committed',
+      patch: { autoPlayBySeatId, turnActionTimeoutCountBySeatId },
+      payload: { resumedSeatId: action.actorId },
+    };
+  }
+
+  const nextDeadline = Date.now() + TURN_ACTION_TIMEOUT_MS;
+  return {
+    status: 'committed',
+    patch: {
+      autoPlayBySeatId,
+      turnActionTimeoutCountBySeatId,
+      turnDeadlineAt: nextDeadline,
+      pendingTrapPlacement: replaceDeadlineForActorPrompt(state.pendingTrapPlacement, action.actorId, nextDeadline),
+      pendingItemPickup: replaceDeadlineForActorPrompt(state.pendingItemPickup, action.actorId, nextDeadline),
+      pendingGoldenYutSelection: replaceDeadlineForActorPrompt(state.pendingGoldenYutSelection, action.actorId, nextDeadline),
+    },
+    payload: { resumedSeatId: action.actorId, turnDeadlineAt: nextDeadline },
+  };
+}
+
 export function reduceAuthoritativeGameAction(state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>, room: RoomSummaryShape, sides: AuthoritativeSeatSide[] = []): AuthoritativeReduction {
   if (action.type === 'roll_yut') return reduceAuthoritativeRoll(state, action, room, sides);
   if (action.type === 'move_piece') return reduceAuthoritativeMove(state, action, room, sides);
@@ -797,5 +869,6 @@ export function reduceAuthoritativeGameAction(state: SyncedGameStateShape, actio
   if (action.type === 'use_item') return reduceUseItem(state, action, room, sides);
   if (action.type === 'item_pickup_decision') return reduceItemPickupDecision(state, action);
   if (action.type === 'place_trap') return reducePlaceTrap(state, action, room, sides);
+  if (action.type === 'resume_human_control') return reduceResumeHumanControl(state, action);
   return { status: 'unsupported' };
 }

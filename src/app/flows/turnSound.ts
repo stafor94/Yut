@@ -1,18 +1,19 @@
 type LocalTurnSoundTransition = {
-  previousActiveSeatId: string;
   currentActiveSeatId: string;
   localSeatId: string;
+  actionReady: boolean;
+  alreadyPlayed: boolean;
 };
 
 export const shouldPlayLocalTurnSound = ({
-  previousActiveSeatId,
   currentActiveSeatId,
   localSeatId,
+  actionReady,
+  alreadyPlayed,
 }: LocalTurnSoundTransition) => Boolean(
-  previousActiveSeatId
+  actionReady
+  && !alreadyPlayed
   && currentActiveSeatId
   && localSeatId
-  && previousActiveSeatId !== currentActiveSeatId
-  && previousActiveSeatId !== localSeatId
   && currentActiveSeatId === localSeatId
 );

@@ -449,7 +449,7 @@ test('완주 후 이어서 진행은 이전 누적 던지기와 선택 대기를
   assert.equal(result.patch?.pendingAfterMoveTurnIndex, null);
   assert.equal(result.patch?.pendingTrapPlacement, null);
   assert.equal(result.patch?.itemPromptTiming, null);
-  assert.equal(result.patch?.turnDeadlineAt, now + 15000);
+  assert.equal(result.patch?.turnDeadlineAt, now + 10000);
   assert.equal(result.patch?.turnDeadlineKind, 'roll');
   assert.equal(result.patch?.rollAnimation, null);
   assert.equal(result.patch?.rollResultReadyAt, 0);
@@ -1800,6 +1800,23 @@ test('온라인 일반 roll은 황금 윷 선택 결과와 잘못된 입력 시�
 
   assert.equal(forgedGolden.status, 'rejected');
   assert.equal(badTiming.status, 'rejected');
+});
+
+test('온라인 roll은 제출된 오브 위치와 타이밍 판정이 일치해야 한다', () => {
+  const mismatchedTiming = reduceAuthoritativeGameAction(
+    baseState(),
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'perfect', timingPositionPercent: 0 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+  const matchedTiming = reduceAuthoritativeGameAction(
+    baseState(),
+    { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'perfect', timingPositionPercent: 50 } },
+    { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+  );
+
+  assert.equal(mismatchedTiming.status, 'rejected');
+  assert.match(mismatchedTiming.reason ?? '', /오브 위치와 판정/);
+  assert.equal(matchedTiming.status, 'committed');
 });
 
 test('온라인 AI 누적 추가 던지기는 서버 상태 전환마다 한 action씩 진행된다', () => withMockRandom([0.8, 0.1], () => {

@@ -25,6 +25,7 @@ type GamePlayersPanelProps = {
   rankingSeatIds: string[];
   spectators: Seat[];
   ownedItems: Record<string, ItemType[]>;
+  autoPlayBySeatId: Record<string, boolean>;
   localSeatId: string;
   getPlayerCardName: (seat: Seat) => string;
   getSeatPieceColor: (seat: Seat | undefined) => string;
@@ -50,6 +51,7 @@ export function GamePlayersPanel({
   rankingSeatIds,
   spectators,
   ownedItems,
+  autoPlayBySeatId,
   localSeatId,
   getPlayerCardName,
   getSeatPieceColor,
@@ -130,11 +132,12 @@ export function GamePlayersPanel({
           {seats.map((seat) => {
             const rankIndex = rankingSeatIds.indexOf(seat.id);
             const finishText = rankIndex >= 0 ? `${rankIndex + 1}위 완주` : completedSeatIds.includes(seat.id) ? '완주' : '';
-            const isAiControlled = Boolean(seat.isAI || seat.isSubstitutedByAI);
+            const isTimeoutAutoPlayed = autoPlayBySeatId[seat.id] === true;
+            const isAiControlled = Boolean(seat.isAI || seat.isSubstitutedByAI || isTimeoutAutoPlayed);
             const aiDifficultyBadge = isAiControlled
               ? getAiDifficultyBadgeLabel(getRuntimeAiDifficultyForSeat(seat.id, seat as Seat & { aiDifficulty?: unknown }))
               : '';
-            const statusText = finishText || (seat.isSubstitutedByAI ? `나감 · ${aiDifficultyBadge}` : seat.isAI ? aiDifficultyBadge : '유저');
+            const statusText = finishText || (isTimeoutAutoPlayed ? 'AI 자동 플레이' : seat.isSubstitutedByAI ? `나감 · ${aiDifficultyBadge}` : seat.isAI ? aiDifficultyBadge : '유저');
             const displayName = getPlayerCardName(seat);
             return <div className={`player game-player-card ${isAiControlled ? 'ai' : ''} ${activeSeatId === seat.id ? 'active' : ''} ${playMode === 'team' ? (seat.team === '청팀' ? 'blue-team' : 'red-team') : ''}`} key={seat.id}>
               <span className="game-player-title">

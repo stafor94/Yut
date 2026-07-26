@@ -82,14 +82,14 @@ test('fails loudly when the guarded App storage source pattern changes', () => {
   );
 });
 
-test('keeps timeout penalties limited to offline local actions after controller extraction', () => {
+test('keeps the offline timeout counter aligned with the authoritative timeout policy after controller extraction', () => {
   const appSource = readFileSync('src/app/App.tsx', 'utf8');
-  const timingSource = readFileSync('src/app/config/gameTimings.ts', 'utf8');
   const itemControllerSource = readFileSync('src/app/controllers/useItemController.ts', 'utf8');
 
-  assert.ok(timingSource.includes('export const PENALTY_TURN_ACTION_TIMEOUT_MS = 10000;'));
-  assert.ok(appSource.includes("const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? '') => activeRoomId ? TURN_ACTION_TIMEOUT_MS"));
-  assert.ok(appSource.includes('const getItemPromptTimeoutMs = (seatId = localSeatId) => activeRoomId ? ITEM_PROMPT_TIMEOUT_MS'));
+  assert.ok(appSource.includes('getTurnActionTimeoutMsForCount(turnActionTimeoutPenaltyBySeatId[seatId], TURN_ACTION_TIMEOUT_MS)'));
+  assert.ok(appSource.includes('getTurnActionTimeoutMsForCount(turnActionTimeoutPenaltyBySeatId[seatId], ITEM_PROMPT_TIMEOUT_MS)'));
+  assert.ok(appSource.includes('const nextCount = incrementTurnActionTimeoutCount(current[seatId]);'));
+  assert.ok(appSource.includes('if (nextCount >= 2) setAutoPlayBySeatId'));
   assert.ok(appSource.includes('if (!seatId || activeRoomId) return;'));
 
   const onlinePromptStart = appSource.indexOf('if (activeRoomId) {', appSource.indexOf('if (!itemPromptTiming) return undefined;'));

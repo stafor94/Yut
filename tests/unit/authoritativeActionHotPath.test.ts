@@ -48,3 +48,15 @@ test('게임 도중 AI 대행 전환은 lifecycle 트랜잭션에서 presence ep
   assert.doesNotMatch(service, /syncGameSeatControlSnapshot/);
   assert.doesNotMatch(persistence, /syncGameSeatControlSnapshot/);
 });
+
+test('timeout 자동 플레이는 연결 종료 대체와 분리된 authoritative 권한을 사용한다', () => {
+  const service = read('src/features/room/services/roomServiceCore.ts');
+
+  assert.match(service, /state\.autoPlayBySeatId\?\.\[action\.actorId\]/);
+  assert.match(service, /if \(action\.type === 'resume_human_control'\) return uid === action\.actorId/);
+  assert.match(service, /action\.payload\?\.automationSource === 'timeout_ai'/);
+  assert.match(service, /uid === state\.coordinatorSeatId/);
+  assert.match(service, /본인의 AI 자동 플레이만 해제할 수 있습니다/);
+  assert.match(service, /AI 자동 플레이 액션 권한을 확인할 수 없습니다/);
+  assert.match(service, /human_control_resumed/);
+});

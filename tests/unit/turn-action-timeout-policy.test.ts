@@ -78,9 +78,9 @@ test('네트워크 유예는 1초로 줄인다', () => {
   assert.equal(TURN_NETWORK_GRACE_MS, 1000);
 });
 
-test('일반 턴 제한시간은 시간초과마다 15초에서 10초, 5초까지 줄고 더 내려가지 않는다', () => {
-  assert.equal(getTurnActionTimeoutMsForCount(0, TURN_ACTION_TIMEOUT_MS), 15000);
-  assert.equal(getTurnActionTimeoutMsForCount(1, TURN_ACTION_TIMEOUT_MS), 10000);
+test('일반 턴 제한시간은 시간초과마다 10초에서 5초까지 줄고 더 내려가지 않는다', () => {
+  assert.equal(getTurnActionTimeoutMsForCount(0, TURN_ACTION_TIMEOUT_MS), 10000);
+  assert.equal(getTurnActionTimeoutMsForCount(1, TURN_ACTION_TIMEOUT_MS), 5000);
   assert.equal(getTurnActionTimeoutMsForCount(2, TURN_ACTION_TIMEOUT_MS), 5000);
   assert.equal(getTurnActionTimeoutMsForCount(99, TURN_ACTION_TIMEOUT_MS), TURN_ACTION_TIMEOUT_MIN_MS);
 });
@@ -107,7 +107,7 @@ test('시간초과 복구가 커밋되면 좌석 횟수를 올리고 바로 다�
   const patch = getCommittedPatch(result);
 
   assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 1 });
-  assert.equal(patch.turnDeadlineAt, 200000 + 2600 + 10000);
+  assert.equal(patch.turnDeadlineAt, 200000 + 2600 + 5000);
 }));
 
 test('두 번째 시간초과부터 서버 제한시간은 최소 5초로 고정된다', () => withMockNow(300000, () => {
@@ -116,7 +116,57 @@ test('두 번째 시간초과부터 서버 제한시간은 최소 5초로 고정
   const patch = getCommittedPatch(result);
 
   assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 2 });
+  assert.deepEqual(patch.autoPlayBySeatId, { 'seat-1': true });
   assert.equal(patch.turnDeadlineAt, 300000 + 2600 + 5000);
+}));
+
+test('AI 자동 플레이 액션은 누적 timeout 횟수와 자동 플레이 상태를 초기화하지 않는다', () => withMockNow(350000, () => {
+  const state = {
+    ...baseState(350000, 2),
+    autoPlayBySeatId: { 'seat-1': true },
+  };
+  const baseAction = rollAction(state.turnDeadlineAt);
+  const action = {
+    ...baseAction,
+    payload: {
+      ...baseAction.payload,
+      automationSource: 'timeout_ai',
+      coordinatorSeatId: 'seat-2',
+      clientActionId: 'roll_yut_ai:seat-1:1',
+    },
+  };
+  const patch = getCommittedPatch(reduceAuthoritativeGameAction(state as any, action, room, sides));
+
+  assert.equal((patch.turnActionTimeoutCountBySeatId as Record<string, number> | undefined), undefined);
+  assert.equal((patch.autoPlayBySeatId as Record<string, boolean> | undefined), undefined);
+}));
+
+test('자동 플레이 중에는 직접 플레이 액션을 authoritative 경계에서 거부한다', () => withMockNow(360000, () => {
+  const state = {
+    ...baseState(360000, 2),
+    autoPlayBySeatId: { 'seat-1': true },
+  };
+  const result = reduceAuthoritativeGameAction(state as any, rollAction(state.turnDeadlineAt), room, sides);
+
+  assert.equal(result.status, 'rejected');
+  assert.match(result.reason ?? '', /AI 자동 플레이 중/);
+}));
+
+test('직접 플레이 복귀는 자동 플레이와 timeout 횟수를 해제하고 현재 단계에 10초를 다시 부여한다', () => withMockNow(375000, () => {
+  const state = {
+    ...baseState(375000, 2),
+    autoPlayBySeatId: { 'seat-1': true },
+  };
+  const patch = getCommittedPatch(reduceAuthoritativeGameAction(
+    state as any,
+    { type: 'resume_human_control', actorId: 'seat-1', payload: { clientActionId: 'resume-seat-1' } },
+    room,
+    sides,
+  ));
+
+  assert.deepEqual(patch.autoPlayBySeatId, { 'seat-1': false });
+  assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 0 });
+  assert.equal(patch.turnDeadlineAt, 375000 + TURN_ACTION_TIMEOUT_MS);
 }));
 
 test('정상 이동 뒤 아이템 교체 선택도 기본 10초로 복구하고 내부 deadline을 일치시킨다', () => withMockNow(400000, () => {
