@@ -19,6 +19,15 @@ async function addQaRuntimeContext(target) {
   }, qaContext);
 }
 
+export async function primeTurnOrderResultQueues(target, { human = [], ai = [] } = {}) {
+  const humanQueue = human.map((result) => String(result));
+  const aiQueue = ai.map((result) => String(result));
+  await target.addInitScript(({ nextHumanQueue, nextAiQueue }) => {
+    if (nextHumanQueue.length > 0) window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = [...nextHumanQueue];
+    if (nextAiQueue.length > 0) window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = [...nextAiQueue];
+  }, { nextHumanQueue: humanQueue, nextAiQueue: aiQueue });
+}
+
 export async function appendQaLog(testInfo, status, step, details = '') {
   const suffix = details ? ` - ${details}` : '';
   await fs.appendFile(consoleLogPath, `[${new Date().toISOString()}] [${testInfo.project.name}] [${status}] ${step}${suffix}\n`);
@@ -204,10 +213,7 @@ async function waitForRoomCreationResult(page, { timeout = 45_000, maxSubmitAtte
 export async function createRoomFromLobby(page, roomTitle) {
   await addQaRuntimeContext(page);
   if (roomTitle.includes('seq-room')) {
-    await page.addInitScript(() => {
-      window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
-      window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
-    });
+    await primeTurnOrderResultQueues(page, { human: ['모'], ai: ['도'] });
   }
   await expectAppShell(page);
   await page.getByRole('button', { name: '방 만들기', exact: true }).click();
