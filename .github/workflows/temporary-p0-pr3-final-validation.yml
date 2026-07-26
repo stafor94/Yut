@@ -1,0 +1,56 @@
+name: Temporary P0 PR3 final validation
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-p0-pr3-final-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.event.pull_request.head.ref == 'feat/p0-pr3-coordinator-lease-epoch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+          show-progress: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate QA architecture
+        run: npm run qa:validate-architecture
+      - name: Build
+        run: npm run build
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Verify final lease eligibility wiring
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const hook = fs.readFileSync('src/app/hooks/useGameCoordinatorLease.ts', 'utf8');
+          const wiring = fs.readFileSync('tests/unit/coordinatorLeaseWiring.test.ts', 'utf8');
+          assert.match(hook, /\[deadlineReached, leaseState, params\.activeRoomId/);
+          assert.match(hook, /isGameCoordinatorLeaseActive\(leaseState, now\)/);
+          assert.match(wiring, /immediate coordinator eligibility rescheduling|즉시|leaseState/);
+          NODE
+      - name: Remove temporary validation workflow
+        run: rm .github/workflows/temporary-p0-pr3-final-validation.yml
+      - name: Commit validated final head
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'chore: finalize P0 PR3 validation'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
