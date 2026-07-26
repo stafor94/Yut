@@ -157,8 +157,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const submitTimedOutRoll = () => {
       if (autoSubmittedKeyRef.current === autoSubmitKey) return;
       autoSubmittedKeyRef.current = autoSubmitKey;
-      const submissionResult = submitCurrentTiming(true);
-      if (submissionResult === 'unavailable') onRoll(undefined, { timedOut: true });
+      submitCurrentTiming(true);
     };
     const remainingMs = autoSubmitAt - Date.now();
     if (remainingMs <= 0) {
