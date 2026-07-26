@@ -4,7 +4,14 @@ export type HorizontalClientRect = {
 };
 
 const clampPercent = (value: number) => Math.max(0, Math.min(100, value));
-const normalizePercent = (value: number) => Math.round(clampPercent(value) * 1000) / 1000;
+
+export const normalizeRollTimingPositionPercent = (value: number) => (
+  Math.round(clampPercent(value) * 1000) / 1000
+);
+
+export const getRollTimingTrackTransform = (positionPercent: number) => (
+  `translate3d(${normalizeRollTimingPositionPercent(positionPercent)}%, 0, 0)`
+);
 
 const hasFiniteHorizontalRect = (rect: HorizontalClientRect) => (
   Number.isFinite(rect.left) && Number.isFinite(rect.width)
@@ -18,7 +25,7 @@ export function getVisibleRollTimingPositionPercent(
     return undefined;
   }
   const orbCenterX = orbRect.left + orbRect.width / 2;
-  return normalizePercent(((orbCenterX - meterRect.left) / meterRect.width) * 100);
+  return normalizeRollTimingPositionPercent(((orbCenterX - meterRect.left) / meterRect.width) * 100);
 }
 
 export function getVisibleRollTimingTrackOffsetPx(
