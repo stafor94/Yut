@@ -59,17 +59,48 @@ export function useWaitingRoomController(p: Params) {
   const leaveRoom = useCallback(async () => {
     const leavingRoomId = p.activeRoomId; const leavingSeatId = p.localSeatId; const wasGameScreen = p.screen === 'game';
     const shouldDeleteWaitingRoom = shouldDeleteWaitingRoomOnHostExit(p.screen, p.isRoomManager);
-    p.leavingRoomRef.current = true; const leavingSeat = p.seats.find((seat) => seat.id === leavingSeatId && !seat.isEmpty && !seat.isAI);
+    const leavingSeat = p.seats.find((seat) => seat.id === leavingSeatId && !seat.isEmpty && !seat.isAI);
+    const completeLocalExit = (message: string) => {
+      p.hostingRoomUserIdRef.current = ''; p.activeRoomIdRef.current = ''; p.confirmedRoomPlayerRef.current = false;
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      p.setScreen('lobby'); p.setActiveRoomId(''); p.setActiveRoomTitle(''); p.setActiveRoomHostId(''); p.setIsRoomHost(false); p.setCountdown(-1); p.setTurnOrderIds([]); p.setGameStartedAt(null); p.setSeats(createSeats(p.nickname, p.playMode, p.maxPlayers));
+      window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }));
+      window.localStorage.removeItem(STORAGE_KEYS.activeRoomId); window.localStorage.removeItem(STORAGE_KEYS.isRoomHost); p.setMessage(message);
+    };
+
+    p.leavingRoomRef.current = true;
+    if (shouldDeleteWaitingRoom) {
+      try {
+        if (leavingRoomId) {
+          const deleted = await deleteRoom(leavingRoomId);
+          const roomAlreadyClosed = p.activeRoomIdRef.current !== leavingRoomId;
+          if (!deleted && !roomAlreadyClosed) throw new Error('방 종료 요청이 다른 저장 작업과 겹쳤습니다. 잠시 뒤 다시 시도해주세요.');
+        }
+        completeLocalExit('방을 종료하고 로비로 이동했습니다.');
+      } catch (error) {
+        if (p.activeRoomIdRef.current !== leavingRoomId) completeLocalExit('방을 종료하고 로비로 이동했습니다.');
+        else {
+          console.warn('방 나가기 정리에 실패했습니다.', error);
+          p.setMessage(error instanceof Error ? error.message : '방 종료에 실패했습니다. 잠시 뒤 다시 시도해주세요.');
+        }
+      } finally {
+        p.leavingRoomRef.current = false;
+      }
+      return;
+    }
+
     if (wasGameScreen && leavingRoomId) p.addLog(`${p.nickname}님이 나갔습니다. AI가 이어서 플레이합니다.`);
-    p.hostingRoomUserIdRef.current = ''; p.activeRoomIdRef.current = ''; p.confirmedRoomPlayerRef.current = false;
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-    p.setScreen('lobby'); p.setActiveRoomId(''); p.setActiveRoomTitle(''); p.setActiveRoomHostId(''); p.setIsRoomHost(false); p.setCountdown(-1); p.setTurnOrderIds([]); p.setGameStartedAt(null); p.setSeats(createSeats(p.nickname, p.playMode, p.maxPlayers));
-    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }));
-    window.localStorage.removeItem(STORAGE_KEYS.activeRoomId); window.localStorage.removeItem(STORAGE_KEYS.isRoomHost); p.setMessage(shouldDeleteWaitingRoom ? '방을 종료하고 로비로 이동했습니다.' : '방에서 나왔습니다.');
+    completeLocalExit('방에서 나왔습니다.');
     if (!leavingRoomId || !leavingSeatId) { p.leavingRoomRef.current = false; return; }
-    try { if (shouldDeleteWaitingRoom) await deleteRoom(leavingRoomId); else if (wasGameScreen && leavingSeat) { addPendingAiSeat(leavingSeatId); await updateRoomPlayer(leavingRoomId, leavingSeatId, getSubstitutedRoomPlayerUpdate(leavingSeat)); clearPendingAiSeat(leavingSeatId); } else await removeRoomPlayer(leavingRoomId, leavingSeatId); }
-    catch (error) { clearPendingAiSeat(leavingSeatId); console.warn('방 나가기 정리에 실패했습니다.', error); }
-    finally { p.leavingRoomRef.current = false; }
+    try {
+      if (wasGameScreen && leavingSeat) { addPendingAiSeat(leavingSeatId); await updateRoomPlayer(leavingRoomId, leavingSeatId, getSubstitutedRoomPlayerUpdate(leavingSeat)); clearPendingAiSeat(leavingSeatId); }
+      else await removeRoomPlayer(leavingRoomId, leavingSeatId);
+    } catch (error) {
+      clearPendingAiSeat(leavingSeatId);
+      console.warn('방 나가기 정리에 실패했습니다.', error);
+    } finally {
+      p.leavingRoomRef.current = false;
+    }
   }, [p]);
 
   const changeWaitingOptions = useCallback(async (requested: WaitingRoomOptionPatch) => {

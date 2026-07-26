@@ -22,6 +22,7 @@
     "src/features/room/services/roomAvailabilityPolicy.ts",
     "src/features/room/services/roomCapacityPolicy.ts",
     "src/features/room/services/roomCreationCleanup.ts",
+    "src/features/room/services/roomDeletionRetry.ts",
     "src/features/room/services/roomLifecyclePolicy.ts",
     "src/features/room/services/roomAuthoritativeReducer.ts",
     "src/features/room/services/roomPresenceCleanupPolicy.ts",
