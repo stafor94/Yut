@@ -9,6 +9,16 @@ export class RoomCreationTimeoutError extends Error {
   }
 }
 
+export type RoomCreationTimeoutScheduler = {
+  now?: () => number;
+  setTimeout?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+  clearTimeout?: (timeoutId: ReturnType<typeof setTimeout>) => void;
+  requestAnimationFrame?: (callback: (timestamp: number) => void) => number;
+  cancelAnimationFrame?: (frameId: number) => void;
+};
+
+type RuntimeAnimationFrameScheduler = Pick<RoomCreationTimeoutScheduler, 'requestAnimationFrame' | 'cancelAnimationFrame'>;
+
 export function resolveRoomCreationTimeoutMs(timeoutMs: number, operation: RoomCreationOperation) {
   const safeTimeoutMs = Math.max(0, timeoutMs);
   return operation === 'recover'
@@ -16,16 +26,64 @@ export function resolveRoomCreationTimeoutMs(timeoutMs: number, operation: RoomC
     : Math.min(safeTimeoutMs, ROOM_CREATION_TIMEOUT_MS);
 }
 
-export function withOperationTimeout<T>(operationPromise: Promise<T>, timeoutMs: number, operation: RoomCreationOperation): Promise<T> {
+export function withOperationTimeout<T>(
+  operationPromise: Promise<T>,
+  timeoutMs: number,
+  operation: RoomCreationOperation,
+  scheduler: RoomCreationTimeoutScheduler = {},
+): Promise<T> {
+  const now = scheduler.now ?? Date.now;
+  const scheduleTimeout = scheduler.setTimeout ?? ((callback, delayMs) => globalThis.setTimeout(callback, delayMs));
+  const cancelTimeout = scheduler.clearTimeout ?? ((timeoutId) => globalThis.clearTimeout(timeoutId));
+  const runtimeFrameScheduler = globalThis as unknown as RuntimeAnimationFrameScheduler;
+  const scheduleFrame = scheduler.requestAnimationFrame
+    ?? runtimeFrameScheduler.requestAnimationFrame?.bind(globalThis);
+  const cancelFrame = scheduler.cancelAnimationFrame
+    ?? runtimeFrameScheduler.cancelAnimationFrame?.bind(globalThis);
+  const deadlineAt = now() + resolveRoomCreationTimeoutMs(timeoutMs, operation);
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let frameId: number | undefined;
+  let settled = false;
+
+  const cleanup = () => {
+    if (timeoutId !== undefined) {
+      cancelTimeout(timeoutId);
+      timeoutId = undefined;
+    }
+    if (frameId !== undefined && cancelFrame) {
+      cancelFrame(frameId);
+      frameId = undefined;
+    }
+  };
+
   const timeoutPromise = new Promise<T>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new RoomCreationTimeoutError(operation)),
-      resolveRoomCreationTimeoutMs(timeoutMs, operation),
-    );
+    const rejectIfDeadlineReached = () => {
+      if (settled || now() < deadlineAt) return false;
+      settled = true;
+      cleanup();
+      reject(new RoomCreationTimeoutError(operation));
+      return true;
+    };
+    const scheduleDeadlineTimeout = () => {
+      timeoutId = scheduleTimeout(() => {
+        timeoutId = undefined;
+        if (rejectIfDeadlineReached() || settled) return;
+        scheduleDeadlineTimeout();
+      }, Math.max(0, deadlineAt - now()));
+    };
+    const checkFrameDeadline = () => {
+      frameId = undefined;
+      if (rejectIfDeadlineReached() || settled) return;
+      if (scheduleFrame) frameId = scheduleFrame(checkFrameDeadline);
+    };
+
+    scheduleDeadlineTimeout();
+    if (scheduleFrame) frameId = scheduleFrame(checkFrameDeadline);
   });
+
   return Promise.race([operationPromise, timeoutPromise]).finally(() => {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    settled = true;
+    cleanup();
   });
 }
 
