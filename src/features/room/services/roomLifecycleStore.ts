@@ -18,6 +18,7 @@ import {
   type RoomSummary,
 } from './roomServiceCore';
 import { isRoomCreationCandidate } from './roomCreationPolicy';
+import { retryRoomDeletionContention } from './roomDeletionRetry';
 import {
   ROOM_MAX_LIFETIME_MS,
   getRoomEmptySinceMillis,
@@ -135,9 +136,9 @@ export async function deleteRoomSafely(roomId: string, guard: RoomDeletionGuard 
   if (roomDeletionInFlight.has(roomId)) return false;
   roomDeletionInFlight.add(roomId);
   try {
-    const claimed = await claimRoomDeletion(roomId, guard);
+    const claimed = await retryRoomDeletionContention(() => claimRoomDeletion(roomId, guard));
     if (!claimed) return false;
-    await deleteRoomCore(roomId);
+    await retryRoomDeletionContention(() => deleteRoomCore(roomId));
     return true;
   } finally {
     roomDeletionInFlight.delete(roomId);
