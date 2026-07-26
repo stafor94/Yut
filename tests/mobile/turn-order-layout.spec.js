@@ -45,6 +45,11 @@ test.describe('turn-order mobile layout QA', () => {
       itemMode: 'false',
       pieceCount: '4',
     });
+    await context.addInitScript(() => {
+      window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
+      window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
+    });
+
     await runQaStep(testInfo, '순서 정하기 오버레이 모바일 경계 확인', async () => {
       await createRoomFromLobby(page, roomTitle);
       roomId = await rememberRoomIdFromPage(page) ?? await findRoomIdByTitle(roomTitle);
