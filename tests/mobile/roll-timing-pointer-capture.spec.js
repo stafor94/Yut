@@ -273,7 +273,7 @@ async function dispatchVisibleTimingGesture(page, {
     }
 
     const holdLifecycle = {
-      createdAt: Number.NaN,
+      addedAt: Number.NaN,
       removedAt: Number.NaN,
     };
     const holdSelector = '[data-testid="roll-timing-result-hold"]';
@@ -283,7 +283,7 @@ async function dispatchVisibleTimingGesture(page, {
         for (const node of record.addedNodes) {
           if (!(node instanceof Element)) continue;
           if (node.matches(holdSelector) || node.querySelector(holdSelector)) {
-            if (!Number.isFinite(holdLifecycle.createdAt)) holdLifecycle.createdAt = observedAt;
+            if (!Number.isFinite(holdLifecycle.addedAt)) holdLifecycle.addedAt = observedAt;
           }
         }
         for (const node of record.removedNodes) {
@@ -332,6 +332,7 @@ async function dispatchVisibleTimingGesture(page, {
       widthDeltaPx: Number.NaN,
       rollStageVisible: false,
       samples: [],
+      observerAddedDelayMs: Number.NaN,
       removalDelayMs: Number.NaN,
     };
 
@@ -344,13 +345,20 @@ async function dispatchVisibleTimingGesture(page, {
       if (!(heldMeter instanceof HTMLElement)) throw new Error('정지 결과 막대가 HTMLElement가 아닙니다.');
       const heldOrb = heldMeter.querySelector('.roll-timing-orb');
       if (!(heldOrb instanceof HTMLElement)) throw new Error('정지 결과 오브를 찾지 못했습니다.');
-      if (!Number.isFinite(holdLifecycle.createdAt)) holdLifecycle.createdAt = performance.now();
+      const holdStartedAt = Number(heldMeter.dataset.holdStartedAt);
+      if (!Number.isFinite(holdStartedAt)) throw new Error('정지 결과 실제 표시 시작 시각을 찾지 못했습니다.');
+      await waitForCondition(
+        () => Number.isFinite(holdLifecycle.addedAt),
+        1000,
+        'MutationObserver가 정지 결과 생성을 감지하지 못했습니다.',
+      );
 
       resultHold.exists = true;
       resultHold.parentIsPlayControls = heldMeter.parentElement?.classList.contains('play-controls') ?? false;
       resultHold.insertedBeforeButton = heldMeter.nextElementSibling === button;
       resultHold.snapshotPositionPercent = Number(heldMeter.dataset.positionPercent);
       resultHold.widthDeltaPx = Math.abs(heldMeter.getBoundingClientRect().width - originalMeterWidth);
+      resultHold.observerAddedDelayMs = holdLifecycle.addedAt - holdStartedAt;
 
       await waitForCondition(
         () => document.querySelector('.roll-stage'),
@@ -384,17 +392,16 @@ async function dispatchVisibleTimingGesture(page, {
       };
 
       resultHold.samples.push(sampleHold(0));
-      await waitUntilElapsed(holdLifecycle.createdAt, 500);
+      await waitUntilElapsed(holdStartedAt, 500);
       resultHold.samples.push(sampleHold(500));
-      await waitUntilElapsed(holdLifecycle.createdAt, 900);
+      await waitUntilElapsed(holdStartedAt, 900);
       resultHold.samples.push(sampleHold(900));
       await waitForCondition(
-        () => Number.isFinite(holdLifecycle.removedAt) || !heldMeter.isConnected,
+        () => Number.isFinite(holdLifecycle.removedAt),
         1000,
         '정지 결과 막대가 허용 시간 안에 제거되지 않았습니다.',
       );
-      if (!Number.isFinite(holdLifecycle.removedAt)) holdLifecycle.removedAt = performance.now();
-      resultHold.removalDelayMs = holdLifecycle.removedAt - holdLifecycle.createdAt;
+      resultHold.removalDelayMs = holdLifecycle.removedAt - holdStartedAt;
     }
 
     holdObserver.disconnect();
@@ -429,6 +436,8 @@ function assertFrozenSnapshotAndHold(gesture) {
   expect(gesture.resultHold.insertedBeforeButton).toBe(true);
   expect(gesture.resultHold.widthDeltaPx).toBeLessThanOrEqual(1);
   expect(gesture.resultHold.rollStageVisible).toBe(true);
+  expect(gesture.resultHold.observerAddedDelayMs).toBeGreaterThanOrEqual(0);
+  expect(gesture.resultHold.observerAddedDelayMs).toBeLessThan(250);
   expect(Math.abs(gesture.resultHold.snapshotPositionPercent - gesture.pointerUpPositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
   expect(gesture.resultHold.samples).toHaveLength(3);
   for (const sample of gesture.resultHold.samples) {
