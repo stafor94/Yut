@@ -65,6 +65,43 @@ test('v1 sequence는 stateAfter snapshot을 그대로 적용한다', () => {
   assert.equal(result?.lastSequence, 2);
 });
 
+test('sequence replay는 coordinator lease field를 누락하거나 포함해도 현재 lease를 보존한다', () => {
+  const lease = {
+    coordinatorSeatId: 'host-seat',
+    coordinatorEpoch: 7,
+    coordinatorLeaseExpiresAt: 123_456,
+    coordinatorLeaseUpdatedAt: 120_000,
+  };
+  const before = baseState(lease);
+  const snapshotResult = applySequenceEvent(before as any, sequence({
+    sequence: 2,
+    eventSchemaVersion: 1,
+    stateAfter: {
+      turnIndex: 1,
+      turnVersion: 2,
+      lastSequence: 2,
+      logs: [],
+    },
+  }));
+  for (const [field, value] of Object.entries(lease)) {
+    assert.equal(snapshotResult?.[field], value);
+  }
+
+  const patchResult = applySequenceEvent(snapshotResult as any, sequence({
+    sequence: 3,
+    schemaVersion: 2,
+    patch: {
+      coordinatorSeatId: 'stale-seat',
+      coordinatorEpoch: 0,
+      coordinatorLeaseExpiresAt: 0,
+      coordinatorLeaseUpdatedAt: 0,
+    },
+  }));
+  for (const [field, value] of Object.entries(lease)) {
+    assert.equal(patchResult?.[field], value);
+  }
+});
+
 test('v2 sequence는 patch와 메타데이터를 직전 state에 적용하고 중복 sequence는 무시한다', () => {
   const before = baseState();
   const event = sequence({
