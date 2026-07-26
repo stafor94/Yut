@@ -51,7 +51,10 @@ jobs:
           npm run qa:validate-architecture
           npm run build
       - name: Run unit tests
-        run: npm run test:unit
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:unit 2>&1 | tee safari-fix-unit.log
       - name: Cache Firebase emulator binaries
         uses: actions/cache@v4
         with:
@@ -80,6 +83,7 @@ jobs:
         with:
           name: safari-room-creation-fix-results
           path: |
+            safari-fix-unit.log
             safari-fix-qa.log
             test-results
             playwright-*.log
