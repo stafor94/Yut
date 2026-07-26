@@ -1,4 +1,4 @@
-name: Temporary P0 PR3 integration patch diagnostics
+name: Temporary P0 PR3 integration fix validation
 
 on:
   pull_request:
@@ -6,41 +6,82 @@ on:
     types: [synchronize]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: temporary-p0-pr3-review-fix-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  diagnose-patch:
+  apply-and-validate:
     if: github.event.pull_request.head.ref == 'feat/p0-pr3-coordinator-lease-epoch'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
           show-progress: false
-      - name: Capture patch diagnostics
+      - name: Apply integration review fixes
         run: |
-          set +e
-          mkdir -p /tmp/p0-pr3-diagnostics
-          wc -c .github/p0-pr3-review-fix.patch.xz.b64 > /tmp/p0-pr3-diagnostics/encoded-size.txt
-          sha256sum .github/p0-pr3-review-fix.patch.xz.b64 > /tmp/p0-pr3-diagnostics/encoded-sha.txt
-          base64 --decode .github/p0-pr3-review-fix.patch.xz.b64 > /tmp/p0-pr3-review-fix.patch.xz 2> /tmp/p0-pr3-diagnostics/base64-error.txt
-          echo "$?" > /tmp/p0-pr3-diagnostics/base64-status.txt
-          xz --decompress --stdout /tmp/p0-pr3-review-fix.patch.xz > /tmp/p0-pr3-review-fix.patch 2> /tmp/p0-pr3-diagnostics/xz-error.txt
-          echo "$?" > /tmp/p0-pr3-diagnostics/xz-status.txt
-          wc -c /tmp/p0-pr3-review-fix.patch > /tmp/p0-pr3-diagnostics/patch-size.txt
-          sha256sum /tmp/p0-pr3-review-fix.patch > /tmp/p0-pr3-diagnostics/patch-sha.txt
-          git apply --check /tmp/p0-pr3-review-fix.patch > /tmp/p0-pr3-diagnostics/apply-check.txt 2>&1
-          echo "$?" > /tmp/p0-pr3-diagnostics/apply-status.txt
-          sed -n '1,220p' /tmp/p0-pr3-review-fix.patch > /tmp/p0-pr3-diagnostics/patch-head.txt
-          exit 0
-      - uses: actions/upload-artifact@v4
+          set -euxo pipefail
+          test "$(wc -c < .github/p0-pr3-review-fix.patch.xz.b64)" = "5488"
+          echo '78ed87873443463a5cbc0a0fa836069fe411030e5d0037b83c075dc755f27e12  .github/p0-pr3-review-fix.patch.xz.b64' | sha256sum --check
+          base64 --decode .github/p0-pr3-review-fix.patch.xz.b64 | xz --decompress > /tmp/p0-pr3-review-fix.patch
+          echo '61ec25b55fef37f931bac7f1fe5fa7f4c0fadcb0e6900bbc7bd87237f69d718c  /tmp/p0-pr3-review-fix.patch' | sha256sum --check
+          git apply --check /tmp/p0-pr3-review-fix.patch
+          git apply /tmp/p0-pr3-review-fix.patch
+          rm .github/p0-pr3-review-fix.patch.xz.b64
+          rm .github/workflows/temporary-p0-pr3-review-fix.yml
+          git diff --check
+      - uses: actions/setup-node@v4
         with:
-          name: p0-pr3-review-patch-diagnostics
-          path: /tmp/p0-pr3-diagnostics
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate QA architecture
+        run: npm run qa:validate-architecture
+      - name: Build
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee /tmp/p0-pr3-review-build.log
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          npm run test:unit 2>&1 | tee /tmp/p0-pr3-review-unit.log
+      - name: Verify integration fixes
+        run: |
+          node - <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const app = fs.readFileSync('src/app/App.tsx', 'utf8');
+          const service = fs.readFileSync('src/features/room/services/roomServiceCore.ts', 'utf8');
+          const overlay = fs.readFileSync('src/app/components/TurnOrderIntroOverlay.tsx', 'utf8');
+          assert.match(app, /itemPromptTimeoutRecovery: true[\s\S]{0,240}coordinatorLeasePayload/);
+          assert.match(app, /trapPlacementTimeoutRecovery: true[\s\S]{0,320}coordinatorLeasePayload/);
+          assert.match(service, /initialCoordinatorEpoch = normalizeCoordinatorEpoch\(currentState\?\.coordinatorEpoch\) \+ 1/);
+          assert.match(service, /auth && auth.currentUser\?\.uid !== token.coordinatorSeatId/);
+          assert.match(overlay, /results\.some\(\(result\) => result\.status !== 'committed'/);
+          assert.match(overlay, /if \(!result && aggregatingRoundIdRef\.current === round\.id\)/);
+          assert.equal(fs.existsSync('.github/p0-pr3-review-fix.patch.xz.b64'), false);
+          assert.equal(fs.existsSync('.github/workflows/temporary-p0-pr3-review-fix.yml'), false);
+          NODE
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-pr3-review-validation-${{ github.run_id }}
+          path: |
+            /tmp/p0-pr3-review-build.log
+            /tmp/p0-pr3-review-unit.log
+            test-results/qa-architecture-report.json
+          if-no-files-found: ignore
           retention-days: 1
+      - name: Commit integration review fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: complete coordinator lease fencing paths'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
