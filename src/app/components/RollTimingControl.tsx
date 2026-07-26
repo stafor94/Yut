@@ -74,7 +74,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const offsetParentRect = offsetParent.getBoundingClientRect();
     const trackLayoutLeftPx = offsetParentRect.left + offsetParent.clientLeft + track.offsetLeft;
     const trackOffsetPx = getVisibleRollTimingTrackOffsetPx(track.getBoundingClientRect(), trackLayoutLeftPx);
-    if (!Number.isFinite(trackOffsetPx)) return undefined;
+    if (typeof trackOffsetPx !== 'number' || !Number.isFinite(trackOffsetPx)) return undefined;
 
     const snapshot = { positionPercent, trackOffsetPx, capturedAt };
     lastRenderedSnapshotRef.current = snapshot;
