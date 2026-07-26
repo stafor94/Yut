@@ -54,6 +54,36 @@ test('브라우저 timeout callback이 지연돼도 화면 frame의 절대 deadl
   assert.equal(cancelledFrame, 0);
 });
 
+test('timeout callback이 deadline보다 일찍 실행되면 남은 시간으로 다시 예약한다', async () => {
+  let now = 0;
+  let nextTimerId = 0;
+  const callbacks: Array<() => void> = [];
+  const delays: number[] = [];
+  const result = withOperationTimeout(new Promise<void>(() => undefined), 10, 'create', {
+    now: () => now,
+    setTimeout: (callback, delayMs) => {
+      callbacks.push(callback);
+      delays.push(delayMs);
+      nextTimerId += 1;
+      return nextTimerId as ReturnType<typeof setTimeout>;
+    },
+    clearTimeout: () => undefined,
+    requestAnimationFrame: undefined,
+  });
+
+  assert.deepEqual(delays, [10]);
+  now = 4;
+  callbacks.shift()?.();
+  assert.deepEqual(delays, [10, 6]);
+  now = 10;
+  callbacks.shift()?.();
+
+  await assert.rejects(
+    result,
+    (error: unknown) => error instanceof RoomCreationTimeoutError && error.operation === 'create',
+  );
+});
+
 test('작업이 먼저 완료되면 timeout과 frame 감시를 모두 정리한다', async () => {
   let cancelledTimeout = 0;
   let cancelledFrame = 0;
