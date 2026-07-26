@@ -1,7 +1,7 @@
 const timeoutPenaltyTitle = '오프라인 timeout 누적 정책은 온라인 서버 정책과 동일하다';
 const timingPointerSpec = 'tests/mobile/roll-timing-pointer-capture.spec.js';
 const firebaseIsolationTitle = 'QA browser app uses only the isolated Firebase emulators';
-const timingVisibleMismatchTitle = '애니메이션 시간은 Perfect여도 화면 구슬이 Nice이면 화면 기준으로 Nice 판정한다';
+const timingPointerDownSnapshotTitle = 'pointerdown Good snapshot은 180ms 뒤 Perfect 시간이 지나도 화면·제출·sequence·최종 판정이 Good으로 일치한다';
 
 export const qaSuiteManifest = Object.freeze({
   'online-core': Object.freeze({
@@ -93,7 +93,7 @@ export const qaSuiteManifest = Object.freeze({
     browsers: Object.freeze(['webkit']),
     projects: Object.freeze(['mobile-webkit-timing']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    grep: `${firebaseIsolationTitle}|${timingVisibleMismatchTitle}`,
+    grep: `${firebaseIsolationTitle}|${timingPointerDownSnapshotTitle}`,
     sharedTargets: Object.freeze([timingPointerSpec]),
     tests: Object.freeze([timingPointerSpec]),
   }),
@@ -104,7 +104,7 @@ export const qaSuiteManifest = Object.freeze({
     browsers: Object.freeze(['webkit']),
     projects: Object.freeze(['mobile-webkit-timing']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    grepInvert: timingVisibleMismatchTitle,
+    grepInvert: timingPointerDownSnapshotTitle,
     sharedTargets: Object.freeze([timingPointerSpec]),
     tests: Object.freeze([timingPointerSpec]),
   }),
