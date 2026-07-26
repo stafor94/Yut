@@ -46,3 +46,5 @@ writeFileSync('tests/unit/hoistTrapPlacementHelpers.test.ts', `import assert fro
 if (existsSync('src/build/hoistTrapPlacementHelpers.ts')) rmSync('src/build/hoistTrapPlacementHelpers.ts');
 rmSync('scripts/p0-pr1-bootstrap.mjs');
 rmSync('.github/workflows/p0-pr1-bootstrap.yml');
+
+// Triggered after the workflow file existed on the branch.
