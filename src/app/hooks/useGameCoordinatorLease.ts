@@ -77,7 +77,7 @@ export function useGameCoordinatorLease(params: Params) {
       disposed = true;
       window.clearTimeout(timer);
     };
-  }, [deadlineReached, params.activeRoomId, params.candidateSeatId, params.candidateSeatIndex, params.eligible, params.onLeaseChange, params.screen, retryTick, snapshot.coordinatorEpoch, snapshot.coordinatorLeaseExpiresAt, snapshot.coordinatorSeatId]);
+  }, [deadlineReached, leaseState, params.activeRoomId, params.candidateSeatId, params.candidateSeatIndex, params.eligible, params.onLeaseChange, params.screen, retryTick, snapshot.coordinatorEpoch, snapshot.coordinatorLeaseExpiresAt, snapshot.coordinatorSeatId]);
 
   return {
     coordinatorSeatId: snapshot.coordinatorSeatId,
