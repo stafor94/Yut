@@ -28,7 +28,8 @@ jobs:
       - name: Report verification start
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment 1107 --body "Focused verification started. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT), head: $GITHUB_SHA."
+        run: |
+          gh pr comment 1107 --body "Focused verification started. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT), head: $GITHUB_SHA."
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -95,9 +96,11 @@ jobs:
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment 1107 --body "Focused verification succeeded. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Build/typecheck, full unit, architecture validation, and Safari timing emulator QA all passed. The temporary workflow was removed from the PR branch."
+        run: |
+          gh pr comment 1107 --body "Focused verification succeeded. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Build/typecheck, full unit, architecture validation, and Safari timing emulator QA all passed. The temporary workflow was removed from the PR branch."
       - name: Report failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment 1107 --body "Focused verification failed. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Inspect the failed step and uploaded Safari artifacts before modifying the fix."
+        run: |
+          gh pr comment 1107 --body "Focused verification failed. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Inspect the failed step and uploaded Safari artifacts before modifying the fix."
