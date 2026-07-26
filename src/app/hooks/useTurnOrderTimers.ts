@@ -1,19 +1,4 @@
 import { useEffect } from 'react';
-import type { TurnOrderPhase } from '../appState';
-
-export function useTurnOrderClock(params: {
-  activeTurnOrderIntro: unknown;
-  turnOrderPhase: TurnOrderPhase;
-  setTurnOrderClock: (now: number) => void;
-}) {
-  const { activeTurnOrderIntro, turnOrderPhase, setTurnOrderClock } = params;
-  useEffect(() => {
-    if (!turnOrderPhase.active && !activeTurnOrderIntro) return undefined;
-    setTurnOrderClock(Date.now());
-    const timer = window.setInterval(() => setTurnOrderClock(Date.now()), 250);
-    return () => window.clearInterval(timer);
-  }, [activeTurnOrderIntro, setTurnOrderClock, turnOrderPhase.active, turnOrderPhase.index, turnOrderPhase.deadline]);
-}
 
 export function useTurnOrderPortraitScroll(screen: string, shouldScrollForTurnOrder: boolean) {
   useEffect(() => {

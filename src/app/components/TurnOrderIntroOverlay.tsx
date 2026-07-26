@@ -36,7 +36,6 @@ type TurnOrderIntroOverlayProps = {
   activeTurnOrderIntro: TurnOrderIntro | null;
   localSeatId: string;
   onlineGameCoordinatorSeatId: string;
-  turnOrderClock: number;
   finalHoldMs: number;
 };
 
@@ -144,7 +143,7 @@ const makeTurnOrderStatePatch = (state: SyncedGameState, next: TurnOrderIntro): 
   };
 };
 
-export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlineGameCoordinatorSeatId, turnOrderClock }: TurnOrderIntroOverlayProps) {
+export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlineGameCoordinatorSeatId }: TurnOrderIntroOverlayProps) {
   const [clock, setClock] = useState(() => Date.now());
   const [localSubmission, setLocalSubmission] = useState<TurnOrderSubmission | null>(null);
   const [localSubmissionStatus, setLocalSubmissionStatus] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>('idle');
@@ -170,7 +169,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
   }, []);
 
   const sourceIntro = activeTurnOrderIntro?.version === 3 ? activeTurnOrderIntro : null;
-  const now = Math.max(clock, turnOrderClock);
+  const now = clock;
   const intro = useMemo(() => sourceIntro ? activateNextTurnOrderRound(sourceIntro, now) : null, [now, sourceIntro]);
   const round = intro?.currentRound;
   const roundId = round?.id ?? '';

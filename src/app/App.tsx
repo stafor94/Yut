@@ -33,6 +33,7 @@ import {
 import { applySequenceEvent, applySequenceEvents } from './hooks/applySequenceEvent';
 import { createSequenceRecoveryWatchdog, shouldDeferSequenceRecovery, type SequenceRecoveryCheckResult, type SequenceRecoveryWatchdogController } from './hooks/sequenceRecoveryWatchdog';
 import { useGameStatePersistence } from './hooks/useGameStatePersistence';
+import { useDeadlineReached } from './hooks/useDeadlineReached';
 import { usePendingRemoteActions } from './hooks/usePendingRemoteActions';
 import { usePresenceRecovery } from './hooks/usePresenceRecovery';
 import { useRoomPresence } from './hooks/useRoomPresence';
@@ -205,7 +206,6 @@ export function App() {
   const [seats, setSeats] = useState<Seat[]>(() => createSeats('플레이어', 'individual', 4));
   const [pieces, setPieces] = useState<BoardPiece[]>(() => makePieces(createSeats('플레이어', 'individual', 4), 4));
   const [gameStartedAt, setGameStartedAt] = useState<number | null>(null);
-  const [playTimeNow, setPlayTimeNow] = useState(() => Date.now());
   const [boardItems, setBoardItems] = useState<BoardItem[]>([]);
   const [ownedItems, setOwnedItems] = useState<Record<string, ItemType[]>>({});
   const [trapNodes, setTrapNodes] = useState<TrapNode[]>([]);
@@ -243,7 +243,6 @@ export function App() {
   const [autoPlayBySeatId, setAutoPlayBySeatId] = useState<Record<string, boolean>>({});
   const autoPlayBySeatIdRef = useRef<Record<string, boolean>>({});
   const [resumeHumanControlPending, setResumeHumanControlPending] = useState(false);
-  const [turnOrderClock, setTurnOrderClock] = useState(() => Date.now());
   const [rollAnimation, setRollAnimation] = useState<RollAnimation | null>(null);
   const piecesRef = useRef<BoardPiece[]>([]);
   const [captureEffect, setCaptureEffect] = useState<CaptureEffect | null>(null);
@@ -260,10 +259,7 @@ export function App() {
   const [pendingAfterMoveTurnIndex, setPendingAfterMoveTurnIndex] = useState<number | null>(null);
   const resolvedItemPromptKeysRef = useRef<Set<string>>(new Set());
   const [rollLockUntil, setRollLockUntil] = useState(0);
-  const [rollLockClock, setRollLockClock] = useState(() => Date.now());
   const [rollResultReadyAt, setRollResultReadyAt] = useState(0);
-  const [trapPlacementClock, setTrapPlacementClock] = useState(() => Date.now());
-  const [itemPickupClock, setItemPickupClock] = useState(() => Date.now());
   const [rollInProgress, setRollInProgress] = useState(false);
   const [moveInProgress, setMoveInProgress] = useState(false);
   const [turnActionTimeoutPenaltyBySeatId, setTurnActionTimeoutPenaltyBySeatId] = useState<Record<string, number>>({});
@@ -491,15 +487,6 @@ export function App() {
   const trapPlacementNodeIds = pendingTrapPlacement?.nodeIds ?? [];
   const selectedBranchControlKey = selectedPiece && roll && selectedPiece.started && BRANCH_NODE_IDS.includes(selectedPiece.nodeId as typeof BRANCH_NODE_IDS[number]) ? `${selectedPiece.id}:${selectedPiece.nodeId}:${roll.name}:${roll.steps}` : '';
   const displayBranchChoice: BranchChoice = selectedBranchControlKey && lastBranchControlKeyRef.current !== selectedBranchControlKey ? 'shortcut' : branchChoice;
-  const formatPlayTime = (elapsedMs: number) => {
-    const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    const two = (value: number) => String(value).padStart(2, '0');
-    return hours > 0 ? `${two(hours)}:${two(minutes)}:${two(seconds)}` : `${two(minutes)}:${two(seconds)}`;
-  };
-  const playTimeText = gameStartedAt ? formatPlayTime(playTimeNow - gameStartedAt) : '00:00';
   const derivedWinner = useMemo(() => {
     const activeGameSeats = turnSeats.length ? turnSeats : playableSeats;
     if (!activeGameSeats.length || !pieces.length) return '';
@@ -560,10 +547,11 @@ export function App() {
     return matchingIndexes.length === 1 ? matchingIndexes[0] : null;
   }, [roll, rollStack, selectedRollStackIndex, stackedRollMode]);
   const stalledTurnRollStackAmbiguous = Boolean(stackedRollMode && roll && rollStack.length > 0 && stalledTurnRollStackIndex === null);
-  const isRollLocked = rollLockUntil > rollLockClock;
+  const rollLockExpired = useDeadlineReached(rollLockUntil);
+  const isRollLocked = Boolean(rollLockUntil > Date.now() && !rollLockExpired);
   const effectiveRollResultReadyAt = normalizeRollResultReadyAt(rollResultReadyAt);
-  const rollResultHolding = effectiveRollResultReadyAt > rollLockClock;
-  const activeTurnOrderIntro = turnOrderIntro && turnOrderIntro.readyAt > turnOrderClock ? turnOrderIntro : null;
+  const rollResultHolding = effectiveRollResultReadyAt > Date.now();
+  const activeTurnOrderIntro = turnOrderIntro && turnOrderIntro.readyAt > Date.now() ? turnOrderIntro : null;
   const waitingForOnlineTurnOrder = Boolean(screen === 'game' && activeRoomId && !turnOrderIds.length && !turnOrderPhase.active && !activeTurnOrderIntro);
   const trapPlacementActive = Boolean(pendingTrapPlacement);
   const {
@@ -920,7 +908,7 @@ export function App() {
     rollLockUntil,
     rollResultReadyAt,
     effectiveRollResultReadyAt,
-    rollLockClock,
+    rollLockClock: Date.now(),
     rollResultHolding,
     turnOrderIntro,
     activeTurnOrderIntro,
@@ -983,7 +971,7 @@ export function App() {
     itemPromptTiming,
     branchChoice,
     turnActionTimeoutMs: TURN_ACTION_TIMEOUT_MS,
-  }), [actionErrorDialog, actionPipelineDiagnostic, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, autoPlayBySeatId, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasAuthoritativeSequence, hasPendingGameStateSave, waitingRoomHostSeatId, coordinatorStateSaveKey, initialGameEntryPending, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, lastManualSyncResolution, localSeatId, message, moveActionBlockReasons, pendingAiSeatCount, pendingLocalRemoteActionCount, remoteActionDiagnostics, syncPipelineDiagnostic, turnActionTimeoutCountBySeatId, turnActionTimeoutPenaltyBySeatId, turnHealthDiagnostic, pieces, rankingSeatIds, roll, rollInProgress, rollLockClock, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnDeadlineAt, turnDeadlineKind, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps, stalledTurnAgeMs, stalledTurnDetected, stalledTurnFallbackPiece, stalledTurnMovablePieces, stalledTurnNeedsBranchChoice, stalledTurnReason, stalledTurnSyncAgeMs, stalledTurnWatchKey]);
+  }), [actionErrorDialog, actionPipelineDiagnostic, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, autoPlayBySeatId, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasAuthoritativeSequence, hasPendingGameStateSave, waitingRoomHostSeatId, coordinatorStateSaveKey, initialGameEntryPending, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, lastManualSyncResolution, localSeatId, message, moveActionBlockReasons, pendingAiSeatCount, pendingLocalRemoteActionCount, remoteActionDiagnostics, syncPipelineDiagnostic, turnActionTimeoutCountBySeatId, turnActionTimeoutPenaltyBySeatId, turnHealthDiagnostic, pieces, rankingSeatIds, roll, rollInProgress, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnDeadlineAt, turnDeadlineKind, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps, stalledTurnAgeMs, stalledTurnDetected, stalledTurnFallbackPiece, stalledTurnMovablePieces, stalledTurnNeedsBranchChoice, stalledTurnReason, stalledTurnSyncAgeMs, stalledTurnWatchKey]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
 
@@ -2123,36 +2111,15 @@ export function App() {
   }, [pendingItemPromptChoice, pendingLocalRemoteActionCount]);
 
   useEffect(() => {
-    if (screen !== 'game' || !gameStartedAt) return undefined;
-    setPlayTimeNow(Date.now());
-    if (winner) return undefined;
-    const timer = window.setInterval(() => setPlayTimeNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [gameStartedAt, screen, winner]);
-
-  useEffect(() => {
-    if (rollLockUntil <= Date.now()) return undefined;
-    setRollLockClock(Date.now());
-    const timer = window.setInterval(() => setRollLockClock(Date.now()), 200);
-    return () => window.clearInterval(timer);
-  }, [rollLockUntil]);
-
-  useEffect(() => {
     const nextRollResultReadyAt = normalizeRollResultReadyAt(rollResultReadyAt);
     if (!nextRollResultReadyAt) {
       if (rollResultReadyAt) setRollResultReadyAt(0);
       return undefined;
     }
-    setRollLockClock(Date.now());
-    const interval = window.setInterval(() => setRollLockClock(Date.now()), 200);
     const timeout = window.setTimeout(() => {
-      setRollLockClock(Date.now());
       setRollResultReadyAt(0);
     }, Math.max(0, nextRollResultReadyAt - Date.now()));
-    return () => {
-      window.clearInterval(interval);
-      window.clearTimeout(timeout);
-    };
+    return () => window.clearTimeout(timeout);
   }, [rollResultReadyAt]);
 
   useEffect(() => {
@@ -2349,11 +2316,8 @@ export function App() {
 
   useEffect(() => {
     if (!pendingTrapPlacement) return undefined;
-    setTrapPlacementClock(Date.now());
-    const timer = window.setInterval(() => {
-      const now = Date.now();
-      setTrapPlacementClock(now);
-      if (now < getTurnRecoveryDeadlineAt(pendingTrapPlacement.deadline)) return;
+    const runTimeoutRecovery = () => {
+      if (Date.now() < getTurnRecoveryDeadlineAt(pendingTrapPlacement.deadline)) return;
       if (!activeRoomId) {
         setPendingTrapPlacement(null);
         finishPendingAfterMoveTurnAdvance();
@@ -2389,26 +2353,25 @@ export function App() {
             void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('함정 설치 취소 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }));
           });
       }
-    }, 250);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setTimeout(runTimeoutRecovery, Math.max(0, getTurnRecoveryDeadlineAt(pendingTrapPlacement.deadline) - Date.now()));
+    return () => window.clearTimeout(timer);
   }, [activeRoomId, canCoordinateOnlineGame, localSeatId, pendingTrapPlacement?.deadline, pendingTrapPlacement?.ownerId, pendingLocalRemoteActionCount, pendingTrapPlacement?.pieceId, playableSeats, screen, turnIndex]);
 
 
   useEffect(() => {
     if (!pendingItemPickup) return undefined;
-    setItemPickupClock(Date.now());
-    const timer = window.setInterval(() => {
-      const now = Date.now();
-      setItemPickupClock(now);
-      if (now < pendingItemPickup.deadline) return;
+    const runTimeoutDecision = () => {
+      if (Date.now() < pendingItemPickup.deadline) return;
       if (activeRoomId) {
         if (pendingItemPickup.seatId !== localSeatId && !canCoordinateOnlineGame) return;
         if (submitPendingItemPickupDecision(pendingItemPickup, 'keep', { timedOut: true })) resolvePendingItemPickup();
         return;
       }
       keepPendingItemPickup(pendingItemPickup);
-    }, 250);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setTimeout(runTimeoutDecision, Math.max(0, pendingItemPickup.deadline - Date.now()));
+    return () => window.clearTimeout(timer);
   }, [activeRoomId, canCoordinateOnlineGame, localSeatId, pendingItemPickup?.deadline, pendingItemPickup?.seatId]);
 
   useEffect(() => {
@@ -2515,9 +2478,9 @@ export function App() {
     isInitialGameCoordinator, currentUserId, screen, allHumansEnteredGame, canResolveInitialOnlineTurnOrder,
     canCompleteInitialOnlineTurnOrderIntro, waitingForPlayersReady, turnOrderIntro, turnOrderIds, allReadyForFallback: allReady,
     piecesLength: pieces.length, playableSeats, pieceCount, itemMode, localSeatId, playModeForTurnOrder: playMode,
-    logs, turnOrderPhase, turnOrderClock, activeTurnOrderIntro, soundEnabled, canCoordinateOnlineGame,
+    logs, turnOrderPhase, activeTurnOrderIntro, soundEnabled, canCoordinateOnlineGame,
     refs: { pendingStartRequestIdRef, appliedGameStartKeyRef, startRequestInFlightRef, startRequestVersionRef, startRequestIdRef, startStatusRef, startedGameRequestVersionsRef, savingStateFingerprintRef, enteredGamePresenceKeyRef, logIdRef, lastAppliedSequenceRef, lastAppliedStateVersionRef, pendingSequenceMetaRef, resolvedItemPromptKeysRef, completingTurnOrderIntroRef },
-    setters: { setIsRoomHost, setInitialGameEntryPending, setStartRequestPending, setMessage, setStartRequestVersion, setStartRequestId, setStartCountdownStartsAt, setStartCountdownEndsAt, setStartStatus, setCountdown, setScreen, setInitialGameStateSaveDiagnostic, setCoordinatorStateSaveKey, setLogs, setTurnOrderIds, setInitialTurnOrderIds, setTurnOrderIntro, setWaitingForPlayersReady, setAuthoritativeWinner, setGameStartedAt, setPieces, setBoardItems, setOwnedItems, setTrapNodes, setShieldedPieceIds, setLastMovedPieceIds, setLastMovedSeatId, setRevealedItems, setSelectedPieceId, setMovingPieceId, setTurnIndex, setRollStack, setSelectedRollStackIndex, setRollStackClosed, setForcedRoll, setGoldenYutPickerOpen, setItemPromptTiming, setBranchChoice, setCaptureEffect, setTrapEffect, setPendingTrapPlacement, setPendingAfterMoveTurnIndex, setCompletedSeatIds, setRankingSeatIds, setGameEndMode, setLastFinishedSeatId, setContinuationRound, setTurnOrderPhase, setRollAnimation, setTurnOrderClock },
+    setters: { setIsRoomHost, setInitialGameEntryPending, setStartRequestPending, setMessage, setStartRequestVersion, setStartRequestId, setStartCountdownStartsAt, setStartCountdownEndsAt, setStartStatus, setCountdown, setScreen, setInitialGameStateSaveDiagnostic, setCoordinatorStateSaveKey, setLogs, setTurnOrderIds, setInitialTurnOrderIds, setTurnOrderIntro, setWaitingForPlayersReady, setAuthoritativeWinner, setGameStartedAt, setPieces, setBoardItems, setOwnedItems, setTrapNodes, setShieldedPieceIds, setLastMovedPieceIds, setLastMovedSeatId, setRevealedItems, setSelectedPieceId, setMovingPieceId, setTurnIndex, setRollStack, setSelectedRollStackIndex, setRollStackClosed, setForcedRoll, setGoldenYutPickerOpen, setItemPromptTiming, setBranchChoice, setCaptureEffect, setTrapEffect, setPendingTrapPlacement, setPendingAfterMoveTurnIndex, setCompletedSeatIds, setRankingSeatIds, setGameEndMode, setLastFinishedSeatId, setContinuationRound, setTurnOrderPhase, setRollAnimation },
     helpers: { measureFirebaseLatency, delay, getQaRequestRoomGameStartDelayMs, getQaInitializeGameStateDelayMs, getStartGameBlockMessage, makePieces, gameSeatSnapshotsFromSeats, spawnInitialBoardItems, getSeededTurnOrderSeats, buildAlternatingTeamTurnOrder, createTurnOrderIntro, getSeatPieceColor, formatTurnOrderSummary, getSeatDisplayName, makeLog, makeGameStateFingerprint, applySyncedStateSnapshot, replayMissingSequencesThenApply, clearRoll },
     services: { requestRoomGameStart, cancelRoomGameStart, initializeGameState, getLatestGameState, getGameSequencesSince, updateRoomPlayer, resolveTurnOrderIntro, completeTurnOrderIntro },
   });
@@ -4408,7 +4371,7 @@ export function App() {
       activeRoomId={activeRoomId}
       manualSequenceSyncing={manualSequenceSyncing}
       nickname={nickname}
-      playTimeText={playTimeText}
+      gameStartedAt={gameStartedAt}
       screen={screen}
       serverStatus={serverStatus}
       serverStatusTone={serverStatusTone}
@@ -4429,7 +4392,6 @@ export function App() {
       sequenceExportText={sequenceExportText}
       endGameDialogOpen={endGameDialogOpen}
       gameExitDescription={gameExitDescription}
-      itemPickupClock={itemPickupClock}
       loadingMessage={loadingMessage}
       nicknameDialogOpen={nicknameDialogOpen}
       nicknameDraft={nicknameDraft}
@@ -4553,7 +4515,6 @@ export function App() {
         setSelectedRollStackIndex(index);
         moveSelectedPiece(0, { rollStackIndexOverride: index });
       }}
-      moveSelectionTimedOut={Boolean(turnDeadlineKind === 'move' && turnDeadlineAt && playTimeNow >= turnDeadlineAt)}
       playerPanelSeats={playerPanelSeats}
       completedSeatIds={completedSeatIds}
       rankingSeatIds={rankingSeatIds}
@@ -4578,9 +4539,7 @@ export function App() {
       trapNodes={trapNodes}
       trapPlacementNodeIds={trapPlacementNodeIds}
       trapPlacementDeadlineAt={pendingTrapPlacement?.deadline ?? 0}
-      trapPlacementSecondsLeft={Math.max(0, Math.ceil(((pendingTrapPlacement?.deadline ?? 0) - trapPlacementClock) / 1000))}
       turnActionTimeoutMs={TURN_ACTION_TIMEOUT_MS}
-      turnOrderClock={turnOrderClock}
       turnOrderPhase={turnOrderPhase}
       turnDeadlineAt={turnDeadlineAt}
       turnDeadlineKind={turnDeadlineKind}

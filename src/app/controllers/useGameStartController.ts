@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { RoomSummary } from '../../features/room/services/roomService';
 import { applySequenceEvents } from '../hooks/applySequenceEvent';
-import { useTurnOrderClock, useTurnOrderPortraitScroll } from '../hooks/useTurnOrderTimers';
+import { useTurnOrderPortraitScroll } from '../hooks/useTurnOrderTimers';
 import type { SequenceStateSnapshot } from '../appState';
 import { START_REQUEST_TIMEOUT_MS, TURN_ORDER_PRESENCE_FALLBACK_MS } from '../config/gameTimings';
 
@@ -22,7 +22,7 @@ export function useGameStartController(ctx: any) {
     setLastMovedPieceIds, setLastMovedSeatId, setRevealedItems, setSelectedPieceId, setMovingPieceId, setTurnIndex, setRollStack,
     setSelectedRollStackIndex, setRollStackClosed, setForcedRoll, setGoldenYutPickerOpen, setItemPromptTiming, setBranchChoice,
     setCaptureEffect, setTrapEffect, setPendingTrapPlacement, setPendingAfterMoveTurnIndex, setCompletedSeatIds, setRankingSeatIds,
-    setGameEndMode, setLastFinishedSeatId, setContinuationRound, setTurnOrderPhase, setRollAnimation, setTurnOrderClock,
+    setGameEndMode, setLastFinishedSeatId, setContinuationRound, setTurnOrderPhase, setRollAnimation,
   } = setters;
   const {
     measureFirebaseLatency, delay, getQaRequestRoomGameStartDelayMs, getQaInitializeGameStateDelayMs, getStartGameBlockMessage,
@@ -278,7 +278,6 @@ export function useGameStartController(ctx: any) {
     });
   }
 
-  useTurnOrderClock({ activeTurnOrderIntro: ctx.activeTurnOrderIntro, turnOrderPhase: ctx.turnOrderPhase, setTurnOrderClock });
   useTurnOrderPortraitScroll(ctx.screen, ctx.turnOrderPhase.active || Boolean(ctx.activeTurnOrderIntro));
   useEffect(() => {
     if (!ctx.turnOrderIntro) return undefined;
