@@ -21,6 +21,7 @@ import {
   type BackNavigationExitScreen,
 } from '../flows/backNavigationExit';
 import { splitMessageBySentence } from '../appUtils';
+import { useDisplayClock } from '../hooks/useDisplayClock';
 
 const ITEM_PICKUP_AUTO_DECISION_LEAD_MS = 40;
 
@@ -39,7 +40,6 @@ type AppModalsProps = {
   sequenceExportText: string;
   endGameDialogOpen: boolean;
   gameExitDescription: string;
-  itemPickupClock: number;
   loadingMessage: string;
   nicknameDialogOpen: boolean;
   nicknameDraft: string;
@@ -61,7 +61,7 @@ type AppModalsProps = {
   onSaveNickname: () => void;
 };
 
-export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialogOpen, diagnosticText, sequenceExportCopied, sequenceExportDialogOpen, sequenceExportText, endGameDialogOpen, gameExitDescription, itemPickupClock, loadingMessage, nicknameDialogOpen, nicknameDraft, pendingItemPickup, roomNoticeDialog, screen, onClearActionErrorDialog, onCloseDiagnosticDialog, onCloseEndGameDialog, onCloseNicknameDialog, onClearRoomNoticeDialog, onCopyDiagnosticState, onCloseSequenceExportDialog, onCopySequenceExportState, onFinishGame, onKeepPendingItemPickup, onNicknameDraftChange, onReplacePendingItemPickup, onSaveNickname }: AppModalsProps) {
+export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialogOpen, diagnosticText, sequenceExportCopied, sequenceExportDialogOpen, sequenceExportText, endGameDialogOpen, gameExitDescription, loadingMessage, nicknameDialogOpen, nicknameDraft, pendingItemPickup, roomNoticeDialog, screen, onClearActionErrorDialog, onCloseDiagnosticDialog, onCloseEndGameDialog, onCloseNicknameDialog, onClearRoomNoticeDialog, onCopyDiagnosticState, onCloseSequenceExportDialog, onCopySequenceExportState, onFinishGame, onKeepPendingItemPickup, onNicknameDraftChange, onReplacePendingItemPickup, onSaveNickname }: AppModalsProps) {
   const [initialNicknameDialogOpen, setInitialNicknameDialogOpen] = useState(() => (
     !validateNickname(getStoredText(STORAGE_KEYS.nickname, '')).valid
   ));
@@ -89,6 +89,11 @@ export function AppModals({ actionErrorDialog, diagnosticCopied, diagnosticDialo
     && pendingItemPickup.seatId === auth?.currentUser?.uid
     && isItemType(pendingItemPickup.item)
     && isItemType(pendingItemPickup.existingItem),
+  );
+  const itemPickupClock = useDisplayClock(
+    canShowPendingItemPickup,
+    250,
+    pendingItemPickup?.deadline ?? 0,
   );
 
   useEffect(() => {

@@ -2,13 +2,24 @@ import { useEffect, useLayoutEffect, useSyncExternalStore } from 'react';
 import { requestGameEndDialogOpen } from '../flows/gameEndDialogPresentation';
 import { publishPlayTimePresentation } from '../flows/playTimePresentation';
 import { getRoomInfoCollapsed, setRoomInfoCollapsed, subscribeRoomInfoPresentation, toggleRoomInfoCollapsed } from '../flows/roomInfoPresentation';
+import { useDisplayClock } from '../hooks/useDisplayClock';
 import { useLobbyViewportLock } from '../hooks/useLobbyViewportLock';
+
+
+const formatPlayTime = (elapsedMs: number) => {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const two = (value: number) => String(value).padStart(2, '0');
+  return hours > 0 ? `${two(hours)}:${two(minutes)}:${two(seconds)}` : `${two(minutes)}:${two(seconds)}`;
+};
 
 type AppShellHeaderProps = {
   activeRoomId: string;
   manualSequenceSyncing: boolean;
   nickname: string;
-  playTimeText: string;
+  gameStartedAt: number | null;
   screen: 'lobby' | 'waitingRoom' | 'game';
   serverStatus: string;
   serverStatusTone: string;
@@ -19,7 +30,9 @@ type AppShellHeaderProps = {
   onToggleSoundEnabled: () => void;
 };
 
-export function AppShellHeader({ activeRoomId, manualSequenceSyncing, nickname, playTimeText, screen, serverStatus, serverStatusTone, soundEnabled, winner, onSyncLatestSequences, onToggleSoundEnabled }: AppShellHeaderProps) {
+export function AppShellHeader({ activeRoomId, gameStartedAt, manualSequenceSyncing, nickname, screen, serverStatus, serverStatusTone, soundEnabled, winner, onSyncLatestSequences, onToggleSoundEnabled }: AppShellHeaderProps) {
+  const playTimeNow = useDisplayClock(screen === 'game' && Boolean(gameStartedAt) && !winner, 1000);
+  const playTimeText = formatPlayTime(gameStartedAt ? playTimeNow - gameStartedAt : 0);
   const roomInfoCollapsed = useSyncExternalStore(subscribeRoomInfoPresentation, getRoomInfoCollapsed, getRoomInfoCollapsed);
   useLobbyViewportLock(screen);
 
