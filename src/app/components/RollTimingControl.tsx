@@ -32,6 +32,8 @@ type RollTimingSnapshot = {
   capturedAt: number;
 };
 
+type TimingSubmissionResult = 'submitted' | 'duplicate' | 'unavailable';
+
 const POINTER_RELEASE_CLICK_MAX_DELAY_MS = 1000;
 
 export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', autoSubmitAt = 0, onRoll }: RollTimingControlProps) {
@@ -46,7 +48,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   const resultHoldTimerRef = useRef<number | null>(null);
   const resultHoldElementRef = useRef<HTMLElement | null>(null);
   const autoSubmittedKeyRef = useRef('');
-  const submittedKeyRef = useRef('');
+  const submittedKeyRef = useRef<string | null>(null);
 
   const clearResultHold = () => {
     if (resultHoldTimerRef.current !== null) {
@@ -115,10 +117,10 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     resultHoldTimerRef.current = window.setTimeout(clearResultHold, ROLL_TIMING_RESULT_HOLD_MS);
   };
 
-  const submitCurrentTiming = (timedOut = false) => {
-    if (submittedKeyRef.current === resetKey) return false;
+  const submitCurrentTiming = (timedOut = false): TimingSubmissionResult => {
+    if (submittedKeyRef.current === resetKey) return 'duplicate';
     const snapshot = captureLastRenderedSnapshot();
-    if (!snapshot) return false;
+    if (!snapshot) return 'unavailable';
     submittedKeyRef.current = resetKey;
     if (frameRequestRef.current !== null) {
       window.cancelAnimationFrame(frameRequestRef.current);
@@ -127,12 +129,12 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     freezeTimingTrack(snapshot);
     holdTimingResult(snapshot);
     onRoll(snapshot.positionPercent, timedOut ? { timedOut: true } : undefined);
-    return true;
+    return 'submitted';
   };
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
-    submittedKeyRef.current = '';
+    submittedKeyRef.current = null;
     autoSubmittedKeyRef.current = '';
     lastRenderedSnapshotRef.current = null;
     const tick = (capturedAt: number) => {
@@ -156,7 +158,8 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const submitTimedOutRoll = () => {
       if (autoSubmittedKeyRef.current === autoSubmitKey) return;
       autoSubmittedKeyRef.current = autoSubmitKey;
-      if (!submitCurrentTiming(true)) onRoll(undefined, { timedOut: true });
+      const submissionResult = submitCurrentTiming(true);
+      if (submissionResult === 'unavailable') onRoll(undefined, { timedOut: true });
     };
     const remainingMs = autoSubmitAt - Date.now();
     if (remainingMs <= 0) {
