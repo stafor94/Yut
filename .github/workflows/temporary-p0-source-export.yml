@@ -23,7 +23,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
           show-progress: false
-      - name: Restore and apply P0 PR2 patches
+      - name: Restore and apply P0 PR2 product patch
         run: |
           set -euxo pipefail
           python - <<'PY'
@@ -34,19 +34,11 @@ jobs:
           encoded = encoded[:8629] + 'h' + encoded[8629:]
           assert sha256(encoded.encode()).hexdigest() == 'ce91d634dde1947cb549396d1c4c51f7385313794f62a9b40bf0ce86f85ba6e2'
           Path('/tmp/p0-pr2-product.patch.gz.b64').write_text(encoded)
-
-          new_files = Path('.github/p0-pr2-new-files.patch.gz.b64').read_text()
-          assert len(new_files) == 1968
-          assert sha256(new_files.encode()).hexdigest() == '91b41d8b2fd39c98329090bacf5b441bcb1274e6e4af6342cb9fcd66f874e40b'
           PY
           base64 --decode /tmp/p0-pr2-product.patch.gz.b64 | gzip --decompress > /tmp/p0-pr2-product.patch
           echo '74519c548c4f43e9543d5b6dac3ee133715b4db6e41b9c8346390d1ce5a42205  /tmp/p0-pr2-product.patch' | sha256sum --check
-          base64 --decode .github/p0-pr2-new-files.patch.gz.b64 | gzip --decompress > /tmp/p0-pr2-new-files.patch
-          echo '34340c616bc1781f7ff5fa515994368fbcb6fea78113a5f59ab002f1d5b1141a  /tmp/p0-pr2-new-files.patch' | sha256sum --check
           git apply --check /tmp/p0-pr2-product.patch
           git apply /tmp/p0-pr2-product.patch
-          git apply --check /tmp/p0-pr2-new-files.patch
-          git apply /tmp/p0-pr2-new-files.patch
           rm .github/p0-pr2-product.patch.gz.b64
           rm .github/p0-pr2-new-files.patch.gz.b64
           rm .github/workflows/temporary-p0-source-export.yml
