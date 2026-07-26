@@ -43,7 +43,7 @@ jobs:
         run: |
           git diff --check
           test ! -e src/build/hoistTrapPlacementHelpers.ts
-          ! grep -R "transform(source, id)\|hoistTrapPlacementHelpers\|replaceUnsafeAppStorageReads" vite.config.ts src/app/App.tsx src/shared/storage tests/unit tsconfig.test.json
+          ! grep -R "transform(source, id)\|hoistTrapPlacementHelpers\|replaceUnsafeAppStorageReads" vite.config.ts src/app/App.tsx src/shared/storage tsconfig.test.json
       - name: Build and typecheck
         run: npm run build
       - name: Unit tests
