@@ -67,6 +67,54 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-26 - Galaxy 순서 정하기 결정값 미주입
+
+### Symptom
+
+- PR #1102 병합 뒤 Main Branch QA Run 30184092277의 Galaxy `turn-order-layout.spec.js`에서 내 결과가 예상한 `모` 대신 무작위 `개`로 표시됐다.
+
+### Expected behavior
+
+- 모바일 순서 정하기 레이아웃 테스트는 사람 `모`, AI `도`를 한 라운드에 결정적으로 주입해 레이아웃만 검증해야 한다.
+
+### Actual behavior
+
+- 결정값 큐가 주입되지 않아 실제 무작위 던지기가 실행됐고, Galaxy lane 22개 중 해당 테스트 하나만 실패했다.
+
+### Reproduction steps
+
+1. PR #1102를 main에 병합한다.
+2. Main Branch QA의 Mobile Galaxy lane을 실행한다.
+3. `turn-order-own-result`가 `개`로 표시되어 `모` assertion이 실패하는 것을 확인한다.
+
+### Confirmed root cause
+
+- 공용 helper가 방 제목에 `turn-order-mobile-room`이 포함됐을 때만 큐를 주입하도록 했지만, `makeQaName`이 실제 방 제목을 20자로 잘라 해당 suffix를 제거했다.
+- 실패 trace에도 helper의 결정값 page init script가 기록되지 않아 조건이 성립하지 않았음이 확인됐다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 긴 방 제목 suffix로 테스트를 식별해 helper가 사람/AI 큐를 주입하도록 했다.
+  - Why it failed: 실제 생성 제목은 길이 제한으로 잘려 suffix가 보존되지 않았다.
+
+### Do not try again
+
+- 잘릴 수 있는 생성 방 제목으로 QA 동작을 추론하지 않는다.
+- assertion 또는 timeout을 느슨하게 하거나 동일 커밋을 재실행해 무작위 성공을 기대하지 않는다.
+
+### Correct fix plan
+
+- 모바일 순서 정하기 spec의 browser context init script에서 사람 `모`, AI `도` 큐를 함께 명시한다.
+- 공용 helper에서 `turn-order-mobile-room` 제목 조건을 제거한다.
+
+### Verification checklist
+
+- [ ] Galaxy `turn-order-layout.spec.js`에서 사람 `모`, AI `도`가 한 라운드에 표시된다.
+- [ ] Galaxy 전체 lane이 통과한다.
+- [ ] main의 전체 Main Branch QA가 통과한다.
+- [ ] `seq-room` 기반 기존 desktop sequence 결정값 주입은 유지된다.
+
 ## 2026-07-26 - 연속 시간초과 정책과 사람 좌석 AI 자동 플레이
 
 ### Symptom
