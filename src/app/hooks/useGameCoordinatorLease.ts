@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   claimGameCoordinatorLease,
   GAME_COORDINATOR_RENEW_AHEAD_MS,
@@ -44,7 +44,9 @@ export function useGameCoordinatorLease(params: Params) {
   };
   const stableLeaseContextRef = useRef<ClientGameCoordinatorLeaseContext>(nextLeaseContext);
   const stableLeaseContext = stabilizeClientGameCoordinatorLease(stableLeaseContextRef.current, nextLeaseContext);
-  stableLeaseContextRef.current = stableLeaseContext;
+  useLayoutEffect(() => {
+    stableLeaseContextRef.current = stableLeaseContext;
+  }, [stableLeaseContext]);
   const stableLease = stableLeaseContext.lease;
 
   const leaseState = useMemo(() => ({ ...stableLease, gameSeats: params.gameSeats, autoPlayBySeatId: params.autoPlayBySeatId }), [
