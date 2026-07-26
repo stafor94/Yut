@@ -1,0 +1,42 @@
+name: P0 PR1 fix main QA probe
+
+on:
+  push:
+    branches:
+      - agent/p0-pr1-fix-main-qa-probe
+
+permissions:
+  actions: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  probe:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report Main Branch QA status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: a5359d0e4658515adfc2b9886c23c8586d9a34e0
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUNS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&event=push&per_page=30")
+          RUN=$(jq -c '[.workflow_runs[] | select(.name == "Main Branch QA")][0] // {}' <<<"$RUNS")
+          RUN_ID=$(jq -r '.id // empty' <<<"$RUN")
+          if [ -z "$RUN_ID" ]; then
+            gh pr comment 1107 --body "Main QA probe: merge SHA \`$TARGET_SHA\`의 Main Branch QA Run을 아직 찾지 못했습니다. Probe run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            exit 0
+          fi
+          JOBS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" --jq '[.jobs[] | {name,status,conclusion}]')
+          URL=$(jq -r '.html_url' <<<"$RUN")
+          STATUS=$(jq -r '.status' <<<"$RUN")
+          CONCLUSION=$(jq -r '.conclusion // "pending"' <<<"$RUN")
+          ATTEMPT=$(jq -r '.run_attempt' <<<"$RUN")
+          EVENT=$(jq -r '.event' <<<"$RUN")
+          BRANCH=$(jq -r '.head_branch' <<<"$RUN")
+          HEAD_SHA=$(jq -r '.head_sha' <<<"$RUN")
+          LABEL=$(cat scripts/p0-pr1-fix-main-qa-probe-trigger.txt)
+          gh pr comment 1107 --body "$LABEL Main QA probe: Run ID \`$RUN_ID\`, attempt \`$ATTEMPT\`, workflow/event/branch \`Main Branch QA/$EVENT/$BRANCH\`, head \`$HEAD_SHA\`, status/conclusion \`$STATUS/$CONCLUSION\`, URL: $URL, jobs: \`$JOBS\`. Probe run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
