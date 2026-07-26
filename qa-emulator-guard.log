@@ -1,6 +1,0 @@
-[QA Firebase] Node helper requests are isolated to Auth http://127.0.0.1:9099 and Firestore http://127.0.0.1:8080.
-FIREBASE_CONFIG contains emulator-generated demo config for demo-yut-30191093826-1-desk-fix.
-QA Firebase config guard passed: project=demo-yut-30191093826-1-desk-fix, run=gh-30191093826-1-desk-fix
-Expected Firestore emulator endpoint: 127.0.0.1:8080
-Expected Auth emulator endpoint: http://127.0.0.1:9099
-QA Firebase emulator runtime endpoints are reachable.
