@@ -55,10 +55,12 @@ export type RequestRoomCreationParams = {
 
 type RoomCreationRecoveryOptions = {
   pollIntervalMs?: number;
+  readTimeoutMs?: number;
   wait?: (delayMs: number) => Promise<void>;
 };
 
 const ROOM_CREATION_RECOVERY_POLL_INTERVAL_MS = 250;
+const ROOM_CREATION_RECOVERY_READ_TIMEOUT_MS = 1_000;
 const waitForRoomCreationRecovery = (delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 
 function showRoomCreationFailure(
@@ -70,13 +72,36 @@ function showRoomCreationFailure(
   onRoomNotice({ title: '방 생성에 실패했습니다', message: messageText });
 }
 
+async function readRoomWithinTimeout(
+  roomId: string,
+  getRoomById: RoomCreationRuntime['getRoom'],
+  timeoutMs: number,
+) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      getRoomById(roomId),
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), Math.max(0, timeoutMs));
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
 async function findCreatedRoomOnce(
   request: { roomId: string; createRequestId: string },
   hostId: string,
   getRoomById: RoomCreationRuntime['getRoom'],
+  options: RoomCreationRecoveryOptions = {},
 ) {
   try {
-    const room = await getRoomById(request.roomId);
+    const room = await readRoomWithinTimeout(
+      request.roomId,
+      getRoomById,
+      Math.max(0, options.readTimeoutMs ?? ROOM_CREATION_RECOVERY_READ_TIMEOUT_MS),
+    );
     return isMatchingCreatedRoom(room, { ...request, hostId }) ? room : null;
   } catch {
     return null;
@@ -94,7 +119,7 @@ export async function findCreatedRoomWithTimeout(
   const wait = options.wait ?? waitForRoomCreationRecovery;
   const pollForCreatedRoom = async () => {
     while (!stopped) {
-      const room = await findCreatedRoomOnce(request, hostId, getRoomById);
+      const room = await findCreatedRoomOnce(request, hostId, getRoomById, options);
       if (room) return room;
       if (stopped) break;
       await wait(pollIntervalMs);
