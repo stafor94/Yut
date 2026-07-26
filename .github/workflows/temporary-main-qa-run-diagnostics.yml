@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 12
     env:
       GH_TOKEN: ${{ github.token }}
-      TARGET_SHA: 002da48ee2e2573887365319768fce87265437db
+      TARGET_SHA: 0f020dc27d50fd8e6e281385cab75c4aeccca12f
     steps:
       - name: Find terminal Main Branch QA run
         run: |
@@ -41,6 +41,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p0-pr3-client-fix-main-qa-diagnostics
+          name: p0-pr3-complete-lease-main-qa-diagnostics
           path: diagnostics
           retention-days: 1
