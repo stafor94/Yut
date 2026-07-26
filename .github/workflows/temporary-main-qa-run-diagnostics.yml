@@ -1,0 +1,46 @@
+name: Temporary main QA run diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect-main-qa:
+    if: github.event.pull_request.head.ref == 'diag/p0-pr3-main-qa-run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: 17d369db950586e9d4492c3e33827fc57ca34419
+    steps:
+      - name: Find terminal Main Branch QA run
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          for attempt in $(seq 1 40); do
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&event=push&per_page=100" > diagnostics/runs.json
+            run_id=$(jq -r '.workflow_runs[] | select(.name == "Main Branch QA") | .id' diagnostics/runs.json | head -n 1)
+            if [ -n "${run_id}" ] && [ "${run_id}" != "null" ]; then
+              gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" > diagnostics/run.json
+              status=$(jq -r '.status' diagnostics/run.json)
+              if [ "${status}" = "completed" ]; then
+                gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100" > diagnostics/jobs.json
+                jq '{id, run_attempt, name, event, head_branch, head_sha, status, conclusion, html_url, created_at, updated_at}' diagnostics/run.json > diagnostics/run-summary.json
+                exit 0
+              fi
+            fi
+            sleep 15
+          done
+          echo 'Main Branch QA did not reach terminal status within the diagnostic window.' >&2
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-pr3-main-qa-diagnostics
+          path: diagnostics
+          retention-days: 1
