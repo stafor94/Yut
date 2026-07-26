@@ -7,10 +7,12 @@ on:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: p0-pr1-bootstrap
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   patch-and-verify:
@@ -61,6 +63,7 @@ jobs:
         shell: bash
         run: |
           UPDATED_BYTES=$(du -sb dist | cut -f1)
+          echo "UPDATED_BYTES=$UPDATED_BYTES" >> "$GITHUB_ENV"
           echo "Updated dist bytes: $UPDATED_BYTES" >> "$GITHUB_STEP_SUMMARY"
           echo "Dist byte delta: $((UPDATED_BYTES - BASELINE_BYTES))" >> "$GITHUB_STEP_SUMMARY"
       - name: Commit verified changes
@@ -71,3 +74,17 @@ jobs:
           git add -A
           git commit -m "Remove build-time App source transforms"
           git push origin HEAD
+      - name: Report success to PR
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment 1105 --body "PR1 bootstrap verification succeeded. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Baseline dist: ${BASELINE_BYTES} bytes. Updated dist: ${UPDATED_BYTES} bytes. Build/typecheck, unit, architecture validation, and Desktop/Galaxy Playwright listing all passed."
+      - name: Report failure to PR
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment 1105 --body "PR1 bootstrap verification failed. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Inspect the failed step before changing the product patch."
