@@ -25,6 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
+      - name: Report verification start
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment 1107 --body "Focused verification started. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT), head: $GITHUB_SHA."
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -97,5 +101,3 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh pr comment 1107 --body "Focused verification failed. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Inspect the failed step and uploaded Safari artifacts before modifying the fix."
-
-# Trigger after the workflow exists on the branch.
