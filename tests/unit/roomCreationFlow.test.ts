@@ -11,6 +11,7 @@ import {
 import { ROOM_CREATION_TIMEOUT_MS } from '../../src/features/room/services/roomCreationTiming.js';
 
 const delay = (delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+const timerId = (value: number) => value as unknown as ReturnType<typeof setTimeout>;
 
 test('로그인과 방 생성 timeout은 각 작업마다 독립적으로 새로 시작한다', async () => {
   await withOperationTimeout(delay(8), 30, 'auth');
@@ -32,7 +33,7 @@ test('브라우저 timeout callback이 지연돼도 화면 frame의 절대 deadl
   const pendingOperation = new Promise<void>(() => undefined);
   const result = withOperationTimeout(pendingOperation, 10, 'create', {
     now: () => now,
-    setTimeout: () => 11 as ReturnType<typeof setTimeout>,
+    setTimeout: () => timerId(11),
     clearTimeout: () => { cancelledTimeout += 1; },
     requestAnimationFrame: (callback) => {
       frameCallback = callback;
@@ -65,7 +66,7 @@ test('timeout callback이 deadline보다 일찍 실행되면 남은 시간으로
       callbacks.push(callback);
       delays.push(delayMs);
       nextTimerId += 1;
-      return nextTimerId as ReturnType<typeof setTimeout>;
+      return timerId(nextTimerId);
     },
     clearTimeout: () => undefined,
     requestAnimationFrame: undefined,
@@ -89,7 +90,7 @@ test('작업이 먼저 완료되면 timeout과 frame 감시를 모두 정리한�
   let cancelledFrame = 0;
   const result = await withOperationTimeout(Promise.resolve('done'), 10, 'create', {
     now: () => 0,
-    setTimeout: () => 33 as ReturnType<typeof setTimeout>,
+    setTimeout: () => timerId(33),
     clearTimeout: () => { cancelledTimeout += 1; },
     requestAnimationFrame: () => 44,
     cancelAnimationFrame: () => { cancelledFrame += 1; },
