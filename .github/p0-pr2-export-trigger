@@ -1,1 +1,1 @@
-trigger source export
+trigger source export after workflow registration
