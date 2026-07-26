@@ -42,7 +42,13 @@ async function startAiTimingGame(page, context, testInfo) {
     }, { timeout: 5_000, message: '생성된 방의 Firebase Auth 토큰과 QA cleanup 권한이 준비되어야 합니다.' }).not.toBe('');
     resolvedRoomId ??= await findRoomIdByTitle(roomTitle);
     await addAiAndWaitUntilGameCanStart(page);
-    await page.getByTestId('start-game-button').click();
+    const startGameButton = page.getByTestId('start-game-button');
+    await expect(startGameButton).toBeVisible({ timeout: 15_000 });
+    await expect(startGameButton).toBeEnabled({ timeout: 15_000 });
+    // The timing gesture is the behavior under test. WebKit can keep the waiting-room
+    // action bar in sub-pixel motion, so use the same DOM setup click as the AI button
+    // and keep the game-screen and turn-order assertions as completion conditions.
+    await startGameButton.evaluate((button) => button.click());
     await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
     await expect.poll(async () => {
       const state = await collectScreenState(page);
