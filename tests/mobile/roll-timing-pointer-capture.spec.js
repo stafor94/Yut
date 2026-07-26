@@ -104,6 +104,9 @@ async function dispatchVisibleTimingGesture(page, {
       const orbRect = orb.getBoundingClientRect();
       return ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100;
     };
+    const waitForRenderedFrame = () => new Promise((resolve) => {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+    });
     const placeAtVisiblePosition = (minimum, maximum) => {
       let lowerTime = 0;
       let upperTime = iterationDuration;
@@ -166,7 +169,10 @@ async function dispatchVisibleTimingGesture(page, {
       clientY: buttonCenterY,
     }));
 
-    const pointerUpPositionPercent = placeAtVisiblePosition(upRange[0], upRange[1]);
+    placeAtVisiblePosition(upRange[0], upRange[1]);
+    await waitForRenderedFrame();
+    const pointerUpPositionPercent = readPositionPercent();
+    const originalMeterWidth = meter.getBoundingClientRect().width;
     let animationCurrentTime = Number(animation.currentTime);
     if (typeof forcedCurrentTime === 'number') {
       animationCurrentTime = forcedCurrentTime;
@@ -202,11 +208,40 @@ async function dispatchVisibleTimingGesture(page, {
       detail: 1,
     }));
 
+    const resultHold = {
+      exists: false,
+      parentIsPlayControls: false,
+      insertedBeforeButton: false,
+      snapshotPositionPercent: Number.NaN,
+      visiblePositionPercent: Number.NaN,
+      widthDeltaPx: Number.NaN,
+      overlapsButton: false,
+    };
+    const heldMeter = document.querySelector('[data-testid="roll-timing-result-hold"]');
+    const heldOrb = heldMeter?.querySelector('.roll-timing-orb');
+    if (heldMeter instanceof HTMLElement && heldOrb instanceof HTMLElement) {
+      const heldMeterRect = heldMeter.getBoundingClientRect();
+      const heldOrbRect = heldOrb.getBoundingClientRect();
+      const currentButtonRect = button.getBoundingClientRect();
+      resultHold.exists = true;
+      resultHold.parentIsPlayControls = heldMeter.parentElement?.classList.contains('play-controls') ?? false;
+      resultHold.insertedBeforeButton = heldMeter.nextElementSibling === button;
+      resultHold.snapshotPositionPercent = Number(heldMeter.dataset.positionPercent);
+      resultHold.visiblePositionPercent = ((heldOrbRect.left + heldOrbRect.width / 2 - heldMeterRect.left) / heldMeterRect.width) * 100;
+      resultHold.widthDeltaPx = Math.abs(heldMeterRect.width - originalMeterWidth);
+      resultHold.overlapsButton = button.isConnected
+        && heldMeterRect.left < currentButtonRect.right
+        && heldMeterRect.right > currentButtonRect.left
+        && heldMeterRect.top < currentButtonRect.bottom
+        && heldMeterRect.bottom > currentButtonRect.top;
+    }
+
     const submission = submissionPromise ? await submissionPromise : { submittedGrade: '', rollLog: '' };
     return {
       pointerDownPositionPercent,
       pointerUpPositionPercent,
       animationCurrentTime,
+      resultHold,
       ...submission,
     };
   }, {
@@ -242,14 +277,21 @@ test.describe('mobile roll timing release regression', () => {
     expect(sampledPositions.rollLog).toContain('던졌습니다.');
   });
 
-  test('화면 구슬을 Nice 위치로 이동해 놓으면 화면과 동일하게 Nice로 판정한다', async ({ page, context }, testInfo) => {
+  test('화면 구슬을 Nice 위치로 이동해 놓으면 화면·정지 결과·판정이 동일하고 버튼과 겹치지 않는다', async ({ page, context }, testInfo) => {
     roomId = await startAiTimingGame(page, context, testInfo);
 
-    const sampledPositions = await runQaStep(testInfo, '화면 Good 위치에서 누르고 Nice 위치에서 손을 뗀 좌표와 등급 확인', async () => dispatchVisibleTimingGesture(page));
+    const sampledPositions = await runQaStep(testInfo, '화면 Good 위치에서 누르고 Nice 위치에서 손을 뗀 좌표·정지 결과·등급 확인', async () => dispatchVisibleTimingGesture(page));
     expect(sampledPositions.pointerDownPositionPercent).toBeGreaterThanOrEqual(GOOD_PRESS_RANGE[0]);
     expect(sampledPositions.pointerDownPositionPercent).toBeLessThanOrEqual(GOOD_PRESS_RANGE[1]);
     expect(sampledPositions.pointerUpPositionPercent).toBeGreaterThanOrEqual(NICE_RELEASE_RANGE[0]);
     expect(sampledPositions.pointerUpPositionPercent).toBeLessThanOrEqual(NICE_RELEASE_RANGE[1]);
+    expect(sampledPositions.resultHold.exists).toBe(true);
+    expect(sampledPositions.resultHold.parentIsPlayControls).toBe(true);
+    expect(sampledPositions.resultHold.insertedBeforeButton).toBe(true);
+    expect(sampledPositions.resultHold.widthDeltaPx).toBeLessThanOrEqual(1);
+    expect(sampledPositions.resultHold.overlapsButton).toBe(false);
+    expect(Math.abs(sampledPositions.resultHold.snapshotPositionPercent - sampledPositions.pointerUpPositionPercent)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(sampledPositions.resultHold.visiblePositionPercent - sampledPositions.resultHold.snapshotPositionPercent)).toBeLessThanOrEqual(0.1);
     expect(sampledPositions.submittedGrade).toBe('NICE');
     expect(sampledPositions.rollLog).toContain('던졌습니다.');
   });
