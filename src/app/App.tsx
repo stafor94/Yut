@@ -102,6 +102,7 @@ import {
 } from './appUtils';
 import { isFirebaseConfigured } from '../services/firebase/firebaseApp';
 import { playSoundEffect, type SoundEffect } from '../shared/audio/sound';
+import { readStorageText } from '../shared/storage/readStorageText';
 import { makeBugReportSequenceExport, makeGameDiagnosticState } from './diagnostics/gameDiagnostics';
 import {
   TURN_ACTION_TIMEOUT_MS,
@@ -4178,8 +4179,13 @@ export function App() {
     }
   }
 
-  const isTrapNodeOccupied = (nodeId: string) => pieces.some((piece) => piece.nodeId === nodeId && piece.started && !piece.finished);
-  const getTrapCandidateNodeIds = (nodeId: string) => getAdjacentBoardNodeIds(nodeId).filter((candidateNodeId) => candidateNodeId !== 'n01' && !isTrapNodeOccupied(candidateNodeId));
+  function isTrapNodeOccupied(nodeId: string) {
+    return pieces.some((piece) => piece.nodeId === nodeId && piece.started && !piece.finished);
+  }
+
+  function getTrapCandidateNodeIds(nodeId: string) {
+    return getAdjacentBoardNodeIds(nodeId).filter((candidateNodeId) => candidateNodeId !== 'n01' && !isTrapNodeOccupied(candidateNodeId));
+  }
 
   function placePendingTrap(nodeId: string, actorId = localSeatId) {
     if (!pendingTrapPlacement || !pendingTrapPlacement.nodeIds.includes(nodeId)) return;
@@ -4451,7 +4457,7 @@ export function App() {
       isCreatingRoom={isCreatingRoom}
       isFirebaseConfigured={isFirebaseConfigured}
       currentUser={currentUser}
-      resumableRoomId={window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? ''}
+      resumableRoomId={readStorageText(() => window.localStorage, STORAGE_KEYS.activeRoomId)}
       onTitleChange={setTitle}
       onCreateRoom={handleCreateRoom}
       nickname={nickname}
