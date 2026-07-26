@@ -12,7 +12,7 @@ Safari 병렬 lane과 Galaxy timing 분리 구성을 포함한 Main Branch QA는
 - 각 Firebase emulator lane cleanup 후 `remaining=0`, `qaRoomCount=0`
 - 브라우저 console의 오류·미처리 예외·transient UI 실패 없음
 
-## 성공 표본
+## 이전 성공 표본과 연속성 초기화
 
 ### 1/3 — Run 30178960740
 
@@ -58,4 +58,30 @@ Safari 병렬 lane과 Galaxy timing 분리 구성을 포함한 Main Branch QA는
 - 브라우저 console 오류: 0건
 - 자동 실패 이슈 #1087: 안정성 승인 대기 재개방 후 성공 Run 확인으로 자동 종료
 
-마지막 성공 표본은 동일 실행 구성과 성능 예산을 유지한 main push Run으로 기록한다.
+Run `30179826939`가 Safari timing setup 클릭 안정성 문제로 실패했으므로 위 두 성공 표본의 연속성은 초기화한다. PR #1099의 수정이 포함된 merge commit부터 새 연속 성공 시퀀스를 시작한다.
+
+## 현재 연속 성공 시퀀스
+
+### 1/3 — Run 30180370916
+
+- Head SHA: `81d90133fff8c2e3e2a0f5ece56379e752d18d00`
+- Attempt: 1
+- Event / branch: `push` / `main`
+- Terminal conclusion: `success`
+- Workflow 시작 → 성능 검증: 269.8초
+- Summary 완료 예상: 279.8초 / 목표 300초
+- 기능 테스트: 79건 성공
+- Lane 전체 시간:
+  - Build and unit: 30.5초
+  - Online core: 245.4초
+  - Desktop sequence replay: 174.9초
+  - Desktop regression: 166.6초
+  - Mobile Galaxy: 163.5초
+  - Mobile Galaxy timing: 213.0초
+  - Safari visible mismatch: 185.0초
+  - Safari timing: 215.1초
+- 모든 Firebase emulator lane cleanup: `remaining=0`, `qaRoomCount=0`
+- 브라우저 console 오류·미처리 예외·transient UI 실패: 0건
+- 자동 실패 이슈 #1087: 성공 Run 확인 후 자동 종료
+
+다음 성공 표본은 동일 제품·테스트·workflow 구성과 성능 예산을 유지한 main push Run으로 기록한다.
