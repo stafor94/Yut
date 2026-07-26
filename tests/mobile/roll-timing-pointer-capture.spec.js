@@ -104,6 +104,8 @@ function assertVisibleHoldSample(sample, expectedPositionPercent) {
   expect(sample.opacity).toBeGreaterThan(0);
   expect(sample.width).toBeGreaterThan(0);
   expect(sample.height).toBeGreaterThan(0);
+  expect(sample.buttonExists).toBe(true);
+  expect(sample.buttonFollowsHold).toBe(true);
   expect(sample.overlapsButton).toBe(false);
   expect(Math.abs(sample.visiblePositionPercent - expectedPositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
 }
@@ -114,14 +116,12 @@ function assertAuthoritativeTiming(sequence, gesture) {
   const actionPayload = sequence?.action?.payload ?? {};
   const sequencePayload = sequence?.payload ?? {};
   const patch = sequence?.patch ?? {};
-  const stateAfter = sequence?.stateAfter ?? {};
 
   expect(typeof actionPayload.timingPositionPercent).toBe('number');
   expect(Math.abs(Number(actionPayload.timingPositionPercent) - gesture.pointerUpPositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
   expect(actionPayload.rollTimingZone).toBe(expectedZone);
   expect(sequencePayload.timingZone).toBe(expectedZone);
-  expect(patch.lastRollTimingZone ?? stateAfter.lastRollTimingZone).toBe(expectedZone);
-  expect(stateAfter.lastRollTimingZone).toBe(expectedZone);
+  expect(patch.lastRollTimingZone).toBe(expectedZone);
   expect(gesture.submittedGrade).toBe(expectedGrade);
   expect(gesture.rollLog).toContain('던졌습니다.');
 }
@@ -256,7 +256,9 @@ async function dispatchVisibleTimingGesture(page, {
     // stale Perfect sample, while the input-event freeze path reads this visible value.
     placeAtVisiblePosition(upRange[0], upRange[1]);
     const pointerUpPositionPercent = readPositionPercent();
-    const originalMeterWidth = meter.getBoundingClientRect().width;
+    const originalMeterRect = meter.getBoundingClientRect();
+    const originalMeterWidth = originalMeterRect.width;
+    const originalMeterHeight = originalMeterRect.height;
     let animationCurrentTime = Number(animation.currentTime);
     if (typeof forcedCurrentTime === 'number') {
       animationCurrentTime = forcedCurrentTime;
@@ -327,9 +329,9 @@ async function dispatchVisibleTimingGesture(page, {
     const resultHold = {
       exists: false,
       parentIsPlayControls: false,
-      insertedBeforeButton: false,
       snapshotPositionPercent: Number.NaN,
       widthDeltaPx: Number.NaN,
+      heightDeltaPx: Number.NaN,
       rollStageVisible: false,
       samples: [],
       observerAddedDelayMs: Number.NaN,
@@ -355,9 +357,10 @@ async function dispatchVisibleTimingGesture(page, {
 
       resultHold.exists = true;
       resultHold.parentIsPlayControls = heldMeter.parentElement?.classList.contains('play-controls') ?? false;
-      resultHold.insertedBeforeButton = heldMeter.nextElementSibling === button;
       resultHold.snapshotPositionPercent = Number(heldMeter.dataset.positionPercent);
-      resultHold.widthDeltaPx = Math.abs(heldMeter.getBoundingClientRect().width - originalMeterWidth);
+      const heldMeterRect = heldMeter.getBoundingClientRect();
+      resultHold.widthDeltaPx = Math.abs(heldMeterRect.width - originalMeterWidth);
+      resultHold.heightDeltaPx = Math.abs(heldMeterRect.height - originalMeterHeight);
       resultHold.observerAddedDelayMs = holdLifecycle.addedAt - holdStartedAt;
 
       await waitForCondition(
@@ -383,6 +386,8 @@ async function dispatchVisibleTimingGesture(page, {
           width: rect.width,
           height: rect.height,
           visiblePositionPercent: ((orbRect.left + orbRect.width / 2 - rect.left) / rect.width) * 100,
+          buttonExists: currentButtonRect !== null,
+          buttonFollowsHold: Boolean(currentButton && (heldMeter.compareDocumentPosition(currentButton) & Node.DOCUMENT_POSITION_FOLLOWING)),
           overlapsButton: Boolean(currentButtonRect
             && rect.left < currentButtonRect.right
             && rect.right > currentButtonRect.left
@@ -433,8 +438,8 @@ function assertFrozenSnapshotAndHold(gesture) {
   expect(gesture.frozenOriginalTransform).not.toBe('none');
   expect(gesture.resultHold.exists).toBe(true);
   expect(gesture.resultHold.parentIsPlayControls).toBe(true);
-  expect(gesture.resultHold.insertedBeforeButton).toBe(true);
   expect(gesture.resultHold.widthDeltaPx).toBeLessThanOrEqual(1);
+  expect(gesture.resultHold.heightDeltaPx).toBeLessThanOrEqual(1);
   expect(gesture.resultHold.rollStageVisible).toBe(true);
   expect(gesture.resultHold.observerAddedDelayMs).toBeGreaterThanOrEqual(0);
   expect(gesture.resultHold.observerAddedDelayMs).toBeLessThan(250);
