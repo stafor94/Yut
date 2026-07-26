@@ -97,3 +97,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh pr comment 1107 --body "Focused verification failed. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Inspect the failed step and uploaded Safari artifacts before modifying the fix."
+
+# Trigger after the workflow exists on the branch.
