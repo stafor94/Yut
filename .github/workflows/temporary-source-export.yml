@@ -2,10 +2,10 @@ name: Temporary source export
 
 on:
   push:
-    branches: [main]
+    branches: [agent/p0-pr2-remove-root-display-clocks]
 
 permissions:
-  contents: write
+  contents: read
   issues: write
   pull-requests: write
 
@@ -25,13 +25,4 @@ jobs:
       - name: Report export run
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api "repos/${{ github.repository }}/issues/1110/comments" -f body="Source export completed. Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} artifact: source-snapshot-${{ github.run_id }}"
-      - name: Record export run when direct main push is permitted
-        continue-on-error: true
-        run: |
-          printf '%s\n' '${{ github.run_id }}' > .github/source-export-run-id
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .github/source-export-run-id
-          git commit -m 'chore: record temporary source export run [skip ci]'
-          git push
+        run: gh api "repos/${{ github.repository }}/issues/1110/comments" -f body="Source export completed. Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} artifact: source-snapshot-${{ github.run_id }} head: ${{ github.sha }}"
