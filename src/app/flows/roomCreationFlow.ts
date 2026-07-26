@@ -54,21 +54,27 @@ export function withOperationTimeout<T>(
   };
 
   const timeoutPromise = new Promise<T>((_, reject) => {
-    const rejectAtDeadline = () => {
-      if (settled) return;
-      if (now() < deadlineAt) return;
+    const rejectIfDeadlineReached = () => {
+      if (settled || now() < deadlineAt) return false;
       settled = true;
       cleanup();
       reject(new RoomCreationTimeoutError(operation));
+      return true;
+    };
+    const scheduleDeadlineTimeout = () => {
+      timeoutId = scheduleTimeout(() => {
+        timeoutId = undefined;
+        if (rejectIfDeadlineReached() || settled) return;
+        scheduleDeadlineTimeout();
+      }, Math.max(0, deadlineAt - now()));
     };
     const checkFrameDeadline = () => {
       frameId = undefined;
-      if (settled) return;
-      rejectAtDeadline();
-      if (!settled && scheduleFrame) frameId = scheduleFrame(checkFrameDeadline);
+      if (rejectIfDeadlineReached() || settled) return;
+      if (scheduleFrame) frameId = scheduleFrame(checkFrameDeadline);
     };
 
-    timeoutId = scheduleTimeout(rejectAtDeadline, Math.max(0, deadlineAt - now()));
+    scheduleDeadlineTimeout();
     if (scheduleFrame) frameId = scheduleFrame(checkFrameDeadline);
   });
 
