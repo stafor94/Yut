@@ -80,20 +80,20 @@ jobs:
             firebase-debug.log
           if-no-files-found: ignore
           retention-days: 7
-      - name: Remove temporary verification workflow
+      - name: Remove temporary verification files
         if: success()
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm .github/workflows/safari-room-creation-fix-verify.yml
-          git commit -m "Remove temporary Safari fix verification workflow"
+          git rm .github/workflows/safari-room-creation-fix-verify.yml scripts/safari-room-creation-fix-verify-trigger.txt
+          git commit -m "Remove temporary Safari fix verification files"
           git push origin HEAD
       - name: Report success
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr comment 1107 --body "Focused verification succeeded. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Build/typecheck, full unit, architecture validation, and Safari timing emulator QA all passed. The temporary workflow was removed from the PR branch."
+          gh pr comment 1107 --body "Focused verification succeeded. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT). Build/typecheck, full unit, architecture validation, and Safari timing emulator QA all passed. Temporary verification files were removed from the PR branch."
       - name: Report failure
         if: failure()
         env:
