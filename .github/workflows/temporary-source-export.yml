@@ -22,7 +22,12 @@ jobs:
           name: source-snapshot-${{ github.run_id }}
           path: source-snapshot.tar.gz
           retention-days: 1
-      - name: Record export run
+      - name: Report export run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${{ github.repository }}/issues/1110/comments" -f body="Source export completed. Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} artifact: source-snapshot-${{ github.run_id }}"
+      - name: Record export run when direct main push is permitted
+        continue-on-error: true
         run: |
           printf '%s\n' '${{ github.run_id }}' > .github/source-export-run-id
           git config user.name github-actions[bot]
@@ -30,7 +35,3 @@ jobs:
           git add .github/source-export-run-id
           git commit -m 'chore: record temporary source export run [skip ci]'
           git push
-      - name: Report export run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api "repos/${{ github.repository }}/issues/1113/comments" -f body="Source export completed. Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} artifact: source-snapshot-${{ github.run_id }}"
