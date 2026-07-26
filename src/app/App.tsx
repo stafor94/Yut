@@ -458,6 +458,7 @@ export function App() {
     candidateSeatIndex: Math.max(0, playableSeats.findIndex((seat) => seat.id === localSeatId)),
     eligible: Boolean(activeRoomId && isOnlinePlayer && localSeatId && !autoPlayBySeatId[localSeatId]),
     gameSeats: syncedGameSeats,
+    autoPlayBySeatId,
     lease: gameCoordinatorLease,
     onLeaseChange: updateGameCoordinatorLease,
   });
@@ -2092,10 +2093,10 @@ export function App() {
         const skipSeat = playableSeats.find((seat) => seat.id === promptActorId);
         const promptRollStackIndex = selectedRollStackIndex;
         const payload = promptTiming === 'before_roll'
-          ? { skipBeforeRollItem: true, timedOut: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: turnDeadlineAt }
+          ? { skipBeforeRollItem: true, timedOut: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: turnDeadlineAt, ...coordinatorLeasePayload }
           : promptTiming === 'after_roll'
-            ? { skipAfterRollItem: true, timedOut: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: turnDeadlineAt, rollStackIndex: promptRollStackIndex }
-            : { skipAfterMoveItem: true, timedOut: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: turnDeadlineAt };
+            ? { skipAfterRollItem: true, timedOut: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: turnDeadlineAt, rollStackIndex: promptRollStackIndex, ...coordinatorLeasePayload }
+            : { skipAfterMoveItem: true, timedOut: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: turnDeadlineAt, ...coordinatorLeasePayload };
         const clientMutationId = `use_item_timeout_recovery:${activeRoomId}:${promptActorId}:${promptTiming}:${turnDeadlineAt}:${promptRollStackIndex ?? ''}`;
         const action = { type: 'use_item' as const, actorId: promptActorId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, skipSeat) };
         shouldAdvanceTurnAfterItemPromptRef.current = false;
@@ -2353,6 +2354,7 @@ export function App() {
           pieceId: pendingTrapPlacement.pieceId,
           placementDeadline: pendingTrapPlacement.deadline,
           timeoutDeadlineAt: pendingTrapPlacement.deadline,
+          ...coordinatorLeasePayload,
         };
         const clientMutationId = `trap_placement_timeout:${activeRoomId}:${pendingTrapPlacement.ownerId}:${pendingTrapPlacement.pieceId}:${pendingTrapPlacement.deadline}`;
         if (pendingLocalRemoteActionsRef.current.has(clientMutationId) || hasPendingCurrentTurnAction('place_trap', pendingTrapPlacement.ownerId) || hasPendingCurrentTurnAction('use_item', pendingTrapPlacement.ownerId)) return;
@@ -2663,7 +2665,7 @@ export function App() {
   function submitPendingItemPickupDecision(pickup: PendingItemPickup, decision: 'keep' | 'replace', options: { timedOut?: boolean; automationSource?: 'timeout_ai' } = {}) {
     if (!activeRoomId) return false;
     const seat = getSeatById(pickup.seatId);
-    const payload = { decision, itemId: pickup.itemId, itemType: pickup.item, existingItemType: pickup.existingItem, ...(options.automationSource ? { automationSource: options.automationSource, ...coordinatorLeasePayload } : {}), ...(options.timedOut ? { itemPickupTimeoutRecovery: true, timeoutDeadlineAt: pickup.deadline, timeoutRecoveredBy: localSeatId } : {}) };
+    const payload = { decision, itemId: pickup.itemId, itemType: pickup.item, existingItemType: pickup.existingItem, ...(options.automationSource ? { automationSource: options.automationSource } : {}), ...((options.automationSource || (options.timedOut && pickup.seatId !== localSeatId)) ? coordinatorLeasePayload : {}), ...(options.timedOut ? { itemPickupTimeoutRecovery: true, timeoutDeadlineAt: pickup.deadline, timeoutRecoveredBy: localSeatId } : {}) };
     const clientMutationId = getLocalActionKey('item_pickup_decision', payload);
     if (pendingLocalRemoteActionsRef.current.has(clientMutationId)) return false;
     const action = { type: 'item_pickup_decision' as const, actorId: pickup.seatId, payload: withActorLogPayload({ ...payload, clientActionId: clientMutationId }, seat) };

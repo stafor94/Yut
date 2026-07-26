@@ -4,6 +4,7 @@ import {
   GAME_COORDINATOR_RENEW_AHEAD_MS,
   GAME_COORDINATOR_RETRY_MS,
   getGameCoordinatorLeaseSnapshot,
+  isGameCoordinatorLeaseActive,
   matchesActiveGameCoordinatorLease,
   type ClaimGameCoordinatorLeaseResult,
   type GameSeatSnapshot,
@@ -23,6 +24,7 @@ type Params = {
   candidateSeatIndex: number;
   eligible: boolean;
   gameSeats: GameSeatSnapshot[];
+  autoPlayBySeatId: Record<string, boolean>;
   lease: ClientGameCoordinatorLease;
   onLeaseChange: (lease: ClientGameCoordinatorLease) => void;
 };
@@ -34,7 +36,7 @@ const resultToLease = (result: ClaimGameCoordinatorLeaseResult): ClientGameCoord
 });
 
 export function useGameCoordinatorLease(params: Params) {
-  const leaseState = useMemo(() => ({ ...params.lease, gameSeats: params.gameSeats }), [params.gameSeats, params.lease]);
+  const leaseState = useMemo(() => ({ ...params.lease, gameSeats: params.gameSeats, autoPlayBySeatId: params.autoPlayBySeatId }), [params.autoPlayBySeatId, params.gameSeats, params.lease]);
   const snapshot = useMemo(() => getGameCoordinatorLeaseSnapshot(leaseState), [
     params.lease.coordinatorEpoch,
     params.lease.coordinatorLeaseExpiresAt,
@@ -47,7 +49,7 @@ export function useGameCoordinatorLease(params: Params) {
   useEffect(() => {
     if (!params.activeRoomId || params.screen !== 'game' || !params.eligible || !params.candidateSeatId) return undefined;
     const now = Date.now();
-    const currentOwnerActive = snapshot.coordinatorSeatId && snapshot.coordinatorLeaseExpiresAt > now;
+    const currentOwnerActive = isGameCoordinatorLeaseActive(leaseState, now);
     const renewAt = snapshot.coordinatorSeatId === params.candidateSeatId
       ? snapshot.coordinatorLeaseExpiresAt - GAME_COORDINATOR_RENEW_AHEAD_MS
       : snapshot.coordinatorLeaseExpiresAt;

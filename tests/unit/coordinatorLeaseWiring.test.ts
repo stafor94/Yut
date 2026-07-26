@@ -21,6 +21,8 @@ test('coordinator write 경로는 owner와 epoch가 일치하는 활성 lease를
   }
   assert.match(service, /coordinatorLeaseExpiresAt: Timestamp\.fromMillis/);
   assert.match(service, /decideGameCoordinatorLeaseClaim/);
+  assert.match(service, /auth\.currentUser\?\.uid !== token\.coordinatorSeatId/);
+  assert.match(service, /initialCoordinatorEpoch = normalizeCoordinatorEpoch\(currentState\?\.coordinatorEpoch\) \+ 1/);
 });
 
 test('일반 state와 sequence patch는 lease field를 덮어쓰거나 replay하지 않는다', () => {
@@ -40,7 +42,15 @@ test('client는 snapshot lease를 수신하고 delegated action과 turn-order wr
   assert.match(app, /useGameCoordinatorLease/);
   assert.match(app, /onSnapshotReceived: \(state\)/);
   assert.match(app, /coordinatorLeasePayload = \{ coordinatorSeatId: onlineGameCoordinatorSeatId, coordinatorEpoch \}/);
+  assert.match(app, /itemPromptTimeoutRecovery: true[\s\S]{0,240}coordinatorLeasePayload/);
+  assert.match(app, /trapPlacementTimeoutRecovery: true[\s\S]{0,320}coordinatorLeasePayload/);
+  assert.match(app, /options\.timedOut && pickup\.seatId !== localSeatId/);
   assert.match(persistence, /coordinatorSeatId, coordinatorEpoch/);
   assert.match(turnOrder, /updateTurnOrderState\([\s\S]*coordinatorEpoch/);
   assert.match(turnOrder, /submitTurnOrderSubmission\([\s\S]*coordinatorEpoch/);
+  assert.match(turnOrder, /results\.some\(\(result\) => result\.status !== 'committed' && result\.status !== 'duplicate'\)/);
+  assert.match(turnOrder, /if \(!result && aggregatingRoundIdRef\.current === round\.id\)/);
+  const leaseHook = read('src/app/hooks/useGameCoordinatorLease.ts');
+  assert.match(leaseHook, /autoPlayBySeatId/);
+  assert.match(leaseHook, /isGameCoordinatorLeaseActive\(leaseState, now\)/);
 });

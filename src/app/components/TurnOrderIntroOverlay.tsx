@@ -320,7 +320,11 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       sessionId: intro.sessionId,
       coordinatorSeatId: onlineGameCoordinatorSeatId,
       coordinatorEpoch,
-    }))).catch(() => {
+    }))).then((results) => {
+      if (results.some((result) => result.status !== 'committed' && result.status !== 'duplicate') && aiSubmittingRoundIdRef.current === round.id) {
+        aiSubmittingRoundIdRef.current = '';
+      }
+    }).catch(() => {
       if (aiSubmittingRoundIdRef.current === round.id) aiSubmittingRoundIdRef.current = '';
     });
   }, [coordinatorEpoch, intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
@@ -346,7 +350,11 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       sessionId: intro.sessionId,
       coordinatorSeatId: onlineGameCoordinatorSeatId,
       coordinatorEpoch,
-    }))).catch(() => {
+    }))).then((results) => {
+      if (results.some((result) => result.status !== 'committed' && result.status !== 'duplicate') && fallbackRoundIdRef.current === round.id) {
+        fallbackRoundIdRef.current = '';
+      }
+    }).catch(() => {
       if (fallbackRoundIdRef.current === round.id) fallbackRoundIdRef.current = '';
     });
   }, [coordinatorEpoch, intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
@@ -368,6 +376,8 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
         if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId || current.currentRound.id !== round.id || current.currentRound.status !== 'collecting') return null;
         const next = submitAndMaybeAggregateTurnOrderRound(current, submissions, transactionNow);
         return next === current ? null : makeTurnOrderStatePatch(state, next);
+      }).then((result) => {
+        if (!result && aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
       }).catch(() => {
         if (aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
       });

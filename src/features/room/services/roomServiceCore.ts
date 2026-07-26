@@ -654,7 +654,10 @@ const hasCurrentCoordinatorLease = (
   state: SyncedGameState | null | undefined,
   token: GameCoordinatorLeaseToken,
   now = Date.now(),
-) => matchesActiveGameCoordinatorLease(state, token, now);
+) => {
+  if (auth && auth.currentUser?.uid !== token.coordinatorSeatId) return false;
+  return matchesActiveGameCoordinatorLease(state, token, now);
+};
 
 export type ClaimGameCoordinatorLeaseResult = {
   status: 'acquired' | 'renewed' | 'held' | 'ineligible' | 'unavailable';
@@ -665,7 +668,7 @@ export type ClaimGameCoordinatorLeaseResult = {
 
 export async function claimGameCoordinatorLease(roomId: string, candidateSeatId: string): Promise<ClaimGameCoordinatorLeaseResult> {
   if (!db || !roomId || !candidateSeatId) return { status: 'unavailable', coordinatorSeatId: '', coordinatorEpoch: 0, coordinatorLeaseExpiresAt: 0 };
-  const uid = auth?.currentUser?.uid ?? candidateSeatId;
+  const uid = auth?.currentUser?.uid ?? '';
   if (auth && uid !== candidateSeatId) return { status: 'ineligible', coordinatorSeatId: '', coordinatorEpoch: 0, coordinatorLeaseExpiresAt: 0 };
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
   return runTransaction(db, async (transaction) => {
@@ -835,10 +838,11 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
       return { status: 'lease_mismatch' as const, turnVersion: currentVersion, lastSequence: currentSequence };
     }
     const initializedAt = Date.now();
+    const initialCoordinatorEpoch = normalizeCoordinatorEpoch(currentState?.coordinatorEpoch) + 1;
     const initializedState = {
       ...state,
       coordinatorSeatId: initialCoordinatorSeatId,
-      coordinatorEpoch: 1,
+      coordinatorEpoch: initialCoordinatorEpoch,
       coordinatorLeaseExpiresAt: Timestamp.fromMillis(initializedAt + GAME_COORDINATOR_LEASE_MS),
       coordinatorLeaseUpdatedAt: serverTimestamp(),
     };
@@ -850,7 +854,7 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
       type: 'game_initialized',
       actorId: meta.actorId,
       coordinatorSeatId: initialCoordinatorSeatId,
-      coordinatorEpoch: 1,
+      coordinatorEpoch: initialCoordinatorEpoch,
       payload: sanitizeForFirestore(meta.payload ?? { startRequestVersion: meta.startRequestVersion, startRequestId: meta.startRequestId, initializedAt: meta.initializedAt }) as Record<string, unknown>,
       ...makeSequenceEventFields({ stateBefore: currentState, stateAfter: initializedState }),
       expectedPreviousSequence: currentSequence,
@@ -861,7 +865,7 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
     transaction.set(gameStateRef, {
       ...makeFirestoreStateData(initializedState),
       coordinatorSeatId: initialCoordinatorSeatId,
-      coordinatorEpoch: 1,
+      coordinatorEpoch: initialCoordinatorEpoch,
       coordinatorLeaseExpiresAt: Timestamp.fromMillis(initializedAt + GAME_COORDINATOR_LEASE_MS),
       coordinatorLeaseUpdatedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -870,7 +874,7 @@ export async function initializeGameState(roomId: string, state: Omit<SyncedGame
       lastClientMutationId: meta.clientMutationId,
     });
     transaction.set(roomRef, { status: 'playing', startStatus: 'playing', startCountdownUntil: 0 }, { merge: true });
-    transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, startRequestVersion: meta.startRequestVersion, startRequestId: meta.startRequestId, sequence: nextSequence, turnVersion: nextVersion, type: 'game_initialized', actorId: meta.actorId, coordinatorSeatId: initialCoordinatorSeatId, coordinatorEpoch: 1, createdAt: serverTimestamp() });
+    transaction.set(processedActionRef, { clientMutationId: meta.clientMutationId, startRequestVersion: meta.startRequestVersion, startRequestId: meta.startRequestId, sequence: nextSequence, turnVersion: nextVersion, type: 'game_initialized', actorId: meta.actorId, coordinatorSeatId: initialCoordinatorSeatId, coordinatorEpoch: initialCoordinatorEpoch, createdAt: serverTimestamp() });
     return { status: 'committed' as const, turnVersion: nextVersion, lastSequence: nextSequence };
   });
 }
@@ -1258,7 +1262,7 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const allowCoordinator = isExpiredItemPromptTimeoutRecoveryAction(state, action) || isExpiredItemPickupTimeoutRecoveryAction(state, action) || isExpiredTrapPlacementTimeoutRecoveryAction(state, action);
     const requiresCoordinatorLease = Boolean(
       action.type !== 'resume_human_control'
-      && (actorIsAiControlled || allowCoordinator || action.payload?.automationSource === 'timeout_ai'),
+      && (actorIsAiControlled || action.payload?.automationSource === 'timeout_ai' || (allowCoordinator && uid !== action.actorId)),
     );
     if (auth && requiresCoordinatorLease) {
       const leaseToken = getCoordinatorLeaseTokenFromAction(action);

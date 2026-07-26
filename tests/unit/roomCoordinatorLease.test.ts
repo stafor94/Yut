@@ -30,6 +30,11 @@ test('만료되거나 부적격한 owner는 새 human이 더 높은 epoch로 승
 
   const substituted = { gameSeats: [{ id: 'seat-1', isSubstitutedByAI: true }, { id: 'seat-2' }], coordinatorSeatId: 'seat-1', coordinatorEpoch: 5, coordinatorLeaseExpiresAt: 30_000 };
   assert.equal(decideGameCoordinatorLeaseClaim(substituted, 'seat-2', 10_000).status, 'acquired');
+
+  const automatedOwner = { gameSeats: seats, autoPlayBySeatId: { 'seat-1': true }, coordinatorSeatId: 'seat-1', coordinatorEpoch: 6, coordinatorLeaseExpiresAt: 30_000 };
+  assert.deepEqual(decideGameCoordinatorLeaseClaim(automatedOwner, 'seat-2', 10_000, 15_000), {
+    status: 'acquired', coordinatorSeatId: 'seat-2', coordinatorEpoch: 7, coordinatorLeaseExpiresAt: 25_000,
+  });
 });
 
 test('AI, 자동 플레이 중인 human 또는 존재하지 않는 좌석은 lease를 획득하지 못한다', () => {
