@@ -60,7 +60,7 @@ Safari 병렬 lane과 Galaxy timing 분리 구성을 포함한 Main Branch QA는
 
 Run `30179826939`가 Safari timing setup 클릭 안정성 문제로 실패했으므로 위 두 성공 표본의 연속성은 초기화한다. PR #1099의 수정이 포함된 merge commit부터 새 연속 성공 시퀀스를 시작한다.
 
-## 현재 연속 성공 시퀀스
+## 중단된 연속 성공 시퀀스
 
 ### 1/3 — Run 30180370916
 
@@ -84,4 +84,4 @@ Run `30179826939`가 Safari timing setup 클릭 안정성 문제로 실패했으
 - 브라우저 console 오류·미처리 예외·transient UI 실패: 0건
 - 자동 실패 이슈 #1087: 성공 Run 확인 후 자동 종료
 
-다음 성공 표본은 동일 제품·테스트·workflow 구성과 성능 예산을 유지한 main push Run으로 기록한다.
+Run `30182059925`가 Safari visible mismatch의 방 생성 복구 조회 무기한 대기와 Galaxy 순서 결과 비결정성으로 실패했으므로 이 시퀀스도 초기화한다. 해당 원인 수정이 포함된 merge commit의 첫 terminal success부터 연속 성공 1/3을 다시 기록한다.
