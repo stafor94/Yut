@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, existsSync, mkdirSync } from 'node:fs';
 
 function replaceExactly(source, search, replacement, label) {
   const first = source.indexOf(search);
@@ -31,6 +31,7 @@ writeFileSync(appPath, app);
 
 writeFileSync('vite.config.ts', `import { defineConfig } from 'vite';\nimport react from '@vitejs/plugin-react';\n\nexport default defineConfig({\n  plugins: [react()],\n  base: '/Yut/',\n});\n`);
 
+mkdirSync('src/shared/storage', { recursive: true });
 writeFileSync('src/shared/storage/readStorageText.ts', `export interface StorageTextReader {\n  getItem(key: string): string | null;\n}\n\nexport function readStorageText(\n  getStorage: () => StorageTextReader | null | undefined,\n  key: string,\n  fallback = '',\n) {\n  try {\n    return getStorage()?.getItem(key) ?? fallback;\n  } catch {\n    return fallback;\n  }\n}\n`);
 
 const tsconfigPath = 'tsconfig.test.json';
@@ -46,5 +47,3 @@ writeFileSync('tests/unit/hoistTrapPlacementHelpers.test.ts', `import assert fro
 if (existsSync('src/build/hoistTrapPlacementHelpers.ts')) rmSync('src/build/hoistTrapPlacementHelpers.ts');
 rmSync('scripts/p0-pr1-bootstrap.mjs');
 rmSync('.github/workflows/p0-pr1-bootstrap.yml');
-
-// Triggered after the workflow file existed on the branch.
