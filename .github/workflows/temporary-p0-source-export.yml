@@ -1,0 +1,27 @@
+name: Temporary P0 source export
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    if: github.event.pull_request.head.ref == 'perf/p0-pr2-leaf-display-clocks'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Archive source snapshot
+        run: tar --exclude=.git --exclude=source-snapshot.tar.gz -czf source-snapshot.tar.gz .
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-pr2-source-${{ github.event.pull_request.head.sha }}
+          path: source-snapshot.tar.gz
+          retention-days: 1
