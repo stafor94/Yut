@@ -1,15 +1,31 @@
-import { GOLDEN_YUT_CHOICES, type RollTimingZone, type YutResult } from '../../../game-core/roll';
+import {
+  GOLDEN_YUT_CHOICES,
+  getRollTimingPositionPercent,
+  getRollTimingZone,
+  type RollTimingZone,
+  type YutResult,
+} from '../../../game-core/roll';
 import type { BranchChoice } from '../../../game-core/board/board';
+import { TURN_ACTION_TIMEOUT_MS } from './roomTiming';
 
 /**
- * Coordinator recovery cannot observe another client's live timing orb. The active
- * client submits the actual visible orb position just before the deadline; a later
- * recovery is an expired input and is therefore always resolved as Bad.
+ * The active client freezes and submits the DOM-visible orb position at the deadline.
+ * If that client disappears, coordinators reconstruct the intended animation
+ * position from the authoritative timeout window instead of forcing Bad.
  */
-export const resolveRollTimeout = (_deadlineAt: number, _timeoutWindowMs?: number): { rollTimingZone: RollTimingZone; timingPositionPercent: number } => ({
-  rollTimingZone: 'bad',
-  timingPositionPercent: 0,
-});
+export const resolveRollTimeout = (
+  _deadlineAt: number,
+  timeoutWindowMs = TURN_ACTION_TIMEOUT_MS,
+): { rollTimingZone: RollTimingZone; timingPositionPercent: number } => {
+  const normalizedWindowMs = Number.isFinite(timeoutWindowMs) && timeoutWindowMs > 0
+    ? timeoutWindowMs
+    : TURN_ACTION_TIMEOUT_MS;
+  const timingPositionPercent = getRollTimingPositionPercent(normalizedWindowMs);
+  return {
+    rollTimingZone: getRollTimingZone(timingPositionPercent),
+    timingPositionPercent,
+  };
+};
 
 export type MoveTimeoutPiece = { id: string; label?: string; nodeId: string; started: boolean; finished: boolean };
 

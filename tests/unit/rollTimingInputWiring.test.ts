@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const controlSource = readFileSync('src/app/components/RollTimingControl.tsx', 'utf8');
+const boardControlsSource = readFileSync('src/app/containers/GameBoardControls.tsx', 'utf8');
 
 test('타이밍 판정은 pointerup 순간 화면 좌표를 먼저 확정하고 후속 click 중복을 차단한다', () => {
   assert.match(controlSource, /getVisibleRollTimingPositionPercent/);
@@ -13,7 +14,7 @@ test('타이밍 판정은 pointerup 순간 화면 좌표를 먼저 확정하고 
   assert.match(controlSource, /getBoundingClientRect\(\)/);
   assert.match(controlSource, /const offsetParent = track\.offsetParent;[\s\S]*offsetParent\.clientLeft \+ track\.offsetLeft/);
   assert.match(controlSource, /const visibleSnapshot = getVisibleTimingSnapshot\(\);[\s\S]*visibleSnapshot\?\.positionPercent \?\? getAnimationPositionPercent\(animation\)/);
-  assert.match(controlSource, /freezeTimingTrack\(animation, visibleSnapshot\?\.trackOffsetPx\);[\s\S]*onRoll\(positionPercent\)/);
+  assert.match(controlSource, /freezeTimingTrack\(animation, visibleSnapshot\?\.trackOffsetPx\);[\s\S]*onRoll\(positionPercent,/);
   assert.match(controlSource, /track\.style\.transform = `translate3d\(\$\{trackOffsetPx\}px, 0, 0\)`;[\s\S]*animation\?\.cancel\(\)/);
   assert.match(controlSource, /onPointerDown=\{handlePointerDown\}/);
   assert.match(controlSource, /onPointerUp=\{handlePointerUp\}/);
@@ -24,4 +25,10 @@ test('타이밍 판정은 pointerup 순간 화면 좌표를 먼저 확정하고 
   assert.match(controlSource, /event\.clientX/);
   assert.match(controlSource, /event\.clientY/);
   assert.doesNotMatch(controlSource, /const positionPercent = getAnimationPositionPercent\(animation\);[\s\S]*animation\?\.pause\(\);[\s\S]*onRoll\(positionPercent\)/);
+});
+
+test('시간초과 roll은 deadline의 실제 화면 위치를 멈춘 뒤 네트워크 유예 후 제출한다', () => {
+  assert.match(boardControlsSource, /autoSubmitAt=\{authoritativeTurnDeadline\.at\}/);
+  assert.match(boardControlsSource, /markTurnActionTimedOut\(\);[\s\S]*window\.setTimeout\(\(\) => \{[\s\S]*onRollYutRef\.current\(\{ timedOut: true, timingPositionPercent \}\)/);
+  assert.match(boardControlsSource, /\}, TURN_NETWORK_GRACE_MS\)/);
 });

@@ -134,6 +134,7 @@ export type SequenceStateSnapshot = Partial<{
   turnDeadlineAt: number;
   turnDeadlineKind: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
   turnActionTimeoutCountBySeatId: Record<string, number>;
+  autoPlayBySeatId: Record<string, boolean>;
   coordinatorSeatId: string;
   gameSeats: GameSeatSnapshot[];
   startRequestVersion: number;
@@ -175,6 +176,8 @@ export type GameStateFingerprintInput = {
   waitingForPlayersReady: boolean;
   turnDeadlineAt?: number;
   turnDeadlineKind?: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
+  turnActionTimeoutCountBySeatId?: Record<string, number>;
+  autoPlayBySeatId?: Record<string, boolean>;
   startRequestVersion: number;
   startRequestId?: string;
   fallEffect?: FallEffect | null;
@@ -216,6 +219,8 @@ export const makeGameStateFingerprint = (state: GameStateFingerprintInput) => JS
   waitingForPlayersReady: state.waitingForPlayersReady,
   turnDeadlineAt: state.turnDeadlineAt ?? 0,
   turnDeadlineKind: state.turnDeadlineKind ?? '',
+  turnActionTimeoutCountBySeatId: state.turnActionTimeoutCountBySeatId ?? {},
+  autoPlayBySeatId: state.autoPlayBySeatId ?? {},
   startRequestVersion: state.startRequestVersion,
   startRequestId: state.startRequestId ?? '',
   fallEffect: state.fallEffect ?? null,

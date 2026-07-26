@@ -592,12 +592,14 @@ test.describe('BUG_HISTORY regression smoke', () => {
 
   });
 
-  test('timeout 벌칙은 오프라인 로컬 timeout에만 적용된다', async () => {
+  test('오프라인 timeout 누적 정책은 온라인 서버 정책과 동일하다', async () => {
     const appSource = readFileSync('src/app/App.tsx', 'utf8');
+    const itemControllerSource = readFileSync('src/app/controllers/useItemController.ts', 'utf8');
 
-    expect(appSource).toContain('const PENALTY_TURN_ACTION_TIMEOUT_MS = 10000;');
-    expect(appSource).toContain('const getTurnActionTimeoutMs = (seatId = activeSeat?.id ?? \'\') => activeRoomId ? TURN_ACTION_TIMEOUT_MS');
-    expect(appSource).toContain('const getItemPromptTimeoutMs = (seatId = localSeatId) => activeRoomId ? ITEM_PROMPT_TIMEOUT_MS');
+    expect(appSource).toContain('getTurnActionTimeoutMsForCount(turnActionTimeoutPenaltyBySeatId[seatId], TURN_ACTION_TIMEOUT_MS)');
+    expect(appSource).toContain('getTurnActionTimeoutMsForCount(turnActionTimeoutPenaltyBySeatId[seatId], ITEM_PROMPT_TIMEOUT_MS)');
+    expect(appSource).toContain('const nextCount = incrementTurnActionTimeoutCount(current[seatId]);');
+    expect(appSource).toContain('if (nextCount >= 2) setAutoPlayBySeatId');
     expect(appSource).toContain('if (!seatId || activeRoomId) return;');
 
     const onlineItemPromptEffect = appSource.slice(
@@ -606,11 +608,8 @@ test.describe('BUG_HISTORY regression smoke', () => {
     );
     expect(onlineItemPromptEffect).not.toContain('markTurnActionTimedOut');
 
-    const skipItemPromptHandler = appSource.slice(
-      appSource.indexOf('onSkipItemPrompt={() => {'),
-      appSource.indexOf('onUseItem={useItem}'),
-    );
-    expect(skipItemPromptHandler.indexOf('if (activeRoomId)')).toBeLessThan(skipItemPromptHandler.indexOf('clearTurnActionTimeoutPenalty(localSeatId);'));
+    const skipItemPromptHandler = itemControllerSource.slice(itemControllerSource.indexOf('const skipItemPrompt'));
+    expect(skipItemPromptHandler.indexOf('if (params.activeRoomId)')).toBeLessThan(skipItemPromptHandler.indexOf('params.clearTurnActionTimeoutPenalty(params.localSeatId);'));
   });
 
 });

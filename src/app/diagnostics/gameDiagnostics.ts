@@ -8,7 +8,7 @@ const BUG_REPORT_STATE_KEYS = [
   'roll', 'rollStack', 'selectedRollStackIndex', 'rollStackClosed', 'pieces', 'gameSeats', 'ownedItems',
   'boardItems', 'trapNodes', 'shieldedPieceIds', 'pendingTrapPlacement', 'itemPromptTiming',
   'pendingAfterMoveTurnIndex', 'branchChoice', 'turnOrderPhase', 'turnOrderIntro', 'turnDeadlineAt',
-  'turnDeadlineKind', 'rollLockUntil', 'rollResultReadyAt', 'lastMovedPieceIds', 'lastMovedSeatId',
+  'turnDeadlineKind', 'turnActionTimeoutCountBySeatId', 'autoPlayBySeatId', 'rollLockUntil', 'rollResultReadyAt', 'lastMovedPieceIds', 'lastMovedSeatId',
   'winner', 'completedSeatIds', 'rankingSeatIds', 'gameEndMode',
 ] as const;
 
@@ -112,7 +112,7 @@ export const makeGameDiagnosticState = ({
   activeTurnOrderIntro, waitingForOnlineTurnOrder, turnDeadlineAt, turnDeadlineKind, turnIndex, lastAppliedStateVersionRef,
   lastAppliedSequenceRef, syncPipelineDiagnostic, actionPipelineDiagnostic, turnHealthDiagnostic,
   pendingLocalRemoteActionCount, pendingLocalRemoteActionsRef, pendingLocalRemoteActionMetaRef,
-  getPendingLocalRemoteActionType, turnActionTimeoutPenaltyBySeatId, activeSeat,
+  getPendingLocalRemoteActionType, turnActionTimeoutPenaltyBySeatId, turnActionTimeoutCountBySeatId, autoPlayBySeatId, activeSeat,
   getTurnActionTimeoutMs, getItemPromptTimeoutMs, processingActionIdsRef, completedActionIdsRef,
   lastMovedSeatId, lastMovedPieceIds, pieces, isMyTurn, canSubmitTurnAction, canRollNow,
   canMoveSelectedPiece, canRequestMove, turnActionBlockReasons, rollActionBlockReasons,
@@ -183,6 +183,8 @@ export const makeGameDiagnosticState = ({
     return { key, type: meta?.type ?? getPendingLocalRemoteActionType(key), ageMs: meta ? Math.max(0, Date.now() - meta.createdAt) : 0 };
   }),
   turnActionTimeoutPenaltyBySeatId,
+  turnActionTimeoutCountBySeatId,
+  autoPlayBySeatId,
   currentTurnActionTimeoutMs: activeSeat ? getTurnActionTimeoutMs(activeSeat.id) : turnActionTimeoutMs,
   currentItemPromptTimeoutMs: getItemPromptTimeoutMs(localSeatId),
   processingActionCount: processingActionIdsRef.current.size,

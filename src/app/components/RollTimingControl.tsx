@@ -1,4 +1,4 @@
-import { useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { getRollTimingPositionPercent } from '../../game-core/roll';
 import {
   getVisibleRollTimingPositionPercent,
@@ -14,7 +14,8 @@ type RollTimingControlProps = {
   buttonText: string;
   buttonTestId: string;
   resetKey?: string;
-  onRoll: (timingPositionPercent?: number) => void;
+  autoSubmitAt?: number;
+  onRoll: (timingPositionPercent?: number, options?: { timedOut?: boolean }) => void;
 };
 
 type CapturedPointerTiming = {
@@ -46,7 +47,7 @@ const getAnimationPositionPercent = (animation: Animation | undefined) => {
     : undefined;
 };
 
-export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', onRoll }: RollTimingControlProps) {
+export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', autoSubmitAt = 0, onRoll }: RollTimingControlProps) {
   const meterRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLSpanElement | null>(null);
   const orbRef = useRef<HTMLSpanElement | null>(null);
@@ -54,6 +55,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   const releasedPointerTimingRef = useRef<ReleasedPointerTiming | null>(null);
   const resultHoldTimerRef = useRef<number | null>(null);
   const resultHoldElementRef = useRef<HTMLElement | null>(null);
+  const autoSubmittedKeyRef = useRef('');
 
   const getTimingAnimation = () => trackRef.current?.getAnimations()[0];
 
@@ -121,16 +123,33 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     resultHoldTimerRef.current = window.setTimeout(clearResultHold, ROLL_TIMING_RESULT_HOLD_MS);
   };
 
-  const submitCurrentTiming = () => {
+  const submitCurrentTiming = (timedOut = false) => {
     const animation = getTimingAnimation();
     const visibleSnapshot = getVisibleTimingSnapshot();
     const positionPercent = visibleSnapshot?.positionPercent ?? getAnimationPositionPercent(animation);
     if (positionPercent === undefined) return false;
     freezeTimingTrack(animation, visibleSnapshot?.trackOffsetPx);
     holdVisibleTimingResult();
-    onRoll(positionPercent);
+    onRoll(positionPercent, timedOut ? { timedOut: true } : undefined);
     return true;
   };
+
+  useEffect(() => {
+    if (disabled || !autoSubmitAt || typeof window === 'undefined') return undefined;
+    const autoSubmitKey = `${resetKey}:${autoSubmitAt}`;
+    const submitTimedOutRoll = () => {
+      if (autoSubmittedKeyRef.current === autoSubmitKey) return;
+      autoSubmittedKeyRef.current = autoSubmitKey;
+      if (!submitCurrentTiming(true)) onRoll(undefined, { timedOut: true });
+    };
+    const remainingMs = autoSubmitAt - Date.now();
+    if (remainingMs <= 0) {
+      submitTimedOutRoll();
+      return undefined;
+    }
+    const timer = window.setTimeout(submitTimedOutRoll, remainingMs);
+    return () => window.clearTimeout(timer);
+  }, [autoSubmitAt, disabled, onRoll, resetKey]);
 
   const releasePointerCapture = (event: ReactPointerEvent<HTMLButtonElement>) => {
     try {

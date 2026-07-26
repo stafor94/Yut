@@ -566,6 +566,52 @@
   }
 }
 
+.game-shell .auto-play-overlay {
+  position: absolute;
+  z-index: 58;
+  left: 50%;
+  bottom: 112px;
+  display: grid;
+  gap: 7px;
+  width: min(88%, 460px);
+  padding: 14px 16px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, .32);
+  border-radius: 18px;
+  background: rgba(27, 20, 15, .9);
+  box-shadow: 0 16px 42px rgba(31, 20, 12, .32);
+  color: #fff8e7;
+  text-align: center;
+  backdrop-filter: blur(8px);
+}
+
+.game-shell .auto-play-overlay strong {
+  font-size: 1.05rem;
+}
+
+.game-shell .auto-play-overlay span {
+  color: rgba(255, 248, 231, .82);
+  font-size: .86rem;
+}
+
+.game-shell .auto-play-overlay button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 3px;
+  border-radius: 12px;
+  font-weight: 900;
+}
+
+@media (max-width: 767px) {
+  .game-shell .auto-play-overlay {
+    position: fixed;
+    z-index: 118;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    width: min(calc(100vw - 28px), 440px);
+    padding: 12px 14px;
+  }
+}
+
 .bottom-branch-controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(120px, 1fr));

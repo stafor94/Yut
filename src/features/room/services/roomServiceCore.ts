@@ -24,10 +24,10 @@ const getCreatedAtMillis = (createdAt: unknown) => {
 export interface RoomPlayer { id: string; nickname: string; ready: boolean; color: string; seatIndex: number; team: '청팀' | '홍팀'; isAI?: boolean; isSubstitutedByAI?: boolean; aiDifficulty?: 'easy' | 'hard'; isSpectator?: boolean; joinedAt?: unknown; lastSeen?: unknown; enteredGameAt?: number; enteredStartVersion?: number; lastGamePresenceAt?: number; playerId?: string; currentPlayerId?: string; originalPlayerId?: string; presenceEpoch?: number; substitutedAt?: unknown; restoredAt?: unknown; }
 export interface RoomSeat { id: string; playerId: string; originalPlayerId?: string; currentPlayerId?: string; nickname?: string; color?: string; team?: RoomPlayer['team']; seatIndex?: number; label?: string; isHost?: boolean; aiActive?: boolean; aiName?: string; isSubstitutedByAI?: boolean; status?: 'human' | 'ai_substitute' | 'disconnected' | 'removed'; presenceEpoch?: number; substitutedAt?: unknown; restoredAt?: unknown; updatedAt?: unknown; createdAt?: unknown; }
 export type GameSeatSnapshot = { id: string; label: string; name: string; color: string; team: RoomPlayer['team']; isHost?: boolean; isAI?: boolean; isSubstitutedByAI?: boolean; seatIndex: number };
-export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollStack?: unknown[]; selectedRollStackIndex?: number | null; rollStackClosed?: boolean; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; fallEffect?: unknown | null; lastRollTimingZone?: unknown | null; pendingGoldenYutSelection?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; pendingItemPickup?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; pendingAfterMoveTurnIndex?: number; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; turnDeadlineAt?: number; turnDeadlineKind?: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | ''; turnActionTimeoutCountBySeatId?: Record<string, number>; playMode?: 'individual' | 'team'; itemMode?: boolean; stackedRollMode?: boolean; pieceCount?: 1 | 2 | 3 | 4; startRequestVersion?: number; startRequestId?: string; coordinatorSeatId?: string; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
+export interface SyncedGameState { pieces: unknown[]; turnIndex: number; turnOrderIds?: string[]; initialTurnOrderIds?: string[]; completedSeatIds?: string[]; rankingSeatIds?: string[]; gameEndMode?: 'partial_finish' | 'final' | ''; lastFinishedSeatId?: string; continuationRound?: number; roll: unknown | null; rollStack?: unknown[]; selectedRollStackIndex?: number | null; rollStackClosed?: boolean; rollAnimation?: unknown | null; boardItems: BoardItem[]; ownedItems: Record<string, unknown[]>; trapNodes: unknown[]; shieldedPieceIds: string[]; logs: unknown[]; winner: string; captureEffect?: unknown | null; trapEffect?: unknown | null; fallEffect?: unknown | null; lastRollTimingZone?: unknown | null; pendingGoldenYutSelection?: unknown | null; gameStartedAt?: number | null; turnOrderIntro?: unknown | null; pendingTrapPlacement?: unknown | null; pendingItemPickup?: unknown | null; rollLockUntil?: number; lastMovedPieceIds?: string[]; lastMovedSeatId?: string; itemPromptTiming?: unknown | null; pendingAfterMoveTurnIndex?: number; branchChoice?: unknown; rollResultReadyAt?: number; turnOrderPhase?: unknown | null; waitingForPlayersReady?: boolean; turnDeadlineAt?: number; turnDeadlineKind?: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | ''; turnActionTimeoutCountBySeatId?: Record<string, number>; autoPlayBySeatId?: Record<string, boolean>; playMode?: 'individual' | 'team'; itemMode?: boolean; stackedRollMode?: boolean; pieceCount?: 1 | 2 | 3 | 4; startRequestVersion?: number; startRequestId?: string; coordinatorSeatId?: string; gameSeats?: GameSeatSnapshot[]; updatedAt?: unknown; turnVersion: number; lastSequence?: number; lastClientMutationId?: string; }
 export type GameStatePatch = Partial<Omit<SyncedGameState, 'updatedAt'>>;
-export interface GameAction { id: string; type: 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
-export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_updated' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'item_pickup_decided' | 'game_finished';
+export interface GameAction { id: string; type: 'roll_yut' | 'move_piece' | 'continue_race' | 'use_item' | 'place_trap' | 'item_pickup_decision' | 'resume_human_control'; actorId: string; payload?: Record<string, unknown>; createdAt?: unknown; processed?: boolean; }
+export type GameSequenceType = 'state_snapshot' | 'game_initialized' | 'turn_order_updated' | 'turn_order_resolved' | 'turn_order_intro_completed' | 'roll_yut' | 'move_piece_resolved' | 'race_continued' | 'item_used' | 'trap_placed' | 'item_pickup_decided' | 'human_control_resumed' | 'game_finished';
 export interface GameSequence { id: string; sequence: number; type: GameSequenceType; actorId: string; payload?: Record<string, unknown>; schemaVersion?: 1 | 2; eventSchemaVersion?: number; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; patch?: GameStatePatch | null; logEntries?: unknown[]; stateBefore?: SyncedGameState | null; stateAfter?: Omit<SyncedGameState, 'updatedAt'>; expectedPreviousSequence?: number; clientMutationId?: string; createdAt?: unknown; clientCreatedAt?: number; }
 export type GameSequenceMeta = { type?: GameSequenceType; actorId?: string; payload?: Record<string, unknown>; action?: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null; clientMutationId?: string; clientCreatedAt?: number; expectedPreviousSequence?: number };
 export type TurnOrderSubmissionRecord = {
@@ -115,13 +115,19 @@ export const canAuthenticatedUserActFromGameSnapshot = (
 ) => {
   if (!auth) return true;
   if (!uid) return false;
+  if (action.type === 'resume_human_control') return uid === action.actorId;
+  if (state.autoPlayBySeatId?.[action.actorId]) {
+    return action.payload?.automationSource === 'timeout_ai'
+      && action.payload?.coordinatorSeatId === state.coordinatorSeatId
+      && uid === state.coordinatorSeatId;
+  }
   if (uid === action.actorId) return true;
   const actorSeat = state.gameSeats.find((seat) => seat.id === action.actorId);
   const privilegedSeatIds = new Set([
     state.coordinatorSeatId,
     ...state.gameSeats.filter((seat) => seat.isHost).map((seat) => seat.id),
   ]);
-  const actorIsAiControlled = Boolean(actorSeat?.isAI || actorSeat?.isSubstitutedByAI);
+  const actorIsAiControlled = Boolean(actorSeat?.isAI || actorSeat?.isSubstitutedByAI || state.autoPlayBySeatId?.[action.actorId]);
   return privilegedSeatIds.has(uid) && (actorIsAiControlled || allowCoordinator);
 };
 
@@ -1107,8 +1113,19 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const uid = auth?.currentUser?.uid ?? '';
     const snapshotSeats = (state.gameSeats ?? []) as GameSeatSnapshot[];
     const actorSeat = snapshotSeats.find((seat) => seat.id === action.actorId);
-    const actorIsAiControlled = Boolean(actorSeat?.isAI || actorSeat?.isSubstitutedByAI);
+    const actorIsAiControlled = Boolean(actorSeat?.isAI || actorSeat?.isSubstitutedByAI || state.autoPlayBySeatId?.[action.actorId]);
+    if (auth && action.type === 'resume_human_control' && uid !== action.actorId) {
+      return { status: 'rejected', reason: '본인의 AI 자동 플레이만 해제할 수 있습니다.' };
+    }
     const coordinatorSeatId = state.coordinatorSeatId ?? snapshotSeats.find((seat) => !seat.isAI)?.id ?? '';
+    if (auth && state.autoPlayBySeatId?.[action.actorId] && action.type !== 'resume_human_control') {
+      const isAuthorizedTimeoutAutoAction = action.payload?.automationSource === 'timeout_ai'
+        && action.payload?.coordinatorSeatId === coordinatorSeatId
+        && uid === coordinatorSeatId;
+      if (!isAuthorizedTimeoutAutoAction) {
+        return { status: 'rejected', reason: 'AI 자동 플레이 액션 권한을 확인할 수 없습니다.' };
+      }
+    }
     const allowCoordinator = isExpiredItemPromptTimeoutRecoveryAction(state, action) || isExpiredItemPickupTimeoutRecoveryAction(state, action) || isExpiredTrapPlacementTimeoutRecoveryAction(state, action);
     const hasConfigSnapshot = hasAuthoritativeGameConfigSnapshot(state);
     let room: Pick<RoomSummary, 'playMode' | 'pieceCount' | 'stackedRollMode' | 'hostId'>;
@@ -1188,7 +1205,7 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const sequenceEvent: GameSequence = {
       id: makeSequenceDocId(nextSequence),
       sequence: nextSequence,
-      type: action.type === 'roll_yut' ? 'roll_yut' : action.type === 'continue_race' ? 'race_continued' : action.type === 'use_item' ? 'item_used' : action.type === 'place_trap' ? 'trap_placed' : action.type === 'item_pickup_decision' ? 'item_pickup_decided' : 'move_piece_resolved',
+      type: action.type === 'roll_yut' ? 'roll_yut' : action.type === 'continue_race' ? 'race_continued' : action.type === 'use_item' ? 'item_used' : action.type === 'place_trap' ? 'trap_placed' : action.type === 'item_pickup_decision' ? 'item_pickup_decided' : action.type === 'resume_human_control' ? 'human_control_resumed' : 'move_piece_resolved',
       actorId: action.actorId,
       payload: sanitizeForFirestore(reduction.payload) as Record<string, unknown>,
       ...makeSequenceEventFields({ stateBefore: state, stateAfter, patch: reduction.patch, action }),

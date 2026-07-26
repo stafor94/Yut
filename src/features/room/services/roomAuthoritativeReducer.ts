@@ -95,13 +95,23 @@ const isDeadlineRecoveryAction = (action: AuthoritativeArgs[1]) => {
 
 const isAutomatedAction = (action: AuthoritativeArgs[1]) => {
   const clientActionId = action.payload?.clientActionId;
-  return action.payload?.coordinatorSeatId !== undefined
+  return action.payload?.automationSource === 'timeout_ai'
+    || action.payload?.coordinatorSeatId !== undefined
     || (typeof clientActionId === 'string' && (
       clientActionId.startsWith('roll_yut_ai')
       || clientActionId.startsWith('move_piece_ai')
       || clientActionId.startsWith('use_item_ai')
       || clientActionId.startsWith('place_trap_ai')
-    ));
+  ));
+};
+
+const rejectManualActionDuringTimeoutAutoPlay = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const [state, action] = args;
+  if (action.type === 'resume_human_control'
+    || state.autoPlayBySeatId?.[action.actorId] !== true
+    || isAutomatedAction(action)
+    || isTimeoutRecoveryAction(action)) return null;
+  return { status: 'rejected', reason: 'AI 자동 플레이 중입니다. 직접 플레이로 돌아간 뒤 행동해주세요.' };
 };
 
 const getActionDeadlineGuard = (args: AuthoritativeArgs): { deadlineAt: unknown; expectedKind: TurnActionPhase; reason: string } | null => {
@@ -330,12 +340,26 @@ type TimeoutCountState = {
   pendingGoldenYutSelection?: unknown;
   pendingItemPickup?: unknown;
   turnActionTimeoutCountBySeatId?: unknown;
+  autoPlayBySeatId?: unknown;
+  gameSeats?: unknown;
 };
 
 const getTimeoutCountMap = (value: unknown) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {} as Record<string, number>;
   return Object.fromEntries(Object.entries(value as Record<string, unknown>)
     .map(([seatId, count]) => [seatId, normalizeTurnActionTimeoutCount(count)]));
+};
+
+const getAutoPlayMap = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {} as Record<string, boolean>;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .map(([seatId, active]) => [seatId, active === true]));
+};
+
+const isHumanGameSeat = (state: TimeoutCountState, seatId: string) => {
+  if (!Array.isArray(state.gameSeats)) return true;
+  const seat = state.gameSeats.find((entry) => entry && typeof entry === 'object' && (entry as { id?: unknown }).id === seatId) as { isAI?: unknown; isSubstitutedByAI?: unknown } | undefined;
+  return !seat || (seat.isAI !== true && seat.isSubstitutedByAI !== true);
 };
 
 const getObjectOwnerId = (value: unknown) => {
@@ -419,20 +443,27 @@ const applyTurnActionTimeoutPolicy = (
   const [state, action] = args;
   const currentState = state as TimeoutCountState;
   const timeoutCounts = getTimeoutCountMap(currentState.turnActionTimeoutCountBySeatId);
+  const autoPlayBySeatId = getAutoPlayMap(currentState.autoPlayBySeatId);
   const recoveredFromTimeout = isTimeoutRecoveryAction(action);
   const previousActorTimeoutCount = action.actorId ? normalizeTurnActionTimeoutCount(timeoutCounts[action.actorId]) : 0;
   let timeoutCountChanged = false;
+  let autoPlayChanged = false;
   if (recoveredFromTimeout && action.actorId) {
-    timeoutCounts[action.actorId] = incrementTurnActionTimeoutCount(previousActorTimeoutCount);
+    const nextTimeoutCount = incrementTurnActionTimeoutCount(previousActorTimeoutCount);
+    timeoutCounts[action.actorId] = nextTimeoutCount;
     timeoutCountChanged = true;
-  } else if (action.actorId && previousActorTimeoutCount > 0) {
+    if (nextTimeoutCount >= 2 && isHumanGameSeat(currentState, action.actorId) && autoPlayBySeatId[action.actorId] !== true) {
+      autoPlayBySeatId[action.actorId] = true;
+      autoPlayChanged = true;
+    }
+  } else if (!isAutomatedAction(action) && action.actorId && previousActorTimeoutCount > 0) {
     timeoutCounts[action.actorId] = 0;
     timeoutCountChanged = true;
   }
 
   const patch = { ...reduction.patch };
   const previousDeadline = Number(patch.turnDeadlineAt ?? 0);
-  const mergedState = { ...currentState, ...patch, turnActionTimeoutCountBySeatId: timeoutCounts } as TimeoutCountState;
+  const mergedState = { ...currentState, ...patch, turnActionTimeoutCountBySeatId: timeoutCounts, autoPlayBySeatId } as TimeoutCountState;
   const deadlineKind = (mergedState.turnDeadlineKind ?? '') as TurnDeadlineKind;
 
   if (previousDeadline > 0 && deadlineKind) {
@@ -451,6 +482,7 @@ const applyTurnActionTimeoutPolicy = (
   }
 
   if (timeoutCountChanged) patch.turnActionTimeoutCountBySeatId = timeoutCounts;
+  if (autoPlayChanged) patch.autoPlayBySeatId = autoPlayBySeatId;
   return { ...reduction, patch };
 };
 
@@ -460,6 +492,9 @@ export function reduceAuthoritativeGameAction(
   const args = normalizeLegacyRollTimingArgs(inputArgs);
   const acknowledgedFall = acknowledgeFallPresentationCompletion(args);
   if (acknowledgedFall) return acknowledgedFall;
+
+  const timeoutAutoPlayRejection = rejectManualActionDuringTimeoutAutoPlay(args);
+  if (timeoutAutoPlayRejection) return timeoutAutoPlayRejection;
 
   const presentationGateRejection = rejectRollBeforePresentationGateEnds(args);
   if (presentationGateRejection) return presentationGateRejection;

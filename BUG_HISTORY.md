@@ -67,6 +67,52 @@ When a bug fix fails or the same issue appears again, add an entry using this fo
 
 ## Current entries
 
+## 2026-07-26 - 연속 시간초과 정책과 사람 좌석 AI 자동 플레이
+
+### Symptom
+
+- 일반 행동의 기본 제한시간이 15초이고 오프라인은 온라인과 다른 단순 timeout 패널티를 사용했다.
+- 윷 던지기 시간초과는 화면에 보이는 오브 위치와 무관하게 coordinator 복구에서 항상 Bad로 처리됐다.
+- 상대 턴 프레젠테이션 전환 중에도 로컬 `turn-original.wav`가 재생될 수 있었다.
+- 사람이 두 번 연속 입력하지 않아도 해당 좌석을 계속 진행할 authoritative 자동 플레이 상태와 통제권 회수 경로가 없었다.
+
+### Expected behavior
+
+- 모든 턴 행동은 `10초 → 5초 → 5초` 정책과 좌석별 공통 timeout 횟수를 사용하고 정상 사람 행동에서 10초로 복구해야 한다.
+- 시간초과 윷은 deadline 순간 실제 화면 오브 위치로 판정하고, 클라이언트가 사라진 경우에만 공유 deadline 위치를 재구성해야 한다.
+- 턴 알림음은 authoritative 내 차례가 실제 행동 가능해질 때 한 번만 재생해야 한다.
+- 두 번째 연속 시간초과부터 어려움 AI가 authoritative sequence로 사람 좌석을 대신하고 원래 사용자만 직접 플레이로 복귀시킬 수 있어야 한다.
+
+### Confirmed root cause
+
+- 온라인 제한시간 카운터와 오프라인 boolean 패널티가 분리되어 있었고 일반 행동 기본값이 15초로 남아 있었다.
+- `resolveRollTimeout`이 오브 위치를 받거나 재구성하지 않고 Bad/0%를 고정 반환했다.
+- 턴 효과음이 authoritative 좌석과 프레젠테이션용 동결 좌석을 구분하지 않았다.
+- 접속 종료용 `isSubstitutedByAI` 외에는 timeout 자동 플레이를 나타내는 좌석별 authoritative 상태와 전용 복귀 액션이 없었다.
+
+### Do not try again
+
+- timeout 자동 플레이를 접속 종료 대체용 `isSubstitutedByAI`로 표현하지 않는다.
+- 여러 클라이언트가 로컬에서 사람 좌석 AI 상태를 독립적으로 결정하거나 optimistic 상태로 먼저 턴을 넘기지 않는다.
+- 활성 클라이언트의 시간초과 윷을 일괄 Bad로 바꾸지 않는다.
+
+### Correct fix plan
+
+- `turnActionTimeoutCountBySeatId`와 `autoPlayBySeatId`를 게임 snapshot·sequence·fingerprint에 함께 보존한다.
+- timeout action은 종류와 무관하게 횟수를 올리고, 정상 사람 action만 횟수를 초기화한다.
+- deadline 순간 DOM 오브를 고정해 위치와 판정을 함께 제출하고 coordinator fallback은 deadline 기반 위치를 사용한다.
+- 기존 어려움 AI 판단과 authoritative 제출 경로를 재사용하며 `resume_human_control` sequence로만 통제권을 반환한다.
+- 효과음은 authoritative 활성 좌석과 행동 가능 시점을 기준으로 턴마다 한 번만 재생한다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [x] QA architecture validation passes
+- [x] Offline timeout regression check passes
+- [ ] Multi-client timeout auto-play and resume checked
+- [ ] Mobile overlay layout checked
+
 ## 2026-07-07 - 온라인 AI 누적 빽도 스킵 optimistic 저장 경합
 
 ### Symptom
