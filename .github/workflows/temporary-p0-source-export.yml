@@ -18,7 +18,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
       - name: Archive source snapshot
-        run: tar --exclude=.git --exclude=source-snapshot.tar.gz -czf source-snapshot.tar.gz .
+        run: git ls-files -z | tar --null -T - -czf source-snapshot.tar.gz
       - name: Upload source snapshot
         uses: actions/upload-artifact@v4
         with:
