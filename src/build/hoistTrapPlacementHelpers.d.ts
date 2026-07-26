@@ -1,0 +1,6 @@
+export declare const TRAP_PLACEMENT_HELPER_CONST_BLOCK = "  const isTrapNodeOccupied = (nodeId: string) => pieces.some((piece) => piece.nodeId === nodeId && piece.started && !piece.finished);\n  const getTrapCandidateNodeIds = (nodeId: string) => getAdjacentBoardNodeIds(nodeId).filter((candidateNodeId) => candidateNodeId !== 'n01' && !isTrapNodeOccupied(candidateNodeId));";
+export declare const TRAP_PLACEMENT_HELPER_FUNCTION_BLOCK = "  function isTrapNodeOccupied(nodeId: string) {\n    return pieces.some((piece) => piece.nodeId === nodeId && piece.started && !piece.finished);\n  }\n  function getTrapCandidateNodeIds(nodeId: string) {\n    return getAdjacentBoardNodeIds(nodeId).filter((candidateNodeId) => candidateNodeId !== 'n01' && !isTrapNodeOccupied(candidateNodeId));\n  }";
+export declare const UNSAFE_ACTIVE_ROOM_STORAGE_READ = "window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? ''";
+export declare const SAFE_ACTIVE_ROOM_STORAGE_READ = "(() => { try { return window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? ''; } catch { return ''; } })()";
+export declare function hoistTrapPlacementHelpers(source: string): string;
+export declare function replaceUnsafeAppStorageReads(source: string): string;
