@@ -21,7 +21,6 @@ jobs:
   export-source:
     name: Temporary source export
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
@@ -40,7 +39,7 @@ jobs:
       - name: Report source export
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api "repos/${{ github.repository }}/issues/1110/comments" -f body="Source export completed. Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} artifact: source-snapshot-${{ github.run_id }} source: ${{ github.event.workflow_run.head_sha }}"
+        run: gh api "repos/${{ github.repository }}/issues/1110/comments" -f body="Source export completed. Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} artifact: source-snapshot-${{ github.run_id }} source: ${{ github.event.workflow_run.head_sha }} conclusion: ${{ github.event.workflow_run.conclusion }}"
 
   deploy-pages:
     name: Deploy GitHub Pages
