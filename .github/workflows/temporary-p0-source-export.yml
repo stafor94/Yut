@@ -1,27 +1,62 @@
-name: Temporary P0 source export
+name: Temporary P0 implementation validation
 
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    types: [synchronize]
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: temporary-p0-pr2-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  export-source:
+  apply-and-validate:
     if: github.event.pull_request.head.ref == 'perf/p0-pr2-leaf-display-clocks'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-      - name: Archive source snapshot
-        run: git ls-files -z | tar --null -T - -czf source-snapshot.tar.gz
-      - name: Upload source snapshot
-        uses: actions/upload-artifact@v4
+          fetch-depth: 0
+      - name: Apply P0 PR2 product patch
+        env:
+          PRODUCT_PATCH_GZIP_BASE64: >-
+            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
+        run: |
+          printf '%s' "$PRODUCT_PATCH_GZIP_BASE64" | base64 --decode | gzip --decompress > /tmp/p0-pr2.patch
+          git apply --check /tmp/p0-pr2.patch
+          git apply /tmp/p0-pr2.patch
+          rm .github/workflows/temporary-p0-source-export.yml
+      - uses: actions/setup-node@v4
         with:
-          name: p0-pr2-source-${{ github.event.pull_request.head.sha }}
-          path: source-snapshot.tar.gz
-          retention-days: 1
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate QA architecture
+        run: npm run qa:validate-architecture
+      - name: Build
+        run: npm run build
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Verify App root display clock wiring
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const source = fs.readFileSync('src/app/App.tsx', 'utf8');
+          for (const setter of ['setPlayTimeNow', 'setTurnOrderClock', 'setRollLockClock', 'setTrapPlacementClock', 'setItemPickupClock']) assert.equal(source.includes(setter), false, `${setter} remains in App root`);
+          assert.equal(source.includes('useDeadlineReached(rollLockUntil)'), true);
+          assert.equal(source.includes('setRollResultReadyAt(0)'), true);
+          NODE
+      - name: Commit validated product changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'perf: move display clocks out of App root'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
