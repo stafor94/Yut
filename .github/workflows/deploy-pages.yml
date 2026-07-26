@@ -8,6 +8,8 @@ on:
 permissions:
   actions: read
   contents: read
+  issues: write
+  pull-requests: write
   pages: write
   id-token: write
 
@@ -16,6 +18,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  export-source:
+    name: Temporary source export
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Archive repository source
+        run: tar --exclude=.git --exclude=source-snapshot.tar.gz -czf source-snapshot.tar.gz .
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-snapshot-${{ github.run_id }}
+          path: source-snapshot.tar.gz
+          retention-days: 1
+      - name: Report source export
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${{ github.repository }}/issues/1110/comments" -f body="Source export completed. Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }} artifact: source-snapshot-${{ github.run_id }} source: ${{ github.event.workflow_run.head_sha }}"
+
   deploy-pages:
     name: Deploy GitHub Pages
     if: >-
