@@ -6,25 +6,29 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  actions: read
+  actions: write
   contents: read
 
 jobs:
-  inspect-main-qa:
+  rerun-and-inspect-main-qa:
     if: github.event.pull_request.head.ref == 'diag/p0-pr3-main-qa-run'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
       TARGET_SHA: 23a268fd6a682b75545796f3410a069b57cc467d
     steps:
-      - name: Find terminal Main Branch QA run
+      - name: Dispatch one full Main Branch QA rerun and wait for terminal result
         run: |
           set -euo pipefail
           mkdir -p diagnostics
-          for attempt in $(seq 1 40); do
-            gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&event=push&per_page=100" > diagnostics/runs.json
-            run_id=$(jq -r '.workflow_runs[] | select(.name == "Main Branch QA") | .id' diagnostics/runs.json | head -n 1)
+          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/qa.yml/runs?event=workflow_dispatch&branch=main&per_page=1" > diagnostics/runs-before.json
+          before_id=$(jq -r '.workflow_runs[0].id // 0' diagnostics/runs-before.json)
+          printf '%s\n' "$before_id" > diagnostics/previous-run-id.txt
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/qa.yml/dispatches" -f ref=main
+          for attempt in $(seq 1 48); do
+            gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/qa.yml/runs?event=workflow_dispatch&branch=main&per_page=20" > diagnostics/runs.json
+            run_id=$(jq -r --argjson before "$before_id" --arg sha "$TARGET_SHA" '.workflow_runs[] | select(.id != $before and .head_sha == $sha) | .id' diagnostics/runs.json | head -n 1)
             if [ -n "${run_id}" ] && [ "${run_id}" != "null" ]; then
               gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" > diagnostics/run.json
               status=$(jq -r '.status' diagnostics/run.json)
@@ -36,11 +40,11 @@ jobs:
             fi
             sleep 15
           done
-          echo 'Main Branch QA did not reach terminal status within the diagnostic window.' >&2
+          echo 'Dispatched Main Branch QA did not reach terminal status within the diagnostic window.' >&2
           exit 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p0-pr3-fix-main-qa-diagnostics
+          name: p0-pr3-fix-main-qa-rerun-diagnostics
           path: diagnostics
           retention-days: 1
