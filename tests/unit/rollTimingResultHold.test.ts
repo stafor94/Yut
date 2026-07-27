@@ -8,6 +8,7 @@ import {
 
 const turnIndicatorCss = readFileSync('src/styles/turn-indicator.css', 'utf8');
 const browserQaSource = readFileSync('tests/mobile/roll-timing-pointer-capture.spec.js', 'utf8');
+const regressionQaSource = readFileSync('tests/regression/bug-history-smoke.spec.js', 'utf8');
 
 test('멈춘 타이밍 위치를 정확히 1초간 유지한다', () => {
   assert.equal(ROLL_TIMING_RESULT_HOLD_MS, 1000);
@@ -35,7 +36,10 @@ test('브라우저 QA가 실제 가시성·고정 좌표·1000ms 제거 시점�
   assert.match(browserQaSource, /Promise\.all\(\[0, 500, 900\]\.map\(sampleAt\)\)/);
   assert.doesNotMatch(browserQaSource, /waitUntilElapsed\(holdStartedAt, (?:500|900)\)/);
   assert.match(browserQaSource, /rollStageVisibleWhileHeld/);
-  assert.match(browserQaSource, /phaseDeltaMs >= 48 && phaseDeltaMs < 500/);
+  assert.match(browserQaSource, /snapshot\.capturedAt > pointerDownSnapshot\.capturedAt/);
+  assert.match(browserQaSource, /resumedElapsedMs = resumedSnapshot\.capturedAt - releasedAt/);
+  assert.match(browserQaSource, /Math\.abs\(phaseDeltaMs - gesture\.resumedElapsedMs\)/);
+  assert.doesNotMatch(browserQaSource, /phaseDeltaMs >= 48 && phaseDeltaMs < 500/);
   assert.match(browserQaSource, /releaseMode: 'outside'/);
   assert.match(browserQaSource, /releaseMode: 'cancel'/);
   assert.match(browserQaSource, /같은 방에서 Good pointerdown 후 pointercancel/);
@@ -43,4 +47,12 @@ test('브라우저 QA가 실제 가시성·고정 좌표·1000ms 제거 시점�
   assert.match(browserQaSource, /toBeGreaterThanOrEqual\(1000\)/);
   assert.match(browserQaSource, /rollStageVisible/);
   assert.match(browserQaSource, /overlapsButton/);
+});
+
+test('Desktop sequence QA는 실제 로컬 말 이동과 이동 불가 재시도를 구분한다', () => {
+  assert.match(regressionQaSource, /let moveRequested = false/);
+  assert.match(regressionQaSource, /debugPiece\?\.ownerId === localSeatId/);
+  assert.match(regressionQaSource, /finish\('move-clicked'\)/);
+  assert.match(regressionQaSource, /finish\('retry'\)/);
+  assert.doesNotMatch(regressionQaSource, /resolve\('move-clicked'\);\s*return;/);
 });
