@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import type { CaptureAnimationPiece } from '../../src/app/flows/captureAnimation.js';
 import {
@@ -14,6 +15,7 @@ import {
   getCaptureStaggerMs,
   inferCapturedPieceIds,
 } from '../../src/app/flows/captureAnimation.js';
+import { MOVE_FRAME_PRESENTATION_MS } from '../../src/app/flows/gameAnimationQueue.js';
 
 const makePiece = (overrides: Partial<CaptureAnimationPiece>): CaptureAnimationPiece => ({
   id: 'piece',
@@ -27,9 +29,17 @@ const makePiece = (overrides: Partial<CaptureAnimationPiece>): CaptureAnimationP
   ...overrides,
 });
 
-test('capture approach uses an exact 400ms slow-motion window', () => {
-  assert.equal(CAPTURE_SLOW_MOTION_MS, 400);
+const captureEffectsCss = readFileSync('src/styles/capture-effects.css', 'utf8');
+
+test('capture impact begins 320ms after the landing frame starts', () => {
+  assert.equal(CAPTURE_SLOW_MOTION_MS, 320);
+  assert.equal(CAPTURE_IMPACT_DELAY_MS, 80);
+  assert.equal(MOVE_FRAME_PRESENTATION_MS + CAPTURE_IMPACT_DELAY_MS, CAPTURE_SLOW_MOTION_MS);
+  assert.equal(CAPTURE_EFFECT_MS, 720);
   assert.equal(CAPTURE_EFFECT_MS, CAPTURE_IMPACT_DELAY_MS + CAPTURE_FLIGHT_MS);
+  assert.match(captureEffectsCss, /\.piece-token\.capture-approach\s*\{[^}]*transition-duration:\s*320ms;/s);
+  assert.match(captureEffectsCss, /@keyframes capture-piece-ejection\s*\{\s*0%, 10%/s);
+  assert.match(captureEffectsCss, /@keyframes capture-board-impact\s*\{\s*0%, 10%, 100%/s);
 });
 
 test('chain capture timing tightens as the captured stack grows', () => {

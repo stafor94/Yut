@@ -12,9 +12,9 @@ export type CaptureAnimationPiece = {
 
 import { getBoardNodeById } from '../../game-core/board/board';
 
-export const CAPTURE_SLOW_MOTION_MS = 400;
-export const CAPTURE_IMPACT_DELAY_MS = 160;
-export const CAPTURE_FLIGHT_MS = 560;
+export const CAPTURE_SLOW_MOTION_MS = 320;
+export const CAPTURE_IMPACT_DELAY_MS = 80;
+export const CAPTURE_FLIGHT_MS = 640;
 export const CAPTURE_EFFECT_MS = CAPTURE_IMPACT_DELAY_MS + CAPTURE_FLIGHT_MS;
 
 export function getCaptureStaggerMs(pieceCount: number) {
