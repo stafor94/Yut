@@ -49,8 +49,8 @@ test.describe('mobile roll timing horizontal overflow regression', () => {
         const trackRect = track.getBoundingClientRect();
         const orbRect = orb.getBoundingClientRect();
         const meterContentLeft = meterRect.left + meter.clientLeft;
-        const visibleLeft = Math.max(orbRect.left, trackRect.left);
-        const visibleRight = Math.min(orbRect.right, trackRect.right);
+        const visibleLeft = Math.max(orbRect.left, 0);
+        const visibleRight = Math.min(orbRect.right, window.innerWidth);
         return {
           requestedPositionPercent: positionPercent,
           visiblePositionPercent: ((orbRect.left + orbRect.width / 2 - meterContentLeft) / meter.clientWidth) * 100,
@@ -93,8 +93,7 @@ test.describe('mobile roll timing horizontal overflow regression', () => {
     expect(result.boundarySamples).toHaveLength(3);
     for (const sample of result.boundarySamples) {
       expect(Math.abs(sample.visiblePositionPercent - sample.requestedPositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
-      expect(sample.visibleOrbWidth).toBeGreaterThan(0);
-      expect(sample.visibleOrbWidth).toBeLessThanOrEqual(sample.orbWidth);
+      expect(Math.abs(sample.visibleOrbWidth - sample.orbWidth), '0·50·100% 경계에서 오브 전체가 보여야 합니다.').toBeLessThanOrEqual(0.5);
       expect(Math.abs(sample.trackWidth - sample.meterWidth)).toBeLessThanOrEqual(1);
       expect(Math.abs(sample.trackLeftDelta)).toBeLessThanOrEqual(1);
       expect(sample.inlineTrackTransform).toBe('none');
