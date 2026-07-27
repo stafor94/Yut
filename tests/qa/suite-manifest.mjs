@@ -9,7 +9,7 @@ export const qaSuiteManifest = Object.freeze({
   'online-core': Object.freeze({
     label: 'Online core',
     code: 'core',
-    workers: 3,
+    workers: 2,
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
@@ -19,7 +19,6 @@ export const qaSuiteManifest = Object.freeze({
       'tests/game-flow/game-start-authority.spec.js',
       'tests/game-flow/turn-order-simultaneous.spec.js',
       'tests/game-flow/ai-substitution.spec.js',
-      'tests/game-flow/ai-presence-recovery.spec.js',
       'tests/online/room-lifecycle.spec.js',
       'tests/online/room-leave-ui-race.spec.js',
       'tests/online/room-exit-resume.spec.js',
@@ -48,6 +47,7 @@ export const qaSuiteManifest = Object.freeze({
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     grepInvert: timeoutPenaltyTitle,
     tests: Object.freeze([
+      'tests/game-flow/ai-presence-recovery.spec.js',
       'tests/regression/finish-step-animation.spec.js',
       'tests/regression/roll-mat-surface.spec.js',
       'tests/regression/local-roll-stage-position.spec.js',
