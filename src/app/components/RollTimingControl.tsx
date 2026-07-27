@@ -111,8 +111,9 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
 
   const resumeFrameLoop = (snapshot: RollTimingSnapshot) => {
     if (submittedKeyRef.current === resetKey || snapshot.resetKey !== resetKey) return;
-    applyRenderedSnapshot(snapshot);
-    frameStartedAtRef.current = performance.now() - snapshot.phaseMs;
+    const resumedAt = performance.now();
+    frameStartedAtRef.current = resumedAt - snapshot.phaseMs;
+    renderFrame(resumedAt);
     scheduleFrameLoop();
   };
 
