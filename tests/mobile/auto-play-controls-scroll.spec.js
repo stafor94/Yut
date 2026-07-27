@@ -89,6 +89,7 @@ async function patchRoomStateFromPage(page, roomId, patch) {
 }
 
 const AUTOPLAY_FIXTURE_TIMEOUT_MS = 20_000;
+const AUTOPLAY_FIXTURE_MOVE_LOCK = '__qa_autoplay_controls_hold__';
 
 test.describe('mobile autoplay control panel scroll QA', () => {
   let roomId;
@@ -143,6 +144,7 @@ test.describe('mobile autoplay control panel scroll QA', () => {
         rollStack: [],
         selectedRollStackIndex: null,
         rollStackClosed: false,
+        movingPieceId: AUTOPLAY_FIXTURE_MOVE_LOCK,
         itemPromptTiming: null,
         pendingAfterMoveTurnIndex: null,
         pendingGoldenYutSelection: null,
@@ -242,6 +244,7 @@ test.describe('mobile autoplay control panel scroll QA', () => {
         rollStack: [],
         selectedRollStackIndex: null,
         rollStackClosed: false,
+        movingPieceId: '',
         itemPromptTiming: null,
         pendingAfterMoveTurnIndex: null,
         pendingGoldenYutSelection: null,
