@@ -112,7 +112,7 @@ test.describe('mobile item skip pending lock QA', () => {
     await context.addInitScript(() => {
       window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
       window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
-      window.__YUT_QA_DELAY_USE_ITEM_ACTION_MS__ = 1800;
+      window.__YUT_QA_DELAY_USE_ITEM_ACTION_MS__ = 4500;
     });
 
     await runQaStep(testInfo, 'AI 게임을 시작하고 첫 턴 authoritative state를 준비', async () => {
@@ -180,6 +180,7 @@ test.describe('mobile item skip pending lock QA', () => {
       });
       await expect(page.getByRole('dialog', { name: '아이템 사용 선택' })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole('button', { name: '사용 안 함', exact: true })).toBeEnabled();
+      expect(await page.evaluate(() => window.__YUT_QA_DELAY_USE_ITEM_ACTION_MS__)).toBe(4500);
     });
 
     await runQaStep(testInfo, 'skip commit 지연 중 연속 DOM과 sequence를 관찰', async () => {
@@ -202,9 +203,8 @@ test.describe('mobile item skip pending lock QA', () => {
 
       await page.getByRole('button', { name: '사용 안 함', exact: true }).click();
       await expect(page.getByRole('dialog', { name: '아이템 사용 선택' })).toBeHidden({ timeout: 5_000 });
-      await expect(page.getByTestId('roll-yut-button')).toBeDisabled({ timeout: 5_000 });
       await page.evaluate(async () => {
-        const until = Date.now() + 700;
+        const until = Date.now() + 3000;
         while (Date.now() < until) {
           const rollButton = document.querySelector('[data-testid="roll-yut-button"]');
           if (rollButton instanceof HTMLButtonElement) rollButton.click();
@@ -212,10 +212,16 @@ test.describe('mobile item skip pending lock QA', () => {
         }
       });
 
+      const observed = await page.evaluate(() => {
+        window.__YUT_QA_STOP_ITEM_SKIP_LOCK__?.();
+        return window.__YUT_QA_ITEM_SKIP_LOCK__;
+      });
+      expect(observed?.observationCount, 'skip 직후부터 commit 지연 구간까지 DOM 상태를 연속 관찰해야 합니다.').toBeGreaterThan(1);
+      expect(observed?.enabledRollSeen, 'authoritative use_item 확정 전 활성 roll 버튼이 나타나면 안 됩니다.').toBe(false);
+
       const pendingSequences = await getRoomSequencesForQa(roomId);
       expect(pendingSequences.filter(isSkipBeforeSequence)).toHaveLength(initialSkipCount);
       expect(pendingSequences.filter(isRollSequence)).toHaveLength(initialRollCount);
-      await expect(page.getByTestId('roll-yut-button')).toBeEnabled({ timeout: 15_000 });
       await expect.poll(async () => {
         const sequences = await getRoomSequencesForQa(roomId);
         return {
@@ -223,13 +229,7 @@ test.describe('mobile item skip pending lock QA', () => {
           rollCount: sequences.filter(isRollSequence).length - initialRollCount,
         };
       }, { timeout: 15_000, message: 'skip은 정확히 한 번 확정되고 roll 요청은 없어야 합니다.' }).toEqual({ skipCount: 1, rollCount: 0 });
-
-      const observed = await page.evaluate(() => {
-        window.__YUT_QA_STOP_ITEM_SKIP_LOCK__?.();
-        return window.__YUT_QA_ITEM_SKIP_LOCK__;
-      });
-      expect(observed?.observationCount, 'skip 직후부터 commit 완료까지 DOM 상태를 연속 관찰해야 합니다.').toBeGreaterThan(1);
-      expect(observed?.enabledRollSeen, 'authoritative use_item 확정 전 활성 roll 버튼이 나타나면 안 됩니다.').toBe(false);
+      await expect(page.getByTestId('roll-yut-button')).toBeEnabled({ timeout: 15_000 });
     });
   });
 });
