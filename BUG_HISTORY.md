@@ -83,7 +83,8 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - [x] `node --check tests/qa/suite-manifest.mjs`가 성공했다.
 - [x] 테스트 파일 → suite manifest → `qa:emulator-suite` runner → `.github/workflows/qa.yml` matrix → Playwright project/testMatch/브라우저/viewport 연결을 검토했다.
 - [x] Main Branch QA Run `30226873062`에서 `npm ci`, architecture validation, build, unit, Galaxy timing, Galaxy grade/layout 등은 성공했다.
-- [ ] WebKit Safari visible mismatch/timing 후속 수정 Run의 terminal conclusion을 확인한다.
+- [x] Main Branch QA Run `30227987345`의 Safari/Galaxy timing 실패 job과 artifact를 직접 분석했다.
+- [ ] 최종 관측 순서 수정 Run에서 Galaxy timing, Safari visible mismatch, Safari timing의 terminal success와 실제 test 실행을 확인한다.
 - [ ] 병합 후 최종 merge SHA 기준 Main Branch QA 전체 success를 확인한다.
 
 ### Main Branch QA follow-up - Run 30226873062
@@ -95,3 +96,14 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - Safari timing 3-worker 실행에서는 30~34%, 41~44%의 좁은 구간을 rAF가 건너뛰어 목표 위치를 찾지 못했다. timeout을 늘리거나 animation timeline을 조작하지 않고, Nice와 취소 시나리오는 실제 등급 전체의 좌·우 구간을 허용하되 pointerdown 당시 phase 방향을 함께 기록·검증한다.
 - exact `safari-visible-mismatch` title과 manifest grep/grepInvert는 유지하며 테스트 삭제·skip 확대·timeout 증가·0.25% 허용 오차 확대·성능 예산 변경을 하지 않는다.
 - 같은 Run에서 Online core job은 기능 성공 후 270초 예산을 6초 초과했고 전체 예상 완료가 300초를 7.8초 초과했다. 관련 없는 workflow나 성능 예산은 변경하지 않고 후속 정상 코드 Run에서 재확인한다.
+
+
+### Main Branch QA follow-up - Run 30227987345
+
+- PR #1140 merge SHA `539f7ab7bdba002c02852f1d67f08850d209f502`의 Main Branch QA에서 build, unit, architecture validation, Online core, Desktop, 일반 Mobile Galaxy는 성공했다. 실패는 `QA Mobile Galaxy timing`, `QA Safari visible mismatch`, `QA Safari timing` 세 timing lane에 한정됐다.
+- Safari timing의 Nice·버튼 밖 pointerup·pointercancel은 같은 spec을 3개 WebKit page에서 병렬 실행하면서 모두 목표 rAF snapshot을 찾지 못했다. 비활성 page에서 제품 rAF가 throttling되어 `positionPercent`가 진행하지 않은 것이며, 범위를 더 넓히거나 timeout을 늘려 해결할 문제가 아니다.
+- Safari visible mismatch는 테스트의 `waitUntilElapsed()` 자체가 requestAnimationFrame을 기다려 `500ms 관측 시점에 도달하지 못했습니다`로 실패했다. 제품 rAF와 테스트 관측 시계를 같은 rAF에 묶으면 rAF throttling 시 검증 코드도 함께 멈춘다.
+- Galaxy timing은 result hold 500ms sample callback이 늦게 실행돼 clone이 이미 제거된 뒤 `clientWidth === 0` 상태를 측정했다. 0ms·500ms·900ms sample을 순차 대기하면 앞선 callback 지연이 뒤 sample 예약까지 늦추므로 제거 timer보다 먼저 세 sample timer를 모두 예약해야 한다.
+- 최종 QA 수정은 제품 위치 writer를 바꾸지 않는다. 테스트 polling과 elapsed 관측은 wall-clock `setTimeout`을 사용하고, result hold 0ms·500ms·900ms timer를 1000ms 제거 timer보다 먼저 동시에 예약한다. roll-stage가 clone 연결 중 나타났는지는 MutationObserver와 각 sample에서 별도로 기록한다.
+- `safari-timing` lane의 manifest worker 수 3과 `mobile-webkit-timing` project의 `fullyParallel: true`는 유지한다. 단, `QA_ROLE=safari-timing`일 때 pointer spec 내부 mode만 `default`로 실행해 한 활성 WebKit page에서 Nice·release·cancel을 순차 검증한다. browser isolation은 별도 worker와 병행 가능하며 Galaxy timing은 기존 parallel mode를 유지한다.
+- exact Good title, manifest grep/grepInvert, 0.25% 위치 허용 오차, 3000ms 목표 탐색 timeout, test timeout, worker 예산, 성능 예산은 변경하지 않는다.

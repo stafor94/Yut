@@ -10,6 +10,7 @@ const POSITION_TOLERANCE_PERCENT = 0.25;
 const HOLD_REMOVAL_MAX_DELAY_MS = 1500;
 const LONG_PRESS_MS = 180;
 const ROLL_TIMING_CYCLE_MS = 2000;
+const POINTER_SPEC_MODE = process.env.QA_ROLE === 'safari-timing' ? 'default' : 'parallel';
 
 function getExpectedGrade(positionPercent) {
   if (positionPercent >= 45 && positionPercent <= 55) return 'PERFECT';
@@ -159,16 +160,13 @@ async function dispatchPointerDownSnapshotGesture(page, {
       while (performance.now() <= deadline) {
         const value = condition();
         if (value) return value;
-        await new Promise((resolve) => window.requestAnimationFrame(resolve));
+        await new Promise((resolve) => window.setTimeout(resolve, 16));
       }
       throw new Error(failureMessage);
     };
     const waitUntilElapsed = async (startedAt, elapsedMs) => {
-      await waitForCondition(
-        () => performance.now() - startedAt >= elapsedMs,
-        elapsedMs + 500,
-        `${elapsedMs}ms 관측 시점에 도달하지 못했습니다.`,
-      );
+      const remainingMs = Math.max(0, startedAt + elapsedMs - performance.now());
+      await new Promise((resolve) => window.setTimeout(resolve, remainingMs));
     };
     const waitForRenderedTarget = async () => waitForCondition(() => {
       const snapshot = readSnapshot();
@@ -245,7 +243,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
     const heldDuringPressVisiblePositionPercent = readVisiblePositionPercent();
     const heldDuringPressTransform = track.style.transform;
 
-    const holdLifecycle = { addedAt: Number.NaN, removedAt: Number.NaN };
+    const holdLifecycle = { addedAt: Number.NaN, removedAt: Number.NaN, rollStageVisibleWhileHeld: false };
     const holdSelector = '[data-testid="roll-timing-result-hold"]';
     const holdObserver = new MutationObserver((records) => {
       const observedAt = performance.now();
@@ -262,6 +260,10 @@ async function dispatchPointerDownSnapshotGesture(page, {
             if (!Number.isFinite(holdLifecycle.removedAt)) holdLifecycle.removedAt = observedAt;
           }
         }
+      }
+      const visibleHold = document.querySelector(holdSelector);
+      if (visibleHold?.isConnected && document.querySelector('.roll-stage')) {
+        holdLifecycle.rollStageVisibleWhileHeld = true;
       }
     });
     holdObserver.observe(document.body, { childList: true, subtree: true });
@@ -316,6 +318,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
       widthDeltaPx: Number.NaN,
       heightDeltaPx: Number.NaN,
       rollStageVisible: false,
+      rollStageVisibleWhileHeld: false,
       samples: [],
       observerAddedDelayMs: Number.NaN,
       removalDelayMs: Number.NaN,
@@ -373,17 +376,25 @@ async function dispatchPointerDownSnapshotGesture(page, {
         };
       };
 
-      resultHold.samples.push(sampleHold(0));
-      await waitUntilElapsed(holdStartedAt, 500);
-      resultHold.samples.push(sampleHold(500));
-      await waitUntilElapsed(holdStartedAt, 900);
-      resultHold.samples.push(sampleHold(900));
+      const sampleAt = (elapsedMs) => new Promise((resolve, reject) => {
+        const delayMs = Math.max(0, holdStartedAt + elapsedMs - performance.now());
+        window.setTimeout(() => {
+          try {
+            resolve(sampleHold(elapsedMs));
+          } catch (error) {
+            reject(error);
+          }
+        }, delayMs);
+      });
+      resultHold.samples.push(...await Promise.all([0, 500, 900].map(sampleAt)));
       await waitForCondition(
         () => Number.isFinite(holdLifecycle.removedAt),
         1000,
         '정지 결과 막대가 허용 시간 안에 제거되지 않았습니다.',
       );
       resultHold.removalDelayMs = holdLifecycle.removedAt - holdStartedAt;
+      resultHold.rollStageVisibleWhileHeld = holdLifecycle.rollStageVisibleWhileHeld
+        || resultHold.samples.some((sample) => sample.rollStageVisible);
       await waitForCondition(
         () => document.querySelector('.roll-stage'),
         5000,
@@ -441,6 +452,7 @@ function assertPointerDownFreezeAndHold(gesture) {
   expect(gesture.resultHold.widthDeltaPx).toBeLessThanOrEqual(1);
   expect(gesture.resultHold.heightDeltaPx).toBeLessThanOrEqual(1);
   expect(gesture.resultHold.rollStageVisible).toBe(true);
+  expect(gesture.resultHold.rollStageVisibleWhileHeld).toBe(true);
   expect(gesture.resultHold.observerAddedDelayMs).toBeGreaterThanOrEqual(0);
   expect(gesture.resultHold.observerAddedDelayMs).toBeLessThan(250);
   expect(Math.abs(gesture.resultHold.snapshotPositionPercent - gesture.pointerDownSnapshot.positionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
@@ -478,7 +490,7 @@ async function runAndAssertTimingGesture(page, roomId, options = {}) {
 }
 
 test.describe('mobile roll timing pointerdown snapshot regression', () => {
-  test.describe.configure({ mode: 'parallel' });
+  test.describe.configure({ mode: POINTER_SPEC_MODE });
 
   const roomIds = new Set();
 
