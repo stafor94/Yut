@@ -208,17 +208,10 @@ async function waitForRoomCreationResult(page, roomTitle, { timeout = 45_000, ma
   const createButton = page.getByTestId('create-room-button');
   const retryAlert = page.getByRole('alertdialog', { name: '방 생성에 실패했습니다' });
   let submitAttempts = 1;
-  let storedRoomRecoveryAttempted = false;
 
   await expect.poll(async () => {
     if (await waitingRoom.isVisible().catch(() => false)) return true;
-    if (!storedRoomRecoveryAttempted) {
-      const recovered = await recoverCreatedRoomSession(page, roomTitle).catch(() => false);
-      if (recovered) return true;
-      if (await page.getByRole('status', { name: '응답이 지연되어 생성된 방을 확인하고 있습니다...' }).isVisible().catch(() => false)) {
-        storedRoomRecoveryAttempted = true;
-      }
-    }
+    if (await recoverCreatedRoomSession(page, roomTitle).catch(() => false)) return true;
 
     const canRetry = submitAttempts < maxSubmitAttempts
       && await retryAlert.isVisible().catch(() => false);
