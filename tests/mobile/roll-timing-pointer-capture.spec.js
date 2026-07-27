@@ -533,7 +533,7 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     expect(getExpectedGrade(gesture.pointerDownSnapshot.positionPercent)).toBe('NICE');
   });
 
-  test('버튼 밖 pointerup은 제출하지 않고 pointerdown phase와 방향에서 오브 이동을 재개한다', async ({ page, context }, testInfo) => {
+  test('버튼 밖 pointerup과 pointercancel은 제출하지 않고 기존 phase와 방향에서 연속 재개한다', async ({ page, context }, testInfo) => {
     testInfo.setTimeout(180_000);
     const roomId = await startAiTimingGame(page, context, testInfo);
     roomIds.add(roomId);
@@ -541,31 +541,25 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     const rollLogCountBefore = await rollLogLocator.count();
     const sequenceBefore = await getLatestSequenceNumber(roomId);
 
-    const gesture = await runQaStep(testInfo, '실제 렌더된 Good pointerdown 후 버튼 밖 pointerup과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
+    const outsideGesture = await runQaStep(testInfo, '실제 렌더된 Good pointerdown 후 버튼 밖 pointerup과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
       releaseMode: 'outside',
       pointerDownRanges: GOOD_CANCEL_RANGES,
       requireAscending: null,
       awaitSubmission: false,
     }));
-    assertCancelledGestureResumes(gesture);
+    assertCancelledGestureResumes(outsideGesture);
     await expect(rollLogLocator).toHaveCount(rollLogCountBefore);
     await expect(page.getByTestId('roll-yut-button')).toBeEnabled();
     await expect.poll(() => getLatestSequenceNumber(roomId), { timeout: 1000, intervals: [100, 200, 300] }).toBe(sequenceBefore);
-  });
 
-  test('pointercancel은 제출하지 않고 후속 synthetic click을 무시한 뒤 기존 phase와 방향에서 재개한다', async ({ page, context }, testInfo) => {
-    testInfo.setTimeout(180_000);
-    const roomId = await startAiTimingGame(page, context, testInfo);
-    roomIds.add(roomId);
-    const sequenceBefore = await getLatestSequenceNumber(roomId);
-
-    const gesture = await runQaStep(testInfo, '실제 렌더된 Good pointerdown 후 pointercancel과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
+    const cancelGesture = await runQaStep(testInfo, '같은 방에서 Good pointerdown 후 pointercancel과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
       releaseMode: 'cancel',
       pointerDownRanges: GOOD_CANCEL_RANGES,
       requireAscending: null,
       awaitSubmission: false,
     }));
-    assertCancelledGestureResumes(gesture);
+    assertCancelledGestureResumes(cancelGesture);
+    await expect(rollLogLocator).toHaveCount(rollLogCountBefore);
     await expect(page.getByTestId('roll-yut-button')).toBeEnabled();
     await expect.poll(() => getLatestSequenceNumber(roomId), { timeout: 1000, intervals: [100, 200, 300] }).toBe(sequenceBefore);
   });
