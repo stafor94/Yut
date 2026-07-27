@@ -14,40 +14,44 @@ const requireDeploy = (fragment, message) => {
 };
 
 requireQa(
-  'name: build-and-unit-${{ github.run_attempt }}',
-  'build artifact 이름에 github.run_attempt가 없어 재실행 artifact와 충돌할 수 있습니다.',
+  'name: build-and-unit\n          overwrite: true',
+  'build artifact가 같은 이름의 이전 attempt를 교체하도록 설정되지 않았습니다.',
 );
 requireQa(
-  'name: qa-${{ matrix.code }}-results-${{ github.run_attempt }}',
-  'QA shard artifact 이름에 github.run_attempt가 없어 재실행 artifact와 충돌할 수 있습니다.',
+  'name: qa-${{ matrix.code }}-results\n          overwrite: true',
+  'QA shard artifact가 같은 lane의 이전 attempt를 교체하도록 설정되지 않았습니다.',
 );
 requireQa(
-  "pattern: '*-${{ github.run_attempt }}'",
-  'summary가 현재 run_attempt artifact만 다운로드하도록 제한되지 않았습니다.',
+  'name: qa-summary\n          overwrite: true',
+  'QA summary artifact가 이전 attempt summary를 교체하도록 설정되지 않았습니다.',
 );
 requireQa(
-  'name: qa-summary-${{ github.run_attempt }}',
-  'summary artifact 이름에 github.run_attempt가 없어 재실행 summary와 충돌할 수 있습니다.',
+  'name: build-and-unit\n        continue-on-error: true',
+  'summary가 검증된 build artifact를 이름으로 직접 다운로드하지 않습니다.',
+);
+requireQa(
+  "pattern: 'qa-*-results'",
+  'summary가 QA shard artifact만 다운로드하도록 제한되지 않았습니다.',
 );
 requireDeploy(
-  'name: build-and-unit-${{ github.event.workflow_run.run_attempt }}',
-  'Pages 배포가 성공한 workflow attempt의 build artifact를 선택하지 않습니다.',
+  'name: build-and-unit\n          path: build-and-unit',
+  'Pages 배포가 overwrite된 검증 build artifact를 다운로드하지 않습니다.',
 );
 
 if (/pattern:\s*'\*'\s*$/mu.test(qaWorkflow)) {
-  failures.push('summary가 모든 attempt artifact를 합치는 광역 pattern을 사용하고 있습니다.');
+  failures.push('summary가 QA summary를 포함한 모든 artifact를 다시 합치는 광역 pattern을 사용하고 있습니다.');
 }
-if (/name:\s*build-and-unit\s*$/mu.test(qaWorkflow)) {
-  failures.push('attempt가 없는 legacy build artifact 이름이 남아 있습니다.');
+if (/name:\s*(?:build-and-unit|qa-\$\{\{ matrix\.code \}\}-results|qa-summary)-\$\{\{ github\.run_attempt \}\}/u.test(qaWorkflow)) {
+  failures.push('부분 job 재실행에서 다른 lane을 누락시키는 run_attempt suffix artifact 이름이 남아 있습니다.');
 }
-if (/name:\s*qa-\$\{\{ matrix\.code \}\}-results\s*$/mu.test(qaWorkflow)) {
-  failures.push('attempt가 없는 legacy QA shard artifact 이름이 남아 있습니다.');
+if (/pattern:\s*'[^']*qa-summary[^']*'/u.test(qaWorkflow)) {
+  failures.push('summary 다운로드 pattern에 이전 QA summary artifact가 포함될 수 있습니다.');
 }
 
 if (failures.length > 0) {
-  console.error(`QA workflow artifact attempt validation failed (${failures.length})`);
+  console.error(`QA workflow rerun artifact validation failed (${failures.length})`);
   failures.forEach((message) => console.error(`- ${message}`));
   process.exit(1);
 }
 
-console.log('QA workflow artifact attempt validation passed');
+console.log('QA workflow rerun artifact validation passed');
