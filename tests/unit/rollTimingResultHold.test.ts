@@ -36,6 +36,9 @@ test('브라우저 QA가 실제 가시성·고정 좌표·1000ms 제거 시점�
   assert.doesNotMatch(browserQaSource, /waitUntilElapsed\(holdStartedAt, (?:500|900)\)/);
   assert.match(browserQaSource, /rollStageVisibleWhileHeld/);
   assert.match(browserQaSource, /phaseDeltaMs >= 48 && phaseDeltaMs < 500/);
+  assert.match(browserQaSource, /releaseMode: 'outside'/);
+  assert.match(browserQaSource, /releaseMode: 'cancel'/);
+  assert.match(browserQaSource, /같은 방에서 Good pointerdown 후 pointercancel/);
   assert.match(browserQaSource, /removalDelayMs/);
   assert.match(browserQaSource, /toBeGreaterThanOrEqual\(1000\)/);
   assert.match(browserQaSource, /rollStageVisible/);
