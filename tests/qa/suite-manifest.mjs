@@ -9,7 +9,7 @@ export const qaSuiteManifest = Object.freeze({
   'online-core': Object.freeze({
     label: 'Online core',
     code: 'core',
-    workers: 2,
+    workers: 3,
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
