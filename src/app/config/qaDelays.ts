@@ -1,6 +1,6 @@
 declare const window: { [key: string]: unknown } | undefined;
 
-type QaDelayKey = '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__' | '__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__' | '__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__';
+type QaDelayKey = '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__' | '__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__' | '__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__' | '__YUT_QA_DELAY_USE_ITEM_ACTION_MS__';
 
 export const getQaDelayMs = (key: QaDelayKey) => {
   if (typeof window === 'undefined') return 0;
@@ -11,3 +11,4 @@ export const getQaDelayMs = (key: QaDelayKey) => {
 export const getQaRequestRoomGameStartDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__');
 export const getQaInitializeGameStateDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__');
 export const getQaRollYutActionDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__');
+export const getQaUseItemActionDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_USE_ITEM_ACTION_MS__');
