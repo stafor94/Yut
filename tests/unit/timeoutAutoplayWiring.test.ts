@@ -27,11 +27,12 @@ test('GameScreenView는 플로팅 자동 플레이 오버레이를 제거하고 
   assert.match(playersSource, /AI 자동 플레이/);
 });
 
-test('GameBoardControls는 자동 플레이 분기를 직접 조작 UI보다 우선하고 복귀 pending을 처리한다', () => {
+test('GameBoardControls는 자동 플레이 분기를 직접 조작 UI보다 우선하고 로컬 좌석만 복귀를 허용한다', () => {
   assert.match(controlsSource, /data-testid="play-controls"/);
   assert.match(controlsSource, /autoPlayActive \? <div data-testid="auto-play-control-panel"/);
   assert.match(controlsSource, /AI 자동 플레이 중\.\.\./);
   assert.match(controlsSource, /\{autoPlaySeatName\}님의 행동을 어려움 AI가 대신 판단합니다\./);
+  assert.match(controlsSource, /\{localAutoPlayActive && <button/);
   assert.match(controlsSource, /data-testid="resume-human-control-button"/);
   assert.match(controlsSource, /onClick=\{onResumeHumanControl\}/);
   assert.match(controlsSource, /disabled=\{resumeHumanControlPending\}/);
