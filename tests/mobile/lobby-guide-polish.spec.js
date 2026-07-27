@@ -34,6 +34,18 @@ test.describe('mobile lobby guide polish QA', () => {
           const box = target.getBoundingClientRect();
           return { x: box.x, y: box.y, width: box.width, height: box.height, right: box.right, bottom: box.bottom };
         };
+        const bonusStyle = (target) => {
+          const style = getComputedStyle(target, '::after');
+          return {
+            content: style.content,
+            position: style.position,
+            backgroundColor: style.backgroundColor,
+            color: style.color,
+            borderRadius: style.borderRadius,
+            padding: style.padding,
+            fontSize: style.fontSize,
+          };
+        };
         const dialogRect = element.getBoundingClientRect();
         const cardRects = cards.map(rect);
         const resultRects = resultItems.map(rect);
@@ -47,8 +59,6 @@ test.describe('mobile lobby guide polish QA', () => {
         const changedScrollTop = body.scrollTop;
         body.scrollTop = body.scrollHeight;
         const last = element.querySelector('.howto-section:last-of-type');
-        const yutBonus = getComputedStyle(resultItems[4], '::after');
-        const moBonus = getComputedStyle(resultItems[5], '::after');
         return {
           documentCharset: document.characterSet,
           viewportWidth: window.innerWidth,
@@ -75,8 +85,8 @@ test.describe('mobile lobby guide polish QA', () => {
           splitRuleLabels,
           confirm: confirmRect,
           confirmPosition: getComputedStyle(confirm).position,
-          yutBonusContent: yutBonus.content,
-          moBonusContent: moBonus.content,
+          yutBonus: bonusStyle(resultItems[4]),
+          moBonus: bonusStyle(resultItems[5]),
           dialogHeight: dialogRect.height,
           dialogCenterOffset: Math.abs((dialogRect.top + dialogRect.bottom) / 2 - window.innerHeight / 2),
         };
@@ -109,8 +119,8 @@ test.describe('mobile lobby guide polish QA', () => {
       expect(layout.timingParagraphContents[0]).toContain('Nice');
       expect(layout.timingParagraphContents[0]).toContain('Good');
       expect(layout.timingParagraphContents[0]).toContain('Bad');
-      expect(layout.timingParagraphContents[0]).toContain('45~55%');
-      expect(layout.timingParagraphContents[1]).toContain('10%·20%·60%');
+      expect(layout.timingParagraphContents[0]).not.toContain('%');
+      expect(layout.timingParagraphContents[1]).not.toContain('%');
       expect(layout.splitRuleLabels[0]).toContain('빽도');
       expect(layout.splitRuleLabels[1]).toContain('완주');
       expect(Math.abs(layout.splitRuleRects[0].y - layout.splitRuleRects[1].y), '빽도와 완주는 별도 카드로 같은 행에 구획되어야 합니다.').toBeLessThanOrEqual(1);
@@ -120,8 +130,15 @@ test.describe('mobile lobby guide polish QA', () => {
       expect(layout.footerBorderTopWidth, '확인 버튼 주위에 별도 경계선이 없어야 합니다.').toBe(0);
       expect(layout.confirmPosition, '확인 버튼은 footer 안에서 접근 가능해야 합니다.').toBe('static');
       expect(layout.confirm.bottom, '확인 버튼은 처음부터 화면 안에 보여야 합니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
-      expect(layout.yutBonusContent).toContain('한 번 더');
-      expect(layout.moBonusContent).toContain('한 번 더');
+      expect(layout.yutBonus.content).toContain('한 번 더');
+      expect(layout.moBonus.content).toContain('한 번 더');
+      expect(layout.yutBonus.position, '윷 보너스 안내는 카드 위 배지여야 합니다.').toBe('absolute');
+      expect(layout.moBonus.position, '모 보너스 안내는 카드 위 배지여야 합니다.').toBe('absolute');
+      expect(layout.moBonus.backgroundColor).toBe(layout.yutBonus.backgroundColor);
+      expect(layout.moBonus.color).toBe(layout.yutBonus.color);
+      expect(layout.moBonus.borderRadius).toBe(layout.yutBonus.borderRadius);
+      expect(layout.moBonus.padding).toBe(layout.yutBonus.padding);
+      expect(layout.moBonus.fontSize).toBe(layout.yutBonus.fontSize);
     });
   });
 });
