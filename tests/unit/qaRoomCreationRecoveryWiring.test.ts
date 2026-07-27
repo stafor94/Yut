@@ -12,6 +12,9 @@ test('QA 방 생성은 서버에 생성된 동일 제목 방만 저장 세션으
   assert.match(uiHelperSource, /localStorage\.setItem\('yut-online:activeRoomId', nextRoomId\)/);
   assert.match(uiHelperSource, /localStorage\.setItem\('yut-online:isRoomHost', 'true'\)/);
   assert.match(uiHelperSource, /await page\.reload\(\{ waitUntil: 'domcontentloaded' \}\)/);
+  assert.match(uiHelperSource, /if \(await recoverCreatedRoomSession\(page, roomTitle\)\.catch\(\(\) => false\)\) return true/);
+  assert.doesNotMatch(uiHelperSource, /storedRoomRecoveryAttempted/);
+  assert.match(uiHelperSource, /submitAttempts < maxSubmitAttempts[\s\S]*retryAlert\.isVisible/);
   assert.match(uiHelperSource, /waitForRoomCreationResult\(page, roomTitle\)/);
 });
 
