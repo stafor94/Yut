@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { createRoomFromLobby, primeLobbyStorage } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { deleteRoomForQa, findRoomIdByTitle, getRoomStateForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
+import {
+  deleteRoomForQa,
+  findRoomIdByTitle,
+  getRoomStateForQa,
+  getRoomTurnOrderSubmissionsForQa,
+  rememberRoomIdFromPage,
+} from '../helpers/rooms.js';
 
 test.describe('turn-order roll placement and confirmed rank QA', () => {
   let roomId = '';
@@ -165,5 +171,29 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
           : 'waiting';
       }, { timeout: 25_000, message: 'AI 동률 재대결은 즉시 자동 제출·조기 집계되고 로컬 1위가 유지되어야 합니다.' }).toBe('confirmed'),
     ]);
+
+    const aggregatedState = await getRoomStateForQa(roomId);
+    const rematchRound = aggregatedState?.turnOrderIntro?.currentRound;
+    const rematchSubmissions = (await getRoomTurnOrderSubmissionsForQa(roomId))
+      .filter((submission) => submission.roundId === rematchRound?.id);
+    expect(rematchRound?.index).toBe(2);
+    expect(rematchSubmissions).toHaveLength(2);
+    expect(new Set(rematchSubmissions.map((submission) => submission.seatId)).size).toBe(2);
+    expect(rematchSubmissions.every((submission) => submission.source === 'auto')).toBe(true);
+    expect(Number(rematchRound?.aggregatedAt ?? 0)).toBeLessThan(Number(rematchRound?.deadlineAt ?? 0));
+
+    await expect(page.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('turn-order-result-grid')).toHaveCount(0);
+    const finalState = await getRoomStateForQa(roomId);
+    expect(finalState?.turnOrderIds).toHaveLength(3);
+    expect(finalState?.initialTurnOrderIds).toEqual(finalState?.turnOrderIds);
+    expect(Number(finalState?.gameStartedAt ?? finalState?.turnOrderIntro?.gameStartAt ?? 0)).toBeGreaterThan(0);
+
+    await expect(page.getByTestId('turn-order-overlay')).toBeHidden({ timeout: 7_000 });
+    await expect(page.getByTestId('play-controls')).toBeVisible({ timeout: 5_000 });
+    const startedState = await getRoomStateForQa(roomId);
+    expect(startedState?.turnOrderIntro ?? null).toBeNull();
+    expect(startedState?.turnOrderIds).toEqual(startedState?.initialTurnOrderIds);
+    expect(Number(startedState?.gameStartedAt ?? 0)).toBeGreaterThan(0);
   });
 });

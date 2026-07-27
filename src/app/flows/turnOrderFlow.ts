@@ -328,6 +328,29 @@ export const submitAndMaybeAggregateTurnOrderRound = (
   return canAggregateTurnOrderRound(next, now) ? aggregateTurnOrderRound(next, now) : next;
 };
 
+export const aggregateTurnOrderRoundFromStoredSubmissions = (
+  intro: TurnOrderIntro,
+  target: { sessionId: string; roundId: string },
+  submissions: TurnOrderSubmission[],
+  now = Date.now(),
+): TurnOrderIntro => {
+  if (intro.sessionId !== target.sessionId) return intro;
+  const activeIntro = activateNextTurnOrderRound(intro, now);
+  const round = activeIntro.currentRound;
+  if (round.id !== target.roundId || round.status !== 'collecting' || now < round.startAt) return intro;
+
+  const eligibleSeatIds = new Set(round.eligibleSeatIds);
+  const uniqueSubmissionsBySeatId = new Map<string, TurnOrderSubmission>();
+  submissions.forEach((submission) => {
+    if (submission.roundId !== target.roundId || !eligibleSeatIds.has(submission.seatId) || uniqueSubmissionsBySeatId.has(submission.seatId)) return;
+    uniqueSubmissionsBySeatId.set(submission.seatId, submission);
+  });
+  if (!round.eligibleSeatIds.every((seatId) => uniqueSubmissionsBySeatId.has(seatId))) return intro;
+
+  const next = submitAndMaybeAggregateTurnOrderRound(activeIntro, [...uniqueSubmissionsBySeatId.values()], now);
+  return next.currentRound.id === target.roundId && next.currentRound.status !== 'collecting' ? next : intro;
+};
+
 export const isTurnOrderFinalized = (intro: TurnOrderIntro) => Boolean(
   intro.gameStartAt
   && intro.finalTurnOrderIds?.length === intro.order.length,

@@ -357,6 +357,116 @@ test.describe('simultaneous turn-order QA', () => {
     }
   });
 
+  test('3인 개인전에서 사람 순위 확정 후 AI끼리 재대결해도 결과 수집 상태를 끝내고 게임을 시작한다', async ({ browser }, testInfo) => {
+    const hostContext = await browser.newContext();
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'ai-rematch-host'));
+    const roomTitle = makeQaName(testInfo, 'ai-rematch-three-room');
+    await primeLobbyStorage(hostContext, {
+      nickname: hostName,
+      maxPlayers: '3',
+      playMode: 'individual',
+      itemMode: 'false',
+      pieceCount: '4',
+    });
+    await hostContext.addInitScript(() => {
+      window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
+      window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도', '도', '걸', '개'];
+    });
+    const hostPage = await hostContext.newPage();
+
+    try {
+      await createRoomFromLobby(hostPage, roomTitle);
+      roomId = await rememberRoomIdFromPage(hostPage) ?? await findRoomIdByTitle(roomTitle);
+      await hostPage.getByTestId('add-ai-P2').click();
+      await hostPage.getByTestId('add-ai-P3').click();
+      await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+      await hostPage.getByTestId('start-game-button').click();
+      await expect(hostPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+
+      const hostButton = hostPage.getByTestId('turn-order-roll-button');
+      await expect(hostButton).toBeVisible({ timeout: 10_000 });
+      await Promise.all([
+        expect(hostPage.getByTestId('turn-order-own-result')).toContainText('모'),
+        hostButton.click(),
+      ]);
+
+      await expect.poll(async () => {
+        const state = await getRoomStateForQa(roomId);
+        const intro = state?.turnOrderIntro;
+        const aiSeatIds = intro?.order?.filter((entry) => entry.isAI).map((entry) => entry.seatId) ?? [];
+        return intro?.currentRound?.status === 'reveal-pending'
+          && intro?.nextRound?.eligibleSeatIds?.length === 2
+          && aiSeatIds.length === 2
+          && aiSeatIds.every((seatId) => intro.nextRound.eligibleSeatIds.includes(seatId))
+          ? 'ready'
+          : 'waiting';
+      }, { timeout: 12_000 }).toBe('ready');
+
+      const firstAggregatedState = await getRoomStateForQa(roomId);
+      const introAfterFirstRound = firstAggregatedState?.turnOrderIntro;
+      const humanEntry = introAfterFirstRound?.order?.find((entry) => !entry.isAI);
+      const aiEntries = introAfterFirstRound?.order?.filter((entry) => entry.isAI) ?? [];
+      const rematchRoundId = introAfterFirstRound?.nextRound?.id ?? '';
+      expect(humanEntry).toBeTruthy();
+      expect(aiEntries).toHaveLength(2);
+      expect(Number(introAfterFirstRound?.placements?.[humanEntry?.seatId ?? ''] ?? 0)).toBe(1);
+
+      const aiCards = aiEntries.map((entry) => hostPage.getByTestId('turn-order-result-grid').locator('.turn-order-result-card').filter({ hasText: entry.name }));
+      await expect.poll(async () => {
+        const submissions = (await getRoomTurnOrderSubmissionsForQa(roomId))
+          .filter((submission) => submission.roundId === rematchRoundId);
+        return submissions.length === 2
+          && new Set(submissions.map((submission) => submission.seatId)).size === 2
+          && submissions.every((submission) => submission.source === 'auto')
+          && new Set(submissions.map((submission) => submission.resultName)).size === 2;
+      }, { timeout: 10_000 }).toBe(true);
+      await Promise.all(aiCards.map((card) => expect(card).toContainText('결과 대기', { timeout: 5_000 })));
+
+      await expect.poll(async () => {
+        const state = await getRoomStateForQa(roomId);
+        const intro = state?.turnOrderIntro;
+        const round = intro?.currentRound;
+        return round?.id === rematchRoundId && round.status === 'reveal-pending' ? 'aggregated' : 'collecting';
+      }, { timeout: 10_000, message: 'AI끼리의 재대결은 제출 문서가 먼저 준비돼도 authoritative collecting 상태에 고착되면 안 됩니다.' }).toBe('aggregated');
+
+      const rematchState = await getRoomStateForQa(roomId);
+      const rematchIntro = rematchState?.turnOrderIntro;
+      const rematchRound = rematchIntro?.currentRound;
+      const rematchSubmissions = (await getRoomTurnOrderSubmissionsForQa(roomId))
+        .filter((submission) => submission.roundId === rematchRoundId);
+      expect(rematchRound?.index).toBe(2);
+      expect(rematchRound?.eligibleSeatIds).toEqual(aiEntries.map((entry) => entry.seatId));
+      expect(rematchSubmissions).toHaveLength(2);
+      expect(new Set(rematchSubmissions.map((submission) => submission.seatId)).size).toBe(2);
+      expect(rematchSubmissions.every((submission) => submission.source === 'auto')).toBe(true);
+      expect(Number(rematchRound?.aggregatedAt ?? 0)).toBeGreaterThan(0);
+      expect(Number(rematchRound?.aggregatedAt ?? 0)).toBeLessThan(Number(rematchRound?.deadlineAt ?? 0));
+      expect(Number(rematchIntro?.placements?.[humanEntry?.seatId ?? ''] ?? 0)).toBe(1);
+      const stableVersion = Number(rematchState?.turnVersion ?? 0);
+      const stableSequence = Number(rematchState?.lastSequence ?? 0);
+      await hostPage.waitForTimeout(500);
+      const stableState = await getRoomStateForQa(roomId);
+      expect(Number(stableState?.turnVersion ?? 0)).toBe(stableVersion);
+      expect(Number(stableState?.lastSequence ?? 0)).toBe(stableSequence);
+
+      await expect(hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
+      const finalState = await getRoomStateForQa(roomId);
+      expect(finalState?.turnOrderIds).toHaveLength(3);
+      expect(finalState?.initialTurnOrderIds).toEqual(finalState?.turnOrderIds);
+      expect(Number(finalState?.gameStartedAt ?? finalState?.turnOrderIntro?.gameStartAt ?? 0)).toBeGreaterThan(0);
+      expect((finalState?.logs ?? []).filter((log) => String(log?.text ?? '').startsWith('순서:'))).toHaveLength(1);
+
+      await expect(hostPage.getByTestId('turn-order-overlay')).toBeHidden({ timeout: 7_000 });
+      await expect(hostPage.getByTestId('play-controls')).toBeVisible({ timeout: 5_000 });
+      const startedState = await getRoomStateForQa(roomId);
+      expect(startedState?.turnOrderIntro ?? null).toBeNull();
+      expect(startedState?.turnOrderIds).toEqual(startedState?.initialTurnOrderIds);
+      expect(Number(startedState?.gameStartedAt ?? 0)).toBeGreaterThan(0);
+    } finally {
+      await hostContext.close();
+    }
+  });
+
   test('4개 클라이언트의 동시 제출은 좌석별 문서 4개와 집계 1회로 확정된다', async ({ browser }, testInfo) => {
     const contexts = await Promise.all(Array.from({ length: 4 }, () => browser.newContext()));
     const pages = [];
