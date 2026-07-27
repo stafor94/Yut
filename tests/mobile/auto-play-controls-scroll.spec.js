@@ -193,10 +193,10 @@ test.describe('mobile autoplay control panel scroll QA', () => {
       autoPlayControlsHeight = containment?.height ?? 0;
       expect(autoPlayControlsHeight).toBeGreaterThan(100);
 
-      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
+      await page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' }));
       await expect.poll(() => page.evaluate(() => Math.round(window.scrollY)), { timeout: 5_000 }).toBeGreaterThan(0);
       await expect(panel).toBeAttached();
-      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'auto' }));
       await controls.scrollIntoViewIfNeeded();
       await expect(panel).toBeVisible();
       await expect(panel).toContainText('AI 자동 플레이 중...');
