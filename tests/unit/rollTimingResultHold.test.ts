@@ -8,6 +8,7 @@ import {
 
 const turnIndicatorCss = readFileSync('src/styles/turn-indicator.css', 'utf8');
 const browserQaSource = readFileSync('tests/mobile/roll-timing-pointer-capture.spec.js', 'utf8');
+const timingControlSource = readFileSync('src/app/components/RollTimingControl.tsx', 'utf8');
 const regressionQaSource = readFileSync('tests/regression/bug-history-smoke.spec.js', 'utf8');
 
 test('멈춘 타이밍 위치를 정확히 1초간 유지한다', () => {
@@ -27,6 +28,13 @@ test('roll-stage 숨김 규칙은 live meter에만 적용하고 정지 결과 �
   assert.match(turnIndicatorCss, /\.roll-stage ~ \.play-controls \.roll-timing-live-meter\s*\{[\s\S]*display:\s*none/);
   assert.doesNotMatch(turnIndicatorCss, /\.roll-stage ~ \.play-controls \.roll-timing-meter\s*\{/);
   assert.doesNotMatch(turnIndicatorCss, /\.roll-stage ~ \.play-controls \.roll-timing-result-hold\s*\{[\s\S]*display:\s*none/);
+});
+
+test('취소 뒤 첫 rAF timestamp가 resume 기준보다 이르더라도 phase를 뒤로 렌더링하지 않는다', () => {
+  assert.match(timingControlSource, /const scheduleFrameLoop = \(minimumCapturedAt = 0\)/);
+  assert.match(timingControlSource, /const frameCapturedAt = Math\.max\(capturedAt, nextMinimumCapturedAt\)/);
+  assert.match(timingControlSource, /const resumedAt = performance\.now\(\)/);
+  assert.match(timingControlSource, /scheduleFrameLoop\(resumedAt\)/);
 });
 
 test('브라우저 QA가 실제 가시성·고정 좌표·1000ms 제거 시점을 관측한다', () => {
