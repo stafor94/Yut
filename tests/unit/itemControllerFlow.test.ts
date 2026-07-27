@@ -45,16 +45,20 @@ describe('itemControllerFlow', () => {
   it('registers the pending choice and explicit turn lock before clearing the prompt', () => {
     const source = readFileSync('src/app/controllers/useItemController.ts', 'utf8');
     const choiceIndex = source.indexOf('params.setPendingItemPromptChoice(pendingChoice)');
-    const actionIndex = source.indexOf('params.addPendingLocalRemoteAction(clientMutationId');
-    const promptClearIndex = source.indexOf('params.setItemPromptTiming(null)', actionIndex);
+    const lockIndex = source.indexOf('refreshPendingSkipLock(recovery)', choiceIndex);
+    const promptClearIndex = source.indexOf('params.setItemPromptTiming(null)', lockIndex);
 
     assert.ok(choiceIndex >= 0);
-    assert.ok(actionIndex > choiceIndex);
-    assert.ok(promptClearIndex > actionIndex);
+    assert.ok(lockIndex > choiceIndex);
+    assert.ok(promptClearIndex > lockIndex);
     assert.match(source, /blocksTurnActions: true/);
     assert.match(source, /const paramsRef = useRef\(params\);/);
     assert.match(source, /const currentParams = paramsRef\.current;/);
-    assert.match(source, /STALE_PENDING_REMOTE_ACTION_MS - 1_000/);
+    assert.match(source, /PENDING_SKIP_RECOVERY_DELAY_MS/);
+    assert.match(source, /refresh the creation time before any network work/i);
+    assert.match(source, /commitQueuedAuthoritativeGameAction\(requestRoomId, action\)/);
+    assert.match(source, /processed-action record is the authoritative proof/i);
+    assert.match(source, /schedulePendingSkipRecovery\(recovery\)/);
     assert.match(source, /getQaUseItemActionDelayMs\(\)/);
   });
 
