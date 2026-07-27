@@ -4,6 +4,7 @@ import { qaProjectExecutionOptions, qaProjectTestMatches } from './tests/qa/proj
 const isCi = Boolean(process.env.CI);
 const remoteBaseUrl = String(process.env.PLAYWRIGHT_BASE_URL ?? '').trim();
 const baseURL = remoteBaseUrl || 'http://127.0.0.1:4173';
+const isOnlineCoreQa = String(process.env.QA_ROLE ?? '').trim() === 'online-core';
 
 export default defineConfig({
   testDir: './tests',
@@ -30,7 +31,7 @@ export default defineConfig({
     {
       name: 'desktop-chromium',
       testMatch: qaProjectTestMatches['desktop-chromium'],
-      fullyParallel: qaProjectExecutionOptions['desktop-chromium'].fullyParallel,
+      fullyParallel: qaProjectExecutionOptions['desktop-chromium'].fullyParallel || isOnlineCoreQa,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
     },
     {
