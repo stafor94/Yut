@@ -9,15 +9,15 @@ const appSource = readFileSync('src/app/App.tsx', 'utf8');
 
 test('타이밍 오브는 leaf rAF 하나가 canonical percent를 기록하고 pointerdown snapshot으로 정지·제출한다', () => {
   assert.match(controlSource, /getRollTimingPositionPercent/);
-  assert.match(controlSource, /getRollTimingTrackTransform/);
+  assert.match(controlSource, /getRollTimingOrbLeft/);
   assert.match(controlSource, /frameRequestRef/);
   assert.match(controlSource, /lastRenderedSnapshotRef/);
   assert.match(controlSource, /window\.requestAnimationFrame\(tick\)/);
   assert.match(controlSource, /positionPercent: normalizeRollTimingPositionPercent\(getRollTimingPositionPercent\(phaseMs\)\)/);
-  assert.match(controlSource, /track\.style\.transform = getRollTimingTrackTransform\(snapshot\.positionPercent\)/);
+  assert.match(controlSource, /track\.style\.transform = 'none';[\s\S]*orb\.style\.left = getRollTimingOrbLeft\(snapshot\.positionPercent\)/);
   assert.match(controlSource, /const snapshot = lastRenderedSnapshotRef\.current;[\s\S]*cancelFrameLoop\(\);[\s\S]*capturedPointerTimingRef\.current = \{ pointerId: event\.pointerId, resetKey, snapshot \}/);
   assert.match(controlSource, /if \(releasedInsideButton\) submitSnapshot\(capturedTiming\.snapshot, deadlineExpired\);[\s\S]*pendingTimeoutSnapshotRef\.current = capturedTiming\.snapshot;[\s\S]*resumeFrameLoop\(capturedTiming\.snapshot\)/);
-  assert.match(controlSource, /heldTrack\.style\.transform = getRollTimingTrackTransform\(snapshot\.positionPercent\)/);
+  assert.match(controlSource, /heldTrack\.style\.transform = 'none';[\s\S]*heldOrb\.style\.left = getRollTimingOrbLeft\(snapshot\.positionPercent\)/);
   assert.match(controlSource, /onRoll\(snapshot\.positionPercent,/);
   assert.match(controlSource, /if \(submittedKeyRef\.current === resetKey\) return 'duplicate'/);
   assert.match(controlSource, /capturedPointerTimingRef\.current\?\.resetKey === resetKey[\s\S]*capturedPointerTimingRef\.current\.snapshot[\s\S]*pendingTimeoutSnapshotRef\.current[\s\S]*lastRenderedSnapshotRef\.current/);
@@ -26,6 +26,7 @@ test('타이밍 오브는 leaf rAF 하나가 canonical percent를 기록하고 p
   assert.match(controlSource, /onPointerCancel=\{handlePointerCancel\}/);
   assert.match(controlSource, /event\.detail > 0/);
   assert.match(controlSource, /const snapshot = lastRenderedSnapshotRef\.current\?\.resetKey === resetKey[\s\S]*cancelFrameLoop\(\);[\s\S]*submitSnapshot\(snapshot,/);
+  assert.doesNotMatch(controlSource, /getRollTimingTrackTransform/);
   assert.doesNotMatch(controlSource, /getComputedStyle/);
   assert.doesNotMatch(controlSource, /getAnimations/);
   assert.doesNotMatch(controlSource, /frozenTransform/);
