@@ -70,6 +70,10 @@ describe('itemControllerFlow', () => {
     assert.match(mobileItemSkipQaSource, /turnActionTimeoutCountBySeatId: \{ \.\.\.\(state\.turnActionTimeoutCountBySeatId \?\? \{\}\), \[hostPlayer\.id\]: 0 \}/);
     assert.match(mobileItemSkipQaSource, /autoPlayBySeatId: \{ \.\.\.\(state\.autoPlayBySeatId \?\? \{\}\), \[hostPlayer\.id\]: false \}/);
     assert.match(mobileItemSkipQaSource, /reload 후 authoritative before_roll prompt가 로컬 턴에 적용되어야 합니다/);
+    assert.match(mobileItemSkipQaSource, /__YUT_QA_DELAY_USE_ITEM_ACTION_MS__ = 4500/);
+    assert.match(mobileItemSkipQaSource, /const until = Date\.now\(\) \+ 3000/);
+    assert.match(mobileItemSkipQaSource, /commit 지연 구간까지 DOM 상태를 연속 관찰해야 합니다/);
+    assert.doesNotMatch(mobileItemSkipQaSource, /toBeDisabled\(\{ timeout: 5_000 \}\)/);
     assert.doesNotMatch(mobileItemSkipQaSource, /turnDeadlineAt: Date\.now\(\) \+ 60_000/);
   });
 });
