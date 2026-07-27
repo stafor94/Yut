@@ -1,7 +1,7 @@
 interface LocalRoomPlayerSnapshot { id: string; isAI?: boolean; isSpectator?: boolean }
 
-export function shouldIgnoreRoomPlayersSnapshot(activeRoomId: string, currentRoomId: string) {
-  return !activeRoomId || currentRoomId !== activeRoomId;
+export function shouldIgnoreRoomPlayersSnapshot(activeRoomId: string, currentRoomId: string, leavingRoom = false) {
+  return leavingRoom || !activeRoomId || currentRoomId !== activeRoomId;
 }
 
 export function resolveLocalRoomPlayerSnapshot<TPlayer extends LocalRoomPlayerSnapshot>(players: TPlayer[], currentUserId: string) {

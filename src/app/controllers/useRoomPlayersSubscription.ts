@@ -61,7 +61,7 @@ export function useRoomPlayersSubscription(params: UseRoomPlayersSubscriptionPar
     spectatorIdsRef.current = new Set();
     roomPlayerAiStatesRef.current = new Map();
     const unsubscribe = subscribeRoomPlayers(activeRoomId, (players) => {
-      if (shouldIgnoreRoomPlayersSnapshot(activeRoomId, activeRoomIdRef.current)) return;
+      if (shouldIgnoreRoomPlayersSnapshot(activeRoomId, activeRoomIdRef.current, leavingRoomRef.current)) return;
       replaceRuntimeAiDifficulties(players.filter((player) => player.isAI || player.isSubstitutedByAI));
       const nextSeats = seatsFromRoomPlayers(players, playMode, maxPlayers, activeRoomHostId);
       const currentUserId = (userRef.current ?? currentUser)?.uid;

@@ -9,6 +9,7 @@ export type PendingRemoteActionMeta = {
   createdTurnIndex?: number;
   actorId?: string;
   optimisticApplied?: boolean;
+  blocksTurnActions?: boolean;
 };
 
 export function usePendingRemoteActions() {
@@ -25,7 +26,7 @@ export function usePendingRemoteActions() {
   };
   const addPendingLocalRemoteAction = (actionKey: string, meta: Partial<PendingRemoteActionMeta> & { type?: GameAction['type'] } = {}) => {
     const type = meta.type ?? getPendingLocalRemoteActionType(actionKey);
-    const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied });
+    const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied, blocksTurnActions: meta.blocksTurnActions });
     pendingLocalRemoteActionsRef.current.add(actionKey);
     pendingLocalRemoteActionMetaRef.current.set(actionKey, {
       ...meta,

@@ -47,7 +47,7 @@ export function useWaitingRoomController(p: Params) {
   }, []);
 
   const toggleMyReady = useCallback(async () => {
-    if (p.isRoomManager) return;
+    if (p.leavingRoomRef.current || p.isRoomManager) return;
     const mySeat = p.seats.find((seat) => seat.id === p.localSeatId && !seat.isEmpty && !seat.isAI);
     if (!mySeat) { p.setMessage('내 참가 정보를 찾는 중입니다. 잠시 뒤 다시 시도하세요.'); return; }
     const nextReady = !mySeat.ready;
@@ -57,6 +57,8 @@ export function useWaitingRoomController(p: Params) {
   }, [p]);
 
   const leaveRoom = useCallback(async () => {
+    if (p.leavingRoomRef.current) return;
+    p.leavingRoomRef.current = true;
     const leavingRoomId = p.activeRoomId; const leavingSeatId = p.localSeatId; const wasGameScreen = p.screen === 'game';
     const shouldDeleteWaitingRoom = shouldDeleteWaitingRoomOnHostExit(p.screen, p.isRoomManager);
     const leavingSeat = p.seats.find((seat) => seat.id === leavingSeatId && !seat.isEmpty && !seat.isAI);
@@ -68,7 +70,6 @@ export function useWaitingRoomController(p: Params) {
       window.localStorage.removeItem(STORAGE_KEYS.activeRoomId); window.localStorage.removeItem(STORAGE_KEYS.isRoomHost); p.setMessage(message);
     };
 
-    p.leavingRoomRef.current = true;
     if (shouldDeleteWaitingRoom) {
       try {
         if (leavingRoomId) {
@@ -104,6 +105,7 @@ export function useWaitingRoomController(p: Params) {
   }, [p]);
 
   const changeWaitingOptions = useCallback(async (requested: WaitingRoomOptionPatch) => {
+    if (p.leavingRoomRef.current) return;
     const current = waitingOptionsRef.current;
     const next = resolveWaitingRoomOptions(current, requested);
     const activePlayerCount = p.seats.filter((seat) => !seat.isEmpty && !seat.isSpectator).length;
@@ -125,10 +127,10 @@ export function useWaitingRoomController(p: Params) {
     }
   }, [enqueueWaitingOptionsUpdate, p]);
 
-  const markPlayerAsAI = useCallback((playerId: string) => { if (pendingAiSeatIdsRef.current.has(playerId)) return; p.setSeats((current) => { const name = makeUniqueAIName(current, DEFAULT_AI_DIFFICULTY); const target = current.find((seat) => seat.id === playerId); if (p.activeRoomId && target) { addPendingAiSeat(playerId); void updateRoomPlayer(p.activeRoomId, playerId, aiUpdate(target, name)).catch((error) => { console.warn('AI 추가에 실패했습니다.', error); p.setMessage('AI 추가에 실패했습니다. 잠시 뒤 다시 시도해주세요.'); p.setSeats((latest) => latest.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat)); }).finally(() => clearPendingAiSeat(playerId)); } return current.map((seat) => seat.id === playerId ? { ...seat, name, ready: true, isAI: true, isSubstitutedByAI: false, isEmpty: false } : seat); }); }, [p]);
-  const cancelAISeat = useCallback((playerId: string) => { clearPendingAiSeat(playerId); if (p.activeRoomId) void removeRoomPlayer(p.activeRoomId, playerId); p.setSeats((current) => current.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat)); }, [p]);
-  const kickWaitingPlayer = useCallback(async (seat: Seat) => { if (!p.activeRoomId || !p.canManageRoom || seat.isEmpty || seat.isHost || seat.isAI) return; const previous = seat; p.setSeats((current) => current.map((s) => s.id === previous.id ? { ...s, id: `slot-${Number(s.label.replace('P', ''))}`, name: '빈 자리', ready: false, isEmpty: true } : s)); try { await removeRoomPlayer(p.activeRoomId, previous.id); p.setMessage(`${previous.name}님을 방에서 내보냈습니다.`); } catch (error) { p.setSeats((current) => current.map((s) => s.label === previous.label ? previous : s)); p.setMessage(error instanceof Error ? error.message : '플레이어 강퇴에 실패했습니다. 잠시 뒤 다시 시도해주세요.'); } }, [p]);
-  const changeTeam = useCallback((playerId: string, team: Team) => { if (p.activeRoomId) void updateRoomPlayer(p.activeRoomId, playerId, { team }); p.setSeats((current) => current.map((seat) => seat.id === playerId ? { ...seat, team } : seat)); }, [p]);
+  const markPlayerAsAI = useCallback((playerId: string) => { if (p.leavingRoomRef.current || pendingAiSeatIdsRef.current.has(playerId)) return; p.setSeats((current) => { const name = makeUniqueAIName(current, DEFAULT_AI_DIFFICULTY); const target = current.find((seat) => seat.id === playerId); if (p.activeRoomId && target) { addPendingAiSeat(playerId); void updateRoomPlayer(p.activeRoomId, playerId, aiUpdate(target, name)).catch((error) => { console.warn('AI 추가에 실패했습니다.', error); p.setMessage('AI 추가에 실패했습니다. 잠시 뒤 다시 시도해주세요.'); p.setSeats((latest) => latest.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat)); }).finally(() => clearPendingAiSeat(playerId)); } return current.map((seat) => seat.id === playerId ? { ...seat, name, ready: true, isAI: true, isSubstitutedByAI: false, isEmpty: false } : seat); }); }, [p]);
+  const cancelAISeat = useCallback((playerId: string) => { if (p.leavingRoomRef.current) return; clearPendingAiSeat(playerId); if (p.activeRoomId) void removeRoomPlayer(p.activeRoomId, playerId); p.setSeats((current) => current.map((seat) => seat.id === playerId && seat.isAI ? { ...seat, name: '빈 자리', ready: false, isAI: false, isEmpty: true } : seat)); }, [p]);
+  const kickWaitingPlayer = useCallback(async (seat: Seat) => { if (p.leavingRoomRef.current || !p.activeRoomId || !p.canManageRoom || seat.isEmpty || seat.isHost || seat.isAI) return; const previous = seat; p.setSeats((current) => current.map((s) => s.id === previous.id ? { ...s, id: `slot-${Number(s.label.replace('P', ''))}`, name: '빈 자리', ready: false, isEmpty: true } : s)); try { await removeRoomPlayer(p.activeRoomId, previous.id); p.setMessage(`${previous.name}님을 방에서 내보냈습니다.`); } catch (error) { p.setSeats((current) => current.map((s) => s.label === previous.label ? previous : s)); p.setMessage(error instanceof Error ? error.message : '플레이어 강퇴에 실패했습니다. 잠시 뒤 다시 시도해주세요.'); } }, [p]);
+  const changeTeam = useCallback((playerId: string, team: Team) => { if (p.leavingRoomRef.current) return; if (p.activeRoomId) void updateRoomPlayer(p.activeRoomId, playerId, { team }); p.setSeats((current) => current.map((seat) => seat.id === playerId ? { ...seat, team } : seat)); }, [p]);
 
   return { pendingAiSeatCount, pendingAiSeatIdsRef, addPendingAiSeat, clearPendingAiSeat, toggleMyReady, leaveRoom, changeWaitingOptions, markPlayerAsAI, cancelAISeat, kickWaitingPlayer, changeTeam };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PieceCount, PlayMode, Seat, Team } from '../appState';
 import { getWaitingRoomStartHint } from '../flows/gameStartFlow';
 import { WAITING_ROOM_BACK_EXIT_EVENT } from '../flows/backNavigationExit';
@@ -32,7 +32,7 @@ type WaitingRoomContainerProps = {
   onChangeTeam: (seatId: string, team: Team) => void;
   onStartGame: () => void;
   onToggleReady: () => void;
-  onLeaveRoom: () => void;
+  onLeaveRoom: () => void | Promise<void>;
 };
 
 export function WaitingRoomContainer({
@@ -67,12 +67,27 @@ export function WaitingRoomContainer({
   const transitionPendingRef = useRef(false);
   const transitionOverlayRef = useRef<HTMLDivElement | null>(null);
   const countdownStartPlayedRef = useRef(false);
-  const onLeaveRoomRef = useRef(onLeaveRoom);
-  onLeaveRoomRef.current = onLeaveRoom;
-  const startFlowActiveRef = useRef(startFlowBusy || initialGameEntryPending || roomInGame);
+  const leavePendingRef = useRef(false);
+  const [leavePending, setLeavePending] = useState(false);
   const [countdownTransitionPending, setCountdownTransitionPending] = useState(false);
   const [countdownTransitionOverlayVisible, setCountdownTransitionOverlayVisible] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(canManageRoom);
+
+  const requestLeaveRoom = useCallback(async () => {
+    if (leavePendingRef.current) return;
+    leavePendingRef.current = true;
+    setLeavePending(true);
+    try {
+      await onLeaveRoom();
+    } finally {
+      leavePendingRef.current = false;
+      setLeavePending(false);
+    }
+  }, [onLeaveRoom]);
+
+  const onLeaveRoomRef = useRef(requestLeaveRoom);
+  onLeaveRoomRef.current = requestLeaveRoom;
+  const startFlowActiveRef = useRef(startFlowBusy || initialGameEntryPending || roomInGame);
   const myWaitingSeat = seats.find((seat) => seat.id === localSeatId && !seat.isEmpty && !seat.isAI);
   const readyMissingCount = seats.filter((seat) => seat.isEmpty || (!seat.ready && !seat.isAI)).length;
   const effectiveStartFlowBusy = startFlowBusy || countdownTransitionPending;
@@ -87,7 +102,7 @@ export function WaitingRoomContainer({
     readyMissingCount,
   });
   const roomSettingsSummary = `${playMode === 'team' ? '팀전' : '개인전'} · ${maxPlayers}인 · 말 ${pieceCount}개 · 아이템 ${itemMode ? 'ON' : 'OFF'} · 누적 ${stackedRollMode ? 'ON' : 'OFF'}`;
-  const optionDisabled = !canManageRoom;
+  const optionDisabled = !canManageRoom || leavePending;
   const renderOption = <T extends string | number | boolean,>(name: string, value: T, label: string, checked: boolean, onChange: () => void, disabled = optionDisabled, title?: string) => (
     <label key={String(value)} className={disabled ? 'disabled' : ''} title={title}>
       <input type="radio" name={name} checked={checked} disabled={disabled} onChange={onChange} />
@@ -100,7 +115,7 @@ export function WaitingRoomContainer({
   }, [canManageRoom]);
 
   useEffect(() => {
-    const handleBackNavigationExit = () => onLeaveRoomRef.current();
+    const handleBackNavigationExit = () => { void onLeaveRoomRef.current(); };
     window.addEventListener(WAITING_ROOM_BACK_EXIT_EVENT, handleBackNavigationExit);
     return () => window.removeEventListener(WAITING_ROOM_BACK_EXIT_EVENT, handleBackNavigationExit);
   }, []);
@@ -207,10 +222,10 @@ export function WaitingRoomContainer({
       <WaitingRoomSettingsPanel
         roomTitle={activeRoomTitle || title}
         isOpen={canManageRoom && settingsOpen}
-        canToggle={canManageRoom}
+        canToggle={canManageRoom && !leavePending}
         summary={roomSettingsSummary}
         onToggle={() => {
-          if (canManageRoom) setSettingsOpen((open) => !open);
+          if (canManageRoom && !leavePending) setSettingsOpen((open) => !open);
         }}
       >
         {playMode === 'team' && <div className="team-checklist" aria-label="팀전 시작 조건"><strong>팀 균형</strong><span className={teamCounts.청팀 === 2 ? 'ok' : ''}>청팀 {teamCounts.청팀}/2</span><span className={teamCounts.홍팀 === 2 ? 'ok' : ''}>홍팀 {teamCounts.홍팀}/2</span></div>}
@@ -232,15 +247,15 @@ export function WaitingRoomContainer({
         </div>
       </WaitingRoomSettingsPanel>
 
-      <WaitingRoomSeatList seats={seats} roomInGame={roomInGame} canManageRoom={canManageRoom} localSeatId={localSeatId} playMode={playMode} getSeatPieceColor={getSeatPieceColor} onKickPlayer={onKickPlayer} onAddAI={onAddAI} onRemoveAI={onRemoveAI} onChangeTeam={onChangeTeam} />
+      <WaitingRoomSeatList seats={seats} roomInGame={roomInGame} canManageRoom={canManageRoom} interactionDisabled={leavePending} localSeatId={localSeatId} playMode={playMode} getSeatPieceColor={getSeatPieceColor} onKickPlayer={onKickPlayer} onAddAI={onAddAI} onRemoveAI={onRemoveAI} onChangeTeam={onChangeTeam} />
     </div>
 
     {playMode === 'team' && !teamBalanced && <p className="notice warning inline-warning">팀전은 4인전만 가능하며 청팀 2명, 홍팀 2명이어야 시작할 수 있습니다.</p>}
     <footer className="waiting-actions role-actions">
       {startBlockedHint ? <p className="start-blocked-hint" role="status">{startBlockedHint}</p> : null}
       <div className="waiting-action-buttons">
-        {canManageRoom ? <button data-testid="start-game-button" onClick={onStartGame} disabled={effectiveStartFlowBusy || !allReady}>게임 시작</button> : <button onClick={onToggleReady} disabled={roomInGame || !myWaitingSeat}>{roomInGame ? '게임중' : myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
-        <button className="secondary" onClick={onLeaveRoom}>방 나가기</button>
+        {canManageRoom ? <button data-testid="start-game-button" onClick={onStartGame} disabled={leavePending || effectiveStartFlowBusy || !allReady}>게임 시작</button> : <button onClick={onToggleReady} disabled={leavePending || roomInGame || !myWaitingSeat}>{roomInGame ? '게임중' : myWaitingSeat?.ready ? '준비 취소' : '준비 완료'}</button>}
+        <button className="secondary" onClick={() => void requestLeaveRoom()} disabled={leavePending}>{leavePending ? '나가는 중...' : '방 나가기'}</button>
       </div>
     </footer>
 
