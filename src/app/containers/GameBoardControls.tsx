@@ -67,6 +67,10 @@ type GameBoardControlsProps = {
   timeoutCountBySeatId: Record<string, number>;
   authoritativeActiveSeatId?: string;
   autoPlayActive: boolean;
+  autoPlaySeatName: string;
+  localAutoPlayActive: boolean;
+  resumeHumanControlPending: boolean;
+  onResumeHumanControl: () => void;
 };
 
 type LocalTurnTransition = {
@@ -112,6 +116,10 @@ export function GameBoardControls({
   timeoutCountBySeatId: authoritativeTimeoutCountBySeatId,
   authoritativeActiveSeatId,
   autoPlayActive,
+  autoPlaySeatName,
+  localAutoPlayActive,
+  resumeHumanControlPending,
+  onResumeHumanControl,
 }: GameBoardControlsProps) {
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const soundTurnRef = useRef({ seatId: '', version: 0 });
@@ -427,8 +435,24 @@ export function GameBoardControls({
   const itemPromptTimerStyle = { '--timer-duration': `${itemPromptTimerAnimation.durationMs}ms` } as CSSProperties;
   const itemPromptTimerFillStyle = { animationDelay: `${itemPromptTimerAnimation.delayMs}ms` } as CSSProperties;
 
-  return <div ref={controlsRef} className={`play-controls ${isOpponentTurn ? 'opponent-turn' : 'local-turn'} ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''}`}>
-    {transitionPhase === 'ending' ? <button data-testid="turn-transition-button" className="roll-button" disabled>턴 전환 중...</button> : isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : autoPlayActive ? <button data-testid="auto-play-active-button" className="roll-button" disabled>AI 자동 플레이 중...</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
+  return <div
+    ref={controlsRef}
+    data-testid="play-controls"
+    className={`play-controls ${isOpponentTurn ? 'opponent-turn' : 'local-turn'} ${!roll ? 'roll-ready' : ''} ${showBottomBranchControls && !isOpponentTurn ? 'branch-choice-mode' : ''} ${activeItemPromptTypes.length && !isOpponentTurn ? 'item-prompt-mode' : ''} ${autoPlayActive ? 'auto-play-mode' : ''}`}
+  >
+    {autoPlayActive ? <div data-testid="auto-play-control-panel" className="auto-play-control-panel" role="status" aria-live="polite">
+      <strong className="auto-play-control-title">AI 자동 플레이 중...</strong>
+      <span className="auto-play-control-description">{autoPlaySeatName}님의 행동을 어려움 AI가 대신 판단합니다.</span>
+      {localAutoPlayActive && <button
+        type="button"
+        data-testid="resume-human-control-button"
+        className="resume-human-control-button"
+        onClick={onResumeHumanControl}
+        disabled={resumeHumanControlPending}
+      >
+        {resumeHumanControlPending ? '통제권 가져오는 중...' : '직접 플레이로 돌아가기'}
+      </button>}
+    </div> : transitionPhase === 'ending' ? <button data-testid="turn-transition-button" className="roll-button" disabled>턴 전환 중...</button> : isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
       <div><strong>아이템을 사용할까요?</strong></div>
       {actionReady && <div key={itemPromptDeadlineKey} className="time-limit-bar item-prompt-timer" style={itemPromptTimerStyle} aria-hidden="true"><span style={itemPromptTimerFillStyle}></span></div>}
       <div className="inline-item-actions">
