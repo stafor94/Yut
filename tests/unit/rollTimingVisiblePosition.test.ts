@@ -62,8 +62,8 @@ test('제품 writer는 고정 track이 아니라 orb left만 snapshot percent로
   assert.doesNotMatch(timingControlSource, /track\.style\.transform = getRollTimingTrackTransform/);
 });
 
-test('타이밍 track 내부에서만 paint를 제한하고 전역 가로 overflow 숨김은 추가하지 않는다', () => {
-  assert.match(timingCss, /\.roll-timing-orb-track[\s\S]*overflow:\s*hidden/);
+test('타이밍 track은 고정하고 끝점 오브 표시와 전역 가로 overflow 계약을 유지한다', () => {
+  assert.match(timingCss, /\.roll-timing-orb-track[\s\S]*overflow:\s*visible/);
   assert.match(timingCss, /\.roll-timing-orb-track[\s\S]*transform:\s*none/);
   assert.match(timingCss, /\.roll-timing-orb[\s\S]*transform:\s*translate3d\(-50%, -50%, 0\)/);
   assert.doesNotMatch(timingCss, /(?:html|body|#root)[^{]*\{[^}]*overflow-x:\s*hidden/);
