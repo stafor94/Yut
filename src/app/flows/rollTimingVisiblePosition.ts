@@ -13,6 +13,10 @@ export const getRollTimingTrackTransform = (positionPercent: number) => (
   `translate3d(${normalizeRollTimingPositionPercent(positionPercent)}%, 0, 0)`
 );
 
+export const getRollTimingOrbLeft = (positionPercent: number) => (
+  `${normalizeRollTimingPositionPercent(positionPercent)}%`
+);
+
 const hasFiniteHorizontalRect = (rect: HorizontalClientRect) => (
   Number.isFinite(rect.left) && Number.isFinite(rect.width)
 );

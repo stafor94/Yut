@@ -1,7 +1,9 @@
 const timeoutPenaltyTitle = '오프라인 timeout 누적 정책은 온라인 서버 정책과 동일하다';
 const timingPointerSpec = 'tests/mobile/roll-timing-pointer-capture.spec.js';
+const timingOverflowSpec = 'tests/mobile/roll-timing-overflow.spec.js';
 const firebaseIsolationTitle = 'QA browser app uses only the isolated Firebase emulators';
 const timingPointerDownSnapshotTitle = 'pointerdown Good snapshot은 180ms 뒤 Perfect 시간이 지나도 화면·제출·sequence·최종 판정이 Good으로 일치한다';
+const timingOverflowTitle = '오브는 고정 트랙 안에서 0·50·100%를 표시하며 이동 중 문서 가로 폭과 scrollLeft를 바꾸지 않는다';
 
 export const qaSuiteManifest = Object.freeze({
   'online-core': Object.freeze({
@@ -70,6 +72,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/roll-timing-grades.spec.js',
       'tests/mobile/roll-stage-board-alignment.spec.js',
       'tests/mobile/turn-order-layout.spec.js',
+      'tests/mobile/turn-order-final-alignment.spec.js',
       'tests/mobile/turn-order-roll-placement.spec.js',
       'tests/mobile/mobile-item-log-scroll.spec.js',
       'tests/mobile/item-skip-pending.spec.js',
@@ -86,8 +89,8 @@ export const qaSuiteManifest = Object.freeze({
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    sharedTargets: Object.freeze([timingPointerSpec]),
-    tests: Object.freeze([timingPointerSpec]),
+    sharedTargets: Object.freeze([timingPointerSpec, timingOverflowSpec]),
+    tests: Object.freeze([timingPointerSpec, timingOverflowSpec]),
   }),
   'safari-visible-mismatch': Object.freeze({
     label: 'Safari visible mismatch',
@@ -96,9 +99,9 @@ export const qaSuiteManifest = Object.freeze({
     browsers: Object.freeze(['webkit']),
     projects: Object.freeze(['mobile-webkit-timing']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    grep: `${firebaseIsolationTitle}|${timingPointerDownSnapshotTitle}`,
-    sharedTargets: Object.freeze([timingPointerSpec]),
-    tests: Object.freeze([timingPointerSpec]),
+    grep: `${firebaseIsolationTitle}|${timingPointerDownSnapshotTitle}|${timingOverflowTitle}`,
+    sharedTargets: Object.freeze([timingPointerSpec, timingOverflowSpec]),
+    tests: Object.freeze([timingPointerSpec, timingOverflowSpec]),
   }),
   'safari-timing': Object.freeze({
     label: 'Safari timing',
