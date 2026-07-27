@@ -9,17 +9,21 @@
   width: 100%;
   height: 100%;
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
   pointer-events: none;
-  transform: translate3d(0, 0, 0);
+  transform: none;
   transform-origin: left center;
   animation: none;
-  will-change: transform;
+  will-change: auto;
+  contain: paint;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
 }
 
 .game-shell .roll-timing-meter .roll-timing-orb {
+  top: 50%;
   left: 0;
+  transform: translate3d(-50%, -50%, 0);
   animation: none;
+  will-change: left;
 }
