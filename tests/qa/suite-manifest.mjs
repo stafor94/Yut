@@ -73,6 +73,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/turn-order-roll-placement.spec.js',
       'tests/mobile/mobile-item-log-scroll.spec.js',
       'tests/mobile/item-skip-pending.spec.js',
+      'tests/mobile/auto-play-controls-scroll.spec.js',
       'tests/mobile/game-header-log-alignment.spec.js',
       'tests/mobile/lobby-scroll-reset.spec.js',
       'tests/mobile/lobby-header-badges.spec.js',

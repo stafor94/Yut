@@ -32,6 +32,7 @@ import './styles/roll-timing-ios-smoothness.css';
 import './styles/roll-stage-board-alignment.css';
 import './styles/turn-order-roll-placement.css';
 import './styles/lobby-guide-timing-grades.css';
+import './styles/auto-play-controls.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -6,6 +6,53 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 
 ---
 
+## 2026-07-27 - AI 자동 플레이 안내가 모바일 스크롤에서 조작 영역과 분리됨
+
+### Symptom
+
+- 사람이 연속으로 제한시간을 초과해 authoritative AI 자동 플레이로 전환되면 안내가 윷판 위에 별도 플로팅 오버레이로 표시됐다.
+- 모바일에서 화면을 아래로 스크롤하면 자동 플레이 상태, 대신 행동 중인 AI, 직접 플레이 복귀 방법을 조작 영역에서 확인할 수 없었다.
+- 자동 플레이 중에도 제한시간·타이밍·던지기 등 직접 조작 UI와 별도 안내가 동시에 존재했다.
+
+### Expected behavior
+
+- 자동 플레이 상태는 기존 `play-controls` 영역 전체를 대체해 표시되어야 한다.
+- 자동 플레이 중에는 제한시간, 타이밍 막대, 던지기·이동·아이템·분기 선택 UI를 렌더링하지 않아야 한다.
+- 로컬 좌석만 같은 영역에서 직접 플레이로 복귀할 수 있고 pending 상태가 명확해야 한다.
+- 시작·종료 전후 조작 영역 높이와 모바일 스크롤 위치 변화가 최소화되어야 한다.
+
+### Confirmed root cause
+
+- `GameScreenView`가 `BoardPanel` 내부에 `.auto-play-overlay`를 렌더링하고 모바일 CSS에서 `position: fixed`를 적용했다.
+- 상태 안내 DOM이 실제 조작 UI를 소유한 `GameBoardControls`와 분리돼 윷판 positioning context, visual viewport, 문서 스크롤에 종속됐다.
+- 기존 정적 테스트는 플로팅 CSS 문자열만 확인하고 실제 Galaxy viewport의 스크롤·DOM 포함 관계·복귀 흐름을 검증하지 않았다.
+
+### Do not try again
+
+- 자동 플레이 안내를 윷판 패널 내부 fixed/absolute overlay로 다시 렌더링하지 않는다.
+- 자동 플레이 상태와 수동 조작 버튼을 다른 위치에 중복 렌더링하지 않는다.
+- CSS 문자열 확인만으로 모바일 스크롤 회귀가 해결됐다고 판단하지 않는다.
+- authoritative `autoPlayBySeatId`, timeout 정책, AI action 제출, `resume_human_control` 로직을 표시 문제 해결 목적으로 변경하지 않는다.
+
+### Correct fix plan
+
+- `GameBoardControls`가 자동 플레이 UI의 단일 렌더링 위치가 되도록 상태·표시 이름·로컬 여부·pending·복귀 callback을 전달한다.
+- 자동 플레이 분기를 모든 직접 조작 분기보다 우선하고 기존 `play-controls` 컨테이너와 최소 높이를 유지한다.
+- 로컬 좌석에는 복귀 버튼을, 다른 좌석에는 설명만 표시한다.
+- Galaxy 412×915 온라인 QA에서 authoritative 상태 설정, 스크롤, DOM·좌표 포함 관계, pending, 통제권 회수, 일반 조작 UI 복구를 polling으로 검증한다.
+- 신규 spec을 `mobile-galaxy` suite manifest와 Chromium Playwright project에 연결한다.
+
+### Verification checklist
+
+- [x] `GameScreenView`의 플로팅 자동 플레이 DOM 제거와 `GameBoardControls` 단일 렌더링 계약을 정적 검토했다.
+- [x] 자동 플레이 분기가 제한시간·타이밍·던지기·이동·아이템·분기 선택보다 우선함을 단위 계약에 추가했다.
+- [x] 신규 Galaxy spec을 `tests/qa/suite-manifest.mjs`의 `mobile-galaxy` 실행 목록에 연결했다.
+- [ ] Unit tests pass
+- [ ] Build succeeds
+- [ ] QA architecture validation passes
+- [ ] Mobile Galaxy autoplay scroll/resume QA passes
+- [ ] Main Branch QA succeeds
+
 ## 2026-07-27 - 윷 던지기 pointerdown 위치와 결과 판정 불일치 세 번째 재발
 
 ### Symptom
