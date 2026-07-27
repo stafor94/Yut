@@ -409,7 +409,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
       await waitForCondition(() => {
         const snapshot = readSnapshot();
         const phaseDeltaMs = (snapshot.phaseMs - pointerDownSnapshot.phaseMs + cycleMs) % cycleMs;
-        return phaseDeltaMs >= 48 ? snapshot : null;
+        return phaseDeltaMs >= 48 && phaseDeltaMs < 500 ? snapshot : null;
       }, 1000, '취소 뒤 기존 phase에서 rAF 이동이 재개되지 않았습니다.');
       resumedSnapshot = readSnapshot();
       resumedVisiblePositionPercent = readVisiblePositionPercent();
