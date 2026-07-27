@@ -1,8 +1,10 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { ItemTiming, ItemType } from '../../features/items/logic/items';
 import type { GameAction } from '../../features/room/services/roomService';
 import type { FallEffect, SequenceStateSnapshot, Seat } from '../appState';
 import { TURN_ACTION_TIMEOUT_MS } from '../../features/room/services/roomTiming';
+import { STALE_PENDING_REMOTE_ACTION_MS } from '../config/gameTimings';
+import { getQaUseItemActionDelayMs } from '../config/qaDelays';
 import {
   buildSkipItemPromptPayload,
   getSkippedItemPromptNextDeadlineKind,
@@ -10,7 +12,7 @@ import {
 } from '../flows/itemControllerFlow';
 import type { AuthoritativeCommitResult } from './useAuthoritativeGameSyncController';
 
-type PendingMeta = { type?: GameAction['type']; actorId?: string; createdSequence?: number; createdTurnIndex?: number; optimisticApplied?: boolean };
+type PendingMeta = { type?: GameAction['type']; actorId?: string; createdSequence?: number; createdTurnIndex?: number; optimisticApplied?: boolean; blocksTurnActions?: boolean };
 
 type PendingItemPromptChoice = { actionKey: string; timing: ItemTiming; itemType: ItemType | null } | null;
 
@@ -52,7 +54,37 @@ type Params = {
 
 export function useItemController(params: Params) {
   const activeRoomIdRef = useRef(params.activeRoomId);
+  const pendingSkipRecoveryTimerRef = useRef<number | null>(null);
   activeRoomIdRef.current = params.activeRoomId;
+
+  const clearPendingSkipRecoveryTimer = useCallback(() => {
+    if (pendingSkipRecoveryTimerRef.current === null) return;
+    window.clearTimeout(pendingSkipRecoveryTimerRef.current);
+    pendingSkipRecoveryTimerRef.current = null;
+  }, []);
+
+  const clearPendingItemPromptChoice = useCallback((actionKey: string) => {
+    params.setPendingItemPromptChoice((current) => current?.actionKey === actionKey ? null : current);
+  }, [params]);
+
+  const recoverPendingSkip = useCallback(async (requestRoomId: string, actionKey: string) => {
+    if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return false;
+    let recovered = false;
+    try {
+      const processedState = await params.applyProcessedAuthoritativeAction(actionKey);
+      recovered = Boolean(processedState);
+      if (!recovered) recovered = await params.syncLatestAuthoritativeState('아이템 선택 서버 확정 상태를 확인하기 위해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+    } catch {
+      recovered = await params.syncLatestAuthoritativeState('아이템 선택 서버 확정 상태를 확인하기 위해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+    }
+    if (!recovered || !isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return false;
+    params.removeSettledPendingLocalRemoteAction(actionKey);
+    clearPendingItemPromptChoice(actionKey);
+    clearPendingSkipRecoveryTimer();
+    return true;
+  }, [clearPendingItemPromptChoice, clearPendingSkipRecoveryTimer, params]);
+
+  useEffect(() => () => clearPendingSkipRecoveryTimer(), [clearPendingSkipRecoveryTimer, params.activeRoomId]);
 
   const skipItemPrompt = useCallback((_options: { timedOut?: boolean } = {}) => {
     if (params.activeRoomId) {
@@ -71,6 +103,21 @@ export function useItemController(params: Params) {
         payload: params.withActorLogPayload({ ...payload, clientActionStartedAt: actionStartedAt, clientActionId: clientMutationId }, skipSeat),
       };
       params.shouldAdvanceTurnAfterItemPromptRef.current = false;
+      const pendingChoice = { actionKey: clientMutationId, timing: promptTiming, itemType: null };
+      params.setPendingItemPromptChoice(pendingChoice);
+      params.addPendingLocalRemoteAction(clientMutationId, {
+        type: 'use_item',
+        actorId: params.localSeatId,
+        createdSequence: params.lastAppliedSequenceRef.current,
+        createdTurnIndex: params.turnIndex,
+        optimisticApplied: true,
+        blocksTurnActions: true,
+      });
+      clearPendingSkipRecoveryTimer();
+      pendingSkipRecoveryTimerRef.current = window.setTimeout(() => {
+        pendingSkipRecoveryTimerRef.current = null;
+        void recoverPendingSkip(requestRoomId, clientMutationId);
+      }, Math.max(0, STALE_PENDING_REMOTE_ACTION_MS - 1_000));
       params.markItemPromptResolved(promptTiming, promptRollStackIndex);
       params.setItemPromptTiming(null);
       const nextDeadlineKind = getSkippedItemPromptNextDeadlineKind(promptTiming);
@@ -79,25 +126,33 @@ export function useItemController(params: Params) {
         params.setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
         params.setTurnDeadlineKind(nextDeadlineKind);
       }
-      params.setPendingItemPromptChoice({ actionKey: clientMutationId, timing: promptTiming, itemType: null });
-      params.addPendingLocalRemoteAction(clientMutationId, { type: 'use_item', actorId: params.localSeatId, createdSequence: params.lastAppliedSequenceRef.current, createdTurnIndex: params.turnIndex, optimisticApplied: true });
-      void params.commitQueuedAuthoritativeGameAction(requestRoomId, action)
+      const commitSkipAction = async () => {
+        const qaDelayMs = getQaUseItemActionDelayMs();
+        if (qaDelayMs > 0) await new Promise((resolve) => window.setTimeout(resolve, qaDelayMs));
+        return params.commitQueuedAuthoritativeGameAction(requestRoomId, action);
+      };
+      void commitSkipAction()
         .then(async (result) => {
           await params.enqueueAuthoritativeResultApplication(requestRoomId, () => params.applyAuthoritativeResultSequence(result));
           if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return;
-          if (result.status === 'committed' || result.status === 'duplicate') params.acknowledgePendingLocalRemoteAction(clientMutationId);
+          if (result.status === 'committed' || result.status === 'duplicate') {
+            params.acknowledgePendingLocalRemoteAction(clientMutationId);
+            clearPendingItemPromptChoice(clientMutationId);
+            clearPendingSkipRecoveryTimer();
+            return;
+          }
           if (result.status === 'rejected' || result.status === 'unsupported') {
-            params.setPendingItemPromptChoice((current) => current?.actionKey === clientMutationId ? null : current);
+            const recovered = await params.syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+            if (!recovered || !isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return;
             params.removeSettledPendingLocalRemoteAction(clientMutationId);
-            await params.syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+            clearPendingItemPromptChoice(clientMutationId);
+            clearPendingSkipRecoveryTimer();
           }
         })
         .catch((error) => {
           if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return;
           params.recordRemoteActionDiagnostic('roll_yut', 'skip-item-prompt-error', error instanceof Error ? error.message : '아이템 건너뛰기 처리에 실패했습니다.', { actionKey: clientMutationId });
-          void params.applyProcessedAuthoritativeAction(clientMutationId)
-            .then((processedState) => processedState ? null : params.syncLatestAuthoritativeState('아이템 건너뛰기 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }))
-            .catch(() => { void params.syncLatestAuthoritativeState('아이템 건너뛰기 처리 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' }); });
+          void recoverPendingSkip(requestRoomId, clientMutationId);
         });
       return;
     }
@@ -114,7 +169,7 @@ export function useItemController(params: Params) {
       params.setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
       params.setTurnDeadlineKind('roll');
     }
-  }, [params]);
+  }, [clearPendingItemPromptChoice, clearPendingSkipRecoveryTimer, params, recoverPendingSkip]);
 
   return { skipItemPrompt };
 }
