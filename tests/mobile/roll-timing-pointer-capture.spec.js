@@ -4,7 +4,8 @@ import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomSequencesForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
 const GOOD_PRESS_RANGE = Object.freeze([30, 34]);
-const NICE_PRESS_RANGE = Object.freeze([41, 44]);
+const NICE_PRESS_RANGES = Object.freeze([[40.5, 44.5], [55.5, 59.5]]);
+const GOOD_CANCEL_RANGES = Object.freeze([[20.5, 39.5], [60.5, 79.5]]);
 const POSITION_TOLERANCE_PERCENT = 0.25;
 const HOLD_REMOVAL_MAX_DELAY_MS = 1500;
 const LONG_PRESS_MS = 180;
@@ -118,11 +119,18 @@ function assertAuthoritativeTiming(sequence, gesture) {
 
 async function dispatchPointerDownSnapshotGesture(page, {
   releaseMode = 'inside',
-  pointerDownRange = GOOD_PRESS_RANGE,
+  pointerDownRanges = [GOOD_PRESS_RANGE],
+  requireAscending = true,
   holdMs = LONG_PRESS_MS,
   awaitSubmission = true,
 } = {}) {
-  return page.evaluate(async ({ releaseMode: requestedReleaseMode, pointerDownRange: downRange, holdMs: requestedHoldMs, awaitSubmission: shouldAwaitSubmission }) => {
+  return page.evaluate(async ({
+    releaseMode: requestedReleaseMode,
+    pointerDownRanges: targetRanges,
+    requireAscending: requiredDirection,
+    holdMs: requestedHoldMs,
+    awaitSubmission: shouldAwaitSubmission,
+  }) => {
     const meter = document.querySelector('.roll-timing-live-meter');
     const track = meter?.querySelector('.roll-timing-orb-track');
     const orb = meter?.querySelector('.roll-timing-orb');
@@ -136,7 +144,9 @@ async function dispatchPointerDownSnapshotGesture(page, {
     const readVisiblePositionPercent = (targetMeter = meter, targetOrb = orb) => {
       const meterRect = targetMeter.getBoundingClientRect();
       const orbRect = targetOrb.getBoundingClientRect();
-      return ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100;
+      const meterContentLeft = meterRect.left + targetMeter.clientLeft;
+      if (targetMeter.clientWidth <= 0) throw new Error('타이밍 막대 content width가 0입니다.');
+      return ((orbRect.left + orbRect.width / 2 - meterContentLeft) / targetMeter.clientWidth) * 100;
     };
     const readSnapshot = (targetMeter = meter) => ({
       positionPercent: Number(targetMeter.dataset.positionPercent),
@@ -160,16 +170,20 @@ async function dispatchPointerDownSnapshotGesture(page, {
         `${elapsedMs}ms 관측 시점에 도달하지 못했습니다.`,
       );
     };
-    const waitForAscendingPosition = async (minimum, maximum) => waitForCondition(() => {
+    const waitForRenderedTarget = async () => waitForCondition(() => {
       const snapshot = readSnapshot();
+      const inTargetRange = targetRanges.some(([minimum, maximum]) => (
+        snapshot.positionPercent >= minimum && snapshot.positionPercent <= maximum
+      ));
+      const isAscending = snapshot.phaseMs < 1000;
+      const matchesDirection = requiredDirection === null || isAscending === requiredDirection;
       return Number.isFinite(snapshot.positionPercent)
         && Number.isFinite(snapshot.phaseMs)
-        && snapshot.phaseMs < 1000
-        && snapshot.positionPercent >= minimum
-        && snapshot.positionPercent <= maximum
+        && inTargetRange
+        && matchesDirection
         ? snapshot
         : null;
-    }, 3000, `상승 방향 목표 위치를 찾지 못했습니다: ${minimum}-${maximum}`);
+    }, 3000, `렌더링된 목표 위치를 찾지 못했습니다: ${JSON.stringify(targetRanges)}, ascending=${requiredDirection}`);
     const observeSubmission = () => new Promise((resolve, reject) => {
       let submittedGrade = '';
       let rollLog = '';
@@ -200,7 +214,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
     });
 
     const trackAnimationCount = track.getAnimations().length;
-    const targetSnapshot = await waitForAscendingPosition(downRange[0], downRange[1]);
+    const targetSnapshot = await waitForRenderedTarget();
     const originalMeterRect = meter.getBoundingClientRect();
     const originalMeterWidth = originalMeterRect.width;
     const originalMeterHeight = originalMeterRect.height;
@@ -333,17 +347,9 @@ async function dispatchPointerDownSnapshotGesture(page, {
       resultHold.heightDeltaPx = Math.abs(heldMeterRect.height - originalMeterHeight);
       resultHold.observerAddedDelayMs = holdLifecycle.addedAt - holdStartedAt;
 
-      await waitForCondition(
-        () => document.querySelector('.roll-stage'),
-        5000,
-        'roll-stage가 생성되지 않았습니다.',
-      );
-      resultHold.rollStageVisible = true;
-
       const sampleHold = (elapsedMs) => {
         const style = window.getComputedStyle(heldMeter);
         const rect = heldMeter.getBoundingClientRect();
-        const orbRect = heldOrb.getBoundingClientRect();
         const currentButton = heldMeter.parentElement?.querySelector('button');
         const currentButtonRect = currentButton instanceof HTMLElement ? currentButton.getBoundingClientRect() : null;
         const opacity = Number(style.opacity || 1);
@@ -355,7 +361,8 @@ async function dispatchPointerDownSnapshotGesture(page, {
           opacity: Number.isFinite(opacity) ? opacity : 1,
           width: rect.width,
           height: rect.height,
-          visiblePositionPercent: ((orbRect.left + orbRect.width / 2 - rect.left) / rect.width) * 100,
+          visiblePositionPercent: readVisiblePositionPercent(heldMeter, heldOrb),
+          rollStageVisible: document.querySelector('.roll-stage') !== null,
           buttonExists: currentButtonRect !== null,
           buttonFollowsHold: Boolean(currentButton && (heldMeter.compareDocumentPosition(currentButton) & Node.DOCUMENT_POSITION_FOLLOWING)),
           overlapsButton: Boolean(currentButtonRect
@@ -377,6 +384,12 @@ async function dispatchPointerDownSnapshotGesture(page, {
         '정지 결과 막대가 허용 시간 안에 제거되지 않았습니다.',
       );
       resultHold.removalDelayMs = holdLifecycle.removedAt - holdStartedAt;
+      await waitForCondition(
+        () => document.querySelector('.roll-stage'),
+        5000,
+        'roll-stage가 생성되지 않았습니다.',
+      );
+      resultHold.rollStageVisible = true;
     }
 
     let resumedSnapshot = null;
@@ -409,7 +422,8 @@ async function dispatchPointerDownSnapshotGesture(page, {
     };
   }, {
     releaseMode,
-    pointerDownRange,
+    pointerDownRanges,
+    requireAscending,
     holdMs,
     awaitSubmission,
   });
@@ -417,6 +431,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
 
 function assertPointerDownFreezeAndHold(gesture) {
   expect(gesture.trackAnimationCount).toBe(0);
+  expect(gesture.pointerDownSnapshot).toEqual(gesture.targetSnapshot);
   expect(Math.abs(gesture.pointerDownSnapshot.positionPercent - gesture.pointerDownVisiblePositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
   expect(gesture.heldDuringPressSnapshot).toEqual(gesture.pointerDownSnapshot);
   expect(Math.abs(gesture.heldDuringPressVisiblePositionPercent - gesture.pointerDownSnapshot.positionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
@@ -447,8 +462,9 @@ function assertCancelledGestureResumes(gesture) {
   const phaseDeltaMs = (gesture.resumedSnapshot.phaseMs - gesture.pointerDownSnapshot.phaseMs + ROLL_TIMING_CYCLE_MS) % ROLL_TIMING_CYCLE_MS;
   expect(phaseDeltaMs).toBeGreaterThan(0);
   expect(phaseDeltaMs).toBeLessThan(500);
-  expect(gesture.pointerDownSnapshot.phaseMs).toBeLessThan(1000);
-  expect(gesture.resumedSnapshot.positionPercent).toBeGreaterThan(gesture.pointerDownSnapshot.positionPercent);
+  const wasAscending = gesture.pointerDownSnapshot.phaseMs < 1000;
+  if (wasAscending) expect(gesture.resumedSnapshot.positionPercent).toBeGreaterThan(gesture.pointerDownSnapshot.positionPercent);
+  else expect(gesture.resumedSnapshot.positionPercent).toBeLessThan(gesture.pointerDownSnapshot.positionPercent);
   expect(Math.abs(gesture.resumedVisiblePositionPercent - gesture.resumedSnapshot.positionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
 }
 
@@ -480,7 +496,8 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     roomIds.add(roomId);
 
     const { gesture } = await runQaStep(testInfo, '상승 Good에서 pointerdown 후 Perfect 도달 시간을 지나 pointerup', async () => runAndAssertTimingGesture(page, roomId, {
-      pointerDownRange: GOOD_PRESS_RANGE,
+      pointerDownRanges: [GOOD_PRESS_RANGE],
+      requireAscending: true,
       holdMs: LONG_PRESS_MS,
     }));
     expect(gesture.pointerDownSnapshot.positionPercent).toBeGreaterThanOrEqual(GOOD_PRESS_RANGE[0]);
@@ -496,12 +513,11 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     const roomId = await startAiTimingGame(page, context, testInfo);
     roomIds.add(roomId);
 
-    const { gesture } = await runQaStep(testInfo, '상승 Nice에서 pointerdown 후 180ms 고정과 제출 확인', async () => runAndAssertTimingGesture(page, roomId, {
-      pointerDownRange: NICE_PRESS_RANGE,
+    const { gesture } = await runQaStep(testInfo, '실제 렌더된 Nice에서 pointerdown 후 180ms 고정과 제출 확인', async () => runAndAssertTimingGesture(page, roomId, {
+      pointerDownRanges: NICE_PRESS_RANGES,
+      requireAscending: null,
       holdMs: LONG_PRESS_MS,
     }));
-    expect(gesture.pointerDownSnapshot.positionPercent).toBeGreaterThanOrEqual(NICE_PRESS_RANGE[0]);
-    expect(gesture.pointerDownSnapshot.positionPercent).toBeLessThanOrEqual(NICE_PRESS_RANGE[1]);
     expect(getExpectedGrade(gesture.pointerDownSnapshot.positionPercent)).toBe('NICE');
   });
 
@@ -513,9 +529,10 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     const rollLogCountBefore = await rollLogLocator.count();
     const sequenceBefore = await getLatestSequenceNumber(roomId);
 
-    const gesture = await runQaStep(testInfo, 'Good pointerdown 후 버튼 밖 pointerup과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
+    const gesture = await runQaStep(testInfo, '실제 렌더된 Good pointerdown 후 버튼 밖 pointerup과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
       releaseMode: 'outside',
-      pointerDownRange: GOOD_PRESS_RANGE,
+      pointerDownRanges: GOOD_CANCEL_RANGES,
+      requireAscending: null,
       awaitSubmission: false,
     }));
     assertCancelledGestureResumes(gesture);
@@ -530,9 +547,10 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     roomIds.add(roomId);
     const sequenceBefore = await getLatestSequenceNumber(roomId);
 
-    const gesture = await runQaStep(testInfo, 'Good pointerdown 후 pointercancel과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
+    const gesture = await runQaStep(testInfo, '실제 렌더된 Good pointerdown 후 pointercancel과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
       releaseMode: 'cancel',
-      pointerDownRange: GOOD_PRESS_RANGE,
+      pointerDownRanges: GOOD_CANCEL_RANGES,
+      requireAscending: null,
       awaitSubmission: false,
     }));
     assertCancelledGestureResumes(gesture);
@@ -546,7 +564,8 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     const roomId = await startAiTimingGame(page, context, testInfo, 'repeat-1');
     roomIds.add(roomId);
     await runQaStep(testInfo, 'Galaxy pointerdown snapshot 추가 회귀', async () => runAndAssertTimingGesture(page, roomId, {
-      pointerDownRange: GOOD_PRESS_RANGE,
+      pointerDownRanges: [GOOD_PRESS_RANGE],
+      requireAscending: true,
       holdMs: LONG_PRESS_MS,
     }));
   });

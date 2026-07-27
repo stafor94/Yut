@@ -82,6 +82,16 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - [x] `node --check tests/mobile/roll-timing-pointer-capture.spec.js`가 성공했다.
 - [x] `node --check tests/qa/suite-manifest.mjs`가 성공했다.
 - [x] 테스트 파일 → suite manifest → `qa:emulator-suite` runner → `.github/workflows/qa.yml` matrix → Playwright project/testMatch/브라우저/viewport 연결을 검토했다.
-- [ ] `npm ci`, 전체 build/unit/architecture validation은 현재 로컬 checkout과 네트워크가 없어 미실행이며 Main Branch QA에서 확인한다.
-- [ ] Galaxy Chromium timing, WebKit Safari visible mismatch/timing, 기존 roll timing grade/layout QA는 Main Branch QA의 해당 lane에서 실제 실행 여부와 결과를 확인한다.
-- [ ] 병합 후 merge SHA 기준 Main Branch QA terminal conclusion을 확인한다.
+- [x] Main Branch QA Run `30226873062`에서 `npm ci`, architecture validation, build, unit, Galaxy timing, Galaxy grade/layout 등은 성공했다.
+- [ ] WebKit Safari visible mismatch/timing 후속 수정 Run의 terminal conclusion을 확인한다.
+- [ ] 병합 후 최종 merge SHA 기준 Main Branch QA 전체 success를 확인한다.
+
+### Main Branch QA follow-up - Run 30226873062
+
+- PR #1138 merge SHA `a324b3ded0bd6618182368c22d2c4806ae214cac`의 Main Branch QA에서 제품 build/unit과 Galaxy Chromium timing은 성공했지만 Safari visible mismatch와 Safari timing이 실패했다.
+- Safari visible mismatch의 `31.2%` canonical snapshot을 기존 QA가 meter border-box 기준으로 `31.454055...%`로 계산했다. meter의 2px border와 transform 기준인 content-box 차이가 약 `0.254055%`의 결정적 오차를 만들었다.
+- 제품 transform 또는 허용 오차를 바꾸지 않고 QA가 `clientLeft`와 `clientWidth`를 사용해 content-box 기준 오브 중심을 측정하도록 수정한다.
+- 기존 QA는 result hold를 생성한 뒤 roll-stage를 최대 5초 기다린 다음 0/500/900ms 샘플을 수집해, 1000ms hold가 이미 제거된 상태를 뒤늦게 관찰할 수 있었다. result hold 0/500/900ms를 먼저 샘플링하고 제거 시각을 확인한 뒤 roll-stage 표시를 별도로 확인한다.
+- Safari timing 3-worker 실행에서는 30~34%, 41~44%의 좁은 구간을 rAF가 건너뛰어 목표 위치를 찾지 못했다. timeout을 늘리거나 animation timeline을 조작하지 않고, Nice와 취소 시나리오는 실제 등급 전체의 좌·우 구간을 허용하되 pointerdown 당시 phase 방향을 함께 기록·검증한다.
+- exact `safari-visible-mismatch` title과 manifest grep/grepInvert는 유지하며 테스트 삭제·skip 확대·timeout 증가·0.25% 허용 오차 확대·성능 예산 변경을 하지 않는다.
+- 같은 Run에서 Online core job은 기능 성공 후 270초 예산을 6초 초과했고 전체 예상 완료가 300초를 7.8초 초과했다. 관련 없는 workflow나 성능 예산은 변경하지 않고 후속 정상 코드 Run에서 재확인한다.
