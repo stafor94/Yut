@@ -8,6 +8,8 @@ import {
   isCurrentItemPromptRequestRoom,
 } from '../../src/app/flows/itemControllerFlow';
 
+const mobileItemSkipQaSource = readFileSync('tests/mobile/item-skip-pending.spec.js', 'utf8');
+
 describe('itemControllerFlow', () => {
   it('builds authoritative skip payloads per item prompt timing', () => {
     assert.deepEqual(buildSkipItemPromptPayload('before_roll', 1), { skipBeforeRollItem: true });
@@ -62,4 +64,12 @@ describe('itemControllerFlow', () => {
     assert.match(source, /getQaUseItemActionDelayMs\(\)/);
   });
 
+  it('mobile pending QA uses the real item-prompt deadline contract and verifies the hydrated authoritative state', () => {
+    assert.match(mobileItemSkipQaSource, /const ITEM_PROMPT_FIXTURE_TIMEOUT_MS = 10_000/);
+    assert.match(mobileItemSkipQaSource, /turnDeadlineAt: Date\.now\(\) \+ ITEM_PROMPT_FIXTURE_TIMEOUT_MS/);
+    assert.match(mobileItemSkipQaSource, /turnActionTimeoutCountBySeatId: \{ \.\.\.\(state\.turnActionTimeoutCountBySeatId \?\? \{\}\), \[hostPlayer\.id\]: 0 \}/);
+    assert.match(mobileItemSkipQaSource, /autoPlayBySeatId: \{ \.\.\.\(state\.autoPlayBySeatId \?\? \{\}\), \[hostPlayer\.id\]: false \}/);
+    assert.match(mobileItemSkipQaSource, /reload 후 authoritative before_roll prompt가 로컬 턴에 적용되어야 합니다/);
+    assert.doesNotMatch(mobileItemSkipQaSource, /turnDeadlineAt: Date\.now\(\) \+ 60_000/);
+  });
 });
