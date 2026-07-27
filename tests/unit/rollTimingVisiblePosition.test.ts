@@ -2,14 +2,22 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getRollTimingZone } from '../../src/game-core/roll.js';
 import {
+  getRollTimingTrackTransform,
   getVisibleRollTimingPositionPercent,
-  getVisibleRollTimingTrackOffsetPx,
+  normalizeRollTimingPositionPercent,
 } from '../../src/app/flows/rollTimingVisiblePosition.js';
 
 const meterRect = { left: 100, width: 200 };
 const orbRectAt = (positionPercent: number) => ({
   left: meterRect.left + meterRect.width * (positionPercent / 100) - 6,
   width: 12,
+});
+
+test('canonical 타이밍 퍼센트 하나에서 표시 transform을 파생한다', () => {
+  assert.equal(normalizeRollTimingPositionPercent(45.12349), 45.123);
+  assert.equal(normalizeRollTimingPositionPercent(-1), 0);
+  assert.equal(normalizeRollTimingPositionPercent(101), 100);
+  assert.equal(getRollTimingTrackTransform(45.12349), 'translate3d(45.123%, 0, 0)');
 });
 
 test('화면에 보이는 구슬 중심 좌표를 막대 기준 퍼센트로 계산한다', () => {
@@ -35,10 +43,4 @@ test('화면 좌표 판정은 등급 경계와 일치한다', () => {
     assert.notEqual(visiblePosition, undefined);
     assert.equal(getRollTimingZone(visiblePosition!), zone);
   }
-});
-
-test('track의 실제 화면 위치와 변환 전 layout 원점 차이를 픽셀 고정값으로 계산한다', () => {
-  assert.equal(getVisibleRollTimingTrackOffsetPx({ left: 217, width: 200 }, 104), 113);
-  assert.equal(getVisibleRollTimingTrackOffsetPx({ left: Number.NaN, width: 200 }, 104), undefined);
-  assert.equal(getVisibleRollTimingTrackOffsetPx({ left: 217, width: 200 }, Number.NaN), undefined);
 });

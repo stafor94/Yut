@@ -1,0 +1,3469 @@
+# BUG_HISTORY.md
+
+This file records repeated bugs, failed fixes, root causes, and things Codex should not try again.
+
+Use this file to prevent repeated incorrect fixes.
+
+---
+
+## How to update this file
+
+When a bug fix fails or the same issue appears again, add an entry using this format:
+
+```md
+## YYYY-MM-DD - Bug title
+
+### Symptom
+
+- What the user observed.
+
+### Expected behavior
+
+- What should have happened.
+
+### Actual behavior
+
+- What actually happened.
+
+### Reproduction steps
+
+1. Step one
+2. Step two
+3. Step three
+
+### Suspected root cause
+
+- Current understanding of the cause.
+
+### Confirmed root cause
+
+- Fill this only when confirmed.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed:
+  - Why it failed:
+- Attempt 2:
+  - What was changed:
+  - Why it failed:
+
+### Do not try again
+
+- List approaches that already failed.
+
+### Correct fix plan
+
+- The next safer approach to try.
+
+### Verification checklist
+
+- [ ] Issue no longer reproduces
+- [ ] Related feature still works
+- [ ] No unrelated UI changes
+- [ ] No console errors
+- [ ] Mobile layout checked, if applicable
+```
+
+## Current entries
+
+## 2026-07-26 - Galaxy 순서 정하기 결정값 미주입
+
+### Symptom
+
+- PR #1102 병합 뒤 Main Branch QA Run 30184092277의 Galaxy `turn-order-layout.spec.js`에서 내 결과가 예상한 `모` 대신 무작위 `개`로 표시됐다.
+
+### Expected behavior
+
+- 모바일 순서 정하기 레이아웃 테스트는 사람 `모`, AI `도`를 한 라운드에 결정적으로 주입해 레이아웃만 검증해야 한다.
+
+### Actual behavior
+
+- 결정값 큐가 주입되지 않아 실제 무작위 던지기가 실행됐고, Galaxy lane 22개 중 해당 테스트 하나만 실패했다.
+
+### Reproduction steps
+
+1. PR #1102를 main에 병합한다.
+2. Main Branch QA의 Mobile Galaxy lane을 실행한다.
+3. `turn-order-own-result`가 `개`로 표시되어 `모` assertion이 실패하는 것을 확인한다.
+
+### Confirmed root cause
+
+- 공용 helper가 방 제목에 `turn-order-mobile-room`이 포함됐을 때만 큐를 주입하도록 했지만, `makeQaName`이 실제 방 제목을 20자로 잘라 해당 suffix를 제거했다.
+- 실패 trace에도 helper의 결정값 page init script가 기록되지 않아 조건이 성립하지 않았음이 확인됐다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 긴 방 제목 suffix로 테스트를 식별해 helper가 사람/AI 큐를 주입하도록 했다.
+  - Why it failed: 실제 생성 제목은 길이 제한으로 잘려 suffix가 보존되지 않았다.
+
+### Do not try again
+
+- 잘릴 수 있는 생성 방 제목으로 QA 동작을 추론하지 않는다.
+- assertion 또는 timeout을 느슨하게 하거나 동일 커밋을 재실행해 무작위 성공을 기대하지 않는다.
+
+### Correct fix plan
+
+- 모바일 순서 정하기 spec의 browser context init script에서 사람 `모`, AI `도` 큐를 함께 명시한다.
+- 공용 helper에서 `turn-order-mobile-room` 제목 조건을 제거한다.
+
+### Verification checklist
+
+- [ ] Galaxy `turn-order-layout.spec.js`에서 사람 `모`, AI `도`가 한 라운드에 표시된다.
+- [ ] Galaxy 전체 lane이 통과한다.
+- [ ] main의 전체 Main Branch QA가 통과한다.
+- [ ] `seq-room` 기반 기존 desktop sequence 결정값 주입은 유지된다.
+
+## 2026-07-26 - 연속 시간초과 정책과 사람 좌석 AI 자동 플레이
+
+### Symptom
+
+- 일반 행동의 기본 제한시간이 15초이고 오프라인은 온라인과 다른 단순 timeout 패널티를 사용했다.
+- 윷 던지기 시간초과는 화면에 보이는 오브 위치와 무관하게 coordinator 복구에서 항상 Bad로 처리됐다.
+- 상대 턴 프레젠테이션 전환 중에도 로컬 `turn-original.wav`가 재생될 수 있었다.
+- 사람이 두 번 연속 입력하지 않아도 해당 좌석을 계속 진행할 authoritative 자동 플레이 상태와 통제권 회수 경로가 없었다.
+
+### Expected behavior
+
+- 모든 턴 행동은 `10초 → 5초 → 5초` 정책과 좌석별 공통 timeout 횟수를 사용하고 정상 사람 행동에서 10초로 복구해야 한다.
+- 시간초과 윷은 deadline 순간 실제 화면 오브 위치로 판정하고, 클라이언트가 사라진 경우에만 공유 deadline 위치를 재구성해야 한다.
+- 턴 알림음은 authoritative 내 차례가 실제 행동 가능해질 때 한 번만 재생해야 한다.
+- 두 번째 연속 시간초과부터 어려움 AI가 authoritative sequence로 사람 좌석을 대신하고 원래 사용자만 직접 플레이로 복귀시킬 수 있어야 한다.
+
+### Confirmed root cause
+
+- 온라인 제한시간 카운터와 오프라인 boolean 패널티가 분리되어 있었고 일반 행동 기본값이 15초로 남아 있었다.
+- `resolveRollTimeout`이 오브 위치를 받거나 재구성하지 않고 Bad/0%를 고정 반환했다.
+- 턴 효과음이 authoritative 좌석과 프레젠테이션용 동결 좌석을 구분하지 않았다.
+- 접속 종료용 `isSubstitutedByAI` 외에는 timeout 자동 플레이를 나타내는 좌석별 authoritative 상태와 전용 복귀 액션이 없었다.
+
+### Do not try again
+
+- timeout 자동 플레이를 접속 종료 대체용 `isSubstitutedByAI`로 표현하지 않는다.
+- 여러 클라이언트가 로컬에서 사람 좌석 AI 상태를 독립적으로 결정하거나 optimistic 상태로 먼저 턴을 넘기지 않는다.
+- 활성 클라이언트의 시간초과 윷을 일괄 Bad로 바꾸지 않는다.
+
+### Correct fix plan
+
+- `turnActionTimeoutCountBySeatId`와 `autoPlayBySeatId`를 게임 snapshot·sequence·fingerprint에 함께 보존한다.
+- timeout action은 종류와 무관하게 횟수를 올리고, 정상 사람 action만 횟수를 초기화한다.
+- deadline 순간 DOM 오브를 고정해 위치와 판정을 함께 제출하고 coordinator fallback은 deadline 기반 위치를 사용한다.
+- 기존 어려움 AI 판단과 authoritative 제출 경로를 재사용하며 `resume_human_control` sequence로만 통제권을 반환한다.
+- 효과음은 authoritative 활성 좌석과 행동 가능 시점을 기준으로 턴마다 한 번만 재생한다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [x] QA architecture validation passes
+- [x] Offline timeout regression check passes
+- [ ] Multi-client timeout auto-play and resume checked
+- [ ] Mobile overlay layout checked
+
+## 2026-07-07 - 온라인 AI 누적 빽도 스킵 optimistic 저장 경합
+
+### Symptom
+
+- 온라인 누적 던지기 게임에서 AI가 빽도를 던진 뒤 화면에는 AI 턴과 빽도 결과가 남고 진행 버튼이 비활성화됐다.
+- 진단 상태에서 `hasPendingGameStateSave`가 true로 남고, 사람 턴 기준 roll timeout recovery가 `지금은 내 차례가 아닙니다.`로 거부됐다.
+
+### Expected behavior
+
+- 온라인 AI 누적 던지기와 빽도 스킵은 서버 authoritative `roll_yut`/`move_piece` sequence 순서대로 확정되어야 한다.
+- AI 빽도 스킵이 서버에 커밋되기 전에 로컬 snapshot 저장이 사람 턴으로 선진행하면 안 된다.
+
+### Confirmed root cause
+
+- AI 누적 던지기 roll은 `pendingSequenceMetaRef` 기반 local snapshot 저장 경로를 사용했다.
+- AI 빽도 스킵은 authoritative `move_piece` action 결과를 받기 전에 로컬에서 `rollStack`을 제거하고 `turnIndex`를 넘겼다.
+- 두 경로가 경합하면 stale optimistic snapshot이 `coordinatorStateSaveKey`로 남아 `saving-game-state` guard를 만들고, 서버는 아직 AI 턴으로 판단해 사람 턴 roll timeout recovery를 거부할 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: AI 빽도 스킵을 `pieceId: ''`, `rollStackIndex`가 있는 authoritative `move_piece` action으로 제출했다.
+  - Why it failed: action 제출 전 로컬 선진행과 AI roll의 snapshot 저장 경로가 남아 있어 stale local state 저장 경합을 막지 못했다.
+
+### Do not try again
+
+- 온라인 AI 누적 roll을 local snapshot 저장만으로 확정하지 않는다.
+- 서버 `move_piece` commit 전에 AI 빽도 스킵의 `turnIndex`/`rollStack`을 로컬에서 먼저 확정하지 않는다.
+
+### Correct fix plan
+
+- 온라인 AI 누적 roll은 `roll_yut` authoritative action으로 제출하고 commit sequence 적용 후 다음 AI 동작을 진행한다.
+- 온라인 AI 빽도 스킵은 로컬 선진행 없이 `move_piece` authoritative action을 제출하고 commit sequence replay로만 상태를 갱신한다.
+- 기존 reducer의 누적 빽도 스킵 회귀 테스트와 빌드로 검증한다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [ ] Multi-client online AI stacked backdo skip checked
+
+
+## 2026-07-07 - 낙/타임아웃 경합 후 자동 복구 고착
+
+### Symptom
+
+- 온라인 게임에서 낙 로그가 남은 뒤 화면에는 다음 AI 차례와 이동 가능한 roll이 남아 있는 것처럼 보였지만 게임이 진행되지 않았다.
+- 정지 턴 자동 복구가 `먼저 윷을 던져주세요.`로 거부된 뒤 `already-recovery-requested` 상태로 같은 턴 복구가 막혔다.
+
+### Expected behavior
+
+- 서버 authoritative 상태와 다른 stale optimistic roll/fall 상태가 남으면 클라이언트가 최신 sequence 상태로 되돌아가야 한다.
+- 자동 복구가 서버 상태 불일치 사유로 거부되면 같은 잘못된 local 상태에 고착되지 않아야 한다.
+
+### Actual behavior
+
+- 늦은 온라인 roll/낙 optimistic state와 roll timeout recovery가 경합하면 클라이언트 local state가 서버 authoritative state와 어긋날 수 있었다.
+- rejected recovery key가 유지되어 최신 state 재동기화 없이 `already-recovery-requested`로 막힐 수 있었다.
+
+### Suspected root cause
+
+- 온라인 roll action rejection과 stalled move recovery rejection에서 stale optimistic state를 authoritative snapshot으로 되돌리는 경로가 부족했다.
+
+### Confirmed root cause
+
+- `move_piece` recovery가 서버에서 `ROLL_REQUIRED`로 거부되어도 recovery key가 그대로 남고 최신 authoritative state를 강제 적용하지 않았다.
+- 온라인 `roll_yut` action이 서버에서 거부되어도 diagnostic만 남기고 optimistic local state를 최신 sequence state로 되돌리지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: roll 이후 이동 미완료를 자동 복구하는 stalled turn recovery를 추가했다.
+  - Why it failed: 복구 대상 local state 자체가 서버 authoritative state와 어긋난 경우 rejected 결과 이후 재동기화/재판정이 부족했다.
+
+### Do not try again
+
+- `ROLL_REQUIRED`를 무시하고 같은 `move_piece` recovery를 반복 제출하지 않는다.
+- stale local `roll`만 믿고 복구 성공 여부를 판단하지 않는다.
+- 온라인 roll rejection을 diagnostic만 남기고 방치하지 않는다.
+
+### Correct fix plan
+
+- 서버 상태 불일치성 rejection이 발생하면 최신 sequence snapshot을 다시 적용한다.
+- stalled move recovery가 상태 불일치로 rejected 되면 recovery key를 해제해 재동기화 후 최신 상태 기준으로 다시 판정한다.
+- 온라인 roll action rejection도 pending local mutation을 정리하고 authoritative 상태로 되돌린다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [ ] Multi-client online timeout/fall race checked
+
+## 2026-07-06 - AI 누적 던지기 빽도 스킵 로컬 턴 선진행
+
+### Symptom
+
+- 온라인 누적 던지기 게임에서 AI가 빽도를 던진 뒤 사람 차례처럼 표시되지만 윷 던지기 버튼이 비활성화됐다.
+- 진단 상태에서 `hasPendingGameStateSave`가 true로 남고, 사람 차례의 자동 roll timeout recovery가 `지금은 내 차례가 아닙니다.`로 거부됐다.
+
+### Expected behavior
+
+- AI가 누적 던지기 스택에서 이동할 수 없는 빽도를 만나면 서버 authoritative `move_piece`로 해당 스택을 소비하고 다음 턴으로 넘어가야 한다.
+
+### Confirmed root cause
+
+- AI 누적 던지기 루프의 이동 후보 없음 분기가 빽도 스택을 로컬 상태에서만 제거하고 `turnIndex`를 직접 넘겼다.
+- 이 로컬 선진행은 authoritative game state에 `move_piece`로 커밋되지 않아 클라이언트는 다음 사람 턴으로 보이지만 서버는 아직 AI 턴으로 판단할 수 있었다.
+
+### Correct fix plan
+
+- AI no-move 빽도 스킵도 `pieceId: ''`와 `rollStackIndex`를 포함한 authoritative `move_piece` 액션으로 제출한다.
+- 기존 사람 플레이어 빽도 스킵과 같은 서버 reducer 경로를 사용해 rollStack 소비와 턴 전환을 커밋한다.
+- 같은 스택 스킵을 중복 제출하지 않도록 남은 스택 정보를 포함한 안정적인 client action key를 사용한다.
+- 회귀 테스트는 `pieceId: ''` 빽도 스택 스킵이 authoritative reducer에서 커밋되는지 확인한다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [ ] Multi-client online stacked-roll AI backdo skip checked
+
+## 2026-07-06 - 누적 던지기 빽도 스킵 후 자동 복구 거부
+
+### Symptom
+
+- 온라인 게임에서 빽도가 나왔지만 현재 차례 플레이어의 윷판 위에 이동 가능한 말이 없어 빽도 이동 불가 로그가 남았다.
+- 이후 다음 차례 닉네임 아래에 빽도가 남고 게임이 멈췄다.
+- 정지 턴 자동 복구가 `선택한 이동 스택을 찾을 수 없습니다.` 사유로 거부됐다.
+
+### Expected behavior
+
+- 누적 던지기 모드에서도 빽도 스택 결과를 이동할 수 없으면 authoritative `move_piece`로 해당 스택을 소비하고 턴을 정상 진행해야 한다.
+- 정지 턴 복구가 스택 결과를 복구할 때는 서버 reducer가 요구하는 `rollStackIndex`를 함께 제출해야 한다.
+
+### Confirmed root cause
+
+- authoritative 이동 reducer는 누적 던지기 모드에서 `rollStack`이 남아 있으면 payload의 `rollStackIndex`로 선택한 스택 결과를 찾아야 한다.
+- 정지 턴 복구 payload는 `rollStackIndex`를 포함하지 않아 서버에서 `선택한 이동 스택을 찾을 수 없습니다.`로 거부됐다.
+- 복구 key도 스택 index/스택 목록을 포함하지 않아, 한 번 거부된 복구 요청 이후 같은 정지 턴에서 재시도하기 어려웠다.
+
+### Correct fix plan
+
+- 정지 턴 복구 전에 현재 `roll`과 일치하는 누적 던지기 스택 index를 안전하게 산정한다.
+- 선택된 스택 index가 현재 `roll`과 일치하면 그 값을 사용하고, 일치 후보가 하나뿐이면 해당 index를 사용한다.
+- 같은 결과가 여러 개라 모호하면 자동 복구하지 않는다.
+- 복구 payload와 정지 턴 watch key에 스택 식별 정보를 포함한다.
+- 누적 던지기 빽도 스택 스킵이 authoritative reducer에서 커밋되는 단위 테스트를 추가한다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [ ] Multi-client online stacked-roll stalled recovery checked
+
+## 2026-07-04 - 온라인 게임 roll 이후 원격 턴 이동 정지
+
+### Symptom
+
+- 온라인 2인 게임에서 상대가 윷을 던진 뒤 말 이동이 완료되지 않아 양쪽 화면이 진행 불능처럼 멈췄다.
+- 새로고침이나 수동 동기화 후에도 서버의 최신 상태가 여전히 `roll` 보유/이동 미완료 상태라 문제가 해소되지 않았다.
+
+### Expected behavior
+
+- 현재 턴 플레이어가 이동을 완료하지 못하더라도 온라인 조율자 클라이언트가 정지 턴을 진단하고, 안전한 경우 authoritative `move_piece` 액션으로 턴 진행을 복구해야 한다.
+
+### Actual behavior
+
+- 일반 이동 타임아웃과 자동 단일 말 이동은 `canRequestMove`에 의존한다.
+- 현재 턴 플레이어의 클라이언트가 이동 제출을 끝내지 못하면 다른 클라이언트는 `not-local-turn` 상태로 대기만 하고, 서버 상태 자체도 roll 이후 sequence에서 멈출 수 있었다.
+
+### Reproduction steps
+
+1. 온라인 2인 게임에서 한 플레이어가 윷을 던져 `roll`이 생긴다.
+2. 해당 플레이어 클라이언트에서 이동 버튼/자동 이동/timeout 이동이 완료되지 않는다.
+3. 다른 플레이어는 `not-local-turn`, `roll-already-exists` 상태로 대기한다.
+4. 새로고침/동기화는 같은 authoritative state를 다시 적용하므로 진행이 재개되지 않는다.
+
+### Suspected root cause
+
+- 이동 완료 안전장치가 로컬 턴의 `canRequestMove` 경로에 묶여 있고, 온라인 조율자가 서버 상태 기준으로 멈춘 턴을 복구하는 경로가 없었다.
+
+### Confirmed root cause
+
+- 현재 턴 플레이어가 아닌 클라이언트는 정상적으로 `not-local-turn`으로 차단된다.
+- 기존 자동 이동/이동 timeout은 현재 턴 클라이언트의 `canRequestMove`가 false이거나 클라이언트가 동작하지 않는 경우 실행되지 않는다.
+- 수동 동기화는 최신 sequence를 적용할 뿐, roll 이후 move sequence가 없는 상태를 새 action으로 복구하지 않는다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 선택 말 fallback 및 이동 버튼 guard를 보정했다.
+  - Why it failed: 현재 턴 클라이언트 자체가 이동 제출을 끝내지 못하는 경우에는 다른 클라이언트가 서버 상태를 복구하지 못했다.
+
+### Do not try again
+
+- `not-local-turn` guard를 무시해서 아무 클라이언트나 로컬 이동하게 하지 않는다.
+- `canRequestMove`만 완화해서 버튼을 억지로 활성화하지 않는다.
+- 새로고침/동기화가 서버에 없는 move sequence를 만들어낸다고 가정하지 않는다.
+- 분기점 방향 선택이 필요한 말을 임의 방향으로 자동 이동하지 않는다.
+
+### Correct fix plan
+
+- debug state에 stalled turn 진단 정보를 추가한다.
+- 다음 재발 분석에서 추가 state를 요구하지 않도록 sync pipeline, action pipeline, turn health를 debug state에 함께 노출한다.
+- 온라인 조율자만 roll 이후 이동 미완료 상태를 감시한다.
+- 수동 동기화도 최신 sequence 적용 후 stalled turn을 판정하고, 조율자이며 안전한 경우 같은 authoritative `move_piece` 복구 경로를 사용한다.
+- 일정 시간 이상 정지했고 이동 후보가 명확하며 분기점 선택이 필요 없는 경우, 조율자가 activeSeat actorId로 authoritative `move_piece` 복구 action을 제출한다.
+- 분기점 선택이 필요한 경우 자동 이동하지 않고 진단 메시지를 남긴다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Static code path inspection
+- [ ] Multi-device online stalled turn recovery checked
+- [x] No unrelated UI changes
+- [x] No new dependency
+
+## 2026-07-04 - 말 이동 버튼 선택 보정 후 도 이동 멈춤
+
+### Symptom
+
+- 온라인 게임에서 현재 턴 플레이어가 도를 던진 뒤 이동 가능한 말이 있는데도 `선택한 말 이동` 버튼이 비활성 상태로 남아 진행이 멈춘 것으로 보였다.
+
+### Expected behavior
+
+- 윷 결과가 있고 현재 턴 플레이어에게 이동 가능한 말이 있으면, 선택 상태가 비어 있더라도 첫 번째 이동 가능한 말이 선택 표시되고 이동 버튼/자동 이동 경로가 막히지 않아야 한다.
+
+### Actual behavior
+
+- 이전 수정에서 이동 버튼 활성화 기준을 실제 선택 말에만 묶으면서, 선택 보정이 늦거나 실패한 온라인 클라이언트에서 fallback 이동 가능 말이 있어도 `canRequestMove`가 false로 남을 수 있었다.
+
+### Reproduction steps
+
+1. 온라인 게임에서 현재 턴 플레이어가 윷을 던져 `roll`이 생긴다.
+2. 현재 턴 플레이어의 `selectedPieceId`가 비어 있거나 stale 상태가 된다.
+3. 이동 가능한 말은 있지만 선택 보정이 즉시 반영되지 않는다.
+4. 이동 버튼과 자동 이동 guard가 `selected-piece-not-movable` 경로로 막힌다.
+
+### Suspected root cause
+
+- 버튼 활성화 guard와 실제 `moveSelectedPiece()`의 fallback 이동 로직이 서로 달라졌다.
+
+### Confirmed root cause
+
+- 이전 수정은 `activeMovablePiece`를 `selectedPieceCanMove ? selectedPiece : undefined`로 제한했다.
+- 하지만 `moveSelectedPiece()`는 선택 말이 없어도 현재 턴의 fallback 이동 가능 말을 찾아 이동할 수 있는 구조라, UI guard가 실제 이동 가능성을 과하게 막았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 선택 말이 없는 상태에서 버튼이 활성화되지 않도록 `activeMovablePiece`에서 fallback 말을 제거했다.
+  - Why it failed: 선택 보정 state가 반영되기 전에는 fallback 이동 가능 말이 있어도 `canRequestMove`가 false가 되어 이동 버튼/자동 이동 경로가 막힐 수 있었다.
+
+### Do not try again
+
+- `activeMovablePiece`를 실제 선택 말에만 묶어서 fallback 이동 가능성을 UI guard에서 제거하지 않는다.
+- 선택 보정 `useEffect`가 항상 먼저 성공한다고 가정하지 않는다.
+- 진단 정보 없이 `selected-piece-not-movable`만 보고 이동 가능한 말이 없다고 단정하지 않는다.
+
+### Correct fix plan
+
+- `activeMovablePiece`는 선택 말이 유효하면 선택 말을, 아니면 fallback 이동 가능 말을 사용하게 복구한다.
+- fallback 말이 사용되는 경우에도 말판에는 해당 후보가 선택 표시되도록 해서 버튼만 먼저 활성화되어 보이지 않게 한다.
+- 진단 상태에 선택 가능 여부, fallback 후보, active 후보, 현재 턴 이동 후보 목록, 선택 이유를 추가한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Guard/fallback code path inspection
+- [ ] Online mobile multi-device rerun checked
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
+
+## 2026-07-04 - 로비 방 카드 참여 버튼 우측 정렬 재발
+
+### Symptom
+
+- 로비 방 카드의 `참여` 버튼이 `대기중` 배지처럼 우측 정렬되지 않고 `아이템 OFF` 텍스트 바로 오른쪽에 붙어 보였다.
+
+### Expected behavior
+
+- `참여` 버튼은 방 메타 텍스트 길이와 관계없이 카드 우측 action column에 정렬되어야 한다.
+
+### Actual behavior
+
+- `참여` 버튼이 메타 텍스트와 같은 흐름에 놓여 텍스트 바로 뒤에 붙은 것처럼 배치될 수 있었다.
+
+### Reproduction steps
+
+1. 로비 화면에서 열린 방 카드가 표시된다.
+2. 방 카드 메타 정보가 `아이템 OFF`까지 렌더링된다.
+3. `참여` 버튼 위치를 확인한다.
+
+### Suspected root cause
+
+- `.lobby-room-meta`가 `display: contents`로 풀리면서 메타 텍스트와 버튼이 부모 grid에 배치되지만, 버튼의 grid column/정렬이 명시되지 않아 auto-placement와 버튼 margin/width 조정에 의존했다.
+
+### Confirmed root cause
+
+- `.lobby-room-card div`의 두 번째 column이 `auto`였고 `.lobby-room-action`에 명시적인 `grid-column`/`justify-self`가 없어, 버튼 위치가 카드 우측 고정 column이 아니라 메타 텍스트 다음 auto column처럼 보일 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 버튼의 폭, min-width, margin 계열만 조정한 것으로 추정된다.
+  - Why it failed: grid item이 어느 column에 놓이는지 명시하지 않아 버튼의 기준 위치 자체는 바뀌지 않았다.
+- Attempt 2:
+  - What was changed: 기존 `.lobby-room-meta { display: contents; }` 구조에서 카드 grid의 action column과 버튼 `grid-column`/`justify-self`를 지정했다.
+  - Why it failed: `대기중` 배지는 여전히 card absolute pseudo-element이고 `참여` 버튼은 내부 grid item이라, 세로 모드에서 두 요소가 같은 우측 세로 스택에 속한다는 보장이 없었다.
+- Attempt 3:
+  - What was changed: 방 카드의 우측 padding만 소폭 줄였다.
+  - Why it failed: 세로 모드에서 `.lobby-room-content`가 카드 폭을 확실히 채우고 우측 column을 끝으로 붙이는 보장이 부족해, padding 축소만으로는 배지/버튼의 기준선이 충분히 오른쪽으로 이동하지 않았다.
+- Attempt 4:
+  - What was changed: `.lobby-room-content` 폭과 `.lobby-room-side` 정렬을 보강하고 모바일 우측 padding을 줄였다.
+  - Why it failed: 실제 세로 화면에서 사용자가 지적한 여백은 버튼/배지 column과 카드 오른쪽 시각 경계 사이의 남는 공간이어서, 정렬 보강만으로는 체감 위치가 충분히 오른쪽으로 이동하지 않았다.
+- Attempt 5:
+  - What was changed: 모바일에서 `.join-room-panel` 우측 padding과 `.lobby-room-card` 우측 padding을 함께 줄이고 음수 margin을 제거했다.
+  - Why it failed: 사용자가 표시한 빨간 원 영역은 방 카드 내부의 action column 오른쪽 공간이었고, 부모/카드 padding 축소만으로는 action column 자체가 카드 우측 경계에 고정되지 않았다.
+
+### Do not try again
+
+- `.lobby-room-action`의 `width`, `min-width`, `margin-left`만 조정해서 해결하려 하지 않는다.
+- 방 카드의 우측 padding만 소폭 조정해서 해결하려 하지 않는다.
+- `.lobby-room-content` 폭/정렬만 보강하고 실제 모바일 우측 column offset을 그대로 두지 않는다.
+- 모바일 우측 여백을 줄이기 위해 `.lobby-room-side`에 음수 margin을 적용하지 않는다.
+- 모바일에서는 action column을 카드 오른쪽 경계에 직접 고정하되, 본문 영역에는 동일한 폭의 우측 여유를 예약해 텍스트와 버튼이 겹치지 않게 한다.
+- 기존 `.lobby-room-meta { display: contents; }` 기반 grid column 조정만 반복하지 않는다.
+- 본문 영역 우측 공간 예약 없이 버튼만 absolute positioning으로 덮어씌우지 않는다. 클릭 영역/반응형 충돌 위험이 있다.
+
+### Correct fix plan
+
+- `대기중` 배지를 pseudo-element가 아니라 실제 `.lobby-room-status` 요소로 렌더링한다.
+- `.lobby-room-side` 우측 column을 만들고 `대기중` 배지와 `참여` 버튼을 같은 flex column에 배치한다.
+- `대기중` 배지와 `참여` 버튼에 같은 폭을 적용해 세로 모드에서도 같은 오른쪽 기준선을 공유하게 한다.
+- 모바일에서는 `.lobby-room-side`를 카드 오른쪽 4px 위치에 고정하고, `.lobby-room-content`에 action column 폭만큼 우측 공간을 예약해 빨간 원으로 표시된 카드 내부 우측 여백을 직접 제거한다.
+- 버튼 텍스트, 클릭 동작, 방 참여 로직은 변경하지 않는다.
+
+### Verification checklist
+
+- [x] Issue no longer reproduces by CSS grid placement inspection
+- [x] Related feature still works by build verification
+- [x] No unrelated UI changes
+- [ ] Browser screenshot checked, if applicable
+- [ ] Mobile layout checked, if applicable
+
+## 2026-07-05 - QA cleanup-after 성공 이후 2시간 초과 rooms 잔존
+
+### Symptom
+
+- Merged PR QA Actions가 성공했는데도 Firestore `rooms` 컬렉션에 여러 문서가 남았다.
+- QA 종료 후 오래된 방은 하위 컬렉션까지 삭제되어야 한다.
+
+### Expected behavior
+
+- `qa-cleanup-after`는 Firebase 설정 누락을 성공으로 숨기지 않는다.
+- 생성 후 2시간이 지난 방은 제목과 활성 상태와 무관하게 하위 컬렉션까지 삭제한다.
+- cleanup 이후 남은 방이 있으면 Actions 로그에 방별 미삭제 사유를 남긴다.
+
+### Confirmed root cause
+
+- cleanup helper가 Firebase 설정을 읽지 못하면 성공 종료할 수 있어 실제 삭제 여부를 Actions 성공 상태만으로 보장하기 어려웠다.
+- cleanup-after 로그에는 cleanup 이후 남은 `rooms` 문서 목록과 방별 미삭제 사유가 없어, 남은 방이 QA 대상인지/2시간 미만인지/삭제 실패인지 구분하기 어려웠다.
+
+### Correct fix plan
+
+- Firebase 설정이 없으면 cleanup job을 실패 처리한다.
+- QA helper의 시간 기준 삭제 대상을 생성 후 2시간 초과 방으로 명확히 하고, 기존 하위 컬렉션 우선 삭제 경로를 그대로 사용한다.
+- `qa-cleanup-after`에서 남은 `rooms` 문서와 미삭제 사유를 요약 출력한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Cleanup helper syntax/import check succeeds
+- [ ] Merged PR QA cleanup rerun checked
+
+## 2026-07-05 - QA cleanup job Transaction too big 실패
+
+### Symptom
+
+- 배포 후 GitHub Actions `Cleanup QA rooms before tests` job의 `Cleanup old QA rooms` 단계가 3회 모두 실패했다.
+- 로그에는 Firestore `INVALID_ARGUMENT: Transaction too big. Decrease transaction size.` 오류가 반복됐다.
+
+### Expected behavior
+
+- QA cleanup job은 기존 QA/비활성 방 문서와 하위 컬렉션 문서를 Firestore 요청 제한 안에서 삭제해야 한다.
+
+### Actual behavior
+
+- `deleteRoomForQa()`가 하위 컬렉션 삭제를 최대 450개 문서 단위의 write batch로 커밋했다.
+- 오래된 QA 방에 누적된 action/sequence 등 하위 문서와 인덱스 항목이 많으면 한 번의 batch commit 크기가 Firestore 제한을 넘어 cleanup job 전체가 실패했다.
+
+### Confirmed root cause
+
+- cleanup 대상 자체는 맞았지만, 하위 컬렉션 삭제 batch 크기가 과도해 Firestore가 `Transaction too big`으로 write stream을 거부했다.
+- 또한 Firestore는 부모 `rooms/{roomId}` 문서를 삭제해도 하위 컬렉션을 자동 삭제하지 않기 때문에, 부모 문서가 이미 사라진 방의 `players`/`processedActions`/중첩 `rooms` 하위 컬렉션은 기존 `rooms` 컬렉션 조회만으로 다시 찾을 수 없었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: cleanup job 재시도와 Firebase 설정 전달 경로를 보강했다.
+  - Why it failed: 설정 누락/일시 실패에는 대응했지만, 실제 삭제 write batch 크기 제한 초과에는 대응하지 못했다.
+
+### Correct fix plan
+
+- QA helper의 방 삭제 batch 크기를 충분히 작게 낮춰 각 commit의 Firestore transaction/write 크기를 제한한다.
+- 부모 방 문서 삭제 전 알려진 하위 컬렉션을 먼저 지우고, 부모 문서가 없는 orphan 하위 컬렉션은 collection group 조회로 찾아 정리한다.
+- cleanup 대상 선정이나 앱 동작은 바꾸지 않는다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Unit tests succeed
+- [ ] Merged PR QA cleanup rerun checked
+
+## 2026-07-02 - QA 방 cleanup job 이후 QA 방 잔존
+
+### Symptom
+
+- GitHub Actions QA 성공 이후에도 로비에 `QA-*-room`, `QA-*-reg-room` 형태의 QA 방이 남았다.
+
+### Expected behavior
+
+- `qa-cleanup-before`와 `qa-cleanup-after`는 `QA-`로 시작하는 모든 QA 방을 Firestore에서 삭제해야 한다.
+
+### Actual behavior
+
+- Actions run `28588515708`은 cleanup job이 성공으로 표시됐지만, 실제 로비에는 QA 방이 계속 표시됐다.
+- cleanup 스크립트는 Firebase 설정을 읽지 못하면 성공 종료로 정리를 건너뛰는 경로가 있었다.
+
+### Reproduction steps
+
+1. `FIREBASE` 단일 secret/variable만 제공되고 개별 `VITE_FIREBASE_*` 값이 비어 있는 GitHub Actions 환경에서 merged PR QA를 실행한다.
+2. build job은 `FIREBASE` 값을 파싱해 배포 번들에 Firebase 설정을 주입한다.
+3. Playwright QA가 Firebase에 QA 방을 생성한다.
+4. cleanup job은 개별 `VITE_FIREBASE_*`만 받아 DB 연결에 실패하고 방 정리를 건너뛴다.
+
+### Suspected root cause
+
+- cleanup job의 Firebase 환경 변수 주입 경로가 build job과 달라 `FIREBASE` 단일 설정을 사용하지 못했다.
+
+### Confirmed root cause
+
+- `qa-cleanup-before`와 `qa-cleanup-after`는 `FIREBASE_CONFIG`를 전달하지 않았고, `tests/helpers/env.js`도 `FIREBASE`/`FIREBASE_CONFIG` 원본 설정을 파싱하지 않았다.
+- 따라서 build/QA 앱은 Firebase에 접속할 수 있어도 cleanup helper는 Firebase 설정 없음으로 조용히 skip할 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: QA 방 cleanup script와 CI cleanup job을 추가했다.
+  - Why it failed: cleanup job이 build job과 동일한 Firebase 설정 입력(`FIREBASE`)을 받거나 파싱하지 못해 실제 DB 정리가 보장되지 않았다.
+
+### Do not try again
+
+- cleanup job 성공 상태만 보고 QA 방이 삭제됐다고 단정하지 않는다.
+- `QA-` title filter만 반복 수정하지 않는다.
+- build job에만 Firebase 설정 변환 로직을 두고 cleanup/test helper 설정 로딩 경로를 분리하지 않는다.
+
+### Correct fix plan
+
+- cleanup job에도 `FIREBASE_CONFIG`를 전달한다.
+- test helper 환경 로더가 개별 `VITE_FIREBASE_*`뿐 아니라 `FIREBASE`/`FIREBASE_CONFIG` JSON 또는 `firebaseConfig = {...}` 형태도 파싱하게 한다.
+
+### Verification checklist
+
+- [x] Firebase config parser unit-level check
+- [x] Build succeeds
+- [ ] Merged PR QA cleanup rerun checked
+- [x] No unrelated UI changes
+
+## 2026-07-01 - AI 윷 애니메이션 종료 전 말 이동
+
+### Symptom
+
+- AI 플레이어가 윷을 던진 뒤 윷 던지기 애니메이션이 끝나기도 전에 바로 말을 이동했다.
+
+### Expected behavior
+
+- AI도 사람 플레이어와 동일하게 윷 결과 확인/애니메이션 시간이 끝난 뒤 말을 이동해야 한다.
+
+### Actual behavior
+
+- AI 자동 턴은 윷을 던진 뒤 1초만 기다리고 말을 이동했다.
+- 일반 윷 애니메이션과 결과 확인 시간은 2.6초라서, 약 1.6초 동안 애니메이션이 남아 있는데 이동이 시작될 수 있었다.
+
+### Reproduction steps
+
+1. AI가 포함된 게임을 시작한다.
+2. AI 차례가 되어 윷을 던지게 둔다.
+3. 윷 던지기 애니메이션이 끝나기 전에 AI 말 이동이 시작되는지 확인한다.
+
+### Suspected root cause
+
+- AI 이동 지연값이 윷 애니메이션/결과 확인 시간과 별도로 고정되어 있었다.
+
+### Confirmed root cause
+
+- `AI_MOVE_DELAY_MS`가 1000ms였고, `ROLL_ANIMATION_MS`와 `ROLL_RESULT_HOLD_MS`는 2600ms였다.
+- `autoPlayTurn()`은 `AI_MOVE_DELAY_MS`만 기다린 뒤 `movePiece()`를 호출했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 이전 응답에서는 소스 분석만 수행했다.
+  - Why it failed: 실제 코드 변경이 없어 증상이 계속 남았다.
+
+### Do not try again
+
+- AI 이동 지연을 윷 애니메이션 시간보다 짧게 유지하지 않는다.
+- 사람 플레이어 이동 guard만 수정하고 AI 자동 이동 경로를 방치하지 않는다.
+- CSS 애니메이션만 조정해서 해결하려고 하지 않는다.
+
+### Correct fix plan
+
+- AI 이동 지연을 윷 애니메이션 시간과 결과 확인 시간 중 더 긴 값에 맞춘다.
+- 순서 정하기 슬롯머신 수정과 분리된 최소 상수 변경으로 처리한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] AI 포함 게임에서 브라우저 시각 확인
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
+## 2026-07-01 - Issue #230 반복 윷 던지기/기기전 실패 진단 경로 고정
+
+### Symptom
+
+- Issue #230을 포함해 모바일 Game QA와 모바일 기기전 QA에서 윷 던지기, 말 이동, 원격 액션 대기, stale local state 계열 실패가 반복됐다.
+- 사용자는 같은 계열 이슈가 계속 이어져 앞으로도 해결되지 않을 것 같다고 보고했다.
+
+### Expected behavior
+
+- 사용자가 윷 던지기 또는 말 이동을 요청했는데 guard, pending action, authoritative rejection 때문에 진행할 수 없다면, 그 이유가 사용자 메시지와 QA debug state에 같은 형태로 남아야 한다.
+- 다음 실패는 추정성 패치가 아니라 마지막 액션의 type/message/reason을 기준으로 하나의 깨진 불변식만 추적할 수 있어야 한다.
+
+### Actual behavior
+
+- roll/move guard와 authoritative rejection은 일부 메시지를 표시했지만, QA가 일관되게 수집할 수 있는 마지막 액션 진단 값은 없었다.
+- 실패 시점의 `message`, dialog text, blocker 배열이 서로 분리되어 같은 증상을 다시 단일 원인으로 오판할 위험이 남아 있었다.
+
+### Suspected root cause
+
+- 온라인 상태 전환 자체가 여러 race를 포함하지만, 반복을 키운 직접 원인은 실패 reason을 하나의 진단 경로로 고정하지 못한 점이다.
+
+### Confirmed root cause
+
+- 앱 debug state에는 guard 배열이 있었지만 마지막으로 거부/실패한 액션의 type, 사용자 표시 메시지, reason 배열이 함께 보존되지 않았다.
+- QA failure summary도 액션 오류 dialog와 마지막 액션 진단 값을 요약에 포함하지 않아, 다음 실패 분석이 다시 로그 추정에 의존할 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 개별 stale lock, host 판정, autosave pending, QA timeout/race 분류를 각각 수정했다.
+  - Why it failed: 각 수정은 해당 blocker만 줄였고, 다음 blocker가 발생했을 때 동일한 진단 경로로 원인을 고정하지 못했다.
+
+### Do not try again
+
+- 버튼 disabled 조건만 완화하지 않는다.
+- 원인 확인 없이 원격 action timeout이나 Playwright timeout만 늘리지 않는다.
+- 실패 reason을 debug state에 남기지 않은 채 또 다른 상태 전이 패치를 하지 않는다.
+
+### Correct fix plan
+
+- roll/move 요청이 guard 또는 pending 중복으로 막히면 공통 진단 helper를 통해 사용자 메시지, 오류 dialog, 마지막 액션 진단 값을 동시에 기록한다.
+- authoritative reject/catch 경로도 같은 마지막 액션 진단 값으로 남긴다.
+- QA debug 수집과 failure summary에 액션 오류 dialog 및 마지막 액션 진단 값을 포함한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
+## 2026-07-01 - Issue #228 모바일 Game QA 이동 버튼 대기 및 기기전 대기실 잔류
+
+### Symptom
+
+- 모바일 Game QA가 `05 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 `move-piece-button` 활성화 대기 timeout으로 실패했다.
+- 모바일 기기전 QA가 `기기전 07 양쪽 게임 화면 준비 확인` 단계에서 Galaxy 페이지가 `waitingRoom`에 남아 timeout으로 실패했다.
+- 기기전 실패 debug state에는 `pieces`, `turnOrderIds`, `lastAppliedStateVersion`, `lastAppliedSequence`, `canRollNow`가 이미 존재해 게임 상태 구독은 완료된 상태였다.
+
+### Expected behavior
+
+- 윷 결과가 있고 현재 턴 플레이어가 이동 가능한 말이 있으면, 이전 선택 말이 stale이어도 이동 버튼 guard가 현재 턴의 이동 가능한 말로 보정되어야 한다.
+- 온라인 기기전에서 초기 게임 상태가 구독되면 room status snapshot 반영이 늦어도 게임 화면으로 진입해야 한다.
+
+### Actual behavior
+
+- `selectedPieceId`가 이전/다른 플레이어 말인 상태에서는 `selectedPiece`가 없거나 현재 턴 플레이어가 제어할 수 없어 `canMoveSelectedPiece`와 `canRequestMove`가 false가 됐다.
+- `moveSelectedPiece()`에는 fallback movable piece 이동 경로가 있었지만, 버튼이 disabled 상태라 QA와 사용자가 그 클릭 경로에 진입하지 못했다.
+- `subscribeGameState()`는 state 문서를 받아 로컬 게임 상태를 적용했지만, 화면 전환은 room 문서 `status === 'playing'`을 받는 `subscribeRoom()` 경로에 의존했다.
+
+### Suspected root cause
+
+- 선택 말 보정이 클릭 핸들러 내부에만 있어 disabled 계산보다 늦게 실행됐다.
+- 초기 state/current 저장과 room status `playing` 업데이트가 별도 비동기 경로라서, 기기전 한쪽 클라이언트가 state는 받았지만 room status snapshot은 늦게 받는 순간이 있었다.
+
+### Confirmed root cause
+
+- `canRequestMove`는 stale `selectedPieceId`를 fallback으로 보정하지 않고 `canMoveSelectedPiece`를 계산했다.
+- `subscribeGameState()`는 유효한 게임 state를 받아도 `screen`을 `game`으로 바꾸지 않아, `subscribeRoom()`의 status 업데이트가 지연되면 대기실에 남았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #220에서 이동 버튼 클릭 race와 기기전 조작 페이지 선택을 QA helper에서 일부 보강했다.
+  - Why it failed: 클릭 직전/후 race는 분류했지만, 버튼 disabled 원인인 stale selected piece를 앱 상태에서 선제 보정하지 못했다.
+- Attempt 2:
+  - What was changed: Issue #224에서 게임 화면 준비 실패 시 debug state를 수집하도록 QA assertion을 보강했다.
+  - Why it failed: 진단 정보만 늘렸고, state 구독 완료 후 room status 지연으로 화면이 대기실에 남는 앱 경로는 보정하지 않았다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- 이동 버튼 disabled 조건만 임의로 완화하지 않는다.
+- 게임 상태가 이미 구독된 기기전 실패를 단순 room list/로비 문제로 보지 않는다.
+- UI 레이아웃이나 컴포넌트 구조를 바꾸지 않는다.
+
+### Correct fix plan
+
+- 윷 결과가 있고 현재 턴이면, 선택 말이 이동 불가능할 때 현재 턴 플레이어가 이동 가능한 fallback piece로 `selectedPieceId`를 먼저 보정한다.
+- `subscribeGameState()`에서 유효한 게임 state(`pieces`, `turnOrderIds`)를 받았고 현재 화면이 대기실이면 `screen`을 `game`으로 전환해 room status snapshot 지연을 보완한다.
+- 기존 `moveSelectedPiece()` fallback 경로와 authoritative action 처리는 그대로 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No unrelated UI changes
+- [x] No new dependency
+
+## 2026-07-01 - Issue #226 모바일 기기전 QA roll no-state-change 오분류
+
+### Symptom
+
+- Issue #226에서 모바일 기기전 QA가 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 실패했다.
+- 선택된 Galaxy 페이지는 `canRollNow: true`이고 blocker가 없었지만, 윷 던지기 클릭 후 QA는 `no-state-change`로 실패했다.
+
+### Expected behavior
+
+- 기기전 QA는 실제 클릭한 기기의 debug state를 우선으로 클릭 전후 상태 변화를 비교해야 한다.
+- 원격 액션 pending을 한 번이라도 관측했다면, 로컬 watchdog이 pending 표시를 지운 뒤에도 이를 단순 `no-state-change`로 분류하지 않아야 한다.
+
+### Actual behavior
+
+- `waitForRollOutcomeAfterClick()`은 전체 pages 배열을 받지만 state advance/auto advance 판정에서 첫 번째 game page를 canonical state로 사용했다.
+- 기기전에서 실제 조작한 페이지가 두 번째 페이지이면 클릭 페이지의 sequence/version 변화가 canonical 비교에서 우선 반영되지 않았다.
+- 또한 pending을 관측했더라도 마지막 poll에서 pending이 사라져 있으면 `pending-timeout`이 아니라 `no-state-change`로 떨어질 수 있었다.
+
+### Suspected root cause
+
+- 기기전 QA helper가 실제 클릭 페이지 index를 roll outcome 판정에 전달하지 않았다.
+- pending 관측 이력과 마지막 pending 상태를 구분하는 과정에서, 상태 변화가 없는데 pending만 사라진 경우를 `no-state-change`로 오분류했다.
+
+### Confirmed root cause
+
+- `playOneAvailableGameActionAcrossPages()`는 선택한 page index를 알고 있었지만 `waitForRollOutcomeAfterClick()`에는 전달하지 않았다.
+- `hasStateAdvancedAcrossPages()`와 `didAutoAdvanceAfterRollAcrossPages()`는 클릭 페이지가 아니라 canonical page를 기준으로 먼저 비교했다.
+- `waitForRollOutcomeAfterClick()` 종료부는 `sawPendingTurnAction && lastHasPendingTurnAction`일 때만 pending timeout으로 분류했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #220에서 기기전 액션 선택은 `canRollNow`/`canRequestMove`를 우선하도록 보강했다.
+  - Why it failed: 선택한 페이지 index를 클릭 이후 outcome 판정까지 전달하지 않아, 실제 클릭 페이지와 상태 비교 기준 페이지가 분리될 수 있었다.
+- Attempt 2:
+  - What was changed: Issue #222에서 roll button transient blocker 오분류를 보강했다.
+  - Why it failed: 버튼 readiness 판정은 개선했지만, 클릭 이후 pending 해소/상태 변화 판정의 기준 페이지 문제는 남아 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- 앱 UI나 게임 로직을 원인 확인 없이 변경하지 않는다.
+- 기기전에서 실제 클릭한 페이지와 무관한 첫 번째 game page만 기준으로 상태 변화를 판단하지 않는다.
+- pending을 관측한 액션을 마지막 순간 pending이 지워졌다는 이유만으로 `no-state-change`로 분류하지 않는다.
+
+### Correct fix plan
+
+- 기기전 helper가 선택한 page index를 `playOneAvailableGameAction()`과 `waitForRollOutcomeAfterClick()`에 전달한다.
+- roll outcome의 state advance/auto advance 판정은 클릭 페이지를 우선 비교하고, 보조로 전체 page의 sequence/version 변화도 확인한다.
+- 실패 로그에 clicked page index와 클릭 페이지의 before/after blocker summary를 포함한다.
+- 상태 변화가 없고 pending을 한 번이라도 관측했다면 `pending-timeout`으로 분류한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No app UI changes
+- [x] No new dependency
+
+
+## 2026-07-01 - Issue #224 모바일 기기전 QA 게임 화면 전환 timeout
+
+### Symptom
+
+- Issue #224에서 모바일 기기전 QA가 `기기전 07 양쪽 게임 화면 준비 확인` 단계에서 실패했다.
+- iPad 페이지의 `game-screen`이 10초 안에 보이지 않아 `expectTwoPlayerGameReady()`의 `toBeVisible()` assertion이 timeout 됐다.
+- 같은 실패 로그에 Firestore `Commit` 요청의 `failed-precondition`/400 오류와 `expectedPreviousSequence` 값이 포함되어 있었다.
+
+### Expected behavior
+
+- 시작 버튼 클릭 이후 초기 게임 상태 저장과 room status 전환이 완료되어 iPad/Galaxy 양쪽이 게임 화면으로 진입해야 한다.
+- 게임 화면 진입이 지연되거나 실패하면 QA 실패 메시지에 현재 화면, 대기실 잔류 여부, 앱 메시지, debug state가 포함되어야 한다.
+
+### Actual behavior
+
+- 기존 `expectTwoPlayerGameReady()`는 `game-screen` visibility만 기다렸기 때문에, 실패 시 페이지가 대기실에 남았는지, room status 전환이 늦었는지, 초기 저장/sequence mismatch가 있었는지 확인할 정보가 부족했다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. Galaxy가 준비 완료를 누른 뒤 iPad가 시작 버튼을 클릭한다.
+3. `기기전 07 양쪽 게임 화면 준비 확인`에서 iPad와 Galaxy의 `game-screen` 전환을 확인한다.
+4. iPad 페이지가 10초 안에 `game-screen`을 표시하지 못하면 timeout으로 실패한다.
+
+### Suspected root cause
+
+- 게임 시작 직후 초기 `saveGameState()` 또는 host autosave가 Firestore sequence/precondition 충돌을 만나면서 room status `playing` 전환 또는 구독 반영이 지연된 것으로 추정된다.
+- 다만 실패 시점의 화면/debug state가 부족해 앱 로직을 즉시 수정하기보다 QA 진단을 먼저 보강해야 한다.
+
+### Confirmed root cause
+
+- 미확정. 현재 조치에서는 앱 동작을 바꾸지 않고 실패 시점의 화면/debug state를 수집하도록 QA assertion만 보강했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #216에서 autosave sequence mismatch 결과 처리와 sequence ref 보정을 보강했다.
+  - Why it failed: 액션 진행 중 stale local turn state는 줄였지만, 게임 시작 직후 화면 전환 timeout의 실패 시점 정보를 충분히 남기지는 못했다.
+- Attempt 2:
+  - What was changed: Issue #222에서 roll button transient blocker 오분류를 QA helper에서 보강했다.
+  - Why it failed: 이번 실패는 roll/move 액션 이전의 게임 화면 진입 단계라 해당 helper가 관여하지 않는다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI/CSS나 게임 보드 렌더링을 원인 확인 없이 변경하지 않는다.
+- roll/move action helper를 이번 증상의 직접 원인으로 단정해 수정하지 않는다.
+- Firestore sequence/precondition 실패를 테스트에서 무시하지 않는다.
+
+### Correct fix plan
+
+- `expectTwoPlayerGameReady()`에서 `game-screen` 대기 실패 시 현재 화면, waiting room text, game text, 앱 메시지, 기대 플레이어 표시 여부, `window.__YUT_DEBUG_STATE__`를 assertion 메시지에 포함한다.
+- 앱 로직 변경은 보강된 실패 정보로 초기 저장 실패, room status 전환 지연, 구독 반영 문제 중 실제 원인을 확인한 뒤 별도 최소 패치로 진행한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile device-to-device QA rerun checked
+- [x] No app UI changes
+- [x] No new dependency
+
+## 2026-07-01 - Issue #222 모바일 Game QA roll-yut-button disabled 오분류
+
+### Symptom
+
+- Issue #222에서 모바일 Game QA가 `roll-yut-button`을 찾은 뒤 enabled 대기에서 실패했다.
+- 실패 메시지는 버튼이 보이면 활성화되어야 한다는 QA assertion에서 발생했다.
+
+### Expected behavior
+
+- `roll-yut-button`이 보이더라도 저장/원격 액션/roll lock/차례 순서 연출 같은 일시 상태면 QA가 즉시 실패하지 않고 대기 상태로 분류해야 한다.
+- transient 상태가 아닌 차단이면 `rollActionBlockReasons` 등 debug guard 값을 포함해 원인을 드러내야 한다.
+
+### Actual behavior
+
+- `playOneAvailableGameAction()`은 `roll-yut-button` visibility만 확인한 뒤 `toBeEnabled()`를 기대했다.
+- 앱은 `canSubmitTurnAction`이 true이면 `roll-yut-button`을 렌더링하지만, 실제 disabled 여부는 더 좁은 `canRollNow`와 roll 전용 blocker에 의해 결정된다.
+- 따라서 `roll-in-progress`, `pending-local-remote-action`, `processing-remote-action`, `saving-host-state`, `roll-locked` 같은 transient blocker가 있는 정상 대기 상태도 테스트 실패로 오분류될 수 있었다.
+
+### Suspected root cause
+
+- 모바일/Firebase 타이밍에서 버튼 DOM visibility와 실제 roll 가능 guard 사이에 transient gap이 발생했다.
+- QA helper가 debug guard를 확인하지 않고 visibility 기반으로 enabled를 강제 기대했다.
+
+### Confirmed root cause
+
+- 코드상 roll 버튼 처리 경로가 `collectGameDebugState()`의 `canRollNow`/`rollActionBlockReasons`를 확인하기 전에 `toBeEnabled()`를 호출했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #220에서 기기전 액션 선택은 `canRollNow`/`canRequestMove`를 우선하도록 보강했다.
+  - Why it failed: 단일 페이지 `playOneAvailableGameAction()`의 roll 버튼 enabled 대기 경로에는 같은 transient 분류가 적용되지 않았다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- 앱 UI나 게임 로직을 원인 확인 없이 변경하지 않는다.
+- `roll-yut-button` visibility만으로 즉시 enabled를 기대하지 않는다.
+- transient roll blocker를 실패로 단정하지 않는다.
+
+### Correct fix plan
+
+- `playOneAvailableGameAction()`의 roll 버튼 경로에서 enabled assertion 전에 debug state를 수집한다.
+- `rollActionBlockReasons`가 transient blocker이면 `wait`로 분류하고 다음 QA tick에서 다시 판단한다.
+- transient blocker가 아닌데 disabled이면 debug blocker 요약을 포함해 실패시킨다.
+- 앱 소스/UI는 변경하지 않고 QA helper와 실패 이력만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No app UI changes
+- [x] No new dependency
+
+## 2026-07-01 - Issue #220 모바일 QA 이동/기기전 액션 race 오분류
+
+### Symptom
+
+- Issue #220에서 모바일 Game QA가 `move-piece-button` 클릭 실패로 중단됐다.
+- 같은 이슈의 기기전 QA는 roll 클릭 이후 `no-state-change` 또는 `roll-blocked`로 분류됐다.
+
+### Expected behavior
+
+- 이동 버튼이 ready로 관측된 직후 앱 상태가 이미 다음 턴으로 진행되어 버튼이 사라진 경우에는 QA가 이를 클릭 실패로 오분류하지 않아야 한다.
+- 기기전 QA는 단순 버튼 visibility가 아니라 현재 페이지의 `canRequestMove`/`canRollNow` debug 상태를 기준으로 실제 조작 가능한 기기를 우선 선택해야 한다.
+
+### Actual behavior
+
+- `playOneAvailableGameAction()`은 이동 버튼 클릭 catch 이후 pending/holding/stale-local-move만 wait로 분류했고, 이미 `roll: null` 및 다음 roll 가능 상태로 진행된 경우를 정상 진행으로 인정하지 않았다.
+- `playOneAvailableGameActionAcrossPages()`는 여러 기기 중 버튼이 보이는 첫 페이지를 선택해, transient 상태에서 실제 local turn/action 가능 페이지보다 visibility만 먼저 잡힌 페이지를 조작할 수 있었다.
+
+### Suspected root cause
+
+- 앱 상태 전환과 Playwright locator click 사이의 짧은 race를 QA helper가 정상 자동 진행으로 분류하지 못했다.
+- 기기전 액션 선택 기준이 debug guard 상태보다 DOM visibility에 치우쳐 있었다.
+
+### Confirmed root cause
+
+- 코드상 이동 클릭 catch 경로에는 `hasStateAdvanced()` 기반의 진행 완료 판정이 없었다.
+- 코드상 기기전 페이지 선택은 `isPlayableActionVisible()` 순회가 먼저라 `canRollNow`/`canRequestMove`를 우선하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 이전 이슈들에서 pending remote/action processing, stale turn/roll state 분류를 보강했다.
+  - Why it failed: 이동 버튼 클릭 직전 상태가 이미 다음 턴으로 전환되는 click race와 기기전 조작 페이지 선택 기준은 별도로 해결하지 못했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- 앱 UI나 게임 로직을 원인 확인 없이 변경하지 않는다.
+- 기기전에서 단순 버튼 visibility만으로 조작 페이지를 선택하지 않는다.
+- 이미 진행된 move를 클릭 실패로 단정하지 않는다.
+
+### Correct fix plan
+
+- 이동 버튼 click catch에서 클릭 전/후 debug state를 비교해 이미 `roll: null`, `rollResultHolding: false`, 상태 sequence/version 또는 다음 roll 가능 UI로 전환된 경우 자동 진행으로 분류한다.
+- 기기전 helper는 `canRequestMove === true` 또는 `canRollNow === true`이고 block reason이 없는 페이지를 우선 선택한다.
+- 앱 소스/UI는 변경하지 않고 QA helper와 실패 이력만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] GitHub Actions mobile QA rerun checked
+- [x] No app UI changes
+- [x] No new dependency
+
+## 2026-07-01 - 윷 던지기 무반응 재발 원인 재점검
+
+### Symptom
+
+- 사용자가 "윷 던지기"를 눌러도 아무 액션이 일어나지 않는 상태가 여전히 재현된다고 보고했다.
+- 이전 BUG_HISTORY에는 같은 계열의 "윷 던지기 무반응" 항목이 여러 차례 누적되어 있다.
+
+### Expected behavior
+
+- 버튼이 눌릴 수 있는 상태라면 클릭 직후 로컬/원격 처리 경로 중 하나가 반드시 진행되고, 실패하더라도 사용자에게 실패 사유가 표시되어야 한다.
+- 방장 승계, 원격 클라이언트, 두 번째 턴, 저장 pending 등 온라인 상태 차이에 따라 처리 경로가 엇갈려도 버튼 클릭이 무음으로 사라지면 안 된다.
+
+### Actual behavior
+
+- 이전 수정들은 `rollInProgress` stale lock, `clearRoll()` 누락, `isRoomHost`와 실제 `room.hostId` 불일치, host autosave pending race처럼 각각 발견된 단일 차단 조건을 부분적으로 해결했다.
+- 그러나 클릭 핸들러 초입의 `if (!activeSeat || !canRollNow) return;` 경로는 여전히 아무 메시지 없이 종료된다.
+- 따라서 `canRollNow`를 막는 새로운/잔여 조건이 발생하면 사용자는 버튼을 눌렀는데 아무 액션이 없는 것처럼 보게 된다.
+
+### Suspected root cause
+
+- 같은 증상이 여러 원인으로 반복됐는데, 이전 패치는 각 원인을 개별적으로 제거했을 뿐 "클릭이 왜 차단됐는지"를 사용자/로그에 드러내는 공통 진단 경로가 부족했다.
+- 현재 코드에도 `rollActionBlockReasons` debug 값은 있지만 실제 `rollYut()`의 조기 반환 시 사용자 메시지나 영구 로그로 연결되지 않는다.
+
+### Confirmed root cause
+
+- 미확정. 이번 요청에서는 같은 버그가 이미 여러 번 실패한 규칙에 해당하므로, 즉시 추가 코드 수정을 하지 않고 재발 원인 분석만 기록한다.
+
+### Previous failed attempts
+
+- Attempt 4:
+  - What was changed: 윷 던지기 차단/오류 경로를 팝업으로 표시하면서 버튼 disabled 조건까지 완화했다.
+  - Why it failed: BUG_HISTORY의 "버튼 disabled 조건만 완화하지 않는다" 원칙을 벗어나 정상적인 비활성 상태까지 클릭 가능하게 만드는 범위 초과 변경이었다.
+- Attempt 1:
+  - What was changed: 원격 클라이언트 state sync 경로에서 stale `rollInProgress`를 해제했다.
+  - Why it failed: 방장 로컬 `clearRoll()` 경로에서 남는 stale lock은 직접 해제하지 못했다.
+- Attempt 2:
+  - What was changed: `clearRoll()`에서 roll 진행 잠금을 함께 초기화했다.
+  - Why it failed: 방장 승계/복구 타이밍에서 `isRoomHost` state만 보고 원격 action queue로 빠지는 경로는 남아 있었다.
+- Attempt 3:
+  - What was changed: 실제 `room.hostId === currentUserId`를 포함한 effective host 판정으로 host action 경로를 보강했다.
+  - Why it failed: 사용자가 다시 무반응을 보고했으므로, 버튼 disabled/host 판정 외에 다른 `canRollNow` 차단 또는 클릭 처리 조기 반환 경로가 남아 있을 가능성이 크다.
+
+### Do not try again
+
+- 버튼 disabled 조건만 완화하지 않는다.
+- `rollInProgress`만 계속 초기화하는 식으로 같은 접근을 반복하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- 실제 차단 reason을 수집하지 않은 상태에서 또 다른 추정성 game state 패치를 하지 않는다.
+
+### Correct fix plan
+
+- 다음 수정 전, 재현 시점의 `rollActionBlockReasons`, `canRollNow`, `canSubmitTurnAction`, `isRemoteActionClient`, `canHostRoom`, `rollInProgress`, `pendingLocalRemoteActionCount`, `processingActionCount`, `activeSeat/localSeatId`를 함께 확인한다.
+- `rollYut()` 조기 반환 경로가 발생할 때 debug reason을 사용자 메시지 또는 QA 로그로 남기는 최소 진단 패치를 먼저 고려한다.
+- 진단 결과가 누적되면 실제 차단 조건 하나만 대상으로 최소 수정한다.
+
+### Verification checklist
+
+- [ ] Reproduction state captured with roll block reasons
+- [ ] Related feature still works
+- [ ] No unrelated UI changes
+- [ ] No console errors
+
+## 2026-06-30 - 세로모드 플레이어 카드 한 줄 스타일 미적용
+
+### Symptom
+
+- 모바일 세로모드 화면에서 플레이어 카드가 여전히 P라벨, 이름, 순서, 상태를 여러 줄로 표시했다.
+- 카드 높이가 줄지 않아 말판이 아래로 밀려 스크롤이 필요했다.
+
+### Expected behavior
+
+- 세로모드에서는 플레이어 카드가 `P1-이름 · 순서 · 상태` 형태의 한 줄 요약으로 표시되어야 한다.
+- 플레이어 카드 영역이 줄어 말판이 더 빨리 보여야 한다.
+
+### Actual behavior
+
+- 기존 수정은 `max-width: 900px` 조건에 묶여 있어 실제 모바일 브라우저/배포 화면에서 세로모드 규칙이 적용되지 않는 경우가 있었다.
+- 그 결과 새로 추가한 `.player-mobile-line`이 보이지 않고 기존 여러 줄 요소가 계속 표시됐다.
+
+### Confirmed root cause
+
+- 기본 JSX가 별도 라벨 `P1`과 이름 문자열 `P1-이름`을 동시에 출력해, 반응형 CSS가 적용되지 않거나 fallback 규칙으로 떨어질 때 P라벨이 중복 표시됐다.
+- 좁은 화면 fallback인 `@media (max-width: 767px)`에서는 `.players`가 1열로 돌아가 카드 높이가 커질 수 있었다.
+- 사용자 요구는 실제 모바일 좁은 화면과 세로모드 둘 다에서 동작해야 하므로, 플레이어 카드 한 줄 규칙은 `@media (orientation: portrait), (max-width: 767px)` 기준으로 적용되어야 한다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 카드 `gap`, `padding`, `font-size`, `line-height`만 줄였다.
+  - Why it failed: 여러 줄 구조를 한 줄 구조로 바꾸지 못했다.
+- Attempt 2:
+  - What was changed: `.player-mobile-line`과 viewport meta를 추가했다.
+  - Why it failed: 플레이어 카드 세로모드 규칙이 여전히 `max-width: 900px` 조건에 묶여 실제 화면에서 적용되지 않는 경우가 남았다.
+- Attempt 3:
+  - What was changed: 기존 모바일 규칙 뒤에 `aside.players` 대상 `!important` 보강 CSS를 추가했다.
+  - Why it failed: 이미 같은 목적의 `.player-mobile-line` 모바일 규칙이 존재했는데 실제 DOM/CSS 적용 경로를 확인하지 않고 중복 규칙만 덧붙였다. 스크린샷처럼 모바일 요약과 기존 P라벨/배지/상태가 같이 보이는 상태는 플레이어 카드 내부 요소를 명확히 분리해 타겟하지 않으면 재발할 수 있다.
+- Attempt 4:
+  - What was changed: 카드 이름에서 `P1-` 같은 좌석 라벨 prefix만 제거했다.
+  - Why it failed: 모바일 요약과 데스크톱용 라벨/이름/배지/상태를 동시에 렌더링한 뒤 CSS로 숨기는 구조 자체는 그대로 남아, fallback 상태에서 카드가 여러 줄로 커지는 문제를 해결하지 못했다.
+
+### Do not try again
+
+- 카드 여백 숫자만 줄이지 않는다.
+- `orientation` 조건에만 의존하거나 `max-width` fallback을 방치해서 모바일 게임 화면 플레이어 카드 규칙을 적용하지 않는다.
+- JSX에서 `P1` 라벨과 `P1-이름`을 동시에 출력하지 않는다.
+- 실제 적용 여부 확인 없이 “수정 완료”라고 보고하지 않는다.
+- 이미 존재하는 모바일 규칙 뒤에 같은 내용의 `!important` 보강 블록만 추가하지 않는다.
+
+### Correct fix plan
+
+- 게임 화면의 플레이어 카드 한 줄 요약 규칙을 `@media (orientation: portrait), (max-width: 767px)` 기준으로 적용한다.
+- 기본 이름 문자열에서는 P라벨을 제거해 fallback 상태에서도 P라벨이 한 번만 보이게 한다.
+- 기존 데스크톱/가로모드 표시는 유지한다.
+- 게임 화면 플레이어 패널과 카드 내부 요소에 전용 클래스를 부여해 로비/대기실의 `.players`, `.player` 규칙과 섞이지 않게 한다.
+- 중복 `!important` 보강 블록을 제거하고, 한 곳의 모바일 규칙에서 전용 클래스만 타겟한다.
+- 수정 후 빌드뿐 아니라 모바일 브라우저/Playwright viewport에서 실제 DOM computed style을 확인한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Real mobile portrait browser checked after deploy
+- [x] No new dependency
+
+
+## 2026-06-30 - Issue #154 Playwright game QA turnOrderIntro stale state timeout
+
+### Symptom
+
+- PR #153 merge 후 `Merged PR QA and Deploy`의 Playwright E2E가 `Run Playwright tests` 단계에서 실패했다.
+- iPad/Galaxy 단일 QA와 iPad device-to-device QA가 게임 액션 루프 중 timeout 또는 page/context closed 오류로 실패했다.
+- artifact 화면에서는 게임 화면에서 roll 버튼이 비활성 대기 상태이거나, 방 종료 후 lobby로 돌아간 상태가 확인됐다.
+
+### Expected behavior
+
+- 차례 순서 안내 `turnOrderIntro`의 `readyAt`이 지난 뒤에는 게임 액션, AI autoplay, remote action 처리가 진행되어야 한다.
+- 상태 동기화가 실패하더라도 만료된 intro가 영구적으로 게임 진행을 막으면 안 된다.
+
+### Actual behavior
+
+- host autosave fingerprint에 `turnOrderIntro`가 빠져 intro 해제 상태 변경이 저장 트리거에서 누락될 수 있었다.
+- Firestore에 만료된 `turnOrderIntro`가 남으면 `canSubmitTurnAction`, AI autoplay, remote action 처리가 계속 차단됐다.
+- Playwright helper는 game 화면 이탈이나 context close를 조기 실패로 드러내지 못하고 roll 결과 대기를 반복하다 전체 test timeout에 도달했다.
+
+### Confirmed root cause
+
+- `turnOrderIntro` 해제 상태가 autosave fingerprint에 포함되지 않았고, 만료된 intro를 active 상태와 동일하게 취급하는 조건들이 남아 있었다.
+- authoritative roll reducer도 Firestore의 만료된 `turnOrderIntro`를 그대로 진행 차단 조건으로 사용했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: PR #153에서 roll 이후 실제 상태 변화 관측을 강화했다.
+  - Why it failed: 테스트의 false positive는 줄였지만, 앱의 stale `turnOrderIntro` 동기화 버그 자체는 해결하지 못했다.
+- Attempt 2:
+  - What was changed: 이전 이슈들에서 Playwright coverage와 debug state를 여러 차례 보강했다.
+  - Why it failed: timeout 원인인 상태 머신 차단 조건과 Firestore intro 완료 커밋 경로가 남아 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled roll/move 버튼을 테스트에서 강제로 클릭하지 않는다.
+- `turnOrderIntro`를 단순히 UI에서만 숨기고 Firestore 상태 정리를 생략하지 않는다.
+- 만료 여부 확인 없이 raw `turnOrderIntro` 존재만으로 액션을 차단하지 않는다.
+
+### Correct fix plan
+
+- autosave fingerprint에 `turnOrderIntro`를 포함한다.
+- 만료된 intro는 UI, action guard, authoritative reducer에서 active intro로 취급하지 않는다.
+- host가 `readyAt` 이후 idempotent transaction으로 `turnOrderIntro: null`을 Firestore에 기록한다.
+- Playwright helper는 game 화면 이탈/page close를 즉시 원인 포함 실패로 보고한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] GitHub Actions Playwright rerun checked
+- [x] No unrelated UI redesign
+
+
+## 2026-06-30 - Issue #148 모바일 기기전 QA host 방 생성 중 대기실 진입 timeout
+
+### Symptom
+
+- PR #147 이후 `mobile device-to-device QA`의 `기기전 04 iPad 방 생성 및 대기실 진입` 단계에서 timeout이 발생했다.
+- 실패 로그에서 iPad host는 `screen: "lobby"`, notice `방을 만드는 중입니다. 잠시만 기다려주세요...`, create button `방 만드는 중...` disabled 상태였고 `waiting-room`이 표시되지 않았다.
+
+### Expected behavior
+
+- host가 방 만들기를 누르면 방 생성 전 정리 작업이 지연되더라도 새 방 생성 또는 timeout 복구 경로로 진행해야 한다.
+- 선행 cleanup 지연 때문에 대기실 전환 전 상태에 무기한 가깝게 머물면 안 된다.
+
+### Actual behavior
+
+- `handleCreateRoom()`은 `leaveDuplicatePlayerRooms(roomHost.uid)`와 `leavePreviousOnlineRoom()`을 `createRoom()` 호출 전에 순차적으로 await했다.
+- `CREATE_ROOM_TIMEOUT`은 sign-in 및 `createRoom()`에만 적용되어 선행 cleanup 지연 시 버튼은 계속 `방 만드는 중...` 상태로 남을 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad host가 QA 방 제목을 입력하고 방 만들기를 누른다.
+3. Firestore cleanup 또는 이전 방 정리 단계가 지연된다.
+4. `createRoom()` 또는 `openWaitingRoom()`까지 도달하지 못하면 `waiting-room` visible assertion이 timeout된다.
+
+### Suspected root cause
+
+- 방 생성 전 선행 cleanup await에 제한 시간이 없어 모바일 WebKit/Firestore CI 타이밍에서 대기실 진입 경로가 막힌 것으로 보인다.
+
+### Confirmed root cause
+
+- 코드 경로상 `handleCreateRoom()`의 선행 cleanup 두 단계는 `CREATE_ROOM_TIMEOUT` race 밖에서 await되고 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #142에서 host 생성 후 `openWaitingRoom()` 내부 중복 방 정리 await를 non-host 참여 경로로 제한했다.
+  - Why it failed: Issue #148은 `openWaitingRoom()` 진입 후가 아니라 `방 만드는 중...` 상태로 남아, 생성 전 cleanup/create 단계 지연에 더 가깝다.
+- Attempt 2:
+  - What was changed: Issue #136에서 대기실 진입 실패 로그를 보강했다.
+  - Why it failed: 진단은 가능해졌지만 `handleCreateRoom()` 선행 cleanup 지연은 제한하지 않았다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 시작 버튼/방장 권한 문제로 단정해 `canManageRoom`만 수정하지 않는다.
+- 원인 확인 없이 방 생성, 인증, room cleanup 경로를 넓게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- host 방 생성 전 cleanup은 짧은 제한 시간 안에서만 기다리고, 실패 또는 지연 시 warning을 남긴 뒤 방 생성을 계속 진행한다.
+- 기존 참여자 join 경로의 중복 방 보호 정리는 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #142 모바일 기기전 QA host 대기실 전환 지연
+
+### Symptom
+
+- PR #141 이후 `mobile device-to-device QA`의 `기기전 04 iPad 방 생성 및 대기실 진입` 단계에서 timeout이 발생했다.
+- iPad host가 방 만들기를 누른 뒤 Firestore 방 카드는 로비에 보였지만, 화면은 `screen: "lobby"`와 `방으로 이동하는 중입니다...` 상태에 머물렀고 `waiting-room`이 표시되지 않았다.
+
+### Expected behavior
+
+- host가 방 생성에 성공하면 새 방 대기실로 즉시 전환되어야 한다.
+- 생성된 방이 이미 보호 대상이면 대기실 전환 전 중복 방 정리 작업이 새 방 입장을 불필요하게 지연시키지 않아야 한다.
+
+### Actual behavior
+
+- `openWaitingRoom()`은 host 생성 경로에서도 `leaveDuplicatePlayerRooms(joiningUser.uid, room.id)`를 다시 await했다.
+- `handleCreateRoom()`은 새 방 생성 전에 이미 같은 host uid의 중복 방 정리를 수행하므로, 새 방 생성 후 대기실 상태 전환 전에 같은 정리 작업을 다시 기다릴 필요가 없었다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad host가 QA 방 제목을 입력하고 방 만들기를 누른다.
+3. Firestore에는 QA 방이 생성되어 로비 카드가 보인다.
+4. 대기실 상태 전환 전에 정리 작업이 지연되면 `waiting-room` visible assertion이 timeout된다.
+
+### Suspected root cause
+
+- 새 방 생성 후 host 대기실 전환 전에 중복 방 정리 작업을 다시 await하면서, 모바일 WebKit/Firestore CI 타이밍에서 `setActiveRoomId()`와 `setScreen('waitingRoom')`까지 도달하지 못한 것으로 보인다.
+
+### Confirmed root cause
+
+- 코드 경로상 host 생성 직전 `handleCreateRoom()`에서 `leaveDuplicatePlayerRooms(roomHost.uid)`를 이미 await한 뒤에도, 생성 직후 `openWaitingRoom()`에서 host를 `joiningUser`로 취급해 `leaveDuplicatePlayerRooms(joiningUser.uid, room.id)`를 다시 await했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #136에서 대기실 진입 실패 로그가 보강되었다.
+  - Why it failed: 진단은 강화되었지만 host 대기실 전환 전 중복 정리 await 경로는 그대로 남아 있었다.
+- Attempt 2:
+  - What was changed: Issue #128에서 host uid fallback 및 방장 권한 경로가 보강되었다.
+  - Why it failed: Issue #142는 방장 권한 미노출이 아니라 `waiting-room` 자체로 전환되기 전 정리 await가 지연되는 경로였다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 시작 버튼/방장 권한 문제로 단정해 `canManageRoom`만 수정하지 않는다.
+- 원인 확인 없이 방 생성, 인증, room cleanup 경로를 넓게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- host 생성 경로에서는 새 방 생성 전에 이미 중복 방 정리를 수행했으므로, `openWaitingRoom()`의 새 방 입장 전 중복 방 정리 await는 비-host 참여 경로에만 적용한다.
+- 기존 참여자 join 경로의 중복 방 보호 정리는 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #140 모바일 기기전 QA 이동 커버리지 재발 진단
+
+### Symptom
+
+- PR #139 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 다시 실패했다.
+- 기기전 루프는 목표 액션과 윷 던지기 커버리지를 통과했지만 `coverage.manualMoved + coverage.autoWaited`가 0으로 남아 이동/자동 이동 검증 assertion이 실패했다.
+
+### Expected behavior
+
+- 실패 시 어떤 액션들이 10개 이상 진행되었는지, 전체 coverage 카운터와 양쪽 기기의 debug state가 assertion 메시지에 남아야 한다.
+- 실제 이동 경로가 누락된 것인지, 아이템/함정/roll 액션만으로 목표 액션이 채워진 것인지 구분할 수 있어야 한다.
+
+### Actual behavior
+
+- Issue #138의 갈림길 이동 카운터 누락 보강 후에도 같은 최종 assertion이 재발했다.
+- 기존 실패 메시지는 `manualMoved + autoWaited`가 0이라는 결과만 보여 주고, `coverage` 전체와 액션 이력을 함께 보여 주지 않아 다음 원인을 확정하기 어려웠다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프가 10개 이상 액션을 진행한다.
+4. 루프 종료 후 `manualMoved + autoWaited`가 0이면 실패한다.
+
+### Suspected root cause
+
+- PR #139의 `branchMoved` -> `manualMoved` 반영은 현재 코드에 존재하므로, 같은 갈림길 누락만으로 단정하기 어렵다.
+- 실제 이동 실패보다는 기기전 QA 커버리지 집계가 아이템/함정/roll 등 일부 정상 진행 조합을 이동 검증 실패로 오판했을 가능성이 있다.
+- 다만 실패 로그에 전체 coverage와 action history가 없어 확정할 수 없다.
+
+### Confirmed root cause
+
+- 아직 미확정. 이번 변경은 반복 실패 원인을 확정하기 위한 QA 실패 로그 보강이다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #138에서 갈림길 이동 버튼 클릭 성공 시 `coverage.manualMoved`를 증가시켰다.
+  - Why it failed: PR #139 이후에도 같은 최종 assertion이 재발했고, 실패 로그만으로는 실제 액션 조합을 확인할 수 없었다.
+- Attempt 2:
+  - What was changed: Issue #130에서 일반 이동 버튼이 사라지고 roll이 clear된 경우 자동 이동으로 인정하도록 보강했다.
+  - Why it failed: 이번 재발은 일반 이동 버튼 자동 진행 경합인지, 아이템/함정/roll 위주 진행인지 구분할 정보가 부족했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- `manualMoved` 또는 `autoWaited`를 무조건 증가시키는 식으로 assertion을 우회하지 않는다.
+
+### Correct fix plan
+
+- 먼저 `playUntilActionsAcrossPages()`의 최종 assertion 실패 메시지에 `coverage`, `actionHistory`, 양쪽 `debugStates`를 포함한다.
+- 다음 실패 로그에서 어떤 액션 조합으로 목표 액션이 채워졌는지 확인한 뒤, 실제 누락된 경로만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [ ] No unrelated UI changes
+
+
+## 2026-06-30 - Issue #138 모바일 기기전 QA 갈림길 이동 커버리지 누락
+
+### Symptom
+
+- PR #137 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 실패했다.
+- 기기전 루프는 목표 액션과 윷 던지기 커버리지를 통과했지만 `coverage.manualMoved + coverage.autoWaited`가 0으로 남아 이동/자동 이동 검증 assertion이 실패했다.
+
+### Expected behavior
+
+- 일반 이동 버튼, 자동 이동 대기뿐 아니라 갈림길 선택 후 이동 버튼을 누른 경우도 실제 수동 이동 커버리지로 집계되어야 한다.
+
+### Actual behavior
+
+- `handleBranchMove()`는 갈림길 버튼 선택 횟수만 기록하고, 실제 `.branch-move-button` 클릭 성공 후에도 `manualMoved`를 증가시키지 않았다.
+- 따라서 갈림길 이동만 발생한 정상 진행도 마지막 이동 커버리지 assertion에서 이동 검증 없음으로 오판될 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프 중 갈림길 이동 경로가 실제 이동을 처리한다.
+4. 루프 종료 후 `manualMoved + autoWaited`가 0이면 실패한다.
+
+### Suspected root cause
+
+- Issue #130 계열의 이동 버튼/자동 진행 커버리지 보강 이후에도, 갈림길 이동은 별도 카운터만 증가하고 최종 이동 검증 assertion에는 포함되지 않았다.
+
+### Confirmed root cause
+
+- `handleBranchMove()`에서 실제 이동 버튼 클릭 성공 후 `coverage.manualMoved`를 증가시키지 않아 QA 커버리지 집계가 실제 이동 경로를 누락했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #130에서 일반 `move-piece-button`이 사라지고 `roll`이 clear된 경우 자동 이동으로 인정하도록 보강했다.
+  - Why it failed: 갈림길 이동 버튼 경로는 일반 `move-piece-button` 경로가 아니라 별도 `handleBranchMove()`에서 처리되어 해당 커버리지 보강 대상에 포함되지 않았다.
+- Attempt 2:
+  - What was changed: 이동 버튼/대기실/Firestore 관련 모바일 QA 진단과 상태 동기화 보강이 여러 차례 이루어졌다.
+  - Why it failed: Issue #138의 실패 지점은 앱 진행 고착이 아니라 테스트 커버리지 카운터 누락이었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 앱 자동 이동 또는 갈림길 이동 로직을 원인 확인 없이 변경하지 않는다.
+- 실제 이동이 아닌 콘솔 transient 문제로 단정하지 않는다.
+
+### Correct fix plan
+
+- `handleBranchMove()`에서 갈림길 이동 버튼 클릭 성공 시 branch 이동 전용 카운터와 함께 `manualMoved`도 증가시킨다.
+- 기존 최종 assertion은 유지해 일반 이동, 자동 이동, 갈림길 수동 이동을 모두 같은 이동 검증 범위로 집계한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [ ] No unrelated UI changes
+
+
+## 2026-06-30 - Issue #136 모바일 기기전 QA 대기실 진입 timeout 재발
+
+### Symptom
+
+- PR #135 이후 `mobile device-to-device QA`의 `기기전 04 iPad 방 생성 및 대기실 진입` 단계에서 timeout이 발생했다.
+- iPad host가 방 제목을 입력하고 `create-room-button`을 클릭했지만, 25초 안에 `waiting-room`이 visible 상태가 되지 않았다.
+
+### Expected behavior
+
+- iPad host가 방을 만들면 방 생성에 사용한 host 사용자로 대기실에 진입해야 한다.
+- 실패하더라도 화면 상태, lobby notice, create button, matching room card, `__YUT_DEBUG_STATE__`가 실패 로그에 남아야 한다.
+
+### Actual behavior
+
+- assertion은 `waitingRoom.visible`이 `true`가 되는지만 검사했고, 실패 이슈에서 이미 수집 중인 transition debug state 전체가 충분히 드러나지 않았다.
+- 방 생성 실패, `openWaitingRoom()` 실패, subscription/cleanup에 의한 lobby 복귀 중 어느 경로인지 확정하기 어려웠다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 iPad/WebKit 기기전 프로젝트에서 실행한다.
+2. iPad host page에서 QA 방 제목을 입력한다.
+3. `create-room-button`을 클릭한다.
+4. `waiting-room` visible poll이 timeout되면 실패한다.
+
+### Suspected root cause
+
+- Issue #126의 대기실 진입 timeout과 같은 계열의 반복 실패지만, 현재 로그만으로 앱 로직의 정확한 실패 지점은 확정되지 않았다.
+- 기존 `collectLobbyTransitionDebugState()`는 필요한 정보를 수집하지만, poll matcher가 `waitingRoom.visible` 비교 중심이라 다음 원인 구분에 필요한 전체 상태가 실패 로그에 충분히 남지 않았다.
+
+### Confirmed root cause
+
+- 아직 미확정. 이번 변경은 반복 실패 원인을 확정하기 위한 QA 실패 로그 보강이다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #126에서 iPad 방 생성 후 대기실 진입 assertion에 lobby notice, create button, waiting-room, matching room card, `__YUT_DEBUG_STATE__` 수집 함수를 추가했다.
+  - Why it failed: 수집 함수는 생겼지만 matcher 실패 출력이 전체 수집값을 안정적으로 드러내지 않아 Issue #136에서도 실제 전환 실패 지점을 확정하기 어려웠다.
+- Attempt 2:
+  - What was changed: Issue #128에서 host uid fallback 및 방장 권한 경로를 보강했다.
+  - Why it failed: Issue #136은 시작 버튼 미노출이 아니라 `waiting-room` 자체 미표시라 같은 원인으로 단정할 수 없다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 시작 버튼/방장 권한 문제로 단정해 `canManageRoom`만 수정하지 않는다.
+- 원인 확인 없이 방 생성, 인증, room cleanup 경로를 넓게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- 먼저 기기전 host 방 생성 poll 실패 시 `collectLobbyTransitionDebugState()` 전체 객체가 assertion actual value로 남도록 테스트 진단만 최소 보강한다.
+- 다음 실패 로그에서 방 생성 실패, `openWaitingRoom()` 실패, subscription/cleanup에 의한 lobby 복귀를 구분한다.
+- 원인이 확인된 뒤 앱 로직의 해당 경로만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [ ] No unrelated UI changes
+
+## 2026-06-30 - Issue #133 모바일 QA Firestore transient 콘솔 에러 반복
+
+### Symptom
+
+- iPad 모바일 Game QA의 `06 콘솔 에러 허용 범위 확인` 단계에서 transient Firestore 콘솔 에러가 2개 수집되어 허용치 1개를 초과했다.
+- 로그에는 Firestore Commit `already-exists` 계열과 `Failed to load resource` 400/409 계열이 함께 나타났다.
+
+### Expected behavior
+
+- 사용자 진행을 막는 blocking console/page error는 없어야 한다.
+- Firestore transaction retry 과정에서 함께 발생한 400/409 및 `already-exists` 로그는 같은 transient incident로 판단되어야 한다.
+
+### Actual behavior
+
+- QA assertion이 transient Firestore 로그 개수를 원문 메시지 단위로 세어, 같은 Commit retry incident로 보이는 400/409와 `already-exists` 로그를 별도 반복 에러로 처리했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 iPad 프로젝트에서 실행한다.
+2. 방을 생성하고 게임을 시작한다.
+3. 상태 머신 액션 루프를 완료한다.
+4. 콘솔 에러 허용 범위 확인 단계에서 transient Firestore 로그가 2개 이상 수집되면 실패한다.
+
+### Suspected root cause
+
+- Firestore transaction 경합 또는 SDK retry 과정에서 같은 Commit retry incident가 `Failed to load resource` 400/409와 Firestore `already-exists` 메시지로 나뉘어 콘솔에 기록될 수 있다.
+- 기존 QA assertion은 같은 retry incident인지 구분하지 않고 transient 로그 원문 개수를 직접 제한했다.
+
+### Confirmed root cause
+
+- 테스트 코드상 transient Firestore error를 incident 단위가 아니라 메시지 개수 단위로 집계했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 모바일 QA의 시작 버튼/이동 버튼/rollResultReadyAt 경로를 여러 차례 보강했다.
+  - Why it failed: Issue #133의 실패 지점은 UI 진행 고착이 아니라 최종 콘솔 transient error 집계 기준이었다.
+- Attempt 2:
+  - What was changed: Firestore transient error를 최대 1개 원문 메시지까지만 허용했다.
+  - Why it failed: 같은 Commit retry incident가 복수 콘솔 메시지로 노출될 수 있어 정상 복구 가능한 경합도 실패로 처리했다.
+
+### Do not try again
+
+- UI 구조나 레이아웃을 변경하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- blocking console/page error를 transient로 허용하지 않는다.
+- transient Firestore 허용치를 근거 없이 크게 늘리지 않는다.
+
+### Correct fix plan
+
+- blocking console/page error는 계속 실패시킨다.
+- Firestore 400/409 및 `already-exists` Commit retry 로그는 같은 transient incident key로 묶어 집계한다.
+- 서로 다른 transient incident가 반복되면 기존처럼 실패시킨다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No blocking console/page errors
+
+## 2026-06-30 - Issue #130 모바일 QA 이동 버튼 자동 진행 경합
+
+### Symptom
+
+- PR #129 병합 후 Galaxy S24 Ultra QA에서 `move-piece-button` enabled 대기 assertion이 실패했다.
+- 최종 debug state의 `moveButton`은 `{ visible: false, disabled: false }`로, 버튼이 disabled로 고착된 이전 증상과 달리 버튼 자체가 사라진 상태였다.
+
+### Expected behavior
+
+- 이동 버튼이 보이면 활성화된 버튼을 클릭하거나, 자동 단일 말 이동으로 이미 다음 상태에 진입한 경우 QA 루프가 진행을 계속해야 한다.
+
+### Actual behavior
+
+- 테스트가 `move-piece-button`을 한 번 관측한 뒤 15초 동안 계속 visible/enabled 상태만 허용해, 자동 이동으로 `roll`이 clear되고 버튼 test id가 바뀐 상태를 실패로 처리했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. Galaxy S24 Ultra 프로젝트에서 AI를 채우고 게임을 시작한다.
+3. 실제 게임 상태 머신으로 액션 루프를 진행한다.
+4. `move-piece-button` visible 확인 직후 자동 이동 또는 턴 전환으로 버튼이 사라지면 enabled 대기 assertion이 실패한다.
+
+### Suspected root cause
+
+- 앱에는 이동 가능한 말 그룹이 하나뿐이고 갈림길 선택이 필요 없을 때 자동 이동하는 경로가 있다.
+- QA 테스트는 이 정상 진행 경합을 고려하지 않고 `move-piece-button`이 계속 visible이어야 한다고 고정 기대했다.
+
+### Confirmed root cause
+
+- 코드 경로상 `playOneAvailableGameAction()`은 `move-piece-button`이 최초 visible이면 이후에도 visible/enabled만 성공으로 인정했다.
+- 그러나 앱의 자동 단일 말 이동 effect는 `rollResultHolding`이 끝난 뒤 `movePiece()`를 호출하고 `clearRoll()`로 버튼을 제거할 수 있다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `rollResultReadyAt` stale/future/timeout clear 경로를 보강했다.
+  - Why it failed: Issue #130의 최종 상태는 hold 고착이 아니라 버튼 부재 상태였으므로 같은 수정으로는 테스트 경합을 해결하지 못한다.
+- Attempt 2:
+  - What was changed: 이동 버튼 visible/enabled assertion을 강화했다.
+  - Why it failed: 자동 이동으로 버튼이 사라지는 정상 진행 상태까지 실패로 처리했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 성공으로 허용하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `rollResultReadyAt`만 반복 수정하지 않는다.
+- 자동 단일 말 이동 앱 로직을 원인 확인 없이 제거하지 않는다.
+
+### Correct fix plan
+
+- `move-piece-button`이 보인 뒤 활성화되면 기존처럼 클릭한다.
+- 폴링 중 버튼이 사라졌고 debug state상 `roll`이 `null`, `rollResultHolding`이 `false`이면 자동 진행으로 간주해 QA 루프를 계속한다.
+- 버튼이 여전히 보이지만 disabled로 남는 경우는 기존처럼 실패시킨다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
+## 2026-06-30 - Issue #128 모바일 QA 방장 권한 불일치 재발
+
+### Symptom
+
+- Galaxy S24 Ultra 단일 모바일 QA에서 AI 추가 후 `start-game-button`이 보이지 않았다.
+- 실패 시 debug state는 `screen: "waitingRoom"`이지만 `isRoomHost: false`, `canManageRoom: false`였고, `currentUserId`와 `hostSeatId`가 서로 달랐다.
+- iPad QA에서는 `move-piece-button` enabled 대기 중 최종 debug state에서 이동 버튼이 보이지 않는 상태가 관측되었다.
+- iPad 기기전 QA에서는 Firestore transient console error가 허용치보다 많이 발생했다.
+
+### Expected behavior
+
+- 방 생성 직후 host 클라이언트는 동일한 host uid로 대기실에 진입하고 `start-game-button`을 볼 수 있어야 한다.
+- 윷 결과 이후 이동 가능한 상태에서는 `move-piece-button`이 안정적으로 보이고 활성화되어야 한다.
+- QA 중 반복 Firestore transaction 경합이 사용자 진행을 막지 않아야 한다.
+
+### Actual behavior
+
+- 방 생성 직후 로컬 현재 사용자 uid와 방/seat의 host uid가 불일치해 host-only UI가 일반 플레이어 UI로 바뀌었다.
+- 일부 모바일 QA에서 이동 버튼 또는 Firestore transaction 경합 증상이 이어졌다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. Galaxy S24 Ultra 단일 모바일 경로에서 방을 생성하고 AI를 채운다.
+3. 시작 버튼 visible/enabled assertion을 기다린다.
+4. iPad 단일/기기전 경로에서 한 턴 진행 및 콘솔 에러 검사를 수행한다.
+
+### Suspected root cause
+
+- `handleCreateRoom()`이 확보한 `roomHost` uid로 Firestore 방을 만들지만, `openWaitingRoom()`은 다시 `userRef.current ?? currentUser`를 읽어 대기실 host seat를 구성한다.
+- 모바일 QA 타이밍에서 auth/current user 참조가 바뀌거나 아직 안정화되지 않으면 Firestore `room.hostId`/seat host uid와 로컬 `currentUserId`가 달라져 `canManageRoom`이 false가 된다.
+- 이동 버튼과 Firestore 경합은 같은 모바일 QA 계열의 상태 동기화 재발 가능성이 있으나, Issue #128 로그상 시작 버튼 미노출은 host uid 불일치가 직접 원인으로 보인다.
+
+### Confirmed root cause
+
+- 시작 버튼 미노출 경로는 host uid 불일치로 확인했다. 이동 버튼 visible false 및 Firestore transient error 증상은 추가 QA 재실행으로 재확인이 필요하다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 방 생성/대기실/이동 버튼 실패 시 debug state를 보강했다.
+  - Why it failed: 진단 정보는 늘었지만 host uid 불일치 자체는 막지 못했다.
+- Attempt 2:
+  - What was changed: `rollResultReadyAt` stale/future/timeout clear 경로를 여러 차례 보강했다.
+  - Why it failed: Issue #128의 Galaxy 시작 버튼 미노출은 roll hold가 아니라 대기실 host 권한 불일치 문제였다.
+
+### Do not try again
+
+- 시작 버튼 selector 대기 시간만 늘리지 않는다.
+- 테스트에서 일반 플레이어 화면을 host 성공으로 허용하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `rollResultReadyAt`만 반복 수정하지 않는다.
+
+### Correct fix plan
+
+- 방 생성에 사용한 `roomHost`를 host 대기실 진입에도 명시적으로 전달한다.
+- host 대기실 진입 시 같은 uid를 `rememberUser()`와 host seat 구성에 사용한다.
+- room subscribe에서 current user가 일시적으로 비어 있어도 방 생성에 사용한 host uid fallback으로 host 판정을 유지한다.
+- 방을 떠나거나 종료/복구 실패 시 host uid fallback을 정리한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
+## 2026-06-30 - Issue #126 모바일 QA 대기실 진입 및 이동 버튼 재발 조사
+
+### Symptom
+
+- PR #125 병합 후 Issue #126에서 모바일 QA가 다시 실패했다.
+- iPad 기기전 QA는 방 생성 버튼 클릭 후 `waiting-room` visible 대기에서 timeout이 발생했다.
+- Galaxy S24 Ultra QA는 `move-piece-button`이 `결과 확인 중...` disabled 상태로 남아 enabled 대기에서 timeout이 발생했다.
+
+### Expected behavior
+
+- 방 생성 후 host는 대기실로 이동해야 한다.
+- 윷 결과 연출 대기 시간이 지나면 이동 가능한 말이 있을 때 `move-piece-button`이 활성화되어야 한다.
+
+### Actual behavior
+
+- iPad host 화면은 대기실 진입 여부를 확인하지 못한 채 timeout이 발생했다.
+- Galaxy S24 Ultra 화면은 이동 버튼이 결과 hold 상태로 남아 QA 액션 루프가 다음 이동으로 진행하지 못했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. iPad 기기전 경로에서 방을 생성한다.
+3. Galaxy S24 Ultra 단일 모바일 QA 경로에서 AI를 채우고 게임을 시작한다.
+4. 대기실 visible 또는 이동 버튼 enabled assertion이 실패한다.
+
+### Suspected root cause
+
+- 대기실 실패는 방 생성/인증/중복 방 정리/openWaitingRoom 상태 전환 중 어떤 단계에서 lobby에 머물렀는지 실패 로그가 부족해 구분이 어려웠다.
+- 이동 버튼 실패는 이전 `rollResultReadyAt` 보강 이후에도 특정 모바일 QA 타이밍에서 hold 상태가 재발했지만, enabled timeout 시점의 `rollResultReadyAt`, `rollResultHolding`, `canRequestMove`, 선택 말 상태가 assertion 결과에 충분히 남지 않았다.
+
+### Confirmed root cause
+
+- 아직 미확정. 이번 변경은 반복 실패 원인을 확정하기 위한 QA 진단 정보 보강이다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `rollResultReadyAt`을 0으로 초기화했다.
+  - Why it failed: 이동 버튼 활성화 이전에 stale/future 값으로 hold되는 경로를 막지 못했다.
+- Attempt 2:
+  - What was changed: subscribe/save/authoritative roll commit 및 timeout clear 경로를 보강했다.
+  - Why it failed: Issue #126에서 모바일 QA 이동 버튼 hold 증상이 다시 관측되었고, 실패 시점의 실제 상태를 더 구체적으로 확인해야 한다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `clearRoll()` 초기화만 반복하지 않는다.
+- 원인 확인 없이 방 생성 또는 게임 상태 흐름을 넓게 리팩터링하지 않는다.
+
+### Correct fix plan
+
+- iPad 방 생성 후 대기실 진입 assertion에 lobby notice, create button 상태, waiting-room 표시 여부, matching room card, `__YUT_DEBUG_STATE__`를 포함한다.
+- `move-piece-button` enabled 대기는 최종 timeout 출력에 `collectGameDebugState()` 전체가 남도록 poll assertion으로 바꾼다.
+- 다음 재현 로그에서 실제 원인이 확인된 뒤 앱 로직만 최소 수정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
+## 2026-06-30 - 모바일 QA 이동 버튼 hold 타이머 해제 보강
+
+### Symptom
+
+- Issue #124에서 PR #123 병합 후에도 iPad와 Galaxy S24 Ultra 모바일 QA가 `move-piece-button` enabled 대기 중 실패했다.
+- 버튼 텍스트는 `결과 확인 중...`으로 남고 15초 timeout 동안 disabled 상태가 유지되었다.
+
+### Expected behavior
+
+- 윷 결과 연출 대기 시간이 지나면 이동 가능한 말이 있을 때 `move-piece-button`이 활성화되어야 한다.
+
+### Actual behavior
+
+- 클라이언트가 `rollResultHolding` 상태를 계속 유지해 QA 액션 루프가 다음 이동으로 진행하지 못했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. 방을 생성하고 AI를 채운 뒤 게임을 시작한다.
+3. 실제 게임 상태 머신으로 액션을 진행한다.
+4. iPad 또는 Galaxy S24 Ultra 프로젝트에서 `move-piece-button` enabled assertion이 실패한다.
+
+### Suspected root cause
+
+- 이전 수정으로 subscribe/save/authoritative roll commit 경로의 `rollResultReadyAt` 정규화는 보강되었지만, hold 해제는 여전히 `rollLockClock` interval 갱신에 의존했다.
+- 모바일 QA 환경에서 interval/render 갱신이 기대대로 진행되지 않거나 raw `rollResultReadyAt`이 상태에 남으면 `rollResultHolding`이 만료 시점 이후에도 유지될 수 있었다.
+
+### Confirmed root cause
+
+- 코드 경로상 `rollResultReadyAt` 만료 시점에 상태를 직접 0으로 clear하는 fail-safe가 없었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `rollResultReadyAt`을 0으로 초기화했다.
+  - Why it failed: 이동 버튼 활성화 이전에 stale/future 값으로 hold되는 경로를 막지 못했다.
+- Attempt 2:
+  - What was changed: subscribe/save 및 authoritative roll commit 적용 경로에서 `rollResultReadyAt`을 정규화했다.
+  - Why it failed: hold 만료 자체가 clock interval 갱신에만 의존해 모바일 QA에서 만료 상태를 안정적으로 state에 반영하지 못할 수 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `clearRoll()` 초기화만 반복하지 않는다.
+
+### Correct fix plan
+
+- `rollResultReadyAt` effect에서 정규화된 ready time을 기준으로 동작한다.
+- 정규화 결과가 무효이면 상태를 0으로 정리한다.
+- 유효한 ready time은 기존 interval clock 갱신을 유지하면서 만료 시점 timeout으로 `rollResultReadyAt`을 0으로 clear한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
+## 2026-06-30 - 모바일 QA authoritative rollResultReadyAt 정규화 누락
+
+### Symptom
+
+- Issue #122에서 iPad 모바일 QA가 `move-piece-button` enabled 대기 중 실패했다.
+- 버튼 텍스트는 `결과 확인 중...`으로 남고 15초 timeout 동안 disabled 상태가 유지되었다.
+
+### Expected behavior
+
+- 윷 결과 연출 대기 시간이 지나면 이동 가능한 말이 있을 때 `move-piece-button`이 활성화되어야 한다.
+
+### Actual behavior
+
+- 클라이언트가 `rollResultHolding` 상태를 계속 유지해 QA 액션 루프가 다음 이동으로 진행하지 못했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. 방을 생성하고 AI를 채운 뒤 게임을 시작한다.
+3. 실제 게임 상태 머신으로 액션을 진행한다.
+4. iPad 프로젝트에서 `move-piece-button` enabled assertion이 실패한다.
+
+### Suspected root cause
+
+- `subscribeGameState()`와 host snapshot 저장 경로는 `rollResultReadyAt`을 정규화하지만, host가 authoritative roll commit 결과를 즉시 적용하는 경로에서는 `result.patch.rollResultReadyAt`을 그대로 `setRollResultReadyAt()`에 전달했다.
+- 이 경로로 stale/future 값이 들어오면 `rollResultHolding`이 계속 true로 계산될 수 있었다.
+
+### Confirmed root cause
+
+- 코드 경로상 authoritative roll commit 결과 적용부가 `normalizeRollResultReadyAt()`을 거치지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `rollResultReadyAt`을 0으로 초기화했다.
+  - Why it failed: 이동 버튼 활성화 이전에 stale/future 값으로 hold되는 경로를 막지 못했다.
+- Attempt 2:
+  - What was changed: subscribe 적용 및 저장 단계에서 `rollResultReadyAt`을 정규화했다.
+  - Why it failed: host의 authoritative roll commit 즉시 적용 경로가 정규화 대상에서 빠져 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+
+### Correct fix plan
+
+- authoritative roll commit 결과를 로컬 상태에 적용할 때도 `rollResultReadyAt`을 `normalizeRollResultReadyAt()`으로 정규화한다.
+- 별도 UI 변경 없이 기존 subscribe/save 정규화 정책과 동일하게 맞춘다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
+## 2026-06-30 - 모바일 QA 게임 진행/대기실 버튼 재발
+
+### Symptom
+
+- iPad QA에서 `move-piece-button`이 `결과 확인 중...` disabled 상태로 15초 이상 유지된다.
+- Galaxy S24 Ultra QA에서 AI 추가 후 `start-game-button`이 보이지 않는다.
+
+### Expected behavior
+
+- 윷 결과 연출 대기 시간이 지나면 이동 가능한 말이 있을 때 `move-piece-button`이 활성화되어야 한다.
+- 방장이 AI를 모두 채운 뒤에는 `start-game-button`이 보이고 활성화되어야 한다.
+
+### Actual behavior
+
+- 이동 버튼이 `rollResultHolding` 상태에 묶여 QA 루프가 다음 액션으로 진행하지 못했다.
+- 일부 모바일 프로젝트에서 방장 시작 버튼이 렌더링되지 않아 대기실 단계가 실패했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. 방을 생성하고 AI를 추가한다.
+3. 게임을 시작한 뒤 QA 자동 액션 루프를 진행한다.
+4. 특정 모바일 프로젝트에서 시작 버튼 또는 이동 버튼 assertion이 실패한다.
+
+### Suspected root cause
+
+- `rollResultReadyAt`이 과거값이 되었거나 stale sync 값이 되었는데도 클라이언트가 결과 대기 상태로 해석하는 경로가 있었다.
+- 방장 대기실에서는 `canManageRoom`, `currentUserId`, `hostSeatId`, seats snapshot의 순간 불일치가 시작 버튼 미노출로 이어질 수 있었다.
+
+### Confirmed root cause
+
+- 이전 수정은 `clearRoll()`에서만 `rollResultReadyAt`을 0으로 초기화했다. 그러나 재발 실패는 말 이동 후 `clearRoll()`에 도달하기 전에 이동 버튼이 비활성화된 상태라 해당 수정만으로는 충분하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `setRollResultReadyAt(0)`을 호출했다.
+  - Why it failed: 이동 이후 초기화 경로만 보강했기 때문에, 이동 버튼 활성화 이전에 stale/future `rollResultReadyAt`으로 막히는 상황을 해결하지 못했다.
+- Attempt 2:
+  - What was changed: AI 추가 후 버튼 hidden 확인과 시작 버튼 visible/enabled 대기를 강화했다.
+  - Why it failed: 시작 버튼이 단순히 늦게 활성화되는 문제가 아니라 방장 UI 렌더링 조건이 일시적으로 깨질 수 있는 문제를 직접 관측하지 못했다.
+
+### Do not try again
+
+- `clearRoll()` 초기화만 추가 반복하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- 시작 버튼 selector 대기만 늘리지 않는다.
+- 원인 확인 없이 UI 구조나 레이아웃을 변경하지 않는다.
+
+### Correct fix plan
+
+- stale `rollResultReadyAt`을 subscribe 적용 및 저장 단계에서 과거값이면 0으로 정규화한다.
+- QA 실패 메시지에 `rollResultReadyAt`, `rollResultHolding`, `canRequestMove`, `canManageRoom`, seats 등 실제 상태를 포함한다.
+- host snapshot 저장은 마지막으로 적용된 sequence를 기준으로 stale write를 줄인다.
+
+### Verification checklist
+
+- [ ] Issue no longer reproduces
+- [ ] Related feature still works
+- [ ] No unrelated UI changes
+- [ ] No console errors
+- [ ] Mobile layout checked, if applicable
+
+
+## 2026-06-30 - 모바일 QA 이동 버튼 rollResultReadyAt stale future 재발
+
+### Symptom
+
+- Issue #120에서 iPad와 Galaxy S24 Ultra 모바일 QA가 `move-piece-button` enabled 대기 중 실패했다.
+- 버튼 텍스트는 `결과 확인 중...`으로 남고 15초 timeout 동안 disabled 상태가 유지되었다.
+
+### Expected behavior
+
+- 윷 결과 연출 대기 시간 이후 이동 가능한 말이 있으면 `move-piece-button`이 활성화되어야 한다.
+
+### Actual behavior
+
+- 클라이언트가 `rollResultHolding` 상태를 계속 유지해 QA 액션 루프가 다음 이동으로 진행하지 못했다.
+
+### Reproduction steps
+
+1. 모바일 QA 테스트를 실행한다.
+2. 방을 생성하고 AI를 채운 뒤 게임을 시작한다.
+3. 실제 게임 상태 머신으로 액션을 진행한다.
+4. 특정 모바일 프로젝트에서 `move-piece-button` enabled assertion이 실패한다.
+
+### Suspected root cause
+
+- `rollResultReadyAt`이 과거값이면 0으로 정규화되지만, 비정상적으로 먼 미래값은 그대로 적용/저장될 수 있었다.
+- stale future `rollResultReadyAt`이 subscribe 또는 host snapshot 저장 경로에서 재적용되면 `rollResultHolding`이 계속 true로 계산된다.
+
+### Confirmed root cause
+
+- 코드 경로상 `rollResultReadyAt > Date.now()` 조건만 사용해 future 값의 상한을 검증하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `clearRoll()`에서 `rollResultReadyAt`을 0으로 초기화했다.
+  - Why it failed: 이동 버튼 활성화 이전에 stale/future 값으로 hold되는 경로를 막지 못했다.
+- Attempt 2:
+  - What was changed: 테스트 대기와 시작 버튼 확인을 강화했다.
+  - Why it failed: 이동 버튼의 hold 상태 계산 원인을 직접 차단하지 못했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- disabled 이동 버튼을 테스트에서 허용하거나 강제 클릭하지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+
+### Correct fix plan
+
+- `rollResultReadyAt`을 클라이언트 적용 및 저장 단계에서 허용 가능한 윷 결과 연출 시간 범위로 정규화한다.
+- 과거값 또는 비정상적으로 먼 미래값은 0으로 저장/적용해 stale hold를 제거한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] No unrelated UI changes
+- [ ] Mobile QA full run checked
+- [ ] No console errors in mobile browser QA
+
+---
+
+## Completion requirements
+
+After creating the two files, provide a final response with this exact structure:
+
+### Root cause
+
+No application bug was modified. This task adds repository-level Codex operating rules.
+
+### Files changed
+
+- AGENTS.md
+- BUG_HISTORY.md
+
+### Change summary
+
+Added Codex workflow rules and repeated bug tracking documentation.
+
+### Verification result
+
+Confirmed only documentation files were added and no application code was changed.
+
+### Remaining risks
+
+Future Codex tasks must actually follow these files; the rules reduce repeated mistakes but do not guarantee perfect fixes.
+
+## 2026-06-30 - Issue #144 모바일 기기전 QA roll-only 액션 히스토리 재발
+
+### Symptom
+
+- PR #143 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 다시 실패했다.
+- 실패 로그의 `actionHistory`가 `roll` 10개로만 채워졌고, `coverage.rolled`는 10이었지만 `coverage.manualMoved + coverage.autoWaited`는 0이었다.
+
+### Expected behavior
+
+- 윷 던지기 뒤 앱이 자동 이동 또는 이동 불가 스킵으로 다음 턴/다음 상태에 진입한 경우, QA 루프가 그 자동 진행을 이동 관련 검증으로 관측해야 한다.
+- 단순히 윷을 던졌다는 이유만으로 이동 커버리지를 올리면 안 된다.
+
+### Actual behavior
+
+- QA 루프는 `roll-yut-button` 클릭을 `roll` 액션으로만 기록했다.
+- 버튼 클릭 직후 앱이 자동 이동 또는 이동 불가 스킵으로 `roll`을 비우고 다시 윷 던지기 가능한 상태가 되어도, 이 상태 전환은 `autoWaited`에 반영되지 않았다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프 중 윷 던지기 후 앱이 자동으로 이동 또는 이동 불가 스킵을 처리한다.
+4. 테스트가 이동 버튼을 직접 관측하지 못한 채 다음 윷 던지기만 반복 기록하면 `manualMoved + autoWaited` assertion이 실패한다.
+
+### Suspected root cause
+
+- 기기전 QA 커버리지 집계가 윷 던지기 직후의 자동 상태 전환을 관측하지 않아 `actionHistory`가 `roll`로만 채워질 수 있었다.
+
+### Confirmed root cause
+
+- `playOneAvailableGameAction()`의 `roll-yut-button` 경로는 클릭 후 `coverage.rolled`만 증가시키고 반환했다. 따라서 클릭 직후 앱이 `roll: null`과 다음 윷 던지기 가능 상태로 자동 진행했는지 확인하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #138에서 갈림길 이동 버튼 클릭 성공 시 `coverage.manualMoved`를 증가시켰다.
+  - Why it failed: 이번 실패의 `branchMoved`는 0이어서 갈림길 이동 누락과 다른 경로였다.
+- Attempt 2:
+  - What was changed: Issue #140에서 실패 메시지에 `coverage`, `actionHistory`, `debugStates`를 포함했다.
+  - Why it failed: 진단 정보는 확보됐지만, `roll` 직후 자동 진행을 커버리지에 반영하는 로직은 없었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+
+### Correct fix plan
+
+- `roll-yut-button` 클릭 전후의 debug state를 비교한다.
+- 클릭 후 `roll`이 `null`이고 결과 대기 상태가 아니며 다시 윷 던지기 가능한 상태가 되었고, `turnIndex`, `lastMovedSeatId`, 또는 `lastMovedPieceIds`가 바뀐 경우에만 자동 진행으로 보고 `coverage.autoWaited`를 증가시킨다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #146 모바일 기기전 QA 자동 진행 관측값 누락
+
+### Symptom
+
+- PR #145 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 다시 실패했다.
+- 실패 로그에서 `coverage.rolled`는 10이었지만 `coverage.manualMoved + coverage.autoWaited`는 0으로 남았다.
+- 최종 debug state는 `roll: null`, `rollResultHolding: false`, `rollButton.visible: true`라 앱은 다시 윷 던지기 가능한 상태였지만 테스트가 이동 관련 자동 진행으로 인정하지 못했다.
+
+### Expected behavior
+
+- 윷 던지기 후 자동 이동 또는 이동 불가 스킵으로 다음 상태에 진입하면 QA 루프가 이를 `autoWaited`로 관측해야 한다.
+- 자동 진행 판정은 실제 상태 변화가 확인될 때만 해야 하며, `roll` 액션마다 무조건 커버리지를 증가시키면 안 된다.
+
+### Actual behavior
+
+- `didAutoAdvanceAfterRoll()`은 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 변화를 비교하도록 작성되었다.
+- 하지만 앱의 `window.__YUT_DEBUG_STATE__`에는 `lastMovedSeatId`와 `lastMovedPieceIds`가 노출되지 않아, 보너스 턴처럼 `turnIndex`가 유지되는 자동 진행을 테스트가 관측하지 못할 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프 중 윷 던지기 후 앱이 자동으로 다음 윷 던지기 가능 상태로 돌아온다.
+4. 테스트 debug state에 last moved 정보가 없고 `turnIndex` 변화도 없으면 `autoWaited`가 증가하지 않아 최종 assertion이 실패한다.
+
+### Suspected root cause
+
+- Issue #144 수정은 roll 클릭 전후 `lastMovedSeatId`와 `lastMovedPieceIds`를 비교하도록 했지만, 실제 앱 debug state가 그 값을 제공하지 않았다.
+
+### Confirmed root cause
+
+- `src/app/App.tsx`의 `window.__YUT_DEBUG_STATE__`에 `lastMovedSeatId`와 `lastMovedPieceIds`가 포함되지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #144에서 roll 클릭 후 자동 진행을 감지하는 테스트 로직을 추가했다.
+  - Why it failed: 테스트가 비교하는 last moved 값이 debug state에 없어 일부 자동 진행을 관측하지 못했다.
+- Attempt 2:
+  - What was changed: Issue #140에서 실패 메시지에 coverage/actionHistory/debugStates를 포함했다.
+  - Why it failed: 진단 정보는 늘었지만 앱 debug state의 last moved 필드 누락은 그대로였다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+
+### Correct fix plan
+
+- 앱 debug state에 `lastMovedSeatId`와 `lastMovedPieceIds`를 노출한다.
+- 기존 `didAutoAdvanceAfterRoll()` 판정 로직은 유지하고, 테스트가 의도한 관측값을 받을 수 있게 한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #150 모바일 기기전 QA roll-only 이동 커버리지 재발
+
+### Symptom
+
+- PR #149 이후 `mobile device-to-device QA`의 `기기전 08 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계에서 다시 실패했다.
+- 실패 로그에서 `coverage.rolled`는 10이었지만 `coverage.manualMoved + coverage.autoWaited`는 0으로 남았다.
+- 최종 debug state는 `roll: null`, `rollResultHolding: false`, `rollButton.visible: true`였지만 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 변화만으로는 자동 진행을 인정하지 못했다.
+
+### Expected behavior
+
+- 윷 던지기 뒤 앱이 자동 이동 또는 이동 불가 스킵으로 다시 윷 던지기 가능한 상태가 되면, QA 루프가 실제 상태 변화가 확인되는 경우에만 자동 진행을 이동 관련 검증으로 집계해야 한다.
+- `roll` 액션마다 무조건 이동 커버리지를 올리면 안 된다.
+
+### Actual behavior
+
+- `didAutoAdvanceAfterRoll()`은 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 변화만 비교했다.
+- 보너스 턴 또는 상태 동기화 타이밍 때문에 이 값들이 그대로인 상태에서도 말 위치 변화가 발생할 수 있는데, 앱 debug state에는 전체 말 위치를 비교할 최소 snapshot이 없어 테스트가 자동 진행을 관측할 근거가 부족했다.
+
+### Reproduction steps
+
+1. 모바일 기기전 QA를 실행한다.
+2. iPad/Galaxy가 같은 개인전 방에 입장하고 게임을 시작한다.
+3. 상태 머신 액션 루프 중 윷 던지기 후 앱이 다시 윷 던지기 가능한 상태로 돌아온다.
+4. 테스트가 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 변화만 보다가 실제 말 위치 변화 또는 자동 진행을 놓치면 `manualMoved + autoWaited` assertion이 실패한다.
+
+### Suspected root cause
+
+- 반복 실패 계열상 앱 진행 고착보다는 기기전 QA 자동 진행 관측값이 부족했던 것으로 보인다.
+- `roll` 이후 다시 윷 던지기 가능한 상태가 되었는지뿐 아니라, 실제 말 위치 snapshot이 바뀌었는지를 함께 비교해야 한다.
+
+### Confirmed root cause
+
+- `window.__YUT_DEBUG_STATE__`에 전체 말 위치를 비교할 QA용 `pieces` snapshot이 없었고, `didAutoAdvanceAfterRoll()`도 말 위치 변화를 자동 진행 근거로 사용하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #144에서 roll 클릭 후 자동 진행 감지 로직을 추가했다.
+  - Why it failed: `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 비교만으로는 일부 자동 진행/보너스 턴 상태 변화를 충분히 관측하지 못했다.
+- Attempt 2:
+  - What was changed: Issue #146에서 debug state에 `lastMovedSeatId`와 `lastMovedPieceIds`를 노출했다.
+  - Why it failed: last moved 필드만으로는 전체 말 위치 변화 여부를 확인할 수 없어, 값이 유지되는 경로에서 자동 진행으로 인정하지 못했다.
+
+### Do not try again
+
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+
+### Correct fix plan
+
+- 앱 debug state에 QA용 말 위치 snapshot의 최소 필드(`id`, `ownerId`, `nodeId`, `started`, `finished`)를 노출한다.
+- `didAutoAdvanceAfterRoll()`은 기존 `turnIndex`, `lastMovedSeatId`, `lastMovedPieceIds` 비교를 유지하되, 추가로 말 위치 snapshot 변화가 있을 때만 자동 진행으로 인정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #156 모바일 Game QA 진행 중 방 삭제로 lobby 복귀
+
+### Symptom
+
+- PR #155 이후 모바일 Game QA의 실제 게임 상태 머신 액션 진행 단계에서 실패했다.
+- 윷 던지기 직후 debug state가 `screen: "lobby"`, `activeRoomId: ""`, `message: "방이 종료되어 대기실로 이동했습니다."` 상태로 관측됐다.
+
+### Expected behavior
+
+- 게임 진행 중인 방은 일반 stale room cleanup 때문에 즉시 삭제되지 않아야 한다.
+- QA 액션 루프가 윷 던지기 직후 방 삭제로 lobby에 복귀하지 않아야 한다.
+
+### Actual behavior
+
+- `cleanupStaleRooms()`가 `waiting`뿐 아니라 `playing` 방도 cleanup 대상으로 조회했다.
+- stale player 정리 후 남은 사람이 AI뿐이라고 판단하면 `playing` 방도 `deleteRoom()` 대상이 될 수 있었다.
+- 방 문서가 삭제되면 `subscribeRoom()`의 `!room` 경로가 실행되어 lobby로 돌아가고, QA는 이를 terminal state로 실패 처리했다.
+
+### Reproduction steps
+
+1. 모바일 Game QA를 실행한다.
+2. AI를 포함한 방에서 실제 게임 상태 머신 액션 루프를 진행한다.
+3. cleanup 타이밍에 playing 방의 human player snapshot이 stale 또는 부재로 판단된다.
+4. 방이 삭제되면 클라이언트가 lobby로 복귀하고, 윷 던지기 이후 terminal-state 오류가 발생한다.
+
+### Suspected root cause
+
+- 모바일 WebKit/CI 타이밍에서 heartbeat 반영보다 cleanup 판단이 앞서면, 진행 중인 게임 방도 빈 방으로 오인될 수 있다.
+
+### Confirmed root cause
+
+- `cleanupStaleRooms()`가 `status in ['waiting', 'playing']` 방을 대상으로 하면서, `playing` 방도 남은 human player가 없으면 `deleteRoom()`를 호출할 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #144/#146/#150에서 roll 직후 자동 진행 관측값과 QA debug state를 보강했다.
+  - Why it failed: 이번 증상은 이동 커버리지 누락이 아니라 방 문서 삭제로 인한 game screen 이탈이었다.
+- Attempt 2:
+  - What was changed: Issue #154에서 stale `turnOrderIntro` 차단 조건과 저장 경로를 보강했다.
+  - Why it failed: 이번 debug state는 turnOrderIntro 고착이 아니라 `activeRoomId`가 비워진 lobby 복귀 상태였다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- game screen 이탈을 테스트에서 무시하지 않는다.
+
+### Correct fix plan
+
+- stale room cleanup은 계속 수행하되, `playing` 방은 stale player 정리 후에도 empty-room `deleteRoom()` 대상에서 제외한다.
+- `waiting` 방의 빈 방 정리 동작은 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #158 모바일 Game QA roll click no-state-change timeout
+
+### Symptom
+
+- PR #157 이후 모바일 Game QA와 모바일 기기전 QA의 실제 게임 상태 머신 액션 진행 단계가 실패했다.
+- 실패 stack은 `waitForRollOutcomeAfterClick()` 내부 `page.waitForTimeout(250)` 대기 중 전체 테스트 timeout에 도달한 형태였다.
+- 실패 직전 debug state는 game 화면과 활성화된 윷 던지기 가능 상태를 보여 주었지만, roll 클릭 이후 상태 변화 원인이 실패 메시지에 충분히 남지 않았다.
+
+### Expected behavior
+
+- 윷 던지기 버튼 클릭 후에는 roll 상태, 자동 진행, 이동 UI, 또는 terminal state 중 하나가 관측되어야 한다.
+- 상태 변화가 전혀 관측되지 않으면 QA가 같은 wait 루프를 반복해 전체 timeout까지 끌고 가지 않고, 클릭 전후 debug state를 포함해 즉시 원인을 드러내야 한다.
+
+### Actual behavior
+
+- `playOneAvailableGameAction()`은 `waitForRollOutcomeAfterClick()` 결과가 `no-state-change`일 때 `wait`를 반환했다.
+- 이 때문에 roll click no-op/reject/sequence 미증가 같은 실제 원인이 있어도 진행 액션으로 집계되지 않은 채 반복 대기할 수 있었다.
+- 단일 모바일 QA의 최종 assertion 메시지는 기기전 QA보다 `coverage`와 `actionHistory` 정보가 부족해 반복 실패 분석이 어려웠다.
+
+### Reproduction steps
+
+1. 모바일 Game QA 또는 모바일 기기전 QA를 실행한다.
+2. 게임 화면에서 `roll-yut-button`이 보여 활성화된 상태로 클릭된다.
+3. 클릭 후 `roll`, 자동 진행, 이동 UI, terminal state가 관측되지 않는다.
+4. 테스트가 `wait`로 되돌아가 반복하다가 전체 test timeout에 도달한다.
+
+### Suspected root cause
+
+- 앱의 authoritative roll 처리 또는 remote state sync가 상태 변화를 만들지 않는 경로가 있을 수 있으나, 현재 실패 메시지로는 reject/duplicate/no-op/sequence 미증가 중 무엇인지 확정하기 어렵다.
+- QA helper가 `no-state-change`를 실패로 드러내지 않고 `wait`로 삼켜 root cause 확인을 지연시켰다.
+
+### Confirmed root cause
+
+- 테스트 코드상 `rollOutcome.kind === 'no-state-change'`가 `return 'wait'`로 처리되어 click 이후 무변화 상태를 명확한 실패로 보고하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #144/#146/#150에서 roll 이후 자동 진행 관측값과 debug state를 보강했다.
+  - Why it failed: 이번 실패는 자동 진행 판정 근거 부족만으로 확정되지 않았고, roll click 이후 상태 변화 자체가 관측되지 않는 경우를 별도 실패로 드러내지 못했다.
+- Attempt 2:
+  - What was changed: Issue #156에서 playing room 삭제로 인한 lobby 복귀를 막았다.
+  - Why it failed: 이번 debug tail은 lobby 복귀가 아니라 game 화면에서 roll 가능 상태가 유지되는 계열이었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- `no-state-change`를 단순 wait로 삼켜 전체 timeout까지 반복하지 않는다.
+
+### Correct fix plan
+
+- `rollOutcome.kind === 'no-state-change'`는 클릭 전후 debug state를 포함한 명시적 오류로 처리한다.
+- 단일 모바일 QA의 실패 메시지도 기기전 QA처럼 `coverage`, `actionHistory`, debug state를 포함하게 한다.
+- 이후에도 실패하면 새 실패 메시지의 before/after debug state를 기준으로 authoritative roll reject, duplicate, sequence 미증가, click target 문제를 구분한 뒤 앱 로직 수정 여부를 판단한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #160 모바일 Game QA move click race 및 roll pending/no-state-change 재발
+
+### Symptom
+
+- PR #159 이후 모바일 Game QA와 모바일 기기전 QA의 실제 게임 상태 머신 액션 진행 단계가 실패했다.
+- 한 실패는 `move-piece-button`을 ready로 판단한 뒤 실제 클릭 시점에는 버튼이 disabled 상태로 유지되어 Playwright click timeout이 발생했다.
+- 다른 실패들은 윷 던지기 클릭 이후 `roll`, 이동 UI, 자동 진행, terminal state가 관측되지 않아 `no-state-change` 오류로 실패했다.
+
+### Expected behavior
+
+- 이동 버튼이 ready로 관측된 직후 React/원격 액션 상태 전환으로 다시 disabled가 되면 QA helper는 즉시 15초 click timeout으로 고착되지 않고 현재 debug state를 기준으로 재평가해야 한다.
+- 윷 던지기 클릭 후 원격 액션 pending/processing 상태가 관측되면 일반 no-state-change와 구분해 제한 시간 안에서 상태 해소를 기다리고, 끝내 해소되지 않을 때는 pending timeout으로 원인을 드러내야 한다.
+
+### Actual behavior
+
+- `playOneAvailableGameAction()`은 poll에서 한 번 `ready`로 판정한 뒤 click 직전 상태가 다시 바뀌는 경합을 충분히 처리하지 못했다.
+- `waitForRollOutcomeAfterClick()`은 pending remote/action processing 상태를 별도로 추적하지 않아, 원격 액션 대기 지연과 진짜 no-state-change를 구분하기 어려웠다.
+
+### Reproduction steps
+
+1. 모바일 Game QA 또는 모바일 기기전 QA를 실행한다.
+2. 게임 액션 루프 중 이동 버튼 또는 윷 던지기 버튼을 클릭한다.
+3. React 상태/Firestore 원격 액션 동기화 타이밍에 버튼 또는 debug state가 transient 상태가 된다.
+4. QA helper가 transient disabled click 또는 roll no-state-change/pending 상태를 명확히 구분하지 못해 실패한다.
+
+### Suspected root cause
+
+- 앱 진행 고착으로 확정하기보다는 QA helper가 모바일 WebKit/Firestore 타이밍의 transient button disabled 및 remote action pending 상태를 너무 단일 상태로 판정한 것으로 보인다.
+
+### Confirmed root cause
+
+- `move-piece-button` 클릭 경로에는 ready 판정과 실제 click 사이 버튼 상태 재평가/짧은 실패 복구가 없었다.
+- `waitForRollOutcomeAfterClick()`은 debug state의 `rollInProgress`, `pendingLocalRemoteActionCount`, `processingActionCount`를 outcome 판정에 사용하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #158에서 roll no-state-change를 wait로 삼키지 않고 명시적 오류로 드러냈다.
+  - Why it failed: 오류는 명확해졌지만 pending/processing 지연과 진짜 no-state-change를 구분하는 판정은 부족했다.
+- Attempt 2:
+  - What was changed: Issue #130에서 이동 버튼이 사라지는 자동 이동 경합을 `advanced`로 인정했다.
+  - Why it failed: 이번 증상은 버튼이 사라지는 경합이 아니라 ready 판정 후 click 시점에 다시 disabled가 되는 경합이었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- `no-state-change`와 remote pending timeout을 같은 실패로 뭉개지 않는다.
+
+### Correct fix plan
+
+- 이동 버튼 ready 판정 후 click은 짧은 timeout으로 시도하고, 실패 시 debug state에서 pending/hold 상태가 확인되면 다음 QA tick에서 재평가한다.
+- roll outcome 대기는 pending remote/action processing 상태를 관측하면 bounded pending timeout까지 기다리고, 해소되지 않으면 별도 pending timeout 오류를 낸다.
+- pending이 전혀 관측되지 않는 click 무변화는 기존처럼 no-state-change 오류로 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [ ] Device-to-device mobile QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #162 모바일 Game QA roll pending-timeout 재발
+
+### Symptom
+
+- PR #161 이후 모바일 Game QA의 `05 실제 게임 상태 머신으로 10개 이상 액션 진행` 단계가 iPad와 Galaxy S24 Ultra에서 실패했다.
+- 실패 메시지는 `윷 던지기 클릭 이후 원격 액션 대기 상태가 해소되지 않았습니다`였고, roll 클릭 전 debug state는 game 화면에서 윷 던지기 버튼이 활성화된 상태였다.
+
+### Expected behavior
+
+- 윷 던지기 클릭 후 pending 상태가 잠깐 관측되더라도, 마지막 debug state에서 pending이 이미 해소됐거나 서버 state/sequence 적용이 진행됐다면 QA helper가 이를 무조건 pending timeout으로 분류하면 안 된다.
+- pending이 실제로 마지막까지 유지되는 경우에만 pending timeout으로 실패해야 한다.
+
+### Actual behavior
+
+- `waitForRollOutcomeAfterClick()`은 pending을 한 번이라도 관측하면 `sawPendingTurnAction`을 계속 true로 유지했다.
+- 이후 마지막 debug state에서 pending이 해소됐는지 확인하지 않고, roll/move UI를 보지 못하면 `pending-timeout`으로 반환할 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 Game QA를 실행한다.
+2. 게임 화면에서 활성화된 윷 던지기 버튼을 클릭한다.
+3. 클릭 직후 remote/action pending 상태가 일시적으로 관측된다.
+4. pending이 해소됐지만 roll/move UI 관측이 sync timing 때문에 늦으면 QA helper가 pending timeout으로 실패할 수 있다.
+
+### Suspected root cause
+
+- 모바일 WebKit/Firestore 타이밍에서 host authoritative roll commit과 subscribe 반영 사이 transient gap이 발생할 수 있다.
+- QA helper가 pending을 sticky flag로만 저장하고 마지막 pending 상태 및 state/sequence 증가 여부를 분리하지 않아, 해소된 pending도 pending timeout으로 오분류한 것으로 보인다.
+
+### Confirmed root cause
+
+- `waitForRollOutcomeAfterClick()`의 pending timeout 판정이 `sawPendingTurnAction`만 사용하고 마지막 debug state의 pending 여부를 확인하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #158에서 roll no-state-change를 명시적 오류로 드러냈다.
+  - Why it failed: pending 상태와 no-state-change는 구분했지만, pending이 마지막까지 유지됐는지 여부는 분리하지 못했다.
+- Attempt 2:
+  - What was changed: Issue #160에서 pending remote/action processing 상태를 bounded timeout으로 관측하도록 했다.
+  - Why it failed: pending을 한 번 본 뒤 마지막에는 해소된 경우까지 pending timeout으로 분류할 수 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- `roll` 액션마다 무조건 `autoWaited`를 증가시키지 않는다.
+- 앱 이동/아이템/함정 로직을 원인 확인 없이 변경하지 않는다.
+- 해소된 pending과 마지막까지 유지되는 pending을 같은 실패로 뭉개지 않는다.
+
+### Correct fix plan
+
+- `waitForRollOutcomeAfterClick()`에서 마지막 poll의 pending 여부를 별도로 추적한다.
+- pending timeout은 pending을 관측한 적이 있고 마지막 debug state에서도 pending이 유지될 때만 반환한다.
+- roll/move UI가 아직 없더라도 state/sequence가 클릭 전보다 증가했다면 별도 `state-advanced` outcome으로 반환해 pending timeout 오분류를 피한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-06-30 - Issue #166 모바일 Game QA hasStateAdvancedAcrossPages ReferenceError
+
+### Symptom
+
+- PR #165 병합 후 모바일 Game QA와 모바일 기기전 QA가 실제 게임 상태 머신 액션 진행 단계에서 실패했다.
+- 실패 메시지는 `ReferenceError: hasStateAdvancedAcrossPages is not defined`였다.
+
+### Expected behavior
+
+- roll 클릭 이후 roll/move UI가 아직 관측되지 않아도 state/sequence가 진행되면 QA helper가 `state-advanced` outcome으로 처리해야 한다.
+- helper 누락 때문에 테스트가 ReferenceError로 중단되면 안 된다.
+
+### Actual behavior
+
+- `waitForRollOutcomeAfterClick()`은 `hasStateAdvancedAcrossPages(beforeDebugStates, lastDebugStates)`를 호출했다.
+- 하지만 `tests/game-qa.spec.js`에는 해당 across-pages helper 정의가 없어 ReferenceError가 발생했다.
+
+### Reproduction steps
+
+1. 모바일 Game QA 또는 모바일 기기전 QA를 실행한다.
+2. 윷 던지기 클릭 이후 `waitForRollOutcomeAfterClick()`이 timeout 종료부에 도달한다.
+3. `hasStateAdvancedAcrossPages()` 호출 시 정의되지 않은 함수 ReferenceError로 테스트가 실패한다.
+
+### Suspected root cause
+
+- Issue #162의 `state-advanced` outcome 계획을 반영하는 과정에서 단일 state helper인 `hasStateAdvanced()`만 존재하고, 여러 페이지 debug state 배열용 wrapper helper가 누락되었다.
+
+### Confirmed root cause
+
+- `hasStateAdvancedAcrossPages()` 호출은 존재하지만 함수 정의가 없었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #162에서 pending timeout 오분류 방지를 위해 `state-advanced` outcome 호출을 추가했다.
+  - Why it failed: 호출 대상 across-pages helper 정의가 함께 추가되지 않아 ReferenceError가 발생했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- 앱 게임 로직을 원인 확인 없이 수정하지 않는다.
+- undefined helper를 우회하려고 `state-advanced` 판정을 제거하지 않는다.
+
+### Correct fix plan
+
+- 기존 `findCanonicalDebugState()`와 `hasStateAdvanced()`를 재사용하는 최소 `hasStateAdvancedAcrossPages()` wrapper를 추가한다.
+- roll outcome 처리, coverage, UI selector, 앱 소스 코드는 변경하지 않는다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Relevant Playwright QA rerun checked (local Playwright browser executable missing)
+- [x] No unrelated UI changes
+
+## 2026-07-01 - Issue #180 모바일 Game QA stale-local-turn-state / pending-remote-action
+
+### Symptom
+
+- PR #179 병합 후 모바일 Game QA의 실제 게임 상태 머신 액션 진행 단계에서 실패했다.
+- QA 분류는 `stale-local-turn-state` 또는 `pending-remote-action`으로 나타났다.
+- 로컬 화면에는 윷 던지기 버튼이 가능한 상태로 보였지만 authoritative 처리 결과는 `지금은 내 차례가 아닙니다.`였다.
+
+### Expected behavior
+
+- host가 AI 자동 턴을 진행한 뒤 다음 사람 턴의 버튼은 Firestore authoritative 상태 저장이 끝난 뒤 활성화되어야 한다.
+- 원격 action은 host의 최신 상태 저장 중에는 처리되지 않고 잠시 retry되어야 한다.
+
+### Actual behavior
+
+- host AI 자동 턴은 로컬 state를 먼저 변경하고 autosave로 Firestore에 반영했다.
+- `canSubmitTurnAction` / `canRollNow`는 host autosave pending 상태를 보지 않아, Firestore가 이전 턴인 동안에도 다음 사람 턴 버튼이 활성화될 수 있었다.
+- 이 상태에서 `commitAuthoritativeGameAction()`이 Firestore 기준 turnIndex를 검증하면 actor mismatch로 reject되었다.
+
+### Reproduction steps
+
+1. 모바일 Game QA를 실행한다.
+2. AI가 포함된 온라인 방에서 AI 자동 턴이 빠르게 진행된다.
+3. host local state는 다음 human turn으로 먼저 바뀌지만 Firestore autosave가 아직 완료되지 않은 순간에 윷 던지기를 누른다.
+4. authoritative reducer가 Firestore의 이전 turnIndex를 기준으로 `지금은 내 차례가 아닙니다.`를 반환하거나 pending remote action이 해소되지 않는다.
+
+### Suspected root cause
+
+- 모바일 WebKit/CI 타이밍에서 host local AI autoplay와 Firestore autosave, 다음 human authoritative action 사이에 race가 있다.
+
+### Confirmed root cause
+
+- `canSubmitTurnAction`은 `activeSeat`, `isMyTurn`, `winner`, turn-order/intro/moving/trap 상태만 보고 host autosave pending 상태를 차단하지 않았다.
+- host의 pending remote action 처리도 저장 중인 local state가 Firestore에 반영되기 전 처리될 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #154에서 stale `turnOrderIntro` 차단 조건과 저장 경로를 보강했다.
+  - Why it failed: 이번 실패의 debug state는 `activeTurnOrderIntro: false`이며, 실제 원인은 intro 고착이 아니라 AI/local autosave와 authoritative transaction 사이의 race였다.
+- Attempt 2:
+  - What was changed: Issue #162/#166에서 QA helper의 stale/pending 분류와 state-advanced 판정을 보강했다.
+  - Why it failed: 테스트 분류는 정확해졌지만 앱의 host autosave pending guard가 없어 실제 race는 남아 있었다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- UI 구조나 레이아웃을 변경하지 않는다.
+- AI/이동 전체를 한 번에 대규모 리팩터링하지 않는다.
+- `지금은 내 차례가 아닙니다.` reject를 테스트에서 무시하지 않는다.
+
+### Correct fix plan
+
+- host autosave pending 상태를 렌더 state로 노출한다.
+- host autosave pending 중에는 `canSubmitTurnAction`을 차단하고 debug block reason에 `saving-host-state`를 남긴다.
+- host가 원격 action을 처리할 때 저장 중인 local state가 있으면 즉시 처리하지 않고 retry한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-07-01 - 인게임 효과음 토글 클릭 차단 및 원격 윷 던지기 진행 상태 고착
+
+### Symptom
+
+- 인게임 세로모드에서 효과음 버튼을 눌러도 토글되지 않는 것처럼 보였다.
+- 온라인/인게임 윷 던지기가 첫 동작 후 두 번째부터 눌러도 반응하지 않는 상태가 재현될 수 있었다.
+
+### Expected behavior
+
+- 세로모드 헤더의 장식/주변 요소가 효과음 버튼의 탭 이벤트를 막지 않아야 한다.
+- 원격 클라이언트가 윷 던지기 요청을 보낸 뒤 서버 상태 동기화가 도착하면 로컬 `rollInProgress` 잠금이 즉시 해제되어 다음 턴에서 다시 던질 수 있어야 한다.
+
+### Actual behavior
+
+- `.hero::after` 장식 pseudo-element에 `pointer-events: none`이 없어 헤더 우측/하단 영역의 클릭을 가로챌 수 있었다.
+- 비방장 원격 클라이언트의 윷 던지기 성공 경로는 서버 state sync 후 `pendingLocalRemoteActionsRef`만 비우고 `rollInProgressRef`/`rollInProgress`를 해제하지 않았다.
+- 이동 후 `roll`이 사라진 다음에도 stale `rollInProgress`가 남으면 `canRollNow`가 막혀 다음 윷 던지기가 12초 watchdog 전까지 비활성/무반응처럼 보일 수 있었다.
+
+### Suspected root cause
+
+- 세로모드 자체가 원인이 아니라 헤더 pseudo-element의 pointer event와 원격 roll 진행 상태 해제 누락이 원인이다.
+
+### Confirmed root cause
+
+- `src/styles/globals.css`의 `.hero::after`가 절대 위치 장식 요소인데 pointer event를 명시적으로 끄지 않았다.
+- `src/app/App.tsx`의 `subscribeGameState()` 동기화 경로에서 서버 state를 적용하면서 `pendingLocalRemoteActionsRef.current.clear()`만 호출하고 roll 진행 ref/state는 초기화하지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 효과음 버튼 자체에 `position: relative`, `z-index`, `pointer-events: auto`만 추가했다.
+  - Why it failed: 실제로 클릭을 가로챌 수 있는 헤더 pseudo-element의 pointer event를 제거하지 못했다.
+- Attempt 2:
+  - What was changed: 원격 action key에 `lastAppliedSequenceRef.current`를 포함했다.
+  - Why it failed: 중복 clientActionId 가능성은 줄였지만, 서버 state sync 후 stale `rollInProgress`가 남는 직접 원인은 해결하지 못했다.
+
+### Do not try again
+
+- 효과음 버튼 z-index만 계속 올리지 않는다.
+- 윷 던지기 action key만 바꾸면서 `rollInProgress` 해제 경로를 방치하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+
+### Correct fix plan
+
+- `.hero::after`에는 `pointer-events: none`을 부여하고, 실제 헤더 액션 그룹은 장식보다 위 레이어로 둔다.
+- 서버 game state sync가 적용되면 원격 action pending뿐 아니라 stale roll 진행 ref/state도 함께 해제한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile browser portrait tap target checked
+- [ ] Relevant Playwright QA rerun checked (local Playwright browser executable missing)
+- [x] No unrelated UI redesign
+
+## 2026-07-01 - 방장 첫 번째 플레이어 두 번째 윷 던지기 무반응
+
+### Symptom
+
+- 방장이자 첫 번째 플레이어인 사용자가 첫 윷 던지기와 이동 이후 다시 자기 차례가 되었을 때 윷 던지기 버튼을 눌러도 반응하지 않을 수 있었다.
+
+### Expected behavior
+
+- 기존 윷 결과가 이동 처리로 정리되면 진행 중인 윷 던지기 잠금도 함께 정리되어 다음 윷 던지기를 즉시 요청할 수 있어야 한다.
+
+### Actual behavior
+
+- `clearRoll()`은 `roll`과 `rollResultReadyAt`만 비우고 `rollInProgressRef`/`rollInProgressStartedAtRef`/`rollInProgress`는 정리하지 않았다.
+- 방장 클라이언트의 `canRollNow`는 `!rollInProgress`를 요구하므로, stale 진행 잠금이 남으면 `roll`이 이미 없어도 다음 클릭이 막혔다.
+
+### Confirmed root cause
+
+- 윷 결과 정리 함수인 `clearRoll()`에서 윷 던지기 진행 잠금을 함께 해제하지 않아, 방장 로컬 상태에 stale `rollInProgress`가 남을 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 원격 클라이언트 state sync 경로에서 `rollInProgress`를 해제했다.
+  - Why it failed: 방장 로컬 `clearRoll()` 경로에서 남는 stale lock은 직접 해제하지 못했다.
+
+### Do not try again
+
+- 윷 던지기 action key만 바꾸지 않는다.
+- Playwright timeout만 늘리지 않는다.
+- 버튼 UI만 활성화된 것처럼 보이게 하지 않는다.
+
+### Correct fix plan
+
+- `clearRoll()`이 `roll`을 비울 때 `rollInProgressRef`, `rollInProgressStartedAtRef`, React `rollInProgress` state를 같이 초기화한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Local Playwright QA checked (browser executable missing)
+- [x] No unrelated UI redesign
+
+## 2026-07-01 - 방장 두 번째 플레이어 윷 던지기 무반응
+
+### Symptom
+
+- 다른 사람 턴에는 윷 던지기 버튼이 비활성화되고 내 턴에는 활성화되지만, 방장인 사용자가 두 번째 플레이어/승계된 방장 상태일 때 버튼을 눌러도 윷 결과가 진행되지 않을 수 있었다.
+
+### Expected behavior
+
+- 현재 사용자의 uid가 `room.hostId`와 같으면 `isRoomHost` 상태가 늦거나 틀려도 host authoritative action 처리 경로를 사용해야 한다.
+- 방장 클라이언트는 자기 턴 윷 던지기를 원격 action queue에만 넣고 기다리면 안 된다.
+
+### Actual behavior
+
+- 버튼 활성화는 `activeSeat.id === localSeatId`와 `canSubmitTurnAction`을 기준으로 정상 동작했다.
+- 하지만 온라인 action 처리 경로는 `isRoomHost` state만 기준으로 host/remote client를 나눴다.
+- 방장 승계/복구 타이밍에서 실제 `room.hostId === currentUserId`인데 `isRoomHost` state가 아직 false이면, 방장 클라이언트가 자기 윷 던지기를 `submitRemoteAction()`으로만 등록하고 직접 처리하지 않았다.
+
+### Confirmed root cause
+
+- 실제 방장 여부를 나타내는 `room.hostId/currentUserId` 판정과 action 처리에 쓰이는 `isRoomHost` state 판정이 분리되어 있었다.
+- `canRollNow`는 이미 true가 될 수 있으므로 버튼 상태가 아니라 클릭 후 host authoritative 처리 경로 선택이 문제였다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 좌석의 `isHost` 표시를 `room.hostId` 기준으로 바꿨다.
+  - Why it failed: 버튼 활성/비활성 문제로 가정했지만, 실제 문제는 클릭 후 `isRoomHost`만 보고 remote action client 경로로 빠지는 것이었다.
+
+### Do not try again
+
+- 윷 던지기 버튼 disabled 조건만 바꾸지 않는다.
+- 좌석 `isHost` 표시만 바꾸고 action 처리 경로의 host 판정을 방치하지 않는다.
+- Playwright timeout만 늘리지 않는다.
+
+### Correct fix plan
+
+- `room.hostId === currentUserId`를 포함한 effective host 판정 값을 만든다.
+- 윷 던지기/말 이동/원격 action 처리/host autosave/AI 진행/순서 정리 등 host 권한이 필요한 실행 경로는 effective host 판정을 사용한다.
+- 기존 UI의 내 턴 판정은 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Multi-client Firebase manual check
+- [x] No unrelated UI redesign
+
+## 2026-07-01 - Issue #216 모바일 Game QA stale-local-turn-state 재발
+
+### Symptom
+
+- Issue #216에서 모바일 Game QA의 실제 게임 상태 머신 액션 진행 단계가 `stale-local-turn-state`로 실패했다.
+- 디버그 상태에서는 `canRollNow: true`, `rollActionBlockReasons: []`였지만 메시지는 `지금은 내 차례가 아닙니다.`로 남았다.
+
+### Expected behavior
+
+- host 로컬 상태 저장이 Firestore authoritative state에 반영되기 전에는 다음 윷 던지기/원격 action이 진행 가능한 것처럼 표시되면 안 된다.
+- autosave sequence mismatch가 발생하면 stale local turn state로 계속 진행하지 말고 최신 sequence 기준으로 저장을 재시도해야 한다.
+
+### Actual behavior
+
+- `saveGameState()`는 `expectedPreviousSequence` mismatch 시 `null`만 반환했다.
+- App의 host autosave effect는 저장 결과가 `null`이어도 `finally`에서 저장 pending key를 해제했다.
+- 그 결과 실제 저장이 반영되지 않은 로컬 상태에서도 `hasPendingHostStateSave`가 false가 되어 윷 던지기 guard가 통과할 수 있었다.
+
+### Reproduction steps
+
+1. 모바일 Game QA를 실행한다.
+2. host 로컬 AI/autosave 진행 중 Firestore sequence가 먼저 증가하거나 subscribe 반영이 늦어진다.
+3. host autosave가 오래된 `expectedPreviousSequence`로 저장을 시도해 mismatch가 발생한다.
+4. pending save 표시가 해제된 로컬 화면에서 다음 사람 턴 윷 던지기를 클릭한다.
+5. authoritative reducer가 Firestore 기준 turnIndex로 검증하며 `지금은 내 차례가 아닙니다.`를 반환한다.
+
+### Suspected root cause
+
+- Issue #180의 host autosave pending guard 보강 이후에도 autosave 실패/sequence mismatch 결과 자체를 성공과 구분하지 못해 pending guard가 너무 빨리 해제될 수 있었다.
+
+### Confirmed root cause
+
+- `saveGameState()`가 sequence mismatch와 duplicate/commit success를 구분해 반환하지 않았다.
+- autosave 호출부가 성공한 저장의 `lastSequence`를 `lastAppliedSequenceRef`에 반영하지 않아 다음 저장이 오래된 expected sequence로 반복될 수 있었다.
+- subscribe는 이미 적용한 version 이하의 snapshot을 즉시 무시해, 더 최신 `lastSequence`만 보정할 기회도 놓칠 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Issue #180에서 host autosave pending 상태를 guard에 연결해 저장 중에는 `saving-host-state`로 차단했다.
+  - Why it failed: 저장 pending 중인 경우는 차단했지만, 저장이 sequence mismatch로 실패한 뒤 pending key가 해제되는 경로는 막지 못했다.
+- Attempt 2:
+  - What was changed: QA helper가 authoritative turn mismatch를 `stale-local-turn-state`로 분류하도록 보강했다.
+  - Why it failed: 테스트 분류는 정확해졌지만 앱의 autosave 결과 처리와 sequence ref 보정은 부족했다.
+
+### Do not try again
+
+- Playwright timeout만 늘리지 않는다.
+- `지금은 내 차례가 아닙니다.` reject를 테스트에서 무시하지 않는다.
+- UI 구조나 버튼 disabled 조건만 임의로 바꾸지 않는다.
+- 저장 결과를 성공/실패 구분 없이 단순 truthy version으로 처리하지 않는다.
+
+### Correct fix plan
+
+- `saveGameState()`가 `committed`, `duplicate`, `sequence_mismatch`, `unavailable` 상태와 `turnVersion`, `lastSequence`를 반환하게 한다.
+- autosave 성공/duplicate일 때만 saved fingerprint를 갱신하고, 반환된 `lastSequence`를 `lastAppliedSequenceRef`에 반영한다.
+- sequence mismatch가 발생하면 최신 sequence를 반영한 뒤 autosave를 재시도한다.
+- 이미 적용한 version 이하의 snapshot이라도 더 최신 `lastSequence`는 반영한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Mobile Game QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-07-02 - sequence replay 이후 말 이동 순간이동 재발
+
+### Symptom
+
+- 최신 sequence까지 받아와 순차적으로 재생하도록 변경한 뒤에도, 원격 말 이동이 한 칸씩 애니메이션되지 않고 최종 위치로 순간이동할 수 있었다.
+
+### Expected behavior
+
+- 누락된 `move_piece_resolved` sequence를 가져오면 현재 로컬 말 위치를 기준으로 `pathNodeIds`를 순서대로 적용해 이동 애니메이션을 재생해야 한다.
+
+### Actual behavior
+
+- replay 경로가 이동 전 말 위치를 찾지 못하면 `finalPieces`를 즉시 적용해 최종 위치로 점프했다.
+
+### Reproduction steps
+
+1. 온라인 게임에서 한 클라이언트가 말 이동을 처리한다.
+2. 다른 클라이언트가 `lastSequence` 증가를 구독하고 누락 sequence replay 경로로 진입한다.
+3. replay 시작 위치를 찾지 못하는 경우 말이 최종 위치로 즉시 적용되는지 확인한다.
+
+### Suspected root cause
+
+- 최신 sequence replay 로직이 참조하는 `piecesRef`가 React `pieces` 상태와 동기화되지 않았다.
+
+### Confirmed root cause
+
+- `piecesRef`는 선언만 되어 있고 `pieces` 변경 시 갱신하는 effect가 없어 기본값인 빈 배열로 남을 수 있었다.
+- `replayMoveSequence()`는 `piecesRef.current`에서 이동 시작 말인 `anchorBefore`를 찾기 때문에, 빈 ref에서는 시작점을 찾지 못하고 `setPieces(finalPieces)` fallback으로 순간이동했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 누락 sequence를 최신까지 가져와 순차 replay하도록 했다.
+  - Why it failed: replay 기준이 되는 `piecesRef` 자체가 최신 로컬 말 상태를 담지 않아, sequence를 받아도 이동 시작점을 계산하지 못했다.
+
+### Do not try again
+
+- sequence 조회 범위만 다시 넓히지 않는다.
+- 말 CSS transition이나 지연 시간만 조정하지 않는다.
+- 시작 위치 ref 동기화 없이 `finalPieces` fallback을 유지한 채 애니메이션이 된다고 가정하지 않는다.
+
+### Correct fix plan
+
+- `pieces` 상태가 바뀔 때마다 `piecesRef.current`를 동기화한다.
+- 기존 sequence replay와 snapshot 적용 구조는 유지하고, 이동 시작점 탐색에 필요한 참조 상태만 보정한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Multi-client browser replay checked
+- [x] No unrelated UI changes
+- [x] No new dependency
+
+## 2026-07-02 - 순서 정하기 슬롯머신 일부 닉네임만 표시
+
+### Symptom
+
+- 순서 정하기 슬롯머신 애니메이션에서 일부 플레이어의 닉네임만 반복적으로 보이고, 모든 참가자 닉네임이 슬롯 릴에 노출되지 않았다.
+
+### Expected behavior
+
+- 순서 정하기 결과 공개 전 슬롯머신 릴에는 현재 참가한 모든 플레이어 닉네임이 순환 표시되어야 한다.
+
+### Actual behavior
+
+- 릴 데이터에는 참가자 순서가 반복으로 들어갔지만 CSS 애니메이션 이동 거리가 한 행(`60px`)으로 고정되어 첫 행 주변의 일부 닉네임만 보였다.
+
+### Reproduction steps
+
+1. 3명 이상 참가한 게임을 시작한다.
+2. 순서 정하기 완료 후 슬롯머신 오버레이를 확인한다.
+3. 릴이 섞이는 동안 모든 닉네임이 아니라 일부 닉네임만 반복 노출되는지 확인한다.
+
+### Suspected root cause
+
+- 슬롯 릴의 실제 참가자 수와 CSS keyframe 이동 거리가 연결되어 있지 않았다.
+
+### Confirmed root cause
+
+- `turn-order-slot-spin` keyframe이 항상 `translateY(-60px)`까지만 이동해 한 행만 순환했다.
+- React 렌더링은 반복 row를 만들었지만 애니메이션이 참가자 수만큼 이동하지 않아 전체 닉네임 목록을 지나가지 못했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 슬롯머신 UI는 최종 순서 배열을 기반으로 렌더링했다.
+  - Why it failed: 데이터 배열은 전체 참가자를 포함했지만 CSS 이동 거리가 한 행으로 고정되어 화면에 보이는 닉네임은 일부로 제한됐다.
+
+### Do not try again
+
+- 최종 순서 배열만 다시 만드는 방식으로 해결하려 하지 않는다.
+- 닉네임 텍스트만 줄이거나 슬롯 창 높이만 바꾸지 않는다.
+
+### Correct fix plan
+
+- 슬롯 릴에 참가자 수를 CSS 변수로 전달한다.
+- keyframe 이동 거리를 참가자 수와 행 높이에 맞춰 계산해 전체 닉네임이 한 주기 안에 모두 지나가도록 한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Browser visual check with 3+ players
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
+## 2026-07-02 - 순서 정하기 슬롯머신 정지 타이밍 불일치
+
+### Symptom
+
+- 슬롯머신 애니메이션이 처음 3초 동안 계속 돈 뒤 순서를 하나씩 멈춰 보여주는 요구와 다르게, 전체 공개 시간이 참가자 수와 무관한 균등 분할로 처리됐다.
+- 마지막 순서도 직전 순서 공개 후 0.5초 뒤에 멈추는 별도 타이밍이 적용되지 않았다.
+
+### Expected behavior
+
+- 슬롯머신은 처음 3초 동안 모든 슬롯이 돌고, 이후 다음 순서를 1초 간격으로 멈춰 보여줘야 한다.
+- 마지막 순서는 그 전 순서가 보인 뒤 0.5초 후에 멈춰 보여줘야 한다.
+
+### Actual behavior
+
+- 기존 공개 계산은 전체 reveal 시간을 순서 수로 나눠 `stoppedCount`를 계산했기 때문에 요구된 3초 초기 회전, 1초 간격, 마지막 0.5초 예외를 표현하지 못했다.
+
+### Suspected root cause
+
+- 슬롯머신 공개 타이밍이 명시적인 단계 스케줄이 아니라 전체 reveal 시간의 균등 분할로 계산됐다.
+
+### Confirmed root cause
+
+- `renderTurnOrderIntroOverlay()`가 `TURN_ORDER_REVEAL_MS / revealSteps`로 공개 간격을 계산해 모든 정지 간격을 균등하게 만들었다.
+- `slotUntil`도 고정 reveal 시간 기준이라 참가자 수별 마지막 공개 시점을 정확히 반영하지 못했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 슬롯 릴이 모든 닉네임을 지나가도록 이동 거리만 참가자 수 기반으로 바꿨다.
+  - Why it failed: 닉네임 노출 범위는 개선했지만, 순서별 정지 스케줄은 여전히 균등 공개 계산에 의존했다.
+
+### Do not try again
+
+- CSS 이동 거리만 조정하지 않는다.
+- 전체 reveal 시간을 순서 수로 균등 분할하지 않는다.
+
+### Correct fix plan
+
+- 3초 초기 회전, 중간 순서 1초 간격, 마지막 순서 0.5초 간격을 별도 상수와 helper로 계산한다.
+- `slotUntil`은 참가자 수에 따른 전체 정지 완료 시점으로 저장하고, 렌더링은 elapsed time을 단계 스케줄에 맞춰 `stoppedCount`로 변환한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Browser visual timing check with 3+ players
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
+## 2026-07-03 - Issue #304 Deploy Pages 동시 배포 충돌로 QA job 스킵 및 빈 실패 Issue 생성
+
+### Symptom
+
+- Issue #304에서 `Deploy Pages` job이 `Deployment failed, try again later.`로 실패했다.
+- `QA smoke`, `QA game flow`, `QA mobile layout`은 0초로 스킵되어 Playwright 로그와 test-results가 생성되지 않았다.
+- 생성된 Game QA 실패 Issue 본문은 실패 테스트명, 상세 로그, 콘솔 로그를 모두 추출하지 못해 원인 파악에 필요한 job 상태를 보여주지 못했다.
+
+### Expected behavior
+
+- merged PR QA는 GitHub Pages 배포가 성공한 뒤에만 실행되어야 한다.
+- 같은 Pages 대상 배포 workflow는 서로 충돌하지 않도록 순차 실행되어야 한다.
+- 배포 job이 실패하면 실패 Issue/요약에 개별 job 결과와 배포 실패 원인이 명시되어야 한다.
+
+### Actual behavior
+
+- `deploy-pages` 실패로 QA 전 cleanup 및 Playwright QA jobs가 의도대로 스킵됐지만, 실제 배포 실패 가능성을 키운 workflow concurrency가 PR 번호 기준으로 분리되어 있었다.
+- 요약 스크립트는 Playwright/build 로그 중심으로만 원인을 추정해 deploy-only 실패를 특정하지 못했다.
+
+### Reproduction steps
+
+1. merged PR QA workflow를 실행한다.
+2. `build`는 성공하지만 `deploy-pages`가 일시 실패한다.
+3. `qa-cleanup-before`와 Playwright QA jobs가 스킵된다.
+4. `qa-summary`가 빈 Playwright 로그 기반으로 Issue를 생성한다.
+
+### Suspected root cause
+
+- 같은 GitHub Pages 대상에 여러 merged PR workflow가 동시에 배포될 수 있는 concurrency 설정이었다.
+- QA summary가 `needs.*.result`를 본문에 전달하지 않았다.
+
+### Confirmed root cause
+
+- `.github/workflows/qa.yml`의 workflow concurrency group이 PR 번호 기반이라, 여러 merged PR workflow가 같은 GitHub Pages 대상에 동시에 배포할 수 있었다.
+- `cancel-in-progress: true`라서 같은 배포 대상의 이전 merged PR QA/deploy를 보존하지 않고 취소할 위험도 있었다.
+- `qa-cleanup-before`, `qa-smoke`, `qa-game-flow`, `qa-mobile`이 `deploy-pages`를 `needs`로 포함하는 것은 의도된 순서였으나, deploy failure 시 summary가 개별 job 결과를 보여주지 않아 원인 파악이 어려웠다.
+- `.github/scripts/summarize-qa.mjs`가 job 결과 환경 변수를 받지 않아 deploy failure를 자동 추정 원인으로 표시하지 못했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: Playwright QA가 Pages 배포와 독립적으로 실행되도록 `deploy-pages` needs를 제거했다.
+  - Why it failed: 사용자는 배포 실패 시 반영된 페이지가 없으므로 이후 QA 3종을 진행하면 안 된다고 지적했다. 실제 수정 대상은 QA 분리가 아니라 Pages 배포 실패 원인인 workflow 동시 실행/배포 충돌 가능성이었다.
+- Attempt 2:
+  - What was changed: workflow concurrency와 QA summary 진단을 보강했다.
+  - Why it failed: `deploy-pages` job 자체는 여전히 `actions/deploy-pages@v4`와 기본 10분 timeout/환경 설정 없음 상태라, Node 20 deprecation 경고가 남고 GitHub Pages 배포 상태 확인이 지연되는 경우를 충분히 흡수하지 못할 수 있었다.
+- Attempt 3:
+  - What was changed: `actions/deploy-pages@v4`를 `continue-on-error`로 먼저 실행하고 실패 시 20초 후 1회 재시도했다.
+  - Why it failed: 첫 deploy step 실패가 재시도 성공 여부와 관계없이 Actions annotation에 `Deployment failed, try again later.`로 남아 배포 오류처럼 보였고, cleanup job의 일시 실패는 한 번의 실패로 workflow 전체를 실패시켰다.
+
+### Do not try again
+
+- Playwright timeout이나 테스트 코드를 수정해 deploy-only 실패를 해결하려 하지 않는다.
+- 배포 실패 후 QA 3종을 강제로 실행하지 않는다.
+- Playwright 로그가 비어 있는 상태에서 테스트 실패로 단정하지 않는다.
+- PR 번호별 concurrency group으로 같은 Pages 대상 배포를 병렬 실행하게 두지 않는다.
+
+### Correct fix plan
+
+- QA cleanup-before와 Playwright QA jobs는 `deploy-pages` 성공 이후에만 실행되도록 유지한다.
+- workflow concurrency group을 PR 번호가 아니라 base branch/ref 기준으로 묶고 `cancel-in-progress: false`로 설정해 merged PR deploy/QA를 순차 실행한다.
+- QA summary에 개별 job 결과를 전달하고, deploy failure + 빈 Playwright 로그 상황을 명시적으로 원인 추정에 포함한다.
+- deploy job은 공식 `actions/deploy-pages@v4`를 유지하되, 실패 annotation이 남는 `continue-on-error` 선행 deploy retry 구조를 쓰지 않는다.
+- deploy 전 짧은 대기 후 단일 deploy step으로 실행하고, cleanup job은 일시적인 Firebase/네트워크 실패를 흡수하도록 제한된 재시도를 둔다.
+
+### Verification checklist
+
+- [x] Workflow/script syntax check
+- [x] QA summary deploy-failure sample generation check
+- [x] Build succeeds
+- [ ] Merged PR QA rerun checked
+
+## 2026-07-03 - Issue #317 Deploy Pages 액션 버전 태그 오류로 QA job 스킵
+
+### Symptom
+
+- Issue #317에서 PR #316 병합 후 `Deploy Pages` job이 실패했다.
+- `QA smoke`, `QA game flow`, `QA mobile layout`은 배포 실패로 실행되지 않았고 Playwright 로그가 생성되지 않았다.
+
+### Expected behavior
+
+- GitHub Pages 배포 job은 공식 Pages 배포 액션의 존재하는 major tag를 사용해야 한다.
+- 배포 실패 Issue 본문에는 개별 job 결과가 함께 포함되어야 한다.
+
+### Actual behavior
+
+- workflow가 `actions/deploy-pages@v5`를 참조했다.
+- 공식 `actions/deploy-pages` 문서/마켓플레이스 예시는 현재 major tag로 `v4`를 안내한다.
+- QA summary 스크립트는 job 결과 요약을 생성했지만 Issue 본문용 요약에는 포함하지 않아 deploy-only 실패에서 확인 정보가 부족했다.
+
+### Reproduction steps
+
+1. PR #316 병합으로 merged PR QA workflow를 실행한다.
+2. `Deploy Pages` job에서 `actions/deploy-pages@v5` step을 실행한다.
+3. 배포 job 실패로 후속 QA jobs가 skip된다.
+4. 자동 생성 Issue 본문에는 Playwright 로그가 비어 있고 job 결과 표가 빠진다.
+
+### Suspected root cause
+
+- 이전 안정화에서 deploy-pages action을 존재하지 않거나 공식 문서와 맞지 않는 `v5` major tag로 올렸다.
+- Issue 본문용 summary 조립부에 `jobResultSummary`가 누락됐다.
+
+### Confirmed root cause
+
+- `.github/workflows/qa.yml`의 deploy step이 `actions/deploy-pages@v5`였다.
+- `.github/scripts/summarize-qa.mjs`는 `jobResultSummary`를 failure summary에는 넣지만 `qa-issue-summary.md`에는 넣지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: PR #316에서 deploy job을 `actions/deploy-pages@v5`로 갱신했다.
+  - Why it failed: 공식 사용 예시와 맞지 않는 major tag를 참조해 deploy step 자체가 안정적으로 실행될 수 없었다.
+
+### Do not try again
+
+- 공식 문서/마켓플레이스에서 확인되지 않은 Pages action major tag로 올리지 않는다.
+- deploy-only 실패를 Playwright 테스트 실패로 보지 않는다.
+- Playwright timeout이나 테스트 코드를 수정해 Pages action 참조 오류를 해결하려 하지 않는다.
+
+### Correct fix plan
+
+- `actions/deploy-pages`를 공식 문서에서 안내하는 `v4` major tag로 되돌린다.
+- Issue 본문용 QA 요약에도 개별 job 결과를 포함한다.
+
+### Verification checklist
+
+- [x] Workflow/script syntax check
+- [x] QA summary deploy-failure sample generation check
+- [x] Build succeeds
+- [ ] Merged PR QA rerun checked
+
+## 2026-07-03 - Issue #319 Deploy Pages 환경 보호 규칙 거부
+
+### Symptom
+
+- Actions run `28644170305`에서 `Deploy Pages` job이 2초 만에 실패했다.
+- 후속 `QA smoke`, `QA game flow`, `QA mobile layout`은 배포 실패 때문에 skip됐다.
+- GitHub annotation에는 `Branch "refs/pull/318/merge" is not allowed to deploy to github-pages due to environment protection rules.`가 표시됐다.
+
+### Expected behavior
+
+- GitHub Pages 배포는 `github-pages` environment 보호 규칙에서 허용된 `main` ref로 실행되어야 한다.
+- 배포 성공 이후에만 QA job들이 실행되어야 한다.
+
+### Actual behavior
+
+- workflow가 `pull_request.closed` 이벤트에서 실행되어 PR 병합 커밋을 checkout하더라도 배포 deployment의 ref는 `refs/pull/318/merge`로 남았다.
+- `github-pages` environment 보호 규칙이 PR merge ref 배포를 거부했다.
+
+### Reproduction steps
+
+1. `pull_request.closed` 이벤트로 merged PR QA workflow를 실행한다.
+2. `Deploy Pages` job이 `github-pages` environment에 deployment를 생성한다.
+3. environment 보호 규칙이 이벤트 ref인 `refs/pull/<PR>/merge`를 검사한다.
+4. 허용 브랜치가 아니어서 deploy-pages step이 실패한다.
+
+### Suspected root cause
+
+- PR closed 이벤트에서 `actions/checkout` ref만 base branch로 맞추면 Pages environment 보호 규칙도 main으로 통과한다고 잘못 가정했다.
+
+### Confirmed root cause
+
+- run `28644170305`의 Deploy Pages annotation이 `refs/pull/318/merge`가 `github-pages` environment 보호 규칙에 허용되지 않는다고 명시했다.
+- 따라서 문제는 Pages 액션 버전이나 Playwright QA가 아니라 workflow 트리거 ref와 environment 보호 규칙의 불일치다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: deploy-pages action을 안정화하면서 `github-pages` environment를 명시했다.
+  - Why it failed: workflow가 여전히 `pull_request.closed` 이벤트에서 실행되어 deployment ref가 PR merge ref로 생성됐다.
+- Attempt 2:
+  - What was changed: action 버전을 `actions/deploy-pages@v4`로 되돌렸다.
+  - Why it failed: action 버전 문제는 해결했지만 environment 보호 규칙이 거부한 ref 문제는 남았다.
+
+### Do not try again
+
+- `actions/checkout`의 `ref`만 바꿔서 environment 보호 규칙 ref가 바뀐다고 가정하지 않는다.
+- Playwright timeout이나 QA 테스트 코드를 수정해 deploy environment 거부를 해결하려 하지 않는다.
+- `github-pages` environment를 제거해서 보호 규칙을 우회하지 않는다.
+
+### Correct fix plan
+
+- merged PR 배포/QA workflow를 `pull_request.closed`가 아니라 `push` to `main` 이벤트에서 실행한다.
+- checkout은 이벤트의 main 커밋을 그대로 사용한다.
+- 배포 성공 이후 QA job들이 실행되는 의존성은 유지한다.
+
+### Verification checklist
+
+- [x] Workflow syntax/static inspection
+- [x] Build succeeds
+- [ ] main push workflow rerun checked
+
+## 2026-07-03 - Issue #321 Game QA regression smoke game-screen timeout
+
+### Symptom
+
+- GitHub Actions run `28644495313`에서 `test:game-flow` job의 regression smoke가 `start-countdown-overlay` 확인 후 `game-screen`을 25초 안에 찾지 못해 실패했다.
+- 같은 job 안의 기본 game-flow QA는 성공했고, mobile/smoke QA도 성공했다.
+
+### Expected behavior
+
+- 온라인 Firebase 상태를 사용하는 game-flow/regression QA는 서로의 방 생성/시작 상태에 영향을 주지 않고 안정적으로 순차 검증되어야 한다.
+- 게임 화면 진입 실패 시에는 현재 화면, 대기실 텍스트, 앱 debug state가 실패 메시지에 남아야 한다.
+
+### Actual behavior
+
+- CI 로그는 `Running 3 tests using 2 workers`로 live Firebase 기반 game-flow/regression 테스트를 동시에 실행했다.
+- regression smoke의 `game-screen` assertion에는 `collectScreenState()` 메시지가 없어 대기실 잔류/상태 전환 지연/디버그 상태를 Issue 본문만으로 확인하기 어려웠다.
+
+### Reproduction steps
+
+1. main push 후 `Merged PR QA and Deploy` workflow를 실행한다.
+2. `QA game flow` job에서 `npm run test:game-flow`가 `tests/online`, `tests/game-flow`, `tests/regression`을 실행한다.
+3. CI runner가 2 workers로 live Firebase 기반 테스트 파일을 병렬 실행한다.
+4. regression smoke가 countdown 이후 `game-screen` 전환을 기다리다 timeout될 수 있다.
+
+### Suspected root cause
+
+- 원격 Firebase/배포 환경을 공유하는 상태ful QA 파일들이 2 workers로 동시에 방 생성/AI 추가/게임 시작/cleanup을 수행해 CI 타이밍 경합이 발생했다.
+- regression smoke만 게임 화면 진입 실패 메시지에 화면/debug state를 포함하지 않아 반복 실패 시 원인 고정이 어려웠다.
+
+### Confirmed root cause
+
+- Issue #321 로그에서 `test:game-flow`는 2 workers로 실행됐고, 실패한 regression smoke는 `game-screen` locator timeout만 남겼다.
+- 로컬 환경에서는 Playwright 브라우저 바이너리 부재로 동일 E2E 재현은 불가능했지만, workflow/package script상 worker 제한이 없어 CI에서 병렬 실행되는 경로는 확인됐다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: game-flow/basic-turn에는 `collectScreenState()` 진단 메시지가 추가되어 있었다.
+  - Why it failed: regression smoke의 동일한 게임 시작 assertion에는 진단 메시지가 없고, live Firebase 기반 game-flow job 병렬 실행은 제한되지 않았다.
+
+### Do not try again
+
+- 원인 확인 없이 `game-screen` timeout만 계속 늘리지 않는다.
+- live Firebase를 공유하는 game-flow/regression QA를 병렬 worker로 계속 실행하지 않는다.
+- 실패 메시지에 화면/debug state 없이 locator timeout만 남기지 않는다.
+
+### Correct fix plan
+
+- `test:game-flow`를 `--workers=1`로 실행해 online/game-flow/regression QA를 순차화한다.
+- regression smoke의 게임 화면 진입 assertion에도 `collectScreenState()` 진단 메시지를 추가한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] `test:game-flow` script worker 제한 확인
+- [ ] CI merged PR QA rerun checked
+- [x] No unrelated UI changes
+
+## 2026-07-05 - 비방장 플레이어 게임 진입 후 순서 정하기 대기 고착
+
+### Symptom
+
+- 비방장 플레이어가 게임 화면에 진입한 뒤 `waitingForOnlineTurnOrder`가 계속 `true`로 남고 순서 정하기 인트로가 시작되지 않았다.
+- 화면에는 “모든 플레이어의 게임 화면 진입을 확인하고 있습니다.” 로그만 남았다.
+
+### Expected behavior
+
+- 게임 초기 상태가 생성되고 플레이어들이 게임 화면에 들어오면 순서 정하기 결과가 저장되어 모든 클라이언트에 전파되어야 한다.
+
+### Actual behavior
+
+- 순서 정하기 시작 및 인트로 완료 처리가 단일 온라인 코디네이터 클라이언트에만 묶여 있었다.
+- 코디네이터 클라이언트가 해당 대기 상태를 진행하지 못하면 다른 온라인 플레이어는 Firestore 트랜잭션으로 안전하게 처리할 수 있어도 로컬 가드에서 차단되어 계속 대기했다.
+
+### Confirmed root cause
+
+- `waitingForPlayersReady` 상태의 초기 순서 확정은 `resolveTurnOrderIntro` 트랜잭션이 이미 중복 방어를 하지만, UI 효과 가드는 `canCoordinateOnlineGame`만 허용했다.
+- 따라서 비코디네이터 플레이어는 `waitingForOnlineTurnOrder` 상태를 관찰해도 초기 순서 확정이나 만료된 인트로 정리에 참여하지 못했다.
+
+### Fix plan
+
+- 초기 온라인 순서 정하기 대기 상태에서는 현재 온라인 플레이어도 idempotent 트랜잭션을 시도할 수 있도록 별도 권한 가드를 둔다.
+- 순서 인트로 완료 정리도 온라인 플레이어가 중복 방어된 트랜잭션으로 수행할 수 있게 한다.
+- 일반 턴 진행, 이동, 스냅샷 저장 권한은 기존 코디네이터 가드를 유지한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [ ] Multi-client browser check
+- [x] No unrelated UI redesign
+- [x] No new dependency
+
+
+## 2026-07-05 - Issue #408 온라인 게임 시작 직후 턴 표시 미확정
+
+### Symptom
+
+- Actions run `28743262798`의 `QA game flow` job에서 게임 화면 진입 후 `turn-indicator`가 hidden 상태로 남아 첫 턴 UI 검증이 실패했다.
+- 테스트 timeout만 늘리는 방식은 순서 정하기 결과가 게임 시작 전에 authoritative state로 확정되어야 한다는 실제 요구를 해결하지 못한다.
+
+### Expected behavior
+
+- 방장이 게임 시작을 요청하면 게임 초기 state가 생성될 때 순서 정하기 결과도 함께 Firebase authoritative state에 저장되어야 한다.
+- 각 플레이어는 게임 화면에 들어간 뒤 별도 로컬 순서 확정 경쟁을 하지 않고 Firebase에서 확정된 `turnOrderIds`와 intro를 수신해야 한다.
+
+### Actual behavior
+
+- 기존 온라인 시작 state는 `turnOrderIds: []`, `waitingForPlayersReady: true`로 저장됐다.
+- 게임 화면 진입 후 클라이언트 effect가 모든 사람 플레이어의 진입 presence를 확인한 다음 `resolveTurnOrderIntro()`를 별도로 실행해야 했고, 그 사이 `waitingForOnlineTurnOrder`가 true라 턴 표시가 비어 있을 수 있었다.
+
+### Confirmed root cause
+
+- 온라인 게임 초기화와 초기 순서 확정이 분리되어 있어, `game-screen`은 표시됐지만 authoritative `turnOrderIds`가 아직 없는 중간 상태가 Firebase에 존재했다.
+- 이 중간 상태에서 `boardTurnIndicatorText`가 빈 문자열이 되어 `turn-indicator`가 hidden으로 판정될 수 있었다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: `turn-indicator` assertion timeout과 진단 메시지만 보강했다.
+  - Why it failed: QA 타이밍 완화일 뿐, Firebase 초기 state에 순서가 비어 있는 앱 상태 자체를 제거하지 못했다.
+
+### Do not try again
+
+- `turn-indicator` timeout만 늘려서 앱의 초기 순서 미확정 상태를 덮지 않는다.
+- 여러 클라이언트가 게임 화면 진입 후 각자 순서 확정 트랜잭션을 시도하는 구조에 의존하지 않는다.
+
+### Correct fix plan
+
+- `initializeGameState()`에 전달하는 온라인 초기 state부터 `turnOrderIds`, `initialTurnOrderIds`, `turnOrderIntro`, `gameStartedAt`을 채운다.
+- `waitingForPlayersReady`는 초기 state에서 false로 저장해 게임 화면 진입 후 별도 순서 확정 대기를 만들지 않는다.
+- 게임 종료 후 대기화면 버튼은 온라인 방을 떠나지 않고 같은 방의 대기실로 전환한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Unit tests pass
+- [ ] CI game-flow rerun checked
+- [ ] Multi-client browser check
+
+## 2026-07-05 - 인게임 대기실 복귀 시 준비 배지/재시작 노출
+
+### Symptom
+
+- 게임 종료/복귀 흐름에서 클라이언트가 방 대기실 화면으로 돌아왔지만 방 상태가 아직 인게임이면 플레이어 카드에 `준비` 배지가 보일 수 있었다.
+- 같은 상태에서 방장에게 `게임 시작` 버튼이 다시 활성화될 위험이 있었다.
+- 한 번 관전자로 들어갔던 사용자는 게임이 끝나 방이 다시 waiting 상태가 된 뒤에도 기존 spectator 문서 때문에 플레이어 자리로 재참여하지 못할 수 있었다.
+
+### Expected behavior
+
+- 방이 아직 entering/playing 상태이면 대기실에서도 플레이어 카드는 `게임중`으로 표시되어야 한다.
+- 인게임 상태에서는 새 게임 시작/준비 토글을 막아야 한다.
+- waiting 상태로 돌아온 방에서는 기존 spectator도 빈 좌석이 있으면 플레이어로 다시 참여할 수 있어야 한다.
+
+### Confirmed root cause
+
+- 대기실 UI는 방의 start status를 고려하지 않고 seat.ready만 보고 `준비` 배지를 표시했다.
+- `게임 시작` 버튼 disabled 조건도 `allReady`만 확인해 인게임 상태를 별도로 차단하지 않았다.
+- `joinRoom()`은 기존 player 문서가 spectator이면 room 상태와 관계없이 spectator로 유지하는 분기가 먼저 실행됐다.
+- `updateRoomStatus(roomId, 'waiting')`은 `startStatus`를 idle로 초기화하지 않아, waiting 방이 startStatus playing으로 남아 관전/참여 판정에 영향을 줄 수 있었다.
+
+### Correct fix plan
+
+- WaitingRoomContainer에 인게임 상태를 전달해 `게임중` 상태 문구와 좌석 배지를 표시한다.
+- 인게임 상태에서는 시작/준비 버튼을 비활성화하고 start handler에서도 재시작을 거부한다.
+- room status를 waiting으로 바꿀 때 countdown/startStatus 필드를 idle 상태로 함께 초기화한다.
+- 기존 spectator 문서는 room이 실제 인게임일 때만 spectator로 유지하고, waiting 방에서는 빈 좌석 참여 흐름으로 내려가게 한다.
+
+### Verification checklist
+
+- [x] Build succeeds
+- [x] Unit tests pass
+- [ ] Multi-client join/spectator browser check
+
+## 2026-07-05 - Issue #411 Deploy Pages 일시 실패 후 QA 스킵
+
+### Symptom
+
+- Issue #411에서 main push QA workflow의 `Deploy Pages` job이 `Deployment failed, try again later.` annotation과 함께 실패했다.
+- `QA smoke`, `QA game flow`, `QA mobile layout`은 배포 실패 때문에 모두 skipped 상태가 됐다.
+- Playwright 로그와 브라우저 콘솔 로그는 생성되지 않았다.
+
+### Expected behavior
+
+- Pages 배포가 GitHub Pages의 일시적인 슬롯/잠금/지연 상황을 더 오래 흡수한 뒤 성공해야 한다.
+- 배포 실패로 QA가 스킵된 경우 Issue 요약은 현재 workflow 동작과 맞는 원인 안내를 남겨야 한다.
+
+### Actual behavior
+
+- workflow는 Pages artifact 업로드 후 20초만 기다리고 `actions/deploy-pages@v4`를 기본 오류 허용 횟수에 가깝게 실행했다.
+- 반복되는 Pages backend 지연/잠금 상황에서 deploy step이 약 31초 만에 실패했고, 후속 QA가 실행되지 않았다.
+- 자동 원인 문구는 이미 제거된 `20초 대기 후 1회 재시도` 구조를 계속 안내했다.
+
+### Confirmed root cause
+
+- 실패 run `28755160524`에서 Build는 성공했고 Deploy Pages만 실패했으며 Playwright job들은 skipped였다.
+- deploy-pages annotation은 앱 빌드나 테스트 문제가 아니라 GitHub Pages 배포 단계의 `Deployment failed, try again later.`였다.
+- 현재 workflow의 20초 사전 대기와 짧은 deploy status/error 허용 설정이 Pages 슬롯 지연을 충분히 흡수하지 못했다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: deploy step을 `continue-on-error`로 실행한 뒤 실패 시 20초 후 1회 재시도했다.
+  - Why it failed: 첫 deploy step 실패 annotation이 재시도 성공 여부와 관계없이 Actions에 남아 배포 오류처럼 보였다.
+- Attempt 2:
+  - What was changed: 실패 annotation을 피하기 위해 단일 deploy step으로 되돌리고 20초만 대기했다.
+  - Why it failed: Pages backend 슬롯/잠금/지연이 20초보다 오래 지속되면 단일 deploy step이 빠르게 실패했다.
+
+### Do not try again
+
+- Playwright timeout이나 앱 테스트 코드를 수정해 deploy-only 실패를 해결하려 하지 않는다.
+- 실패 annotation을 남기는 선행 deploy `continue-on-error` 재시도 구조를 반복하지 않는다.
+- 배포 실패 후 QA 3종을 강제로 실행하지 않는다.
+
+### Correct fix plan
+
+- deploy-pages step 전 Pages 배포 슬롯 대기 시간을 늘린다.
+- `actions/deploy-pages@v4`의 timeout, error_count, reporting_interval을 늘려 일시적인 Pages 상태 확인 오류를 더 오래 흡수한다.
+- QA summary의 deploy failure 자동 원인 문구를 현재 workflow 구조와 맞게 수정한다.
+
+### Verification checklist
+
+- [x] Workflow/script syntax check
+- [x] Build succeeds
+- [ ] main push workflow rerun checked
+
+## 2026-07-06 - Issue #419 Deploy Pages 슬롯 지연 재발로 QA 스킵
+
+### Symptom
+
+- main push QA workflow에서 `Build app`은 성공했지만 `Deploy Pages` job이 `Deployment failed, try again later.` annotation으로 실패했다.
+- `QA smoke`, `QA game flow`, `QA mobile layout`은 배포 실패 때문에 모두 skipped 상태가 됐다.
+- Playwright 로그와 브라우저 콘솔 로그는 생성되지 않았다.
+
+### Expected behavior
+
+- GitHub Pages 배포 슬롯/백엔드 지연이 60초보다 길어져도 workflow가 충분히 기다린 뒤 배포를 시도해야 한다.
+- deploy-pages 입력값은 action 허용 범위 안에 있어야 하며, 잘못된 timeout 경고를 만들지 않아야 한다.
+
+### Actual behavior
+
+- workflow는 artifact 업로드 후 60초만 기다린 뒤 deploy-pages를 실행했다.
+- 실패 run `28760402569`의 전체 `Deploy Pages` job은 약 1분 20초 만에 실패해, 실제 deploy-pages 단계는 60초 대기 직후 약 20초 만에 `Deployment failed, try again later.`로 종료됐다.
+- `timeout: 900000`은 `actions/deploy-pages@v4` 허용 최대값 600000ms를 초과해 GitHub Actions annotation에 최대값으로 강제 조정되었다는 경고를 남겼다.
+
+### Confirmed root cause
+
+- 실패 원인은 앱 빌드나 Playwright가 아니라 GitHub Pages 배포 단계의 일시적인 배포 슬롯/백엔드 지연이다.
+- 직전 보강의 60초 사전 대기는 이번 run의 Pages 지연을 흡수하기에 부족했다.
+- deploy timeout을 900000ms로 지정한 설정은 action 최대 허용값을 넘어 실제로는 600000ms로 잘렸으므로, 의도한 추가 대기 안정화가 적용되지 않았다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: deploy step을 `continue-on-error`로 실행한 뒤 실패 시 20초 후 1회 재시도했다.
+  - Why it failed: 첫 deploy step 실패 annotation이 재시도 성공 여부와 관계없이 Actions에 남아 배포 오류처럼 보였다.
+- Attempt 2:
+  - What was changed: 실패 annotation을 피하기 위해 단일 deploy step으로 되돌리고 20초만 대기했다.
+  - Why it failed: Pages backend 슬롯/잠금/지연이 20초보다 오래 지속되면 단일 deploy step이 빠르게 실패했다.
+- Attempt 3:
+  - What was changed: 단일 deploy step을 유지하고 사전 대기를 60초로 늘렸으며 `timeout: 900000`을 지정했다.
+  - Why it failed: 이번 Pages 지연은 60초보다 길었고, `timeout: 900000`은 action 최대값을 초과해 600000ms로 강제 조정됐다.
+
+### Do not try again
+
+- Playwright timeout이나 앱 테스트 코드를 수정해 deploy-only 실패를 해결하려 하지 않는다.
+- 실패 annotation을 남기는 선행 deploy `continue-on-error` 재시도 구조를 반복하지 않는다.
+- `actions/deploy-pages@v4`의 최대 허용값을 초과하는 timeout을 지정하지 않는다.
+- 배포 실패 후 QA 3종을 강제로 실행하지 않는다.
+
+### Correct fix plan
+
+- deploy-pages step 전 Pages 배포 슬롯 대기 시간을 180초로 늘린다.
+- deploy-pages timeout은 action 허용 최대값인 600000ms로 명시해 잘림 경고를 제거한다.
+- 배포 성공 이후에만 QA job들이 실행되는 의존성은 유지한다.
+
+### Verification checklist
+
+- [x] Workflow syntax/manual inspection
+- [x] Build succeeds
+- [ ] main push workflow rerun checked
+
+## 2026-07-07 - Actions run 28864416720 unit test runner path failure
+
+### Symptom
+
+- `Build and unit tests` job에서 `Build app` 단계는 성공했지만 `Unit tests` 단계가 시작 전에 실패했다.
+- 실패 로그는 `Cannot find module '/home/runner/work/Yut/Yut/.tmp-unit-tests/tests/unit'`였다.
+
+### Confirmed root cause
+
+- 앱/게임 로직 문제가 아니라 `test:unit` 스크립트가 TypeScript 컴파일 출력 구조와 무관하게 `.tmp-unit-tests/tests/unit` 고정 경로를 `node --test`에 전달한 CI/unit runner 경로 문제였다.
+
+### Correct fix plan
+
+- 컴파일 후 `.tmp-unit-tests` 아래에 실제 생성된 `*.test.js` 파일을 재귀 탐색해 `node --test`에 전달한다.
+- 컴파일된 unit test 파일이 없으면 명확한 메시지와 함께 실패한다.
+
+### Verification checklist
+
+- [x] `npm run test:unit` succeeds
+- [x] `npm run build` succeeds
+- [ ] GitHub Actions rerun checked
+
+## 2026-07-22 - Main Branch QA live Firebase 병렬 job 경합 재발
+
+### Symptom
+
+- Actions run `29883467598`에서 `QA online flow`와 `QA mobile and tablet layout` job이 동시에 실패했다.
+- `Build and unit tests`, `QA roll and movement`, `QA desktop lobby`는 성공했고 `Summarize QA result`는 선행 job 실패 결과를 집계하며 실패했다.
+
+### Expected behavior
+
+- 운영 Firebase를 사용하는 QA job은 서로의 방 생성, 구독, cleanup, 인증 상태에 영향을 주지 않고 안정적으로 실행되어야 한다.
+
+### Actual behavior
+
+- workflow가 운영 Firebase 기반 Playwright QA job들을 같은 `build-and-unit` 완료 직후 병렬 실행했다.
+- 일부 mobile QA도 실제 Firebase 방을 생성/참가하므로 online-flow QA와 동시에 실행될 때 원격 상태/타이밍 경합에 노출될 수 있었다.
+
+### Suspected root cause
+
+- live Firebase를 공유하는 상태ful QA job 간 병렬 실행 경합.
+
+### Confirmed root cause
+
+- 실패 run의 공개 Actions 요약에서 `QA online flow`와 `QA mobile and tablet layout`이 실패했고, 이 workflow의 두 job은 모두 `needs: build-and-unit`로 동시에 시작 가능했다.
+- 저장소의 기존 bug history에도 live Firebase 기반 QA 병렬 실행이 game-flow timeout을 만든 전례가 있다.
+
+### Previous failed attempts
+
+- Attempt 1:
+  - What was changed: 개별 test script 안에서 일부 Playwright 파일 실행을 `--workers=1`로 순차화했다.
+  - Why it failed: workflow job 자체는 여전히 병렬이어서 서로 다른 QA job 사이의 live Firebase 경합은 막지 못했다.
+
+### Do not try again
+
+- 운영 Firebase를 사용하는 QA job들을 같은 push에서 병렬 실행하지 않는다.
+- Playwright timeout만 늘려 원격 상태 경합을 덮지 않는다.
+
+### Correct fix plan
+
+- 운영 Firebase를 사용하는 QA job을 workflow `needs` 체인으로 순차 실행한다.
+- deploy-pages는 마지막 QA job과 cleanup 완료 후에만 실행되도록 의존성을 단순화한다.
+
+### Verification checklist
+
+- [x] Workflow syntax/manual inspection
+- [x] Build succeeds
+- [ ] main push workflow rerun checked

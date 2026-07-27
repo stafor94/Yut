@@ -16,11 +16,11 @@ const EXPECTED_LABELS = {
 };
 
 test.describe('mobile roll timing grades QA', () => {
-  test('타이밍 orb는 합성 레이어로 왕복하고 등급과 결과 카드는 기존 계약을 유지한다', async ({ page, context }, testInfo) => {
+  test('타이밍 orb는 CSS animation 없이 단일 transform writer를 사용하고 등급과 결과 카드는 기존 계약을 유지한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 780 });
     await primeLobbyStorage(context, { nickname: '타이밍QA' });
 
-    await runQaStep(testInfo, '타이밍 막대 이동과 통합 결과 카드 시각 계약 확인', async () => {
+    await runQaStep(testInfo, '타이밍 막대 단일 transform 소유와 통합 결과 카드 시각 계약 확인', async () => {
       await expectAppShell(page);
       await waitForBlockingOverlayToDisappear(page);
 
@@ -65,14 +65,13 @@ test.describe('mobile roll timing grades QA', () => {
           const orbRect = orb.getBoundingClientRect();
           return ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100;
         };
-        const movementAnimation = track.getAnimations()[0];
-        movementAnimation.pause();
-        movementAnimation.currentTime = 0;
-        const startPositionPercent = readOrbPositionPercent();
-        movementAnimation.currentTime = 500;
-        const middlePositionPercent = readOrbPositionPercent();
-        movementAnimation.currentTime = 999;
-        const endPositionPercent = readOrbPositionPercent();
+        const sampleTransformPosition = (positionPercent) => {
+          track.style.transform = `translate3d(${positionPercent}%, 0, 0)`;
+          return readOrbPositionPercent();
+        };
+        const startPositionPercent = sampleTransformPosition(0);
+        const middlePositionPercent = sampleTransformPosition(50);
+        const endPositionPercent = sampleTransformPosition(100);
         const trackStyle = getComputedStyle(track);
         const orbStyle = getComputedStyle(orb);
         const grades = ['perfect', 'nice', 'good', 'bad'].map((grade) => {
@@ -111,10 +110,7 @@ test.describe('mobile roll timing grades QA', () => {
           orbTrackClass: orb.parentElement?.className ?? '',
           trackPosition: trackStyle.position,
           trackAnimationName: trackStyle.animationName,
-          trackAnimationDuration: trackStyle.animationDuration,
-          trackAnimationTimingFunction: trackStyle.animationTimingFunction,
-          trackAnimationIterationCount: trackStyle.animationIterationCount,
-          trackAnimationDirection: trackStyle.animationDirection,
+          trackAnimationCount: track.getAnimations().length,
           trackWillChange: trackStyle.willChange,
           trackBackfaceVisibility: trackStyle.backfaceVisibility,
           orbAnimationName: orbStyle.animationName,
@@ -152,11 +148,8 @@ test.describe('mobile roll timing grades QA', () => {
       expect(presentation.orbBorderColor).toBe('rgb(255, 255, 255)');
       expect(presentation.orbTrackClass).toBe('roll-timing-orb-track');
       expect(presentation.trackPosition).toBe('absolute');
-      expect(presentation.trackAnimationName).toBe('roll-timing-orb-track');
-      expect(presentation.trackAnimationDuration).toBe('1s');
-      expect(presentation.trackAnimationTimingFunction).toBe('linear');
-      expect(presentation.trackAnimationIterationCount).toBe('infinite');
-      expect(presentation.trackAnimationDirection).toBe('alternate');
+      expect(presentation.trackAnimationName).toBe('none');
+      expect(presentation.trackAnimationCount).toBe(0);
       expect(presentation.trackWillChange).toContain('transform');
       expect(presentation.trackBackfaceVisibility).toBe('hidden');
       expect(presentation.orbAnimationName).toBe('none');

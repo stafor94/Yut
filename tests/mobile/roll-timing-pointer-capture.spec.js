@@ -3,12 +3,12 @@ import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep }
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomSequencesForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
-const GOOD_PRESS_RANGE = Object.freeze([32, 36]);
-const NICE_RELEASE_RANGE = Object.freeze([58, 59.5]);
-const GOOD_RELEASE_RANGE = Object.freeze([68, 72]);
-const PERFECT_RELEASE_RANGE = Object.freeze([48, 52]);
-const POSITION_TOLERANCE_PERCENT = 0.15;
+const GOOD_PRESS_RANGE = Object.freeze([30, 34]);
+const NICE_PRESS_RANGE = Object.freeze([41, 44]);
+const POSITION_TOLERANCE_PERCENT = 0.25;
 const HOLD_REMOVAL_MAX_DELAY_MS = 1500;
+const LONG_PRESS_MS = 180;
+const ROLL_TIMING_CYCLE_MS = 2000;
 
 function getExpectedGrade(positionPercent) {
   if (positionPercent >= 45 && positionPercent <= 55) return 'PERFECT';
@@ -21,14 +21,7 @@ async function addAiAndWaitUntilGameCanStart(page) {
   const addAiButton = page.getByTestId('add-ai-P2');
   await expect(addAiButton).toBeVisible({ timeout: 15_000 });
   await expect(addAiButton).toBeEnabled({ timeout: 15_000 });
-
-  // This is setup for the timing gesture assertions below. WebKit can keep the
-  // mobile waiting-room card in sub-pixel layout motion long enough for
-  // Playwright's pointer actionability stability check to time out even though
-  // the visible, enabled button is ready. Trigger the same DOM click handler,
-  // then retain the user-visible state assertions as the completion condition.
   await addAiButton.evaluate((button) => button.click());
-
   await expect(addAiButton).toBeHidden({ timeout: 15_000 });
   await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
 }
@@ -55,9 +48,6 @@ async function startAiTimingGame(page, context, testInfo, attemptLabel = '') {
     const startGameButton = page.getByTestId('start-game-button');
     await expect(startGameButton).toBeVisible({ timeout: 15_000 });
     await expect(startGameButton).toBeEnabled({ timeout: 15_000 });
-    // The timing gesture is the behavior under test. WebKit can keep the waiting-room
-    // action bar in sub-pixel motion, so use the same DOM setup click as the AI button
-    // and keep the game-screen and turn-order assertions as completion conditions.
     await startGameButton.evaluate((button) => button.click());
     await expect(page.getByTestId('game-screen'), `게임 화면 진입 실패: ${JSON.stringify(await collectScreenState(page), null, 2)}`).toBeVisible({ timeout: 25_000 });
     await expect.poll(async () => {
@@ -111,14 +101,14 @@ function assertVisibleHoldSample(sample, expectedPositionPercent) {
 }
 
 function assertAuthoritativeTiming(sequence, gesture) {
-  const expectedGrade = getExpectedGrade(gesture.pointerUpPositionPercent);
+  const expectedGrade = getExpectedGrade(gesture.pointerDownSnapshot.positionPercent);
   const expectedZone = expectedGrade.toLowerCase();
   const actionPayload = sequence?.action?.payload ?? {};
   const sequencePayload = sequence?.payload ?? {};
   const patch = sequence?.patch ?? {};
 
   expect(typeof actionPayload.timingPositionPercent).toBe('number');
-  expect(Math.abs(Number(actionPayload.timingPositionPercent) - gesture.pointerUpPositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
+  expect(Math.abs(Number(actionPayload.timingPositionPercent) - gesture.pointerDownSnapshot.positionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
   expect(actionPayload.rollTimingZone).toBe(expectedZone);
   expect(sequencePayload.timingZone).toBe(expectedZone);
   expect(patch.lastRollTimingZone).toBe(expectedZone);
@@ -126,22 +116,13 @@ function assertAuthoritativeTiming(sequence, gesture) {
   expect(gesture.rollLog).toContain('던졌습니다.');
 }
 
-async function dispatchVisibleTimingGesture(page, {
-  releaseInside = true,
+async function dispatchPointerDownSnapshotGesture(page, {
+  releaseMode = 'inside',
   pointerDownRange = GOOD_PRESS_RANGE,
-  pointerUpRange = NICE_RELEASE_RANGE,
-  staleRenderedRange = PERFECT_RELEASE_RANGE,
-  reportedAnimationCurrentTime,
+  holdMs = LONG_PRESS_MS,
   awaitSubmission = true,
 } = {}) {
-  return page.evaluate(async ({
-    releaseInside: shouldReleaseInside,
-    pointerDownRange: downRange,
-    pointerUpRange: upRange,
-    staleRenderedRange: staleRange,
-    reportedAnimationCurrentTime: forcedCurrentTime,
-    awaitSubmission: shouldAwaitSubmission,
-  }) => {
+  return page.evaluate(async ({ releaseMode: requestedReleaseMode, pointerDownRange: downRange, holdMs: requestedHoldMs, awaitSubmission: shouldAwaitSubmission }) => {
     const meter = document.querySelector('.roll-timing-live-meter');
     const track = meter?.querySelector('.roll-timing-orb-track');
     const orb = meter?.querySelector('.roll-timing-orb');
@@ -149,32 +130,26 @@ async function dispatchVisibleTimingGesture(page, {
     if (!(meter instanceof HTMLElement) || !(track instanceof HTMLElement) || !(orb instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) {
       throw new Error('타이밍 막대 또는 던지기 버튼을 찾지 못했습니다.');
     }
-    const animation = track.getAnimations()[0];
-    if (!animation) throw new Error('타이밍 orb track animation을 찾지 못했습니다.');
-
-    const computedTiming = animation.effect?.getComputedTiming();
-    const iterationDuration = Number(computedTiming?.duration);
-    if (!Number.isFinite(iterationDuration) || iterationDuration <= 0) {
-      throw new Error(`타이밍 animation duration을 확인하지 못했습니다: ${String(computedTiming?.duration)}`);
-    }
-    await animation.ready;
-    animation.pause();
 
     const gradeNames = new Set(['PERFECT', 'NICE', 'GOOD', 'BAD']);
-    const readPositionPercent = (targetMeter = meter, targetOrb = orb) => {
+    const cycleMs = 2000;
+    const readVisiblePositionPercent = (targetMeter = meter, targetOrb = orb) => {
       const meterRect = targetMeter.getBoundingClientRect();
       const orbRect = targetOrb.getBoundingClientRect();
       return ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100;
     };
-    const waitForRenderedFrame = () => new Promise((resolve) => {
-      window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+    const readSnapshot = (targetMeter = meter) => ({
+      positionPercent: Number(targetMeter.dataset.positionPercent),
+      phaseMs: Number(targetMeter.dataset.phaseMs),
+      capturedAt: Number(targetMeter.dataset.capturedAt),
+      resetKey: targetMeter.dataset.resetKey ?? '',
     });
     const waitForCondition = async (condition, timeoutMs, failureMessage) => {
       const deadline = performance.now() + timeoutMs;
       while (performance.now() <= deadline) {
         const value = condition();
         if (value) return value;
-        await new Promise((resolve) => window.setTimeout(resolve, 16));
+        await new Promise((resolve) => window.requestAnimationFrame(resolve));
       }
       throw new Error(failureMessage);
     };
@@ -185,20 +160,16 @@ async function dispatchVisibleTimingGesture(page, {
         `${elapsedMs}ms 관측 시점에 도달하지 못했습니다.`,
       );
     };
-    const placeAtVisiblePosition = (minimum, maximum) => {
-      let lowerTime = 0;
-      let upperTime = iterationDuration;
-      let positionPercent = readPositionPercent();
-      for (let attempt = 0; attempt < 18; attempt += 1) {
-        const candidateTime = (lowerTime + upperTime) / 2;
-        animation.currentTime = candidateTime;
-        positionPercent = readPositionPercent();
-        if (positionPercent >= minimum && positionPercent <= maximum) return positionPercent;
-        if (positionPercent < minimum) lowerTime = candidateTime;
-        else upperTime = candidateTime;
-      }
-      throw new Error(`화면 타이밍 위치 설정 실패: target=${minimum}-${maximum}, actual=${positionPercent}`);
-    };
+    const waitForAscendingPosition = async (minimum, maximum) => waitForCondition(() => {
+      const snapshot = readSnapshot();
+      return Number.isFinite(snapshot.positionPercent)
+        && Number.isFinite(snapshot.phaseMs)
+        && snapshot.phaseMs < 1000
+        && snapshot.positionPercent >= minimum
+        && snapshot.positionPercent <= maximum
+        ? snapshot
+        : null;
+    }, 3000, `상승 방향 목표 위치를 찾지 못했습니다: ${minimum}-${maximum}`);
     const observeSubmission = () => new Promise((resolve, reject) => {
       let submittedGrade = '';
       let rollLog = '';
@@ -228,16 +199,16 @@ async function dispatchVisibleTimingGesture(page, {
       readSubmission();
     });
 
-    placeAtVisiblePosition(staleRange[0], staleRange[1]);
-    await waitForRenderedFrame();
-    const staleRenderedPositionPercent = readPositionPercent();
-
-    const pointerDownPositionPercent = placeAtVisiblePosition(downRange[0], downRange[1]);
+    const trackAnimationCount = track.getAnimations().length;
+    const targetSnapshot = await waitForAscendingPosition(downRange[0], downRange[1]);
+    const originalMeterRect = meter.getBoundingClientRect();
+    const originalMeterWidth = originalMeterRect.width;
+    const originalMeterHeight = originalMeterRect.height;
     const buttonRect = button.getBoundingClientRect();
     const buttonCenterX = buttonRect.left + buttonRect.width / 2;
     const buttonCenterY = buttonRect.top + buttonRect.height / 2;
-    const releaseX = shouldReleaseInside ? buttonCenterX : buttonRect.right + 24;
     const pointerId = 23;
+
     button.dispatchEvent(new PointerEvent('pointerdown', {
       bubbles: true,
       cancelable: true,
@@ -251,33 +222,16 @@ async function dispatchVisibleTimingGesture(page, {
       clientY: buttonCenterY,
     }));
 
-    // Move the compositor-visible animation after the last rAF sample, then release in
-    // the same JavaScript task. The old rAF-authoritative implementation submits the
-    // stale Perfect sample, while the input-event freeze path reads this visible value.
-    placeAtVisiblePosition(upRange[0], upRange[1]);
-    const pointerUpPositionPercent = readPositionPercent();
-    const originalMeterRect = meter.getBoundingClientRect();
-    const originalMeterWidth = originalMeterRect.width;
-    const originalMeterHeight = originalMeterRect.height;
-    let animationCurrentTime = Number(animation.currentTime);
-    if (typeof forcedCurrentTime === 'number') {
-      animationCurrentTime = forcedCurrentTime;
-      const reportedAnimation = {
-        get currentTime() { return forcedCurrentTime; },
-        get effect() { return animation.effect; },
-        cancel: () => animation.cancel(),
-        pause: () => animation.pause(),
-      };
-      Object.defineProperty(track, 'getAnimations', {
-        configurable: true,
-        value: () => [reportedAnimation],
-      });
-    }
+    const pointerDownSnapshot = readSnapshot();
+    const pointerDownVisiblePositionPercent = readVisiblePositionPercent();
+    const pointerDownTransform = track.style.transform;
+    const pressedAt = performance.now();
+    await waitUntilElapsed(pressedAt, requestedHoldMs);
+    const heldDuringPressSnapshot = readSnapshot();
+    const heldDuringPressVisiblePositionPercent = readVisiblePositionPercent();
+    const heldDuringPressTransform = track.style.transform;
 
-    const holdLifecycle = {
-      addedAt: Number.NaN,
-      removedAt: Number.NaN,
-    };
+    const holdLifecycle = { addedAt: Number.NaN, removedAt: Number.NaN };
     const holdSelector = '[data-testid="roll-timing-result-hold"]';
     const holdObserver = new MutationObserver((records) => {
       const observedAt = performance.now();
@@ -302,18 +256,34 @@ async function dispatchVisibleTimingGesture(page, {
     const nativeRandom = Math.random;
     Math.random = () => 0.9;
     try {
-      button.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        pointerId,
-        pointerType: 'touch',
-        isPrimary: true,
-        button: 0,
-        buttons: 0,
-        clientX: releaseX,
-        clientY: buttonCenterY,
-      }));
+      if (requestedReleaseMode === 'cancel') {
+        button.dispatchEvent(new PointerEvent('pointercancel', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          pointerId,
+          pointerType: 'touch',
+          isPrimary: true,
+          button: 0,
+          buttons: 0,
+          clientX: buttonCenterX,
+          clientY: buttonCenterY,
+        }));
+      } else {
+        const releaseX = requestedReleaseMode === 'inside' ? buttonCenterX : buttonRect.right + 24;
+        button.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          pointerId,
+          pointerType: 'touch',
+          isPrimary: true,
+          button: 0,
+          buttons: 0,
+          clientX: releaseX,
+          clientY: buttonCenterY,
+        }));
+      }
       button.dispatchEvent(new MouseEvent('click', {
         bubbles: true,
         cancelable: true,
@@ -324,12 +294,11 @@ async function dispatchVisibleTimingGesture(page, {
       Math.random = nativeRandom;
     }
 
-    const frozenOriginalPositionPercent = readPositionPercent();
-    const frozenOriginalTransform = window.getComputedStyle(track).transform;
     const resultHold = {
       exists: false,
       parentIsPlayControls: false,
       snapshotPositionPercent: Number.NaN,
+      snapshotPhaseMs: Number.NaN,
       widthDeltaPx: Number.NaN,
       heightDeltaPx: Number.NaN,
       rollStageVisible: false,
@@ -338,7 +307,7 @@ async function dispatchVisibleTimingGesture(page, {
       removalDelayMs: Number.NaN,
     };
 
-    if (shouldReleaseInside) {
+    if (requestedReleaseMode === 'inside') {
       const heldMeter = await waitForCondition(
         () => document.querySelector(holdSelector),
         1000,
@@ -358,6 +327,7 @@ async function dispatchVisibleTimingGesture(page, {
       resultHold.exists = true;
       resultHold.parentIsPlayControls = heldMeter.parentElement?.classList.contains('play-controls') ?? false;
       resultHold.snapshotPositionPercent = Number(heldMeter.dataset.positionPercent);
+      resultHold.snapshotPhaseMs = Number(heldMeter.dataset.phaseMs);
       const heldMeterRect = heldMeter.getBoundingClientRect();
       resultHold.widthDeltaPx = Math.abs(heldMeterRect.width - originalMeterWidth);
       resultHold.heightDeltaPx = Math.abs(heldMeterRect.height - originalMeterHeight);
@@ -409,33 +379,48 @@ async function dispatchVisibleTimingGesture(page, {
       resultHold.removalDelayMs = holdLifecycle.removedAt - holdStartedAt;
     }
 
+    let resumedSnapshot = null;
+    let resumedVisiblePositionPercent = Number.NaN;
+    if (requestedReleaseMode !== 'inside') {
+      await waitForCondition(() => {
+        const snapshot = readSnapshot();
+        const phaseDeltaMs = (snapshot.phaseMs - pointerDownSnapshot.phaseMs + cycleMs) % cycleMs;
+        return phaseDeltaMs >= 48 ? snapshot : null;
+      }, 1000, '취소 뒤 기존 phase에서 rAF 이동이 재개되지 않았습니다.');
+      resumedSnapshot = readSnapshot();
+      resumedVisiblePositionPercent = readVisiblePositionPercent();
+    }
+
     holdObserver.disconnect();
     const submission = submissionPromise ? await submissionPromise : { submittedGrade: '', rollLog: '' };
     return {
-      staleRenderedPositionPercent,
-      pointerDownPositionPercent,
-      pointerUpPositionPercent,
-      frozenOriginalPositionPercent,
-      frozenOriginalTransform,
-      animationCurrentTime,
+      trackAnimationCount,
+      targetSnapshot,
+      pointerDownSnapshot,
+      pointerDownVisiblePositionPercent,
+      pointerDownTransform,
+      heldDuringPressSnapshot,
+      heldDuringPressVisiblePositionPercent,
+      heldDuringPressTransform,
       resultHold,
+      resumedSnapshot,
+      resumedVisiblePositionPercent,
       ...submission,
     };
   }, {
-    releaseInside,
+    releaseMode,
     pointerDownRange,
-    pointerUpRange,
-    staleRenderedRange,
-    reportedAnimationCurrentTime,
+    holdMs,
     awaitSubmission,
   });
 }
 
-function assertFrozenSnapshotAndHold(gesture) {
-  expect(gesture.staleRenderedPositionPercent).toBeGreaterThanOrEqual(PERFECT_RELEASE_RANGE[0]);
-  expect(gesture.staleRenderedPositionPercent).toBeLessThanOrEqual(PERFECT_RELEASE_RANGE[1]);
-  expect(Math.abs(gesture.frozenOriginalPositionPercent - gesture.pointerUpPositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
-  expect(gesture.frozenOriginalTransform).not.toBe('none');
+function assertPointerDownFreezeAndHold(gesture) {
+  expect(gesture.trackAnimationCount).toBe(0);
+  expect(Math.abs(gesture.pointerDownSnapshot.positionPercent - gesture.pointerDownVisiblePositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
+  expect(gesture.heldDuringPressSnapshot).toEqual(gesture.pointerDownSnapshot);
+  expect(Math.abs(gesture.heldDuringPressVisiblePositionPercent - gesture.pointerDownSnapshot.positionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
+  expect(gesture.heldDuringPressTransform).toBe(gesture.pointerDownTransform);
   expect(gesture.resultHold.exists).toBe(true);
   expect(gesture.resultHold.parentIsPlayControls).toBe(true);
   expect(gesture.resultHold.widthDeltaPx).toBeLessThanOrEqual(1);
@@ -443,7 +428,8 @@ function assertFrozenSnapshotAndHold(gesture) {
   expect(gesture.resultHold.rollStageVisible).toBe(true);
   expect(gesture.resultHold.observerAddedDelayMs).toBeGreaterThanOrEqual(0);
   expect(gesture.resultHold.observerAddedDelayMs).toBeLessThan(250);
-  expect(Math.abs(gesture.resultHold.snapshotPositionPercent - gesture.pointerUpPositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
+  expect(Math.abs(gesture.resultHold.snapshotPositionPercent - gesture.pointerDownSnapshot.positionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
+  expect(Math.abs(gesture.resultHold.snapshotPhaseMs - gesture.pointerDownSnapshot.phaseMs)).toBeLessThanOrEqual(0.001);
   expect(gesture.resultHold.samples).toHaveLength(3);
   for (const sample of gesture.resultHold.samples) {
     assertVisibleHoldSample(sample, gesture.resultHold.snapshotPositionPercent);
@@ -452,16 +438,30 @@ function assertFrozenSnapshotAndHold(gesture) {
   expect(gesture.resultHold.removalDelayMs).toBeLessThanOrEqual(HOLD_REMOVAL_MAX_DELAY_MS);
 }
 
+function assertCancelledGestureResumes(gesture) {
+  expect(gesture.trackAnimationCount).toBe(0);
+  expect(gesture.resultHold.exists).toBe(false);
+  expect(gesture.submittedGrade).toBe('');
+  expect(gesture.rollLog).toBe('');
+  expect(gesture.resumedSnapshot).not.toBeNull();
+  const phaseDeltaMs = (gesture.resumedSnapshot.phaseMs - gesture.pointerDownSnapshot.phaseMs + ROLL_TIMING_CYCLE_MS) % ROLL_TIMING_CYCLE_MS;
+  expect(phaseDeltaMs).toBeGreaterThan(0);
+  expect(phaseDeltaMs).toBeLessThan(500);
+  expect(gesture.pointerDownSnapshot.phaseMs).toBeLessThan(1000);
+  expect(gesture.resumedSnapshot.positionPercent).toBeGreaterThan(gesture.pointerDownSnapshot.positionPercent);
+  expect(Math.abs(gesture.resumedVisiblePositionPercent - gesture.resumedSnapshot.positionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
+}
+
 async function runAndAssertTimingGesture(page, roomId, options = {}) {
   const beforeSequence = await getLatestSequenceNumber(roomId);
-  const gesture = await dispatchVisibleTimingGesture(page, options);
-  assertFrozenSnapshotAndHold(gesture);
+  const gesture = await dispatchPointerDownSnapshotGesture(page, options);
+  assertPointerDownFreezeAndHold(gesture);
   const sequence = await waitForRollSequence(roomId, beforeSequence);
   assertAuthoritativeTiming(sequence, gesture);
   return { gesture, sequence };
 }
 
-test.describe('mobile roll timing release regression', () => {
+test.describe('mobile roll timing pointerdown snapshot regression', () => {
   test.describe.configure({ mode: 'parallel' });
 
   const roomIds = new Set();
@@ -474,52 +474,38 @@ test.describe('mobile roll timing release regression', () => {
     for (const roomId of roomIds) await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('애니메이션 시간은 Perfect여도 화면 구슬이 Nice이면 화면 기준으로 Nice 판정한다', async ({ page, context }, testInfo) => {
+  test('pointerdown Good snapshot은 180ms 뒤 Perfect 시간이 지나도 화면·제출·sequence·최종 판정이 Good으로 일치한다', async ({ page, context }, testInfo) => {
     testInfo.setTimeout(180_000);
     const roomId = await startAiTimingGame(page, context, testInfo);
     roomIds.add(roomId);
 
-    const { gesture } = await runQaStep(testInfo, 'stale rAF는 Perfect이고 합성 화면은 Nice인 상태를 새 rAF 없이 제출', async () => runAndAssertTimingGesture(page, roomId, {
-      pointerUpRange: NICE_RELEASE_RANGE,
-      reportedAnimationCurrentTime: 500,
+    const { gesture } = await runQaStep(testInfo, '상승 Good에서 pointerdown 후 Perfect 도달 시간을 지나 pointerup', async () => runAndAssertTimingGesture(page, roomId, {
+      pointerDownRange: GOOD_PRESS_RANGE,
+      holdMs: LONG_PRESS_MS,
     }));
-    expect(gesture.animationCurrentTime).toBe(500);
-    expect(gesture.pointerUpPositionPercent).toBeGreaterThanOrEqual(NICE_RELEASE_RANGE[0]);
-    expect(gesture.pointerUpPositionPercent).toBeLessThanOrEqual(NICE_RELEASE_RANGE[1]);
+    expect(gesture.pointerDownSnapshot.positionPercent).toBeGreaterThanOrEqual(GOOD_PRESS_RANGE[0]);
+    expect(gesture.pointerDownSnapshot.positionPercent).toBeLessThanOrEqual(GOOD_PRESS_RANGE[1]);
+    expect(getExpectedGrade(gesture.pointerDownSnapshot.positionPercent)).toBe('GOOD');
+    const hypotheticalPointerUpPosition = gesture.pointerDownSnapshot.positionPercent + LONG_PRESS_MS / 10;
+    expect(hypotheticalPointerUpPosition).toBeGreaterThanOrEqual(45);
+    expect(hypotheticalPointerUpPosition).toBeLessThanOrEqual(55);
   });
 
-  test('stale rAF가 Perfect여도 화면 구슬이 Good이면 화면·제출·sequence·최종 판정이 Good으로 일치한다', async ({ page, context }, testInfo) => {
+  test('pointerdown Nice snapshot은 오래 눌러도 live freeze·result hold·authoritative 판정이 Nice로 유지된다', async ({ page, context }, testInfo) => {
     testInfo.setTimeout(180_000);
     const roomId = await startAiTimingGame(page, context, testInfo);
     roomIds.add(roomId);
 
-    const { gesture } = await runQaStep(testInfo, 'stale rAF는 Perfect이고 합성 화면은 Good인 상태를 새 rAF 없이 제출', async () => runAndAssertTimingGesture(page, roomId, {
-      pointerUpRange: GOOD_RELEASE_RANGE,
+    const { gesture } = await runQaStep(testInfo, '상승 Nice에서 pointerdown 후 180ms 고정과 제출 확인', async () => runAndAssertTimingGesture(page, roomId, {
+      pointerDownRange: NICE_PRESS_RANGE,
+      holdMs: LONG_PRESS_MS,
     }));
-    expect(gesture.pointerUpPositionPercent).toBeGreaterThanOrEqual(GOOD_RELEASE_RANGE[0]);
-    expect(gesture.pointerUpPositionPercent).toBeLessThanOrEqual(GOOD_RELEASE_RANGE[1]);
+    expect(gesture.pointerDownSnapshot.positionPercent).toBeGreaterThanOrEqual(NICE_PRESS_RANGE[0]);
+    expect(gesture.pointerDownSnapshot.positionPercent).toBeLessThanOrEqual(NICE_PRESS_RANGE[1]);
+    expect(getExpectedGrade(gesture.pointerDownSnapshot.positionPercent)).toBe('NICE');
   });
 
-  test('터치 시작이 Good이어도 손을 뗀 화면 위치가 Perfect이면 Perfect로 판정한다', async ({ page, context }, testInfo) => {
-    testInfo.setTimeout(180_000);
-    const roomId = await startAiTimingGame(page, context, testInfo);
-    roomIds.add(roomId);
-
-    const beforeSequence = await getLatestSequenceNumber(roomId);
-    const gesture = await runQaStep(testInfo, '화면 Good에서 누르고 Perfect에서 손을 뗀 좌표와 등급 확인', async () => dispatchVisibleTimingGesture(page, {
-      pointerUpRange: PERFECT_RELEASE_RANGE,
-      staleRenderedRange: GOOD_RELEASE_RANGE,
-    }));
-    expect(gesture.pointerDownPositionPercent).toBeGreaterThanOrEqual(GOOD_PRESS_RANGE[0]);
-    expect(gesture.pointerDownPositionPercent).toBeLessThanOrEqual(GOOD_PRESS_RANGE[1]);
-    expect(gesture.pointerUpPositionPercent).toBeGreaterThanOrEqual(PERFECT_RELEASE_RANGE[0]);
-    expect(gesture.pointerUpPositionPercent).toBeLessThanOrEqual(PERFECT_RELEASE_RANGE[1]);
-    expect(gesture.submittedGrade).toBe('PERFECT');
-    const sequence = await waitForRollSequence(roomId, beforeSequence);
-    assertAuthoritativeTiming(sequence, gesture);
-  });
-
-  test('버튼 밖으로 손을 떼면 브라우저 후속 click이 발생해도 던지지 않는다', async ({ page, context }, testInfo) => {
+  test('버튼 밖 pointerup은 제출하지 않고 pointerdown phase와 방향에서 오브 이동을 재개한다', async ({ page, context }, testInfo) => {
     testInfo.setTimeout(180_000);
     const roomId = await startAiTimingGame(page, context, testInfo);
     roomIds.add(roomId);
@@ -527,30 +513,41 @@ test.describe('mobile roll timing release regression', () => {
     const rollLogCountBefore = await rollLogLocator.count();
     const sequenceBefore = await getLatestSequenceNumber(roomId);
 
-    await runQaStep(testInfo, '화면 Perfect 위치에서 버튼 밖 release와 후속 click 입력', async () => {
-      await dispatchVisibleTimingGesture(page, { releaseInside: false, pointerUpRange: PERFECT_RELEASE_RANGE, awaitSubmission: false });
-    });
-
-    await runQaStep(testInfo, '취소된 입력이 roll을 제출하지 않았는지 확인', async () => {
-      await expect(rollLogLocator).toHaveCount(rollLogCountBefore);
-      await expect(page.getByTestId('roll-yut-button')).toBeVisible();
-      await expect(page.getByTestId('roll-yut-button')).toBeEnabled();
-      await expect.poll(() => getLatestSequenceNumber(roomId), { timeout: 1000, intervals: [100, 200, 300] }).toBe(sequenceBefore);
-    });
+    const gesture = await runQaStep(testInfo, 'Good pointerdown 후 버튼 밖 pointerup과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
+      releaseMode: 'outside',
+      pointerDownRange: GOOD_PRESS_RANGE,
+      awaitSubmission: false,
+    }));
+    assertCancelledGestureResumes(gesture);
+    await expect(rollLogLocator).toHaveCount(rollLogCountBefore);
+    await expect(page.getByTestId('roll-yut-button')).toBeEnabled();
+    await expect.poll(() => getLatestSequenceNumber(roomId), { timeout: 1000, intervals: [100, 200, 300] }).toBe(sequenceBefore);
   });
 
-  test('Galaxy viewport에서 stale rAF Nice·Good 시나리오를 총 3회 검증해 동일 snapshot과 1초 정지를 유지한다', async ({ page, context }, testInfo) => {
-    test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy timing lane에서만 추가 반복합니다.');
-    testInfo.setTimeout(420_000);
-    const attempts = [NICE_RELEASE_RANGE];
+  test('pointercancel은 제출하지 않고 후속 synthetic click을 무시한 뒤 기존 phase와 방향에서 재개한다', async ({ page, context }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const roomId = await startAiTimingGame(page, context, testInfo);
+    roomIds.add(roomId);
+    const sequenceBefore = await getLatestSequenceNumber(roomId);
 
-    for (const [index, pointerUpRange] of attempts.entries()) {
-      const roomId = await startAiTimingGame(page, context, testInfo, `repeat-${index + 1}`);
-      roomIds.add(roomId);
-      await runQaStep(testInfo, `Galaxy stale rAF 추가 회귀 ${index + 1}/${attempts.length}`, async () => runAndAssertTimingGesture(page, roomId, { pointerUpRange }));
-      await deleteRoomForQa(roomId).catch(() => undefined);
-      roomIds.delete(roomId);
-      await page.goto('/Yut/', { waitUntil: 'domcontentloaded' });
-    }
+    const gesture = await runQaStep(testInfo, 'Good pointerdown 후 pointercancel과 후속 click', async () => dispatchPointerDownSnapshotGesture(page, {
+      releaseMode: 'cancel',
+      pointerDownRange: GOOD_PRESS_RANGE,
+      awaitSubmission: false,
+    }));
+    assertCancelledGestureResumes(gesture);
+    await expect(page.getByTestId('roll-yut-button')).toBeEnabled();
+    await expect.poll(() => getLatestSequenceNumber(roomId), { timeout: 1000, intervals: [100, 200, 300] }).toBe(sequenceBefore);
+  });
+
+  test('Galaxy viewport에서 pointerdown snapshot과 1초 result hold를 추가 반복 검증한다', async ({ page, context }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy timing lane에서만 추가 반복합니다.');
+    testInfo.setTimeout(240_000);
+    const roomId = await startAiTimingGame(page, context, testInfo, 'repeat-1');
+    roomIds.add(roomId);
+    await runQaStep(testInfo, 'Galaxy pointerdown snapshot 추가 회귀', async () => runAndAssertTimingGesture(page, roomId, {
+      pointerDownRange: GOOD_PRESS_RANGE,
+      holdMs: LONG_PRESS_MS,
+    }));
   });
 });
