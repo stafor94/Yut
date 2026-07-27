@@ -88,43 +88,50 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - [x] Run `30230218854`의 unit contract 실패와 Galaxy pointercancel phase-wrap 오인 실패를 직접 분석했다.
 - [x] Main Branch QA Run `30231031693`에서 build/unit과 모든 기능 QA가 성공하고 Galaxy pointercancel 수정이 실제 실행됐음을 확인했다.
 - [x] Run `30231031693`의 유일한 실패가 Safari timing 성능 `252.2s / 250.0s`임을 확인했다.
-- [ ] 취소 시나리오 방 재사용 수정 Run에서 Safari timing 기능과 250초 성능 예산 success를 확인한다.
-- [ ] 병합 후 최종 merge SHA 기준 Main Branch QA 전체 success를 확인한다.
+- [x] 취소 시나리오 방 재사용 수정 Run `30231697755`에서 Safari timing 기능과 250초 성능 예산이 성공했다.
+- [x] 최종 제품·QA merge SHA `9e10435337ecc419e7a1059db422cd8053a9533a` 기준 Main Branch QA 전체 success를 확인했다.
 
 ### Main Branch QA follow-up - Run 30226873062
 
 - PR #1138 merge SHA `a324b3ded0bd6618182368c22d2c4806ae214cac`의 Main Branch QA에서 제품 build/unit과 Galaxy Chromium timing은 성공했지만 Safari visible mismatch와 Safari timing이 실패했다.
 - Safari visible mismatch의 `31.2%` canonical snapshot을 기존 QA가 meter border-box 기준으로 `31.454055...%`로 계산했다. meter의 2px border와 transform 기준인 content-box 차이가 약 `0.254055%`의 결정적 오차를 만들었다.
-- 제품 transform 또는 허용 오차를 바꾸지 않고 QA가 `clientLeft`와 `clientWidth`를 사용해 content-box 기준 오브 중심을 측정하도록 수정한다.
-- 기존 QA는 result hold를 생성한 뒤 roll-stage를 최대 5초 기다린 다음 0/500/900ms 샘플을 수집해, 1000ms hold가 이미 제거된 상태를 뒤늦게 관찰할 수 있었다. result hold 0/500/900ms를 먼저 샘플링하고 제거 시각을 확인한 뒤 roll-stage 표시를 별도로 확인한다.
-- Safari timing 3-worker 실행에서는 30~34%, 41~44%의 좁은 구간을 rAF가 건너뛰어 목표 위치를 찾지 못했다. timeout을 늘리거나 animation timeline을 조작하지 않고, Nice와 취소 시나리오는 실제 등급 전체의 좌·우 구간을 허용하되 pointerdown 당시 phase 방향을 함께 기록·검증한다.
-- exact `safari-visible-mismatch` title과 manifest grep/grepInvert는 유지하며 테스트 삭제·skip 확대·timeout 증가·0.25% 허용 오차 확대·성능 예산 변경을 하지 않는다.
-- 같은 Run에서 Online core job은 기능 성공 후 270초 예산을 6초 초과했고 전체 예상 완료가 300초를 7.8초 초과했다. 관련 없는 workflow나 성능 예산은 변경하지 않고 후속 정상 코드 Run에서 재확인한다.
+- 제품 transform 또는 허용 오차를 바꾸지 않고 QA가 `clientLeft`와 `clientWidth`를 사용해 content-box 기준 오브 중심을 측정하도록 수정했다.
+- 기존 QA는 result hold를 생성한 뒤 roll-stage를 최대 5초 기다린 다음 0/500/900ms 샘플을 수집해, 1000ms hold가 이미 제거된 상태를 뒤늦게 관찰할 수 있었다. result hold 0/500/900ms를 먼저 샘플링하고 제거 시각을 확인한 뒤 roll-stage 표시를 별도로 확인하도록 변경했다.
+- Safari timing 3-worker 실행에서는 30~34%, 41~44%의 좁은 구간을 rAF가 건너뛰었다. timeout을 늘리거나 animation timeline을 조작하지 않고, Nice와 취소 시나리오는 실제 등급 전체의 좌·우 구간을 허용하되 pointerdown 당시 phase 방향을 함께 기록·검증하도록 변경했다.
+- exact `safari-visible-mismatch` title과 manifest grep/grepInvert는 유지했고 테스트 삭제·skip 확대·timeout 증가·0.25% 허용 오차 확대·성능 예산 변경을 하지 않았다.
 
 ### Main Branch QA follow-up - Run 30227987345
 
 - PR #1140 merge SHA `539f7ab7bdba002c02852f1d67f08850d209f502`의 Main Branch QA에서 build, unit, architecture validation, Online core, Desktop, 일반 Mobile Galaxy는 성공했다. 실패는 `QA Mobile Galaxy timing`, `QA Safari visible mismatch`, `QA Safari timing` 세 timing lane에 한정됐다.
-- Safari timing의 Nice·버튼 밖 pointerup·pointercancel은 같은 spec을 3개 WebKit page에서 병렬 실행하면서 모두 목표 rAF snapshot을 찾지 못했다. 비활성 page에서 제품 rAF가 throttling되어 `positionPercent`가 진행하지 않은 것이며, 범위를 더 넓히거나 timeout을 늘려 해결할 문제가 아니다.
-- Safari visible mismatch는 테스트의 `waitUntilElapsed()` 자체가 requestAnimationFrame을 기다려 `500ms 관측 시점에 도달하지 못했습니다`로 실패했다. 제품 rAF와 테스트 관측 시계를 같은 rAF에 묶으면 rAF throttling 시 검증 코드도 함께 멈춘다.
-- Galaxy timing은 result hold 500ms sample callback이 늦게 실행돼 clone이 이미 제거된 뒤 `clientWidth === 0` 상태를 측정했다. 0ms·500ms·900ms sample을 순차 대기하면 앞선 callback 지연이 뒤 sample 예약까지 늦추므로 제거 timer보다 먼저 세 sample timer를 모두 예약해야 한다.
-- 최종 QA 수정은 제품 위치 writer를 바꾸지 않는다. 테스트 polling과 elapsed 관측은 wall-clock `setTimeout`을 사용하고, result hold 0ms·500ms·900ms timer를 1000ms 제거 timer보다 먼저 동시에 예약한다. roll-stage가 clone 연결 중 나타났는지는 MutationObserver와 각 sample에서 별도로 기록한다.
-- `safari-timing` lane의 manifest worker 수 3과 `mobile-webkit-timing` project의 `fullyParallel: true`는 유지한다. 단, `QA_ROLE=safari-timing`일 때 pointer spec 내부 mode만 `default`로 실행해 한 활성 WebKit page에서 Nice·release·cancel을 순차 검증한다. browser isolation은 별도 worker와 병행 가능하며 Galaxy timing은 기존 parallel mode를 유지한다.
-- exact Good title, manifest grep/grepInvert, 0.25% 위치 허용 오차, 3000ms 목표 탐색 timeout, test timeout, worker 예산, 성능 예산은 변경하지 않는다.
+- Safari timing의 Nice·버튼 밖 pointerup·pointercancel은 같은 spec을 3개 WebKit page에서 병렬 실행하면서 모두 목표 rAF snapshot을 찾지 못했다. 비활성 page에서 제품 rAF가 throttling되어 `positionPercent`가 진행하지 않은 것이었다.
+- Safari visible mismatch는 테스트의 `waitUntilElapsed()` 자체가 requestAnimationFrame을 기다려 `500ms 관측 시점에 도달하지 못했습니다`로 실패했다. 제품 rAF와 테스트 관측 시계를 wall-clock timer로 분리했다.
+- Galaxy timing은 result hold 500ms sample callback이 늦게 실행돼 clone이 이미 제거된 뒤 `clientWidth === 0` 상태를 측정했다. 0ms·500ms·900ms timer를 1000ms 제거 timer보다 먼저 동시에 예약하도록 변경했다.
+- `safari-timing` lane의 manifest worker 수 3과 `mobile-webkit-timing` project의 `fullyParallel: true`는 유지했다. `QA_ROLE=safari-timing`일 때 pointer spec 내부 mode만 `default`로 실행해 한 활성 WebKit page에서 Nice·release·cancel을 순차 검증했다.
 
 ### Main Branch QA follow-up - Run 30230218854
 
-- PR #1141 merge SHA `d912eadde590db1d45550f978283667845af81db`의 Main Branch QA에서 Safari visible mismatch와 Safari timing은 모두 성공했다. Safari visible mismatch는 exact Good 장기 press와 browser isolation 2건이 실행됐고, Safari timing은 Nice·버튼 밖 release·pointercancel과 browser isolation 4건이 실행됐다.
+- PR #1141 merge SHA `d912eadde590db1d45550f978283667845af81db`의 Main Branch QA에서 Safari visible mismatch와 Safari timing은 모두 성공했다.
 - Galaxy timing에서는 Good·Nice·버튼 밖 release·Galaxy 추가 반복과 browser isolation 5건이 성공했고 pointercancel 1건만 실패했다.
-- pointercancel 실패값은 expected `< 500ms`, received `1999.626ms`였다. 취소 직후 snapshot phase가 pointerdown phase보다 약 `0.374ms` 작게 관측되자 modulo 계산이 이를 거의 한 주기 진행한 것으로 해석했고, 기존 polling의 `phaseDeltaMs >= 48` 조건을 잘못 통과시켰다.
-- polling 단계에서 assertion과 같은 bounded next-frame 계약인 `phaseDeltaMs >= 48 && phaseDeltaMs < 500`을 적용한다. 실제 한 주기 wrap이나 정지 상태를 성공으로 간주하지 않고, pointerdown phase에서 제한된 다음 프레임으로 재개된 경우만 선택한다.
-- Build job은 architecture validation과 build를 통과했지만 unit `브라우저 QA가 실제 가시성·고정 좌표·1000ms 제거 시점을 관측한다`가 과거 순차 `sampleHold(500)`·`sampleHold(900)` 문자열을 강제해 실패했다. unit 계약을 `Promise.all([0, 500, 900].map(sampleAt))`, `rollStageVisibleWhileHeld`, 순차 hold waiter 부재 검증으로 갱신한다.
-- 모든 lane 성능은 예산 내였고 workflow 시작부터 summary 예상 완료는 260.2초로 300초 예산을 통과했다. 허용 오차·timeout·worker·성능 예산은 변경하지 않는다.
+- pointercancel 실패값은 expected `< 500ms`, received `1999.626ms`였다. 취소 직후 snapshot phase가 pointerdown phase보다 약 `0.374ms` 작게 관측되자 modulo 계산이 이를 거의 한 주기 진행한 것으로 해석했다.
+- polling 단계에 assertion과 같은 bounded next-frame 계약 `phaseDeltaMs >= 48 && phaseDeltaMs < 500`을 적용했다.
+- Build job은 architecture validation과 build를 통과했지만 unit이 과거 순차 `sampleHold(500)`·`sampleHold(900)` 문자열을 강제했다. unit 계약을 `Promise.all([0, 500, 900].map(sampleAt))`, `rollStageVisibleWhileHeld`, 순차 hold waiter 부재 검증으로 갱신했다.
+- 모든 lane 성능은 예산 내였고 workflow 시작부터 summary 예상 완료는 260.2초로 300초 예산을 통과했다.
 
 ### Main Branch QA follow-up - Run 30231031693
 
 - PR #1142 merge SHA `7d1801872052feef41dc0aab93f9442defefc9c2`의 Main Branch QA에서 build, unit, architecture validation과 모든 기능 QA가 성공했다.
 - Galaxy timing은 browser isolation, Good, Nice, 버튼 밖 release, pointercancel, Galaxy 추가 반복 6건이 모두 성공했다. Safari visible mismatch와 Safari timing도 실제 대상 테스트가 모두 성공했다.
 - 기능 matrix는 모두 success였고 workflow 시작부터 summary 예상 완료도 `284.3s / 300.0s`로 성공했다.
-- 유일한 차단은 Safari timing 전체 job 시간이 `252.2s / 250.0s`로 2.2초 초과한 성능 실패다. 테스트 실행 시간은 126.7초였고 Nice 42.5초, outside release 33.4초, pointercancel 34.6초가 각각 독립 방 생성·AI 추가·게임 시작 비용을 포함했다.
-- 허용 오차, timeout, worker, browser, manifest, workflow, 성능 예산을 완화하지 않는다. 제출하지 않는 outside release와 pointercancel은 같은 방과 활성 버튼 상태를 재사용해 연속 실행한다.
-- 통합 취소 테스트는 outside release 후 action/sequence/log 미생성과 버튼 활성 상태를 확인한 뒤 같은 방에서 pointercancel과 후속 synthetic click 무시, bounded phase·방향 재개를 다시 검증한다. 검증 assertion은 삭제하지 않고 방 setup 1회만 제거한다.
+- 유일한 차단은 Safari timing 전체 job 시간이 `252.2s / 250.0s`로 2.2초 초과한 성능 실패였다.
+- 허용 오차, timeout, worker, browser, manifest, workflow, 성능 예산을 완화하지 않고, 제출하지 않는 outside release와 pointercancel을 같은 방과 활성 버튼 상태에서 연속 실행하도록 변경했다.
+
+### Final verification - Run 30231697755
+
+- PR #1143 merge SHA `9e10435337ecc419e7a1059db422cd8053a9533a`의 Main Branch QA는 attempt 1에서 terminal `success`로 완료됐다.
+- Build/unit, architecture validation, Online core, Desktop sequence/regression, Mobile Galaxy, Mobile Galaxy timing, Safari visible mismatch, Safari timing, Firebase emulator QA matrix가 모두 성공했다.
+- Safari timing에서 browser isolation, Nice, 통합 outside release + pointercancel 테스트 3건이 실제 실행돼 모두 성공했다. 통합 취소 테스트는 같은 방에서 두 입력의 action/sequence/log 미생성, synthetic click 무시, 버튼 재활성, bounded phase·방향 재개를 모두 검증했다.
+- Galaxy timing에서 browser isolation, Good pointerdown, Nice pointerdown, 통합 outside release + pointercancel, Galaxy 추가 반복 5건이 실제 실행돼 모두 성공했다.
+- 테스트 실행 시간은 Galaxy timing 80.6초, Safari visible mismatch 57.6초, Safari timing 93.6초였다.
+- 전체 job 시간은 Galaxy timing `149.0s / 240.0s`, Safari visible mismatch `145.3s / 195.0s`, Safari timing `176.6s / 250.0s`였고 모두 예산 내였다.
+- workflow 시작부터 summary 예상 완료는 `279.3s / 300.0s`로 성공했다.
+- 병합 후 3분 30초 시점에는 새 merge SHA 관련 실패가 감지되지 않았고, 7분 시점에는 자동 실패 이슈 #1139가 Run `30231697755` 성공으로 종료된 것을 확인했다.
