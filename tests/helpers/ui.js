@@ -2,6 +2,7 @@ import { expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { normalizeQaNickname } from './env.js';
+import { findRoomIdByTitle } from './rooms.js';
 
 export const consoleLogPath = path.join(process.cwd(), 'console-log.txt');
 
@@ -185,7 +186,24 @@ export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', p
   }, { nickname: normalizedNickname, maxPlayers, playMode, itemMode, pieceCount });
 }
 
-async function waitForRoomCreationResult(page, { timeout = 45_000, maxSubmitAttempts = 3 } = {}) {
+async function recoverCreatedRoomSession(page, roomTitle) {
+  const delayedRecoveryStatus = page.getByRole('status', { name: '응답이 지연되어 생성된 방을 확인하고 있습니다...' });
+  if (!await delayedRecoveryStatus.isVisible().catch(() => false)) return false;
+
+  const roomId = await findRoomIdByTitle(roomTitle).catch(() => undefined);
+  if (!roomId) return false;
+
+  await page.evaluate(({ nextRoomId, nextRoomTitle }) => {
+    window.localStorage.setItem('yut-online:activeRoomId', nextRoomId);
+    window.localStorage.setItem('yut-online:isRoomHost', 'true');
+    window.localStorage.setItem('yut-online:title', nextRoomTitle);
+  }, { nextRoomId: roomId, nextRoomTitle: roomTitle });
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('app-shell')).toBeVisible({ timeout: 10_000 });
+  return page.getByTestId('waiting-room').isVisible().catch(() => false);
+}
+
+async function waitForRoomCreationResult(page, roomTitle, { timeout = 45_000, maxSubmitAttempts = 3 } = {}) {
   const waitingRoom = page.getByTestId('waiting-room');
   const createButton = page.getByTestId('create-room-button');
   const retryAlert = page.getByRole('alertdialog', { name: '방 생성에 실패했습니다' });
@@ -193,6 +211,8 @@ async function waitForRoomCreationResult(page, { timeout = 45_000, maxSubmitAtte
 
   await expect.poll(async () => {
     if (await waitingRoom.isVisible().catch(() => false)) return true;
+    if (await recoverCreatedRoomSession(page, roomTitle).catch(() => false)) return true;
+
     const canRetry = submitAttempts < maxSubmitAttempts
       && await retryAlert.isVisible().catch(() => false);
     if (!canRetry) return false;
@@ -206,7 +226,7 @@ async function waitForRoomCreationResult(page, { timeout = 45_000, maxSubmitAtte
   }, {
     timeout,
     intervals: [0, 1_000, 2_000, 3_000, 5_000],
-    message: `방 생성 완료 조건을 확인하고 응답 지연 시 동일 요청을 최대 ${maxSubmitAttempts}회 재시도해야 합니다.`,
+    message: `방 생성 완료 조건을 확인하고 응답 지연 시 동일 요청을 최대 ${maxSubmitAttempts}회 재시도하거나 생성된 방 세션을 복구해야 합니다.`,
   }).toBe(true);
 }
 
@@ -220,7 +240,7 @@ export async function createRoomFromLobby(page, roomTitle) {
   await expect(page.getByRole('dialog', { name: '방 만들기' })).toBeVisible();
   await page.getByTestId('room-title-input').fill(roomTitle);
   await page.getByTestId('create-room-button').click();
-  await waitForRoomCreationResult(page);
+  await waitForRoomCreationResult(page, roomTitle);
 }
 
 export async function joinRoomFromLobby(page, roomTitle) {
