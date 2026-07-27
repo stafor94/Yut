@@ -11,6 +11,7 @@ export const qaProjectTestMatches = Object.freeze({
     /smoke\/firebase-emulator-isolation\.spec\.js$/u,
     /mobile\/roll-timing-pointer-capture\.spec\.js$/u,
     /mobile\/roll-timing-overflow\.spec\.js$/u,
+    /mobile\/roll-timing-safari-visible-snapshot\.spec\.js$/u,
   ]),
 });
 
