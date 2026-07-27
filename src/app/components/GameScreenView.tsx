@@ -609,13 +609,6 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         presentationActorId={fallEffect?.seatId ?? ''}
         onPresentationChange={handleRollPresentationChange}
       />
-      {autoPlayNoticeSeat && <div data-testid="auto-play-overlay" className="auto-play-overlay" role="status" aria-live="polite">
-        <strong>AI 자동 플레이 중...</strong>
-        <span>{getPlayerCardName(autoPlayNoticeSeat)}님의 행동을 어려움 AI가 대신 판단합니다.</span>
-        {localAutoPlayActive && <button type="button" data-testid="resume-human-control-button" onClick={onResumeHumanControl} disabled={resumeHumanControlPending}>
-          {resumeHumanControlPending ? '통제권 가져오는 중...' : '직접 플레이로 돌아가기'}
-        </button>}
-      </div>}
       {pendingTrapPlacement && <div className="trap-placement-banner" role="status"><strong>함정 설치 위치를 선택하세요</strong><span>{trapPlacementSecondsLeft}초 남음 · 설치 중에는 윷을 던질 수 없습니다.</span></div>}
       <GameBoardControls
         roll={roll}
@@ -652,7 +645,11 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         turnDeadlineKind={turnDeadlineKind}
         timeoutCountBySeatId={turnActionTimeoutCountBySeatId}
         authoritativeActiveSeatId={activeGameSeatId}
-        autoPlayActive={Boolean(displayedActiveGameSeatId && autoPlayBySeatId[displayedActiveGameSeatId])}
+        autoPlayActive={Boolean(autoPlayNoticeSeat)}
+        autoPlaySeatName={autoPlayNoticeSeat ? getPlayerCardName(autoPlayNoticeSeat) : ''}
+        localAutoPlayActive={localAutoPlayActive}
+        resumeHumanControlPending={resumeHumanControlPending}
+        onResumeHumanControl={onResumeHumanControl}
       />
     </BoardPanel>
     <GameLogPanelView
