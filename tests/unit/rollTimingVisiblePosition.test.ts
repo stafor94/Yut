@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { getRollTimingZone } from '../../src/game-core/roll.js';
 import {
@@ -43,4 +44,15 @@ test('화면 좌표 판정은 등급 경계와 일치한다', () => {
     assert.notEqual(visiblePosition, undefined);
     assert.equal(getRollTimingZone(visiblePosition!), zone);
   }
+});
+
+test('취소된 pointer gesture는 release wall-clock snapshot을 즉시 렌더한 뒤 rAF를 재개한다', () => {
+  const source = readFileSync('src/app/components/RollTimingControl.tsx', 'utf8');
+  const resumeSource = source.slice(source.indexOf('const resumeFrameLoop'), source.indexOf('const holdTimingResult'));
+
+  assert.match(resumeSource, /const resumedAt = performance\.now\(\);/);
+  assert.match(resumeSource, /frameStartedAtRef\.current = resumedAt - snapshot\.phaseMs;/);
+  assert.match(resumeSource, /renderFrame\(resumedAt\);/);
+  assert.match(resumeSource, /scheduleFrameLoop\(\);/);
+  assert.doesNotMatch(resumeSource, /applyRenderedSnapshot\(snapshot\)/);
 });
