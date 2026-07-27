@@ -52,6 +52,8 @@ describe('itemControllerFlow', () => {
     assert.ok(actionIndex > choiceIndex);
     assert.ok(promptClearIndex > actionIndex);
     assert.match(source, /blocksTurnActions: true/);
+    assert.match(source, /const paramsRef = useRef\(params\);/);
+    assert.match(source, /const currentParams = paramsRef\.current;/);
     assert.match(source, /STALE_PENDING_REMOTE_ACTION_MS - 1_000/);
     assert.match(source, /getQaUseItemActionDelayMs\(\)/);
   });
