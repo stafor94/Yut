@@ -49,7 +49,11 @@ test('client는 snapshot lease를 수신하고 delegated action과 turn-order wr
   assert.match(turnOrder, /updateTurnOrderState\([\s\S]*coordinatorEpoch/);
   assert.match(turnOrder, /submitTurnOrderSubmission\([\s\S]*coordinatorEpoch/);
   assert.match(turnOrder, /results\.some\(\(result\) => result\.status !== 'committed' && result\.status !== 'duplicate'\)/);
-  assert.match(turnOrder, /if \(!result && aggregatingRoundIdRef\.current === round\.id\)/);
+  assert.match(turnOrder, /const aggregationScopeKey = intro && round && isCoordinator && round\.status === 'collecting'/);
+  assert.match(turnOrder, /`\$\{intro\.sessionId\}:\$\{round\.id\}:\$\{onlineGameCoordinatorSeatId\}:\$\{coordinatorEpoch\}`/);
+  assert.match(turnOrder, /if \(!result && shouldRetryAfterNull\) scheduleRetry\(\)/);
+  assert.match(turnOrder, /aggregationScopeRef\.current !== scopeKey/);
+  assert.match(turnOrder, /aggregatingRoundIdRef\.current === scopeKey/);
   const leaseHook = read('src/app/hooks/useGameCoordinatorLease.ts');
   assert.match(leaseHook, /autoPlayBySeatId/);
   assert.match(leaseHook, /isGameCoordinatorLeaseActive\(leaseState, now\)/);
