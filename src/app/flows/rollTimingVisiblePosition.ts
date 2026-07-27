@@ -27,11 +27,3 @@ export function getVisibleRollTimingPositionPercent(
   const orbCenterX = orbRect.left + orbRect.width / 2;
   return normalizeRollTimingPositionPercent(((orbCenterX - meterRect.left) / meterRect.width) * 100);
 }
-
-export function getVisibleRollTimingTrackOffsetPx(
-  trackRect: HorizontalClientRect,
-  trackLayoutLeftPx: number,
-) {
-  if (!hasFiniteHorizontalRect(trackRect) || !Number.isFinite(trackLayoutLeftPx)) return undefined;
-  return trackRect.left - trackLayoutLeftPx;
-}
