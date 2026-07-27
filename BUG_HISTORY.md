@@ -6,6 +6,63 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 
 ---
 
+## 2026-07-27 - AI끼리 순서 정하기 재대결 시 제출 완료 후 결과 수집 상태가 끝나지 않음
+
+### Symptom
+
+- 3인 개인전에서 사람 1명의 순위가 먼저 확정되고 AI 2명만 동률 재대결에 들어가면 두 AI 카드는 모두 `결과 대기`를 표시했다.
+- AI별 `turnOrderSubmissions` 문서는 저장됐지만 화면은 `자동 던지기 결과를 모으는 중입니다`와 `동률 재대결이 진행 중입니다`에 계속 머물렀다.
+- 제한시간 이후에도 결과 공개, 최종 순서 확정, 실제 게임 시작으로 진행되지 않았다.
+
+### Expected behavior
+
+- 재대결 라운드 제출 문서가 authoritative 라운드 활성화보다 먼저 저장돼도 같은 sessionId와 roundId의 전원 제출 상태를 다시 평가해야 한다.
+- 대상 라운드를 authoritative 계산 안에서 활성화하고, eligibleSeatIds 전체의 고유 제출이 준비됐으면 같은 patch에서 집계해야 한다.
+- 사람 플레이어에게 이미 확정된 placement, turnVersion·sequence 단조 증가, 최종 순서 로그 단일 생성 계약을 유지해야 한다.
+
+### Confirmed root cause
+
+- 화면은 `activateNextTurnOrderRound()`로 다음 라운드를 먼저 표시했지만 authoritative `currentRound` 전환은 별도 `updateTurnOrderState()` 트랜잭션에서 수행됐다.
+- AI 제출 문서 저장과 제출 snapshot callback의 집계 트랜잭션이 라운드 전환보다 먼저 완료될 수 있었다.
+- 기존 집계 patcher는 authoritative `currentRound.id`가 화면 라운드와 즉시 일치하고 status가 `collecting`일 때만 진행했으므로 이전 라운드의 `reveal-pending`을 읽으면 null을 반환했다.
+- null 이후 잠금은 해제됐지만 이미 저장된 제출 문서에는 새 snapshot 변경이 없었고, transient coordinator lease 불일치에서도 같은 방식으로 재시도 신호가 사라졌다.
+- 결과적으로 집계가 전원 제출이라는 상태가 아니라 제출 snapshot 이벤트가 발생한 순간에 의존했다.
+
+### Previous coverage gap
+
+- 기존 QA는 AI 자동 제출, 좌석별 제출 문서, 조기 집계, 2인 사람+AI 재대결, 3인 사람 1명+AI 2명 재대결의 정상 순서를 검증했다.
+- authoritative 라운드가 이전 라운드인 동안 다음 라운드의 제출 문서가 먼저 모두 준비되는 역순 경합을 결정적으로 만들지 않았다.
+- 네트워크 응답 순서에 따라 발생하는 문제를 반복 실행으로만 기대했기 때문에 정상 순서 QA가 통과해도 고착 가능성이 남았다.
+
+### Do not try again
+
+- `aggregatingRoundIdRef`를 무조건 초기화하고 제출 snapshot이 다시 발생할 것이라고 가정하지 않는다.
+- 제한시간·Playwright timeout 증가, 무작위 반복 실행, AI 결과 재추첨으로 고착을 숨기지 않는다.
+- 라운드 활성화와 집계를 계속 별도 이벤트 edge에 의존하게 두지 않는다.
+- coordinator lease 검증, turnVersion·sequence 단조 증가, 좌석별 제출 중복 방지 계약을 약화하지 않는다.
+
+### Correct fix plan
+
+- 제출 구독 callback은 대상 라운드의 최신 제출 목록을 보관하고 UI에 반영하는 역할만 담당한다.
+- 별도 coordinator aggregation effect가 캐시된 전원 제출 상태, authoritative 상태 변경, 잠금 해제, coordinator epoch 변경을 기준으로 재평가한다.
+- 트랜잭션 안에서 `activateNextTurnOrderRound(current, transactionNow)`를 먼저 적용한 뒤 대상 sessionId·roundId·collecting 상태를 검증한다.
+- eligibleSeatIds별 고유 제출이 모두 준비됐을 때만 `submitAndMaybeAggregateTurnOrderRound()`로 활성화와 집계를 하나의 idempotent patch로 만든다.
+- null 또는 복구 가능한 오류는 in-flight 잠금을 해제하고 동일 scope의 전원 제출 상태가 유지될 때 제한된 단일 timer로 재시도한다.
+- 순수 단위 테스트에서 다음 라운드 제출 준비 → authoritative 라운드 활성화의 역순을 고정하고, online-core와 mobile-galaxy에서 최종 화면·오버레이 종료·게임 시작까지 검증한다.
+
+### Verification checklist
+
+- [x] snapshot callback에서 직접 집계하던 경로를 최신 제출 캐시와 상태 기반 coordinator 집계로 분리했다.
+- [x] authoritative 활성화와 전원 제출 집계를 한 계산에서 수행하는 순수 idempotent helper를 추가했다.
+- [x] 일부 제출, 중복 좌석, 오래된 sessionId·roundId, 같은 입력 재호출 계약을 단위 테스트에 추가했다.
+- [x] online-core와 mobile-galaxy 기존 spec의 suite manifest·Playwright project·workflow matrix 연결을 재확인했다.
+- [ ] Unit tests pass
+- [ ] Build succeeds
+- [ ] QA architecture validation passes
+- [ ] Online core AI-only rematch QA passes
+- [ ] Mobile Galaxy turn-order completion QA passes
+- [ ] Main Branch QA succeeds
+
 ## 2026-07-27 - AI 자동 플레이 안내가 모바일 스크롤에서 조작 영역과 분리됨
 
 ### Symptom
@@ -166,7 +223,7 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 
 ### Main Branch QA follow-up - Run 30231031693
 
-- PR #1142 merge SHA `7d1801872052feef41dc0aab93f9442defefc9c2`의 Main Branch QA에서 build, unit, architecture validation과 모든 기능 QA가 성공했다.
+- PR #1142 merge SHA `7d1801872052feef41dc0aab93f9442defefc9c2`의 Main Branch QA에서 build/unit, architecture validation과 모든 기능 QA가 성공했다.
 - Galaxy timing은 browser isolation, Good, Nice, 버튼 밖 release, pointercancel, Galaxy 추가 반복 6건이 모두 성공했다. Safari visible mismatch와 Safari timing도 실제 대상 테스트가 모두 성공했다.
 - 기능 matrix는 모두 success였고 workflow 시작부터 summary 예상 완료도 `284.3s / 300.0s`로 성공했다.
 - 유일한 차단은 Safari timing 전체 job 시간이 `252.2s / 250.0s`로 2.2초 초과한 성능 실패였다.
