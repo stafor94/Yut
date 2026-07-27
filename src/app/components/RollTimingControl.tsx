@@ -1,7 +1,7 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { getRollTimingPositionPercent } from '../../game-core/roll';
 import {
-  getRollTimingTrackTransform,
+  getRollTimingOrbLeft,
   normalizeRollTimingPositionPercent,
 } from '../flows/rollTimingVisiblePosition';
 import {
@@ -77,8 +77,10 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   const applyRenderedSnapshot = (snapshot: RollTimingSnapshot) => {
     const meter = meterRef.current;
     const track = trackRef.current;
-    if (!meter || !track || snapshot.resetKey !== resetKey) return false;
-    track.style.transform = getRollTimingTrackTransform(snapshot.positionPercent);
+    const orb = track?.querySelector<HTMLElement>('.roll-timing-orb');
+    if (!meter || !track || !orb || snapshot.resetKey !== resetKey) return false;
+    track.style.transform = 'none';
+    orb.style.left = getRollTimingOrbLeft(snapshot.positionPercent);
     meter.dataset.positionPercent = String(snapshot.positionPercent);
     meter.dataset.phaseMs = String(snapshot.phaseMs);
     meter.dataset.capturedAt = String(snapshot.capturedAt);
@@ -129,12 +131,14 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     clearResultHold();
     const heldMeter = meter.cloneNode(true) as HTMLDivElement;
     const heldTrack = heldMeter.querySelector<HTMLElement>('.roll-timing-orb-track');
+    const heldOrb = heldMeter.querySelector<HTMLElement>('.roll-timing-orb');
     heldMeter.classList.remove('roll-timing-live-meter');
     heldMeter.classList.add('roll-timing-result-hold');
     if (heldTrack) {
       heldTrack.style.animation = 'none';
-      heldTrack.style.transform = getRollTimingTrackTransform(snapshot.positionPercent);
+      heldTrack.style.transform = 'none';
     }
+    if (heldOrb) heldOrb.style.left = getRollTimingOrbLeft(snapshot.positionPercent);
     heldMeter.dataset.testid = 'roll-timing-result-hold';
     heldMeter.dataset.positionPercent = String(snapshot.positionPercent);
     heldMeter.dataset.phaseMs = String(snapshot.phaseMs);
