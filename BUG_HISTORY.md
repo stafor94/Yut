@@ -223,7 +223,7 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 
 ### Main Branch QA follow-up - Run 30231031693
 
-- PR #1142 merge SHA `7d1801872052feef41dc0aab93f9442defefc9c2`의 Main Branch QA에서 build/unit, architecture validation과 모든 기능 QA가 성공했다.
+- PR #1142 merge SHA `7d1801872052feef41dc0aab93f9442defefc9c2`의 Main Branch QA에서 build, unit, architecture validation과 모든 기능 QA가 성공했다.
 - Galaxy timing은 browser isolation, Good, Nice, 버튼 밖 release, pointercancel, Galaxy 추가 반복 6건이 모두 성공했다. Safari visible mismatch와 Safari timing도 실제 대상 테스트가 모두 성공했다.
 - 기능 matrix는 모두 success였고 workflow 시작부터 summary 예상 완료도 `284.3s / 300.0s`로 성공했다.
 - 유일한 차단은 Safari timing 전체 job 시간이 `252.2s / 250.0s`로 2.2초 초과한 성능 실패였다.
