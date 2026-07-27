@@ -1,33 +1,23 @@
-import { ITEM_DEFINITIONS, ITEM_TYPES, type ItemTiming } from '../../features/items/logic/items';
+import { ITEM_DEFINITIONS, ITEM_TYPES, type ItemType } from '../../features/items/logic/items';
 
 type PendingRemoteActionPolicyMeta = {
-  type: string;
+  type?: string;
   optimisticApplied?: boolean;
+  blocksTurnActions?: boolean;
 };
 
-let currentItemPromptTiming: ItemTiming | null = null;
+const findItemTypeInActionKey = (actionKey: string): ItemType | null => (
+  ITEM_TYPES.find((type) => actionKey.split(':').includes(type)) ?? null
+);
 
-const isItemTiming = (value: unknown): value is ItemTiming => value === 'before_roll' || value === 'after_roll' || value === 'after_move';
-const isOptimisticItemSkipAction = (actionKey: string) => actionKey.startsWith('use_item:') && actionKey.endsWith('::');
-
-export function syncPendingRemoteActionItemPromptTiming(itemPromptTiming: unknown) {
-  currentItemPromptTiming = isItemTiming(itemPromptTiming) ? itemPromptTiming : null;
+export function isTurnFinalizingOptimisticItemAction(actionKey: string, meta?: PendingRemoteActionPolicyMeta) {
+  if (meta?.type !== 'use_item' || !meta.optimisticApplied) return false;
+  const itemType = findItemTypeInActionKey(actionKey);
+  return Boolean(itemType && ITEM_DEFINITIONS[itemType].timing === 'after_move');
 }
 
-export function isTurnFinalizingOptimisticItemAction(actionKey: string, meta: PendingRemoteActionPolicyMeta) {
-  if (meta.type !== 'use_item' || meta.optimisticApplied !== true) return false;
-  const actionKeySegments = new Set(actionKey.split(':'));
-  const itemType = ITEM_TYPES.find((type) => actionKeySegments.has(type));
-  const itemTiming = itemType
-    ? ITEM_DEFINITIONS[itemType].timing
-    : isOptimisticItemSkipAction(actionKey)
-      ? currentItemPromptTiming
-      : null;
-  return itemTiming === 'after_move';
-}
-
-export function getPendingRemoteActionOptimisticApplied(actionKey: string, meta: PendingRemoteActionPolicyMeta) {
-  // Only after-move item actions finalize the current turn and must block follow-up actions.
-  // Before/after-roll item actions keep their optimistic pending state without blocking the turn.
-  return isTurnFinalizingOptimisticItemAction(actionKey, meta) ? false : meta.optimisticApplied;
+export function getPendingRemoteActionOptimisticApplied(actionKey: string, meta?: PendingRemoteActionPolicyMeta) {
+  if (meta?.blocksTurnActions) return false;
+  if (isTurnFinalizingOptimisticItemAction(actionKey, meta)) return false;
+  return Boolean(meta?.optimisticApplied);
 }
