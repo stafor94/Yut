@@ -13,8 +13,16 @@ import {
 import type { AuthoritativeCommitResult } from './useAuthoritativeGameSyncController';
 
 type PendingMeta = { type?: GameAction['type']; actorId?: string; createdSequence?: number; createdTurnIndex?: number; optimisticApplied?: boolean; blocksTurnActions?: boolean };
-
 type PendingItemPromptChoice = { actionKey: string; timing: ItemTiming; itemType: ItemType | null } | null;
+type PendingSkipAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
+type PendingSkipRecovery = {
+  requestRoomId: string;
+  actionKey: string;
+  action: PendingSkipAction;
+  actorId: string;
+  createdSequence: number;
+  createdTurnIndex: number;
+};
 
 type Params = {
   activeRoomId: string;
@@ -33,7 +41,7 @@ type Params = {
   addPendingLocalRemoteAction: (actionKey: string, metadata?: PendingMeta) => void;
   acknowledgePendingLocalRemoteAction: (clientMutationId: unknown) => void;
   removeSettledPendingLocalRemoteAction: (actionKey: string) => void;
-  commitQueuedAuthoritativeGameAction: (roomId: string, action: Omit<GameAction, 'id' | 'createdAt' | 'processed'>) => Promise<AuthoritativeCommitResult>;
+  commitQueuedAuthoritativeGameAction: (roomId: string, action: PendingSkipAction) => Promise<AuthoritativeCommitResult>;
   enqueueAuthoritativeResultApplication: <T>(roomId: string, applyResult: () => Promise<T> | T) => Promise<T | null>;
   applyAuthoritativeResultSequence: (result: AuthoritativeCommitResult) => Promise<SequenceStateSnapshot | null | unknown>;
   syncLatestAuthoritativeState: (reason: string, options?: { diagnosticType?: 'roll_yut' | 'move_piece' }) => Promise<boolean>;
@@ -52,10 +60,13 @@ type Params = {
   setFallEffect: React.Dispatch<React.SetStateAction<FallEffect | null>>;
 };
 
+const PENDING_SKIP_RECOVERY_DELAY_MS = Math.max(5_000, STALE_PENDING_REMOTE_ACTION_MS - 5_000);
+
 export function useItemController(params: Params) {
   const activeRoomIdRef = useRef(params.activeRoomId);
   const paramsRef = useRef(params);
   const pendingSkipRecoveryTimerRef = useRef<number | null>(null);
+  const recoverPendingSkipRef = useRef<(recovery: PendingSkipRecovery) => Promise<boolean>>(async () => false);
   activeRoomIdRef.current = params.activeRoomId;
   paramsRef.current = params;
 
@@ -69,23 +80,75 @@ export function useItemController(params: Params) {
     paramsRef.current.setPendingItemPromptChoice((current) => current?.actionKey === actionKey ? null : current);
   }, []);
 
-  const recoverPendingSkip = useCallback(async (requestRoomId: string, actionKey: string) => {
+  const refreshPendingSkipLock = useCallback((recovery: PendingSkipRecovery) => {
+    paramsRef.current.addPendingLocalRemoteAction(recovery.actionKey, {
+      type: 'use_item',
+      actorId: recovery.actorId,
+      createdSequence: recovery.createdSequence,
+      createdTurnIndex: recovery.createdTurnIndex,
+      optimisticApplied: true,
+      blocksTurnActions: true,
+    });
+  }, []);
+
+  const schedulePendingSkipRecovery = useCallback((recovery: PendingSkipRecovery) => {
+    clearPendingSkipRecoveryTimer();
+    pendingSkipRecoveryTimerRef.current = window.setTimeout(() => {
+      pendingSkipRecoveryTimerRef.current = null;
+      void recoverPendingSkipRef.current(recovery);
+    }, PENDING_SKIP_RECOVERY_DELAY_MS);
+  }, [clearPendingSkipRecoveryTimer]);
+
+  const recoverPendingSkip = useCallback(async (recovery: PendingSkipRecovery) => {
+    const { requestRoomId, actionKey, action } = recovery;
     if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return false;
-    let recovered = false;
+
+    // Refresh the creation time before any network work so generic stale reconciliation
+    // cannot unlock an action whose server outcome is still unknown.
+    refreshPendingSkipLock(recovery);
     const currentParams = paramsRef.current;
     try {
       const processedState = await currentParams.applyProcessedAuthoritativeAction(actionKey);
-      recovered = Boolean(processedState);
-      if (!recovered) recovered = await currentParams.syncLatestAuthoritativeState('아이템 선택 서버 확정 상태를 확인하기 위해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      if (processedState) {
+        clearPendingItemPromptChoice(actionKey);
+        clearPendingSkipRecoveryTimer();
+        return true;
+      }
+
+      await currentParams.syncLatestAuthoritativeState('아이템 선택 서버 확정 상태를 확인하기 위해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return false;
+
+      // The processed-action record is the authoritative proof for this mutation.
+      // Resubmit the same idempotent mutation id instead of unlocking on a snapshot alone.
+      const result = await currentParams.commitQueuedAuthoritativeGameAction(requestRoomId, action);
+      await currentParams.enqueueAuthoritativeResultApplication(requestRoomId, () => currentParams.applyAuthoritativeResultSequence(result));
+      if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return false;
+      if (result.status === 'committed' || result.status === 'duplicate') {
+        currentParams.acknowledgePendingLocalRemoteAction(actionKey);
+        clearPendingItemPromptChoice(actionKey);
+        clearPendingSkipRecoveryTimer();
+        return true;
+      }
+      if (result.status === 'rejected' || result.status === 'unsupported') {
+        const synced = await currentParams.syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+        if (synced && isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) {
+          currentParams.removeSettledPendingLocalRemoteAction(actionKey);
+          clearPendingItemPromptChoice(actionKey);
+          clearPendingSkipRecoveryTimer();
+          return true;
+        }
+      }
     } catch {
-      recovered = await currentParams.syncLatestAuthoritativeState('아이템 선택 서버 확정 상태를 확인하기 위해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      // Keep the lock. The same mutation id will be checked and retried later.
     }
-    if (!recovered || !isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return false;
-    currentParams.removeSettledPendingLocalRemoteAction(actionKey);
-    clearPendingItemPromptChoice(actionKey);
-    clearPendingSkipRecoveryTimer();
-    return true;
-  }, [clearPendingItemPromptChoice, clearPendingSkipRecoveryTimer]);
+
+    if (isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) {
+      refreshPendingSkipLock(recovery);
+      schedulePendingSkipRecovery(recovery);
+    }
+    return false;
+  }, [clearPendingItemPromptChoice, clearPendingSkipRecoveryTimer, refreshPendingSkipLock, schedulePendingSkipRecovery]);
+  recoverPendingSkipRef.current = recoverPendingSkip;
 
   useEffect(() => () => clearPendingSkipRecoveryTimer(), [clearPendingSkipRecoveryTimer, params.activeRoomId]);
 
@@ -100,27 +163,24 @@ export function useItemController(params: Params) {
       const payload = buildSkipItemPromptPayload(promptTiming, promptRollStackIndex);
       const clientMutationId = params.getLocalActionKey('use_item', payload);
       if (params.pendingLocalRemoteActionsRef.current.has(clientMutationId)) return;
-      const action = {
-        type: 'use_item' as const,
+      const action: PendingSkipAction = {
+        type: 'use_item',
         actorId: params.localSeatId,
         payload: params.withActorLogPayload({ ...payload, clientActionStartedAt: actionStartedAt, clientActionId: clientMutationId }, skipSeat),
+      };
+      const recovery: PendingSkipRecovery = {
+        requestRoomId,
+        actionKey: clientMutationId,
+        action,
+        actorId: params.localSeatId,
+        createdSequence: params.lastAppliedSequenceRef.current,
+        createdTurnIndex: params.turnIndex,
       };
       params.shouldAdvanceTurnAfterItemPromptRef.current = false;
       const pendingChoice = { actionKey: clientMutationId, timing: promptTiming, itemType: null };
       params.setPendingItemPromptChoice(pendingChoice);
-      params.addPendingLocalRemoteAction(clientMutationId, {
-        type: 'use_item',
-        actorId: params.localSeatId,
-        createdSequence: params.lastAppliedSequenceRef.current,
-        createdTurnIndex: params.turnIndex,
-        optimisticApplied: true,
-        blocksTurnActions: true,
-      });
-      clearPendingSkipRecoveryTimer();
-      pendingSkipRecoveryTimerRef.current = window.setTimeout(() => {
-        pendingSkipRecoveryTimerRef.current = null;
-        void recoverPendingSkip(requestRoomId, clientMutationId);
-      }, Math.max(0, STALE_PENDING_REMOTE_ACTION_MS - 1_000));
+      refreshPendingSkipLock(recovery);
+      schedulePendingSkipRecovery(recovery);
       params.markItemPromptResolved(promptTiming, promptRollStackIndex);
       params.setItemPromptTiming(null);
       const nextDeadlineKind = getSkippedItemPromptNextDeadlineKind(promptTiming);
@@ -145,8 +205,12 @@ export function useItemController(params: Params) {
             return;
           }
           if (result.status === 'rejected' || result.status === 'unsupported') {
-            const recovered = await params.syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
-            if (!recovered || !isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return;
+            const synced = await params.syncLatestAuthoritativeState(result.reason ?? '서버가 아이템 건너뛰기를 거부해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+            if (!synced || !isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) {
+              refreshPendingSkipLock(recovery);
+              schedulePendingSkipRecovery(recovery);
+              return;
+            }
             params.removeSettledPendingLocalRemoteAction(clientMutationId);
             clearPendingItemPromptChoice(clientMutationId);
             clearPendingSkipRecoveryTimer();
@@ -155,7 +219,7 @@ export function useItemController(params: Params) {
         .catch((error) => {
           if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return;
           params.recordRemoteActionDiagnostic('roll_yut', 'skip-item-prompt-error', error instanceof Error ? error.message : '아이템 건너뛰기 처리에 실패했습니다.', { actionKey: clientMutationId });
-          void recoverPendingSkip(requestRoomId, clientMutationId);
+          void recoverPendingSkip(recovery);
         });
       return;
     }
@@ -172,7 +236,7 @@ export function useItemController(params: Params) {
       params.setTurnDeadlineAt(Date.now() + TURN_ACTION_TIMEOUT_MS);
       params.setTurnDeadlineKind('roll');
     }
-  }, [clearPendingItemPromptChoice, clearPendingSkipRecoveryTimer, params, recoverPendingSkip]);
+  }, [clearPendingItemPromptChoice, clearPendingSkipRecoveryTimer, params, recoverPendingSkip, refreshPendingSkipLock, schedulePendingSkipRecovery]);
 
   return { skipItemPrompt };
 }
