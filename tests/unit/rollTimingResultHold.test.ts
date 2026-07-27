@@ -31,8 +31,10 @@ test('roll-stage 숨김 규칙은 live meter에만 적용하고 정지 결과 �
 test('브라우저 QA가 실제 가시성·고정 좌표·1000ms 제거 시점을 관측한다', () => {
   assert.match(browserQaSource, /new MutationObserver/);
   assert.match(browserQaSource, /performance\.now\(\)/);
-  assert.match(browserQaSource, /sampleHold\(500\)/);
-  assert.match(browserQaSource, /sampleHold\(900\)/);
+  assert.match(browserQaSource, /const sampleAt = \(elapsedMs\) => new Promise/);
+  assert.match(browserQaSource, /Promise\.all\(\[0, 500, 900\]\.map\(sampleAt\)\)/);
+  assert.doesNotMatch(browserQaSource, /waitUntilElapsed\(holdStartedAt, (?:500|900)\)/);
+  assert.match(browserQaSource, /rollStageVisibleWhileHeld/);
   assert.match(browserQaSource, /removalDelayMs/);
   assert.match(browserQaSource, /toBeGreaterThanOrEqual\(1000\)/);
   assert.match(browserQaSource, /rollStageVisible/);
