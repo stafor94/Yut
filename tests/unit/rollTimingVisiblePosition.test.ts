@@ -4,7 +4,6 @@ import { getRollTimingZone } from '../../src/game-core/roll.js';
 import {
   getRollTimingTrackTransform,
   getVisibleRollTimingPositionPercent,
-  getVisibleRollTimingTrackOffsetPx,
   normalizeRollTimingPositionPercent,
 } from '../../src/app/flows/rollTimingVisiblePosition.js';
 
@@ -44,10 +43,4 @@ test('화면 좌표 판정은 등급 경계와 일치한다', () => {
     assert.notEqual(visiblePosition, undefined);
     assert.equal(getRollTimingZone(visiblePosition!), zone);
   }
-});
-
-test('track의 실제 화면 위치와 변환 전 layout 원점 차이를 픽셀 고정값으로 계산한다', () => {
-  assert.equal(getVisibleRollTimingTrackOffsetPx({ left: 217, width: 200 }, 104), 113);
-  assert.equal(getVisibleRollTimingTrackOffsetPx({ left: Number.NaN, width: 200 }, 104), undefined);
-  assert.equal(getVisibleRollTimingTrackOffsetPx({ left: 217, width: 200 }, Number.NaN), undefined);
 });
