@@ -18,9 +18,35 @@
 }
 
 .screen-lobby .lobby-howto-sheet .howto-list article:nth-child(2) p:nth-of-type(1)::after {
-  content: '막대는 Perfect(보라, 45~55%), Nice(하늘, 40~45%·55~60%), Good(연두, 20~40%·60~80%), Bad(검정, 나머지)로 판정됩니다.';
+  content: '막대는 Perfect(보라), Nice(하늘), Good(연두), Bad(검정)로 판정됩니다.';
 }
 
 .screen-lobby .lobby-howto-sheet .howto-list article:nth-child(2) p:nth-of-type(2)::after {
-  content: 'Perfect는 낙이 없고 윷·모 확률이 높습니다. Nice·Good·Bad의 윷 결과는 일반 확률이며 낙 확률은 각각 10%·20%·60%입니다. 낙이면 이동 없이 차례가 넘어갑니다.';
+  content: 'Perfect는 낙이 없고 윷·모 확률이 높습니다. Nice·Good·Bad는 단계가 낮을수록 낙이 발생하기 쉬우며, 낙이면 이동 없이 차례가 넘어갑니다.';
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(5)::after,
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(6)::after {
+  content: '한 번 더';
+  position: absolute;
+  top: -5px;
+  right: 3px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: #397258;
+  color: #fffdf1;
+  font-size: .48rem;
+  font-weight: 1000;
+  letter-spacing: -.02em;
+  box-shadow: 0 2px 5px rgba(31, 76, 56, .18);
+}
+
+@media (max-width: 700px) and (orientation: portrait) {
+  .screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(5)::after,
+  .screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(6)::after {
+    top: -4px;
+    right: 0;
+    padding: 1px 2px;
+    font-size: .38rem;
+  }
 }
