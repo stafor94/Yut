@@ -1,9 +1,11 @@
-import type { ItemTiming } from '../../features/items/logic/items';
+import type { ItemTiming, ItemType } from '../../features/items/logic/items';
 
 export type SkipItemPromptPayload =
   | { skipBeforeRollItem: true }
   | { skipAfterRollItem: true; rollStackIndex: number | null }
   | { skipAfterMoveItem: true };
+
+export type PendingItemPromptChoiceLock = { actionKey: string; timing: ItemTiming; itemType: ItemType | null } | null;
 
 export function buildSkipItemPromptPayload(timing: ItemTiming, rollStackIndex: number | null): SkipItemPromptPayload {
   if (timing === 'before_roll') return { skipBeforeRollItem: true };
@@ -19,4 +21,8 @@ export function getSkippedItemPromptNextDeadlineKind(timing: ItemTiming): 'roll'
 
 export function isCurrentItemPromptRequestRoom(requestRoomId: string, currentRoomId: string): boolean {
   return Boolean(requestRoomId && requestRoomId === currentRoomId);
+}
+
+export function hasPendingItemPromptChoiceLock(choice: PendingItemPromptChoiceLock, pendingActionKeys: ReadonlySet<string>): boolean {
+  return Boolean(choice?.actionKey && pendingActionKeys.has(choice.actionKey));
 }
