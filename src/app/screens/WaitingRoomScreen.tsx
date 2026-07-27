@@ -22,6 +22,7 @@ type WaitingRoomSeatListProps = {
   seats: Seat[];
   canManageRoom: boolean;
   roomInGame: boolean;
+  interactionDisabled: boolean;
   localSeatId: string;
   playMode: 'individual' | 'team';
   getSeatPieceColor: (seat: Seat) => string;
@@ -58,7 +59,7 @@ export function WaitingRoomSettingsPanel({ roomTitle, isOpen, canToggle, summary
   </section>;
 }
 
-export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSeatId, playMode, getSeatPieceColor, onKickPlayer, onAddAI, onRemoveAI, onChangeTeam }: WaitingRoomSeatListProps) {
+export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, interactionDisabled, localSeatId, playMode, getSeatPieceColor, onKickPlayer, onAddAI, onRemoveAI, onChangeTeam }: WaitingRoomSeatListProps) {
   const [aiDifficultyBySeatId, setAiDifficultyBySeatId] = useState<Record<string, AiDifficulty>>({});
   const [pendingDifficultySeatIds, setPendingDifficultySeatIds] = useState<Set<string>>(() => new Set());
 
@@ -76,7 +77,7 @@ export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSea
   }, []);
 
   const changeAiDifficulty = async (seat: Seat, difficulty: AiDifficulty) => {
-    if (!canManageAiDifficulty(canManageRoom, seat) || pendingDifficultySeatIds.has(seat.id)) return;
+    if (interactionDisabled || !canManageAiDifficulty(canManageRoom, seat) || pendingDifficultySeatIds.has(seat.id)) return;
     const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
     if (!roomId) return;
     const previous = aiDifficultyBySeatId[seat.id] ?? 'hard';
@@ -115,8 +116,8 @@ export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSea
             </span>}
           </div>
           <span className={`seat-status-actions ${seat.isAI ? 'ai-seat-actions' : ''}`}>
-            {canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" onClick={() => onKickPlayer(seat)}>강퇴</button>}
-            {seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" onClick={() => onAddAI(seat.id)}>AI 추가</button>}
+            {canManageRoom && seat.id !== localSeatId && !seat.isEmpty && !seat.isHost && !seat.isAI && <button className="mini-button secondary kick-player-button" disabled={interactionDisabled} onClick={() => onKickPlayer(seat)}>강퇴</button>}
+            {seat.isEmpty && canManageRoom && <button data-testid={`add-ai-${seat.label}`} className="mini-button ai-add-button" disabled={interactionDisabled} onClick={() => onAddAI(seat.id)}>AI 추가</button>}
             {showDifficultyControls ? <span className="ai-difficulty-selector" role="group" aria-label={`${seat.label} AI 난이도`}>
               {(['easy', 'hard'] as AiDifficulty[]).map((difficulty) => <button
                 type="button"
@@ -124,15 +125,15 @@ export function WaitingRoomSeatList({ seats, canManageRoom, roomInGame, localSea
                 data-testid={`ai-difficulty-${seat.label}-${difficulty}`}
                 className={aiDifficulty === difficulty ? 'active' : ''}
                 aria-pressed={aiDifficulty === difficulty}
-                disabled={difficultyPending}
+                disabled={interactionDisabled || difficultyPending}
                 onClick={() => void changeAiDifficulty(seat, difficulty)}
               >{difficulty === 'easy' ? '쉬움' : '어려움'}</button>)}
             </span> : null}
-            {seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" onClick={() => onRemoveAI(seat.id)}>AI 제거</button>}
+            {seat.isAI && canManageRoom && !seat.isHost && <button className="mini-button secondary ai-remove-button" disabled={interactionDisabled} onClick={() => onRemoveAI(seat.id)}>AI 제거</button>}
           </span>
           {roomInGame && !seat.isEmpty ? <span className="seat-ready-label in-game">게임중</span> : seat.ready && !seat.isEmpty && !seat.isHost && !seat.isAI ? <span className="seat-ready-label">준비</span> : null}
         </div>
-        {playMode === 'team' && <div className="team-card-selector" role="group" aria-label={`${seat.label} 팀 선택`}>{(['청팀', '홍팀'] as Team[]).map((team) => <button type="button" key={team} className={`team-card-option ${team === seat.team ? 'active' : ''} ${team === '청팀' ? 'blue' : 'red'}`} disabled={!canManageRoom} onClick={() => onChangeTeam(seat.id, team)}>{team}</button>)}</div>}
+        {playMode === 'team' && <div className="team-card-selector" role="group" aria-label={`${seat.label} 팀 선택`}>{(['청팀', '홍팀'] as Team[]).map((team) => <button type="button" key={team} className={`team-card-option ${team === seat.team ? 'active' : ''} ${team === '청팀' ? 'blue' : 'red'}`} disabled={interactionDisabled || !canManageRoom} onClick={() => onChangeTeam(seat.id, team)}>{team}</button>)}</div>}
       </article>;
     })}
   </section>;
