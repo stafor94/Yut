@@ -86,7 +86,9 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - [x] Main Branch QA Run `30227987345`의 Safari/Galaxy timing 실패 job과 artifact를 직접 분석했다.
 - [x] Main Branch QA Run `30230218854`에서 Safari visible mismatch와 Safari timing이 성공하고 실제 Good/Nice/outside/cancel 테스트가 실행됐음을 확인했다.
 - [x] Run `30230218854`의 unit contract 실패와 Galaxy pointercancel phase-wrap 오인 실패를 직접 분석했다.
-- [ ] 최종 unit contract 및 bounded resume polling 수정 Run에서 build/unit과 Galaxy timing terminal success를 확인한다.
+- [x] Main Branch QA Run `30231031693`에서 build/unit과 모든 기능 QA가 성공하고 Galaxy pointercancel 수정이 실제 실행됐음을 확인했다.
+- [x] Run `30231031693`의 유일한 실패가 Safari timing 성능 `252.2s / 250.0s`임을 확인했다.
+- [ ] 취소 시나리오 방 재사용 수정 Run에서 Safari timing 기능과 250초 성능 예산 success를 확인한다.
 - [ ] 병합 후 최종 merge SHA 기준 Main Branch QA 전체 success를 확인한다.
 
 ### Main Branch QA follow-up - Run 30226873062
@@ -117,3 +119,12 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - polling 단계에서 assertion과 같은 bounded next-frame 계약인 `phaseDeltaMs >= 48 && phaseDeltaMs < 500`을 적용한다. 실제 한 주기 wrap이나 정지 상태를 성공으로 간주하지 않고, pointerdown phase에서 제한된 다음 프레임으로 재개된 경우만 선택한다.
 - Build job은 architecture validation과 build를 통과했지만 unit `브라우저 QA가 실제 가시성·고정 좌표·1000ms 제거 시점을 관측한다`가 과거 순차 `sampleHold(500)`·`sampleHold(900)` 문자열을 강제해 실패했다. unit 계약을 `Promise.all([0, 500, 900].map(sampleAt))`, `rollStageVisibleWhileHeld`, 순차 hold waiter 부재 검증으로 갱신한다.
 - 모든 lane 성능은 예산 내였고 workflow 시작부터 summary 예상 완료는 260.2초로 300초 예산을 통과했다. 허용 오차·timeout·worker·성능 예산은 변경하지 않는다.
+
+### Main Branch QA follow-up - Run 30231031693
+
+- PR #1142 merge SHA `7d1801872052feef41dc0aab93f9442defefc9c2`의 Main Branch QA에서 build, unit, architecture validation과 모든 기능 QA가 성공했다.
+- Galaxy timing은 browser isolation, Good, Nice, 버튼 밖 release, pointercancel, Galaxy 추가 반복 6건이 모두 성공했다. Safari visible mismatch와 Safari timing도 실제 대상 테스트가 모두 성공했다.
+- 기능 matrix는 모두 success였고 workflow 시작부터 summary 예상 완료도 `284.3s / 300.0s`로 성공했다.
+- 유일한 차단은 Safari timing 전체 job 시간이 `252.2s / 250.0s`로 2.2초 초과한 성능 실패다. 테스트 실행 시간은 126.7초였고 Nice 42.5초, outside release 33.4초, pointercancel 34.6초가 각각 독립 방 생성·AI 추가·게임 시작 비용을 포함했다.
+- 허용 오차, timeout, worker, browser, manifest, workflow, 성능 예산을 완화하지 않는다. 제출하지 않는 outside release와 pointercancel은 같은 방과 활성 버튼 상태를 재사용해 연속 실행한다.
+- 통합 취소 테스트는 outside release 후 action/sequence/log 미생성과 버튼 활성 상태를 확인한 뒤 같은 방에서 pointercancel과 후속 synthetic click 무시, bounded phase·방향 재개를 다시 검증한다. 검증 assertion은 삭제하지 않고 방 setup 1회만 제거한다.
