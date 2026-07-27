@@ -3,6 +3,8 @@ import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep }
 import { hasFirebaseConfig, loadFirebaseConfig, makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { deleteRoomForQa, findRoomIdByTitle, getRoomPlayersForQa, getRoomSequencesForQa, getRoomStateForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
 
+const ITEM_PROMPT_TIMEOUT_MS = 10_000;
+
 const encodeFirestoreValue = (value) => {
   if (value === null || value === undefined) return { nullValue: null };
   if (typeof value === 'boolean') return { booleanValue: value };
@@ -140,6 +142,7 @@ test.describe('mobile item skip pending lock QA', () => {
       const turnOrderIds = Array.isArray(state.turnOrderIds) ? state.turnOrderIds : [];
       const hostTurnIndex = turnOrderIds.indexOf(hostPlayer.id);
       expect(hostTurnIndex, '방장이 turn order에 포함되어야 합니다.').toBeGreaterThanOrEqual(0);
+      const promptDeadlineAt = Date.now() + ITEM_PROMPT_TIMEOUT_MS;
       await patchRoomStateFromPage(page, roomId, {
         turnIndex: hostTurnIndex,
         roll: null,
@@ -153,9 +156,21 @@ test.describe('mobile item skip pending lock QA', () => {
         pendingTrapPlacement: null,
         lastMovedPieceIds: [],
         lastMovedSeatId: '',
-        turnDeadlineAt: Date.now() + 60_000,
+        turnDeadlineAt: promptDeadlineAt,
         turnDeadlineKind: 'item_prompt',
         turnVersion: Number(state.turnVersion ?? 0) + 1,
+      });
+      await expect.poll(async () => {
+        const patchedState = await getRoomStateForQa(roomId);
+        return {
+          itemPromptTiming: patchedState?.itemPromptTiming ?? null,
+          turnDeadlineKind: patchedState?.turnDeadlineKind ?? '',
+          turnDeadlineAt: Number(patchedState?.turnDeadlineAt ?? 0),
+        };
+      }, { timeout: 5_000, message: 'before_roll prompt fixture가 authoritative state에 저장되어야 합니다.' }).toEqual({
+        itemPromptTiming: 'before_roll',
+        turnDeadlineKind: 'item_prompt',
+        turnDeadlineAt: promptDeadlineAt,
       });
       await page.reload();
       await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 30_000 });
