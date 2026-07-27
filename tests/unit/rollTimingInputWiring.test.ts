@@ -19,11 +19,13 @@ test('타이밍 오브는 leaf rAF 하나가 canonical percent를 기록하고 p
   assert.match(controlSource, /if \(releasedInsideButton\) submitSnapshot\(capturedTiming\.snapshot, deadlineExpired\);[\s\S]*pendingTimeoutSnapshotRef\.current = capturedTiming\.snapshot;[\s\S]*resumeFrameLoop\(capturedTiming\.snapshot\)/);
   assert.match(controlSource, /heldTrack\.style\.transform = getRollTimingTrackTransform\(snapshot\.positionPercent\)/);
   assert.match(controlSource, /onRoll\(snapshot\.positionPercent,/);
+  assert.match(controlSource, /if \(submittedKeyRef\.current === resetKey\) return 'duplicate'/);
   assert.match(controlSource, /capturedPointerTimingRef\.current\?\.resetKey === resetKey[\s\S]*capturedPointerTimingRef\.current\.snapshot[\s\S]*pendingTimeoutSnapshotRef\.current[\s\S]*lastRenderedSnapshotRef\.current/);
   assert.match(controlSource, /onPointerDown=\{handlePointerDown\}/);
   assert.match(controlSource, /onPointerUp=\{handlePointerUp\}/);
   assert.match(controlSource, /onPointerCancel=\{handlePointerCancel\}/);
   assert.match(controlSource, /event\.detail > 0/);
+  assert.match(controlSource, /const snapshot = lastRenderedSnapshotRef\.current\?\.resetKey === resetKey[\s\S]*cancelFrameLoop\(\);[\s\S]*submitSnapshot\(snapshot,/);
   assert.doesNotMatch(controlSource, /getComputedStyle/);
   assert.doesNotMatch(controlSource, /getAnimations/);
   assert.doesNotMatch(controlSource, /frozenTransform/);
