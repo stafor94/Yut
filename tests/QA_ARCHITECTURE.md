@@ -47,9 +47,9 @@ Galaxy와 Safari 계열은 별도 GitHub Actions matrix entry로 실행한다. C
 
 `mobile-galaxy`와 `mobile-galaxy-timing`은 각각 `desktop-chromium` project에서 Firebase browser isolation spec을 실행하고 `mobile-galaxy` project에서 담당 모바일 spec을 실행한다. Run `30178219787`에서 전체 26건은 성공했지만 pointer 4건이 각각 31~37초로 lane의 마지막 실행 꼬리를 형성해 전체 job이 284.2초가 됐다. 테스트 삭제·timeout 완화 대신 pointer spec을 독립 runner로 분리해 두 범위를 동시에 실행한다.
 
-`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. `safari-visible-mismatch`는 exact title `pointerdown Good snapshot은 180ms 뒤 Perfect 시간이 지나도 화면·제출·sequence·최종 판정이 Good으로 일치한다`를 1-worker runner에서 browser isolation spec과 함께 실행한다. `safari-timing` lane의 manifest worker 수는 3을 유지하지만, 같은 spec의 세 WebKit 페이지를 동시에 실행하면 비활성 page의 제품 rAF가 throttling되어 목표 snapshot 자체가 멈출 수 있으므로 `QA_ROLE=safari-timing`일 때 해당 spec 내부 mode만 `default`로 실행한다. browser isolation은 별도 worker와 병행할 수 있고, Nice·버튼 밖 release·pointercancel 시나리오는 한 활성 WebKit page에서 순차 검증한다. Galaxy timing은 같은 spec 전체와 Galaxy 추가 반복을 기존 parallel mode로 실행한다.
+`mobile-webkit-timing` project는 `fullyParallel: true`를 유지한다. `safari-visible-mismatch`는 exact title `pointerdown Good snapshot은 180ms 뒤 Perfect 시간이 지나도 화면·제출·sequence·최종 판정이 Good으로 일치한다`를 1-worker runner에서 browser isolation spec과 함께 실행한다. `safari-timing` lane의 manifest worker 수는 3을 유지하지만, 같은 spec의 여러 WebKit 페이지를 동시에 실행하면 비활성 page의 제품 rAF가 throttling되어 목표 snapshot 자체가 멈출 수 있으므로 `QA_ROLE=safari-timing`일 때 해당 spec 내부 mode만 `default`로 실행한다. browser isolation은 별도 worker와 병행할 수 있다. Nice 제출은 독립 방에서 검증하고, 버튼 밖 release와 pointercancel은 `버튼 밖 pointerup과 pointercancel은 제출하지 않고 기존 phase와 방향에서 연속 재개한다` 한 테스트가 같은 방에서 순서대로 검증한다. Galaxy timing은 같은 spec 전체와 Galaxy 추가 반복을 기존 parallel mode로 실행한다.
 
-Safari·Galaxy pointer 회귀는 CSS animation timeline이나 `animation.currentTime`을 조작하지 않는다. 제품의 단일 leaf rAF writer가 live meter에 기록한 canonical `positionPercent`와 `phaseMs`를 관찰해 GOOD 또는 NICE 구간에 도달한 실제 렌더 프레임에서 `pointerdown`을 발생시킨다. 제품 위치 이동은 계속 rAF가 소유하지만 테스트의 polling과 180ms·500ms·900ms 관측 대기는 wall-clock timer를 사용해 WebKit rAF throttling과 관측 시계가 서로 잠기지 않게 한다. result hold의 0ms·500ms·900ms 샘플 timer는 1000ms 제거 timer보다 먼저 모두 예약하고, roll-stage가 hold 연결 중 나타났는지도 MutationObserver와 각 sample에서 확인한다. 이후 action·sequence·patch·최종 등급이 같은 snapshot인지 검증하며, 버튼 밖 `pointerup`과 `pointercancel`은 action/sequence를 만들지 않고 기존 phase와 진행 방향에서 rAF 이동이 재개되는지 함께 확인한다.
+Safari·Galaxy pointer 회귀는 CSS animation timeline이나 `animation.currentTime`을 조작하지 않는다. 제품의 단일 leaf rAF writer가 live meter에 기록한 canonical `positionPercent`와 `phaseMs`를 관찰해 GOOD 또는 NICE 구간에 도달한 실제 렌더 프레임에서 `pointerdown`을 발생시킨다. 제품 위치 이동은 계속 rAF가 소유하지만 테스트의 polling과 180ms·500ms·900ms 관측 대기는 wall-clock timer를 사용해 WebKit rAF throttling과 관측 시계가 서로 잠기지 않게 한다. result hold의 0ms·500ms·900ms 샘플 timer는 1000ms 제거 timer보다 먼저 모두 예약하고, roll-stage가 hold 연결 중 나타났는지도 MutationObserver와 각 sample에서 확인한다. 이후 action·sequence·patch·최종 등급이 같은 snapshot인지 검증한다. 취소 통합 테스트는 같은 활성 방에서 버튼 밖 `pointerup`을 먼저 검증하고 action/sequence가 생성되지 않은 상태와 버튼 활성 상태를 확인한 뒤, 다시 실제 Good 구간을 기다려 `pointercancel`과 후속 synthetic click 무시, phase·진행 방향 재개를 검증한다.
 
 현재 앱 shell은 시작 시 Firebase Auth·Firestore 초기화를 수행한다. 따라서 DOM·레이아웃 중심 spec도 별도의 검증된 Firebase-free bootstrap이 생기기 전까지 emulator lane에서 유지한다. 단순 속도 개선을 위해 제품 초기화 계약을 mock으로 대체하지 않는다.
 
@@ -86,7 +86,7 @@ Safari·Galaxy pointer 회귀는 CSS animation timeline이나 `animation.current
 
 `desktop-sequence`는 1 worker를 고정한다. Run `30160293177`에서 `bug-history-smoke`가 다른 desktop 테스트와 2-worker runner를 공유하는 동안 2초 move 시작 상태를 놓쳤으므로, 동일 파일을 별도 runner에 격리해 전체 workflow 병렬성은 유지하고 파일 내부 관찰 순서는 보장한다.
 
-Galaxy timing과 Safari 계열은 같은 pointer spec을 서로 다른 browser lane에서 실행하므로 `sharedTargets`를 세 lane 모두에 선언한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 pointerdown Good 장기 press test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 title을 제외해야 한다. 각 test는 고유 browser context·room을 사용한다. 다만 Run `30227987345`에서 WebKit page 세 개를 동시에 띄운 상태로 제품 rAF를 기다리면 비활성 page snapshot이 멈춘 사실이 확인됐으므로 `safari-timing` pointer spec 내부 실행은 순차로 유지한다. 이는 lane worker 예산이나 browser coverage 축소가 아니라 활성 page에서 실제 제품 rAF를 보존하기 위한 파일 내부 실행 계약이다. worker 수와 성능 예산은 변경하지 않는다.
+Galaxy timing과 Safari 계열은 같은 pointer spec을 서로 다른 browser lane에서 실행하므로 `sharedTargets`를 세 lane 모두에 선언한다. `safari-visible-mismatch`의 `grep`은 browser isolation과 pointerdown Good 장기 press test만 포함해야 하고, `safari-timing`의 `grepInvert`는 같은 title을 제외해야 한다. 각 제출 테스트는 고유 browser context·room을 사용한다. 다만 Run `30227987345`에서 WebKit page 세 개를 동시에 띄운 상태로 제품 rAF를 기다리면 비활성 page snapshot이 멈춘 사실이 확인됐으므로 `safari-timing` pointer spec 내부 실행은 순차로 유지한다. Run `30231031693`에서는 모든 기능 QA가 성공했지만 Safari timing job이 `252.2s / 250.0s`로 2.2초 초과했다. 검증 범위·worker·예산을 바꾸지 않고 제출하지 않는 outside release와 pointercancel을 같은 방에서 연속 실행해 방 생성·AI 추가·게임 시작 1회를 제거한다. 두 release mode와 각 action/sequence 미생성 assertion은 unit source 계약으로 고정한다.
 
 ## 성능 예산
 
@@ -103,7 +103,7 @@ Galaxy timing과 Safari 계열은 같은 pointer spec을 서로 다른 browser l
 - Safari visible mismatch: 195초
 - Safari timing: 250초
 
-Run `30178219787`은 모든 기능 QA가 성공했고 workflow 시작부터 성능 검증까지 304.5초였다. Safari timing 전체 job은 232.9초로 기능 실패 없이 기존 225초 예산만 초과했다. Safari 예산은 실측 설치·WebKit 실행 비용을 반영해 250초로 보정하되 전체 300초 제한은 유지한다. Galaxy는 pointer 분리 후 각 lane이 240초를 넘으면 성능 회귀로 차단한다.
+Run `30178219787`은 모든 기능 QA가 성공했고 workflow 시작부터 성능 검증까지 304.5초였다. Safari timing 전체 job은 232.9초로 기능 실패 없이 기존 225초 예산만 초과했다. Safari 예산은 실측 설치·WebKit 실행 비용을 반영해 250초로 보정하되 전체 300초 제한은 유지한다. Run `30231031693`에서는 기능과 전체 300초 예산은 통과했으나 Safari timing만 252.2초였다. 예산을 다시 늘리지 않고 동일 방 재사용으로 고정 setup 비용을 줄인다. Galaxy는 pointer 분리 후 각 lane이 240초를 넘으면 성능 회귀로 차단한다.
 
 각 lane은 `qa-job-timing.json`을 artifact에 남기고 summary job은 `qa-performance.json`, `qa-performance.md`를 생성한다. 보고서 누락, GitHub Run 시작 시각 조회 실패, lane 예산 초과, 전체 5분 목표 초과는 모두 필수 QA 실패로 처리한다. 성능 예산을 늘릴 때는 느려진 원인과 최근 성공 Run의 실제 시간을 먼저 검토한다.
 
