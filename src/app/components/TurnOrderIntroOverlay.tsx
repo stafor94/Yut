@@ -263,7 +263,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
       if (!current || current.version !== 3 || current.sessionId !== sourceIntro.sessionId) return null;
       const next = activateNextTurnOrderRound(current, Date.now());
       return next.currentRound.id === current.currentRound.id ? null : { turnOrderIntro: next };
-    });
+    }).catch(() => undefined);
   }, [coordinatorEpoch, isCoordinator, now, onlineGameCoordinatorSeatId, sourceIntro]);
 
   const commitSubmission = useCallback((source: TurnOrderSubmission['source']) => {
@@ -324,8 +324,10 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
   useEffect(() => {
     if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.startAt) return;
     const aiSeatIds = new Set(intro.order.filter((entry) => entry.isAI).map((entry) => entry.seatId));
+    const storedSubmissionSeatIds = new Set(storedRoundSubmissions.map((submission) => submission.seatId));
     const pendingAiSeatIds = round.eligibleSeatIds.filter((seatId) => aiSeatIds.has(seatId)
-      && !round.submissions.some((submission) => submission.seatId === seatId));
+      && !round.submissions.some((submission) => submission.seatId === seatId)
+      && !storedSubmissionSeatIds.has(seatId));
     if (!pendingAiSeatIds.length || aiSubmittingRoundIdRef.current === round.id) return;
     const submissionNow = Math.max(Date.now(), now);
     const aiSubmissions = pendingAiSeatIds.map((seatId) => createTurnOrderSubmission({
@@ -349,15 +351,19 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     }).catch(() => {
       if (aiSubmittingRoundIdRef.current === round.id) aiSubmittingRoundIdRef.current = '';
     });
-  }, [coordinatorEpoch, intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
+  }, [coordinatorEpoch, intro, isCoordinator, now, onlineGameCoordinatorSeatId, round, storedRoundSubmissions]);
 
   useEffect(() => {
     if (!intro || !round || !isCoordinator || round.status !== 'collecting' || now < round.deadlineAt + AUTO_ROLL_FALLBACK_DELAY_MS) return;
-    const allSubmitted = round.eligibleSeatIds.every((seatId) => round.submissions.some((submission) => submission.seatId === seatId));
+    const submittedSeatIds = new Set([
+      ...round.submissions.map((submission) => submission.seatId),
+      ...storedRoundSubmissions.map((submission) => submission.seatId),
+    ]);
+    const allSubmitted = round.eligibleSeatIds.every((seatId) => submittedSeatIds.has(seatId));
     if (allSubmitted || fallbackRoundIdRef.current === round.id) return;
     const submissionNow = Math.max(Date.now(), round.deadlineAt);
     const fallbackSubmissions = round.eligibleSeatIds
-      .filter((seatId) => !round.submissions.some((submission) => submission.seatId === seatId))
+      .filter((seatId) => !submittedSeatIds.has(seatId))
       .map((seatId) => createTurnOrderSubmission({
         seatId,
         roundId: round.id,
@@ -379,7 +385,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     }).catch(() => {
       if (fallbackRoundIdRef.current === round.id) fallbackRoundIdRef.current = '';
     });
-  }, [coordinatorEpoch, intro, isCoordinator, now, onlineGameCoordinatorSeatId, round]);
+  }, [coordinatorEpoch, intro, isCoordinator, now, onlineGameCoordinatorSeatId, round, storedRoundSubmissions]);
 
   useEffect(() => {
     if (!intro || !round || !isCoordinator || round.status !== 'collecting') return undefined;
