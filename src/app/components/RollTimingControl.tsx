@@ -98,12 +98,15 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     return applyRenderedSnapshot(snapshot) ? snapshot : undefined;
   };
 
-  const scheduleFrameLoop = () => {
+  const scheduleFrameLoop = (minimumCapturedAt = 0) => {
     if (frameRequestRef.current !== null || submittedKeyRef.current === resetKey) return;
+    let nextMinimumCapturedAt = minimumCapturedAt;
     const tick = (capturedAt: number) => {
       frameRequestRef.current = null;
       if (submittedKeyRef.current === resetKey || capturedPointerTimingRef.current) return;
-      renderFrame(capturedAt);
+      const frameCapturedAt = Math.max(capturedAt, nextMinimumCapturedAt);
+      nextMinimumCapturedAt = 0;
+      renderFrame(frameCapturedAt);
       frameRequestRef.current = window.requestAnimationFrame(tick);
     };
     frameRequestRef.current = window.requestAnimationFrame(tick);
@@ -112,8 +115,9 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   const resumeFrameLoop = (snapshot: RollTimingSnapshot) => {
     if (submittedKeyRef.current === resetKey || snapshot.resetKey !== resetKey) return;
     applyRenderedSnapshot(snapshot);
-    frameStartedAtRef.current = performance.now() - snapshot.phaseMs;
-    scheduleFrameLoop();
+    const resumedAt = performance.now();
+    frameStartedAtRef.current = resumedAt - snapshot.phaseMs;
+    scheduleFrameLoop(resumedAt);
   };
 
   const holdTimingResult = (snapshot: RollTimingSnapshot) => {
