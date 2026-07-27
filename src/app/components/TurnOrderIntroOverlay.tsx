@@ -20,11 +20,11 @@ import { playStoredSoundEffect } from '../../shared/audio/sound';
 import type { RollAnimation, TurnOrderIntro, TurnOrderResultName, TurnOrderSubmission } from '../appState';
 import {
   activateNextTurnOrderRound,
+  aggregateTurnOrderRoundFromStoredSubmissions,
   formatTurnOrderSummary,
   getTurnOrderScore,
   isTurnOrderFinalized,
   makeTurnOrderSubmissionId,
-  submitAndMaybeAggregateTurnOrderRound,
 } from '../flows/turnOrderFlow';
 import {
   shouldReleaseTurnOrderSubmissionLockAfterFailure,
@@ -50,6 +50,7 @@ type QaResultQueue = 'local' | 'ai' | 'none';
 const AUTO_ROLL_FALLBACK_DELAY_MS = 500;
 const SUBMISSION_MAX_ATTEMPTS = 2;
 const SUBMISSION_RETRY_DELAY_MS = 250;
+const AGGREGATION_RETRY_DELAY_MS = 250;
 const TURN_ORDER_TIMING_ZONE: RollTimingZone = 'normal';
 const SCORE_LABELS: Record<TurnOrderResultName, string> = {
   모: '5',
@@ -149,11 +150,14 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
   const [localSubmission, setLocalSubmission] = useState<TurnOrderSubmission | null>(null);
   const [localSubmissionStatus, setLocalSubmissionStatus] = useState<'idle' | 'pending' | 'confirmed' | 'failed'>('idle');
   const [localRollAnimation, setLocalRollAnimation] = useState<RollAnimation | null>(null);
-  const [storedSubmissionSeatIds, setStoredSubmissionSeatIds] = useState<string[]>([]);
+  const [storedRoundSubmissions, setStoredRoundSubmissions] = useState<TurnOrderSubmission[]>([]);
+  const [aggregationRetryVersion, setAggregationRetryVersion] = useState(0);
   const submittedRoundIdRef = useRef('');
   const aiSubmittingRoundIdRef = useRef('');
   const fallbackRoundIdRef = useRef('');
   const aggregatingRoundIdRef = useRef('');
+  const aggregationScopeRef = useRef('');
+  const aggregationRetryTimerRef = useRef<number | null>(null);
   const completionSoundSessionRef = useRef('');
 
   useEffect(() => {
@@ -183,6 +187,9 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
   const storedLocalSubmission = round?.submissions.find((submission) => submission.seatId === localSeatId) ?? null;
   const visibleLocalSubmission = localSubmissionStatus !== 'failed' && localSubmission?.roundId === roundId ? localSubmission : storedLocalSubmission;
   const isCoordinator = Boolean(localSeatId && localSeatId === onlineGameCoordinatorSeatId);
+  const aggregationScopeKey = intro && round && isCoordinator && round.status === 'collecting'
+    ? `${intro.sessionId}:${round.id}:${onlineGameCoordinatorSeatId}:${coordinatorEpoch}`
+    : '';
   const isPreparing = Boolean(round && now < round.startAt);
   const isCollecting = Boolean(round && round.status === 'collecting' && now >= round.startAt && now < round.deadlineAt);
   const revealAt = Number(round?.revealAt ?? 0);
@@ -219,20 +226,35 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
   }, [intro, isLocalEligible, localSeatId, localSubmission?.roundId, round, storedLocalSubmission]);
 
   useEffect(() => {
-    setStoredSubmissionSeatIds([]);
-  }, [roundId]);
+    setStoredRoundSubmissions([]);
+  }, [intro?.sessionId, roundId]);
 
   useEffect(() => {
     if (!round || round.status !== 'collecting') {
       aiSubmittingRoundIdRef.current = '';
       fallbackRoundIdRef.current = '';
-      aggregatingRoundIdRef.current = '';
       return;
     }
     if (aiSubmittingRoundIdRef.current && aiSubmittingRoundIdRef.current !== round.id) aiSubmittingRoundIdRef.current = '';
     if (fallbackRoundIdRef.current && fallbackRoundIdRef.current !== round.id) fallbackRoundIdRef.current = '';
-    if (aggregatingRoundIdRef.current && aggregatingRoundIdRef.current !== round.id) aggregatingRoundIdRef.current = '';
   }, [round, roundId]);
+
+  useEffect(() => {
+    aggregationScopeRef.current = aggregationScopeKey;
+    aggregatingRoundIdRef.current = '';
+    if (aggregationRetryTimerRef.current !== null) {
+      window.clearTimeout(aggregationRetryTimerRef.current);
+      aggregationRetryTimerRef.current = null;
+    }
+    return () => {
+      if (aggregationScopeRef.current === aggregationScopeKey) aggregationScopeRef.current = '';
+      if (aggregatingRoundIdRef.current === aggregationScopeKey) aggregatingRoundIdRef.current = '';
+      if (aggregationRetryTimerRef.current !== null) {
+        window.clearTimeout(aggregationRetryTimerRef.current);
+        aggregationRetryTimerRef.current = null;
+      }
+    };
+  }, [aggregationScopeKey]);
 
   useEffect(() => {
     if (!isCoordinator || !sourceIntro?.nextRound || now < sourceIntro.nextRound.startAt || sourceIntro.currentRound.id === sourceIntro.nextRound.id) return;
@@ -363,28 +385,58 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     if (!intro || !round || !isCoordinator || round.status !== 'collecting') return undefined;
     const eligibleSeatIds = new Set(round.eligibleSeatIds);
     return subscribeTurnOrderSubmissions(intro.roomId, intro.sessionId, round.id, (storedSubmissions) => {
-      const submissions = storedSubmissions
-        .filter((submission) => eligibleSeatIds.has(submission.seatId))
-        .map(toTurnOrderSubmission);
-      setStoredSubmissionSeatIds(submissions.map((submission) => submission.seatId));
-      if (aggregatingRoundIdRef.current === round.id) return;
-      if (!round.eligibleSeatIds.every((seatId) => submissions.some((submission) => submission.seatId === seatId))) return;
-      aggregatingRoundIdRef.current = round.id;
-      void updateTurnOrderState(intro.roomId, { coordinatorSeatId: onlineGameCoordinatorSeatId, coordinatorEpoch }, (state) => {
-        const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
-        const transactionNow = Date.now();
-        if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId || current.currentRound.id !== round.id || current.currentRound.status !== 'collecting') return null;
-        const next = submitAndMaybeAggregateTurnOrderRound(current, submissions, transactionNow);
-        return next === current ? null : makeTurnOrderStatePatch(state, next);
-      }).then((result) => {
-        if (!result && aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
-      }).catch(() => {
-        if (aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
-      });
-    }, () => {
-      if (aggregatingRoundIdRef.current === round.id) aggregatingRoundIdRef.current = '';
+      setStoredRoundSubmissions(storedSubmissions
+        .filter((submission) => submission.roundId === round.id && eligibleSeatIds.has(submission.seatId))
+        .map(toTurnOrderSubmission));
     });
-  }, [coordinatorEpoch, intro, isCoordinator, onlineGameCoordinatorSeatId, round]);
+  }, [intro?.roomId, intro?.sessionId, isCoordinator, round?.eligibleSeatIds, round?.id, round?.status]);
+
+  useEffect(() => {
+    if (!intro || !round || !isCoordinator || !aggregationScopeKey || round.status !== 'collecting') return;
+    const submittedSeatIds = new Set(storedRoundSubmissions
+      .filter((submission) => submission.roundId === round.id)
+      .map((submission) => submission.seatId));
+    if (!round.eligibleSeatIds.every((seatId) => submittedSeatIds.has(seatId))) return;
+    if (aggregatingRoundIdRef.current === aggregationScopeKey) return;
+
+    const scopeKey = aggregationScopeKey;
+    let shouldRetryAfterNull = true;
+    const scheduleRetry = () => {
+      if (aggregationScopeRef.current !== scopeKey || aggregationRetryTimerRef.current !== null) return;
+      aggregationRetryTimerRef.current = window.setTimeout(() => {
+        aggregationRetryTimerRef.current = null;
+        if (aggregationScopeRef.current === scopeKey) setAggregationRetryVersion((version) => version + 1);
+      }, AGGREGATION_RETRY_DELAY_MS);
+    };
+
+    aggregatingRoundIdRef.current = scopeKey;
+    void updateTurnOrderState(intro.roomId, { coordinatorSeatId: onlineGameCoordinatorSeatId, coordinatorEpoch }, (state) => {
+      const current = state?.turnOrderIntro as TurnOrderIntro | null | undefined;
+      const transactionNow = Date.now();
+      if (!state || !current || current.version !== 3 || current.sessionId !== intro.sessionId) {
+        shouldRetryAfterNull = false;
+        return null;
+      }
+      const activeCurrent = activateNextTurnOrderRound(current, transactionNow);
+      if (activeCurrent.currentRound.id !== round.id || activeCurrent.currentRound.status !== 'collecting') {
+        shouldRetryAfterNull = false;
+        return null;
+      }
+      const next = aggregateTurnOrderRoundFromStoredSubmissions(
+        current,
+        { sessionId: intro.sessionId, roundId: round.id },
+        storedRoundSubmissions,
+        transactionNow,
+      );
+      return next === current ? null : makeTurnOrderStatePatch(state, next);
+    }).then((result) => {
+      if (aggregatingRoundIdRef.current === scopeKey) aggregatingRoundIdRef.current = '';
+      if (!result && shouldRetryAfterNull) scheduleRetry();
+    }).catch(() => {
+      if (aggregatingRoundIdRef.current === scopeKey) aggregatingRoundIdRef.current = '';
+      scheduleRetry();
+    });
+  }, [aggregationRetryVersion, aggregationScopeKey, coordinatorEpoch, intro, isCoordinator, onlineGameCoordinatorSeatId, round, storedRoundSubmissions]);
 
   useEffect(() => {
     if (!intro || !isTurnOrderFinalized(intro) || !intro.finalOrderAt || now < intro.finalOrderAt) return;
@@ -400,7 +452,7 @@ export function TurnOrderIntroOverlay({ activeTurnOrderIntro, localSeatId, onlin
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   const submittedSeatIds = new Set([
     ...round.submissions.map((submission) => submission.seatId),
-    ...storedSubmissionSeatIds,
+    ...storedRoundSubmissions.map((submission) => submission.seatId),
   ]);
   const remainingSeconds = isPreparing ? getRemainingSeconds(round.startAt, now) : getRemainingSeconds(round.deadlineAt, now);
   const revealSeconds = revealAt ? getRemainingSeconds(revealAt, now) : 0;
