@@ -54,8 +54,10 @@ type Params = {
 
 export function useItemController(params: Params) {
   const activeRoomIdRef = useRef(params.activeRoomId);
+  const paramsRef = useRef(params);
   const pendingSkipRecoveryTimerRef = useRef<number | null>(null);
   activeRoomIdRef.current = params.activeRoomId;
+  paramsRef.current = params;
 
   const clearPendingSkipRecoveryTimer = useCallback(() => {
     if (pendingSkipRecoveryTimerRef.current === null) return;
@@ -64,25 +66,26 @@ export function useItemController(params: Params) {
   }, []);
 
   const clearPendingItemPromptChoice = useCallback((actionKey: string) => {
-    params.setPendingItemPromptChoice((current) => current?.actionKey === actionKey ? null : current);
-  }, [params]);
+    paramsRef.current.setPendingItemPromptChoice((current) => current?.actionKey === actionKey ? null : current);
+  }, []);
 
   const recoverPendingSkip = useCallback(async (requestRoomId: string, actionKey: string) => {
     if (!isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return false;
     let recovered = false;
+    const currentParams = paramsRef.current;
     try {
-      const processedState = await params.applyProcessedAuthoritativeAction(actionKey);
+      const processedState = await currentParams.applyProcessedAuthoritativeAction(actionKey);
       recovered = Boolean(processedState);
-      if (!recovered) recovered = await params.syncLatestAuthoritativeState('아이템 선택 서버 확정 상태를 확인하기 위해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      if (!recovered) recovered = await currentParams.syncLatestAuthoritativeState('아이템 선택 서버 확정 상태를 확인하기 위해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
     } catch {
-      recovered = await params.syncLatestAuthoritativeState('아이템 선택 서버 확정 상태를 확인하기 위해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
+      recovered = await currentParams.syncLatestAuthoritativeState('아이템 선택 서버 확정 상태를 확인하기 위해 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'roll_yut' });
     }
     if (!recovered || !isCurrentItemPromptRequestRoom(requestRoomId, activeRoomIdRef.current)) return false;
-    params.removeSettledPendingLocalRemoteAction(actionKey);
+    currentParams.removeSettledPendingLocalRemoteAction(actionKey);
     clearPendingItemPromptChoice(actionKey);
     clearPendingSkipRecoveryTimer();
     return true;
-  }, [clearPendingItemPromptChoice, clearPendingSkipRecoveryTimer, params]);
+  }, [clearPendingItemPromptChoice, clearPendingSkipRecoveryTimer]);
 
   useEffect(() => () => clearPendingSkipRecoveryTimer(), [clearPendingSkipRecoveryTimer, params.activeRoomId]);
 
