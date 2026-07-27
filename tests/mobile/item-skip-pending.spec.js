@@ -93,6 +93,7 @@ const isSkipBeforeSequence = (sequence) => sequence.type === 'item_used'
   && sequence.action?.payload?.skipBeforeRollItem === true;
 
 const isRollSequence = (sequence) => sequence.type === 'roll_yut' || sequence.action?.type === 'roll_yut';
+const ITEM_PROMPT_FIXTURE_TIMEOUT_MS = 10_000;
 
 test.describe('mobile item skip pending lock QA', () => {
   let roomId;
@@ -153,12 +154,30 @@ test.describe('mobile item skip pending lock QA', () => {
         pendingTrapPlacement: null,
         lastMovedPieceIds: [],
         lastMovedSeatId: '',
-        turnDeadlineAt: Date.now() + 60_000,
+        waitingForPlayersReady: false,
+        turnActionTimeoutCountBySeatId: { ...(state.turnActionTimeoutCountBySeatId ?? {}), [hostPlayer.id]: 0 },
+        autoPlayBySeatId: { ...(state.autoPlayBySeatId ?? {}), [hostPlayer.id]: false },
+        turnDeadlineAt: Date.now() + ITEM_PROMPT_FIXTURE_TIMEOUT_MS,
         turnDeadlineKind: 'item_prompt',
         turnVersion: Number(state.turnVersion ?? 0) + 1,
       });
       await page.reload();
       await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 30_000 });
+      await expect.poll(async () => {
+        const screen = await collectScreenState(page);
+        const debug = screen.yutDebug ?? {};
+        return {
+          itemPromptTiming: debug.itemPromptTiming ?? null,
+          turnDeadlineKind: debug.turnDeadlineKind ?? '',
+          activeSeatId: debug.activeSeat?.id ?? '',
+          localSeatId: debug.localSeatId ?? '',
+        };
+      }, { timeout: 20_000, message: 'reload 후 authoritative before_roll prompt가 로컬 턴에 적용되어야 합니다.' }).toEqual({
+        itemPromptTiming: 'before_roll',
+        turnDeadlineKind: 'item_prompt',
+        activeSeatId: hostPlayer.id,
+        localSeatId: hostPlayer.id,
+      });
       await expect(page.getByRole('dialog', { name: '아이템 사용 선택' })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole('button', { name: '사용 안 함', exact: true })).toBeEnabled();
     });
