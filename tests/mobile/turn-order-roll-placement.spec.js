@@ -185,8 +185,9 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     await expect(page.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('turn-order-result-grid')).toHaveCount(0);
     const finalState = await getRoomStateForQa(roomId);
-    expect(finalState?.turnOrderIds).toHaveLength(3);
-    expect(finalState?.initialTurnOrderIds).toEqual(finalState?.turnOrderIds);
+    const expectedTurnOrderIds = finalState?.turnOrderIds ?? [];
+    expect(expectedTurnOrderIds).toHaveLength(3);
+    expect(finalState?.initialTurnOrderIds).toEqual(expectedTurnOrderIds);
     expect(Number(finalState?.gameStartedAt ?? finalState?.turnOrderIntro?.gameStartAt ?? 0)).toBeGreaterThan(0);
 
     await expect(page.getByTestId('turn-order-overlay')).toBeHidden({ timeout: 7_000 });
@@ -195,12 +196,18 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
       const state = await getRoomStateForQa(roomId);
       return {
         introCleared: (state?.turnOrderIntro ?? null) === null,
-        orderConfirmed: JSON.stringify(state?.turnOrderIds ?? []) === JSON.stringify(state?.initialTurnOrderIds ?? []),
+        turnOrderIds: state?.turnOrderIds ?? [],
+        initialTurnOrderIds: state?.initialTurnOrderIds ?? [],
         gameStarted: Number(state?.gameStartedAt ?? 0) > 0,
       };
     }, {
       timeout: 10_000,
       message: '일반 게임 조작 영역 진입 후 authoritative 순서 정하기 정리와 게임 시작 상태가 확정되어야 합니다.',
-    }).toEqual({ introCleared: true, orderConfirmed: true, gameStarted: true });
+    }).toEqual({
+      introCleared: true,
+      turnOrderIds: expectedTurnOrderIds,
+      initialTurnOrderIds: expectedTurnOrderIds,
+      gameStarted: true,
+    });
   });
 });
