@@ -53,7 +53,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-and-unit
+          name: build-and-unit-${{ github.run_attempt }}
           path: |
             dist
             build
@@ -164,7 +164,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-${{ matrix.code }}-results
+          name: qa-${{ matrix.code }}-results-${{ github.run_attempt }}
           path: qa-artifacts
           if-no-files-found: ignore
           retention-days: 7
@@ -176,10 +176,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download QA artifacts
+      - name: Download QA artifacts for current attempt
         uses: actions/download-artifact@v4
         with:
-          pattern: '*'
+          pattern: '*-${{ github.run_attempt }}'
           merge-multiple: true
         continue-on-error: true
       - id: performance
@@ -236,7 +236,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qa-summary
+          name: qa-summary-${{ github.run_attempt }}
           path: |
             build
             core
