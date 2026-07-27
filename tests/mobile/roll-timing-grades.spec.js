@@ -16,11 +16,11 @@ const EXPECTED_LABELS = {
 };
 
 test.describe('mobile roll timing grades QA', () => {
-  test('타이밍 orb는 CSS animation 없이 단일 transform writer를 사용하고 등급과 결과 카드는 기존 계약을 유지한다', async ({ page, context }, testInfo) => {
+  test('타이밍 orb는 CSS animation 없이 단일 position writer를 사용하고 등급과 결과 카드는 기존 계약을 유지한다', async ({ page, context }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 780 });
     await primeLobbyStorage(context, { nickname: '타이밍QA' });
 
-    await runQaStep(testInfo, '타이밍 막대 단일 transform 소유와 통합 결과 카드 시각 계약 확인', async () => {
+    await runQaStep(testInfo, '타이밍 막대 단일 orb position 소유와 통합 결과 카드 시각 계약 확인', async () => {
       await expectAppShell(page);
       await waitForBlockingOverlayToDisappear(page);
 
@@ -65,13 +65,14 @@ test.describe('mobile roll timing grades QA', () => {
           const orbRect = orb.getBoundingClientRect();
           return ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100;
         };
-        const sampleTransformPosition = (positionPercent) => {
-          track.style.transform = `translate3d(${positionPercent}%, 0, 0)`;
+        const sampleOrbPosition = (positionPercent) => {
+          orb.style.left = `${positionPercent}%`;
           return readOrbPositionPercent();
         };
-        const startPositionPercent = sampleTransformPosition(0);
-        const middlePositionPercent = sampleTransformPosition(50);
-        const endPositionPercent = sampleTransformPosition(100);
+        const startPositionPercent = sampleOrbPosition(0);
+        const middlePositionPercent = sampleOrbPosition(50);
+        const endPositionPercent = sampleOrbPosition(100);
+        orb.style.left = '0%';
         const trackStyle = getComputedStyle(track);
         const orbStyle = getComputedStyle(orb);
         const grades = ['perfect', 'nice', 'good', 'bad'].map((grade) => {
@@ -111,9 +112,11 @@ test.describe('mobile roll timing grades QA', () => {
           trackPosition: trackStyle.position,
           trackAnimationName: trackStyle.animationName,
           trackAnimationCount: track.getAnimations().length,
+          trackTransform: trackStyle.transform,
           trackWillChange: trackStyle.willChange,
           trackBackfaceVisibility: trackStyle.backfaceVisibility,
           orbAnimationName: orbStyle.animationName,
+          orbWillChange: orbStyle.willChange,
           orbLeft: orbStyle.left,
           orbMovementPositions: [startPositionPercent, middlePositionPercent, endPositionPercent],
           legacyZoneDisplays: legacyZones.map((zone) => getComputedStyle(zone).display),
@@ -150,9 +153,11 @@ test.describe('mobile roll timing grades QA', () => {
       expect(presentation.trackPosition).toBe('absolute');
       expect(presentation.trackAnimationName).toBe('none');
       expect(presentation.trackAnimationCount).toBe(0);
-      expect(presentation.trackWillChange).toContain('transform');
+      expect(presentation.trackTransform).toBe('none');
+      expect(presentation.trackWillChange).toBe('auto');
       expect(presentation.trackBackfaceVisibility).toBe('hidden');
       expect(presentation.orbAnimationName).toBe('none');
+      expect(presentation.orbWillChange).toContain('left');
       expect(presentation.orbLeft).toBe('0px');
       expect(presentation.orbMovementPositions[0]).toBeLessThanOrEqual(1);
       expect(presentation.orbMovementPositions[1]).toBeGreaterThanOrEqual(49);
