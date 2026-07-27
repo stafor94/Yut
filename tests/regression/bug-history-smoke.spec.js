@@ -443,40 +443,74 @@ test.describe('BUG_HISTORY regression smoke', () => {
 
     const clickMoveWhenReadyOrWaitForRetry = () => page.evaluate(() => new Promise((resolve, reject) => {
       const startedAt = performance.now();
+      let moveRequested = false;
+      let settled = false;
+
+      window.__YUT_QA_LOCAL_MOVE_OBSERVER__?.disconnect();
+      if (window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__) window.clearTimeout(window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__);
+      window.__YUT_QA_LOCAL_MOVE_SEEN__ = false;
+
+      const cleanup = () => {
+        window.__YUT_QA_LOCAL_MOVE_OBSERVER__?.disconnect();
+        window.__YUT_QA_LOCAL_MOVE_OBSERVER__ = undefined;
+        if (window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__) window.clearTimeout(window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__);
+        window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__ = undefined;
+      };
+      const finish = (outcome) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(outcome);
+      };
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const scanLocalMove = () => {
+        const debug = window.__YUT_DEBUG_STATE__ ?? {};
+        const pieces = Array.isArray(debug.pieces) ? debug.pieces : [];
+        const localSeatId = String(debug.localSeatId ?? '');
+        const movingLocalPiece = Array.from(document.querySelectorAll('[data-testid^="piece-"].moving'))
+          .some((node) => {
+            const testId = node.getAttribute('data-testid') ?? '';
+            const pieceId = testId.replace(/^piece-/, '');
+            const debugPiece = pieces.find((piece) => piece && typeof piece === 'object' && piece.id === pieceId);
+            return Boolean(localSeatId && debugPiece?.ownerId === localSeatId);
+          });
+        if (!movingLocalPiece) return false;
+        window.__YUT_QA_LOCAL_MOVE_SEEN__ = true;
+        finish('move-clicked');
+        return true;
+      };
+
+      const observer = new MutationObserver(scanLocalMove);
+      window.__YUT_QA_LOCAL_MOVE_OBSERVER__ = observer;
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__ = window.setTimeout(
+        () => fail(new Error('이동 버튼 클릭 뒤 로컬 이동 또는 이동 불가 결과를 확인하지 못했습니다.')),
+        45_000,
+      );
+
       const sample = () => {
+        if (settled || scanLocalMove()) return;
         const moveButton = document.querySelector('[data-testid="move-piece-button"]');
-        if (moveButton instanceof HTMLButtonElement && !moveButton.disabled) {
-          window.__YUT_QA_LOCAL_MOVE_OBSERVER__?.disconnect();
-          if (window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__) window.clearTimeout(window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__);
-          window.__YUT_QA_LOCAL_MOVE_SEEN__ = false;
-          const selectedTestIds = new Set(Array.from(document.querySelectorAll('[data-testid^="piece-"].selected'))
-            .map((node) => node.getAttribute('data-testid') ?? '')
-            .filter(Boolean));
-          const scan = () => {
-            const movingSelectedPiece = Array.from(document.querySelectorAll('[data-testid^="piece-"].moving'))
-              .some((node) => selectedTestIds.has(node.getAttribute('data-testid') ?? ''));
-            if (!movingSelectedPiece) return;
-            window.__YUT_QA_LOCAL_MOVE_SEEN__ = true;
-            window.__YUT_QA_LOCAL_MOVE_OBSERVER__?.disconnect();
-          };
-          const observer = new MutationObserver(scan);
-          window.__YUT_QA_LOCAL_MOVE_OBSERVER__ = observer;
-          observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-          window.__YUT_QA_LOCAL_MOVE_OBSERVER_TIMEOUT__ = window.setTimeout(() => observer.disconnect(), 3_000);
+        if (!moveRequested && moveButton instanceof HTMLButtonElement && !moveButton.disabled) {
+          moveRequested = true;
           moveButton.click();
-          scan();
-          queueMicrotask(scan);
-          requestAnimationFrame(scan);
-          resolve('move-clicked');
+          if (scanLocalMove()) return;
+          queueMicrotask(scanLocalMove);
+          requestAnimationFrame(sample);
           return;
         }
         const rollButton = document.querySelector('[data-testid="roll-yut-button"]');
         if (rollButton instanceof HTMLButtonElement && !rollButton.disabled) {
-          resolve('retry');
+          finish('retry');
           return;
         }
         if (performance.now() - startedAt > 45_000) {
-          reject(new Error('이동 버튼 활성화 또는 이동 불가 결과 후 다음 윷 던지기 차례 복귀를 확인하지 못했습니다.'));
+          fail(new Error('이동 버튼 활성화 또는 이동 불가 결과 후 다음 윷 던지기 차례 복귀를 확인하지 못했습니다.'));
           return;
         }
         requestAnimationFrame(sample);

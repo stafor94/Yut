@@ -141,7 +141,6 @@ async function dispatchPointerDownSnapshotGesture(page, {
     }
 
     const gradeNames = new Set(['PERFECT', 'NICE', 'GOOD', 'BAD']);
-    const cycleMs = 2000;
     const readVisiblePositionPercent = (targetMeter = meter, targetOrb = orb) => {
       const meterRect = targetMeter.getBoundingClientRect();
       const orbRect = targetOrb.getBoundingClientRect();
@@ -270,6 +269,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
 
     const submissionPromise = shouldAwaitSubmission ? observeSubmission() : null;
     const nativeRandom = Math.random;
+    const releasedAt = performance.now();
     Math.random = () => 0.9;
     try {
       if (requestedReleaseMode === 'cancel') {
@@ -405,14 +405,19 @@ async function dispatchPointerDownSnapshotGesture(page, {
 
     let resumedSnapshot = null;
     let resumedVisiblePositionPercent = Number.NaN;
+    let resumedElapsedMs = Number.NaN;
     if (requestedReleaseMode !== 'inside') {
-      await waitForCondition(() => {
+      const resumedSample = await waitForCondition(() => {
         const snapshot = readSnapshot();
-        const phaseDeltaMs = (snapshot.phaseMs - pointerDownSnapshot.phaseMs + cycleMs) % cycleMs;
-        return phaseDeltaMs >= 48 && phaseDeltaMs < 500 ? snapshot : null;
+        const frameAdvanced = snapshot.capturedAt > pointerDownSnapshot.capturedAt
+          && snapshot.phaseMs !== pointerDownSnapshot.phaseMs;
+        return frameAdvanced
+          ? { snapshot, visiblePositionPercent: readVisiblePositionPercent() }
+          : null;
       }, 1000, '취소 뒤 기존 phase에서 rAF 이동이 재개되지 않았습니다.');
-      resumedSnapshot = readSnapshot();
-      resumedVisiblePositionPercent = readVisiblePositionPercent();
+      resumedSnapshot = resumedSample.snapshot;
+      resumedVisiblePositionPercent = resumedSample.visiblePositionPercent;
+      resumedElapsedMs = resumedSnapshot.capturedAt - releasedAt;
     }
 
     holdObserver.disconnect();
@@ -429,6 +434,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
       resultHold,
       resumedSnapshot,
       resumedVisiblePositionPercent,
+      resumedElapsedMs,
       ...submission,
     };
   }, {
@@ -471,12 +477,15 @@ function assertCancelledGestureResumes(gesture) {
   expect(gesture.submittedGrade).toBe('');
   expect(gesture.rollLog).toBe('');
   expect(gesture.resumedSnapshot).not.toBeNull();
+  expect(gesture.resumedElapsedMs).toBeGreaterThan(0);
+  expect(gesture.resumedElapsedMs).toBeLessThanOrEqual(1000);
   const phaseDeltaMs = (gesture.resumedSnapshot.phaseMs - gesture.pointerDownSnapshot.phaseMs + ROLL_TIMING_CYCLE_MS) % ROLL_TIMING_CYCLE_MS;
   expect(phaseDeltaMs).toBeGreaterThan(0);
-  expect(phaseDeltaMs).toBeLessThan(500);
-  const wasAscending = gesture.pointerDownSnapshot.phaseMs < 1000;
-  if (wasAscending) expect(gesture.resumedSnapshot.positionPercent).toBeGreaterThan(gesture.pointerDownSnapshot.positionPercent);
-  else expect(gesture.resumedSnapshot.positionPercent).toBeLessThan(gesture.pointerDownSnapshot.positionPercent);
+  expect(Math.abs(phaseDeltaMs - gesture.resumedElapsedMs)).toBeLessThanOrEqual(32);
+  const expectedPositionPercent = gesture.resumedSnapshot.phaseMs <= ROLL_TIMING_CYCLE_MS / 2
+    ? gesture.resumedSnapshot.phaseMs / 10
+    : (ROLL_TIMING_CYCLE_MS - gesture.resumedSnapshot.phaseMs) / 10;
+  expect(Math.abs(gesture.resumedSnapshot.positionPercent - expectedPositionPercent)).toBeLessThanOrEqual(0.001);
   expect(Math.abs(gesture.resumedVisiblePositionPercent - gesture.resumedSnapshot.positionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
 }
 
@@ -533,7 +542,7 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     expect(getExpectedGrade(gesture.pointerDownSnapshot.positionPercent)).toBe('NICE');
   });
 
-  test('버튼 밖 pointerup과 pointercancel은 제출하지 않고 기존 phase와 방향에서 연속 재개한다', async ({ page, context }, testInfo) => {
+  test('버튼 밖 pointerup과 pointercancel은 제출하지 않고 기존 phase를 wall-clock 기준으로 연속 재개한다', async ({ page, context }, testInfo) => {
     testInfo.setTimeout(180_000);
     const roomId = await startAiTimingGame(page, context, testInfo);
     roomIds.add(roomId);
