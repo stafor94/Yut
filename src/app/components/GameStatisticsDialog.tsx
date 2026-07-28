@@ -36,7 +36,7 @@ const readActiveRoomId = () => {
 };
 
 const getBadgeClassName = (kind: 'timing' | 'yut', label: string) => (
-  `game-statistics-badge ${kind} ${label.toLowerCase().replaceAll(' ', '-')}`
+  `game-statistics-badge ${kind} ${label.toLowerCase().replace(/\s+/g, '-')}`
 );
 
 const readLocalSeatId = () => {
