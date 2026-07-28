@@ -72,6 +72,10 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
     expect(controlsLayout.timingTop, '윷 던지기 버튼 영역은 결과 카드 그리드 아래에 있어야 합니다.').toBeGreaterThanOrEqual(controlsLayout.gridBottom - 1);
     expect(controlsLayout.buttonTop, '윷 던지기 버튼은 마지막 결과 카드 아래에 있어야 합니다.').toBeGreaterThanOrEqual(controlsLayout.lastCardBottom - 1);
 
+    const firstRoundState = await getRoomStateForQa(roomId);
+    const firstRound = firstRoundState?.turnOrderIntro?.currentRound;
+    expect(Number(firstRound?.deadlineAt ?? 0) - Number(firstRound?.startAt ?? 0)).toBe(5_000);
+
     const timerAnimation = await roundTimer.locator('span').evaluate((fill) => {
       const style = getComputedStyle(fill);
       return {
@@ -81,10 +85,10 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
       };
     });
     expect(timerAnimation.animationName).toContain('turn-action-countdown');
-    expect(timerAnimation.animationDurationSeconds).toBeGreaterThanOrEqual(7.9);
-    expect(timerAnimation.animationDurationSeconds).toBeLessThanOrEqual(8.1);
+    expect(timerAnimation.animationDurationSeconds).toBeGreaterThanOrEqual(4.9);
+    expect(timerAnimation.animationDurationSeconds).toBeLessThanOrEqual(5.1);
     expect(timerAnimation.animationDelaySeconds).toBeLessThanOrEqual(0);
-    expect(timerAnimation.animationDelaySeconds).toBeGreaterThan(-8.1);
+    expect(timerAnimation.animationDelaySeconds).toBeGreaterThan(-5.1);
 
     const ownResult = page.getByTestId('turn-order-own-result');
     await Promise.all([
