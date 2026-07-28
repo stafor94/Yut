@@ -91,12 +91,11 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     const topRecord = rows.nth(0).getByTestId('game-statistics-record');
     await expect(topRecord).toHaveCount(1);
     await expect(topRecord).toContainText('#73');
-    await expect(topRecord).toHaveCSS('grid-column-start', '1');
     expect(await rows.nth(1).getByTestId('game-statistics-record').evaluateAll((cards) => cards.map((card) => card.querySelector('.game-statistics-sequence-badge')?.textContent))).toEqual([
       '#67', '#68', '#69', '#70', '#71', '#72',
     ]);
 
-    const rowLayout = await rows.nth(1).evaluate((row) => {
+    const rowLayout = await rows.nth(0).evaluate((row) => {
       const cards = Array.from(row.querySelectorAll('[data-testid="game-statistics-record"]'));
       const rowBox = row.getBoundingClientRect();
       const cardBoxes = cards.map((card) => card.getBoundingClientRect());
@@ -104,12 +103,16 @@ test.describe('진행 기록 통계 정보 팝업', () => {
         columnCount: getComputedStyle(row).gridTemplateColumns.split(' ').filter(Boolean).length,
         rowLeft: rowBox.left,
         firstCardLeft: cardBoxes[0]?.left ?? 0,
-        cardLefts: cardBoxes.map((box) => box.left),
       };
     });
     expect(rowLayout.columnCount).toBe(6);
     expect(Math.abs(rowLayout.firstCardLeft - rowLayout.rowLeft)).toBeLessThanOrEqual(1);
-    expect(rowLayout.cardLefts).toEqual([...rowLayout.cardLefts].sort((left, right) => left - right));
+
+    const completeRowLayout = await rows.nth(1).evaluate((row) => {
+      const cards = Array.from(row.querySelectorAll('[data-testid="game-statistics-record"]'));
+      return cards.map((card) => card.getBoundingClientRect().left);
+    });
+    expect(completeRowLayout).toEqual([...completeRowLayout].sort((left, right) => left - right));
 
     const badgeGeometry = await topRecord.evaluate((card) => {
       const badge = card.querySelector('.game-statistics-sequence-badge');
