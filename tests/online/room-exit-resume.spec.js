@@ -180,9 +180,16 @@ async function completeAuthoritativeTurn({ roomId, hostPage, guestPage, hostPlay
   const before = await readAuthoritativeTurn(roomId);
   const activePage = before.current.id === hostPlayerId ? hostPage : before.current.id === guestPlayerId ? guestPage : null;
   expect(activePage, '현재 authoritative seat에 대응하는 실제 사람 페이지가 필요합니다.').toBeTruthy();
-  const rollButton = activePage.getByTestId('roll-yut-button');
-  await expect(rollButton).toBeEnabled({ timeout: 20_000 });
-  await rollButton.click();
+
+  await expectAuthoritativeTurnPresentation(activePage, roomId, before.current.id);
+  const controls = await collectScreenState(activePage);
+  const moveAlreadyActionable = controls.moveButton.visible && !controls.moveButton.disabled;
+  if (!moveAlreadyActionable) {
+    const rollButton = activePage.getByTestId('roll-yut-button');
+    await expect(rollButton).toBeEnabled({ timeout: 20_000 });
+    await rollButton.click();
+  }
+
   const moveButton = activePage.getByTestId('move-piece-button');
   await expect(moveButton).toBeEnabled({ timeout: 20_000 });
   await moveButton.click();
