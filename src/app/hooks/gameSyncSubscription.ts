@@ -29,6 +29,8 @@ export type GameSyncSnapshotIdentity = {
   startRequestVersion?: unknown;
   startRequestId?: unknown;
   startCountdownEndsAt?: unknown;
+  turnOrderIds?: unknown;
+  gameSeats?: unknown;
 };
 
 export type GameSyncSubscriptionController<TState extends GameSyncSnapshotIdentity> = {
@@ -72,6 +74,26 @@ const hashSnapshotString = (value: string) => {
   }
   return (hash >>> 0).toString(36);
 };
+
+const readSnapshotSeatId = (seat: unknown) => {
+  if (!seat || typeof seat !== 'object' || Array.isArray(seat)) return '';
+  const id = (seat as { id?: unknown }).id;
+  return typeof id === 'string' ? id.trim() : '';
+};
+
+export function hasCompleteAuthoritativeTurnSeatSnapshot(state: GameSyncSnapshotIdentity) {
+  const turnOrderIds = Array.isArray(state.turnOrderIds)
+    ? state.turnOrderIds.map((seatId) => typeof seatId === 'string' ? seatId.trim() : '').filter(Boolean)
+    : [];
+  if (!turnOrderIds.length) return true;
+
+  const gameSeatIds = new Set(
+    (Array.isArray(state.gameSeats) ? state.gameSeats : [])
+      .map(readSnapshotSeatId)
+      .filter(Boolean),
+  );
+  return turnOrderIds.every((seatId) => gameSeatIds.has(seatId));
+}
 
 export function getGameSyncSnapshotApplyKey(state: GameSyncSnapshotIdentity) {
   const stateVersion = toFiniteNumber(state.turnVersion);
@@ -129,6 +151,8 @@ export function createGameSyncSubscriptionController<TState extends GameSyncSnap
       }
       return;
     }
+
+    if (!hasCompleteAuthoritativeTurnSeatSnapshot(state)) return;
 
     notifySequenceRecoveryProgress(roomId, toFiniteNumber(state.lastSequence));
     runtime?.onSnapshotReceived?.(state);

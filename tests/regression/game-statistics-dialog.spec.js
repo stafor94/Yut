@@ -7,7 +7,7 @@ import {
 } from '../helpers/game-statistics-fixture.js';
 
 test.describe('진행 기록 통계 정보 팝업', () => {
-  test('Sequence Export 옆에서 열리고 내 좌석 기본 선택·탭 전환·통계를 표시한다', async ({ page }) => {
+  test('Sequence Export 옆에서 열리고 내 좌석 기본 선택·탭 전환·현재 게임 통계를 표시한다', async ({ page }) => {
     await expectAppShell(page);
     await installGameStatisticsFixture(page, {
       seats: baseStatisticsSeats,
@@ -51,12 +51,44 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     await expect(dialog.getByRole('region', { name: '윷 결과 통계' })).toContainText('모');
     await expect(dialog.getByTestId('game-statistics-capture-count')).toHaveText('상대 말 잡기 2회');
     await expect(dialog.getByText('미확인', { exact: true })).toHaveCount(0);
+    await expect(dialog).not.toContainText('#-9');
+    await expect(dialog).not.toContainText('#-8');
+    await expect(dialog).not.toContainText('상대 말 잡기 5회');
 
     await dialog.getByRole('button', { name: '닫기' }).click();
     await expect(dialog).toBeHidden();
     await statisticsButton.click();
     await expect(dialog).toBeVisible();
     await expect.poll(() => page.evaluate(() => window.__YUT_QA_GAME_STATISTICS_LOADER_CALLS__.length)).toBe(2);
+  });
+
+  test('새 게임에 roll 기록이 없으면 이전 게임 기록 대신 빈 상태를 표시한다', async ({ page }) => {
+    await expectAppShell(page);
+    await installGameStatisticsFixture(page, {
+      seats: baseStatisticsSeats.slice(0, 2),
+      localSeatId: 'p1',
+      latestState: {
+        startRequestVersion: 2,
+        startRequestId: 'statistics-empty-game-2',
+        lastSequence: 20,
+      },
+      sequences: [
+        { id: 'old-init', sequence: 1, type: 'game_initialized', actorId: 'p1', payload: { startRequestVersion: 1, startRequestId: 'statistics-empty-game-1' } },
+        { id: 'old-roll', sequence: 2, type: 'roll_yut', actorId: 'p1', payload: { timingZone: 'perfect', displayRoll: { name: '모', steps: 5, bonus: true }, fallOccurred: false } },
+        { id: 'old-capture', sequence: 3, type: 'move_piece_resolved', actorId: 'p1', payload: { captured: true, capturedPieceIds: ['p2-piece-1', 'p2-piece-2'] } },
+        { id: 'current-init', sequence: 20, type: 'game_initialized', actorId: 'p1', payload: { startRequestVersion: 2, startRequestId: 'statistics-empty-game-2' } },
+      ],
+      delayMs: 10,
+    });
+
+    await page.getByRole('button', { name: '통계 정보 열기' }).click();
+    const dialog = page.getByTestId('game-statistics-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('아직 윷 던지기 기록이 없습니다.')).toBeVisible();
+    await expect(dialog.getByTestId('game-statistics-record')).toHaveCount(0);
+    await expect(dialog.getByTestId('game-statistics-capture-count')).toHaveText('상대 말 잡기 0회');
+    await expect(dialog).not.toContainText('#2');
+    await expect(dialog).not.toContainText('모');
   });
 
   test('Desktop에서 6열 기록을 좌측 정렬하고 footer 계층과 기록 전용 스크롤을 유지한다', async ({ page }) => {

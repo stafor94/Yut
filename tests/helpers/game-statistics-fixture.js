@@ -3,6 +3,7 @@ export async function installGameStatisticsFixture(page, {
   localSeatId = 'p2',
   seats,
   sequences,
+  latestState = null,
   delayMs = 80,
   failuresBeforeSuccess = 0,
   roomData = null,
@@ -14,10 +15,25 @@ export async function installGameStatisticsFixture(page, {
     await nicknameDialog.waitFor({ state: 'hidden' });
   }
 
-  await page.evaluate(({ nextRoomId, nextLocalSeatId, nextSeats, nextSequences, nextDelayMs, nextFailuresBeforeSuccess, nextRoomData }) => {
+  await page.evaluate(({ nextRoomId, nextLocalSeatId, nextSeats, nextSequences, nextLatestState, nextDelayMs, nextFailuresBeforeSuccess, nextRoomData }) => {
     const setActiveRoomId = (roomId) => window.localStorage.setItem('yut-online:activeRoomId', roomId);
     const restoreActiveRoomIdIfMissing = (roomId) => {
       if (!window.localStorage.getItem('yut-online:activeRoomId')?.trim()) setActiveRoomId(roomId);
+    };
+    const inferLatestState = (configured) => {
+      if (configured.latestState) return configured.latestState;
+      const ordered = [...(configured.sequences ?? [])].sort((left, right) => Number(left.sequence) - Number(right.sequence));
+      const initializedSequences = ordered.filter((entry) => entry.type === 'game_initialized');
+      const initialized = initializedSequences[initializedSequences.length - 1];
+      if (!initialized) return {};
+      const sources = [initialized.payload, initialized.patch, initialized.action?.payload, initialized.stateAfter]
+        .filter((value) => value && typeof value === 'object');
+      const readValue = (key) => sources.map((source) => source[key]).find((value) => value !== undefined);
+      return {
+        startRequestVersion: readValue('startRequestVersion'),
+        startRequestId: readValue('startRequestId'),
+        lastSequence: ordered[ordered.length - 1]?.sequence,
+      };
     };
     setActiveRoomId(nextRoomId);
     window.__YUT_QA_GAME_STATISTICS_LOCAL_SEAT_ID__ = nextLocalSeatId;
@@ -28,6 +44,7 @@ export async function installGameStatisticsFixture(page, {
       const configured = nextRoomData?.[requestedRoomId] ?? {
         seats: nextSeats,
         sequences: nextSequences,
+        latestState: nextLatestState,
         delayMs: nextDelayMs,
       };
       await new Promise((resolve) => window.setTimeout(resolve, Number(configured.delayMs ?? nextDelayMs)));
@@ -36,7 +53,7 @@ export async function installGameStatisticsFixture(page, {
         window.__YUT_QA_GAME_STATISTICS_FAILURES_LEFT__ -= 1;
         throw new Error('QA 통계 조회 실패');
       }
-      return [{ gameSeats: configured.seats }, configured.sequences];
+      return [{ gameSeats: configured.seats, ...inferLatestState(configured) }, configured.sequences];
     };
 
     document.querySelector('#qa-game-statistics-fixture')?.remove();
@@ -90,6 +107,7 @@ export async function installGameStatisticsFixture(page, {
     nextLocalSeatId: localSeatId,
     nextSeats: seats,
     nextSequences: sequences,
+    nextLatestState: latestState,
     nextDelayMs: delayMs,
     nextFailuresBeforeSuccess: failuresBeforeSuccess,
     nextRoomData: roomData,
@@ -103,6 +121,10 @@ export const baseStatisticsSeats = [
 ];
 
 export const baseStatisticsSequences = [
+  { id: 'old-init', sequence: -10, type: 'game_initialized', actorId: 'p1', payload: { startRequestVersion: 1, startRequestId: 'statistics-game-1' } },
+  { id: 'old-roll', sequence: -9, type: 'roll_yut', actorId: 'p1', payload: { timingZone: 'bad', displayRoll: { name: '걸', steps: 3 }, fallOccurred: false } },
+  { id: 'old-capture', sequence: -8, type: 'move_piece_resolved', actorId: 'p1', payload: { captured: true, capturedPieceIds: ['old-piece-1', 'old-piece-2', 'old-piece-3'] } },
+  { id: 'current-init', sequence: 0, type: 'game_initialized', actorId: 'p1', payload: { startRequestVersion: 2, startRequestId: 'statistics-game-2' } },
   { id: 's9', sequence: 9, type: 'roll_yut', actorId: 'p1', payload: { timingZone: 'perfect', displayRoll: { name: '모', steps: 5, bonus: true }, fallOccurred: false } },
   { id: 's8', sequence: 8, type: 'roll_yut', actorId: 'p2', payload: { timingZone: 'normal', displayRoll: { name: '개', steps: 2 }, fallOccurred: false } },
   { id: 's7', sequence: 7, type: 'roll_yut', actorId: 'p1', payload: { timingZone: 'good', displayRoll: { name: '도', steps: 1 }, fallOccurred: false } },

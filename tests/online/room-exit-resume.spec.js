@@ -9,7 +9,15 @@ import {
   getRoomStateForQa,
   rememberRoomIdFromPage,
 } from '../helpers/rooms.js';
-import { collectScreenState, createRoomFromLobby, expectAppShell, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
+import {
+  collectScreenState,
+  createRoomFromLobby,
+  expectAppShell,
+  joinRoomFromLobby,
+  markGuestReady,
+  primeLobbyStorage,
+  runQaStep,
+} from '../helpers/ui.js';
 
 async function addAiAndStart(page) {
   await page.getByTestId('add-ai-P2').click();
@@ -93,6 +101,111 @@ async function readSpectatorState(roomId, spectatorId) {
   };
 }
 
+function normalizeTurnIndex(turnIndex, seatCount) {
+  if (!seatCount) return -1;
+  return ((Math.trunc(Number(turnIndex) || 0) % seatCount) + seatCount) % seatCount;
+}
+
+async function readAuthoritativeTurn(roomId) {
+  const state = await getRoomStateForQa(roomId);
+  const turnOrderIds = Array.isArray(state?.turnOrderIds) ? state.turnOrderIds.map(String) : [];
+  const gameSeats = Array.isArray(state?.gameSeats) ? state.gameSeats : [];
+  const seatById = new Map(gameSeats.map((seat) => [String(seat.id), seat]));
+  const missingSeatIds = turnOrderIds.filter((seatId) => !seatById.has(seatId));
+  const index = normalizeTurnIndex(state?.turnIndex, turnOrderIds.length);
+  const currentId = index >= 0 ? turnOrderIds[index] : '';
+  const previousId = index >= 0 ? turnOrderIds[(index - 1 + turnOrderIds.length) % turnOrderIds.length] : '';
+  const nextId = index >= 0 ? turnOrderIds[(index + 1) % turnOrderIds.length] : '';
+  const toSeat = (seatId) => {
+    const seat = seatById.get(seatId);
+    return seat ? { id: seatId, name: String(seat.name ?? ''), seatIndex: Number(seat.seatIndex) } : null;
+  };
+  return {
+    turnIndex: Number(state?.turnIndex ?? 0),
+    lastSequence: Number(state?.lastSequence ?? 0),
+    turnOrderIds,
+    missingSeatIds,
+    current: toSeat(currentId),
+    previous: toSeat(previousId),
+    next: toSeat(nextId),
+  };
+}
+
+async function expectAuthoritativeTurnPresentation(page, roomId, localPlayerId) {
+  await expect.poll(async () => {
+    const [authoritative, client] = await Promise.all([readAuthoritativeTurn(roomId), collectScreenState(page)]);
+    const clientSeatIds = new Set((client.yutDebug?.seats ?? []).map((seat) => String(seat.id)));
+    return {
+      authoritativeReady: authoritative.turnOrderIds.length >= 2 && authoritative.missingSeatIds.length === 0 && Boolean(authoritative.current?.name),
+      allIdsResolved: authoritative.turnOrderIds.every((seatId) => clientSeatIds.has(seatId)),
+      activeSeatId: String(client.yutDebug?.activeSeat?.id ?? ''),
+      expectedActiveSeatId: String(authoritative.current?.id ?? ''),
+      waitingForTurnOrder: Boolean(client.yutDebug?.waitingForOnlineTurnOrder),
+    };
+  }, { timeout: 25_000 }).toEqual(expect.objectContaining({
+    authoritativeReady: true,
+    allIdsResolved: true,
+    waitingForTurnOrder: false,
+  }));
+
+  const authoritative = await readAuthoritativeTurn(roomId);
+  await expect(page.locator('.turn-current-badge')).toHaveText(`${authoritative.current.name} 턴`, { timeout: 10_000 });
+  await expect(page.locator('.previous-turn')).toHaveText(authoritative.previous.name, { timeout: 10_000 });
+  await expect(page.locator('.next-turn')).toHaveText(authoritative.next.name, { timeout: 10_000 });
+
+  const client = await collectScreenState(page);
+  expect(client.yutDebug?.activeSeat?.id).toBe(authoritative.current.id);
+  expect(client.yutDebug?.isMyTurn).toBe(authoritative.current.id === localPlayerId);
+  if (authoritative.current.id === localPlayerId) {
+    expect(client.rollButton.visible || client.moveButton.visible).toBe(true);
+    expect(client.turnWaitingButton.visible).toBe(false);
+  } else {
+    expect(client.turnWaitingButton.visible).toBe(true);
+  }
+  return authoritative;
+}
+
+async function completeAuthoritativeTurn({ roomId, hostPage, guestPage, hostPlayerId, guestPlayerId }) {
+  const before = await readAuthoritativeTurn(roomId);
+  const activePage = before.current.id === hostPlayerId ? hostPage : before.current.id === guestPlayerId ? guestPage : null;
+  expect(activePage, '현재 authoritative seat에 대응하는 실제 사람 페이지가 필요합니다.').toBeTruthy();
+  const rollButton = activePage.getByTestId('roll-yut-button');
+  await expect(rollButton).toBeEnabled({ timeout: 20_000 });
+  await rollButton.click();
+  const moveButton = activePage.getByTestId('move-piece-button');
+  await expect(moveButton).toBeEnabled({ timeout: 20_000 });
+  await moveButton.click();
+  await expect.poll(async () => {
+    const after = await readAuthoritativeTurn(roomId);
+    return {
+      sequenceAdvanced: after.lastSequence > before.lastSequence,
+      turnChanged: after.current?.id !== before.current?.id,
+    };
+  }, { timeout: 25_000 }).toEqual({ sequenceAdvanced: true, turnChanged: true });
+}
+
+async function installTurnBadgeTrace(page) {
+  await page.evaluate(() => {
+    const values = [];
+    const capture = () => {
+      const value = document.querySelector('.turn-current-badge')?.textContent?.trim() ?? '';
+      if (value && values[values.length - 1] !== value) values.push(value);
+    };
+    capture();
+    const observer = new MutationObserver(capture);
+    observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+    window.__YUT_QA_TURN_BADGE_TRACE__ = values;
+    window.__YUT_QA_TURN_BADGE_OBSERVER__ = observer;
+  });
+}
+
+async function readTurnBadgeTrace(page) {
+  return page.evaluate(() => {
+    window.__YUT_QA_TURN_BADGE_OBSERVER__?.disconnect();
+    return window.__YUT_QA_TURN_BADGE_TRACE__ ?? [];
+  });
+}
+
 test.describe('in-game reconnect, rejoin, and spectator entry QA', () => {
   test('사람 플레이어 새로고침과 명시적 퇴장 후 재참가는 같은 좌석과 사람 제어 상태를 복구한다', async ({ page, context }, testInfo) => {
     test.setTimeout(150_000);
@@ -153,6 +266,90 @@ test.describe('in-game reconnect, rejoin, and spectator entry QA', () => {
         });
       } finally {
         if (roomId) await deleteRoomForQa(roomId).catch(() => undefined);
+      }
+    });
+  });
+
+  test('P2 재입장 후 authoritative 현재·이전·다음 턴과 행동 권한이 두 턴 이상 계속 일치한다', async ({ browser }, testInfo) => {
+    test.setTimeout(210_000);
+    expect(await hasFirebaseConfig(), 'Firebase 설정이 없어 온라인 QA를 실행할 수 없습니다.').toBe(true);
+
+    const hostContext = await browser.newContext();
+    const guestContext = await browser.newContext();
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'turn-host'));
+    const guestName = normalizeQaNickname(makeQaName(testInfo, 'turn-guest'));
+    const roomTitle = makeQaName(testInfo, 'reentry-ai-seq-room');
+    let roomId;
+
+    await primeLobbyStorage(hostContext, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    await primeLobbyStorage(guestContext, { nickname: guestName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    const hostPage = await hostContext.newPage();
+    const guestPage = await guestContext.newPage();
+
+    await runQaStep(testInfo, '비-P1 재입장과 authoritative 턴 표시·행동 권한의 지속 일치 확인', async () => {
+      try {
+        await createRoomFromLobby(hostPage, roomTitle);
+        roomId = await rememberRoomIdFromPage(hostPage) ?? await findRoomIdByTitle(roomTitle);
+        expect(roomId, 'QA 방 ID가 필요합니다.').toBeTruthy();
+        await joinRoomFromLobby(guestPage, roomTitle);
+        await markGuestReady(guestPage);
+        await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+        await hostPage.getByTestId('start-game-button').click();
+        await expect(hostPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+        await expect(guestPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+
+        const players = await getRoomPlayersForQa(roomId);
+        const hostPlayer = players.find((player) => player.nickname === hostName && player.isSpectator !== true);
+        const guestPlayer = players.find((player) => player.nickname === guestName && player.isSpectator !== true);
+        expect(hostPlayer?.id, 'P1 player id가 필요합니다.').toBeTruthy();
+        expect(guestPlayer?.id, 'P2 player id가 필요합니다.').toBeTruthy();
+        expect(Number(guestPlayer.seatIndex)).toBe(1);
+
+        await expectAuthoritativeTurnPresentation(hostPage, roomId, hostPlayer.id);
+        await expectAuthoritativeTurnPresentation(guestPage, roomId, guestPlayer.id);
+
+        await guestPage.getByTestId('game-end-button').click();
+        const endDialog = guestPage.getByRole('dialog', { name: '게임 종료 확인' });
+        await expect(endDialog).toBeVisible();
+        await endDialog.getByRole('button', { name: '게임 종료', exact: true }).click();
+        await expect(guestPage.getByTestId('lobby-screen')).toBeVisible({ timeout: 25_000 });
+        await expect.poll(async () => readPlayerControlState(roomId, guestPlayer.id), { timeout: 15_000 }).toMatchObject({
+          player: { seatIndex: 1, isAI: true, isSubstitutedByAI: true, isSpectator: false },
+          gameSeat: { seatIndex: 1, isAI: true, isSubstitutedByAI: true },
+        });
+
+        await installTurnBadgeTrace(guestPage);
+        const action = await openRoomAction(guestPage, roomTitle, '참가');
+        await action.click();
+        await expect(guestPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+        await expect.poll(async () => readPlayerControlState(roomId, guestPlayer.id), { timeout: 15_000 }).toEqual({
+          currentPlayers: 2,
+          matchingPlayerCount: 1,
+          player: { seatIndex: 1, isAI: false, isSubstitutedByAI: false, isSpectator: false },
+          seat: { seatIndex: 1, aiActive: false, isSubstitutedByAI: false, status: 'human' },
+          gameSeat: { seatIndex: 1, isAI: false, isSubstitutedByAI: false },
+        });
+
+        await expectAuthoritativeTurnPresentation(hostPage, roomId, hostPlayer.id);
+        await expectAuthoritativeTurnPresentation(guestPage, roomId, guestPlayer.id);
+        const reentryTrace = await readTurnBadgeTrace(guestPage);
+        expect(reentryTrace.some((value) => /플레이어|host/i.test(value)), `재입장 중 가짜 placeholder 턴이 노출되면 안 됩니다: ${reentryTrace.join(' | ')}`).toBe(false);
+
+        for (let completedTurns = 0; completedTurns < 2; completedTurns += 1) {
+          await completeAuthoritativeTurn({
+            roomId,
+            hostPage,
+            guestPage,
+            hostPlayerId: hostPlayer.id,
+            guestPlayerId: guestPlayer.id,
+          });
+          await expectAuthoritativeTurnPresentation(hostPage, roomId, hostPlayer.id);
+          await expectAuthoritativeTurnPresentation(guestPage, roomId, guestPlayer.id);
+        }
+      } finally {
+        if (roomId) await deleteRoomForQa(roomId).catch(() => undefined);
+        await guestContext.close();
+        await hostContext.close();
       }
     });
   });

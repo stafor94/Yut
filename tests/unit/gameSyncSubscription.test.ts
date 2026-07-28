@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   createGameSyncSubscriptionController,
   getGameSyncSnapshotApplyKey,
+  hasCompleteAuthoritativeTurnSeatSnapshot,
   type GameSyncRuntime,
   type GameSyncSnapshotIdentity,
 } from '../../src/app/hooks/gameSyncSubscription.js';
@@ -73,6 +74,54 @@ test('같은 방의 재렌더는 listener를 다시 만들지 않고 방 변경 
 
   controller.dispose();
   assert.deepEqual(unsubscribedRooms, ['room-a', 'room-b']);
+});
+
+test('authoritative turnOrderIds의 모든 좌석이 gameSeats에 있을 때만 snapshot이 완성된다', () => {
+  assert.equal(hasCompleteAuthoritativeTurnSeatSnapshot({ turnOrderIds: [], gameSeats: [] }), true);
+  assert.equal(hasCompleteAuthoritativeTurnSeatSnapshot({
+    turnOrderIds: ['p1', 'p2'],
+    gameSeats: [{ id: 'p1' }],
+  }), false);
+  assert.equal(hasCompleteAuthoritativeTurnSeatSnapshot({
+    turnOrderIds: ['p1', 'p2'],
+    gameSeats: [{ id: 'p2' }, { id: 'p1' }],
+  }), true);
+});
+
+test('부분 authoritative 좌석 snapshot은 적용하지 않고 같은 version의 완성 snapshot을 적용한다', async () => {
+  const controller = createGameSyncSubscriptionController<TestSnapshot>();
+  const refs = { sequence: { current: 0 }, version: { current: 0 }, applying: { current: false } };
+  const counters = { replay: 0, apply: 0, enqueue: 0 };
+  let emit: (state: TestSnapshot | null) => void = missingEmitter;
+
+  controller.updateRuntime(createRuntime('room-a', counters, refs));
+  controller.syncRoom('room-a', (_roomId, callback) => {
+    emit = callback;
+    return () => undefined;
+  });
+
+  emit({
+    turnVersion: 1,
+    lastSequence: 1,
+    turnOrderIds: ['p1', 'p2'],
+    gameSeats: [{ id: 'p1' }],
+    value: 'incomplete',
+  });
+  await flushController();
+  assert.deepEqual(counters, { replay: 0, apply: 0, enqueue: 0 });
+  assert.equal(refs.sequence.current, 0);
+
+  emit({
+    turnVersion: 1,
+    lastSequence: 1,
+    turnOrderIds: ['p1', 'p2'],
+    gameSeats: [{ id: 'p1' }, { id: 'p2' }],
+    value: 'complete',
+  });
+  await flushController();
+  assert.equal(counters.replay, 1);
+  assert.equal(counters.enqueue, 1);
+  assert.equal(refs.sequence.current, 1);
 });
 
 test('Strict Mode cleanup 뒤 runtime을 재주입하면 listener 처리가 정상 재개된다', async () => {

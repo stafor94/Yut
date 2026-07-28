@@ -10,19 +10,25 @@ const seats = [
 ];
 const results = ['빽도', '도', '개', '걸', '윷', '모'];
 const timings = ['perfect', 'nice', 'good', 'bad'];
-const sequences = Array.from({ length: 40 }, (_, index) => ({
-  id: `mobile-roll-${index + 1}`,
-  sequence: index + 1,
-  type: 'roll_yut',
-  actorId: 'p1',
-  payload: {
-    timingZone: timings[index % timings.length],
-    displayRoll: { name: results[index % results.length], steps: (index % results.length) - 1 },
-    fallOccurred: index === 5,
-  },
-}));
+const sequences = [
+  { id: 'mobile-old-init', sequence: -10, type: 'game_initialized', actorId: 'p1', payload: { startRequestVersion: 1, startRequestId: 'mobile-game-1' } },
+  { id: 'mobile-old-roll', sequence: -9, type: 'roll_yut', actorId: 'p1', payload: { timingZone: 'bad', displayRoll: { name: '모', steps: 5 }, fallOccurred: false } },
+  { id: 'mobile-old-capture', sequence: -8, type: 'move_piece_resolved', actorId: 'p1', payload: { capturedPieceIds: ['old-1', 'old-2'] } },
+  { id: 'mobile-current-init', sequence: 0, type: 'game_initialized', actorId: 'p1', payload: { startRequestVersion: 2, startRequestId: 'mobile-game-2' } },
+  ...Array.from({ length: 40 }, (_, index) => ({
+    id: `mobile-roll-${index + 1}`,
+    sequence: index + 1,
+    type: 'roll_yut',
+    actorId: 'p1',
+    payload: {
+      timingZone: timings[index % timings.length],
+      displayRoll: { name: results[index % results.length], steps: (index % results.length) - 1 },
+      fallOccurred: index === 5,
+    },
+  })),
+];
 
-async function openStatistics(page, viewport) {
+async function openStatistics(page, viewport, fixtureOverrides = {}) {
   await page.setViewportSize(viewport);
   await expectAppShell(page);
   await installGameStatisticsFixture(page, {
@@ -30,6 +36,7 @@ async function openStatistics(page, viewport) {
     sequences,
     localSeatId: 'p1',
     delayMs: 10,
+    ...fixtureOverrides,
   });
   await page.getByRole('button', { name: '통계 정보 열기' }).click();
   const dialog = page.getByTestId('game-statistics-dialog');
@@ -134,7 +141,7 @@ const readLayout = (page) => page.evaluate(() => {
 });
 
 test.describe('통계 정보 모바일 레이아웃', () => {
-  test('412×915에서 6열 부분 행을 좌측 정렬하고 기록 영역만 스크롤한다', async ({ page }) => {
+  test('412×915에서 현재 게임 6열 부분 행을 좌측 정렬하고 기록 영역만 스크롤한다', async ({ page }) => {
     const dialog = await openStatistics(page, { width: 412, height: 915 });
     const tabs = dialog.getByRole('tablist', { name: '플레이어 통계' });
     const records = dialog.getByTestId('game-statistics-records');
@@ -143,6 +150,8 @@ test.describe('통계 정보 모바일 레이아웃', () => {
     const rows = dialog.getByTestId('game-statistics-record-row');
     await expect(dialog.getByRole('button', { name: '닫기' })).toBeVisible();
     await expect(rows).toHaveCount(7);
+    await expect(dialog.getByTestId('game-statistics-capture-count')).toHaveText('상대 말 잡기 0회');
+    await expect(dialog.getByText('#-9', { exact: true })).toHaveCount(0);
 
     const topRecords = rows.nth(0).getByTestId('game-statistics-record');
     await expect(topRecords).toHaveCount(4);
@@ -213,5 +222,23 @@ test.describe('통계 정보 모바일 레이아웃', () => {
     expect(layout.closeToDialogBottomGap).toBeGreaterThanOrEqual(6);
     await expect(dialog.getByTestId('game-statistics-capture-count')).toBeVisible();
     await expect(dialog.getByRole('button', { name: '닫기' })).toBeVisible();
+  });
+
+  test('412×915에서 새 게임 roll이 없으면 이전 게임 카드 대신 빈 상태를 표시한다', async ({ page }) => {
+    const noCurrentRollSequences = [
+      { id: 'old-init', sequence: 1, type: 'game_initialized', actorId: 'p1', payload: { startRequestVersion: 1, startRequestId: 'empty-game-1' } },
+      { id: 'old-roll', sequence: 2, type: 'roll_yut', actorId: 'p1', payload: { timingZone: 'perfect', displayRoll: { name: '모', steps: 5 }, fallOccurred: false } },
+      { id: 'old-capture', sequence: 3, type: 'move_piece_resolved', actorId: 'p1', payload: { capturedPieceIds: ['old-piece'] } },
+      { id: 'current-init', sequence: 10, type: 'game_initialized', actorId: 'p1', payload: { startRequestVersion: 2, startRequestId: 'empty-game-2' } },
+    ];
+    const dialog = await openStatistics(page, { width: 412, height: 915 }, {
+      sequences: noCurrentRollSequences,
+      latestState: { startRequestVersion: 2, startRequestId: 'empty-game-2', lastSequence: 10 },
+    });
+
+    await expect(dialog.getByText('아직 윷 던지기 기록이 없습니다.')).toBeVisible();
+    await expect(dialog.getByTestId('game-statistics-record')).toHaveCount(0);
+    await expect(dialog.getByTestId('game-statistics-capture-count')).toHaveText('상대 말 잡기 0회');
+    await expect(dialog.getByRole('region', { name: '타이밍 결과 통계' })).toContainText('0개 · 0%');
   });
 });
