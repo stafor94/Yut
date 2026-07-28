@@ -12,7 +12,7 @@ test('통계 QA fixture는 누락된 활성 방만 복구하고 실제 방 전�
   const loaderDelayIndex = fixtureSource.indexOf('await new Promise');
   const missingRoomRestoreIndex = fixtureSource.indexOf('restoreActiveRoomIdIfMissing(requestedRoomId);');
   const recoverableFailureIndex = fixtureSource.indexOf('if (window.__YUT_QA_GAME_STATISTICS_FAILURES_LEFT__ > 0)');
-  const loaderReturnIndex = fixtureSource.indexOf('return [{ gameSeats: configured.seats }, configured.sequences];');
+  const loaderReturnIndex = fixtureSource.indexOf('return [{ gameSeats: configured.seats, ...inferLatestState(configured) }, configured.sequences];');
 
   assert.ok(loaderDelayIndex >= 0);
   assert.ok(missingRoomRestoreIndex > loaderDelayIndex);
