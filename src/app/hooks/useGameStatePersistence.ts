@@ -5,6 +5,7 @@ import {
   type GameSequenceType,
 } from '../../features/room/services/roomService';
 import { clearPendingStackedBonusRoll, syncPendingStackedBonusRoll } from '../../game-core/stackedRollTurnGuard';
+import { registerAiRuntimeState } from '../flows/aiRuntimeState';
 import { makeGameStateFingerprint } from '../appState';
 
 type PendingSequenceMeta = {
@@ -36,6 +37,8 @@ export function useGameStatePersistence({
   const lastSavedStateFingerprintRef = useRef('');
   const savingStateFingerprintRef = useRef('');
   const coordinatorSaveRetryRef = useRef<{ roomId: string; fingerprint: string; count: number; timer: number }>({ roomId: '', fingerprint: '', count: 0, timer: 0 });
+
+  registerAiRuntimeState(pieces, { rollStack, boardItems, trapNodes, shieldedPieceIds });
 
   syncPendingStackedBonusRoll({
     screen,
