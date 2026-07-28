@@ -166,8 +166,11 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   if (!state) throw new Error('authoritative game state가 없습니다.');
   const actorId = String(state.coordinatorSeatId ?? state.turnOrderIds?.[0] ?? '');
   const actorTurnIndex = Math.max(0, state.turnOrderIds.findIndex((seatId) => seatId === actorId));
+  const fixtureTurnVersion = Math.max(1, Number(state.turnVersion ?? 0) + 1);
+  const expiredTurnVersion = fixtureTurnVersion + 1;
   const visibleDeadlineAt = Date.now() + 60_000;
   await patchRoomStateForQa(page, roomId, {
+    turnVersion: fixtureTurnVersion,
     turnIndex: actorTurnIndex,
     roll: null,
     rollStack: [
@@ -194,6 +197,7 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
     const currentStack = Array.isArray(current?.rollStack) ? current.rollStack : [];
     return Boolean(
       current
+      && Number(current.turnVersion) === fixtureTurnVersion
       && Number(current.turnIndex) === actorTurnIndex
       && current.roll === null
       && current.selectedRollStackIndex === null
@@ -220,7 +224,10 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   const timeoutDeadlineAt = Date.now() - 1;
   const actionKey = `timeout:${roomId}:move:${actorId}:${timeoutDeadlineAt}`;
   const baselineSequences = await getRoomSequencesForQa(roomId);
-  await patchRoomStateForQa(page, roomId, { turnDeadlineAt: timeoutDeadlineAt });
+  await patchRoomStateForQa(page, roomId, {
+    turnVersion: expiredTurnVersion,
+    turnDeadlineAt: timeoutDeadlineAt,
+  });
   await expect.poll(async () => {
     const buttons = picker.getByRole('button');
     const buttonCount = await buttons.count();
