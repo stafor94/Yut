@@ -5,6 +5,7 @@ import { getAiDifficultyBadgeLabel, getRuntimeAiDifficultyForSeat } from '../../
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
 import { publishGameEndDialogOpenHandler } from '../flows/gameEndDialogPresentation';
+import { requestGameStatisticsDialogOpen } from '../flows/gameStatisticsDialogPresentation';
 import { getOwnedItemsPresentation, publishOwnedItemsPresentation, subscribeOwnedItemsPresentation } from '../flows/ownedItemsPresentation';
 import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } from '../flows/remoteItemUseNotice';
 import { getPlayTimePresentation, subscribePlayTimePresentation } from '../flows/playTimePresentation';
@@ -238,6 +239,12 @@ export function GameLogPanelView({
         <div className="log-header-actions">
           {playTimePresentation.visible && <div data-testid="play-timer" className={`play-time ${playTimePresentation.stopped ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimePresentation.playTimeText}`}>{playTimePresentation.playTimeText}</div>}
           <button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button>
+          <button data-testid="open-game-statistics" type="button" className="diagnostic-button game-statistics-open-button" onClick={requestGameStatisticsDialogOpen} aria-label="통계 정보 열기" title="통계 정보 열기">
+            <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false">
+              <g transform="rotate(-18 9 14)"><rect x="5" y="3" width="7" height="22" rx="3.5"></rect><path d="M8.5 7v3M8.5 18v3"></path></g>
+              <g transform="rotate(18 19 14)"><rect x="16" y="3" width="7" height="22" rx="3.5"></rect><path d="M19.5 7v3M19.5 18v3"></path></g>
+            </svg>
+          </button>
         </div>
       </div>
       <div
