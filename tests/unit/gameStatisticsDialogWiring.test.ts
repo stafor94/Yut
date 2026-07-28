@@ -34,3 +34,8 @@ test('Desktop·Mobile 통계 QA가 실제 suite 실행 목록에 연결된다', 
   assert.match(manifestSource, /tests\/regression\/game-statistics-dialog\.spec\.js/u);
   assert.match(manifestSource, /tests\/mobile\/game-statistics-dialog\.spec\.js/u);
 });
+
+test('통계 배지 class 변환은 ES2020 호환 API를 사용한다', () => {
+  assert.doesNotMatch(componentSource, /\.replaceAll\(/u);
+  assert.match(componentSource, /replace\(\/\\s\+\/g, '-'\)/u);
+});
