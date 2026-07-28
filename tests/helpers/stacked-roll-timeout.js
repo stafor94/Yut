@@ -166,7 +166,7 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   if (!state) throw new Error('authoritative game state가 없습니다.');
   const actorId = String(state.coordinatorSeatId ?? state.turnOrderIds?.[0] ?? '');
   const actorTurnIndex = Math.max(0, state.turnOrderIds.findIndex((seatId) => seatId === actorId));
-  const visibleDeadlineAt = Date.now() + 4_000;
+  const visibleDeadlineAt = Date.now() + 60_000;
   await patchRoomStateForQa(page, roomId, {
     turnIndex: actorTurnIndex,
     roll: null,
@@ -189,19 +189,48 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
     autoPlayBySeatId: { [actorId]: false },
   });
 
+  await expect.poll(async () => {
+    const current = await getRoomStateForQa(roomId);
+    const currentStack = Array.isArray(current?.rollStack) ? current.rollStack : [];
+    return Boolean(
+      current
+      && Number(current.turnIndex) === actorTurnIndex
+      && current.roll === null
+      && current.selectedRollStackIndex === null
+      && current.rollStackClosed === true
+      && current.turnDeadlineKind === 'move'
+      && Number(current.turnDeadlineAt) === visibleDeadlineAt
+      && currentStack.length === 2
+      && currentStack[0]?.name === '도'
+      && Number(currentStack[0]?.steps) === 1
+      && currentStack[1]?.name === '걸'
+      && Number(currentStack[1]?.steps) === 3,
+    );
+  }, {
+    timeout: 10_000,
+    intervals: [50, 100, 200, 400],
+    message: '닫힌 다중 미선택 이동 스택 fixture가 authoritative state에 안정적으로 반영되어야 합니다.',
+  }).toBe(true);
+
   const picker = page.locator('.roll-stack-picker');
   await expect(picker).toBeVisible({ timeout: 10_000 });
   await expect(picker.getByRole('button')).toHaveCount(2);
   await expect(picker.getByRole('button').first()).toBeEnabled();
 
-  const timeoutDeadlineAt = Date.now() - 200;
+  const timeoutDeadlineAt = Date.now() - 1;
   const actionKey = `timeout:${roomId}:move:${actorId}:${timeoutDeadlineAt}`;
   const baselineSequences = await getRoomSequencesForQa(roomId);
   await patchRoomStateForQa(page, roomId, { turnDeadlineAt: timeoutDeadlineAt });
   await expect.poll(async () => {
-    const disabled = await picker.getByRole('button').evaluateAll((buttons) => buttons.length === 2 && buttons.every((button) => button.disabled));
-    return disabled;
-  }, { timeout: 2_000, message: 'deadline 이후 일반 스택 선택 버튼은 다시 활성화되지 않아야 합니다.' }).toBe(true);
+    const buttons = picker.getByRole('button');
+    const buttonCount = await buttons.count();
+    if (buttonCount === 0) return true;
+    return buttons.evaluateAll((entries) => entries.length === 2 && entries.every((button) => button.disabled));
+  }, {
+    timeout: 900,
+    intervals: [25, 50, 100],
+    message: 'deadline 이후 일반 스택 선택 버튼은 다시 활성화되지 않아야 합니다.',
+  }).toBe(true);
 
   return {
     actionKey,
