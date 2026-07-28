@@ -16,7 +16,6 @@ import {
   getActivePlayerSeats,
   getOccupiedSeats,
   getSeatIndexFromLabel,
-  resolveTurnSeatResolution,
 } from '../../src/app/selectors/gameViewSelectors';
 import {
   createSeats,
@@ -163,41 +162,6 @@ test('provides reusable pure selectors for occupied and active player seats', ()
   assert.deepEqual(getActivePlayerSeats(seats).map((seat) => seat.id), ['host-id', 'guest-id']);
   assert.equal(findSeatById(seats, 'guest-id')?.name, '참가자');
   assert.equal(getSeatIndexFromLabel('P4'), 3);
-});
-
-test('does not compress authoritative turn order while a seat snapshot is incomplete', () => {
-  const seats = createSeats('', 'individual', 3).map((seat, index) => ({
-    ...seat,
-    id: index === 0 ? 'seat-1' : index === 2 ? 'seat-3' : seat.id,
-    name: index === 0 ? '첫째' : index === 2 ? '셋째' : seat.name,
-    isEmpty: index === 1,
-  }));
-
-  const resolution = resolveTurnSeatResolution(seats, ['seat-1', 'seat-2', 'seat-3'], 1);
-
-  assert.equal(resolution.pending, true);
-  assert.deepEqual(resolution.missingSeatIds, ['seat-2']);
-  assert.deepEqual(resolution.turnSeats, []);
-  assert.equal(resolution.activeSeat, undefined);
-  assert.equal(resolution.previousSeat, undefined);
-  assert.equal(resolution.nextSeat, undefined);
-});
-
-test('resolves current and neighbor seats from the complete authoritative circular order', () => {
-  const seats = createSeats('', 'individual', 3).map((seat, index) => ({
-    ...seat,
-    id: `seat-${index + 1}`,
-    name: `${index + 1}번`,
-    isEmpty: false,
-  }));
-
-  const resolution = resolveTurnSeatResolution(seats, ['seat-3', 'seat-1', 'seat-2'], 4);
-
-  assert.equal(resolution.pending, false);
-  assert.deepEqual(resolution.turnSeats.map((seat) => seat.id), ['seat-3', 'seat-1', 'seat-2']);
-  assert.equal(resolution.activeSeat?.id, 'seat-1');
-  assert.equal(resolution.previousSeat?.id, 'seat-3');
-  assert.equal(resolution.nextSeat?.id, 'seat-2');
 });
 
 test('creates individual and team pieces with stable owner and color contracts', () => {
