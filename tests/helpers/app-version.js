@@ -1,5 +1,10 @@
 export const APP_VERSION_DOCUMENT_LOAD_COUNT_KEY = 'qa:app-version-document-load-count';
 
+const isExpectedNavigationContextError = (error) => (
+  error instanceof Error
+  && error.message.includes('Execution context was destroyed')
+);
+
 export async function installAppVersionDocumentLoadCounter(context) {
   await context.addInitScript((key) => {
     if (!window.location.pathname.includes('/Yut/')) return;
@@ -9,7 +14,13 @@ export async function installAppVersionDocumentLoadCounter(context) {
 }
 
 export async function getAppVersionDocumentLoadCount(page) {
-  return page.evaluate((key) => Number(window.sessionStorage.getItem(key) ?? '0'), APP_VERSION_DOCUMENT_LOAD_COUNT_KEY);
+  try {
+    return await page.evaluate((key) => Number(window.sessionStorage.getItem(key) ?? '0'), APP_VERSION_DOCUMENT_LOAD_COUNT_KEY);
+  } catch (error) {
+    if (!isExpectedNavigationContextError(error)) throw error;
+    await page.waitForLoadState('domcontentloaded');
+    return page.evaluate((key) => Number(window.sessionStorage.getItem(key) ?? '0'), APP_VERSION_DOCUMENT_LOAD_COUNT_KEY);
+  }
 }
 
 export async function routeNewAppVersion(page, version) {
