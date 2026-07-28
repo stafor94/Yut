@@ -29,12 +29,14 @@ test('공통 saveGameState는 processed action, expected sequence, 현재 coordi
   assert.match(roomServiceCoreSource, /!hasCurrentCoordinatorLease\(currentState, getCoordinatorLeaseTokenFromMeta\(meta\)\)/);
 });
 
-test('stacked timeout QA fixture는 state와 sequence를 atomic commit해 sequence-first 클라이언트에 전달한다', () => {
+test('stacked timeout QA fixture는 state와 sequence를 atomic commit해 action-ready 상태로 전달한다', () => {
   assert.match(qaHelperSource, /const commitUrl = `\$\{getFirestoreDocumentsBaseUrl\(config\.projectId\)\}:commit`/);
   assert.match(qaHelperSource, /'sequences', makeSequenceDocId\(nextSequence\)/);
   assert.match(qaHelperSource, /currentDocument: \{ exists: false \}/);
-  assert.match(qaHelperSource, /lastSequence: encodeFirestoreValue\(nextSequence\)/);
+  assert.match(qaHelperSource, /stateFields\.lastSequence = encodeFirestoreValue\(nextSequence\)/);
   assert.match(qaHelperSource, /patch: encodeFirestoreValue\(patch\)/);
+  assert.match(qaHelperSource, /VISIBLE_FIXTURE_DEADLINE_OFFSET_MS = 9_000/);
+  assert.match(qaHelperSource, /visibleDeadlineAt = Date\.now\(\) \+ VISIBLE_FIXTURE_DEADLINE_OFFSET_MS/);
   assert.match(qaHelperSource, /visibleFixture = await commitRoomStatePatchForQa/);
   assert.match(qaHelperSource, /expiredFixture = await commitRoomStatePatchForQa/);
   assert.doesNotMatch(qaHelperSource, /method: 'PATCH'/);

@@ -15,6 +15,7 @@ import {
 
 const SEQUENCE_ID_PAD_LENGTH = 12;
 const FIXTURE_COMMIT_RETRY_LIMIT = 3;
+const VISIBLE_FIXTURE_DEADLINE_OFFSET_MS = 9_000;
 
 const encodeFirestoreValue = (value) => {
   if (value === null || value === undefined) return { nullValue: null };
@@ -247,7 +248,7 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   if (!state) throw new Error('authoritative game state가 없습니다.');
   const actorId = String(state.coordinatorSeatId ?? state.turnOrderIds?.[0] ?? '');
   const actorTurnIndex = Math.max(0, state.turnOrderIds.findIndex((seatId) => seatId === actorId));
-  const visibleDeadlineAt = Date.now() + 60_000;
+  const visibleDeadlineAt = Date.now() + VISIBLE_FIXTURE_DEADLINE_OFFSET_MS;
   const visibleFixture = await commitRoomStatePatchForQa(page, roomId, {
     turnIndex: actorTurnIndex,
     roll: null,
