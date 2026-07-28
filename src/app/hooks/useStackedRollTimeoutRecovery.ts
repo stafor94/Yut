@@ -7,7 +7,7 @@ import {
   resolveMoveTimeout,
   resolveMoveTimeoutContext,
 } from '../../features/room/services/timeoutResolvers';
-import { BRANCH_NODE_IDS, type BranchChoice } from '../../game-core/board/board';
+import { BRANCH_NODE_IDS } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { STORAGE_KEYS, type Seat } from '../appState';
 
@@ -78,7 +78,7 @@ export function useStackedRollTimeoutRecovery({
     if (typeof window === 'undefined'
       || !activeSeat
       || !localSeatId
-      || !onlineGameCoordinatorSeatId
+      || localSeatId !== onlineGameCoordinatorSeatId
       || !Number.isFinite(coordinatorEpoch)
       || coordinatorEpoch <= 0
       || winner
@@ -120,7 +120,7 @@ export function useStackedRollTimeoutRecovery({
       steps: timeoutContext.steps,
       canControlPiece: (piece) => isSameSide(activeSeat.id, piece.ownerId),
       isSameSidePiece: (piece, selected) => isSameSide(piece.ownerId, selected.ownerId),
-      branchChoice: 'outer' as BranchChoice,
+      branchChoice: 'outer',
     });
     if (timeoutMove.reason === 'pass' && timeoutContext.steps >= 0) return undefined;
 
