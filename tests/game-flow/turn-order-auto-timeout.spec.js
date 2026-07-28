@@ -80,23 +80,30 @@ test.describe('turn-order automatic timeout QA', () => {
         beforeFallback: true,
       });
 
-      await expect(page.getByTestId('turn-order-own-result')).toContainText('모');
       await expect(page.getByTestId('turn-order-roll-button')).toHaveCount(0);
     });
 
-    await runQaStep(testInfo, '자동 제출 집계 후 최종 순서와 일반 게임 진입', async () => {
+    await runQaStep(testInfo, '자동 제출 공개 후 최종 순서와 일반 게임 진입', async () => {
       await expect.poll(async () => {
         const state = await getRoomStateForQa(roomId);
         return state?.turnOrderIntro?.currentRound?.status ?? '';
       }, { timeout: 8_000 }).toBe('reveal-pending');
 
       const aggregatedState = await getRoomStateForQa(roomId);
-      const round = aggregatedState?.turnOrderIntro?.currentRound;
+      const intro = aggregatedState?.turnOrderIntro;
+      const round = intro?.currentRound;
+      const localEntry = intro?.order?.find((entry) => !entry.isAI);
       const submissions = (await getRoomTurnOrderSubmissionsForQa(roomId))
         .filter((submission) => submission.roundId === round?.id);
+      expect(localEntry).toBeTruthy();
       expect(submissions).toHaveLength(2);
       expect(new Set(submissions.map((submission) => submission.seatId)).size).toBe(2);
       expect(submissions.every((submission) => submission.source === 'auto')).toBe(true);
+
+      const localCard = page.getByTestId('turn-order-result-grid')
+        .locator('.turn-order-result-card')
+        .filter({ hasText: localEntry?.name ?? nickname });
+      await expect(localCard).toContainText(/모[\s\S]*자동 던지기/, { timeout: 6_000 });
 
       await expect(page.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId('turn-order-overlay')).toBeHidden({ timeout: 7_000 });
