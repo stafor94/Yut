@@ -205,8 +205,9 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
         gameStarted: Number(state?.gameStartedAt ?? 0) > 0,
       };
     }, {
-      timeout: 10_000,
-      message: '일반 게임 조작 영역 진입 후 authoritative 순서 정하기 정리와 게임 시작 상태가 확정되어야 합니다.',
+      timeout: 20_000,
+      intervals: [250, 500, 1_000],
+      message: '일반 게임 조작 영역 진입 후 Firestore 트랜잭션 재시도를 포함해 authoritative 순서 정하기 정리와 게임 시작 상태가 확정되어야 합니다.',
     }).toEqual({
       introCleared: true,
       turnOrderIds: expectedTurnOrderIds,
