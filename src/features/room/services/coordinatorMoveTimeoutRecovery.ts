@@ -18,15 +18,14 @@ export type CoordinatorMoveTimeoutAction = Omit<GameAction, 'id' | 'createdAt' |
 
 const getAuthoritativeSides = (state: SyncedGameState): AuthoritativeSeatSide[] | null => {
   const turnOrderIds = state.turnOrderIds ?? [];
+  if (turnOrderIds.length === 0) return null;
   const seatById = new Map((state.gameSeats ?? []).map((seat) => [seat.id, seat]));
   const sides = turnOrderIds.map((seatId) => {
     const seat = seatById.get(seatId);
     if (!seat || (seat.team !== '청팀' && seat.team !== '홍팀')) return null;
     return { id: seatId, team: seat.team } satisfies AuthoritativeSeatSide;
   });
-  return sides.length === turnOrderIds.length && sides.every(Boolean)
-    ? sides as AuthoritativeSeatSide[]
-    : null;
+  return sides.every(Boolean) ? sides as AuthoritativeSeatSide[] : null;
 };
 
 const getRecoveryClientActionId = (action: CoordinatorMoveTimeoutAction) => (
@@ -43,13 +42,17 @@ export async function commitCoordinatorMoveTimeoutRecovery(
   action: CoordinatorMoveTimeoutAction,
 ): Promise<CommitAuthoritativeGameActionResult> {
   const clientActionId = getRecoveryClientActionId(action);
+  const timeoutDeadlineAt = Number(action.payload?.timeoutDeadlineAt ?? 0);
+  const coordinatorEpoch = Number(action.payload?.coordinatorEpoch ?? 0);
   if (!roomId
     || action.payload?.recoveredByCoordinator !== true
     || !clientActionId
-    || typeof action.payload?.timeoutDeadlineAt !== 'number'
+    || !Number.isFinite(timeoutDeadlineAt)
+    || timeoutDeadlineAt <= 0
     || typeof action.payload?.coordinatorSeatId !== 'string'
     || !action.payload.coordinatorSeatId
-    || !Number.isFinite(Number(action.payload?.coordinatorEpoch))) {
+    || !Number.isFinite(coordinatorEpoch)
+    || coordinatorEpoch <= 0) {
     return { status: 'rejected', reason: 'coordinator 이동 timeout recovery 정보가 올바르지 않습니다.' };
   }
 
@@ -79,8 +82,8 @@ export async function commitCoordinatorMoveTimeoutRecovery(
   const saveResult = await saveGameState(roomId, stateForSave, {
     type: 'move_piece_resolved',
     actorId: action.actorId,
-    coordinatorSeatId: String(action.payload.coordinatorSeatId),
-    coordinatorEpoch: Number(action.payload.coordinatorEpoch),
+    coordinatorSeatId: action.payload.coordinatorSeatId,
+    coordinatorEpoch,
     payload: reduction.payload,
     action,
     clientMutationId: clientActionId,
