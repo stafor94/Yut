@@ -48,7 +48,8 @@ test('통계 QA fixture는 최신 게임 identity를 전달하고 최초 필수 
   assert.match(fixtureSource, /getByRole\('button', \{ name: '시작하기' \}\)\.click\(\)/u);
   assert.match(fixtureSource, /waitFor\(\{ state: 'hidden' \}\)/u);
   assert.match(fixtureSource, /latestState = null/u);
-  assert.match(fixtureSource, /gameSeats: configured\.seats, \.\.\.\(configured\.latestState \?\? \{\}\)/u);
+  assert.match(fixtureSource, /const inferLatestState = \(configured\) =>/u);
+  assert.match(fixtureSource, /gameSeats: configured\.seats, \.\.\.inferLatestState\(configured\)/u);
 });
 
 test('Desktop·Mobile 통계 QA가 실제 suite 실행 목록에 연결된다', () => {
