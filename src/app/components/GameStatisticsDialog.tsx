@@ -136,9 +136,9 @@ export function GameStatisticsDialog({ open, roomId, players, localSeatId, onClo
           </div>
         </header>
 
-        <div className="game-statistics-records" id="game-statistics-player-panel" role="tabpanel">
+        <div className="game-statistics-records" id="game-statistics-player-panel" role="tabpanel" aria-busy={loadState === 'loading'}>
           {loadState === 'loading' && <div className="game-statistics-state" role="status"><span className="loading-modal-spinner" aria-hidden="true"></span><p>전체 Sequence를 불러오는 중입니다...</p></div>}
-          {loadState === 'error' && <div className="game-statistics-state error" role="alert"><strong>통계 정보를 불러오지 못했습니다.</strong><p>{errorMessage}</p><button type="button" onClick={() => { void loadStatistics(); }} disabled={loadState === 'loading'}>다시 불러오기</button></div>}
+          {loadState === 'error' && <div className="game-statistics-state error" role="alert"><strong>통계 정보를 불러오지 못했습니다.</strong><p>{errorMessage}</p><button type="button" onClick={() => { void loadStatistics(); }}>다시 불러오기</button></div>}
           {loadState === 'success' && selectedStatistics && (selectedStatistics.records.length
             ? <div className="game-statistics-record-list">{selectedStatistics.records.map((record) => <article className="game-statistics-record" key={`${selectedStatistics.id}-${record.sequence}`}>
               <strong>#{record.sequence}</strong>
