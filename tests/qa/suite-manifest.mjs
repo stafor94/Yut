@@ -18,6 +18,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/game-flow/basic-turn.spec.js',
       'tests/game-flow/game-start-authority.spec.js',
       'tests/game-flow/turn-order-simultaneous.spec.js',
+      'tests/game-flow/turn-order-auto-timeout.spec.js',
       'tests/game-flow/ai-substitution.spec.js',
       'tests/online/room-lifecycle.spec.js',
       'tests/online/room-leave-ui-race.spec.js',
