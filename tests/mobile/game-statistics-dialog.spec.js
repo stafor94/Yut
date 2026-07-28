@@ -14,7 +14,7 @@ test('412×915에서 3열 기록만 세로 스크롤되고 헤더·통계·닫�
   ];
   const results = ['빽도', '도', '개', '걸', '윷', '모'];
   const timings = ['perfect', 'nice', 'good', 'bad'];
-  const sequences = Array.from({ length: 28 }, (_, index) => ({
+  const sequences = Array.from({ length: 40 }, (_, index) => ({
     id: `mobile-roll-${index + 1}`,
     sequence: index + 1,
     type: 'roll_yut',
@@ -43,16 +43,16 @@ test('412×915에서 3열 기록만 세로 스크롤되고 헤더·통계·닫�
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('tab', { name: '플레이어하나' })).toHaveAttribute('aria-selected', 'true');
   await expect(dialog.getByRole('button', { name: '닫기' })).toBeVisible();
-  await expect(rows).toHaveCount(10);
+  await expect(rows).toHaveCount(14);
 
   const topRecord = rows.nth(0).getByTestId('game-statistics-record');
   await expect(topRecord).toHaveCount(1);
-  await expect(topRecord).toContainText('#28');
+  await expect(topRecord).toContainText('#40');
   await expect(topRecord).toHaveCSS('grid-column-start', '3');
   expect(await rows.nth(1).getByTestId('game-statistics-record').evaluateAll((cards) => cards.map((card) => card.textContent))).toEqual([
-    '#25P빽도',
-    '#26N도',
-    '#27G개',
+    '#37P빽도',
+    '#38N도',
+    '#39G개',
   ]);
 
   const layout = await page.evaluate(() => {
@@ -140,7 +140,7 @@ test('412×915에서 3열 기록만 세로 스크롤되고 헤더·통계·닫�
   expect(layout.footerBottom).toBeLessThanOrEqual(layout.dialogBottom);
   expect(layout.timingCardCount).toBe(4);
   expect(new Set(layout.timingCardTops).size).toBe(1);
-  expect(layout.captureToCloseGap).toBeGreaterThanOrEqual(1);
+  expect(layout.captureToCloseGap).toBeGreaterThanOrEqual(6);
   await expect(dialog.getByText('미확인', { exact: true })).toHaveCount(0);
 
   const headingBeforeScroll = await heading.boundingBox();
