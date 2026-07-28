@@ -35,3 +35,19 @@ test('stacked timeout QA fixture는 클라이언트 snapshot guard를 통과하�
   assert.match(qaHelperSource, /turnVersion: fixtureTurnVersion/);
   assert.match(qaHelperSource, /turnVersion: expiredTurnVersion/);
 });
+
+test('stacked timeout QA fixture는 sequence replay와 snapshot 적용이 idle인 뒤에만 주입된다', () => {
+  assert.match(qaHelperSource, /Number\(debug\.lastAppliedStateVersion \?\? 0\) === stateVersion/);
+  assert.match(qaHelperSource, /Number\(debug\.lastAppliedSequence \?\? 0\) === sequence/);
+  assert.match(qaHelperSource, /syncPipeline\.applyingSyncedState === false/);
+  assert.match(qaHelperSource, /syncPipeline\.sequenceReplayInProgress === false/);
+  assert.match(qaHelperSource, /syncPipeline\.onlineAuthoritativeGameStatePending === false/);
+  assert.match(qaHelperSource, /syncPipeline\.authoritativeGameStateReady === true/);
+});
+
+test('stacked timeout QA fixture는 Firestore 기록뿐 아니라 클라이언트 move snapshot 적용까지 확인한다', () => {
+  assert.match(qaHelperSource, /Number\(debug\.lastAppliedStateVersion \?\? 0\) === fixtureTurnVersion/);
+  assert.match(qaHelperSource, /debug\.turnDeadlineKind === 'move'/);
+  assert.match(qaHelperSource, /Number\(debug\.turnDeadlineAt \?\? 0\) === visibleDeadlineAt/);
+  assert.match(qaHelperSource, /message: '클라이언트가 stacked timeout fixture snapshot을 실제로 적용해야 합니다\.'/);
+});
