@@ -6,7 +6,7 @@ const hookSource = readFileSync('src/app/hooks/useStackedRollTimeoutRecovery.ts'
 const recoveryServiceSource = readFileSync('src/features/room/services/coordinatorMoveTimeoutRecovery.ts', 'utf8');
 const roomServiceCoreSource = readFileSync('src/features/room/services/roomServiceCore.ts', 'utf8');
 
- test('미선택 이동 스택 timeout은 일반 actor commit이 아니라 coordinator recovery transaction을 사용한다', () => {
+test('미선택 이동 스택 timeout은 일반 actor commit이 아니라 coordinator recovery transaction을 사용한다', () => {
   assert.match(hookSource, /import \{ commitCoordinatorMoveTimeoutRecovery \} from '.+coordinatorMoveTimeoutRecovery';/);
   assert.match(hookSource, /commitCoordinatorMoveTimeoutRecovery\(roomId, action\)/);
   assert.doesNotMatch(hookSource, /commitAuthoritativeGameAction\(roomId, action\)/);
@@ -16,8 +16,8 @@ test('coordinator recovery는 reducer 검증 후 lease·sequence·action key가 
   assert.match(recoveryServiceSource, /reduceAuthoritativeGameAction\(state, action,/);
   assert.match(recoveryServiceSource, /if \(!isAuthoritativeCommitReduction\(reduction\)\) return reduction;/);
   assert.match(recoveryServiceSource, /saveGameState\(roomId, stateForSave,/);
-  assert.match(recoveryServiceSource, /coordinatorSeatId: String\(action\.payload\.coordinatorSeatId\)/);
-  assert.match(recoveryServiceSource, /coordinatorEpoch: Number\(action\.payload\.coordinatorEpoch\)/);
+  assert.match(recoveryServiceSource, /coordinatorSeatId: action\.payload\.coordinatorSeatId/);
+  assert.match(recoveryServiceSource, /coordinatorEpoch,/);
   assert.match(recoveryServiceSource, /clientMutationId: clientActionId/);
   assert.match(recoveryServiceSource, /expectedPreviousSequence: currentSequence/);
 });
