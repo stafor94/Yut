@@ -103,8 +103,7 @@ test.describe('turn-order automatic timeout QA', () => {
       const localCard = page.getByTestId('turn-order-result-grid')
         .locator('.turn-order-result-card')
         .filter({ hasText: localEntry?.name ?? nickname });
-      await expect(localCard).toContainText('모', { timeout: 6_000 });
-      await expect(localCard).toContainText('자동 던지기');
+      await expect(localCard).toContainText(/모[\s\S]*자동 던지기/, { timeout: 6_000 });
 
       await expect(page.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId('turn-order-overlay')).toBeHidden({ timeout: 7_000 });
