@@ -21,8 +21,8 @@ test('통계 타이밍 배지는 실제 타이밍 막대의 PERFECT·NICE·GOOD�
   Object.entries(gradeColors).forEach(([grade, color]) => {
     assert.match(timingTokenSource, new RegExp(`--roll-timing-grade-${grade}: ${color}`));
     assert.match(timingStyleSource, new RegExp(color));
-    assert.match(timingTokenSource, new RegExp(`var\\\(--roll-timing-grade-${grade}\\\)`));
-    assert.match(dialogStyleSource, new RegExp(`var\\\(--roll-timing-grade-${grade}\\\)`));
+    assert.match(timingTokenSource, new RegExp(`var\\(--roll-timing-grade-${grade}\\)`));
+    assert.match(dialogStyleSource, new RegExp(`var\\(--roll-timing-grade-${grade}\\)`));
   });
   assert.match(mainSource, /roll-timing-grades\.css'[\s\S]*roll-timing-grade-tokens\.css'[\s\S]*game-statistics-dialog\.css'/u);
 });
