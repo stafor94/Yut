@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { GameSequence } from '../../src/features/room/services/roomService';
 import {
   buildGameStatistics,
   formatStatisticsPercentage,
   resolveGameStatisticsSeats,
+  type GameStatisticsSequence,
 } from '../../src/app/flows/gameStatistics';
 
 const seats = [
@@ -14,12 +14,11 @@ const seats = [
 
 const sequence = (
   sequenceNumber: number,
-  type: GameSequence['type'],
+  type: GameStatisticsSequence['type'],
   actorId: string,
   payload: Record<string, unknown> = {},
   actionPayload: Record<string, unknown> = {},
-): GameSequence => ({
-  id: `seq-${sequenceNumber}`,
+): GameStatisticsSequence => ({
   sequence: sequenceNumber,
   type,
   actorId,
@@ -102,7 +101,7 @@ test('최신 상태의 좌석 순서를 우선하고 Sequence stateAfter를 폴�
 
   const fromSequence = resolveGameStatisticsSeats(null, [{
     ...sequence(7, 'state_snapshot', 'p1'),
-    stateAfter: { gameSeats: stateSeats } as never,
+    stateAfter: { gameSeats: stateSeats },
   }]);
   assert.deepEqual(fromSequence.map((seat) => seat.name), ['첫째', '둘째']);
 });
