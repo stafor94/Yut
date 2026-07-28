@@ -1,8 +1,8 @@
 {
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
-    "build:qa": "tsc -b && vite build --mode qa",
+    "build": "tsc -b && vite build && node scripts/verify-build-version.mjs",
+    "build:qa": "tsc -b && vite build --mode qa && node scripts/verify-build-version.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "test:e2e": "npm run build && playwright test --grep-invert \"오프라인 timeout 누적 정책은 온라인 서버 정책과 동일하다\"",
     "test:smoke": "playwright test --project=desktop-chromium tests/smoke tests/lobby",
