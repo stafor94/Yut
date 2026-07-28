@@ -23,7 +23,8 @@ export async function installGameStatisticsFixture(page, {
     const inferLatestState = (configured) => {
       if (configured.latestState) return configured.latestState;
       const ordered = [...(configured.sequences ?? [])].sort((left, right) => Number(left.sequence) - Number(right.sequence));
-      const initialized = ordered.filter((entry) => entry.type === 'game_initialized').at(-1);
+      const initializedSequences = ordered.filter((entry) => entry.type === 'game_initialized');
+      const initialized = initializedSequences[initializedSequences.length - 1];
       if (!initialized) return {};
       const sources = [initialized.payload, initialized.patch, initialized.action?.payload, initialized.stateAfter]
         .filter((value) => value && typeof value === 'object');
@@ -31,7 +32,7 @@ export async function installGameStatisticsFixture(page, {
       return {
         startRequestVersion: readValue('startRequestVersion'),
         startRequestId: readValue('startRequestId'),
-        lastSequence: ordered.at(-1)?.sequence,
+        lastSequence: ordered[ordered.length - 1]?.sequence,
       };
     };
     setActiveRoomId(nextRoomId);
