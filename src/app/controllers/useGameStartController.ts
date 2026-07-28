@@ -7,6 +7,8 @@ import { useTurnOrderPortraitScroll } from '../hooks/useTurnOrderTimers';
 import type { SequenceStateSnapshot } from '../appState';
 import { START_REQUEST_TIMEOUT_MS, TURN_ORDER_PRESENCE_FALLBACK_MS } from '../config/gameTimings';
 
+const TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000] as const;
+
 export function useGameStartController(ctx: any) {
   const { refs, setters, helpers, services } = ctx;
   const {
@@ -282,26 +284,52 @@ export function useGameStartController(ctx: any) {
   useTurnOrderPortraitScroll(ctx.screen, ctx.turnOrderPhase.active || Boolean(ctx.activeTurnOrderIntro));
   useEffect(() => {
     if (!ctx.turnOrderIntro) return undefined;
-    const hideDelay = Math.max(0, ctx.turnOrderIntro.readyAt - Date.now());
-    const hideTimer = window.setTimeout(() => setTurnOrderIntro((current: any) => current ? { ...current, visible: false } : current), hideDelay);
+    const readyAt = ctx.turnOrderIntro.readyAt;
     const readyTimer = window.setTimeout(() => {
+      if (ctx.activeRoomId) {
+        setTurnOrderIntro((current: any) => current?.readyAt === readyAt ? { ...current, visible: false } : current);
+        return;
+      }
       setTurnOrderIntro(null);
       setGameStartedAt((current: number | null) => current ?? Date.now());
-    }, hideDelay);
-    return () => { window.clearTimeout(hideTimer); window.clearTimeout(readyTimer); };
-  }, [ctx.turnOrderIntro?.readyAt]);
+    }, Math.max(0, readyAt - Date.now()));
+    return () => window.clearTimeout(readyTimer);
+  }, [ctx.activeRoomId, ctx.turnOrderIntro?.readyAt]);
   useEffect(() => {
     if (!ctx.activeRoomId || !ctx.canCompleteInitialOnlineTurnOrderIntro || ctx.screen !== 'game' || !ctx.turnOrderIntro?.readyAt) return undefined;
     const readyAt = ctx.turnOrderIntro.readyAt;
-    const completeIntro = () => {
-      if (completingTurnOrderIntroRef.current.has(readyAt)) return;
-      completingTurnOrderIntroRef.current.add(readyAt);
-      void completeTurnOrderIntro(ctx.activeRoomId, { readyAt, actorId: ctx.localSeatId, coordinatorEpoch: ctx.coordinatorEpoch })
-        .then((version: number) => { if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version); })
-        .finally(() => completingTurnOrderIntroRef.current.delete(readyAt));
+    let cancelled = false;
+    const timers = new Set<number>();
+    const scheduleCompletion = (attemptIndex: number, delayMs: number) => {
+      const timer = window.setTimeout(async () => {
+        timers.delete(timer);
+        if (cancelled) return;
+        if (completingTurnOrderIntroRef.current.has(readyAt)) {
+          const retryDelay = TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS[attemptIndex];
+          if (retryDelay !== undefined) scheduleCompletion(attemptIndex + 1, retryDelay);
+          return;
+        }
+        completingTurnOrderIntroRef.current.add(readyAt);
+        let version = 0;
+        try {
+          version = Number(await completeTurnOrderIntro(ctx.activeRoomId, { readyAt, actorId: ctx.localSeatId, coordinatorEpoch: ctx.coordinatorEpoch })) || 0;
+          if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
+        } catch {
+          version = 0;
+        } finally {
+          completingTurnOrderIntroRef.current.delete(readyAt);
+        }
+        if (cancelled || version) return;
+        const retryDelay = TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS[attemptIndex];
+        if (retryDelay !== undefined) scheduleCompletion(attemptIndex + 1, retryDelay);
+      }, delayMs);
+      timers.add(timer);
     };
-    const timer = window.setTimeout(completeIntro, Math.max(0, readyAt - Date.now()));
-    return () => window.clearTimeout(timer);
+    scheduleCompletion(0, Math.max(0, readyAt - Date.now()));
+    return () => {
+      cancelled = true;
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
   }, [ctx.activeRoomId, ctx.canCompleteInitialOnlineTurnOrderIntro, ctx.coordinatorEpoch, ctx.localSeatId, ctx.screen, ctx.turnOrderIntro?.readyAt]);
   useEffect(() => {
     if (!ctx.startCountdownEffectActive) {
