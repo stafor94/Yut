@@ -141,7 +141,7 @@ export function useStackedRollTimeoutRecovery({
       actorId: activeSeat.id,
       timeoutDeadlineAt: turnDeadlineAt,
     });
-    const leaseAttemptKey = `${actionKey}:${onlineGameCoordinatorSeatId}:${coordinatorEpoch}:${retryVersion}`;
+    const leaseAttemptKey = `${actionKey}:stack-${timeoutContext.rollStackIndex}:${onlineGameCoordinatorSeatId}:${coordinatorEpoch}:${retryVersion}`;
     const recoveryAt = getTurnRecoveryDeadlineAt(turnDeadlineAt);
     let cancelled = false;
     let retryTimer: number | null = null;
