@@ -27,7 +27,8 @@ const COLORS = ['red', 'blue', 'green', 'yellow'] as const;
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 
 type SeatSnapshot = DocumentSnapshot;
-type JoinRoomInternalResult = JoinRoomResult & { roomInGame: boolean; syncRestoredGameSeat?: boolean };
+export type AuthoritativeJoinRoomResult = JoinRoomResult & { roomInGame: boolean };
+type JoinRoomInternalResult = AuthoritativeJoinRoomResult & { syncRestoredGameSeat?: boolean };
 
 const isRoomOpenForGameEntry = (room: ManagedRoomSummary) => room.status === 'finished' || isRoomInGameCore(room);
 
@@ -60,7 +61,7 @@ async function syncRestoredGameSeatAfterJoin(
   });
 }
 
-export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): Promise<JoinRoomResult> {
+export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): Promise<AuthoritativeJoinRoomResult> {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const [roomId, params] = args;
   const roomRef = doc(db, 'rooms', roomId);
@@ -267,7 +268,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
       isSpectator: false,
       joinedAt: serverTimestamp(),
       lastSeen: serverTimestamp(),
-    });
+    }, { merge: true });
     transaction.set(seatRefs[seatIndex], {
       playerId: params.userId,
       originalPlayerId: params.userId,
@@ -301,5 +302,5 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     await syncRestoredGameSeatAfterJoin(roomId, params.userId, transactionResult.seatIndex, transactionResult.presenceEpoch);
   }
   const { syncRestoredGameSeat: _syncRestoredGameSeat, ...result } = transactionResult;
-  return result as JoinRoomResult;
+  return result as AuthoritativeJoinRoomResult;
 }
