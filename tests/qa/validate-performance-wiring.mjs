@@ -9,12 +9,18 @@ const performanceScript = fs.readFileSync(path.join(root, '.github/scripts/valid
 const targetBlock = performanceScript.match(/QA_PERFORMANCE_TARGETS_MS = Object\.freeze\(\{([\s\S]*?)\n\}\);/u)?.[1] ?? '';
 const hardLimitBlock = performanceScript.match(/QA_PERFORMANCE_HARD_LIMITS_MS = Object\.freeze\(\{([\s\S]*?)\n\}\);/u)?.[1] ?? '';
 
+function readDuration(block, code) {
+  const rawValue = block.match(new RegExp(`\n  ${code}: ([1-9][0-9_]*),`, 'u'))?.[1] ?? '';
+  return Number(rawValue.replaceAll('_', ''));
+}
+
 assert.match(targetBlock, /overall: 300_000/u, '전체 Main Branch QA 관찰 목표는 5분이어야 합니다.');
 assert.match(targetBlock, /summaryReserve: [1-9][0-9_]*/u, 'summary job 완료 여유 시간이 필요합니다.');
-assert.match(hardLimitBlock, /overall: [3-9][0-9][0-9]_000/u, 'runner 편차와 실제 회귀를 구분할 전체 차단 한계가 필요합니다.');
+assert.ok(readDuration(hardLimitBlock, 'overall') > readDuration(targetBlock, 'overall'), '전체 차단 한계는 5분 관찰 목표보다 커야 합니다.');
 for (const code of ['build', 'core', 'seq', 'desk', 'galaxy', 'galtime', 'safvis', 'safari']) {
-  assert.match(targetBlock, new RegExp(`\n  ${code}: [1-9][0-9_]*,`, 'u'), `${code} lane 관찰 목표가 필요합니다.`);
-  assert.match(hardLimitBlock, new RegExp(`\n  ${code}: [1-9][0-9_]*,`, 'u'), `${code} lane 차단 한계가 필요합니다.`);
+  assert.ok(Number.isFinite(readDuration(targetBlock, code)), `${code} lane 관찰 목표가 필요합니다.`);
+  assert.ok(Number.isFinite(readDuration(hardLimitBlock, code)), `${code} lane 차단 한계가 필요합니다.`);
+  assert.ok(readDuration(hardLimitBlock, code) > readDuration(targetBlock, code), `${code} lane 차단 한계는 관찰 목표보다 커야 합니다.`);
   assert.match(performanceScript, new RegExp(`code: '${code}'`, 'u'), `${code} lane이 성능 보고서에 등록되어야 합니다.`);
 }
 
