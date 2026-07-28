@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { collectScreenState, createRoomFromLobby, primeLobbyStorage, runQaStep } from '../helpers/ui.js';
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
-import { deleteRoomForQa, findRoomIdByTitle, getRoomSequencesForQa, rememberRoomIdFromPage } from '../helpers/rooms.js';
+import { waitForRoomQaAccess } from '../helpers/room-access.js';
+import { deleteRoomForQa, getRoomSequencesForQa } from '../helpers/rooms.js';
 
 const GOOD_PRESS_RANGE = Object.freeze([30, 34]);
 const NICE_PRESS_RANGES = Object.freeze([[40.5, 44.5], [55.5, 59.5]]);
@@ -41,11 +42,7 @@ async function startAiTimingGame(page, context, testInfo, attemptLabel = '') {
   let resolvedRoomId;
   await runQaStep(testInfo, `AI 게임 시작과 순서 정하기 완료 후 내 던지기 차례 대기${suffix}`, async () => {
     await createRoomFromLobby(page, roomTitle);
-    await expect.poll(async () => {
-      resolvedRoomId = await rememberRoomIdFromPage(page).catch(() => undefined);
-      return resolvedRoomId ?? '';
-    }, { timeout: 5_000, message: '생성된 방의 Firebase Auth 토큰과 QA cleanup 권한이 준비되어야 합니다.' }).not.toBe('');
-    resolvedRoomId ??= await findRoomIdByTitle(roomTitle);
+    resolvedRoomId = await waitForRoomQaAccess(page, { roomTitle });
     await addAiAndWaitUntilGameCanStart(page);
     const startGameButton = page.getByTestId('start-game-button');
     await expect(startGameButton).toBeVisible({ timeout: 15_000 });
