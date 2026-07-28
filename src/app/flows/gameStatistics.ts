@@ -1,10 +1,35 @@
-import type { GameSeatSnapshot, GameSequence, SyncedGameState } from '../../features/room/services/roomService';
-
 export const TIMING_STAT_LABELS = ['PERFECT', 'NICE', 'GOOD', 'BAD', '미확인'] as const;
 export const YUT_STAT_LABELS = ['빽도', '도', '개', '걸', '윷', '모', '낙', '미확인'] as const;
 
 export type TimingStatLabel = (typeof TIMING_STAT_LABELS)[number];
 export type YutStatLabel = (typeof YUT_STAT_LABELS)[number];
+
+export type GameStatisticsSeatSource = {
+  id?: unknown;
+  label?: unknown;
+  name?: unknown;
+  seatIndex?: unknown;
+  isAI?: unknown;
+  isSubstitutedByAI?: unknown;
+};
+
+export type GameStatisticsStateSource = {
+  gameSeats?: readonly GameStatisticsSeatSource[];
+};
+
+export type GameStatisticsSequence = {
+  sequence: number;
+  type: string;
+  actorId: string;
+  payload?: Record<string, unknown>;
+  action?: {
+    type?: unknown;
+    actorId?: unknown;
+    payload?: Record<string, unknown>;
+  } | null;
+  stateBefore?: unknown;
+  stateAfter?: unknown;
+};
 
 export type GameStatisticsSeat = {
   id: string;
@@ -35,8 +60,6 @@ export type PlayerGameStatistics = {
   capturedPieceCount: number;
 };
 
-type SequenceStateWithSeats = Pick<SyncedGameState, 'gameSeats'> | null | undefined;
-
 const readObject = (value: unknown): Record<string, unknown> | null => (
   value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -64,7 +87,7 @@ export function formatStatisticsPercentage(value: number) {
   return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)}%`;
 }
 
-export function normalizeTimingResult(sequence: GameSequence): TimingStatLabel {
+export function normalizeTimingResult(sequence: GameStatisticsSequence): TimingStatLabel {
   const payload = sequence.payload ?? {};
   const actionPayload = sequence.action?.payload ?? {};
   const raw = readString(
@@ -81,7 +104,7 @@ export function normalizeTimingResult(sequence: GameSequence): TimingStatLabel {
   return '미확인';
 }
 
-const readRollName = (sequence: GameSequence) => {
+const readRollName = (sequence: GameStatisticsSequence) => {
   const payload = sequence.payload ?? {};
   const actionPayload = sequence.action?.payload ?? {};
   const displayRoll = readObject(payload.displayRoll);
@@ -95,7 +118,7 @@ const readRollName = (sequence: GameSequence) => {
   );
 };
 
-export function normalizeYutResult(sequence: GameSequence): YutStatLabel {
+export function normalizeYutResult(sequence: GameStatisticsSequence): YutStatLabel {
   const payload = sequence.payload ?? {};
   const actionPayload = sequence.action?.payload ?? {};
   const fallOccurred = readBoolean(payload.fallOccurred, actionPayload.clientFallOccurred);
@@ -119,7 +142,7 @@ const makeBreakdown = <TLabel extends string>(
   };
 });
 
-const getCapturedPieceCount = (sequence: GameSequence) => {
+const getCapturedPieceCount = (sequence: GameStatisticsSequence) => {
   if (sequence.type !== 'move_piece_resolved') return 0;
   const payload = sequence.payload ?? {};
   const capturedPieceIds = readStringArray(payload.capturedPieceIds, sequence.action?.payload?.capturedPieceIds);
@@ -127,7 +150,7 @@ const getCapturedPieceCount = (sequence: GameSequence) => {
   return payload.captured === true ? 1 : 0;
 };
 
-const normalizeSeat = (seat: GameSeatSnapshot, fallbackIndex: number): GameStatisticsSeat => ({
+const normalizeSeat = (seat: GameStatisticsSeatSource, fallbackIndex: number): GameStatisticsSeat => ({
   id: readString(seat.id),
   label: readString(seat.label) || `P${fallbackIndex + 1}`,
   name: readString(seat.name, seat.label) || `플레이어 ${fallbackIndex + 1}`,
@@ -135,19 +158,22 @@ const normalizeSeat = (seat: GameSeatSnapshot, fallbackIndex: number): GameStati
   isAI: Boolean(seat.isAI || seat.isSubstitutedByAI),
 });
 
-const readSeatsFromState = (state: SequenceStateWithSeats) => (
-  Array.isArray(state?.gameSeats) ? state.gameSeats : []
-);
+const readSeatsFromState = (state: unknown): readonly GameStatisticsSeatSource[] => {
+  const stateObject = readObject(state);
+  return Array.isArray(stateObject?.gameSeats)
+    ? stateObject.gameSeats as GameStatisticsSeatSource[]
+    : [];
+};
 
 export function resolveGameStatisticsSeats(
-  latestState: SequenceStateWithSeats,
-  sequences: readonly GameSequence[],
+  latestState: GameStatisticsStateSource | null | undefined,
+  sequences: readonly GameStatisticsSequence[],
 ): GameStatisticsSeat[] {
   const newestStateSeats = [...sequences]
     .sort((left, right) => Number(right.sequence) - Number(left.sequence))
-    .map((sequence) => readSeatsFromState(sequence.stateAfter as SequenceStateWithSeats).length
-      ? readSeatsFromState(sequence.stateAfter as SequenceStateWithSeats)
-      : readSeatsFromState(sequence.stateBefore as SequenceStateWithSeats))
+    .map((sequence) => readSeatsFromState(sequence.stateAfter).length
+      ? readSeatsFromState(sequence.stateAfter)
+      : readSeatsFromState(sequence.stateBefore))
     .find((seats) => seats.length > 0);
 
   const sourceSeats = readSeatsFromState(latestState).length
@@ -172,7 +198,7 @@ export function resolveGameStatisticsSeats(
 }
 
 export function buildGameStatistics(
-  sequences: readonly GameSequence[],
+  sequences: readonly GameStatisticsSequence[],
   seats: readonly GameStatisticsSeat[],
 ): PlayerGameStatistics[] {
   return seats.map((seat) => {
