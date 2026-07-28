@@ -28,11 +28,11 @@ export async function installGameStatisticsFixture(page, {
         delayMs: nextDelayMs,
       };
       await new Promise((resolve) => window.setTimeout(resolve, Number(configured.delayMs ?? nextDelayMs)));
+      restoreActiveRoomId(requestedRoomId);
       if (window.__YUT_QA_GAME_STATISTICS_FAILURES_LEFT__ > 0) {
         window.__YUT_QA_GAME_STATISTICS_FAILURES_LEFT__ -= 1;
         throw new Error('QA 통계 조회 실패');
       }
-      restoreActiveRoomId(requestedRoomId);
       return [{ gameSeats: configured.seats }, configured.sequences];
     };
 
