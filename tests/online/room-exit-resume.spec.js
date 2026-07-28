@@ -149,7 +149,7 @@ async function expectAuthoritativeTurnPresentation(page, roomId, localPlayerId) 
   }));
 
   const authoritative = await readAuthoritativeTurn(roomId);
-  await expect(page.locator('.turn-current-badge')).toHaveText(`${authoritative.current.name} 턴`, { timeout: 10_000 });
+  await expect(page.locator('.turn-current-badge')).toHaveText(authoritative.current.name, { timeout: 10_000 });
   await expect(page.locator('.previous-turn')).toHaveText(authoritative.previous.name, { timeout: 10_000 });
   await expect(page.locator('.next-turn')).toHaveText(authoritative.next.name, { timeout: 10_000 });
 
