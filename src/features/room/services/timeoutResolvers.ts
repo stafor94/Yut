@@ -27,6 +27,70 @@ export const resolveRollTimeout = (
   };
 };
 
+export type MoveTimeoutContextReason = 'selected' | 'default-first' | 'single' | 'non-stacked' | 'unresolved';
+export type MoveTimeoutContext = {
+  roll: YutResult | null;
+  rollStackIndex: number | null;
+  steps: number;
+  reason: MoveTimeoutContextReason;
+};
+
+const isValidTimeoutMoveRoll = (value: YutResult | null | undefined): value is YutResult => Boolean(
+  value
+  && typeof value.name === 'string'
+  && Number.isFinite(value.steps),
+);
+
+const makeResolvedTimeoutMoveContext = (
+  roll: YutResult,
+  rollStackIndex: number | null,
+  reason: Exclude<MoveTimeoutContextReason, 'unresolved'>,
+): MoveTimeoutContext => ({
+  roll: { ...roll },
+  rollStackIndex,
+  steps: roll.steps,
+  reason,
+});
+
+/**
+ * Manual stack selection deliberately stays unresolved until the player chooses.
+ * Timeout recovery instead snapshots one deterministic roll and stack index so a
+ * delayed UI callback can never be the only path that advances the game.
+ */
+export const resolveMoveTimeoutContext = (params: {
+  stackedRollMode: boolean;
+  roll: YutResult | null;
+  rollStack: YutResult[];
+  rollStackClosed: boolean;
+  selectedRollStackIndex: number | null;
+}): MoveTimeoutContext => {
+  const unresolved: MoveTimeoutContext = { roll: null, rollStackIndex: null, steps: 0, reason: 'unresolved' };
+  if (!params.stackedRollMode) {
+    return isValidTimeoutMoveRoll(params.roll)
+      ? makeResolvedTimeoutMoveContext(params.roll, null, 'non-stacked')
+      : unresolved;
+  }
+  if (!params.rollStackClosed || params.rollStack.length === 0) return unresolved;
+
+  if (typeof params.selectedRollStackIndex === 'number') {
+    if (!Number.isInteger(params.selectedRollStackIndex)
+      || params.selectedRollStackIndex < 0
+      || params.selectedRollStackIndex >= params.rollStack.length) return unresolved;
+    const selectedRoll = params.rollStack[params.selectedRollStackIndex];
+    return isValidTimeoutMoveRoll(selectedRoll)
+      ? makeResolvedTimeoutMoveContext(selectedRoll, params.selectedRollStackIndex, 'selected')
+      : unresolved;
+  }
+
+  const firstRoll = params.rollStack[0];
+  if (!isValidTimeoutMoveRoll(firstRoll)) return unresolved;
+  return makeResolvedTimeoutMoveContext(
+    firstRoll,
+    0,
+    params.rollStack.length === 1 ? 'single' : 'default-first',
+  );
+};
+
 export type MoveTimeoutPiece = { id: string; label?: string; nodeId: string; started: boolean; finished: boolean };
 
 export const resolveMoveTimeout = <TPiece extends MoveTimeoutPiece>(params: {

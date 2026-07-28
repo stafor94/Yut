@@ -39,6 +39,7 @@ import { GameBoardSection } from '../containers/GameBoardSection';
 import { TurnOrderIntroOverlay } from './TurnOrderIntroOverlay';
 import { useDeadlineReached } from '../hooks/useDeadlineReached';
 import { useDisplayClock } from '../hooks/useDisplayClock';
+import { useStackedRollTimeoutRecovery } from '../hooks/useStackedRollTimeoutRecovery';
 
 type GameScreenViewProps = {
   activeItemPromptTypes: ItemType[];
@@ -322,6 +323,31 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     : activeAutoPlayActive
       ? activeSeat
       : undefined;
+  const recoverySeats = playerPanelSeats.length ? playerPanelSeats : seats;
+
+  useStackedRollTimeoutRecovery({
+    activeSeat,
+    coordinatorEpoch,
+    localSeatId,
+    movingPieceId,
+    onlineGameCoordinatorSeatId,
+    pendingTrapPlacement,
+    pieces,
+    playMode,
+    roll,
+    rollAnimationActive: Boolean(rollAnimation),
+    rollResultHolding: rollResultHolding || presentationTurn.isFrozen || deferRollDerivedContent,
+    rollStack,
+    rollStackClosed,
+    selectedPieceId,
+    selectedRollStackIndex,
+    seats: recoverySeats,
+    spectators,
+    turnDeadlineAt,
+    turnDeadlineKind,
+    turnOrderBlocked: Boolean(activeTurnOrderIntro || turnOrderPhase.active || waitingForOnlineTurnOrder),
+    winner,
+  });
 
   const startVisualCapture = (nextEffect: CaptureVisualEffect, playInferredSound: boolean) => {
     if (captureClearTimerRef.current !== null) window.clearTimeout(captureClearTimerRef.current);

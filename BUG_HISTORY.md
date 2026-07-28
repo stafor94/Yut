@@ -6,6 +6,68 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 
 ---
 
+## 2026-07-28 - 이동 스택 미선택 상태에서 제한시간 이후 게임이 영구 고착됨
+
+### Symptom
+
+- 누적 던지기 모드에서 서로 다른 이동 결과가 두 개 이상 쌓이고 아직 사용할 스택을 선택하지 않은 상태였다.
+- authoritative/local 상태는 `roll=null`, `rollStackClosed=true`, `selectedRollStackIndex=null`, `turnDeadlineKind='move'`로 정상적인 선택 대기를 표현했다.
+- 제한시간이 지나면 스택 버튼은 잠겼지만 `move_piece` sequence가 생성되지 않았고 같은 턴과 같은 이동 대기 상태가 계속 유지됐다.
+- 새로고침이나 사용자의 수동 재클릭 없이는 게임을 진행할 수 없었다.
+
+### Expected behavior
+
+- deadline 직전 UI 자동 선택 callback이 실행되지 않거나 늦게 실행돼도 정확성이 깨지면 안 된다.
+- deadline 이후 일반 사용자 입력은 계속 차단하되 `deadline + TURN_NETWORK_GRACE_MS` 이후 유효한 coordinator가 진행을 보장해야 한다.
+- 유효한 기존 선택이 없으면 현재 화면 자동 처리 정책과 동일하게 배열의 0번 스택을 결정적으로 사용해야 한다.
+- 선택한 roll과 `rollStackIndex`는 하나의 immutable timeout context에서 계산해 같은 authoritative payload로 제출해야 한다.
+
+### Confirmed root cause
+
+- 스택 동기화와 `resolveEffectiveMoveContext()`는 다중 미선택 상태를 의도대로 `roll=null`과 `rollStackIndex=null`로 유지했다.
+- `GameBoardControls`의 deadline 약 80ms 전 자동 선택 callback이 사실상 유일한 진행 경로였고, Android/Samsung Internet의 타이머 지연·메인 스레드 정체·백그라운드 복귀로 callback이 deadline 이후 실행될 수 있었다.
+- 늦은 callback은 일반 `move_piece`를 제출하지 않고 timeout 표시와 버튼 잠금만 수행했다.
+- 기존 stalled-turn recovery는 local `roll`과 확정된 스택 인덱스를 요구했고, 다중 미선택 상태를 `roll-stack-index-ambiguous`로 차단해 coordinator 복구 대상을 만들지 못했다.
+- authoritative reducer는 exact deadline, network grace, actor, coordinator lease, 유효한 `rollStackIndex`, 단일 스택 소비 계약을 이미 지원했지만 클라이언트가 해당 payload를 만들지 않았다.
+
+### Previous failed approaches and coverage gap
+
+- 기존 #443 계열 수정은 제한시간 자동 행동과 timeout 복구를 추가했지만 다중 미선택 스택에서 `roll=null`이 되는 정상 제품 상태를 회귀 fixture로 고정하지 않았다.
+- deadline 직전 80ms 화면 타이머가 정상 실행되는 경로만 검증해 모바일 타이머 지연 시 정확성 보장 경로가 사라지는 문제를 남겼다.
+- selected stack override 또는 이미 존재하는 local roll만 단위 테스트했고 `roll=null`, 닫힌 다중 스택, 미선택 상태의 coordinator recovery를 검증하지 않았다.
+- reducer의 일반 move deadline과 선택된 스택 소비는 검증했지만 timeout recovery가 0번 스택 하나만 소비하고 같은 action key가 중복 이동을 만들지 않는 연결 테스트가 없었다.
+
+### Do not try again
+
+- 제한시간 이후 사용자가 스택 버튼을 다시 눌러야 진행되는 방식으로 복구하지 않는다.
+- deadline 직전 80ms timer, React `setSelectedRollStackIndex()` 반영 순서, local `roll` 존재를 정확성의 필수 조건으로 사용하지 않는다.
+- `roll-stack-index-ambiguous`를 이유로 닫힌 유효 스택의 timeout 복구를 영구 보류하지 않는다.
+- UI disabled 조건 완화, 버튼 재활성화, deadline 이후 일반 사용자 action 허용으로 해결하지 않는다.
+- 제한시간·Playwright timeout 증가, assertion 삭제, skip, `continue-on-error`, 스택 전체 소비로 고착을 숨기지 않는다.
+- coordinator lease, actor, exact deadline, network grace 검증을 약화하지 않는다.
+
+### Correct fix plan
+
+- 수동 이동용 `resolveEffectiveMoveContext()`는 미선택 상태를 그대로 유지한다.
+- 별도 순수 timeout resolver가 비누적 roll, 유효한 선택 인덱스, 단일 스택, 닫힌 미선택 다중 스택을 하나의 immutable `{ roll, rollStackIndex, steps, reason }`으로 결정한다.
+- 닫힌 미선택 스택은 결과 중복 여부와 무관하게 배열의 0번을 기본값으로 사용하고 열린 스택·빈 스택·잘못된 인덱스·유효하지 않은 결과는 unresolved로 남긴다.
+- 현재 coordinator만 `deadline + TURN_NETWORK_GRACE_MS` 이후 exact deadline과 동일 action key로 timeout recovery를 제출한다.
+- 양수 이동에서 유효한 말이 없거나 분기점 선택이 필요한 기존 안전 상태는 임의 진행하지 않고 기존 진단·재동기화 정책을 유지한다.
+- 빽도에 이동 가능한 말이 없으면 기존 authoritative 빈 `pieceId` 소비 계약을 유지한다.
+- Desktop online-core와 Galaxy 412×915 QA가 미래 deadline의 선택 UI를 먼저 확인한 뒤 deadline을 만료시켜 UI callback에 의존하지 않고 sequence·state를 polling한다.
+
+### Verification checklist
+
+- [x] timeout 전용 immutable 이동 컨텍스트와 수동 선택 계약 분리를 단위 테스트에 추가했다.
+- [x] reducer의 exact deadline, grace 이후 0번 단일 소비, 남은 스택 보존, 잘못된 deadline/index 거부, 재적용 비중복, 빽도 pass 계약을 회귀 테스트에 추가했다.
+- [x] Desktop spec을 `online-core`, Galaxy spec을 `mobile-galaxy` suite manifest에 연결했다.
+- [ ] Unit tests pass
+- [ ] Build succeeds
+- [ ] QA architecture validation passes
+- [ ] Desktop online-core stacked timeout QA passes
+- [ ] Mobile Galaxy stacked timeout QA passes
+- [ ] Main Branch QA succeeds
+
 ## 2026-07-27 - AI끼리 순서 정하기 재대결 시 제출 완료 후 결과 수집 상태가 끝나지 않음
 
 ### Symptom
