@@ -3,9 +3,12 @@ import react from '@vitejs/plugin-react';
 
 function readBuildVersion(command: string) {
   if (command === 'serve') return 'development';
-  const githubSha = String(process.env.GITHUB_SHA ?? '').trim();
+  const runtimeEnv = (globalThis as {
+    process?: { env?: Record<string, string | undefined> };
+  }).process?.env ?? {};
+  const githubSha = String(runtimeEnv.GITHUB_SHA ?? '').trim();
   if (githubSha) return githubSha;
-  const explicitVersion = String(process.env.VITE_APP_VERSION ?? '').trim();
+  const explicitVersion = String(runtimeEnv.VITE_APP_VERSION ?? '').trim();
   if (explicitVersion) return explicitVersion;
   return `local-${Date.now()}`;
 }
