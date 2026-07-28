@@ -74,10 +74,11 @@ test('순서 점수는 모부터 낙까지 확정 규칙을 따른다', () => {
   assert.equal(getTurnOrderScore(submission(roundId, 'p1', '낙', 1)), -2);
 });
 
-test('첫 라운드는 모든 참가자에게 같은 8초 제한시간을 준다', () => {
+test('첫 라운드는 모든 참가자에게 같은 5초 제한시간을 준다', () => {
   const intro = createIntro('individual', 12_000);
+  assert.equal(TURN_ORDER_ROUND_DURATION_MS, 5_000);
   assert.equal(intro.currentRound.startAt, 12_000);
-  assert.equal(intro.currentRound.deadlineAt, 12_000 + TURN_ORDER_ROUND_DURATION_MS);
+  assert.equal(intro.currentRound.deadlineAt - intro.currentRound.startAt, 5_000);
   assert.deepEqual(intro.currentRound.eligibleSeatIds, ['p1', 'p2', 'p3', 'p4']);
   assert.equal(intro.currentRound.submissions.length, 0);
 });
@@ -130,6 +131,7 @@ test('같은 결과별로 독립된 재대결 bracket을 만들고 확정 순위
     { rankStart: 3, seatIds: ['p2', 'p4'] },
   ]);
   assert.equal(intro.nextRound?.startAt, Number(intro.currentRound.revealAt) + TURN_ORDER_RESULT_HOLD_MS);
+  assert.equal(Number(intro.nextRound?.deadlineAt) - Number(intro.nextRound?.startAt), 5_000);
 
   intro = activateNextTurnOrderRound(intro, Number(intro.nextRound?.startAt));
   intro = submitRound(intro, { p1: '도', p3: '걸', p2: '빽도', p4: '낙' }, Number(intro.currentRound.startAt) + 500);
