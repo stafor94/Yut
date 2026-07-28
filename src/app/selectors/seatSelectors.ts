@@ -110,7 +110,7 @@ export const seatsWithJoinedPlayer = (
   if (!targetSeat) return seats;
 
   return seats.map((seat) => seat.label === targetSeat.label
-    ? { ...seat, id: currentUserId, name: nickname, ready: false, isHost: joinedSeatIndex === 0, isEmpty: false }
+    ? { ...seat, id: currentUserId, name: nickname, ready: false, isHost: false, isEmpty: false }
     : seat);
 };
 
