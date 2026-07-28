@@ -70,7 +70,7 @@ export type TurnOrderRollEntry<TSeat extends TurnOrderSeat = TurnOrderSeat> = { 
 
 const TURN_ORDER_TEAM_COLORS: Record<TurnOrderTeam, string> = { 청팀: '#3a78c2', 홍팀: '#d94a38' };
 export const TURN_ORDER_INITIAL_DELAY_MS = 8_000;
-export const TURN_ORDER_ROUND_DURATION_MS = 8_000;
+export const TURN_ORDER_ROUND_DURATION_MS = 5_000;
 export const TURN_ORDER_REVEAL_DELAY_MS = 3_000;
 export const TURN_ORDER_RESULT_HOLD_MS = 3_000;
 export const TURN_ORDER_PRESENTATION_FINAL_HOLD_MS = 3_000;
