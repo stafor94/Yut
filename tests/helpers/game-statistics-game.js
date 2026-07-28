@@ -25,6 +25,7 @@ export async function startGameStatisticsQaGame(page, context, testInfo, { playe
   for (let seatNumber = 2; seatNumber <= playerCount; seatNumber += 1) {
     const addAiButton = page.getByTestId(`add-ai-P${seatNumber}`);
     await expect(addAiButton).toBeVisible({ timeout: 15_000 });
+    await expect(addAiButton).toBeEnabled({ timeout: 15_000 });
     await addAiButton.click();
   }
 
