@@ -45,6 +45,7 @@
     "src/app/flows/effectiveMoveContext.ts",
     "src/app/flows/gameEndRoomReturn.ts",
     "src/app/flows/gameStartPreparation.ts",
+    "src/app/flows/gameStatistics.ts",
     "src/app/flows/turnOrderFlow.ts",
     "src/app/flows/turnOrderSubmissionPolicy.ts",
     "src/app/flows/renderFailure.ts",
