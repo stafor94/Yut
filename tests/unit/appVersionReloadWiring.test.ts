@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const lobbySource = readFileSync('src/app/containers/LobbyContainer.tsx', 'utf8');
 const hookSource = readFileSync('src/app/hooks/useLobbyAppVersionReload.ts', 'utf8');
+const qaHelperSource = readFileSync('tests/helpers/app-version.js', 'utf8');
 const viteConfigSource = readFileSync('vite.config.ts', 'utf8');
 const viteEnvSource = readFileSync('src/vite-env.d.ts', 'utf8');
 const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as { scripts?: Record<string, string> };
@@ -36,6 +37,12 @@ test('새 버전 자동 갱신은 동일 버전 반복 실행을 막는다', () 
   assert.match(hookSource, /shouldReloadForAppVersion/);
   assert.match(hookSource, /shouldClearAppVersionReloadMarker/);
   assert.match(hookSource, /window\.location\.reload\(\)/);
+});
+
+test('QA 문서 로드 횟수 조회는 예상된 navigation context 교체만 새 document에서 재시도한다', () => {
+  assert.match(qaHelperSource, /error\.message\.includes\('Execution context was destroyed'\)/);
+  assert.match(qaHelperSource, /if \(!isExpectedNavigationContextError\(error\)\) throw error;/);
+  assert.match(qaHelperSource, /await page\.waitForLoadState\('domcontentloaded'\);[\s\S]*return page\.evaluate/);
 });
 
 test('빌드는 동일 버전을 번들과 version manifest에 기록하고 산출물을 검증한다', () => {
