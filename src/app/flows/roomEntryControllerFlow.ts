@@ -10,7 +10,7 @@ import { isRoomTransitionInProgress } from './roomCreationFlow';
 export type EnterableRoom = Pick<RoomSummary, 'title' | 'itemMode' | 'stackedRollMode' | 'maxPlayers' | 'playMode' | 'pieceCount'> & Partial<Pick<RoomSummary, 'id' | 'hostId' | 'status'>>;
 
 type Screen = 'lobby' | 'waitingRoom' | 'game';
-export type JoinRoomResult = { role: 'player' | 'spectator'; seatIndex: number | null; presenceEpoch?: number };
+export type JoinRoomResult = { role: 'player' | 'spectator'; seatIndex: number | null; presenceEpoch?: number; roomInGame?: boolean };
 export type RoomSummary = { id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: PlayMode; pieceCount: PieceCount; createRequestId?: string };
 
 type RoomSessionActions = {
@@ -109,7 +109,10 @@ export async function openWaitingRoomForEntry(params: RoomEntryControllerParams 
     if (joinResult?.role === 'player' && joiningUser) params.onSeatsChange(seatsWithJoinedPlayer([], joiningUser.uid, params.nickname, room.playMode, nextMaxPlayers, joinResult.seatIndex));
     else if (asHost && roomUser) params.onSeatsChange(nextSeats.map((seat) => seat.isHost ? { ...seat, id: roomUser.uid } : seat));
     else params.onSeatsChange(nextSeats);
-    const nextScreen: Screen = room.id && !asHost && runtime.isRoomInGame(room as RoomSummary) ? 'game' : 'waitingRoom';
+    const authoritativeRoomInGame = typeof joinResult?.roomInGame === 'boolean'
+      ? joinResult.roomInGame
+      : runtime.isRoomInGame(room as RoomSummary);
+    const nextScreen: Screen = room.id && authoritativeRoomInGame ? 'game' : 'waitingRoom';
     if (nextScreen === 'game' && room.id) beginGameStateSync(room.id);
     params.onScreenChange(nextScreen);
     params.onLoadingMessage('');

@@ -27,7 +27,8 @@ const COLORS = ['red', 'blue', 'green', 'yellow'] as const;
 const TEAMS: RoomPlayer['team'][] = ['청팀', '홍팀', '청팀', '홍팀'];
 
 type SeatSnapshot = DocumentSnapshot;
-type JoinRoomInternalResult = JoinRoomResult & { syncRestoredGameSeat?: boolean };
+export type AuthoritativeJoinRoomResult = JoinRoomResult & { roomInGame: boolean };
+type JoinRoomInternalResult = AuthoritativeJoinRoomResult & { syncRestoredGameSeat?: boolean };
 
 const isRoomOpenForGameEntry = (room: ManagedRoomSummary) => room.status === 'finished' || isRoomInGameCore(room);
 
@@ -60,7 +61,7 @@ async function syncRestoredGameSeatAfterJoin(
   });
 }
 
-export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): Promise<JoinRoomResult> {
+export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): Promise<AuthoritativeJoinRoomResult> {
   if (!db) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
   const [roomId, params] = args;
   const roomRef = doc(db, 'rooms', roomId);
@@ -71,6 +72,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     if (!roomSnapshot.exists()) throw new Error('존재하지 않는 방입니다.');
     const room = roomSnapshot.data() as ManagedRoomSummary;
     if (room.deletingAt || isSystemRoom(room) || isRoomDeletionExpired(room, Date.now())) throw new Error('이미 종료되었거나 입장할 수 없는 방입니다.');
+    const roomInGame = isRoomOpenForGameEntry(room);
 
     const existingPlayer = await transaction.get(playerRef);
     const maxPlayers = room.maxPlayers as 2 | 3 | 4;
@@ -162,6 +164,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         role: 'player',
         seatIndex,
         presenceEpoch: restoredPresenceEpoch,
+        roomInGame,
         ...(syncRestoredGameSeat ? { syncRestoredGameSeat: true } : {}),
       };
     };
@@ -179,7 +182,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         const restoreSeat = seatSnapshots[restoreSeatIndex].exists() ? seatSnapshots[restoreSeatIndex].data() as RoomSeat : null;
         return restorePlayerAt(restoreSeatIndex, existingData, restoreSeat, existingData.joinedAt ?? serverTimestamp());
       }
-      if (isRoomOpenForGameEntry(room)) {
+      if (roomInGame) {
         transaction.set(playerRef, {
           nickname: params.nickname,
           ready: true,
@@ -193,7 +196,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
           lastSeen: serverTimestamp(),
         }, { merge: true });
         transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: connectedHumanSeatCount, lastActivityAt: Date.now() }, { merge: true });
-        return { role: 'spectator', seatIndex: null };
+        return { role: 'spectator', seatIndex: null, roomInGame };
       }
       const seatIndex = seatSnapshots.findIndex(isAvailableSeat);
       if (seatIndex < 0) throw new Error(ROOM_CAPACITY_FULL_ERROR_MESSAGE);
@@ -226,7 +229,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         updatedAt: serverTimestamp(),
       });
       transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: countConnectedHumanRoomSeatsAfterClaim(seatStates, seatIndex), lastActivityAt: Date.now() }, { merge: true });
-      return { role: 'player', seatIndex };
+      return { role: 'player', seatIndex, roomInGame };
     }
 
     if (matchingLockedSeatIndex >= 0) {
@@ -234,7 +237,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
       return restorePlayerAt(matchingLockedSeatIndex, null, lockedSeat, serverTimestamp());
     }
 
-    if (isRoomOpenForGameEntry(room)) {
+    if (roomInGame) {
       transaction.set(playerRef, {
         nickname: params.nickname,
         ready: true,
@@ -248,7 +251,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
         lastSeen: serverTimestamp(),
       }, { merge: true });
       transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: connectedHumanSeatCount, lastActivityAt: Date.now() }, { merge: true });
-      return { role: 'spectator', seatIndex: null };
+      return { role: 'spectator', seatIndex: null, roomInGame };
     }
 
     const seatIndex = seatSnapshots.findIndex(isAvailableSeat);
@@ -282,7 +285,7 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
       updatedAt: serverTimestamp(),
     });
     transaction.set(roomRef, { emptySince: null, lastHumanSeenAt: serverTimestamp(), deletingAt: null, currentPlayers: countConnectedHumanRoomSeatsAfterClaim(seatStates, seatIndex), lastActivityAt: Date.now() }, { merge: true });
-    return { role: 'player', seatIndex };
+    return { role: 'player', seatIndex, roomInGame };
   }).catch((error) => {
     if (isRoomCapacityFullError(error) && typeof window !== 'undefined') {
       window.dispatchEvent(new Event(ROOM_CAPACITY_FULL_EVENT));
@@ -299,5 +302,5 @@ export async function joinRoomSafely(...args: Parameters<typeof joinRoomCore>): 
     await syncRestoredGameSeatAfterJoin(roomId, params.userId, transactionResult.seatIndex, transactionResult.presenceEpoch);
   }
   const { syncRestoredGameSeat: _syncRestoredGameSeat, ...result } = transactionResult;
-  return result as JoinRoomResult;
+  return result as AuthoritativeJoinRoomResult;
 }

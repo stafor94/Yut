@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
-import type { RoomSummary } from '../../features/room/services/roomService';
+import { isRoomInGame, type RoomSummary } from '../../features/room/services/roomService';
+import { getLobbyRoomActionText } from '../flows/lobbyRoomAction';
 import { truncateRoomTitle } from '../flows/roomTitle';
 import { LobbyScreen } from '../screens/LobbyScreen';
 
@@ -108,6 +109,14 @@ export function LobbyContainer({
     };
   }, [resetInitialRoomQuery, startInitialRoomQuery]);
 
+  const currentUserId = currentUser?.uid ?? '';
+  const recoverablePlayerRoomId = rooms.find((room) => getLobbyRoomActionText({
+    firebaseConfigured: isFirebaseConfigured,
+    currentUserId,
+    roomInGame: isRoomInGame(room),
+    playerIds: room.playerIds,
+  }) === '참가' && isRoomInGame(room))?.id ?? '';
+
   return <>
     <LobbyScreen
       title={title}
@@ -116,7 +125,7 @@ export function LobbyContainer({
       isInitialRoomQuerying={isInitialRoomQuerying}
       isFirebaseConfigured={isFirebaseConfigured}
       currentUser={currentUser}
-      resumableRoomId={resumableRoomId}
+      resumableRoomId={recoverablePlayerRoomId || resumableRoomId}
       nickname={nickname}
       soundEnabled={soundEnabled}
       onTitleChange={(nextTitle) => onTitleChange(truncateRoomTitle(nextTitle))}

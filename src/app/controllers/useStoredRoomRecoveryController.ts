@@ -3,10 +3,10 @@ import type { MutableRefObject } from 'react';
 import type { User } from 'firebase/auth';
 import { getRoom, isRoomInGame, joinRoom, type RoomSummary } from '../../features/room/services/roomService';
 import type { PieceCount, PlayMode, Seat } from '../appTypes';
-import { STORAGE_KEYS } from '../preferences/localPreferences';
 import { getStoredRoomRecoveryTarget, recoverStoredRoom } from '../flows/storedRoomRecoveryFlow';
 
 type Screen = 'lobby' | 'waitingRoom' | 'game';
+const STORED_ROOM_RECOVERY_RETRY_DELAYS_MS = [1_000, 3_000] as const;
 
 type UseStoredRoomRecoveryControllerParams = {
   currentUser: User | null;
@@ -40,33 +40,47 @@ export function useStoredRoomRecoveryController(params: UseStoredRoomRecoveryCon
     if (!currentUser || !storedRoomId || recoveringRoomIdRef.current === storedRoomId) return;
     let cancelled = false;
     recoveringRoomIdRef.current = storedRoomId;
-    void recoverStoredRoom({
-      currentUser,
-      nickname: params.nickname,
-      hostingRoomUserIdRef: params.hostingRoomUserIdRef,
-      onActiveRoomIdChange: params.onActiveRoomIdChange,
-      onRoomHostChange: params.onRoomHostChange,
-      onActiveRoomTitleChange: params.onActiveRoomTitleChange,
-      onRoomHostIdChange: params.onRoomHostIdChange,
-      onPlayModeChange: params.onPlayModeChange,
-      onMaxPlayersChange: params.onMaxPlayersChange,
-      onItemModeChange: params.onItemModeChange,
-      onStackedRollModeChange: params.onStackedRollModeChange,
-      onPieceCountChange: params.onPieceCountChange,
-      onSeatsChange: params.onSeatsChange,
-      onScreenChange: params.onScreenChange,
-      onMessage: params.onMessage,
-      onLoadingMessage: params.onLoadingMessage,
-      storedRoomId,
-      isCancelled: () => cancelled || recoveringRoomIdRef.current !== storedRoomId,
-      runtime: {
-        getRoom,
-        joinRoom,
-        isRoomInGame: (room: RoomSummary) => isRoomInGame(room),
-        localStorage: window.localStorage,
-        getCurrentActiveRoomId: () => activeRoomIdRef.current,
-      },
-    }).finally(() => {
+    const isCancelled = () => cancelled || recoveringRoomIdRef.current !== storedRoomId;
+    const runRecovery = async () => {
+      for (let attempt = 0; attempt <= STORED_ROOM_RECOVERY_RETRY_DELAYS_MS.length; attempt += 1) {
+        if (isCancelled() || activeRoomIdRef.current) return;
+        const result = await recoverStoredRoom({
+          currentUser,
+          nickname: params.nickname,
+          hostingRoomUserIdRef: params.hostingRoomUserIdRef,
+          onActiveRoomIdChange: params.onActiveRoomIdChange,
+          onRoomHostChange: params.onRoomHostChange,
+          onActiveRoomTitleChange: params.onActiveRoomTitleChange,
+          onRoomHostIdChange: params.onRoomHostIdChange,
+          onPlayModeChange: params.onPlayModeChange,
+          onMaxPlayersChange: params.onMaxPlayersChange,
+          onItemModeChange: params.onItemModeChange,
+          onStackedRollModeChange: params.onStackedRollModeChange,
+          onPieceCountChange: params.onPieceCountChange,
+          onSeatsChange: params.onSeatsChange,
+          onScreenChange: params.onScreenChange,
+          onMessage: params.onMessage,
+          onLoadingMessage: params.onLoadingMessage,
+          storedRoomId,
+          isCancelled,
+          runtime: {
+            getRoom,
+            joinRoom,
+            isRoomInGame: (room: RoomSummary) => isRoomInGame(room),
+            localStorage: window.localStorage,
+            getCurrentActiveRoomId: () => activeRoomIdRef.current,
+          },
+        });
+        if (result !== 'retryable-failure' || isCancelled() || activeRoomIdRef.current) return;
+        const retryDelay = STORED_ROOM_RECOVERY_RETRY_DELAYS_MS[attempt];
+        if (retryDelay === undefined) {
+          params.onMessage('이전 방 자동 복구에 실패했습니다. 연결 상태를 확인한 뒤 다시 시도해 주세요.');
+          return;
+        }
+        await new Promise<void>((resolve) => window.setTimeout(resolve, retryDelay));
+      }
+    };
+    void runRecovery().finally(() => {
       if (recoveringRoomIdRef.current === storedRoomId) recoveringRoomIdRef.current = '';
     });
     return () => { cancelled = true; };
