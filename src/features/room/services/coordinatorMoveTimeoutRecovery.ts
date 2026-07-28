@@ -69,7 +69,6 @@ export async function commitCoordinatorMoveTimeoutRecovery(
     playMode: state.playMode,
     pieceCount: state.pieceCount,
     stackedRollMode: state.stackedRollMode,
-    hostId: state.gameSeats.find((seat) => seat.isHost)?.id,
   }, sides);
   if (!isAuthoritativeCommitReduction(reduction)) return reduction;
 
