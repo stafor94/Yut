@@ -17,6 +17,9 @@ export type GameStatisticsSeatSource = {
 
 export type GameStatisticsStateSource = {
   gameSeats?: readonly GameStatisticsSeatSource[];
+  startRequestVersion?: unknown;
+  startRequestId?: unknown;
+  lastSequence?: unknown;
 };
 
 export type GameStatisticsSequence = {
@@ -24,6 +27,7 @@ export type GameStatisticsSequence = {
   type: string;
   actorId: string;
   payload?: Record<string, unknown>;
+  patch?: Record<string, unknown>;
   action?: {
     type?: unknown;
     actorId?: unknown;
@@ -82,6 +86,11 @@ const readString = (...values: unknown[]) => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
+const readNumber = (...values: unknown[]) => {
+  const value = values.find((candidate) => Number.isFinite(Number(candidate)));
+  return value === undefined ? undefined : Number(value);
+};
+
 const readBoolean = (...values: unknown[]) => {
   const value = values.find((candidate) => typeof candidate === 'boolean');
   return typeof value === 'boolean' ? value : undefined;
@@ -91,6 +100,71 @@ const readStringArray = (...values: unknown[]) => {
   const value = values.find(Array.isArray);
   return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 };
+
+const readGameIdentity = (value: unknown) => {
+  const object = readObject(value);
+  return {
+    startRequestVersion: readNumber(object?.startRequestVersion),
+    startRequestId: readString(object?.startRequestId),
+  };
+};
+
+const readInitializedGameIdentity = (sequence: GameStatisticsSequence) => {
+  const payload = readObject(sequence.payload);
+  const patch = readObject(sequence.patch);
+  const actionPayload = readObject(sequence.action?.payload);
+  const stateAfter = readObject(sequence.stateAfter);
+  return {
+    startRequestVersion: readNumber(
+      payload?.startRequestVersion,
+      patch?.startRequestVersion,
+      actionPayload?.startRequestVersion,
+      stateAfter?.startRequestVersion,
+    ),
+    startRequestId: readString(
+      payload?.startRequestId,
+      patch?.startRequestId,
+      actionPayload?.startRequestId,
+      stateAfter?.startRequestId,
+    ),
+  };
+};
+
+const identitiesMatch = (
+  latest: ReturnType<typeof readGameIdentity>,
+  initialized: ReturnType<typeof readInitializedGameIdentity>,
+) => {
+  if (latest.startRequestId && initialized.startRequestId) {
+    return latest.startRequestId === initialized.startRequestId;
+  }
+  if (latest.startRequestVersion !== undefined && initialized.startRequestVersion !== undefined) {
+    return latest.startRequestVersion === initialized.startRequestVersion;
+  }
+  return false;
+};
+
+export function selectCurrentGameSequences(
+  latestState: GameStatisticsStateSource | null | undefined,
+  sequences: readonly GameStatisticsSequence[],
+): GameStatisticsSequence[] {
+  const ordered = [...sequences].sort((left, right) => Number(left.sequence) - Number(right.sequence));
+  const initialized = ordered.filter((sequence) => sequence.type === 'game_initialized');
+  if (!initialized.length) return ordered;
+
+  const latestIdentity = readGameIdentity(latestState);
+  const matched = latestIdentity.startRequestId || latestIdentity.startRequestVersion !== undefined
+    ? [...initialized].reverse().find((sequence) => identitiesMatch(latestIdentity, readInitializedGameIdentity(sequence)))
+    : undefined;
+  const boundary = matched ?? initialized[initialized.length - 1];
+  const boundarySequence = Number(boundary.sequence) || 0;
+  const latestSequence = readNumber(latestState?.lastSequence);
+
+  return ordered.filter((sequence) => {
+    const sequenceNumber = Number(sequence.sequence) || 0;
+    return sequenceNumber >= boundarySequence
+      && (latestSequence === undefined || sequenceNumber <= latestSequence);
+  });
+}
 
 export function formatStatisticsPercentage(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0%';
@@ -165,9 +239,7 @@ export function buildGameStatisticsRollGroups(
     ascendingGroups.push(ascendingRecords.slice(start, start + normalizedColumns));
   }
 
-  return ascendingGroups.reverse().map((groupRecords) => ({
-    records: groupRecords,
-  }));
+  return ascendingGroups.reverse().map((groupRecords) => ({ records: groupRecords }));
 }
 
 export function getVisibleTimingStatistics(
@@ -175,17 +247,12 @@ export function getVisibleTimingStatistics(
 ): VisibleTimingStatistics {
   const primary = PRIMARY_TIMING_STAT_LABELS.map((label) => {
     const entry = entries.find((candidate) => candidate.label === label);
-    return entry
-      ? { ...entry, label }
-      : { label, count: 0, percentage: 0 };
+    return entry ? { ...entry, label } : { label, count: 0, percentage: 0 };
   });
   const unknown = entries.find((entry) => entry.label === '미확인');
-
   return {
     primary,
-    unknown: unknown && unknown.count > 0
-      ? { ...unknown, label: '미확인' }
-      : null,
+    unknown: unknown && unknown.count > 0 ? { ...unknown, label: '미확인' } : null,
   };
 }
 
@@ -207,16 +274,15 @@ const normalizeSeat = (seat: GameStatisticsSeatSource, fallbackIndex: number): G
 
 const readSeatsFromState = (state: unknown): readonly GameStatisticsSeatSource[] => {
   const stateObject = readObject(state);
-  return Array.isArray(stateObject?.gameSeats)
-    ? stateObject.gameSeats as GameStatisticsSeatSource[]
-    : [];
+  return Array.isArray(stateObject?.gameSeats) ? stateObject.gameSeats as GameStatisticsSeatSource[] : [];
 };
 
 export function resolveGameStatisticsSeats(
   latestState: GameStatisticsStateSource | null | undefined,
   sequences: readonly GameStatisticsSequence[],
 ): GameStatisticsSeat[] {
-  const newestStateSeats = [...sequences]
+  const currentGameSequences = selectCurrentGameSequences(latestState, sequences);
+  const newestStateSeats = [...currentGameSequences]
     .sort((left, right) => Number(right.sequence) - Number(left.sequence))
     .map((sequence) => readSeatsFromState(sequence.stateAfter).length
       ? readSeatsFromState(sequence.stateAfter)
@@ -228,28 +294,20 @@ export function resolveGameStatisticsSeats(
     : newestStateSeats ?? [];
 
   if (sourceSeats.length) {
-    return sourceSeats
-      .map(normalizeSeat)
-      .filter((seat) => Boolean(seat.id))
-      .sort((left, right) => left.seatIndex - right.seatIndex);
+    return sourceSeats.map(normalizeSeat).filter((seat) => Boolean(seat.id)).sort((left, right) => left.seatIndex - right.seatIndex);
   }
 
-  const actorIds = Array.from(new Set(sequences.map((sequence) => readString(sequence.actorId)).filter(Boolean)));
-  return actorIds.map((id, index) => ({
-    id,
-    label: `P${index + 1}`,
-    name: `플레이어 ${index + 1}`,
-    seatIndex: index,
-    isAI: false,
-  }));
+  const actorIds = Array.from(new Set(currentGameSequences.map((sequence) => readString(sequence.actorId)).filter(Boolean)));
+  return actorIds.map((id, index) => ({ id, label: `P${index + 1}`, name: `플레이어 ${index + 1}`, seatIndex: index, isAI: false }));
 }
 
 export function buildGameStatistics(
   sequences: readonly GameStatisticsSequence[],
   seats: readonly GameStatisticsSeat[],
 ): PlayerGameStatistics[] {
+  const currentGameSequences = selectCurrentGameSequences(undefined, sequences);
   return seats.map((seat) => {
-    const rolls = sequences
+    const rolls = currentGameSequences
       .filter((sequence) => sequence.type === 'roll_yut' && sequence.actorId === seat.id)
       .map((sequence) => ({
         sequence: Number(sequence.sequence) || 0,
@@ -259,7 +317,7 @@ export function buildGameStatistics(
       .sort((left, right) => right.sequence - left.sequence);
 
     const totalRolls = rolls.length;
-    const capturedPieceCount = sequences
+    const capturedPieceCount = currentGameSequences
       .filter((sequence) => sequence.actorId === seat.id)
       .reduce((sum, sequence) => sum + getCapturedPieceCount(sequence), 0);
 
