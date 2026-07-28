@@ -284,7 +284,7 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
     state = authoritativeState;
     return true;
   }, {
-    timeout: 30_000,
+    timeout: 20_000,
     intervals: [50, 100, 200, 400],
     message: 'sequence replay와 authoritative snapshot 적용이 모두 끝난 뒤 stacked timeout fixture를 주입해야 합니다.',
   }).toBe(true);
