@@ -55,7 +55,6 @@ export type GameStatisticsBreakdown<TLabel extends string> = {
 
 export type GameStatisticsRollGroup = {
   records: PlayerRollStatisticsRecord[];
-  leadingEmptyColumns: number;
 };
 
 export type VisibleTimingStatistics = {
@@ -156,9 +155,9 @@ const makeBreakdown = <TLabel extends string>(
 
 export function buildGameStatisticsRollGroups(
   records: readonly PlayerRollStatisticsRecord[],
-  columns = 3,
+  columns = 6,
 ): GameStatisticsRollGroup[] {
-  const normalizedColumns = Number.isInteger(columns) && columns > 0 ? columns : 3;
+  const normalizedColumns = Number.isInteger(columns) && columns > 0 ? columns : 6;
   const ascendingRecords = [...records].sort((left, right) => left.sequence - right.sequence);
   const ascendingGroups: PlayerRollStatisticsRecord[][] = [];
 
@@ -166,11 +165,8 @@ export function buildGameStatisticsRollGroups(
     ascendingGroups.push(ascendingRecords.slice(start, start + normalizedColumns));
   }
 
-  return ascendingGroups.reverse().map((groupRecords, groupIndex) => ({
+  return ascendingGroups.reverse().map((groupRecords) => ({
     records: groupRecords,
-    leadingEmptyColumns: groupIndex === 0
-      ? normalizedColumns - groupRecords.length
-      : 0,
   }));
 }
 
