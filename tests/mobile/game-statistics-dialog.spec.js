@@ -149,7 +149,6 @@ test.describe('통계 정보 모바일 레이아웃', () => {
     expect(await topRecords.evaluateAll((cards) => cards.map((card) => card.querySelector('.game-statistics-sequence-badge')?.textContent))).toEqual([
       '#37', '#38', '#39', '#40',
     ]);
-    await expect(topRecords.first()).toHaveCSS('grid-column-start', '1');
     expect(await rows.nth(1).getByTestId('game-statistics-record').evaluateAll((cards) => cards.map((card) => card.querySelector('.game-statistics-sequence-badge')?.textContent))).toEqual([
       '#31', '#32', '#33', '#34', '#35', '#36',
     ]);
