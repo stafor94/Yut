@@ -15,6 +15,7 @@ import {
   formatStatisticsPercentage,
   getVisibleTimingStatistics,
   resolveGameStatisticsSeats,
+  selectCurrentGameSequences,
   type PlayerGameStatistics,
   type TimingStatLabel,
 } from '../flows/gameStatistics';
@@ -132,8 +133,9 @@ export function GameStatisticsHost() {
         || activeRequest.roomId !== roomId
         || readActiveRoomId() !== roomId) return;
 
-      const seats = resolveGameStatisticsSeats(latestState as SyncedGameState | null, sequences as GameSequence[]);
-      const nextStatistics = buildGameStatistics(sequences as GameSequence[], seats);
+      const currentGameSequences = selectCurrentGameSequences(latestState as SyncedGameState | null, sequences as GameSequence[]);
+      const seats = resolveGameStatisticsSeats(latestState as SyncedGameState | null, currentGameSequences);
+      const nextStatistics = buildGameStatistics(currentGameSequences, seats);
       setStatistics(nextStatistics);
       setSelectedSeatId((current) => (
         nextStatistics.some((entry) => entry.seat.id === current)
