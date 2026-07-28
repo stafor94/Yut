@@ -202,6 +202,41 @@ const getRecoverySequences = (sequences, actionKey) => sequences.filter((sequenc
   && sequence.action?.payload?.clientActionId === actionKey
 ));
 
+const hasClientAppliedAuthoritativeState = (screen, state) => {
+  const debug = screen.yutDebug;
+  const syncPipeline = debug?.syncPipeline;
+  const stateVersion = Number(state?.turnVersion ?? 0);
+  const sequence = Number(state?.lastSequence ?? 0);
+  return Boolean(
+    debug
+    && syncPipeline
+    && stateVersion > 0
+    && sequence > 0
+    && Number(debug.lastAppliedStateVersion ?? 0) === stateVersion
+    && Number(debug.lastAppliedSequence ?? 0) === sequence
+    && syncPipeline.applyingSyncedState === false
+    && syncPipeline.sequenceReplayInProgress === false
+    && syncPipeline.onlineAuthoritativeGameStatePending === false
+    && syncPipeline.authoritativeGameStateReady === true,
+  );
+};
+
+const hasClientAppliedFixture = (screen, fixture, deadlineAt) => {
+  const debug = screen.yutDebug;
+  const syncPipeline = debug?.syncPipeline;
+  return Boolean(
+    debug
+    && syncPipeline
+    && Number(debug.lastAppliedStateVersion ?? 0) === fixture.turnVersion
+    && Number(debug.lastAppliedSequence ?? 0) === fixture.lastSequence
+    && debug.roll === null
+    && debug.turnDeadlineKind === 'move'
+    && Number(debug.turnDeadlineAt ?? 0) === deadlineAt
+    && syncPipeline.applyingSyncedState === false
+    && syncPipeline.sequenceReplayInProgress === false,
+  );
+};
+
 export async function prepareStackedRollTimeoutFixture({ page, context, testInfo }) {
   const hostName = normalizeQaNickname(makeQaName(testInfo, 'stackhost'));
   const roomTitle = makeQaName(testInfo, 'stack-timeout-room');
@@ -236,15 +271,25 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
     );
   }, { timeout: 40_000, message: '순서 정하기 완료 후 stacked timeout fixture를 주입해야 합니다.' }).toBe(true);
 
-  const readyState = await expect.poll(async () => {
-    const state = await getRoomStateForQa(roomId);
-    if (!state || !Array.isArray(state.turnOrderIds) || !state.turnOrderIds.length) return null;
-    if (!state.coordinatorSeatId || Number(state.coordinatorEpoch ?? 0) <= 0) return null;
-    return state;
-  }, { timeout: 20_000, message: 'authoritative state와 coordinator lease가 준비되어야 합니다.' }).not.toBeNull();
-  void readyState;
-  const state = await getRoomStateForQa(roomId);
-  if (!state) throw new Error('authoritative game state가 없습니다.');
+  let state = null;
+  await expect.poll(async () => {
+    const authoritativeState = await getRoomStateForQa(roomId);
+    if (!authoritativeState
+      || !Array.isArray(authoritativeState.turnOrderIds)
+      || !authoritativeState.turnOrderIds.length
+      || !authoritativeState.coordinatorSeatId
+      || Number(authoritativeState.coordinatorEpoch ?? 0) <= 0) return false;
+    const screen = await collectScreenState(page);
+    if (!hasClientAppliedAuthoritativeState(screen, authoritativeState)) return false;
+    state = authoritativeState;
+    return true;
+  }, {
+    timeout: 30_000,
+    intervals: [50, 100, 200, 400],
+    message: 'sequence replay와 authoritative snapshot 적용이 모두 끝난 뒤 stacked timeout fixture를 주입해야 합니다.',
+  }).toBe(true);
+  if (!state) throw new Error('동기화가 완료된 authoritative game state가 없습니다.');
+
   const actorId = String(state.coordinatorSeatId ?? state.turnOrderIds?.[0] ?? '');
   const actorTurnIndex = Math.max(0, state.turnOrderIds.findIndex((seatId) => seatId === actorId));
   const visibleDeadlineAt = Date.now() + 60_000;
@@ -295,6 +340,15 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
     message: '닫힌 다중 미선택 이동 스택 fixture가 authoritative sequence로 안정적으로 반영되어야 합니다.',
   }).toBe(true);
 
+  await expect.poll(async () => {
+    const screen = await collectScreenState(page);
+    return hasClientAppliedFixture(screen, visibleFixture, visibleDeadlineAt);
+  }, {
+    timeout: 10_000,
+    intervals: [50, 100, 200, 400],
+    message: '클라이언트가 닫힌 다중 이동 스택 fixture sequence를 실제로 적용해야 합니다.',
+  }).toBe(true);
+
   const picker = page.locator('.roll-stack-picker');
   await expect(picker).toBeVisible({ timeout: 10_000 });
   await expect(picker.getByRole('button')).toHaveCount(2);
@@ -319,6 +373,16 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
     intervals: [25, 50, 100],
     message: '만료된 move deadline fixture가 authoritative sequence로 반영되어야 합니다.',
   }).toBe(true);
+
+  await expect.poll(async () => {
+    const screen = await collectScreenState(page);
+    return hasClientAppliedFixture(screen, expiredFixture, timeoutDeadlineAt);
+  }, {
+    timeout: 10_000,
+    intervals: [50, 100, 200, 400],
+    message: '클라이언트가 만료된 move deadline fixture sequence를 실제로 적용해야 합니다.',
+  }).toBe(true);
+
   await expect.poll(async () => {
     const buttons = picker.getByRole('button');
     const buttonCount = await buttons.count();
