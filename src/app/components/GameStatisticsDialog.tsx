@@ -293,13 +293,10 @@ export function GameStatisticsHost() {
                 className="game-statistics-record-row"
                 key={`${selectedStatistics.seat.id}-group-${group.records[0]?.sequence ?? groupIndex}`}
               >
-                {group.records.map((record, recordIndex) => <article
+                {group.records.map((record) => <article
                   data-testid="game-statistics-record"
                   className="game-statistics-record"
                   key={`${selectedStatistics.seat.id}-${record.sequence}`}
-                  style={recordIndex === 0 && group.leadingEmptyColumns > 0
-                    ? { gridColumnStart: group.leadingEmptyColumns + 1 }
-                    : undefined}
                 >
                   <strong className="game-statistics-sequence-badge">#{record.sequence}</strong>
                   <span
