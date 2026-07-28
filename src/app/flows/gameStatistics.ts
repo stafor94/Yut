@@ -27,7 +27,7 @@ export type GameStatisticsSequence = {
   type: string;
   actorId: string;
   payload?: Record<string, unknown>;
-  patch?: Record<string, unknown>;
+  patch?: Record<string, unknown> | null;
   action?: {
     type?: unknown;
     actorId?: unknown;
