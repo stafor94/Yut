@@ -7,6 +7,13 @@ export async function installGameStatisticsFixture(page, {
   failuresBeforeSuccess = 0,
   roomData = null,
 } = {}) {
+  const nicknameDialog = page.getByRole('dialog', { name: '닉네임 설정' });
+  if (await nicknameDialog.isVisible().catch(() => false)) {
+    await nicknameDialog.getByRole('textbox').fill('통계QA');
+    await nicknameDialog.getByRole('button', { name: '시작하기' }).click();
+    await nicknameDialog.waitFor({ state: 'hidden' });
+  }
+
   await page.evaluate(({ nextRoomId, nextLocalSeatId, nextSeats, nextSequences, nextDelayMs, nextFailuresBeforeSuccess, nextRoomData }) => {
     window.localStorage.setItem('yut-online:activeRoomId', nextRoomId);
     window.__YUT_QA_GAME_STATISTICS_LOCAL_SEAT_ID__ = nextLocalSeatId;
