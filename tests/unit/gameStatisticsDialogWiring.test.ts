@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const componentSource = readFileSync('src/app/components/GameStatisticsDialog.tsx', 'utf8');
+const statisticsSource = readFileSync('src/app/flows/gameStatistics.ts', 'utf8');
+const fixtureSource = readFileSync('tests/helpers/game-statistics-fixture.js', 'utf8');
 const panelsSource = readFileSync('src/app/containers/GamePanels.tsx', 'utf8');
 const mainSource = readFileSync('src/main.tsx', 'utf8');
 const manifestSource = readFileSync('tests/qa/suite-manifest.mjs', 'utf8');
@@ -28,6 +30,19 @@ test('통계 조회는 request id·room id·열림 상태·언마운트를 함�
   assert.match(componentSource, /!dialogOpenRef\.current/u);
   assert.match(componentSource, /loadingRef\.current && activeRequestRef\.current\?\.roomId === roomId/u);
   assert.match(componentSource, /requestCounterRef\.current \+= 1/u);
+});
+
+test('통계 순수 헬퍼는 Node 단위 테스트 컴파일에서 브라우저 서비스 배럴을 끌어오지 않는다', () => {
+  assert.doesNotMatch(statisticsSource, /features\/room\/services\/roomService/u);
+  assert.match(statisticsSource, /export type GameStatisticsSequence/u);
+  assert.match(statisticsSource, /export type GameStatisticsStateSource/u);
+});
+
+test('통계 QA fixture는 최초 필수 닉네임 모달을 정상 완료한 뒤 통계 버튼을 조작한다', () => {
+  assert.match(fixtureSource, /getByRole\('dialog', \{ name: '닉네임 설정' \}\)/u);
+  assert.match(fixtureSource, /getByRole\('textbox'\)\.fill\('통계QA'\)/u);
+  assert.match(fixtureSource, /getByRole\('button', \{ name: '시작하기' \}\)\.click\(\)/u);
+  assert.match(fixtureSource, /waitFor\(\{ state: 'hidden' \}\)/u);
 });
 
 test('Desktop·Mobile 통계 QA가 실제 suite 실행 목록에 연결된다', () => {
