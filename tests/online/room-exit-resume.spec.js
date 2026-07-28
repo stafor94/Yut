@@ -153,19 +153,27 @@ async function expectAuthoritativeTurnPresentation(page, roomId, localPlayerId) 
   await expect(page.locator('.previous-turn')).toHaveText(authoritative.previous.name, { timeout: 10_000 });
   await expect(page.locator('.next-turn')).toHaveText(authoritative.next.name, { timeout: 10_000 });
 
-  const client = await collectScreenState(page);
-  expect(client.yutDebug?.activeSeat?.id).toBe(authoritative.current.id);
-  expect(client.yutDebug?.isMyTurn).toBe(authoritative.current.id === localPlayerId);
-  const hasActionableRoll = client.rollButton.visible && !client.rollButton.disabled;
-  const hasActionableMove = client.moveButton.visible && !client.moveButton.disabled;
-  if (authoritative.current.id === localPlayerId) {
-    expect(hasActionableRoll || hasActionableMove).toBe(true);
-    expect(client.turnWaitingButton.visible).toBe(false);
-  } else {
-    expect(hasActionableRoll).toBe(false);
-    expect(hasActionableMove).toBe(false);
-  }
-  return authoritative;
+  await expect.poll(async () => {
+    const [latestAuthoritative, client] = await Promise.all([readAuthoritativeTurn(roomId), collectScreenState(page)]);
+    const expectedCurrentId = String(latestAuthoritative.current?.id ?? '');
+    const isLocalTurn = expectedCurrentId === localPlayerId;
+    const hasActionableRoll = client.rollButton.visible && !client.rollButton.disabled;
+    const hasActionableMove = client.moveButton.visible && !client.moveButton.disabled;
+    return {
+      activeSeatMatches: String(client.yutDebug?.activeSeat?.id ?? '') === expectedCurrentId,
+      myTurnMatches: Boolean(client.yutDebug?.isMyTurn) === isLocalTurn,
+      actionPermissionMatches: isLocalTurn
+        ? hasActionableRoll || hasActionableMove
+        : !hasActionableRoll && !hasActionableMove,
+      localWaitingHidden: !isLocalTurn || !client.turnWaitingButton.visible,
+    };
+  }, { timeout: 15_000 }).toEqual({
+    activeSeatMatches: true,
+    myTurnMatches: true,
+    actionPermissionMatches: true,
+    localWaitingHidden: true,
+  });
+  return readAuthoritativeTurn(roomId);
 }
 
 async function completeAuthoritativeTurn({ roomId, hostPage, guestPage, hostPlayerId, guestPlayerId }) {
