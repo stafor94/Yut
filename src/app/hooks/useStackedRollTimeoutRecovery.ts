@@ -31,6 +31,7 @@ type StackedRollTimeoutRecoveryParams = {
   selectedRollStackIndex: number | null;
   seats: Seat[];
   spectators: Seat[];
+  stackedRollMode: boolean;
   turnDeadlineAt: number;
   turnDeadlineKind: 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
   turnOrderBlocked: boolean;
@@ -66,6 +67,7 @@ export function useStackedRollTimeoutRecovery({
   selectedRollStackIndex,
   seats,
   spectators,
+  stackedRollMode,
   turnDeadlineAt,
   turnDeadlineKind,
   turnOrderBlocked,
@@ -81,6 +83,7 @@ export function useStackedRollTimeoutRecovery({
       || localSeatId !== onlineGameCoordinatorSeatId
       || !Number.isFinite(coordinatorEpoch)
       || coordinatorEpoch <= 0
+      || !stackedRollMode
       || winner
       || turnOrderBlocked
       || pendingTrapPlacement
@@ -100,7 +103,7 @@ export function useStackedRollTimeoutRecovery({
     if (!roomId) return undefined;
 
     const timeoutContext = resolveMoveTimeoutContext({
-      stackedRollMode: true,
+      stackedRollMode,
       roll,
       rollStack,
       rollStackClosed,
@@ -203,6 +206,7 @@ export function useStackedRollTimeoutRecovery({
     selectedRollStackIndex,
     seats,
     spectators,
+    stackedRollMode,
     turnDeadlineAt,
     turnDeadlineKind,
     turnOrderBlocked,
