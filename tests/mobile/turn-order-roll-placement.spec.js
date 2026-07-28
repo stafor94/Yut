@@ -118,32 +118,40 @@ test.describe('turn-order roll placement and confirmed rank QA', () => {
       const stageRect = stage.getBoundingClientRect();
       const matRect = mat.getBoundingClientRect();
       return {
+        viewportHeight: window.innerHeight,
         anchorPosition: getComputedStyle(anchorElement).position,
         anchorTop: anchorRect.top,
         anchorLeft: anchorRect.left,
         anchorRightGap: window.innerWidth - anchorRect.right,
         anchorBottomGap: window.innerHeight - anchorRect.bottom,
+        anchorViewportCenterYOffset: Math.abs(centerY(anchorRect) - window.innerHeight / 2),
         anchorOverlayCenterXOffset: Math.abs(centerX(anchorRect) - centerX(overlayRect)),
         anchorOverlayCenterYOffset: Math.abs(centerY(anchorRect) - centerY(overlayRect)),
         stageAnchorCenterXOffset: Math.abs(centerX(stageRect) - centerX(anchorRect)),
         stageAnchorCenterYOffset: Math.abs(centerY(stageRect) - centerY(anchorRect)),
+        matAnchorCenterXOffset: Math.abs(centerX(matRect) - centerX(anchorRect)),
+        matAnchorCenterYOffset: Math.abs(centerY(matRect) - centerY(anchorRect)),
         matOverlayCenterXOffset: Math.abs(centerX(matRect) - centerX(overlayRect)),
         matOverlayCenterYOffset: Math.abs(centerY(matRect) - centerY(overlayRect)),
         matTop: matRect.top,
         matBottomGap: window.innerHeight - matRect.bottom,
       };
     });
+    const expectedRaisedOverlayOffset = layout.viewportHeight * 0.15;
     expect(layout.anchorPosition).toBe('fixed');
     expect(Math.abs(layout.anchorTop)).toBeLessThanOrEqual(1);
     expect(Math.abs(layout.anchorLeft)).toBeLessThanOrEqual(1);
     expect(Math.abs(layout.anchorRightGap)).toBeLessThanOrEqual(1);
     expect(Math.abs(layout.anchorBottomGap)).toBeLessThanOrEqual(1);
+    expect(layout.anchorViewportCenterYOffset, '순서 정하기 윷 연출 anchor는 viewport 중앙을 유지해야 합니다.').toBeLessThanOrEqual(1);
     expect(layout.anchorOverlayCenterXOffset).toBeLessThanOrEqual(1);
-    expect(layout.anchorOverlayCenterYOffset).toBeLessThanOrEqual(1);
+    expect(Math.abs(layout.anchorOverlayCenterYOffset - expectedRaisedOverlayOffset), '팝업만 viewport 높이의 약 15% 위로 이동해야 합니다.').toBeLessThanOrEqual(2);
     expect(layout.stageAnchorCenterXOffset).toBeLessThanOrEqual(1);
     expect(layout.stageAnchorCenterYOffset).toBeLessThanOrEqual(1);
+    expect(layout.matAnchorCenterXOffset).toBeLessThanOrEqual(2);
+    expect(layout.matAnchorCenterYOffset, '윷 매트는 이동하지 않은 viewport 중앙 anchor에 정렬되어야 합니다.').toBeLessThanOrEqual(2);
     expect(layout.matOverlayCenterXOffset).toBeLessThanOrEqual(2);
-    expect(layout.matOverlayCenterYOffset).toBeLessThanOrEqual(2);
+    expect(Math.abs(layout.matOverlayCenterYOffset - expectedRaisedOverlayOffset), '윷 매트와 위로 이동한 팝업 사이에는 약 15% viewport 높이 차이가 있어야 합니다.').toBeLessThanOrEqual(3);
     expect(layout.matTop, '순서 정하기 윷 매트 위쪽이 화면 밖으로 잘리면 안 됩니다.').toBeGreaterThanOrEqual(-1);
     expect(layout.matBottomGap, '순서 정하기 윷 매트 아래쪽이 화면 밖으로 잘리면 안 됩니다.').toBeGreaterThanOrEqual(-1);
 
