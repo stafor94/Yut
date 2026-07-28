@@ -16,7 +16,12 @@ test('다중 미선택 스택은 일반 이동에서는 선택 대기지만 time
     rollStackClosed: true,
     selectedRollStackIndex: null,
   });
-  assert.deepEqual(manual, { roll: null, rollStackIndex: null });
+  assert.deepEqual(manual, {
+    roll: null,
+    rollStackIndex: null,
+    steps: 0,
+    fromStack: true,
+  });
 
   const timedOut = resolveMoveTimeoutContext({
     stackedRollMode: true,
@@ -41,7 +46,12 @@ test('이미 선택된 스택 인덱스는 일반 이동과 timeout에서 동일
     rollStackClosed: true,
     selectedRollStackIndex: 1,
   });
-  assert.deepEqual(manual, { roll: rollStack[1], rollStackIndex: 1 });
+  assert.deepEqual(manual, {
+    roll: rollStack[1],
+    rollStackIndex: 1,
+    steps: 3,
+    fromStack: true,
+  });
 
   const timedOut = resolveMoveTimeoutContext({
     stackedRollMode: true,
