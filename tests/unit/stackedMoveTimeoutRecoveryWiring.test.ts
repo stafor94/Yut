@@ -29,9 +29,13 @@ test('공통 saveGameState는 processed action, expected sequence, 현재 coordi
   assert.match(roomServiceCoreSource, /!hasCurrentCoordinatorLease\(currentState, getCoordinatorLeaseTokenFromMeta\(meta\)\)/);
 });
 
-test('stacked timeout QA fixture는 클라이언트 snapshot guard를 통과하도록 상태 전환마다 turnVersion을 증가시킨다', () => {
-  assert.match(qaHelperSource, /fixtureTurnVersion = Math\.max\(1, Number\(state\.turnVersion \?\? 0\) \+ 1\)/);
-  assert.match(qaHelperSource, /expiredTurnVersion = fixtureTurnVersion \+ 1/);
-  assert.match(qaHelperSource, /turnVersion: fixtureTurnVersion/);
-  assert.match(qaHelperSource, /turnVersion: expiredTurnVersion/);
+test('stacked timeout QA fixture는 state와 sequence를 atomic commit해 sequence-first 클라이언트에 전달한다', () => {
+  assert.match(qaHelperSource, /const commitUrl = `\$\{getFirestoreDocumentsBaseUrl\(config\.projectId\)\}:commit`/);
+  assert.match(qaHelperSource, /'sequences', makeSequenceDocId\(nextSequence\)/);
+  assert.match(qaHelperSource, /currentDocument: \{ exists: false \}/);
+  assert.match(qaHelperSource, /lastSequence: encodeFirestoreValue\(nextSequence\)/);
+  assert.match(qaHelperSource, /patch: encodeFirestoreValue\(patch\)/);
+  assert.match(qaHelperSource, /visibleFixture = await commitRoomStatePatchForQa/);
+  assert.match(qaHelperSource, /expiredFixture = await commitRoomStatePatchForQa/);
+  assert.doesNotMatch(qaHelperSource, /method: 'PATCH'/);
 });
