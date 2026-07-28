@@ -54,6 +54,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/regression/local-roll-stage-position.spec.js',
       'tests/regression/remote-fall-presentation.spec.js',
       'tests/regression/bonus-roll-result-glow.spec.js',
+      'tests/regression/game-statistics-dialog.spec.js',
       'tests/lobby',
     ]),
   }),
@@ -81,6 +82,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/game-header-log-alignment.spec.js',
       'tests/mobile/lobby-scroll-reset.spec.js',
       'tests/mobile/lobby-header-badges.spec.js',
+      'tests/mobile/game-statistics-dialog.spec.js',
     ]),
   }),
   'mobile-galaxy-timing': Object.freeze({
