@@ -11,12 +11,12 @@
 
 .turn-order-ready-overlay {
   position: absolute;
-  inset: 50% auto auto 50%;
+  inset: 35% auto auto 50%;
   z-index: 80;
   isolation: isolate;
   display: grid;
   width: min(calc(100% - 28px), 460px);
-  max-height: calc(100% - 28px);
+  max-height: min(calc(100% - 28px), calc(70% - 28px));
   gap: 12px;
   padding: 18px;
   overflow: auto;
@@ -315,11 +315,14 @@
 @media (orientation: portrait) and (max-width: 900px) {
   .turn-order-ready-overlay {
     position: fixed;
-    inset: 50% auto auto 50%;
+    inset: clamp(calc(env(safe-area-inset-top) + 140px), 35dvh, calc(100dvh - env(safe-area-inset-bottom) - 140px)) auto auto 50%;
     z-index: 90;
     box-sizing: border-box;
     width: min(calc(100vw - 24px), 420px);
-    max-height: calc(100svh - 24px);
+    max-height: min(
+      calc(100svh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)),
+      calc(70dvh - 24px - (2 * env(safe-area-inset-top)))
+    );
     padding: 15px;
   }
 
