@@ -15,12 +15,23 @@ const readOverlayLayout = (overlay) => overlay.evaluate((element) => {
   const grid = element.querySelector('[data-testid="turn-order-result-grid"]');
   const gridStyle = grid ? getComputedStyle(grid) : null;
   const style = getComputedStyle(element);
+  const safeAreaProbe = document.createElement('div');
+  safeAreaProbe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)';
+  document.body.appendChild(safeAreaProbe);
+  const safeAreaStyle = getComputedStyle(safeAreaProbe);
+  const safeAreaTop = Number.parseFloat(safeAreaStyle.paddingTop) || 0;
+  const safeAreaBottom = Number.parseFloat(safeAreaStyle.paddingBottom) || 0;
+  safeAreaProbe.remove();
+  const rect = toBox(element);
   return {
-    rect: toBox(element),
+    rect,
+    centerYRatio: (rect.y + rect.height / 2) / window.innerHeight,
     viewport: { width: window.innerWidth, height: window.innerHeight },
+    safeArea: { top: safeAreaTop, bottom: safeAreaBottom },
     bodyScrollWidth: document.documentElement.scrollWidth,
     borderWidth: Number.parseFloat(style.borderTopWidth),
     backgroundImage: style.backgroundImage,
+    overflowY: style.overflowY,
     gridBox: grid ? toBox(grid) : null,
     gridColumns: gridStyle?.gridTemplateColumns ?? '',
     cardBoxes: Array.from(element.querySelectorAll('.turn-order-result-card')).map(toBox),
@@ -36,6 +47,7 @@ test.describe('turn-order mobile layout QA', () => {
   });
 
   test('Galaxy 세로 화면에서 순서 정하기·인게임 상단·진행 기록 레이아웃을 검증한다', async ({ page, context }, testInfo) => {
+    await page.setViewportSize({ width: 412, height: 915 });
     const nickname = normalizeQaNickname(makeQaName(testInfo, 'turn-order-mobile'));
     const roomTitle = makeQaName(testInfo, 'turn-order-mobile-room');
     await primeLobbyStorage(context, {
@@ -60,13 +72,18 @@ test.describe('turn-order mobile layout QA', () => {
 
       const overlay = page.getByTestId('turn-order-overlay');
       await expect(overlay).toBeVisible();
+      await expect(overlay.getByText('순서 정하기', { exact: true })).toBeVisible();
       await expect(page.getByTestId('turn-order-preparing')).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByTestId('turn-order-preparing')).toContainText('모든 참가자가 같은 시각에 윷을 던집니다.');
       let layout = await readOverlayLayout(overlay);
+      expect(layout.viewport).toEqual({ width: 412, height: 915 });
+      expect(Math.abs(layout.centerYRatio - 0.35), '순서 정하기 팝업 중심은 viewport 높이의 약 35%여야 합니다.').toBeLessThanOrEqual(0.03);
       expect(layout.rect.x).toBeGreaterThanOrEqual(0);
-      expect(layout.rect.y).toBeGreaterThanOrEqual(0);
+      expect(layout.rect.y).toBeGreaterThanOrEqual(layout.safeArea.top);
       expect(layout.rect.x + layout.rect.width).toBeLessThanOrEqual(layout.viewport.width + 1);
-      expect(layout.rect.y + layout.rect.height).toBeLessThanOrEqual(layout.viewport.height + 1);
+      expect(layout.rect.y + layout.rect.height).toBeLessThanOrEqual(layout.viewport.height - layout.safeArea.bottom + 1);
       expect(layout.bodyScrollWidth).toBeLessThanOrEqual(layout.viewport.width + 1);
+      expect(['auto', 'scroll']).toContain(layout.overflowY);
 
       const rollButton = page.getByTestId('turn-order-roll-button');
       const roundTimer = page.getByTestId('turn-order-round-timer');
@@ -86,13 +103,14 @@ test.describe('turn-order mobile layout QA', () => {
       await expect(page.getByTestId('turn-indicator')).toBeHidden();
 
       layout = await readOverlayLayout(overlay);
+      expect(Math.abs(layout.centerYRatio - 0.35), '결과 카드 표시 후에도 팝업 중심은 약 35%를 유지해야 합니다.').toBeLessThanOrEqual(0.03);
       expect(layout.borderWidth, '순서 정하기 팝업은 두꺼운 목재 프레임을 사용해야 합니다.').toBeGreaterThanOrEqual(5);
       expect(layout.backgroundImage, '순서 정하기 팝업은 입체 그라데이션 표면을 사용해야 합니다.').toContain('gradient');
       expect(layout.gridColumns.split(' ').filter(Boolean).length).toBe(2);
       expect(layout.rect.x, '순서 정하기 팝업 왼쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
-      expect(layout.rect.y, '순서 정하기 팝업 위쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
+      expect(layout.rect.y, '순서 정하기 팝업 위쪽이 safe area 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.safeArea.top);
       expect(layout.rect.x + layout.rect.width, '순서 정하기 팝업 오른쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewport.width + 1);
-      expect(layout.rect.y + layout.rect.height, '순서 정하기 팝업 아래쪽이 뷰포트 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewport.height + 1);
+      expect(layout.rect.y + layout.rect.height, '순서 정하기 팝업 아래쪽이 safe area 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewport.height - layout.safeArea.bottom + 1);
       expect(layout.bodyScrollWidth).toBeLessThanOrEqual(layout.viewport.width + 1);
       expect(layout.gridBox, '동시 윷 던지기 결과 그리드가 있어야 합니다.').not.toBeNull();
       expect(layout.cardBoxes.length, '2인 순서 정하기에는 결과 카드 2개가 있어야 합니다.').toBe(2);
