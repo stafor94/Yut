@@ -5,6 +5,7 @@ import test from 'node:test';
 const componentSource = readFileSync('src/app/components/GameStatisticsDialog.tsx', 'utf8');
 const flowSource = readFileSync('src/app/flows/gameStatistics.ts', 'utf8');
 const dialogStyleSource = readFileSync('src/styles/game-statistics-dialog.css', 'utf8');
+const footerSpacingFixSource = readFileSync('src/styles/game-statistics-footer-spacing-fix.css', 'utf8');
 const timingStyleSource = readFileSync('src/styles/roll-timing-grades.css', 'utf8');
 const timingTokenSource = readFileSync('src/styles/roll-timing-grade-tokens.css', 'utf8');
 const mainSource = readFileSync('src/main.tsx', 'utf8');
@@ -24,7 +25,7 @@ test('통계 타이밍 배지는 실제 타이밍 막대의 PERFECT·NICE·GOOD�
     assert.match(timingTokenSource, new RegExp(`var\\(--roll-timing-grade-${grade}\\)`));
     assert.match(dialogStyleSource, new RegExp(`var\\(--roll-timing-grade-${grade}\\)`));
   });
-  assert.match(mainSource, /roll-timing-grades\.css'[\s\S]*roll-timing-grade-tokens\.css'[\s\S]*game-statistics-dialog\.css'/u);
+  assert.match(mainSource, /roll-timing-grades\.css'[\s\S]*roll-timing-grade-tokens\.css'[\s\S]*game-statistics-dialog\.css'[\s\S]*game-statistics-footer-spacing-fix\.css'/u);
 });
 
 test('팝업 전체와 하단 통계는 고정되고 기록 영역만 세로 스크롤된다', () => {
@@ -33,6 +34,8 @@ test('팝업 전체와 하단 통계는 고정되고 기록 영역만 세로 스
   assert.doesNotMatch(dialogStyleSource, /\.game-statistics-footer\s*\{[^}]*overflow-y:\s*(?:auto|scroll)/u);
   assert.match(dialogStyleSource, /\.game-statistics-footer\s*\{[\s\S]*?padding:\s*12px 4px 10px;/u);
   assert.match(dialogStyleSource, /\.game-statistics-footer \.modal-actions\s*\{[\s\S]*?margin-top:\s*10px;/u);
+  assert.match(footerSpacingFixSource, /\.game-statistics-dialog \.game-statistics-footer \.game-statistics-capture-count\s*\{[\s\S]*?margin:\s*8px 0 0;/u);
+  assert.match(footerSpacingFixSource, /@media \(max-height: 720px\)[\s\S]*?margin-top:\s*6px;/u);
   assert.match(dialogStyleSource, /\.game-statistics-summary-grid\.timing\s*\{[\s\S]*?repeat\(4,/u);
 });
 
