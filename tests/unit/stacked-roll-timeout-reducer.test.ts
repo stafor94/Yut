@@ -9,6 +9,17 @@ const sides = [
   { id: 'seat-2', team: '홍팀' as const },
 ];
 
+type StackedTimeoutPatch = {
+  pieces?: Array<{ id: string; started: boolean }>;
+  roll?: unknown | null;
+  rollStack?: Array<{ name: string; steps: number }>;
+  rollStackClosed?: boolean;
+  selectedRollStackIndex?: number | null;
+  turnActionTimeoutCountBySeatId?: Record<string, number>;
+  turnDeadlineKind?: string;
+  turnIndex?: number;
+};
+
 const withMockNow = <T>(now: number, callback: () => T): T => {
   const originalNow = Date.now;
   Date.now = () => now;
@@ -70,14 +81,15 @@ test('deadline+grace 이후 coordinator가 0번 스택 하나만 소비하고 �
 
   assert.equal(result.status, 'committed');
   if (result.status !== 'committed' || !result.patch) return;
-  assert.deepEqual(result.patch.rollStack, [{ name: '걸', steps: 3 }]);
-  assert.equal(result.patch.selectedRollStackIndex, 0);
-  assert.equal(result.patch.rollStackClosed, true);
-  assert.equal(result.patch.turnIndex, 0);
-  assert.equal(result.patch.turnDeadlineKind, 'move');
-  assert.equal(result.patch.roll, null);
-  assert.equal(result.patch.turnActionTimeoutCountBySeatId?.['seat-1'], 1);
-  const movedPiece = result.patch.pieces?.find((piece) => piece.id === 'p1');
+  const patch = result.patch as StackedTimeoutPatch;
+  assert.deepEqual(patch.rollStack, [{ name: '걸', steps: 3 }]);
+  assert.equal(patch.selectedRollStackIndex, 0);
+  assert.equal(patch.rollStackClosed, true);
+  assert.equal(patch.turnIndex, 0);
+  assert.equal(patch.turnDeadlineKind, 'move');
+  assert.equal(patch.roll, null);
+  assert.equal(patch.turnActionTimeoutCountBySeatId?.['seat-1'], 1);
+  const movedPiece = patch.pieces?.find((piece) => piece.id === 'p1');
   assert.equal(movedPiece?.started, true);
 });
 
@@ -122,7 +134,7 @@ test('같은 timeout action을 진행된 상태에 다시 적용해도 두 번�
     sides,
   ));
   assert.equal(second.status, 'rejected');
-  assert.deepEqual(advancedState.rollStack, [{ name: '걸', steps: 3 }]);
+  assert.deepEqual((advancedState as typeof state).rollStack, [{ name: '걸', steps: 3 }]);
 });
 
 test('빽도에 이동 가능한 말이 없으면 빈 pieceId로 해당 스택 하나만 소비한다', () => {
@@ -142,6 +154,7 @@ test('빽도에 이동 가능한 말이 없으면 빈 pieceId로 해당 스택 �
   ));
   assert.equal(result.status, 'committed');
   if (result.status !== 'committed' || !result.patch) return;
-  assert.deepEqual(result.patch.rollStack, [{ name: '걸', steps: 3 }]);
-  assert.equal(result.patch.turnIndex, 0);
+  const patch = result.patch as StackedTimeoutPatch;
+  assert.deepEqual(patch.rollStack, [{ name: '걸', steps: 3 }]);
+  assert.equal(patch.turnIndex, 0);
 });
