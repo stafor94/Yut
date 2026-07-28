@@ -18,7 +18,6 @@ export const qaSuiteManifest = Object.freeze({
       'tests/game-flow/basic-turn.spec.js',
       'tests/game-flow/game-start-authority.spec.js',
       'tests/game-flow/turn-order-simultaneous.spec.js',
-      'tests/game-flow/turn-order-auto-timeout.spec.js',
       'tests/game-flow/ai-substitution.spec.js',
       'tests/online/room-lifecycle.spec.js',
       'tests/online/room-leave-ui-race.spec.js',
@@ -49,6 +48,7 @@ export const qaSuiteManifest = Object.freeze({
     grepInvert: timeoutPenaltyTitle,
     tests: Object.freeze([
       'tests/game-flow/ai-presence-recovery.spec.js',
+      'tests/game-flow/turn-order-auto-timeout.spec.js',
       'tests/regression/finish-step-animation.spec.js',
       'tests/regression/roll-mat-surface.spec.js',
       'tests/regression/local-roll-stage-position.spec.js',
