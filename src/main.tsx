@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { App } from './app/App';
 import { AppErrorBoundary } from './app/components/AppErrorBoundary';
 import { CustomAlertHost } from './app/components/CustomAlertHost';
+import { GameStatisticsHost } from './app/components/GameStatisticsDialog';
 import './styles/mobile-item-log-recovery.css';
 import './styles/game-header-log-alignment.css';
 import './styles/game-room-info-toggle.css';
@@ -34,11 +35,13 @@ import './styles/turn-order-roll-placement.css';
 import './styles/lobby-guide-timing-grades.css';
 import './styles/auto-play-controls.css';
 import './styles/turn-order-final-alignment.css';
+import './styles/game-statistics-dialog.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AppErrorBoundary>
       <App />
+      <GameStatisticsHost />
       <CustomAlertHost />
     </AppErrorBoundary>
   </React.StrictMode>,
