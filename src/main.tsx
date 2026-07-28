@@ -37,6 +37,7 @@ import './styles/lobby-guide-timing-grades.css';
 import './styles/auto-play-controls.css';
 import './styles/turn-order-final-alignment.css';
 import './styles/game-statistics-dialog.css';
+import './styles/game-statistics-footer-spacing-fix.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
