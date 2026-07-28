@@ -3,6 +3,7 @@ export async function installGameStatisticsFixture(page, {
   localSeatId = 'p2',
   seats,
   sequences,
+  latestState = null,
   delayMs = 80,
   failuresBeforeSuccess = 0,
   roomData = null,
@@ -14,7 +15,7 @@ export async function installGameStatisticsFixture(page, {
     await nicknameDialog.waitFor({ state: 'hidden' });
   }
 
-  await page.evaluate(({ nextRoomId, nextLocalSeatId, nextSeats, nextSequences, nextDelayMs, nextFailuresBeforeSuccess, nextRoomData }) => {
+  await page.evaluate(({ nextRoomId, nextLocalSeatId, nextSeats, nextSequences, nextLatestState, nextDelayMs, nextFailuresBeforeSuccess, nextRoomData }) => {
     const setActiveRoomId = (roomId) => window.localStorage.setItem('yut-online:activeRoomId', roomId);
     const restoreActiveRoomIdIfMissing = (roomId) => {
       if (!window.localStorage.getItem('yut-online:activeRoomId')?.trim()) setActiveRoomId(roomId);
@@ -28,6 +29,7 @@ export async function installGameStatisticsFixture(page, {
       const configured = nextRoomData?.[requestedRoomId] ?? {
         seats: nextSeats,
         sequences: nextSequences,
+        latestState: nextLatestState,
         delayMs: nextDelayMs,
       };
       await new Promise((resolve) => window.setTimeout(resolve, Number(configured.delayMs ?? nextDelayMs)));
@@ -36,7 +38,7 @@ export async function installGameStatisticsFixture(page, {
         window.__YUT_QA_GAME_STATISTICS_FAILURES_LEFT__ -= 1;
         throw new Error('QA 통계 조회 실패');
       }
-      return [{ gameSeats: configured.seats }, configured.sequences];
+      return [{ gameSeats: configured.seats, ...(configured.latestState ?? {}) }, configured.sequences];
     };
 
     document.querySelector('#qa-game-statistics-fixture')?.remove();
@@ -90,6 +92,7 @@ export async function installGameStatisticsFixture(page, {
     nextLocalSeatId: localSeatId,
     nextSeats: seats,
     nextSequences: sequences,
+    nextLatestState: latestState,
     nextDelayMs: delayMs,
     nextFailuresBeforeSuccess: failuresBeforeSuccess,
     nextRoomData: roomData,
