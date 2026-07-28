@@ -186,8 +186,10 @@ test.describe('in-game reconnect, rejoin, and spectator entry QA', () => {
         await expect(spectatorPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
 
         const players = await getRoomPlayersForQa(roomId);
-        const spectator = players.find((player) => player.nickname === spectatorName);
-        expect(spectator?.id, '관전자 player id가 필요합니다.').toBeTruthy();
+        const spectatorPlayers = players.filter((player) => player.isSpectator === true);
+        expect(spectatorPlayers, '관전자 player 문서는 하나만 생성되어야 합니다.').toHaveLength(1);
+        const spectator = spectatorPlayers[0];
+        expect(spectator.nickname).toBe(spectatorName);
         const spectatorId = spectator.id;
 
         await expect.poll(async () => readSpectatorState(roomId, spectatorId), { timeout: 15_000 }).toEqual({
