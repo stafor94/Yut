@@ -1,0 +1,9 @@
+.game-statistics-dialog .game-statistics-footer .game-statistics-capture-count {
+  margin: 8px 0 0;
+}
+
+@media (max-height: 720px) {
+  .game-statistics-dialog .game-statistics-footer .game-statistics-capture-count {
+    margin-top: 6px;
+  }
+}
