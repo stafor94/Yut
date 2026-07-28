@@ -160,18 +160,18 @@ export function buildGameStatisticsRollGroups(
 ): GameStatisticsRollGroup[] {
   const normalizedColumns = Number.isInteger(columns) && columns > 0 ? columns : 3;
   const ascendingRecords = [...records].sort((left, right) => left.sequence - right.sequence);
-  const groups: GameStatisticsRollGroup[] = [];
+  const ascendingGroups: PlayerRollStatisticsRecord[][] = [];
 
-  for (let end = ascendingRecords.length; end > 0; end -= normalizedColumns) {
-    const start = Math.max(0, end - normalizedColumns);
-    const groupRecords = ascendingRecords.slice(start, end);
-    groups.push({
-      records: groupRecords,
-      leadingEmptyColumns: groups.length === 0 ? normalizedColumns - groupRecords.length : 0,
-    });
+  for (let start = 0; start < ascendingRecords.length; start += normalizedColumns) {
+    ascendingGroups.push(ascendingRecords.slice(start, start + normalizedColumns));
   }
 
-  return groups;
+  return ascendingGroups.reverse().map((groupRecords, groupIndex) => ({
+    records: groupRecords,
+    leadingEmptyColumns: groupIndex === 0
+      ? normalizedColumns - groupRecords.length
+      : 0,
+  }));
 }
 
 export function getVisibleTimingStatistics(
