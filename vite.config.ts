@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, type ConfigEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 function readBuildVersion(command: string) {
@@ -27,7 +27,7 @@ function emitAppVersionManifest(version: string): Plugin {
   };
 }
 
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command }: ConfigEnv) => {
   const version = readBuildVersion(command);
   return {
     plugins: [react(), emitAppVersionManifest(version)],
