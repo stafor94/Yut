@@ -3,7 +3,9 @@ import { ItemCard } from '../../features/items/components/ItemCard';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import { getAiDifficultyBadgeLabel, getRuntimeAiDifficultyForSeat } from '../../game-core/aiDifficulty';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
-import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
+import { STORAGE_KEYS, TEAM_COLORS, getStoredText, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
+import { GameStatisticsDialog } from '../components/GameStatisticsDialog';
+import type { GameStatisticsPlayerInput } from '../flows/gameStatistics';
 import { publishGameEndDialogOpenHandler } from '../flows/gameEndDialogPresentation';
 import { getOwnedItemsPresentation, publishOwnedItemsPresentation, subscribeOwnedItemsPresentation } from '../flows/ownedItemsPresentation';
 import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } from '../flows/remoteItemUseNotice';
@@ -39,6 +41,34 @@ type RemoteItemUseNotice = {
   color: string;
 };
 
+type GameStatisticsPlayersPresentation = {
+  players: GameStatisticsPlayerInput[];
+  localSeatId: string;
+};
+
+const EMPTY_GAME_STATISTICS_PLAYERS_PRESENTATION: GameStatisticsPlayersPresentation = { players: [], localSeatId: '' };
+let gameStatisticsPlayersPresentation = EMPTY_GAME_STATISTICS_PLAYERS_PRESENTATION;
+const gameStatisticsPlayersListeners = new Set<() => void>();
+
+const publishGameStatisticsPlayers = (next: GameStatisticsPlayersPresentation) => {
+  const unchanged = gameStatisticsPlayersPresentation.localSeatId === next.localSeatId
+    && gameStatisticsPlayersPresentation.players.length === next.players.length
+    && gameStatisticsPlayersPresentation.players.every((player, index) => {
+      const candidate = next.players[index];
+      return candidate?.id === player.id && candidate.label === player.label && candidate.name === player.name;
+    });
+  if (unchanged) return;
+  gameStatisticsPlayersPresentation = next;
+  gameStatisticsPlayersListeners.forEach((listener) => listener());
+};
+
+const subscribeGameStatisticsPlayers = (listener: () => void) => {
+  gameStatisticsPlayersListeners.add(listener);
+  return () => gameStatisticsPlayersListeners.delete(listener);
+};
+
+const getGameStatisticsPlayersPresentation = () => gameStatisticsPlayersPresentation;
+
 export function GamePlayersPanel({
   title,
   playMode,
@@ -63,6 +93,15 @@ export function GamePlayersPanel({
   const roomInfoCollapsed = useSyncExternalStore(subscribeRoomInfoPresentation, getRoomInfoCollapsed, getRoomInfoCollapsed);
 
   useLayoutEffect(() => publishGameEndDialogOpenHandler(onOpenEndGameDialog), [onOpenEndGameDialog]);
+
+  useLayoutEffect(() => {
+    publishGameStatisticsPlayers({
+      localSeatId,
+      players: seats
+        .filter((seat) => !seat.isEmpty && !seat.isSpectator)
+        .map((seat) => ({ id: seat.id, label: seat.label, name: seat.name || getPlayerCardName(seat) })),
+    });
+  }, [getPlayerCardName, localSeatId, seats]);
 
   useLayoutEffect(() => {
     publishOwnedItemsPresentation(ownedItems[localSeatId] ?? [], itemMode);
@@ -182,9 +221,12 @@ export function GameLogPanelView({
 }: GameLogPanelViewProps) {
   const playTimePresentation = useSyncExternalStore(subscribePlayTimePresentation, getPlayTimePresentation, getPlayTimePresentation);
   const ownedItemsPresentation = useSyncExternalStore(subscribeOwnedItemsPresentation, getOwnedItemsPresentation, getOwnedItemsPresentation);
+  const statisticsPlayersPresentation = useSyncExternalStore(subscribeGameStatisticsPlayers, getGameStatisticsPlayersPresentation, getGameStatisticsPlayersPresentation);
   const logListRef = useRef<HTMLDivElement | null>(null);
   const [mobileLogViewportHeight, setMobileLogViewportHeight] = useState<number | null>(null);
   const [mobileLogScrollable, setMobileLogScrollable] = useState(false);
+  const [statisticsDialogOpen, setStatisticsDialogOpen] = useState(false);
+  const activeRoomId = getStoredText(STORAGE_KEYS.activeRoomId, '');
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -238,6 +280,7 @@ export function GameLogPanelView({
         <div className="log-header-actions">
           {playTimePresentation.visible && <div data-testid="play-timer" className={`play-time ${playTimePresentation.stopped ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimePresentation.playTimeText}`}>{playTimePresentation.playTimeText}</div>}
           <button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button>
+          <button data-testid="game-statistics-button" type="button" className="diagnostic-button game-statistics-button" onClick={() => setStatisticsDialogOpen(true)} aria-label="통계 정보 열기" title="통계 정보 열기"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="4" height="17" rx="2" transform="rotate(-8 5 11.5)" fill="currentColor"/><rect x="8" y="2" width="4" height="18" rx="2" transform="rotate(-3 10 11)" fill="currentColor"/><rect x="13" y="2" width="4" height="18" rx="2" transform="rotate(3 15 11)" fill="currentColor"/><rect x="18" y="3" width="4" height="17" rx="2" transform="rotate(8 20 11.5)" fill="currentColor"/><circle cx="5.2" cy="7" r=".8" fill="#f7d79a"/></svg></button>
         </div>
       </div>
       <div
@@ -247,5 +290,12 @@ export function GameLogPanelView({
         style={mobileLogViewportHeight === null ? undefined : { height: `${mobileLogViewportHeight}px`, minHeight: `${mobileLogViewportHeight}px`, flex: '0 0 auto' }}
       >{logs.map((log, index) => <p data-testid="game-log-entry" key={log.id} style={getLogCardStyle(log.text, logs[index + 1]?.text)}><span className="log-sequence">{formatStoredLogSequence(log)}</span>{renderLogText(log.text)}</p>)}</div>
     </GameLogPanel>
+    <GameStatisticsDialog
+      open={statisticsDialogOpen}
+      roomId={activeRoomId}
+      players={statisticsPlayersPresentation.players}
+      localSeatId={statisticsPlayersPresentation.localSeatId}
+      onClose={() => setStatisticsDialogOpen(false)}
+    />
   </div>;
 }
