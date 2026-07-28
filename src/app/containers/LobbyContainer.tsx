@@ -125,7 +125,7 @@ export function LobbyContainer({
       isInitialRoomQuerying={isInitialRoomQuerying}
       isFirebaseConfigured={isFirebaseConfigured}
       currentUser={currentUser}
-      resumableRoomId={resumableRoomId || recoverablePlayerRoomId}
+      resumableRoomId={recoverablePlayerRoomId || resumableRoomId}
       nickname={nickname}
       soundEnabled={soundEnabled}
       onTitleChange={(nextTitle) => onTitleChange(truncateRoomTitle(nextTitle))}
