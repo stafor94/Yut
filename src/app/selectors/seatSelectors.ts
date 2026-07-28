@@ -49,6 +49,18 @@ export const createSeats = (
   }));
 };
 
+const createEmptySeats = (
+  playMode: PlayMode,
+  playerCount: 2 | 3 | 4,
+): Seat[] => createSeats('', playMode, playerCount).map((seat, index) => ({
+  ...seat,
+  id: `slot-${index + 1}`,
+  name: '빈 자리',
+  ready: false,
+  isHost: false,
+  isEmpty: true,
+}));
+
 export const seatsFromRoomPlayers = (
   players: RoomPlayerSeatSource[],
   playMode: PlayMode,
@@ -87,7 +99,9 @@ export const seatsWithJoinedPlayer = (
   playerCount: 2 | 3 | 4,
   joinedSeatIndex: number | null = null,
 ): Seat[] => {
-  const seats = seatsFromRoomPlayers(players, playMode, playerCount);
+  const seats = players.length
+    ? seatsFromRoomPlayers(players, playMode, playerCount)
+    : createEmptySeats(playMode, playerCount);
   if (players.some((player) => player.id === currentUserId)) return seats;
 
   const targetSeat = joinedSeatIndex === null
@@ -95,8 +109,8 @@ export const seatsWithJoinedPlayer = (
     : seats[joinedSeatIndex];
   if (!targetSeat) return seats;
 
-  return seats.map((seat) => seat.id === targetSeat.id
-    ? { ...seat, id: currentUserId, name: nickname, ready: false, isEmpty: false }
+  return seats.map((seat) => seat.label === targetSeat.label
+    ? { ...seat, id: currentUserId, name: nickname, ready: false, isHost: joinedSeatIndex === 0, isEmpty: false }
     : seat);
 };
 
@@ -176,11 +190,10 @@ export const preserveLockedGameSeats = (
   const preservedSeats = nextSeats.map((nextSeat) => {
     const currentSeat = currentSeats.find((seat) => seat.label === nextSeat.label);
     if (!currentSeat || currentSeat.isEmpty || currentSeat.isSpectator) return nextSeat;
-    if (!nextSeat.isEmpty && nextSeat.id === currentSeat.id) {
-      return { ...currentSeat, ...nextSeat, isEmpty: false };
-    }
-    if (!nextSeat.isEmpty && nextSeat.isAI && nextSeat.id === currentSeat.id) {
-      return { ...currentSeat, ...nextSeat, id: currentSeat.id, isEmpty: false };
+    if (!nextSeat.isEmpty) {
+      return areSeatsEquivalent(currentSeat, nextSeat)
+        ? currentSeat
+        : { ...currentSeat, ...nextSeat, isEmpty: false };
     }
     return { ...currentSeat, ready: nextSeat.ready || currentSeat.ready, isEmpty: false };
   });
