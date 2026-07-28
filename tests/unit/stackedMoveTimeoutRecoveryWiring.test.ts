@@ -5,6 +5,7 @@ import test from 'node:test';
 const hookSource = readFileSync('src/app/hooks/useStackedRollTimeoutRecovery.ts', 'utf8');
 const recoveryServiceSource = readFileSync('src/features/room/services/coordinatorMoveTimeoutRecovery.ts', 'utf8');
 const roomServiceCoreSource = readFileSync('src/features/room/services/roomServiceCore.ts', 'utf8');
+const qaHelperSource = readFileSync('tests/helpers/stacked-roll-timeout.js', 'utf8');
 
 test('미선택 이동 스택 timeout은 일반 actor commit이 아니라 coordinator recovery transaction을 사용한다', () => {
   assert.match(hookSource, /import \{ commitCoordinatorMoveTimeoutRecovery \} from '.+coordinatorMoveTimeoutRecovery';/);
@@ -26,4 +27,11 @@ test('공통 saveGameState는 processed action, expected sequence, 현재 coordi
   assert.match(roomServiceCoreSource, /if \(processedActionSnapshot\.exists\(\)\) return/);
   assert.match(roomServiceCoreSource, /currentSequence !== meta\.expectedPreviousSequence/);
   assert.match(roomServiceCoreSource, /!hasCurrentCoordinatorLease\(currentState, getCoordinatorLeaseTokenFromMeta\(meta\)\)/);
+});
+
+test('stacked timeout QA fixture는 클라이언트 snapshot guard를 통과하도록 상태 전환마다 turnVersion을 증가시킨다', () => {
+  assert.match(qaHelperSource, /fixtureTurnVersion = Math\.max\(1, Number\(state\.turnVersion \?\? 0\) \+ 1\)/);
+  assert.match(qaHelperSource, /expiredTurnVersion = fixtureTurnVersion \+ 1/);
+  assert.match(qaHelperSource, /turnVersion: fixtureTurnVersion/);
+  assert.match(qaHelperSource, /turnVersion: expiredTurnVersion/);
 });
