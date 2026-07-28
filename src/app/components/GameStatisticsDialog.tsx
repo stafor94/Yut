@@ -11,9 +11,12 @@ import { STORAGE_KEYS } from '../appState';
 import { publishGameStatisticsDialogOpenHandler } from '../flows/gameStatisticsDialogPresentation';
 import {
   buildGameStatistics,
+  buildGameStatisticsRollGroups,
   formatStatisticsPercentage,
+  getVisibleTimingStatistics,
   resolveGameStatisticsSeats,
   type PlayerGameStatistics,
+  type TimingStatLabel,
 } from '../flows/gameStatistics';
 
 type StatisticsRequest = {
@@ -27,6 +30,14 @@ type GameStatisticsQaWindow = Window & {
   __YUT_QA_OPEN_GAME_STATISTICS__?: () => void;
 };
 
+const TIMING_RESULT_INITIALS: Record<TimingStatLabel, string> = {
+  PERFECT: 'P',
+  NICE: 'N',
+  GOOD: 'G',
+  BAD: 'B',
+  미확인: '?',
+};
+
 const readActiveRoomId = () => {
   try {
     return window.localStorage.getItem(STORAGE_KEYS.activeRoomId)?.trim() ?? '';
@@ -35,8 +46,8 @@ const readActiveRoomId = () => {
   }
 };
 
-const getBadgeClassName = (kind: 'timing' | 'yut', label: string) => (
-  `game-statistics-badge ${kind} ${label.toLowerCase().replace(/\s+/g, '-')}`
+const getTimingBadgeClassName = (label: TimingStatLabel) => (
+  `game-statistics-badge timing ${label.toLowerCase().replace(/\s+/g, '-')}`
 );
 
 const readLocalSeatId = () => {
@@ -218,6 +229,9 @@ export function GameStatisticsHost() {
   }, [closeDialog, dialogOpen]);
 
   const selectedStatistics = statistics.find((entry) => entry.seat.id === selectedSeatId) ?? statistics[0] ?? null;
+  const recordGroups = selectedStatistics ? buildGameStatisticsRollGroups(selectedStatistics.rolls) : [];
+  const visibleTimingStatistics = selectedStatistics ? getVisibleTimingStatistics(selectedStatistics.timing) : null;
+  const visibleYutStatistics = selectedStatistics?.yut.filter((entry) => entry.label !== '미확인' || entry.count > 0) ?? [];
 
   const statisticsDialog = dialogOpen ? createPortal(
     <div className="modal-backdrop game-statistics-backdrop" role="presentation" onMouseDown={closeDialog}>
@@ -273,31 +287,51 @@ export function GameStatisticsHost() {
             aria-labelledby={`game-statistics-tab-${selectedStatistics.seat.id}`}
             className="game-statistics-record-list"
           >
-            {selectedStatistics.rolls.length > 0
-              ? selectedStatistics.rolls.map((record) => <article data-testid="game-statistics-record" className="game-statistics-record" key={`${selectedStatistics.seat.id}-${record.sequence}`}>
-                <strong>#{record.sequence}</strong>
-                <span className={getBadgeClassName('timing', record.timing)}>{record.timing}</span>
-                <span className={getBadgeClassName('yut', record.result)}>{record.result}</span>
-              </article>)
+            {recordGroups.length > 0
+              ? recordGroups.map((group, groupIndex) => <div
+                data-testid="game-statistics-record-row"
+                className="game-statistics-record-row"
+                key={`${selectedStatistics.seat.id}-group-${group.records[0]?.sequence ?? groupIndex}`}
+              >
+                {group.records.map((record, recordIndex) => <article
+                  data-testid="game-statistics-record"
+                  className="game-statistics-record"
+                  key={`${selectedStatistics.seat.id}-${record.sequence}`}
+                  style={recordIndex === 0 && group.leadingEmptyColumns > 0
+                    ? { gridColumnStart: group.leadingEmptyColumns + 1 }
+                    : undefined}
+                >
+                  <strong className="game-statistics-sequence-badge">#{record.sequence}</strong>
+                  <span
+                    className={getTimingBadgeClassName(record.timing)}
+                    aria-label={`타이밍 결과 ${record.timing}`}
+                    title={record.timing}
+                  >{TIMING_RESULT_INITIALS[record.timing]}</span>
+                  <span className="game-statistics-yut-result">{record.result}</span>
+                </article>)}
+              </div>)
               : <div className="game-statistics-state empty"><strong>아직 윷 던지기 기록이 없습니다.</strong></div>}
           </div>}
         </div>
 
         <footer data-testid="game-statistics-footer" className="game-statistics-footer">
-          {selectedStatistics && <>
-            <section aria-label="타이밍 결과 통계">
+          {selectedStatistics && visibleTimingStatistics && <>
+            <section className="game-statistics-summary-section" aria-label="타이밍 결과 통계">
               <h3>타이밍 결과</h3>
               <div className="game-statistics-summary-grid timing">
-                {selectedStatistics.timing.map((entry) => <p key={entry.label}>
+                {visibleTimingStatistics.primary.map((entry) => <p key={entry.label}>
                   <span>{entry.label}</span>
                   <strong>{entry.count}개 · {formatStatisticsPercentage(entry.percentage)}</strong>
                 </p>)}
               </div>
+              {visibleTimingStatistics.unknown && <p className="game-statistics-unknown-summary">
+                미확인 <strong>{visibleTimingStatistics.unknown.count}개 · {formatStatisticsPercentage(visibleTimingStatistics.unknown.percentage)}</strong>
+              </p>}
             </section>
-            <section aria-label="윷 결과 통계">
+            <section className="game-statistics-summary-section" aria-label="윷 결과 통계">
               <h3>윷 결과</h3>
               <div className="game-statistics-summary-grid yut">
-                {selectedStatistics.yut.map((entry) => <p key={entry.label}>
+                {visibleYutStatistics.map((entry) => <p key={entry.label}>
                   <span>{entry.label}</span>
                   <strong>{entry.count}개 · {formatStatisticsPercentage(entry.percentage)}</strong>
                 </p>)}
