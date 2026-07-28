@@ -24,6 +24,13 @@ test('로비 버전 확인은 즉시·주기·화면 복귀·온라인 복구에
   assert.match(hookSource, /import\.meta\.env\.BASE_URL/);
 });
 
+test('늦은 응답은 실제 app shell이 계속 로비일 때만 자동 갱신한다', () => {
+  assert.match(hookSource, /function isLobbyScreenActive\(\)/);
+  assert.match(hookSource, /\[data-testid="app-shell"\]\.screen-lobby/);
+  assert.match(hookSource, /!response\.ok \|\| disposed \|\| !isLobbyScreenActive\(\)/);
+  assert.match(hookSource, /shouldReloadForAppVersion[\s\S]*!isLobbyScreenActive\(\)[\s\S]*window\.location\.reload\(\)/);
+});
+
 test('새 버전 자동 갱신은 동일 버전 반복 실행을 막는다', () => {
   assert.match(hookSource, /yut:last-auto-reload-version/);
   assert.match(hookSource, /shouldReloadForAppVersion/);
