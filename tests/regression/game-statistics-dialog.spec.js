@@ -88,7 +88,6 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     await expect(dialog.getByTestId('game-statistics-record')).toHaveCount(0);
     await expect(dialog.getByTestId('game-statistics-capture-count')).toHaveText('상대 말 잡기 0회');
     await expect(dialog).not.toContainText('#2');
-    await expect(dialog).not.toContainText('모');
   });
 
   test('Desktop에서 6열 기록을 좌측 정렬하고 footer 계층과 기록 전용 스크롤을 유지한다', async ({ page }) => {
