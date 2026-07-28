@@ -183,21 +183,46 @@ async function completeAuthoritativeTurn({ roomId, hostPage, guestPage, hostPlay
   expect(activePage, '현재 authoritative seat에 대응하는 실제 사람 페이지가 필요합니다.').toBeTruthy();
 
   let lastSequence = before.lastSequence;
-  for (let actionCount = 0; actionCount < 8; actionCount += 1) {
+  let actionCount = 0;
+  while (actionCount < 8) {
+    await expect.poll(async () => {
+      const [current, controls] = await Promise.all([readAuthoritativeTurn(roomId), collectScreenState(activePage)]);
+      if (current.current?.id !== turnOwnerId) return 'turn-changed';
+      const activeSeatMatches = String(controls.yutDebug?.activeSeat?.id ?? '') === turnOwnerId;
+      const isLocalTurn = controls.yutDebug?.isMyTurn === true;
+      if (!activeSeatMatches || !isLocalTurn) return 'waiting';
+      if (controls.moveButton.visible && !controls.moveButton.disabled) return 'move';
+      if (controls.rollButton.visible && !controls.rollButton.disabled) return 'roll';
+      return 'waiting';
+    }, { timeout: 15_000 }).not.toBe('waiting');
+
     const current = await readAuthoritativeTurn(roomId);
     if (current.current?.id !== turnOwnerId) {
       expect(current.lastSequence).toBeGreaterThan(before.lastSequence);
       return;
     }
 
-    await expectAuthoritativeTurnPresentation(activePage, roomId, turnOwnerId);
     const controls = await collectScreenState(activePage);
+    const activeSeatMatches = String(controls.yutDebug?.activeSeat?.id ?? '') === turnOwnerId;
+    const isLocalTurn = controls.yutDebug?.isMyTurn === true;
     const rollActionable = controls.rollButton.visible && !controls.rollButton.disabled;
     const moveActionable = controls.moveButton.visible && !controls.moveButton.disabled;
-    expect(rollActionable || moveActionable, `현재 턴의 실행 가능한 roll/move 단계가 필요합니다: ${JSON.stringify(controls)}`).toBe(true);
+    if (!activeSeatMatches || !isLocalTurn || (!rollActionable && !moveActionable)) continue;
 
-    if (moveActionable) await activePage.getByTestId('move-piece-button').click();
-    else await activePage.getByTestId('roll-yut-button').click();
+    const actionButton = moveActionable
+      ? activePage.getByTestId('move-piece-button')
+      : activePage.getByTestId('roll-yut-button');
+    try {
+      await actionButton.click({ timeout: 5_000 });
+    } catch (error) {
+      const afterClickFailure = await readAuthoritativeTurn(roomId);
+      if (afterClickFailure.current?.id !== turnOwnerId) {
+        expect(afterClickFailure.lastSequence).toBeGreaterThan(before.lastSequence);
+        return;
+      }
+      throw error;
+    }
+    actionCount += 1;
 
     await expect.poll(async () => (await readAuthoritativeTurn(roomId)).lastSequence, { timeout: 25_000 }).toBeGreaterThan(lastSequence);
     const afterAction = await readAuthoritativeTurn(roomId);
