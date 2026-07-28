@@ -28,6 +28,8 @@ export function GameStatisticsDialog({ open, roomId, players, localSeatId, onClo
   const inFlightRequestIdRef = useRef(0);
   const dialogRef = useRef<HTMLElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   const statistics = useMemo(() => createGameStatistics(sequences, players), [players, sequences]);
   const selectedStatistics = statistics.find((entry) => entry.id === selectedPlayerId) ?? statistics[0];
@@ -71,10 +73,7 @@ export function GameStatisticsDialog({ open, roomId, players, localSeatId, onClo
       setLoadState('idle');
       return undefined;
     }
-    setSelectedPlayerId((current) => {
-      if (players.some((player) => player.id === current)) return current;
-      return players.find((player) => player.id === localSeatId)?.id ?? players[0]?.id ?? '';
-    });
+    setSelectedPlayerId(players.find((player) => player.id === localSeatId)?.id ?? players[0]?.id ?? '');
     void loadStatistics();
     return () => {
       requestIdRef.current += 1;
@@ -93,7 +92,7 @@ export function GameStatisticsDialog({ open, roomId, players, localSeatId, onClo
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
     };
     document.addEventListener('keydown', handleKeyDown, true);
@@ -103,7 +102,7 @@ export function GameStatisticsDialog({ open, roomId, players, localSeatId, onClo
       document.body.style.overflow = previousOverflow;
       previousFocusRef.current?.focus();
     };
-  }, [onClose, open]);
+  }, [open]);
 
   if (!open || typeof document === 'undefined') return null;
 
@@ -129,7 +128,7 @@ export function GameStatisticsDialog({ open, roomId, players, localSeatId, onClo
                 type="button"
                 role="tab"
                 aria-selected={selected}
-                aria-controls={`game-statistics-panel-${player.id}`}
+                aria-controls="game-statistics-player-panel"
                 className={selected ? 'selected' : ''}
                 onClick={() => setSelectedPlayerId(player.id)}
               ><small>{player.label}</small><span>{player.name}</span></button>;
@@ -137,9 +136,9 @@ export function GameStatisticsDialog({ open, roomId, players, localSeatId, onClo
           </div>
         </header>
 
-        <div className="game-statistics-records" id={selectedStatistics ? `game-statistics-panel-${selectedStatistics.id}` : undefined} role="tabpanel">
+        <div className="game-statistics-records" id="game-statistics-player-panel" role="tabpanel">
           {loadState === 'loading' && <div className="game-statistics-state" role="status"><span className="loading-modal-spinner" aria-hidden="true"></span><p>전체 Sequence를 불러오는 중입니다...</p></div>}
-          {loadState === 'error' && <div className="game-statistics-state error" role="alert"><strong>통계 정보를 불러오지 못했습니다.</strong><p>{errorMessage}</p><button type="button" onClick={() => { void loadStatistics(); }} disabled={Boolean(inFlightRequestIdRef.current)}>다시 불러오기</button></div>}
+          {loadState === 'error' && <div className="game-statistics-state error" role="alert"><strong>통계 정보를 불러오지 못했습니다.</strong><p>{errorMessage}</p><button type="button" onClick={() => { void loadStatistics(); }} disabled={loadState === 'loading'}>다시 불러오기</button></div>}
           {loadState === 'success' && selectedStatistics && (selectedStatistics.records.length
             ? <div className="game-statistics-record-list">{selectedStatistics.records.map((record) => <article className="game-statistics-record" key={`${selectedStatistics.id}-${record.sequence}`}>
               <strong>#{record.sequence}</strong>
