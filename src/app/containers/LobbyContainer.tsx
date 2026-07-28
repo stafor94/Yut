@@ -3,6 +3,7 @@ import type { User } from 'firebase/auth';
 import { isRoomInGame, type RoomSummary } from '../../features/room/services/roomService';
 import { getLobbyRoomActionText } from '../flows/lobbyRoomAction';
 import { truncateRoomTitle } from '../flows/roomTitle';
+import { useLobbyAppVersionReload } from '../hooks/useLobbyAppVersionReload';
 import { LobbyScreen } from '../screens/LobbyScreen';
 
 const ROOM_QUERY_MIN_VISIBLE_MS = 600;
@@ -39,6 +40,8 @@ export function LobbyContainer({
   onNicknameChange,
   onSoundEnabledChange,
 }: LobbyContainerProps) {
+  useLobbyAppVersionReload();
+
   const [isInitialRoomQuerying, setIsInitialRoomQuerying] = useState(false);
   const roomQueryStartedAtRef = useRef(0);
   const roomQueryCompleteTimerRef = useRef<number | null>(null);
