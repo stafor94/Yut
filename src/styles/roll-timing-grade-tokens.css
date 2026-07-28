@@ -1,0 +1,27 @@
+:root {
+  --roll-timing-grade-perfect: #9568c7;
+  --roll-timing-grade-nice: #65b9d3;
+  --roll-timing-grade-good: #a9c96b;
+  --roll-timing-grade-bad: #302824;
+  --roll-timing-grade-text: #fff;
+}
+
+.game-shell .roll-timing-meter {
+  background: linear-gradient(
+    90deg,
+    var(--roll-timing-grade-bad) 0%,
+    var(--roll-timing-grade-bad) 20%,
+    var(--roll-timing-grade-good) 20%,
+    var(--roll-timing-grade-good) 40%,
+    var(--roll-timing-grade-nice) 40%,
+    var(--roll-timing-grade-nice) 45%,
+    var(--roll-timing-grade-perfect) 45%,
+    var(--roll-timing-grade-perfect) 55%,
+    var(--roll-timing-grade-nice) 55%,
+    var(--roll-timing-grade-nice) 60%,
+    var(--roll-timing-grade-good) 60%,
+    var(--roll-timing-grade-good) 80%,
+    var(--roll-timing-grade-bad) 80%,
+    var(--roll-timing-grade-bad) 100%
+  );
+}

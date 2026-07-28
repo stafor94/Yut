@@ -1,6 +1,8 @@
-export const TIMING_STAT_LABELS = ['PERFECT', 'NICE', 'GOOD', 'BAD', '미확인'] as const;
+export const PRIMARY_TIMING_STAT_LABELS = ['PERFECT', 'NICE', 'GOOD', 'BAD'] as const;
+export const TIMING_STAT_LABELS = [...PRIMARY_TIMING_STAT_LABELS, '미확인'] as const;
 export const YUT_STAT_LABELS = ['빽도', '도', '개', '걸', '윷', '모', '낙', '미확인'] as const;
 
+export type PrimaryTimingStatLabel = (typeof PRIMARY_TIMING_STAT_LABELS)[number];
 export type TimingStatLabel = (typeof TIMING_STAT_LABELS)[number];
 export type YutStatLabel = (typeof YUT_STAT_LABELS)[number];
 
@@ -49,6 +51,16 @@ export type GameStatisticsBreakdown<TLabel extends string> = {
   label: TLabel;
   count: number;
   percentage: number;
+};
+
+export type GameStatisticsRollGroup = {
+  records: PlayerRollStatisticsRecord[];
+  leadingEmptyColumns: number;
+};
+
+export type VisibleTimingStatistics = {
+  primary: GameStatisticsBreakdown<PrimaryTimingStatLabel>[];
+  unknown: GameStatisticsBreakdown<'미확인'> | null;
 };
 
 export type PlayerGameStatistics = {
@@ -141,6 +153,45 @@ const makeBreakdown = <TLabel extends string>(
     percentage: total > 0 ? (count / total) * 100 : 0,
   };
 });
+
+export function buildGameStatisticsRollGroups(
+  records: readonly PlayerRollStatisticsRecord[],
+  columns = 3,
+): GameStatisticsRollGroup[] {
+  const normalizedColumns = Number.isInteger(columns) && columns > 0 ? columns : 3;
+  const ascendingRecords = [...records].sort((left, right) => left.sequence - right.sequence);
+  const ascendingGroups: PlayerRollStatisticsRecord[][] = [];
+
+  for (let start = 0; start < ascendingRecords.length; start += normalizedColumns) {
+    ascendingGroups.push(ascendingRecords.slice(start, start + normalizedColumns));
+  }
+
+  return ascendingGroups.reverse().map((groupRecords, groupIndex) => ({
+    records: groupRecords,
+    leadingEmptyColumns: groupIndex === 0
+      ? normalizedColumns - groupRecords.length
+      : 0,
+  }));
+}
+
+export function getVisibleTimingStatistics(
+  entries: readonly GameStatisticsBreakdown<TimingStatLabel>[],
+): VisibleTimingStatistics {
+  const primary = PRIMARY_TIMING_STAT_LABELS.map((label) => {
+    const entry = entries.find((candidate) => candidate.label === label);
+    return entry
+      ? { ...entry, label }
+      : { label, count: 0, percentage: 0 };
+  });
+  const unknown = entries.find((entry) => entry.label === '미확인');
+
+  return {
+    primary,
+    unknown: unknown && unknown.count > 0
+      ? { ...unknown, label: '미확인' }
+      : null,
+  };
+}
 
 const getCapturedPieceCount = (sequence: GameStatisticsSequence) => {
   if (sequence.type !== 'move_piece_resolved') return 0;
