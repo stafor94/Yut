@@ -4,6 +4,7 @@ import {
   buildGameStatistics,
   formatStatisticsPercentage,
   resolveGameStatisticsSeats,
+  selectCurrentGameSequences,
   type GameStatisticsSequence,
 } from '../../src/app/flows/gameStatistics';
 
@@ -104,4 +105,53 @@ test('최신 상태의 좌석 순서를 우선하고 Sequence stateAfter를 폴�
     stateAfter: { gameSeats: stateSeats },
   }]);
   assert.deepEqual(fromSequence.map((seat) => seat.name), ['첫째', '둘째']);
+});
+
+test('최신 game_initialized 이후 sequence만 현재 게임 통계로 선택한다', () => {
+  const sequences = [
+    sequence(1, 'game_initialized', 'p1', { startRequestVersion: 1, startRequestId: 'game-1' }),
+    sequence(2, 'roll_yut', 'p1', { timingZone: 'perfect', rollName: '모' }),
+    sequence(3, 'move_piece_resolved', 'p1', { captured: true }),
+    sequence(10, 'game_initialized', 'p1', { startRequestVersion: 2, startRequestId: 'game-2' }),
+    sequence(11, 'roll_yut', 'p1', { timingZone: 'nice', rollName: '개' }),
+  ];
+
+  const selected = selectCurrentGameSequences(undefined, sequences);
+  const [statistics] = buildGameStatistics(sequences, seats.slice(0, 1));
+
+  assert.deepEqual(selected.map((entry) => entry.sequence), [10, 11]);
+  assert.deepEqual(statistics.rolls.map((roll) => roll.sequence), [11]);
+  assert.equal(statistics.capturedPieceCount, 0);
+});
+
+test('latestState identity와 lastSequence가 지정되면 해당 게임 경계와 상한을 적용한다', () => {
+  const sequences = [
+    sequence(1, 'game_initialized', 'p1', { startRequestVersion: 1, startRequestId: 'game-1' }),
+    sequence(2, 'roll_yut', 'p1', { timingZone: 'perfect', rollName: '모' }),
+    sequence(10, 'game_initialized', 'p1', { startRequestVersion: 2, startRequestId: 'game-2' }),
+    sequence(11, 'roll_yut', 'p1', { timingZone: 'nice', rollName: '개' }),
+    sequence(12, 'roll_yut', 'p1', { timingZone: 'good', rollName: '걸' }),
+  ];
+
+  const selected = selectCurrentGameSequences({
+    startRequestVersion: 2,
+    startRequestId: 'game-2',
+    lastSequence: 11,
+  }, sequences);
+
+  assert.deepEqual(selected.map((entry) => entry.sequence), [10, 11]);
+});
+
+test('현재 게임 좌석 폴백은 이전 게임 stateAfter를 사용하지 않는다', () => {
+  const oldSeats = [{ id: 'old-player', label: 'P1', name: '이전 사용자', seatIndex: 0, isAI: false }];
+  const newSeats = [{ id: 'new-player', label: 'P1', name: '현재 사용자', seatIndex: 0, isAI: false }];
+  const sequences: GameStatisticsSequence[] = [
+    { ...sequence(1, 'game_initialized', 'old-player', { startRequestId: 'game-1' }), stateAfter: { gameSeats: oldSeats } },
+    { ...sequence(2, 'state_snapshot', 'old-player'), stateAfter: { gameSeats: oldSeats } },
+    { ...sequence(10, 'game_initialized', 'new-player', { startRequestId: 'game-2' }), stateAfter: { gameSeats: newSeats } },
+  ];
+
+  const result = resolveGameStatisticsSeats({ startRequestId: 'game-2' }, sequences);
+
+  assert.deepEqual(result.map((seat) => seat.id), ['new-player']);
 });
