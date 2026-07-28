@@ -156,11 +156,14 @@ async function expectAuthoritativeTurnPresentation(page, roomId, localPlayerId) 
   const client = await collectScreenState(page);
   expect(client.yutDebug?.activeSeat?.id).toBe(authoritative.current.id);
   expect(client.yutDebug?.isMyTurn).toBe(authoritative.current.id === localPlayerId);
+  const hasActionableRoll = client.rollButton.visible && !client.rollButton.disabled;
+  const hasActionableMove = client.moveButton.visible && !client.moveButton.disabled;
   if (authoritative.current.id === localPlayerId) {
-    expect(client.rollButton.visible || client.moveButton.visible).toBe(true);
+    expect(hasActionableRoll || hasActionableMove).toBe(true);
     expect(client.turnWaitingButton.visible).toBe(false);
   } else {
-    expect(client.turnWaitingButton.visible).toBe(true);
+    expect(hasActionableRoll).toBe(false);
+    expect(hasActionableMove).toBe(false);
   }
   return authoritative;
 }
