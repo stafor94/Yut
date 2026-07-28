@@ -321,7 +321,7 @@
     width: min(calc(100vw - 24px), 420px);
     max-height: min(
       calc(100svh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)),
-      calc(70dvh - 24px - (2 * env(safe-area-inset-top)))
+      calc(70dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-top))
     );
     padding: 15px;
   }
