@@ -13,6 +13,9 @@ import {
   rememberRoomIdFromPage,
 } from './rooms.js';
 
+const SEQUENCE_ID_PAD_LENGTH = 12;
+const FIXTURE_COMMIT_RETRY_LIMIT = 3;
+
 const encodeFirestoreValue = (value) => {
   if (value === null || value === undefined) return { nullValue: null };
   if (typeof value === 'boolean') return { booleanValue: value };
@@ -86,33 +89,111 @@ const readFirebaseAccessTokenFromPage = (page) => page.evaluate(async () => {
   });
 });
 
-const getFirestoreDocumentUrl = (projectId, pathSegments) => {
-  const encodedPath = pathSegments.map((segment) => encodeURIComponent(segment)).join('/');
+const getFirestoreDocumentsBaseUrl = (projectId) => {
   const emulatorEndpoint = String(process.env.FIRESTORE_EMULATOR_HOST ?? '').trim();
   if (emulatorEndpoint) {
     const [host, port] = emulatorEndpoint.split(':');
-    return `http://${host}:${port}/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodedPath}`;
+    return `http://${host}:${port}/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`;
   }
-  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodedPath}`;
+  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`;
 };
 
-async function patchRoomStateForQa(page, roomId, patch) {
+const getFirestoreDocumentName = (projectId, pathSegments) => (
+  `projects/${projectId}/databases/(default)/documents/${pathSegments.join('/')}`
+);
+
+const makeSequenceDocId = (sequence) => String(sequence).padStart(SEQUENCE_ID_PAD_LENGTH, '0');
+
+const isRetryableFixtureCommitFailure = (status, responseText) => (
+  (status === 400 || status === 409)
+  && /(ABORTED|ALREADY_EXISTS|FAILED_PRECONDITION)/u.test(responseText)
+);
+
+async function commitRoomStatePatchForQa(page, roomId, patch, actorId) {
   const config = await loadFirebaseConfig();
   if (!config?.projectId) throw new Error('Firebase projectId가 없어 stacked timeout fixture를 설정할 수 없습니다.');
   const accessToken = await readFirebaseAccessTokenFromPage(page);
   if (!accessToken) throw new Error('게임 호스트 Firebase access token을 찾지 못했습니다.');
-  const url = new URL(getFirestoreDocumentUrl(config.projectId, ['rooms', roomId, 'state', 'current']));
-  Object.keys(patch).forEach((fieldPath) => url.searchParams.append('updateMask.fieldPaths', fieldPath));
-  const fields = Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, encodeFirestoreValue(value)]));
-  const response = await fetch(url, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ fields }),
-  });
-  if (!response.ok) throw new Error(`stacked timeout state PATCH ${response.status}: ${await response.text()}`);
+
+  const commitUrl = `${getFirestoreDocumentsBaseUrl(config.projectId)}:commit`;
+  for (let attempt = 0; attempt < FIXTURE_COMMIT_RETRY_LIMIT; attempt += 1) {
+    const state = await getRoomStateForQa(roomId);
+    if (!state) throw new Error('stacked timeout fixture commit을 위한 authoritative state가 없습니다.');
+
+    const currentSequence = Number(state.lastSequence ?? 0);
+    const currentTurnVersion = Number(state.turnVersion ?? 0);
+    const nextSequence = currentSequence + 1;
+    const nextTurnVersion = currentTurnVersion + 1;
+    const committedAt = Date.now();
+    const clientMutationId = `qa-stacked-timeout-fixture:${roomId}:${nextSequence}`;
+    const sequenceFields = {
+      sequence: encodeFirestoreValue(nextSequence),
+      type: encodeFirestoreValue('state_snapshot'),
+      actorId: encodeFirestoreValue(actorId || 'qa-system'),
+      payload: encodeFirestoreValue({ qaFixture: 'stacked-roll-timeout' }),
+      schemaVersion: encodeFirestoreValue(2),
+      eventSchemaVersion: encodeFirestoreValue(2),
+      action: encodeFirestoreValue(null),
+      patch: encodeFirestoreValue(patch),
+      logEntries: encodeFirestoreValue([]),
+      expectedPreviousSequence: encodeFirestoreValue(currentSequence),
+      clientMutationId: encodeFirestoreValue(clientMutationId),
+      clientCreatedAt: encodeFirestoreValue(committedAt),
+      createdAt: { timestampValue: new Date(committedAt).toISOString() },
+    };
+    if (state.coordinatorSeatId) sequenceFields.coordinatorSeatId = encodeFirestoreValue(state.coordinatorSeatId);
+    if (Number(state.coordinatorEpoch ?? 0) > 0) sequenceFields.coordinatorEpoch = encodeFirestoreValue(Number(state.coordinatorEpoch));
+
+    const stateFields = Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, encodeFirestoreValue(value)]));
+    stateFields.turnVersion = encodeFirestoreValue(nextTurnVersion);
+    stateFields.lastSequence = encodeFirestoreValue(nextSequence);
+    stateFields.lastClientMutationId = encodeFirestoreValue(clientMutationId);
+    stateFields.updatedAt = { timestampValue: new Date(committedAt).toISOString() };
+    const stateFieldPaths = [...new Set([
+      ...Object.keys(patch),
+      'turnVersion',
+      'lastSequence',
+      'lastClientMutationId',
+      'updatedAt',
+    ])];
+
+    const response = await fetch(commitUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        writes: [
+          {
+            update: {
+              name: getFirestoreDocumentName(config.projectId, ['rooms', roomId, 'sequences', makeSequenceDocId(nextSequence)]),
+              fields: sequenceFields,
+            },
+            currentDocument: { exists: false },
+          },
+          {
+            update: {
+              name: getFirestoreDocumentName(config.projectId, ['rooms', roomId, 'state', 'current']),
+              fields: stateFields,
+            },
+            updateMask: { fieldPaths: stateFieldPaths },
+          },
+        ],
+      }),
+    });
+    const responseText = await response.text();
+    if (response.ok) {
+      return {
+        clientMutationId,
+        lastSequence: nextSequence,
+        turnVersion: nextTurnVersion,
+      };
+    }
+    if (attempt + 1 < FIXTURE_COMMIT_RETRY_LIMIT && isRetryableFixtureCommitFailure(response.status, responseText)) continue;
+    throw new Error(`stacked timeout sequence commit ${response.status}: ${responseText}`);
+  }
+  throw new Error('stacked timeout sequence commit 재시도 한도를 초과했습니다.');
 }
 
 const getRecoverySequences = (sequences, actionKey) => sequences.filter((sequence) => (
@@ -166,11 +247,8 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   if (!state) throw new Error('authoritative game state가 없습니다.');
   const actorId = String(state.coordinatorSeatId ?? state.turnOrderIds?.[0] ?? '');
   const actorTurnIndex = Math.max(0, state.turnOrderIds.findIndex((seatId) => seatId === actorId));
-  const fixtureTurnVersion = Math.max(1, Number(state.turnVersion ?? 0) + 1);
-  const expiredTurnVersion = fixtureTurnVersion + 1;
   const visibleDeadlineAt = Date.now() + 60_000;
-  await patchRoomStateForQa(page, roomId, {
-    turnVersion: fixtureTurnVersion,
+  const visibleFixture = await commitRoomStatePatchForQa(page, roomId, {
     turnIndex: actorTurnIndex,
     roll: null,
     rollStack: [
@@ -190,14 +268,15 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
     turnDeadlineAt: visibleDeadlineAt,
     turnActionTimeoutCountBySeatId: { [actorId]: 0 },
     autoPlayBySeatId: { [actorId]: false },
-  });
+  }, actorId);
 
   await expect.poll(async () => {
     const current = await getRoomStateForQa(roomId);
     const currentStack = Array.isArray(current?.rollStack) ? current.rollStack : [];
     return Boolean(
       current
-      && Number(current.turnVersion) === fixtureTurnVersion
+      && Number(current.turnVersion) === visibleFixture.turnVersion
+      && Number(current.lastSequence) === visibleFixture.lastSequence
       && Number(current.turnIndex) === actorTurnIndex
       && current.roll === null
       && current.selectedRollStackIndex === null
@@ -213,7 +292,7 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   }, {
     timeout: 10_000,
     intervals: [50, 100, 200, 400],
-    message: '닫힌 다중 미선택 이동 스택 fixture가 authoritative state에 안정적으로 반영되어야 합니다.',
+    message: '닫힌 다중 미선택 이동 스택 fixture가 authoritative sequence로 안정적으로 반영되어야 합니다.',
   }).toBe(true);
 
   const picker = page.locator('.roll-stack-picker');
@@ -224,10 +303,22 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   const timeoutDeadlineAt = Date.now() - 1;
   const actionKey = `timeout:${roomId}:move:${actorId}:${timeoutDeadlineAt}`;
   const baselineSequences = await getRoomSequencesForQa(roomId);
-  await patchRoomStateForQa(page, roomId, {
-    turnVersion: expiredTurnVersion,
+  const expiredFixture = await commitRoomStatePatchForQa(page, roomId, {
     turnDeadlineAt: timeoutDeadlineAt,
-  });
+  }, actorId);
+  await expect.poll(async () => {
+    const current = await getRoomStateForQa(roomId);
+    return Boolean(
+      current
+      && Number(current.turnVersion) === expiredFixture.turnVersion
+      && Number(current.lastSequence) === expiredFixture.lastSequence
+      && Number(current.turnDeadlineAt) === timeoutDeadlineAt,
+    );
+  }, {
+    timeout: 2_000,
+    intervals: [25, 50, 100],
+    message: '만료된 move deadline fixture가 authoritative sequence로 반영되어야 합니다.',
+  }).toBe(true);
   await expect.poll(async () => {
     const buttons = picker.getByRole('button');
     const buttonCount = await buttons.count();
