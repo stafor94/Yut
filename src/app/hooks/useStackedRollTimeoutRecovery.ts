@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
-import { commitAuthoritativeGameAction } from '../../features/room/services/roomService';
+import { commitCoordinatorMoveTimeoutRecovery } from '../../features/room/services/coordinatorMoveTimeoutRecovery';
 import { getTurnRecoveryDeadlineAt } from '../../features/room/services/roomTiming';
 import {
   makeTimeoutActionKey,
@@ -168,7 +168,7 @@ export function useStackedRollTimeoutRecovery({
         },
       };
 
-      void commitAuthoritativeGameAction(roomId, action).then((result) => {
+      void commitCoordinatorMoveTimeoutRecovery(roomId, action).then((result) => {
         if (cancelled || result.status === 'committed' || result.status === 'duplicate') return;
         inFlightLeaseKeyRef.current = '';
         retryTimer = window.setTimeout(() => setRetryVersion((current) => current + 1), RECOVERY_RETRY_DELAY_MS);
