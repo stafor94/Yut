@@ -78,6 +78,7 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     await expect(dialog.getByTestId('game-statistics-error')).toContainText('QA 통계 조회 실패');
     await dialog.getByRole('button', { name: '다시 불러오기' }).click();
     await expect(dialog.getByRole('tab', { name: '이전 방' })).toBeVisible();
+    await expect(dialog.getByRole('tab', { name: '이전 방' })).toHaveAttribute('aria-selected', 'true');
     await dialog.getByRole('button', { name: '닫기' }).click();
 
     await page.evaluate(() => {
