@@ -12,8 +12,11 @@ const appUrl = String(process.env.PLAYWRIGHT_BASE_URL ?? '').trim() || '/Yut/';
 
 test.describe('lobby app version auto reload', () => {
   let roomId = '';
+  let releasePendingVersionResponse = () => {};
 
   test.afterEach(async () => {
+    releasePendingVersionResponse();
+    releasePendingVersionResponse = () => {};
     if (roomId) await deleteRoomForQa(roomId);
     roomId = '';
   });
@@ -43,9 +46,8 @@ test.describe('lobby app version auto reload', () => {
     await primeLobbyStorage(context, { nickname });
     await installAppVersionDocumentLoadCounter(context);
 
-    let releaseVersionResponse = () => {};
     let markVersionRequestStarted = () => {};
-    const versionResponseReleased = new Promise((resolve) => { releaseVersionResponse = resolve; });
+    const versionResponseReleased = new Promise((resolve) => { releasePendingVersionResponse = resolve; });
     const versionRequestStarted = new Promise((resolve) => { markVersionRequestStarted = resolve; });
 
     await page.route('**/version.json?version-check=*', async (route) => {
@@ -69,7 +71,8 @@ test.describe('lobby app version auto reload', () => {
     await expect(page.getByTestId('waiting-room')).toBeVisible({ timeout: 45_000 });
     roomId = await findRoomIdByTitle(roomTitle);
 
-    releaseVersionResponse();
+    releasePendingVersionResponse();
+    releasePendingVersionResponse = () => {};
     await page.evaluate(() => {
       window.dispatchEvent(new Event('focus'));
       window.dispatchEvent(new Event('online'));
