@@ -15,7 +15,11 @@ export async function installGameStatisticsFixture(page, {
   }
 
   await page.evaluate(({ nextRoomId, nextLocalSeatId, nextSeats, nextSequences, nextDelayMs, nextFailuresBeforeSuccess, nextRoomData }) => {
-    window.localStorage.setItem('yut-online:activeRoomId', nextRoomId);
+    const setActiveRoomId = (roomId) => window.localStorage.setItem('yut-online:activeRoomId', roomId);
+    const restoreActiveRoomIdIfMissing = (roomId) => {
+      if (!window.localStorage.getItem('yut-online:activeRoomId')?.trim()) setActiveRoomId(roomId);
+    };
+    setActiveRoomId(nextRoomId);
     window.__YUT_QA_GAME_STATISTICS_LOCAL_SEAT_ID__ = nextLocalSeatId;
     window.__YUT_QA_GAME_STATISTICS_LOADER_CALLS__ = [];
     window.__YUT_QA_GAME_STATISTICS_FAILURES_LEFT__ = nextFailuresBeforeSuccess;
@@ -27,6 +31,7 @@ export async function installGameStatisticsFixture(page, {
         delayMs: nextDelayMs,
       };
       await new Promise((resolve) => window.setTimeout(resolve, Number(configured.delayMs ?? nextDelayMs)));
+      restoreActiveRoomIdIfMissing(requestedRoomId);
       if (window.__YUT_QA_GAME_STATISTICS_FAILURES_LEFT__ > 0) {
         window.__YUT_QA_GAME_STATISTICS_FAILURES_LEFT__ -= 1;
         throw new Error('QA 통계 조회 실패');
@@ -70,7 +75,10 @@ export async function installGameStatisticsFixture(page, {
     statisticsButton.setAttribute('aria-label', '통계 정보 열기');
     statisticsButton.setAttribute('title', '통계 정보 열기');
     statisticsButton.innerHTML = '<svg viewBox="0 0 28 28" aria-hidden="true"><g transform="rotate(-18 9 14)"><rect x="5" y="3" width="7" height="22" rx="3.5"></rect><path d="M8.5 7v3M8.5 18v3"></path></g><g transform="rotate(18 19 14)"><rect x="16" y="3" width="7" height="22" rx="3.5"></rect><path d="M19.5 7v3M19.5 18v3"></path></g></svg>';
-    statisticsButton.addEventListener('click', () => window.__YUT_QA_OPEN_GAME_STATISTICS__?.());
+    statisticsButton.addEventListener('click', () => {
+      setActiveRoomId(nextRoomId);
+      window.__YUT_QA_OPEN_GAME_STATISTICS__?.();
+    });
     actions.append(exportButton, statisticsButton);
     header.append(heading, actions);
     logPanel.append(header);
