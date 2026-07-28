@@ -34,6 +34,10 @@ function clearReloadMarker() {
   }
 }
 
+function isLobbyScreenActive() {
+  return Boolean(document.querySelector('[data-testid="app-shell"].screen-lobby'));
+}
+
 export function useLobbyAppVersionReload() {
   useEffect(() => {
     const currentVersion = normalizeAppVersion(__APP_VERSION__);
@@ -44,7 +48,7 @@ export function useLobbyAppVersionReload() {
     let activeController: AbortController | null = null;
 
     const checkForUpdate = async () => {
-      if (disposed || checking) return;
+      if (disposed || checking || !isLobbyScreenActive()) return;
       checking = true;
       const controller = new AbortController();
       activeController = controller;
@@ -58,10 +62,10 @@ export function useLobbyAppVersionReload() {
             signal: controller.signal,
           },
         );
-        if (!response.ok || disposed) return;
+        if (!response.ok || disposed || !isLobbyScreenActive()) return;
 
         const manifest: unknown = await response.json();
-        if (disposed || !manifest || typeof manifest !== 'object') return;
+        if (disposed || !isLobbyScreenActive() || !manifest || typeof manifest !== 'object') return;
         const remoteVersion = normalizeAppVersion((manifest as { version?: unknown }).version);
         if (!remoteVersion) return;
 
@@ -70,10 +74,14 @@ export function useLobbyAppVersionReload() {
           clearReloadMarker();
           return;
         }
-        if (!shouldReloadForAppVersion({ currentVersion, remoteVersion, lastReloadedVersion }) || disposed) return;
+        if (
+          !shouldReloadForAppVersion({ currentVersion, remoteVersion, lastReloadedVersion })
+          || disposed
+          || !isLobbyScreenActive()
+        ) return;
 
         writeReloadMarker(remoteVersion);
-        if (!disposed) window.location.reload();
+        window.location.reload();
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
           // A transient version-check failure must not interrupt lobby use. The next trigger retries it.
