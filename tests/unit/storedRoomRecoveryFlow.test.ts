@@ -122,10 +122,11 @@ test('관전자 결과에서는 플레이어 좌석을 임의 생성하지 않�
   assert.deepEqual(context.state.seats, []);
 });
 
-test('joinRoom 오류 시 active room 관련 상태 전체 정리 후 lobby로 복귀한다', async () => {
+test('영구 joinRoom 오류 시 active room 관련 상태 전체 정리 후 lobby로 복귀한다', async () => {
   const context = baseParams();
-  context.params.runtime.joinRoom = async () => { throw new Error('boom'); };
-  await recoverStoredRoom(context.params);
+  context.params.runtime.joinRoom = async () => { throw Object.assign(new Error('boom'), { code: 'permission-denied' }); };
+  const result = await recoverStoredRoom(context.params);
+  assert.equal(result, 'permanent-failure');
   assert.equal(context.params.hostingRoomUserIdRef.current, '');
   assert.equal(context.state.activeRoomId, '');
   assert.equal(context.state.isRoomHost, false);
@@ -134,6 +135,21 @@ test('joinRoom 오류 시 active room 관련 상태 전체 정리 후 lobby로 �
   assert.equal(context.state.screen, 'lobby');
   assert.equal(context.state.loadingMessage, '');
   assert.equal(context.state.message, 'boom');
+});
+
+test('재시도 가능한 joinRoom 오류는 저장된 방 포인터와 기존 상태를 유지한다', async () => {
+  const context = baseParams();
+  context.params.runtime.joinRoom = async () => { throw Object.assign(new Error('temporary'), { code: 'unavailable' }); };
+  const result = await recoverStoredRoom(context.params);
+  assert.equal(result, 'retryable-failure');
+  assert.equal(context.params.hostingRoomUserIdRef.current, 'host-old');
+  assert.equal(context.storage.get(STORAGE_KEYS.activeRoomId), 'stored-room');
+  assert.equal(context.storage.get(STORAGE_KEYS.isRoomHost), 'true');
+  assert.equal(context.state.activeRoomTitle, 'old-title');
+  assert.equal(context.state.activeRoomHostId, 'old-host');
+  assert.equal(context.state.screen, '');
+  assert.equal(context.state.loadingMessage, '');
+  assert.equal(context.state.message, 'temporary');
 });
 
 test('취소된 늦은 응답은 상태를 변경하지 않는다', async () => {
