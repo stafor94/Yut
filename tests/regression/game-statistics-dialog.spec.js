@@ -59,7 +59,7 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     await expect.poll(() => page.evaluate(() => window.__YUT_QA_GAME_STATISTICS_LOADER_CALLS__.length)).toBe(2);
   });
 
-  test('3열 기록은 최신 부분 행을 위쪽 오른쪽에 두고 팝업이 아닌 기록 영역만 스크롤한다', async ({ page }) => {
+  test('Desktop에서 6열 기록을 좌측 정렬하고 footer 계층과 기록 전용 스크롤을 유지한다', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await expectAppShell(page);
     const sequences = Array.from({ length: 31 }, (_, index) => ({
@@ -86,17 +86,35 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     const footer = dialog.getByTestId('game-statistics-footer');
     const heading = dialog.getByRole('heading', { name: '통계 정보' });
     const rows = dialog.getByTestId('game-statistics-record-row');
-    await expect(rows).toHaveCount(11);
+    await expect(rows).toHaveCount(6);
 
     const topRecord = rows.nth(0).getByTestId('game-statistics-record');
     await expect(topRecord).toHaveCount(1);
     await expect(topRecord).toContainText('#31');
-    await expect(topRecord).toHaveCSS('grid-column-start', '3');
+    await expect(topRecord).toHaveCSS('grid-column-start', '1');
     expect(await rows.nth(1).getByTestId('game-statistics-record').evaluateAll((cards) => cards.map((card) => card.textContent))).toEqual([
+      '#25P모',
+      '#26N도',
+      '#27G개',
       '#28B걸',
       '#29P윷',
       '#30N모',
     ]);
+
+    const rowLayout = await rows.nth(1).evaluate((row) => {
+      const cards = Array.from(row.querySelectorAll('[data-testid="game-statistics-record"]'));
+      const rowBox = row.getBoundingClientRect();
+      const cardBoxes = cards.map((card) => card.getBoundingClientRect());
+      return {
+        columnCount: getComputedStyle(row).gridTemplateColumns.split(' ').filter(Boolean).length,
+        rowLeft: rowBox.left,
+        firstCardLeft: cardBoxes[0]?.left ?? 0,
+        cardLefts: cardBoxes.map((box) => box.left),
+      };
+    });
+    expect(rowLayout.columnCount).toBe(6);
+    expect(Math.abs(rowLayout.firstCardLeft - rowLayout.rowLeft)).toBeLessThanOrEqual(1);
+    expect(rowLayout.cardLefts).toEqual([...rowLayout.cardLefts].sort((left, right) => left - right));
 
     const badgeGeometry = await topRecord.evaluate((card) => {
       const badge = card.querySelector('.game-statistics-sequence-badge');
@@ -119,16 +137,52 @@ test.describe('진행 기록 통계 정보 팝업', () => {
 
     const layout = await dialog.evaluate((element) => {
       const recordsElement = element.querySelector('[data-testid="game-statistics-records"]');
-      if (!(recordsElement instanceof HTMLElement)) throw new Error('기록 영역을 찾지 못했습니다.');
+      const timingSection = element.querySelector('[aria-label="타이밍 결과 통계"]');
+      const timingHeading = timingSection?.querySelector('h3');
+      const timingGrid = timingSection?.querySelector('.game-statistics-summary-grid');
+      const yutSection = element.querySelector('[aria-label="윷 결과 통계"]');
+      const yutHeading = yutSection?.querySelector('h3');
+      const yutGrid = yutSection?.querySelector('.game-statistics-summary-grid');
+      const capture = element.querySelector('[data-testid="game-statistics-capture-count"]');
+      const closeButton = element.querySelector('.modal-actions button');
+      if (!(recordsElement instanceof HTMLElement)
+        || !(timingHeading instanceof HTMLElement)
+        || !(timingGrid instanceof HTMLElement)
+        || !(yutHeading instanceof HTMLElement)
+        || !(yutGrid instanceof HTMLElement)
+        || !(capture instanceof HTMLElement)
+        || !(closeButton instanceof HTMLElement)) throw new Error('통계 footer 레이아웃을 찾지 못했습니다.');
+      const dialogBox = element.getBoundingClientRect();
+      const recordsBox = recordsElement.getBoundingClientRect();
+      const timingHeadingBox = timingHeading.getBoundingClientRect();
+      const timingGridBox = timingGrid.getBoundingClientRect();
+      const yutHeadingBox = yutHeading.getBoundingClientRect();
+      const yutGridBox = yutGrid.getBoundingClientRect();
+      const captureBox = capture.getBoundingClientRect();
+      const closeBox = closeButton.getBoundingClientRect();
       return {
         dialogScrollHeight: element.scrollHeight,
         dialogClientHeight: element.clientHeight,
         recordsScrollHeight: recordsElement.scrollHeight,
         recordsClientHeight: recordsElement.clientHeight,
+        recordsToTimingTitleGap: timingHeadingBox.top - recordsBox.bottom,
+        timingTitleToCardsGap: timingGridBox.top - timingHeadingBox.bottom,
+        timingToYutGap: yutHeadingBox.top - timingGridBox.bottom,
+        yutTitleToCardsGap: yutGridBox.top - yutHeadingBox.bottom,
+        yutToCaptureGap: captureBox.top - yutGridBox.bottom,
+        captureToCloseGap: closeBox.top - captureBox.bottom,
+        closeToDialogBottomGap: dialogBox.bottom - closeBox.bottom,
       };
     });
     expect(layout.dialogScrollHeight).toBeLessThanOrEqual(layout.dialogClientHeight + 1);
     expect(layout.recordsScrollHeight).toBeGreaterThan(layout.recordsClientHeight);
+    expect(layout.recordsToTimingTitleGap).toBeGreaterThanOrEqual(10);
+    expect(layout.timingTitleToCardsGap).toBeGreaterThanOrEqual(5);
+    expect(layout.timingToYutGap).toBeGreaterThanOrEqual(8);
+    expect(layout.yutTitleToCardsGap).toBeGreaterThanOrEqual(5);
+    expect(layout.yutToCaptureGap).toBeGreaterThanOrEqual(8);
+    expect(layout.captureToCloseGap).toBeGreaterThanOrEqual(10);
+    expect(layout.closeToDialogBottomGap).toBeGreaterThanOrEqual(8);
 
     const headingBefore = await heading.boundingBox();
     const footerBefore = await footer.boundingBox();
