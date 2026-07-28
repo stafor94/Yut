@@ -71,6 +71,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/waiting-room-empty-seat-layout.spec.js',
       'tests/mobile/lobby-start-polish.spec.js',
       'tests/mobile/lobby-guide-polish.spec.js',
+      'tests/mobile/lobby-app-version-auto-reload.spec.js',
       'tests/mobile/roll-timing-grades.spec.js',
       'tests/mobile/roll-stage-board-alignment.spec.js',
       'tests/mobile/turn-order-layout.spec.js',
