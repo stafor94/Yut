@@ -178,21 +178,34 @@ async function expectAuthoritativeTurnPresentation(page, roomId, localPlayerId) 
 
 async function completeAuthoritativeTurn({ roomId, hostPage, guestPage, hostPlayerId, guestPlayerId }) {
   const before = await readAuthoritativeTurn(roomId);
-  const activePage = before.current.id === hostPlayerId ? hostPage : before.current.id === guestPlayerId ? guestPage : null;
+  const turnOwnerId = String(before.current?.id ?? '');
+  const activePage = turnOwnerId === hostPlayerId ? hostPage : turnOwnerId === guestPlayerId ? guestPage : null;
   expect(activePage, '현재 authoritative seat에 대응하는 실제 사람 페이지가 필요합니다.').toBeTruthy();
-  const rollButton = activePage.getByTestId('roll-yut-button');
-  await expect(rollButton).toBeEnabled({ timeout: 20_000 });
-  await rollButton.click();
-  const moveButton = activePage.getByTestId('move-piece-button');
-  await expect(moveButton).toBeEnabled({ timeout: 20_000 });
-  await moveButton.click();
-  await expect.poll(async () => {
-    const after = await readAuthoritativeTurn(roomId);
-    return {
-      sequenceAdvanced: after.lastSequence > before.lastSequence,
-      turnChanged: after.current?.id !== before.current?.id,
-    };
-  }, { timeout: 25_000 }).toEqual({ sequenceAdvanced: true, turnChanged: true });
+
+  let lastSequence = before.lastSequence;
+  for (let actionCount = 0; actionCount < 8; actionCount += 1) {
+    const current = await readAuthoritativeTurn(roomId);
+    if (current.current?.id !== turnOwnerId) {
+      expect(current.lastSequence).toBeGreaterThan(before.lastSequence);
+      return;
+    }
+
+    await expectAuthoritativeTurnPresentation(activePage, roomId, turnOwnerId);
+    const controls = await collectScreenState(activePage);
+    const rollActionable = controls.rollButton.visible && !controls.rollButton.disabled;
+    const moveActionable = controls.moveButton.visible && !controls.moveButton.disabled;
+    expect(rollActionable || moveActionable, `현재 턴의 실행 가능한 roll/move 단계가 필요합니다: ${JSON.stringify(controls)}`).toBe(true);
+
+    if (moveActionable) await activePage.getByTestId('move-piece-button').click();
+    else await activePage.getByTestId('roll-yut-button').click();
+
+    await expect.poll(async () => (await readAuthoritativeTurn(roomId)).lastSequence, { timeout: 25_000 }).toBeGreaterThan(lastSequence);
+    const afterAction = await readAuthoritativeTurn(roomId);
+    lastSequence = afterAction.lastSequence;
+    if (afterAction.current?.id !== turnOwnerId) return;
+  }
+
+  throw new Error(`8번의 authoritative action 이후에도 턴이 변경되지 않았습니다: ${JSON.stringify(await readAuthoritativeTurn(roomId))}`);
 }
 
 async function installTurnBadgeTrace(page) {
