@@ -62,7 +62,7 @@ test.describe('진행 기록 통계 정보 팝업', () => {
   test('Desktop에서 6열 기록을 좌측 정렬하고 footer 계층과 기록 전용 스크롤을 유지한다', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await expectAppShell(page);
-    const sequences = Array.from({ length: 31 }, (_, index) => ({
+    const sequences = Array.from({ length: 73 }, (_, index) => ({
       id: `desktop-roll-${index + 1}`,
       sequence: index + 1,
       type: 'roll_yut',
@@ -86,19 +86,14 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     const footer = dialog.getByTestId('game-statistics-footer');
     const heading = dialog.getByRole('heading', { name: '통계 정보' });
     const rows = dialog.getByTestId('game-statistics-record-row');
-    await expect(rows).toHaveCount(6);
+    await expect(rows).toHaveCount(13);
 
     const topRecord = rows.nth(0).getByTestId('game-statistics-record');
     await expect(topRecord).toHaveCount(1);
-    await expect(topRecord).toContainText('#31');
+    await expect(topRecord).toContainText('#73');
     await expect(topRecord).toHaveCSS('grid-column-start', '1');
-    expect(await rows.nth(1).getByTestId('game-statistics-record').evaluateAll((cards) => cards.map((card) => card.textContent))).toEqual([
-      '#25P모',
-      '#26N도',
-      '#27G개',
-      '#28B걸',
-      '#29P윷',
-      '#30N모',
+    expect(await rows.nth(1).getByTestId('game-statistics-record').evaluateAll((cards) => cards.map((card) => card.querySelector('.game-statistics-sequence-badge')?.textContent))).toEqual([
+      '#67', '#68', '#69', '#70', '#71', '#72',
     ]);
 
     const rowLayout = await rows.nth(1).evaluate((row) => {
