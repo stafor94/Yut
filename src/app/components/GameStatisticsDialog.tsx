@@ -115,6 +115,7 @@ export function GameStatisticsDialog({ open, roomId, players, localSeatId, onClo
         role="dialog"
         aria-modal="true"
         aria-label="통계 정보"
+        style={{ overflow: 'hidden' }}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="game-statistics-header">
