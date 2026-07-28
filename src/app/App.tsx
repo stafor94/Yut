@@ -50,6 +50,7 @@ import { createGameLogPresentation, isTurnOrderSystemLog } from './flows/gameLog
 import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveAllHumanSeatsEnteredGame } from './flows/onlineGameCoordinator';
 import { calculatePieceSelection } from './flows/pieceSelection';
 import { resolveEffectiveMoveContext } from './flows/effectiveMoveContext';
+import { resolveTurnSeatResolution } from './selectors/gameViewSelectors';
 import {
   buildAlternatingTeamTurnOrder,
   createTurnOrderIntro,
@@ -422,11 +423,11 @@ export function App() {
   const syncedGameSeats = useMemo(() => gameSeatSnapshotsFromSeats(playableSeats), [playableSeats]);
   const teamCounts = useMemo(() => playableSeats.reduce<Record<Team, number>>((acc, seat) => ({ ...acc, [seat.team]: acc[seat.team] + 1 }), { 청팀: 0, 홍팀: 0 }), [playableSeats]);
   const teamBalanced = playMode === 'individual' || (maxPlayers === 4 && teamCounts.청팀 === 2 && teamCounts.홍팀 === 2);
-  const turnSeats = useMemo(() => {
-    if (!turnOrderIds.length) return playableSeats;
-    const orderedSeats = turnOrderIds.map((seatId) => playableSeats.find((seat) => seat.id === seatId)).filter((seat): seat is Seat => Boolean(seat));
-    return orderedSeats.length ? orderedSeats : playableSeats;
-  }, [playableSeats, turnOrderIds]);
+  const turnSeatResolution = useMemo(
+    () => resolveTurnSeatResolution(playableSeats, turnOrderIds, turnIndex),
+    [playableSeats, turnIndex, turnOrderIds],
+  );
+  const turnSeats = turnSeatResolution.turnSeats;
   const playerPanelSeats = useMemo(() => {
     const panelOrderIds = initialTurnOrderIds.length ? initialTurnOrderIds : turnOrderIds;
     if (!panelOrderIds.length) return playableSeats;
@@ -434,7 +435,7 @@ export function App() {
     const remainingSeats = playableSeats.filter((seat) => !panelOrderIds.includes(seat.id));
     return orderedSeats.length ? [...orderedSeats, ...remainingSeats] : playableSeats;
   }, [initialTurnOrderIds, playableSeats, turnOrderIds]);
-  const activeSeat = turnSeats[turnIndex % turnSeats.length];
+  const activeSeat = turnSeatResolution.activeSeat;
   autoPlayBySeatIdRef.current = autoPlayBySeatId;
   const activeSeatAutoPlay = Boolean(activeSeat && autoPlayBySeatId[activeSeat.id]);
   useEffect(() => {
@@ -569,7 +570,7 @@ export function App() {
   const effectiveRollResultReadyAt = normalizeRollResultReadyAt(rollResultReadyAt);
   const rollResultHolding = effectiveRollResultReadyAt > Date.now();
   const activeTurnOrderIntro = turnOrderIntro && turnOrderIntro.readyAt > Date.now() ? turnOrderIntro : null;
-  const waitingForOnlineTurnOrder = Boolean(screen === 'game' && activeRoomId && !turnOrderIds.length && !turnOrderPhase.active && !activeTurnOrderIntro);
+  const waitingForOnlineTurnOrder = Boolean(screen === 'game' && activeRoomId && (!turnOrderIds.length || turnSeatResolution.pending) && !turnOrderPhase.active && !activeTurnOrderIntro);
   const trapPlacementActive = Boolean(pendingTrapPlacement);
   const {
     coordinatorStateSaveKey,
@@ -742,9 +743,8 @@ export function App() {
         : 'remote-turn-move-not-completed'
     : '';
   const visibleBoardTurnSeat = activeSeat && !waitingForOnlineTurnOrder && !turnOrderPhase.active && !activeTurnOrderIntro ? activeSeat : undefined;
-  const visibleBoardTurnIndex = visibleBoardTurnSeat ? turnSeats.findIndex((seat) => seat.id === visibleBoardTurnSeat.id) : -1;
-  const previousBoardTurnSeat = visibleBoardTurnIndex >= 0 && turnSeats.length > 1 ? turnSeats[(visibleBoardTurnIndex - 1 + turnSeats.length) % turnSeats.length] : undefined;
-  const nextBoardTurnSeat = visibleBoardTurnIndex >= 0 && turnSeats.length > 1 ? turnSeats[(visibleBoardTurnIndex + 1) % turnSeats.length] : undefined;
+  const previousBoardTurnSeat = visibleBoardTurnSeat ? turnSeatResolution.previousSeat : undefined;
+  const nextBoardTurnSeat = visibleBoardTurnSeat ? turnSeatResolution.nextSeat : undefined;
   const formatTurnNeighborText = (seat: Seat | undefined) => seat ? getSeatDisplayName(seat) : '';
   const previousBoardTurnText = formatTurnNeighborText(previousBoardTurnSeat);
   const nextBoardTurnText = formatTurnNeighborText(nextBoardTurnSeat);
@@ -1767,7 +1767,7 @@ export function App() {
     setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, started: true, finished: false } : piece));
     for (const nextNodeId of pathNodeIds) {
       const nextNodeIndex = Math.max(0, BOARD_NODES.findIndex((node) => node.id === nextNodeId));
-      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeId: nextNodeId, nodeIndex: nextNodeIndex, started: nextNodeId !== 'finish', finished: nextNodeId === 'finish' } : piece));
+      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeId: nextNodeId, nodeIndex: nextNodeIndex, started: true, finished: false } : piece));
       playSyncedMoveSoundOnce(`sequence:${sequence.sequence}:${nextNodeId}`, sequence.clientMutationId);
       await delay(STEP_DELAY_MS);
       if (nextNodeId === anchorAfter.nodeId) break;
