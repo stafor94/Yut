@@ -310,7 +310,7 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isInitialRoomQueryin
       <section ref={dialogRef} className="panel lobby-sheet lobby-create-sheet" role="dialog" aria-modal="true" aria-label="방 만들기" onMouseDown={(event) => event.stopPropagation()}>
         <header className="lobby-simple-sheet-heading"><div><p className="section-kicker">새 게임</p><h2>방 만들기</h2></div><button className="sheet-close" {...(!focusCreateTitleOnOpen ? { 'data-dialog-autofocus': true } : {})} type="button" onClick={closeDialog} aria-label="닫기">×</button></header>
         <div className="form-grid lobby-form">
-          <label htmlFor="room-title-input">방 제목<input id="room-title-input" {...(focusCreateTitleOnOpen ? { 'data-dialog-autofocus': true } : {})} data-testid="room-title-input" value={title} onChange={(event) => onTitleChange(event.target.value)} placeholder="친구들과 윷놀이" /></label>
+          <label htmlFor="room-title-input">방 제목<input id="room-title-input" name="new-room-title" autoComplete="off" {...(focusCreateTitleOnOpen ? { 'data-dialog-autofocus': true } : {})} data-testid="room-title-input" value={title} onChange={(event) => onTitleChange(event.target.value)} placeholder="친구들과 윷놀이" /></label>
           <button ref={createRoomButtonRef} data-testid="create-room-button" className="primary-cta create-room-submit-button" onClick={onCreateRoom} disabled={isCreatingRoom}>{isCreatingRoom ? <span className="button-loading" aria-hidden="true"></span> : null}{isCreatingRoom ? '생성 중...' : '방 생성하기'}</button>
         </div>
       </section>
