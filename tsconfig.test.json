@@ -48,6 +48,8 @@
     "src/app/flows/turnOrderFlow.ts",
     "src/app/flows/turnOrderSubmissionPolicy.ts",
     "src/app/flows/renderFailure.ts",
+    "src/app/flows/gameStatistics.ts",
+    "src/app/flows/gameStatisticsDialogPresentation.ts",
     "src/services/firebase/firebaseAuthRetry.ts",
     "tests/unit/**/*.ts",
     "src/app/diagnostics/gameDiagnostics.ts",
