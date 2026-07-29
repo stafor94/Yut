@@ -30,6 +30,30 @@ const getRecoverySequences = (sequences, actionKey) => sequences.filter((sequenc
   && sequence.action?.payload?.clientActionId === actionKey
 ));
 
+export async function expectMoveTimeoutRecoveryUiProgress(page, { message }) {
+  await expect(page.getByTestId('game-screen')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const gameScreen = document.querySelector('[data-testid="game-screen"]');
+    const playControls = document.querySelector('[data-testid="play-controls"]');
+    const moveButton = document.querySelector('[data-testid="move-piece-button"]');
+    const isRendered = (element) => {
+      if (!(element instanceof HTMLElement)) return false;
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && rect.width > 0
+        && rect.height > 0;
+    };
+    const staleMoveButtonLocked = isRendered(moveButton) && moveButton.hasAttribute('disabled');
+    return isRendered(gameScreen) && Boolean(playControls) && !staleMoveButtonLocked;
+  }), {
+    timeout: 8_000,
+    intervals: [100, 200, 400],
+    message,
+  }).toBe(true);
+}
+
 export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInfo }) {
   const hostName = normalizeQaNickname(makeQaName(testInfo, 'movehost'));
   const roomTitle = makeQaName(testInfo, 'move-timeout-room');
