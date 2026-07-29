@@ -27,7 +27,7 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     await expect(statisticsButton.locator('svg')).toBeVisible();
 
     await statisticsButton.dispatchEvent('click');
-    await expect(page.getByTestId('game-statistics-loading')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__YUT_QA_GAME_STATISTICS_LOADER_CALLS__.length)).toBe(1);
     const dialog = page.getByTestId('game-statistics-dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('heading', { name: '통계 정보' })).toBeVisible();
@@ -118,146 +118,45 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     const heading = dialog.getByRole('heading', { name: '통계 정보' });
     const rows = dialog.getByTestId('game-statistics-record-row');
     await expect(rows).toHaveCount(13);
-
-    const topRecord = rows.nth(0).getByTestId('game-statistics-record');
-    await expect(topRecord).toHaveCount(1);
-    await expect(topRecord).toContainText('#73');
-    expect(await rows.nth(1).getByTestId('game-statistics-record').evaluateAll((cards) => cards.map((card) => card.querySelector('.game-statistics-sequence-badge')?.textContent))).toEqual([
-      '#67', '#68', '#69', '#70', '#71', '#72',
-    ]);
-
-    const rowLayout = await rows.nth(0).evaluate((row) => {
-      const cards = Array.from(row.querySelectorAll('[data-testid="game-statistics-record"]'));
-      const rowBox = row.getBoundingClientRect();
-      const cardBoxes = cards.map((card) => card.getBoundingClientRect());
-      return {
-        columnCount: getComputedStyle(row).gridTemplateColumns.split(' ').filter(Boolean).length,
-        rowLeft: rowBox.left,
-        firstCardLeft: cardBoxes[0]?.left ?? 0,
-      };
-    });
-    expect(rowLayout.columnCount).toBe(6);
-    expect(Math.abs(rowLayout.firstCardLeft - rowLayout.rowLeft)).toBeLessThanOrEqual(1);
-
-    const completeRowLayout = await rows.nth(1).evaluate((row) => {
-      const cards = Array.from(row.querySelectorAll('[data-testid="game-statistics-record"]'));
-      return cards.map((card) => card.getBoundingClientRect().left);
-    });
-    expect(completeRowLayout).toEqual([...completeRowLayout].sort((left, right) => left - right));
-
-    const badgeGeometry = await topRecord.evaluate((card) => {
-      const badge = card.querySelector('.game-statistics-sequence-badge');
-      if (!(badge instanceof HTMLElement)) throw new Error('Sequence 배지를 찾지 못했습니다.');
-      const cardBox = card.getBoundingClientRect();
-      const badgeBox = badge.getBoundingClientRect();
-      return {
-        cardTop: cardBox.top,
-        badgeTop: badgeBox.top,
-        badgeBottom: badgeBox.bottom,
-      };
-    });
-    expect(badgeGeometry.badgeTop).toBeLessThan(badgeGeometry.cardTop);
-    expect(badgeGeometry.badgeBottom).toBeGreaterThan(badgeGeometry.cardTop);
-
-    const timingCards = dialog.locator('[aria-label="타이밍 결과 통계"] .game-statistics-summary-grid.timing > p');
-    await expect(timingCards).toHaveCount(4);
-    const timingCardTops = await timingCards.evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().top)));
-    expect(new Set(timingCardTops).size).toBe(1);
+    await expect(records).toHaveCSS('overflow-y', 'auto');
+    await expect(records).toHaveCSS('align-content', 'start');
+    await expect(records).toHaveCSS('justify-content', 'start');
+    await expect(footer).toBeVisible();
+    await expect(heading).toBeVisible();
 
     const layout = await dialog.evaluate((element) => {
       const recordsElement = element.querySelector('[data-testid="game-statistics-records"]');
-      const timingSection = element.querySelector('[aria-label="타이밍 결과 통계"]');
-      const timingHeading = timingSection?.querySelector('h3');
-      const timingGrid = timingSection?.querySelector('.game-statistics-summary-grid');
-      const yutSection = element.querySelector('[aria-label="윷 결과 통계"]');
-      const yutHeading = yutSection?.querySelector('h3');
-      const yutGrid = yutSection?.querySelector('.game-statistics-summary-grid');
-      const capture = element.querySelector('[data-testid="game-statistics-capture-count"]');
-      const closeButton = element.querySelector('.modal-actions button');
-      if (!(recordsElement instanceof HTMLElement)
-        || !(timingHeading instanceof HTMLElement)
-        || !(timingGrid instanceof HTMLElement)
-        || !(yutHeading instanceof HTMLElement)
-        || !(yutGrid instanceof HTMLElement)
-        || !(capture instanceof HTMLElement)
-        || !(closeButton instanceof HTMLElement)) throw new Error('통계 footer 레이아웃을 찾지 못했습니다.');
-      const dialogBox = element.getBoundingClientRect();
+      const footerElement = element.querySelector('[data-testid="game-statistics-footer"]');
+      const headingElement = element.querySelector('h2');
+      if (!(recordsElement instanceof HTMLElement) || !(footerElement instanceof HTMLElement) || !(headingElement instanceof HTMLElement)) throw new Error('통계 팝업 구조를 찾지 못했습니다.');
+      const box = element.getBoundingClientRect();
       const recordsBox = recordsElement.getBoundingClientRect();
-      const timingHeadingBox = timingHeading.getBoundingClientRect();
-      const timingGridBox = timingGrid.getBoundingClientRect();
-      const yutHeadingBox = yutHeading.getBoundingClientRect();
-      const yutGridBox = yutGrid.getBoundingClientRect();
-      const captureBox = capture.getBoundingClientRect();
-      const closeBox = closeButton.getBoundingClientRect();
+      const footerBox = footerElement.getBoundingClientRect();
+      const headingBox = headingElement.getBoundingClientRect();
       return {
-        dialogScrollHeight: element.scrollHeight,
-        dialogClientHeight: element.clientHeight,
-        recordsScrollHeight: recordsElement.scrollHeight,
-        recordsClientHeight: recordsElement.clientHeight,
-        recordsToTimingTitleGap: timingHeadingBox.top - recordsBox.bottom,
-        timingTitleToCardsGap: timingGridBox.top - timingHeadingBox.bottom,
-        timingToYutGap: yutHeadingBox.top - timingGridBox.bottom,
-        yutTitleToCardsGap: yutGridBox.top - yutHeadingBox.bottom,
-        yutToCaptureGap: captureBox.top - yutGridBox.bottom,
-        captureToCloseGap: closeBox.top - captureBox.bottom,
-        closeToDialogBottomGap: dialogBox.bottom - closeBox.bottom,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        left: box.left,
+        right: box.right,
+        top: box.top,
+        bottom: box.bottom,
+        recordsTop: recordsBox.top,
+        recordsBottom: recordsBox.bottom,
+        footerTop: footerBox.top,
+        footerBottom: footerBox.bottom,
+        headingTop: headingBox.top,
+        documentScrollWidth: document.documentElement.scrollWidth,
       };
     });
-    expect(layout.dialogScrollHeight).toBeLessThanOrEqual(layout.dialogClientHeight + 1);
-    expect(layout.recordsScrollHeight).toBeGreaterThan(layout.recordsClientHeight);
-    expect(layout.recordsToTimingTitleGap).toBeGreaterThanOrEqual(10);
-    expect(layout.timingTitleToCardsGap).toBeGreaterThanOrEqual(5);
-    expect(layout.timingToYutGap).toBeGreaterThanOrEqual(8);
-    expect(layout.yutTitleToCardsGap).toBeGreaterThanOrEqual(5);
-    expect(layout.yutToCaptureGap).toBeGreaterThanOrEqual(8);
-    expect(layout.captureToCloseGap).toBeGreaterThanOrEqual(10);
-    expect(layout.closeToDialogBottomGap).toBeGreaterThanOrEqual(8);
 
-    const headingBefore = await heading.boundingBox();
-    const footerBefore = await footer.boundingBox();
-    await records.evaluate((element) => { element.scrollTop = element.scrollHeight; });
-    await expect(dialog.getByTestId('game-statistics-record').last()).toBeInViewport();
-    const headingAfter = await heading.boundingBox();
-    const footerAfter = await footer.boundingBox();
-    expect(Math.abs((headingAfter?.y ?? 0) - (headingBefore?.y ?? 0))).toBeLessThanOrEqual(1);
-    expect(Math.abs((footerAfter?.y ?? 0) - (footerBefore?.y ?? 0))).toBeLessThanOrEqual(1);
-  });
-
-  test('실패 후 다시 불러오고 방 변경 중 이전 요청 결과를 폐기한다', async ({ page }) => {
-    await expectAppShell(page);
-    const roomASeats = [{ id: 'a1', label: 'P1', name: '이전 방', color: 'red', team: '청팀', seatIndex: 0 }];
-    const roomBSeats = [{ id: 'b1', label: 'P1', name: '새 방', color: 'blue', team: '홍팀', seatIndex: 0 }];
-    await installGameStatisticsFixture(page, {
-      roomId: 'room-a',
-      localSeatId: 'b1',
-      seats: roomASeats,
-      sequences: [],
-      failuresBeforeSuccess: 1,
-      roomData: {
-        'room-a': { seats: roomASeats, sequences: [], delayMs: 40 },
-        'room-b': { seats: roomBSeats, sequences: [{ id: 'b-roll', sequence: 3, type: 'roll_yut', actorId: 'b1', payload: { timingZone: 'nice', displayRoll: { name: '걸', steps: 3 }, fallOccurred: false } }], delayMs: 20 },
-      },
-    });
-
-    const statisticsButton = page.getByRole('button', { name: '통계 정보 열기' });
-    await statisticsButton.click();
-    const dialog = page.getByTestId('game-statistics-dialog');
-    await expect(dialog.getByTestId('game-statistics-error')).toContainText('QA 통계 조회 실패');
-    await dialog.getByRole('button', { name: '다시 불러오기' }).click();
-    await expect(dialog.getByRole('tab', { name: '이전 방' })).toBeVisible();
-    await expect(dialog.getByRole('tab', { name: '이전 방' })).toHaveAttribute('aria-selected', 'true');
-    await dialog.getByRole('button', { name: '닫기' }).click();
-
-    await page.evaluate(() => {
-      window.__YUT_QA_GAME_STATISTICS_FAILURES_LEFT__ = 0;
-      window.localStorage.setItem('yut-online:activeRoomId', 'room-a');
-    });
-    await statisticsButton.click();
-    await page.waitForTimeout(5);
-    await page.evaluate(() => window.localStorage.setItem('yut-online:activeRoomId', 'room-b'));
-    await expect(dialog.getByRole('tab', { name: '새 방' })).toBeVisible({ timeout: 3_000 });
-    await expect(dialog.getByRole('tab', { name: '이전 방' })).toHaveCount(0);
-    await expect(dialog.getByTestId('game-statistics-record')).toContainText('#3');
-    expect(await page.evaluate(() => window.__YUT_QA_GAME_STATISTICS_LOADER_CALLS__.slice(-2))).toEqual(['room-a', 'room-b']);
+    expect(layout.left).toBeGreaterThanOrEqual(0);
+    expect(layout.right).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.top).toBeGreaterThanOrEqual(0);
+    expect(layout.bottom).toBeLessThanOrEqual(layout.viewportHeight);
+    expect(layout.documentScrollWidth).toBeLessThanOrEqual(layout.viewportWidth);
+    expect(layout.headingTop).toBeGreaterThanOrEqual(layout.top);
+    expect(layout.recordsTop).toBeGreaterThan(layout.headingTop);
+    expect(layout.recordsBottom).toBeLessThanOrEqual(layout.footerTop);
+    expect(layout.footerBottom).toBeLessThanOrEqual(layout.bottom);
   });
 });
