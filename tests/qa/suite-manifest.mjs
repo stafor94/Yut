@@ -20,6 +20,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/game-flow/game-start-authority.spec.js',
       'tests/game-flow/turn-order-simultaneous.spec.js',
       'tests/game-flow/ai-substitution.spec.js',
+      'tests/game-flow/ai-stacked-strategy.spec.js',
       'tests/online/room-lifecycle.spec.js',
       'tests/online/room-leave-ui-race.spec.js',
       'tests/online/room-exit-resume.spec.js',
@@ -86,6 +87,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/lobby-header-badges.spec.js',
       'tests/mobile/game-statistics-dialog.spec.js',
       'tests/mobile/stacked-roll-timeout.spec.js',
+      'tests/mobile/ai-stacked-strategy.spec.js',
     ]),
   }),
   'mobile-galaxy-timing': Object.freeze({
