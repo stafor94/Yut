@@ -1,7 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import { commitCoordinatorMoveTimeoutRecovery } from '../../features/room/services/coordinatorMoveTimeoutRecovery';
-import { getTurnRecoveryDeadlineAt } from '../../features/room/services/roomTiming';
+import {
+  MOVE_TIMEOUT_RECOVERY_RETRY_DELAY_MS,
+  canRetryMoveTimeoutRecovery,
+  classifyMoveTimeoutRecoveryResult,
+  getMoveTimeoutRecoverySchedule,
+  isMoveTimeoutRecoveryScopeCurrent,
+  type MoveTimeoutRecoveryDisposition,
+  type MoveTimeoutRecoveryScope,
+} from '../../features/room/services/moveTimeoutRecoveryPolicy';
 import {
   makeTimeoutActionKey,
   resolveMoveTimeout,
@@ -10,8 +18,6 @@ import {
 import { BRANCH_NODE_IDS } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { STORAGE_KEYS, type Seat } from '../appState';
-
-const RECOVERY_RETRY_DELAY_MS = 600;
 
 type StackedRollTimeoutRecoveryParams = {
   activeSeat: Seat | undefined;
@@ -44,9 +50,15 @@ const getActorLogPayload = (seat: Seat) => ({
 });
 
 /**
- * App's normal stalled-turn recovery owns every state with a current roll.
- * This hook covers the one authoritative gap where a closed stacked roll has
- * no local roll because the player never selected one before the deadline.
+ * Coordinator fallback for every authoritative move timeout context.
+ *
+ * - A normal roll is recovered without a stack index.
+ * - A selected stacked roll keeps its selected index.
+ * - A closed unselected stack deterministically consumes index 0.
+ *
+ * Manual input remains blocked after the deadline. This hook only submits after
+ * the authoritative deadline plus network grace and never relies on the UI's
+ * deadline-leading callback for correctness.
  */
 export function useStackedRollTimeoutRecovery({
   activeSeat,
@@ -71,12 +83,28 @@ export function useStackedRollTimeoutRecovery({
   turnOrderBlocked,
   winner,
 }: StackedRollTimeoutRecoveryParams) {
-  const [retryVersion, setRetryVersion] = useState(0);
-  const inFlightLeaseKeyRef = useRef('');
+  const inFlightActionKeyRef = useRef('');
+  const completedActionKeysRef = useRef<Set<string>>(new Set());
+  const stoppedAttemptKeysRef = useRef<Set<string>>(new Set());
+  const retryAttemptsByScopeRef = useRef<Map<string, number>>(new Map());
+  const roomId = typeof window === 'undefined'
+    ? ''
+    : window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
+  const currentScope: MoveTimeoutRecoveryScope = {
+    roomId,
+    actorId: activeSeat?.id ?? '',
+    turnDeadlineKind,
+    turnDeadlineAt,
+    coordinatorSeatId: onlineGameCoordinatorSeatId,
+    coordinatorEpoch,
+  };
+  const latestScopeRef = useRef<MoveTimeoutRecoveryScope>(currentScope);
+  latestScopeRef.current = currentScope;
 
   useEffect(() => {
     if (typeof window === 'undefined'
       || !activeSeat
+      || !roomId
       || !localSeatId
       || localSeatId !== onlineGameCoordinatorSeatId
       || !Number.isFinite(coordinatorEpoch)
@@ -90,23 +118,23 @@ export function useStackedRollTimeoutRecovery({
       || turnDeadlineKind !== 'move'
       || !Number.isFinite(turnDeadlineAt)
       || turnDeadlineAt <= 0
-      || roll !== null
-      || !rollStackClosed
-      || rollStack.length === 0
       || spectators.some((seat) => seat.id === localSeatId)
       || !seats.some((seat) => seat.id === localSeatId)) return undefined;
 
-    const roomId = window.localStorage.getItem(STORAGE_KEYS.activeRoomId) ?? '';
-    if (!roomId) return undefined;
+    const hasStackedMoveState = rollStack.length > 0
+      || selectedRollStackIndex !== null
+      || (roll === null && rollStackClosed);
+    if (!roll && (!rollStackClosed || rollStack.length === 0)) return undefined;
 
     const timeoutContext = resolveMoveTimeoutContext({
-      stackedRollMode: true,
+      stackedRollMode: hasStackedMoveState,
       roll,
       rollStack,
       rollStackClosed,
       selectedRollStackIndex,
     });
-    if (!timeoutContext.roll || timeoutContext.rollStackIndex === null) return undefined;
+    if (!timeoutContext.roll) return undefined;
+    if (hasStackedMoveState && timeoutContext.rollStackIndex === null) return undefined;
 
     const isSameSide = (leftOwnerId: string, rightOwnerId: string) => {
       if (playMode !== 'team') return leftOwnerId === rightOwnerId;
@@ -141,48 +169,118 @@ export function useStackedRollTimeoutRecovery({
       actorId: activeSeat.id,
       timeoutDeadlineAt: turnDeadlineAt,
     });
-    const leaseAttemptKey = `${actionKey}:stack-${timeoutContext.rollStackIndex}:${onlineGameCoordinatorSeatId}:${coordinatorEpoch}:${retryVersion}`;
-    const recoveryAt = getTurnRecoveryDeadlineAt(turnDeadlineAt);
-    let cancelled = false;
-    let retryTimer: number | null = null;
+    const attemptScopeKey = `${actionKey}:${onlineGameCoordinatorSeatId}:${coordinatorEpoch}`;
+    if (completedActionKeysRef.current.has(actionKey)
+      || stoppedAttemptKeysRef.current.has(attemptScopeKey)) return undefined;
 
-    const timer = window.setTimeout(() => {
-      if (cancelled || inFlightLeaseKeyRef.current === leaseAttemptKey) return;
-      inFlightLeaseKeyRef.current = leaseAttemptKey;
-      const action = {
-        type: 'move_piece' as const,
-        actorId: activeSeat.id,
-        payload: {
-          pieceId: timeoutMove.reason === 'pass' ? '' : timeoutMove.pieceId,
-          extraSteps: 0,
-          branchChoice: timeoutMove.branchChoice,
-          rollStackIndex: timeoutContext.rollStackIndex,
-          clientActionId: actionKey,
-          recoveredByCoordinator: true,
-          coordinatorSeatId: onlineGameCoordinatorSeatId,
-          coordinatorEpoch,
-          reason: 'stacked-roll-selection-timeout',
-          stalledForMs: Math.max(0, Date.now() - recoveryAt),
-          timeoutDeadlineAt: turnDeadlineAt,
-          ...getActorLogPayload(activeSeat),
-        },
-      };
+    const expectedScope: MoveTimeoutRecoveryScope = {
+      roomId,
+      actorId: activeSeat.id,
+      turnDeadlineKind: 'move',
+      turnDeadlineAt,
+      coordinatorSeatId: onlineGameCoordinatorSeatId,
+      coordinatorEpoch,
+    };
+    const { recoveryAt, delayMs } = getMoveTimeoutRecoverySchedule(turnDeadlineAt);
+    const recoveryReason = roll === null
+      ? 'stacked-roll-selection-timeout'
+      : 'stalled-roll-move-timeout';
+    const action = {
+      type: 'move_piece' as const,
+      actorId: activeSeat.id,
+      payload: {
+        pieceId: timeoutMove.reason === 'pass' ? '' : timeoutMove.pieceId,
+        extraSteps: 0,
+        branchChoice: timeoutMove.branchChoice,
+        rollStackIndex: timeoutContext.rollStackIndex,
+        clientActionId: actionKey,
+        recoveredByCoordinator: true,
+        coordinatorSeatId: onlineGameCoordinatorSeatId,
+        coordinatorEpoch,
+        reason: recoveryReason,
+        stalledForMs: Math.max(0, recoveryAt - turnDeadlineAt),
+        timeoutDeadlineAt: turnDeadlineAt,
+        ...getActorLogPayload(activeSeat),
+      },
+    };
+
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const clearInFlight = () => {
+      if (inFlightActionKeyRef.current === actionKey) inFlightActionKeyRef.current = '';
+    };
+    const schedule = (nextDelayMs: number) => {
+      if (cancelled) return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(runRecovery, Math.max(0, nextDelayMs));
+    };
+    const stopCurrentAttemptScope = (message: string, disposition: MoveTimeoutRecoveryDisposition) => {
+      stoppedAttemptKeysRef.current.add(attemptScopeKey);
+      retryAttemptsByScopeRef.current.delete(attemptScopeKey);
+      console.warn('[move-timeout-recovery] recovery stopped', {
+        actionKey,
+        attemptScopeKey,
+        disposition,
+        message,
+      });
+    };
+    const scheduleRetry = (disposition: MoveTimeoutRecoveryDisposition, message: string) => {
+      const attempt = retryAttemptsByScopeRef.current.get(attemptScopeKey) ?? 0;
+      if (!canRetryMoveTimeoutRecovery(disposition, attempt)) {
+        stopCurrentAttemptScope(message, disposition);
+        return;
+      }
+      const nextAttempt = attempt + 1;
+      retryAttemptsByScopeRef.current.set(attemptScopeKey, nextAttempt);
+      const currentSchedule = getMoveTimeoutRecoverySchedule(turnDeadlineAt);
+      const retryDelayMs = disposition === 'too-early'
+        ? Math.max(currentSchedule.delayMs, MOVE_TIMEOUT_RECOVERY_RETRY_DELAY_MS)
+        : MOVE_TIMEOUT_RECOVERY_RETRY_DELAY_MS * nextAttempt;
+      schedule(retryDelayMs);
+    };
+    const runRecovery = () => {
+      timer = null;
+      if (cancelled
+        || completedActionKeysRef.current.has(actionKey)
+        || stoppedAttemptKeysRef.current.has(attemptScopeKey)) return;
+      if (!isMoveTimeoutRecoveryScopeCurrent(expectedScope, latestScopeRef.current)) return;
+
+      const currentSchedule = getMoveTimeoutRecoverySchedule(turnDeadlineAt);
+      if (!currentSchedule.ready) {
+        schedule(currentSchedule.delayMs);
+        return;
+      }
+      if (inFlightActionKeyRef.current === actionKey) return;
+      inFlightActionKeyRef.current = actionKey;
 
       void commitCoordinatorMoveTimeoutRecovery(roomId, action).then((result) => {
-        if (cancelled || result.status === 'committed' || result.status === 'duplicate') return;
-        inFlightLeaseKeyRef.current = '';
-        retryTimer = window.setTimeout(() => setRetryVersion((current) => current + 1), RECOVERY_RETRY_DELAY_MS);
-      }).catch(() => {
+        const disposition = classifyMoveTimeoutRecoveryResult(result);
+        if (disposition === 'terminal') {
+          completedActionKeysRef.current.add(actionKey);
+          retryAttemptsByScopeRef.current.delete(attemptScopeKey);
+          clearInFlight();
+          return;
+        }
+        clearInFlight();
         if (cancelled) return;
-        inFlightLeaseKeyRef.current = '';
-        retryTimer = window.setTimeout(() => setRetryVersion((current) => current + 1), RECOVERY_RETRY_DELAY_MS);
+        scheduleRetry(disposition, result.reason ?? 'coordinator 이동 timeout recovery가 거부되었습니다.');
+      }).catch((error) => {
+        clearInFlight();
+        if (cancelled) return;
+        scheduleRetry(
+          'retryable-state',
+          error instanceof Error ? error.message : 'coordinator 이동 timeout recovery 네트워크 오류',
+        );
       });
-    }, Math.max(0, recoveryAt - Date.now()));
+    };
+
+    schedule(delayMs);
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
-      if (retryTimer !== null) window.clearTimeout(retryTimer);
+      if (timer !== null) window.clearTimeout(timer);
+      clearInFlight();
     };
   }, [
     activeSeat,
@@ -193,12 +291,12 @@ export function useStackedRollTimeoutRecovery({
     pendingTrapPlacement,
     pieces,
     playMode,
-    retryVersion,
     roll,
     rollAnimationActive,
     rollResultHolding,
     rollStack,
     rollStackClosed,
+    roomId,
     selectedPieceId,
     selectedRollStackIndex,
     seats,
