@@ -8,6 +8,8 @@ import type { SequenceStateSnapshot } from '../appState';
 import { START_REQUEST_TIMEOUT_MS, TURN_ORDER_PRESENCE_FALLBACK_MS } from '../config/gameTimings';
 
 const TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000] as const;
+const TURN_ORDER_INTRO_COMPLETION_RETRY_INTERVAL_MS = 2_000;
+const TURN_ORDER_INTRO_COMPLETION_RETRY_WINDOW_MS = 30_000;
 
 export function useGameStartController(ctx: any) {
   const { refs, setters, helpers, services } = ctx;
@@ -298,15 +300,21 @@ export function useGameStartController(ctx: any) {
   useEffect(() => {
     if (!ctx.activeRoomId || !ctx.canCompleteInitialOnlineTurnOrderIntro || ctx.screen !== 'game' || !ctx.turnOrderIntro?.readyAt) return undefined;
     const readyAt = ctx.turnOrderIntro.readyAt;
+    const retryUntil = Math.max(Date.now(), readyAt) + TURN_ORDER_INTRO_COMPLETION_RETRY_WINDOW_MS;
     let cancelled = false;
     const timers = new Set<number>();
     const scheduleCompletion = (attemptIndex: number, delayMs: number) => {
       const timer = window.setTimeout(async () => {
         timers.delete(timer);
         if (cancelled) return;
+        const scheduleRetry = () => {
+          const retryDelay = TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS[attemptIndex]
+            ?? TURN_ORDER_INTRO_COMPLETION_RETRY_INTERVAL_MS;
+          if (Date.now() + retryDelay > retryUntil) return;
+          scheduleCompletion(attemptIndex + 1, retryDelay);
+        };
         if (completingTurnOrderIntroRef.current.has(readyAt)) {
-          const retryDelay = TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS[attemptIndex];
-          if (retryDelay !== undefined) scheduleCompletion(attemptIndex + 1, retryDelay);
+          scheduleRetry();
           return;
         }
         completingTurnOrderIntroRef.current.add(readyAt);
@@ -320,8 +328,7 @@ export function useGameStartController(ctx: any) {
           completingTurnOrderIntroRef.current.delete(readyAt);
         }
         if (cancelled || version) return;
-        const retryDelay = TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS[attemptIndex];
-        if (retryDelay !== undefined) scheduleCompletion(attemptIndex + 1, retryDelay);
+        scheduleRetry();
       }, delayMs);
       timers.add(timer);
     };
