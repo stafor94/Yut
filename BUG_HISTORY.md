@@ -49,8 +49,15 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - [x] QA architecture validation passes
 - [ ] Desktop regression game guide QA passes
 - [ ] Mobile Galaxy game guide QA passes
-- [ ] Online core 4-client turn-order QA passes
+- [x] Online core 4-client turn-order QA passes
 - [ ] Main Branch QA succeeds
+
+### Follow-up failure after PR #1238
+
+- Main Branch QA Run `30423900639`에서 새 높이 비교와 Online core는 통과했고, 그 다음 순차 assertion인 닫기 버튼 상단 여백 비교가 Desktop `26px`, Mobile Galaxy `15px` 차이로 실패했다.
+- 공통 `.lobby-sheet.panel`의 padding 규칙이 더 높은 specificity로 게임 방법 팝업의 `padding: 0`을 이겨, 전용 헤더 padding 바깥에 Desktop `30px`, Mobile `16px`의 패널 padding이 중복 적용됐다.
+- 게임 방법 팝업에 임의 음수 margin이나 절대 좌표를 추가하지 않는다. 공통 패널과 전용 팝업 클래스를 함께 선택해 중복 padding을 명시적으로 제거하고, Desktop 헤더 상단은 설정 팝업이 사용하는 공통 padding 토큰과 기존 heading `-2px` 오프셋을 재사용한다.
+- 상단 위치만 순차적으로 맞추고 오른쪽 위치를 다음 Run에 맡기지 않는다. 같은 수정에서 Desktop·Mobile의 상단·오른쪽 계산을 모두 설정 팝업과 대조한다.
 
 ## 2026-07-28 - 이동 스택 미선택 상태에서 제한시간 이후 게임이 영구 고착됨
 
