@@ -217,8 +217,13 @@ async function completeAuthoritativeTurn({ roomId, hostPage, guestPage, hostPlay
     } catch (error) {
       const afterClickFailure = await readAuthoritativeTurn(roomId);
       if (afterClickFailure.current?.id !== turnOwnerId) {
-        expect(afterClickFailure.lastSequence).toBeGreaterThan(before.lastSequence);
+        expect(afterClickFailure.lastSequence).toBeGreaterThan(lastSequence);
         return;
+      }
+      if (afterClickFailure.lastSequence > lastSequence) {
+        actionCount += 1;
+        lastSequence = afterClickFailure.lastSequence;
+        continue;
       }
       throw error;
     }
