@@ -21,6 +21,7 @@ import './styles/lobby-dialog-position.css';
 import './styles/lobby-guide-dialog-fix.css';
 import './styles/lobby-room-query-loading.css';
 import './styles/lobby-background-reference.css';
+import './styles/lobby-background-video.css';
 import './styles/control-geometry.css';
 import './styles/lobby-scroll-overflow-fix.css';
 import './styles/lobby-footer.css';
