@@ -11,6 +11,7 @@
 
 .screen-lobby .lobby-sheet.panel.lobby-howto-sheet {
   padding: 0;
+  scrollbar-gutter: auto;
 }
 
 .screen-lobby .lobby-howto-sheet .howto-fixed-header {
