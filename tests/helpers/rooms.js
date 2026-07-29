@@ -134,7 +134,7 @@ function decodeFirestoreValue(value) {
   if ('booleanValue' in value) return value.booleanValue;
   if ('stringValue' in value) return value.stringValue;
   if ('integerValue' in value) return Number(value.integerValue);
-  if ('doubleValue' in value) return value.doubleValue;
+  if ('doubleValue' in value) return Number(value.doubleValue);
   if ('timestampValue' in value) return new Date(value.timestampValue);
   if ('arrayValue' in value) return (value.arrayValue?.values ?? []).map(decodeFirestoreValue);
   if ('mapValue' in value) return decodeFirestoreFields(value.mapValue?.fields ?? {});
