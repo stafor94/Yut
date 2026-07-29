@@ -57,6 +57,15 @@ test('브라우저 QA가 실제 가시성·고정 좌표·1000ms 제거 시점�
   assert.match(browserQaSource, /overlapsButton/);
 });
 
+test('Good 장기 press QA는 양방향 실제 렌더 구간에서 180ms 뒤 Perfect 통과 시간을 검증한다', () => {
+  assert.match(browserQaSource, /const GOOD_PRESS_RANGES = Object\.freeze\(\[\[27, 37\], \[63, 73\]\]\)/);
+  assert.doesNotMatch(browserQaSource, /const GOOD_PRESS_RANGE = Object\.freeze\(\[30, 34\]\)/);
+  assert.match(browserQaSource, /pointerDownRanges: GOOD_PRESS_RANGES/);
+  assert.match(browserQaSource, /requireAscending: null/);
+  assert.match(browserQaSource, /const movementDirection = gesture\.pointerDownSnapshot\.phaseMs < ROLL_TIMING_CYCLE_MS \/ 2 \? 1 : -1/);
+  assert.match(browserQaSource, /movementDirection \* \(LONG_PRESS_MS \/ 10\)/);
+});
+
 test('Desktop sequence QA는 실제 로컬 말 이동과 이동 불가 재시도를 구분한다', () => {
   assert.match(regressionQaSource, /let moveRequested = false/);
   assert.match(regressionQaSource, /debugPiece\?\.ownerId === localSeatId/);
