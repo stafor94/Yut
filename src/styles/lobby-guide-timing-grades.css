@@ -1,30 +1,3 @@
-.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(2) h4,
-.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(2) p {
-  font-size: 0;
-}
-
-.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(2) h4::after,
-.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(2) p::after {
-  display: block;
-  font-size: 0.94rem;
-  line-height: 1.55;
-}
-
-.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(2) h4::after {
-  content: '윷 던지기와 타이밍';
-  font-size: 1rem;
-  font-weight: 900;
-  line-height: 1.3;
-}
-
-.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(2) p:nth-of-type(1)::after {
-  content: '막대는 Perfect(보라), Nice(하늘), Good(연두), Bad(검정)로 판정됩니다.';
-}
-
-.screen-lobby .lobby-howto-sheet .howto-list article:nth-child(2) p:nth-of-type(2)::after {
-  content: 'Perfect는 낙이 없고 윷·모 확률이 높습니다. Nice·Good·Bad는 단계가 낮을수록 낙이 발생하기 쉬우며, 낙이면 이동 없이 차례가 넘어갑니다.';
-}
-
 .screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(5)::after,
 .screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(6)::after {
   content: '한 번 더';

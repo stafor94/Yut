@@ -48,7 +48,11 @@ test.describe('lobby popup visual polish QA', () => {
     await expect(guideDialog.locator('.howto-result-strip span').first()).toContainText('빽도-1칸');
     await expect(guideDialog.locator('.howto-result-strip span').nth(4)).toContainText('윷4칸');
     await expect(guideDialog.locator('.howto-result-strip span').nth(5)).toContainText('모5칸');
-    await expect(guideDialog).toContainText('Perfect는 낙이 발생하지 않고 윷·모 확률이 조금 높아집니다.');
+    await expect(guideDialog.getByRole('heading', { name: '타이밍', exact: true })).toBeVisible();
+    await expect(guideDialog.getByLabel('윷 결과 확률 안내')).toContainText('Nice·Good·Bad빽도 6.25% · 도 18.75% · 개 37.5% · 걸 25% · 윷 6.25% · 모 6.25%');
+    await expect(guideDialog.getByLabel('윷 결과 확률 안내')).toContainText('Perfect빽도 5.54% · 도 16.61% · 개 33.21% · 걸 22.14% · 윷 11.25% · 모 11.25%');
+    await expect(guideDialog).not.toContainText('낙이면 이동 없이 차례가 넘어갑니다.');
+    await expect(guideDialog).not.toContainText('방에 모여 윷을 던지고');
     await expect(guideDialog).toContainText('승리 조건');
 
     const guideLayout = await guideDialog.evaluate((dialog) => {
@@ -104,5 +108,41 @@ test.describe('lobby popup visual polish QA', () => {
     expect(guideLayout.buttonPosition, '확인 버튼은 footer 안에서 기본 버튼 디자인을 유지해야 합니다.').toBe('static');
     expect(guideLayout.buttonTop).toBeGreaterThanOrEqual(guideLayout.dialogTop);
     expect(guideLayout.buttonBottom).toBeLessThanOrEqual(guideLayout.viewportHeight + 1);
+
+    const guideChrome = await guideDialog.evaluate((element) => {
+      const close = element.querySelector('.sheet-close');
+      if (!(close instanceof HTMLElement)) return null;
+      const dialogRect = element.getBoundingClientRect();
+      const closeRect = close.getBoundingClientRect();
+      return {
+        height: dialogRect.height,
+        closeWidth: closeRect.width,
+        closeHeight: closeRect.height,
+        closeTopOffset: closeRect.top - dialogRect.top,
+        closeRightOffset: dialogRect.right - closeRect.right,
+      };
+    });
+    await guideDialog.getByRole('button', { name: '닫기', exact: true }).click();
+    await page.getByRole('button', { name: '설정', exact: true }).click();
+    const settingsChrome = await page.getByRole('dialog', { name: '설정' }).evaluate((element) => {
+      const close = element.querySelector('.sheet-close');
+      if (!(close instanceof HTMLElement)) return null;
+      const dialogRect = element.getBoundingClientRect();
+      const closeRect = close.getBoundingClientRect();
+      return {
+        height: dialogRect.height,
+        closeWidth: closeRect.width,
+        closeHeight: closeRect.height,
+        closeTopOffset: closeRect.top - dialogRect.top,
+        closeRightOffset: dialogRect.right - closeRect.right,
+      };
+    });
+    expect(guideChrome, 'Desktop 게임 방법 팝업 규격을 읽을 수 있어야 합니다.').not.toBeNull();
+    expect(settingsChrome, 'Desktop 설정 팝업 규격을 읽을 수 있어야 합니다.').not.toBeNull();
+    expect(Math.abs(guideChrome.height - settingsChrome.height), 'Desktop 게임 방법 팝업 높이는 설정 팝업과 같아야 합니다.').toBeLessThanOrEqual(8);
+    expect(guideChrome.closeWidth).toBe(settingsChrome.closeWidth);
+    expect(guideChrome.closeHeight).toBe(settingsChrome.closeHeight);
+    expect(Math.abs(guideChrome.closeTopOffset - settingsChrome.closeTopOffset), 'Desktop 닫기 버튼의 위쪽 여백은 설정 팝업과 같아야 합니다.').toBeLessThanOrEqual(3);
+    expect(Math.abs(guideChrome.closeRightOffset - settingsChrome.closeRightOffset), 'Desktop 닫기 버튼의 오른쪽 여백은 설정 팝업과 같아야 합니다.').toBeLessThanOrEqual(3);
   });
 });

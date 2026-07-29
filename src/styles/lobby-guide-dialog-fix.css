@@ -5,8 +5,63 @@
 }
 
 .screen-lobby .lobby-howto-sheet {
-  height: min(70dvh, 780px);
-  max-height: min(70dvh, 780px);
+  height: min(438px, calc(var(--app-viewport-height, 100dvh) - 24px));
+  max-height: min(438px, calc(var(--app-viewport-height, 100dvh) - 24px));
+}
+
+.screen-lobby .lobby-howto-sheet .howto-fixed-header {
+  grid-template-columns: 52px minmax(0, 1fr) 44px;
+  padding-inline: clamp(18px, 3vw, 30px);
+}
+
+.screen-lobby .lobby-howto-sheet .lobby-sheet-heading .sheet-close {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 42px;
+  font-size: 1.45rem;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-scroll-body {
+  padding: 10px clamp(10px, 2vw, 16px) 12px;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-fixed-footer {
+  padding: 10px clamp(10px, 2vw, 16px) 14px;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-probabilities {
+  display: grid;
+  gap: 4px;
+  margin: -2px 0 9px;
+  color: #76563e;
+  font-size: .68rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-probabilities p {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-probabilities strong {
+  flex: 0 0 auto;
+  color: #4d2c18;
+  font-weight: 1000;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-probabilities span {
+  min-width: 0;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-probabilities small {
+  flex: 0 0 auto;
+  color: #96745b;
+  font-size: .62rem;
+  font-weight: 800;
 }
 
 .screen-lobby .lobby-howto-sheet .howto-fixed-footer {
@@ -100,15 +155,54 @@
 
 @supports not (height: 1dvh) {
   .screen-lobby .lobby-howto-sheet {
-    height: min(70vh, 780px);
-    max-height: min(70vh, 780px);
+    height: min(438px, calc(100vh - 24px));
+    max-height: min(438px, calc(100vh - 24px));
   }
 }
 
 @media (max-width: 700px) and (orientation: portrait) {
   .screen-lobby .lobby-howto-sheet {
-    height: 70dvh;
-    max-height: 70dvh;
+    height: min(492px, calc(var(--app-viewport-height, 100dvh) - 14px));
+    max-height: min(492px, calc(var(--app-viewport-height, 100dvh) - 14px));
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-fixed-header {
+    grid-template-columns: 42px minmax(0, 1fr) 38px;
+    padding: 13px 16px 10px;
+  }
+
+  .screen-lobby .lobby-howto-sheet .lobby-sheet-heading .sheet-close {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    font-size: 1.45rem;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-scroll-body {
+    padding: 9px 10px 11px;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-fixed-footer {
+    padding: 8px 10px 11px;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-result-probabilities {
+    gap: 3px;
+    margin-bottom: 7px;
+    font-size: .58rem;
+    line-height: 1.32;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-result-probabilities p {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2px 5px;
+  }
+
+  .screen-lobby .lobby-howto-sheet .howto-result-probabilities small {
+    grid-column: 2;
+    font-size: .54rem;
   }
 
   .screen-lobby .lobby-howto-sheet .howto-list article:nth-child(4) {

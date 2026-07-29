@@ -16,6 +16,10 @@ test.describe('mobile lobby guide polish QA', () => {
       await expect(dialog).toBeVisible();
       await expect(dialog.locator('.howto-list article')).toHaveCount(4);
       await expect(dialog.locator('.howto-result-strip span')).toHaveCount(6);
+      await expect(dialog.locator('.lobby-sheet-lead')).toHaveCount(0);
+      await expect(dialog.getByLabel('윷 결과 확률 안내')).toContainText('빽도 6.25%');
+      await expect(dialog.getByLabel('윷 결과 확률 안내')).toContainText('모 11.25%');
+      await expect(dialog).not.toContainText('낙이면 이동 없이 차례가 넘어갑니다.');
       await expect(confirmButton).toBeVisible();
       await expect(confirmButton).toBeInViewport();
 
@@ -26,10 +30,12 @@ test.describe('mobile lobby guide polish QA', () => {
         const header = element.querySelector('.howto-fixed-header');
         const body = element.querySelector('.howto-scroll-body');
         const footer = element.querySelector('.howto-fixed-footer');
+        const close = element.querySelector('.sheet-close');
         const timingHeading = cards[1]?.querySelector('h4');
+        const basicParagraph = cards[0]?.querySelector('p');
         const timingParagraphs = cards[1] ? Array.from(cards[1].querySelectorAll('p')) : [];
         const splitRuleParagraphs = cards[3] ? Array.from(cards[3].querySelectorAll('p')) : [];
-        if (cards.length !== 4 || resultItems.length !== 6 || timingParagraphs.length < 2 || splitRuleParagraphs.length !== 2 || !(timingHeading instanceof HTMLElement) || !(confirm instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement)) return null;
+        if (cards.length !== 4 || resultItems.length !== 6 || timingParagraphs.length < 2 || splitRuleParagraphs.length !== 2 || !(basicParagraph instanceof HTMLElement) || !(timingHeading instanceof HTMLElement) || !(confirm instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement) || !(close instanceof HTMLElement)) return null;
         const rect = (target) => {
           const box = target.getBoundingClientRect();
           return { x: box.x, y: box.y, width: box.width, height: box.height, right: box.right, bottom: box.bottom };
@@ -51,8 +57,8 @@ test.describe('mobile lobby guide polish QA', () => {
         const resultRects = resultItems.map(rect);
         const splitRuleRects = splitRuleParagraphs.map(rect);
         const splitRuleLabels = splitRuleParagraphs.map((paragraph) => getComputedStyle(paragraph, '::before').content);
-        const timingHeadingContent = getComputedStyle(timingHeading, '::after').content;
-        const timingParagraphContents = timingParagraphs.slice(0, 2).map((paragraph) => getComputedStyle(paragraph, '::after').content);
+        const timingHeadingContent = timingHeading.textContent ?? '';
+        const timingParagraphContents = timingParagraphs.slice(0, 2).map((paragraph) => paragraph.textContent ?? '');
         const confirmRect = rect(confirm);
         const footerStyle = getComputedStyle(footer);
         body.scrollTop = 42;
@@ -74,6 +80,9 @@ test.describe('mobile lobby guide polish QA', () => {
           bodyBottom: body.getBoundingClientRect().bottom,
           header: rect(header),
           footer: rect(footer),
+          close: rect(close),
+          closeTopOffset: close.getBoundingClientRect().top - dialogRect.top,
+          closeRightOffset: dialogRect.right - close.getBoundingClientRect().right,
           footerBackgroundImage: footerStyle.backgroundImage,
           footerBoxShadow: footerStyle.boxShadow,
           footerBorderTopWidth: Number.parseFloat(footerStyle.borderTopWidth),
@@ -81,6 +90,8 @@ test.describe('mobile lobby guide polish QA', () => {
           resultRects,
           timingHeadingContent,
           timingParagraphContents,
+          basicParagraphFontSize: getComputedStyle(basicParagraph).fontSize,
+          timingParagraphFontSize: getComputedStyle(timingParagraphs[0]).fontSize,
           splitRuleRects,
           splitRuleLabels,
           confirm: confirmRect,
@@ -99,8 +110,6 @@ test.describe('mobile lobby guide polish QA', () => {
       expect(layout.dialog.right, '팝업 오른쪽이 화면 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewportWidth + 1);
       expect(layout.dialog.y, '팝업 상단이 화면 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(0);
       expect(layout.dialog.bottom, '팝업 하단이 화면 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.viewportHeight + 1);
-      expect(layout.dialogHeight, '게임 방법 팝업 높이는 화면의 약 70%여야 합니다.').toBeGreaterThanOrEqual(layout.viewportHeight * 0.68);
-      expect(layout.dialogHeight, '게임 방법 팝업 높이는 화면의 약 70%여야 합니다.').toBeLessThanOrEqual(layout.viewportHeight * 0.72);
       expect(layout.dialogCenterOffset, '게임 방법 팝업은 화면 중앙에 배치되어야 합니다.').toBeLessThanOrEqual(2);
       expect(layout.overflowY, '팝업 전체가 스크롤 컨테이너가 되면 안 됩니다.').toBe('hidden');
       expect(layout.bodyOverflowY, '중앙 영역에서만 스크롤할 수 있어야 합니다.').toBe('auto');
@@ -114,13 +123,14 @@ test.describe('mobile lobby guide polish QA', () => {
         expect(card.x, '설명 카드가 팝업 왼쪽 밖으로 나가면 안 됩니다.').toBeGreaterThanOrEqual(layout.dialog.x);
         expect(card.right, '설명 카드가 팝업 오른쪽 밖으로 나가면 안 됩니다.').toBeLessThanOrEqual(layout.dialog.right + 1);
       });
-      expect(layout.timingHeadingContent).toContain('윷 던지기와 타이밍');
+      expect(layout.timingHeadingContent).toBe('타이밍');
       expect(layout.timingParagraphContents[0]).toContain('Perfect');
       expect(layout.timingParagraphContents[0]).toContain('Nice');
       expect(layout.timingParagraphContents[0]).toContain('Good');
       expect(layout.timingParagraphContents[0]).toContain('Bad');
       expect(layout.timingParagraphContents[0]).not.toContain('%');
       expect(layout.timingParagraphContents[1]).not.toContain('%');
+      expect(layout.timingParagraphFontSize, '타이밍 설명 크기는 기본 진행 설명과 같아야 합니다.').toBe(layout.basicParagraphFontSize);
       expect(layout.splitRuleLabels[0]).toContain('빽도');
       expect(layout.splitRuleLabels[1]).toContain('완주');
       expect(Math.abs(layout.splitRuleRects[0].y - layout.splitRuleRects[1].y), '빽도와 완주는 별도 카드로 같은 행에 구획되어야 합니다.').toBeLessThanOrEqual(1);
@@ -139,6 +149,29 @@ test.describe('mobile lobby guide polish QA', () => {
       expect(layout.moBonus.borderRadius).toBe(layout.yutBonus.borderRadius);
       expect(layout.moBonus.padding).toBe(layout.yutBonus.padding);
       expect(layout.moBonus.fontSize).toBe(layout.yutBonus.fontSize);
+
+      await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+      await page.getByRole('button', { name: '설정', exact: true }).click();
+      const settingsDialog = page.getByRole('dialog', { name: '설정' });
+      const settingsLayout = await settingsDialog.evaluate((element) => {
+        const close = element.querySelector('.sheet-close');
+        if (!(close instanceof HTMLElement)) return null;
+        const dialogRect = element.getBoundingClientRect();
+        const closeRect = close.getBoundingClientRect();
+        return {
+          height: dialogRect.height,
+          closeWidth: closeRect.width,
+          closeHeight: closeRect.height,
+          closeTopOffset: closeRect.top - dialogRect.top,
+          closeRightOffset: dialogRect.right - closeRect.right,
+        };
+      });
+      expect(settingsLayout, '설정 팝업의 높이와 닫기 버튼 위치를 읽을 수 있어야 합니다.').not.toBeNull();
+      expect(Math.abs(layout.dialogHeight - settingsLayout.height), '게임 방법 팝업 높이는 설정 팝업과 같아야 합니다.').toBeLessThanOrEqual(8);
+      expect(layout.close.width, '닫기 버튼 너비는 설정 팝업과 같아야 합니다.').toBe(settingsLayout.closeWidth);
+      expect(layout.close.height, '닫기 버튼 높이는 설정 팝업과 같아야 합니다.').toBe(settingsLayout.closeHeight);
+      expect(Math.abs(layout.closeTopOffset - settingsLayout.closeTopOffset), '닫기 버튼의 위쪽 여백은 설정 팝업과 같아야 합니다.').toBeLessThanOrEqual(3);
+      expect(Math.abs(layout.closeRightOffset - settingsLayout.closeRightOffset), '닫기 버튼의 오른쪽 여백은 설정 팝업과 같아야 합니다.').toBeLessThanOrEqual(3);
     });
   });
 });
