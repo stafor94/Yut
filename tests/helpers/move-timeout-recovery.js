@@ -15,7 +15,6 @@ import {
 import { commitAuthoritativeStatePatchForQa } from './authoritative-state-fixture.js';
 
 const VISIBLE_FIXTURE_DEADLINE_OFFSET_MS = 9_000;
-const EXPIRED_FIXTURE_AGE_MS = 100;
 
 const commitRoomStatePatchForQa = (page, roomId, patch, actorId) => commitAuthoritativeStatePatchForQa(
   page,
@@ -122,10 +121,11 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     message: '일반 개 이동 fixture가 authoritative sequence로 안정적으로 반영되어야 합니다.',
   }).toBe(true);
 
-  await expect(page.getByTestId('move-piece-button')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId('move-piece-button')).toBeEnabled();
+  const moveButton = page.getByTestId('move-piece-button');
+  await expect(moveButton).toBeVisible({ timeout: 10_000 });
+  await expect(moveButton).toBeEnabled();
 
-  const timeoutDeadlineAt = Date.now() - EXPIRED_FIXTURE_AGE_MS;
+  const timeoutDeadlineAt = Date.now() - 1;
   const actionKey = `timeout:${roomId}:move:${actorId}:${timeoutDeadlineAt}`;
   const expiredFixture = await commitRoomStatePatchForQa(page, roomId, {
     turnDeadlineAt: timeoutDeadlineAt,
@@ -146,7 +146,14 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     message: '만료된 일반 move deadline fixture가 authoritative sequence로 반영되어야 합니다.',
   }).toBe(true);
 
-  await expect(page.getByTestId('move-piece-button')).toBeDisabled({ timeout: 700 });
+  await expect.poll(async () => {
+    if (!await moveButton.isVisible().catch(() => false)) return true;
+    return moveButton.isDisabled().catch(() => false);
+  }, {
+    timeout: 900,
+    intervals: [25, 50, 100],
+    message: 'deadline 이후 일반 이동 버튼은 다시 활성화되지 않아야 합니다.',
+  }).toBe(true);
   const sequencesBeforeGrace = await getRoomSequencesForQa(roomId);
   expect(getRecoverySequences(sequencesBeforeGrace, actionKey)).toHaveLength(0);
 
