@@ -31,14 +31,14 @@ export const QA_PERFORMANCE_HARD_LIMITS_MS = Object.freeze({
 export const QA_PERFORMANCE_BUDGETS_MS = QA_PERFORMANCE_TARGETS_MS;
 
 const laneContracts = Object.freeze([
-  Object.freeze({ code: 'build', label: 'Build and unit', path: 'build/qa-job-timing.json' }),
-  Object.freeze({ code: 'core', label: 'QA online core', path: 'core/qa-job-timing.json' }),
-  Object.freeze({ code: 'seq', label: 'QA desktop sequence replay', path: 'seq/qa-job-timing.json' }),
-  Object.freeze({ code: 'desk', label: 'QA desktop regression', path: 'desk/qa-job-timing.json' }),
-  Object.freeze({ code: 'galaxy', label: 'QA mobile Galaxy', path: 'galaxy/qa-job-timing.json' }),
-  Object.freeze({ code: 'galtime', label: 'QA mobile Galaxy timing', path: 'galtime/qa-job-timing.json' }),
-  Object.freeze({ code: 'safvis', label: 'QA Safari visible mismatch', path: 'safvis/qa-job-timing.json' }),
-  Object.freeze({ code: 'safari', label: 'QA Safari timing', path: 'safari/qa-job-timing.json' }),
+  Object.freeze({ code: 'build', label: 'Build and unit', jobPath: 'build/qa-job-timing.json', testPath: null }),
+  Object.freeze({ code: 'core', label: 'QA online core', jobPath: 'core/qa-job-timing.json', testPath: 'core/qa-duration.json' }),
+  Object.freeze({ code: 'seq', label: 'QA desktop sequence replay', jobPath: 'seq/qa-job-timing.json', testPath: 'seq/qa-duration.json' }),
+  Object.freeze({ code: 'desk', label: 'QA desktop regression', jobPath: 'desk/qa-job-timing.json', testPath: 'desk/qa-duration.json' }),
+  Object.freeze({ code: 'galaxy', label: 'QA mobile Galaxy', jobPath: 'galaxy/qa-job-timing.json', testPath: 'galaxy/qa-duration.json' }),
+  Object.freeze({ code: 'galtime', label: 'QA mobile Galaxy timing', jobPath: 'galtime/qa-job-timing.json', testPath: 'galtime/qa-duration.json' }),
+  Object.freeze({ code: 'safvis', label: 'QA Safari visible mismatch', jobPath: 'safvis/qa-job-timing.json', testPath: 'safvis/qa-duration.json' }),
+  Object.freeze({ code: 'safari', label: 'QA Safari timing', jobPath: 'safari/qa-job-timing.json', testPath: 'safari/qa-duration.json' }),
 ]);
 
 const formatDuration = (durationMs) => `${(durationMs / 1000).toFixed(1)}s`;
@@ -49,54 +49,78 @@ function classifyDuration(durationMs, targetMs, hardLimitMs) {
   return 'success';
 }
 
+function normalizeLaneTiming(timing) {
+  if (!timing || typeof timing !== 'object') return null;
+  const durationMs = Number(timing.durationMs ?? timing.jobDurationMs);
+  const rawTestDurationMs = timing.testDurationMs;
+  const testDurationMs = rawTestDurationMs === null || rawTestDurationMs === undefined ? null : Number(rawTestDurationMs);
+  return {
+    durationMs: Number.isFinite(durationMs) ? durationMs : null,
+    testDurationMs: Number.isFinite(testDurationMs) ? testDurationMs : null,
+  };
+}
+
 export function validateQaPerformance({ workflowStartedAtMs, measuredAtMs, laneTimings }) {
   const failures = [];
   const warnings = [];
   const lanes = laneContracts.map((contract) => {
-    const timing = laneTimings[contract.code];
+    const timing = normalizeLaneTiming(laneTimings[contract.code]);
     const targetMs = QA_PERFORMANCE_TARGETS_MS[contract.code];
     const hardLimitMs = QA_PERFORMANCE_HARD_LIMITS_MS[contract.code];
-    if (!timing || !Number.isFinite(timing.durationMs)) {
-      failures.push(`${contract.label}: lane 전체 실행 시간 보고서가 없습니다.`);
-      return {
-        ...contract,
-        durationMs: null,
-        targetMs,
-        hardLimitMs,
-        targetPassed: false,
-        hardLimitPassed: false,
-        status: 'failure',
-      };
+    const durationMs = timing?.durationMs ?? null;
+    const testDurationMs = contract.testPath ? timing?.testDurationMs ?? null : null;
+    if (durationMs === null) failures.push(`${contract.label}: lane 전체 실행 시간 보고서가 없습니다.`);
+    if (contract.testPath && testDurationMs === null) failures.push(`${contract.label}: 실제 테스트 실행 시간 보고서가 없습니다.`);
+
+    const blockingDurationMs = contract.testPath ? testDurationMs : durationMs;
+    const status = blockingDurationMs === null ? 'failure' : classifyDuration(blockingDurationMs, targetMs, hardLimitMs);
+    if (blockingDurationMs !== null) {
+      if (status === 'failure') {
+        failures.push(`${contract.label}: 실제 검증 시간 ${formatDuration(blockingDurationMs)} > 차단 한계 ${formatDuration(hardLimitMs)}`);
+      } else if (status === 'warning') {
+        warnings.push(`${contract.label}: 실제 검증 시간 ${formatDuration(blockingDurationMs)} > 목표 ${formatDuration(targetMs)} (차단 한계 ${formatDuration(hardLimitMs)} 이내)`);
+      }
     }
 
-    const durationMs = Number(timing.durationMs);
-    const status = classifyDuration(durationMs, targetMs, hardLimitMs);
-    if (status === 'failure') {
-      failures.push(`${contract.label}: ${formatDuration(durationMs)} > 차단 한계 ${formatDuration(hardLimitMs)}`);
-    } else if (status === 'warning') {
-      warnings.push(`${contract.label}: ${formatDuration(durationMs)} > 목표 ${formatDuration(targetMs)} (차단 한계 ${formatDuration(hardLimitMs)} 이내)`);
+    const jobStatus = durationMs === null ? 'failure' : durationMs > targetMs ? 'warning' : 'success';
+    if (durationMs !== null && durationMs > targetMs) {
+      warnings.push(`${contract.label}: runner 준비·설치 포함 전체 시간 ${formatDuration(durationMs)} > 목표 ${formatDuration(targetMs)} (실제 검증 시간 ${blockingDurationMs === null ? 'unavailable' : formatDuration(blockingDurationMs)})`);
     }
+
     return {
       ...contract,
       durationMs,
+      testDurationMs,
+      blockingDurationMs,
       targetMs,
       hardLimitMs,
-      targetPassed: durationMs <= targetMs,
-      hardLimitPassed: durationMs <= hardLimitMs,
+      targetPassed: blockingDurationMs !== null && blockingDurationMs <= targetMs,
+      hardLimitPassed: blockingDurationMs !== null && blockingDurationMs <= hardLimitMs,
       status,
+      jobStatus,
     };
   });
 
-  if (!Number.isFinite(workflowStartedAtMs)) failures.push('GitHub Actions workflow 시작 시각을 확인하지 못했습니다.');
-  const elapsedMs = Number.isFinite(workflowStartedAtMs) ? Math.max(0, measuredAtMs - workflowStartedAtMs) : null;
-  const projectedCompletionMs = elapsedMs === null ? null : elapsedMs + QA_PERFORMANCE_TARGETS_MS.summaryReserve;
+  const blockingDurations = lanes.map((lane) => lane.blockingDurationMs).filter(Number.isFinite);
+  const criticalPathMs = blockingDurations.length === lanes.length ? Math.max(...blockingDurations) : null;
+  const projectedCompletionMs = criticalPathMs === null ? null : criticalPathMs + QA_PERFORMANCE_TARGETS_MS.summaryReserve;
   const overallStatus = projectedCompletionMs === null
     ? 'failure'
     : classifyDuration(projectedCompletionMs, QA_PERFORMANCE_TARGETS_MS.overall, QA_PERFORMANCE_HARD_LIMITS_MS.overall);
   if (overallStatus === 'failure' && projectedCompletionMs !== null) {
-    failures.push(`전체 QA 예상 완료 시간: ${formatDuration(projectedCompletionMs)} > 차단 한계 ${formatDuration(QA_PERFORMANCE_HARD_LIMITS_MS.overall)}`);
+    failures.push(`실제 검증 critical path 예상 완료 시간: ${formatDuration(projectedCompletionMs)} > 차단 한계 ${formatDuration(QA_PERFORMANCE_HARD_LIMITS_MS.overall)}`);
   } else if (overallStatus === 'warning' && projectedCompletionMs !== null) {
-    warnings.push(`전체 QA 예상 완료 시간: ${formatDuration(projectedCompletionMs)} > 목표 ${formatDuration(QA_PERFORMANCE_TARGETS_MS.overall)} (차단 한계 ${formatDuration(QA_PERFORMANCE_HARD_LIMITS_MS.overall)} 이내)`);
+    warnings.push(`실제 검증 critical path 예상 완료 시간: ${formatDuration(projectedCompletionMs)} > 목표 ${formatDuration(QA_PERFORMANCE_TARGETS_MS.overall)} (차단 한계 ${formatDuration(QA_PERFORMANCE_HARD_LIMITS_MS.overall)} 이내)`);
+  }
+
+  if (!Number.isFinite(workflowStartedAtMs)) failures.push('GitHub Actions workflow 시작 시각을 확인하지 못했습니다.');
+  const elapsedMs = Number.isFinite(workflowStartedAtMs) ? Math.max(0, measuredAtMs - workflowStartedAtMs) : null;
+  const wallClockProjectedCompletionMs = elapsedMs === null ? null : elapsedMs + QA_PERFORMANCE_TARGETS_MS.summaryReserve;
+  const wallClockStatus = wallClockProjectedCompletionMs === null
+    ? 'failure'
+    : wallClockProjectedCompletionMs > QA_PERFORMANCE_TARGETS_MS.overall ? 'warning' : 'success';
+  if (wallClockStatus === 'warning' && wallClockProjectedCompletionMs !== null) {
+    warnings.push(`runner 준비·설치 포함 workflow 예상 완료 시간: ${formatDuration(wallClockProjectedCompletionMs)} > 목표 ${formatDuration(QA_PERFORMANCE_TARGETS_MS.overall)} (관찰 전용)`);
   }
 
   return {
@@ -108,12 +132,15 @@ export function validateQaPerformance({ workflowStartedAtMs, measuredAtMs, laneT
     overall: {
       elapsedMs,
       summaryReserveMs: QA_PERFORMANCE_TARGETS_MS.summaryReserve,
+      criticalPathMs,
       projectedCompletionMs,
+      wallClockProjectedCompletionMs,
       targetMs: QA_PERFORMANCE_TARGETS_MS.overall,
       hardLimitMs: QA_PERFORMANCE_HARD_LIMITS_MS.overall,
       targetPassed: projectedCompletionMs !== null && projectedCompletionMs <= QA_PERFORMANCE_TARGETS_MS.overall,
       hardLimitPassed: projectedCompletionMs !== null && projectedCompletionMs <= QA_PERFORMANCE_HARD_LIMITS_MS.overall,
       status: overallStatus,
+      wallClockStatus,
     },
     lanes,
   };
@@ -127,16 +154,17 @@ function renderMarkdown(report) {
   const lines = [
     '## QA 성능 목표',
     '',
-    '목표 초과는 runner 편차 관찰용 경고이며, 차단 한계 초과 또는 측정 누락만 workflow를 실패시킵니다.',
+    '실제 테스트·검증 시간의 차단 한계 초과 또는 측정 누락만 workflow를 실패시킵니다. runner 준비·설치 포함 전체 시간은 편차 관찰용 경고입니다.',
     '',
-    '| 단계 | 전체 실행 시간 | 목표 | 차단 한계 | 결과 |',
-    '|---|---:|---:|---:|---|',
+    '| 단계 | 실제 검증 시간 | runner 포함 전체 | 목표 | 차단 한계 | 결과 |',
+    '|---|---:|---:|---:|---:|---|',
   ];
   for (const lane of report.lanes) {
-    lines.push(`| ${lane.label} | ${lane.durationMs === null ? 'unavailable' : formatDuration(lane.durationMs)} | ${formatDuration(lane.targetMs)} | ${formatDuration(lane.hardLimitMs)} | ${renderStatus(lane.status)} |`);
+    lines.push(`| ${lane.label} | ${lane.blockingDurationMs === null ? 'unavailable' : formatDuration(lane.blockingDurationMs)} | ${lane.durationMs === null ? 'unavailable' : formatDuration(lane.durationMs)} | ${formatDuration(lane.targetMs)} | ${formatDuration(lane.hardLimitMs)} | ${renderStatus(lane.status)} |`);
   }
   lines.push(
-    `| Workflow 시작 → summary 예상 완료 | ${report.overall.projectedCompletionMs === null ? 'unavailable' : formatDuration(report.overall.projectedCompletionMs)} | ${formatDuration(report.overall.targetMs)} | ${formatDuration(report.overall.hardLimitMs)} | ${renderStatus(report.overall.status)} |`,
+    `| 실제 검증 critical path + summary | ${report.overall.projectedCompletionMs === null ? 'unavailable' : formatDuration(report.overall.projectedCompletionMs)} | - | ${formatDuration(report.overall.targetMs)} | ${formatDuration(report.overall.hardLimitMs)} | ${renderStatus(report.overall.status)} |`,
+    `| Workflow wall clock + summary | - | ${report.overall.wallClockProjectedCompletionMs === null ? 'unavailable' : formatDuration(report.overall.wallClockProjectedCompletionMs)} | ${formatDuration(report.overall.targetMs)} | 관찰 전용 | ${renderStatus(report.overall.wallClockStatus)} |`,
     '',
   );
   if (report.warnings.length > 0) {
@@ -148,15 +176,29 @@ function renderMarkdown(report) {
   return `${lines.join('\n')}\n`;
 }
 
+function readJson(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    return { parseError: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function sumTestDurations(report) {
+  if (!report || !Array.isArray(report.durations) || report.durations.length === 0) return null;
+  const durations = report.durations.map((entry) => Number(entry?.durationMs));
+  return durations.every(Number.isFinite) ? durations.reduce((sum, durationMs) => sum + durationMs, 0) : null;
+}
+
 function readLaneTimings(root) {
-  return Object.fromEntries(laneContracts.flatMap((contract) => {
-    const timingPath = path.join(root, contract.path);
-    if (!fs.existsSync(timingPath)) return [];
-    try {
-      return [[contract.code, JSON.parse(fs.readFileSync(timingPath, 'utf8'))]];
-    } catch (error) {
-      return [[contract.code, { parseError: error instanceof Error ? error.message : String(error) }]];
-    }
+  return Object.fromEntries(laneContracts.map((contract) => {
+    const jobTiming = readJson(path.join(root, contract.jobPath));
+    const testTiming = contract.testPath ? readJson(path.join(root, contract.testPath)) : null;
+    return [contract.code, {
+      durationMs: jobTiming ? Number(jobTiming.durationMs) : null,
+      testDurationMs: contract.testPath ? sumTestDurations(testTiming) : null,
+    }];
   }));
 }
 
@@ -178,50 +220,57 @@ async function fetchWorkflowStartedAtMs() {
   return Number.isFinite(startedAt) ? startedAt : Number.NaN;
 }
 
+function makeSelfTestTimings() {
+  return Object.fromEntries(laneContracts.map(({ code, testPath }) => [code, {
+    durationMs: Math.max(1, QA_PERFORMANCE_TARGETS_MS[code] - 20_000),
+    testDurationMs: testPath ? Math.max(1, QA_PERFORMANCE_TARGETS_MS[code] - 20_000) : null,
+  }]));
+}
+
 function runSelfTest() {
-  const laneTimings = Object.fromEntries(laneContracts.map(({ code }) => [code, { durationMs: QA_PERFORMANCE_TARGETS_MS[code] - 1 }]));
+  const laneTimings = makeSelfTestTimings();
   const passReport = validateQaPerformance({ workflowStartedAtMs: 0, measuredAtMs: 289_999, laneTimings });
   assert.equal(passReport.passed, true);
   assert.equal(passReport.warnings.length, 0);
 
-  const laneWarning = validateQaPerformance({
+  const testWarning = validateQaPerformance({
     workflowStartedAtMs: 0,
     measuredAtMs: 289_999,
-    laneTimings: { ...laneTimings, safari: { durationMs: QA_PERFORMANCE_TARGETS_MS.safari + 1 } },
+    laneTimings: { ...laneTimings, safari: { durationMs: 500_000, testDurationMs: QA_PERFORMANCE_TARGETS_MS.safari + 1 } },
   });
-  assert.equal(laneWarning.passed, true);
-  assert.match(laneWarning.warnings.join('\n'), /Safari timing/u);
-  assert.equal(laneWarning.lanes.find(({ code }) => code === 'safari')?.status, 'warning');
+  assert.equal(testWarning.passed, true);
+  assert.match(testWarning.warnings.join('\n'), /실제 검증 시간/u);
+  assert.match(testWarning.warnings.join('\n'), /runner 준비·설치 포함 전체 시간/u);
+  assert.equal(testWarning.lanes.find(({ code }) => code === 'safari')?.status, 'warning');
 
-  const historicalRunnerVariance = validateQaPerformance({
+  const runnerVariance = validateQaPerformance({
     workflowStartedAtMs: 0,
-    measuredAtMs: 284_900,
-    laneTimings: {
-      ...laneTimings,
-      safvis: { durationMs: 213_300 },
-      safari: { durationMs: 253_700 },
-    },
+    measuredAtMs: 450_000,
+    laneTimings: { ...laneTimings, core: { durationMs: 600_000, testDurationMs: 250_000 } },
   });
-  assert.equal(historicalRunnerVariance.passed, true);
-  assert.match(historicalRunnerVariance.warnings.join('\n'), /Safari visible mismatch/u);
-  assert.match(historicalRunnerVariance.warnings.join('\n'), /Safari timing/u);
+  assert.equal(runnerVariance.passed, true);
+  assert.equal(runnerVariance.overall.wallClockStatus, 'warning');
+  assert.match(runnerVariance.warnings.join('\n'), /관찰 전용/u);
 
-  const laneFailure = validateQaPerformance({
+  const testFailure = validateQaPerformance({
     workflowStartedAtMs: 0,
     measuredAtMs: 289_999,
-    laneTimings: { ...laneTimings, safari: { durationMs: QA_PERFORMANCE_HARD_LIMITS_MS.safari + 1 } },
+    laneTimings: { ...laneTimings, safari: { durationMs: 500_000, testDurationMs: QA_PERFORMANCE_HARD_LIMITS_MS.safari + 1 } },
   });
-  assert.equal(laneFailure.passed, false);
-  assert.match(laneFailure.failures.join('\n'), /Safari timing/u);
+  assert.equal(testFailure.passed, false);
+  assert.match(testFailure.failures.join('\n'), /Safari timing/u);
 
-  const overallWarning = validateQaPerformance({ workflowStartedAtMs: 0, measuredAtMs: 290_001, laneTimings });
-  assert.equal(overallWarning.passed, true);
-  assert.match(overallWarning.warnings.join('\n'), /전체 QA 예상 완료 시간/u);
+  const missingTestTiming = validateQaPerformance({
+    workflowStartedAtMs: 0,
+    measuredAtMs: 289_999,
+    laneTimings: { ...laneTimings, core: { durationMs: 200_000, testDurationMs: null } },
+  });
+  assert.equal(missingTestTiming.passed, false);
+  assert.match(missingTestTiming.failures.join('\n'), /실제 테스트 실행 시간 보고서/u);
 
-  const overallFailureMeasuredAt = QA_PERFORMANCE_HARD_LIMITS_MS.overall - QA_PERFORMANCE_TARGETS_MS.summaryReserve + 1;
-  const overallFailure = validateQaPerformance({ workflowStartedAtMs: 0, measuredAtMs: overallFailureMeasuredAt, laneTimings });
-  assert.equal(overallFailure.passed, false);
-  assert.match(overallFailure.failures.join('\n'), /전체 QA 예상 완료 시간/u);
+  const missingWorkflowStart = validateQaPerformance({ workflowStartedAtMs: Number.NaN, measuredAtMs: 289_999, laneTimings });
+  assert.equal(missingWorkflowStart.passed, false);
+  assert.match(missingWorkflowStart.failures.join('\n'), /workflow 시작 시각/u);
   console.log('QA performance validator self-test passed');
 }
 
