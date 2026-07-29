@@ -32,18 +32,6 @@ async function rememberRoomIdWithAttemptTimeout(page, timeoutMs) {
   }
 }
 
-async function stabilizeSafariPointerRoomAccess(page, expectedRoomId) {
-  if (!isSafariPointerQaRole()) return;
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction((roomId) => {
-    const debug = window.__YUT_DEBUG_STATE__ ?? {};
-    return Boolean(document.querySelector('[data-testid="waiting-room"]'))
-      && String(debug.activeRoomId ?? '') === roomId
-      && Boolean(String(debug.currentUserId ?? ''))
-      && Boolean(String(debug.localSeatId ?? ''));
-  }, expectedRoomId, { timeout: 15_000 });
-}
-
 async function installSafariTimingStartRetry(page) {
   if (!isSafariPointerQaRole()) return;
   await page.evaluate(() => {
@@ -141,7 +129,6 @@ export async function waitForRoomQaAccess(page, {
     try {
       const roomId = await rememberRoomIdWithAttemptTimeout(page, Math.min(DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS, remainingBeforeAttemptMs));
       if (roomId) {
-        await stabilizeSafariPointerRoomAccess(page, roomId);
         await installSafariTimingStartRetry(page);
         return roomId;
       }
