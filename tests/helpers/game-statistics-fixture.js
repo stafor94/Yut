@@ -4,7 +4,7 @@ export async function installGameStatisticsFixture(page, {
   seats,
   sequences,
   latestState = null,
-  delayMs = 80,
+  delayMs = 500,
   failuresBeforeSuccess = 0,
   roomData = null,
 } = {}) {
