@@ -5,6 +5,7 @@ import {
   expectNoBlockingConsoleErrors,
 } from '../helpers/ui.js';
 import {
+  expectMoveTimeoutRecoveryUiProgress,
   prepareMoveTimeoutRecoveryFixture,
   waitForMoveTimeoutRecovery,
 } from '../helpers/move-timeout-recovery.js';
@@ -31,22 +32,9 @@ test.describe('Galaxy 일반 말 이동 제한시간 recovery', () => {
 
     expect(recovery.sequence.action?.payload?.clientActionId).toBe(fixture.actionKey);
     expect(recovery.sequence.action?.payload?.rollStackIndex ?? null).toBeNull();
-    await expect(page.getByTestId('game-screen')).toBeVisible();
-    await expect(page.getByTestId('play-controls')).toBeVisible();
-    await expect.poll(async () => {
-      const gameVisible = await page.getByTestId('game-screen').isVisible().catch(() => false);
-      const controlsVisible = await page.getByTestId('play-controls').isVisible().catch(() => false);
-      const button = page.getByTestId('move-piece-button');
-      const staleMoveButtonVisible = await button.isVisible().catch(() => false);
-      const staleMoveButtonDisabled = staleMoveButtonVisible
-        ? await button.isDisabled().catch(() => false)
-        : false;
-      return gameVisible && controlsVisible && !(staleMoveButtonVisible && staleMoveButtonDisabled);
-    }, {
-      timeout: 8_000,
-      intervals: [100, 200, 400],
+    await expectMoveTimeoutRecoveryUiProgress(page, {
       message: 'Galaxy 화면이 만료된 일반 이동 버튼만 잠긴 상태에 영구 고착되지 않아야 합니다.',
-    }).toBe(true);
+    });
     expect(page.url()).toContain('/Yut/');
     expectNoBlockingConsoleErrors(consoleErrors);
   });
