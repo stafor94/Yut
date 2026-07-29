@@ -1,0 +1,19 @@
+.game-guide-dialog-host {
+  display: contents;
+}
+
+.game-guide-open-button {
+  display: inline-grid;
+  place-items: center;
+}
+
+.game-guide-open-button svg {
+  width: 20px;
+  height: 20px;
+  overflow: visible;
+  fill: none;
+  stroke: #5b321c;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

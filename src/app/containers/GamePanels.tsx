@@ -5,6 +5,13 @@ import { getAiDifficultyBadgeLabel, getRuntimeAiDifficultyForSeat } from '../../
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { TEAM_COLORS, type GameLog, type PieceCount, type PlayMode, type Seat } from '../appState';
 import { publishGameEndDialogOpenHandler } from '../flows/gameEndDialogPresentation';
+import { requestGameGuideDialogOpen } from '../flows/gameGuideDialogPresentation';
+import {
+  getSequenceExportVisible,
+  isLocalPlayerOne,
+  publishSequenceExportVisible,
+  subscribeSequenceExportVisible,
+} from '../flows/gameHeaderActionsPresentation';
 import { requestGameStatisticsDialogOpen } from '../flows/gameStatisticsDialogPresentation';
 import { getOwnedItemsPresentation, publishOwnedItemsPresentation, subscribeOwnedItemsPresentation } from '../flows/ownedItemsPresentation';
 import { findRemoteConsumedItem, snapshotOwnedItems, type OwnedItemsSnapshot } from '../flows/remoteItemUseNotice';
@@ -68,6 +75,11 @@ export function GamePlayersPanel({
   useLayoutEffect(() => {
     publishOwnedItemsPresentation(ownedItems[localSeatId] ?? [], itemMode);
   }, [itemMode, localSeatId, ownedItems]);
+
+  useLayoutEffect(() => {
+    publishSequenceExportVisible(isLocalPlayerOne(seats, localSeatId));
+    return () => publishSequenceExportVisible(false);
+  }, [localSeatId, seats]);
 
   useEffect(() => {
     const seatIds = seats.map((seat) => seat.id);
@@ -183,6 +195,7 @@ export function GameLogPanelView({
 }: GameLogPanelViewProps) {
   const playTimePresentation = useSyncExternalStore(subscribePlayTimePresentation, getPlayTimePresentation, getPlayTimePresentation);
   const ownedItemsPresentation = useSyncExternalStore(subscribeOwnedItemsPresentation, getOwnedItemsPresentation, getOwnedItemsPresentation);
+  const sequenceExportVisible = useSyncExternalStore(subscribeSequenceExportVisible, getSequenceExportVisible, getSequenceExportVisible);
   const logListRef = useRef<HTMLDivElement | null>(null);
   const [mobileLogViewportHeight, setMobileLogViewportHeight] = useState<number | null>(null);
   const [mobileLogScrollable, setMobileLogScrollable] = useState(false);
@@ -238,7 +251,10 @@ export function GameLogPanelView({
         <h2>진행 기록</h2>
         <div className="log-header-actions">
           {playTimePresentation.visible && <div data-testid="play-timer" className={`play-time ${playTimePresentation.stopped ? 'stopped' : ''}`} aria-label={`현재 게임 플레이 타임 ${playTimePresentation.playTimeText}`}>{playTimePresentation.playTimeText}</div>}
-          <button type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button>
+          {sequenceExportVisible && <button data-testid="sequence-export-button" type="button" className="diagnostic-button" onClick={onOpenSequenceExportDialog} aria-label="최신 상태와 전체 시퀀스 내보내기" title="최신 상태와 전체 시퀀스 내보내기">🧾</button>}
+          <button data-testid="open-game-guide" type="button" className="diagnostic-button game-guide-open-button" onClick={requestGameGuideDialogOpen} aria-label="게임 방법 열기" title="게임 방법">
+            <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path d="M4 6.5c5-1.2 8-.3 12 2.2v18c-4-2.5-7-3.4-12-2.2zM28 6.5c-5-1.2-8-.3-12 2.2v18c4-2.5 7-3.4 12-2.2z" /></svg>
+          </button>
           <button data-testid="open-game-statistics" type="button" className="diagnostic-button game-statistics-open-button" onClick={requestGameStatisticsDialogOpen} aria-label="통계 정보 열기" title="통계 정보 열기">
             <svg viewBox="0 0 28 28" aria-hidden="true" focusable="false">
               <g transform="rotate(-18 9 14)"><rect x="5" y="3" width="7" height="22" rx="3.5"></rect><path d="M8.5 7v3M8.5 18v3"></path></g>

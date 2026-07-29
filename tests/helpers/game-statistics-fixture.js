@@ -7,6 +7,8 @@ export async function installGameStatisticsFixture(page, {
   delayMs = 500,
   failuresBeforeSuccess = 0,
   roomData = null,
+  showSequenceExport = true,
+  includeGameGuide = false,
 } = {}) {
   const nicknameDialog = page.getByRole('dialog', { name: '닉네임 설정' });
   if (await nicknameDialog.isVisible().catch(() => false)) {
@@ -15,7 +17,7 @@ export async function installGameStatisticsFixture(page, {
     await nicknameDialog.waitFor({ state: 'hidden' });
   }
 
-  await page.evaluate(({ nextRoomId, nextLocalSeatId, nextSeats, nextSequences, nextLatestState, nextDelayMs, nextFailuresBeforeSuccess, nextRoomData }) => {
+  await page.evaluate(({ nextRoomId, nextLocalSeatId, nextSeats, nextSequences, nextLatestState, nextDelayMs, nextFailuresBeforeSuccess, nextRoomData, nextShowSequenceExport, nextIncludeGameGuide }) => {
     const setActiveRoomId = (roomId) => window.localStorage.setItem('yut-online:activeRoomId', roomId);
     const restoreActiveRoomIdIfMissing = (roomId) => {
       if (!window.localStorage.getItem('yut-online:activeRoomId')?.trim()) setActiveRoomId(roomId);
@@ -80,11 +82,26 @@ export async function installGameStatisticsFixture(page, {
     const actions = document.createElement('div');
     actions.className = 'log-header-actions';
     actions.style.pointerEvents = 'auto';
-    const exportButton = document.createElement('button');
-    exportButton.type = 'button';
-    exportButton.className = 'diagnostic-button';
-    exportButton.setAttribute('aria-label', '최신 상태와 전체 시퀀스 내보내기');
-    exportButton.textContent = '🧾';
+    if (nextShowSequenceExport) {
+      const exportButton = document.createElement('button');
+      exportButton.type = 'button';
+      exportButton.className = 'diagnostic-button';
+      exportButton.dataset.testid = 'sequence-export-button';
+      exportButton.setAttribute('aria-label', '최신 상태와 전체 시퀀스 내보내기');
+      exportButton.textContent = '🧾';
+      actions.append(exportButton);
+    }
+    if (nextIncludeGameGuide) {
+      const guideButton = document.createElement('button');
+      guideButton.type = 'button';
+      guideButton.className = 'diagnostic-button game-guide-open-button';
+      guideButton.dataset.testid = 'open-game-guide';
+      guideButton.setAttribute('aria-label', '게임 방법 열기');
+      guideButton.setAttribute('title', '게임 방법');
+      guideButton.innerHTML = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 6.5c5-1.2 8-.3 12 2.2v18c-4-2.5-7-3.4-12-2.2zM28 6.5c-5-1.2-8-.3-12 2.2v18c4-2.5 7-3.4 12-2.2z"></path></svg>';
+      guideButton.addEventListener('click', () => window.__YUT_QA_OPEN_GAME_GUIDE__?.());
+      actions.append(guideButton);
+    }
     const statisticsButton = document.createElement('button');
     statisticsButton.type = 'button';
     statisticsButton.className = 'diagnostic-button game-statistics-open-button';
@@ -96,7 +113,7 @@ export async function installGameStatisticsFixture(page, {
       setActiveRoomId(nextRoomId);
       window.__YUT_QA_OPEN_GAME_STATISTICS__?.();
     });
-    actions.append(exportButton, statisticsButton);
+    actions.append(statisticsButton);
     header.append(heading, actions);
     logPanel.append(header);
     sideColumn.append(logPanel);
@@ -111,6 +128,8 @@ export async function installGameStatisticsFixture(page, {
     nextDelayMs: delayMs,
     nextFailuresBeforeSuccess: failuresBeforeSuccess,
     nextRoomData: roomData,
+    nextShowSequenceExport: showSequenceExport,
+    nextIncludeGameGuide: includeGameGuide,
   });
 }
 
