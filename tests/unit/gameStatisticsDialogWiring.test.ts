@@ -10,7 +10,7 @@ const mainSource = readFileSync('src/main.tsx', 'utf8');
 const manifestSource = readFileSync('tests/qa/suite-manifest.mjs', 'utf8');
 
 test('통계 팝업은 전체 Sequence를 조회한 뒤 현재 game_initialized 경계만 집계에 연결한다', () => {
-  assert.match(panelsSource, /onOpenSequenceExportDialog[\s\S]{0,500}requestGameStatisticsDialogOpen/u);
+  assert.match(panelsSource, /aria-label="최신 상태와 전체 시퀀스 내보내기"[\s\S]{0,700}aria-label="게임 방법 열기"[\s\S]{0,700}requestGameStatisticsDialogOpen/u);
   assert.match(panelsSource, /aria-label="통계 정보 열기"/u);
   assert.match(panelsSource, /<svg viewBox="0 0 28 28" aria-hidden="true"/u);
   assert.match(componentSource, /publishGameStatisticsDialogOpenHandler\(openDialog\)/u);
