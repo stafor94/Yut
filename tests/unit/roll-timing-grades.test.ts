@@ -33,16 +33,16 @@ test('Perfect, Nice, Good, Bad 경계값을 빠짐없이 판정한다', () => {
   cases.forEach(([position, expected]) => assert.equal(getRollTimingZone(position), expected, `${position}%`));
 });
 
-test('타이밍 등급별 낙 확률을 적용한다', () => {
+test('타이밍 등급별 낙 확률은 Perfect 0%, Nice 5%, Good 20%, Bad 70%다', () => {
   assert.equal(getFallChanceForTimingZone('perfect'), 0);
-  assert.equal(getFallChanceForTimingZone('nice'), 0.1);
+  assert.equal(getFallChanceForTimingZone('nice'), 0.05);
   assert.equal(getFallChanceForTimingZone('good'), 0.2);
-  assert.equal(getFallChanceForTimingZone('bad'), 0.6);
+  assert.equal(getFallChanceForTimingZone('bad'), 0.7);
 });
 
-test('레거시 Normal은 새 등급을 추가하지 않고 Bad로 처리한다', () => {
+test('레거시 Normal은 새 등급을 추가하지 않고 Bad 70%로 처리한다', () => {
   assert.equal(normalizeRollTimingZone('normal'), 'bad');
-  assert.equal(getFallChanceForTimingZone('normal'), 0.6);
+  assert.equal(getFallChanceForTimingZone('normal'), 0.7);
   const values = [0.2, 0.8, 0.2, 0.8];
   assert.deepEqual(
     rollYutResultWithTiming('normal', sequenceRandom(...values)),
@@ -59,13 +59,13 @@ test('쉬움 AI는 10/20/50/20 비율의 경계로 등급을 고른다', () => {
   assert.equal(chooseAiRollTimingZone('easy', () => 0.8), 'bad');
 });
 
-test('어려움 AI는 30/40/20/10 비율의 경계로 등급을 고른다', () => {
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.2999), 'perfect');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.3), 'nice');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.6999), 'nice');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.7), 'good');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.8999), 'good');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.9), 'bad');
+test('어려움 AI는 60/25/10/5 비율의 경계로 등급을 고른다', () => {
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.5999), 'perfect');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.6), 'nice');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.8499), 'nice');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.85), 'good');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.9499), 'good');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.95), 'bad');
 });
 
 test('Nice, Good, Bad는 같은 일반 윷 결과 확률 경로를 사용한다', () => {
