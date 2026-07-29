@@ -32,7 +32,7 @@ test.describe('진행 기록 헤더 액션', () => {
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveClass(/lobby-howto-sheet/);
     await expect(dialog.getByRole('heading', { name: '게임 방법' })).toBeVisible();
-    await expect(dialog.getByLabel('윷 결과 확률 안내')).toContainText('빽도 6.25%');
+    await expect(dialog.getByLabel('윷 결과 확률 안내')).toContainText('낙이 아닌 정상 투척 기준');
     await expect(dialog.getByRole('heading', { name: '타이밍', exact: true })).toBeVisible();
     await expect(dialog.getByRole('heading', { name: '방 옵션' })).toBeVisible();
     await expect(dialog).toContainText('이미 게임 중인 방은 관전할 수 있습니다.');
