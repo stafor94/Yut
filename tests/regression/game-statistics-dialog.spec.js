@@ -27,7 +27,7 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     await expect(statisticsButton.locator('svg')).toBeVisible();
 
     await statisticsButton.dispatchEvent('click');
-    await expect(page.getByTestId('game-statistics-loading')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__YUT_QA_GAME_STATISTICS_LOADER_CALLS__.length)).toBe(1);
     const dialog = page.getByTestId('game-statistics-dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('heading', { name: '통계 정보' })).toBeVisible();

@@ -1,6 +1,7 @@
 import { findRoomIdByTitle, rememberRoomIdFromPage } from './rooms.js';
 
 export const DEFAULT_ROOM_ACCESS_TIMEOUT_MS = 15_000;
+export const DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS = 1_500;
 export const DEFAULT_ROOM_ACCESS_INTERVALS_MS = Object.freeze([100, 200, 400, 800, 1200]);
 
 const wait = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
@@ -10,6 +11,20 @@ function normalizeIntervals(intervals) {
     .map(Number)
     .filter((intervalMs) => Number.isFinite(intervalMs) && intervalMs > 0);
   return normalized.length > 0 ? normalized : [...DEFAULT_ROOM_ACCESS_INTERVALS_MS];
+}
+
+async function rememberRoomIdWithAttemptTimeout(page, timeoutMs) {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      rememberRoomIdFromPage(page),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`브라우저 Firebase Auth 토큰 조회가 ${timeoutMs}ms 안에 완료되지 않았습니다.`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
 }
 
 export async function waitForRoomQaAccess(page, {
@@ -30,8 +45,11 @@ export async function waitForRoomQaAccess(page, {
   let firestoreRoomId = null;
 
   while (Date.now() - startedAt < normalizedTimeoutMs) {
+    const remainingBeforeAttemptMs = normalizedTimeoutMs - (Date.now() - startedAt);
+    if (remainingBeforeAttemptMs <= 0) break;
+    attempt += 1;
     try {
-      const roomId = await rememberRoomIdFromPage(page);
+      const roomId = await rememberRoomIdWithAttemptTimeout(page, Math.min(DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS, remainingBeforeAttemptMs));
       if (roomId) return roomId;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -47,8 +65,7 @@ export async function waitForRoomQaAccess(page, {
 
     const remainingMs = normalizedTimeoutMs - (Date.now() - startedAt);
     if (remainingMs <= 0) break;
-    const intervalMs = pollIntervals[Math.min(attempt, pollIntervals.length - 1)];
-    attempt += 1;
+    const intervalMs = pollIntervals[Math.min(attempt - 1, pollIntervals.length - 1)];
     await wait(Math.min(intervalMs, remainingMs));
   }
 
