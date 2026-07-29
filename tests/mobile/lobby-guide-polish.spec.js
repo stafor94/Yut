@@ -32,9 +32,10 @@ test.describe('mobile lobby guide polish QA', () => {
         const footer = element.querySelector('.howto-fixed-footer');
         const close = element.querySelector('.sheet-close');
         const timingHeading = cards[1]?.querySelector('h4');
+        const basicParagraph = cards[0]?.querySelector('p');
         const timingParagraphs = cards[1] ? Array.from(cards[1].querySelectorAll('p')) : [];
         const splitRuleParagraphs = cards[3] ? Array.from(cards[3].querySelectorAll('p')) : [];
-        if (cards.length !== 4 || resultItems.length !== 6 || timingParagraphs.length < 2 || splitRuleParagraphs.length !== 2 || !(timingHeading instanceof HTMLElement) || !(confirm instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement) || !(close instanceof HTMLElement)) return null;
+        if (cards.length !== 4 || resultItems.length !== 6 || timingParagraphs.length < 2 || splitRuleParagraphs.length !== 2 || !(basicParagraph instanceof HTMLElement) || !(timingHeading instanceof HTMLElement) || !(confirm instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement) || !(close instanceof HTMLElement)) return null;
         const rect = (target) => {
           const box = target.getBoundingClientRect();
           return { x: box.x, y: box.y, width: box.width, height: box.height, right: box.right, bottom: box.bottom };
@@ -89,6 +90,8 @@ test.describe('mobile lobby guide polish QA', () => {
           resultRects,
           timingHeadingContent,
           timingParagraphContents,
+          basicParagraphFontSize: getComputedStyle(basicParagraph).fontSize,
+          timingParagraphFontSize: getComputedStyle(timingParagraphs[0]).fontSize,
           splitRuleRects,
           splitRuleLabels,
           confirm: confirmRect,
@@ -127,6 +130,7 @@ test.describe('mobile lobby guide polish QA', () => {
       expect(layout.timingParagraphContents[0]).toContain('Bad');
       expect(layout.timingParagraphContents[0]).not.toContain('%');
       expect(layout.timingParagraphContents[1]).not.toContain('%');
+      expect(layout.timingParagraphFontSize, '타이밍 설명 크기는 기본 진행 설명과 같아야 합니다.').toBe(layout.basicParagraphFontSize);
       expect(layout.splitRuleLabels[0]).toContain('빽도');
       expect(layout.splitRuleLabels[1]).toContain('완주');
       expect(Math.abs(layout.splitRuleRects[0].y - layout.splitRuleRects[1].y), '빽도와 완주는 별도 카드로 같은 행에 구획되어야 합니다.').toBeLessThanOrEqual(1);

@@ -108,5 +108,41 @@ test.describe('lobby popup visual polish QA', () => {
     expect(guideLayout.buttonPosition, '확인 버튼은 footer 안에서 기본 버튼 디자인을 유지해야 합니다.').toBe('static');
     expect(guideLayout.buttonTop).toBeGreaterThanOrEqual(guideLayout.dialogTop);
     expect(guideLayout.buttonBottom).toBeLessThanOrEqual(guideLayout.viewportHeight + 1);
+
+    const guideChrome = await guideDialog.evaluate((element) => {
+      const close = element.querySelector('.sheet-close');
+      if (!(close instanceof HTMLElement)) return null;
+      const dialogRect = element.getBoundingClientRect();
+      const closeRect = close.getBoundingClientRect();
+      return {
+        height: dialogRect.height,
+        closeWidth: closeRect.width,
+        closeHeight: closeRect.height,
+        closeTopOffset: closeRect.top - dialogRect.top,
+        closeRightOffset: dialogRect.right - closeRect.right,
+      };
+    });
+    await guideDialog.getByRole('button', { name: '닫기', exact: true }).click();
+    await page.getByRole('button', { name: '설정', exact: true }).click();
+    const settingsChrome = await page.getByRole('dialog', { name: '설정' }).evaluate((element) => {
+      const close = element.querySelector('.sheet-close');
+      if (!(close instanceof HTMLElement)) return null;
+      const dialogRect = element.getBoundingClientRect();
+      const closeRect = close.getBoundingClientRect();
+      return {
+        height: dialogRect.height,
+        closeWidth: closeRect.width,
+        closeHeight: closeRect.height,
+        closeTopOffset: closeRect.top - dialogRect.top,
+        closeRightOffset: dialogRect.right - closeRect.right,
+      };
+    });
+    expect(guideChrome, 'Desktop 게임 방법 팝업 규격을 읽을 수 있어야 합니다.').not.toBeNull();
+    expect(settingsChrome, 'Desktop 설정 팝업 규격을 읽을 수 있어야 합니다.').not.toBeNull();
+    expect(Math.abs(guideChrome.height - settingsChrome.height), 'Desktop 게임 방법 팝업 높이는 설정 팝업과 같아야 합니다.').toBeLessThanOrEqual(8);
+    expect(guideChrome.closeWidth).toBe(settingsChrome.closeWidth);
+    expect(guideChrome.closeHeight).toBe(settingsChrome.closeHeight);
+    expect(Math.abs(guideChrome.closeTopOffset - settingsChrome.closeTopOffset), 'Desktop 닫기 버튼의 위쪽 여백은 설정 팝업과 같아야 합니다.').toBeLessThanOrEqual(3);
+    expect(Math.abs(guideChrome.closeRightOffset - settingsChrome.closeRightOffset), 'Desktop 닫기 버튼의 오른쪽 여백은 설정 팝업과 같아야 합니다.').toBeLessThanOrEqual(3);
   });
 });
