@@ -5,8 +5,8 @@
 }
 
 .screen-lobby .lobby-howto-sheet {
-  height: min(438px, calc(var(--app-viewport-height, 100dvh) - 24px));
-  max-height: min(438px, calc(var(--app-viewport-height, 100dvh) - 24px));
+  height: min(471px, 92dvh);
+  max-height: min(471px, 92dvh);
 }
 
 .screen-lobby .lobby-howto-sheet .howto-fixed-header {
@@ -155,15 +155,15 @@
 
 @supports not (height: 1dvh) {
   .screen-lobby .lobby-howto-sheet {
-    height: min(438px, calc(100vh - 24px));
-    max-height: min(438px, calc(100vh - 24px));
+    height: min(471px, 92vh);
+    max-height: min(471px, 92vh);
   }
 }
 
 @media (max-width: 700px) and (orientation: portrait) {
   .screen-lobby .lobby-howto-sheet {
-    height: min(492px, calc(var(--app-viewport-height, 100dvh) - 14px));
-    max-height: min(492px, calc(var(--app-viewport-height, 100dvh) - 14px));
+    height: min(542px, calc(var(--app-viewport-height, 100dvh) - 14px));
+    max-height: min(542px, calc(var(--app-viewport-height, 100dvh) - 14px));
   }
 
   .screen-lobby .lobby-howto-sheet .howto-fixed-header {

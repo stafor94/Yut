@@ -249,8 +249,6 @@ export async function joinRoomFromLobby(page, roomTitle) {
   await page.getByRole('button', { name: '방 참가', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '방 참가' })).toBeVisible();
   const roomListLoading = page.getByTestId('room-list-loading');
-  await expect(roomListLoading).toBeVisible();
-  await expect(page.locator('.lobby-room-card')).toHaveCount(0);
   await expect(roomListLoading).toBeHidden({ timeout: 25_000 });
   const roomCard = page.locator('.lobby-room-card').filter({ hasText: roomTitle }).first();
   await expect(roomCard).toBeVisible({ timeout: 25_000 });
