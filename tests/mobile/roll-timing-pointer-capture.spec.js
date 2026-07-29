@@ -4,7 +4,7 @@ import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { waitForRoomQaAccess } from '../helpers/room-access.js';
 import { deleteRoomForQa, getRoomSequencesForQa } from '../helpers/rooms.js';
 
-const GOOD_PRESS_RANGE = Object.freeze([30, 34]);
+const GOOD_PRESS_RANGES = Object.freeze([[27, 37], [63, 73]]);
 const NICE_PRESS_RANGES = Object.freeze([[40.5, 44.5], [55.5, 59.5]]);
 const GOOD_CANCEL_RANGES = Object.freeze([[20.5, 39.5], [60.5, 79.5]]);
 const POSITION_TOLERANCE_PERCENT = 0.25;
@@ -117,8 +117,8 @@ function assertAuthoritativeTiming(sequence, gesture) {
 
 async function dispatchPointerDownSnapshotGesture(page, {
   releaseMode = 'inside',
-  pointerDownRanges = [GOOD_PRESS_RANGE],
-  requireAscending = true,
+  pointerDownRanges = GOOD_PRESS_RANGES,
+  requireAscending = null,
   holdMs = LONG_PRESS_MS,
   awaitSubmission = true,
 } = {}) {
@@ -513,15 +513,19 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     const roomId = await startAiTimingGame(page, context, testInfo);
     roomIds.add(roomId);
 
-    const { gesture } = await runQaStep(testInfo, '상승 Good에서 pointerdown 후 Perfect 도달 시간을 지나 pointerup', async () => runAndAssertTimingGesture(page, roomId, {
-      pointerDownRanges: [GOOD_PRESS_RANGE],
-      requireAscending: true,
+    const { gesture } = await runQaStep(testInfo, '실제 렌더된 Good에서 pointerdown 후 Perfect 도달 시간을 지나 pointerup', async () => runAndAssertTimingGesture(page, roomId, {
+      pointerDownRanges: GOOD_PRESS_RANGES,
+      requireAscending: null,
       holdMs: LONG_PRESS_MS,
     }));
-    expect(gesture.pointerDownSnapshot.positionPercent).toBeGreaterThanOrEqual(GOOD_PRESS_RANGE[0]);
-    expect(gesture.pointerDownSnapshot.positionPercent).toBeLessThanOrEqual(GOOD_PRESS_RANGE[1]);
+    expect(GOOD_PRESS_RANGES.some(([minimum, maximum]) => (
+      gesture.pointerDownSnapshot.positionPercent >= minimum
+      && gesture.pointerDownSnapshot.positionPercent <= maximum
+    ))).toBe(true);
     expect(getExpectedGrade(gesture.pointerDownSnapshot.positionPercent)).toBe('GOOD');
-    const hypotheticalPointerUpPosition = gesture.pointerDownSnapshot.positionPercent + LONG_PRESS_MS / 10;
+    const movementDirection = gesture.pointerDownSnapshot.phaseMs < ROLL_TIMING_CYCLE_MS / 2 ? 1 : -1;
+    const hypotheticalPointerUpPosition = gesture.pointerDownSnapshot.positionPercent
+      + movementDirection * (LONG_PRESS_MS / 10);
     expect(hypotheticalPointerUpPosition).toBeGreaterThanOrEqual(45);
     expect(hypotheticalPointerUpPosition).toBeLessThanOrEqual(55);
   });
@@ -576,8 +580,8 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     const roomId = await startAiTimingGame(page, context, testInfo, 'repeat-1');
     roomIds.add(roomId);
     await runQaStep(testInfo, 'Galaxy pointerdown snapshot 추가 회귀', async () => runAndAssertTimingGesture(page, roomId, {
-      pointerDownRanges: [GOOD_PRESS_RANGE],
-      requireAscending: true,
+      pointerDownRanges: GOOD_PRESS_RANGES,
+      requireAscending: null,
       holdMs: LONG_PRESS_MS,
     }));
   });
