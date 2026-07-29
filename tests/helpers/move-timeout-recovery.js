@@ -15,6 +15,8 @@ import {
 import { commitAuthoritativeStatePatchForQa } from './authoritative-state-fixture.js';
 
 const VISIBLE_FIXTURE_DEADLINE_OFFSET_MS = 9_000;
+const INITIAL_TIMEOUT_COUNT = 1;
+const EXPECTED_TIMEOUT_COUNT = INITIAL_TIMEOUT_COUNT + 1;
 
 const commitRoomStatePatchForQa = (page, roomId, patch, actorId) => commitAuthoritativeStatePatchForQa(
   page,
@@ -122,7 +124,7 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     branchChoice: 'outer',
     turnDeadlineKind: 'move',
     turnDeadlineAt: visibleDeadlineAt,
-    turnActionTimeoutCountBySeatId: { [actorId]: 0 },
+    turnActionTimeoutCountBySeatId: { [actorId]: INITIAL_TIMEOUT_COUNT },
     autoPlayBySeatId: { [actorId]: false },
   }, actorId);
 
@@ -229,8 +231,32 @@ export async function waitForMoveTimeoutRecovery({
   });
   expect(matching[0].action?.payload?.rollStackIndex ?? null).toBeNull();
   expect(state?.roll).toBeNull();
-  expect(state?.turnActionTimeoutCountBySeatId?.[actorId]).toBe(1);
+  expect(state?.turnActionTimeoutCountBySeatId?.[actorId]).toBe(EXPECTED_TIMEOUT_COUNT);
+  expect(state?.autoPlayBySeatId?.[actorId]).toBe(true);
   expect(Number(state?.turnDeadlineAt ?? 0)).not.toBe(timeoutDeadlineAt);
+
+  let nextAiSequence;
+  await expect.poll(async () => {
+    const nextSequences = await getRoomSequencesForQa(roomId);
+    nextAiSequence = nextSequences.find((sequence) => (
+      Number(sequence.sequence ?? 0) > Number(matching[0].sequence ?? 0)
+      && sequence.type === 'roll_yut'
+      && sequence.actorId !== actorId
+    ));
+    return nextAiSequence ? {
+      actorId: nextAiSequence.actorId,
+      coordinatorSeatId: nextAiSequence.action?.payload?.coordinatorSeatId,
+      coordinatorEpoch: Number(nextAiSequence.action?.payload?.coordinatorEpoch ?? 0),
+    } : null;
+  }, {
+    timeout: 15_000,
+    intervals: [100, 200, 400, 800],
+    message: '두 번째 연속 timeout으로 자동 플레이가 켜져도 연결된 human coordinator가 다음 AI 턴을 진행해야 합니다.',
+  }).toEqual({
+    actorId: expect.not.stringMatching(new RegExp(`^${actorId}$`)),
+    coordinatorSeatId,
+    coordinatorEpoch,
+  });
 
   const duplicateCheckAt = Date.now() + 1_600;
   await expect.poll(async () => {
@@ -243,5 +269,5 @@ export async function waitForMoveTimeoutRecovery({
     message: '추가 대기 후에도 같은 일반 이동 timeout recovery가 중복 생성되면 안 됩니다.',
   }).toBe(1);
 
-  return { sequence: matching[0], state };
+  return { nextAiSequence, sequence: matching[0], state };
 }

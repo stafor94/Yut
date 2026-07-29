@@ -21,7 +21,7 @@ test.describe('일반 말 이동 제한시간 recovery', () => {
     roomId = undefined;
   });
 
-  test('UI 자동 callback 없이 coordinator가 grace 이후 일반 개 이동을 정확히 한 번 복구한다', async ({ page, context }, testInfo) => {
+  test('두 번째 연속 timeout 복구 뒤에도 같은 coordinator가 다음 AI 턴을 진행한다', async ({ page, context }, testInfo) => {
     const consoleErrors = [];
     attachConsoleErrorCapture(page, consoleErrors);
 
@@ -38,6 +38,8 @@ test.describe('일반 말 이동 제한시간 recovery', () => {
       timeoutDeadlineAt: fixture.timeoutDeadlineAt,
     });
     expect(recovery.sequence.action?.payload?.rollStackIndex ?? null).toBeNull();
+    expect(recovery.nextAiSequence?.type).toBe('roll_yut');
+    expect(recovery.nextAiSequence?.actorId).not.toBe(fixture.actorId);
     await expectMoveTimeoutRecoveryUiProgress(page, {
       message: '복구 뒤 게임 화면을 유지하면서 기존 일반 이동 버튼만 잠긴 상태에 고착되면 안 됩니다.',
     });
