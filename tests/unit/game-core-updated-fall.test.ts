@@ -55,18 +55,19 @@ const replacementTests = new Map<string, () => void>([
     assert.equal(getRollTimingZone(80.001), 'bad');
   }],
   ['AI 윷 던지기 타이밍은 30% Perfect, 40% Good, 30% Normal 기준으로 판정한다', () => {
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.2999), 'perfect');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.3), 'nice');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.6999), 'nice');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.7), 'good');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.8999), 'good');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.9), 'bad');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.5999), 'perfect');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.6), 'nice');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.8499), 'nice');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.85), 'good');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.9499), 'good');
+    assert.equal(chooseAiRollTimingZone('hard', () => 0.95), 'bad');
   }],
   ['타이밍 구간별 낙 확률을 적용한다', () => {
     assert.equal(getFallChanceForTimingZone('perfect'), 0);
-    assert.equal(getFallChanceForTimingZone('nice'), 0.1);
+    assert.equal(getFallChanceForTimingZone('nice'), 0.05);
     assert.equal(getFallChanceForTimingZone('good'), 0.2);
-    assert.equal(getFallChanceForTimingZone('bad'), 0.6);
+    assert.equal(getFallChanceForTimingZone('bad'), 0.7);
+    assert.equal(getFallChanceForTimingZone('normal'), 0.7);
   }],
   ['온라인 누적 AI 낙 후 다음 플레이어가 황금 윷을 보유하면 before_roll 선택 대기를 연다', () => withMockRandom([0.9, 0.9, 0.9, 0.9, 0], () => {
     const fall = reduceAuthoritativeGameAction(
@@ -131,14 +132,21 @@ const replacementTests = new Map<string, () => void>([
   })],
 ]);
 
+const replacementTestTitles = new Map<string, string>([
+  ['윷 던지기 타이밍 구간은 중앙 Perfect와 좌우 Good을 판정한다', '윷 던지기 타이밍은 Perfect, Nice, Good, Bad 전체 경계를 판정한다'],
+  ['AI 윷 던지기 타이밍은 30% Perfect, 40% Good, 30% Normal 기준으로 판정한다', '어려움 AI 윷 던지기 타이밍은 60/25/10/5 경계로 판정한다'],
+  ['타이밍 구간별 낙 확률을 적용한다', '타이밍 구간별 낙 확률은 Perfect 0%, Nice 5%, Good 20%, Bad 70%를 적용한다'],
+]);
+
 type TestRegistrar = (...args: unknown[]) => unknown;
 type ModuleLoader = (request: string, parent: NodeModule | null, isMain: boolean) => unknown;
 const nodeModule = require('node:module') as { _load: ModuleLoader };
 const originalLoad = nodeModule._load;
 const rawTest = test as unknown as TestRegistrar;
 const filteredTest = ((name: unknown, optionsOrFn?: unknown, maybeFn?: unknown) => {
-  const replacement = replacementTests.get(String(name));
-  if (replacement) return rawTest(String(name), replacement);
+  const sourceName = String(name);
+  const replacement = replacementTests.get(sourceName);
+  if (replacement) return rawTest(replacementTestTitles.get(sourceName) ?? sourceName, replacement);
   if (maybeFn === undefined) return rawTest(name, optionsOrFn);
   return rawTest(name, optionsOrFn, maybeFn);
 }) as typeof test;
