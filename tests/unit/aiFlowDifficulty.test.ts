@@ -9,14 +9,14 @@ import {
 type Candidate = ScoredAiCandidate & { id: string };
 const candidate = (id: string, score: number): Candidate => ({ id, score });
 
-test('AI difficulty profiles use the planned lower weights', () => {
+test('AI difficulty profiles keep easy range and make hard selection deterministic', () => {
   assert.deepEqual(AI_SCORE_PROFILES.hard, {
     finish: 80,
     capture: 90,
     shortcut: 55,
     start: 35,
     stack: 20,
-    candidateRange: 20,
+    candidateRange: 0,
     rerollThreshold: 55,
   });
   assert.deepEqual(AI_SCORE_PROFILES.easy, {
@@ -30,14 +30,10 @@ test('AI difficulty profiles use the planned lower weights', () => {
   });
 });
 
-test('hard AI ignores a move more than 20 points below the best score', () => {
-  const moves = [candidate('best', 100), candidate('low', 79)];
+test('hard AI always selects the highest-scoring move', () => {
+  const moves = [candidate('best', 100), candidate('second', 90), candidate('low', 79)];
   assert.equal(chooseScoredAiCandidate(moves, 'hard', () => 0.999)?.id, 'best');
-});
-
-test('hard AI can select a similarly strong move', () => {
-  const moves = [candidate('best', 100), candidate('second', 90)];
-  assert.equal(chooseScoredAiCandidate(moves, 'hard', () => 0.999)?.id, 'second');
+  assert.equal(chooseScoredAiCandidate(moves, 'hard', () => 0)?.id, 'best');
 });
 
 test('easy AI sometimes selects any legal move', () => {
