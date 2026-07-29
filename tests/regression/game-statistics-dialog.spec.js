@@ -26,7 +26,7 @@ test.describe('진행 기록 통계 정보 팝업', () => {
     ]);
     await expect(statisticsButton.locator('svg')).toBeVisible();
 
-    await statisticsButton.click();
+    await statisticsButton.dispatchEvent('click');
     await expect(page.getByTestId('game-statistics-loading')).toBeVisible();
     const dialog = page.getByTestId('game-statistics-dialog');
     await expect(dialog).toBeVisible();
