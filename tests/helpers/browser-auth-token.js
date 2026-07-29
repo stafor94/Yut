@@ -1,23 +1,3 @@
-export function findFirebaseAccessToken(value, depth = 0) {
-  if (!value || depth > 8) return '';
-  if (typeof value === 'string') return value.startsWith('eyJ') && value.split('.').length === 3 ? value : '';
-  if (Array.isArray(value)) {
-    for (const nested of value) {
-      const token = findFirebaseAccessToken(nested, depth + 1);
-      if (token) return token;
-    }
-    return '';
-  }
-  if (typeof value === 'object') {
-    if (typeof value.accessToken === 'string' && value.accessToken.startsWith('eyJ')) return value.accessToken;
-    for (const nested of Object.values(value)) {
-      const token = findFirebaseAccessToken(nested, depth + 1);
-      if (token) return token;
-    }
-  }
-  return '';
-}
-
 export function readFirebaseAccessTokenFromIndexedDb(indexedDb = globalThis.indexedDB) {
   const findToken = (value, depth = 0) => {
     if (!value || depth > 8) return '';
