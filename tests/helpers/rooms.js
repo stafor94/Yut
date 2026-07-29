@@ -209,7 +209,7 @@ async function deleteRestDocument(pathSegments, accessToken) {
 }
 
 async function readFirebaseAccessTokenFromPage(page) {
-  return page.evaluate(readFirebaseAccessTokenFromIndexedDb, indexedDB);
+  return page.evaluate(readFirebaseAccessTokenFromIndexedDb);
 }
 
 async function rememberRoomAccessToken(roomId, page) {
