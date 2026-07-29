@@ -80,11 +80,24 @@ export async function installGameStatisticsFixture(page, {
     const actions = document.createElement('div');
     actions.className = 'log-header-actions';
     actions.style.pointerEvents = 'auto';
-    const exportButton = document.createElement('button');
-    exportButton.type = 'button';
-    exportButton.className = 'diagnostic-button';
-    exportButton.setAttribute('aria-label', '최신 상태와 전체 시퀀스 내보내기');
-    exportButton.textContent = '🧾';
+    const playerOne = nextSeats?.find((seat) => seat.label === 'P1') ?? nextSeats?.[0];
+    if (nextLocalSeatId && playerOne?.id === nextLocalSeatId) {
+      const exportButton = document.createElement('button');
+      exportButton.type = 'button';
+      exportButton.className = 'diagnostic-button';
+      exportButton.dataset.testid = 'sequence-export-button';
+      exportButton.setAttribute('aria-label', '최신 상태와 전체 시퀀스 내보내기');
+      exportButton.textContent = '🧾';
+      actions.append(exportButton);
+    }
+    const guideButton = document.createElement('button');
+    guideButton.type = 'button';
+    guideButton.className = 'diagnostic-button game-guide-open-button';
+    guideButton.dataset.testid = 'open-game-guide';
+    guideButton.setAttribute('aria-label', '게임 방법 열기');
+    guideButton.setAttribute('title', '게임 방법');
+    guideButton.innerHTML = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M4 6.5c5-1.2 8-.3 12 2.2v18c-4-2.5-7-3.4-12-2.2zM28 6.5c-5-1.2-8-.3-12 2.2v18c4-2.5 7-3.4 12-2.2z"></path></svg>';
+    guideButton.addEventListener('click', () => window.__YUT_QA_OPEN_GAME_GUIDE__?.());
     const statisticsButton = document.createElement('button');
     statisticsButton.type = 'button';
     statisticsButton.className = 'diagnostic-button game-statistics-open-button';
@@ -96,7 +109,7 @@ export async function installGameStatisticsFixture(page, {
       setActiveRoomId(nextRoomId);
       window.__YUT_QA_OPEN_GAME_STATISTICS__?.();
     });
-    actions.append(exportButton, statisticsButton);
+    actions.append(guideButton, statisticsButton);
     header.append(heading, actions);
     logPanel.append(header);
     sideColumn.append(logPanel);
