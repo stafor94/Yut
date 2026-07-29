@@ -36,7 +36,9 @@ export const qaSuiteManifest = Object.freeze({
     projects: Object.freeze(['desktop-chromium']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     grepInvert: timeoutPenaltyTitle,
-    tests: Object.freeze(['tests/regression/bug-history-smoke.spec.js']),
+    tests: Object.freeze([
+      'tests/regression/bug-history-smoke.spec.js',
+    ]),
   }),
   'desktop-regression': Object.freeze({
     label: 'Desktop regression',
