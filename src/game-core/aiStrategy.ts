@@ -21,7 +21,7 @@ export const AI_SCORE_PROFILES: Record<AiDifficulty, AiScoreProfile> = {
     shortcut: 55,
     start: 35,
     stack: 20,
-    candidateRange: 20,
+    candidateRange: 0,
     rerollThreshold: 55,
   },
   easy: {
@@ -36,11 +36,7 @@ export const AI_SCORE_PROFILES: Record<AiDifficulty, AiScoreProfile> = {
 };
 
 function getCandidateWeight(difficulty: AiDifficulty, scoreGap: number) {
-  if (difficulty === 'hard') {
-    if (scoreGap <= 0) return 70;
-    if (scoreGap <= 10) return 22;
-    return 8;
-  }
+  if (difficulty === 'hard') return scoreGap <= 0 ? 1 : 0;
   if (scoreGap <= 0) return 45;
   if (scoreGap <= 15) return 30;
   if (scoreGap <= 30) return 15;
@@ -49,9 +45,9 @@ function getCandidateWeight(difficulty: AiDifficulty, scoreGap: number) {
 
 export function chooseScoredAiCandidate<T extends ScoredAiCandidate>(candidates: T[], difficulty: AiDifficulty, random = Math.random) {
   if (!candidates.length) return undefined;
-  if (candidates.length === 1) return candidates[0];
+  if (candidates.length === 1 || difficulty === 'hard') return candidates[0];
 
-  if (difficulty === 'easy' && random() < 0.1) {
+  if (random() < 0.1) {
     return candidates[Math.min(candidates.length - 1, Math.floor(random() * candidates.length))];
   }
 
