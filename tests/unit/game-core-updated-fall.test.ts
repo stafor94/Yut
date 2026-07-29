@@ -43,92 +43,112 @@ const baseState = (): EngineState => ({
   ownedItems: {},
 });
 
-const replacementTests = new Map<string, () => void>([
-  ['윷 던지기 타이밍 구간은 중앙 Perfect와 좌우 Good을 판정한다', () => {
-    assert.equal(getRollTimingZone(0), 'bad');
-    assert.equal(getRollTimingZone(20), 'good');
-    assert.equal(getRollTimingZone(40), 'nice');
-    assert.equal(getRollTimingZone(45), 'perfect');
-    assert.equal(getRollTimingZone(55), 'perfect');
-    assert.equal(getRollTimingZone(60), 'nice');
-    assert.equal(getRollTimingZone(80), 'good');
-    assert.equal(getRollTimingZone(80.001), 'bad');
+type ReplacementTest = { name: string; run: () => void };
+const replacementTests = new Map<string, ReplacementTest>([
+  ['윷 던지기 타이밍 구간은 중앙 Perfect와 좌우 Good을 판정한다', {
+    name: '윷 던지기 타이밍 구간은 Perfect·Nice·Good·Bad 경계를 판정한다',
+    run: () => {
+      assert.equal(getRollTimingZone(0), 'bad');
+      assert.equal(getRollTimingZone(20), 'good');
+      assert.equal(getRollTimingZone(40), 'nice');
+      assert.equal(getRollTimingZone(45), 'perfect');
+      assert.equal(getRollTimingZone(55), 'perfect');
+      assert.equal(getRollTimingZone(60), 'nice');
+      assert.equal(getRollTimingZone(80), 'good');
+      assert.equal(getRollTimingZone(80.001), 'bad');
+    },
   }],
-  ['AI 윷 던지기 타이밍은 30% Perfect, 40% Good, 30% Normal 기준으로 판정한다', () => {
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.2999), 'perfect');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.3), 'nice');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.6999), 'nice');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.7), 'good');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.8999), 'good');
-    assert.equal(chooseAiRollTimingZone('hard', () => 0.9), 'bad');
+  ['AI 윷 던지기 타이밍은 30% Perfect, 40% Good, 30% Normal 기준으로 판정한다', {
+    name: 'AI 윷 던지기 타이밍은 어려움 60/25/10/5 경계를 판정한다',
+    run: () => {
+      assert.equal(chooseAiRollTimingZone('hard', () => 0.5999), 'perfect');
+      assert.equal(chooseAiRollTimingZone('hard', () => 0.6), 'nice');
+      assert.equal(chooseAiRollTimingZone('hard', () => 0.8499), 'nice');
+      assert.equal(chooseAiRollTimingZone('hard', () => 0.85), 'good');
+      assert.equal(chooseAiRollTimingZone('hard', () => 0.9499), 'good');
+      assert.equal(chooseAiRollTimingZone('hard', () => 0.95), 'bad');
+    },
   }],
-  ['타이밍 구간별 낙 확률을 적용한다', () => {
-    assert.equal(getFallChanceForTimingZone('perfect'), 0);
-    assert.equal(getFallChanceForTimingZone('nice'), 0.1);
-    assert.equal(getFallChanceForTimingZone('good'), 0.2);
-    assert.equal(getFallChanceForTimingZone('bad'), 0.6);
+  ['타이밍 구간별 낙 확률을 적용한다', {
+    name: '타이밍 구간별 낙 확률은 Perfect 0%, Nice 5%, Good 20%, Bad 70%를 적용한다',
+    run: () => {
+      assert.equal(getFallChanceForTimingZone('perfect'), 0);
+      assert.equal(getFallChanceForTimingZone('nice'), 0.05);
+      assert.equal(getFallChanceForTimingZone('good'), 0.2);
+      assert.equal(getFallChanceForTimingZone('bad'), 0.7);
+      assert.equal(getFallChanceForTimingZone('normal'), 0.7);
+    },
   }],
-  ['온라인 누적 AI 낙 후 다음 플레이어가 황금 윷을 보유하면 before_roll 선택 대기를 연다', () => withMockRandom([0.9, 0.9, 0.9, 0.9, 0], () => {
-    const fall = reduceAuthoritativeGameAction(
-      {
-        ...baseState(),
-        ownedItems: { 'seat-2': ['golden_yut'] },
-        logs: [],
-      },
-      { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'bad' } },
-      { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
-    );
+  ['온라인 누적 AI 낙 후 다음 플레이어가 황금 윷을 보유하면 before_roll 선택 대기를 연다', {
+    name: '온라인 누적 AI 낙 후 다음 플레이어가 황금 윷을 보유하면 before_roll 선택 대기를 연다',
+    run: () => withMockRandom([0.9, 0.9, 0.9, 0.9, 0], () => {
+      const fall = reduceAuthoritativeGameAction(
+        {
+          ...baseState(),
+          ownedItems: { 'seat-2': ['golden_yut'] },
+          logs: [],
+        },
+        { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'bad' } },
+        { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+      );
 
-    assert.equal(fall.status, 'committed');
-    assert.equal(fall.payload?.fallOccurred, true);
-    assert.equal(fall.payload?.turnAdvancedIndependently, true);
-    assert.equal(fall.payload?.fallPresentationReadyAt, fall.patch?.rollResultReadyAt);
-    assert.equal(fall.patch?.turnIndex, 1);
-    assert.deepEqual(fall.patch?.rollStack, []);
-    assert.equal(fall.patch?.selectedRollStackIndex, null);
-    assert.equal(fall.patch?.itemPromptTiming, 'before_roll');
-    assert.equal(fall.patch?.turnDeadlineKind, 'item_prompt');
-    assert.equal(fall.patch?.pendingGoldenYutSelection ?? null, null);
-  })],
-  ['온라인 누적 낙 후 다음 플레이어에게 before_roll 아이템이 없으면 roll 상태를 유지한다', () => withMockRandom([0.9, 0.9, 0.9, 0.9, 0], () => {
-    const fall = reduceAuthoritativeGameAction(
-      {
-        ...baseState(),
-        ownedItems: {},
-        logs: [],
-      },
-      { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'bad' } },
-      { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
-    );
+      assert.equal(fall.status, 'committed');
+      assert.equal(fall.payload?.fallOccurred, true);
+      assert.equal(fall.payload?.turnAdvancedIndependently, true);
+      assert.equal(fall.payload?.fallPresentationReadyAt, fall.patch?.rollResultReadyAt);
+      assert.equal(fall.patch?.turnIndex, 1);
+      assert.deepEqual(fall.patch?.rollStack, []);
+      assert.equal(fall.patch?.selectedRollStackIndex, null);
+      assert.equal(fall.patch?.itemPromptTiming, 'before_roll');
+      assert.equal(fall.patch?.turnDeadlineKind, 'item_prompt');
+      assert.equal(fall.patch?.pendingGoldenYutSelection ?? null, null);
+    }),
+  }],
+  ['온라인 누적 낙 후 다음 플레이어에게 before_roll 아이템이 없으면 roll 상태를 유지한다', {
+    name: '온라인 누적 낙 후 다음 플레이어에게 before_roll 아이템이 없으면 roll 상태를 유지한다',
+    run: () => withMockRandom([0.9, 0.9, 0.9, 0.9, 0], () => {
+      const fall = reduceAuthoritativeGameAction(
+        {
+          ...baseState(),
+          ownedItems: {},
+          logs: [],
+        },
+        { type: 'roll_yut', actorId: 'seat-1', payload: { rollTimingZone: 'bad' } },
+        { playMode: 'individual', pieceCount: 4, stackedRollMode: true },
+      );
 
-    assert.equal(fall.status, 'committed');
-    assert.equal(fall.payload?.fallOccurred, true);
-    assert.equal(fall.payload?.turnAdvancedIndependently, true);
-    assert.equal(fall.payload?.fallPresentationReadyAt, fall.patch?.rollResultReadyAt);
-    assert.equal(fall.patch?.turnIndex, 1);
-    assert.deepEqual(fall.patch?.rollStack, []);
-    assert.equal(fall.patch?.selectedRollStackIndex, null);
-    assert.equal(fall.patch?.itemPromptTiming, null);
-    assert.equal(fall.patch?.turnDeadlineKind, 'roll');
-    assert.equal(fall.patch?.pendingGoldenYutSelection ?? null, null);
-  })],
-  ['온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치를 거부한다', () => withMockNow(10_000, () => {
-    const deadline = 10_000 - TURN_NETWORK_GRACE_MS - 1;
-    const result = reduceAuthoritativeGameAction(
-      {
-        ...baseState(),
-        roll: { name: '도', steps: 1 },
-        itemPromptTiming: 'after_roll',
-        turnDeadlineKind: 'item_prompt',
-        turnDeadlineAt: deadline,
-      } as EngineState & { itemPromptTiming: 'after_roll'; turnDeadlineKind: 'item_prompt'; turnDeadlineAt: number },
-      { type: 'use_item', actorId: 'seat-2', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: deadline } },
-      { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
-    );
+      assert.equal(fall.status, 'committed');
+      assert.equal(fall.payload?.fallOccurred, true);
+      assert.equal(fall.payload?.turnAdvancedIndependently, true);
+      assert.equal(fall.payload?.fallPresentationReadyAt, fall.patch?.rollResultReadyAt);
+      assert.equal(fall.patch?.turnIndex, 1);
+      assert.deepEqual(fall.patch?.rollStack, []);
+      assert.equal(fall.patch?.selectedRollStackIndex, null);
+      assert.equal(fall.patch?.itemPromptTiming, null);
+      assert.equal(fall.patch?.turnDeadlineKind, 'roll');
+      assert.equal(fall.patch?.pendingGoldenYutSelection ?? null, null);
+    }),
+  }],
+  ['온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치를 거부한다', {
+    name: '온라인 아이템 timeout 복구는 프롬프트 대상 actor 불일치를 거부한다',
+    run: () => withMockNow(10_000, () => {
+      const deadline = 10_000 - TURN_NETWORK_GRACE_MS - 1;
+      const result = reduceAuthoritativeGameAction(
+        {
+          ...baseState(),
+          roll: { name: '도', steps: 1 },
+          itemPromptTiming: 'after_roll',
+          turnDeadlineKind: 'item_prompt',
+          turnDeadlineAt: deadline,
+        } as EngineState & { itemPromptTiming: 'after_roll'; turnDeadlineKind: 'item_prompt'; turnDeadlineAt: number },
+        { type: 'use_item', actorId: 'seat-2', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: deadline } },
+        { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+      );
 
-    assert.equal(result.status, 'rejected');
-    assert.equal(result.reason, '아이템 선택 시간초과 대상이 아닙니다.');
-  })],
+      assert.equal(result.status, 'rejected');
+      assert.equal(result.reason, '아이템 선택 시간초과 대상이 아닙니다.');
+    }),
+  }],
 ]);
 
 type TestRegistrar = (...args: unknown[]) => unknown;
@@ -138,7 +158,7 @@ const originalLoad = nodeModule._load;
 const rawTest = test as unknown as TestRegistrar;
 const filteredTest = ((name: unknown, optionsOrFn?: unknown, maybeFn?: unknown) => {
   const replacement = replacementTests.get(String(name));
-  if (replacement) return rawTest(String(name), replacement);
+  if (replacement) return rawTest(replacement.name, replacement.run);
   if (maybeFn === undefined) return rawTest(name, optionsOrFn);
   return rawTest(name, optionsOrFn, maybeFn);
 }) as typeof test;
