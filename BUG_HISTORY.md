@@ -48,7 +48,7 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - [x] Build succeeds
 - [x] QA architecture validation passes
 - [ ] Desktop regression game guide QA passes
-- [ ] Mobile Galaxy game guide QA passes
+- [x] Mobile Galaxy game guide QA passes
 - [x] Online core 4-client turn-order QA passes
 - [ ] Main Branch QA succeeds
 
@@ -58,6 +58,14 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - 공통 `.lobby-sheet.panel`의 padding 규칙이 더 높은 specificity로 게임 방법 팝업의 `padding: 0`을 이겨, 전용 헤더 padding 바깥에 Desktop `30px`, Mobile `16px`의 패널 padding이 중복 적용됐다.
 - 게임 방법 팝업에 임의 음수 margin이나 절대 좌표를 추가하지 않는다. 공통 패널과 전용 팝업 클래스를 함께 선택해 중복 padding을 명시적으로 제거하고, Desktop 헤더 상단은 설정 팝업이 사용하는 공통 padding 토큰과 기존 heading `-2px` 오프셋을 재사용한다.
 - 상단 위치만 순차적으로 맞추고 오른쪽 위치를 다음 Run에 맡기지 않는다. 같은 수정에서 Desktop·Mobile의 상단·오른쪽 계산을 모두 설정 팝업과 대조한다.
+
+### Follow-up failure after PR #1239
+
+- Main Branch QA Run `30424426215`에서 Mobile Galaxy 게임 방법 QA와 Online core는 통과했고, Desktop도 높이·닫기 버튼 크기·상단 여백까지 통과했다.
+- Desktop의 다음 순차 assertion인 닫기 버튼 오른쪽 여백은 `15px` 차이로 실패했다. 외부 `.lobby-howto-sheet`에 남은 `scrollbar-gutter: stable`이 내부 스크롤 영역과 별도로 데스크톱 스크롤바 폭을 예약한 것이 원인이었다.
+- 같은 Run의 독립 Mobile Galaxy timing은 Good 장기 press 테스트가 `64.07%`에서 중앙과 반대 방향으로 증가하는 프레임을 선택해, 180ms 뒤 가상 위치가 예상 Perfect 범위가 아닌 `82.07%`가 되면서 실패했다.
+- 외부 팝업 gutter를 유지한 채 right margin이나 헤더 padding에서 `15px`를 빼지 않는다. 실제 스크롤을 담당하는 내부 body의 gutter만 유지하고 외부 gutter 예약을 제거한다.
+- Good 장기 press의 허용 범위나 Perfect assertion을 넓히지 않는다. 왼쪽 Good에서는 증가 중이고 오른쪽 Good에서는 감소 중인, 실제로 중앙을 향하는 렌더 프레임만 선택한다.
 
 ## 2026-07-28 - 이동 스택 미선택 상태에서 제한시간 이후 게임이 영구 고착됨
 

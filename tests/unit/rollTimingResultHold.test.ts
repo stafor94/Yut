@@ -62,6 +62,9 @@ test('Good 장기 press QA는 양방향 실제 렌더 구간에서 180ms 뒤 Per
   assert.doesNotMatch(browserQaSource, /const GOOD_PRESS_RANGE = Object\.freeze\(\[30, 34\]\)/);
   assert.match(browserQaSource, /pointerDownRanges: GOOD_PRESS_RANGES/);
   assert.match(browserQaSource, /requireAscending: null/);
+  assert.match(browserQaSource, /requireMovingTowardCenter: true/);
+  assert.match(browserQaSource, /const isMovingTowardCenter = snapshot\.positionPercent < 50 \? isAscending : !isAscending/);
+  assert.match(browserQaSource, /!mustMoveTowardCenter \|\| isMovingTowardCenter/);
   assert.match(browserQaSource, /const movementDirection = gesture\.pointerDownSnapshot\.phaseMs < ROLL_TIMING_CYCLE_MS \/ 2 \? 1 : -1/);
   assert.match(browserQaSource, /movementDirection \* \(LONG_PRESS_MS \/ 10\)/);
 });

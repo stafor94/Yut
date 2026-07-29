@@ -119,6 +119,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
   releaseMode = 'inside',
   pointerDownRanges = GOOD_PRESS_RANGES,
   requireAscending = null,
+  requireMovingTowardCenter = false,
   holdMs = LONG_PRESS_MS,
   awaitSubmission = true,
 } = {}) {
@@ -126,6 +127,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
     releaseMode: requestedReleaseMode,
     pointerDownRanges: targetRanges,
     requireAscending: requiredDirection,
+    requireMovingTowardCenter: mustMoveTowardCenter,
     holdMs: requestedHoldMs,
     awaitSubmission: shouldAwaitSubmission,
   }) => {
@@ -171,13 +173,16 @@ async function dispatchPointerDownSnapshotGesture(page, {
       ));
       const isAscending = snapshot.phaseMs < 1000;
       const matchesDirection = requiredDirection === null || isAscending === requiredDirection;
+      const isMovingTowardCenter = snapshot.positionPercent < 50 ? isAscending : !isAscending;
+      const matchesCenterDirection = !mustMoveTowardCenter || isMovingTowardCenter;
       return Number.isFinite(snapshot.positionPercent)
         && Number.isFinite(snapshot.phaseMs)
         && inTargetRange
         && matchesDirection
+        && matchesCenterDirection
         ? snapshot
         : null;
-    }, 3000, `렌더링된 목표 위치를 찾지 못했습니다: ${JSON.stringify(targetRanges)}, ascending=${requiredDirection}`);
+    }, 3000, `렌더링된 목표 위치를 찾지 못했습니다: ${JSON.stringify(targetRanges)}, ascending=${requiredDirection}, towardCenter=${mustMoveTowardCenter}`);
     const observeSubmission = () => new Promise((resolve, reject) => {
       let submittedGrade = '';
       let rollLog = '';
@@ -438,6 +443,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
     releaseMode,
     pointerDownRanges,
     requireAscending,
+    requireMovingTowardCenter,
     holdMs,
     awaitSubmission,
   });
@@ -516,6 +522,7 @@ test.describe('mobile roll timing pointerdown snapshot regression', () => {
     const { gesture } = await runQaStep(testInfo, '실제 렌더된 Good에서 pointerdown 후 Perfect 도달 시간을 지나 pointerup', async () => runAndAssertTimingGesture(page, roomId, {
       pointerDownRanges: GOOD_PRESS_RANGES,
       requireAscending: null,
+      requireMovingTowardCenter: true,
       holdMs: LONG_PRESS_MS,
     }));
     expect(GOOD_PRESS_RANGES.some(([minimum, maximum]) => (
