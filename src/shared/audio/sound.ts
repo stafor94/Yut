@@ -1,4 +1,5 @@
 import { bindYutResultSpeech } from './yutSpeech';
+import { classifyAudioPlayFailure, type AudioPlayFailureKind } from './audioPlayFailure';
 import { getChainedSoundDelayMs } from './soundTiming';
 import arriveAudioSource from './assets/effects/arrive-original.wav';
 import captureAudioSource from './assets/effects/capture-original.wav';
@@ -43,13 +44,22 @@ const WAV_EFFECT_SOURCES = {
   win: winAudioSource,
 } satisfies Partial<Record<SoundEffect, string>>;
 
-const effectAudioByEffect = new Map<keyof typeof WAV_EFFECT_SOURCES, HTMLAudioElement>();
+type WavSoundEffect = keyof typeof WAV_EFFECT_SOURCES;
+type EffectAudioUnlockState = 'locked' | 'unlocking' | 'unlocked';
+
+const effectAudioByEffect = new Map<WavSoundEffect, HTMLAudioElement>();
+const effectAudioUnlockState = new WeakMap<HTMLAudioElement, EffectAudioUnlockState>();
+const effectAudioUnlockPromise = new WeakMap<HTMLAudioElement, Promise<boolean>>();
+const warnedAudioFailures = new Set<string>();
 
 let audioContext: AudioContext | null = null;
 let soundUnlockBound = false;
+let soundUnlockComplete = false;
+let wavEffectAudioUnlocked = false;
+let wavEffectUnlockPromise: Promise<boolean> | null = null;
 const lastPlayedEffectAt = new Map<SoundEffect, number>();
 
-const getEffectAudio = (effect: keyof typeof WAV_EFFECT_SOURCES) => {
+const getEffectAudio = (effect: WavSoundEffect) => {
   const cachedAudio = effectAudioByEffect.get(effect);
   if (cachedAudio) return cachedAudio;
   if (typeof Audio === 'undefined') return null;
@@ -57,10 +67,77 @@ const getEffectAudio = (effect: keyof typeof WAV_EFFECT_SOURCES) => {
   audio.preload = 'auto';
   audio.volume = SOUND_EFFECT_VOLUME;
   effectAudioByEffect.set(effect, audio);
+  effectAudioUnlockState.set(audio, 'locked');
   return audio;
 };
 
-const playWavEffect = (effect: keyof typeof WAV_EFFECT_SOURCES, onEnded?: () => void) => {
+const reportAudioPlayFailure = (effect: WavSoundEffect, stage: 'unlock' | 'playback', error: unknown) => {
+  const kind = classifyAudioPlayFailure(error);
+  if (kind === 'interrupted') return kind;
+
+  const warningKey = stage === 'unlock' ? `${stage}:${kind}` : `${stage}:${effect}:${kind}`;
+  if (!warnedAudioFailures.has(warningKey)) {
+    warnedAudioFailures.add(warningKey);
+    console.warn('[audio] WAV effect playback failed', {
+      effect,
+      kind,
+      stage,
+      unlockState: effectAudioUnlockState.get(effectAudioByEffect.get(effect) as HTMLAudioElement) ?? 'unknown',
+      error,
+    });
+  }
+  return kind;
+};
+
+const resetPreparedEffectAudio = (audio: HTMLAudioElement, muted: boolean, volume: number) => {
+  audio.pause();
+  audio.currentTime = 0;
+  audio.muted = muted;
+  audio.volume = volume;
+};
+
+const unlockWavEffectAudio = () => {
+  if (wavEffectAudioUnlocked || typeof Audio === 'undefined') return Promise.resolve(true);
+  if (wavEffectUnlockPromise) return wavEffectUnlockPromise;
+
+  wavEffectUnlockPromise = Promise.all((Object.keys(WAV_EFFECT_SOURCES) as WavSoundEffect[]).map((effect) => {
+    const audio = getEffectAudio(effect);
+    if (!audio) return Promise.resolve(true);
+    if (effectAudioUnlockState.get(audio) === 'unlocked') return Promise.resolve(true);
+
+    const previousMuted = audio.muted;
+    const previousVolume = audio.volume;
+    effectAudioUnlockState.set(audio, 'unlocking');
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = true;
+    audio.volume = 0;
+
+    const attempt = audio.play().then(() => {
+      resetPreparedEffectAudio(audio, previousMuted, previousVolume);
+      effectAudioUnlockState.set(audio, 'unlocked');
+      return true;
+    }).catch((error) => {
+      resetPreparedEffectAudio(audio, previousMuted, previousVolume);
+      effectAudioUnlockState.set(audio, 'locked');
+      reportAudioPlayFailure(effect, 'unlock', error);
+      return false;
+    }).finally(() => {
+      if (effectAudioUnlockPromise.get(audio) === attempt) effectAudioUnlockPromise.delete(audio);
+    });
+    effectAudioUnlockPromise.set(audio, attempt);
+    return attempt;
+  })).then((results) => {
+    wavEffectAudioUnlocked = results.every(Boolean);
+    return wavEffectAudioUnlocked;
+  }).finally(() => {
+    wavEffectUnlockPromise = null;
+  });
+
+  return wavEffectUnlockPromise;
+};
+
+const playWavEffect = (effect: WavSoundEffect, onEnded?: () => void) => {
   const audio = getEffectAudio(effect);
   if (!audio) {
     onEnded?.();
@@ -68,8 +145,9 @@ const playWavEffect = (effect: keyof typeof WAV_EFFECT_SOURCES, onEnded?: () => 
   }
 
   let completed = false;
+  let cancelled = false;
   let fallbackTimer: number | null = null;
-  const cleanup = () => {
+  const cleanupListeners = () => {
     audio.removeEventListener('ended', handleEnded);
     if (fallbackTimer !== null) {
       window.clearTimeout(fallbackTimer);
@@ -79,27 +157,53 @@ const playWavEffect = (effect: keyof typeof WAV_EFFECT_SOURCES, onEnded?: () => 
   const complete = () => {
     if (completed) return;
     completed = true;
-    cleanup();
+    cleanupListeners();
     onEnded?.();
   };
   function handleEnded() {
     complete();
   }
 
-  audio.pause();
-  audio.currentTime = 0;
-  audio.muted = false;
-  audio.volume = SOUND_EFFECT_VOLUME;
-  if (onEnded) {
-    audio.addEventListener('ended', handleEnded, { once: true });
-    const fallbackDelayMs = Number.isFinite(audio.duration) && audio.duration > 0
-      ? Math.ceil(audio.duration * 1000) + 250
-      : 1600;
-    fallbackTimer = window.setTimeout(complete, fallbackDelayMs);
+  const startPlayback = () => {
+    if (cancelled || completed) return;
+    audio.pause();
+    audio.currentTime = 0;
+    audio.muted = false;
+    audio.volume = SOUND_EFFECT_VOLUME;
+    if (onEnded) {
+      audio.addEventListener('ended', handleEnded, { once: true });
+      const fallbackDelayMs = Number.isFinite(audio.duration) && audio.duration > 0
+        ? Math.ceil(audio.duration * 1000) + 250
+        : 1600;
+      fallbackTimer = window.setTimeout(complete, fallbackDelayMs);
+    }
+
+    void audio.play().then(() => {
+      effectAudioUnlockState.set(audio, 'unlocked');
+    }).catch((error) => {
+      const failureKind: AudioPlayFailureKind = reportAudioPlayFailure(effect, 'playback', error);
+      if (failureKind === 'autoplay-blocked') {
+        effectAudioUnlockState.set(audio, 'locked');
+        wavEffectAudioUnlocked = false;
+        soundUnlockComplete = false;
+        bindSoundUnlock();
+      }
+      complete();
+    });
+  };
+
+  const pendingUnlock = effectAudioUnlockPromise.get(audio);
+  if (effectAudioUnlockState.get(audio) === 'unlocking' && pendingUnlock) {
+    void pendingUnlock.finally(startPlayback);
+  } else {
+    startPlayback();
   }
 
-  void audio.play().catch(() => complete());
-  return cleanup;
+  return () => {
+    cancelled = true;
+    completed = true;
+    cleanupListeners();
+  };
 };
 
 const getAudioContext = () => {
@@ -112,29 +216,31 @@ const getAudioContext = () => {
 
 const unbindSoundUnlock = (unlock: () => void) => {
   if (typeof window === 'undefined') return;
-  window.removeEventListener('pointerdown', unlock);
-  window.removeEventListener('touchstart', unlock);
-  window.removeEventListener('keydown', unlock);
+  window.removeEventListener('pointerdown', unlock, true);
+  window.removeEventListener('touchstart', unlock, true);
+  window.removeEventListener('keydown', unlock, true);
+  soundUnlockBound = false;
 };
 
-const bindSoundUnlock = () => {
-  if (typeof window === 'undefined' || soundUnlockBound) return;
+function bindSoundUnlock() {
+  if (typeof window === 'undefined' || soundUnlockBound || soundUnlockComplete) return;
   soundUnlockBound = true;
   const unlock = () => {
     const context = getAudioContext();
-    if (!context) return;
-    if (context.state === 'running') {
+    const contextReady = !context || context.state === 'running'
+      ? Promise.resolve(true)
+      : context.resume().then(() => context.state === 'running').catch(() => false);
+
+    void Promise.all([contextReady, unlockWavEffectAudio()]).then(([isContextReady, areWavEffectsReady]) => {
+      if (!isContextReady || !areWavEffectsReady) return;
+      soundUnlockComplete = true;
       unbindSoundUnlock(unlock);
-      return;
-    }
-    void context.resume().then(() => {
-      if (context.state === 'running') unbindSoundUnlock(unlock);
-    }).catch(() => undefined);
+    });
   };
-  window.addEventListener('pointerdown', unlock, { passive: true });
-  window.addEventListener('touchstart', unlock, { passive: true });
-  window.addEventListener('keydown', unlock);
-};
+  window.addEventListener('pointerdown', unlock, { passive: true, capture: true });
+  window.addEventListener('touchstart', unlock, { passive: true, capture: true });
+  window.addEventListener('keydown', unlock, true);
+}
 
 bindSoundUnlock();
 
@@ -233,10 +339,10 @@ export const playSoundEffect = (effect: SoundEffect, enabled: boolean, onEnded?:
 
   if (effect in WAV_EFFECT_SOURCES) {
     if (chainedDelayMs !== null && onEnded) {
-      const cancelPlayback = playWavEffect(effect as keyof typeof WAV_EFFECT_SOURCES);
+      const cancelPlayback = playWavEffect(effect as WavSoundEffect);
       return scheduleSoundFollowUp(chainedDelayMs, onEnded, cancelPlayback);
     }
-    return playWavEffect(effect as keyof typeof WAV_EFFECT_SOURCES, onEnded);
+    return playWavEffect(effect as WavSoundEffect, onEnded);
   }
 
   const context = getAudioContext();
