@@ -4,6 +4,7 @@ export const DEFAULT_ROOM_ACCESS_TIMEOUT_MS = 15_000;
 export const DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS = 1_500;
 export const DEFAULT_ROOM_ACCESS_INTERVALS_MS = Object.freeze([100, 200, 400, 800, 1200]);
 
+const SAFARI_POINTER_QA_ROLES = new Set(['safari-timing', 'safari-visible-mismatch']);
 const wait = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs));
 
 function normalizeIntervals(intervals) {
@@ -11,6 +12,10 @@ function normalizeIntervals(intervals) {
     .map(Number)
     .filter((intervalMs) => Number.isFinite(intervalMs) && intervalMs > 0);
   return normalized.length > 0 ? normalized : [...DEFAULT_ROOM_ACCESS_INTERVALS_MS];
+}
+
+function isSafariPointerQaRole() {
+  return SAFARI_POINTER_QA_ROLES.has(String(process.env.QA_ROLE ?? '').trim());
 }
 
 async function rememberRoomIdWithAttemptTimeout(page, timeoutMs) {
@@ -27,8 +32,20 @@ async function rememberRoomIdWithAttemptTimeout(page, timeoutMs) {
   }
 }
 
+async function stabilizeSafariPointerRoomAccess(page, expectedRoomId) {
+  if (!isSafariPointerQaRole()) return;
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction((roomId) => {
+    const debug = window.__YUT_DEBUG_STATE__ ?? {};
+    return Boolean(document.querySelector('[data-testid="waiting-room"]'))
+      && String(debug.activeRoomId ?? '') === roomId
+      && Boolean(String(debug.currentUserId ?? ''))
+      && Boolean(String(debug.localSeatId ?? ''));
+  }, expectedRoomId, { timeout: 15_000 });
+}
+
 async function installSafariTimingStartRetry(page) {
-  if (process.env.QA_ROLE !== 'safari-timing') return;
+  if (!isSafariPointerQaRole()) return;
   await page.evaluate(() => {
     if (window.__YUT_QA_SAFARI_START_RETRY__?.installed) return;
 
@@ -124,6 +141,7 @@ export async function waitForRoomQaAccess(page, {
     try {
       const roomId = await rememberRoomIdWithAttemptTimeout(page, Math.min(DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS, remainingBeforeAttemptMs));
       if (roomId) {
+        await stabilizeSafariPointerRoomAccess(page, roomId);
         await installSafariTimingStartRetry(page);
         return roomId;
       }
