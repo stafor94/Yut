@@ -6,6 +6,52 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 
 ---
 
+## 2026-07-29 - 게임 방법 팝업 높이 추정값과 방 목록 로딩 순간 상태로 Main Branch QA 실패
+
+### Symptom
+
+- PR #1235 병합 뒤 Main Branch QA Run `30422939647`에서 Desktop regression과 Mobile Galaxy의 게임 방법 팝업 높이 비교가 실패했다.
+- 같은 Run의 Online core에서 4인 순서 정하기 시나리오가 세 번째 게스트의 방 참가 중 `room-list-loading` 표시를 찾지 못해 실패했다.
+
+### Expected behavior
+
+- 게임 방법 팝업은 설정 팝업을 변경하지 않고 Desktop과 Mobile에서 실제 설정 팝업 높이와 같아야 한다.
+- 방 참가 공용 QA helper는 방 목록 로딩이 아직 진행 중인 경우와 이미 완료된 경우를 모두 처리하고 목표 방 카드가 준비될 때까지 기다려야 한다.
+
+### Confirmed root cause
+
+- 게임 방법 팝업 높이를 설정 팝업의 실제 브라우저 계산값과 대조하지 않고 Desktop `438px`, Mobile `492px`로 추정했다.
+- 실패 trace에서 설정 팝업의 실제 높이는 Desktop `471.265625px`, Mobile `542.375px`였고 각각 `33.265625px`, `50.375px` 차이가 났다.
+- `joinRoomFromLobby()`는 방 참가 팝업이 열린 뒤 `room-list-loading`이 반드시 보였다가 사라진다고 가정했다.
+- 세 번째 게스트에서는 구독 결과가 먼저 도착해 팝업을 확인했을 때 목표 방 카드가 이미 표시됐으므로 정상 완료 상태인데도 로딩 UI assertion이 실패했다.
+
+### Previous failed approach
+
+- 설정 팝업의 콘텐츠 기반 실제 높이를 확인하지 않고 예상 고정 높이로 게임 방법 팝업을 맞췄다.
+- 비동기 완료 조건인 목표 방 카드 대신 짧게 존재할 수 있는 중간 로딩 UI의 노출을 공용 helper의 필수 조건으로 사용했다.
+
+### Do not try again
+
+- 설정 팝업 높이를 추정값으로 다시 계산하거나 설정 팝업 자체를 변경해 게임 방법 팝업에 맞추지 않는다.
+- `room-list-loading`처럼 이미 사라질 수 있는 중간 상태를 방 참가 성공의 필수 선행 조건으로 사용하지 않는다.
+- assertion 삭제, 무근거 timeout 증가, 테스트 skip 또는 재실행으로 실패를 숨기지 않는다.
+
+### Correct fix plan
+
+- 실패 trace에서 확인한 설정 팝업의 실제 계산 높이를 기준으로 게임 방법 팝업의 Desktop·Mobile 높이만 조정하고 viewport 상한과 내부 스크롤을 유지한다.
+- 방 참가 helper는 로딩 표시가 있으면 숨겨질 때까지 기다리되 이미 없으면 통과하고, 목표 방 카드의 표시와 참가 버튼 활성화를 실제 완료 조건으로 사용한다.
+- 기존 Desktop regression·Mobile Galaxy 높이·닫기 버튼 비교와 Online core 4인 동시 제출 시나리오의 실행 연결을 유지한다.
+
+### Verification checklist
+
+- [x] Unit tests pass
+- [x] Build succeeds
+- [x] QA architecture validation passes
+- [ ] Desktop regression game guide QA passes
+- [ ] Mobile Galaxy game guide QA passes
+- [ ] Online core 4-client turn-order QA passes
+- [ ] Main Branch QA succeeds
+
 ## 2026-07-28 - 이동 스택 미선택 상태에서 제한시간 이후 게임이 영구 고착됨
 
 ### Symptom
