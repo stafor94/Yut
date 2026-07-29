@@ -6,6 +6,62 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 
 ---
 
+## 2026-07-29 - 일반 말 이동 제한시간 이후 버튼만 잠기고 턴이 영구 고착됨
+
+### Symptom
+
+- 온라인 게임에서 일반 `roll` 결과가 확정되고 말 이동을 기다리는 중 제한시간이 끝나면 이동 버튼만 비활성화될 수 있었다.
+- authoritative state의 `roll`, `turnIndex`, `turnDeadlineKind='move'`, 만료된 `turnDeadlineAt`이 유지되고 `move_piece_resolved` sequence가 생성되지 않았다.
+- 다중 미선택 이동 스택이 아닌 비누적 일반 이동에서도 새로고침 전까지 게임이 진행되지 않았다.
+
+### Expected behavior
+
+- deadline 이후 일반 사용자 입력은 계속 차단한다.
+- UI의 deadline 직전 callback이 실행되지 않거나 늦어도 현재 coordinator가 `deadline + TURN_NETWORK_GRACE_MS` 이후 진행을 보장한다.
+- 동일 room·actor·deadline은 같은 action key로 처리하고 committed/duplicate 이후 중복 이동을 만들지 않는다.
+- 비누적 roll, 선택된 누적 스택, 기존 미선택 누적 스택의 timeout 역할이 충돌하지 않아야 한다.
+
+### Confirmed root cause
+
+- `App.tsx`의 일반 stalled-turn recovery는 authoritative 절대 recovery 시각이 아니라 effect 활성화 시점부터의 `TURN_ACTION_TIMEOUT_MS` 경과시간을 사용했다.
+- 최초 timer가 deadline 부근에 실행되면 reducer의 network grace 이전이라 거부됐다.
+- network grace 거부와 네트워크 오류에서 `stalledTurnRecoveryKeyRef`가 해제되지 않아 같은 턴의 이후 재평가가 `already-recovery-requested`로 차단될 수 있었다.
+- 기존 `useStackedRollTimeoutRecovery`는 `roll=null`인 닫힌 미선택 스택만 담당해 일반 `roll` 이동 대기를 복구하지 않았다.
+
+### Previous coverage gap
+
+- stacked timeout QA는 0번 스택 단일 소비와 중복 방지를 검증했지만 비누적 `roll={ name: '개', steps: 2 }` 이동 대기를 만들지 않았다.
+- reducer의 grace 이전 거부와 grace 이후 커밋은 단위 검증됐지만 UI callback 실패 뒤 coordinator fallback까지 연결한 Desktop/Galaxy QA가 없었다.
+- 표시 제한시간이 10초 또는 5초로 달라지거나 effect가 늦게 활성화되는 경우에도 authoritative recoveryAt이 동일해야 한다는 순수 정책 테스트가 없었다.
+
+### Do not try again
+
+- deadline 이후 이동 버튼을 다시 활성화하지 않는다.
+- `AUTO_ACTION_LEAD_MS`, 제한시간, network grace, Playwright timeout을 늘려 고착을 숨기지 않는다.
+- reducer의 exact deadline, actor, coordinator lease, network grace 검증을 완화하지 않는다.
+- rejection 또는 네트워크 오류 뒤 recovery key를 유지한 채 자동 재시도가 될 것이라고 가정하지 않는다.
+- 일반 `roll` 문제를 기존 `roll=null` stacked recovery만 검증하고 해결됐다고 판단하지 않는다.
+
+### Correct fix plan
+
+- move timeout recovery는 `getTurnRecoveryDeadlineAt(turnDeadlineAt)` 절대 시각을 사용하고 callback에서도 현재 시각과 room·actor·phase·deadline·coordinator seat·epoch를 다시 검증한다.
+- 기존 timeout resolver로 비누적 roll, 선택된 누적 스택, 미선택 누적 스택의 immutable context를 한 번 계산한다.
+- 기존 coordinator move timeout transaction을 모든 move timeout context에 재사용해 reducer와 save transaction의 exact deadline·grace·lease·sequence·processed action 검증을 유지한다.
+- committed/duplicate만 terminal로 기록하고 조기 실행·lease/sequence/state mismatch·네트워크 오류는 in-flight를 해제해 제한 횟수로 재평가한다.
+- Desktop online-core와 Galaxy 412×915 QA에서 일반 개 이동 fixture, grace 전 미제출, grace 후 단일 sequence, timeout count 1회, stale 버튼 해제, 중복 없음까지 검증한다.
+
+### Verification checklist
+
+- [x] 절대 recoveryAt, exact scope, retry 분류·제한 정책 단위 테스트를 추가했다.
+- [x] 일반 roll과 기존 stacked roll이 같은 stable action key와 coordinator transaction을 사용하는 실행 연결 테스트를 추가했다.
+- [x] Desktop spec을 `online-core`, Galaxy spec을 `mobile-galaxy` suite manifest에 연결했다.
+- [ ] Unit tests pass
+- [ ] Build succeeds
+- [ ] QA architecture validation passes
+- [ ] Desktop online-core normal move timeout QA passes
+- [ ] Mobile Galaxy normal move timeout QA passes
+- [ ] Main Branch QA succeeds
+
 ## 2026-07-29 - 게임 방법 팝업 높이 추정값과 방 목록 로딩 순간 상태로 Main Branch QA 실패
 
 ### Symptom
