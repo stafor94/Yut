@@ -58,6 +58,8 @@ test('commit과 duplicate만 terminal이며 조기 실행과 authoritative misma
   assert.equal(classifyMoveTimeoutRecoveryResult({ status: 'rejected', reason: '시간초과 네트워크 유예 시간이 아직 남아 있습니다.' }), 'too-early');
   assert.equal(classifyMoveTimeoutRecoveryResult({ status: 'rejected', reason: 'coordinator lease가 만료되었거나 epoch가 일치하지 않습니다.' }), 'retryable-state');
   assert.equal(classifyMoveTimeoutRecoveryResult({ status: 'rejected', reason: 'authoritative sequence가 변경되어 최신 상태 재평가가 필요합니다.' }), 'retryable-state');
+  assert.equal(classifyMoveTimeoutRecoveryResult({ status: 'rejected', reason: '시간초과 상태가 아닙니다.' }), 'retryable-state');
+  assert.equal(classifyMoveTimeoutRecoveryResult({ status: 'rejected', reason: '시간초과 대상 deadline이 아닙니다.' }), 'retryable-state');
   assert.equal(classifyMoveTimeoutRecoveryResult({ status: 'rejected', reason: '영구적으로 유효하지 않은 이동입니다.' }), 'permanent');
 });
 
