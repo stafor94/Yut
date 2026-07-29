@@ -28,6 +28,7 @@ import { RollTimingControl } from '../components/RollTimingControl';
 import { createDeadlineTimerAnimationCache } from '../flows/deadlineTimerAnimation';
 import { getRollControlPresentation, shouldAutoScrollGameControls } from '../flows/rollControlPresentation';
 import { shouldPlayLocalTurnSound } from '../flows/turnSound';
+import { scheduleTurnTransitionBoundary } from '../flows/turnTransitionClock';
 
 const AUTO_ACTION_LEAD_MS = 80;
 
@@ -237,12 +238,20 @@ export function GameBoardControls({
   });
 
   useEffect(() => {
-    const timestamps = [transitionDisplayAt, transitionReadyAt]
+    const timestamps = Array.from(new Set([transitionDisplayAt, transitionReadyAt]))
       .filter((timestamp) => timestamp > Date.now())
       .sort((left, right) => left - right);
     if (!timestamps.length || typeof window === 'undefined') return undefined;
-    const timers = timestamps.map((timestamp) => window.setTimeout(() => setTransitionClock(Date.now()), Math.max(0, timestamp - Date.now())));
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
+    const cancelTimers = timestamps.map((timestamp) => scheduleTurnTransitionBoundary(
+      timestamp,
+      () => setTransitionClock(Date.now()),
+      {
+        now: Date.now,
+        setTimeout: (callback, delayMs) => window.setTimeout(callback, delayMs),
+        clearTimeout: (timerId) => window.clearTimeout(timerId),
+      },
+    ));
+    return () => cancelTimers.forEach((cancelTimer) => cancelTimer());
   }, [actionableTurnKey, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, transitionDisplayAt, transitionReadyAt]);
 
   useEffect(() => {
