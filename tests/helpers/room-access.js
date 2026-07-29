@@ -27,6 +27,79 @@ async function rememberRoomIdWithAttemptTimeout(page, timeoutMs) {
   }
 }
 
+async function installSafariTimingStartRetry(page) {
+  if (process.env.QA_ROLE !== 'safari-timing') return;
+  await page.evaluate(() => {
+    if (window.__YUT_QA_SAFARI_START_RETRY__?.installed) return;
+
+    const state = {
+      installed: true,
+      armed: false,
+      attempts: 0,
+      sawDisabled: false,
+      status: 'idle',
+    };
+    window.__YUT_QA_SAFARI_START_RETRY__ = state;
+    let observer;
+    let scheduled = false;
+
+    const stop = () => {
+      observer?.disconnect();
+      document.removeEventListener('click', onStartClick, true);
+    };
+    const check = () => {
+      scheduled = false;
+      if (!state.armed) return;
+      if (document.querySelector('[data-testid="game-screen"]')) {
+        state.status = 'entered';
+        stop();
+        return;
+      }
+      const startButton = document.querySelector('[data-testid="start-game-button"]');
+      if (!(startButton instanceof HTMLButtonElement)) return;
+      if (startButton.disabled) {
+        state.sawDisabled = true;
+        return;
+      }
+      if (!state.sawDisabled) return;
+      if (state.attempts >= 3) {
+        state.status = 'exhausted';
+        stop();
+        return;
+      }
+      state.attempts += 1;
+      state.sawDisabled = false;
+      state.status = 'retrying';
+      startButton.click();
+    };
+    const scheduleCheck = () => {
+      if (scheduled) return;
+      scheduled = true;
+      window.setTimeout(check, 0);
+    };
+    function onStartClick(event) {
+      const target = event.target instanceof Element
+        ? event.target.closest('[data-testid="start-game-button"]')
+        : null;
+      if (!(target instanceof HTMLButtonElement) || state.armed) return;
+      state.armed = true;
+      state.attempts = 1;
+      state.sawDisabled = target.disabled;
+      state.status = 'armed';
+      scheduleCheck();
+    }
+
+    document.addEventListener('click', onStartClick, true);
+    observer = new MutationObserver(scheduleCheck);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class', 'disabled'],
+      childList: true,
+      subtree: true,
+    });
+  });
+}
+
 export async function waitForRoomQaAccess(page, {
   roomTitle = '',
   timeoutMs = DEFAULT_ROOM_ACCESS_TIMEOUT_MS,
@@ -50,7 +123,10 @@ export async function waitForRoomQaAccess(page, {
     attempt += 1;
     try {
       const roomId = await rememberRoomIdWithAttemptTimeout(page, Math.min(DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS, remainingBeforeAttemptMs));
-      if (roomId) return roomId;
+      if (roomId) {
+        await installSafariTimingStartRetry(page);
+        return roomId;
+      }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
     }
