@@ -13,6 +13,12 @@ test('room access는 한 번의 브라우저 토큰 조회가 전체 deadline을
   assert.match(roomAccessSource, /pollIntervals\[Math\.min\(attempt - 1, pollIntervals\.length - 1\)\]/u);
 });
 
+test('Safari room access는 cleanup 토큰 확보 후 현재 페이지와 Firestore 연결을 유지한다', () => {
+  assert.doesNotMatch(roomAccessSource, /page\.reload\(/u);
+  assert.doesNotMatch(roomAccessSource, /stabilizeSafariPointerRoomAccess/u);
+  assert.match(roomAccessSource, /if \(roomId\) \{\s*await installSafariTimingStartRetry\(page\);\s*return roomId;/u);
+});
+
 test('통계 팝업 QA는 생략 가능한 로딩 순간 대신 요청 시작과 최종 결과를 검증한다', () => {
   assert.doesNotMatch(statisticsSpecSource, /game-statistics-loading/u);
   assert.match(statisticsSpecSource, /__YUT_QA_GAME_STATISTICS_LOADER_CALLS__\.length\)\)\.toBe\(1\)/u);
