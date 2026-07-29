@@ -60,9 +60,9 @@ export function getRollTimingZone(positionPercent: number): RollTimingGrade {
 export function getFallChanceForTimingZone(zone: RollTimingZone) {
   const grade = normalizeRollTimingZone(zone);
   if (grade === 'perfect') return 0;
-  if (grade === 'nice') return 0.1;
+  if (grade === 'nice') return 0.05;
   if (grade === 'good') return 0.2;
-  return 0.6;
+  return 0.7;
 }
 
 export function shouldFallForTimingZone(zone: RollTimingZone, random = Math.random) {
@@ -81,9 +81,9 @@ export function chooseAiRollTimingZone(difficultyOrRandom?: AiDifficulty | (() =
     if (roll < 0.8) return 'good';
     return 'bad';
   }
-  if (roll < 0.3) return 'perfect';
-  if (roll < 0.7) return 'nice';
-  if (roll < 0.9) return 'good';
+  if (roll < 0.6) return 'perfect';
+  if (roll < 0.85) return 'nice';
+  if (roll < 0.95) return 'good';
   return 'bad';
 }
 
