@@ -8,6 +8,8 @@ import { LobbyScreen } from '../screens/LobbyScreen';
 
 const ROOM_QUERY_MIN_VISIBLE_MS = 600;
 const ROOM_QUERY_TIMEOUT_MS = 8_000;
+const LOBBY_BACKGROUND_VIDEO_URL = `${import.meta.env.BASE_URL}lobby-background.mp4`;
+const LOBBY_BACKGROUND_POSTER_URL = `${import.meta.env.BASE_URL}lobby-background-original.png`;
 
 type LobbyContainerProps = {
   title: string;
@@ -121,6 +123,18 @@ export function LobbyContainer({
   }) === '참가' && isRoomInGame(room))?.id ?? '';
 
   return <>
+    <video
+      data-testid="lobby-background-video"
+      className="lobby-background-video"
+      src={LOBBY_BACKGROUND_VIDEO_URL}
+      poster={LOBBY_BACKGROUND_POSTER_URL}
+      autoPlay
+      loop
+      muted
+      playsInline
+      preload="auto"
+      aria-hidden="true"
+    />
     <LobbyScreen
       title={title}
       rooms={isInitialRoomQuerying ? [] : rooms}
