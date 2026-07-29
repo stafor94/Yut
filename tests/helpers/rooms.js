@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import { Timestamp, collection, connectFirestoreEmulator, deleteDoc, doc, getDoc, getDocs, getFirestore, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { readFirebaseAccessTokenFromIndexedDb } from './browser-auth-token.js';
 import { loadFirebaseConfig } from './env.js';
 
 const roomSubcollections = ['actions', 'boardItems', 'players', 'rooms', 'seats', 'state', 'sequences', 'processedActions', 'turnOrderSubmissions'];
@@ -208,66 +209,7 @@ async function deleteRestDocument(pathSegments, accessToken) {
 }
 
 async function readFirebaseAccessTokenFromPage(page) {
-  return page.evaluate(async () => {
-    const findToken = (value, depth = 0) => {
-      if (!value || depth > 8) return '';
-      if (typeof value === 'string') return value.startsWith('eyJ') && value.split('.').length === 3 ? value : '';
-      if (Array.isArray(value)) {
-        for (const nested of value) {
-          const token = findToken(nested, depth + 1);
-          if (token) return token;
-        }
-        return '';
-      }
-      if (typeof value === 'object') {
-        if (typeof value.accessToken === 'string' && value.accessToken.startsWith('eyJ')) return value.accessToken;
-        for (const nested of Object.values(value)) {
-          const token = findToken(nested, depth + 1);
-          if (token) return token;
-        }
-      }
-      return '';
-    };
-
-    return new Promise((resolve) => {
-      const request = indexedDB.open('firebaseLocalStorageDb');
-      request.onerror = () => resolve('');
-      request.onsuccess = () => {
-        const database = request.result;
-        const stores = Array.from(database.objectStoreNames);
-        if (!stores.length) {
-          database.close();
-          resolve('');
-          return;
-        }
-        let pending = stores.length;
-        let resolved = false;
-        for (const storeName of stores) {
-          const transaction = database.transaction(storeName, 'readonly');
-          const getAllRequest = transaction.objectStore(storeName).getAll();
-          getAllRequest.onerror = () => {
-            pending -= 1;
-            if (!resolved && pending === 0) {
-              database.close();
-              resolve('');
-            }
-          };
-          getAllRequest.onsuccess = () => {
-            const token = findToken(getAllRequest.result);
-            pending -= 1;
-            if (token && !resolved) {
-              resolved = true;
-              database.close();
-              resolve(token);
-            } else if (!resolved && pending === 0) {
-              database.close();
-              resolve('');
-            }
-          };
-        }
-      };
-    });
-  });
+  return page.evaluate(readFirebaseAccessTokenFromIndexedDb);
 }
 
 async function rememberRoomAccessToken(roomId, page) {
