@@ -51,13 +51,13 @@ test('easy AI roll timing uses 10/20/50/20 boundaries', () => {
   assert.equal(chooseAiRollTimingZone('easy', () => 0.8), 'bad');
 });
 
-test('hard AI roll timing uses 30/40/20/10 boundaries', () => {
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.2999), 'perfect');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.3), 'nice');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.6999), 'nice');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.7), 'good');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.8999), 'good');
-  assert.equal(chooseAiRollTimingZone('hard', () => 0.9), 'bad');
+test('hard AI roll timing uses 60/25/10/5 boundaries', () => {
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.5999), 'perfect');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.6), 'nice');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.8499), 'nice');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.85), 'good');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.9499), 'good');
+  assert.equal(chooseAiRollTimingZone('hard', () => 0.95), 'bad');
 });
 
 test('legacy no-difficulty call reads the active AI difficulty', () => {
