@@ -146,10 +146,10 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     message: '만료된 일반 move deadline fixture가 authoritative sequence로 반영되어야 합니다.',
   }).toBe(true);
 
-  await expect.poll(async () => {
-    if (!await moveButton.isVisible().catch(() => false)) return true;
-    return moveButton.isDisabled().catch(() => false);
-  }, {
+  await expect.poll(() => page.evaluate(() => {
+    const button = document.querySelector('[data-testid="move-piece-button"]');
+    return !button || button.hasAttribute('disabled');
+  }), {
     timeout: 900,
     intervals: [25, 50, 100],
     message: 'deadline 이후 일반 이동 버튼은 다시 활성화되지 않아야 합니다.',
