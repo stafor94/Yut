@@ -54,8 +54,15 @@ test('client는 snapshot lease를 수신하고 delegated action과 turn-order wr
   assert.match(turnOrder, /if \(!result && shouldRetryAfterNull\) scheduleRetry\(\)/);
   assert.match(turnOrder, /aggregationScopeRef\.current !== scopeKey/);
   assert.match(turnOrder, /aggregatingRoundIdRef\.current === scopeKey/);
+  const leaseCallStart = app.indexOf('const coordinatorLease = useGameCoordinatorLease');
+  assert.notEqual(leaseCallStart, -1);
+  const leaseCallEnd = app.indexOf('\n  });', leaseCallStart);
+  assert.notEqual(leaseCallEnd, -1);
+  const leaseCall = app.slice(leaseCallStart, leaseCallEnd);
+  assert.match(leaseCall, /eligible: Boolean\(activeRoomId && isOnlinePlayer && localSeatId\)/);
+  assert.doesNotMatch(leaseCall, /autoPlayBySeatId/);
   const leaseHook = read('src/app/hooks/useGameCoordinatorLease.ts');
-  assert.match(leaseHook, /autoPlayBySeatId/);
+  assert.doesNotMatch(leaseHook, /autoPlayBySeatId/);
   assert.match(leaseHook, /isGameCoordinatorLeaseActive\(leaseState, now\)/);
   assert.match(leaseHook, /stabilizeClientGameCoordinatorLease\(stableLeaseContextRef\.current, nextLeaseContext\)/);
   assert.match(leaseHook, /\[deadlineReached, leaseState, params\.activeRoomId/);

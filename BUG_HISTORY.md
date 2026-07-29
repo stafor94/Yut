@@ -62,6 +62,14 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 - [ ] Mobile Galaxy normal move timeout QA passes
 - [ ] Main Branch QA succeeds
 
+### Follow-up recurrence after PR #1245
+
+- 실제 1인 human + AI 방에서 두 번째 연속 timeout 이동 복구 sequence는 정상 커밋됐지만, 같은 patch의 `autoPlayBySeatId[human]=true`가 현재 human coordinator를 즉시 부적격 처리했다.
+- 남은 좌석이 모두 AI라 lease를 승계할 클라이언트가 없었고 다음 AI 턴의 authoritative action이 생성되지 않아 새로고침 뒤에도 고착됐다.
+- timeout 자동 플레이는 연결된 human 클라이언트의 입력 권한만 AI에 위임한다. coordinator 자격은 연결 상태를 나타내는 human seat 여부로 판단하고 `autoPlayBySeatId`로 박탈하지 않는다.
+- 접속 종료 대체 좌석(`isSubstitutedByAI`)과 실제 AI 좌석의 lease 부적격 규칙, owner·epoch·만료 검증은 유지한다.
+- Desktop·Galaxy 일반 이동 timeout QA는 초기 timeout count를 1로 만들어 두 번째 timeout을 재현하고, 자동 플레이 활성화 뒤 같은 coordinator 토큰으로 다음 AI `roll_yut` sequence가 생성되는지 검증한다.
+
 ## 2026-07-29 - 게임 방법 팝업 높이 추정값과 방 목록 로딩 순간 상태로 Main Branch QA 실패
 
 ### Symptom

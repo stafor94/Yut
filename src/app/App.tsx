@@ -456,9 +456,8 @@ export function App() {
     screen,
     candidateSeatId: localSeatId,
     candidateSeatIndex: Math.max(0, playableSeats.findIndex((seat) => seat.id === localSeatId)),
-    eligible: Boolean(activeRoomId && isOnlinePlayer && localSeatId && !autoPlayBySeatId[localSeatId]),
+    eligible: Boolean(activeRoomId && isOnlinePlayer && localSeatId),
     gameSeats: syncedGameSeats,
-    autoPlayBySeatId,
     lease: gameCoordinatorLease,
     onLeaseChange: updateGameCoordinatorLease,
   });

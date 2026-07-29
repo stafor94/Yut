@@ -14,7 +14,6 @@ export type GameCoordinatorLeaseState = {
   coordinatorEpoch?: unknown;
   coordinatorLeaseExpiresAt?: unknown;
   gameSeats?: GameCoordinatorLeaseSeat[];
-  autoPlayBySeatId?: Record<string, boolean>;
 };
 
 export type GameCoordinatorLeaseToken = {
@@ -61,8 +60,7 @@ export const isEligibleGameCoordinatorSeat = (seat: GameCoordinatorLeaseSeat | u
 
 export const isGameCoordinatorCandidateEligible = (state: GameCoordinatorLeaseState | null | undefined, candidateSeatId: string) => {
   if (!candidateSeatId) return false;
-  return state?.autoPlayBySeatId?.[candidateSeatId] !== true
-    && (state?.gameSeats ?? []).some((seat) => seat.id === candidateSeatId && isEligibleGameCoordinatorSeat(seat));
+  return (state?.gameSeats ?? []).some((seat) => seat.id === candidateSeatId && isEligibleGameCoordinatorSeat(seat));
 };
 
 export const isGameCoordinatorLeaseActive = (state: GameCoordinatorLeaseState | null | undefined, now = Date.now()) => {

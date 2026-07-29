@@ -25,7 +25,6 @@ type Params = {
   candidateSeatIndex: number;
   eligible: boolean;
   gameSeats: GameSeatSnapshot[];
-  autoPlayBySeatId: Record<string, boolean>;
   lease: ClientGameCoordinatorLease;
   onLeaseChange: (lease: ClientGameCoordinatorLease) => void;
 };
@@ -49,8 +48,7 @@ export function useGameCoordinatorLease(params: Params) {
   }, [stableLeaseContext]);
   const stableLease = stableLeaseContext.lease;
 
-  const leaseState = useMemo(() => ({ ...stableLease, gameSeats: params.gameSeats, autoPlayBySeatId: params.autoPlayBySeatId }), [
-    params.autoPlayBySeatId,
+  const leaseState = useMemo(() => ({ ...stableLease, gameSeats: params.gameSeats }), [
     params.gameSeats,
     stableLease.coordinatorEpoch,
     stableLease.coordinatorLeaseExpiresAt,
