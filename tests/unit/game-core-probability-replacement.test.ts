@@ -60,7 +60,7 @@ const transpiled = ts.transpileModule(replacedSource, {
   compilerOptions: {
     target: ts.ScriptTarget.ES2020,
     module: ts.ModuleKind.CommonJS,
-    moduleResolution: ts.ModuleResolutionKind.Node16,
+    moduleResolution: ts.ModuleResolutionKind.Node10,
     esModuleInterop: true,
   },
   fileName: sourcePath,
