@@ -9,8 +9,13 @@
   max-height: min(471px, 92dvh);
 }
 
+.screen-lobby .lobby-sheet.panel.lobby-howto-sheet {
+  padding: 0;
+}
+
 .screen-lobby .lobby-howto-sheet .howto-fixed-header {
   grid-template-columns: 52px minmax(0, 1fr) 44px;
+  padding-block-start: calc(clamp(18px, 3vw, 30px) - 2px);
   padding-inline: clamp(18px, 3vw, 30px);
 }
 
