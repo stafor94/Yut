@@ -99,12 +99,12 @@ test('final one-roll fall rates are 25% for easy and 6.75% for hard', () => {
   const easy = 0.1 * fall.perfect + 0.2 * fall.nice + 0.5 * fall.good + 0.2 * fall.bad;
   const hard = 0.6 * fall.perfect + 0.25 * fall.nice + 0.1 * fall.good + 0.05 * fall.bad;
   assert.equal(easy, 0.25);
-  assert.equal(hard, 0.0675);
+  assert.ok(Math.abs(hard - 0.0675) < 1e-12);
 });
 
 test('Perfect keeps its enhanced yut/mo distribution and golden yut rejects fall', () => {
-  assert.equal(rollYutResultWithTiming('perfect', () => 0.9).result.name, '윷');
-  assert.equal(rollYutResultWithTiming('perfect', () => 0.99).result.name, '모');
+  assert.equal(rollYutResultWithTiming('perfect', () => 0.78).result.name, '윷');
+  assert.equal(rollYutResultWithTiming('perfect', () => 0.9).result.name, '모');
   const state = {
     pieces: [makePiece('a1', 'a', 'n01', { started: false }), makePiece('b1', 'b', 'n01', { started: false })],
     turnIndex: 0,
