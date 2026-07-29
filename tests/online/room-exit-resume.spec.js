@@ -216,9 +216,11 @@ async function completeAuthoritativeTurn({ roomId, hostPage, guestPage, hostPlay
       await actionButton.click({ timeout: 5_000 });
     } catch (error) {
       const afterClickFailure = await readAuthoritativeTurn(roomId);
-      if (afterClickFailure.current?.id !== turnOwnerId) {
-        expect(afterClickFailure.lastSequence).toBeGreaterThan(before.lastSequence);
-        return;
+      if (afterClickFailure.lastSequence > lastSequence) {
+        actionCount += 1;
+        lastSequence = afterClickFailure.lastSequence;
+        if (afterClickFailure.current?.id !== turnOwnerId) return;
+        continue;
       }
       throw error;
     }
