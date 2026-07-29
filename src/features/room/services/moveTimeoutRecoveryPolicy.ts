@@ -27,7 +27,8 @@ const RETRYABLE_STATE_REASONS = [
   '먼저 윷을 던져주세요.',
   '지금은 내 차례가 아닙니다.',
   '선택한 이동 스택을 찾을 수 없습니다.',
-  'timeout 대상 제한시간이 현재 상태와 일치하지 않습니다.',
+  '시간초과 상태가 아닙니다.',
+  '시간초과 대상 deadline이 아닙니다.',
 ];
 
 export const getMoveTimeoutRecoverySchedule = (
