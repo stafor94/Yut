@@ -5,6 +5,7 @@ import {
   getFallChanceForTimingZone,
   getRollTimingPositionPercent,
   getRollTimingZone,
+  getYutResultProbabilitiesForTiming,
   normalizeRollTimingZone,
   rollYutResultWithTiming,
   type RollTimingGrade,
@@ -75,6 +76,35 @@ test('Nice, Good, Bad는 같은 일반 윷 결과 확률 경로를 사용한다'
   const bad = rollYutResultWithTiming('bad', sequenceRandom(...values));
   assert.deepEqual(nice, good);
   assert.deepEqual(good, bad);
+});
+
+test('게임 방법에 표시할 윷 결과 확률은 실제 일반·Perfect 분포와 합계가 일치한다', () => {
+  const standard = getYutResultProbabilitiesForTiming('nice');
+  const perfect = getYutResultProbabilitiesForTiming('perfect');
+  assert.deepEqual(
+    standard.map(({ name, probability }) => [name, probability]),
+    [
+      ['빽도', 0.0625],
+      ['도', 0.1875],
+      ['개', 0.375],
+      ['걸', 0.25],
+      ['윷', 0.0625],
+      ['모', 0.0625],
+    ],
+  );
+  assert.deepEqual(
+    perfect.map(({ name, probability }) => [name, Number(probability.toFixed(8))]),
+    [
+      ['빽도', 0.05535714],
+      ['도', 0.16607143],
+      ['개', 0.33214286],
+      ['걸', 0.22142857],
+      ['윷', 0.1125],
+      ['모', 0.1125],
+    ],
+  );
+  assert.equal(Number(standard.reduce((sum, entry) => sum + entry.probability, 0).toFixed(8)), 1);
+  assert.equal(Number(perfect.reduce((sum, entry) => sum + entry.probability, 0).toFixed(8)), 1);
 });
 
 test('Perfect의 기존 윷·모 강화 결과 경계를 유지한다', () => {

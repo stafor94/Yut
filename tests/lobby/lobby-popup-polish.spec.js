@@ -48,7 +48,11 @@ test.describe('lobby popup visual polish QA', () => {
     await expect(guideDialog.locator('.howto-result-strip span').first()).toContainText('빽도-1칸');
     await expect(guideDialog.locator('.howto-result-strip span').nth(4)).toContainText('윷4칸');
     await expect(guideDialog.locator('.howto-result-strip span').nth(5)).toContainText('모5칸');
-    await expect(guideDialog).toContainText('Perfect는 낙이 발생하지 않고 윷·모 확률이 조금 높아집니다.');
+    await expect(guideDialog.getByRole('heading', { name: '타이밍', exact: true })).toBeVisible();
+    await expect(guideDialog.getByLabel('윷 결과 확률 안내')).toContainText('Nice·Good·Bad빽도 6.25% · 도 18.75% · 개 37.5% · 걸 25% · 윷 6.25% · 모 6.25%');
+    await expect(guideDialog.getByLabel('윷 결과 확률 안내')).toContainText('Perfect빽도 5.54% · 도 16.61% · 개 33.21% · 걸 22.14% · 윷 11.25% · 모 11.25%');
+    await expect(guideDialog).not.toContainText('낙이면 이동 없이 차례가 넘어갑니다.');
+    await expect(guideDialog).not.toContainText('방에 모여 윷을 던지고');
     await expect(guideDialog).toContainText('승리 조건');
 
     const guideLayout = await guideDialog.evaluate((dialog) => {

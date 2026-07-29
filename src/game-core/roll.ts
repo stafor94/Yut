@@ -19,6 +19,36 @@ export const STANDARD_YUT_RESULTS: YutResult[] = [
 
 export const GOLDEN_YUT_CHOICES: YutResult[] = [{ name: '빽도', steps: -1 }, ...STANDARD_YUT_RESULTS];
 
+export type YutResultProbability = {
+  name: Exclude<YutResultName, '황금 윷'>;
+  probability: number;
+};
+
+export function getYutResultProbabilitiesForTiming(zone: RollTimingZone = 'bad', useBackDo = true): YutResultProbability[] {
+  const backDoChance = useBackDo ? 0.0625 : 0;
+  const baseProbabilities: YutResultProbability[] = [
+    { name: '빽도', probability: backDoChance },
+    { name: '도', probability: 0.25 - backDoChance },
+    { name: '개', probability: 0.375 },
+    { name: '걸', probability: 0.25 },
+    { name: '윷', probability: 0.0625 },
+    { name: '모', probability: 0.0625 },
+  ];
+  if (normalizeRollTimingZone(zone) !== 'perfect') return baseProbabilities;
+
+  const bonusBoost = 0.05;
+  const nonBonusBaseTotal = baseProbabilities
+    .filter(({ name }) => name !== '윷' && name !== '모')
+    .reduce((sum, entry) => sum + entry.probability, 0);
+  const nonBonusTargetTotal = Math.max(0, nonBonusBaseTotal - bonusBoost * 2);
+  return baseProbabilities.map((entry) => ({
+    ...entry,
+    probability: entry.name === '윷' || entry.name === '모'
+      ? entry.probability + bonusBoost
+      : entry.probability * (nonBonusTargetTotal / nonBonusBaseTotal),
+  }));
+}
+
 export function rollYutSticks(random = Math.random): YutStick[] {
   return Array.from({ length: 4 }, (_, index) => ({ flat: random() < 0.5, marked: index === 0 }));
 }
@@ -90,20 +120,10 @@ export function chooseAiRollTimingZone(difficultyOrRandom?: AiDifficulty | (() =
 export function rollYutResultWithTiming(zone: RollTimingZone = 'bad', random = Math.random, useBackDo = true) {
   if (normalizeRollTimingZone(zone) !== 'perfect') return rollYutResult(random, useBackDo);
   const resultRoll = random();
-  const backDoChance = useBackDo ? 0.0625 : 0;
-  const baseWeights = [
-    { result: { name: '빽도', steps: -1 } as YutResult, weight: backDoChance },
-    { result: { name: '도', steps: 1 } as YutResult, weight: 0.25 - backDoChance },
-    { result: { name: '개', steps: 2 } as YutResult, weight: 0.375 },
-    { result: { name: '걸', steps: 3 } as YutResult, weight: 0.25 },
-  ];
-  const nonBonusBaseTotal = baseWeights.reduce((sum, entry) => sum + entry.weight, 0);
-  const nonBonusTargetTotal = Math.max(0, nonBonusBaseTotal - 0.1);
-  const weights = [
-    ...baseWeights.map((entry) => ({ ...entry, weight: entry.weight * (nonBonusTargetTotal / nonBonusBaseTotal) })),
-    { result: { name: '윷', steps: 4, bonus: true } as YutResult, weight: 0.0625 + 0.05 },
-    { result: { name: '모', steps: 5, bonus: true } as YutResult, weight: 0.0625 + 0.05 },
-  ];
+  const weights = getYutResultProbabilitiesForTiming(zone, useBackDo).map(({ name, probability }) => ({
+    result: GOLDEN_YUT_CHOICES.find((choice) => choice.name === name) as YutResult,
+    weight: probability,
+  }));
   let cursor = 0;
   const result = weights.find((entry) => {
     cursor += entry.weight;

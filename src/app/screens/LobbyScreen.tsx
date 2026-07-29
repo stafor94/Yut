@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { isRoomInGame, type RoomSummary } from '../../features/room/services/roomService';
+import { getYutResultProbabilitiesForTiming } from '../../game-core/roll';
 import '../../styles/lobby-modal-feedback.css';
 import { getRoomRuleBadges, normalizeMaxPlayers } from '../appUtils';
 import { NICKNAME_MAX_LENGTH, validateNickname } from '../appState';
@@ -30,6 +31,12 @@ type LobbyActionIconProps = {
 
 const ROOM_REFRESH_MIN_VISIBLE_MS = 600;
 const ROOM_REFRESH_TIMEOUT_MS = 8_000;
+const STANDARD_YUT_RESULT_PROBABILITIES = getYutResultProbabilitiesForTiming('nice');
+const PERFECT_YUT_RESULT_PROBABILITIES = getYutResultProbabilitiesForTiming('perfect');
+
+const formatYutResultProbabilities = (probabilities: ReturnType<typeof getYutResultProbabilitiesForTiming>) => probabilities
+  .map(({ name, probability }) => `${name} ${Number((probability * 100).toFixed(2))}%`)
+  .join(' · ');
 
 const getErrorMessage = (error: unknown) => error instanceof Error && error.message
   ? error.message
@@ -335,19 +342,23 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isInitialRoomQueryin
       <section ref={dialogRef} className="panel lobby-sheet lobby-howto-sheet" role="dialog" aria-modal="true" aria-label="게임 방법" onMouseDown={(event) => event.stopPropagation()}>
         <header className="lobby-sheet-heading howto-fixed-header">
           <span className="lobby-sheet-emblem" aria-hidden="true"><LobbyActionIcon type="guide" /></span>
-          <div><p className="section-kicker">처음이어도 쉬워요</p><h2>게임 방법</h2><p className="lobby-sheet-lead">방에 모여 윷을 던지고, 개인전은 내 말을, 팀전은 우리 팀 말을 먼저 모두 완주시키면 승리합니다.</p></div>
+          <div><p className="section-kicker">처음이어도 쉬워요</p><h2>게임 방법</h2></div>
           <button className="sheet-close" type="button" onClick={closeDialog} aria-label="닫기">×</button>
         </header>
         <div ref={howtoScrollRef} className="howto-scroll-body">
           <section className="howto-section howto-results-section" aria-labelledby="howto-results-title">
             <h3 id="howto-results-title" className="howto-section-title">윷 결과</h3>
+            <div className="howto-result-probabilities" aria-label="윷 결과 확률 안내">
+              <p><strong>Nice·Good·Bad</strong><span>{formatYutResultProbabilities(STANDARD_YUT_RESULT_PROBABILITIES)}</span><small>낙이 아닌 정상 투척 기준</small></p>
+              <p><strong>Perfect</strong><span>{formatYutResultProbabilities(PERFECT_YUT_RESULT_PROBABILITIES)}</span></p>
+            </div>
             <div className="howto-result-strip" aria-label="윷 결과 이동 칸 수"><span><b>빽도</b>-1칸</span><span><b>도</b>1칸</span><span><b>개</b>2칸</span><span><b>걸</b>3칸</span><span><b>윷</b>4칸</span><span><b>모</b>5칸</span></div>
           </section>
           <section className="howto-section" aria-labelledby="howto-basic-title">
             <h3 id="howto-basic-title" className="howto-section-title">기본 규칙</h3>
             <div className="howto-list">
               <article><span className="howto-step">01</span><div className="howto-icon" role="img" aria-label="방 만들기 도식">＋</div><div><h4>기본 진행</h4><p>방장이 인원과 규칙을 정하고 모두 준비하면 게임을 시작합니다. 게임 시작 시 플레이 순서가 자동으로 정해집니다.</p><p>자신의 차례에 윷을 던진 뒤 결과에 맞춰 이동할 말을 선택합니다.</p></div></article>
-              <article><span className="howto-step">02</span><div className="howto-icon howto-yut-icon" role="img" aria-label="윷 던지기 도식">타이밍</div><div><h4>던지기 타이밍과 낙</h4><p>게이지의 중앙에 가깝게 맞춰 윷을 던집니다. 타이밍은 Perfect, Good, Normal로 판정됩니다.</p><p>Perfect는 낙이 발생하지 않고 윷·모 확률이 조금 높아집니다. 낙이 발생하면 말을 이동하지 못하고 차례가 넘어갑니다.</p></div></article>
+              <article><span className="howto-step">02</span><div className="howto-icon howto-yut-icon" role="img" aria-label="윷 던지기 도식">타이밍</div><div><h4>타이밍</h4><p>막대는 Perfect(보라), Nice(하늘), Good(연두), Bad(검정)로 판정됩니다.</p><p>Perfect는 낙이 없고 윷·모 확률이 높습니다. Nice·Good·Bad는 단계가 낮을수록 낙이 발생하기 쉽습니다.</p></div></article>
               <article><span className="howto-step">03</span><div className="howto-icon" role="img" aria-label="말 이동 도식">●→●</div><div><h4>말 이동 규칙</h4><p>아직 출발하지 않은 말도 결과를 사용해 판 위로 이동할 수 있고, 갈림길에 도착하면 바깥길 또는 지름길을 선택합니다.</p><p>같은 편 말은 업어서 함께 이동하고, 상대 말을 잡으면 출발 전 상태로 돌려보낸 뒤 한 번 더 던집니다.</p></div></article>
               <article><span className="howto-step">04</span><div className="howto-icon" role="img" aria-label="완주 도식">🏁</div><div><h4>빽도와 완주</h4><p>빽도는 판 위에 있는 말을 한 칸 뒤로 이동합니다. 움직일 말이 없을 때 나온 빽도는 이동하지 못합니다.</p><p>출발점을 다시 지나 완주 지점까지 도착해야 완주 처리됩니다.</p></div></article>
             </div>
