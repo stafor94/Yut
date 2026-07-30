@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { isRollTimingZone, normalizeRollFallCount, type RollTimingZone } from '../../game-core/roll';
 import type { RollAnimation } from '../appState';
 import {
   LOCAL_ROLL_LANDING_MS,
@@ -24,6 +25,8 @@ import {
 } from '../flows/yutRollMotion';
 import {
   getYutRollFallTarget,
+  getYutRollLandingProfile,
+  getYutRollLandingTarget,
   getYutRollMatWorldBounds,
   getYutRollSceneFraming,
   type YutRollMatWorldBounds,
@@ -89,7 +92,18 @@ const loadThreeModule = () => {
 void loadThreeModule().catch(() => undefined);
 
 const getPhase = (animation: RollAnimation): YutRollScenePhase => animation.phase ?? 'resolved';
-const getFallCount = (animation: RollAnimation) => 'fallCount' in animation ? animation.fallCount ?? 0 : 0;
+const getTimingZone = (animation: RollAnimation): RollTimingZone => {
+  if (isRollTimingZone(animation.timingZone)) return animation.timingZone;
+  if ('result' in animation && animation.result && typeof animation.result === 'object') {
+    const presentationTimingGrade = (animation.result as unknown as Record<string, unknown>).presentationTimingGrade;
+    if (isRollTimingZone(presentationTimingGrade)) return presentationTimingGrade;
+  }
+  return 'normal';
+};
+const getFallCount = (animation: RollAnimation) => {
+  const rawFallCount = 'fallCount' in animation ? Number(animation.fallCount ?? 0) : 0;
+  return rawFallCount > 0 ? normalizeRollFallCount(getTimingZone(animation), rawFallCount) : 0;
+};
 const seededUnit = (seed: number) => {
   const value = Math.sin(seed * 12.9898) * 43758.5453;
   return value - Math.floor(value);
@@ -196,12 +210,13 @@ function createYutStick(THREE: ThreeModule, index: number): RuntimeStick {
 function updateStickTargets(runtime: SceneRuntime, animation: RollAnimation) {
   const { THREE } = runtime;
   const phase = getPhase(animation);
+  const timingZone = getTimingZone(animation);
   const isPreResult = phase === 'primary' || phase === 'extra-spin';
   runtime.sticks.forEach((entry, index) => {
     const stick = animation.sticks[index] ?? { flat: true, marked: false };
     const fallCount = getFallCount(animation);
     const isFallen = Boolean(!isPreResult && fallCount && index < fallCount);
-    const spreadX = -1.32 + index * 0.88;
+    const landingTarget = getYutRollLandingTarget(index, timingZone, runtime.matBounds);
     const fallTarget = getYutRollFallTarget(index, runtime.matBounds);
     const fallImpactInset = 0.72 + (index >= 2 ? 0.12 : 0);
     const yaw = isFallen ? (index % 2 === 0 ? -0.9 - index * 0.08 : 0.82 + index * 0.1) : -0.2 + index * 0.14;
@@ -209,13 +224,13 @@ function updateStickTargets(runtime: SceneRuntime, animation: RollAnimation) {
     entry.fallImpactPosition.set(
       fallTarget.edgeX - fallTarget.side * fallImpactInset,
       0,
-      -0.24 + (index % 2) * 0.24,
+      landingTarget.z,
     );
     entry.fallEdgePosition.set(fallTarget.edgeX + fallTarget.side * 0.05, 0.04, fallTarget.z);
     entry.targetPosition.set(
-      isFallen ? fallTarget.x : spreadX,
+      isFallen ? fallTarget.x : landingTarget.x,
       isFallen ? fallTarget.y : 0,
-      isFallen ? fallTarget.z : -0.24 + (index % 2) * 0.24,
+      isFallen ? fallTarget.z : landingTarget.z,
     );
     entry.targetQuaternion.setFromEuler(new THREE.Euler(
       (stick.flat ? 0 : Math.PI) + (isFallen ? 0.18 : 0.025 * (index % 2 === 0 ? -1 : 1)),
@@ -431,6 +446,8 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
   const landingStartedAtRef = useRef<number | null>(null);
   const [rendererStatus, setRendererStatus] = useState<RendererStatus>('loading');
   const phase = getPhase(rollAnimation);
+  const timingZone = getTimingZone(rollAnimation);
+  const landingProfile = getYutRollLandingProfile(timingZone);
   const sticksKey = useMemo(
     () => rollAnimation.sticks.map((stick) => `${stick.flat ? 1 : 0}:${stick.marked ? 1 : 0}`).join('|'),
     [rollAnimation.sticks],
@@ -438,6 +455,7 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
 
   latestAnimationRef.current = rollAnimation;
   onSettledRef.current = onSettled;
+
   const notifySettled = () => {
     if (settledRef.current) return;
     settledRef.current = true;
@@ -579,7 +597,7 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         notifySettled();
       }
     }
-  }, [phase, sticksKey, getFallCount(rollAnimation)]);
+  }, [phase, sticksKey, timingZone, getFallCount(rollAnimation)]);
 
   useEffect(() => {
     if (rendererStatus !== 'fallback') return undefined;
@@ -605,6 +623,8 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
     data-testid="yut-roll-scene"
     data-renderer={rendererStatus}
     data-phase={phase}
+    data-timing-zone={timingZone}
+    data-landing-profile={landingProfile}
     data-fall-count={fallCount}
     data-marked-count={rollAnimation.sticks.filter((stick) => stick.marked).length}
   >
@@ -618,9 +638,14 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         const fallDirection = index % 2 === 0 ? -1 : 1;
         const fallX = fallDirection < 0 ? 'calc(0px - min(42vw, 300px))' : 'min(42vw, 300px)';
         const rollX = `${fallDirection * (22 + index * 2)}px`;
+        const landingTarget = getYutRollLandingTarget(index, timingZone);
         return <span
           key={`${rollAnimation.id}-${index}`}
           className={`yut-stick ${faceClassName} ${stick.marked ? 'marked' : ''} ${isFallenStick ? 'fallen' : ''}`}
+          data-stick-index={index}
+          data-fallen={isFallenStick ? 'true' : 'false'}
+          data-landing-x={landingTarget.x}
+          data-landing-z={landingTarget.z}
           style={{
             '--stick-index': index,
             '--stick-start-rotate': `${-180 + index * 24}deg`,
@@ -628,6 +653,8 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
             '--stick-bounce-rotate': `${12 + index * 18}deg`,
             '--stick-final-rotate': `${-8 + index * 12}deg`,
             '--stick-roll-x': rollX,
+            '--landing-x': `${landingTarget.cssX}px`,
+            '--landing-y': `${landingTarget.cssY}px`,
             '--fall-bounce-x': `${fallDirection * (34 + index * 4)}px`,
             '--fall-edge-x': `${fallDirection * (108 + index * 8)}px`,
             '--fall-x': fallX,
