@@ -3,6 +3,7 @@ import { commitAuthoritativeGameAction, withGameSequenceReplayCache, type GameAc
 import { attachClientActionStartedAt } from '../../features/room/services/turnActionStartedAtPolicy';
 import type { SequenceStateSnapshot } from '../appState';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
+import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../hooks/localOptimisticSnapshotPolicy';
 import { buildAuthoritativeApplyWakeSnapshot } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
@@ -38,9 +39,16 @@ type Params = {
 export function useAuthoritativeGameSyncController(params: Params) {
   const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
   applySyncedStateSnapshotRef.current = params.applySyncedStateSnapshot;
+  const shouldDeferSyncedStateSnapshotRef = useRef<(state: SequenceStateSnapshot) => boolean>(() => false);
+  shouldDeferSyncedStateSnapshotRef.current = (state) => shouldDeferSameOrOlderSnapshotForPendingLocalMove({
+    hasPendingLocalMove: params.hasPendingCurrentTurnAction('move_piece'),
+    localSequence: params.lastAppliedSequenceRef.current,
+    remoteSequence: Number(state.lastSequence ?? 0),
+  });
   const latestSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
 
   const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
+    if (shouldDeferSyncedStateSnapshotRef.current(state)) return;
     latestSyncedStateRef.current = state;
     applySyncedStateSnapshotRef.current(state, options);
   }, []);
