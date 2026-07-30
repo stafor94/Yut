@@ -184,14 +184,14 @@ export async function waitForStackedRollTimeoutRecovery({ actionKey, actorId, ro
   await expect.poll(async () => {
     const sequences = await getRoomSequencesForQa(roomId);
     const matching = getRecoverySequences(sequences, actionKey);
-    const state = await getRoomStateForQa(roomId);
-    if (matching.length !== 1 || !state) return false;
-    const remainingStack = Array.isArray(state.rollStack) ? state.rollStack : [];
+    if (matching.length !== 1) return false;
+    const sequence = matching[0];
+    const remainingStack = Array.isArray(sequence.patch?.rollStack) ? sequence.patch.rollStack : [];
     if (remainingStack.length !== 1) return false;
     recoverySnapshot = {
-      sequence: matching[0],
+      sequence,
       remainingStack,
-      state,
+      state: sequence.patch ?? {},
     };
     return true;
   }, { timeout: 15_000, intervals: [100, 200, 400, 800], message: 'deadline+network grace 이후 첫 번째 선택 가능한 일반 결과 recovery sequence가 정확히 한 번 생성되어야 합니다.' }).toBe(true);
