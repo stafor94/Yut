@@ -5,6 +5,16 @@
 .game-guide-open-button {
   display: inline-grid;
   place-items: center;
+  background: linear-gradient(135deg, #2f6b4f, #224236);
+  color: #fffdf1;
+  border-color: #173c2d;
+  box-shadow: 0 5px 12px rgba(34, 66, 54, .28), inset 0 1px 0 rgba(255, 255, 255, .22);
+}
+
+.game-guide-open-button:hover,
+.game-guide-open-button:focus-visible {
+  background: linear-gradient(135deg, #3f8062, #285440);
+  outline: 3px solid rgba(47, 107, 79, .32);
 }
 
 .game-guide-open-button svg {
@@ -12,8 +22,42 @@
   height: 20px;
   overflow: visible;
   fill: none;
-  stroke: #5b321c;
-  stroke-width: 2;
+  stroke: #fffdf1;
+  stroke-width: 2.3;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-probabilities {
+  display: none;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-strip span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-strip span::before {
+  order: 1;
+  margin-top: 3px;
+  color: #76563e;
+  font-size: .64rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(1)::before { content: "6.25%"; }
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(2)::before { content: "18.75%"; }
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(3)::before { content: "37.5%"; }
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(4)::before { content: "25%"; }
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(5)::before { content: "6.25%"; }
+.screen-lobby .lobby-howto-sheet .howto-result-strip span:nth-child(6)::before { content: "6.25%"; }
+
+@media (max-width: 700px) and (orientation: portrait) {
+  .screen-lobby .lobby-howto-sheet .howto-result-strip span::before {
+    margin-top: 2px;
+    font-size: .52rem;
+  }
 }
