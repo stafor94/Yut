@@ -1,5 +1,9 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import { getRollTimingPositionPercent } from '../../game-core/roll';
+import {
+  getRollTimingMotionState,
+  rollTimingOpportunitySnapshotCache,
+  type RollTimingOpportunitySnapshot,
+} from '../../game-core/rollTimingMotion';
 import {
   getRollTimingOrbLeft,
   normalizeRollTimingPositionPercent,
@@ -14,6 +18,7 @@ type RollTimingControlProps = {
   buttonText: string;
   buttonTestId: string;
   resetKey?: string;
+  timingStartedAt?: number;
   autoSubmitAt?: number;
   onRoll: (timingPositionPercent?: number, options?: { timedOut?: boolean }) => void;
 };
@@ -22,6 +27,7 @@ type RollTimingSnapshot = Readonly<{
   phaseMs: number;
   positionPercent: number;
   capturedAt: number;
+  timingAt: number;
   resetKey: string;
 }>;
 
@@ -38,17 +44,22 @@ type ReleasedPointerTiming = {
 type TimingSubmissionResult = 'submitted' | 'duplicate' | 'unavailable';
 
 const POINTER_RELEASE_CLICK_MAX_DELAY_MS = 1000;
-const ROLL_TIMING_CYCLE_MS = 2000;
 
-const normalizePhaseMs = (elapsedMs: number) => (
-  ((elapsedMs % ROLL_TIMING_CYCLE_MS) + ROLL_TIMING_CYCLE_MS) % ROLL_TIMING_CYCLE_MS
-);
-
-export function RollTimingControl({ disabled = false, buttonText, buttonTestId, resetKey = '', autoSubmitAt = 0, onRoll }: RollTimingControlProps) {
+export function RollTimingControl({
+  disabled = false,
+  buttonText,
+  buttonTestId,
+  resetKey = '',
+  timingStartedAt = 0,
+  autoSubmitAt = 0,
+  onRoll,
+}: RollTimingControlProps) {
   const meterRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLSpanElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const frameStartedAtRef = useRef(0);
+  const opportunitySnapshotRef = useRef<RollTimingOpportunitySnapshot | null>(null);
+  const performanceEpochOffsetRef = useRef(0);
+  const pausedDurationMsRef = useRef(0);
   const frameRequestRef = useRef<number | null>(null);
   const lastRenderedSnapshotRef = useRef<RollTimingSnapshot | null>(null);
   const capturedPointerTimingRef = useRef<CapturedPointerTiming | null>(null);
@@ -78,27 +89,45 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     const meter = meterRef.current;
     const track = trackRef.current;
     const orb = track?.querySelector<HTMLElement>('.roll-timing-orb');
-    if (!meter || !track || !orb || snapshot.resetKey !== resetKey) return false;
+    const opportunity = opportunitySnapshotRef.current;
+    if (!meter || !track || !orb || !opportunity || snapshot.resetKey !== resetKey) return false;
     track.style.transform = 'none';
     orb.style.left = getRollTimingOrbLeft(snapshot.positionPercent);
     meter.dataset.positionPercent = String(snapshot.positionPercent);
     meter.dataset.phaseMs = String(snapshot.phaseMs);
     meter.dataset.capturedAt = String(snapshot.capturedAt);
+    meter.dataset.timingAt = String(snapshot.timingAt);
     meter.dataset.resetKey = snapshot.resetKey;
+    meter.dataset.initialPositionPercent = String(opportunity.initialPositionPercent);
+    meter.dataset.timingStartedAt = String(opportunity.startedAt);
+    meter.dataset.timingDeadlineAt = String(opportunity.deadlineAt);
     lastRenderedSnapshotRef.current = snapshot;
     return true;
   };
 
-  const renderFrame = (capturedAt: number) => {
-    const phaseMs = normalizePhaseMs(capturedAt - frameStartedAtRef.current);
-    const snapshot = Object.freeze({
-      phaseMs,
-      positionPercent: normalizeRollTimingPositionPercent(getRollTimingPositionPercent(phaseMs)),
+  const makeTimingSnapshot = (capturedAt: number, timingAt: number) => {
+    const opportunity = opportunitySnapshotRef.current;
+    if (!opportunity) return undefined;
+    const motion = getRollTimingMotionState({
+      initialPositionPercent: opportunity.initialPositionPercent,
+      elapsedMs: Math.max(0, timingAt - opportunity.startedAt - pausedDurationMsRef.current),
+    });
+    return Object.freeze({
+      phaseMs: motion.phaseMs,
+      positionPercent: normalizeRollTimingPositionPercent(motion.positionPercent),
       capturedAt,
+      timingAt,
       resetKey,
     }) satisfies RollTimingSnapshot;
-    return applyRenderedSnapshot(snapshot) ? snapshot : undefined;
   };
+
+  const renderFrame = (capturedAt: number) => {
+    const timingAt = performanceEpochOffsetRef.current + capturedAt;
+    const snapshot = makeTimingSnapshot(capturedAt, timingAt);
+    return snapshot && applyRenderedSnapshot(snapshot) ? snapshot : undefined;
+  };
+
+  const makeDeadlineSnapshot = () => makeTimingSnapshot(performance.now(), autoSubmitAt);
 
   const scheduleFrameLoop = (minimumCapturedAt = 0) => {
     if (frameRequestRef.current !== null || submittedKeyRef.current === resetKey) return;
@@ -117,9 +146,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
   const resumeFrameLoop = (snapshot: RollTimingSnapshot) => {
     if (submittedKeyRef.current === resetKey || snapshot.resetKey !== resetKey) return;
     applyRenderedSnapshot(snapshot);
-    const resumedAt = performance.now();
-    frameStartedAtRef.current = resumedAt - snapshot.phaseMs;
-    scheduleFrameLoop(resumedAt);
+    scheduleFrameLoop(performance.now());
   };
 
   const holdTimingResult = (snapshot: RollTimingSnapshot) => {
@@ -143,6 +170,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     heldMeter.dataset.positionPercent = String(snapshot.positionPercent);
     heldMeter.dataset.phaseMs = String(snapshot.phaseMs);
     heldMeter.dataset.capturedAt = String(snapshot.capturedAt);
+    heldMeter.dataset.timingAt = String(snapshot.timingAt);
     heldMeter.dataset.resetKey = snapshot.resetKey;
     heldMeter.setAttribute('aria-label', '멈춘 윷 던지기 정확도 위치');
     Object.assign(heldMeter.style, getRollTimingResultHoldStyle());
@@ -152,11 +180,12 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     resultHoldTimerRef.current = window.setTimeout(clearResultHold, ROLL_TIMING_RESULT_HOLD_MS);
   };
 
-  const submitSnapshot = (snapshot: RollTimingSnapshot | null, timedOut = false): TimingSubmissionResult => {
+  const submitSnapshot = (snapshot: RollTimingSnapshot | null | undefined, timedOut = false): TimingSubmissionResult => {
     if (submittedKeyRef.current === resetKey) return 'duplicate';
     if (!snapshot || snapshot.resetKey !== resetKey) return 'unavailable';
     submittedKeyRef.current = resetKey;
     pendingTimeoutSnapshotRef.current = null;
+    pausedDurationMsRef.current = 0;
     cancelFrameLoop();
     applyRenderedSnapshot(snapshot);
     holdTimingResult(snapshot);
@@ -164,14 +193,12 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     return 'submitted';
   };
 
-  const getSubmissionSnapshot = () => (
+  const getTimeoutSubmissionSnapshot = () => (
     capturedPointerTimingRef.current?.resetKey === resetKey
       ? capturedPointerTimingRef.current.snapshot
       : pendingTimeoutSnapshotRef.current?.resetKey === resetKey
         ? pendingTimeoutSnapshotRef.current
-        : lastRenderedSnapshotRef.current?.resetKey === resetKey
-          ? lastRenderedSnapshotRef.current
-          : null
+        : makeDeadlineSnapshot()
   );
 
   useEffect(() => {
@@ -181,10 +208,21 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     capturedPointerTimingRef.current = null;
     releasedPointerTimingRef.current = null;
     pendingTimeoutSnapshotRef.current = null;
+    pausedDurationMsRef.current = 0;
     cancelFrameLoop();
-    const startedAt = performance.now();
-    frameStartedAtRef.current = startedAt;
-    renderFrame(startedAt);
+    const startedAt = timingStartedAt > 0 ? timingStartedAt : Date.now();
+    const qaInitialPositionPercent = (window as Window & {
+      __YUT_QA_ROLL_TIMING_INITIAL_POSITION_PERCENT__?: number;
+    }).__YUT_QA_ROLL_TIMING_INITIAL_POSITION_PERCENT__;
+    opportunitySnapshotRef.current = rollTimingOpportunitySnapshotCache.get({
+      key: resetKey,
+      startedAt,
+      deadlineAt: autoSubmitAt,
+      initialPositionPercent: qaInitialPositionPercent,
+    });
+    const capturedAt = performance.now();
+    performanceEpochOffsetRef.current = Date.now() - capturedAt;
+    renderFrame(capturedAt);
     scheduleFrameLoop();
     return () => {
       cancelFrameLoop();
@@ -192,15 +230,15 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
       releasedPointerTimingRef.current = null;
       pendingTimeoutSnapshotRef.current = null;
     };
-  }, [resetKey]);
+  }, [autoSubmitAt, resetKey, timingStartedAt]);
 
   useEffect(() => {
-    if (disabled || !autoSubmitAt || typeof window === 'undefined') return undefined;
+    if (!autoSubmitAt || typeof window === 'undefined') return undefined;
     const autoSubmitKey = `${resetKey}:${autoSubmitAt}`;
     const submitTimedOutRoll = () => {
       if (autoSubmittedKeyRef.current === autoSubmitKey) return;
       autoSubmittedKeyRef.current = autoSubmitKey;
-      submitSnapshot(getSubmissionSnapshot(), true);
+      submitSnapshot(getTimeoutSubmissionSnapshot(), true);
     };
     const remainingMs = autoSubmitAt - Date.now();
     if (remainingMs <= 0) {
@@ -209,7 +247,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     }
     const timer = window.setTimeout(submitTimedOutRoll, remainingMs);
     return () => window.clearTimeout(timer);
-  }, [autoSubmitAt, disabled, onRoll, resetKey]);
+  }, [autoSubmitAt, onRoll, resetKey]);
 
   const releasePointerCapture = (event: ReactPointerEvent<HTMLButtonElement>) => {
     try {
@@ -248,6 +286,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     if (releasedInsideButton) submitSnapshot(capturedTiming.snapshot, deadlineExpired);
     else {
       if (deadlineExpired) pendingTimeoutSnapshotRef.current = capturedTiming.snapshot;
+      pausedDurationMsRef.current += Math.max(0, Date.now() - capturedTiming.snapshot.timingAt);
       resumeFrameLoop(capturedTiming.snapshot);
     }
     releasePointerCapture(event);
@@ -260,6 +299,7 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
     releasedPointerTimingRef.current = { releasedAt: performance.now() };
     const deadlineExpired = autoSubmitAt > 0 && Date.now() >= autoSubmitAt;
     if (deadlineExpired) pendingTimeoutSnapshotRef.current = capturedTiming.snapshot;
+    pausedDurationMsRef.current += Math.max(0, Date.now() - capturedTiming.snapshot.timingAt);
     resumeFrameLoop(capturedTiming.snapshot);
     releasePointerCapture(event);
   };
@@ -270,12 +310,15 @@ export function RollTimingControl({ disabled = false, buttonText, buttonTestId, 
       && typeof releasedTiming?.releasedAt === 'number'
       && performance.now() - releasedTiming.releasedAt <= POINTER_RELEASE_CLICK_MAX_DELAY_MS;
     releasedPointerTimingRef.current = null;
-    if (isFollowUpPointerClick || capturedPointerTimingRef.current) return;
-    const snapshot = lastRenderedSnapshotRef.current?.resetKey === resetKey
-      ? lastRenderedSnapshotRef.current
-      : null;
+    if (disabled || isFollowUpPointerClick || capturedPointerTimingRef.current) return;
+    const deadlineExpired = autoSubmitAt > 0 && Date.now() >= autoSubmitAt;
+    const snapshot = deadlineExpired
+      ? makeDeadlineSnapshot()
+      : lastRenderedSnapshotRef.current?.resetKey === resetKey
+        ? lastRenderedSnapshotRef.current
+        : null;
     cancelFrameLoop();
-    submitSnapshot(snapshot, autoSubmitAt > 0 && Date.now() >= autoSubmitAt);
+    submitSnapshot(snapshot, deadlineExpired);
   };
 
   return <>
