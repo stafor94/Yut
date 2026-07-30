@@ -6,8 +6,39 @@ export type YutStick = { flat: boolean; marked: boolean };
 export type RollTimingGrade = 'perfect' | 'nice' | 'good' | 'bad';
 /** `normal` is accepted only while older clients and saved sequences are being upgraded. */
 export type RollTimingZone = RollTimingGrade | 'normal';
+export type RollFallCountRange = readonly [min: number, max: number];
+
+export const isRollTimingZone = (value: unknown): value is RollTimingZone => (
+  value === 'perfect' || value === 'nice' || value === 'good' || value === 'bad' || value === 'normal'
+);
 
 export const normalizeRollTimingZone = (zone: RollTimingZone): RollTimingGrade => zone === 'normal' ? 'bad' : zone;
+
+export const getRollFallCountRange = (zone: RollTimingZone): RollFallCountRange => {
+  if (zone === 'nice') return [1, 1];
+  if (zone === 'good') return [1, 2];
+  if (zone === 'bad') return [2, 4];
+  // Perfect cannot normally fall, while legacy Normal and malformed historic
+  // Perfect payloads keep the previous 1~4 compatibility contract.
+  return [1, 4];
+};
+
+const clampRandomUnit = (value: number) => {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1 - Number.EPSILON, Math.max(0, value));
+};
+
+export function getRollFallCountForTimingZone(zone: RollTimingZone, random = Math.random) {
+  const [min, max] = getRollFallCountRange(zone);
+  return min + Math.floor(clampRandomUnit(random()) * (max - min + 1));
+}
+
+export function normalizeRollFallCount(zone: RollTimingZone, value: unknown) {
+  const [min, max] = getRollFallCountRange(zone);
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(numericValue)));
+}
 
 export const STANDARD_YUT_RESULTS: YutResult[] = [
   { name: '도', steps: 1 },
