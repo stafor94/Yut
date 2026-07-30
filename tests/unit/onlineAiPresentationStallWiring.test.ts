@@ -23,8 +23,8 @@ test('presentation wait는 authoritative commit timeout 내부에서 실행된�
   assert.doesNotMatch(roomServiceSource.slice(exportedCommit), /await waitForGamePresentationBeforeAction/);
 });
 
-test('presentation lock 대기는 유한 상한과 timeout 결과를 가진다', () => {
-  assert.match(presentationLockSource, /GAME_PRESENTATION_ACTION_WAIT_TIMEOUT_MS\s*=\s*750/);
+test('presentation lock 대기는 정상 landing을 보존하는 유한 상한과 timeout 결과를 가진다', () => {
+  assert.match(presentationLockSource, /GAME_PRESENTATION_ACTION_WAIT_TIMEOUT_MS\s*=\s*2500/);
   assert.match(presentationLockSource, /GamePresentationWaitResult\s*=\s*'idle'\s*\|\s*'timeout'/);
   assert.match(presentationLockSource, /timer\s*=\s*setTimeout\(\(\)\s*=>\s*finish\('timeout'\)/);
   assert.match(roomServiceSource, /presentationWaitResult\s*===\s*'timeout'/);
