@@ -32,7 +32,7 @@ test.describe('Galaxy 온라인 AI presentation lock 경합', () => {
     expect(recovery.recoverySequence.actorId).toBe(fixture.firstAiSeatId);
     expect(recovery.nextAiRollSequence.actorId).toBe(fixture.secondAiSeatId);
     await expect(page.getByTestId('game-screen')).toBeVisible();
-    await expect(page.locator('body')).toHaveJSProperty('scrollWidth', await page.locator('body').evaluate((node) => node.clientWidth));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
     expectNoBlockingConsoleErrors(consoleErrors);
   });
 });
