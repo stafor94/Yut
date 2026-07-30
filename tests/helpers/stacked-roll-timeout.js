@@ -146,19 +146,23 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   const expiredFixture = await commitRoomStatePatchForQa(page, roomId, {
     turnDeadlineAt: timeoutDeadlineAt,
   }, actorId);
+  let recoveryBaselineState = null;
   await expect.poll(async () => {
     const current = await getRoomStateForQa(roomId);
-    return Boolean(
+    const matchesExpiredFixture = Boolean(
       current
       && Number(current.turnVersion) === expiredFixture.turnVersion
       && Number(current.lastSequence) === expiredFixture.lastSequence
       && Number(current.turnDeadlineAt) === timeoutDeadlineAt,
     );
+    if (matchesExpiredFixture) recoveryBaselineState = current;
+    return matchesExpiredFixture;
   }, {
     timeout: 2_000,
     intervals: [25, 50, 100],
     message: '만료된 move deadline fixture가 authoritative sequence로 반영되어야 합니다.',
   }).toBe(true);
+  if (!recoveryBaselineState) throw new Error('timeout recovery 직전 authoritative baseline을 확보하지 못했습니다.');
   await expect.poll(async () => {
     const expiredButtons = picker.getByRole('button');
     const buttonCount = await expiredButtons.count();
@@ -174,12 +178,13 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
     actionKey,
     actorId,
     baselineSequenceCount: baselineSequences.length,
+    recoveryBaselineState,
     roomId,
     timeoutDeadlineAt,
   };
 }
 
-export async function waitForStackedRollTimeoutRecovery({ actionKey, actorId, roomId, timeoutDeadlineAt }) {
+export async function waitForStackedRollTimeoutRecovery({ actionKey, actorId, recoveryBaselineState, roomId, timeoutDeadlineAt }) {
   let recoverySnapshot = null;
   await expect.poll(async () => {
     const sequences = await getRoomSequencesForQa(roomId);
@@ -191,7 +196,10 @@ export async function waitForStackedRollTimeoutRecovery({ actionKey, actorId, ro
     recoverySnapshot = {
       sequence,
       remainingStack,
-      state: sequence.patch ?? {},
+      state: {
+        ...recoveryBaselineState,
+        ...(sequence.patch ?? {}),
+      },
     };
     return true;
   }, { timeout: 15_000, intervals: [100, 200, 400, 800], message: 'deadline+network grace 이후 첫 번째 선택 가능한 일반 결과 recovery sequence가 정확히 한 번 생성되어야 합니다.' }).toBe(true);
