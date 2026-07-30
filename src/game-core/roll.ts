@@ -29,8 +29,11 @@ const clampRandomUnit = (value: number) => {
 };
 
 export function getRollFallCountForTimingZone(zone: RollTimingZone, random = Math.random) {
-  const [min, max] = getRollFallCountRange(zone);
-  return min + Math.floor(clampRandomUnit(random()) * (max - min + 1));
+  // Current clients submit a legacy 1~4 raw value. Generate through the same
+  // raw contract before normalization so user, AI, and automatic actions have
+  // one deterministic distribution while older clients remain compatible.
+  const rawFallCount = Math.floor(clampRandomUnit(random()) * 4) + 1;
+  return normalizeRollFallCount(zone, rawFallCount);
 }
 
 export function normalizeRollFallCount(zone: RollTimingZone, value: unknown) {
