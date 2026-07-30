@@ -1,3 +1,5 @@
+import { normalizeRollTimingZone, type RollTimingZone } from '../../game-core/roll';
+
 export type YutRollSceneFraming = {
   aspect: number;
   cameraY: number;
@@ -21,6 +23,16 @@ export type YutRollFallTarget = {
   z: number;
 };
 
+export type YutRollLandingProfile = 'centered' | 'offset' | 'scattered';
+
+export type YutRollLandingTarget = {
+  profile: YutRollLandingProfile;
+  x: number;
+  z: number;
+  cssX: number;
+  cssY: number;
+};
+
 const MIN_VIEWPORT_SIZE = 1;
 const BASE_ASPECT = 1.42;
 const BASE_TARGET_Y = 1.42;
@@ -32,8 +44,53 @@ const DEFAULT_SURFACE_LEFT_RATIO = 0.2;
 const DEFAULT_SURFACE_RIGHT_RATIO = 0.8;
 const FALL_TARGET_Z = -0.18;
 const FALL_EXIT_CLEARANCE = 0.92;
+const LANDING_EDGE_CLEARANCE = 0.38;
+const CENTERED_LANDING_TARGETS = [
+  { x: -1.32, z: -0.24 },
+  { x: -0.44, z: 0 },
+  { x: 0.44, z: -0.24 },
+  { x: 1.32, z: 0 },
+] as const;
+const SCATTERED_LANDING_TARGETS = [
+  { x: -1.64, z: -0.52, cssX: -22, cssY: 18 },
+  { x: -0.58, z: 0.34, cssX: -10, cssY: -14 },
+  { x: 0.62, z: 0.44, cssX: 12, cssY: -22 },
+  { x: 1.6, z: -0.34, cssX: 20, cssY: 14 },
+] as const;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const normalizeIndex = (index: number) => Math.abs(Math.trunc(Number.isFinite(index) ? index : 0)) % 4;
+
+export function getYutRollLandingProfile(zone: RollTimingZone = 'normal'): YutRollLandingProfile {
+  const grade = normalizeRollTimingZone(zone);
+  if (grade === 'good') return 'offset';
+  if (grade === 'bad' && zone !== 'normal') return 'scattered';
+  return 'centered';
+}
+
+export function getYutRollLandingTarget(
+  index: number,
+  zone: RollTimingZone = 'normal',
+  bounds?: YutRollMatWorldBounds,
+): YutRollLandingTarget {
+  const normalizedIndex = normalizeIndex(index);
+  const profile = getYutRollLandingProfile(zone);
+  const centered = CENTERED_LANDING_TARGETS[normalizedIndex];
+  const candidate = profile === 'offset'
+    ? { x: centered.x + 0.34, z: centered.z, cssX: 24, cssY: -4 }
+    : profile === 'scattered'
+      ? SCATTERED_LANDING_TARGETS[normalizedIndex]
+      : { ...centered, cssX: 0, cssY: 0 };
+  const minimumX = bounds ? bounds.leftX + LANDING_EDGE_CLEARANCE : Number.NEGATIVE_INFINITY;
+  const maximumX = bounds ? bounds.rightX - LANDING_EDGE_CLEARANCE : Number.POSITIVE_INFINITY;
+  return {
+    profile,
+    x: clamp(candidate.x, minimumX, maximumX),
+    z: candidate.z,
+    cssX: candidate.cssX,
+    cssY: candidate.cssY,
+  };
+}
 
 export function getYutRollSceneFraming(width: number, height: number): YutRollSceneFraming {
   const safeWidth = Math.max(MIN_VIEWPORT_SIZE, Number.isFinite(width) ? width : MIN_VIEWPORT_SIZE);
@@ -89,7 +146,7 @@ export function getYutRollMatWorldBounds(
 }
 
 export function getYutRollFallTarget(index: number, bounds: YutRollMatWorldBounds): YutRollFallTarget {
-  const normalizedIndex = Math.abs(Math.trunc(Number.isFinite(index) ? index : 0)) % 4;
+  const normalizedIndex = normalizeIndex(index);
   const side = normalizedIndex % 2 === 0 ? -1 : 1;
   const edgeX = side < 0 ? bounds.leftX : bounds.rightX;
   const laneOffset = normalizedIndex >= 2 ? 0.16 : 0;
