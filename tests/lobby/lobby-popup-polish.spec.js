@@ -44,13 +44,20 @@ test.describe('lobby popup visual polish QA', () => {
     const guideDialog = page.getByRole('dialog', { name: '게임 방법' });
     await expect(guideDialog).toBeVisible();
     await expect(guideDialog.locator('.howto-list article')).toHaveCount(4);
-    await expect(guideDialog.locator('.howto-result-strip span')).toHaveCount(6);
-    await expect(guideDialog.locator('.howto-result-strip span').first()).toContainText('빽도-1칸');
-    await expect(guideDialog.locator('.howto-result-strip span').nth(4)).toContainText('윷4칸');
-    await expect(guideDialog.locator('.howto-result-strip span').nth(5)).toContainText('모5칸');
+    const resultItems = guideDialog.locator('.howto-result-strip > span');
+    await expect(resultItems).toHaveCount(6);
+    expect((await resultItems.allTextContents()).map((text) => text.replace(/\s/g, ''))).toEqual([
+      '빽도-1칸6.25%',
+      '도1칸18.75%',
+      '개2칸37.5%',
+      '걸3칸25%',
+      '윷4칸6.25%',
+      '모5칸6.25%',
+    ]);
+    await expect(resultItems.locator('.howto-result-probability')).toHaveCount(6);
+    await expect(guideDialog.locator('.howto-result-probabilities')).toHaveCount(0);
+    await expect(guideDialog.locator('.howto-results-section')).not.toContainText(/Perfect|Nice/);
     await expect(guideDialog.getByRole('heading', { name: '타이밍', exact: true })).toBeVisible();
-    await expect(guideDialog.getByLabel('윷 결과 확률 안내')).toContainText('Nice·Good·Bad빽도 6.25% · 도 18.75% · 개 37.5% · 걸 25% · 윷 6.25% · 모 6.25%');
-    await expect(guideDialog.getByLabel('윷 결과 확률 안내')).toContainText('Perfect빽도 5.54% · 도 16.61% · 개 33.21% · 걸 22.14% · 윷 11.25% · 모 11.25%');
     await expect(guideDialog).not.toContainText('낙이면 이동 없이 차례가 넘어갑니다.');
     await expect(guideDialog).not.toContainText('방에 모여 윷을 던지고');
     await expect(guideDialog).toContainText('승리 조건');
@@ -61,7 +68,7 @@ test.describe('lobby popup visual polish QA', () => {
       const header = dialog.querySelector('.howto-fixed-header');
       const body = dialog.querySelector('.howto-scroll-body');
       const footer = dialog.querySelector('.howto-fixed-footer');
-      const results = Array.from(dialog.querySelectorAll('.howto-result-strip span'));
+      const results = Array.from(dialog.querySelectorAll('.howto-result-strip > span'));
       if (cards.length !== 4 || results.length !== 6 || !(button instanceof HTMLElement) || !(header instanceof HTMLElement) || !(body instanceof HTMLElement) || !(footer instanceof HTMLElement)) return null;
       const dialogRect = dialog.getBoundingClientRect();
       const cardRects = cards.map((card) => card.getBoundingClientRect());

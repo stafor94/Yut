@@ -26,13 +26,40 @@ test.describe('진행 기록 헤더 액션', () => {
 
     const guideButton = actions.getByRole('button', { name: '게임 방법 열기' });
     await expect(guideButton.locator('svg')).toBeVisible();
+    const guideButtonVisual = await guideButton.evaluate((button) => {
+      const svg = button.querySelector('svg');
+      const style = getComputedStyle(button);
+      return {
+        backgroundImage: style.backgroundImage,
+        borderColor: style.borderColor,
+        boxShadow: style.boxShadow,
+        color: style.color,
+        svgStroke: svg ? getComputedStyle(svg).stroke : '',
+      };
+    });
+    expect(guideButtonVisual.backgroundImage, '게임 방법 버튼은 주변 크림색 버튼과 구분되는 채움색을 사용해야 합니다.').toContain('linear-gradient');
+    expect(guideButtonVisual.borderColor).not.toBe('rgba(122, 74, 38, 0.18)');
+    expect(guideButtonVisual.boxShadow).not.toBe('none');
+    expect(guideButtonVisual.color).not.toBe('rgb(122, 74, 38)');
+    expect(guideButtonVisual.svgStroke).not.toBe('rgb(91, 50, 28)');
     await guideButton.click();
 
     const dialog = page.getByTestId('game-guide-dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveClass(/lobby-howto-sheet/);
     await expect(dialog.getByRole('heading', { name: '게임 방법' })).toBeVisible();
-    await expect(dialog.getByLabel('윷 결과 확률 안내')).toContainText('낙이 아닌 정상 투척 기준');
+    const resultItems = dialog.locator('.howto-result-strip > span');
+    await expect(resultItems).toHaveCount(6);
+    expect((await resultItems.allTextContents()).map((text) => text.replace(/\s/g, ''))).toEqual([
+      '빽도-1칸6.25%',
+      '도1칸18.75%',
+      '개2칸37.5%',
+      '걸3칸25%',
+      '윷4칸6.25%',
+      '모5칸6.25%',
+    ]);
+    await expect(dialog.locator('.howto-result-probabilities')).toHaveCount(0);
+    await expect(dialog.locator('.howto-results-section')).not.toContainText(/Perfect|Nice/);
     await expect(dialog.getByRole('heading', { name: '타이밍', exact: true })).toBeVisible();
     await expect(dialog.getByRole('heading', { name: '방 옵션' })).toBeVisible();
     await expect(dialog).toContainText('이미 게임 중인 방은 관전할 수 있습니다.');

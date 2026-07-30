@@ -5,6 +5,10 @@
 .game-guide-open-button {
   display: inline-grid;
   place-items: center;
+  background: linear-gradient(135deg, #2f6b4f, #224236);
+  color: #fffdf1;
+  border-color: rgba(20, 60, 43, .78);
+  box-shadow: 0 5px 12px rgba(28, 75, 54, .28), inset 0 1px 0 rgba(255, 255, 255, .2);
 }
 
 .game-guide-open-button svg {
@@ -12,8 +16,14 @@
   height: 20px;
   overflow: visible;
   fill: none;
-  stroke: #5b321c;
-  stroke-width: 2;
+  stroke: currentColor;
+  stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.game-guide-open-button:hover,
+.game-guide-open-button:focus-visible {
+  background: linear-gradient(135deg, #397d5e, #285742);
+  outline: 3px solid rgba(47, 107, 79, .32);
 }
