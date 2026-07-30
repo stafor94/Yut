@@ -10,6 +10,11 @@ import {
   resolveRollTimeout,
   resolveTrapPlacementTimeout,
 } from '../../src/features/room/services/timeoutResolvers';
+import {
+  getRollTimingInitialPositionPercentForDeadline,
+  getRollTimingMotionState,
+} from '../../src/game-core/rollTimingMotion';
+import { getRollTimingZone } from '../../src/game-core/roll';
 
 const backDoRoll = { name: '빽도', steps: -1 } as const;
 const doRoll = { name: '도', steps: 1 } as const;
@@ -26,11 +31,16 @@ test('아이템 관련 timeout 기본 선택은 미사용/취소/기존 유지�
   assert.deepEqual(resolveItemPickupTimeout(), { decision: 'keep' });
 });
 
-test('coordinator 던지기 fallback은 authoritative timeout window의 공유 오브 위치로 판정한다', () => {
-  const perfect = resolveRollTimeout(1_000_000, 500);
-  const bad = resolveRollTimeout(1_000_000, 1000);
-  assert.deepEqual(perfect, { timingPositionPercent: 50, rollTimingZone: 'perfect' });
-  assert.deepEqual(bad, { timingPositionPercent: 100, rollTimingZone: 'bad' });
+test('coordinator 던지기 fallback은 UI와 같은 deadline-seeded 오브 위치로 판정한다', () => {
+  const deadlineAt = 1_700_000_000_000;
+  const initialPositionPercent = getRollTimingInitialPositionPercentForDeadline(deadlineAt);
+  for (const timeoutWindowMs of [500, 1_000, 5_000, 10_000]) {
+    const expectedPosition = getRollTimingMotionState({ initialPositionPercent, elapsedMs: timeoutWindowMs }).positionPercent;
+    assert.deepEqual(resolveRollTimeout(deadlineAt, timeoutWindowMs), {
+      timingPositionPercent: expectedPosition,
+      rollTimingZone: getRollTimingZone(expectedPosition),
+    });
+  }
 });
 
 test('말 이동 timeout은 유효한 선택 말을 우선하고 없으면 결정적 후보를 고른다', () => {
