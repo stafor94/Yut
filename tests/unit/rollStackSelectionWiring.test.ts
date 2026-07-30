@@ -31,10 +31,12 @@ test('deadline 자동 선택과 coordinator recovery는 첫 번째 선택 가능
   assert.match(resolverSource, /firstSelectableIndex === 0 \? 'default-first' : 'first-selectable'/);
 });
 
-test('Desktop과 Galaxy 공통 timeout QA는 빽도 비활성화와 1번 일반 결과 복구를 검증한다', () => {
+test('Desktop과 Galaxy 공통 timeout QA는 immutable recovery sequence로 1번 일반 결과 복구를 검증한다', () => {
   assert.match(qaHelperSource, /\{ name: '빽도', steps: -1 \}/);
   assert.match(qaHelperSource, /await expect\(buttons\.first\(\)\)\.toBeDisabled\(\)/);
   assert.match(qaHelperSource, /await expect\(buttons\.nth\(1\)\)\.toBeEnabled\(\)/);
   assert.match(qaHelperSource, /rollStackIndex: 1/);
-  assert.match(qaHelperSource, /expect\(recoverySnapshot\.remainingStack\)\.toEqual\(\[\{ name: '빽도', steps: -1 \}\]\)/);
+  assert.match(qaHelperSource, /recoverySequence\.patch\?\.rollStack/);
+  assert.match(qaHelperSource, /recoverySequence\.payload\?\.remainingRollStack/);
+  assert.doesNotMatch(qaHelperSource, /recoverySnapshot\.state\.rollStack/);
 });
