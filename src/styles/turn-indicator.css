@@ -16,6 +16,31 @@
   box-shadow: 0 4px 10px rgba(42, 30, 23, .16);
 }
 
+.game-shell .turn-current .turn-current-badge:has(.winner-turn-names) {
+  max-width: min(78vw, 420px);
+  text-align: center;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.game-shell .turn-current .turn-current-badge:has(.winner-player-1),
+.game-shell .turn-current .turn-current-badge:has(.winner-team-red) {
+  background: #d94a38;
+}
+
+.game-shell .turn-current .turn-current-badge:has(.winner-player-2),
+.game-shell .turn-current .turn-current-badge:has(.winner-team-blue) {
+  background: #3a78c2;
+}
+
+.game-shell .turn-current .turn-current-badge:has(.winner-player-3) {
+  background: #2f9e6f;
+}
+
+.game-shell .turn-current .turn-current-badge:has(.winner-player-4) {
+  background: #d6a11d;
+}
+
 .turn-roll-stack-badges {
   inset-block-start: calc(100% - 2px);
 }
