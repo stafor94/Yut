@@ -15,17 +15,27 @@ test.describe('mobile lobby guide polish QA', () => {
       const confirmButton = dialog.getByRole('button', { name: '확인' });
       await expect(dialog).toBeVisible();
       await expect(dialog.locator('.howto-list article')).toHaveCount(4);
-      await expect(dialog.locator('.howto-result-strip span')).toHaveCount(6);
+      const resultItems = dialog.locator('.howto-result-strip > span');
+      await expect(resultItems).toHaveCount(6);
       await expect(dialog.locator('.lobby-sheet-lead')).toHaveCount(0);
-      await expect(dialog.getByLabel('윷 결과 확률 안내')).toContainText('빽도 6.25%');
-      await expect(dialog.getByLabel('윷 결과 확률 안내')).toContainText('모 11.25%');
+      expect((await resultItems.allTextContents()).map((text) => text.replace(/\s/g, ''))).toEqual([
+        '빽도-1칸6.25%',
+        '도1칸18.75%',
+        '개2칸37.5%',
+        '걸3칸25%',
+        '윷4칸6.25%',
+        '모5칸6.25%',
+      ]);
+      await expect(resultItems.locator('.howto-result-probability')).toHaveCount(6);
+      await expect(dialog.locator('.howto-result-probabilities')).toHaveCount(0);
+      await expect(dialog.locator('.howto-results-section')).not.toContainText(/Perfect|Nice/);
       await expect(dialog).not.toContainText('낙이면 이동 없이 차례가 넘어갑니다.');
       await expect(confirmButton).toBeVisible();
       await expect(confirmButton).toBeInViewport();
 
       const layout = await dialog.evaluate((element) => {
         const cards = Array.from(element.querySelectorAll('.howto-list article'));
-        const resultItems = Array.from(element.querySelectorAll('.howto-result-strip span'));
+        const resultItems = Array.from(element.querySelectorAll('.howto-result-strip > span'));
         const confirm = element.querySelector('.howto-confirm-button');
         const header = element.querySelector('.howto-fixed-header');
         const body = element.querySelector('.howto-scroll-body');
@@ -55,6 +65,10 @@ test.describe('mobile lobby guide polish QA', () => {
         const dialogRect = element.getBoundingClientRect();
         const cardRects = cards.map(rect);
         const resultRects = resultItems.map(rect);
+        const probabilityStyles = resultItems.map((item) => {
+          const probability = item.querySelector('.howto-result-probability');
+          return probability instanceof HTMLElement ? getComputedStyle(probability) : null;
+        });
         const splitRuleRects = splitRuleParagraphs.map(rect);
         const splitRuleLabels = splitRuleParagraphs.map((paragraph) => getComputedStyle(paragraph, '::before').content);
         const timingHeadingContent = timingHeading.textContent ?? '';
@@ -88,6 +102,7 @@ test.describe('mobile lobby guide polish QA', () => {
           footerBorderTopWidth: Number.parseFloat(footerStyle.borderTopWidth),
           cardRects,
           resultRects,
+          probabilitiesVisible: probabilityStyles.every((style) => style && style.display !== 'none' && Number.parseFloat(style.fontSize) > 0),
           timingHeadingContent,
           timingParagraphContents,
           basicParagraphFontSize: getComputedStyle(basicParagraph).fontSize,
@@ -116,6 +131,7 @@ test.describe('mobile lobby guide polish QA', () => {
       expect(layout.bodyScrollHeight).toBeGreaterThan(layout.bodyClientHeight);
       expect(layout.changedScrollTop).toBeGreaterThan(0);
       expect(layout.lastContentBottom).toBeLessThanOrEqual(layout.bodyBottom + 1);
+      expect(layout.probabilitiesVisible, '각 결과 확률은 이동 칸 수 바로 아래에 보여야 합니다.').toBe(true);
       expect(Math.abs(layout.cardRects[0].y - layout.cardRects[1].y), '첫 두 단계는 같은 행에서 비교할 수 있어야 합니다.').toBeLessThanOrEqual(1);
       expect(layout.cardRects[2].y, '두 번째 카드 행은 첫 번째 행 아래에 있어야 합니다.').toBeGreaterThan(layout.cardRects[0].y);
       expect(layout.cardRects[3].y, '빽도와 완주 구획은 말 이동 규칙 아래의 독립 행이어야 합니다.').toBeGreaterThan(layout.cardRects[2].y);
