@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../../src/app/hooks/localOptimisticSnapshotPolicy.js';
-import { PendingRemoteActionMetaStore, type PendingRemoteActionMeta } from '../../src/app/hooks/usePendingRemoteActions.js';
+import { PendingRemoteActionMetaStore, type PendingRemoteActionMeta } from '../../src/app/hooks/pendingRemoteActionMetaStore.js';
 
 const makeMoveMeta = (optimisticApplied: boolean, actorId = 'red-seat'): PendingRemoteActionMeta => ({
   type: 'move_piece',
