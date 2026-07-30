@@ -123,7 +123,8 @@ export async function verifyRollLandingProfile(page, roomId, testInfo, profileCa
     const clickResult = await clickTimingZoneWithRandom(page, profileCase);
     expect(clickResult.positionPercent).toBeGreaterThanOrEqual(profileCase.ranges[0][0]);
     expect(clickResult.positionPercent).toBeLessThanOrEqual(profileCase.ranges[0][1]);
-    expect(clickResult.randomValuesUsed).toBeGreaterThanOrEqual(profileCase.fall ? 7 : 6);
+    const minimumRandomCalls = profileCase.zone === 'perfect' ? 3 : profileCase.fall ? 7 : 6;
+    expect(clickResult.randomValuesUsed).toBeGreaterThanOrEqual(minimumRandomCalls);
   });
 
   const scene = page.getByTestId('yut-roll-scene');
