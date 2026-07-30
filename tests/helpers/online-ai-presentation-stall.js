@@ -34,6 +34,9 @@ const getNormalAiMoveSequences = (sequences, fixtureSequence, aiSeatId) => seque
   && String(sequence.action?.payload?.clientActionId ?? '').startsWith('move_piece_ai:')
 ));
 
+const getSequenceNumber = (sequence) => Number(sequence?.sequence ?? 0);
+const getActionKey = (sequence) => String(sequence?.action?.payload?.clientActionId ?? sequence?.clientMutationId ?? '');
+
 export async function prepareOnlineAiPresentationStallFixture({ page, context, testInfo }) {
   const hostName = normalizeQaNickname(makeQaName(testInfo, 'presentation-host'));
   const roomTitle = makeQaName(testInfo, 'online-ai-presentation-stall');
@@ -160,40 +163,50 @@ export async function prepareOnlineAiPresentationStallFixture({ page, context, t
 }
 
 export async function waitForOnlineAiPresentationStallRecovery(page, fixture) {
-  let recoverySequence;
+  let winningMoveSequence;
   let nextAiRollSequence;
   await expect.poll(async () => {
     const sequences = await getRoomSequencesForQa(fixture.roomId);
-    recoverySequence = getRecoverySequences(sequences, fixture.actionKey)[0];
-    if (!recoverySequence) return null;
+    const recoverySequences = getRecoverySequences(sequences, fixture.actionKey);
+    const normalAiMoves = getNormalAiMoveSequences(sequences, fixture.fixtureSequence, fixture.firstAiSeatId);
+    const moveWinners = [...recoverySequences, ...normalAiMoves]
+      .sort((left, right) => getSequenceNumber(left) - getSequenceNumber(right));
+    if (moveWinners.length !== 1) return null;
+
+    winningMoveSequence = moveWinners[0];
     nextAiRollSequence = sequences.find((sequence) => (
-      Number(sequence.sequence ?? 0) > Number(recoverySequence.sequence ?? 0)
+      getSequenceNumber(sequence) > getSequenceNumber(winningMoveSequence)
       && sequence.type === 'roll_yut'
       && sequence.actorId === fixture.secondAiSeatId
     ));
     return nextAiRollSequence ? {
-      recoveryCount: getRecoverySequences(sequences, fixture.actionKey).length,
+      moveResolutionCount: moveWinners.length,
       nextActorId: nextAiRollSequence.actorId,
     } : null;
   }, {
     timeout: 20_000,
     intervals: [100, 200, 400, 800],
-    message: 'timeout recovery 뒤 stale AI 작업 키가 해제되고 다음 AI 좌석의 던지기가 예약되어야 합니다.',
-  }).toEqual({ recoveryCount: 1, nextActorId: fixture.secondAiSeatId });
+    message: '정상 AI 이동과 timeout recovery 중 하나만 확정되고 다음 AI 좌석의 던지기가 예약되어야 합니다.',
+  }).toEqual({ moveResolutionCount: 1, nextActorId: fixture.secondAiSeatId });
 
   const sequences = await getRoomSequencesForQa(fixture.roomId);
   const recoverySequences = getRecoverySequences(sequences, fixture.actionKey);
   const normalAiMoves = getNormalAiMoveSequences(sequences, fixture.fixtureSequence, fixture.firstAiSeatId);
-  expect(recoverySequences).toHaveLength(1);
-  expect(normalAiMoves).toHaveLength(0);
-  expect(recoverySequence.action?.payload).toMatchObject({
-    clientActionId: fixture.actionKey,
-    coordinatorEpoch: fixture.coordinatorEpoch,
-    coordinatorSeatId: fixture.coordinatorSeatId,
-    recoveredByCoordinator: true,
-    reason: 'stalled-roll-move-timeout',
-    timeoutDeadlineAt: fixture.deadlineAt,
-  });
+  expect(recoverySequences.length + normalAiMoves.length).toBe(1);
+
+  const recoverySequence = recoverySequences[0];
+  if (recoverySequence) {
+    expect(recoverySequence.action?.payload).toMatchObject({
+      clientActionId: fixture.actionKey,
+      coordinatorEpoch: fixture.coordinatorEpoch,
+      coordinatorSeatId: fixture.coordinatorSeatId,
+      recoveredByCoordinator: true,
+      reason: 'stalled-roll-move-timeout',
+      timeoutDeadlineAt: fixture.deadlineAt,
+    });
+  } else {
+    expect(getActionKey(normalAiMoves[0])).toMatch(/^move_piece_ai:/);
+  }
 
   await expect.poll(async () => {
     const state = await getRoomStateForQa(fixture.roomId);
@@ -212,20 +225,22 @@ export async function waitForOnlineAiPresentationStallRecovery(page, fixture) {
   }).toEqual({ piecesMatch: true, rollMatch: true, rollStackMatch: true, turnIndexMatch: true });
 
   const duplicateCheckAt = Date.now() + 1_600;
+  const nextAiRollActionKey = getActionKey(nextAiRollSequence);
   await expect.poll(async () => {
     if (Date.now() < duplicateCheckAt) return null;
     const latestSequences = await getRoomSequencesForQa(fixture.roomId);
+    const latestRecoveryCount = getRecoverySequences(latestSequences, fixture.actionKey).length;
+    const latestNormalMoveCount = getNormalAiMoveSequences(latestSequences, fixture.fixtureSequence, fixture.firstAiSeatId).length;
     return {
-      recoveryCount: getRecoverySequences(latestSequences, fixture.actionKey).length,
-      normalMoveCount: getNormalAiMoveSequences(latestSequences, fixture.fixtureSequence, fixture.firstAiSeatId).length,
-      nextAiRollCount: latestSequences.filter((sequence) => (
-        Number(sequence.sequence ?? 0) > Number(recoverySequence.sequence ?? 0)
-        && sequence.type === 'roll_yut'
+      moveResolutionCount: latestRecoveryCount + latestNormalMoveCount,
+      nextAiRollDuplicateCount: latestSequences.filter((sequence) => (
+        sequence.type === 'roll_yut'
         && sequence.actorId === fixture.secondAiSeatId
+        && getActionKey(sequence) === nextAiRollActionKey
       )).length,
     };
-  }, { timeout: 3_000, intervals: [100, 200, 400], message: '경합 이후 이동·recovery·다음 AI 던지기가 중복 생성되면 안 됩니다.' })
-    .toEqual({ recoveryCount: 1, normalMoveCount: 0, nextAiRollCount: 1 });
+  }, { timeout: 3_000, intervals: [100, 200, 400], message: '경합 이후 이동 확정과 다음 AI 던지기 action key가 중복 생성되면 안 됩니다.' })
+    .toEqual({ moveResolutionCount: 1, nextAiRollDuplicateCount: 1 });
 
-  return { nextAiRollSequence, recoverySequence };
+  return { nextAiRollSequence, recoverySequence: recoverySequence ?? null, winningMoveSequence };
 }

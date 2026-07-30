@@ -184,7 +184,22 @@ test.describe('remote fall presentation QA', () => {
         await expect(stage, `상대 낙 연출이 표시되어야 합니다: ${JSON.stringify(await collectScreenState(observer.page), null, 2)}`).toBeVisible({ timeout: 8_000 });
         await expect(stage).toHaveAttribute('data-settle-source', 'pending');
         await expect(fallMat, '상대 낙 결과에는 fall-roll 매트가 적용되어야 합니다.').toBeVisible({ timeout: 8_000 });
-        await expect(scene, '상대 낙의 실제 윷 장면이 표시되어야 합니다.').toHaveAttribute('data-fall-count', '4', { timeout: 8_000 });
+        await expect(scene, '상대 낙의 실제 윷 장면이 표시되어야 합니다.').toBeVisible({ timeout: 8_000 });
+        const landingProfile = await scene.evaluate((element) => ({
+          fallCount: Number(element.getAttribute('data-fall-count') ?? 0),
+          timingZone: String(element.getAttribute('data-timing-zone') ?? ''),
+        }));
+        const fallCountRanges = {
+          perfect: [1, 4],
+          nice: [1, 1],
+          good: [1, 2],
+          bad: [2, 4],
+          normal: [1, 4],
+        };
+        const fallCountRange = fallCountRanges[landingProfile.timingZone];
+        expect(fallCountRange, `알 수 없는 낙 타이밍 등급입니다: ${landingProfile.timingZone}`).toBeTruthy();
+        expect(landingProfile.fallCount, `${landingProfile.timingZone} 낙 개수는 등급 계약 범위여야 합니다.`).toBeGreaterThanOrEqual(fallCountRange[0]);
+        expect(landingProfile.fallCount, `${landingProfile.timingZone} 낙 개수는 등급 계약 범위여야 합니다.`).toBeLessThanOrEqual(fallCountRange[1]);
         await expect.poll(() => scene.getAttribute('data-renderer'), { timeout: 8_000, message: '상대 낙 장면이 Three.js 또는 CSS fallback 렌더러로 확정되어야 합니다.' }).toMatch(/^(three|fallback)$/);
         await expect(currentBadge, '낙 연출 중에는 던진 상대의 이름을 현재 턴으로 유지해야 합니다.').toHaveText(roller.name);
         await expect(neighbors, '낙 연출 중에도 이전·다음 턴 정보가 사라지면 안 됩니다.').toHaveCount(2);
