@@ -6,7 +6,7 @@ export const GAME_PRESENTATION_BLOCKED_ACTION_TYPES = [
   'item_pickup_decision',
 ] as const;
 
-export const GAME_PRESENTATION_ACTION_WAIT_TIMEOUT_MS = 750;
+export const GAME_PRESENTATION_ACTION_WAIT_TIMEOUT_MS = 2500;
 
 const blockedActionTypes = new Set<string>(GAME_PRESENTATION_BLOCKED_ACTION_TYPES);
 
