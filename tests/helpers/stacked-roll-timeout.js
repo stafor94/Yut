@@ -180,31 +180,33 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
 }
 
 export async function waitForStackedRollTimeoutRecovery({ actionKey, actorId, roomId, timeoutDeadlineAt }) {
-  let recoverySnapshot = null;
+  let recoverySequence = null;
   await expect.poll(async () => {
     const sequences = await getRoomSequencesForQa(roomId);
     const matching = getRecoverySequences(sequences, actionKey);
-    const state = await getRoomStateForQa(roomId);
-    if (matching.length !== 1 || !state) return false;
-    const remainingStack = Array.isArray(state.rollStack) ? state.rollStack : [];
-    if (remainingStack.length !== 1) return false;
-    recoverySnapshot = {
-      sequence: matching[0],
-      remainingStack,
-      state,
-    };
+    if (matching.length !== 1) return false;
+    const candidate = matching[0];
+    const remainingStack = Array.isArray(candidate.patch?.rollStack)
+      ? candidate.patch.rollStack
+      : Array.isArray(candidate.payload?.remainingRollStack)
+        ? candidate.payload.remainingRollStack
+        : [];
+    if (remainingStack.length !== 1 || remainingStack[0]?.name !== '빽도' || Number(remainingStack[0]?.steps) !== -1) return false;
+    if (Number(candidate.patch?.turnActionTimeoutCountBySeatId?.[actorId] ?? 0) !== 1) return false;
+    if (Number(candidate.patch?.turnDeadlineAt ?? timeoutDeadlineAt) === timeoutDeadlineAt) return false;
+    recoverySequence = candidate;
     return true;
   }, { timeout: 15_000, intervals: [100, 200, 400, 800], message: 'deadline+network grace 이후 첫 번째 선택 가능한 일반 결과 recovery sequence가 정확히 한 번 생성되어야 합니다.' }).toBe(true);
 
-  if (!recoverySnapshot) throw new Error('stacked timeout recovery snapshot을 확보하지 못했습니다.');
-  expect(recoverySnapshot.sequence.action?.payload).toMatchObject({
+  if (!recoverySequence) throw new Error('stacked timeout recovery sequence를 확보하지 못했습니다.');
+  expect(recoverySequence.action?.payload).toMatchObject({
     recoveredByCoordinator: true,
     rollStackIndex: 1,
     timeoutDeadlineAt,
   });
-  expect(recoverySnapshot.remainingStack).toEqual([{ name: '빽도', steps: -1 }]);
-  expect(recoverySnapshot.state.turnActionTimeoutCountBySeatId?.[actorId]).toBe(1);
-  expect(recoverySnapshot.state.turnDeadlineAt).not.toBe(timeoutDeadlineAt);
+  expect(recoverySequence.patch?.rollStack ?? recoverySequence.payload?.remainingRollStack).toEqual([{ name: '빽도', steps: -1 }]);
+  expect(recoverySequence.patch?.turnActionTimeoutCountBySeatId?.[actorId]).toBe(1);
+  expect(recoverySequence.patch?.turnDeadlineAt).not.toBe(timeoutDeadlineAt);
 
   const duplicateCheckAt = Date.now() + 1_600;
   await expect.poll(async () => {
@@ -213,5 +215,7 @@ export async function waitForStackedRollTimeoutRecovery({ actionKey, actorId, ro
     return getRecoverySequences(nextSequences, actionKey).length;
   }, { timeout: 3_000, intervals: [100, 200, 400], message: '추가 대기 후에도 같은 timeout recovery가 중복 생성되면 안 됩니다.' }).toBe(1);
 
-  return { sequence: recoverySnapshot.sequence, state: recoverySnapshot.state };
+  const state = await getRoomStateForQa(roomId);
+  expect(Number(state?.lastSequence ?? 0)).toBeGreaterThanOrEqual(Number(recoverySequence.sequence ?? 0));
+  return { sequence: recoverySequence, state };
 }
