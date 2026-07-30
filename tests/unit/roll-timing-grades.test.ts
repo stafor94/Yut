@@ -51,10 +51,15 @@ test('Nice 낙은 항상 1개이고 Good·Bad 낙은 등급별 경계 개수를 
 
   assert.deepEqual(getRollFallCountRange('good'), [1, 2]);
   assert.equal(getRollFallCountForTimingZone('good', () => 0), 1);
+  assert.equal(getRollFallCountForTimingZone('good', () => 0.249999), 1);
+  assert.equal(getRollFallCountForTimingZone('good', () => 0.25), 2);
   assert.equal(getRollFallCountForTimingZone('good', () => 0.999999), 2);
 
   assert.deepEqual(getRollFallCountRange('bad'), [2, 4]);
   assert.equal(getRollFallCountForTimingZone('bad', () => 0), 2);
+  assert.equal(getRollFallCountForTimingZone('bad', () => 0.499999), 2);
+  assert.equal(getRollFallCountForTimingZone('bad', () => 0.5), 3);
+  assert.equal(getRollFallCountForTimingZone('bad', () => 0.75), 4);
   assert.equal(getRollFallCountForTimingZone('bad', () => 0.999999), 4);
 });
 
