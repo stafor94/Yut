@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { isRoomInGame, type RoomSummary } from '../../features/room/services/roomService';
-import { getYutResultProbabilitiesForTiming } from '../../game-core/roll';
 import '../../styles/lobby-modal-feedback.css';
 import { getRoomRuleBadges, normalizeMaxPlayers } from '../appUtils';
 import { NICKNAME_MAX_LENGTH, validateNickname } from '../appState';
+import { GameGuideResultStrip } from '../components/GameGuideResultStrip';
 
 type LobbyScreenProps = {
   title: string;
@@ -31,12 +31,6 @@ type LobbyActionIconProps = {
 
 const ROOM_REFRESH_MIN_VISIBLE_MS = 600;
 const ROOM_REFRESH_TIMEOUT_MS = 8_000;
-const STANDARD_YUT_RESULT_PROBABILITIES = getYutResultProbabilitiesForTiming('nice');
-const PERFECT_YUT_RESULT_PROBABILITIES = getYutResultProbabilitiesForTiming('perfect');
-
-const formatYutResultProbabilities = (probabilities: ReturnType<typeof getYutResultProbabilitiesForTiming>) => probabilities
-  .map(({ name, probability }) => `${name} ${Number((probability * 100).toFixed(2))}%`)
-  .join(' · ');
 
 const getErrorMessage = (error: unknown) => error instanceof Error && error.message
   ? error.message
@@ -348,11 +342,7 @@ export function LobbyScreen({ title, rooms, isCreatingRoom, isInitialRoomQueryin
         <div ref={howtoScrollRef} className="howto-scroll-body">
           <section className="howto-section howto-results-section" aria-labelledby="howto-results-title">
             <h3 id="howto-results-title" className="howto-section-title">윷 결과</h3>
-            <div className="howto-result-probabilities" aria-label="윷 결과 확률 안내">
-              <p><strong>Nice·Good·Bad</strong><span>{formatYutResultProbabilities(STANDARD_YUT_RESULT_PROBABILITIES)}</span><small>낙이 아닌 정상 투척 기준</small></p>
-              <p><strong>Perfect</strong><span>{formatYutResultProbabilities(PERFECT_YUT_RESULT_PROBABILITIES)}</span></p>
-            </div>
-            <div className="howto-result-strip" aria-label="윷 결과 이동 칸 수"><span><b>빽도</b>-1칸</span><span><b>도</b>1칸</span><span><b>개</b>2칸</span><span><b>걸</b>3칸</span><span><b>윷</b>4칸</span><span><b>모</b>5칸</span></div>
+            <GameGuideResultStrip />
           </section>
           <section className="howto-section" aria-labelledby="howto-basic-title">
             <h3 id="howto-basic-title" className="howto-section-title">기본 규칙</h3>
