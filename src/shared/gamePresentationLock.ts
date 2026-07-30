@@ -6,12 +6,16 @@ export const GAME_PRESENTATION_BLOCKED_ACTION_TYPES = [
   'item_pickup_decision',
 ] as const;
 
+export const GAME_PRESENTATION_ACTION_WAIT_TIMEOUT_MS = 2500;
+
 const blockedActionTypes = new Set<string>(GAME_PRESENTATION_BLOCKED_ACTION_TYPES);
+
+export type GamePresentationWaitResult = 'idle' | 'timeout';
 
 export type GamePresentationLock = {
   acquire: () => () => void;
   isLocked: () => boolean;
-  waitUntilIdle: () => Promise<void>;
+  waitUntilIdle: (timeoutMs?: number) => Promise<GamePresentationWaitResult>;
   reset: () => void;
 };
 
@@ -50,9 +54,24 @@ export function createGamePresentationLock(): GamePresentationLock {
       };
     },
     isLocked,
-    waitUntilIdle() {
-      if (!isLocked()) return Promise.resolve();
-      return new Promise<void>((resolve) => idleWaiters.add(resolve));
+    waitUntilIdle(timeoutMs) {
+      if (!isLocked()) return Promise.resolve('idle');
+      return new Promise<GamePresentationWaitResult>((resolve) => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let settled = false;
+        const finish = (result: GamePresentationWaitResult) => {
+          if (settled) return;
+          settled = true;
+          idleWaiters.delete(onIdle);
+          if (timer !== null) clearTimeout(timer);
+          resolve(result);
+        };
+        const onIdle = () => finish('idle');
+        idleWaiters.add(onIdle);
+        if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs)) {
+          timer = setTimeout(() => finish('timeout'), Math.max(0, timeoutMs));
+        }
+      });
     },
     reset() {
       activeCount = 0;
@@ -72,7 +91,8 @@ export function shouldWaitForGamePresentation(actionType: string) {
 export function waitForGamePresentationBeforeAction(
   actionType: string,
   lock: GamePresentationLock = gamePresentationLock,
+  timeoutMs = GAME_PRESENTATION_ACTION_WAIT_TIMEOUT_MS,
 ) {
-  if (!shouldWaitForGamePresentation(actionType) || !lock.isLocked()) return Promise.resolve();
-  return lock.waitUntilIdle();
+  if (!shouldWaitForGamePresentation(actionType) || !lock.isLocked()) return Promise.resolve<GamePresentationWaitResult>('idle');
+  return lock.waitUntilIdle(timeoutMs);
 }

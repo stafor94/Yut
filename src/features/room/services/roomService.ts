@@ -201,7 +201,18 @@ const settleRoomAction = (
   const clientActionId = typeof normalizedAction.payload?.clientActionId === 'string' ? normalizedAction.payload.clientActionId : '';
   return settleAuthoritativeCommit({
     actionType: normalizedAction.type,
-    commit: () => commitAuthoritativeGameActionCore(roomId, normalizedAction),
+    commit: async () => {
+      if (shouldWaitForGamePresentationBeforeCommit(normalizedAction)) {
+        const presentationWaitResult = await waitForGamePresentationBeforeAction(normalizedAction.type);
+        if (presentationWaitResult === 'timeout') {
+          console.warn('게임 연출 완료 대기 상한을 초과해 authoritative action 제출을 계속합니다.', {
+            actionType: normalizedAction.type,
+            clientActionId,
+          });
+        }
+      }
+      return commitAuthoritativeGameActionCore(roomId, normalizedAction);
+    },
     recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
   });
 };
@@ -212,10 +223,6 @@ export async function commitAuthoritativeGameAction(
 ): Promise<CommitAuthoritativeGameActionResult> {
   const localFallCompletion = resolveFallPresentationCompletionLocally(action);
   if (localFallCompletion) return localFallCompletion;
-
-  if (shouldWaitForGamePresentationBeforeCommit(action)) {
-    await waitForGamePresentationBeforeAction(action.type);
-  }
   return settleRoomAction(roomId, action);
 }
 
