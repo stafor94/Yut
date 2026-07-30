@@ -1,9 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
 import { commitAuthoritativeGameAction } from '../../features/room/services/roomService';
 import { getMovePathNodeIdsWithPrevious, type BoardItem, type BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
+import {
+  getRollStackSelectionAvailability,
+  isRollStackIndexSelectable,
+} from '../../game-core/rollStackSelection';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { STORAGE_KEYS, type CaptureEffect, type FallEffect, type GameLog, type RollAnimation, type Seat, type ToastMessage, type TrapEffect, type TrapNode, type TurnOrderIntro, type TurnOrderPhase } from '../appState';
 import {
@@ -215,6 +219,22 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   const displayedBoardTurnIndicatorRollStack = revealedRollSnapshot?.boardRollStack ?? (deferRollDerivedContent ? visibleBoardTurnIndicatorRollStackRef.current : boardTurnIndicatorRollStack);
   const displayedRollStack = revealedRollSnapshot?.rollStack ?? (deferRollDerivedContent ? visibleRollStackRef.current : rollStack);
   const displayedLogs = revealedRollSnapshot?.logs ?? (deferRollDerivedContent ? visibleLogsRef.current : logs);
+  const hasBackDoMovablePiece = useMemo(() => Boolean(
+    activeSeat
+    && pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished),
+  ), [activeSeat, canSeatControlPiece, pieces]);
+  const rollStackSelectionAvailability = useMemo(() => getRollStackSelectionAvailability({
+    rollStack: displayedRollStack,
+    hasBackDoMovablePiece,
+  }), [displayedRollStack, hasBackDoMovablePiece]);
+  const handleSelectRollStackIndex = (index: number) => {
+    if (!isRollStackIndexSelectable(rollStackSelectionAvailability, index)) return;
+    onSelectRollStackIndex(index);
+  };
+  const handleMoveRollStackIndex = (index: number) => {
+    if (!isRollStackIndexSelectable(rollStackSelectionAvailability, index)) return;
+    onMoveRollStackIndex(index);
+  };
 
   useLayoutEffect(() => {
     if (revealedRollSnapshot) {
@@ -328,6 +348,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   useStackedRollTimeoutRecovery({
     activeSeat,
     coordinatorEpoch,
+    hasBackDoMovablePiece,
     localSeatId,
     movingPieceId,
     onlineGameCoordinatorSeatId,
@@ -660,10 +681,11 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         pendingTrapPlacement={pendingTrapPlacement}
         stackedRollMode={stackedRollMode}
         rollStack={displayedRollStack}
+        rollStackSelectionAvailability={rollStackSelectionAvailability}
         selectedRollStackIndex={selectedRollStackIndex}
         rollStackClosed={rollStackClosed}
-        onSelectRollStackIndex={onSelectRollStackIndex}
-        onMoveRollStackIndex={onMoveRollStackIndex}
+        onSelectRollStackIndex={handleSelectRollStackIndex}
+        onMoveRollStackIndex={handleMoveRollStackIndex}
         moveSelectionTimedOut={moveSelectionTimedOut}
         waitingForOnlineTurnOrder={waitingForOnlineTurnOrder}
         hasActiveTurnOrderIntro={hasActiveTurnOrderIntro}

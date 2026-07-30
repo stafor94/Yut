@@ -6,6 +6,7 @@ import {
   type YutResult,
 } from '../../../game-core/roll';
 import type { BranchChoice } from '../../../game-core/board/board';
+import { getRollStackSelectionAvailability } from '../../../game-core/rollStackSelection';
 import { TURN_ACTION_TIMEOUT_MS } from './roomTiming';
 
 /**
@@ -27,7 +28,7 @@ export const resolveRollTimeout = (
   };
 };
 
-export type MoveTimeoutContextReason = 'selected' | 'default-first' | 'single' | 'non-stacked' | 'unresolved';
+export type MoveTimeoutContextReason = 'selected' | 'default-first' | 'first-selectable' | 'single' | 'non-stacked' | 'unresolved';
 export type MoveTimeoutContext = {
   roll: YutResult | null;
   rollStackIndex: number | null;
@@ -63,6 +64,7 @@ export const resolveMoveTimeoutContext = (params: {
   rollStack: YutResult[];
   rollStackClosed: boolean;
   selectedRollStackIndex: number | null;
+  hasBackDoMovablePiece?: boolean;
 }): MoveTimeoutContext => {
   const unresolved: MoveTimeoutContext = { roll: null, rollStackIndex: null, steps: 0, reason: 'unresolved' };
   if (!params.stackedRollMode) {
@@ -82,12 +84,20 @@ export const resolveMoveTimeoutContext = (params: {
       : unresolved;
   }
 
-  const firstRoll = params.rollStack[0];
-  if (!isValidTimeoutMoveRoll(firstRoll)) return unresolved;
+  if (!params.rollStack.every(isValidTimeoutMoveRoll)) return unresolved;
+  const availability = getRollStackSelectionAvailability({
+    rollStack: params.rollStack,
+    hasBackDoMovablePiece: params.hasBackDoMovablePiece !== false,
+  });
+  const firstSelectableIndex = availability.findIndex(Boolean);
+  if (firstSelectableIndex < 0) return unresolved;
+  const firstSelectableRoll = params.rollStack[firstSelectableIndex];
   return makeResolvedTimeoutMoveContext(
-    firstRoll,
-    0,
-    params.rollStack.length === 1 ? 'single' : 'default-first',
+    firstSelectableRoll,
+    firstSelectableIndex,
+    params.rollStack.length === 1
+      ? 'single'
+      : firstSelectableIndex === 0 ? 'default-first' : 'first-selectable',
   );
 };
 

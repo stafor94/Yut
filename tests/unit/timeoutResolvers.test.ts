@@ -11,6 +11,7 @@ import {
   resolveTrapPlacementTimeout,
 } from '../../src/features/room/services/timeoutResolvers';
 
+const backDoRoll = { name: '빽도', steps: -1 } as const;
 const doRoll = { name: '도', steps: 1 } as const;
 const gaeRoll = { name: '개', steps: 2 } as const;
 const geolRoll = { name: '걸', steps: 3 } as const;
@@ -41,7 +42,7 @@ test('말 이동 timeout은 유효한 선택 말을 우선하고 없으면 결�
   assert.equal(resolveMoveTimeout({ pieces, selectedPieceId: 'missing', steps: 3, canControlPiece: (piece) => piece.ownerId === 'me', isSameSidePiece: () => true }).pieceId, 'b');
 });
 
-test('다중 미선택 이동 스택 timeout은 서로 다른 결과에서도 0번을 사용한다', () => {
+test('다중 미선택 이동 스택 timeout은 서로 다른 일반 결과에서도 0번을 사용한다', () => {
   assert.deepEqual(resolveMoveTimeoutContext({
     stackedRollMode: true,
     roll: null,
@@ -53,6 +54,80 @@ test('다중 미선택 이동 스택 timeout은 서로 다른 결과에서도 0�
     rollStackIndex: 0,
     steps: 1,
     reason: 'default-first',
+  });
+});
+
+test('움직일 말이 없는 빽도 혼합 스택은 첫 번째 선택 가능한 일반 결과를 사용한다', () => {
+  assert.deepEqual(resolveMoveTimeoutContext({
+    stackedRollMode: true,
+    roll: null,
+    rollStack: [backDoRoll, doRoll],
+    rollStackClosed: true,
+    selectedRollStackIndex: null,
+    hasBackDoMovablePiece: false,
+  }), {
+    roll: doRoll,
+    rollStackIndex: 1,
+    steps: 1,
+    reason: 'first-selectable',
+  });
+  assert.deepEqual(resolveMoveTimeoutContext({
+    stackedRollMode: true,
+    roll: null,
+    rollStack: [doRoll, backDoRoll],
+    rollStackClosed: true,
+    selectedRollStackIndex: null,
+    hasBackDoMovablePiece: false,
+  }), {
+    roll: doRoll,
+    rollStackIndex: 0,
+    steps: 1,
+    reason: 'default-first',
+  });
+});
+
+test('빽도만 있거나 빽도로 움직일 말이 있으면 기존 0번 선택을 유지한다', () => {
+  assert.deepEqual(resolveMoveTimeoutContext({
+    stackedRollMode: true,
+    roll: null,
+    rollStack: [backDoRoll, backDoRoll],
+    rollStackClosed: true,
+    selectedRollStackIndex: null,
+    hasBackDoMovablePiece: false,
+  }), {
+    roll: backDoRoll,
+    rollStackIndex: 0,
+    steps: -1,
+    reason: 'default-first',
+  });
+  assert.deepEqual(resolveMoveTimeoutContext({
+    stackedRollMode: true,
+    roll: null,
+    rollStack: [backDoRoll, doRoll],
+    rollStackClosed: true,
+    selectedRollStackIndex: null,
+    hasBackDoMovablePiece: true,
+  }), {
+    roll: backDoRoll,
+    rollStackIndex: 0,
+    steps: -1,
+    reason: 'default-first',
+  });
+});
+
+test('기존에 유효한 선택 인덱스가 있으면 현재 availability와 무관하게 유지한다', () => {
+  assert.deepEqual(resolveMoveTimeoutContext({
+    stackedRollMode: true,
+    roll: null,
+    rollStack: [backDoRoll, doRoll],
+    rollStackClosed: true,
+    selectedRollStackIndex: 0,
+    hasBackDoMovablePiece: false,
+  }), {
+    roll: backDoRoll,
+    rollStackIndex: 0,
+    steps: -1,
+    reason: 'selected',
   });
 });
 
@@ -142,6 +217,14 @@ test('열린 스택·빈 스택·잘못된 인덱스·유효하지 않은 결과
     rollStack: [{ name: '도', steps: Number.NaN }],
     rollStackClosed: true,
     selectedRollStackIndex: null,
+  }), unresolved);
+  assert.deepEqual(resolveMoveTimeoutContext({
+    stackedRollMode: true,
+    roll: null,
+    rollStack: [{ name: '빽도', steps: Number.NaN }, doRoll],
+    rollStackClosed: true,
+    selectedRollStackIndex: null,
+    hasBackDoMovablePiece: false,
   }), unresolved);
 });
 

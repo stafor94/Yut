@@ -23,6 +23,10 @@ import {
 } from '../../features/room/services/turnDeadlinePolicy';
 import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
+import {
+  findFirstSelectableRollStackIndex,
+  isRollStackIndexSelectable,
+} from '../../game-core/rollStackSelection';
 import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { RollTimingControl } from '../components/RollTimingControl';
 import { createDeadlineTimerAnimationCache } from '../flows/deadlineTimerAnimation';
@@ -36,6 +40,7 @@ type GameBoardControlsProps = {
   roll: YutResult | null;
   stackedRollMode: boolean;
   rollStack: YutResult[];
+  rollStackSelectionAvailability: boolean[];
   selectedRollStackIndex: number | null;
   rollStackClosed: boolean;
   onSelectRollStackIndex: (index: number) => void;
@@ -85,6 +90,7 @@ export function GameBoardControls({
   roll,
   stackedRollMode,
   rollStack,
+  rollStackSelectionAvailability,
   selectedRollStackIndex,
   rollStackClosed,
   onSelectRollStackIndex,
@@ -359,9 +365,15 @@ export function GameBoardControls({
       autoTurnActionKeyRef.current = turnActionDeadlineKey;
       if (turnActionPhase === 'move' && canRequestMove) {
         if (showRollStackPicker && rollStack.length > 0) {
-          const rollStackIndex = selectedRollStackIndex ?? 0;
-          markNextDeadlineAutoAction({ actionType: 'move_piece', actorId: localSeatId, deadlineAt: authoritativeTurnDeadline.at });
-          onMoveRollStackIndexRef.current(rollStackIndex);
+          const selectedIndex = typeof selectedRollStackIndex === 'number'
+            && isRollStackIndexSelectable(rollStackSelectionAvailability, selectedRollStackIndex)
+            ? selectedRollStackIndex
+            : null;
+          const rollStackIndex = selectedIndex ?? findFirstSelectableRollStackIndex(rollStackSelectionAvailability);
+          if (rollStackIndex !== null) {
+            markNextDeadlineAutoAction({ actionType: 'move_piece', actorId: localSeatId, deadlineAt: authoritativeTurnDeadline.at });
+            onMoveRollStackIndexRef.current(rollStackIndex);
+          }
         } else {
           markNextDeadlineAutoAction({ actionType: 'move_piece', actorId: localSeatId, deadlineAt: authoritativeTurnDeadline.at });
           onMoveSelectedPieceRef.current();
@@ -371,7 +383,7 @@ export function GameBoardControls({
     };
     const timer = window.setTimeout(runAutomaticAction, Math.max(0, remainingMs - AUTO_ACTION_LEAD_MS));
     return () => window.clearTimeout(timer);
-  }, [actionReady, autoPlayActive, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, canRequestMove, canRollNow, localSeatId, roll, rollStack.length, selectedRollStackIndex, showRollStackPicker, timerDurationMs, timerSeatId, turnActionDeadlineKey, turnActionPhase, turnActionTimerVisible]);
+  }, [actionReady, autoPlayActive, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, canRequestMove, canRollNow, localSeatId, roll, rollStack.length, rollStackSelectionAvailability, selectedRollStackIndex, showRollStackPicker, timerDurationMs, timerSeatId, turnActionDeadlineKey, turnActionPhase, turnActionTimerVisible]);
 
   useEffect(() => {
     if (!actionReady || autoPlayActive || isOpponentTurn || activeItemPromptTypes.length === 0 || !localSeatId || !authoritativeTurnDeadline.at || typeof window === 'undefined') return undefined;
@@ -475,7 +487,10 @@ export function GameBoardControls({
       <button type="button" data-testid="move-piece-button" className="branch-move-button" onClick={() => runTurnAction(onMoveSelectedPiece)} disabled={!actionReady || turnActionTimedOut || !canRequestMove}>{actionButtonText}</button>
     </div> : <>
       {turnActionTimerVisible && <div key={turnActionDeadlineKey} className="time-limit-bar turn-action-timer" style={turnActionTimerStyle} aria-hidden="true"><span style={turnActionTimerFillStyle}></span></div>}
-      {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => runTurnAction(() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index))} disabled={!actionReady || turnActionTimedOut}>{entry.name}</button>)}</div></div>}
+      {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => {
+        if (!isRollStackIndexSelectable(rollStackSelectionAvailability, index)) return;
+        runTurnAction(() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index));
+      }} disabled={!actionReady || turnActionTimedOut || !isRollStackIndexSelectable(rollStackSelectionAvailability, index)}>{entry.name}</button>)}</div></div>}
       {rollControlPresentation.showTimingMeter && actionReady && !turnActionTimedOut && <RollTimingControl resetKey={turnActionDeadlineKey} autoSubmitAt={authoritativeTurnDeadline.at} buttonTestId={rollControlPresentation.actionButtonTestId} buttonText={actionButtonText} onRoll={handleRollButtonClick} disabled={turnActionTimedOut || !canRollNow} />}
       {(!rollControlPresentation.showTimingMeter || !actionReady) && !showRollStackPicker && <button data-testid={rollControlPresentation.actionButtonTestId} className={!roll ? 'roll-button' : undefined} onClick={() => handleRollButtonClick()} disabled={!actionReady || turnActionTimedOut || (!canRollNow && !roll) || Boolean((roll || showRollStackMoveButton) && !canRequestMove)}>{showRollStackMoveButton && actionReady && !turnActionTimedOut ? '선택한 말 이동' : actionButtonText}</button>}
     </>}

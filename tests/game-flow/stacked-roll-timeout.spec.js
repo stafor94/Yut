@@ -20,7 +20,7 @@ test.describe('누적 이동 스택 제한시간 recovery', () => {
     roomId = undefined;
   });
 
-  test('deadline 직전 UI callback 없이도 coordinator가 0번 스택을 정확히 한 번 소비한다', async ({ page, context }, testInfo) => {
+  test('deadline 직전 UI callback 없이도 coordinator가 첫 선택 가능한 스택을 정확히 한 번 소비한다', async ({ page, context }, testInfo) => {
     const consoleErrors = [];
     attachConsoleErrorCapture(page, consoleErrors);
 
@@ -31,10 +31,10 @@ test.describe('누적 이동 스택 제한시간 recovery', () => {
     expect(recovery.sequence.action?.payload).toMatchObject({
       clientActionId: fixture.actionKey,
       recoveredByCoordinator: true,
-      rollStackIndex: 0,
+      rollStackIndex: 1,
       timeoutDeadlineAt: fixture.timeoutDeadlineAt,
     });
-    expect(recovery.state.rollStack).toEqual([{ name: '걸', steps: 3 }]);
+    expect(recovery.state.rollStack).toEqual([{ name: '빽도', steps: -1 }]);
     expect(recovery.state.selectedRollStackIndex).toBe(0);
     expect(recovery.state.rollStackClosed).toBe(true);
     await expect(page.getByTestId('game-screen')).toBeVisible();
