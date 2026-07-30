@@ -6,6 +6,8 @@ import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../h
 const MOBILE_VIEWPORT = { width: 412, height: 915 };
 const REMOTE_RENDERER_FRAME_DELAY_MS = 6_000;
 const REMOTE_RENDERER_DELAY_STYLE_ID = 'yut-qa-remote-renderer-delay';
+const REMOTE_RESULT_HOLD_MS = 1_200;
+const REMOTE_RESULT_HOLD_OBSERVER_TOLERANCE_MS = 50;
 
 async function findActiveRoller(entries) {
   for (const entry of entries) {
@@ -248,7 +250,7 @@ test.describe('remote fall presentation QA', () => {
         expect(timing.stageStartedAt).toBeGreaterThan(0);
         expect(timing.labelStartedAt).toBeGreaterThan(timing.stageStartedAt);
         expect(landingDurationMs, `지연된 렌더러가 실제 완료되기 전에 낙 결과를 공개하면 안 됩니다. 실제: ${landingDurationMs}ms`).toBeGreaterThanOrEqual(5_200);
-        expect(resultHoldDurationMs, `settle 후 낙 결과를 최소 1.2초 유지해야 합니다. 실제: ${resultHoldDurationMs}ms`).toBeGreaterThanOrEqual(1_200);
+        expect(resultHoldDurationMs, `observer 프레임 오차를 제외하고 settle 후 낙 결과를 1.2초 유지해야 합니다. 실제: ${resultHoldDurationMs}ms`).toBeGreaterThanOrEqual(REMOTE_RESULT_HOLD_MS - REMOTE_RESULT_HOLD_OBSERVER_TOLERANCE_MS);
         expect(resultHoldDurationMs, `낙 결과 유지가 비정상적으로 길어지면 안 됩니다. 실제: ${resultHoldDurationMs}ms`).toBeLessThanOrEqual(3_000);
 
         await expect.poll(async () => {
