@@ -75,13 +75,17 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   if (!state) throw new Error('authoritative game state가 없습니다.');
   const actorId = String(state.coordinatorSeatId ?? state.turnOrderIds?.[0] ?? '');
   const actorTurnIndex = Math.max(0, state.turnOrderIds.findIndex((seatId) => seatId === actorId));
+  const actorPiecesOnBoard = Array.isArray(state.pieces)
+    ? state.pieces.filter((piece) => piece?.ownerId === actorId && piece?.started && !piece?.finished)
+    : [];
+  expect(actorPiecesOnBoard).toHaveLength(0);
   const visibleDeadlineAt = Date.now() + VISIBLE_FIXTURE_DEADLINE_OFFSET_MS;
   const visibleFixture = await commitRoomStatePatchForQa(page, roomId, {
     turnIndex: actorTurnIndex,
     roll: null,
     rollStack: [
+      { name: '빽도', steps: -1 },
       { name: '도', steps: 1 },
-      { name: '걸', steps: 3 },
     ],
     selectedRollStackIndex: null,
     rollStackClosed: true,
@@ -112,21 +116,29 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
       && current.turnDeadlineKind === 'move'
       && Number(current.turnDeadlineAt) === visibleDeadlineAt
       && currentStack.length === 2
-      && currentStack[0]?.name === '도'
-      && Number(currentStack[0]?.steps) === 1
-      && currentStack[1]?.name === '걸'
-      && Number(currentStack[1]?.steps) === 3,
+      && currentStack[0]?.name === '빽도'
+      && Number(currentStack[0]?.steps) === -1
+      && currentStack[1]?.name === '도'
+      && Number(currentStack[1]?.steps) === 1,
     );
   }, {
     timeout: 10_000,
     intervals: [50, 100, 200, 400],
-    message: '닫힌 다중 미선택 이동 스택 fixture가 authoritative sequence로 안정적으로 반영되어야 합니다.',
+    message: '빽도와 일반 결과가 섞인 닫힌 이동 스택 fixture가 authoritative sequence로 안정적으로 반영되어야 합니다.',
   }).toBe(true);
 
   const picker = page.locator('.roll-stack-picker');
   await expect(picker).toBeVisible({ timeout: 10_000 });
-  await expect(picker.getByRole('button')).toHaveCount(2);
-  await expect(picker.getByRole('button').first()).toBeEnabled();
+  const buttons = picker.getByRole('button');
+  await expect(buttons).toHaveCount(2);
+  await expect(buttons.first()).toBeDisabled();
+  await expect(buttons.nth(1)).toBeEnabled();
+  await buttons.first().evaluate((button) => button.click());
+  await expect.poll(async () => (await getRoomStateForQa(roomId))?.selectedRollStackIndex ?? null, {
+    timeout: 1_000,
+    intervals: [25, 50, 100],
+    message: '네이티브 disabled 빽도 버튼의 프로그램 방식 click도 선택 상태를 변경하면 안 됩니다.',
+  }).toBeNull();
 
   const timeoutDeadlineAt = Date.now() - 1;
   const actionKey = `timeout:${roomId}:move:${actorId}:${timeoutDeadlineAt}`;
@@ -148,14 +160,14 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
     message: '만료된 move deadline fixture가 authoritative sequence로 반영되어야 합니다.',
   }).toBe(true);
   await expect.poll(async () => {
-    const buttons = picker.getByRole('button');
-    const buttonCount = await buttons.count();
+    const expiredButtons = picker.getByRole('button');
+    const buttonCount = await expiredButtons.count();
     if (buttonCount === 0) return true;
-    return buttons.evaluateAll((entries) => entries.length === 2 && entries.every((button) => button.disabled));
+    return expiredButtons.evaluateAll((entries) => entries.length === 2 && entries.every((button) => button.disabled));
   }, {
     timeout: 900,
     intervals: [25, 50, 100],
-    message: 'deadline 이후 일반 스택 선택 버튼은 다시 활성화되지 않아야 합니다.',
+    message: 'deadline 이후 이동 스택 선택 버튼은 다시 활성화되지 않아야 합니다.',
   }).toBe(true);
 
   return {
@@ -182,7 +194,7 @@ export async function waitForStackedRollTimeoutRecovery({ actionKey, actorId, ro
       remainingStack,
       state,
     };
-  }, { timeout: 15_000, intervals: [100, 200, 400, 800], message: 'deadline+network grace 이후 0번 스택 recovery sequence가 정확히 한 번 생성되어야 합니다.' }).not.toBeNull();
+  }, { timeout: 15_000, intervals: [100, 200, 400, 800], message: 'deadline+network grace 이후 첫 번째 선택 가능한 일반 결과 recovery sequence가 정확히 한 번 생성되어야 합니다.' }).not.toBeNull();
   void recovery;
 
   const sequences = await getRoomSequencesForQa(roomId);
@@ -191,10 +203,10 @@ export async function waitForStackedRollTimeoutRecovery({ actionKey, actorId, ro
   expect(matching).toHaveLength(1);
   expect(matching[0].action?.payload).toMatchObject({
     recoveredByCoordinator: true,
-    rollStackIndex: 0,
+    rollStackIndex: 1,
     timeoutDeadlineAt,
   });
-  expect(state?.rollStack).toEqual([{ name: '걸', steps: 3 }]);
+  expect(state?.rollStack).toEqual([{ name: '빽도', steps: -1 }]);
   expect(state?.turnActionTimeoutCountBySeatId?.[actorId]).toBe(1);
   expect(state?.turnDeadlineAt).not.toBe(timeoutDeadlineAt);
 

@@ -22,6 +22,7 @@ import { STORAGE_KEYS, type Seat } from '../appState';
 type StackedRollTimeoutRecoveryParams = {
   activeSeat: Seat | undefined;
   coordinatorEpoch: number;
+  hasBackDoMovablePiece: boolean;
   localSeatId: string;
   movingPieceId: string;
   onlineGameCoordinatorSeatId: string;
@@ -54,7 +55,7 @@ const getActorLogPayload = (seat: Seat) => ({
  *
  * - A normal roll is recovered without a stack index.
  * - A selected stacked roll keeps its selected index.
- * - A closed unselected stack deterministically consumes index 0.
+ * - A closed unselected stack consumes its first selectable result.
  *
  * Manual input remains blocked after the deadline. This hook only submits after
  * the authoritative deadline plus network grace and never relies on the UI's
@@ -63,6 +64,7 @@ const getActorLogPayload = (seat: Seat) => ({
 export function useStackedRollTimeoutRecovery({
   activeSeat,
   coordinatorEpoch,
+  hasBackDoMovablePiece,
   localSeatId,
   movingPieceId,
   onlineGameCoordinatorSeatId,
@@ -132,6 +134,7 @@ export function useStackedRollTimeoutRecovery({
       rollStack,
       rollStackClosed,
       selectedRollStackIndex,
+      hasBackDoMovablePiece,
     });
     if (!timeoutContext.roll) return undefined;
     if (hasStackedMoveState && timeoutContext.rollStackIndex === null) return undefined;
@@ -285,6 +288,7 @@ export function useStackedRollTimeoutRecovery({
   }, [
     activeSeat,
     coordinatorEpoch,
+    hasBackDoMovablePiece,
     localSeatId,
     movingPieceId,
     onlineGameCoordinatorSeatId,

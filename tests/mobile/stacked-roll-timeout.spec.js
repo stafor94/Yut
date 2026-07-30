@@ -20,7 +20,7 @@ test.describe('Galaxy 누적 이동 스택 제한시간 recovery', () => {
     roomId = undefined;
   });
 
-  test('412×915에서 버튼만 잠긴 채 멈추지 않고 새로고침 없이 다음 상태로 진행한다', async ({ page, context }, testInfo) => {
+  test('412×915에서 비활성 빽도를 건너뛰고 새로고침 없이 다음 상태로 진행한다', async ({ page, context }, testInfo) => {
     const consoleErrors = [];
     attachConsoleErrorCapture(page, consoleErrors);
     expect(page.viewportSize()).toEqual({ width: 412, height: 915 });
@@ -29,8 +29,8 @@ test.describe('Galaxy 누적 이동 스택 제한시간 recovery', () => {
     roomId = fixture.roomId;
     const recovery = await waitForStackedRollTimeoutRecovery(fixture);
 
-    expect(recovery.sequence.action?.payload?.rollStackIndex).toBe(0);
-    expect(recovery.state.rollStack).toEqual([{ name: '걸', steps: 3 }]);
+    expect(recovery.sequence.action?.payload?.rollStackIndex).toBe(1);
+    expect(recovery.state.rollStack).toEqual([{ name: '빽도', steps: -1 }]);
     await expect(page.getByTestId('game-screen')).toBeVisible();
     await expect(page.getByTestId('play-controls')).toBeVisible();
     await expect.poll(async () => {
