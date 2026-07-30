@@ -4,7 +4,7 @@ import { PendingRemoteActionMetaStore, type PendingRemoteActionMeta as BasePendi
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
 
 export type PendingRemoteActionMeta = BasePendingRemoteActionMeta<GameAction['type']>;
-export { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
+export { PendingRemoteActionMetaStore };
 
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
