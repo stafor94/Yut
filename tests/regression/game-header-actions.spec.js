@@ -8,8 +8,6 @@ import {
 
 const STANDARD_RESULT_PROBABILITIES = ['6.25%', '18.75%', '37.5%', '25%', '6.25%', '6.25%'];
 
-const normalizeGeneratedContent = (value) => value.replace(/^["']|["']$/g, '');
-
 test.describe('진행 기록 헤더 액션', () => {
   test('P1은 Sequence Export를 보고 그 옆 게임 방법 버튼으로 로비와 같은 안내를 연다', async ({ page }) => {
     await expectAppShell(page);
@@ -54,7 +52,7 @@ test.describe('진행 기록 헤더 액션', () => {
       if (!(summary instanceof HTMLElement) || resultItems.length !== 6) throw new Error('윷 결과 안내 구조를 찾지 못했습니다.');
       return {
         summaryDisplay: getComputedStyle(summary).display,
-        probabilities: resultItems.map((item) => normalizeGeneratedContent(getComputedStyle(item, '::before').content)),
+        probabilities: resultItems.map((item) => getComputedStyle(item, '::before').content.replace(/^["']|["']$/g, '')),
       };
     });
     expect(resultPresentation.summaryDisplay, '등급별 확률 요약은 윷 결과에서 노출하지 않아야 합니다.').toBe('none');
