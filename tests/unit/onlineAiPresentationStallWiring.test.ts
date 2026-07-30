@@ -7,6 +7,8 @@ const rollStageSource = readFileSync('src/app/containers/RollStage.tsx', 'utf8')
 const roomServiceSource = readFileSync('src/features/room/services/roomService.ts', 'utf8');
 const presentationLockSource = readFileSync('src/shared/gamePresentationLock.ts', 'utf8');
 const rollCompletionSource = readFileSync('src/app/flows/rollPresentationCompletion.ts', 'utf8');
+const desktopRaceSpecSource = readFileSync('tests/game-flow/online-ai-presentation-stall.spec.js', 'utf8');
+const galaxyRaceSpecSource = readFileSync('tests/mobile/online-ai-presentation-stall.spec.js', 'utf8');
 
 test('presentation wait는 authoritative commit timeout 내부에서 실행된다', () => {
   const settleStart = roomServiceSource.indexOf('return settleAuthoritativeCommit({');
@@ -70,6 +72,14 @@ test('AI scheduler는 작업 키가 해제된 최신 snapshot에서 다음 AI �
   assert.ok(effectEnd > run);
   assert.match(appSource.slice(effectEnd, effectEnd + 900), /turnIndex/);
   assert.match(appSource.slice(effectEnd, effectEnd + 900), /rollStack/);
+});
+
+test('Desktop과 Galaxy 경합 spec은 nullable recovery 대신 단일 winning move를 검증한다', () => {
+  for (const source of [desktopRaceSpecSource, galaxyRaceSpecSource]) {
+    assert.match(source, /result\.winningMoveSequence\.actorId/);
+    assert.match(source, /result\.nextAiRollSequence\.actorId/);
+    assert.doesNotMatch(source, /recoverySequence\.actorId/);
+  }
 });
 
 test('remote move replay는 좌표 애니메이션 뒤 authoritative snapshot 전체를 다시 적용한다', () => {
