@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import {
   chooseAiRollTimingZone,
   getFallChanceForTimingZone,
+  getRollFallCountForTimingZone,
+  getRollFallCountRange,
   getRollTimingPositionPercent,
   getRollTimingZone,
   getYutResultProbabilitiesForTiming,
+  normalizeRollFallCount,
   normalizeRollTimingZone,
   rollYutResultWithTiming,
   type RollTimingGrade,
@@ -41,9 +44,44 @@ test('타이밍 등급별 낙 확률은 Perfect 0%, Nice 5%, Good 20%, Bad 70%�
   assert.equal(getFallChanceForTimingZone('bad'), 0.7);
 });
 
-test('레거시 Normal은 새 등급을 추가하지 않고 Bad 70%로 처리한다', () => {
+test('Nice 낙은 항상 1개이고 Good·Bad 낙은 등급별 경계 개수를 사용한다', () => {
+  assert.deepEqual(getRollFallCountRange('nice'), [1, 1]);
+  assert.equal(getRollFallCountForTimingZone('nice', () => 0), 1);
+  assert.equal(getRollFallCountForTimingZone('nice', () => 0.999999), 1);
+
+  assert.deepEqual(getRollFallCountRange('good'), [1, 2]);
+  assert.equal(getRollFallCountForTimingZone('good', () => 0), 1);
+  assert.equal(getRollFallCountForTimingZone('good', () => 0.249999), 1);
+  assert.equal(getRollFallCountForTimingZone('good', () => 0.25), 2);
+  assert.equal(getRollFallCountForTimingZone('good', () => 0.999999), 2);
+
+  assert.deepEqual(getRollFallCountRange('bad'), [2, 4]);
+  assert.equal(getRollFallCountForTimingZone('bad', () => 0), 2);
+  assert.equal(getRollFallCountForTimingZone('bad', () => 0.499999), 2);
+  assert.equal(getRollFallCountForTimingZone('bad', () => 0.5), 3);
+  assert.equal(getRollFallCountForTimingZone('bad', () => 0.75), 4);
+  assert.equal(getRollFallCountForTimingZone('bad', () => 0.999999), 4);
+});
+
+test('허용 범위를 벗어나거나 비정상적인 낙 개수는 게임을 중단하지 않고 등급 범위로 정규화한다', () => {
+  assert.equal(normalizeRollFallCount('nice', -3), 1);
+  assert.equal(normalizeRollFallCount('nice', 9), 1);
+  assert.equal(normalizeRollFallCount('good', -3), 1);
+  assert.equal(normalizeRollFallCount('good', 9), 2);
+  assert.equal(normalizeRollFallCount('bad', -3), 2);
+  assert.equal(normalizeRollFallCount('bad', 9), 4);
+  assert.equal(normalizeRollFallCount('bad', Number.NaN), 2);
+  assert.equal(normalizeRollFallCount('bad', '3.9'), 3);
+});
+
+test('레거시 Normal은 새 등급을 추가하지 않고 Bad 확률과 기존 1~4개 낙 계약을 유지한다', () => {
   assert.equal(normalizeRollTimingZone('normal'), 'bad');
   assert.equal(getFallChanceForTimingZone('normal'), 0.7);
+  assert.deepEqual(getRollFallCountRange('normal'), [1, 4]);
+  assert.equal(getRollFallCountForTimingZone('normal', () => 0), 1);
+  assert.equal(getRollFallCountForTimingZone('normal', () => 0.999999), 4);
+  assert.equal(normalizeRollFallCount('normal', 0), 1);
+  assert.equal(normalizeRollFallCount('normal', 8), 4);
   const values = [0.2, 0.8, 0.2, 0.8];
   assert.deepEqual(
     rollYutResultWithTiming('normal', sequenceRandom(...values)),
