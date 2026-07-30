@@ -68,8 +68,8 @@ export function createGamePresentationLock(): GamePresentationLock {
         };
         const onIdle = () => finish('idle');
         idleWaiters.add(onIdle);
-        if (Number.isFinite(timeoutMs)) {
-          timer = setTimeout(() => finish('timeout'), Math.max(0, Number(timeoutMs)));
+        if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs)) {
+          timer = setTimeout(() => finish('timeout'), Math.max(0, timeoutMs));
         }
       });
     },
