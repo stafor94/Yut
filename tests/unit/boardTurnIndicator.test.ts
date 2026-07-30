@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isValidElement, type ReactNode } from 'react';
+import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { getBoardTurnIndicatorText } from '../../src/app/flows/boardTurnIndicator.js';
 
 const makeSeat = (id: string, label: string, name: string, team: '청팀' | '홍팀') => ({ id, label, name, team });
@@ -12,9 +12,11 @@ const fourthSeat = makeSeat('fourth', 'P4', '차분한 토끼', '청팀');
 const seats = [firstSeat, secondSeat, thirdSeat, fourthSeat];
 const getPlayerCardName = (seat: ReturnType<typeof makeSeat>) => seat.name;
 
+type WinnerElementProps = { className: string; children: ReactNode };
+
 const getWinnerElementProps = (value: ReactNode) => {
-  assert.ok(isValidElement<{ className: string; children: ReactNode }>(value));
-  return value.props;
+  assert.ok(isValidElement<WinnerElementProps>(value));
+  return (value as ReactElement<WinnerElementProps>).props;
 };
 
 test('the active player nickname is shown without a turn suffix', () => {
