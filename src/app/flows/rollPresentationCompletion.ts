@@ -28,6 +28,7 @@ export function createRollPresentationCompletion({
 }: RollPresentationCompletionOptions = {}): RollPresentationCompletion {
   let settled = false;
   let cancelled = false;
+  let watchdogSettled = false;
   let resolveSettled!: (source: RollPresentationSettleSource) => void;
   let resolveCancelled!: () => void;
   const settledPromise = new Promise<RollPresentationSettleSource>((resolve) => {
@@ -61,11 +62,13 @@ export function createRollPresentationCompletion({
       cancelledPromise.then(() => 'cancelled' as const),
     ]);
     if (watchdogTimer !== null) clearTimeout(watchdogTimer);
+    if (result === 'watchdog') watchdogSettled = true;
     return result;
   };
 
   const waitForResultHold = async (): Promise<RollPresentationResultHoldResult> => {
     if (cancelled) return 'cancelled';
+    if (watchdogSettled) return 'held';
     return Promise.race<RollPresentationResultHoldResult>([
       waitForHold(Math.max(0, resultHoldMs)).then(() => 'held' as const),
       cancelledPromise.then(() => 'cancelled' as const),
