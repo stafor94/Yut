@@ -15,7 +15,7 @@ import {
 } from './ui.js';
 
 const GAE = Object.freeze({ name: '개', steps: 2 });
-const FIXTURE_DEADLINE_OFFSET_MS = 450;
+const FIXTURE_DEADLINE_OFFSET_MS = 1500;
 
 const normalizePieces = (pieces) => (Array.isArray(pieces) ? pieces : [])
   .map((piece) => ({ id: String(piece?.id ?? ''), nodeId: String(piece?.nodeId ?? '') }))
@@ -84,6 +84,9 @@ export async function prepareOnlineAiPresentationStallFixture({ page, context, t
   if (aiSeatIds.length !== 2 || !humanSeatId) throw new Error('AI 2명과 human 좌석을 찾지 못했습니다.');
   const [firstAiSeatId, secondAiSeatId] = aiSeatIds;
   const turnOrderIds = [firstAiSeatId, secondAiSeatId, humanSeatId];
+  await page.evaluate(() => {
+    Math.random = () => 0.3;
+  });
   const deadlineAt = Date.now() + FIXTURE_DEADLINE_OFFSET_MS;
   const patchedPieces = (readyState.pieces ?? []).map((piece) => ({
     ...piece,
