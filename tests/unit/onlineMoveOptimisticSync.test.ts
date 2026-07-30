@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../../src/app/hooks/localOptimisticSnapshotPolicy.js';
-import { PendingRemoteActionMetaStore, type PendingRemoteActionMeta } from '../../src/app/hooks/usePendingRemoteActions.js';
+import { PendingRemoteActionMetaStore, type PendingRemoteActionMetaLike } from '../../src/app/hooks/pendingRemoteActionMetaStore.js';
 
-const makeMoveMeta = (optimisticApplied: boolean, actorId = 'red-seat'): PendingRemoteActionMeta => ({
+type TestPendingRemoteActionMeta = PendingRemoteActionMetaLike & {
+  type: 'move_piece';
+  actorId: string;
+  createdAt: number;
+  createdSequence: number;
+  createdTurnIndex: number;
+};
+
+const makeMoveMeta = (optimisticApplied: boolean, actorId = 'red-seat'): TestPendingRemoteActionMeta => ({
   type: 'move_piece',
   actorId,
   createdAt: 1,
@@ -13,7 +21,7 @@ const makeMoveMeta = (optimisticApplied: boolean, actorId = 'red-seat'): Pending
 });
 
 test('서버 확인은 pending 잠금만 해제하고 optimistic 재생 차단 이력은 유지한다', () => {
-  const store = new PendingRemoteActionMetaStore();
+  const store = new PendingRemoteActionMetaStore<TestPendingRemoteActionMeta>();
   const firstMutationId = 'move_piece:red-seat:12:4:red-piece-1';
   const nextMutationId = 'move_piece:red-seat:13:4:red-piece-1';
 
@@ -38,7 +46,7 @@ test('서버 확인은 pending 잠금만 해제하고 optimistic 재생 차단 �
 
 test('로컬 묶음 이동 뒤 오래된 snapshot과 같은 mutation sequence가 와도 원위치 복귀나 재생이 없다', () => {
   const mutationId = 'move_piece:red-seat:12:4:red-piece-1';
-  const store = new PendingRemoteActionMetaStore();
+  const store = new PendingRemoteActionMetaStore<TestPendingRemoteActionMeta>();
   store.set(mutationId, makeMoveMeta(true));
 
   let localPieces = { 'red-piece-1': 'n01', 'red-piece-2': 'n01' };
@@ -88,7 +96,7 @@ test('새 sequence는 pending 이동 중에도 처리하고 상대·대리 AI �
     remoteSequence: 13,
   }), false, '새 authoritative sequence는 로컬 pending 이동과 별개로 누락하면 안 된다.');
 
-  const store = new PendingRemoteActionMetaStore();
+  const store = new PendingRemoteActionMetaStore<TestPendingRemoteActionMeta>();
   const remoteMutationId = 'move_piece:blue-seat:12:4:blue-piece-1';
   const aiMutationId = 'move_piece_ai:blue-seat:12:4:blue-piece-1';
   let remoteReplayCount = 0;
@@ -105,7 +113,7 @@ test('새 sequence는 pending 이동 중에도 처리하고 상대·대리 AI �
 });
 
 test('확인된 optimistic mutation 이력은 제한된 크기로 정리된다', () => {
-  const store = new PendingRemoteActionMetaStore();
+  const store = new PendingRemoteActionMetaStore<TestPendingRemoteActionMeta>();
   for (let index = 0; index < 161; index += 1) {
     const mutationId = `move_piece:red-seat:${index}:4:red-piece-1`;
     store.set(mutationId, makeMoveMeta(true));

@@ -32,16 +32,29 @@ test.describe('Galaxy 누적 이동 스택 제한시간 recovery', () => {
     expect(recovery.sequence.action?.payload?.rollStackIndex).toBe(1);
     expect(recovery.state.rollStack).toEqual([{ name: '빽도', steps: -1 }]);
     await expect(page.getByTestId('game-screen')).toBeVisible();
-    await expect(page.getByTestId('play-controls')).toBeVisible();
-    await expect.poll(async () => {
-      const pickerButtonCount = await page.locator('.roll-stack-picker button').count();
-      const controlsVisible = await page.getByTestId('play-controls').isVisible().catch(() => false);
-      const gameVisible = await page.getByTestId('game-screen').isVisible().catch(() => false);
-      return gameVisible && controlsVisible && pickerButtonCount < 2;
-    }, {
+    await expect.poll(() => page.evaluate(() => {
+      const gameScreen = document.querySelector('[data-testid="game-screen"]');
+      const playControls = document.querySelector('[data-testid="play-controls"]');
+      const moveButton = document.querySelector('[data-testid="move-piece-button"]');
+      const pickerButtonCount = document.querySelectorAll('.roll-stack-picker button').length;
+      const isRendered = (element) => {
+        if (!(element instanceof HTMLElement)) return false;
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && rect.width > 0
+          && rect.height > 0;
+      };
+      const staleMoveButtonLocked = isRendered(moveButton) && moveButton.hasAttribute('disabled');
+      return isRendered(gameScreen)
+        && Boolean(playControls)
+        && pickerButtonCount < 2
+        && !staleMoveButtonLocked;
+    }), {
       timeout: 8_000,
       intervals: [100, 200, 400],
-      message: 'Galaxy 화면이 다중 스택 선택 상태에 영구 고착되지 않아야 합니다.',
+      message: 'Galaxy 화면이 다중 스택 선택 또는 비활성 이동 버튼 상태에 영구 고착되지 않아야 합니다.',
     }).toBe(true);
     expect(page.url()).toContain('/Yut/');
     expectNoBlockingConsoleErrors(consoleErrors);

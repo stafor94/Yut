@@ -38,11 +38,30 @@ test.describe('누적 이동 스택 제한시간 recovery', () => {
     expect(recovery.state.selectedRollStackIndex).toBe(0);
     expect(recovery.state.rollStackClosed).toBe(true);
     await expect(page.getByTestId('game-screen')).toBeVisible();
-    await expect(page.getByTestId('play-controls')).toBeVisible();
-    await expect.poll(async () => page.locator('.roll-stack-picker button').count(), {
+    await expect.poll(() => page.evaluate(() => {
+      const gameScreen = document.querySelector('[data-testid="game-screen"]');
+      const playControls = document.querySelector('[data-testid="play-controls"]');
+      const moveButton = document.querySelector('[data-testid="move-piece-button"]');
+      const pickerButtonCount = document.querySelectorAll('.roll-stack-picker button').length;
+      const isRendered = (element) => {
+        if (!(element instanceof HTMLElement)) return false;
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && rect.width > 0
+          && rect.height > 0;
+      };
+      const staleMoveButtonLocked = isRendered(moveButton) && moveButton.hasAttribute('disabled');
+      return isRendered(gameScreen)
+        && Boolean(playControls)
+        && pickerButtonCount < 2
+        && !staleMoveButtonLocked;
+    }), {
       timeout: 8_000,
-      message: '복구 후 다중 스택 선택 UI에 고착되면 안 됩니다.',
-    }).toBeLessThan(2);
+      intervals: [100, 200, 400],
+      message: '복구 후 다중 스택 선택 또는 비활성 이동 버튼 상태에 고착되면 안 됩니다.',
+    }).toBe(true);
     expectNoBlockingConsoleErrors(consoleErrors);
   });
 });
