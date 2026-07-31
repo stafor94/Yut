@@ -135,9 +135,9 @@ export function GameBoardSection({
   useLayoutEffect(() => {
     const incomingPieces = clonePieces(pieces);
     pendingSettlementPiecesRef.current = incomingPieces;
+    const settlementRevision = settlementRevisionGateRef.current.issue();
 
     if (movingPieceId) {
-      settlementRevisionGateRef.current.invalidate();
       moveFinalizationScheduledRef.current = false;
       let session = moveSessionRef.current;
       if (!session || session.pieceId !== movingPieceId) {
@@ -164,16 +164,11 @@ export function GameBoardSection({
 
     const activeSession = moveSessionRef.current;
     if (activeSession) {
-      if (moveFinalizationScheduledRef.current) return;
       moveFinalizationScheduledRef.current = true;
-      const settlementRevision = settlementRevisionGateRef.current.issue();
       queueMicrotask(() => {
         if (!mountedRef.current
           || moveSessionRef.current !== activeSession
-          || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) {
-          if (moveSessionRef.current === activeSession) moveFinalizationScheduledRef.current = false;
-          return;
-        }
+          || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
         const settlementPieces = clonePieces(pendingSettlementPiecesRef.current);
         const finalization = getMovePresentationFinalization(activeSession, settlementPieces, getPieceSideKey);
         let queuedEffect = pendingCaptureEffectRef.current;
@@ -206,7 +201,6 @@ export function GameBoardSection({
       return;
     }
 
-    const settlementRevision = settlementRevisionGateRef.current.issue();
     const frameKey = getMovePresentationFrameKey(incomingPieces);
     if (!gameAnimationQueue.isBusy()) {
       setPresentedPieces(incomingPieces);
