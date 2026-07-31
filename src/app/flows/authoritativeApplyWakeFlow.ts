@@ -26,6 +26,23 @@ const getAppliedOrLatestValue = (appliedSnapshot: SnapshotRecord, latestRecord: 
   Object.prototype.hasOwnProperty.call(appliedSnapshot, key) ? appliedSnapshot[key] : latestRecord[key]
 );
 
+export const shouldApplyAuthoritativeWake = ({
+  roomMatches,
+  appliedSequence,
+  lastAppliedSequence,
+  deferred,
+}: {
+  roomMatches: boolean;
+  appliedSequence: number;
+  lastAppliedSequence: number;
+  deferred: boolean;
+}) => Boolean(
+  roomMatches
+  && appliedSequence > 0
+  && appliedSequence > lastAppliedSequence
+  && !deferred
+);
+
 export function buildAuthoritativeApplyWakeSnapshot<TSnapshot extends object>(
   appliedValue: unknown,
   latestSnapshot: TSnapshot | null,

@@ -14,7 +14,7 @@ import type { SequenceStateSnapshot } from '../appState';
 import { shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../hooks/localOptimisticSnapshotPolicy';
-import { buildAuthoritativeApplyWakeSnapshot } from '../flows/authoritativeApplyWakeFlow';
+import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
 
@@ -118,9 +118,16 @@ export function useAuthoritativeGameSyncController(params: Params) {
     clearAuthoritativeApplyWake();
     authoritativeApplyWakeTimerRef.current = window.setTimeout(() => {
       authoritativeApplyWakeTimerRef.current = null;
-      if (params.activeRoomIdRef.current !== roomId || appliedSequence < params.lastAppliedSequenceRef.current) return;
       const wakeSnapshot = buildAuthoritativeApplyWakeSnapshot(aliasedAppliedValue, latestSyncedStateRef.current);
       if (!wakeSnapshot) return;
+      const wakeSequence = Number(wakeSnapshot.lastSequence ?? appliedSequence);
+      const deferred = shouldDeferSyncedStateSnapshotRef.current(wakeSnapshot);
+      if (!shouldApplyAuthoritativeWake({
+        roomMatches: params.activeRoomIdRef.current === roomId,
+        appliedSequence: wakeSequence,
+        lastAppliedSequence: params.lastAppliedSequenceRef.current,
+        deferred,
+      })) return;
       latestSyncedStateRef.current = wakeSnapshot;
       applySyncedStateSnapshotRef.current(wakeSnapshot, {
         allowMoveAnimation: false,

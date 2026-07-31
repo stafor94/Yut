@@ -4,6 +4,10 @@ import {
   reduceAuthoritativeGameAction as reduceCoreAuthoritativeGameAction,
 } from './roomAuthoritativeReducerCore';
 import {
+  ONLINE_ROLL_FAST_PRESENTATION_MS,
+  getAuthoritativeRollPresentationReadyAt,
+} from './rollPresentationTiming';
+import {
   TURN_ACTION_TIMEOUT_MS,
   TURN_ITEM_PROMPT_TIMEOUT_MS,
   TURN_NETWORK_GRACE_MS,
@@ -41,7 +45,7 @@ type AuthoritativeLogShape = {
   text?: unknown;
 };
 
-export const FALL_PRESENTATION_GATE_MS = 3600;
+export const FALL_PRESENTATION_GATE_MS = ONLINE_ROLL_FAST_PRESENTATION_MS;
 
 const getPendingFallEffect = (value: unknown) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -176,6 +180,39 @@ const rejectExpiredManualTurnAction = (args: AuthoritativeArgs): AuthoritativeRe
   return { status: 'rejected', reason: guard.reason };
 };
 
+const applyRollPresentationTiming = (
+  args: AuthoritativeArgs,
+  reduction: AuthoritativeReduction,
+): AuthoritativeReduction => {
+  if (!isAuthoritativeCommitReduction(reduction)
+    || args[1].type !== 'roll_yut'
+    || args[1].payload?.completeFallPresentation === true) return reduction;
+
+  const resolvedAt = Date.now();
+  const authoritativeReadyAt = getAuthoritativeRollPresentationReadyAt({
+    actionStartedAt: args[1].payload?.clientActionStartedAt,
+    resolvedAt,
+  });
+  const coreReadyAt = Number(reduction.patch.rollResultReadyAt ?? 0);
+  const readyAt = Math.max(authoritativeReadyAt, Number.isFinite(coreReadyAt) ? coreReadyAt : 0);
+  const deadlineAt = Number(reduction.patch.turnDeadlineAt ?? 0);
+
+  return {
+    ...reduction,
+    patch: {
+      ...reduction.patch,
+      rollResultReadyAt: readyAt,
+      ...(Number.isFinite(deadlineAt) && deadlineAt > 0
+        ? { turnDeadlineAt: readyAt + TURN_ACTION_TIMEOUT_MS }
+        : {}),
+    },
+    payload: {
+      ...reduction.payload,
+      rollPresentationReadyAt: readyAt,
+    },
+  };
+};
+
 const applyFallPresentationGate = (
   args: AuthoritativeArgs,
   reduction: AuthoritativeReduction,
@@ -195,7 +232,11 @@ const applyFallPresentationGate = (
     : sourceLogs.map((log, index) => index === 0 && typeof log?.text === 'string' && log.text.includes('낙')
       ? { ...log, text: `${actorLogName}님이 낙이 나와 차례를 넘깁니다.` }
       : log);
-  const readyAt = Date.now() + FALL_PRESENTATION_GATE_MS;
+  const presentationReadyAt = Number(reduction.patch.rollResultReadyAt ?? 0);
+  const readyAt = Math.max(
+    Number.isFinite(presentationReadyAt) ? presentationReadyAt : 0,
+    Date.now() + FALL_PRESENTATION_GATE_MS,
+  );
   const fallEffect = getPendingFallEffect(reduction.patch.fallEffect);
 
   return {
@@ -512,6 +553,7 @@ export function reduceAuthoritativeGameAction(
   reduction = retryRollAfterResolvedBeforeRollPrompt(args, reduction);
   reduction = resolveAiPendingItemPickup(args, reduction);
   reduction = finalizeIndividualWinner(args, reduction);
+  reduction = applyRollPresentationTiming(args, reduction);
   reduction = applyFallPresentationGate(args, reduction);
 
   const [state, action, room] = args;

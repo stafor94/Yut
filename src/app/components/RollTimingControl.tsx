@@ -1,4 +1,5 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { markNextClientActionStartedAt } from '../../features/room/services/turnActionStartedAtPolicy';
 import {
   getRollTimingMotionState,
   rollTimingOpportunitySnapshotCache,
@@ -207,6 +208,7 @@ export function RollTimingControl({
     cancelFrameLoop();
     applyRenderedSnapshot(snapshot);
     holdTimingResult(snapshot);
+    if (!timedOut) markNextClientActionStartedAt({ actionType: 'roll_yut', startedAt: Date.now() });
     onRoll(snapshot.positionPercent, timedOut ? { timedOut: true } : undefined);
     return 'submitted';
   };

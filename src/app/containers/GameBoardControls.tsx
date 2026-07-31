@@ -31,6 +31,7 @@ import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { RollTimingControl } from '../components/RollTimingControl';
 import { createDeadlineTimerAnimationCache } from '../flows/deadlineTimerAnimation';
 import { getRollControlPresentation, shouldAutoScrollGameControls } from '../flows/rollControlPresentation';
+import { isTurnActionPresentationPending } from '../flows/turnActionPresentationPolicy';
 import { shouldPlayLocalTurnSound } from '../flows/turnSound';
 import { scheduleTurnTransitionBoundary } from '../flows/turnTransitionClock';
 
@@ -226,11 +227,18 @@ export function GameBoardControls({
   const itemPromptDeadlineKey = `${itemPromptTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
   const turnActionDeadlineActive = authoritativeTurnDeadline.kind === turnActionPhase && authoritativeTurnDeadline.at > 0;
   const itemPromptDeadlineActive = authoritativeTurnDeadline.kind === 'item_prompt' && authoritativeTurnDeadline.at > 0;
+  const turnActionPresentationPending = isTurnActionPresentationPending({
+    phase: turnActionPhase,
+    hasRoll: Boolean(roll),
+    canSubmitTurnAction,
+    rollResultHolding,
+  });
   const turnActionTimerVisible = actionReady
     && Boolean(actionableTurnKey)
     && !autoPlayActive
     && !isOpponentTurn
     && activeItemPromptTypes.length === 0
+    && !turnActionPresentationPending
     && turnActionDeadlineActive;
   const itemPromptTimerVisible = actionReady
     && !autoPlayActive
@@ -463,6 +471,7 @@ export function GameBoardControls({
   const showRollTimingControl = actionReady
     && Boolean(actionableTurnKey)
     && !turnActionTimedOut
+    && !turnActionPresentationPending
     && !roll
     && !showRollStackPicker
     && turnActionDeadlineActive;
