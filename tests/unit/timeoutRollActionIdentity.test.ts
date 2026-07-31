@@ -9,6 +9,7 @@ import {
   aliasTimeoutRollMutationIds,
   canonicalizeTimeoutRollAction,
   clearTimeoutRollMutationAliases,
+  hasPendingTimeoutRollCandidate,
   registerPendingTimeoutRollCandidate,
   removePendingTimeoutRollCandidate,
 } from '../../src/features/room/services/timeoutRollActionIdentity';
@@ -88,19 +89,21 @@ test('UI와 coordinator action은 같은 canonical key와 gameplay payload로 �
       }),
     },
   });
+  const uiPayload = uiAction.payload as Record<string, unknown>;
+  const coordinatorPayload = coordinatorAction.payload as Record<string, unknown>;
 
-  assert.equal(uiAction.payload?.clientActionId, coordinatorAction.payload?.clientActionId);
-  assert.deepEqual(uiAction.payload?.clientRollResult, coordinatorAction.payload?.clientRollResult);
-  assert.equal(uiAction.payload?.clientFallOccurred, coordinatorAction.payload?.clientFallOccurred);
-  assert.equal(uiAction.payload?.clientFallCount, coordinatorAction.payload?.clientFallCount);
-  assert.equal(uiAction.payload?.timingPositionPercent, coordinatorAction.payload?.timingPositionPercent);
-  assert.equal(uiAction.payload?.rollTimingZone, coordinatorAction.payload?.rollTimingZone);
-  assert.equal(uiAction.payload?.timeoutDeadlineAt, undefined, 'UI request는 deadline 즉시 제출되므로 recovery grace 검증 필드를 제거한다.');
-  assert.equal(coordinatorAction.payload?.timeoutDeadlineAt, deadlineAt);
+  assert.equal(uiPayload.clientActionId, coordinatorPayload.clientActionId);
+  assert.deepEqual(uiPayload.clientRollResult, coordinatorPayload.clientRollResult);
+  assert.equal(uiPayload.clientFallOccurred, coordinatorPayload.clientFallOccurred);
+  assert.equal(uiPayload.clientFallCount, coordinatorPayload.clientFallCount);
+  assert.equal(uiPayload.timingPositionPercent, coordinatorPayload.timingPositionPercent);
+  assert.equal(uiPayload.rollTimingZone, coordinatorPayload.rollTimingZone);
+  assert.equal(uiPayload.timeoutDeadlineAt, undefined, 'UI request는 deadline 즉시 제출되므로 recovery grace 검증 필드를 제거한다.');
+  assert.equal(coordinatorPayload.timeoutDeadlineAt, deadlineAt);
 
   const echoed = aliasTimeoutRollMutationIds('room-1', {
-    clientMutationId: coordinatorAction.payload?.clientActionId,
-    stateAfter: { lastClientMutationId: coordinatorAction.payload?.clientActionId },
+    clientMutationId: coordinatorPayload.clientActionId,
+    stateAfter: { lastClientMutationId: coordinatorPayload.clientActionId },
   });
   assert.equal(echoed.clientMutationId, 'roll_yut:seat-1:local-random-key');
   assert.equal(echoed.stateAfter.lastClientMutationId, 'roll_yut:seat-1:local-random-key');
@@ -113,6 +116,8 @@ test('UI 제출 전 coordinator snapshot이 먼저 와도 pending timeout animat
     registerPendingTimeoutRollCandidate('room-race', localKey, 'seat-race')
   ));
   assert.equal(registered, true);
+  assert.equal(hasPendingTimeoutRollCandidate('room-race', 'seat-race'), true);
+  assert.equal(hasPendingTimeoutRollCandidate('room-race', 'seat-other'), false);
   const canonicalKey = makeTimeoutActionKey({
     roomId: 'room-race',
     stage: 'roll',
@@ -121,6 +126,7 @@ test('UI 제출 전 coordinator snapshot이 먼저 와도 pending timeout animat
   });
   assert.equal(aliasTimeoutRollMutationIds('room-race', { clientMutationId: canonicalKey }).clientMutationId, localKey);
   removePendingTimeoutRollCandidate('room-race', localKey);
+  assert.equal(hasPendingTimeoutRollCandidate('room-race', 'seat-race'), false);
   clearTimeoutRollMutationAliases('room-race');
 });
 
@@ -128,6 +134,7 @@ test('일반 수동 던지기 pending key는 timeout snapshot alias 후보로 �
   clearTimeoutRollMutationAliases('room-manual');
   const localKey = 'roll_yut:seat-manual:pending-manual-key';
   assert.equal(registerPendingTimeoutRollCandidate('room-manual', localKey, 'seat-manual'), false);
+  assert.equal(hasPendingTimeoutRollCandidate('room-manual', 'seat-manual'), false);
   const canonicalKey = makeTimeoutActionKey({
     roomId: 'room-manual',
     stage: 'roll',
