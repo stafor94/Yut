@@ -10,10 +10,20 @@ type TimeoutRollClientFallbackListener = {
   onSettled?: (candidate: TimeoutRollClientFallbackCandidate) => void;
 };
 
+const ACTIVE_ROOM_STORAGE_KEY = 'yut-online:activeRoomId';
 let activeRoomId = '';
 let activeTimeoutDeadlineAt = 0;
 const candidatesByActionKey = new Map<string, TimeoutRollClientFallbackCandidate>();
 const listeners = new Set<TimeoutRollClientFallbackListener>();
+
+const getActiveRoomId = () => {
+  if (activeRoomId) return activeRoomId;
+  try {
+    return globalThis.window?.localStorage?.getItem(ACTIVE_ROOM_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
 
 export function setTimeoutRollClientRoomId(roomId: string) {
   activeRoomId = roomId;
@@ -33,9 +43,10 @@ export function registerTimeoutRollClientFallback(
   localClientMutationId: string,
   actorId: string,
 ): TimeoutRollClientFallbackCandidate | null {
-  if (!activeRoomId || !localClientMutationId || !actorId || activeTimeoutDeadlineAt <= 0) return null;
+  const roomId = getActiveRoomId();
+  if (!roomId || !localClientMutationId || !actorId || activeTimeoutDeadlineAt <= 0) return null;
   const candidate = Object.freeze({
-    roomId: activeRoomId,
+    roomId,
     localClientMutationId,
     actorId,
     timeoutDeadlineAt: activeTimeoutDeadlineAt,
