@@ -3,12 +3,12 @@ import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/item
 import {
   TURN_END_HOLD_MS,
   TURN_ITEM_PROMPT_TIMEOUT_MS,
-  TURN_NETWORK_GRACE_MS,
   TURN_START_DELAY_MS,
   getTurnActionTimeoutMsForCount,
   incrementTurnActionTimeoutCount,
   normalizeTurnActionTimeoutCount,
 } from '../../features/room/services/roomTiming';
+import { runWithRollTimeoutRandom } from '../../features/room/services/timeoutResolvers';
 import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
 import {
   getTurnActionDeadlineDelayMs,
@@ -135,7 +135,6 @@ export function GameBoardControls({
   const autoTurnActionKeyRef = useRef('');
   const autoItemPromptKeyRef = useRef('');
   const timedOutRollCommitKeyRef = useRef('');
-  const timedOutRollCommitTimerRef = useRef<number | null>(null);
   const onRollYutRef = useRef(onRollYut);
   const onMoveSelectedPieceRef = useRef(onMoveSelectedPiece);
   const onMoveRollStackIndexRef = useRef(onMoveRollStackIndex);
@@ -345,16 +344,6 @@ export function GameBoardControls({
   useEffect(() => {
     setTurnActionTimedOut(false);
     timedOutRollCommitKeyRef.current = '';
-    if (timedOutRollCommitTimerRef.current !== null) {
-      window.clearTimeout(timedOutRollCommitTimerRef.current);
-      timedOutRollCommitTimerRef.current = null;
-    }
-    return () => {
-      if (timedOutRollCommitTimerRef.current !== null) {
-        window.clearTimeout(timedOutRollCommitTimerRef.current);
-        timedOutRollCommitTimerRef.current = null;
-      }
-    };
   }, [turnActionDeadlineKey]);
 
   useEffect(() => {
@@ -436,10 +425,9 @@ export function GameBoardControls({
       if (timedOutRollCommitKeyRef.current === turnActionDeadlineKey) return;
       timedOutRollCommitKeyRef.current = turnActionDeadlineKey;
       markTurnActionTimedOut();
-      timedOutRollCommitTimerRef.current = window.setTimeout(() => {
-        timedOutRollCommitTimerRef.current = null;
+      runWithRollTimeoutRandom(authoritativeTurnDeadline.at, () => {
         onRollYutRef.current({ timedOut: true, timingPositionPercent });
-      }, TURN_NETWORK_GRACE_MS);
+      });
       return;
     }
     runTurnAction(() => {
