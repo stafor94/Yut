@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { commitAuthoritativeGameAction, withGameSequenceReplayCache, type GameAction } from '../../features/room/services/roomService';
+import { getTurnRecoveryDeadlineAt } from '../../features/room/services/roomTiming';
 import { attachClientActionStartedAt } from '../../features/room/services/turnActionStartedAtPolicy';
 import {
   aliasTimeoutRollMutationIds,
@@ -54,6 +55,34 @@ const getClientActionId = (action: CommittableGameAction) => {
   if (!action.payload || typeof action.payload !== 'object') return '';
   const clientActionId = (action.payload as Record<string, unknown>).clientActionId;
   return typeof clientActionId === 'string' ? clientActionId : '';
+};
+
+const getResolvedTimeoutDeadlineAt = (action: CommittableGameAction) => {
+  if (!action.payload || typeof action.payload !== 'object') return 0;
+  const payload = action.payload as Record<string, unknown>;
+  const deadlineAt = Number(payload.resolvedTimeoutDeadlineAt ?? payload.timeoutDeadlineAt ?? 0);
+  return Number.isFinite(deadlineAt) && deadlineAt > 0 ? Math.trunc(deadlineAt) : 0;
+};
+
+const waitUntil = (timestamp: number) => new Promise<void>((resolve) => {
+  window.setTimeout(resolve, Math.max(0, timestamp - Date.now()));
+});
+
+const markTimeoutRollAsRecovery = (action: CommittableGameAction): CommittableGameAction => {
+  const timeoutDeadlineAt = getResolvedTimeoutDeadlineAt(action);
+  if (!timeoutDeadlineAt || !action.payload || typeof action.payload !== 'object') return action;
+  const payload = action.payload as Record<string, unknown>;
+  return {
+    ...action,
+    payload: {
+      ...payload,
+      timeoutDeadlineAt,
+      timeoutRecoveredBy: typeof payload.timeoutRecoveredBy === 'string' && payload.timeoutRecoveredBy
+        ? payload.timeoutRecoveredBy
+        : 'client-timeout-fallback',
+      timeoutSource: payload.timeoutSource ?? 'client-retry-fallback',
+    },
+  };
 };
 
 export function useAuthoritativeGameSyncController(params: Params) {
@@ -152,16 +181,24 @@ export function useAuthoritativeGameSyncController(params: Params) {
 
   const commitCanonicalAction = useCallback(async (roomId: string, action: CommittableGameAction) => {
     const clientActionId = getClientActionId(action);
-    const commitOnce = () => {
+    const timeoutDeadlineAt = getResolvedTimeoutDeadlineAt(action);
+    const recoveryAt = timeoutDeadlineAt ? getTurnRecoveryDeadlineAt(timeoutDeadlineAt) : 0;
+    const commitOnce = (candidateAction: CommittableGameAction) => {
       if (shouldFailQaTimeoutRollCommit(clientActionId)) {
         return Promise.reject(new Error('QA timeout roll commit failure'));
       }
-      return queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, action);
+      return queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, candidateAction);
     };
+    const initialAction = recoveryAt && Date.now() >= recoveryAt ? markTimeoutRollAsRecovery(action) : action;
     try {
-      return await commitOnce();
+      return await commitOnce(initialAction);
     } catch {
-      return commitOnce();
+      try {
+        return await commitOnce(initialAction);
+      } catch {
+        if (recoveryAt) await waitUntil(recoveryAt);
+        return commitOnce(markTimeoutRollAsRecovery(action));
+      }
     }
   }, []);
 
@@ -208,11 +245,12 @@ export function useAuthoritativeGameSyncController(params: Params) {
           await handleResult(aliasedResult);
           return aliasedResult;
         });
-      } catch {
-        console.warn('시간초과 윷 제출 재시도가 실패해 coordinator의 동일 action 복구를 기다립니다.', {
+      } catch (error) {
+        console.warn('시간초과 윷 제출과 동일 payload fallback이 모두 실패했습니다.', {
           roomId,
           clientActionId: getClientActionId(normalizedAction),
         });
+        handleError(error);
       } finally {
         handleFinally();
       }
