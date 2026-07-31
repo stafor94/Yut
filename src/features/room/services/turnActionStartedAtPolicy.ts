@@ -34,7 +34,7 @@ const AI_ACTION_ID_PREFIXES = [
   'item_pickup_ai',
 ];
 
-const DEADLINE_AUTO_ACTION_MARKER_TTL_MS = 1_500;
+const DEADLINE_AUTO_ACTION_MARKER_TTL_MS = 10_000;
 const CLIENT_ACTION_STARTED_AT_MARKER_TTL_MS = 10_000;
 let nextDeadlineAutoAction: DeadlineAutoActionMarker | null = null;
 let nextClientActionStartedAt: ClientActionStartedAtMarker | null = null;
