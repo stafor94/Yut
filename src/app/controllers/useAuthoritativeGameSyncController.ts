@@ -9,6 +9,7 @@ import {
   removePendingTimeoutRollCandidate,
 } from '../../features/room/services/timeoutRollActionIdentity';
 import type { SequenceStateSnapshot } from '../appState';
+import { shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../hooks/localOptimisticSnapshotPolicy';
 import { buildAuthoritativeApplyWakeSnapshot } from '../flows/authoritativeApplyWakeFlow';
@@ -47,6 +48,12 @@ const isTimedOutRollAction = (action: CommittableGameAction) => (
   action.type === 'roll_yut'
   && Boolean(action.payload && typeof action.payload === 'object' && (action.payload as Record<string, unknown>).timedOut === true)
 );
+
+const getClientActionId = (action: CommittableGameAction) => {
+  if (!action.payload || typeof action.payload !== 'object') return '';
+  const clientActionId = (action.payload as Record<string, unknown>).clientActionId;
+  return typeof clientActionId === 'string' ? clientActionId : '';
+};
 
 export function useAuthoritativeGameSyncController(params: Params) {
   const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
@@ -143,11 +150,19 @@ export function useAuthoritativeGameSyncController(params: Params) {
   });
 
   const commitCanonicalAction = useCallback(async (roomId: string, action: CommittableGameAction) => {
-    try {
-      return await queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, action);
-    } catch (firstError) {
-      if (!isTimedOutRollAction(action)) throw firstError;
+    const timedOutRoll = isTimedOutRollAction(action);
+    const clientActionId = getClientActionId(action);
+    const commitOnce = () => {
+      if (timedOutRoll && shouldFailQaTimeoutRollCommit(clientActionId)) {
+        return Promise.reject(new Error('QA timeout roll commit failure'));
+      }
       return queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, action);
+    };
+    try {
+      return await commitOnce();
+    } catch (firstError) {
+      if (!timedOutRoll) throw firstError;
+      return commitOnce();
     }
   }, []);
 
