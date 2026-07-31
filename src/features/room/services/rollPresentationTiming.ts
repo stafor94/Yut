@@ -7,10 +7,6 @@ export const ONLINE_ROLL_FAST_PRESENTATION_MS = ONLINE_ROLL_PRIMARY_MS
   + ONLINE_ROLL_LANDING_MS
   + ONLINE_ROLL_RESULT_HOLD_MS;
 
-export const ONLINE_ROLL_MAX_LATE_RESOLUTION_REMAINDER_MS = ONLINE_ROLL_EXTRA_SPIN_MS
-  + ONLINE_ROLL_LANDING_MS
-  + ONLINE_ROLL_RESULT_HOLD_MS;
-
 const normalizeTimestamp = (value: unknown) => {
   const timestamp = Number(value ?? 0);
   return Number.isFinite(timestamp) && timestamp > 0 ? timestamp : 0;
