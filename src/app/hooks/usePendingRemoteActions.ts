@@ -1,13 +1,18 @@
-import { useRef, useState } from 'react';
-import type { GameAction } from '../../features/room/services/roomService';
+import { useEffect, useRef, useState } from 'react';
+import { commitAuthoritativeGameAction, type GameAction } from '../../features/room/services/roomService';
+import { getTurnRecoveryDeadlineAt } from '../../features/room/services/roomTiming';
 import {
+  canonicalizeTimeoutRollAction,
   registerPendingTimeoutRollCandidate,
   removePendingTimeoutRollCandidate,
 } from '../../features/room/services/timeoutRollActionIdentity';
 import {
   registerTimeoutRollClientFallback,
   settleTimeoutRollClientFallback,
+  type TimeoutRollClientFallbackCandidate,
 } from '../../features/room/services/timeoutRollClientFallback';
+import { makeTimeoutActionKey } from '../../features/room/services/timeoutResolvers';
+import { shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
 
@@ -29,19 +34,59 @@ export function usePendingRemoteActions() {
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
   );
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
+  const timeoutRollFallbackTimersRef = useRef<Map<string, number>>(new Map());
 
   const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(pendingLocalRemoteActionsRef.current.size);
   const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {
     const [type] = actionKey.split(':');
     return (type || 'roll_yut') as GameAction['type'];
   };
+  const clearTimeoutFallbackTimer = (actionKey: string) => {
+    const timer = timeoutRollFallbackTimersRef.current.get(actionKey);
+    if (timer !== undefined && typeof window !== 'undefined') window.clearTimeout(timer);
+    timeoutRollFallbackTimersRef.current.delete(actionKey);
+  };
+  const scheduleTimeoutFallback = (candidate: TimeoutRollClientFallbackCandidate) => {
+    if (typeof window === 'undefined') return;
+    clearTimeoutFallbackTimer(candidate.localClientMutationId);
+    const canonicalActionId = makeTimeoutActionKey({
+      roomId: candidate.roomId,
+      stage: 'roll',
+      actorId: candidate.actorId,
+      timeoutDeadlineAt: candidate.timeoutDeadlineAt,
+    });
+    const fallbackAction = canonicalizeTimeoutRollAction(candidate.roomId, {
+      type: 'roll_yut' as const,
+      actorId: candidate.actorId,
+      payload: {
+        timedOut: true,
+        timeoutDeadlineAt: candidate.timeoutDeadlineAt,
+        timeoutRecoveredBy: candidate.actorId,
+        timeoutSource: 'client-timeout-fallback',
+        clientActionId: canonicalActionId,
+      },
+    });
+    const commitOnce = () => {
+      if (shouldFailQaTimeoutRollCommit(canonicalActionId)) {
+        return Promise.reject(new Error('QA timeout roll commit failure'));
+      }
+      return commitAuthoritativeGameAction(candidate.roomId, fallbackAction);
+    };
+    const timer = window.setTimeout(() => {
+      timeoutRollFallbackTimersRef.current.delete(candidate.localClientMutationId);
+      void commitOnce().catch(() => commitOnce()).catch(() => undefined);
+    }, Math.max(0, getTurnRecoveryDeadlineAt(candidate.timeoutDeadlineAt) - Date.now()));
+    timeoutRollFallbackTimersRef.current.set(candidate.localClientMutationId, timer);
+  };
   const registerTimeoutFallback = (actionKey: string, type: GameAction['type'], actorId?: string) => {
     if (type !== 'roll_yut' || !actorId) return;
     const candidate = registerTimeoutRollClientFallback(actionKey, actorId);
     if (!candidate) return;
     registerPendingTimeoutRollCandidate(candidate.roomId, actionKey, actorId);
+    scheduleTimeoutFallback(candidate);
   };
   const settleTimeoutFallback = (actionKey: string) => {
+    clearTimeoutFallbackTimer(actionKey);
     const candidate = settleTimeoutRollClientFallback(actionKey);
     if (candidate) removePendingTimeoutRollCandidate(candidate.roomId, actionKey);
   };
@@ -77,6 +122,11 @@ export function usePendingRemoteActions() {
     pendingLocalRemoteActionMetaRef.current.clear();
     syncPendingLocalRemoteActionCount();
   };
+
+  useEffect(() => () => {
+    timeoutRollFallbackTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    timeoutRollFallbackTimersRef.current.clear();
+  }, []);
 
   return {
     pendingLocalRemoteActionCount,
