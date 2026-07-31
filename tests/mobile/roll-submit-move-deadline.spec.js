@@ -38,8 +38,8 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
         if (!(target instanceof Element) || !target.closest('[data-testid="roll-yut-button"]')) return;
 
         // Perfect consumes the first value for the weighted result. Other grades consume four
-        // values for the sticks and the fifth for fall. Both paths deterministically resolve to 개 without a fall.
-        const values = [0.3, 0.3, 0.7, 0.7, 0.8];
+        // values for the sticks and the fifth for fall. The first value deterministically resolves to 도.
+        const values = [0.1, 0.3, 0.7, 0.7, 0.8];
         let index = 0;
         Math.random = () => values[Math.min(index++, values.length - 1)];
         queueMicrotask(() => {
