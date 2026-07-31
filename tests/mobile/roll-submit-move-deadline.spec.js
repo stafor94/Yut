@@ -55,14 +55,16 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
 
     const orderingPromise = page.evaluate(() => new Promise((resolve, reject) => {
       const startedAt = performance.now();
+      let sawConsumedRollTimerDisappear = false;
       let enabledAt = 0;
       let timerAt = 0;
       let deadlineAt = 0;
       const sample = () => {
         const moveButton = document.querySelector('[data-testid="move-piece-button"]');
         const timer = document.querySelector('.turn-action-timer');
+        if (!(timer instanceof HTMLElement)) sawConsumedRollTimerDisappear = true;
         if (!enabledAt && moveButton instanceof HTMLButtonElement && !moveButton.disabled) enabledAt = performance.now();
-        if (!timerAt && timer instanceof HTMLElement) {
+        if (!timerAt && sawConsumedRollTimerDisappear && timer instanceof HTMLElement) {
           timerAt = performance.now();
           deadlineAt = Number(timer.dataset.deadlineAt ?? 0);
         }
@@ -71,7 +73,7 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
           return;
         }
         if (performance.now() - startedAt > 30_000) {
-          reject(new Error('move 버튼 활성화와 timer 최초 표시를 관찰하지 못했습니다.'));
+          reject(new Error('소비된 roll timer 제거 후 move 버튼 활성화와 새 timer 최초 표시를 관찰하지 못했습니다.'));
           return;
         }
         requestAnimationFrame(sample);
