@@ -1,44 +1,51 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
+import {
+  isAuthoritativeCommitReduction,
+  reduceAuthoritativeGameAction,
+} from '../../src/features/room/services/roomAuthoritativeReducer';
 
 const room = { playMode: 'individual' as const, pieceCount: 4 as const, stackedRollMode: false };
 const sides = [{ id: 'seat-1', team: '청팀' as const }, { id: 'seat-2', team: '홍팀' as const }];
 
-const makeState = (deadlineAt: number, timeoutCount = 0, autoPlay = false) => ({
-  pieces: [
-    { id: 'seat-1-piece-1', ownerId: 'seat-1', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
-    { id: 'seat-2-piece-1', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
-  ],
-  turnIndex: 0,
-  turnOrderIds: ['seat-1', 'seat-2'],
-  initialTurnOrderIds: ['seat-1', 'seat-2'],
-  completedSeatIds: [],
-  rankingSeatIds: [],
-  roll: null,
-  rollStack: [],
-  rollStackClosed: false,
-  logs: [],
-  winner: '',
-  turnOrderPhase: null,
-  turnOrderIntro: null,
-  pendingTrapPlacement: null,
-  pendingItemPickup: null,
-  pendingGoldenYutSelection: null,
-  itemPromptTiming: null,
-  trapNodes: [],
-  shieldedPieceIds: [],
-  boardItems: [],
-  ownedItems: {},
-  turnDeadlineAt: deadlineAt,
-  turnDeadlineKind: 'roll' as const,
-  turnActionTimeoutCountBySeatId: timeoutCount ? { 'seat-1': timeoutCount } : {},
-  autoPlayBySeatId: autoPlay ? { 'seat-1': true } : {},
-  gameSeats: [
-    { id: 'seat-1', isAI: false, isSubstitutedByAI: false },
-    { id: 'seat-2', isAI: false, isSubstitutedByAI: false },
-  ],
-});
+const makeState = (deadlineAt: number, timeoutCount = 0, autoPlay = false) => {
+  const timeoutCountBySeatId: Record<string, number> = timeoutCount ? { 'seat-1': timeoutCount } : {};
+  const autoPlayBySeatId: Record<string, boolean> = autoPlay ? { 'seat-1': true } : {};
+  return {
+    pieces: [
+      { id: 'seat-1-piece-1', ownerId: 'seat-1', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+      { id: 'seat-2-piece-1', ownerId: 'seat-2', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+    ],
+    turnIndex: 0,
+    turnOrderIds: ['seat-1', 'seat-2'],
+    initialTurnOrderIds: ['seat-1', 'seat-2'],
+    completedSeatIds: [],
+    rankingSeatIds: [],
+    roll: null,
+    rollStack: [],
+    rollStackClosed: false,
+    logs: [],
+    winner: '',
+    turnOrderPhase: null,
+    turnOrderIntro: null,
+    pendingTrapPlacement: null,
+    pendingItemPickup: null,
+    pendingGoldenYutSelection: null,
+    itemPromptTiming: null,
+    trapNodes: [],
+    shieldedPieceIds: [],
+    boardItems: [],
+    ownedItems: {},
+    turnDeadlineAt: deadlineAt,
+    turnDeadlineKind: 'roll' as const,
+    turnActionTimeoutCountBySeatId: timeoutCountBySeatId,
+    autoPlayBySeatId,
+    gameSeats: [
+      { id: 'seat-1', isAI: false, isSubstitutedByAI: false },
+      { id: 'seat-2', isAI: false, isSubstitutedByAI: false },
+    ],
+  };
+};
 
 const makeTimeoutRoll = (deadlineAt: number, id: string) => ({
   type: 'roll_yut' as const,
@@ -65,8 +72,8 @@ test('실제 timeout action 두 번의 authoritative commit에서 count 1→2와
     Date.now = () => 100_100;
     const firstDeadline = 100_000;
     const first = reduceAuthoritativeGameAction(makeState(firstDeadline), makeTimeoutRoll(firstDeadline, 'timeout:first'), room, sides);
-    assert.equal(first.status, 'committed');
-    if (first.status !== 'committed') return;
+    assert.equal(isAuthoritativeCommitReduction(first), true);
+    if (!isAuthoritativeCommitReduction(first)) return;
     const firstCounts = getCounts(first.patch.turnActionTimeoutCountBySeatId);
     const firstAutoPlay = getAutoPlay(first.patch.autoPlayBySeatId);
     assert.equal(firstCounts?.['seat-1'], 1);
@@ -80,8 +87,8 @@ test('실제 timeout action 두 번의 authoritative commit에서 count 1→2와
       autoPlayBySeatId: firstAutoPlay ?? {},
     };
     const second = reduceAuthoritativeGameAction(secondState, makeTimeoutRoll(secondDeadline, 'timeout:second'), room, sides);
-    assert.equal(second.status, 'committed');
-    if (second.status !== 'committed') return;
+    assert.equal(isAuthoritativeCommitReduction(second), true);
+    if (!isAuthoritativeCommitReduction(second)) return;
     assert.equal(getCounts(second.patch.turnActionTimeoutCountBySeatId)?.['seat-1'], 2);
     assert.equal(getAutoPlay(second.patch.autoPlayBySeatId)?.['seat-1'], true);
   } finally {
@@ -122,8 +129,8 @@ test('timeout AI action은 기존 연속 timeout count를 정상 수동 행동�
         coordinatorSeatId: 'seat-2',
       },
     }, room, sides);
-    assert.equal(reduction.status, 'committed');
-    if (reduction.status !== 'committed') return;
+    assert.equal(isAuthoritativeCommitReduction(reduction), true);
+    if (!isAuthoritativeCommitReduction(reduction)) return;
     assert.equal(getCounts(reduction.patch.turnActionTimeoutCountBySeatId)?.['seat-1'], 2);
     assert.equal(getAutoPlay(reduction.patch.autoPlayBySeatId)?.['seat-1'], true);
   } finally {

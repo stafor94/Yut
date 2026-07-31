@@ -6,6 +6,49 @@ The complete history recorded through 2026-07-26 is preserved without modificati
 
 ---
 
+## 2026-07-31 - #1285 병합 후 unit compile 및 Galaxy timeout presentation QA 실패
+
+### Symptom
+
+- 병합 SHA `9836e890...`의 Main Branch QA에서 `Build and unit tests`와 `QA Mobile Galaxy timing`이 실패했다.
+- 신규 timeout autoplay 단위 테스트는 TypeScript compile 단계에서 중단돼 assertion이 한 번도 실행되지 않았다.
+- 3초 지연 roll 제출 QA에서 제출 직후 사라진 기존 timer/live meter가 authoritative 응답 전 다시 표시됐다.
+- 기존 timeout QA 6개는 자동 제출 후 timer가 사라진 새 제품 계약을 실패로 판단했다.
+
+### Confirmed root cause
+
+- `timeout-autoplay-authoritative-flow.test.ts`의 조건부 빈 객체가 optional-property union으로 추론됐고, `status === 'committed'` 검사만으로 optional `patch`가 타입상 좁혀지지 않았다.
+- `turnActionPresentationPolicy`는 pending roll을 `canSubmitTurnAction`과 `rollResultHolding`만으로 추론했다. 지연 제출 중 roll animation 때문에 실제 roll action은 불가능한데 `canSubmitTurnAction`이 다시 true가 되는 경계에서 소비된 timer와 live meter가 재마운트됐다.
+- `roll-timing-timeout-deadline.spec.js`는 이전 계약인 “시간 초과 처리 상태에서도 timer DOM 유지”를 계속 요구했다. #1285의 “유효한 자동 제출 즉시 소비된 timer/live meter 종료” 계약과 assertion이 반대였다.
+- #1285는 신규 unit 및 Galaxy timing 테스트를 실제 실행하기 전에 병합됐고, `BUG_HISTORY.md`의 verification checklist도 미완료 상태였다.
+
+### Required state invariants
+
+- roll phase에서 `canRollNow=false`이면 roll animation, pending action, timeout 자동 제출 등 실제 입력 불가 presentation으로 간주하고 소비된 timer/live meter를 표시하지 않는다.
+- 서버 거부나 재동기화 후 `canRollNow=true`, `canSubmitTurnAction=true`, `rollResultHolding=false`가 되면 유효한 authoritative roll deadline의 실제 잔여시간으로 입력 UI를 복구한다.
+- timeout QA는 deadline 직전까지 timer와 live meter가 같은 deadline으로 존재하는지 확인하고, 자동 제출 상태가 시작된 뒤에는 둘 다 종료됐는지 확인한다.
+- 신규·수정 TypeScript 테스트는 compile 성공 후 assertion이 실제 실행돼야 한다.
+
+### Do not try again
+
+- `canSubmitTurnAction` 하나만으로 roll presentation pending 여부를 추론하지 않는다.
+- 자동 제출 뒤 timer DOM이 사라진 것을 회귀로 간주해 이전 assertion을 그대로 유지하지 않는다.
+- 테스트 파일이 suite에 포함됐다는 사실만으로 실행 완료로 판단하지 않는다.
+- compile 실패를 assertion 실패나 일시적 CI 문제로 분류해 재실행만 하지 않는다.
+
+### Verification checklist
+
+- [x] unit fixture map 타입과 authoritative commit type guard를 보강했다.
+- [x] roll action availability를 presentation pending 정책에 포함했다.
+- [x] timeout QA를 deadline 직전 표시와 자동 제출 직후 종료의 연속 계약으로 변경했다.
+- [ ] Unit tests pass
+- [ ] Build succeeds
+- [ ] QA architecture validation passes
+- [ ] Mobile Galaxy timing QA passes
+- [ ] Main Branch QA succeeds
+
+---
+
 ## 2026-07-31 - 온라인 roll 제출·move 연출·말 settlement·연속 timeout autoplay 상태 불일치
 
 ### Symptom

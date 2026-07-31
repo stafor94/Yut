@@ -34,8 +34,9 @@ test('이미 enqueue된 settlement는 최신 presentation revision이 아니면 
 });
 
 test('roll 제출 후 authoritative 응답 대기 중에는 소비된 timer와 live meter를 숨긴다', () => {
-  assert.equal(isTurnActionPresentationPending({ phase: 'roll', hasRoll: false, canSubmitTurnAction: false, rollResultHolding: false }), true);
-  assert.equal(isTurnActionPresentationPending({ phase: 'roll', hasRoll: false, canSubmitTurnAction: true, rollResultHolding: false }), false);
-  assert.equal(isTurnActionPresentationPending({ phase: 'move', hasRoll: true, canSubmitTurnAction: true, rollResultHolding: true }), true);
-  assert.equal(isTurnActionPresentationPending({ phase: 'move', hasRoll: true, canSubmitTurnAction: true, rollResultHolding: false }), false);
+  assert.equal(isTurnActionPresentationPending({ phase: 'roll', hasRoll: false, canRollNow: false, canSubmitTurnAction: true, rollResultHolding: false }), true);
+  assert.equal(isTurnActionPresentationPending({ phase: 'roll', hasRoll: false, canRollNow: true, canSubmitTurnAction: false, rollResultHolding: false }), true);
+  assert.equal(isTurnActionPresentationPending({ phase: 'roll', hasRoll: false, canRollNow: true, canSubmitTurnAction: true, rollResultHolding: false }), false);
+  assert.equal(isTurnActionPresentationPending({ phase: 'move', hasRoll: true, canRollNow: false, canSubmitTurnAction: true, rollResultHolding: true }), true);
+  assert.equal(isTurnActionPresentationPending({ phase: 'move', hasRoll: true, canRollNow: false, canSubmitTurnAction: true, rollResultHolding: false }), false);
 });

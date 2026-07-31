@@ -141,32 +141,61 @@ async function runTimeoutDeadlineScenario(page, context, testInfo, initialPositi
       await context.setOffline(true);
     }
 
-    const deadlineState = await runQaStep(testInfo, 'authoritative deadline과 막대 소진·버튼 비활성 상태 일치 확인', () => page.evaluate(async () => {
+    const deadlineState = await runQaStep(testInfo, 'authoritative deadline 직전 표시와 자동 제출 직후 종료 상태 일치 확인', () => page.evaluate(async () => {
       const sleep = (delayMs) => new Promise((resolve) => window.setTimeout(resolve, delayMs));
       const deadlineAt = Number(document.querySelector('.turn-action-timer')?.getAttribute('data-deadline-at'));
       const earlyDisabledSamples = [];
+      let preDeadlineTimerObserved = false;
+      let preDeadlineMeterObserved = false;
+      let lastPreDeadlineSample = null;
       const timeoutAt = performance.now() + 20_000;
       while (performance.now() <= timeoutAt) {
         const now = Date.now();
         const statusButton = Array.from(document.querySelectorAll('button')).find((button) => button.textContent?.includes('시간 초과 처리 중'));
         const rollButton = document.querySelector('[data-testid="roll-yut-button"]');
         const timer = document.querySelector('.turn-action-timer');
-        const fill = timer?.querySelector('span');
+        const meter = document.querySelector('.roll-timing-live-meter');
+        if (now < deadlineAt) {
+          if (timer instanceof HTMLElement) preDeadlineTimerObserved = true;
+          if (meter instanceof HTMLElement) preDeadlineMeterObserved = true;
+          if (now >= deadlineAt - 300 && timer instanceof HTMLElement && meter instanceof HTMLElement) {
+            lastPreDeadlineSample = {
+              observedAt: now,
+              timerDeadlineAt: Number(timer.dataset.deadlineAt ?? 0),
+              meterDeadlineAt: Number(meter.dataset.timingDeadlineAt ?? 0),
+            };
+          }
+        }
         if (rollButton instanceof HTMLButtonElement && rollButton.disabled && now < deadlineAt - 50) earlyDisabledSamples.push({ now, deadlineAt });
         if (statusButton instanceof HTMLButtonElement) {
-          const progress = fill instanceof HTMLElement ? fill.getAnimations()[0]?.effect?.getComputedTiming().progress : null;
           statusButton.click();
-          return { deadlineAt, statusObservedAt: now, statusDisabled: statusButton.disabled, timerExists: timer instanceof HTMLElement, animationProgress: typeof progress === 'number' ? progress : null, earlyDisabledSamples };
+          return {
+            deadlineAt,
+            statusObservedAt: now,
+            statusDisabled: statusButton.disabled,
+            timerExists: timer instanceof HTMLElement,
+            meterExists: meter instanceof HTMLElement,
+            preDeadlineTimerObserved,
+            preDeadlineMeterObserved,
+            lastPreDeadlineSample,
+            earlyDisabledSamples,
+          };
         }
         await sleep(20);
       }
       throw new Error('authoritative deadline 이후 시간 초과 처리 상태가 표시되지 않았습니다.');
     }));
     expect(deadlineState.earlyDisabledSamples).toEqual([]);
+    expect(deadlineState.preDeadlineTimerObserved).toBe(true);
+    expect(deadlineState.preDeadlineMeterObserved).toBe(true);
+    expect(deadlineState.lastPreDeadlineSample).not.toBeNull();
+    expect(deadlineState.lastPreDeadlineSample.observedAt).toBeGreaterThanOrEqual(deadlineState.deadlineAt - 350);
+    expect(deadlineState.lastPreDeadlineSample.timerDeadlineAt).toBe(deadlineState.deadlineAt);
+    expect(deadlineState.lastPreDeadlineSample.meterDeadlineAt).toBe(deadlineState.deadlineAt);
     expect(deadlineState.statusObservedAt).toBeGreaterThanOrEqual(deadlineState.deadlineAt);
     expect(deadlineState.statusDisabled).toBe(true);
-    expect(deadlineState.timerExists).toBe(true);
-    if (deadlineState.animationProgress !== null) expect(deadlineState.animationProgress).toBeGreaterThanOrEqual(0.99);
+    expect(deadlineState.timerExists).toBe(false);
+    expect(deadlineState.meterExists).toBe(false);
 
     await expect(page.locator('.roll-stage')).toBeVisible({ timeout: 10_000 });
     if (simulateReconnect) {
