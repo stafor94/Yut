@@ -4,6 +4,7 @@ import {
   isAuthoritativeCommitReduction,
   reduceAuthoritativeGameAction,
 } from '../../src/features/room/services/roomAuthoritativeReducer';
+import { ONLINE_ROLL_FAST_PRESENTATION_MS } from '../../src/features/room/services/rollPresentationTiming';
 import {
   TURN_ACTION_TIMEOUT_MIN_MS,
   TURN_ACTION_TIMEOUT_MS,
@@ -98,26 +99,26 @@ test('플레이어가 정상 버튼 액션을 수행하면 누적 횟수와 다�
 
   assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 0 });
   assert.equal(patch.turnDeadlineKind, 'move');
-  assert.equal(patch.turnDeadlineAt, 100000 + 2600 + TURN_ACTION_TIMEOUT_MS);
+  assert.equal(patch.turnDeadlineAt, 100000 + ONLINE_ROLL_FAST_PRESENTATION_MS + TURN_ACTION_TIMEOUT_MS);
 }));
 
-test('시간초과 복구가 커밋되면 좌석 횟수를 올리고 바로 다음 막대를 5초 단축한다', () => withMockNow(200000, () => {
+test('시간초과 복구가 커밋되면 좌석 횟수를 올리고 연출 완료 뒤 다음 막대를 5초 단축한다', () => withMockNow(200000, () => {
   const state = baseState(200000, 0);
   const result = reduceAuthoritativeGameAction(state as any, rollAction(state.turnDeadlineAt, true), room, sides);
   const patch = getCommittedPatch(result);
 
   assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 1 });
-  assert.equal(patch.turnDeadlineAt, 200000 + 2600 + 5000);
+  assert.equal(patch.turnDeadlineAt, 200000 + ONLINE_ROLL_FAST_PRESENTATION_MS + 5000);
 }));
 
-test('두 번째 시간초과부터 서버 제한시간은 최소 5초로 고정된다', () => withMockNow(300000, () => {
+test('두 번째 시간초과부터 서버 제한시간은 연출 완료 뒤 최소 5초로 고정된다', () => withMockNow(300000, () => {
   const state = baseState(300000, 1);
   const result = reduceAuthoritativeGameAction(state as any, rollAction(state.turnDeadlineAt, true), room, sides);
   const patch = getCommittedPatch(result);
 
   assert.deepEqual(patch.turnActionTimeoutCountBySeatId, { 'seat-1': 2 });
   assert.deepEqual(patch.autoPlayBySeatId, { 'seat-1': true });
-  assert.equal(patch.turnDeadlineAt, 300000 + 2600 + 5000);
+  assert.equal(patch.turnDeadlineAt, 300000 + ONLINE_ROLL_FAST_PRESENTATION_MS + 5000);
 }));
 
 test('AI 자동 플레이 액션은 누적 timeout 횟수와 자동 플레이 상태를 초기화하지 않는다', () => withMockNow(350000, () => {
