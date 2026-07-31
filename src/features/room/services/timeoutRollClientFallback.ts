@@ -6,7 +6,6 @@ export type TimeoutRollClientFallbackCandidate = Readonly<{
 }>;
 
 const ACTIVE_ROOM_STORAGE_KEY = 'yut-online:activeRoomId';
-let activeTimeoutDeadlineAt = 0;
 const candidatesByActionKey = new Map<string, TimeoutRollClientFallbackCandidate>();
 
 const getActiveRoomId = () => {
@@ -17,27 +16,19 @@ const getActiveRoomId = () => {
   }
 };
 
-export function runWithTimeoutRollClientDeadline<T>(timeoutDeadlineAt: number, operation: () => T): T {
-  const previousDeadlineAt = activeTimeoutDeadlineAt;
-  activeTimeoutDeadlineAt = Math.trunc(Number(timeoutDeadlineAt) || 0);
-  try {
-    return operation();
-  } finally {
-    activeTimeoutDeadlineAt = previousDeadlineAt;
-  }
-}
-
 export function registerTimeoutRollClientFallback(
   localClientMutationId: string,
   actorId: string,
+  timeoutDeadlineAt: number,
 ): TimeoutRollClientFallbackCandidate | null {
   const roomId = getActiveRoomId();
-  if (!roomId || !localClientMutationId || !actorId || activeTimeoutDeadlineAt <= 0) return null;
+  const normalizedDeadlineAt = Math.trunc(Number(timeoutDeadlineAt) || 0);
+  if (!roomId || !localClientMutationId || !actorId || normalizedDeadlineAt <= 0) return null;
   const candidate = Object.freeze({
     roomId,
     localClientMutationId,
     actorId,
-    timeoutDeadlineAt: activeTimeoutDeadlineAt,
+    timeoutDeadlineAt: normalizedDeadlineAt,
   });
   candidatesByActionKey.set(localClientMutationId, candidate);
   return candidate;
