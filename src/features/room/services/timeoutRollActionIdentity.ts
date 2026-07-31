@@ -22,14 +22,10 @@ type TimeoutRollAction = {
   payload?: TimeoutRollPayload;
 };
 
-type PendingTimeoutRollRegistration = {
-  timeoutDeadlineAt: number;
-  stage: 'roll' | 'golden_yut';
-};
-
 const MAX_MUTATION_ALIASES_PER_ROOM = 32;
+const baselineMathRandom = Math.random;
 const mutationAliasesByRoom = new Map<string, Map<string, string>>();
-let pendingTimeoutRollRegistration: PendingTimeoutRollRegistration | null = null;
+const pendingTimeoutRollCandidatesByRoom = new Map<string, Map<string, string>>();
 
 const isRollTimingZone = (value: unknown): value is RollTimingZone => (
   value === 'perfect' || value === 'nice' || value === 'good' || value === 'normal' || value === 'bad'
@@ -54,49 +50,61 @@ const rememberMutationAlias = (roomId: string, canonicalId: string, localId: str
   mutationAliasesByRoom.set(roomId, aliases);
 };
 
-/** Marks the synchronous App callback so its pending local key can be linked before network submission. */
-export const runWithPendingTimeoutRollRegistration = <T>(
-  timeoutDeadlineAt: number,
-  operation: () => T,
-  stage: PendingTimeoutRollRegistration['stage'] = 'roll',
-): T => {
-  const previousRegistration = pendingTimeoutRollRegistration;
-  pendingTimeoutRollRegistration = { timeoutDeadlineAt: Math.trunc(timeoutDeadlineAt), stage };
-  try {
-    return operation();
-  } finally {
-    pendingTimeoutRollRegistration = previousRegistration;
-  }
-};
-
 /**
- * App registers the local pending animation before its optional QA/network delay.
- * Link it to the canonical key now so a coordinator-first snapshot is still an echo.
+ * GameBoardControls temporarily replaces Math.random only while the timeout roll
+ * callback creates its local result and pending key. Capture that key before an
+ * optional QA/network delay so a coordinator-first snapshot is still an echo.
  */
-export const registerPendingTimeoutRollMutation = (
+export const registerPendingTimeoutRollCandidate = (
   roomId: string,
   localClientMutationId: string,
   actorId: string,
 ) => {
-  const registration = pendingTimeoutRollRegistration;
-  if (!registration || !roomId || !localClientMutationId || !actorId || registration.timeoutDeadlineAt <= 0) return false;
-  const canonicalClientMutationId = resolveRollTimeoutAction({
-    roomId,
-    actorId,
-    timeoutDeadlineAt: registration.timeoutDeadlineAt,
-    stage: registration.stage,
-  }).actionKey;
-  rememberMutationAlias(roomId, canonicalClientMutationId, localClientMutationId);
+  if (Math.random === baselineMathRandom || !roomId || !localClientMutationId || !actorId) return false;
+  const candidates = pendingTimeoutRollCandidatesByRoom.get(roomId) ?? new Map<string, string>();
+  candidates.set(localClientMutationId, actorId);
+  while (candidates.size > 2) {
+    const oldestKey = candidates.keys().next().value;
+    if (typeof oldestKey !== 'string') break;
+    candidates.delete(oldestKey);
+  }
+  pendingTimeoutRollCandidatesByRoom.set(roomId, candidates);
   return true;
+};
+
+export const removePendingTimeoutRollCandidate = (roomId: string, localClientMutationId: string) => {
+  const candidates = pendingTimeoutRollCandidatesByRoom.get(roomId);
+  if (!candidates) return;
+  candidates.delete(localClientMutationId);
+  if (!candidates.size) pendingTimeoutRollCandidatesByRoom.delete(roomId);
+};
+
+const findPendingTimeoutRollAlias = (roomId: string, canonicalId: string) => {
+  if (!canonicalId.startsWith('timeout:')) return '';
+  const candidates = pendingTimeoutRollCandidatesByRoom.get(roomId);
+  if (!candidates?.size) return '';
+  const entries = [...candidates.entries()];
+  if (entries.length === 1) return entries[0][0];
+  const actorMatch = entries.find(([, actorId]) => canonicalId.includes(`:roll:${actorId}:`));
+  return actorMatch?.[0] ?? '';
 };
 
 export const getTimeoutRollMutationAlias = (roomId: string, clientMutationId: unknown) => {
   if (typeof clientMutationId !== 'string' || !clientMutationId) return clientMutationId;
-  return mutationAliasesByRoom.get(roomId)?.get(clientMutationId) ?? clientMutationId;
+  const explicitAlias = mutationAliasesByRoom.get(roomId)?.get(clientMutationId);
+  if (explicitAlias) return explicitAlias;
+  const pendingAlias = findPendingTimeoutRollAlias(roomId, clientMutationId);
+  if (pendingAlias) {
+    rememberMutationAlias(roomId, clientMutationId, pendingAlias);
+    return pendingAlias;
+  }
+  return clientMutationId;
 };
 
 export const clearTimeoutRollMutationAliases = (roomId: string) => {
-  if (roomId) mutationAliasesByRoom.delete(roomId);
+  if (!roomId) return;
+  mutationAliasesByRoom.delete(roomId);
+  pendingTimeoutRollCandidatesByRoom.delete(roomId);
 };
 
 /**
