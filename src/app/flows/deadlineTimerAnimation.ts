@@ -7,6 +7,7 @@ export type DeadlineTimerAnimationCache = {
     key: string;
     deadlineAt: unknown;
     durationMs: unknown;
+    active?: boolean;
   }) => DeadlineTimerAnimationSnapshot;
   reset: () => void;
 };
@@ -22,17 +23,22 @@ export function createDeadlineTimerAnimationCache(now: () => number = Date.now):
   let cachedSnapshot: DeadlineTimerAnimationSnapshot | null = null;
 
   return {
-    get({ key, deadlineAt, durationMs }) {
+    get({ key, deadlineAt, durationMs, active = true }) {
       const normalizedDurationMs = normalizeDurationMs(durationMs);
-      if (cachedSnapshot && cachedKey === key && cachedDurationMs === normalizedDurationMs) return cachedSnapshot;
+      if (active && cachedSnapshot && cachedKey === key && cachedDurationMs === normalizedDurationMs) {
+        return cachedSnapshot;
+      }
 
-      cachedKey = key;
-      cachedDurationMs = normalizedDurationMs;
-      cachedSnapshot = getDeadlineTimerAnimationState({
+      const snapshot = getDeadlineTimerAnimationState({
         deadlineAt,
         durationMs: normalizedDurationMs,
         now: now(),
       });
+      if (!active) return snapshot;
+
+      cachedKey = key;
+      cachedDurationMs = normalizedDurationMs;
+      cachedSnapshot = snapshot;
       return cachedSnapshot;
     },
     reset() {

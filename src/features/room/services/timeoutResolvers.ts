@@ -1,27 +1,38 @@
 import {
   GOLDEN_YUT_CHOICES,
-  getRollTimingPositionPercent,
   getRollTimingZone,
   type RollTimingZone,
   type YutResult,
 } from '../../../game-core/roll';
+import {
+  getRollTimingMotionState,
+  rollTimingOpportunitySnapshotCache,
+} from '../../../game-core/rollTimingMotion';
 import type { BranchChoice } from '../../../game-core/board/board';
 import { getRollStackSelectionAvailability } from '../../../game-core/rollStackSelection';
 import { TURN_ACTION_TIMEOUT_MS } from './roomTiming';
 
 /**
  * The active client freezes and submits the DOM-visible orb position at the deadline.
- * If that client disappears, coordinators reconstruct the intended animation
- * position from the authoritative timeout window instead of forcing Bad.
+ * If that client disappears, coordinators reconstruct the same deadline-seeded
+ * opportunity instead of falling back to a separate fixed Bad position.
  */
 export const resolveRollTimeout = (
-  _deadlineAt: number,
+  deadlineAt: number,
   timeoutWindowMs = TURN_ACTION_TIMEOUT_MS,
 ): { rollTimingZone: RollTimingZone; timingPositionPercent: number } => {
   const normalizedWindowMs = Number.isFinite(timeoutWindowMs) && timeoutWindowMs > 0
     ? timeoutWindowMs
     : TURN_ACTION_TIMEOUT_MS;
-  const timingPositionPercent = getRollTimingPositionPercent(normalizedWindowMs);
+  const opportunity = rollTimingOpportunitySnapshotCache.get({
+    key: `timeout:${deadlineAt}:${normalizedWindowMs}`,
+    startedAt: deadlineAt - normalizedWindowMs,
+    deadlineAt,
+  });
+  const { positionPercent: timingPositionPercent } = getRollTimingMotionState({
+    initialPositionPercent: opportunity.initialPositionPercent,
+    elapsedMs: normalizedWindowMs,
+  });
   return {
     rollTimingZone: getRollTimingZone(timingPositionPercent),
     timingPositionPercent,

@@ -2,7 +2,31 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createDeadlineTimerAnimationCache } from '../../src/app/flows/deadlineTimerAnimation.js';
 
-test('the same deadline key preserves its original animation snapshot across rerenders', () => {
+test('inactive calculation does not claim the deadline cache before the timer is displayed', () => {
+  let now = 1_000;
+  const cache = createDeadlineTimerAnimationCache(() => now);
+
+  const hidden = cache.get({
+    key: 'seat-1:roll:10_000',
+    deadlineAt: 10_000,
+    durationMs: 10_000,
+    active: false,
+  });
+  now = 4_000;
+  const firstVisible = cache.get({
+    key: 'seat-1:roll:10_000',
+    deadlineAt: 10_000,
+    durationMs: 10_000,
+    active: true,
+  });
+
+  assert.equal(hidden.delayMs, -1_000);
+  assert.equal(firstVisible.remainingMs, 6_000);
+  assert.equal(firstVisible.delayMs, -4_000);
+  assert.notStrictEqual(firstVisible, hidden);
+});
+
+test('the same visible deadline key preserves its original animation snapshot across rerenders', () => {
   let now = 1_000;
   const cache = createDeadlineTimerAnimationCache(() => now);
 
@@ -29,4 +53,18 @@ test('a new deadline key or duration creates a fresh animation snapshot', () => 
   assert.equal(nextDeadline.delayMs, -2_000);
   assert.notStrictEqual(changedDuration, nextDeadline);
   assert.equal(changedDuration.delayMs, -1_000);
+});
+
+test('an expired deadline starts and remains at zero without an out-of-range delay', () => {
+  const cache = createDeadlineTimerAnimationCache(() => 12_000);
+  const expired = cache.get({
+    key: 'seat-1:roll:10_000',
+    deadlineAt: 10_000,
+    durationMs: 10_000,
+  });
+
+  assert.equal(expired.remainingMs, 0);
+  assert.equal(expired.delayMs, -10_000);
+  assert.ok(expired.delayMs >= -expired.durationMs);
+  assert.ok(expired.delayMs <= 0);
 });

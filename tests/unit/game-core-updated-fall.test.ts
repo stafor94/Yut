@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { chooseAiRollTimingZone, getFallChanceForTimingZone, getRollTimingZone } from '../../src/game-core/roll';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
@@ -130,6 +131,18 @@ const replacementTests = new Map<string, () => void>([
     assert.equal(result.status, 'rejected');
     assert.equal(result.reason, '아이템 선택 시간초과 대상이 아닙니다.');
   })],
+  ['온라인 아이템 선택은 optimistic 처리하고 처리 중 문구 없이 방패 상태를 표시한다', () => {
+    const appSource = readFileSync('src/app/App.tsx', 'utf8');
+    const controlsSource = readFileSync('src/app/containers/GameBoardControls.tsx', 'utf8');
+    const boardSource = readFileSync('src/features/game/components/GameBoard.tsx', 'utf8');
+
+    assert.match(appSource, /type: 'use_item'.*optimisticApplied: true/s);
+    assert.match(appSource, /markItemPromptResolved\(promptTiming/);
+    assert.doesNotMatch(appSource, /async function replayRerollItemSequence/);
+    assert.doesNotMatch(controlsSource, /pendingItemPromptChoiceLabel/);
+    assert.match(controlsSource, /시간 초과 처리 중\.\.\./);
+    assert.match(boardSource, /piece-shield-badge/);
+  }],
 ]);
 
 const replacementTestTitles = new Map<string, string>([
