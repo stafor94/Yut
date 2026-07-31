@@ -15,6 +15,7 @@ import {
 } from '../../../game-core/rollTimingMotion';
 import type { BranchChoice } from '../../../game-core/board/board';
 import { getRollStackSelectionAvailability } from '../../../game-core/rollStackSelection';
+import { runWithTimeoutRollClientDeadline } from './timeoutRollClientFallback';
 import { TURN_ACTION_TIMEOUT_MS } from './roomTiming';
 
 export const ROLL_TIMEOUT_RESOLVER_VERSION = 1 as const;
@@ -42,15 +43,17 @@ export const createRollTimeoutRandom = (timeoutDeadlineAt: number) => {
 };
 
 /** Run the synchronous timeout roll callback with the exact random stream used by recovery. */
-export const runWithRollTimeoutRandom = <T>(timeoutDeadlineAt: number, operation: () => T): T => {
-  const originalRandom = Math.random;
-  Math.random = createRollTimeoutRandom(timeoutDeadlineAt);
-  try {
-    return operation();
-  } finally {
-    Math.random = originalRandom;
-  }
-};
+export const runWithRollTimeoutRandom = <T>(timeoutDeadlineAt: number, operation: () => T): T => (
+  runWithTimeoutRollClientDeadline(timeoutDeadlineAt, () => {
+    const originalRandom = Math.random;
+    Math.random = createRollTimeoutRandom(timeoutDeadlineAt);
+    try {
+      return operation();
+    } finally {
+      Math.random = originalRandom;
+    }
+  })
+);
 
 /**
  * The active client freezes and submits the canonical orb position at the deadline.
@@ -91,16 +94,21 @@ export const makeTimeoutActionKey = (params: {
   turnVersion?: number;
   sequence?: number;
   extra?: string;
-}) => [
-  'timeout',
-  `v${params.resolverVersion ?? ROLL_TIMEOUT_RESOLVER_VERSION}`,
-  params.roomId ?? 'local',
-  Math.trunc(Number(params.gameStartedAt ?? 0)),
-  params.stage,
-  params.actorId,
-  Math.trunc(Number(params.turnIndex ?? 0)),
-  Math.trunc(params.timeoutDeadlineAt),
-].join(':');
+}) => {
+  if (params.stage === 'move') {
+    return ['timeout', params.roomId ?? 'local', 'move', params.actorId, Math.trunc(params.timeoutDeadlineAt)].join(':');
+  }
+  return [
+    'timeout',
+    `v${params.resolverVersion ?? ROLL_TIMEOUT_RESOLVER_VERSION}`,
+    params.roomId ?? 'local',
+    Math.trunc(Number(params.gameStartedAt ?? 0)),
+    params.stage,
+    params.actorId,
+    Math.trunc(Number(params.turnIndex ?? 0)),
+    Math.trunc(params.timeoutDeadlineAt),
+  ].join(':');
+};
 
 export type RollTimeoutResolution = Readonly<{
   resolverVersion: typeof ROLL_TIMEOUT_RESOLVER_VERSION;
