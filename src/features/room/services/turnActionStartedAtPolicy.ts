@@ -99,16 +99,25 @@ export const shouldAttachClientActionStartedAt = (action: TurnActionLike) => {
 
 export const attachClientActionStartedAt = <T extends TurnActionLike>(action: T, startedAt = Date.now()): T => {
   const payload = action.payload;
-  if (!payload || isRecoveryOrAutomatedPayload(payload)) return action;
+  if (!payload) return action;
+
+  // The deadline marker is authoritative metadata for a UI-triggered automatic action.
+  // It must survive even when the action also carries timedOut/recovery/coordinator fields.
   const autoMarker = consumeDeadlineAutoAction(action, startedAt);
   const attachStartedAt = shouldAttachClientActionStartedAt(action);
   if (!attachStartedAt && !autoMarker) return action;
+
   const existingStartedAt = Number(payload.clientActionStartedAt ?? 0);
+  const markerStartedAt = autoMarker
+    ? Math.min(startedAt, Math.max(1, autoMarker.deadlineAt - 1))
+    : startedAt;
   return {
     ...action,
     payload: {
       ...payload,
-      clientActionStartedAt: Number.isFinite(existingStartedAt) && existingStartedAt > 0 ? existingStartedAt : startedAt,
+      clientActionStartedAt: Number.isFinite(existingStartedAt) && existingStartedAt > 0
+        ? existingStartedAt
+        : markerStartedAt,
       ...(autoMarker ? {
         deadlineAutoSubmitted: true,
         autoSubmittedDeadlineAt: autoMarker.deadlineAt,
