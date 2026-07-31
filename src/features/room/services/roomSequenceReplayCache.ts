@@ -1,3 +1,5 @@
+import { aliasTimeoutRollMutationIds } from './timeoutRollActionIdentity';
+
 export type CachedGameSequence = { sequence?: unknown };
 
 type ReplayTarget = {
@@ -24,8 +26,9 @@ export function replaceCachedGameSequences<TSequence extends CachedGameSequence>
   if (!roomId) return;
   const deduplicated = new Map<number, CachedGameSequence>();
   sequences.forEach((sequence) => {
-    const sequenceNumber = normalizeSequence(sequence.sequence);
-    if (sequenceNumber > 0) deduplicated.set(sequenceNumber, sequence);
+    const aliasedSequence = aliasTimeoutRollMutationIds(roomId, sequence);
+    const sequenceNumber = normalizeSequence(aliasedSequence.sequence);
+    if (sequenceNumber > 0) deduplicated.set(sequenceNumber, aliasedSequence);
   });
   const normalizedLimit = Math.max(1, Math.floor(limit));
   sequencesByRoom.set(
@@ -82,7 +85,7 @@ export function getCachedGameSequencesForReplay<TSequence extends CachedGameSequ
   for (let sequence = replayTarget.localSequence + 1; sequence <= replayTarget.remoteSequence; sequence += 1) {
     const cached = cachedBySequence.get(sequence);
     if (!cached) return null;
-    replaySequences.push(cached);
+    replaySequences.push(aliasTimeoutRollMutationIds(roomId, cached));
   }
   return replaySequences as TSequence[];
 }
