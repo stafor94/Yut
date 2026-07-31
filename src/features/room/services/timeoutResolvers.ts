@@ -1,7 +1,7 @@
 import {
   GOLDEN_YUT_CHOICES,
-  getRollFallCountForTimingZone,
   getRollTimingZone,
+  makeDisplaySticks,
   rollYutResultWithTiming,
   shouldFallForTimingZone,
   type RollTimingZone,
@@ -30,8 +30,8 @@ const hashSeed = (parts: unknown[]) => {
   return hash >>> 0;
 };
 
-const createSeededRandom = (seed: number) => {
-  let state = seed || 0x6d2b79f5;
+export const createRollTimeoutRandom = (timeoutDeadlineAt: number) => {
+  let state = hashSeed([ROLL_TIMEOUT_RESOLVER_VERSION, Math.trunc(timeoutDeadlineAt)]) || 0x6d2b79f5;
   return () => {
     state += 0x6d2b79f5;
     let value = state;
@@ -39,6 +39,17 @@ const createSeededRandom = (seed: number) => {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 0x100000000;
   };
+};
+
+/** Run the synchronous timeout roll callback with the exact random stream used by recovery. */
+export const runWithRollTimeoutRandom = <T>(timeoutDeadlineAt: number, operation: () => T): T => {
+  const originalRandom = Math.random;
+  Math.random = createRollTimeoutRandom(timeoutDeadlineAt);
+  try {
+    return operation();
+  } finally {
+    Math.random = originalRandom;
+  }
 };
 
 /**
@@ -107,7 +118,7 @@ export type RollTimeoutResolution = Readonly<{
 /**
  * Resolves every random-looking part of a timed-out roll from one immutable turn
  * identity. UI submission, retry, reconnect recovery, and coordinator fallback
- * therefore produce byte-for-byte equivalent gameplay payloads.
+ * therefore produce the same gameplay payload.
  */
 export const resolveRollTimeoutAction = (params: {
   roomId: string;
@@ -118,6 +129,8 @@ export const resolveRollTimeoutAction = (params: {
   turnIndex?: number;
   stage?: 'roll' | 'golden_yut';
   selectedGoldenYutResult?: YutResult | null;
+  timingPositionPercent?: number;
+  rollTimingZone?: RollTimingZone;
 }): RollTimeoutResolution => {
   const stage = params.stage ?? (params.selectedGoldenYutResult ? 'golden_yut' : 'roll');
   const actionKey = makeTimeoutActionKey({
@@ -129,27 +142,20 @@ export const resolveRollTimeoutAction = (params: {
     turnIndex: params.turnIndex,
     resolverVersion: ROLL_TIMEOUT_RESOLVER_VERSION,
   });
-  const { rollTimingZone, timingPositionPercent } = resolveRollTimeout(
-    params.timeoutDeadlineAt,
-    params.timeoutWindowMs,
-  );
-  const random = createSeededRandom(hashSeed([
-    ROLL_TIMEOUT_RESOLVER_VERSION,
-    params.roomId,
-    params.gameStartedAt ?? 0,
-    stage,
-    params.actorId,
-    params.turnIndex ?? 0,
-    Math.trunc(params.timeoutDeadlineAt),
-  ]));
-  const rolled = params.selectedGoldenYutResult
-    ? { result: { ...params.selectedGoldenYutResult }, sticks: rollYutResultWithTiming(rollTimingZone, random).sticks }
-    : rollYutResultWithTiming(rollTimingZone, random);
+  const fallbackTiming = resolveRollTimeout(params.timeoutDeadlineAt, params.timeoutWindowMs);
+  const timingPositionPercent = Number.isFinite(params.timingPositionPercent)
+    ? Number(params.timingPositionPercent)
+    : fallbackTiming.timingPositionPercent;
+  const rollTimingZone = params.rollTimingZone ?? getRollTimingZone(timingPositionPercent);
+  const random = createRollTimeoutRandom(params.timeoutDeadlineAt);
+  const rolledResult = params.selectedGoldenYutResult
+    ? { ...params.selectedGoldenYutResult }
+    : rollYutResultWithTiming(rollTimingZone, random).result;
   const clientFallOccurred = params.selectedGoldenYutResult
     ? false
     : shouldFallForTimingZone(rollTimingZone, random);
   const clientFallCount = clientFallOccurred
-    ? getRollFallCountForTimingZone(rollTimingZone, random)
+    ? Math.floor(random() * 4) + 1
     : 0;
 
   return Object.freeze({
@@ -159,8 +165,8 @@ export const resolveRollTimeoutAction = (params: {
     initialDirection: 'forward' as const,
     timingPositionPercent,
     rollTimingZone,
-    clientRollResult: Object.freeze({ ...rolled.result }),
-    sticks: Object.freeze(rolled.sticks.map((stick) => Object.freeze({ ...stick }))),
+    clientRollResult: Object.freeze({ ...rolledResult }),
+    sticks: Object.freeze(makeDisplaySticks(rolledResult).map((stick) => Object.freeze({ ...stick }))),
     clientFallOccurred,
     clientFallCount,
   });
