@@ -5,6 +5,8 @@ import {
   aliasTimeoutRollMutationIds,
   canonicalizeTimeoutRollAction,
   clearTimeoutRollMutationAliases,
+  registerPendingTimeoutRollCandidate,
+  removePendingTimeoutRollCandidate,
 } from '../../features/room/services/timeoutRollActionIdentity';
 import type { SequenceStateSnapshot } from '../appState';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
@@ -40,6 +42,11 @@ type Params = {
   hasPendingCurrentTurnAction: (type: RemoteActionType, actorId?: string) => boolean;
   pendingLocalRemoteActionCount: number;
 };
+
+const isTimedOutRollAction = (action: CommittableGameAction) => (
+  action.type === 'roll_yut'
+  && Boolean(action.payload && typeof action.payload === 'object' && (action.payload as Record<string, unknown>).timedOut === true)
+);
 
 export function useAuthoritativeGameSyncController(params: Params) {
   const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
@@ -135,11 +142,20 @@ export function useAuthoritativeGameSyncController(params: Params) {
     },
   });
 
+  const commitCanonicalAction = useCallback(async (roomId: string, action: CommittableGameAction) => {
+    try {
+      return await queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, action);
+    } catch (firstError) {
+      if (!isTimedOutRollAction(action)) throw firstError;
+      return queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, action);
+    }
+  }, []);
+
   const commitQueuedAuthoritativeGameAction = useCallback((roomId: string, action: CommittableGameAction) => {
     const normalizedAction = canonicalizeTimeoutRollAction(roomId, attachClientActionStartedAt(action));
-    return queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, normalizedAction)
+    return commitCanonicalAction(roomId, normalizedAction)
       .then((result) => aliasTimeoutRollMutationIds(roomId, result));
-  }, []);
+  }, [commitCanonicalAction]);
 
   const enqueueAuthoritativeResultApplication = useCallback(<T,>(roomId: string, applyResult: () => Promise<T> | T): Promise<T | null> => {
     return queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, async () => {
@@ -156,18 +172,48 @@ export function useAuthoritativeGameSyncController(params: Params) {
     handleFinally: () => void,
   ) => {
     const normalizedAction = canonicalizeTimeoutRollAction(roomId, attachClientActionStartedAt(action));
-    queuesRef.current!.enqueueAuthoritativeGameAction(roomId, normalizedAction, {
-      handleResult: (result) => handleResult(aliasTimeoutRollMutationIds(roomId, result)),
-      handleError,
-      handleFinally,
-    });
-  }, []);
+    void (async () => {
+      try {
+        const result = await commitCanonicalAction(roomId, normalizedAction);
+        const aliasedResult = aliasTimeoutRollMutationIds(roomId, result);
+        await queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, async () => {
+          await handleResult(aliasedResult);
+          return aliasedResult;
+        });
+      } catch (error) {
+        await queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, () => {
+          handleError(error);
+        });
+      } finally {
+        handleFinally();
+      }
+    })();
+  }, [commitCanonicalAction]);
 
   const applyAuthoritativeResultSequence = useCallback((result: AuthoritativeCommitResult) => (
     params.applyAuthoritativeResultSequence(
       aliasTimeoutRollMutationIds(params.activeRoomIdRef.current, result),
     )
   ), [params.activeRoomIdRef, params.applyAuthoritativeResultSequence]);
+
+  const addPendingLocalRemoteAction = useCallback((actionKey: string, metadata?: PendingMeta) => {
+    if (metadata?.type === 'roll_yut' && metadata.actorId) {
+      registerPendingTimeoutRollCandidate(params.activeRoomIdRef.current, actionKey, metadata.actorId);
+    }
+    params.addPendingLocalRemoteAction(actionKey, metadata);
+  }, [params.activeRoomIdRef, params.addPendingLocalRemoteAction]);
+
+  const acknowledgePendingLocalRemoteAction = useCallback((clientMutationId: unknown) => {
+    params.acknowledgePendingLocalRemoteAction(clientMutationId);
+    if (typeof clientMutationId === 'string') {
+      removePendingTimeoutRollCandidate(params.activeRoomIdRef.current, clientMutationId);
+    }
+  }, [params.activeRoomIdRef, params.acknowledgePendingLocalRemoteAction]);
+
+  const removeSettledPendingLocalRemoteAction = useCallback((actionKey: string) => {
+    params.removeSettledPendingLocalRemoteAction(actionKey);
+    removePendingTimeoutRollCandidate(params.activeRoomIdRef.current, actionKey);
+  }, [params.activeRoomIdRef, params.removeSettledPendingLocalRemoteAction]);
 
   return {
     commitQueuedAuthoritativeGameAction,
@@ -177,9 +223,9 @@ export function useAuthoritativeGameSyncController(params: Params) {
     syncLatestAuthoritativeState: params.syncLatestAuthoritativeState,
     syncLatestSequencesFromBadge: params.syncLatestSequencesFromBadge,
     reconcilePendingLocalRemoteActions: params.reconcilePendingLocalRemoteActions,
-    addPendingLocalRemoteAction: params.addPendingLocalRemoteAction,
-    acknowledgePendingLocalRemoteAction: params.acknowledgePendingLocalRemoteAction,
-    removeSettledPendingLocalRemoteAction: params.removeSettledPendingLocalRemoteAction,
+    addPendingLocalRemoteAction,
+    acknowledgePendingLocalRemoteAction,
+    removeSettledPendingLocalRemoteAction,
     clearPendingLocalRemoteActions: params.clearPendingLocalRemoteActions,
     hasPendingCurrentTurnAction: params.hasPendingCurrentTurnAction,
     pendingLocalRemoteActionCount: params.pendingLocalRemoteActionCount,
