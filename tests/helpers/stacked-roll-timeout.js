@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { makeTimeoutActionKey } from '../../src/features/room/services/timeoutResolvers.ts';
 import { makeQaName, normalizeQaNickname } from './env.js';
 import {
   createRoomFromLobby,
@@ -141,7 +142,12 @@ export async function prepareStackedRollTimeoutFixture({ page, context, testInfo
   }).toBeNull();
 
   const timeoutDeadlineAt = Date.now() - 1;
-  const actionKey = `timeout:${roomId}:move:${actorId}:${timeoutDeadlineAt}`;
+  const actionKey = makeTimeoutActionKey({
+    roomId,
+    stage: 'move',
+    actorId,
+    timeoutDeadlineAt,
+  });
   const baselineSequences = await getRoomSequencesForQa(roomId);
   const expiredFixture = await commitRoomStatePatchForQa(page, roomId, {
     turnDeadlineAt: timeoutDeadlineAt,
@@ -206,6 +212,7 @@ export async function waitForStackedRollTimeoutRecovery({ actionKey, actorId, re
 
   if (!recoverySnapshot) throw new Error('stacked timeout recovery snapshot을 확보하지 못했습니다.');
   expect(recoverySnapshot.sequence.action?.payload).toMatchObject({
+    clientActionId: actionKey,
     recoveredByCoordinator: true,
     rollStackIndex: 1,
     timeoutDeadlineAt,
