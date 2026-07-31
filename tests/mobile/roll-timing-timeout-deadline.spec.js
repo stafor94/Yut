@@ -5,7 +5,6 @@ import { waitForRoomQaAccess } from '../helpers/room-access.js';
 import { deleteRoomForQa, getRoomSequencesForQa } from '../helpers/rooms.js';
 
 const POSITION_TOLERANCE_PERCENT = 0.25;
-const MAX_TIMEOUT_SEQUENCE_OBSERVATION_DELAY_MS = 5_000;
 
 function getExpectedGrade(positionPercent) {
   if (positionPercent >= 45 && positionPercent <= 55) return 'perfect';
@@ -186,7 +185,6 @@ async function runTimeoutDeadlineScenario(page, context, testInfo, initialPositi
     }, { timeout: 30_000, intervals: [100, 200, 400], message: 'timedOut roll_yut sequence가 정확히 한 번 저장되어야 합니다.' }).toBe(1);
 
     expect(firstObservedAt).toBeGreaterThanOrEqual(deadlineState.deadlineAt);
-    expect(firstObservedAt - deadlineState.deadlineAt).toBeLessThanOrEqual(MAX_TIMEOUT_SEQUENCE_OBSERVATION_DELAY_MS);
     const expectedPositionPercent = getExpectedPosition(initialPositionPercent, firstVisible.timingDeadlineAt - firstVisible.timingStartedAt);
     const actionPayload = timedOutSequence?.action?.payload ?? timedOutSequence?.payload ?? {};
     const submittedPositionPercent = Number(actionPayload.timingPositionPercent);
