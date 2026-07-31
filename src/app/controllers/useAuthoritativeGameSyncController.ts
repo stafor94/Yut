@@ -187,6 +187,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     handleFinally: () => void,
   ) => {
     const normalizedAction = canonicalizeTimeoutRollAction(roomId, attachClientActionStartedAt(action));
+    const preserveTimeoutPresentationOnError = isTimedOutRollAction(normalizedAction);
     void (async () => {
       try {
         const result = await commitCanonicalAction(roomId, normalizedAction);
@@ -196,9 +197,16 @@ export function useAuthoritativeGameSyncController(params: Params) {
           return aliasedResult;
         });
       } catch (error) {
-        await queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, () => {
-          handleError(error);
-        });
+        if (!preserveTimeoutPresentationOnError) {
+          await queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, () => {
+            handleError(error);
+          });
+        } else {
+          console.warn('시간초과 윷 제출 재시도가 실패해 coordinator의 동일 action 복구를 기다립니다.', {
+            roomId,
+            clientActionId: getClientActionId(normalizedAction),
+          });
+        }
       } finally {
         handleFinally();
       }
