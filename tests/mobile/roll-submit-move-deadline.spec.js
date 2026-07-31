@@ -129,5 +129,31 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
     expect(ordering.deadlineAt - ordering.observedAt).toBeLessThanOrEqual(10_050);
     await expect(page.getByTestId('move-piece-button')).toBeEnabled();
     await expect(page.locator('.turn-action-timer')).toBeVisible();
+
+    await expect.poll(async () => {
+      const state = await collectScreenState(page);
+      const debug = state.yutDebug ?? {};
+      const localPieces = Array.isArray(debug.pieces)
+        ? debug.pieces.filter((piece) => piece?.ownerId === debug.localSeatId)
+        : [];
+      const movedPieces = localPieces.filter((piece) => piece?.started && !piece?.finished);
+      return movedPieces.length === 1
+        && movedPieces[0]?.nodeId === 'n02'
+        && debug.roll == null
+        && debug.lastMovedSeatId === debug.localSeatId
+        && Array.isArray(debug.lastMovedPieceIds)
+        && debug.lastMovedPieceIds.length === 1
+        && debug.activeSeat?.id !== debug.localSeatId
+        && debug.pendingLocalRemoteActionCount === 0;
+    }, { timeout: 15_000, intervals: [50, 100, 200], message: '도 자동 이동은 정확히 한 번 n02에 확정되고 roll을 소비한 뒤 다음 차례로 넘어가야 합니다.' }).toBe(true);
+
+    const settledState = await collectScreenState(page);
+    const settledDebug = settledState.yutDebug ?? {};
+    const settledLocalPieces = Array.isArray(settledDebug.pieces)
+      ? settledDebug.pieces.filter((piece) => piece?.ownerId === settledDebug.localSeatId)
+      : [];
+    expect(settledLocalPieces.filter((piece) => piece?.started && !piece?.finished).map((piece) => piece.nodeId)).toEqual(['n02']);
+    expect(settledLocalPieces.some((piece) => piece?.nodeId === 'n03')).toBe(false);
+    expect(settledState.moveButton.disabled).toBe(true);
   });
 });
