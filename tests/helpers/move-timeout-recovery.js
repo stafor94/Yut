@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { makeTimeoutActionKey } from '../../src/features/room/services/timeoutResolvers.ts';
 import { makeQaName, normalizeQaNickname } from './env.js';
 import {
   createRoomFromLobby,
@@ -152,7 +153,12 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   await expect(moveButton).toBeEnabled();
 
   const timeoutDeadlineAt = Date.now() - 1;
-  const actionKey = `timeout:${roomId}:move:${actorId}:${timeoutDeadlineAt}`;
+  const actionKey = makeTimeoutActionKey({
+    roomId,
+    stage: 'move',
+    actorId,
+    timeoutDeadlineAt,
+  });
   const expiredFixture = await commitRoomStatePatchForQa(page, roomId, {
     turnDeadlineAt: timeoutDeadlineAt,
   }, actorId);
