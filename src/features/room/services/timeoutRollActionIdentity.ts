@@ -169,11 +169,18 @@ export const canonicalizeTimeoutRollAction = <TAction extends TimeoutRollAction>
     timeoutRecoveredBy: _timeoutRecoveredBy,
     ...basePayload
   } = payload;
+  const suppliedStartedAt = Number(payload.clientActionStartedAt ?? 0);
+  const deadlineAutoStartedAt = Number.isFinite(suppliedStartedAt) && suppliedStartedAt > 0
+    ? Math.min(suppliedStartedAt, Math.max(1, timeoutDeadlineAt - 1))
+    : Math.max(1, timeoutDeadlineAt - 1);
   return {
     ...action,
     payload: {
       ...(isImmediateClientRequest ? basePayload : payload),
       resolvedTimeoutDeadlineAt: timeoutDeadlineAt,
+      deadlineAutoSubmitted: true,
+      autoSubmittedDeadlineAt: timeoutDeadlineAt,
+      clientActionStartedAt: deadlineAutoStartedAt,
       timeoutInitialPositionPercent: resolution.initialPositionPercent,
       timeoutInitialDirection: resolution.initialDirection,
       timingPositionPercent: resolution.timingPositionPercent,
