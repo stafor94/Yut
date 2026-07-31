@@ -78,6 +78,7 @@ export const canonicalizeTimeoutRollAction = <TAction extends TimeoutRollAction>
     rollTimingZone: suppliedTimingZone,
   });
   const originalClientActionId = typeof payload.clientActionId === 'string' ? payload.clientActionId : '';
+  const isImmediateClientRequest = Boolean(originalClientActionId && !originalClientActionId.startsWith('timeout:'));
   rememberMutationAlias(roomId, resolution.actionKey, originalClientActionId);
 
   const suppliedResult = isYutResult(payload.clientRollResult) ? payload.clientRollResult : null;
@@ -95,10 +96,16 @@ export const canonicalizeTimeoutRollAction = <TAction extends TimeoutRollAction>
     });
   }
 
+  const {
+    timeoutDeadlineAt: _timeoutDeadlineAt,
+    timeoutRecoveredBy: _timeoutRecoveredBy,
+    ...basePayload
+  } = payload;
   return {
     ...action,
     payload: {
-      ...payload,
+      ...(isImmediateClientRequest ? basePayload : payload),
+      resolvedTimeoutDeadlineAt: timeoutDeadlineAt,
       timingPositionPercent: resolution.timingPositionPercent,
       rollTimingZone: resolution.rollTimingZone,
       clientRollResult: resolution.clientRollResult,
@@ -119,6 +126,8 @@ const aliasMutationIdsDeep = (roomId: string, value: unknown, seen: WeakMap<obje
     value.forEach((entry) => next.push(aliasMutationIdsDeep(roomId, entry, seen)));
     return next;
   }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
   const source = value as Record<string, unknown>;
   const next: Record<string, unknown> = {};
   seen.set(value, next);
