@@ -2,10 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   attachClientActionStartedAt,
+  clearNextClientActionStartedAt,
   clearNextDeadlineAutoAction,
+  markNextClientActionStartedAt,
   markNextDeadlineAutoAction,
 } from '../../src/features/room/services/turnActionStartedAtPolicy';
 import { canonicalizeTimeoutRollAction } from '../../src/features/room/services/timeoutRollActionIdentity';
+
+test('로컬 roll presentation 시작 시각은 Firestore 제출 지연 뒤에도 그대로 action metadata에 붙는다', () => {
+  clearNextClientActionStartedAt();
+  markNextClientActionStartedAt({ actionType: 'roll_yut', actorId: 'seat-1', startedAt: 10_000 });
+  const action = attachClientActionStartedAt({
+    type: 'roll_yut',
+    actorId: 'seat-1',
+    payload: { clientActionId: 'roll:seat-1:manual' },
+  }, 13_000);
+  assert.equal((action.payload as Record<string, unknown>).clientActionStartedAt, 10_000);
+});
 
 test('timedOut move도 deadline marker를 소비해 authoritative timeout metadata를 포함한다', () => {
   clearNextDeadlineAutoAction();
