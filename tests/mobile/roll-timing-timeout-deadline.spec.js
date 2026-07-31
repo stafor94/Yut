@@ -88,11 +88,12 @@ async function runTimeoutDeadlineScenario(page, context, testInfo, initialPositi
     expect(firstVisible.buttonDisabled).toBe(false);
     expect(firstVisible.deadlineAt).toBe(firstVisible.timingDeadlineAt);
     expect(firstVisible.durationMs).toBeGreaterThan(0);
-    const expectedAnimationDelayMs = Math.max(
-      -firstVisible.durationMs,
-      Math.min(0, firstVisible.deadlineAt - firstVisible.observedAt - firstVisible.durationMs),
-    );
-    expect(Math.abs(firstVisible.animationDelayMs - expectedAnimationDelayMs)).toBeLessThanOrEqual(250);
+    expect(firstVisible.animationDelayMs).toBeLessThanOrEqual(0);
+    expect(firstVisible.animationDelayMs).toBeGreaterThanOrEqual(-firstVisible.durationMs);
+    const animationRemainingMs = firstVisible.durationMs + firstVisible.animationDelayMs;
+    const animationCapturedAt = firstVisible.deadlineAt - animationRemainingMs;
+    expect(animationCapturedAt).toBeGreaterThanOrEqual(firstVisible.timingStartedAt);
+    expect(animationCapturedAt).toBeLessThanOrEqual(firstVisible.observedAt);
 
     const deadlineState = await runQaStep(testInfo, 'authoritative deadline과 막대 소진·버튼 비활성 상태 일치 확인', () => page.evaluate(async () => {
       const sleep = (delayMs) => new Promise((resolve) => window.setTimeout(resolve, delayMs));
