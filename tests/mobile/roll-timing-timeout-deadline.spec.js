@@ -21,11 +21,7 @@ function getExpectedPosition(initialPositionPercent, elapsedMs) {
 }
 
 async function startTimingGame(page, context, testInfo, initialPositionPercent, options = {}) {
-  const {
-    scenario = 'normal',
-    actionDelayMs = 0,
-    failCommitCount = 0,
-  } = options;
+  const { scenario = 'normal', actionDelayMs = 0, failCommitCount = 0 } = options;
   await page.setViewportSize({ width: 412, height: 915 });
   const hostName = normalizeQaNickname(makeQaName(testInfo, `timeout-host-${initialPositionPercent}-${scenario}`));
   const roomTitle = makeQaName(testInfo, `timeout-room-${initialPositionPercent}-${scenario}`);
@@ -37,13 +33,7 @@ async function startTimingGame(page, context, testInfo, initialPositionPercent, 
     window.__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__ = configuredActionDelayMs;
     window.__YUT_QA_FAIL_TIMEOUT_ROLL_COMMIT_COUNT__ = configuredFailCommitCount;
     window.__YUT_QA_TIMEOUT_ROLL_COMMIT_ATTEMPTS__ = 0;
-    window.__YUT_QA_TIMEOUT_PRESENTATION__ = {
-      timingGradeStarts: 0,
-      resultDisplays: 0,
-      resultNames: [],
-      vibrationCalls: 0,
-    };
-
+    window.__YUT_QA_TIMEOUT_PRESENTATION__ = { timingGradeStarts: 0, resultDisplays: 0, resultNames: [], vibrationCalls: 0 };
     const presentationState = window.__YUT_QA_TIMEOUT_PRESENTATION__;
     const originalVibrate = typeof navigator.vibrate === 'function' ? navigator.vibrate.bind(navigator) : null;
     try {
@@ -55,26 +45,21 @@ async function startTimingGame(page, context, testInfo, initialPositionPercent, 
         },
       });
     } catch {
-      // 일부 브라우저의 읽기 전용 navigator 구현에서는 DOM presentation 계측만 사용한다.
+      // 읽기 전용 navigator 구현에서는 DOM presentation 계측만 사용한다.
     }
-
     let lastTimingGradeNode = null;
     let resultWasVisible = false;
     const samplePresentation = () => {
       const timingGradeNode = document.querySelector('[data-testid="roll-timing-grade"]');
-      if (timingGradeNode && timingGradeNode !== lastTimingGradeNode) {
-        presentationState.timingGradeStarts += 1;
-      }
+      if (timingGradeNode && timingGradeNode !== lastTimingGradeNode) presentationState.timingGradeStarts += 1;
       lastTimingGradeNode = timingGradeNode;
-
       const resultPresentation = document.querySelector('[data-testid="roll-result-presentation"]');
       const resultVisible = resultPresentation instanceof HTMLElement
         && !resultPresentation.hidden
         && resultPresentation.getAttribute('aria-hidden') !== 'true';
       if (resultVisible && !resultWasVisible) {
         presentationState.resultDisplays += 1;
-        const resultName = resultPresentation.querySelector('.roll-result-name')?.textContent?.trim() ?? '';
-        presentationState.resultNames.push(resultName);
+        presentationState.resultNames.push(resultPresentation.querySelector('.roll-result-name')?.textContent?.trim() ?? '');
       }
       resultWasVisible = resultVisible;
       window.requestAnimationFrame(samplePresentation);
@@ -125,59 +110,35 @@ async function getPresentationState(page) {
 async function runTimeoutDeadlineScenario(page, context, testInfo, initialPositionPercent, expectedTimeoutGrade, options = {}) {
   test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
   testInfo.setTimeout(210_000);
-  const {
-    scenario = 'normal',
-    actionDelayMs = 0,
-    failCommitCount = 0,
-    expectCoordinatorRecovery = false,
-    simulateReconnect = false,
-  } = options;
-  const roomId = await startTimingGame(page, context, testInfo, initialPositionPercent, {
-    scenario,
-    actionDelayMs,
-    failCommitCount,
-  });
+  const { scenario = 'normal', actionDelayMs = 0, failCommitCount = 0, expectCoordinatorRecovery = false, simulateReconnect = false } = options;
+  const roomId = await startTimingGame(page, context, testInfo, initialPositionPercent, { scenario, actionDelayMs, failCommitCount });
   const beforeSequence = await getLatestSequenceNumber(roomId);
-
   try {
     const firstVisible = await page.evaluate(() => {
       const timer = document.querySelector('.turn-action-timer');
       const meter = document.querySelector('.roll-timing-live-meter');
       const button = document.querySelector('[data-testid="roll-yut-button"]');
-      if (!(timer instanceof HTMLElement) || !(meter instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) {
-        throw new Error('제한시간 막대, 타이밍 오브, 윷 던지기 버튼을 찾지 못했습니다.');
-      }
+      if (!(timer instanceof HTMLElement) || !(meter instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) throw new Error('제한시간 막대, 타이밍 오브, 윷 던지기 버튼을 찾지 못했습니다.');
       const durationMs = Number.parseFloat(getComputedStyle(timer).getPropertyValue('--timer-duration'));
       const presentation = window.__YUT_QA_TIMEOUT_PRESENTATION__ ?? {};
       return {
-        observedAt: Date.now(),
-        deadlineAt: Number(timer.dataset.deadlineAt),
-        animationDelayMs: Number(timer.dataset.animationDelayMs),
-        durationMs,
-        initialPositionPercent: Number(meter.dataset.initialPositionPercent),
-        timingStartedAt: Number(meter.dataset.timingStartedAt),
-        timingDeadlineAt: Number(meter.dataset.timingDeadlineAt),
-        buttonDisabled: button.disabled,
-        baselineTimingGradeStarts: Number(presentation.timingGradeStarts ?? 0),
-        baselineResultDisplays: Number(presentation.resultDisplays ?? 0),
-        baselineVibrationCalls: Number(presentation.vibrationCalls ?? 0),
+        observedAt: Date.now(), deadlineAt: Number(timer.dataset.deadlineAt), animationDelayMs: Number(timer.dataset.animationDelayMs), durationMs,
+        initialPositionPercent: Number(meter.dataset.initialPositionPercent), timingStartedAt: Number(meter.dataset.timingStartedAt), timingDeadlineAt: Number(meter.dataset.timingDeadlineAt),
+        buttonDisabled: button.disabled, baselineTimingGradeStarts: Number(presentation.timingGradeStarts ?? 0), baselineResultDisplays: Number(presentation.resultDisplays ?? 0), baselineVibrationCalls: Number(presentation.vibrationCalls ?? 0),
       };
     });
-
     expect(firstVisible.initialPositionPercent).toBe(initialPositionPercent);
     expect(firstVisible.buttonDisabled).toBe(false);
     expect(firstVisible.deadlineAt).toBe(firstVisible.timingDeadlineAt);
     expect(firstVisible.durationMs).toBeGreaterThan(0);
     expect(firstVisible.animationDelayMs).toBeLessThanOrEqual(0);
     expect(firstVisible.animationDelayMs).toBeGreaterThanOrEqual(-firstVisible.durationMs);
-    const animationRemainingMs = firstVisible.durationMs + firstVisible.animationDelayMs;
-    const animationCapturedAt = firstVisible.deadlineAt - animationRemainingMs;
+    const animationCapturedAt = firstVisible.deadlineAt - (firstVisible.durationMs + firstVisible.animationDelayMs);
     expect(animationCapturedAt).toBeGreaterThanOrEqual(firstVisible.timingStartedAt);
     expect(animationCapturedAt).toBeLessThanOrEqual(firstVisible.observedAt);
 
     if (simulateReconnect) {
-      const offlineAt = firstVisible.deadlineAt - 250;
-      await expect.poll(() => Date.now(), { timeout: 20_000, intervals: [20, 50] }).toBeGreaterThanOrEqual(offlineAt);
+      await expect.poll(() => Date.now(), { timeout: 20_000, intervals: [20, 50] }).toBeGreaterThanOrEqual(firstVisible.deadlineAt - 250);
       await context.setOffline(true);
     }
 
@@ -192,29 +153,16 @@ async function runTimeoutDeadlineScenario(page, context, testInfo, initialPositi
         const rollButton = document.querySelector('[data-testid="roll-yut-button"]');
         const timer = document.querySelector('.turn-action-timer');
         const fill = timer?.querySelector('span');
-        if (rollButton instanceof HTMLButtonElement && rollButton.disabled && now < deadlineAt - 50) {
-          earlyDisabledSamples.push({ now, deadlineAt });
-        }
+        if (rollButton instanceof HTMLButtonElement && rollButton.disabled && now < deadlineAt - 50) earlyDisabledSamples.push({ now, deadlineAt });
         if (statusButton instanceof HTMLButtonElement) {
-          const animation = fill instanceof HTMLElement ? fill.getAnimations()[0] : undefined;
-          const progress = animation?.effect?.getComputedTiming().progress;
-          const transform = fill instanceof HTMLElement ? getComputedStyle(fill).transform : '';
+          const progress = fill instanceof HTMLElement ? fill.getAnimations()[0]?.effect?.getComputedTiming().progress : null;
           statusButton.click();
-          return {
-            deadlineAt,
-            statusObservedAt: now,
-            statusDisabled: statusButton.disabled,
-            timerExists: timer instanceof HTMLElement,
-            animationProgress: typeof progress === 'number' ? progress : null,
-            transform,
-            earlyDisabledSamples,
-          };
+          return { deadlineAt, statusObservedAt: now, statusDisabled: statusButton.disabled, timerExists: timer instanceof HTMLElement, animationProgress: typeof progress === 'number' ? progress : null, earlyDisabledSamples };
         }
         await sleep(20);
       }
       throw new Error('authoritative deadline 이후 시간 초과 처리 상태가 표시되지 않았습니다.');
     }));
-
     expect(deadlineState.earlyDisabledSamples).toEqual([]);
     expect(deadlineState.statusObservedAt).toBeGreaterThanOrEqual(deadlineState.deadlineAt);
     expect(deadlineState.statusDisabled).toBe(true);
@@ -224,34 +172,22 @@ async function runTimeoutDeadlineScenario(page, context, testInfo, initialPositi
     await expect(page.locator('.roll-stage')).toBeVisible({ timeout: 10_000 });
     if (simulateReconnect) {
       await context.setOffline(false);
-      await page.evaluate(() => {
-        window.dispatchEvent(new Event('online'));
-        document.dispatchEvent(new Event('visibilitychange'));
-      });
+      await page.evaluate(() => { window.dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); });
     }
 
     let timedOutSequence;
     let firstObservedAt = 0;
     await expect.poll(async () => {
       const sequences = await getRoomSequencesForQa(roomId);
-      const candidates = sequences.filter((sequence) => (
-        sequence.type === 'roll_yut'
-        && Number(sequence.sequence ?? 0) > beforeSequence
-        && (sequence.action?.payload?.timedOut === true || sequence.payload?.timedOut === true)
-      ));
+      const candidates = sequences.filter((sequence) => sequence.type === 'roll_yut' && Number(sequence.sequence ?? 0) > beforeSequence && (sequence.action?.payload?.timedOut === true || sequence.payload?.timedOut === true));
       timedOutSequence = candidates[0];
       if (timedOutSequence && !firstObservedAt) firstObservedAt = Date.now();
       return candidates.length;
-    }, {
-      timeout: 30_000,
-      intervals: [100, 200, 400],
-      message: 'timedOut roll_yut sequence가 정확히 한 번 저장되어야 합니다.',
-    }).toBe(1);
+    }, { timeout: 30_000, intervals: [100, 200, 400], message: 'timedOut roll_yut sequence가 정확히 한 번 저장되어야 합니다.' }).toBe(1);
 
     expect(firstObservedAt).toBeGreaterThanOrEqual(deadlineState.deadlineAt);
     expect(firstObservedAt - deadlineState.deadlineAt).toBeLessThanOrEqual(MAX_TIMEOUT_SEQUENCE_OBSERVATION_DELAY_MS);
-    const elapsedMs = firstVisible.timingDeadlineAt - firstVisible.timingStartedAt;
-    const expectedPositionPercent = getExpectedPosition(initialPositionPercent, elapsedMs);
+    const expectedPositionPercent = getExpectedPosition(initialPositionPercent, firstVisible.timingDeadlineAt - firstVisible.timingStartedAt);
     const actionPayload = timedOutSequence?.action?.payload ?? timedOutSequence?.payload ?? {};
     const submittedPositionPercent = Number(actionPayload.timingPositionPercent);
     expect(Math.abs(submittedPositionPercent - expectedPositionPercent)).toBeLessThanOrEqual(POSITION_TOLERANCE_PERCENT);
@@ -263,26 +199,20 @@ async function runTimeoutDeadlineScenario(page, context, testInfo, initialPositi
     else expect(actionPayload.timeoutRecoveredBy).toBeUndefined();
 
     const authoritativeResultName = String(actionPayload.clientRollResult?.name ?? '');
+    const authoritativeDisplayName = actionPayload.clientFallOccurred === true ? '낙' : authoritativeResultName;
     expect(authoritativeResultName).not.toBe('');
-    await expect.poll(async () => {
-      const presentation = await getPresentationState(page);
-      return presentation.resultNames.slice(firstVisible.baselineResultDisplays).at(0) ?? '';
-    }, { timeout: 20_000, intervals: [50, 100, 200] }).toContain(authoritativeResultName);
+    await expect.poll(async () => (await getPresentationState(page)).resultNames.slice(firstVisible.baselineResultDisplays).at(0) ?? '', { timeout: 20_000, intervals: [50, 100, 200] }).toContain(authoritativeDisplayName);
 
     await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 25_000 });
     const presentation = await getPresentationState(page);
     expect(presentation.timingGradeStarts - firstVisible.baselineTimingGradeStarts).toBe(1);
     expect(presentation.resultDisplays - firstVisible.baselineResultDisplays).toBe(1);
-    expect(presentation.resultNames.slice(firstVisible.baselineResultDisplays)[0]).toContain(authoritativeResultName);
+    expect(presentation.resultNames.slice(firstVisible.baselineResultDisplays)[0]).toContain(authoritativeDisplayName);
     if (failCommitCount === 1) expect(presentation.commitAttempts).toBe(2);
     if (failCommitCount >= 2) expect(presentation.commitAttempts).toBeGreaterThanOrEqual(3);
 
     const finalSequences = await getRoomSequencesForQa(roomId);
-    const timeoutSequences = finalSequences.filter((sequence) => (
-      sequence.type === 'roll_yut'
-      && Number(sequence.sequence ?? 0) > beforeSequence
-      && (sequence.action?.payload?.timedOut === true || sequence.payload?.timedOut === true)
-    ));
+    const timeoutSequences = finalSequences.filter((sequence) => sequence.type === 'roll_yut' && Number(sequence.sequence ?? 0) > beforeSequence && (sequence.action?.payload?.timedOut === true || sequence.payload?.timedOut === true));
     expect(timeoutSequences).toHaveLength(1);
     expect(new Set(timeoutSequences.map((sequence) => String(sequence.action?.payload?.clientActionId ?? sequence.payload?.clientActionId ?? ''))).size).toBe(1);
     await expect(page.getByTestId('game-screen')).toBeVisible();
@@ -293,41 +223,10 @@ async function runTimeoutDeadlineScenario(page, context, testInfo, initialPositi
 }
 
 test.describe('Galaxy online timeout deadline and timing snapshot regression', () => {
-  test('0% 초기 위치의 timeout은 동일 deadline 위치로 Bad를 한 번만 표시한다', async ({ page, context }, testInfo) => {
-    await runTimeoutDeadlineScenario(page, context, testInfo, 0, 'bad');
-  });
-
-  test('30% 초기 위치의 timeout은 고정 Bad가 아니라 동일 deadline 위치의 Good을 한 번만 표시한다', async ({ page, context }, testInfo) => {
-    await runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good');
-  });
-
-  test('UI 제출 지연으로 coordinator가 먼저 확정해도 같은 결과를 한 번만 표시한다', async ({ page, context }, testInfo) => {
-    await runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good', {
-      scenario: 'coordinator-first',
-      actionDelayMs: 2_500,
-      expectCoordinatorRecovery: true,
-    });
-  });
-
-  test('첫 Firestore 제출 실패는 같은 timeout payload로 한 번만 재시도한다', async ({ page, context }, testInfo) => {
-    await runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good', {
-      scenario: 'retry-once',
-      failCommitCount: 1,
-    });
-  });
-
-  test('UI 제출과 동일 payload 재시도가 모두 실패하면 coordinator가 같은 action을 확정한다', async ({ page, context }, testInfo) => {
-    await runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good', {
-      scenario: 'coordinator-fallback',
-      failCommitCount: 2,
-      expectCoordinatorRecovery: true,
-    });
-  });
-
-  test('deadline 직전 오프라인 후 재접속해도 로컬 결과와 authoritative 결과가 한 번만 표시된다', async ({ page, context }, testInfo) => {
-    await runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good', {
-      scenario: 'offline-reconnect',
-      simulateReconnect: true,
-    });
-  });
+  test('0% 초기 위치의 timeout은 동일 deadline 위치로 Bad를 한 번만 표시한다', async ({ page, context }, testInfo) => runTimeoutDeadlineScenario(page, context, testInfo, 0, 'bad'));
+  test('30% 초기 위치의 timeout은 고정 Bad가 아니라 동일 deadline 위치의 Good을 한 번만 표시한다', async ({ page, context }, testInfo) => runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good'));
+  test('UI 제출 지연으로 fallback이 먼저 확정해도 같은 결과를 한 번만 표시한다', async ({ page, context }, testInfo) => runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good', { scenario: 'coordinator-first', actionDelayMs: 2_500, expectCoordinatorRecovery: true }));
+  test('첫 Firestore 제출 실패는 같은 timeout payload로 한 번만 재시도한다', async ({ page, context }, testInfo) => runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good', { scenario: 'retry-once', failCommitCount: 1 }));
+  test('UI 제출과 동일 payload 재시도가 모두 실패하면 같은 canonical fallback이 확정한다', async ({ page, context }, testInfo) => runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good', { scenario: 'coordinator-fallback', failCommitCount: 2, expectCoordinatorRecovery: true }));
+  test('deadline 직전 오프라인 후 재접속해도 로컬 결과와 authoritative 결과가 한 번만 표시된다', async ({ page, context }, testInfo) => runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good', { scenario: 'offline-reconnect', simulateReconnect: true }));
 });
