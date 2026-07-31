@@ -1,6 +1,7 @@
 import type { BoardPiece } from '../features/game/components/GameBoard';
 import { BRANCH_NODE_IDS, FINISH_NODE_ID, getMovePathNodeIdsWithPrevious, type BranchChoice } from '../game-core/board/board';
 import type { YutResult } from '../game-core/roll';
+import { ONLINE_ROLL_FAST_PRESENTATION_MS } from '../features/room/services/rollPresentationTiming';
 import type { GameLog, PieceCount, PlayMode } from './appState';
 
 /* Kept only for the legacy App import boundary; the simultaneous flow has no stopped reels. */
@@ -8,6 +9,10 @@ export const getTurnOrderStoppedSlotCount = () => 0;
 
 const ROLL_ANIMATION_MS = 2600;
 const ROLL_RESULT_HOLD_GRACE_MS = 1200;
+const MAX_ROLL_RESULT_READY_AHEAD_MS = Math.max(
+  ROLL_ANIMATION_MS + ROLL_RESULT_HOLD_GRACE_MS,
+  ONLINE_ROLL_FAST_PRESENTATION_MS,
+);
 
 export const normalizeMaxPlayers = (value: unknown, mode: PlayMode): 2 | 3 | 4 => {
   if (mode === 'team') return 4;
@@ -18,7 +23,7 @@ export const delay = (ms: number) => new Promise((resolve) => window.setTimeout(
 export const splitMessageBySentence = (message: string) => message.match(/.+?(?:[.!?。]|…+)(?=\s|$)|.+$/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [message];
 
 export const normalizeRollResultReadyAt = (readyAt: number, now = Date.now()) => {
-  const maxExpectedReadyAt = now + ROLL_ANIMATION_MS + ROLL_RESULT_HOLD_GRACE_MS;
+  const maxExpectedReadyAt = now + MAX_ROLL_RESULT_READY_AHEAD_MS;
   return readyAt > now && readyAt <= maxExpectedReadyAt ? readyAt : 0;
 };
 
