@@ -115,7 +115,7 @@ test('autoplay 전환 후 일반 수동 action은 거부된다', () => {
   assert.match(reduction.reason ?? '', /AI 자동 플레이/);
 });
 
-test('timeout AI action은 기존 연속 timeout count와 autoplay 상태를 patch로 초기화하지 않는다', () => {
+test('timeout AI action은 연속 timeout count 2를 유지하고 autoplay 상태를 초기화하지 않는다', () => {
   const originalNow = Date.now;
   try {
     Date.now = () => 300_100;
@@ -131,7 +131,7 @@ test('timeout AI action은 기존 연속 timeout count와 autoplay 상태를 pat
     }, room, sides);
     assert.equal(isAuthoritativeCommitReduction(reduction), true);
     if (!isAuthoritativeCommitReduction(reduction)) return;
-    assert.equal(reduction.patch.turnActionTimeoutCountBySeatId, undefined);
+    assert.deepEqual(getCounts(reduction.patch.turnActionTimeoutCountBySeatId), { 'seat-1': 2 });
     assert.equal(reduction.patch.autoPlayBySeatId, undefined);
   } finally {
     Date.now = originalNow;
