@@ -12,6 +12,7 @@ import {
   type TimeoutRollClientFallbackCandidate,
 } from '../../features/room/services/timeoutRollClientFallback';
 import { makeTimeoutActionKey } from '../../features/room/services/timeoutResolvers';
+import { getRollTimingZone } from '../../game-core/roll';
 import { shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
@@ -26,14 +27,20 @@ export type PendingRemoteActionMeta = {
   blocksTurnActions?: boolean;
 };
 
-const getVisibleTimeoutDeadlineAt = () => {
-  if (typeof document === 'undefined') return 0;
+const getVisibleTimeoutSnapshot = () => {
+  if (typeof document === 'undefined') return { deadlineAt: 0, positionPercent: Number.NaN };
   const timingMeter = document.querySelector<HTMLElement>('.roll-timing-live-meter');
   const timingDeadlineAt = Number(timingMeter?.dataset.timingDeadlineAt ?? 0);
-  if (Number.isFinite(timingDeadlineAt) && timingDeadlineAt > 0) return Math.trunc(timingDeadlineAt);
+  const timingPositionPercent = Number(timingMeter?.dataset.positionPercent ?? Number.NaN);
+  if (Number.isFinite(timingDeadlineAt) && timingDeadlineAt > 0 && Number.isFinite(timingPositionPercent)) {
+    return { deadlineAt: Math.trunc(timingDeadlineAt), positionPercent: timingPositionPercent };
+  }
   const turnTimer = document.querySelector<HTMLElement>('.turn-action-timer');
   const turnDeadlineAt = Number(turnTimer?.dataset.deadlineAt ?? 0);
-  return Number.isFinite(turnDeadlineAt) && turnDeadlineAt > 0 ? Math.trunc(turnDeadlineAt) : 0;
+  return {
+    deadlineAt: Number.isFinite(turnDeadlineAt) && turnDeadlineAt > 0 ? Math.trunc(turnDeadlineAt) : 0,
+    positionPercent: Number.NaN,
+  };
 };
 
 export function usePendingRemoteActions() {
@@ -73,6 +80,8 @@ export function usePendingRemoteActions() {
         timeoutDeadlineAt: candidate.timeoutDeadlineAt,
         timeoutRecoveredBy: candidate.actorId,
         timeoutSource: 'client-timeout-fallback',
+        timingPositionPercent: candidate.timingPositionPercent,
+        rollTimingZone: getRollTimingZone(candidate.timingPositionPercent),
         clientActionId: canonicalActionId,
       },
     });
@@ -90,7 +99,13 @@ export function usePendingRemoteActions() {
   };
   const registerTimeoutFallback = (actionKey: string, type: GameAction['type'], actorId?: string) => {
     if (type !== 'roll_yut' || !actorId) return;
-    const candidate = registerTimeoutRollClientFallback(actionKey, actorId, getVisibleTimeoutDeadlineAt());
+    const visibleSnapshot = getVisibleTimeoutSnapshot();
+    const candidate = registerTimeoutRollClientFallback(
+      actionKey,
+      actorId,
+      visibleSnapshot.deadlineAt,
+      visibleSnapshot.positionPercent,
+    );
     if (!candidate) return;
     if (!registerPendingTimeoutRollCandidate(candidate.roomId, actionKey, actorId)) {
       settleTimeoutRollClientFallback(actionKey);
