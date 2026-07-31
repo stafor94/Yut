@@ -1,10 +1,15 @@
 import {
   GOLDEN_YUT_CHOICES,
   getRollTimingZone,
+  makeDisplaySticks,
+  rollYutResultWithTiming,
+  shouldFallForTimingZone,
   type RollTimingZone,
   type YutResult,
+  type YutStick,
 } from '../../../game-core/roll';
 import {
+  getRollTimingInitialPositionPercentForDeadline,
   getRollTimingMotionState,
   rollTimingOpportunitySnapshotCache,
 } from '../../../game-core/rollTimingMotion';
@@ -12,8 +17,43 @@ import type { BranchChoice } from '../../../game-core/board/board';
 import { getRollStackSelectionAvailability } from '../../../game-core/rollStackSelection';
 import { TURN_ACTION_TIMEOUT_MS } from './roomTiming';
 
+export const ROLL_TIMEOUT_RESOLVER_VERSION = 1 as const;
+
+const normalizeSeedPart = (value: unknown) => String(value ?? '');
+
+const hashSeed = (parts: unknown[]) => {
+  let hash = 0x811c9dc5;
+  for (const character of parts.map(normalizeSeedPart).join('|')) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+};
+
+export const createRollTimeoutRandom = (timeoutDeadlineAt: number) => {
+  let state = hashSeed([ROLL_TIMEOUT_RESOLVER_VERSION, Math.trunc(timeoutDeadlineAt)]) || 0x6d2b79f5;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 0x100000000;
+  };
+};
+
+/** Run the synchronous timeout roll callback with the exact random stream used by recovery. */
+export const runWithRollTimeoutRandom = <T>(timeoutDeadlineAt: number, operation: () => T): T => {
+  const originalRandom = Math.random;
+  Math.random = createRollTimeoutRandom(timeoutDeadlineAt);
+  try {
+    return operation();
+  } finally {
+    Math.random = originalRandom;
+  }
+};
+
 /**
- * The active client freezes and submits the DOM-visible orb position at the deadline.
+ * The active client freezes and submits the canonical orb position at the deadline.
  * If that client disappears, coordinators reconstruct the same deadline-seeded
  * opportunity instead of falling back to a separate fixed Bad position.
  */
@@ -37,6 +77,99 @@ export const resolveRollTimeout = (
     rollTimingZone: getRollTimingZone(timingPositionPercent),
     timingPositionPercent,
   };
+};
+
+/** One authoritative timeout action per game, turn, stage, actor, and deadline. */
+export const makeTimeoutActionKey = (params: {
+  roomId?: string;
+  stage: string;
+  actorId: string;
+  timeoutDeadlineAt: number;
+  gameStartedAt?: number | null;
+  turnIndex?: number;
+  resolverVersion?: number;
+  turnVersion?: number;
+  sequence?: number;
+  extra?: string;
+}) => [
+  'timeout',
+  `v${params.resolverVersion ?? ROLL_TIMEOUT_RESOLVER_VERSION}`,
+  params.roomId ?? 'local',
+  Math.trunc(Number(params.gameStartedAt ?? 0)),
+  params.stage,
+  params.actorId,
+  Math.trunc(Number(params.turnIndex ?? 0)),
+  Math.trunc(params.timeoutDeadlineAt),
+].join(':');
+
+export type RollTimeoutResolution = Readonly<{
+  resolverVersion: typeof ROLL_TIMEOUT_RESOLVER_VERSION;
+  actionKey: string;
+  initialPositionPercent: number;
+  initialDirection: 'forward';
+  timingPositionPercent: number;
+  rollTimingZone: RollTimingZone;
+  clientRollResult: YutResult;
+  sticks: readonly YutStick[];
+  clientFallOccurred: boolean;
+  clientFallCount: number;
+}>;
+
+/**
+ * Resolves every random-looking part of a timed-out roll from one immutable turn
+ * identity. UI submission, retry, reconnect recovery, and coordinator fallback
+ * therefore produce the same gameplay payload.
+ */
+export const resolveRollTimeoutAction = (params: {
+  roomId: string;
+  actorId: string;
+  timeoutDeadlineAt: number;
+  timeoutWindowMs?: number;
+  gameStartedAt?: number | null;
+  turnIndex?: number;
+  stage?: 'roll' | 'golden_yut';
+  selectedGoldenYutResult?: YutResult | null;
+  timingPositionPercent?: number;
+  rollTimingZone?: RollTimingZone;
+}): RollTimeoutResolution => {
+  const stage = params.stage ?? (params.selectedGoldenYutResult ? 'golden_yut' : 'roll');
+  const actionKey = makeTimeoutActionKey({
+    roomId: params.roomId,
+    stage,
+    actorId: params.actorId,
+    timeoutDeadlineAt: params.timeoutDeadlineAt,
+    gameStartedAt: params.gameStartedAt,
+    turnIndex: params.turnIndex,
+    resolverVersion: ROLL_TIMEOUT_RESOLVER_VERSION,
+  });
+  const fallbackTiming = resolveRollTimeout(params.timeoutDeadlineAt, params.timeoutWindowMs);
+  const timingPositionPercent = Number.isFinite(params.timingPositionPercent)
+    ? Number(params.timingPositionPercent)
+    : fallbackTiming.timingPositionPercent;
+  const rollTimingZone = params.rollTimingZone ?? getRollTimingZone(timingPositionPercent);
+  const random = createRollTimeoutRandom(params.timeoutDeadlineAt);
+  const rolledResult = params.selectedGoldenYutResult
+    ? { ...params.selectedGoldenYutResult }
+    : rollYutResultWithTiming(rollTimingZone, random).result;
+  const clientFallOccurred = params.selectedGoldenYutResult
+    ? false
+    : shouldFallForTimingZone(rollTimingZone, random);
+  const clientFallCount = clientFallOccurred
+    ? Math.floor(random() * 4) + 1
+    : 0;
+
+  return Object.freeze({
+    resolverVersion: ROLL_TIMEOUT_RESOLVER_VERSION,
+    actionKey,
+    initialPositionPercent: getRollTimingInitialPositionPercentForDeadline(params.timeoutDeadlineAt),
+    initialDirection: 'forward' as const,
+    timingPositionPercent,
+    rollTimingZone,
+    clientRollResult: Object.freeze({ ...rolledResult }),
+    sticks: Object.freeze(makeDisplaySticks(rolledResult).map((stick) => Object.freeze({ ...stick }))),
+    clientFallOccurred,
+    clientFallCount,
+  });
 };
 
 export type MoveTimeoutContextReason = 'selected' | 'default-first' | 'first-selectable' | 'single' | 'non-stacked' | 'unresolved';
@@ -146,20 +279,3 @@ export const resolveGoldenYutTimeout = (): YutResult => {
   if (!mo) return { name: '모', steps: 5, bonus: true };
   return mo;
 };
-
-/** One authoritative timeout action per room, stage, actor, and deadline. */
-export const makeTimeoutActionKey = (params: {
-  roomId?: string;
-  stage: string;
-  actorId: string;
-  timeoutDeadlineAt: number;
-  turnVersion?: number;
-  sequence?: number;
-  extra?: string;
-}) => [
-  'timeout',
-  params.roomId ?? 'local',
-  params.stage,
-  params.actorId,
-  params.timeoutDeadlineAt,
-].join(':');

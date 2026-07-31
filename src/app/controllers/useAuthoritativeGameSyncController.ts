@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { commitAuthoritativeGameAction, withGameSequenceReplayCache, type GameAction } from '../../features/room/services/roomService';
 import { attachClientActionStartedAt } from '../../features/room/services/turnActionStartedAtPolicy';
+import {
+  aliasTimeoutRollMutationIds,
+  canonicalizeTimeoutRollAction,
+  clearTimeoutRollMutationAliases,
+  registerPendingTimeoutRollCandidate,
+  removePendingTimeoutRollCandidate,
+} from '../../features/room/services/timeoutRollActionIdentity';
 import type { SequenceStateSnapshot } from '../appState';
+import { shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../hooks/localOptimisticSnapshotPolicy';
 import { buildAuthoritativeApplyWakeSnapshot } from '../flows/authoritativeApplyWakeFlow';
@@ -36,6 +44,17 @@ type Params = {
   pendingLocalRemoteActionCount: number;
 };
 
+const isTimedOutRollAction = (action: CommittableGameAction) => (
+  action.type === 'roll_yut'
+  && Boolean(action.payload && typeof action.payload === 'object' && (action.payload as Record<string, unknown>).timedOut === true)
+);
+
+const getClientActionId = (action: CommittableGameAction) => {
+  if (!action.payload || typeof action.payload !== 'object') return '';
+  const clientActionId = (action.payload as Record<string, unknown>).clientActionId;
+  return typeof clientActionId === 'string' ? clientActionId : '';
+};
+
 export function useAuthoritativeGameSyncController(params: Params) {
   const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
   applySyncedStateSnapshotRef.current = params.applySyncedStateSnapshot;
@@ -48,10 +67,11 @@ export function useAuthoritativeGameSyncController(params: Params) {
   const latestSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
 
   const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
-    if (shouldDeferSyncedStateSnapshotRef.current(state)) return;
-    latestSyncedStateRef.current = state;
-    applySyncedStateSnapshotRef.current(state, options);
-  }, []);
+    const aliasedState = aliasTimeoutRollMutationIds(params.activeRoomIdRef.current, state);
+    if (shouldDeferSyncedStateSnapshotRef.current(aliasedState)) return;
+    latestSyncedStateRef.current = aliasedState;
+    applySyncedStateSnapshotRef.current(aliasedState, options);
+  }, [params.activeRoomIdRef]);
 
   const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
   const clearAuthoritativeApplyWake = useCallback(() => {
@@ -60,7 +80,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
     authoritativeApplyWakeTimerRef.current = null;
   }, []);
   const scheduleAuthoritativeApplyWake = useCallback((roomId: string, appliedValue: unknown) => {
-    const appliedSnapshot = buildAuthoritativeApplyWakeSnapshot(appliedValue, latestSyncedStateRef.current);
+    const aliasedAppliedValue = aliasTimeoutRollMutationIds(roomId, appliedValue);
+    const appliedSnapshot = buildAuthoritativeApplyWakeSnapshot(aliasedAppliedValue, latestSyncedStateRef.current);
     if (params.activeRoomIdRef.current !== roomId || !appliedSnapshot) return;
     const appliedSequence = Number(appliedSnapshot.lastSequence ?? 0);
     if (!appliedSequence) return;
@@ -68,7 +89,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     authoritativeApplyWakeTimerRef.current = window.setTimeout(() => {
       authoritativeApplyWakeTimerRef.current = null;
       if (params.activeRoomIdRef.current !== roomId || appliedSequence < params.lastAppliedSequenceRef.current) return;
-      const wakeSnapshot = buildAuthoritativeApplyWakeSnapshot(appliedValue, latestSyncedStateRef.current);
+      const wakeSnapshot = buildAuthoritativeApplyWakeSnapshot(aliasedAppliedValue, latestSyncedStateRef.current);
       if (!wakeSnapshot) return;
       latestSyncedStateRef.current = wakeSnapshot;
       applySyncedStateSnapshotRef.current(wakeSnapshot, {
@@ -93,12 +114,14 @@ export function useAuthoritativeGameSyncController(params: Params) {
 
   useEffect(() => {
     if (previousRoomIdRef.current === params.activeRoomId) return;
+    const previousRoomId = previousRoomIdRef.current;
     previousRoomIdRef.current = params.activeRoomId;
     clearAuthoritativeApplyWake();
     latestSyncedStateRef.current = null;
     queuesRef.current?.reset();
     setManualSequenceSyncing(false);
     params.clearPendingLocalRemoteActions();
+    clearTimeoutRollMutationAliases(previousRoomId);
   }, [clearAuthoritativeApplyWake, params.activeRoomId, params.clearPendingLocalRemoteActions]);
 
   useEffect(() => clearAuthoritativeApplyWake, [clearAuthoritativeApplyWake]);
@@ -113,21 +136,47 @@ export function useAuthoritativeGameSyncController(params: Params) {
       localSequence,
       remoteSequence,
       getSequenceRefetchAfter(localSequence),
-      () => params.replayMissingSequencesThenApply(state, localSequence, remoteSequence),
+      () => params.replayMissingSequencesThenApply(
+        aliasTimeoutRollMutationIds(params.activeRoomId, state),
+        localSequence,
+        remoteSequence,
+      ),
     ),
     applySyncedStateSnapshot: rememberAndApplySyncedStateSnapshot,
     enqueueAuthoritativeResultApplication: (applyResult) => enqueueAuthoritativeResultApplication(params.activeRoomId, applyResult),
     onSnapshotReceived: (state) => {
-      params.onSnapshotReceived?.(state);
+      params.onSnapshotReceived?.(aliasTimeoutRollMutationIds(params.activeRoomId, state));
     },
   });
 
-  const commitQueuedAuthoritativeGameAction = useCallback((roomId: string, action: CommittableGameAction) => {
-    return queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, attachClientActionStartedAt(action));
+  const commitCanonicalAction = useCallback(async (roomId: string, action: CommittableGameAction) => {
+    const timedOutRoll = isTimedOutRollAction(action);
+    const clientActionId = getClientActionId(action);
+    const commitOnce = () => {
+      if (timedOutRoll && shouldFailQaTimeoutRollCommit(clientActionId)) {
+        return Promise.reject(new Error('QA timeout roll commit failure'));
+      }
+      return queuesRef.current!.commitQueuedAuthoritativeGameAction(roomId, action);
+    };
+    try {
+      return await commitOnce();
+    } catch (firstError) {
+      if (!timedOutRoll) throw firstError;
+      return commitOnce();
+    }
   }, []);
 
+  const commitQueuedAuthoritativeGameAction = useCallback((roomId: string, action: CommittableGameAction) => {
+    const normalizedAction = canonicalizeTimeoutRollAction(roomId, attachClientActionStartedAt(action));
+    return commitCanonicalAction(roomId, normalizedAction)
+      .then((result) => aliasTimeoutRollMutationIds(roomId, result));
+  }, [commitCanonicalAction]);
+
   const enqueueAuthoritativeResultApplication = useCallback(<T,>(roomId: string, applyResult: () => Promise<T> | T): Promise<T | null> => {
-    return queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, applyResult);
+    return queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, async () => {
+      const result = await applyResult();
+      return aliasTimeoutRollMutationIds(roomId, result);
+    });
   }, []);
 
   const enqueueAuthoritativeGameAction = useCallback((
@@ -137,20 +186,69 @@ export function useAuthoritativeGameSyncController(params: Params) {
     handleError: (error: unknown) => void,
     handleFinally: () => void,
   ) => {
-    queuesRef.current!.enqueueAuthoritativeGameAction(roomId, attachClientActionStartedAt(action), { handleResult, handleError, handleFinally });
-  }, []);
+    const normalizedAction = canonicalizeTimeoutRollAction(roomId, attachClientActionStartedAt(action));
+    const preserveTimeoutPresentationOnError = isTimedOutRollAction(normalizedAction);
+    void (async () => {
+      try {
+        const result = await commitCanonicalAction(roomId, normalizedAction);
+        const aliasedResult = aliasTimeoutRollMutationIds(roomId, result);
+        await queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, async () => {
+          await handleResult(aliasedResult);
+          return aliasedResult;
+        });
+      } catch (error) {
+        if (!preserveTimeoutPresentationOnError) {
+          await queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, () => {
+            handleError(error);
+          });
+        } else {
+          console.warn('시간초과 윷 제출 재시도가 실패해 coordinator의 동일 action 복구를 기다립니다.', {
+            roomId,
+            clientActionId: getClientActionId(normalizedAction),
+          });
+        }
+      } finally {
+        handleFinally();
+      }
+    })();
+  }, [commitCanonicalAction]);
+
+  const applyAuthoritativeResultSequence = useCallback((result: AuthoritativeCommitResult) => (
+    params.applyAuthoritativeResultSequence(
+      aliasTimeoutRollMutationIds(params.activeRoomIdRef.current, result),
+    )
+  ), [params.activeRoomIdRef, params.applyAuthoritativeResultSequence]);
+
+  const addPendingLocalRemoteAction = useCallback((actionKey: string, metadata?: PendingMeta) => {
+    if (metadata?.type === 'roll_yut' && metadata.actorId) {
+      registerPendingTimeoutRollCandidate(params.activeRoomIdRef.current, actionKey, metadata.actorId);
+    }
+    params.addPendingLocalRemoteAction(actionKey, metadata);
+  }, [params.activeRoomIdRef, params.addPendingLocalRemoteAction]);
+
+  const acknowledgePendingLocalRemoteAction = useCallback((clientMutationId: unknown) => {
+    params.acknowledgePendingLocalRemoteAction(clientMutationId);
+    if (typeof clientMutationId === 'string') {
+      removePendingTimeoutRollCandidate(params.activeRoomIdRef.current, clientMutationId);
+    }
+  }, [params.activeRoomIdRef, params.acknowledgePendingLocalRemoteAction]);
+
+  const removeSettledPendingLocalRemoteAction = useCallback((actionKey: string) => {
+    params.removeSettledPendingLocalRemoteAction(actionKey);
+    removePendingTimeoutRollCandidate(params.activeRoomIdRef.current, actionKey);
+  }, [params.activeRoomIdRef, params.removeSettledPendingLocalRemoteAction]);
 
   return {
     commitQueuedAuthoritativeGameAction,
     enqueueAuthoritativeResultApplication,
     enqueueAuthoritativeGameAction,
-    applyAuthoritativeResultSequence: params.applyAuthoritativeResultSequence,
+    applyAuthoritativeResultSequence,
     syncLatestAuthoritativeState: params.syncLatestAuthoritativeState,
     syncLatestSequencesFromBadge: params.syncLatestSequencesFromBadge,
     reconcilePendingLocalRemoteActions: params.reconcilePendingLocalRemoteActions,
-    addPendingLocalRemoteAction: params.addPendingLocalRemoteAction,
-    acknowledgePendingLocalRemoteAction: params.acknowledgePendingLocalRemoteAction,
-    removeSettledPendingLocalRemoteAction: params.removeSettledPendingLocalRemoteAction,
+    addPendingLocalRemoteAction,
+    acknowledgePendingLocalRemoteAction,
+    removeSettledPendingLocalRemoteAction,
     clearPendingLocalRemoteActions: params.clearPendingLocalRemoteActions,
     hasPendingCurrentTurnAction: params.hasPendingCurrentTurnAction,
     pendingLocalRemoteActionCount: params.pendingLocalRemoteActionCount,
