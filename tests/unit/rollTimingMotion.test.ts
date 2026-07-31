@@ -38,6 +38,30 @@ test('one opportunity samples once across rerenders and a new deadline samples a
   assert.equal(calls, 2);
 });
 
+test('visible control and timeout recovery reuse one seed for the same authoritative timing window', () => {
+  let calls = 0;
+  const cache = createRollTimingOpportunitySnapshotCache(() => {
+    calls += 1;
+    return 0.5;
+  });
+  const visible = cache.get({
+    key: 'room:seat-1:roll:11_000',
+    startedAt: 1_000,
+    deadlineAt: 11_000,
+    initialPositionPercent: 30,
+  });
+  const recovery = cache.get({
+    key: 'timeout:11_000:10_000',
+    startedAt: 1_000,
+    deadlineAt: 11_000,
+  });
+
+  assert.notStrictEqual(recovery, visible);
+  assert.equal(recovery.initialPositionPercent, 30);
+  assert.equal(recovery.initialPhaseMs, visible.initialPhaseMs);
+  assert.equal(calls, 0);
+});
+
 test('the shared motion formula reverses at both ends and preserves the existing speed', () => {
   assert.deepEqual(getRollTimingMotionState({ initialPositionPercent: 30, elapsedMs: 0 }), {
     phaseMs: 300,
