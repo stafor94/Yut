@@ -20,7 +20,7 @@ test('로컬 roll presentation 시작 시각은 Firestore 제출 지연 뒤에�
   assert.equal((action.payload as Record<string, unknown>).clientActionStartedAt, 10_000);
 });
 
-test('timedOut move도 deadline marker를 소비해 authoritative timeout metadata를 포함한다', () => {
+test('timedOut move는 deadline 뒤 commit이 지연돼도 authoritative timeout metadata를 유지한다', () => {
   clearNextDeadlineAutoAction();
   markNextDeadlineAutoAction({ actionType: 'move_piece', actorId: 'seat-1', deadlineAt: 10_000, now: 9_800 });
   const action = attachClientActionStartedAt({
@@ -31,11 +31,11 @@ test('timedOut move도 deadline marker를 소비해 authoritative timeout metada
       timedOut: true,
       recoveredByCoordinator: true,
     },
-  }, 9_920);
+  }, 13_000);
   const payload = action.payload as Record<string, unknown>;
   assert.equal(payload.deadlineAutoSubmitted, true);
   assert.equal(payload.autoSubmittedDeadlineAt, 10_000);
-  assert.equal(payload.clientActionStartedAt, 9_920);
+  assert.equal(payload.clientActionStartedAt, 9_999);
 });
 
 test('marker가 없는 coordinator action은 사용자 수동 행동으로 오분류되지 않도록 그대로 둔다', () => {
