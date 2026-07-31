@@ -7,7 +7,7 @@ export const ONLINE_ROLL_FAST_PRESENTATION_MS = ONLINE_ROLL_PRIMARY_MS
   + ONLINE_ROLL_LANDING_MS
   + ONLINE_ROLL_RESULT_HOLD_MS;
 
-export const ONLINE_ROLL_LATE_RESOLUTION_PRESENTATION_MS = ONLINE_ROLL_EXTRA_SPIN_MS
+export const ONLINE_ROLL_MAX_LATE_RESOLUTION_REMAINDER_MS = ONLINE_ROLL_EXTRA_SPIN_MS
   + ONLINE_ROLL_LANDING_MS
   + ONLINE_ROLL_RESULT_HOLD_MS;
 
@@ -19,8 +19,7 @@ const normalizeTimestamp = (value: unknown) => {
 /**
  * The pending online roll keeps its primary spin until 1.2s. Once that boundary
  * has passed, a result received during extra-spin lands on the next 1s boundary.
- * The authoritative action-ready timestamp therefore has to cover either the
- * fixed fast path or one full extra-spin interval after a late resolution.
+ * This mirrors the client loop instead of always adding a full extra-spin.
  */
 export const getAuthoritativeRollPresentationReadyAt = ({
   actionStartedAt,
@@ -40,5 +39,8 @@ export const getAuthoritativeRollPresentationReadyAt = ({
     return primaryEndsAt + ONLINE_ROLL_LANDING_MS + ONLINE_ROLL_RESULT_HOLD_MS;
   }
 
-  return normalizedResolvedAt + ONLINE_ROLL_LATE_RESOLUTION_PRESENTATION_MS;
+  const extraSpinElapsedMs = normalizedResolvedAt - primaryEndsAt;
+  const completedExtraSpinIntervals = Math.ceil(extraSpinElapsedMs / ONLINE_ROLL_EXTRA_SPIN_MS);
+  const landingStartsAt = primaryEndsAt + completedExtraSpinIntervals * ONLINE_ROLL_EXTRA_SPIN_MS;
+  return landingStartsAt + ONLINE_ROLL_LANDING_MS + ONLINE_ROLL_RESULT_HOLD_MS;
 };
