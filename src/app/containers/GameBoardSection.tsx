@@ -19,6 +19,7 @@ import {
   getMovePresentationFrameKey,
   type MovePresentationSession,
 } from '../flows/movePresentation';
+import { createPresentationRevisionGate } from '../flows/presentationRevision';
 import { type FallEffect, type Seat, type TrapEffect, type TrapNode } from '../appState';
 
 type GameBoardSectionProps = {
@@ -87,6 +88,7 @@ export function GameBoardSection({
   const pendingSettlementPiecesRef = useRef<BoardPiece[]>(clonePieces(pieces));
   const pendingCaptureEffectRef = useRef<CaptureVisualEffect | null>(null);
   const moveFinalizationScheduledRef = useRef(false);
+  const settlementRevisionGateRef = useRef(createPresentationRevisionGate());
   const lastCapturePresentationRef = useRef({ signature: '', queuedAt: 0 });
   const [presentedPieces, setPresentedPieces] = useState<BoardPiece[]>(() => clonePieces(pieces));
   const [presentedMovingPieceId, setPresentedMovingPieceId] = useState(movingPieceId);
@@ -101,6 +103,7 @@ export function GameBoardSection({
       moveSessionRef.current = null;
       pendingCaptureEffectRef.current = null;
       moveFinalizationScheduledRef.current = false;
+      settlementRevisionGateRef.current.invalidate();
       releaseQueue();
     };
   }, []);
@@ -132,6 +135,7 @@ export function GameBoardSection({
   useLayoutEffect(() => {
     const incomingPieces = clonePieces(pieces);
     pendingSettlementPiecesRef.current = incomingPieces;
+    const settlementRevision = settlementRevisionGateRef.current.issue();
 
     if (movingPieceId) {
       moveFinalizationScheduledRef.current = false;
@@ -160,10 +164,11 @@ export function GameBoardSection({
 
     const activeSession = moveSessionRef.current;
     if (activeSession) {
-      if (moveFinalizationScheduledRef.current) return;
       moveFinalizationScheduledRef.current = true;
       queueMicrotask(() => {
-        if (!mountedRef.current || moveSessionRef.current !== activeSession) return;
+        if (!mountedRef.current
+          || moveSessionRef.current !== activeSession
+          || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
         const settlementPieces = clonePieces(pendingSettlementPiecesRef.current);
         const finalization = getMovePresentationFinalization(activeSession, settlementPieces, getPieceSideKey);
         let queuedEffect = pendingCaptureEffectRef.current;
@@ -181,7 +186,9 @@ export function GameBoardSection({
 
         const settlementKey = getMovePresentationFrameKey(settlementPieces);
         void gameAnimationQueue.enqueue(`move:settled:${activeSession.pieceId}:${settlementKey}`, async () => {
-          if (!mountedRef.current || moveSessionRef.current !== activeSession) return;
+          if (!mountedRef.current
+            || moveSessionRef.current !== activeSession
+            || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
           setPresentedPieces(settlementPieces);
           setPresentedMovingPieceId('');
           moveSessionRef.current = null;
@@ -202,7 +209,7 @@ export function GameBoardSection({
     }
 
     void gameAnimationQueue.enqueue(`move:settled:${frameKey}`, async () => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
       setPresentedPieces(incomingPieces);
       setPresentedMovingPieceId('');
     });
