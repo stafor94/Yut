@@ -9,6 +9,8 @@ import {
   aliasTimeoutRollMutationIds,
   canonicalizeTimeoutRollAction,
   clearTimeoutRollMutationAliases,
+  registerPendingTimeoutRollCandidate,
+  removePendingTimeoutRollCandidate,
 } from '../../src/features/room/services/timeoutRollActionIdentity';
 import { rollYutResultWithTiming, shouldFallForTimingZone } from '../../src/game-core/roll';
 
@@ -102,6 +104,37 @@ test('UI와 coordinator action은 같은 canonical key와 gameplay payload로 �
   });
   assert.equal(echoed.clientMutationId, 'roll_yut:seat-1:local-random-key');
   assert.equal(echoed.stateAfter.lastClientMutationId, 'roll_yut:seat-1:local-random-key');
+});
+
+test('UI 제출 전 coordinator snapshot이 먼저 와도 pending timeout animation key로 alias한다', () => {
+  clearTimeoutRollMutationAliases('room-race');
+  const localKey = 'roll_yut:seat-race:pending-local-key';
+  const registered = runWithRollTimeoutRandom(deadlineAt, () => (
+    registerPendingTimeoutRollCandidate('room-race', localKey, 'seat-race')
+  ));
+  assert.equal(registered, true);
+  const canonicalKey = makeTimeoutActionKey({
+    roomId: 'room-race',
+    stage: 'roll',
+    actorId: 'seat-race',
+    timeoutDeadlineAt: deadlineAt,
+  });
+  assert.equal(aliasTimeoutRollMutationIds('room-race', { clientMutationId: canonicalKey }).clientMutationId, localKey);
+  removePendingTimeoutRollCandidate('room-race', localKey);
+  clearTimeoutRollMutationAliases('room-race');
+});
+
+test('일반 수동 던지기 pending key는 timeout snapshot alias 후보로 등록하지 않는다', () => {
+  clearTimeoutRollMutationAliases('room-manual');
+  const localKey = 'roll_yut:seat-manual:pending-manual-key';
+  assert.equal(registerPendingTimeoutRollCandidate('room-manual', localKey, 'seat-manual'), false);
+  const canonicalKey = makeTimeoutActionKey({
+    roomId: 'room-manual',
+    stage: 'roll',
+    actorId: 'seat-manual',
+    timeoutDeadlineAt: deadlineAt,
+  });
+  assert.equal(aliasTimeoutRollMutationIds('room-manual', { clientMutationId: canonicalKey }).clientMutationId, canonicalKey);
 });
 
 test('다음 게임·다음 턴·다음 deadline의 timeout action key는 충돌하지 않는다', () => {
