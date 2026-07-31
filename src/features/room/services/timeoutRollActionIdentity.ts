@@ -191,22 +191,40 @@ export const canonicalizeTimeoutRollAction = <TAction extends TimeoutRollAction>
 const aliasMutationIdsDeep = (roomId: string, value: unknown, seen: WeakMap<object, unknown>): unknown => {
   if (!value || typeof value !== 'object') return value;
   if (seen.has(value)) return seen.get(value);
+
   if (Array.isArray(value)) {
     const next: unknown[] = [];
     seen.set(value, next);
-    value.forEach((entry) => next.push(aliasMutationIdsDeep(roomId, entry, seen)));
+    let changed = false;
+    value.forEach((entry) => {
+      const aliasedEntry = aliasMutationIdsDeep(roomId, entry, seen);
+      next.push(aliasedEntry);
+      if (aliasedEntry !== entry) changed = true;
+    });
+    if (!changed) {
+      seen.set(value, value);
+      return value;
+    }
     return next;
   }
+
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return value;
   const source = value as Record<string, unknown>;
   const next: Record<string, unknown> = {};
   seen.set(value, next);
+  let changed = false;
   Object.entries(source).forEach(([key, entry]) => {
-    next[key] = key === 'clientMutationId' || key === 'lastClientMutationId' || key === 'clientActionId'
+    const aliasedEntry = key === 'clientMutationId' || key === 'lastClientMutationId' || key === 'clientActionId'
       ? getTimeoutRollMutationAlias(roomId, entry)
       : aliasMutationIdsDeep(roomId, entry, seen);
+    next[key] = aliasedEntry;
+    if (aliasedEntry !== entry) changed = true;
   });
+  if (!changed) {
+    seen.set(value, value);
+    return value;
+  }
   return next;
 };
 
