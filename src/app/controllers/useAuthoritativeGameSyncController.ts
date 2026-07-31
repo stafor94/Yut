@@ -12,10 +12,11 @@ import {
 } from '../../features/room/services/timeoutRollActionIdentity';
 import type { SequenceStateSnapshot } from '../appState';
 import { shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
-import { useGameSyncSubscription } from '../hooks/useGameSync';
-import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../hooks/localOptimisticSnapshotPolicy';
 import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
+import { shouldResyncRejectedPendingMove } from '../flows/optimisticMoveRejectionPolicy';
+import { useGameSyncSubscription } from '../hooks/useGameSync';
+import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../hooks/localOptimisticSnapshotPolicy';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
 
 export type AuthoritativeCommitResult = Awaited<ReturnType<typeof commitAuthoritativeGameAction>>;
@@ -236,7 +237,19 @@ export function useAuthoritativeGameSyncController(params: Params) {
     const attachedAction = attachClientActionStartedAt(action);
     if (!isTimedOutRollAction(attachedAction)) {
       queuesRef.current!.enqueueAuthoritativeGameAction(roomId, attachedAction, {
-        handleResult,
+        handleResult: async (result) => {
+          if (shouldResyncRejectedPendingMove({
+            actionType: attachedAction.type,
+            status: result.status,
+            hasPendingMove: params.hasPendingCurrentTurnAction('move_piece', attachedAction.actorId),
+          })) {
+            await params.syncLatestAuthoritativeState(
+              result.reason ?? '서버가 말 이동 요청을 거부해 최신 authoritative 상태로 재동기화합니다.',
+              { diagnosticType: 'move_piece' },
+            );
+          }
+          await handleResult(result);
+        },
         handleError,
         handleFinally,
       });
@@ -262,7 +275,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
         handleFinally();
       }
     })();
-  }, [commitCanonicalAction]);
+  }, [commitCanonicalAction, params.hasPendingCurrentTurnAction, params.syncLatestAuthoritativeState]);
 
   const applyAuthoritativeResultSequence = useCallback((result: AuthoritativeCommitResult) => (
     params.applyAuthoritativeResultSequence(
