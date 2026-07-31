@@ -5,8 +5,8 @@ import {
   type YutResult,
 } from '../../../game-core/roll';
 import {
-  getRollTimingInitialPositionPercentForDeadline,
   getRollTimingMotionState,
+  rollTimingOpportunitySnapshotCache,
 } from '../../../game-core/rollTimingMotion';
 import type { BranchChoice } from '../../../game-core/board/board';
 import { getRollStackSelectionAvailability } from '../../../game-core/rollStackSelection';
@@ -24,9 +24,13 @@ export const resolveRollTimeout = (
   const normalizedWindowMs = Number.isFinite(timeoutWindowMs) && timeoutWindowMs > 0
     ? timeoutWindowMs
     : TURN_ACTION_TIMEOUT_MS;
-  const initialPositionPercent = getRollTimingInitialPositionPercentForDeadline(deadlineAt);
+  const opportunity = rollTimingOpportunitySnapshotCache.get({
+    key: `timeout:${deadlineAt}:${normalizedWindowMs}`,
+    startedAt: deadlineAt - normalizedWindowMs,
+    deadlineAt,
+  });
   const { positionPercent: timingPositionPercent } = getRollTimingMotionState({
-    initialPositionPercent,
+    initialPositionPercent: opportunity.initialPositionPercent,
     elapsedMs: normalizedWindowMs,
   });
   return {
