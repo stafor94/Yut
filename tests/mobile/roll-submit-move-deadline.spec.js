@@ -81,7 +81,31 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
       requestAnimationFrame(sample);
     }));
 
-    await page.getByTestId('roll-yut-button').evaluate((button) => button.click());
+    const submittedTimingPositionPercent = await page.evaluate(async () => {
+      const meter = document.querySelector('.roll-timing-live-meter');
+      const button = document.querySelector('[data-testid="roll-yut-button"]');
+      if (!(meter instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) {
+        throw new Error('타이밍 막대 또는 윷 던지기 버튼을 찾지 못했습니다.');
+      }
+      const submitDeadline = performance.now() + 5_000;
+      while (performance.now() <= submitDeadline) {
+        const positionPercent = Number(meter.dataset.positionPercent);
+        if (!button.disabled && Number.isFinite(positionPercent) && positionPercent >= 45 && positionPercent <= 55) {
+          const originalRandom = Math.random;
+          Math.random = () => 0.3;
+          try {
+            button.click();
+          } finally {
+            Math.random = originalRandom;
+          }
+          return positionPercent;
+        }
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+      throw new Error('비낙·비보너스 roll을 제출할 Perfect 구간을 찾지 못했습니다.');
+    });
+    expect(submittedTimingPositionPercent).toBeGreaterThanOrEqual(45);
+    expect(submittedTimingPositionPercent).toBeLessThanOrEqual(55);
     await expect(page.locator('.turn-action-timer')).toHaveCount(0, { timeout: 500 });
     await expect(page.locator('.roll-timing-live-meter')).toHaveCount(0, { timeout: 500 });
 
