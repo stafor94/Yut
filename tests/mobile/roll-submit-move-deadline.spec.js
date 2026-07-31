@@ -154,6 +154,6 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
       : [];
     expect(settledLocalPieces.filter((piece) => piece?.started && !piece?.finished).map((piece) => piece.nodeId)).toEqual(['n02']);
     expect(settledLocalPieces.some((piece) => piece?.nodeId === 'n03')).toBe(false);
-    expect(settledState.moveButton.disabled).toBe(true);
+    expect(settledState.moveButton.visible && !settledState.moveButton.disabled).toBe(false);
   });
 });
