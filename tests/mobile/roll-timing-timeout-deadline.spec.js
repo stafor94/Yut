@@ -223,6 +223,8 @@ async function runTimeoutDeadlineScenario(page, context, testInfo, initialPositi
 }
 
 test.describe('Galaxy online timeout deadline and timing snapshot regression', () => {
+  test.describe.configure({ mode: 'parallel' });
+
   test('0% 초기 위치의 timeout은 동일 deadline 위치로 Bad를 한 번만 표시한다', async ({ page, context }, testInfo) => runTimeoutDeadlineScenario(page, context, testInfo, 0, 'bad'));
   test('30% 초기 위치의 timeout은 고정 Bad가 아니라 동일 deadline 위치의 Good을 한 번만 표시한다', async ({ page, context }, testInfo) => runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good'));
   test('UI 제출 지연으로 fallback이 먼저 확정해도 같은 결과를 한 번만 표시한다', async ({ page, context }, testInfo) => runTimeoutDeadlineScenario(page, context, testInfo, 30, 'good', { scenario: 'coordinator-first', actionDelayMs: 2_500, expectCoordinatorRecovery: true }));
