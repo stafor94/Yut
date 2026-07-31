@@ -145,8 +145,10 @@ export function RollTimingControl({
 
   const resumeFrameLoop = (snapshot: RollTimingSnapshot) => {
     if (submittedKeyRef.current === resetKey || snapshot.resetKey !== resetKey) return;
+    const resumedAt = performance.now();
+    pausedDurationMsRef.current += Math.max(0, resumedAt - snapshot.capturedAt);
     applyRenderedSnapshot(snapshot);
-    scheduleFrameLoop(performance.now());
+    scheduleFrameLoop(resumedAt);
   };
 
   const holdTimingResult = (snapshot: RollTimingSnapshot) => {
@@ -286,7 +288,6 @@ export function RollTimingControl({
     if (releasedInsideButton) submitSnapshot(capturedTiming.snapshot, deadlineExpired);
     else {
       if (deadlineExpired) pendingTimeoutSnapshotRef.current = capturedTiming.snapshot;
-      pausedDurationMsRef.current += Math.max(0, Date.now() - capturedTiming.snapshot.timingAt);
       resumeFrameLoop(capturedTiming.snapshot);
     }
     releasePointerCapture(event);
@@ -299,7 +300,6 @@ export function RollTimingControl({
     releasedPointerTimingRef.current = { releasedAt: performance.now() };
     const deadlineExpired = autoSubmitAt > 0 && Date.now() >= autoSubmitAt;
     if (deadlineExpired) pendingTimeoutSnapshotRef.current = capturedTiming.snapshot;
-    pausedDurationMsRef.current += Math.max(0, Date.now() - capturedTiming.snapshot.timingAt);
     resumeFrameLoop(capturedTiming.snapshot);
     releasePointerCapture(event);
   };
