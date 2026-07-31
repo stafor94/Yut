@@ -22,7 +22,14 @@ type TimeoutRollAction = {
   payload?: TimeoutRollPayload;
 };
 
+type PendingTimeoutRollRegistration = {
+  timeoutDeadlineAt: number;
+  stage: 'roll' | 'golden_yut';
+};
+
+const MAX_MUTATION_ALIASES_PER_ROOM = 32;
 const mutationAliasesByRoom = new Map<string, Map<string, string>>();
+let pendingTimeoutRollRegistration: PendingTimeoutRollRegistration | null = null;
 
 const isRollTimingZone = (value: unknown): value is RollTimingZone => (
   value === 'perfect' || value === 'nice' || value === 'good' || value === 'normal' || value === 'bad'
@@ -37,8 +44,50 @@ const isYutResult = (value: unknown): value is YutResult => {
 const rememberMutationAlias = (roomId: string, canonicalId: string, localId: string) => {
   if (!roomId || !canonicalId || !localId || canonicalId === localId) return;
   const aliases = mutationAliasesByRoom.get(roomId) ?? new Map<string, string>();
+  aliases.delete(canonicalId);
   aliases.set(canonicalId, localId);
+  while (aliases.size > MAX_MUTATION_ALIASES_PER_ROOM) {
+    const oldestKey = aliases.keys().next().value;
+    if (typeof oldestKey !== 'string') break;
+    aliases.delete(oldestKey);
+  }
   mutationAliasesByRoom.set(roomId, aliases);
+};
+
+/** Marks the synchronous App callback so its pending local key can be linked before network submission. */
+export const runWithPendingTimeoutRollRegistration = <T>(
+  timeoutDeadlineAt: number,
+  operation: () => T,
+  stage: PendingTimeoutRollRegistration['stage'] = 'roll',
+): T => {
+  const previousRegistration = pendingTimeoutRollRegistration;
+  pendingTimeoutRollRegistration = { timeoutDeadlineAt: Math.trunc(timeoutDeadlineAt), stage };
+  try {
+    return operation();
+  } finally {
+    pendingTimeoutRollRegistration = previousRegistration;
+  }
+};
+
+/**
+ * App registers the local pending animation before its optional QA/network delay.
+ * Link it to the canonical key now so a coordinator-first snapshot is still an echo.
+ */
+export const registerPendingTimeoutRollMutation = (
+  roomId: string,
+  localClientMutationId: string,
+  actorId: string,
+) => {
+  const registration = pendingTimeoutRollRegistration;
+  if (!registration || !roomId || !localClientMutationId || !actorId || registration.timeoutDeadlineAt <= 0) return false;
+  const canonicalClientMutationId = resolveRollTimeoutAction({
+    roomId,
+    actorId,
+    timeoutDeadlineAt: registration.timeoutDeadlineAt,
+    stage: registration.stage,
+  }).actionKey;
+  rememberMutationAlias(roomId, canonicalClientMutationId, localClientMutationId);
+  return true;
 };
 
 export const getTimeoutRollMutationAlias = (roomId: string, clientMutationId: unknown) => {
