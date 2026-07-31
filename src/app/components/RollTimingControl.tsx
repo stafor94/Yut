@@ -140,7 +140,7 @@ export function RollTimingControl({
     if (!opportunity) return undefined;
     const deadlineElapsedMs = Math.max(
       0,
-      autoSubmitAt - opportunity.startedAt - pausedDurationMsRef.current,
+      autoSubmitAt - opportunity.startedAt,
     );
     return makeTimingSnapshot(performance.now(), deadlineElapsedMs);
   };
@@ -211,13 +211,7 @@ export function RollTimingControl({
     return 'submitted';
   };
 
-  const getTimeoutSubmissionSnapshot = () => (
-    capturedPointerTimingRef.current?.resetKey === resetKey
-      ? capturedPointerTimingRef.current.snapshot
-      : pendingTimeoutSnapshotRef.current?.resetKey === resetKey
-        ? pendingTimeoutSnapshotRef.current
-        : makeDeadlineSnapshot()
-  );
+  const getTimeoutSubmissionSnapshot = () => makeDeadlineSnapshot();
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -302,9 +296,9 @@ export function RollTimingControl({
     const releasedInsideButton = event.clientX >= targetRect.left && event.clientX <= targetRect.right
       && event.clientY >= targetRect.top && event.clientY <= targetRect.bottom;
     const deadlineExpired = autoSubmitAt > 0 && Date.now() >= autoSubmitAt;
-    if (releasedInsideButton) submitSnapshot(capturedTiming.snapshot, deadlineExpired);
+    if (releasedInsideButton) submitSnapshot(deadlineExpired ? makeDeadlineSnapshot() : capturedTiming.snapshot, deadlineExpired);
     else {
-      if (deadlineExpired) pendingTimeoutSnapshotRef.current = capturedTiming.snapshot;
+      if (deadlineExpired) pendingTimeoutSnapshotRef.current = makeDeadlineSnapshot() ?? capturedTiming.snapshot;
       resumeFrameLoop(capturedTiming.snapshot);
     }
     releasePointerCapture(event);
@@ -316,7 +310,7 @@ export function RollTimingControl({
     capturedPointerTimingRef.current = null;
     releasedPointerTimingRef.current = { releasedAt: performance.now() };
     const deadlineExpired = autoSubmitAt > 0 && Date.now() >= autoSubmitAt;
-    if (deadlineExpired) pendingTimeoutSnapshotRef.current = capturedTiming.snapshot;
+    if (deadlineExpired) pendingTimeoutSnapshotRef.current = makeDeadlineSnapshot() ?? capturedTiming.snapshot;
     resumeFrameLoop(capturedTiming.snapshot);
     releasePointerCapture(event);
   };
