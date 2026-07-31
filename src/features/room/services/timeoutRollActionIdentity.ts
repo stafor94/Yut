@@ -72,6 +72,17 @@ export const registerPendingTimeoutRollCandidate = (
   return true;
 };
 
+/** A matching timeout roll may race the coordinator because both use one canonical action key. */
+export const hasPendingTimeoutRollCandidate = (roomId: string, actorId: string) => {
+  if (!roomId || !actorId) return false;
+  const candidates = pendingTimeoutRollCandidatesByRoom.get(roomId);
+  if (!candidates) return false;
+  for (const candidateActorId of candidates.values()) {
+    if (candidateActorId === actorId) return true;
+  }
+  return false;
+};
+
 export const removePendingTimeoutRollCandidate = (roomId: string, localClientMutationId: string) => {
   const candidates = pendingTimeoutRollCandidatesByRoom.get(roomId);
   if (!candidates) return;
