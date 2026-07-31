@@ -26,6 +26,13 @@ type RollTimingOpportunitySnapshotCache = {
   reset: () => void;
 };
 
+type RollTimingOpportunitySeed = Readonly<{
+  startedAt: number;
+  deadlineAt: number;
+  initialPositionPercent: number;
+  initialPhaseMs: number;
+}>;
+
 const normalizeEpochMs = (value: unknown) => {
   const epochMs = Number(value ?? 0);
   return Number.isFinite(epochMs) && epochMs > 0 ? epochMs : 0;
@@ -103,6 +110,7 @@ export function createRollTimingOpportunitySnapshotCache(
   maxEntries = 128,
 ): RollTimingOpportunitySnapshotCache {
   const snapshots = new Map<string, RollTimingOpportunitySnapshot>();
+  const seedsByTimingWindow = new Map<string, RollTimingOpportunitySeed>();
   const normalizedMaxEntries = Math.max(1, Math.trunc(maxEntries));
 
   return {
@@ -113,29 +121,41 @@ export function createRollTimingOpportunitySnapshotCache(
       const cached = snapshots.get(cacheKey);
       if (cached) return cached;
 
-      const hasProvidedInitialPosition = Number.isFinite(Number(providedInitialPositionPercent));
-      const initialPositionPercent = hasProvidedInitialPosition
-        ? normalizeInitialPositionPercent(providedInitialPositionPercent)
-        : sampleInitialPosition
-          ? sampleRollTimingInitialPositionPercent(sampleInitialPosition)
-          : getRollTimingInitialPositionPercentForDeadline(normalizedDeadlineAt);
-      const snapshot = Object.freeze({
-        key,
-        startedAt: normalizedStartedAt,
-        deadlineAt: normalizedDeadlineAt,
-        initialPositionPercent,
-        initialPhaseMs: getRollTimingInitialPhaseMs(initialPositionPercent),
-      });
+      const timingWindowKey = `${normalizedStartedAt}:${normalizedDeadlineAt}`;
+      let seed = seedsByTimingWindow.get(timingWindowKey);
+      if (!seed) {
+        const hasProvidedInitialPosition = Number.isFinite(Number(providedInitialPositionPercent));
+        const initialPositionPercent = hasProvidedInitialPosition
+          ? normalizeInitialPositionPercent(providedInitialPositionPercent)
+          : sampleInitialPosition
+            ? sampleRollTimingInitialPositionPercent(sampleInitialPosition)
+            : getRollTimingInitialPositionPercentForDeadline(normalizedDeadlineAt);
+        seed = Object.freeze({
+          startedAt: normalizedStartedAt,
+          deadlineAt: normalizedDeadlineAt,
+          initialPositionPercent,
+          initialPhaseMs: getRollTimingInitialPhaseMs(initialPositionPercent),
+        });
+        seedsByTimingWindow.set(timingWindowKey, seed);
+      }
+
+      const snapshot = Object.freeze({ key, ...seed });
       snapshots.set(cacheKey, snapshot);
       while (snapshots.size > normalizedMaxEntries) {
         const oldestKey = snapshots.keys().next().value;
         if (typeof oldestKey !== 'string') break;
         snapshots.delete(oldestKey);
       }
+      while (seedsByTimingWindow.size > normalizedMaxEntries) {
+        const oldestKey = seedsByTimingWindow.keys().next().value;
+        if (typeof oldestKey !== 'string') break;
+        seedsByTimingWindow.delete(oldestKey);
+      }
       return snapshot;
     },
     reset() {
       snapshots.clear();
+      seedsByTimingWindow.clear();
     },
   };
 }
