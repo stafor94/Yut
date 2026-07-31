@@ -16,7 +16,8 @@ test('타이밍 오브는 deadline opportunity와 leaf rAF canonical percent를 
   assert.match(controlSource, /frameRequestRef/);
   assert.match(controlSource, /lastRenderedSnapshotRef/);
   assert.match(controlSource, /window\.requestAnimationFrame\(tick\)/);
-  assert.match(controlSource, /elapsedMs: Math\.max\(0, timingAt - opportunity\.startedAt - pausedDurationMsRef\.current\)/);
+  assert.match(controlSource, /frameAnchorElapsedMsRef\.current[\s\S]*capturedAt - frameAnchorCapturedAtRef\.current[\s\S]*pausedDurationMsRef\.current/);
+  assert.doesNotMatch(controlSource, /performanceEpochOffsetRef/);
   assert.match(controlSource, /track\.style\.transform = 'none';[\s\S]*orb\.style\.left = getRollTimingOrbLeft\(snapshot\.positionPercent\)/);
   assert.match(controlSource, /const snapshot = lastRenderedSnapshotRef\.current;[\s\S]*cancelFrameLoop\(\);[\s\S]*capturedPointerTimingRef\.current = \{ pointerId: event\.pointerId, resetKey, snapshot \}/);
   assert.match(controlSource, /if \(releasedInsideButton\) submitSnapshot\(capturedTiming\.snapshot, deadlineExpired\);[\s\S]*pendingTimeoutSnapshotRef\.current = capturedTiming\.snapshot;[\s\S]*resumeFrameLoop\(capturedTiming\.snapshot\)/);
@@ -40,6 +41,7 @@ test('초기 위치는 0~30% sampler 계약과 deadline seed를 사용하고 같
   assert.match(motionSource, /sampleRollTimingInitialPositionPercent/);
   assert.match(motionSource, /getRollTimingInitialPositionPercentForDeadline/);
   assert.match(motionSource, /const cached = snapshots\.get\(cacheKey\);[\s\S]*if \(cached\) return cached/);
+  assert.match(motionSource, /seedsByTimingWindow\.get\(timingWindowKey\)/);
   assert.match(controlSource, /data-initial-position-percent|dataset\.initialPositionPercent/);
   assert.match(controlSource, /timingStartedAt/);
   assert.match(boardControlsSource, /timingStartedAt=\{rollTimingStartedAt\}/);
@@ -49,7 +51,7 @@ test('초기 위치는 0~30% sampler 계약과 deadline seed를 사용하고 같
 
 test('시간초과 roll은 화면과 같은 opportunity를 authoritative deadline에서 계산하고 network grace 뒤 한 번만 제출한다', () => {
   assert.match(boardControlsSource, /autoSubmitAt=\{authoritativeTurnDeadline\.at\}/);
-  assert.match(controlSource, /const makeDeadlineSnapshot = \(\) => makeTimingSnapshot\(performance\.now\(\), autoSubmitAt\)/);
+  assert.match(controlSource, /const deadlineElapsedMs = Math\.max\([\s\S]*autoSubmitAt - opportunity\.startedAt - pausedDurationMsRef\.current[\s\S]*return makeTimingSnapshot\(performance\.now\(\), deadlineElapsedMs\)/);
   assert.match(controlSource, /submitSnapshot\(getTimeoutSubmissionSnapshot\(\), true\)/);
   assert.match(controlSource, /capturedPointerTimingRef\.current\?\.resetKey === resetKey[\s\S]*pendingTimeoutSnapshotRef\.current[\s\S]*makeDeadlineSnapshot\(\)/);
   assert.match(controlSource, /handlePointerCancel[\s\S]*pendingTimeoutSnapshotRef\.current = capturedTiming\.snapshot;[\s\S]*resumeFrameLoop\(capturedTiming\.snapshot\)/);
@@ -58,7 +60,8 @@ test('시간초과 roll은 화면과 같은 opportunity를 authoritative deadlin
   assert.match(boardControlsSource, /timedOutRollCommitKeyRef\.current = turnActionDeadlineKey;[\s\S]*window\.setTimeout\(\(\) => \{[\s\S]*onRollYutRef\.current\(\{ timedOut: true, timingPositionPercent \}\)/);
   assert.match(boardControlsSource, /\}, TURN_NETWORK_GRACE_MS\)/);
   assert.match(boardControlsSource, /시간 초과 처리 중\.\.\./);
-  assert.match(timeoutResolverSource, /getRollTimingInitialPositionPercentForDeadline\(deadlineAt\)/);
+  assert.match(timeoutResolverSource, /rollTimingOpportunitySnapshotCache\.get\(\{/);
+  assert.match(timeoutResolverSource, /startedAt: deadlineAt - normalizedWindowMs/);
   assert.match(timeoutResolverSource, /getRollTimingMotionState/);
   assert.match(appSource, /rollOptions\.timedOut && turnDeadlineAt && rollOptions\.timingPositionPercent === undefined[\s\S]*resolveRollTimeout\(turnDeadlineAt, getTurnActionTimeoutMs\(activeSeat\.id\)\)/);
 });
