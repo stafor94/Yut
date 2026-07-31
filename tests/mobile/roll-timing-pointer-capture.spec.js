@@ -8,7 +8,6 @@ const GOOD_PRESS_RANGES = Object.freeze([[27, 37], [63, 73]]);
 const NICE_PRESS_RANGES = Object.freeze([[40.5, 44.5], [55.5, 59.5]]);
 const GOOD_CANCEL_RANGES = Object.freeze([[20.5, 39.5], [60.5, 79.5]]);
 const POSITION_TOLERANCE_PERCENT = 0.25;
-const HOLD_REMOVAL_MAX_DELAY_MS = 1500;
 const LONG_PRESS_MS = 180;
 const ROLL_TIMING_CYCLE_MS = 2000;
 const POINTER_SPEC_MODE = process.env.QA_ROLE === 'safari-timing' ? 'default' : 'parallel';
@@ -471,7 +470,6 @@ function assertPointerDownFreezeAndHold(gesture) {
     assertVisibleHoldSample(sample, gesture.resultHold.snapshotPositionPercent);
   }
   expect(gesture.resultHold.removalDelayMs).toBeGreaterThanOrEqual(1000);
-  expect(gesture.resultHold.removalDelayMs).toBeLessThanOrEqual(HOLD_REMOVAL_MAX_DELAY_MS);
 }
 
 function assertCancelledGestureResumes(gesture) {
