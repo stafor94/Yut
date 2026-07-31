@@ -56,6 +56,9 @@ const makeTimeoutRoll = (deadlineAt: number, id: string) => ({
   },
 });
 
+const getCounts = (value: unknown) => value as Record<string, number> | undefined;
+const getAutoPlay = (value: unknown) => value as Record<string, boolean> | undefined;
+
 test('실제 timeout action 두 번의 authoritative commit에서 count 1→2와 autoplay가 같은 patch로 전환된다', () => {
   const originalNow = Date.now;
   try {
@@ -64,21 +67,23 @@ test('실제 timeout action 두 번의 authoritative commit에서 count 1→2와
     const first = reduceAuthoritativeGameAction(makeState(firstDeadline), makeTimeoutRoll(firstDeadline, 'timeout:first'), room, sides);
     assert.equal(first.status, 'committed');
     if (first.status !== 'committed') return;
-    assert.equal(first.patch.turnActionTimeoutCountBySeatId?.['seat-1'], 1);
-    assert.notEqual(first.patch.autoPlayBySeatId?.['seat-1'], true);
+    const firstCounts = getCounts(first.patch.turnActionTimeoutCountBySeatId);
+    const firstAutoPlay = getAutoPlay(first.patch.autoPlayBySeatId);
+    assert.equal(firstCounts?.['seat-1'], 1);
+    assert.notEqual(firstAutoPlay?.['seat-1'], true);
 
     Date.now = () => 200_100;
     const secondDeadline = 200_000;
     const secondState = {
       ...makeState(secondDeadline, 1),
-      turnActionTimeoutCountBySeatId: first.patch.turnActionTimeoutCountBySeatId,
-      autoPlayBySeatId: first.patch.autoPlayBySeatId ?? {},
+      turnActionTimeoutCountBySeatId: firstCounts ?? {},
+      autoPlayBySeatId: firstAutoPlay ?? {},
     };
     const second = reduceAuthoritativeGameAction(secondState, makeTimeoutRoll(secondDeadline, 'timeout:second'), room, sides);
     assert.equal(second.status, 'committed');
     if (second.status !== 'committed') return;
-    assert.equal(second.patch.turnActionTimeoutCountBySeatId?.['seat-1'], 2);
-    assert.equal(second.patch.autoPlayBySeatId?.['seat-1'], true);
+    assert.equal(getCounts(second.patch.turnActionTimeoutCountBySeatId)?.['seat-1'], 2);
+    assert.equal(getAutoPlay(second.patch.autoPlayBySeatId)?.['seat-1'], true);
   } finally {
     Date.now = originalNow;
   }
@@ -99,6 +104,7 @@ test('autoplay 전환 후 일반 수동 action은 거부된다', () => {
     },
   }, room, sides);
   assert.equal(reduction.status, 'rejected');
+  if (reduction.status !== 'rejected') return;
   assert.match(reduction.reason ?? '', /AI 자동 플레이/);
 });
 
@@ -107,18 +113,19 @@ test('timeout AI action은 기존 연속 timeout count를 정상 수동 행동�
   try {
     Date.now = () => 300_100;
     const deadlineAt = 300_000;
+    const baseAction = makeTimeoutRoll(deadlineAt, 'roll_yut_ai:seat-1:1');
     const reduction = reduceAuthoritativeGameAction(makeState(deadlineAt, 2, true), {
-      ...makeTimeoutRoll(deadlineAt, 'roll_yut_ai:seat-1:1'),
+      ...baseAction,
       payload: {
-        ...makeTimeoutRoll(deadlineAt, 'roll_yut_ai:seat-1:1').payload,
+        ...baseAction.payload,
         automationSource: 'timeout_ai',
         coordinatorSeatId: 'seat-2',
       },
     }, room, sides);
     assert.equal(reduction.status, 'committed');
     if (reduction.status !== 'committed') return;
-    assert.equal(reduction.patch.turnActionTimeoutCountBySeatId?.['seat-1'], 2);
-    assert.equal(reduction.patch.autoPlayBySeatId?.['seat-1'], true);
+    assert.equal(getCounts(reduction.patch.turnActionTimeoutCountBySeatId)?.['seat-1'], 2);
+    assert.equal(getAutoPlay(reduction.patch.autoPlayBySeatId)?.['seat-1'], true);
   } finally {
     Date.now = originalNow;
   }
