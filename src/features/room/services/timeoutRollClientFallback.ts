@@ -3,6 +3,7 @@ export type TimeoutRollClientFallbackCandidate = Readonly<{
   localClientMutationId: string;
   actorId: string;
   timeoutDeadlineAt: number;
+  timingPositionPercent: number;
 }>;
 
 const ACTIVE_ROOM_STORAGE_KEY = 'yut-online:activeRoomId';
@@ -20,15 +21,18 @@ export function registerTimeoutRollClientFallback(
   localClientMutationId: string,
   actorId: string,
   timeoutDeadlineAt: number,
+  timingPositionPercent: number,
 ): TimeoutRollClientFallbackCandidate | null {
   const roomId = getActiveRoomId();
   const normalizedDeadlineAt = Math.trunc(Number(timeoutDeadlineAt) || 0);
-  if (!roomId || !localClientMutationId || !actorId || normalizedDeadlineAt <= 0) return null;
+  const normalizedPositionPercent = Number(timingPositionPercent);
+  if (!roomId || !localClientMutationId || !actorId || normalizedDeadlineAt <= 0 || !Number.isFinite(normalizedPositionPercent)) return null;
   const candidate = Object.freeze({
     roomId,
     localClientMutationId,
     actorId,
     timeoutDeadlineAt: normalizedDeadlineAt,
+    timingPositionPercent: normalizedPositionPercent,
   });
   candidatesByActionKey.set(localClientMutationId, candidate);
   return candidate;
