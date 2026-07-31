@@ -71,20 +71,28 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
     const orderingPromise = page.evaluate(() => new Promise((resolve, reject) => {
       const startedAt = performance.now();
       let sawConsumedRollTimerDisappear = false;
+      let movedBeforeEnabled = false;
       let enabledAt = 0;
       let timerAt = 0;
       let deadlineAt = 0;
       const sample = () => {
         const moveButton = document.querySelector('[data-testid="move-piece-button"]');
         const timer = document.querySelector('.turn-action-timer');
+        const moveEnabled = moveButton instanceof HTMLButtonElement && !moveButton.disabled;
+        const debug = window.__YUT_DEBUG_STATE__ ?? {};
+        const localSeatId = typeof debug.localSeatId === 'string' ? debug.localSeatId : '';
+        const localPieces = Array.isArray(debug.pieces)
+          ? debug.pieces.filter((piece) => piece?.ownerId === localSeatId)
+          : [];
+        if (!moveEnabled && localPieces.some((piece) => piece?.started || piece?.nodeId !== 'n01')) movedBeforeEnabled = true;
         if (!(timer instanceof HTMLElement)) sawConsumedRollTimerDisappear = true;
-        if (!enabledAt && moveButton instanceof HTMLButtonElement && !moveButton.disabled) enabledAt = performance.now();
+        if (!enabledAt && moveEnabled) enabledAt = performance.now();
         if (!timerAt && sawConsumedRollTimerDisappear && timer instanceof HTMLElement) {
           timerAt = performance.now();
           deadlineAt = Number(timer.dataset.deadlineAt ?? 0);
         }
         if (enabledAt && timerAt) {
-          resolve({ enabledAt, timerAt, deadlineAt, observedAt: Date.now() });
+          resolve({ movedBeforeEnabled, enabledAt, timerAt, deadlineAt, observedAt: Date.now() });
           return;
         }
         if (performance.now() - startedAt > 30_000) {
@@ -114,6 +122,7 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
 
     await expect(page.locator('.roll-stage')).toBeVisible({ timeout: 10_000 });
     const ordering = await orderingPromise;
+    expect(ordering.movedBeforeEnabled, 'move action-ready 이전에는 단일 후보 자동 이동이 시작되면 안 됩니다.').toBe(false);
     expect(ordering.timerAt).toBeGreaterThanOrEqual(ordering.enabledAt - 20);
     expect(ordering.timerAt - ordering.enabledAt).toBeLessThanOrEqual(80);
     expect(ordering.deadlineAt - ordering.observedAt).toBeGreaterThanOrEqual(9_700);
