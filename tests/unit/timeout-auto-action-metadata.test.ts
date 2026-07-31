@@ -19,9 +19,10 @@ test('timedOut move도 deadline marker를 소비해 authoritative timeout metada
       recoveredByCoordinator: true,
     },
   }, 9_920);
-  assert.equal(action.payload.deadlineAutoSubmitted, true);
-  assert.equal(action.payload.autoSubmittedDeadlineAt, 10_000);
-  assert.equal(action.payload.clientActionStartedAt, 9_920);
+  const payload = action.payload as Record<string, unknown>;
+  assert.equal(payload.deadlineAutoSubmitted, true);
+  assert.equal(payload.autoSubmittedDeadlineAt, 10_000);
+  assert.equal(payload.clientActionStartedAt, 9_920);
 });
 
 test('marker가 없는 coordinator action은 사용자 수동 행동으로 오분류되지 않도록 그대로 둔다', () => {
@@ -47,11 +48,12 @@ test('즉시 제출 timeout roll canonicalization은 복구 유예 없이 timeou
       rollTimingZone: 'bad',
     },
   });
-  assert.equal(action.payload?.resolvedTimeoutDeadlineAt, deadlineAt);
-  assert.equal(action.payload?.deadlineAutoSubmitted, true);
-  assert.equal(action.payload?.autoSubmittedDeadlineAt, deadlineAt);
-  assert.ok(Number(action.payload?.clientActionStartedAt) > 0);
-  assert.ok(Number(action.payload?.clientActionStartedAt) < deadlineAt);
-  assert.equal(action.payload?.timeoutDeadlineAt, undefined);
-  assert.match(String(action.payload?.clientActionId), /^timeout:/);
+  const payload = action.payload as Record<string, unknown>;
+  assert.equal(payload.resolvedTimeoutDeadlineAt, deadlineAt);
+  assert.equal(payload.deadlineAutoSubmitted, true);
+  assert.equal(payload.autoSubmittedDeadlineAt, deadlineAt);
+  assert.ok(Number(payload.clientActionStartedAt) > 0);
+  assert.ok(Number(payload.clientActionStartedAt) < deadlineAt);
+  assert.equal(payload.timeoutDeadlineAt, undefined);
+  assert.match(String(payload.clientActionId), /^timeout:/);
 });
