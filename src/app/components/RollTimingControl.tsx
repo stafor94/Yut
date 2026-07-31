@@ -58,7 +58,8 @@ export function RollTimingControl({
   const trackRef = useRef<HTMLSpanElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const opportunitySnapshotRef = useRef<RollTimingOpportunitySnapshot | null>(null);
-  const performanceEpochOffsetRef = useRef(0);
+  const frameAnchorCapturedAtRef = useRef(0);
+  const frameAnchorElapsedMsRef = useRef(0);
   const pausedDurationMsRef = useRef(0);
   const frameRequestRef = useRef<number | null>(null);
   const lastRenderedSnapshotRef = useRef<RollTimingSnapshot | null>(null);
@@ -105,29 +106,44 @@ export function RollTimingControl({
     return true;
   };
 
-  const makeTimingSnapshot = (capturedAt: number, timingAt: number) => {
+  const makeTimingSnapshot = (capturedAt: number, elapsedMsOverride?: number) => {
     const opportunity = opportunitySnapshotRef.current;
     if (!opportunity) return undefined;
+    const elapsedMs = typeof elapsedMsOverride === 'number' && Number.isFinite(elapsedMsOverride)
+      ? Math.max(0, elapsedMsOverride)
+      : Math.max(
+        0,
+        frameAnchorElapsedMsRef.current
+          + (capturedAt - frameAnchorCapturedAtRef.current)
+          - pausedDurationMsRef.current,
+      );
     const motion = getRollTimingMotionState({
       initialPositionPercent: opportunity.initialPositionPercent,
-      elapsedMs: Math.max(0, timingAt - opportunity.startedAt - pausedDurationMsRef.current),
+      elapsedMs,
     });
     return Object.freeze({
       phaseMs: motion.phaseMs,
       positionPercent: normalizeRollTimingPositionPercent(motion.positionPercent),
       capturedAt,
-      timingAt,
+      timingAt: opportunity.startedAt + elapsedMs,
       resetKey,
     }) satisfies RollTimingSnapshot;
   };
 
   const renderFrame = (capturedAt: number) => {
-    const timingAt = performanceEpochOffsetRef.current + capturedAt;
-    const snapshot = makeTimingSnapshot(capturedAt, timingAt);
+    const snapshot = makeTimingSnapshot(capturedAt);
     return snapshot && applyRenderedSnapshot(snapshot) ? snapshot : undefined;
   };
 
-  const makeDeadlineSnapshot = () => makeTimingSnapshot(performance.now(), autoSubmitAt);
+  const makeDeadlineSnapshot = () => {
+    const opportunity = opportunitySnapshotRef.current;
+    if (!opportunity) return undefined;
+    const deadlineElapsedMs = Math.max(
+      0,
+      autoSubmitAt - opportunity.startedAt - pausedDurationMsRef.current,
+    );
+    return makeTimingSnapshot(performance.now(), deadlineElapsedMs);
+  };
 
   const scheduleFrameLoop = (minimumCapturedAt = 0) => {
     if (frameRequestRef.current !== null || submittedKeyRef.current === resetKey) return;
@@ -223,7 +239,8 @@ export function RollTimingControl({
       initialPositionPercent: qaInitialPositionPercent,
     });
     const capturedAt = performance.now();
-    performanceEpochOffsetRef.current = Date.now() - capturedAt;
+    frameAnchorCapturedAtRef.current = capturedAt;
+    frameAnchorElapsedMsRef.current = Math.max(0, Date.now() - startedAt);
     renderFrame(capturedAt);
     scheduleFrameLoop();
     return () => {
