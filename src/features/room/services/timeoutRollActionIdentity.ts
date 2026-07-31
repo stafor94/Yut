@@ -163,9 +163,12 @@ export const canonicalizeTimeoutRollAction = <TAction extends TimeoutRollAction>
     payload: {
       ...(isImmediateClientRequest ? basePayload : payload),
       resolvedTimeoutDeadlineAt: timeoutDeadlineAt,
+      timeoutInitialPositionPercent: resolution.initialPositionPercent,
+      timeoutInitialDirection: resolution.initialDirection,
       timingPositionPercent: resolution.timingPositionPercent,
       rollTimingZone: resolution.rollTimingZone,
       clientRollResult: resolution.clientRollResult,
+      clientRollSticks: resolution.sticks,
       clientFallOccurred: resolution.clientFallOccurred,
       clientFallCount: resolution.clientFallCount,
       timeoutResolverVersion: ROLL_TIMEOUT_RESOLVER_VERSION,
