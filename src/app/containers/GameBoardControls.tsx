@@ -230,6 +230,7 @@ export function GameBoardControls({
   const turnActionPresentationPending = isTurnActionPresentationPending({
     phase: turnActionPhase,
     hasRoll: Boolean(roll),
+    canRollNow,
     canSubmitTurnAction,
     rollResultHolding,
   });
