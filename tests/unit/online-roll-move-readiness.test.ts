@@ -3,8 +3,8 @@ import test from 'node:test';
 import { normalizeRollResultReadyAt } from '../../src/app/appUtils';
 import {
   canExecuteMoveActionNow,
-  claimMoveActionOnce,
   getMoveExecutionReadinessFromDiagnosticState,
+  isMoveActionAlreadyClaimed,
   publishMoveExecutionReadiness,
   shouldExecuteScheduledMove,
 } from '../../src/app/flows/moveExecutionPolicy';
@@ -68,10 +68,12 @@ test('실행 직전 게시된 최종 canRequestMove와 이동 문맥으로 stale
   assert.equal(canExecuteMoveActionNow(actionKey), false);
 });
 
-test('동일한 논리 move action은 요청·낙관적 이동·연출을 한 번만 시작한다', () => {
+test('기존 local client mutation id가 동일한 논리 이동의 재요청·낙관적 이동·연출을 차단한다', () => {
   const claimedActionKeys = new Set<string>();
   const moveActionKey = 'move_piece:seat:7:2:걸:3:piece-1';
-  assert.equal(claimMoveActionOnce(moveActionKey, claimedActionKeys), true);
-  assert.equal(claimMoveActionOnce(moveActionKey, claimedActionKeys), false);
-  assert.equal(claimMoveActionOnce(`${moveActionKey}:next-turn`, claimedActionKeys), true);
+  assert.equal(isMoveActionAlreadyClaimed(moveActionKey, claimedActionKeys), false);
+  claimedActionKeys.add(moveActionKey);
+  assert.equal(isMoveActionAlreadyClaimed(moveActionKey, claimedActionKeys), true);
+  assert.equal(isMoveActionAlreadyClaimed(`${moveActionKey}:next-turn`, claimedActionKeys), false);
+  assert.equal(isMoveActionAlreadyClaimed('roll_yut:seat:7:2', claimedActionKeys), false);
 });
