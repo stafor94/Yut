@@ -16,6 +16,7 @@ import {
   joinRoomFromLobby,
   markGuestReady,
   primeLobbyStorage,
+  primeTurnOrderResultQueues,
   runQaStep,
 } from '../helpers/ui.js';
 
@@ -334,6 +335,10 @@ test.describe('in-game reconnect, rejoin, and spectator entry QA', () => {
 
     await primeLobbyStorage(hostContext, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
     await primeLobbyStorage(guestContext, { nickname: guestName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '4' });
+    await Promise.all([
+      primeTurnOrderResultQueues(hostContext, { human: ['모'] }),
+      primeTurnOrderResultQueues(guestContext, { human: ['도'] }),
+    ]);
     const hostPage = await hostContext.newPage();
     const guestPage = await guestContext.newPage();
 
