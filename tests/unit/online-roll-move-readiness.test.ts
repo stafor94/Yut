@@ -50,6 +50,7 @@ test('실행 직전 게시된 최종 canRequestMove와 이동 문맥으로 stale
   const actionKey = 'move_piece:seat-a:7:2:걸:3:seat-z:piece-z:piece-1:0:outer:stack:none';
   const matchingDiagnostic = {
     canRequestMove: true,
+    canSubmitTurnAction: true,
     localSeatId: 'seat-a',
     lastAppliedSequence: 7,
     turnIndex: 2,
@@ -68,10 +69,34 @@ test('실행 직전 게시된 최종 canRequestMove와 이동 문맥으로 stale
   assert.equal(canExecuteMoveActionNow(actionKey), false);
 });
 
+test('동일 렌더에서 선택한 누적 던지기 인덱스는 최종 turn action-ready 기준으로 실행한다', () => {
+  const actionKey = 'move_piece:seat-a:11:4:개:2:seat-z:piece-z:piece-2:0:outer:stack:1';
+  const diagnostic = {
+    canRequestMove: true,
+    canSubmitTurnAction: true,
+    localSeatId: 'seat-a',
+    lastAppliedSequence: 11,
+    turnIndex: 4,
+    roll: { name: '걸', steps: 3 },
+    lastMovedSeatId: 'seat-z',
+    lastMovedPieceIds: ['piece-z'],
+    activeMovablePiece: { id: 'piece-1' },
+  };
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(diagnostic));
+  assert.equal(canExecuteMoveActionNow(actionKey), true);
+
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({ ...diagnostic, canSubmitTurnAction: false }));
+  assert.equal(canExecuteMoveActionNow(actionKey), false);
+
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({ ...diagnostic, turnIndex: 5 }));
+  assert.equal(canExecuteMoveActionNow(actionKey), false);
+});
+
 test('누적 던지기 선택 이동의 ready action key도 정상 실행한다', () => {
   const actionKey = 'move_piece:seat-a:11:4:ready:seat-z:piece-z:piece-2:0:outer:stack:1';
   publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({
     canRequestMove: true,
+    canSubmitTurnAction: true,
     localSeatId: 'seat-a',
     lastAppliedSequence: 11,
     turnIndex: 4,
@@ -87,6 +112,7 @@ test('이동 가능한 말이 없는 빽도 통과 action key도 정상 실행�
   const actionKey = 'move_piece:seat-a:12:5:빽도:-1:seat-z:piece-z::0:outer:stack:none';
   publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({
     canRequestMove: true,
+    canSubmitTurnAction: true,
     localSeatId: 'seat-a',
     lastAppliedSequence: 12,
     turnIndex: 5,
@@ -98,12 +124,15 @@ test('이동 가능한 말이 없는 빽도 통과 action key도 정상 실행�
   assert.equal(canExecuteMoveActionNow(actionKey), true);
 });
 
-test('기존 local client mutation id가 동일한 논리 이동의 재요청·낙관적 이동·연출을 차단한다', () => {
+test('기존 local client mutation id가 같은 턴 문맥의 재요청·낙관적 이동·연출을 차단한다', () => {
   const claimedActionKeys = new Set<string>();
-  const moveActionKey = 'move_piece:seat:7:2:걸:3:piece-1';
+  const moveActionKey = 'move_piece:seat-a:7:2:걸:3:seat-z:piece-z:piece-1:0:outer:stack:none';
+  const sameTurnDifferentSelection = 'move_piece:seat-a:7:2:개:2:seat-z:piece-z:piece-2:0:outer:stack:1';
+  const nextSequenceActionKey = 'move_piece:seat-a:8:2:걸:3:seat-a:piece-1:piece-1:0:outer:stack:none';
   assert.equal(isMoveActionAlreadyClaimed(moveActionKey, claimedActionKeys), false);
   claimedActionKeys.add(moveActionKey);
   assert.equal(isMoveActionAlreadyClaimed(moveActionKey, claimedActionKeys), true);
-  assert.equal(isMoveActionAlreadyClaimed(`${moveActionKey}:next-turn`, claimedActionKeys), false);
-  assert.equal(isMoveActionAlreadyClaimed('roll_yut:seat:7:2', claimedActionKeys), false);
+  assert.equal(isMoveActionAlreadyClaimed(sameTurnDifferentSelection, claimedActionKeys), true);
+  assert.equal(isMoveActionAlreadyClaimed(nextSequenceActionKey, claimedActionKeys), false);
+  assert.equal(isMoveActionAlreadyClaimed('roll_yut:seat-a:7:2', claimedActionKeys), false);
 });
