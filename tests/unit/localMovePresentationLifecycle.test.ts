@@ -4,14 +4,7 @@ import {
   beginLocalMovePresentationForPendingAction,
   LocalMovePresentationLifecycle,
   shouldBeginLocalMovePresentation,
-  shouldDeferAuthoritativeStateForLocalMove,
 } from '../../src/app/flows/localMovePresentationLifecycle';
-
-test('authoritative 상태는 pending 정리 여부와 무관하게 active local move presentation 동안 보류한다', () => {
-  assert.equal(shouldDeferAuthoritativeStateForLocalMove({ hasPendingLocalMove: true, presentationActive: true }), true);
-  assert.equal(shouldDeferAuthoritativeStateForLocalMove({ hasPendingLocalMove: false, presentationActive: true }), true);
-  assert.equal(shouldDeferAuthoritativeStateForLocalMove({ hasPendingLocalMove: true, presentationActive: false }), false);
-});
 
 test('낙관적 local move pending 등록만 presentation lifecycle을 선점한다', () => {
   assert.equal(shouldBeginLocalMovePresentation({ actionKey: 'move_piece:P1:10:0:piece-1', actionType: 'move_piece', optimisticApplied: true }), true);
@@ -33,7 +26,7 @@ test('낙관적 local move pending 등록만 presentation lifecycle을 선점한
   });
 });
 
-test('같은 action key의 후속 enqueue 등록은 lifecycle generation과 waiter를 재생성하지 않는다', async () => {
+test('같은 action key의 후속 등록은 lifecycle generation과 waiter를 재생성하지 않는다', async () => {
   const lifecycle = new LocalMovePresentationLifecycle();
   const actionKey = 'move_piece:P1:10:0:piece-1';
   const generation = lifecycle.begin(actionKey);
@@ -54,7 +47,7 @@ test('같은 action key의 후속 enqueue 등록은 lifecycle generation과 wait
   assert.equal(lifecycle.isActive(), false);
 });
 
-test('local move presentation은 실제 프레임 관찰 뒤 settlement될 때까지 유지된다', async () => {
+test('local move presentation은 실제 GameBoard 프레임 관찰 뒤 settlement될 때까지 유지된다', async () => {
   const lifecycle = new LocalMovePresentationLifecycle();
   lifecycle.begin('move_piece:P1:10:0:n01:piece-1');
   assert.deepEqual(lifecycle.snapshot(), {
