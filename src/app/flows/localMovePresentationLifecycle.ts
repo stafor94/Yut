@@ -113,37 +113,3 @@ export const beginLocalMovePresentationForPendingAction = ({
   lifecycle.begin(actionKey);
   return true;
 };
-
-type LocalMoveActionRecord = {
-  type?: unknown;
-  payload?: unknown;
-};
-
-const getLocalMovePresentationActionKey = (action: unknown) => {
-  if (!action || typeof action !== 'object') return '';
-  const actionRecord = action as LocalMoveActionRecord;
-  if (actionRecord.type !== 'move_piece' || !actionRecord.payload || typeof actionRecord.payload !== 'object') return '';
-  const payload = actionRecord.payload as Record<string, unknown>;
-  const pieceId = typeof payload.pieceId === 'string' ? payload.pieceId : '';
-  const clientActionId = typeof payload.clientActionId === 'string' ? payload.clientActionId : '';
-  return pieceId && clientActionId ? clientActionId : '';
-};
-
-export async function waitForLocalMoveActionPresentation(
-  action: unknown,
-  lifecycle: LocalMovePresentationLifecycle = localMovePresentationLifecycle,
-) {
-  const actionKey = getLocalMovePresentationActionKey(action);
-  if (!actionKey) return false;
-  const snapshot = lifecycle.snapshot();
-  if (snapshot.phase === 'idle' || snapshot.actionKey !== actionKey) return false;
-  await lifecycle.waitForSettlement();
-  return true;
-}
-
-export const shouldDeferAuthoritativeStateForLocalMove = ({
-  presentationActive,
-}: {
-  hasPendingLocalMove: boolean;
-  presentationActive: boolean;
-}) => presentationActive;
