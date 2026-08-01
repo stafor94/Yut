@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig, type ConfigEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -22,6 +23,11 @@ function emitAppVersionManifest(version: string): Plugin {
         type: 'asset',
         fileName: 'version.json',
         source: `${JSON.stringify({ version }, null, 2)}\n`,
+      });
+      this.emitFile({
+        type: 'asset',
+        fileName: '__source/App.tsx',
+        source: readFileSync(new URL('./src/app/App.tsx', import.meta.url), 'utf8'),
       });
     },
   };
