@@ -196,7 +196,7 @@ test('pending 메타데이터가 없어도 ledger clientMutationId는 local echo
   }, ledger), 'local-echo');
 });
 
-test('ledger 정리 후 동일 sequence는 stale로 분류되어 다시 재생되지 않는다', () => {
+test('ledger 정리 후 동일 sequence는 기존 sequence 파이프라인에 위임된다', () => {
   const ledger = new LocalMoveLedger();
   const record = registerMove(ledger);
   ledger.observeAuthoritativeResult({
@@ -214,7 +214,7 @@ test('ledger 정리 후 동일 sequence는 stale로 분류되어 다시 재생�
   }, {
     lastAppliedSequence: 11,
     lastAppliedStateVersion: 4,
-  }, ledger), 'stale');
+  }, ledger), 'remote-action');
 });
 
 test('다른 플레이어의 새 sequence는 remote action으로 분류된다', () => {
@@ -231,7 +231,7 @@ test('다른 플레이어의 새 sequence는 remote action으로 분류된다', 
   }, ledger), 'remote-action');
 });
 
-test('이미 적용한 snapshot은 stale로 분류된다', () => {
+test('이미 적용한 snapshot도 기존 subscription 정책에 위임된다', () => {
   assert.equal(classifyAuthoritativeDelivery({
     clientMutationId: 'remote-action',
     sequence: 20,
@@ -239,7 +239,7 @@ test('이미 적용한 snapshot은 stale로 분류된다', () => {
   }, {
     lastAppliedSequence: 20,
     lastAppliedStateVersion: 8,
-  }, new LocalMoveLedger()), 'stale');
+  }, new LocalMoveLedger()), 'remote-action');
 });
 
 test('같은 sequence라도 더 최신 stateVersion snapshot은 적용한다', () => {
