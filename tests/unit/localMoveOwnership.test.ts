@@ -117,11 +117,12 @@ test('온라인 로컬 이동은 서버 응답 전에 공유 reducer로 최종 �
   });
 
   assert.ok(prepared);
+  const movedPiece = prepared.finalState.pieces?.find((piece) => (piece as { id?: string }).id === 'piece-1') as { nodeId?: string } | undefined;
   assert.equal(prepared.record.clientMutationId, clientMutationId);
   assert.deepEqual(prepared.record.pathNodeIds, ['n02', 'n03', 'n04']);
   assert.equal(prepared.record.fromNodeId, 'n01');
   assert.equal(prepared.record.toNodeId, 'n04');
-  assert.equal(prepared.finalState.pieces?.find((piece) => (piece as { id?: string }).id === 'piece-1')?.nodeId, 'n04');
+  assert.equal(movedPiece?.nodeId, 'n04');
   assert.equal(prepared.finalState.roll, null);
   assert.equal(prepared.finalState.turnIndex, 1);
   assert.deepEqual(prepared.finalState.lastMovedPieceIds, ['piece-1']);
