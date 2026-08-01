@@ -4,7 +4,7 @@ import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { waitForRoomQaAccess } from '../helpers/room-access.js';
 import { deleteRoomForQa, getRoomSequencesForQa } from '../helpers/rooms.js';
 
-async function openDeterministicGulGame(page, context, testInfo, suffix) {
+async function openDeterministicGulGame(page, context, testInfo, suffix, { moveResultDelayMs = 0 } = {}) {
   await page.setViewportSize({ width: 412, height: 915 });
   const hostName = normalizeQaNickname(makeQaName(testInfo, `${suffix}-host`));
   const roomTitle = makeQaName(testInfo, `${suffix}-room`);
@@ -16,11 +16,12 @@ async function openDeterministicGulGame(page, context, testInfo, suffix) {
     stackedRollMode: 'false',
     pieceCount: '4',
   });
-  await context.addInitScript(() => {
+  await context.addInitScript((configuredMoveResultDelayMs) => {
     window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
     window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
     window.__YUT_QA_ROLL_TIMING_INITIAL_POSITION_PERCENT__ = 30;
     window.__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__ = 3_000;
+    window.__YUT_QA_DELAY_MOVE_PIECE_ACTION_MS__ = configuredMoveResultDelayMs;
 
     const nativeRandom = Math.random;
     document.addEventListener('click', (event) => {
@@ -32,7 +33,7 @@ async function openDeterministicGulGame(page, context, testInfo, suffix) {
         Math.random = nativeRandom;
       });
     }, true);
-  });
+  }, moveResultDelayMs);
 
   await createRoomFromLobby(page, roomTitle);
   const roomId = await waitForRoomQaAccess(page, { roomTitle });
@@ -108,12 +109,33 @@ function observeLocalMoveUntilStable(page) {
   return page.evaluate(() => new Promise((resolve, reject) => {
     const startedAt = performance.now();
     let localSeatId = '';
-    let lastNodeId = 'n01';
+    let trackedPieceId = '';
+    let lastCanonicalNodeId = 'n01';
+    let lastRenderedNodeId = 'n01';
     let settledAt = 0;
     let moveEnabledObserved = false;
     let movedBeforeEnabled = false;
-    const nodeTransitions = [];
+    const canonicalNodeTransitions = [];
+    const renderedNodeTransitions = [];
     const moveActionIds = new Set();
+
+    const getRenderedNodeId = (pieceId) => {
+      if (!pieceId) return '';
+      const pieceElement = document.querySelector(`[data-testid="piece-${pieceId}"]`);
+      if (!(pieceElement instanceof HTMLElement)) return '';
+      if (pieceElement.classList.contains('off-board')) return 'n01';
+      const nodeElement = [...document.querySelectorAll('[data-testid^="board-node-"]')]
+        .find((candidate) => candidate instanceof HTMLElement
+          && candidate.style.left === pieceElement.style.left
+          && candidate.style.top === pieceElement.style.top);
+      return nodeElement?.getAttribute('data-testid')?.replace('board-node-', '') ?? '';
+    };
+
+    const recordTransition = (transitions, previousNodeId, nextNodeId) => {
+      if (!nextNodeId || nextNodeId === previousNodeId) return previousNodeId;
+      if (nextNodeId !== 'n01') transitions.push(nextNodeId);
+      return nextNodeId;
+    };
 
     const sample = () => {
       const debug = window.__YUT_DEBUG_STATE__ ?? {};
@@ -122,34 +144,39 @@ function observeLocalMoveUntilStable(page) {
         ? debug.pieces.filter((piece) => piece?.ownerId === localSeatId)
         : [];
       const trackedPiece = localPieces[0];
+      if (typeof trackedPiece?.id === 'string' && trackedPiece.id) trackedPieceId = trackedPiece.id;
       const moveButton = document.querySelector('[data-testid="move-piece-button"]');
       const moveEnabled = moveButton instanceof HTMLButtonElement && !moveButton.disabled;
       if (moveEnabled) moveEnabledObserved = true;
       if (!moveEnabledObserved && trackedPiece && (trackedPiece.started || trackedPiece.nodeId !== 'n01')) movedBeforeEnabled = true;
-      if (trackedPiece?.nodeId && trackedPiece.nodeId !== lastNodeId) {
-        lastNodeId = trackedPiece.nodeId;
-        if (trackedPiece.nodeId !== 'n01') nodeTransitions.push(trackedPiece.nodeId);
-      }
+
+      lastCanonicalNodeId = recordTransition(canonicalNodeTransitions, lastCanonicalNodeId, trackedPiece?.nodeId ?? '');
+      const renderedNodeId = getRenderedNodeId(trackedPieceId);
+      lastRenderedNodeId = recordTransition(renderedNodeTransitions, lastRenderedNodeId, renderedNodeId);
+
       const localActionIds = Array.isArray(debug.actionPipeline?.localClientMutationIds)
         ? debug.actionPipeline.localClientMutationIds.filter((actionId) => actionId.startsWith(`move_piece:${localSeatId}:`))
         : [];
       localActionIds.forEach((actionId) => moveActionIds.add(actionId));
       const settled = trackedPiece?.nodeId === 'n04'
+        && renderedNodeId === 'n04'
         && debug.activeSeat?.id !== localSeatId
         && debug.pendingLocalRemoteActionCount === 0;
       if (settled && !settledAt) settledAt = performance.now();
       if (settledAt && performance.now() - settledAt >= 2_500) {
         resolve({
           localSeatId,
-          nodeTransitions,
+          canonicalNodeTransitions,
+          renderedNodeTransitions,
           moveActionIds: [...moveActionIds],
-          finalNodeId: trackedPiece?.nodeId ?? '',
+          finalCanonicalNodeId: trackedPiece?.nodeId ?? '',
+          finalRenderedNodeId: renderedNodeId,
           movedBeforeEnabled,
         });
         return;
       }
-      if (performance.now() - startedAt > 35_000) {
-        reject(new Error(`걸 이동이 n04에 정착한 뒤 안정 상태를 확인하지 못했습니다: ${JSON.stringify({ nodeTransitions, finalNodeId: trackedPiece?.nodeId ?? '', moveActionIds: [...moveActionIds] })}`));
+      if (performance.now() - startedAt > 40_000) {
+        reject(new Error(`걸 이동이 canonical·rendered n04에 정착한 뒤 안정 상태를 확인하지 못했습니다: ${JSON.stringify({ canonicalNodeTransitions, renderedNodeTransitions, finalCanonicalNodeId: trackedPiece?.nodeId ?? '', finalRenderedNodeId: renderedNodeId, moveActionIds: [...moveActionIds] })}`));
         return;
       }
       requestAnimationFrame(sample);
@@ -170,10 +197,15 @@ function expectSingleGulPresentation(trace) {
   expect(trace.movedBeforeEnabled, '최종 action-ready 이전에는 낙관적 이동이 시작되면 안 됩니다.').toBe(false);
   expect(trace.moveActionIds, '동일한 걸 이동 client mutation은 한 번만 생성되어야 합니다.').toHaveLength(1);
   expect(
-    trace.nodeTransitions,
-    '걸 이동은 최종 낙관적 상태 n04를 한 번 반영한 뒤 n02→n03→n04 연출을 한 번만 소비해야 합니다.',
-  ).toEqual(['n04', 'n02', 'n03', 'n04']);
-  expect(trace.finalNodeId, '상대 턴 동기화 뒤에도 서버의 첫 걸 이동 위치를 유지해야 합니다.').toBe('n04');
+    trace.canonicalNodeTransitions,
+    'canonical 말 상태는 최종 위치에서 중간 프레임으로 역행하지 않고 n02→n03→n04로 진행해야 합니다.',
+  ).toEqual(['n02', 'n03', 'n04']);
+  expect(
+    trace.renderedNodeTransitions,
+    '실제 GameBoard 말은 n02→n03→n04 경로를 정확히 한 번만 표시해야 합니다.',
+  ).toEqual(['n02', 'n03', 'n04']);
+  expect(trace.finalCanonicalNodeId, '상대 턴 동기화 뒤 canonical 위치를 유지해야 합니다.').toBe('n04');
+  expect(trace.finalRenderedNodeId, '상대 턴 동기화 뒤 실제 렌더링 위치를 유지해야 합니다.').toBe('n04');
 }
 
 test.describe('Galaxy online move single-execution contract', () => {
@@ -183,10 +215,10 @@ test.describe('Galaxy online move single-execution contract', () => {
     await deleteRoomForQa(roomId).catch(() => undefined);
   });
 
-  test('action-ready 경계의 정상 자동 걸 이동을 요청·낙관적 연출·서버 반영 각각 한 번만 실행한다', async ({ page, context }, testInfo) => {
+  test('빠른 서버 응답의 자동 걸 이동을 canonical·rendered 경로와 서버 반영 각각 한 번만 실행한다', async ({ page, context }, testInfo) => {
     test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
     testInfo.setTimeout(120_000);
-    roomId = await openDeterministicGulGame(page, context, testInfo, 'auto-gul');
+    roomId = await openDeterministicGulGame(page, context, testInfo, 'auto-fast-gul');
     const tracePromise = observeLocalMoveUntilStable(page);
     const ordering = await submitPerfectGul(page);
     expect(ordering.movedBeforeEnabled).toBe(false);
@@ -196,10 +228,10 @@ test.describe('Galaxy online move single-execution contract', () => {
     await expectSingleAuthoritativeMove(roomId, trace.localSeatId);
   });
 
-  test('수동 이동으로 상태가 바뀌면 이미 예약된 자동 이동 콜백을 취소한다', async ({ page, context }, testInfo) => {
+  test('로컬 연출보다 늦은 서버 응답의 수동 이동도 같은 단조 경로와 단일 실행을 유지한다', async ({ page, context }, testInfo) => {
     test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
     testInfo.setTimeout(120_000);
-    roomId = await openDeterministicGulGame(page, context, testInfo, 'manual-gul');
+    roomId = await openDeterministicGulGame(page, context, testInfo, 'manual-slow-gul', { moveResultDelayMs: 2_500 });
     const tracePromise = observeLocalMoveUntilStable(page);
     const ordering = await submitPerfectGul(page, { clickMoveWhenReady: true });
     expect(ordering.movedBeforeEnabled).toBe(false);
