@@ -37,11 +37,8 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
         const target = event.target;
         if (!(target instanceof Element) || !target.closest('[data-testid="roll-yut-button"]')) return;
 
-        // Perfect consumes the first value for the weighted result. Other grades consume four
-        // values for the sticks and the fifth for fall. Both paths deterministically resolve to 개 without a fall.
-        const values = [0.3, 0.3, 0.7, 0.7, 0.8];
-        let index = 0;
-        Math.random = () => values[Math.min(index++, values.length - 1)];
+        // The test submits in the Perfect zone, where 0.3 deterministically resolves to 개.
+        Math.random = () => 0.3;
         queueMicrotask(() => {
           Math.random = nativeRandom;
         });
@@ -104,7 +101,27 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
       requestAnimationFrame(sample);
     }));
 
-    await page.getByTestId('roll-yut-button').evaluate((button) => button.click());
+    const submittedPositionPercent = await page.evaluate(() => new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      const submitInPerfectZone = () => {
+        const meter = document.querySelector('.roll-timing-live-meter');
+        const button = document.querySelector('[data-testid="roll-yut-button"]');
+        const positionPercent = Number(meter instanceof HTMLElement ? meter.dataset.positionPercent : NaN);
+        if (button instanceof HTMLButtonElement && positionPercent >= 45 && positionPercent <= 55) {
+          button.click();
+          resolve(positionPercent);
+          return;
+        }
+        if (performance.now() - startedAt > 3_000) {
+          reject(new Error('Perfect 구간에서 roll action을 제출하지 못했습니다.'));
+          return;
+        }
+        requestAnimationFrame(submitInPerfectZone);
+      };
+      requestAnimationFrame(submitInPerfectZone);
+    }));
+    expect(submittedPositionPercent).toBeGreaterThanOrEqual(45);
+    expect(submittedPositionPercent).toBeLessThanOrEqual(55);
     await expect(page.locator('.turn-action-timer')).toHaveCount(0, { timeout: 500 });
     await expect(page.locator('.roll-timing-live-meter')).toHaveCount(0, { timeout: 500 });
 
