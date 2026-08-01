@@ -109,6 +109,7 @@ function observeLocalMoveUntilStable(page) {
     let localSeatId = '';
     let lastNodeId = 'n01';
     let settledAt = 0;
+    let moveEnabledObserved = false;
     let movedBeforeEnabled = false;
     const nodeTransitions = [];
     const moveActionIds = new Set();
@@ -119,10 +120,11 @@ function observeLocalMoveUntilStable(page) {
       const localPieces = Array.isArray(debug.pieces)
         ? debug.pieces.filter((piece) => piece?.ownerId === localSeatId)
         : [];
-      const trackedPiece = [...localPieces].sort((left, right) => String(left?.label ?? '').localeCompare(String(right?.label ?? ''), undefined, { numeric: true }))[0];
+      const trackedPiece = localPieces[0];
       const moveButton = document.querySelector('[data-testid="move-piece-button"]');
       const moveEnabled = moveButton instanceof HTMLButtonElement && !moveButton.disabled;
-      if (!moveEnabled && trackedPiece && (trackedPiece.started || trackedPiece.nodeId !== 'n01') && nodeTransitions.length === 0) movedBeforeEnabled = true;
+      if (moveEnabled) moveEnabledObserved = true;
+      if (!moveEnabledObserved && trackedPiece && (trackedPiece.started || trackedPiece.nodeId !== 'n01')) movedBeforeEnabled = true;
       if (trackedPiece?.nodeId && trackedPiece.nodeId !== lastNodeId) {
         lastNodeId = trackedPiece.nodeId;
         if (trackedPiece.nodeId !== 'n01') nodeTransitions.push(trackedPiece.nodeId);
@@ -182,8 +184,7 @@ test.describe('Galaxy online move single-execution contract', () => {
     testInfo.setTimeout(120_000);
     roomId = await openDeterministicGulGame(page, context, testInfo, 'auto-gul');
     const tracePromise = observeLocalMoveUntilStable(page);
-    const orderingPromise = await submitPerfectGul(page);
-    const ordering = await orderingPromise;
+    const ordering = await submitPerfectGul(page);
     expect(ordering.movedBeforeEnabled).toBe(false);
 
     const trace = await tracePromise;
@@ -196,10 +197,9 @@ test.describe('Galaxy online move single-execution contract', () => {
     testInfo.setTimeout(120_000);
     roomId = await openDeterministicGulGame(page, context, testInfo, 'manual-gul');
     const tracePromise = observeLocalMoveUntilStable(page);
-    const orderingPromise = await submitPerfectGul(page);
+    const ordering = await submitPerfectGul(page);
     await expect(page.getByTestId('move-piece-button')).toBeEnabled({ timeout: 15_000 });
     await page.getByTestId('move-piece-button').click();
-    const ordering = await orderingPromise;
     expect(ordering.movedBeforeEnabled).toBe(false);
 
     const trace = await tracePromise;
