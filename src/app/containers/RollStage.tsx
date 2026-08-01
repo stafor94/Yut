@@ -268,11 +268,10 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   }, [Boolean(presentedAnimation)]);
 
   useLayoutEffect(() => {
-    const currentAnimation = presentedAnimationRef.current;
-    if (!currentAnimation || settledAnimationId !== currentAnimation.id) return;
+    if (!presentedAnimation || settledAnimationId !== presentedAnimation.id) return;
     if (settleSource !== 'three-renderer' && settleSource !== 'css-animation-end') return;
-    presentationCompletionByIdRef.current.get(currentAnimation.id)?.markSettled(settleSource);
-  }, [settledAnimationId, settleSource]);
+    presentationCompletionByIdRef.current.get(presentedAnimation.id)?.markSettled(settleSource);
+  }, [presentedAnimation, settledAnimationId, settleSource]);
 
   useLayoutEffect(() => {
     const stage = rollStageRef.current;
