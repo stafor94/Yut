@@ -20,6 +20,9 @@ export class LocalMovePresentationLifecycle {
 
   begin(actionKey: string) {
     if (!actionKey) return this.snapshotValue.generation;
+    if (this.snapshotValue.phase !== 'idle' && this.snapshotValue.actionKey === actionKey) {
+      return this.snapshotValue.generation;
+    }
     this.finishCurrent();
     const generation = this.snapshotValue.generation + 1;
     this.snapshotValue = {
@@ -84,6 +87,32 @@ export class LocalMovePresentationLifecycle {
 }
 
 export const localMovePresentationLifecycle = new LocalMovePresentationLifecycle();
+
+export const shouldBeginLocalMovePresentation = ({
+  actionKey,
+  actionType,
+  optimisticApplied,
+}: {
+  actionKey: string;
+  actionType: string;
+  optimisticApplied: boolean;
+}) => actionKey.startsWith('move_piece:') && actionType === 'move_piece' && optimisticApplied;
+
+export const beginLocalMovePresentationForPendingAction = ({
+  lifecycle,
+  actionKey,
+  actionType,
+  optimisticApplied,
+}: {
+  lifecycle: LocalMovePresentationLifecycle;
+  actionKey: string;
+  actionType: string;
+  optimisticApplied: boolean;
+}) => {
+  if (!shouldBeginLocalMovePresentation({ actionKey, actionType, optimisticApplied })) return false;
+  lifecycle.begin(actionKey);
+  return true;
+};
 
 export const shouldDeferAuthoritativeStateForLocalMove = ({
   presentationActive,

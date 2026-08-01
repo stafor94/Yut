@@ -1,5 +1,9 @@
 import { useRef, useState } from 'react';
 import type { GameAction } from '../../features/room/services/roomService';
+import {
+  beginLocalMovePresentationForPendingAction,
+  localMovePresentationLifecycle,
+} from '../flows/localMovePresentationLifecycle';
 import { canExecuteMoveActionNow, isMoveActionAlreadyClaimed } from '../flows/moveExecutionPolicy';
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
@@ -46,6 +50,12 @@ export function usePendingRemoteActions() {
     const type = meta.type ?? getPendingLocalRemoteActionType(actionKey);
     const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied, blocksTurnActions: meta.blocksTurnActions });
     pendingLocalRemoteActionsRef.current.add(actionKey);
+    beginLocalMovePresentationForPendingAction({
+      lifecycle: localMovePresentationLifecycle,
+      actionKey,
+      actionType: type,
+      optimisticApplied,
+    });
     pendingLocalRemoteActionMetaRef.current.set(actionKey, {
       ...meta,
       type,
