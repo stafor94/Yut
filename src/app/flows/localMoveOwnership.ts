@@ -373,8 +373,15 @@ export function classifyAuthoritativeDelivery(
 
   const sequence = toFiniteInteger(input.sequence);
   const stateVersion = toFiniteInteger(input.stateVersion);
-  if (sequence > 0 && sequence <= Math.max(0, applied.lastAppliedSequence)) return 'stale';
-  if (sequence <= 0 && stateVersion > 0 && stateVersion <= Math.max(0, applied.lastAppliedStateVersion)) return 'stale';
+  const lastAppliedSequence = Math.max(0, applied.lastAppliedSequence);
+  const lastAppliedStateVersion = Math.max(0, applied.lastAppliedStateVersion);
+  if (sequence > 0 && stateVersion > 0) {
+    return sequence <= lastAppliedSequence && stateVersion <= lastAppliedStateVersion
+      ? 'stale'
+      : 'remote-action';
+  }
+  if (sequence > 0 && sequence <= lastAppliedSequence) return 'stale';
+  if (stateVersion > 0 && stateVersion <= lastAppliedStateVersion) return 'stale';
   return 'remote-action';
 }
 
