@@ -11,6 +11,7 @@ import {
   gameAnimationQueue,
   waitForGameAnimation,
 } from '../flows/gameAnimationQueue';
+import { localMovePresentationLifecycle } from '../flows/localMovePresentationLifecycle';
 import {
   acceptMovePresentationFrame,
   createMovePresentationSession,
@@ -104,6 +105,7 @@ export function GameBoardSection({
       pendingCaptureEffectRef.current = null;
       moveFinalizationScheduledRef.current = false;
       settlementRevisionGateRef.current.invalidate();
+      localMovePresentationLifecycle.cancel();
       releaseQueue();
     };
   }, []);
@@ -138,6 +140,7 @@ export function GameBoardSection({
     const settlementRevision = settlementRevisionGateRef.current.issue();
 
     if (movingPieceId) {
+      localMovePresentationLifecycle.observe(movingPieceId);
       moveFinalizationScheduledRef.current = false;
       let session = moveSessionRef.current;
       if (!session || session.pieceId !== movingPieceId) {
@@ -193,6 +196,7 @@ export function GameBoardSection({
           setPresentedMovingPieceId('');
           moveSessionRef.current = null;
           moveFinalizationScheduledRef.current = false;
+          localMovePresentationLifecycle.settle(activeSession.pieceId);
           if (finalization.shouldPlayStackSound) {
             window.setTimeout(playConfirmedStackSoundEffect, STACK_SOUND_DELAY_MS);
           }
@@ -205,6 +209,7 @@ export function GameBoardSection({
     if (!gameAnimationQueue.isBusy()) {
       setPresentedPieces(incomingPieces);
       setPresentedMovingPieceId('');
+      localMovePresentationLifecycle.settle();
       return;
     }
 
@@ -212,6 +217,7 @@ export function GameBoardSection({
       if (!mountedRef.current || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
       setPresentedPieces(incomingPieces);
       setPresentedMovingPieceId('');
+      localMovePresentationLifecycle.settle();
     });
   }, [getPieceSideKey, movingPieceId, pieces]);
 
