@@ -5,9 +5,9 @@ import {
   shouldDeferAuthoritativeStateForLocalMove,
 } from '../../src/app/flows/localMovePresentationLifecycle';
 
-test('authoritative 상태는 pending local move presentation 동안만 보류한다', () => {
+test('authoritative 상태는 pending 정리 여부와 무관하게 active local move presentation 동안 보류한다', () => {
   assert.equal(shouldDeferAuthoritativeStateForLocalMove({ hasPendingLocalMove: true, presentationActive: true }), true);
-  assert.equal(shouldDeferAuthoritativeStateForLocalMove({ hasPendingLocalMove: false, presentationActive: true }), false);
+  assert.equal(shouldDeferAuthoritativeStateForLocalMove({ hasPendingLocalMove: false, presentationActive: true }), true);
   assert.equal(shouldDeferAuthoritativeStateForLocalMove({ hasPendingLocalMove: true, presentationActive: false }), false);
 });
 
