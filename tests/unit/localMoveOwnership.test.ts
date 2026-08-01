@@ -6,6 +6,7 @@ import {
   makeLocalMoveResultFingerprint,
   prepareLocalMoveOwnership,
 } from '../../src/app/flows/localMoveOwnership';
+import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
 
 const makeState = (overrides: Record<string, unknown> = {}) => ({
   pieces: [{ id: 'piece-1', ownerId: 'P1', nodeId: 'n04', nodeIndex: 3, started: true, finished: false }],
@@ -92,7 +93,7 @@ const makeOnlineMoveState = () => ({
   autoPlayBySeatId: {},
   turnActionTimeoutCountBySeatId: {},
   turnDeadlineKind: 'move',
-  turnDeadlineAt: Date.now() + 60_000,
+  turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
   lastSequence: 10,
   turnVersion: 3,
 });
@@ -239,6 +240,28 @@ test('이미 적용한 snapshot은 stale로 분류된다', () => {
     lastAppliedSequence: 20,
     lastAppliedStateVersion: 8,
   }, new LocalMoveLedger()), 'stale');
+});
+
+test('같은 sequence라도 더 최신 stateVersion snapshot은 적용한다', () => {
+  assert.equal(classifyAuthoritativeDelivery({
+    clientMutationId: 'remote-state-update',
+    sequence: 20,
+    stateVersion: 9,
+  }, {
+    lastAppliedSequence: 20,
+    lastAppliedStateVersion: 8,
+  }, new LocalMoveLedger()), 'remote-action');
+});
+
+test('낮은 sequence라도 더 최신 stateVersion snapshot은 적용한다', () => {
+  assert.equal(classifyAuthoritativeDelivery({
+    clientMutationId: 'remote-recovery-state',
+    sequence: 19,
+    stateVersion: 9,
+  }, {
+    lastAppliedSequence: 20,
+    lastAppliedStateVersion: 8,
+  }, new LocalMoveLedger()), 'remote-action');
 });
 
 test('fingerprint 불일치는 hard resync를 한 번만 소유한다', () => {
