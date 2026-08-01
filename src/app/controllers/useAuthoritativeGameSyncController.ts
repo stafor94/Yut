@@ -81,8 +81,12 @@ const getResolvedTimeoutDeadlineAt = (action: CommittableGameAction) => {
   return Number.isFinite(deadlineAt) && deadlineAt > 0 ? Math.trunc(deadlineAt) : 0;
 };
 
+const getAuthoritativeResultRecord = (result: AuthoritativeCommitResult) => (
+  result as unknown as Record<string, unknown>
+);
+
 const getAuthoritativeResultSequence = (result: AuthoritativeCommitResult) => {
-  const record = result as unknown as Record<string, unknown>;
+  const record = getAuthoritativeResultRecord(result);
   const stateAfter = record.stateAfter && typeof record.stateAfter === 'object'
     ? record.stateAfter as Record<string, unknown>
     : null;
@@ -91,6 +95,27 @@ const getAuthoritativeResultSequence = (result: AuthoritativeCommitResult) => {
     : null;
   const sequence = Number(record.sequence ?? stateAfter?.lastSequence ?? patch?.lastSequence ?? 0);
   return Number.isFinite(sequence) && sequence > 0 ? Math.trunc(sequence) : 0;
+};
+
+const getAuthoritativeResultClientMutationId = (result: AuthoritativeCommitResult) => {
+  const record = getAuthoritativeResultRecord(result);
+  const sequenceEvent = record.sequenceEvent && typeof record.sequenceEvent === 'object'
+    ? record.sequenceEvent as Record<string, unknown>
+    : null;
+  const stateAfter = record.stateAfter && typeof record.stateAfter === 'object'
+    ? record.stateAfter as Record<string, unknown>
+    : null;
+  const patch = record.patch && typeof record.patch === 'object'
+    ? record.patch as Record<string, unknown>
+    : null;
+  const payload = record.payload && typeof record.payload === 'object'
+    ? record.payload as Record<string, unknown>
+    : null;
+  const clientMutationId = sequenceEvent?.clientMutationId
+    ?? stateAfter?.lastClientMutationId
+    ?? patch?.lastClientMutationId
+    ?? payload?.clientMutationId;
+  return typeof clientMutationId === 'string' ? clientMutationId : '';
 };
 
 const waitUntil = (timestamp: number) => new Promise<void>((resolve) => {
@@ -121,6 +146,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
   const deferredSyncedStateRef = useRef<DeferredSyncedState | null>(null);
   const deferredApplyRequestRef = useRef(0);
   const claimedMoveSequenceRef = useRef(0);
+  const serializedLocalMoveActionKeysRef = useRef<Set<string>>(new Set());
 
   const hasPendingLocalMovePresentation = useCallback(() => shouldDeferAuthoritativeStateForLocalMove({
     hasPendingLocalMove: params.hasPendingCurrentTurnAction('move_piece'),
@@ -268,6 +294,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     deferredSyncedStateRef.current = null;
     deferredApplyRequestRef.current += 1;
     claimedMoveSequenceRef.current = params.lastAppliedSequenceRef.current;
+    serializedLocalMoveActionKeysRef.current.clear();
     queuesRef.current?.reset();
     setManualSequenceSyncing(false);
     params.clearPendingLocalRemoteActions();
@@ -361,8 +388,10 @@ export function useAuthoritativeGameSyncController(params: Params) {
   ) => {
     const attachedAction = attachClientActionStartedAt(action);
     const movePieceId = getMovePieceId(attachedAction);
-    if (movePieceId && params.hasPendingCurrentTurnAction('move_piece', attachedAction.actorId)) {
-      localMovePresentationLifecycle.begin(getClientActionId(attachedAction));
+    const clientActionId = getClientActionId(attachedAction);
+    if (movePieceId && clientActionId && params.hasPendingCurrentTurnAction('move_piece', attachedAction.actorId)) {
+      serializedLocalMoveActionKeysRef.current.add(clientActionId);
+      localMovePresentationLifecycle.begin(clientActionId);
     }
     if (!isTimedOutRollAction(attachedAction)) {
       queuesRef.current!.enqueueAuthoritativeGameAction(roomId, attachedAction, {
@@ -411,10 +440,16 @@ export function useAuthoritativeGameSyncController(params: Params) {
   const applyAuthoritativeResultSequence = useCallback(async (result: AuthoritativeCommitResult) => {
     const roomId = params.activeRoomIdRef.current;
     const aliasedResult = aliasTimeoutRollMutationIds(roomId, result);
-    const pendingMove = params.hasPendingCurrentTurnAction('move_piece');
-    if (pendingMove) await waitForPendingLocalMovePresentation();
+    const activeActionKey = localMovePresentationLifecycle.snapshot().actionKey;
+    const resultActionKey = getAuthoritativeResultClientMutationId(aliasedResult);
+    const serializedActionKey = resultActionKey && serializedLocalMoveActionKeysRef.current.has(resultActionKey)
+      ? resultActionKey
+      : activeActionKey && serializedLocalMoveActionKeysRef.current.has(activeActionKey)
+        ? activeActionKey
+        : '';
+    if (serializedActionKey) await waitForPendingLocalMovePresentation();
     const sequence = getAuthoritativeResultSequence(aliasedResult);
-    if (pendingMove && !claimMoveSequence(sequence)) {
+    if (serializedActionKey && !claimMoveSequence(sequence)) {
       clearSettledDeferredState();
       return null;
     }
@@ -423,12 +458,12 @@ export function useAuthoritativeGameSyncController(params: Params) {
       clearSettledDeferredState();
       return appliedState;
     } catch (error) {
-      if (pendingMove && sequence && claimedMoveSequenceRef.current === sequence) {
+      if (serializedActionKey && sequence && claimedMoveSequenceRef.current === sequence) {
         claimedMoveSequenceRef.current = params.lastAppliedSequenceRef.current;
       }
       throw error;
     }
-  }, [claimMoveSequence, clearSettledDeferredState, params.activeRoomIdRef, params.applyAuthoritativeResultSequence, params.hasPendingCurrentTurnAction, params.lastAppliedSequenceRef, waitForPendingLocalMovePresentation]);
+  }, [claimMoveSequence, clearSettledDeferredState, params.activeRoomIdRef, params.applyAuthoritativeResultSequence, params.lastAppliedSequenceRef, waitForPendingLocalMovePresentation]);
 
   const addPendingLocalRemoteAction = useCallback((actionKey: string, metadata?: PendingMeta) => {
     if (metadata?.type === 'roll_yut' && metadata.actorId) {
@@ -440,14 +475,24 @@ export function useAuthoritativeGameSyncController(params: Params) {
   const acknowledgePendingLocalRemoteAction = useCallback((clientMutationId: unknown) => {
     params.acknowledgePendingLocalRemoteAction(clientMutationId);
     if (typeof clientMutationId === 'string') {
+      serializedLocalMoveActionKeysRef.current.delete(clientMutationId);
       removePendingTimeoutRollCandidate(params.activeRoomIdRef.current, clientMutationId);
     }
   }, [params.activeRoomIdRef, params.acknowledgePendingLocalRemoteAction]);
 
   const removeSettledPendingLocalRemoteAction = useCallback((actionKey: string) => {
+    serializedLocalMoveActionKeysRef.current.delete(actionKey);
     params.removeSettledPendingLocalRemoteAction(actionKey);
     removePendingTimeoutRollCandidate(params.activeRoomIdRef.current, actionKey);
   }, [params.activeRoomIdRef, params.removeSettledPendingLocalRemoteAction]);
+
+  const clearPendingLocalRemoteActions = useCallback(() => {
+    localMovePresentationLifecycle.cancel();
+    serializedLocalMoveActionKeysRef.current.clear();
+    deferredSyncedStateRef.current = null;
+    deferredApplyRequestRef.current += 1;
+    params.clearPendingLocalRemoteActions();
+  }, [params.clearPendingLocalRemoteActions]);
 
   const hasPendingCurrentTurnAction = useCallback((type: RemoteActionType, actorId?: string) => {
     if (type === 'roll_yut'
@@ -469,7 +514,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     addPendingLocalRemoteAction,
     acknowledgePendingLocalRemoteAction,
     removeSettledPendingLocalRemoteAction,
-    clearPendingLocalRemoteActions: params.clearPendingLocalRemoteActions,
+    clearPendingLocalRemoteActions,
     hasPendingCurrentTurnAction,
     pendingLocalRemoteActionCount: params.pendingLocalRemoteActionCount,
     manualSequenceSyncing,
