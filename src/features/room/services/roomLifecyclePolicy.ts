@@ -33,7 +33,7 @@ export type RoomLifecyclePlayer = {
 
 export const ROOM_MAX_IDLE_MS = 2 * 60 * 60 * 1000;
 export const ROOM_MAX_LIFETIME_MS = 60 * 60 * 1000;
-export const ROOM_EMPTY_DELETE_GRACE_MS = 3 * 60 * 1000;
+export const ROOM_EMPTY_DELETE_GRACE_MS = 60 * 1000;
 export const ROOM_LIST_CANDIDATE_LIMIT = 10;
 
 export const getRoomTimestampMillis = (value: unknown) => {

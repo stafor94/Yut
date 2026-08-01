@@ -46,10 +46,12 @@ test('정상 종료 상태 자체는 재입장과 목록 표시를 차단하지 
   assert.doesNotMatch(summaryFlow, /if \(room\.status === 'finished'\)/);
 });
 
-test('Firestore 규칙은 3분 절대 시각 만료와 만료 후 신규 입장 차단을 강제한다', () => {
+test('빈 방 삭제 유예는 클라이언트와 Firestore 규칙에서 1분으로 일치한다', () => {
+  const lifecycle = read('src/features/room/services/roomLifecyclePolicy.ts');
   const rules = read('firestore.rules');
-  assert.match(rules, /room\.emptySince \+ duration\.value\(3, 'm'\)/);
-  assert.match(rules, /room\.lastHumanSeenAt \+ duration\.value\(225, 's'\)/);
+  assert.match(lifecycle, /ROOM_EMPTY_DELETE_GRACE_MS = 60 \* 1000/);
+  assert.match(rules, /room\.emptySince \+ duration\.value\(1, 'm'\)/);
+  assert.match(rules, /room\.lastHumanSeenAt \+ duration\.value\(105, 's'\)/);
   assert.match(rules, /roomExists\(roomId\)\s*\? get\(roomPath\(roomId\)\)\.data\s*:\s*getAfter\(roomPath\(roomId\)\)\.data/s);
   assert.match(rules, /request\.resource\.data\.emptySince == request\.time/);
   assert.match(rules, /isRoomMember\(roomId\)\s*\|\| isRoomMemberAfter\(roomId\)\s*\|\| isPresenceCleanupLeaseOwner\(roomId\)/s);

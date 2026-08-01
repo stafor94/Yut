@@ -86,10 +86,10 @@ service cloud.firestore {
         : getAfter(roomPath(roomId)).data;
       let explicitGraceExpired = ('emptySince' in room)
         && room.emptySince is timestamp
-        && request.time >= room.emptySince + duration.value(3, 'm');
+        && request.time >= room.emptySince + duration.value(1, 'm');
       let heartbeatGraceExpired = ('lastHumanSeenAt' in room)
         && room.lastHumanSeenAt is timestamp
-        && request.time >= room.lastHumanSeenAt + duration.value(225, 's');
+        && request.time >= room.lastHumanSeenAt + duration.value(105, 's');
       return hasRoom && (explicitGraceExpired || heartbeatGraceExpired);
     }
 
