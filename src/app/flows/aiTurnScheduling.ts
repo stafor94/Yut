@@ -9,6 +9,10 @@ import {
   normalizeTurnDeadlineKind,
   type TurnDeadlineKind,
 } from '../../features/room/services/turnDeadlinePolicy';
+import {
+  getMoveExecutionReadinessFromDiagnosticState,
+  publishMoveExecutionReadiness,
+} from './moveExecutionPolicy';
 
 export const AI_TURN_READY_BOUNDARY_BUFFER_MS = 80;
 
@@ -96,6 +100,8 @@ export const getAiTurnScheduleDelayFromDiagnosticState = (
   fallbackDelayMs: unknown,
   now = Date.now(),
 ) => {
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(diagnosticState));
+
   const activeSeat = diagnosticState.activeSeat;
   const activeSeatIsAi = Boolean(
     activeSeat
