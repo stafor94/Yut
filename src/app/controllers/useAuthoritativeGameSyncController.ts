@@ -11,9 +11,13 @@ import {
   removePendingTimeoutRollCandidate,
 } from '../../features/room/services/timeoutRollActionIdentity';
 import type { SequenceStateSnapshot } from '../appState';
-import { shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
+import { getQaMovePieceActionDelayMs, shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
+import {
+  localMovePresentationLifecycle,
+  shouldDeferAuthoritativeStateForLocalMove,
+} from '../flows/localMovePresentationLifecycle';
 import { shouldResyncRejectedPendingMove } from '../flows/optimisticMoveRejectionPolicy';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../hooks/localOptimisticSnapshotPolicy';
@@ -24,7 +28,13 @@ export type AuthoritativeCommitResult = Awaited<ReturnType<typeof commitAuthorit
 type RemoteActionType = GameAction['type'];
 type PendingMeta = { type?: RemoteActionType; actorId?: string; createdSequence?: number; createdTurnIndex?: number; optimisticApplied?: boolean };
 type SnapshotApplyOptions = { allowMoveAnimation?: boolean; allowRollAnimation?: boolean; updateVersion?: boolean; updateSequence?: boolean };
+type SyncLatestOptions = { allowRollAnimation?: boolean; diagnosticType?: 'roll_yut' | 'move_piece' };
 type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
+type DeferredSyncedState = {
+  roomId: string;
+  state: SequenceStateSnapshot;
+  options?: SnapshotApplyOptions;
+};
 
 type Params = {
   activeRoomId: string;
@@ -35,7 +45,7 @@ type Params = {
   replayMissingSequencesThenApply: (finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) => Promise<void>;
   applySyncedStateSnapshot: (state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => void;
   applyAuthoritativeResultSequence: (result: AuthoritativeCommitResult) => Promise<unknown>;
-  syncLatestAuthoritativeState: (reason: string, options?: { allowRollAnimation?: boolean; diagnosticType?: 'roll_yut' | 'move_piece' }) => Promise<boolean>;
+  syncLatestAuthoritativeState: (reason: string, options?: SyncLatestOptions) => Promise<boolean>;
   syncLatestSequencesFromBadge: () => Promise<void>;
   reconcilePendingLocalRemoteActions: (options?: { forceStaleClear?: boolean }) => Promise<boolean>;
   onSnapshotReceived?: (state: SequenceStateSnapshot) => void;
@@ -58,11 +68,29 @@ const getClientActionId = (action: CommittableGameAction) => {
   return typeof clientActionId === 'string' ? clientActionId : '';
 };
 
+const getMovePieceId = (action: CommittableGameAction) => {
+  if (action.type !== 'move_piece' || !action.payload || typeof action.payload !== 'object') return '';
+  const pieceId = (action.payload as Record<string, unknown>).pieceId;
+  return typeof pieceId === 'string' ? pieceId : '';
+};
+
 const getResolvedTimeoutDeadlineAt = (action: CommittableGameAction) => {
   if (!action.payload || typeof action.payload !== 'object') return 0;
   const payload = action.payload as Record<string, unknown>;
   const deadlineAt = Number(payload.resolvedTimeoutDeadlineAt ?? payload.timeoutDeadlineAt ?? 0);
   return Number.isFinite(deadlineAt) && deadlineAt > 0 ? Math.trunc(deadlineAt) : 0;
+};
+
+const getAuthoritativeResultSequence = (result: AuthoritativeCommitResult) => {
+  const record = result as unknown as Record<string, unknown>;
+  const stateAfter = record.stateAfter && typeof record.stateAfter === 'object'
+    ? record.stateAfter as Record<string, unknown>
+    : null;
+  const patch = record.patch && typeof record.patch === 'object'
+    ? record.patch as Record<string, unknown>
+    : null;
+  const sequence = Number(record.sequence ?? stateAfter?.lastSequence ?? patch?.lastSequence ?? 0);
+  return Number.isFinite(sequence) && sequence > 0 ? Math.trunc(sequence) : 0;
 };
 
 const waitUntil = (timestamp: number) => new Promise<void>((resolve) => {
@@ -89,20 +117,86 @@ const markTimeoutRollAsRecovery = (action: CommittableGameAction): CommittableGa
 export function useAuthoritativeGameSyncController(params: Params) {
   const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
   applySyncedStateSnapshotRef.current = params.applySyncedStateSnapshot;
+  const latestSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
+  const deferredSyncedStateRef = useRef<DeferredSyncedState | null>(null);
+  const deferredApplyRequestRef = useRef(0);
+  const claimedMoveSequenceRef = useRef(0);
+
+  const hasPendingLocalMovePresentation = useCallback(() => shouldDeferAuthoritativeStateForLocalMove({
+    hasPendingLocalMove: params.hasPendingCurrentTurnAction('move_piece'),
+    presentationActive: localMovePresentationLifecycle.isActive(),
+  }), [params.hasPendingCurrentTurnAction]);
+
+  const waitForPendingLocalMovePresentation = useCallback(async () => {
+    while (hasPendingLocalMovePresentation()) {
+      await localMovePresentationLifecycle.waitForSettlement();
+    }
+  }, [hasPendingLocalMovePresentation]);
+
   const shouldDeferSyncedStateSnapshotRef = useRef<(state: SequenceStateSnapshot) => boolean>(() => false);
   shouldDeferSyncedStateSnapshotRef.current = (state) => shouldDeferSameOrOlderSnapshotForPendingLocalMove({
     hasPendingLocalMove: params.hasPendingCurrentTurnAction('move_piece'),
     localSequence: params.lastAppliedSequenceRef.current,
     remoteSequence: Number(state.lastSequence ?? 0),
   });
-  const latestSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
+
+  const claimMoveSequence = useCallback((sequence: number) => {
+    if (!sequence) return true;
+    const appliedSequence = Math.max(params.lastAppliedSequenceRef.current, claimedMoveSequenceRef.current);
+    if (sequence <= appliedSequence) return false;
+    claimedMoveSequenceRef.current = sequence;
+    return true;
+  }, [params.lastAppliedSequenceRef]);
+
+  const clearSettledDeferredState = useCallback(() => {
+    const deferredState = deferredSyncedStateRef.current;
+    if (!deferredState) return;
+    const deferredSequence = Number(deferredState.state.lastSequence ?? 0);
+    const appliedSequence = Math.max(params.lastAppliedSequenceRef.current, claimedMoveSequenceRef.current);
+    if (deferredSequence && deferredSequence <= appliedSequence) {
+      deferredSyncedStateRef.current = null;
+      deferredApplyRequestRef.current += 1;
+    }
+  }, [params.lastAppliedSequenceRef]);
+
+  const scheduleDeferredSyncedStateApply = useCallback((deferredState: DeferredSyncedState) => {
+    deferredSyncedStateRef.current = deferredState;
+    const requestId = deferredApplyRequestRef.current + 1;
+    deferredApplyRequestRef.current = requestId;
+    void (async () => {
+      await waitForPendingLocalMovePresentation();
+      if (deferredApplyRequestRef.current !== requestId) return;
+      const latestDeferredState = deferredSyncedStateRef.current;
+      if (!latestDeferredState || latestDeferredState.roomId !== params.activeRoomIdRef.current) {
+        deferredSyncedStateRef.current = null;
+        return;
+      }
+      const remoteSequence = Number(latestDeferredState.state.lastSequence ?? 0);
+      const appliedSequence = Math.max(params.lastAppliedSequenceRef.current, claimedMoveSequenceRef.current);
+      if (remoteSequence && remoteSequence <= appliedSequence) {
+        deferredSyncedStateRef.current = null;
+        return;
+      }
+      if (!claimMoveSequence(remoteSequence)) {
+        deferredSyncedStateRef.current = null;
+        return;
+      }
+      deferredSyncedStateRef.current = null;
+      applySyncedStateSnapshotRef.current(latestDeferredState.state, latestDeferredState.options);
+    })();
+  }, [claimMoveSequence, params.activeRoomIdRef, params.lastAppliedSequenceRef, waitForPendingLocalMovePresentation]);
 
   const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
-    const aliasedState = aliasTimeoutRollMutationIds(params.activeRoomIdRef.current, state);
+    const roomId = params.activeRoomIdRef.current;
+    const aliasedState = aliasTimeoutRollMutationIds(roomId, state);
     if (shouldDeferSyncedStateSnapshotRef.current(aliasedState)) return;
     latestSyncedStateRef.current = aliasedState;
+    if (hasPendingLocalMovePresentation()) {
+      scheduleDeferredSyncedStateApply({ roomId, state: aliasedState, options });
+      return;
+    }
     applySyncedStateSnapshotRef.current(aliasedState, options);
-  }, [params.activeRoomIdRef]);
+  }, [hasPendingLocalMovePresentation, params.activeRoomIdRef, scheduleDeferredSyncedStateApply]);
 
   const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
   const clearAuthoritativeApplyWake = useCallback(() => {
@@ -123,6 +217,20 @@ export function useAuthoritativeGameSyncController(params: Params) {
       if (!wakeSnapshot) return;
       const wakeSequence = Number(wakeSnapshot.lastSequence ?? appliedSequence);
       const deferred = shouldDeferSyncedStateSnapshotRef.current(wakeSnapshot);
+      if (hasPendingLocalMovePresentation()) {
+        latestSyncedStateRef.current = wakeSnapshot;
+        scheduleDeferredSyncedStateApply({
+          roomId,
+          state: wakeSnapshot,
+          options: {
+            allowMoveAnimation: false,
+            allowRollAnimation: false,
+            updateVersion: false,
+            updateSequence: false,
+          },
+        });
+        return;
+      }
       if (!shouldApplyAuthoritativeWake({
         roomMatches: params.activeRoomIdRef.current === roomId,
         appliedSequence: wakeSequence,
@@ -137,7 +245,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
         updateSequence: false,
       });
     }, 0);
-  }, [clearAuthoritativeApplyWake, params.activeRoomIdRef, params.lastAppliedSequenceRef]);
+  }, [clearAuthoritativeApplyWake, hasPendingLocalMovePresentation, params.activeRoomIdRef, params.lastAppliedSequenceRef, scheduleDeferredSyncedStateApply]);
 
   const queuesRef = useRef<ReturnType<typeof createAuthoritativeGameActionQueues<CommittableGameAction, AuthoritativeCommitResult>> | null>(null);
   if (!queuesRef.current) {
@@ -155,12 +263,16 @@ export function useAuthoritativeGameSyncController(params: Params) {
     const previousRoomId = previousRoomIdRef.current;
     previousRoomIdRef.current = params.activeRoomId;
     clearAuthoritativeApplyWake();
+    localMovePresentationLifecycle.cancel();
     latestSyncedStateRef.current = null;
+    deferredSyncedStateRef.current = null;
+    deferredApplyRequestRef.current += 1;
+    claimedMoveSequenceRef.current = params.lastAppliedSequenceRef.current;
     queuesRef.current?.reset();
     setManualSequenceSyncing(false);
     params.clearPendingLocalRemoteActions();
     clearTimeoutRollMutationAliases(previousRoomId);
-  }, [clearAuthoritativeApplyWake, params.activeRoomId, params.clearPendingLocalRemoteActions]);
+  }, [clearAuthoritativeApplyWake, params.activeRoomId, params.clearPendingLocalRemoteActions, params.lastAppliedSequenceRef]);
 
   useEffect(() => clearAuthoritativeApplyWake, [clearAuthoritativeApplyWake]);
 
@@ -169,17 +281,20 @@ export function useAuthoritativeGameSyncController(params: Params) {
     lastAppliedSequenceRef: params.lastAppliedSequenceRef,
     lastAppliedStateVersionRef: params.lastAppliedStateVersionRef,
     applyingSyncedStateRef: params.applyingSyncedStateRef,
-    replayMissingSequencesThenApply: (state, localSequence, remoteSequence) => withGameSequenceReplayCache(
-      params.activeRoomId,
-      localSequence,
-      remoteSequence,
-      getSequenceRefetchAfter(localSequence),
-      () => params.replayMissingSequencesThenApply(
-        aliasTimeoutRollMutationIds(params.activeRoomId, state),
+    replayMissingSequencesThenApply: async (state, localSequence, remoteSequence) => {
+      await waitForPendingLocalMovePresentation();
+      return withGameSequenceReplayCache(
+        params.activeRoomId,
         localSequence,
         remoteSequence,
-      ),
-    ),
+        getSequenceRefetchAfter(localSequence),
+        () => params.replayMissingSequencesThenApply(
+          aliasTimeoutRollMutationIds(params.activeRoomId, state),
+          localSequence,
+          remoteSequence,
+        ),
+      );
+    },
     applySyncedStateSnapshot: rememberAndApplySyncedStateSnapshot,
     enqueueAuthoritativeResultApplication: (applyResult) => enqueueAuthoritativeResultApplication(params.activeRoomId, applyResult),
     onSnapshotReceived: (state) => {
@@ -227,6 +342,16 @@ export function useAuthoritativeGameSyncController(params: Params) {
     });
   }, []);
 
+  const syncLatestAuthoritativeState = useCallback(async (reason: string, options?: SyncLatestOptions) => {
+    await waitForPendingLocalMovePresentation();
+    return params.syncLatestAuthoritativeState(reason, options);
+  }, [params.syncLatestAuthoritativeState, waitForPendingLocalMovePresentation]);
+
+  const syncLatestSequencesFromBadge = useCallback(async () => {
+    await waitForPendingLocalMovePresentation();
+    return params.syncLatestSequencesFromBadge();
+  }, [params.syncLatestSequencesFromBadge, waitForPendingLocalMovePresentation]);
+
   const enqueueAuthoritativeGameAction = useCallback((
     roomId: string,
     action: CommittableGameAction,
@@ -235,15 +360,21 @@ export function useAuthoritativeGameSyncController(params: Params) {
     handleFinally: () => void,
   ) => {
     const attachedAction = attachClientActionStartedAt(action);
+    const movePieceId = getMovePieceId(attachedAction);
+    if (movePieceId && params.hasPendingCurrentTurnAction('move_piece', attachedAction.actorId)) {
+      localMovePresentationLifecycle.begin(getClientActionId(attachedAction));
+    }
     if (!isTimedOutRollAction(attachedAction)) {
       queuesRef.current!.enqueueAuthoritativeGameAction(roomId, attachedAction, {
         handleResult: async (result) => {
+          const moveResultDelayMs = attachedAction.type === 'move_piece' ? getQaMovePieceActionDelayMs() : 0;
+          if (moveResultDelayMs) await waitUntil(Date.now() + moveResultDelayMs);
           if (shouldResyncRejectedPendingMove({
             actionType: attachedAction.type,
             status: result.status,
             hasPendingMove: params.hasPendingCurrentTurnAction('move_piece', attachedAction.actorId),
           })) {
-            await params.syncLatestAuthoritativeState(
+            await syncLatestAuthoritativeState(
               result.reason ?? '서버가 말 이동 요청을 거부해 최신 authoritative 상태로 재동기화합니다.',
               { diagnosticType: 'move_piece' },
             );
@@ -275,13 +406,29 @@ export function useAuthoritativeGameSyncController(params: Params) {
         handleFinally();
       }
     })();
-  }, [commitCanonicalAction, params.hasPendingCurrentTurnAction, params.syncLatestAuthoritativeState]);
+  }, [commitCanonicalAction, params.hasPendingCurrentTurnAction, syncLatestAuthoritativeState]);
 
-  const applyAuthoritativeResultSequence = useCallback((result: AuthoritativeCommitResult) => (
-    params.applyAuthoritativeResultSequence(
-      aliasTimeoutRollMutationIds(params.activeRoomIdRef.current, result),
-    )
-  ), [params.activeRoomIdRef, params.applyAuthoritativeResultSequence]);
+  const applyAuthoritativeResultSequence = useCallback(async (result: AuthoritativeCommitResult) => {
+    const roomId = params.activeRoomIdRef.current;
+    const aliasedResult = aliasTimeoutRollMutationIds(roomId, result);
+    const pendingMove = params.hasPendingCurrentTurnAction('move_piece');
+    if (pendingMove) await waitForPendingLocalMovePresentation();
+    const sequence = getAuthoritativeResultSequence(aliasedResult);
+    if (pendingMove && !claimMoveSequence(sequence)) {
+      clearSettledDeferredState();
+      return null;
+    }
+    try {
+      const appliedState = await params.applyAuthoritativeResultSequence(aliasedResult);
+      clearSettledDeferredState();
+      return appliedState;
+    } catch (error) {
+      if (pendingMove && sequence && claimedMoveSequenceRef.current === sequence) {
+        claimedMoveSequenceRef.current = params.lastAppliedSequenceRef.current;
+      }
+      throw error;
+    }
+  }, [claimMoveSequence, clearSettledDeferredState, params.activeRoomIdRef, params.applyAuthoritativeResultSequence, params.hasPendingCurrentTurnAction, params.lastAppliedSequenceRef, waitForPendingLocalMovePresentation]);
 
   const addPendingLocalRemoteAction = useCallback((actionKey: string, metadata?: PendingMeta) => {
     if (metadata?.type === 'roll_yut' && metadata.actorId) {
@@ -316,8 +463,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
     enqueueAuthoritativeResultApplication,
     enqueueAuthoritativeGameAction,
     applyAuthoritativeResultSequence,
-    syncLatestAuthoritativeState: params.syncLatestAuthoritativeState,
-    syncLatestSequencesFromBadge: params.syncLatestSequencesFromBadge,
+    syncLatestAuthoritativeState,
+    syncLatestSequencesFromBadge,
     reconcilePendingLocalRemoteActions: params.reconcilePendingLocalRemoteActions,
     addPendingLocalRemoteAction,
     acknowledgePendingLocalRemoteAction,
