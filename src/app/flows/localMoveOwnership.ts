@@ -1,3 +1,8 @@
+import {
+  isAuthoritativeCommitReduction,
+  reduceAuthoritativeGameAction,
+} from '../../features/room/services/roomAuthoritativeReducer';
+
 export type AuthoritativeDeliveryClassification = 'local-echo' | 'remote-action' | 'stale';
 
 export type LocalMoveLedgerRecord = {
@@ -40,6 +45,28 @@ type DeliveryIdentityInput = {
   clientMutationId?: unknown;
   sequence?: unknown;
   stateVersion?: unknown;
+};
+
+type LocalMoveAction = {
+  type: 'move_piece';
+  actorId: string;
+  payload?: Record<string, unknown>;
+};
+
+type LocalMoveState = Record<string, unknown> & {
+  playMode?: 'individual' | 'team';
+  pieceCount?: 1 | 2 | 3 | 4;
+  stackedRollMode?: boolean;
+  gameSeats?: Array<{ id?: string; team?: '청팀' | '홍팀' }>;
+  pieces?: unknown[];
+  turnIndex?: number;
+  lastSequence?: number;
+};
+
+export type PreparedLocalMoveOwnership = {
+  record: RegisterLocalMoveInput;
+  finalState: LocalMoveState;
+  payload: Record<string, unknown>;
 };
 
 const toFiniteInteger = (value: unknown) => {
@@ -110,6 +137,8 @@ const normalizeOwnedItems = (value: unknown) => {
     }, {});
 };
 
+const normalizeStringArray = (value: unknown) => Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+
 export function makeLocalMoveResultFingerprint(state: Record<string, unknown>) {
   const pieces = Array.isArray(state.pieces) ? state.pieces.map(normalizePiece).sort((left, right) => {
     const leftId = left && typeof left === 'object' && 'id' in left ? String(left.id) : '';
@@ -134,20 +163,86 @@ export function makeLocalMoveResultFingerprint(state: Record<string, unknown>) {
     boardItems,
     ownedItems: normalizeOwnedItems(state.ownedItems),
     trapNodes,
-    shieldedPieceIds: Array.isArray(state.shieldedPieceIds) ? state.shieldedPieceIds.map(String).sort() : [],
-    lastMovedPieceIds: Array.isArray(state.lastMovedPieceIds) ? state.lastMovedPieceIds.map(String) : [],
+    shieldedPieceIds: normalizeStringArray(state.shieldedPieceIds).sort(),
+    lastMovedPieceIds: normalizeStringArray(state.lastMovedPieceIds),
     lastMovedSeatId: String(state.lastMovedSeatId ?? ''),
     branchChoice: String(state.branchChoice ?? ''),
     pendingItemPickup: normalizePendingItemPickup(state.pendingItemPickup),
     itemPromptTiming: state.itemPromptTiming ?? null,
     pendingAfterMoveTurnIndex: typeof state.pendingAfterMoveTurnIndex === 'number' ? state.pendingAfterMoveTurnIndex : null,
     turnDeadlineKind: String(state.turnDeadlineKind ?? ''),
-    completedSeatIds: Array.isArray(state.completedSeatIds) ? state.completedSeatIds.map(String) : [],
-    rankingSeatIds: Array.isArray(state.rankingSeatIds) ? state.rankingSeatIds.map(String) : [],
+    completedSeatIds: normalizeStringArray(state.completedSeatIds),
+    rankingSeatIds: normalizeStringArray(state.rankingSeatIds),
     gameEndMode: String(state.gameEndMode ?? ''),
     lastFinishedSeatId: String(state.lastFinishedSeatId ?? ''),
     winner: String(state.winner ?? ''),
   }));
+}
+
+export function prepareLocalMoveOwnership({
+  roomId,
+  state,
+  action,
+}: {
+  roomId: string;
+  state: LocalMoveState | null | undefined;
+  action: LocalMoveAction;
+}): PreparedLocalMoveOwnership | null {
+  const clientMutationId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
+  if (!roomId || !state || !clientMutationId || action.type !== 'move_piece') return null;
+  if ((state.playMode !== 'individual' && state.playMode !== 'team')
+    || ![1, 2, 3, 4].includes(Number(state.pieceCount))
+    || typeof state.stackedRollMode !== 'boolean'
+    || !Array.isArray(state.gameSeats)
+    || !state.gameSeats.length) return null;
+
+  const sides = state.gameSeats
+    .filter((seat): seat is { id: string; team: '청팀' | '홍팀' } => Boolean(
+      seat
+      && typeof seat.id === 'string'
+      && seat.id
+      && (seat.team === '청팀' || seat.team === '홍팀'),
+    ))
+    .map((seat) => ({ id: seat.id, team: seat.team }));
+  if (sides.length !== state.gameSeats.length) return null;
+
+  const reduction = reduceAuthoritativeGameAction(
+    state as Parameters<typeof reduceAuthoritativeGameAction>[0],
+    action as Parameters<typeof reduceAuthoritativeGameAction>[1],
+    {
+      playMode: state.playMode,
+      pieceCount: state.pieceCount,
+      stackedRollMode: state.stackedRollMode,
+    },
+    sides,
+  );
+  if (!isAuthoritativeCommitReduction(reduction)) return null;
+
+  const payload = reduction.payload ?? {};
+  const pieceId = String(payload.pieceId ?? action.payload?.pieceId ?? '');
+  const pathNodeIds = normalizeStringArray(payload.pathNodeIds);
+  if (!pieceId || !pathNodeIds.length) return null;
+
+  const finalState: LocalMoveState = {
+    ...state,
+    ...reduction.patch,
+    lastClientMutationId: clientMutationId,
+  };
+  const finalPieces = Array.isArray(finalState.pieces) ? finalState.pieces : [];
+  const record: RegisterLocalMoveInput = {
+    roomId,
+    clientMutationId,
+    startSequence: toFiniteInteger(state.lastSequence),
+    startTurnIndex: toFiniteInteger(state.turnIndex),
+    pieceId,
+    movingGroupIds: normalizeStringArray(payload.movingGroupIds),
+    fromNodeId: String(payload.fromNodeId ?? ''),
+    toNodeId: String(payload.toNodeId ?? ''),
+    pathNodeIds,
+    finalPieces,
+    resultFingerprint: makeLocalMoveResultFingerprint(finalState),
+  };
+  return { record, finalState, payload };
 }
 
 export class LocalMoveLedger {
@@ -178,6 +273,13 @@ export class LocalMoveLedger {
     return Boolean(this.get(clientMutationId));
   }
 
+  findByRoom(roomId: string) {
+    for (const record of this.records.values()) {
+      if (record.roomId === roomId) return record;
+    }
+    return undefined;
+  }
+
   markPresentationCompleted(clientMutationId: string) {
     const record = this.records.get(clientMutationId);
     if (!record) return false;
@@ -194,7 +296,11 @@ export class LocalMoveLedger {
     if (typeof input.resultFingerprint === 'string' && input.resultFingerprint) {
       record.fingerprintMatched = input.resultFingerprint === record.resultFingerprint;
     }
-    const status = record.fingerprintMatched === false ? 'mismatch' as const : 'matched' as const;
+    const status = record.fingerprintMatched === false
+      ? 'mismatch' as const
+      : record.fingerprintMatched === true
+        ? 'matched' as const
+        : 'pending' as const;
     const snapshot = { ...record, movingGroupIds: [...record.movingGroupIds], pathNodeIds: [...record.pathNodeIds], finalPieces: [...record.finalPieces] };
     this.cleanupIfSettled(record);
     return { status, record: snapshot };
