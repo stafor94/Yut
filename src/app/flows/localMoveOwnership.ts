@@ -4,6 +4,7 @@ import {
 } from '../../features/room/services/roomAuthoritativeReducer';
 
 export type AuthoritativeDeliveryClassification = 'local-echo' | 'remote-action' | 'stale';
+export type AuthoritativeDeliveryKind = 'action-result' | 'state-snapshot';
 
 export type LocalMoveLedgerRecord = {
   roomId: string;
@@ -46,6 +47,7 @@ type DeliveryIdentityInput = {
   clientMutationId?: unknown;
   sequence?: unknown;
   stateVersion?: unknown;
+  deliveryKind?: unknown;
 };
 
 type LocalMoveAction = {
@@ -375,6 +377,13 @@ export function classifyAuthoritativeDelivery(
   const stateVersion = toFiniteInteger(input.stateVersion);
   const lastAppliedSequence = Math.max(0, applied.lastAppliedSequence);
   const lastAppliedStateVersion = Math.max(0, applied.lastAppliedStateVersion);
+  const deliveryKind: AuthoritativeDeliveryKind = input.deliveryKind === 'action-result'
+    ? 'action-result'
+    : 'state-snapshot';
+
+  if (deliveryKind === 'action-result' && sequence > 0) {
+    return sequence <= lastAppliedSequence ? 'stale' : 'remote-action';
+  }
   if (sequence > 0 && stateVersion > 0) {
     return sequence <= lastAppliedSequence && stateVersion <= lastAppliedStateVersion
       ? 'stale'
@@ -387,7 +396,7 @@ export function classifyAuthoritativeDelivery(
 
 export function getAuthoritativeDeliveryIdentity(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return { clientMutationId: '', sequence: 0, stateVersion: 0 };
+    return { clientMutationId: '', sequence: 0, stateVersion: 0, deliveryKind: 'state-snapshot' as const };
   }
   const record = value as Record<string, unknown>;
   const sequenceEvent = record.sequenceEvent && typeof record.sequenceEvent === 'object'
@@ -407,9 +416,13 @@ export function getAuthoritativeDeliveryIdentity(value: unknown) {
     ?? record.lastClientMutationId
     ?? patch?.lastClientMutationId
     ?? payload?.clientMutationId;
+  const deliveryKind: AuthoritativeDeliveryKind = sequenceEvent || stateAfter || patch
+    ? 'action-result'
+    : 'state-snapshot';
   return {
     clientMutationId: typeof clientMutationId === 'string' ? clientMutationId : '',
     sequence: toFiniteInteger(record.sequence ?? sequenceEvent?.sequence ?? stateAfter?.lastSequence ?? patch?.lastSequence),
     stateVersion: toFiniteInteger(record.turnVersion ?? stateAfter?.turnVersion ?? patch?.turnVersion),
+    deliveryKind,
   };
 }
