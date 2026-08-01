@@ -86,9 +86,8 @@ export class LocalMovePresentationLifecycle {
 export const localMovePresentationLifecycle = new LocalMovePresentationLifecycle();
 
 export const shouldDeferAuthoritativeStateForLocalMove = ({
-  hasPendingLocalMove,
   presentationActive,
 }: {
   hasPendingLocalMove: boolean;
   presentationActive: boolean;
-}) => hasPendingLocalMove && presentationActive;
+}) => presentationActive;
