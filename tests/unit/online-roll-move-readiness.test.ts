@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeRollResultReadyAt } from '../../src/app/appUtils';
+import { claimMoveActionOnce, shouldExecuteScheduledMove } from '../../src/app/flows/moveExecutionPolicy';
 import { shouldResyncRejectedPendingMove } from '../../src/app/flows/optimisticMoveRejectionPolicy';
 import { ONLINE_ROLL_FAST_PRESENTATION_MS } from '../../src/features/room/services/rollPresentationTiming';
 
@@ -18,4 +19,31 @@ test('pending move 거부는 잠금 해제 전에 authoritative 재동기화한�
   assert.equal(shouldResyncRejectedPendingMove({ actionType: 'move_piece', status: 'committed', hasPendingMove: true }), false);
   assert.equal(shouldResyncRejectedPendingMove({ actionType: 'roll_yut', status: 'rejected', hasPendingMove: true }), false);
   assert.equal(shouldResyncRejectedPendingMove({ actionType: 'move_piece', status: 'rejected', hasPendingMove: false }), false);
+});
+
+test('예약된 자동 이동은 콜백 실행 시 최신 action-ready와 동일한 이동 문맥을 다시 확인한다', () => {
+  const scheduledContextKey = 'room:7:2:seat:걸:3:piece-1';
+  assert.equal(shouldExecuteScheduledMove({
+    canRequestMove: true,
+    scheduledContextKey,
+    latestContextKey: scheduledContextKey,
+  }), true);
+  assert.equal(shouldExecuteScheduledMove({
+    canRequestMove: false,
+    scheduledContextKey,
+    latestContextKey: scheduledContextKey,
+  }), false);
+  assert.equal(shouldExecuteScheduledMove({
+    canRequestMove: true,
+    scheduledContextKey,
+    latestContextKey: 'room:8:3:other-turn',
+  }), false);
+});
+
+test('동일한 논리 move action은 요청·낙관적 이동·연출을 한 번만 시작한다', () => {
+  const claimedActionKeys = new Set<string>();
+  const moveActionKey = 'move_piece:seat:7:2:걸:3:piece-1';
+  assert.equal(claimMoveActionOnce(moveActionKey, claimedActionKeys), true);
+  assert.equal(claimMoveActionOnce(moveActionKey, claimedActionKeys), false);
+  assert.equal(claimMoveActionOnce(`${moveActionKey}:next-turn`, claimedActionKeys), true);
 });
