@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { commitAuthoritativeGameAction, withGameSequenceReplayCache, type GameAction } from '../../features/room/services/roomService';
 import { getTurnRecoveryDeadlineAt } from '../../features/room/services/roomTiming';
 import { attachClientActionStartedAt } from '../../features/room/services/turnActionStartedAtPolicy';
@@ -14,13 +14,15 @@ import type { SequenceStateSnapshot } from '../appState';
 import { getQaMovePieceActionDelayMs, shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
+import { localMovePresentationLifecycle } from '../flows/localMovePresentationLifecycle';
 import {
-  localMovePresentationLifecycle,
-  shouldDeferAuthoritativeStateForLocalMove,
-} from '../flows/localMovePresentationLifecycle';
-import { shouldResyncRejectedPendingMove } from '../flows/optimisticMoveRejectionPolicy';
+  classifyAuthoritativeDelivery,
+  getAuthoritativeDeliveryIdentity,
+  localMoveLedger,
+  makeLocalMoveResultFingerprint,
+  prepareLocalMoveOwnership,
+} from '../flows/localMoveOwnership';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
-import { shouldDeferSameOrOlderSnapshotForPendingLocalMove } from '../hooks/localOptimisticSnapshotPolicy';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
 
 export type AuthoritativeCommitResult = Awaited<ReturnType<typeof commitAuthoritativeGameAction>>;
@@ -30,18 +32,13 @@ type PendingMeta = { type?: RemoteActionType; actorId?: string; createdSequence?
 type SnapshotApplyOptions = { allowMoveAnimation?: boolean; allowRollAnimation?: boolean; updateVersion?: boolean; updateSequence?: boolean };
 type SyncLatestOptions = { allowRollAnimation?: boolean; diagnosticType?: 'roll_yut' | 'move_piece' };
 type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
-type DeferredSyncedState = {
-  roomId: string;
-  state: SequenceStateSnapshot;
-  options?: SnapshotApplyOptions;
-};
 
 type Params = {
   activeRoomId: string;
-  activeRoomIdRef: React.MutableRefObject<string>;
-  lastAppliedSequenceRef: React.MutableRefObject<number>;
-  lastAppliedStateVersionRef: React.MutableRefObject<number>;
-  applyingSyncedStateRef: React.MutableRefObject<boolean>;
+  activeRoomIdRef: MutableRefObject<string>;
+  lastAppliedSequenceRef: MutableRefObject<number>;
+  lastAppliedStateVersionRef: MutableRefObject<number>;
+  applyingSyncedStateRef: MutableRefObject<boolean>;
   replayMissingSequencesThenApply: (finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) => Promise<void>;
   applySyncedStateSnapshot: (state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => void;
   applyAuthoritativeResultSequence: (result: AuthoritativeCommitResult) => Promise<unknown>;
@@ -68,54 +65,11 @@ const getClientActionId = (action: CommittableGameAction) => {
   return typeof clientActionId === 'string' ? clientActionId : '';
 };
 
-const getMovePieceId = (action: CommittableGameAction) => {
-  if (action.type !== 'move_piece' || !action.payload || typeof action.payload !== 'object') return '';
-  const pieceId = (action.payload as Record<string, unknown>).pieceId;
-  return typeof pieceId === 'string' ? pieceId : '';
-};
-
 const getResolvedTimeoutDeadlineAt = (action: CommittableGameAction) => {
   if (!action.payload || typeof action.payload !== 'object') return 0;
   const payload = action.payload as Record<string, unknown>;
   const deadlineAt = Number(payload.resolvedTimeoutDeadlineAt ?? payload.timeoutDeadlineAt ?? 0);
   return Number.isFinite(deadlineAt) && deadlineAt > 0 ? Math.trunc(deadlineAt) : 0;
-};
-
-const getAuthoritativeResultRecord = (result: AuthoritativeCommitResult) => (
-  result as unknown as Record<string, unknown>
-);
-
-const getAuthoritativeResultSequence = (result: AuthoritativeCommitResult) => {
-  const record = getAuthoritativeResultRecord(result);
-  const stateAfter = record.stateAfter && typeof record.stateAfter === 'object'
-    ? record.stateAfter as Record<string, unknown>
-    : null;
-  const patch = record.patch && typeof record.patch === 'object'
-    ? record.patch as Record<string, unknown>
-    : null;
-  const sequence = Number(record.sequence ?? stateAfter?.lastSequence ?? patch?.lastSequence ?? 0);
-  return Number.isFinite(sequence) && sequence > 0 ? Math.trunc(sequence) : 0;
-};
-
-const getAuthoritativeResultClientMutationId = (result: AuthoritativeCommitResult) => {
-  const record = getAuthoritativeResultRecord(result);
-  const sequenceEvent = record.sequenceEvent && typeof record.sequenceEvent === 'object'
-    ? record.sequenceEvent as Record<string, unknown>
-    : null;
-  const stateAfter = record.stateAfter && typeof record.stateAfter === 'object'
-    ? record.stateAfter as Record<string, unknown>
-    : null;
-  const patch = record.patch && typeof record.patch === 'object'
-    ? record.patch as Record<string, unknown>
-    : null;
-  const payload = record.payload && typeof record.payload === 'object'
-    ? record.payload as Record<string, unknown>
-    : null;
-  const clientMutationId = sequenceEvent?.clientMutationId
-    ?? stateAfter?.lastClientMutationId
-    ?? patch?.lastClientMutationId
-    ?? payload?.clientMutationId;
-  return typeof clientMutationId === 'string' ? clientMutationId : '';
 };
 
 const waitUntil = (timestamp: number) => new Promise<void>((resolve) => {
@@ -139,90 +93,134 @@ const markTimeoutRollAsRecovery = (action: CommittableGameAction): CommittableGa
   };
 };
 
+const getAuthoritativeSnapshot = (
+  value: unknown,
+  fallback: SequenceStateSnapshot | null,
+): SequenceStateSnapshot | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
+  const record = value as Record<string, unknown>;
+  if (record.stateAfter && typeof record.stateAfter === 'object' && !Array.isArray(record.stateAfter)) {
+    return record.stateAfter as SequenceStateSnapshot;
+  }
+  if (record.patch && typeof record.patch === 'object' && !Array.isArray(record.patch) && fallback) {
+    return { ...fallback, ...(record.patch as SequenceStateSnapshot) };
+  }
+  if ('pieces' in record || 'lastSequence' in record || 'turnVersion' in record) {
+    return record as SequenceStateSnapshot;
+  }
+  return fallback;
+};
+
+const getLocalDisplayFinalState = (state: SequenceStateSnapshot): SequenceStateSnapshot => ({
+  ...state,
+  captureEffect: null,
+  trapEffect: null,
+});
+
 export function useAuthoritativeGameSyncController(params: Params) {
   const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
   applySyncedStateSnapshotRef.current = params.applySyncedStateSnapshot;
   const latestSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
-  const deferredSyncedStateRef = useRef<DeferredSyncedState | null>(null);
-  const deferredApplyRequestRef = useRef(0);
-  const claimedMoveSequenceRef = useRef(0);
-  const serializedLocalMoveActionKeysRef = useRef<Set<string>>(new Set());
+  const hardResyncPromisesRef = useRef<Map<string, Promise<boolean>>>(new Map());
 
-  const hasPendingLocalMovePresentation = useCallback(() => shouldDeferAuthoritativeStateForLocalMove({
-    hasPendingLocalMove: params.hasPendingCurrentTurnAction('move_piece'),
-    presentationActive: localMovePresentationLifecycle.isActive(),
-  }), [params.hasPendingCurrentTurnAction]);
-
-  const waitForPendingLocalMovePresentation = useCallback(async () => {
-    while (hasPendingLocalMovePresentation()) {
-      await localMovePresentationLifecycle.waitForSettlement();
+  const runLocalMoveHardResync = useCallback((roomId: string, actionKey: string, reason: string) => {
+    const existing = hardResyncPromisesRef.current.get(actionKey);
+    if (existing) return existing;
+    const record = localMoveLedger.get(actionKey);
+    if (!record || record.roomId !== roomId || !localMoveLedger.claimHardResync(actionKey)) {
+      return Promise.resolve(false);
     }
-  }, [hasPendingLocalMovePresentation]);
 
-  const shouldDeferSyncedStateSnapshotRef = useRef<(state: SequenceStateSnapshot) => boolean>(() => false);
-  shouldDeferSyncedStateSnapshotRef.current = (state) => shouldDeferSameOrOlderSnapshotForPendingLocalMove({
-    hasPendingLocalMove: params.hasPendingCurrentTurnAction('move_piece'),
-    localSequence: params.lastAppliedSequenceRef.current,
-    remoteSequence: Number(state.lastSequence ?? 0),
-  });
-
-  const claimMoveSequence = useCallback((sequence: number) => {
-    if (!sequence) return true;
-    const appliedSequence = Math.max(params.lastAppliedSequenceRef.current, claimedMoveSequenceRef.current);
-    if (sequence <= appliedSequence) return false;
-    claimedMoveSequenceRef.current = sequence;
-    return true;
-  }, [params.lastAppliedSequenceRef]);
-
-  const clearSettledDeferredState = useCallback(() => {
-    const deferredState = deferredSyncedStateRef.current;
-    if (!deferredState) return;
-    const deferredSequence = Number(deferredState.state.lastSequence ?? 0);
-    const appliedSequence = Math.max(params.lastAppliedSequenceRef.current, claimedMoveSequenceRef.current);
-    if (deferredSequence && deferredSequence <= appliedSequence) {
-      deferredSyncedStateRef.current = null;
-      deferredApplyRequestRef.current += 1;
-    }
-  }, [params.lastAppliedSequenceRef]);
-
-  const scheduleDeferredSyncedStateApply = useCallback((deferredState: DeferredSyncedState) => {
-    deferredSyncedStateRef.current = deferredState;
-    const requestId = deferredApplyRequestRef.current + 1;
-    deferredApplyRequestRef.current = requestId;
-    void (async () => {
-      await waitForPendingLocalMovePresentation();
-      if (deferredApplyRequestRef.current !== requestId) return;
-      const latestDeferredState = deferredSyncedStateRef.current;
-      if (!latestDeferredState || latestDeferredState.roomId !== params.activeRoomIdRef.current) {
-        deferredSyncedStateRef.current = null;
-        return;
+    params.applyingSyncedStateRef.current = true;
+    console.error('온라인 로컬 말 이동 결과를 hard resync합니다.', {
+      roomId,
+      actionKey,
+      reason,
+    });
+    const promise = (async () => {
+      try {
+        await localMovePresentationLifecycle.waitForSettlement();
+        if (params.activeRoomIdRef.current !== roomId) return false;
+        localMoveLedger.remove(actionKey);
+        params.removeSettledPendingLocalRemoteAction(actionKey);
+        return await params.syncLatestAuthoritativeState(reason, {
+          allowRollAnimation: false,
+          diagnosticType: 'move_piece',
+        });
+      } finally {
+        params.applyingSyncedStateRef.current = false;
+        hardResyncPromisesRef.current.delete(actionKey);
       }
-      const remoteSequence = Number(latestDeferredState.state.lastSequence ?? 0);
-      const appliedSequence = Math.max(params.lastAppliedSequenceRef.current, claimedMoveSequenceRef.current);
-      if (remoteSequence && remoteSequence <= appliedSequence) {
-        deferredSyncedStateRef.current = null;
-        return;
-      }
-      if (!claimMoveSequence(remoteSequence)) {
-        deferredSyncedStateRef.current = null;
-        return;
-      }
-      deferredSyncedStateRef.current = null;
-      applySyncedStateSnapshotRef.current(latestDeferredState.state, latestDeferredState.options);
     })();
-  }, [claimMoveSequence, params.activeRoomIdRef, params.lastAppliedSequenceRef, waitForPendingLocalMovePresentation]);
+    hardResyncPromisesRef.current.set(actionKey, promise);
+    return promise;
+  }, [params.activeRoomIdRef, params.applyingSyncedStateRef, params.removeSettledPendingLocalRemoteAction, params.syncLatestAuthoritativeState]);
 
-  const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
-    const roomId = params.activeRoomIdRef.current;
-    const aliasedState = aliasTimeoutRollMutationIds(roomId, state);
-    if (shouldDeferSyncedStateSnapshotRef.current(aliasedState)) return;
-    latestSyncedStateRef.current = aliasedState;
-    if (hasPendingLocalMovePresentation()) {
-      scheduleDeferredSyncedStateApply({ roomId, state: aliasedState, options });
-      return;
+  const getDeliveryClassification = useCallback((value: unknown) => classifyAuthoritativeDelivery(
+    getAuthoritativeDeliveryIdentity(value),
+    {
+      lastAppliedSequence: params.lastAppliedSequenceRef.current,
+      lastAppliedStateVersion: params.lastAppliedStateVersionRef.current,
+    },
+  ), [params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef]);
+
+  const acknowledgeLocalMoveEcho = useCallback((roomId: string, value: unknown, explicitState?: SequenceStateSnapshot | null) => {
+    const identity = getAuthoritativeDeliveryIdentity(value);
+    if (!identity.clientMutationId || !localMoveLedger.has(identity.clientMutationId)) return null;
+    const authoritativeState = explicitState ?? getAuthoritativeSnapshot(value, latestSyncedStateRef.current);
+    if (authoritativeState) latestSyncedStateRef.current = authoritativeState;
+    params.lastAppliedSequenceRef.current = Math.max(params.lastAppliedSequenceRef.current, identity.sequence);
+    params.lastAppliedStateVersionRef.current = Math.max(params.lastAppliedStateVersionRef.current, identity.stateVersion);
+    params.acknowledgePendingLocalRemoteAction(identity.clientMutationId);
+
+    const observed = localMoveLedger.observeAuthoritativeResult({
+      clientMutationId: identity.clientMutationId,
+      sequence: identity.sequence,
+      stateVersion: identity.stateVersion,
+      resultFingerprint: authoritativeState
+        ? makeLocalMoveResultFingerprint(authoritativeState as Record<string, unknown>)
+        : undefined,
+    });
+    if (observed.status === 'mismatch') {
+      void runLocalMoveHardResync(
+        roomId,
+        identity.clientMutationId,
+        `서버 move_piece 결과가 로컬 결과와 일치하지 않습니다. actionKey=${identity.clientMutationId}`,
+      );
     }
-    applySyncedStateSnapshotRef.current(aliasedState, options);
-  }, [hasPendingLocalMovePresentation, params.activeRoomIdRef, scheduleDeferredSyncedStateApply]);
+    return authoritativeState;
+  }, [params.acknowledgePendingLocalRemoteAction, params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef, runLocalMoveHardResync]);
+
+  const prepareAndFinalizeLocalMove = useCallback((roomId: string, action: CommittableGameAction) => {
+    if (action.type !== 'move_piece') return;
+    const prepared = prepareLocalMoveOwnership({
+      roomId,
+      state: latestSyncedStateRef.current as Record<string, unknown> | null,
+      action,
+    });
+    if (!prepared) return;
+
+    const actionKey = prepared.record.clientMutationId;
+    localMoveLedger.register(prepared.record);
+    const presentationSettlement = localMovePresentationLifecycle.waitForSettlement();
+    void presentationSettlement.then(() => {
+      const record = localMoveLedger.get(actionKey);
+      if (!record || record.roomId !== roomId || record.hardResyncStarted) return;
+      if (params.activeRoomIdRef.current !== roomId) {
+        localMoveLedger.remove(actionKey);
+        return;
+      }
+      const finalState = prepared.finalState as SequenceStateSnapshot;
+      latestSyncedStateRef.current = finalState;
+      applySyncedStateSnapshotRef.current(getLocalDisplayFinalState(finalState), {
+        allowMoveAnimation: false,
+        allowRollAnimation: false,
+        updateVersion: false,
+        updateSequence: false,
+      });
+      localMoveLedger.markPresentationCompleted(actionKey);
+    });
+  }, [params.activeRoomIdRef]);
 
   const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
   const clearAuthoritativeApplyWake = useCallback(() => {
@@ -241,27 +239,18 @@ export function useAuthoritativeGameSyncController(params: Params) {
       authoritativeApplyWakeTimerRef.current = null;
       const wakeSnapshot = buildAuthoritativeApplyWakeSnapshot(aliasedAppliedValue, latestSyncedStateRef.current);
       if (!wakeSnapshot) return;
-      const wakeSequence = Number(wakeSnapshot.lastSequence ?? appliedSequence);
-      const deferred = shouldDeferSyncedStateSnapshotRef.current(wakeSnapshot);
-      if (hasPendingLocalMovePresentation()) {
-        latestSyncedStateRef.current = wakeSnapshot;
-        scheduleDeferredSyncedStateApply({
-          roomId,
-          state: wakeSnapshot,
-          options: {
-            allowMoveAnimation: false,
-            allowRollAnimation: false,
-            updateVersion: false,
-            updateSequence: false,
-          },
-        });
+      const classification = getDeliveryClassification(wakeSnapshot);
+      if (classification === 'local-echo') {
+        acknowledgeLocalMoveEcho(roomId, wakeSnapshot, wakeSnapshot);
         return;
       }
+      if (classification === 'stale') return;
+      const wakeSequence = Number(wakeSnapshot.lastSequence ?? appliedSequence);
       if (!shouldApplyAuthoritativeWake({
         roomMatches: params.activeRoomIdRef.current === roomId,
         appliedSequence: wakeSequence,
         lastAppliedSequence: params.lastAppliedSequenceRef.current,
-        deferred,
+        deferred: false,
       })) return;
       latestSyncedStateRef.current = wakeSnapshot;
       applySyncedStateSnapshotRef.current(wakeSnapshot, {
@@ -271,7 +260,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
         updateSequence: false,
       });
     }, 0);
-  }, [clearAuthoritativeApplyWake, hasPendingLocalMovePresentation, params.activeRoomIdRef, params.lastAppliedSequenceRef, scheduleDeferredSyncedStateApply]);
+  }, [acknowledgeLocalMoveEcho, clearAuthoritativeApplyWake, getDeliveryClassification, params.activeRoomIdRef, params.lastAppliedSequenceRef]);
 
   const queuesRef = useRef<ReturnType<typeof createAuthoritativeGameActionQueues<CommittableGameAction, AuthoritativeCommitResult>> | null>(null);
   if (!queuesRef.current) {
@@ -290,18 +279,36 @@ export function useAuthoritativeGameSyncController(params: Params) {
     previousRoomIdRef.current = params.activeRoomId;
     clearAuthoritativeApplyWake();
     localMovePresentationLifecycle.cancel();
+    localMoveLedger.clearRoom(previousRoomId);
+    hardResyncPromisesRef.current.clear();
     latestSyncedStateRef.current = null;
-    deferredSyncedStateRef.current = null;
-    deferredApplyRequestRef.current += 1;
-    claimedMoveSequenceRef.current = params.lastAppliedSequenceRef.current;
-    serializedLocalMoveActionKeysRef.current.clear();
     queuesRef.current?.reset();
     setManualSequenceSyncing(false);
     params.clearPendingLocalRemoteActions();
     clearTimeoutRollMutationAliases(previousRoomId);
-  }, [clearAuthoritativeApplyWake, params.activeRoomId, params.clearPendingLocalRemoteActions, params.lastAppliedSequenceRef]);
+  }, [clearAuthoritativeApplyWake, params.activeRoomId, params.clearPendingLocalRemoteActions]);
 
   useEffect(() => clearAuthoritativeApplyWake, [clearAuthoritativeApplyWake]);
+
+  const enqueueAuthoritativeResultApplication = useCallback(<T,>(roomId: string, applyResult: () => Promise<T> | T): Promise<T | null> => {
+    return queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, async () => {
+      const result = await applyResult();
+      return aliasTimeoutRollMutationIds(roomId, result);
+    });
+  }, []);
+
+  const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
+    const roomId = params.activeRoomIdRef.current;
+    const aliasedState = aliasTimeoutRollMutationIds(roomId, state);
+    const classification = getDeliveryClassification(aliasedState);
+    if (classification === 'local-echo') {
+      acknowledgeLocalMoveEcho(roomId, aliasedState, aliasedState);
+      return;
+    }
+    if (classification === 'stale') return;
+    latestSyncedStateRef.current = aliasedState;
+    applySyncedStateSnapshotRef.current(aliasedState, options);
+  }, [acknowledgeLocalMoveEcho, getDeliveryClassification, params.activeRoomIdRef]);
 
   useGameSyncSubscription({
     activeRoomId: params.activeRoomId,
@@ -309,17 +316,20 @@ export function useAuthoritativeGameSyncController(params: Params) {
     lastAppliedStateVersionRef: params.lastAppliedStateVersionRef,
     applyingSyncedStateRef: params.applyingSyncedStateRef,
     replayMissingSequencesThenApply: async (state, localSequence, remoteSequence) => {
-      await waitForPendingLocalMovePresentation();
-      return withGameSequenceReplayCache(
+      const aliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);
+      const classification = getDeliveryClassification(aliasedState);
+      if (classification === 'local-echo') {
+        acknowledgeLocalMoveEcho(params.activeRoomId, aliasedState, aliasedState);
+        return;
+      }
+      if (classification === 'stale') return;
+      latestSyncedStateRef.current = aliasedState;
+      await withGameSequenceReplayCache(
         params.activeRoomId,
         localSequence,
         remoteSequence,
         getSequenceRefetchAfter(localSequence),
-        () => params.replayMissingSequencesThenApply(
-          aliasTimeoutRollMutationIds(params.activeRoomId, state),
-          localSequence,
-          remoteSequence,
-        ),
+        () => params.replayMissingSequencesThenApply(aliasedState, localSequence, remoteSequence),
       );
     },
     applySyncedStateSnapshot: rememberAndApplySyncedStateSnapshot,
@@ -362,23 +372,6 @@ export function useAuthoritativeGameSyncController(params: Params) {
       .then((result) => aliasTimeoutRollMutationIds(roomId, result));
   }, [commitCanonicalAction]);
 
-  const enqueueAuthoritativeResultApplication = useCallback(<T,>(roomId: string, applyResult: () => Promise<T> | T): Promise<T | null> => {
-    return queuesRef.current!.enqueueAuthoritativeResultApplication(roomId, async () => {
-      const result = await applyResult();
-      return aliasTimeoutRollMutationIds(roomId, result);
-    });
-  }, []);
-
-  const syncLatestAuthoritativeState = useCallback(async (reason: string, options?: SyncLatestOptions) => {
-    await waitForPendingLocalMovePresentation();
-    return params.syncLatestAuthoritativeState(reason, options);
-  }, [params.syncLatestAuthoritativeState, waitForPendingLocalMovePresentation]);
-
-  const syncLatestSequencesFromBadge = useCallback(async () => {
-    await waitForPendingLocalMovePresentation();
-    return params.syncLatestSequencesFromBadge();
-  }, [params.syncLatestSequencesFromBadge, waitForPendingLocalMovePresentation]);
-
   const enqueueAuthoritativeGameAction = useCallback((
     roomId: string,
     action: CommittableGameAction,
@@ -387,30 +380,38 @@ export function useAuthoritativeGameSyncController(params: Params) {
     handleFinally: () => void,
   ) => {
     const attachedAction = attachClientActionStartedAt(action);
-    const movePieceId = getMovePieceId(attachedAction);
-    const clientActionId = getClientActionId(attachedAction);
-    if (movePieceId && clientActionId && params.hasPendingCurrentTurnAction('move_piece', attachedAction.actorId)) {
-      serializedLocalMoveActionKeysRef.current.add(clientActionId);
-      localMovePresentationLifecycle.begin(clientActionId);
-    }
+    prepareAndFinalizeLocalMove(roomId, attachedAction);
     if (!isTimedOutRollAction(attachedAction)) {
       queuesRef.current!.enqueueAuthoritativeGameAction(roomId, attachedAction, {
         handleResult: async (result) => {
           const moveResultDelayMs = attachedAction.type === 'move_piece' ? getQaMovePieceActionDelayMs() : 0;
           if (moveResultDelayMs) await waitUntil(Date.now() + moveResultDelayMs);
-          if (shouldResyncRejectedPendingMove({
-            actionType: attachedAction.type,
-            status: result.status,
-            hasPendingMove: params.hasPendingCurrentTurnAction('move_piece', attachedAction.actorId),
-          })) {
-            await syncLatestAuthoritativeState(
-              result.reason ?? '서버가 말 이동 요청을 거부해 최신 authoritative 상태로 재동기화합니다.',
-              { diagnosticType: 'move_piece' },
+          const actionKey = getClientActionId(attachedAction);
+          if (attachedAction.type === 'move_piece'
+            && actionKey
+            && localMoveLedger.has(actionKey)
+            && (result.status === 'rejected' || result.status === 'unsupported')) {
+            await runLocalMoveHardResync(
+              roomId,
+              actionKey,
+              result.reason ?? `서버가 move_piece 액션을 거부했습니다. actionKey=${actionKey}`,
             );
+            return;
           }
           await handleResult(result);
         },
-        handleError,
+        handleError: (error) => {
+          const actionKey = getClientActionId(attachedAction);
+          if (attachedAction.type === 'move_piece' && actionKey && localMoveLedger.has(actionKey)) {
+            void runLocalMoveHardResync(
+              roomId,
+              actionKey,
+              `move_piece 제출 오류로 최신 authoritative 상태를 적용합니다. actionKey=${actionKey}`,
+            );
+            return;
+          }
+          handleError(error);
+        },
         handleFinally,
       });
       return;
@@ -435,35 +436,43 @@ export function useAuthoritativeGameSyncController(params: Params) {
         handleFinally();
       }
     })();
-  }, [commitCanonicalAction, params.hasPendingCurrentTurnAction, syncLatestAuthoritativeState]);
+  }, [commitCanonicalAction, prepareAndFinalizeLocalMove, runLocalMoveHardResync]);
 
   const applyAuthoritativeResultSequence = useCallback(async (result: AuthoritativeCommitResult) => {
     const roomId = params.activeRoomIdRef.current;
     const aliasedResult = aliasTimeoutRollMutationIds(roomId, result);
-    const activeActionKey = localMovePresentationLifecycle.snapshot().actionKey;
-    const resultActionKey = getAuthoritativeResultClientMutationId(aliasedResult);
-    const serializedActionKey = resultActionKey && serializedLocalMoveActionKeysRef.current.has(resultActionKey)
-      ? resultActionKey
-      : activeActionKey && serializedLocalMoveActionKeysRef.current.has(activeActionKey)
-        ? activeActionKey
-        : '';
-    if (serializedActionKey) await waitForPendingLocalMovePresentation();
-    const sequence = getAuthoritativeResultSequence(aliasedResult);
-    if (serializedActionKey && !claimMoveSequence(sequence)) {
-      clearSettledDeferredState();
-      return null;
+    const classification = getDeliveryClassification(aliasedResult);
+    if (classification === 'local-echo') {
+      return acknowledgeLocalMoveEcho(roomId, aliasedResult);
     }
-    try {
-      const appliedState = await params.applyAuthoritativeResultSequence(aliasedResult);
-      clearSettledDeferredState();
-      return appliedState;
-    } catch (error) {
-      if (serializedActionKey && sequence && claimedMoveSequenceRef.current === sequence) {
-        claimedMoveSequenceRef.current = params.lastAppliedSequenceRef.current;
-      }
-      throw error;
+    if (classification === 'stale') return null;
+    const applied = await params.applyAuthoritativeResultSequence(aliasedResult);
+    const appliedState = getAuthoritativeSnapshot(applied, getAuthoritativeSnapshot(aliasedResult, latestSyncedStateRef.current));
+    if (appliedState) latestSyncedStateRef.current = appliedState;
+    return applied;
+  }, [acknowledgeLocalMoveEcho, getDeliveryClassification, params.activeRoomIdRef, params.applyAuthoritativeResultSequence]);
+
+  const syncLatestAuthoritativeState = useCallback((reason: string, options?: SyncLatestOptions) => {
+    const roomId = params.activeRoomIdRef.current;
+    const activeLocalMove = localMoveLedger.findByRoom(roomId);
+    if (!activeLocalMove) return params.syncLatestAuthoritativeState(reason, options);
+    if (activeLocalMove.hardResyncStarted) {
+      return runLocalMoveHardResync(roomId, activeLocalMove.clientMutationId, reason);
     }
-  }, [claimMoveSequence, clearSettledDeferredState, params.activeRoomIdRef, params.applyAuthoritativeResultSequence, params.lastAppliedSequenceRef, waitForPendingLocalMovePresentation]);
+    return Promise.resolve(true);
+  }, [params.activeRoomIdRef, params.syncLatestAuthoritativeState, runLocalMoveHardResync]);
+
+  const syncLatestSequencesFromBadge = useCallback(async () => {
+    const roomId = params.activeRoomIdRef.current;
+    const activeLocalMove = localMoveLedger.findByRoom(roomId);
+    if (!activeLocalMove) {
+      await params.syncLatestSequencesFromBadge();
+      return;
+    }
+    if (activeLocalMove.hardResyncStarted) {
+      await runLocalMoveHardResync(roomId, activeLocalMove.clientMutationId, '로컬 말 이동 불일치로 최신 sequence를 적용합니다.');
+    }
+  }, [params.activeRoomIdRef, params.syncLatestSequencesFromBadge, runLocalMoveHardResync]);
 
   const addPendingLocalRemoteAction = useCallback((actionKey: string, metadata?: PendingMeta) => {
     if (metadata?.type === 'roll_yut' && metadata.actorId) {
@@ -475,24 +484,20 @@ export function useAuthoritativeGameSyncController(params: Params) {
   const acknowledgePendingLocalRemoteAction = useCallback((clientMutationId: unknown) => {
     params.acknowledgePendingLocalRemoteAction(clientMutationId);
     if (typeof clientMutationId === 'string') {
-      serializedLocalMoveActionKeysRef.current.delete(clientMutationId);
       removePendingTimeoutRollCandidate(params.activeRoomIdRef.current, clientMutationId);
     }
   }, [params.activeRoomIdRef, params.acknowledgePendingLocalRemoteAction]);
 
   const removeSettledPendingLocalRemoteAction = useCallback((actionKey: string) => {
-    serializedLocalMoveActionKeysRef.current.delete(actionKey);
     params.removeSettledPendingLocalRemoteAction(actionKey);
     removePendingTimeoutRollCandidate(params.activeRoomIdRef.current, actionKey);
   }, [params.activeRoomIdRef, params.removeSettledPendingLocalRemoteAction]);
 
   const clearPendingLocalRemoteActions = useCallback(() => {
     localMovePresentationLifecycle.cancel();
-    serializedLocalMoveActionKeysRef.current.clear();
-    deferredSyncedStateRef.current = null;
-    deferredApplyRequestRef.current += 1;
+    localMoveLedger.clearRoom(params.activeRoomIdRef.current);
     params.clearPendingLocalRemoteActions();
-  }, [params.clearPendingLocalRemoteActions]);
+  }, [params.activeRoomIdRef, params.clearPendingLocalRemoteActions]);
 
   const hasPendingCurrentTurnAction = useCallback((type: RemoteActionType, actorId?: string) => {
     if (type === 'roll_yut'
