@@ -49,7 +49,7 @@ type DeliveryIdentityInput = {
 };
 
 type LocalMoveAction = {
-  type: 'move_piece';
+  type: string;
   actorId: string;
   payload?: Record<string, unknown>;
 };
