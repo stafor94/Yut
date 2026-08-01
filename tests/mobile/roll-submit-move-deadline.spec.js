@@ -212,10 +212,9 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
     await expect.poll(async () => {
       const state = await collectScreenState(page);
       const debug = state.yutDebug ?? {};
-      const stack = Array.isArray(debug.rollStack) ? debug.rollStack : [];
-      return stack.length === 1
-        && stack[0]?.name === '모'
-        && debug.rollStackClosed === false
+      const logs = Array.isArray(debug.logs) ? debug.logs : [];
+      return logs.some((entry) => entry?.text?.includes('모(5칸)'))
+        && debug.canRollNow === true
         && debug.turnDeadlineKind === 'roll'
         && debug.pendingLocalRemoteActionCount === 0
         && state.rollButton.visible
