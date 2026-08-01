@@ -173,6 +173,7 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
       pieceCount: '4',
     });
     await context.addInitScript(() => {
+      window.localStorage.setItem('yut-online:stackedRollMode', 'true');
       window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
       window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
       window.__YUT_QA_ROLL_TIMING_INITIAL_POSITION_PERCENT__ = 50;
