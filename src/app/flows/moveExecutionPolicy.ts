@@ -22,10 +22,8 @@ export function shouldExecuteScheduledMove({
     && scheduledContextKey === latestContextKey;
 }
 
-export function claimMoveActionOnce(actionKey: string, requestedActionKeys: Set<string>) {
-  if (!actionKey || requestedActionKeys.has(actionKey)) return false;
-  requestedActionKeys.add(actionKey);
-  return true;
+export function isMoveActionAlreadyClaimed(actionKey: string, claimedActionKeys: Set<string>) {
+  return actionKey.startsWith('move_piece:') && claimedActionKeys.has(actionKey);
 }
 
 function getMoveActionContextKey(actionKey: string) {
