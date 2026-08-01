@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type { GameAction } from '../../features/room/services/roomService';
-import { canExecuteMoveActionNow, claimMoveActionOnce } from '../flows/moveExecutionPolicy';
+import { canExecuteMoveActionNow, isMoveActionAlreadyClaimed } from '../flows/moveExecutionPolicy';
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
 
@@ -15,43 +15,27 @@ export type PendingRemoteActionMeta = {
 };
 
 class PendingLocalRemoteActionSet extends Set<string> {
-  private readonly settledMoveActionKeys = new Set<string>();
+  constructor(private readonly claimedActionKeys: Set<string>) {
+    super();
+  }
 
   override has(actionKey: string) {
     if (actionKey.startsWith('move_piece:')) {
       if (!canExecuteMoveActionNow(actionKey)) return true;
-      if (this.settledMoveActionKeys.has(actionKey)) return true;
+      if (isMoveActionAlreadyClaimed(actionKey, this.claimedActionKeys)) return true;
     }
     return super.has(actionKey);
-  }
-
-  acknowledge(actionKey: string) {
-    const deleted = super.delete(actionKey);
-    if (deleted && actionKey.startsWith('move_piece:')) {
-      claimMoveActionOnce(actionKey, this.settledMoveActionKeys);
-    }
-    return deleted;
-  }
-
-  override delete(actionKey: string) {
-    this.settledMoveActionKeys.delete(actionKey);
-    return super.delete(actionKey);
-  }
-
-  override clear() {
-    super.clear();
-    this.settledMoveActionKeys.clear();
   }
 }
 
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
-  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new PendingLocalRemoteActionSet());
+  const localClientMutationIdsRef = useRef<Set<string>>(new Set());
+  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new PendingLocalRemoteActionSet(localClientMutationIdsRef.current));
   const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<PendingRemoteActionMetaStore<PendingRemoteActionMeta>>(
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
   );
-  const localClientMutationIdsRef = useRef<Set<string>>(new Set());
 
   const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(pendingLocalRemoteActionsRef.current.size);
   const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {
@@ -77,8 +61,7 @@ export function usePendingRemoteActions() {
   };
   const acknowledgePendingLocalRemoteAction = (clientMutationId: unknown) => {
     if (typeof clientMutationId !== 'string' || !clientMutationId) return;
-    const pendingActions = pendingLocalRemoteActionsRef.current as PendingLocalRemoteActionSet;
-    if (!pendingActions.acknowledge(clientMutationId)) return;
+    if (!pendingLocalRemoteActionsRef.current.delete(clientMutationId)) return;
     pendingLocalRemoteActionMetaRef.current.acknowledge(clientMutationId);
     syncPendingLocalRemoteActionCount();
   };
