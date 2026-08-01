@@ -16,6 +16,7 @@ export type LocalMoveLedgerRecord = {
   toNodeId: string;
   pathNodeIds: string[];
   finalPieces: unknown[];
+  finalState: Record<string, unknown>;
   resultFingerprint: string;
   localPresentationCompleted: boolean;
   serverSequenceAcked: boolean;
@@ -61,6 +62,7 @@ type LocalMoveState = Record<string, unknown> & {
   pieces?: unknown[];
   turnIndex?: number;
   lastSequence?: number;
+  turnVersion?: number;
 };
 
 export type PreparedLocalMoveOwnership = {
@@ -190,6 +192,9 @@ export function prepareLocalMoveOwnership({
 }): PreparedLocalMoveOwnership | null {
   const clientMutationId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
   if (!roomId || !state || !clientMutationId || action.type !== 'move_piece') return null;
+  if (action.payload?.recoveredByCoordinator === true
+    || typeof action.payload?.automationSource === 'string'
+    || typeof action.payload?.coordinatorSeatId === 'string') return null;
   if ((state.playMode !== 'individual' && state.playMode !== 'team')
     || ![1, 2, 3, 4].includes(Number(state.pieceCount))
     || typeof state.stackedRollMode !== 'boolean'
@@ -240,6 +245,7 @@ export function prepareLocalMoveOwnership({
     toNodeId: String(payload.toNodeId ?? ''),
     pathNodeIds,
     finalPieces,
+    finalState,
     resultFingerprint: makeLocalMoveResultFingerprint(finalState),
   };
   return { record, finalState, payload };
@@ -254,6 +260,7 @@ export class LocalMoveLedger {
       movingGroupIds: [...input.movingGroupIds],
       pathNodeIds: [...input.pathNodeIds],
       finalPieces: [...input.finalPieces],
+      finalState: input.finalState,
       localPresentationCompleted: false,
       serverSequenceAcked: false,
       serverSequence: 0,
@@ -293,6 +300,9 @@ export class LocalMoveLedger {
     record.serverSequence = Math.max(record.serverSequence, toFiniteInteger(input.sequence));
     record.serverStateVersion = Math.max(record.serverStateVersion, toFiniteInteger(input.stateVersion));
     record.serverSequenceAcked = record.serverSequence > 0;
+    if (record.serverSequence > 0) record.finalState.lastSequence = record.serverSequence;
+    if (record.serverStateVersion > 0) record.finalState.turnVersion = record.serverStateVersion;
+    record.finalState.lastClientMutationId = record.clientMutationId;
     if (typeof input.resultFingerprint === 'string' && input.resultFingerprint) {
       record.fingerprintMatched = input.resultFingerprint === record.resultFingerprint;
     }
@@ -301,7 +311,13 @@ export class LocalMoveLedger {
       : record.fingerprintMatched === true
         ? 'matched' as const
         : 'pending' as const;
-    const snapshot = { ...record, movingGroupIds: [...record.movingGroupIds], pathNodeIds: [...record.pathNodeIds], finalPieces: [...record.finalPieces] };
+    const snapshot = {
+      ...record,
+      movingGroupIds: [...record.movingGroupIds],
+      pathNodeIds: [...record.pathNodeIds],
+      finalPieces: [...record.finalPieces],
+      finalState: { ...record.finalState },
+    };
     this.cleanupIfSettled(record);
     return { status, record: snapshot };
   }
