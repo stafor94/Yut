@@ -83,6 +83,21 @@ test('누적 던지기 선택 이동의 ready action key도 정상 실행한다'
   assert.equal(canExecuteMoveActionNow(actionKey), true);
 });
 
+test('이동 가능한 말이 없는 빽도 통과 action key도 정상 실행한다', () => {
+  const actionKey = 'move_piece:seat-a:12:5:빽도:-1:seat-z:piece-z::0:outer:stack:none';
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({
+    canRequestMove: true,
+    localSeatId: 'seat-a',
+    lastAppliedSequence: 12,
+    turnIndex: 5,
+    roll: { name: '빽도', steps: -1 },
+    lastMovedSeatId: 'seat-z',
+    lastMovedPieceIds: ['piece-z'],
+    activeMovablePiece: null,
+  }));
+  assert.equal(canExecuteMoveActionNow(actionKey), true);
+});
+
 test('기존 local client mutation id가 동일한 논리 이동의 재요청·낙관적 이동·연출을 차단한다', () => {
   const claimedActionKeys = new Set<string>();
   const moveActionKey = 'move_piece:seat:7:2:걸:3:piece-1';
