@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeRollResultReadyAt } from '../../src/app/appUtils';
-import { claimMoveActionOnce, shouldExecuteScheduledMove } from '../../src/app/flows/moveExecutionPolicy';
+import {
+  canExecuteMoveActionNow,
+  claimMoveActionOnce,
+  getMoveExecutionReadinessFromDiagnosticState,
+  publishMoveExecutionReadiness,
+  shouldExecuteScheduledMove,
+} from '../../src/app/flows/moveExecutionPolicy';
 import { shouldResyncRejectedPendingMove } from '../../src/app/flows/optimisticMoveRejectionPolicy';
 import { ONLINE_ROLL_FAST_PRESENTATION_MS } from '../../src/features/room/services/rollPresentationTiming';
 
@@ -22,7 +28,7 @@ test('pending move 거부는 잠금 해제 전에 authoritative 재동기화한�
 });
 
 test('예약된 자동 이동은 콜백 실행 시 최신 action-ready와 동일한 이동 문맥을 다시 확인한다', () => {
-  const scheduledContextKey = 'room:7:2:seat:걸:3:piece-1';
+  const scheduledContextKey = 'seat-a:7:2:걸:3:seat-z:piece-z:piece-1';
   assert.equal(shouldExecuteScheduledMove({
     canRequestMove: true,
     scheduledContextKey,
@@ -36,8 +42,30 @@ test('예약된 자동 이동은 콜백 실행 시 최신 action-ready와 동일
   assert.equal(shouldExecuteScheduledMove({
     canRequestMove: true,
     scheduledContextKey,
-    latestContextKey: 'room:8:3:other-turn',
+    latestContextKey: 'seat-a:8:3:개:2::piece-1:piece-2',
   }), false);
+});
+
+test('실행 직전 게시된 최종 canRequestMove와 이동 문맥으로 stale 콜백을 차단한다', () => {
+  const actionKey = 'move_piece:seat-a:7:2:걸:3:seat-z:piece-z:piece-1:0:outer:stack:none';
+  const matchingDiagnostic = {
+    canRequestMove: true,
+    localSeatId: 'seat-a',
+    lastAppliedSequence: 7,
+    turnIndex: 2,
+    roll: { name: '걸', steps: 3 },
+    lastMovedSeatId: 'seat-z',
+    lastMovedPieceIds: ['piece-z'],
+    activeMovablePiece: { id: 'piece-1' },
+  };
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(matchingDiagnostic));
+  assert.equal(canExecuteMoveActionNow(actionKey), true);
+
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({ ...matchingDiagnostic, canRequestMove: false }));
+  assert.equal(canExecuteMoveActionNow(actionKey), false);
+
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({ ...matchingDiagnostic, turnIndex: 3 }));
+  assert.equal(canExecuteMoveActionNow(actionKey), false);
 });
 
 test('동일한 논리 move action은 요청·낙관적 이동·연출을 한 번만 시작한다', () => {
