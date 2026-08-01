@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { GameAction } from '../../features/room/services/roomService';
+import { canExecuteMoveActionNow, isMoveActionAlreadyClaimed } from '../flows/moveExecutionPolicy';
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
 
@@ -13,14 +14,28 @@ export type PendingRemoteActionMeta = {
   blocksTurnActions?: boolean;
 };
 
+class PendingLocalRemoteActionSet extends Set<string> {
+  constructor(private readonly claimedActionKeys: Set<string>) {
+    super();
+  }
+
+  override has(actionKey: string) {
+    if (actionKey.startsWith('move_piece:')) {
+      if (!canExecuteMoveActionNow(actionKey)) return true;
+      if (isMoveActionAlreadyClaimed(actionKey, this.claimedActionKeys)) return true;
+    }
+    return super.has(actionKey);
+  }
+}
+
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
-  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
+  const localClientMutationIdsRef = useRef<Set<string>>(new Set());
+  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new PendingLocalRemoteActionSet(localClientMutationIdsRef.current));
   const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<PendingRemoteActionMetaStore<PendingRemoteActionMeta>>(
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
   );
-  const localClientMutationIdsRef = useRef<Set<string>>(new Set());
 
   const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(pendingLocalRemoteActionsRef.current.size);
   const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {

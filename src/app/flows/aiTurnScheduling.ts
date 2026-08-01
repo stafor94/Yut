@@ -9,6 +9,10 @@ import {
   normalizeTurnDeadlineKind,
   type TurnDeadlineKind,
 } from '../../features/room/services/turnDeadlinePolicy';
+import {
+  getMoveExecutionReadinessFromDiagnosticState,
+  publishMoveExecutionReadiness,
+} from './moveExecutionPolicy';
 
 export const AI_TURN_READY_BOUNDARY_BUFFER_MS = 80;
 
@@ -96,6 +100,9 @@ export const getAiTurnScheduleDelayFromDiagnosticState = (
   fallbackDelayMs: unknown,
   now = Date.now(),
 ) => {
+  // useGameSyncDebugState가 매 렌더 호출하는 공통 경계에서 버튼과 동일한 최신 이동 readiness를 게시한다.
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(diagnosticState));
+
   const activeSeat = diagnosticState.activeSeat;
   const activeSeatIsAi = Boolean(
     activeSeat
