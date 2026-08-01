@@ -121,7 +121,6 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     if (!currentAnimation) return;
     setSettledAnimationId(currentAnimation.id);
     setSettleSource((current) => current === 'pending' ? source : current);
-    presentationCompletionByIdRef.current.get(currentAnimation.id)?.markSettled(source);
   };
 
   const notifyQueuedPresentation = () => {
@@ -267,6 +266,12 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     presentationReleaseRef.current?.();
     presentationReleaseRef.current = null;
   }, [Boolean(presentedAnimation)]);
+
+  useLayoutEffect(() => {
+    if (!presentedAnimation || settledAnimationId !== presentedAnimation.id) return;
+    if (settleSource !== 'three-renderer' && settleSource !== 'css-animation-end') return;
+    presentationCompletionByIdRef.current.get(presentedAnimation.id)?.markSettled(settleSource);
+  }, [presentedAnimation, settledAnimationId, settleSource]);
 
   useLayoutEffect(() => {
     const stage = rollStageRef.current;
