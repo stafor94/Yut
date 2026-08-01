@@ -367,31 +367,13 @@ export const localMoveLedger = new LocalMoveLedger();
 
 export function classifyAuthoritativeDelivery(
   input: DeliveryIdentityInput,
-  applied: { lastAppliedSequence: number; lastAppliedStateVersion: number },
+  _applied: { lastAppliedSequence: number; lastAppliedStateVersion: number },
   ledger: LocalMoveLedger = localMoveLedger,
 ): AuthoritativeDeliveryClassification {
   const clientMutationId = typeof input.clientMutationId === 'string' ? input.clientMutationId : '';
-  if (clientMutationId && ledger.has(clientMutationId)) return 'local-echo';
-
-  const sequence = toFiniteInteger(input.sequence);
-  const stateVersion = toFiniteInteger(input.stateVersion);
-  const lastAppliedSequence = Math.max(0, applied.lastAppliedSequence);
-  const lastAppliedStateVersion = Math.max(0, applied.lastAppliedStateVersion);
-  const deliveryKind: AuthoritativeDeliveryKind = input.deliveryKind === 'action-result'
-    ? 'action-result'
-    : 'state-snapshot';
-
-  if (deliveryKind === 'action-result' && sequence > 0) {
-    return sequence <= lastAppliedSequence ? 'stale' : 'remote-action';
-  }
-  if (sequence > 0 && stateVersion > 0) {
-    return sequence <= lastAppliedSequence && stateVersion <= lastAppliedStateVersion
-      ? 'stale'
-      : 'remote-action';
-  }
-  if (sequence > 0 && sequence <= lastAppliedSequence) return 'stale';
-  if (stateVersion > 0 && stateVersion <= lastAppliedStateVersion) return 'stale';
-  return 'remote-action';
+  return clientMutationId && ledger.has(clientMutationId)
+    ? 'local-echo'
+    : 'remote-action';
 }
 
 export function getAuthoritativeDeliveryIdentity(value: unknown) {
