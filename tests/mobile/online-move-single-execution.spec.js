@@ -169,7 +169,10 @@ async function expectSingleAuthoritativeMove(roomId, localSeatId) {
 function expectSingleGulPresentation(trace) {
   expect(trace.movedBeforeEnabled, '최종 action-ready 이전에는 낙관적 이동이 시작되면 안 됩니다.').toBe(false);
   expect(trace.moveActionIds, '동일한 걸 이동 client mutation은 한 번만 생성되어야 합니다.').toHaveLength(1);
-  expect(trace.nodeTransitions, '걸 낙관적 이동 애니메이션은 n02→n03→n04를 한 번만 소비해야 합니다.').toEqual(['n02', 'n03', 'n04']);
+  expect(
+    trace.nodeTransitions,
+    '걸 이동은 최종 낙관적 상태 n04를 한 번 반영한 뒤 n02→n03→n04 연출을 한 번만 소비해야 합니다.',
+  ).toEqual(['n04', 'n02', 'n03', 'n04']);
   expect(trace.finalNodeId, '상대 턴 동기화 뒤에도 서버의 첫 걸 이동 위치를 유지해야 합니다.').toBe('n04');
 }
 
