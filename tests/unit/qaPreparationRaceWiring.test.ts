@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const sequenceQaSource = readFileSync('tests/regression/bug-history-smoke.spec.js', 'utf8');
 const timingQaSource = readFileSync('tests/mobile/roll-timing-pointer-capture.spec.js', 'utf8');
+const roomExitResumeSource = readFileSync('tests/online/room-exit-resume.spec.js', 'utf8');
 const roomAccessSource = readFileSync('tests/helpers/room-access.js', 'utf8');
 
 test('AI sequence 회귀 QA는 대상 이동 검증 전에 비결정적 순서 정하기 동률을 제거한다', () => {
@@ -14,6 +15,16 @@ test('AI sequence 회귀 QA는 대상 이동 검증 전에 비결정적 순서 �
   assert.match(targetTestSource, /__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = \['모'\]/);
   assert.match(targetTestSource, /__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = \['도'\]/);
   assert.ok(targetTestSource.indexOf('__YUT_QA_TURN_ORDER_RESULT_QUEUE__') < targetTestSource.indexOf('createRoomFromLobby'));
+});
+
+test('재입장 턴 권한 QA는 방 생성 전에 두 사람의 순서 정하기 동률을 제거한다', () => {
+  const targetTestStart = roomExitResumeSource.indexOf("test('P2 재입장 후 authoritative 현재·이전·다음 턴과 행동 권한이 두 턴 이상 계속 일치한다'");
+  const targetTestSource = roomExitResumeSource.slice(targetTestStart);
+
+  assert.ok(targetTestStart >= 0);
+  assert.match(targetTestSource, /primeTurnOrderResultQueues\(hostContext, \{ human: \['모'\] \}\)/);
+  assert.match(targetTestSource, /primeTurnOrderResultQueues\(guestContext, \{ human: \['도'\] \}\)/);
+  assert.ok(targetTestSource.indexOf('primeTurnOrderResultQueues(hostContext') < targetTestSource.indexOf('createRoomFromLobby'));
 });
 
 test('WebKit 타이밍 QA는 방 cleanup 권한용 Firebase Auth 토큰을 실제 준비 조건으로 제한 polling한다', () => {
