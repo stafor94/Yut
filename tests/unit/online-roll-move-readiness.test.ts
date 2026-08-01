@@ -28,7 +28,7 @@ test('pending move 거부는 잠금 해제 전에 authoritative 재동기화한�
 });
 
 test('예약된 자동 이동은 콜백 실행 시 최신 action-ready와 동일한 이동 문맥을 다시 확인한다', () => {
-  const scheduledContextKey = 'seat-a:7:2:걸:3:seat-z:piece-z:piece-1';
+  const scheduledContextKey = 'move_piece:seat-a:7:2:걸:3:seat-z:piece-z:piece-1';
   assert.equal(shouldExecuteScheduledMove({
     canRequestMove: true,
     scheduledContextKey,
@@ -42,7 +42,7 @@ test('예약된 자동 이동은 콜백 실행 시 최신 action-ready와 동일
   assert.equal(shouldExecuteScheduledMove({
     canRequestMove: true,
     scheduledContextKey,
-    latestContextKey: 'seat-a:8:3:개:2::piece-1:piece-2',
+    latestContextKey: 'move_piece:seat-a:8:3:개:2::piece-1:piece-2',
   }), false);
 });
 
@@ -66,6 +66,21 @@ test('실행 직전 게시된 최종 canRequestMove와 이동 문맥으로 stale
 
   publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({ ...matchingDiagnostic, turnIndex: 3 }));
   assert.equal(canExecuteMoveActionNow(actionKey), false);
+});
+
+test('누적 던지기 선택 이동의 ready action key도 정상 실행한다', () => {
+  const actionKey = 'move_piece:seat-a:11:4:ready:seat-z:piece-z:piece-2:0:outer:stack:1';
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({
+    canRequestMove: true,
+    localSeatId: 'seat-a',
+    lastAppliedSequence: 11,
+    turnIndex: 4,
+    roll: null,
+    lastMovedSeatId: 'seat-z',
+    lastMovedPieceIds: ['piece-z'],
+    activeMovablePiece: { id: 'piece-2' },
+  }));
+  assert.equal(canExecuteMoveActionNow(actionKey), true);
 });
 
 test('기존 local client mutation id가 동일한 논리 이동의 재요청·낙관적 이동·연출을 차단한다', () => {
