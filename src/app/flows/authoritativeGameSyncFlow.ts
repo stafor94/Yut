@@ -1,3 +1,4 @@
+import { waitForLocalMoveActionPresentation } from './localMovePresentationLifecycle';
 import { waitForNextRenderTask } from './renderTaskBoundary';
 
 export type RoomIdRef = { current: string };
@@ -13,6 +14,7 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
   commit: (roomId: string, action: TAction) => Promise<TResult>;
   onApplySettled?: (roomId: string, appliedValue: unknown) => void;
   yieldBetweenApplies?: () => Promise<void>;
+  waitForActionPresentation?: (action: TAction) => Promise<unknown>;
 }) {
   let commitQueue: Promise<void> = Promise.resolve();
   let applyQueue: Promise<void> = Promise.resolve();
@@ -65,8 +67,11 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
     action: TAction,
     hooks: AuthoritativeQueueHooks<TResult>,
   ) => {
+    const waitForActionPresentation = params.waitForActionPresentation
+      ?? ((candidateAction: TAction) => waitForLocalMoveActionPresentation(candidateAction));
     void commitQueuedAuthoritativeGameAction(roomId, action)
       .then((result) => enqueueAuthoritativeResultApplication(roomId, async () => {
+        await waitForActionPresentation(action);
         try {
           await hooks.handleResult(result);
           return result;
@@ -74,7 +79,8 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
         finally { hooks.handleFinally(); }
       }))
       .catch((error) => {
-        void enqueueAuthoritativeResultApplication(roomId, () => {
+        void enqueueAuthoritativeResultApplication(roomId, async () => {
+          await waitForActionPresentation(action);
           try { hooks.handleError(error); }
           finally { hooks.handleFinally(); }
         });
