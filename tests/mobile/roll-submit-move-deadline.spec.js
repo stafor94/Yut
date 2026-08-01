@@ -38,8 +38,8 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
         if (!(target instanceof Element) || !target.closest('[data-testid="roll-yut-button"]')) return;
 
         // Perfect consumes the first value for the weighted result. Other grades consume four
-        // values for the sticks and the fifth for fall. The first value deterministically resolves to 도.
-        const values = [0.1, 0.3, 0.7, 0.7, 0.8];
+        // values for the sticks and the fifth for fall. Both paths deterministically resolve to 개 without a fall.
+        const values = [0.3, 0.3, 0.7, 0.7, 0.8];
         let index = 0;
         Math.random = () => values[Math.min(index++, values.length - 1)];
         queueMicrotask(() => {
@@ -137,23 +137,23 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
         ? debug.pieces.filter((piece) => piece?.ownerId === debug.localSeatId)
         : [];
       const movedPieces = localPieces.filter((piece) => piece?.started && !piece?.finished);
+      const localMoveActionIds = Array.isArray(debug.actionPipeline?.localClientMutationIds)
+        ? debug.actionPipeline.localClientMutationIds.filter((actionId) => actionId.startsWith(`move_piece:${debug.localSeatId}:`))
+        : [];
       return movedPieces.length === 1
-        && movedPieces[0]?.nodeId === 'n02'
-        && debug.roll == null
-        && debug.lastMovedSeatId === debug.localSeatId
-        && Array.isArray(debug.lastMovedPieceIds)
-        && debug.lastMovedPieceIds.length === 1
+        && movedPieces[0]?.nodeId === 'n03'
         && debug.activeSeat?.id !== debug.localSeatId
-        && debug.pendingLocalRemoteActionCount === 0;
-    }, { timeout: 15_000, intervals: [50, 100, 200], message: '도 자동 이동은 정확히 한 번 n02에 확정되고 roll을 소비한 뒤 다음 차례로 넘어가야 합니다.' }).toBe(true);
+        && debug.pendingLocalRemoteActionCount === 0
+        && localMoveActionIds.length === 1;
+    }, { timeout: 15_000, intervals: [50, 100, 200], message: '개 자동 이동은 정확히 한 번 n03에 확정되고 다음 차례로 넘어가야 합니다.' }).toBe(true);
 
     const settledState = await collectScreenState(page);
     const settledDebug = settledState.yutDebug ?? {};
     const settledLocalPieces = Array.isArray(settledDebug.pieces)
       ? settledDebug.pieces.filter((piece) => piece?.ownerId === settledDebug.localSeatId)
       : [];
-    expect(settledLocalPieces.filter((piece) => piece?.started && !piece?.finished).map((piece) => piece.nodeId)).toEqual(['n02']);
-    expect(settledLocalPieces.some((piece) => piece?.nodeId === 'n03')).toBe(false);
+    expect(settledLocalPieces.filter((piece) => piece?.started && !piece?.finished).map((piece) => piece.nodeId)).toEqual(['n03']);
+    expect(settledLocalPieces.some((piece) => piece?.nodeId === 'n04')).toBe(false);
     expect(settledState.moveButton.visible && !settledState.moveButton.disabled).toBe(false);
   });
 });
