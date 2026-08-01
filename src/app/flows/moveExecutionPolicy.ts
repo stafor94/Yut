@@ -1,3 +1,13 @@
+type MoveExecutionReadiness = {
+  canRequestMove: boolean;
+  contextKey: string;
+};
+
+let latestMoveExecutionReadiness: MoveExecutionReadiness = {
+  canRequestMove: false,
+  contextKey: '',
+};
+
 export function shouldExecuteScheduledMove({
   canRequestMove,
   scheduledContextKey,
@@ -16,4 +26,47 @@ export function claimMoveActionOnce(actionKey: string, requestedActionKeys: Set<
   if (!actionKey || requestedActionKeys.has(actionKey)) return false;
   requestedActionKeys.add(actionKey);
   return true;
+}
+
+function getMoveActionContextKey(actionKey: string) {
+  if (!actionKey.startsWith('move_piece:')) return '';
+  return actionKey.split(':').slice(1, 9).join(':');
+}
+
+export function getMoveExecutionReadinessFromDiagnosticState(diagnosticState: Record<string, unknown>): MoveExecutionReadiness {
+  const roll = diagnosticState.roll && typeof diagnosticState.roll === 'object'
+    ? diagnosticState.roll as { name?: unknown; steps?: unknown }
+    : null;
+  const activeMovablePiece = diagnosticState.activeMovablePiece && typeof diagnosticState.activeMovablePiece === 'object'
+    ? diagnosticState.activeMovablePiece as { id?: unknown }
+    : null;
+  const lastMovedPieceIds = Array.isArray(diagnosticState.lastMovedPieceIds)
+    ? diagnosticState.lastMovedPieceIds.map(String)
+    : [];
+  const contextKey = [
+    String(diagnosticState.localSeatId ?? ''),
+    String(diagnosticState.lastAppliedSequence ?? ''),
+    String(diagnosticState.turnIndex ?? ''),
+    String(roll?.name ?? ''),
+    String(roll?.steps ?? ''),
+    String(diagnosticState.lastMovedSeatId ?? ''),
+    lastMovedPieceIds.join(','),
+    String(activeMovablePiece?.id ?? ''),
+  ].join(':');
+  return {
+    canRequestMove: diagnosticState.canRequestMove === true,
+    contextKey,
+  };
+}
+
+export function publishMoveExecutionReadiness(readiness: MoveExecutionReadiness) {
+  latestMoveExecutionReadiness = readiness;
+}
+
+export function canExecuteMoveActionNow(actionKey: string) {
+  return shouldExecuteScheduledMove({
+    canRequestMove: latestMoveExecutionReadiness.canRequestMove,
+    scheduledContextKey: getMoveActionContextKey(actionKey),
+    latestContextKey: latestMoveExecutionReadiness.contextKey,
+  });
 }
