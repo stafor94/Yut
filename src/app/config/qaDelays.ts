@@ -1,6 +1,6 @@
 declare const window: { [key: string]: unknown } | undefined;
 
-type QaDelayKey = '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__' | '__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__' | '__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__' | '__YUT_QA_DELAY_USE_ITEM_ACTION_MS__';
+type QaDelayKey = '__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__' | '__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__' | '__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__' | '__YUT_QA_DELAY_MOVE_PIECE_ACTION_MS__' | '__YUT_QA_DELAY_USE_ITEM_ACTION_MS__';
 
 const timeoutRollCommitFailureCountByActionId = new Map<string, number>();
 
@@ -13,6 +13,7 @@ export const getQaDelayMs = (key: QaDelayKey) => {
 export const getQaRequestRoomGameStartDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_REQUEST_ROOM_GAME_START_MS__');
 export const getQaInitializeGameStateDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_INITIALIZE_GAME_STATE_MS__');
 export const getQaRollYutActionDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__');
+export const getQaMovePieceActionDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_MOVE_PIECE_ACTION_MS__');
 export const getQaUseItemActionDelayMs = () => getQaDelayMs('__YUT_QA_DELAY_USE_ITEM_ACTION_MS__');
 
 /** QA-only deterministic failure injection for verifying same-payload timeout retries and coordinator fallback. */
