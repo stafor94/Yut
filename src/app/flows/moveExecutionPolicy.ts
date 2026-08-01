@@ -28,7 +28,10 @@ export function isMoveActionAlreadyClaimed(actionKey: string, claimedActionKeys:
 
 function getMoveActionContextKey(actionKey: string) {
   if (!actionKey.startsWith('move_piece:')) return '';
-  return actionKey.split(':').slice(1, 9).join(':');
+  const parts = actionKey.split(':');
+  const stackMarkerIndex = parts.lastIndexOf('stack');
+  if (stackMarkerIndex < 3) return '';
+  return parts.slice(0, stackMarkerIndex - 2).join(':');
 }
 
 export function getMoveExecutionReadinessFromDiagnosticState(diagnosticState: Record<string, unknown>): MoveExecutionReadiness {
@@ -41,12 +44,13 @@ export function getMoveExecutionReadinessFromDiagnosticState(diagnosticState: Re
   const lastMovedPieceIds = Array.isArray(diagnosticState.lastMovedPieceIds)
     ? diagnosticState.lastMovedPieceIds.map(String)
     : [];
+  const rollKey = roll ? `${String(roll.name ?? '')}:${String(roll.steps ?? '')}` : 'ready';
   const contextKey = [
+    'move_piece',
     String(diagnosticState.localSeatId ?? ''),
     String(diagnosticState.lastAppliedSequence ?? ''),
     String(diagnosticState.turnIndex ?? ''),
-    String(roll?.name ?? ''),
-    String(roll?.steps ?? ''),
+    rollKey,
     String(diagnosticState.lastMovedSeatId ?? ''),
     lastMovedPieceIds.join(','),
     String(activeMovablePiece?.id ?? ''),
