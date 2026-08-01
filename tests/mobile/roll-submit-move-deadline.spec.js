@@ -156,4 +156,73 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
     expect(settledLocalPieces.some((piece) => piece?.nodeId === 'n04')).toBe(false);
     expect(settledState.moveButton.visible && !settledState.moveButton.disabled).toBe(false);
   });
+
+  test('누적 모 뒤 열린 보너스 스택의 재던지기에 제한시간과 타이밍 막대를 표시한다', async ({ page, context }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
+    testInfo.setTimeout(120_000);
+    await page.setViewportSize({ width: 412, height: 915 });
+
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'bonus-meter-host'));
+    const roomTitle = makeQaName(testInfo, 'bonus-meter-room');
+    await primeLobbyStorage(context, {
+      nickname: hostName,
+      maxPlayers: '2',
+      playMode: 'individual',
+      itemMode: 'false',
+      stackedRollMode: 'true',
+      pieceCount: '4',
+    });
+    await context.addInitScript(() => {
+      window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = ['모'];
+      window.__YUT_QA_AI_TURN_ORDER_RESULT_QUEUE__ = ['도'];
+      window.__YUT_QA_ROLL_TIMING_INITIAL_POSITION_PERCENT__ = 50;
+
+      const nativeRandom = Math.random;
+      document.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element) || !target.closest('[data-testid="roll-yut-button"]')) return;
+        Math.random = () => 0.95;
+        queueMicrotask(() => {
+          Math.random = nativeRandom;
+        });
+      }, true);
+    });
+
+    await createRoomFromLobby(page, roomTitle);
+    roomId = await waitForRoomQaAccess(page, { roomTitle });
+    await page.getByTestId('add-ai-P2').click();
+    await expect(page.getByTestId('start-game-button')).toBeEnabled({ timeout: 15_000 });
+    await page.getByTestId('start-game-button').click();
+    await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 30_000 });
+    await expect.poll(async () => {
+      const state = await collectScreenState(page);
+      const debug = state.yutDebug ?? {};
+      return Array.isArray(debug.turnOrderIds)
+        && debug.turnOrderIds.length === 2
+        && !debug.turnOrderPhase?.active
+        && !debug.turnOrderIntro
+        && state.rollButton.visible
+        && !state.rollButton.disabled;
+    }, { timeout: 45_000, message: '첫 누적 roll action이 가능한 상태여야 합니다.' }).toBe(true);
+
+    await page.getByTestId('roll-yut-button').evaluate((button) => button.click());
+    await expect(page.locator('.roll-stage')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 15_000 });
+    await expect.poll(async () => {
+      const state = await collectScreenState(page);
+      const debug = state.yutDebug ?? {};
+      const stack = Array.isArray(debug.rollStack) ? debug.rollStack : [];
+      return stack.length === 1
+        && stack[0]?.name === '모'
+        && debug.rollStackClosed === false
+        && debug.turnDeadlineKind === 'roll'
+        && debug.pendingLocalRemoteActionCount === 0
+        && state.rollButton.visible
+        && !state.rollButton.disabled;
+    }, { timeout: 15_000, message: '모 결과 뒤 열린 보너스 스택의 재던지기가 활성화되어야 합니다.' }).toBe(true);
+
+    await expect(page.locator('.turn-action-timer')).toBeVisible();
+    await expect(page.locator('.roll-timing-live-meter')).toBeVisible();
+    await expect(page.getByTestId('roll-yut-button')).toBeEnabled();
+  });
 });

@@ -14,5 +14,5 @@ export const isTurnActionPresentationPending = ({
   rollResultHolding: boolean;
 }) => Boolean(
   rollResultHolding
-  || (phase === 'roll' && !hasRoll && (!canRollNow || !canSubmitTurnAction))
+  || (phase === 'roll' && !hasRoll && !canRollNow)
 );
