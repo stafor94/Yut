@@ -11,7 +11,55 @@ const applied = {
   lastAppliedStateVersion: 8,
 };
 
-test('이미 적용한 action result sequence는 더 최신 stateVersion이어도 stale이다', () => {
+const registerLocalMove = (ledger: LocalMoveLedger, clientMutationId: string) => ledger.register({
+  roomId: 'room-a',
+  clientMutationId,
+  startSequence: 19,
+  startTurnIndex: 0,
+  pieceId: 'piece-1',
+  movingGroupIds: ['piece-1'],
+  fromNodeId: 'n01',
+  toNodeId: 'n04',
+  pathNodeIds: ['n02', 'n03', 'n04'],
+  finalPieces: [],
+  finalState: {},
+  resultFingerprint: 'local-result',
+});
+
+test('활성 ledger의 action result만 local echo로 가로챈다', () => {
+  const ledger = new LocalMoveLedger();
+  const clientMutationId = 'move_piece:P1:20:piece-1';
+  registerLocalMove(ledger, clientMutationId);
+  const identity = getAuthoritativeDeliveryIdentity({
+    status: 'committed',
+    sequence: 20,
+    stateAfter: {
+      lastSequence: 20,
+      turnVersion: 9,
+      lastClientMutationId: clientMutationId,
+    },
+  });
+
+  assert.equal(identity.deliveryKind, 'action-result');
+  assert.equal(classifyAuthoritativeDelivery(identity, applied, ledger), 'local-echo');
+});
+
+test('활성 ledger의 subscription snapshot도 local echo로 가로챈다', () => {
+  const ledger = new LocalMoveLedger();
+  const clientMutationId = 'move_piece:P1:20:piece-1';
+  registerLocalMove(ledger, clientMutationId);
+  const identity = getAuthoritativeDeliveryIdentity({
+    lastSequence: 20,
+    turnVersion: 9,
+    lastClientMutationId: clientMutationId,
+    pieces: [],
+  });
+
+  assert.equal(identity.deliveryKind, 'state-snapshot');
+  assert.equal(classifyAuthoritativeDelivery(identity, applied, ledger), 'local-echo');
+});
+
+test('이미 적용한 원격 action result도 기존 sequence 파이프라인에 위임한다', () => {
   const identity = getAuthoritativeDeliveryIdentity({
     status: 'committed',
     sequence: 20,
@@ -22,14 +70,10 @@ test('이미 적용한 action result sequence는 더 최신 stateVersion이어�
     },
   });
 
-  assert.equal(identity.deliveryKind, 'action-result');
-  assert.equal(
-    classifyAuthoritativeDelivery(identity, applied, new LocalMoveLedger()),
-    'stale',
-  );
+  assert.equal(classifyAuthoritativeDelivery(identity, applied, new LocalMoveLedger()), 'remote-action');
 });
 
-test('새 action result sequence는 remote action으로 적용한다', () => {
+test('새 원격 action result는 기존 sequence 파이프라인에 위임한다', () => {
   const identity = getAuthoritativeDeliveryIdentity({
     status: 'committed',
     sequence: 21,
@@ -40,44 +84,10 @@ test('새 action result sequence는 remote action으로 적용한다', () => {
     },
   });
 
-  assert.equal(identity.deliveryKind, 'action-result');
-  assert.equal(
-    classifyAuthoritativeDelivery(identity, applied, new LocalMoveLedger()),
-    'remote-action',
-  );
+  assert.equal(classifyAuthoritativeDelivery(identity, applied, new LocalMoveLedger()), 'remote-action');
 });
 
-test('같은 sequence의 더 최신 subscription snapshot은 적용한다', () => {
-  const identity = getAuthoritativeDeliveryIdentity({
-    lastSequence: 20,
-    turnVersion: 9,
-    lastClientMutationId: 'roll_yut:P1:20',
-    pieces: [],
-  });
-
-  assert.equal(identity.deliveryKind, 'state-snapshot');
-  assert.equal(
-    classifyAuthoritativeDelivery(identity, applied, new LocalMoveLedger()),
-    'remote-action',
-  );
-});
-
-test('낮은 sequence라도 더 최신 subscription stateVersion은 적용한다', () => {
-  const identity = getAuthoritativeDeliveryIdentity({
-    lastSequence: 19,
-    turnVersion: 9,
-    lastClientMutationId: 'coordinator-state-update',
-    pieces: [],
-  });
-
-  assert.equal(identity.deliveryKind, 'state-snapshot');
-  assert.equal(
-    classifyAuthoritativeDelivery(identity, applied, new LocalMoveLedger()),
-    'remote-action',
-  );
-});
-
-test('sequence와 stateVersion이 모두 적용값 이하인 snapshot은 stale이다', () => {
+test('sequence와 stateVersion이 모두 이전인 snapshot도 subscription 정책에 위임한다', () => {
   const identity = getAuthoritativeDeliveryIdentity({
     lastSequence: 20,
     turnVersion: 8,
@@ -85,8 +95,15 @@ test('sequence와 stateVersion이 모두 적용값 이하인 snapshot은 stale�
     pieces: [],
   });
 
-  assert.equal(
-    classifyAuthoritativeDelivery(identity, applied, new LocalMoveLedger()),
-    'stale',
-  );
+  assert.equal(classifyAuthoritativeDelivery(identity, applied, new LocalMoveLedger()), 'remote-action');
+});
+
+test('clientMutationId가 없는 snapshot도 subscription 정책에 위임한다', () => {
+  const identity = getAuthoritativeDeliveryIdentity({
+    lastSequence: 20,
+    turnVersion: 8,
+    pieces: [],
+  });
+
+  assert.equal(classifyAuthoritativeDelivery(identity, applied, new LocalMoveLedger()), 'remote-action');
 });
