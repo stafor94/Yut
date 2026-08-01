@@ -53,8 +53,8 @@ async function openDeterministicGulGame(page, context, testInfo, suffix) {
   return roomId;
 }
 
-async function submitPerfectGul(page) {
-  const orderingPromise = page.evaluate(() => new Promise((resolve, reject) => {
+async function submitPerfectGul(page, { clickMoveWhenReady = false } = {}) {
+  const orderingPromise = page.evaluate((shouldClickMoveWhenReady) => new Promise((resolve, reject) => {
     const startedAt = performance.now();
     let movedBeforeEnabled = false;
     const sample = () => {
@@ -67,6 +67,7 @@ async function submitPerfectGul(page) {
         : [];
       if (!moveEnabled && localPieces.some((piece) => piece?.started || piece?.nodeId !== 'n01')) movedBeforeEnabled = true;
       if (moveEnabled) {
+        if (shouldClickMoveWhenReady && moveButton instanceof HTMLButtonElement) moveButton.click();
         resolve({ movedBeforeEnabled });
         return;
       }
@@ -77,7 +78,7 @@ async function submitPerfectGul(page) {
       requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  }));
+  }), clickMoveWhenReady);
 
   const submittedPositionPercent = await page.evaluate(() => new Promise((resolve, reject) => {
     const startedAt = performance.now();
@@ -197,9 +198,7 @@ test.describe('Galaxy online move single-execution contract', () => {
     testInfo.setTimeout(120_000);
     roomId = await openDeterministicGulGame(page, context, testInfo, 'manual-gul');
     const tracePromise = observeLocalMoveUntilStable(page);
-    const ordering = await submitPerfectGul(page);
-    await expect(page.getByTestId('move-piece-button')).toBeEnabled({ timeout: 15_000 });
-    await page.getByTestId('move-piece-button').click();
+    const ordering = await submitPerfectGul(page, { clickMoveWhenReady: true });
     expect(ordering.movedBeforeEnabled).toBe(false);
 
     const trace = await tracePromise;
