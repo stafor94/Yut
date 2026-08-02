@@ -3,6 +3,7 @@ type SequencePatchState = Record<string, unknown> & {
   turnVersion?: number;
   lastClientMutationId?: string;
   logs?: unknown[];
+  pieces?: unknown[];
 };
 
 type SequenceEventLike = {
@@ -79,7 +80,11 @@ export function applySequenceEvent<TState extends SequencePatchState>(state: TSt
   if (currentSequence >= sequenceNumber) return state ?? null;
 
   if (sequence.stateAfter) {
-    const nextState = preserveCoordinatorLeaseFields(state, { ...sequence.stateAfter, lastSequence: sequenceNumber });
+    const stateAfter = sequence.stateAfter;
+    const completeStateAfter = Array.isArray(stateAfter.pieces) || !state
+      ? { ...stateAfter, lastSequence: sequenceNumber }
+      : { ...state, ...stateAfter, lastSequence: sequenceNumber };
+    const nextState = preserveCoordinatorLeaseFields(state, completeStateAfter);
     return preserveSequenceRollTimingGrade(sequence, nextState) as TState;
   }
 
