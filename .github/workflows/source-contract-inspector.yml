@@ -13,6 +13,9 @@ jobs:
   inspect:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      QA_RUN_ID: source-map-${{ github.run_id }}
+      QA_PROJECT_ID: demo-yut-source-map-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,8 +38,8 @@ jobs:
           print('asset', asset)
           for line_no, col in [(9, 52630), (41, 124071), (41, 139266), (41, 150147), (41, 262851)]:
               line = lines[line_no - 1]
-              start = max(0, col - 1200)
-              end = min(len(line), col + 1200)
+              start = max(0, col - 1400)
+              end = min(len(line), col + 1400)
               print(f'\n### line {line_no} col {col}\n')
               print(line[start:end])
           PY
@@ -51,17 +54,8 @@ jobs:
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
               method: 'POST',
-              headers: {
-                Accept: 'application/vnd.github+json',
-                Authorization: `Bearer ${process.env.GH_TOKEN}`,
-                'Content-Type': 'application/json',
-                'X-GitHub-Api-Version': '2022-11-28',
-                'User-Agent': 'yut-source-contract-inspector',
-              },
-              body: JSON.stringify({
-                title: '[Source map] Mobile stacked timeout minified stack',
-                body: `## Exact bundle stack context\n\n\`\`\`javascript\n${output.slice(0, 62000)}\n\`\`\``,
-              }),
+              headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${process.env.GH_TOKEN}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'yut-source-contract-inspector' },
+              body: JSON.stringify({ title: '[Source map] Mobile stacked timeout minified stack', body: `## Exact bundle stack context\n\n\`\`\`javascript\n${output.slice(0, 62000)}\n\`\`\`` }),
             });
             if (!response.ok) throw new Error(`issue create failed: ${response.status} ${await response.text()}`);
           })().catch((error) => { console.error(error); process.exitCode = 1; });
