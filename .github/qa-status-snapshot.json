@@ -2,8 +2,8 @@
   "workflow": "qa.yml",
   "targetEvent": "push",
   "targetRef": "firebase-smooth-integration",
-  "targetSha": "559544b6f5402773c0380d102cd2460be334ca66",
+  "targetSha": "ad84cd56b1b46df36fcdc2ac5120b8bc91fbbd8d",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] staged fallback patcher trigger",
-  "trigger": 28
+  "reportTitle": "[QA snapshot] rendered pieces fallback ad84cd5",
+  "trigger": 29
 }
