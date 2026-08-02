@@ -136,7 +136,7 @@ jobs:
           retention-days: 7
 
   required-pr-gate:
-    name: Required PR gate
+    name: Validate PR
     if: always()
     needs: [build-and-unit, firebase-emulator-qa]
     runs-on: ubuntu-latest
