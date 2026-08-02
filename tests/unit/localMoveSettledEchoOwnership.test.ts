@@ -25,7 +25,7 @@ const registerMove = (ledger: LocalMoveLedger) => ledger.register({
   resultFingerprint: 'fingerprint',
 });
 
-test('settled local move는 active ledger 정리 뒤 같은 mutation snapshot도 local echo로 유지한다', () => {
+test('settled local move는 active ledger 정리 뒤 같은 mutation의 확정 sequence/version만 local echo로 유지한다', () => {
   const ledger = new LocalMoveLedger();
   const lifecycle = new LocalMovePresentationLifecycle();
   registerMove(ledger);
@@ -43,8 +43,18 @@ test('settled local move는 active ledger 정리 뒤 같은 mutation snapshot도
   assert.equal(ledger.size(), 0);
   assert.equal(ledger.owns(actionKey), true);
   assert.equal(
-    classifyAuthoritativeDelivery({ clientMutationId: actionKey }, applied, ledger, lifecycle),
+    classifyAuthoritativeDelivery({ clientMutationId: actionKey, sequence: 5, stateVersion: 5 }, applied, ledger, lifecycle),
     'local-echo',
+  );
+  assert.equal(
+    classifyAuthoritativeDelivery({ clientMutationId: actionKey, sequence: 5, stateVersion: 6 }, applied, ledger, lifecycle),
+    'remote-action',
+    '같은 mutation ID라도 더 최신 state version은 정상 적용해야 합니다.',
+  );
+  assert.equal(
+    classifyAuthoritativeDelivery({ clientMutationId: actionKey, sequence: 6, stateVersion: 6 }, applied, ledger, lifecycle),
+    'remote-action',
+    '같은 mutation ID라도 더 최신 sequence는 정상 적용해야 합니다.',
   );
 });
 
@@ -63,7 +73,7 @@ test('settled ownership은 room clear와 explicit remove에서 해제된다', ()
   ledger.clearRoom(roomId);
   assert.equal(ledger.owns(actionKey), false);
   assert.equal(
-    classifyAuthoritativeDelivery({ clientMutationId: actionKey }, applied, ledger, lifecycle),
+    classifyAuthoritativeDelivery({ clientMutationId: actionKey, sequence: 5, stateVersion: 5 }, applied, ledger, lifecycle),
     'remote-action',
   );
 
