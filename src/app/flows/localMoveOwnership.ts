@@ -78,6 +78,7 @@ export type PreparedLocalMoveOwnership = {
 };
 
 type LocalMoveSettlementExpectation = Pick<LocalMovePresentationLifecycle, 'expectNextSettlement'>;
+type LocalMovePresentationOwnership = Pick<LocalMovePresentationLifecycle, 'snapshot'>;
 
 const toFiniteInteger = (value: unknown) => {
   const numericValue = Number(value ?? 0);
@@ -411,9 +412,13 @@ export function classifyAuthoritativeDelivery(
   input: DeliveryIdentityInput,
   _applied: { lastAppliedSequence: number; lastAppliedStateVersion: number },
   ledger: LocalMoveLedger = localMoveLedger,
+  presentation: LocalMovePresentationOwnership = localMovePresentationLifecycle,
 ): AuthoritativeDeliveryClassification {
   const clientMutationId = typeof input.clientMutationId === 'string' ? input.clientMutationId : '';
-  return clientMutationId && ledger.has(clientMutationId)
+  const presentationSnapshot = presentation.snapshot();
+  const presentedLocally = presentationSnapshot.phase === 'presenting'
+    && presentationSnapshot.actionKey === clientMutationId;
+  return clientMutationId && (ledger.has(clientMutationId) || presentedLocally)
     ? 'local-echo'
     : 'remote-action';
 }
