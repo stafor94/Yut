@@ -4,7 +4,7 @@ type SnapshotRecord = Record<string, unknown> & {
   patch?: SnapshotRecord | null;
 };
 
-const mergePartialSnapshot = <T extends SnapshotRecord>(
+const mergePartialSnapshot = <T extends object>(
   snapshot: SnapshotRecord,
   fallback: T | null,
 ): T => {
@@ -12,7 +12,7 @@ const mergePartialSnapshot = <T extends SnapshotRecord>(
   return { ...fallback, ...snapshot } as T;
 };
 
-export function getAuthoritativeSnapshot<T extends SnapshotRecord>(
+export function getAuthoritativeSnapshot<T extends object>(
   value: unknown,
   fallback: T | null,
 ): T | null {
