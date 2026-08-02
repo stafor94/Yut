@@ -24,6 +24,8 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - PR #1317은 resolver 타입을 수정해 build와 전체 unit·architecture·대부분의 브라우저 QA를 통과시켰지만, Galaxy timing에서 빠른 ACK의 canonical 경로가 `n04 → n02 → n03 → n04`로 시작했고 기존 디버그 상태에는 top-level `movingPieceId`가 없어 연출 시작 횟수를 관찰하지 못했다.
 - PR #1318은 정확히 같은 `pieceId`만 settlement할 수 있게 했지만, 같은 말의 최종 위치 `n04`가 첫 경로 프레임 `n02`보다 먼저 들어오는 경우까지 정상 완료로 인정했다. 말 ID 일치만으로는 경로 완료를 증명하지 못했다.
 - PR #1324는 `n02 → n03 → n04` 전체 경로 관찰을 settlement 조건으로 추가해 느린 ACK와 자동 이동을 통과시켰지만, 빠른 ACK 실행 클라이언트에서는 local move ledger 자체가 생성되지 않아 서버 최종 위치가 여전히 첫 프레임보다 먼저 적용됐다.
+- PR #1326은 synced state에 roll이 아직 없을 때 표준 move action identity에서 roll을 복구해 ledger 준비 범위를 넓혔다. 빠른 ACK 경로는 `n02 → n04 → n03 → n04`로 개선됐지만 active presentation 자체는 분류 기준이 아니어서 서버 최종 상태가 첫 프레임 뒤 canonical에 끼어들 수 있었다.
+- PR #1327은 #1326의 optional config TypeScript narrowing 오류만 수정했다. build·unit·전체 다른 QA는 통과했지만 빠른 ACK 한 건은 그대로 남았다.
 
 ### Confirmed root cause
 
@@ -33,7 +35,8 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - Main Branch QA trace에서 서버 ACK와 다음 턴 전환이 완료된 뒤에도 `movingPieceId`가 유지되고 로컬 경로가 진행 중인 상태가 확인됐다. local reducer 계산과 ledger 등록은 성공했지만, idle lifecycle의 settlement Promise가 즉시 완료되어 최종 `pieces`, `roll`, `turnIndex`가 경로 중간에 적용된 것이 직접 원인이었다.
 - `GameBoardSection`은 animation queue가 바쁠 때 말 ID가 없는 generic `settle()` callback을 예약한다. 이 이전 callback이 새 이동의 `observe(pieceId)` 뒤 실행되면 현재 presentation을 잘못 완료해 reducer final state를 경로보다 먼저 적용할 수 있었다.
 - #1318 병합 후 trace에서는 같은 말의 최종 위치가 `n02`보다 먼저 canonical에 나타났다. 동일 말 여부뿐 아니라 이동 직전 계산된 `pathNodeIds`가 `n02 → n03 → n04` 순서로 실제 관찰됐는지를 settlement 조건으로 확인해야 했다.
-- #1324 병합 후 빠른 ACK trace에서는 실행 클라이언트만 canonical `n04 → n02 → n03 → n04`를 기록했고 원격 클라이언트와 느린 ACK는 정상 경로를 기록했다. 실행 클라이언트의 자체 roll은 화면에 먼저 확정되지만 controller의 synced 기준 상태에는 아직 `roll`이 없을 수 있어 `prepareLocalMoveOwnership()`이 null을 반환했고, ledger가 없는 서버 ACK가 remote action으로 분류된 것이 남은 직접 원인이었다.
+- #1324 병합 후 빠른 ACK trace에서는 실행 클라이언트만 canonical `n04 → n02 → n03 → n04`를 기록했고 원격 클라이언트와 느린 ACK는 정상 경로를 기록했다. 실행 클라이언트의 자체 roll은 화면에 먼저 확정되지만 controller의 synced 기준 상태에는 아직 `roll`이 없을 수 있어 `prepareLocalMoveOwnership()`이 null을 반환했고, ledger가 없는 서버 ACK가 remote action으로 분류될 수 있었다.
+- #1327 병합 후 trace에서는 실행 클라이언트의 실제 presentation이 `n02`를 시작한 뒤 서버의 `n04`가 canonical에 끼어들었다. 분류가 ledger 존재만 신뢰하고 있었기 때문에 ledger 준비 실패·정리 경쟁이 있으면 현재 lifecycle이 같은 action key를 실제로 presenting 중이어도 remote action으로 처리한 것이 남은 직접 원인이었다.
 
 ### Required state invariants
 
@@ -45,6 +48,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - active local move settlement는 정확히 같은 `pieceId`를 가진 callback만 완료할 수 있다. 이전 queue의 generic settlement나 다른 말 settlement는 현재 waiter를 해제하지 않는다.
 - 최종 목적지가 먼저 관찰돼도 이동 직전의 전체 경로가 순서대로 관찰되기 전에는 settlement하지 않는다.
 - 실행 클라이언트의 자체 roll이 synced snapshot보다 먼저 활성화돼도 move action identity로 동일 roll을 복구해 ledger를 서버 ACK 전에 생성한다.
+- ledger 상태와 무관하게 lifecycle이 같은 action key를 실제 `presenting` 중이면 해당 authoritative 결과는 local echo다. 단순 pending 요청은 서버 결과를 무조건 숨기지 않는다.
 - 서버 거부나 fingerprint 불일치에서만 입력을 잠그고 corrective animation 없이 최신 snapshot을 한 번 hard resync한다.
 
 ### Do not try again
@@ -56,6 +60,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - 말 ID가 없는 오래된 queue settlement로 현재 active move를 완료하지 않는다.
 - 같은 말의 최종 위치만 확인하고 중간 경로가 실제로 한 번 진행됐다고 판단하지 않는다.
 - ledger 준비 실패를 server ACK 지연이나 callback 대기로 숨기지 않는다.
+- active presentation의 action key를 무시하고 ledger map만으로 local echo 소유권을 판단하지 않는다.
 
 ### Verification checklist
 
@@ -67,6 +72,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - [x] 이전 generic settlement가 active piece waiter를 해제하지 않는 단위 회귀 테스트 추가
 - [x] 최종 목적지가 먼저 들어온 뒤 `n02 → n03 → n04` 전체 경로를 관찰해야 settlement하는 단위 회귀 테스트 추가
 - [x] synced roll이 늦은 빠른 ACK 실행 클라이언트에서도 action identity로 local move ownership을 준비하는 단위 회귀 테스트 추가
+- [x] ledger가 없어도 동일 action key를 실제 presenting 중인 결과를 local echo로 분류하는 단위 회귀 테스트 추가
 - [ ] Unit tests pass
 - [ ] Build succeeds
 - [ ] QA architecture validation passes
