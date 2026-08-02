@@ -1,0 +1,150 @@
+name: PR Required QA
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-required-qa-${{ github.event.pull_request.number || github.ref_name || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FIREBASE_TOOLS_VERSION: 15.24.0
+
+jobs:
+  build-and-unit:
+    name: Build and unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate QA architecture
+        run: npm run qa:validate-architecture
+      - name: Prepare canonical production Firebase environment
+        run: node .github/scripts/write-firebase-env.mjs
+      - name: Build app
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build.log
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          npm run test:unit 2>&1 | tee unit.log
+      - name: Upload build and unit artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-build-and-unit
+          overwrite: true
+          path: |
+            dist
+            build.log
+            unit.log
+            test-results/qa-architecture-report.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  firebase-emulator-qa:
+    name: ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: online-core
+            code: core
+            label: Online core
+          - group: mobile-galaxy
+            code: galaxy
+            label: Mobile Galaxy
+          - group: mobile-galaxy-timing
+            code: galtime
+            label: Mobile Galaxy timing
+    env:
+      QA_RUN_ID: pr-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
+      QA_PROJECT_ID: demo-yut-pr-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Cache Firebase emulator binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ env.FIREBASE_TOOLS_VERSION }}-${{ hashFiles('firebase.qa.json') }}
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Prepare isolated QA Firebase environment
+        run: node .github/scripts/write-qa-firebase-env.mjs
+      - name: Reject production Firebase configuration
+        run: node .github/scripts/verify-qa-emulator-config.mjs
+      - name: Build isolated QA app
+        run: |
+          set -o pipefail
+          npm run build:qa 2>&1 | tee qa-build.log
+      - name: Run ${{ matrix.label }} against Auth and Firestore emulators
+        run: |
+          set -o pipefail
+          npx --yes firebase-tools@${FIREBASE_TOOLS_VERSION} emulators:exec \
+            --config firebase.qa.json \
+            --project "$QA_PROJECT_ID" \
+            --only auth,firestore \
+            "npm run qa:emulator-suite -- --group ${{ matrix.group }}" 2>&1 | tee qa-emulator-suite.log
+      - name: Collect ${{ matrix.label }} artifacts
+        if: always()
+        env:
+          SHARD_CODE: ${{ matrix.code }}
+          SHARD_GROUP: ${{ matrix.group }}
+        run: |
+          target="pr-qa-artifacts/$SHARD_CODE"
+          mkdir -p "$target"
+          printf '%s\n' "$SHARD_GROUP" > "$target/group.txt"
+          printf '%s\n' "${{ job.status }}" > "$target/result.txt"
+          for pattern in test-results playwright-report playwright-*.log qa-*.log qa-duration.json firestore-debug.log firebase-debug.log console-log.txt; do
+            for file in $pattern; do
+              if [ -e "$file" ]; then
+                cp -R "$file" "$target/"
+              fi
+            done
+          done
+      - name: Upload ${{ matrix.label }} artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-qa-${{ matrix.code }}-results
+          overwrite: true
+          path: pr-qa-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+  required-pr-gate:
+    name: Validate PR
+    if: always()
+    needs: [build-and-unit, firebase-emulator-qa]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every PR QA job to succeed
+        env:
+          BUILD_AND_UNIT_RESULT: ${{ needs.build-and-unit.result }}
+          FIREBASE_EMULATOR_QA_RESULT: ${{ needs.firebase-emulator-qa.result }}
+        run: |
+          test "$BUILD_AND_UNIT_RESULT" = success
+          test "$FIREBASE_EMULATOR_QA_RESULT" = success
