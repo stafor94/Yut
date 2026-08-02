@@ -14,6 +14,7 @@ import type { SequenceStateSnapshot } from '../appState';
 import { getQaMovePieceActionDelayMs, shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
+import { shouldConsumeLocalMoveCommitAck } from '../flows/localMoveCommitAck';
 import { localMovePresentationLifecycle } from '../flows/localMovePresentationLifecycle';
 import {
   classifyAuthoritativeDelivery,
@@ -167,7 +168,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
   const acknowledgeLocalMoveEcho = useCallback((roomId: string, value: unknown, explicitState?: SequenceStateSnapshot | null) => {
     const identity = getAuthoritativeDeliveryIdentity(value);
     if (!identity.clientMutationId || !localMoveLedger.has(identity.clientMutationId)) return null;
-    const authoritativeState = explicitState ?? getAuthoritativeSnapshot(value, latestSyncedStateRef.current);
+    const authoritativeState = explicitState ?? getAuthoritativeSnapshot(value, null);
     if (authoritativeState) latestSyncedStateRef.current = authoritativeState;
     params.lastAppliedSequenceRef.current = Math.max(params.lastAppliedSequenceRef.current, identity.sequence);
     params.lastAppliedStateVersionRef.current = Math.max(params.lastAppliedStateVersionRef.current, identity.stateVersion);
@@ -387,6 +388,22 @@ export function useAuthoritativeGameSyncController(params: Params) {
           const moveResultDelayMs = attachedAction.type === 'move_piece' ? getQaMovePieceActionDelayMs() : 0;
           if (moveResultDelayMs) await waitUntil(Date.now() + moveResultDelayMs);
           const actionKey = getClientActionId(attachedAction);
+          if (shouldConsumeLocalMoveCommitAck({
+            actionType: attachedAction.type,
+            actionKey,
+            ownsLocalMove: localMoveLedger.has(actionKey),
+            status: result.status,
+            sequence: result.sequence,
+          })) {
+            acknowledgeLocalMoveEcho(roomId, {
+              ...result,
+              payload: {
+                ...(result.payload ?? {}),
+                clientMutationId: actionKey,
+              },
+            });
+            return;
+          }
           if (attachedAction.type === 'move_piece'
             && actionKey
             && localMoveLedger.has(actionKey)
@@ -436,7 +453,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
         handleFinally();
       }
     })();
-  }, [commitCanonicalAction, prepareAndFinalizeLocalMove, runLocalMoveHardResync]);
+  }, [acknowledgeLocalMoveEcho, commitCanonicalAction, prepareAndFinalizeLocalMove, runLocalMoveHardResync]);
 
   const applyAuthoritativeResultSequence = useCallback(async (result: AuthoritativeCommitResult) => {
     const roomId = params.activeRoomIdRef.current;
