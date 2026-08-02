@@ -2,52 +2,30 @@ from pathlib import Path
 
 ownership_path = Path('src/app/flows/localMoveOwnership.ts')
 ownership = ownership_path.read_text()
-old_helper = """export function withLocalMovePiecesFallback(
-  state: Record<string, unknown> | null,
-  fallbackPieces: unknown[],
-): Record<string, unknown> | null {
-  const localState = state as LocalMoveState | null;
-  if (!localState
-    || Array.isArray(localState.pieces)
-    || Array.isArray(localState[LOCAL_MOVE_PIECES])
-    || !Array.isArray(fallbackPieces)) {
-    return localState;
-  }
-  return { ...localState, pieces: fallbackPieces };
-}
+old = """  const reductionState = getLocalMoveReductionState(state, action);
+  const reduction = reduceAuthoritativeGameAction(
 """
-new_helper = """export function withLocalMovePiecesFallback(
-  state: Record<string, unknown> | null,
-  fallbackPieces: unknown[],
-): Record<string, unknown> | null {
-  const localState = state as LocalMoveState | null;
-  if (!localState || !Array.isArray(fallbackPieces)) return localState;
-  if (Array.isArray(localState.pieces)
-    && Object.prototype.propertyIsEnumerable.call(localState, 'pieces')) {
-    return localState;
-  }
-  return { ...localState, pieces: fallbackPieces };
-}
+new = """  const reductionState = getLocalMoveReductionState(state, action);
+  if (!Array.isArray(reductionState.pieces)) return null;
+  const reduction = reduceAuthoritativeGameAction(
 """
-if old_helper not in ownership:
-    raise SystemExit('existing local move pieces fallback helper not found')
-ownership = ownership.replace(old_helper, new_helper, 1)
+if old not in ownership:
+    raise SystemExit('local move reduction call anchor not found')
+ownership = ownership.replace(old, new, 1)
 ownership_path.write_text(ownership)
 
 test_path = Path('tests/unit/localMoveHiddenPieces.test.ts')
 tests = test_path.read_text()
-test_name = "restores enumerable rendered pieces when hidden pieces have a symbol backup"
-if test_name not in tests:
+if "skips local presentation ownership when pieces are unavailable" not in tests:
     tests += """
 
-test('restores enumerable rendered pieces when hidden pieces have a symbol backup', () => {
-  const firstMove = prepareLocalMoveOwnership({
+test('skips local presentation ownership when pieces are unavailable', () => {
+  const completeState = makeOnlineMoveState();
+  const { pieces: _pieces, ...stateWithoutPieces } = completeState;
+
+  const prepared = prepareLocalMoveOwnership({
     roomId: 'room-a',
-    state: {
-      ...makeOnlineMoveState(),
-      stackedRollMode: true,
-      roll: { name: MO, steps: 5, bonus: true },
-    },
+    state: stateWithoutPieces,
     action: {
       type: 'move_piece',
       actorId: 'P1',
@@ -56,18 +34,13 @@ test('restores enumerable rendered pieces when hidden pieces have a symbol backu
         extraSteps: 0,
         branchChoice: 'outer',
         rollStackIndex: null,
-        clientActionId: `move_piece:P1:10:0:${MO}:5:hidden`,
+        clientActionId: `move_piece:P1:10:0:${MO}:5:missing-pieces`,
         clientActionStartedAt: Date.now(),
       },
     },
   });
 
-  assert.ok(firstMove);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(firstMove.finalState, 'pieces'), false);
-  const restored = withLocalMovePiecesFallback(firstMove.finalState, firstMove.record.finalPieces);
-  assert.ok(restored);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(restored, 'pieces'), true);
-  assert.equal(restored.pieces, firstMove.record.finalPieces);
+  assert.equal(prepared, null);
 });
 """
 test_path.write_text(tests)
