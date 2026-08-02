@@ -28,17 +28,9 @@ jobs:
             const config = JSON.parse(fs.readFileSync('.github/qa-status-snapshot.json', 'utf8'));
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const apiBase = `https://api.github.com/repos/${owner}/${repo}`;
-            const headers = {
-              Accept: 'application/vnd.github+json',
-              Authorization: `Bearer ${process.env.GH_TOKEN}`,
-              'X-GitHub-Api-Version': '2022-11-28',
-              'User-Agent': 'yut-qa-status-snapshot',
-            };
+            const headers = { Accept: 'application/vnd.github+json', Authorization: `Bearer ${process.env.GH_TOKEN}`, 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'yut-qa-status-snapshot' };
             async function request(path, options = {}) {
-              const response = await fetch(`${apiBase}${path}`, {
-                ...options,
-                headers: { ...headers, ...(options.headers ?? {}) },
-              });
+              const response = await fetch(`${apiBase}${path}`, { ...options, headers: { ...headers, ...(options.headers ?? {}) } });
               const text = await response.text();
               if (!response.ok) throw new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${text}`);
               return text ? JSON.parse(text) : null;
@@ -46,40 +38,11 @@ jobs:
             async function runs(event, branch, sha) {
               const query = new URLSearchParams({ event, branch, head_sha: sha, per_page: '20' });
               const data = await request(`/actions/workflows/${encodeURIComponent(config.workflow)}/runs?${query}`);
-              return (data.workflow_runs ?? [])
-                .filter((run) => run.head_sha === sha)
-                .map(({ id, status, conclusion, html_url, event, head_branch, head_sha }) => ({
-                  id,
-                  status,
-                  conclusion,
-                  html_url,
-                  event,
-                  head_branch,
-                  head_sha,
-                }));
+              return (data.workflow_runs ?? []).filter((run) => run.head_sha === sha).map(({ id, status, conclusion, html_url, event, head_branch, head_sha }) => ({ id, status, conclusion, html_url, event, head_branch, head_sha }));
             }
-            const dispatched = await runs('workflow_dispatch', config.targetRef, config.targetSha);
+            const target = await runs(config.targetEvent ?? 'workflow_dispatch', config.targetRef, config.targetSha);
             const main = await runs('push', 'main', config.mainSha);
-            const body = [
-              '## QA status snapshot',
-              '',
-              '### PR1 bootstrap runs',
-              '```json',
-              JSON.stringify(dispatched, null, 2),
-              '```',
-              '',
-              '### Current main runs',
-              '```json',
-              JSON.stringify(main, null, 2),
-              '```',
-            ].join('\n');
-            await request('/issues', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ title: config.reportTitle, body }),
-            });
-          })().catch((error) => {
-            console.error(error);
-            process.exitCode = 1;
-          });
+            const body = ['## QA status snapshot', '', '### Target runs', '```json', JSON.stringify(target, null, 2), '```', '', '### Current main runs', '```json', JSON.stringify(main, null, 2), '```'].join('\n');
+            await request('/issues', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: config.reportTitle, body }) });
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
           NODE
