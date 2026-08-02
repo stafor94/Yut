@@ -15,40 +15,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: e79e7dd631a098cb59b6be486ba29d05092a65e3
+          ref: e7b0828022b45c4784a9826b8a306956f062ab12
+      - name: Locate local move ownership call site
+        run: |
+          grep -RIn -C 20 --exclude-dir=node_modules --exclude-dir=dist "prepareLocalMoveOwnership\|localMoveLedger\|registerLocalMove" src > /tmp/local-move-callsite.txt || true
+          cat /tmp/local-move-callsite.txt
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Find branch move and pieces contracts
+      - name: Publish source context
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           node <<'NODE'
           const fs = require('node:fs');
-          const path = require('node:path');
-          const { execFileSync } = require('node:child_process');
           (async () => {
-            const patterns = [
-              'onMoveSelectedPiece',
-              'branchChoice',
-              'moveSelectedPiece',
-              'pieces is not iterable',
-              '\\.\\.\\.[^\\n]*pieces',
-              'for \\(const [^\\n]+ of [^\\n]*pieces',
-            ];
-            const sections = [];
-            for (const pattern of patterns) {
-              let output = '';
-              try {
-                output = execFileSync('grep', ['-RInE', '-C', '12', '--exclude-dir=node_modules', '--exclude-dir=dist', pattern, 'src', 'tests'], {
-                  encoding: 'utf8',
-                  maxBuffer: 20 * 1024 * 1024,
-                });
-              } catch (error) {
-                output = error.stdout?.toString?.() ?? '';
-              }
-              sections.push(`### pattern: ${pattern}\n\n\`\`\`text\n${output.slice(0, 30000)}\n\`\`\``);
-            }
+            const output = fs.readFileSync('/tmp/local-move-callsite.txt', 'utf8');
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
               method: 'POST',
@@ -60,8 +42,8 @@ jobs:
                 'User-Agent': 'yut-source-contract-inspector',
               },
               body: JSON.stringify({
-                title: '[Source contract] Branch move pieces TypeError',
-                body: ['## Source contract inspection', '', ...sections].join('\n\n').slice(0, 64000),
+                title: '[Source contract] Local move ownership call site',
+                body: `## Local move ownership call site\n\n\`\`\`text\n${output.slice(0, 60000)}\n\`\`\``,
               }),
             });
             if (!response.ok) throw new Error(`issue create failed: ${response.status} ${await response.text()}`);
