@@ -1,9 +1,5 @@
 {
-  "workflow": "qa.yml",
-  "ref": "agent/fix-local-move-snapshot-pieces",
-  "headSha": "8fb03d987098c18878b3d562e375fff82183f31c",
-  "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA probe] local move pieces fix 8fb03d9",
-  "excludeRunIds": [],
-  "trigger": 5
+  "target": "agent/fix-local-move-snapshot-pieces",
+  "operation": "patch-partial-authoritative-snapshot",
+  "trigger": 6
 }
