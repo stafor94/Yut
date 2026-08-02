@@ -71,6 +71,9 @@ test('ownership 등록 시 lifecycle이 idle이어도 실제 말 프레임을 �
   });
   await Promise.resolve();
   assert.equal(settled, false);
+  assert.equal(lifecycle.settle(), false);
+  await Promise.resolve();
+  assert.equal(settled, false);
   assert.equal(lifecycle.settle('piece-1'), true);
   await settlement;
   assert.equal(settled, true);
@@ -95,6 +98,7 @@ test('local move presentation은 실제 GameBoard 프레임 관찰 뒤 settlemen
   });
   await Promise.resolve();
   assert.equal(settled, false);
+  assert.equal(lifecycle.settle(), false);
   assert.equal(lifecycle.settle('different-piece'), false);
   assert.equal(lifecycle.settle('piece-1'), true);
   await settlement;
