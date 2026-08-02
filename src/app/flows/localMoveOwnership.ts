@@ -279,7 +279,7 @@ export class LocalMoveLedger {
       hardResyncStarted: false,
     };
     this.records.set(input.clientMutationId, record);
-    this.settlementExpectation?.expectNextSettlement(input.clientMutationId, input.pieceId);
+    this.settlementExpectation?.expectNextSettlement(input.clientMutationId, input.pieceId, input.pathNodeIds);
     return record;
   }
 

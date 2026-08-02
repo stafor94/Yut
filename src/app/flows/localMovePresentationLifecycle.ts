@@ -10,9 +10,16 @@ export type LocalMovePresentationSnapshot = {
 type ExpectedLocalMoveSettlement = {
   actionKey: string;
   pieceId: string;
+  pathNodeIds: string[];
   promise: Promise<void>;
   resolve: () => void;
 };
+
+const normalizePathNodeIds = (pathNodeIds: string[]) => pathNodeIds.filter((nodeId) => Boolean(nodeId));
+
+const pathsMatch = (left: string[], right: string[]) => (
+  left.length === right.length && left.every((nodeId, index) => nodeId === right[index])
+);
 
 export class LocalMovePresentationLifecycle {
   private snapshotValue: LocalMovePresentationSnapshot = {
@@ -25,6 +32,8 @@ export class LocalMovePresentationLifecycle {
   private settlementPromise: Promise<void> = Promise.resolve();
   private resolveSettlement: (() => void) | null = null;
   private expectedSettlement: ExpectedLocalMoveSettlement | null = null;
+  private expectedPathNodeIds: string[] = [];
+  private observedPathNodeIndex = 0;
 
   begin(actionKey: string) {
     if (!actionKey) return this.snapshotValue.generation;
@@ -45,27 +54,42 @@ export class LocalMovePresentationLifecycle {
     if (this.expectedSettlement?.actionKey === actionKey) {
       this.adoptExpectedSettlement();
     } else {
+      this.setExpectedPath([]);
       this.createSettlementPromise();
     }
     return generation;
   }
 
-  expectNextSettlement(actionKey: string, pieceId: string) {
+  expectNextSettlement(actionKey: string, pieceId: string, pathNodeIds: string[] = []) {
     if (!actionKey || !pieceId) return false;
-    if (this.snapshotValue.phase !== 'idle' && this.snapshotValue.actionKey === actionKey) return true;
+    const normalizedPathNodeIds = normalizePathNodeIds(pathNodeIds);
+    if (this.snapshotValue.phase !== 'idle' && this.snapshotValue.actionKey === actionKey) {
+      this.setExpectedPath(normalizedPathNodeIds);
+      return true;
+    }
     if (this.snapshotValue.phase !== 'idle') this.finishCurrent();
-    if (this.expectedSettlement?.actionKey === actionKey && this.expectedSettlement.pieceId === pieceId) return true;
+    if (this.expectedSettlement?.actionKey === actionKey && this.expectedSettlement.pieceId === pieceId) {
+      if (normalizedPathNodeIds.length) this.expectedSettlement.pathNodeIds = normalizedPathNodeIds;
+      return true;
+    }
     this.resolveExpectedSettlement();
     let resolve: () => void = () => {};
     const promise = new Promise<void>((nextResolve) => {
       resolve = nextResolve;
     });
-    this.expectedSettlement = { actionKey, pieceId, promise, resolve };
+    this.expectedSettlement = {
+      actionKey,
+      pieceId,
+      pathNodeIds: normalizedPathNodeIds,
+      promise,
+      resolve,
+    };
     return true;
   }
 
-  observe(pieceId: string) {
+  observe(pieceId: string, nodeId = '', pathNodeIds: string[] = []) {
     if (!pieceId) return false;
+    const normalizedPathNodeIds = normalizePathNodeIds(pathNodeIds);
     if (this.snapshotValue.phase === 'idle') {
       if (!this.expectedSettlement || this.expectedSettlement.pieceId !== pieceId) return false;
       this.snapshotValue = {
@@ -75,6 +99,8 @@ export class LocalMovePresentationLifecycle {
         phase: 'presenting',
       };
       this.adoptExpectedSettlement();
+      if (normalizedPathNodeIds.length) this.setExpectedPath(normalizedPathNodeIds);
+      this.observePathNode(nodeId);
       return true;
     }
     this.snapshotValue = {
@@ -82,12 +108,15 @@ export class LocalMovePresentationLifecycle {
       pieceId,
       phase: 'presenting',
     };
+    if (normalizedPathNodeIds.length) this.setExpectedPath(normalizedPathNodeIds);
+    this.observePathNode(nodeId);
     return true;
   }
 
   settle(pieceId = '') {
     if (this.snapshotValue.phase !== 'presenting') return false;
     if (!pieceId || pieceId !== this.snapshotValue.pieceId) return false;
+    if (this.expectedPathNodeIds.length && this.observedPathNodeIndex < this.expectedPathNodeIds.length) return false;
     this.finishCurrent();
     return true;
   }
@@ -123,6 +152,7 @@ export class LocalMovePresentationLifecycle {
     if (!this.expectedSettlement) return;
     this.settlementPromise = this.expectedSettlement.promise;
     this.resolveSettlement = this.expectedSettlement.resolve;
+    this.setExpectedPath(this.expectedSettlement.pathNodeIds);
     this.expectedSettlement = null;
   }
 
@@ -130,6 +160,19 @@ export class LocalMovePresentationLifecycle {
     const expectedSettlement = this.expectedSettlement;
     this.expectedSettlement = null;
     expectedSettlement?.resolve();
+  }
+
+  private setExpectedPath(pathNodeIds: string[]) {
+    if (pathsMatch(this.expectedPathNodeIds, pathNodeIds)) return;
+    this.expectedPathNodeIds = [...pathNodeIds];
+    this.observedPathNodeIndex = 0;
+  }
+
+  private observePathNode(nodeId: string) {
+    if (!nodeId || this.observedPathNodeIndex >= this.expectedPathNodeIds.length) return;
+    if (nodeId === this.expectedPathNodeIds[this.observedPathNodeIndex]) {
+      this.observedPathNodeIndex += 1;
+    }
   }
 
   private finishCurrent() {
@@ -142,6 +185,7 @@ export class LocalMovePresentationLifecycle {
       phase: 'idle',
     };
     this.settlementPromise = Promise.resolve();
+    this.setExpectedPath([]);
     resolve?.();
   }
 }

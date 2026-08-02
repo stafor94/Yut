@@ -140,7 +140,8 @@ export function GameBoardSection({
     const settlementRevision = settlementRevisionGateRef.current.issue();
 
     if (movingPieceId) {
-      localMovePresentationLifecycle.observe(movingPieceId);
+      const incomingMovingPiece = incomingPieces.find((piece) => piece.id === movingPieceId);
+      localMovePresentationLifecycle.observe(movingPieceId, incomingMovingPiece?.nodeId ?? '');
       moveFinalizationScheduledRef.current = false;
       let session = moveSessionRef.current;
       if (!session || session.pieceId !== movingPieceId) {

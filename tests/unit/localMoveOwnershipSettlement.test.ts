@@ -3,7 +3,7 @@ import test from 'node:test';
 import { LocalMoveLedger } from '../../src/app/flows/localMoveOwnership';
 import { LocalMovePresentationLifecycle } from '../../src/app/flows/localMovePresentationLifecycle';
 
-test('local move ledger 등록은 idle lifecycle의 실제 piece settlement를 먼저 예약한다', async () => {
+test('local move ledger 등록은 shared reducer path의 실제 piece settlement를 먼저 예약한다', async () => {
   const lifecycle = new LocalMovePresentationLifecycle();
   const ledger = new LocalMoveLedger(lifecycle);
   const finalState = {
@@ -32,7 +32,11 @@ test('local move ledger 등록은 idle lifecycle의 실제 piece settlement를 �
   await Promise.resolve();
   assert.equal(settled, false);
 
-  assert.equal(lifecycle.observe('piece-1'), true);
+  assert.equal(lifecycle.observe('piece-1', 'n04'), true);
+  assert.equal(lifecycle.settle('piece-1'), false);
+  assert.equal(lifecycle.observe('piece-1', 'n02'), true);
+  assert.equal(lifecycle.observe('piece-1', 'n03'), true);
+  assert.equal(lifecycle.observe('piece-1', 'n04'), true);
   assert.equal(lifecycle.settle('piece-1'), true);
   await settlement;
   assert.equal(settled, true);
