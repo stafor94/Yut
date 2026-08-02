@@ -1,5 +1,5 @@
 {
-  "target": "agent/fix-local-move-snapshot-pieces",
-  "operation": "patch-partial-authoritative-snapshot",
-  "trigger": 6
+  "ref": "agent/fix-local-move-snapshot-pieces",
+  "headSha": "bfd7fd90d47c8bdb657b50d30edf94d8232c3da7",
+  "trigger": 7
 }
