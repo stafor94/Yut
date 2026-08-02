@@ -1,9 +1,9 @@
 {
   "workflow": "qa.yml",
-  "targetEvent": "push",
-  "targetRef": "firebase-smooth-integration",
-  "targetSha": "ec03c8677438dbb44f442c21217aa8df57072888",
+  "targetEvent": "workflow_dispatch",
+  "targetRef": "agent/fix-local-move-snapshot-pieces",
+  "targetSha": "08d33b23a89b5d7f0191249176f7117f658ebf47",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] stacked hidden pieces validation",
-  "trigger": 35
+  "reportTitle": "[QA snapshot] partial snapshot pieces 08d33b2",
+  "trigger": 36
 }
