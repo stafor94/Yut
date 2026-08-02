@@ -1,0 +1,592 @@
+import { ITEM_DEFINITIONS, getAiItemValue, type ItemType } from '../../items/logic/items';
+import {
+  isAuthoritativeCommitReduction,
+  reduceAuthoritativeGameAction as reduceCoreAuthoritativeGameAction,
+} from './roomAuthoritativeReducerCore';
+import {
+  ONLINE_ROLL_FAST_PRESENTATION_MS,
+  getAuthoritativeRollPresentationReadyAt,
+} from './rollPresentationTiming';
+import {
+  TURN_ACTION_TIMEOUT_MS,
+  TURN_ITEM_PROMPT_TIMEOUT_MS,
+  TURN_NETWORK_GRACE_MS,
+  TURN_TRANSITION_DELAY_MS,
+  getTurnActionTimeoutMsForCount,
+  incrementTurnActionTimeoutCount,
+  normalizeTurnActionTimeoutCount,
+} from './roomTiming';
+import {
+  getTurnActionReadyAt,
+  getTurnActionStartedAt,
+  isManualTurnActionDeadlineExpired,
+  normalizeTurnDeadlineKind,
+  type TurnActionPhase,
+} from './turnDeadlinePolicy';
+
+export * from './roomAuthoritativeReducerCore';
+
+type AuthoritativeArgs = Parameters<typeof reduceCoreAuthoritativeGameAction>;
+type AuthoritativeReduction = ReturnType<typeof reduceCoreAuthoritativeGameAction>;
+
+const normalizeLegacyRollTimingArgs = (args: AuthoritativeArgs): AuthoritativeArgs => {
+  const [state, action, room, sides] = args;
+  if (action.type !== 'roll_yut' || action.payload?.rollTimingZone !== 'normal') return args;
+  return [state, { ...action, payload: { ...action.payload, rollTimingZone: 'bad' } }, room, sides];
+};
+
+type PendingFallEffectShape = {
+  id?: unknown;
+  seatId?: unknown;
+};
+
+type AuthoritativeLogShape = {
+  id?: unknown;
+  text?: unknown;
+};
+
+export const FALL_PRESENTATION_GATE_MS = ONLINE_ROLL_FAST_PRESENTATION_MS;
+
+const getPendingFallEffect = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const effect = value as PendingFallEffectShape;
+  const seatId = typeof effect.seatId === 'string' ? effect.seatId : '';
+  const id = typeof effect.id === 'number' && Number.isFinite(effect.id) ? effect.id : null;
+  return seatId ? { id, seatId } : null;
+};
+
+const acknowledgeFallPresentationCompletion = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const [state, action] = args;
+  if (action.type !== 'roll_yut' || action.payload?.completeFallPresentation !== true) return null;
+
+  const pendingEffect = getPendingFallEffect(state.fallEffect);
+  if (pendingEffect && pendingEffect.seatId !== action.actorId) {
+    return { status: 'rejected', reason: '낙 결과 표출을 완료할 권한이 없습니다.' };
+  }
+
+  // Presentation completion is deliberately client-local. The authoritative event stays immutable
+  // until the next roll replaces fallEffect, so the fastest client can never erase a slower
+  // client's pending animation or alter turn state.
+  return { status: 'duplicate' };
+};
+
+const rejectRollBeforePresentationGateEnds = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const [state, action] = args;
+  if (action.type !== 'roll_yut' || action.payload?.completeFallPresentation === true) return null;
+  const readyAt = Number(state.rollResultReadyAt ?? 0);
+  if (!Number.isFinite(readyAt) || readyAt <= Date.now()) return null;
+  return { status: 'rejected', reason: '이전 윷 결과 표출이 끝난 뒤 던질 수 있습니다.' };
+};
+
+const getNestedDeadline = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 0;
+  const deadline = Number((value as { deadline?: unknown }).deadline ?? 0);
+  return Number.isFinite(deadline) && deadline > 0 ? deadline : 0;
+};
+
+const isDeadlineRecoveryAction = (action: AuthoritativeArgs[1]) => {
+  const payload = action.payload;
+  return Boolean(payload && (
+    payload.timedOut === true
+    || payload.recoveredByCoordinator === true
+    || payload.itemPromptTimeoutRecovery === true
+    || payload.itemPickupTimeoutRecovery === true
+    || payload.trapPlacementTimeoutRecovery === true
+    || payload.timeoutRecoveredBy !== undefined
+    || payload.timeoutDeadlineAt !== undefined
+  ));
+};
+
+const isAutomatedAction = (action: AuthoritativeArgs[1]) => {
+  const clientActionId = action.payload?.clientActionId;
+  return action.payload?.automationSource === 'timeout_ai'
+    || action.payload?.coordinatorSeatId !== undefined
+    || (typeof clientActionId === 'string' && (
+      clientActionId.startsWith('roll_yut_ai')
+      || clientActionId.startsWith('move_piece_ai')
+      || clientActionId.startsWith('use_item_ai')
+      || clientActionId.startsWith('place_trap_ai')
+  ));
+};
+
+const rejectManualActionDuringTimeoutAutoPlay = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const [state, action] = args;
+  if (action.type === 'resume_human_control'
+    || state.autoPlayBySeatId?.[action.actorId] !== true
+    || isAutomatedAction(action)
+    || isTimeoutRecoveryAction(action)) return null;
+  return { status: 'rejected', reason: 'AI 자동 플레이 중입니다. 직접 플레이로 돌아간 뒤 행동해주세요.' };
+};
+
+const getActionDeadlineGuard = (args: AuthoritativeArgs): { deadlineAt: unknown; expectedKind: TurnActionPhase; reason: string } | null => {
+  const [state, action] = args;
+  if (action.type === 'roll_yut') {
+    if (action.payload?.completeFallPresentation === true) return null;
+    return { deadlineAt: state.turnDeadlineAt, expectedKind: 'roll', reason: '윷 던지기 제한 시간이 만료되었습니다.' };
+  }
+  if (action.type === 'move_piece') {
+    return { deadlineAt: state.turnDeadlineAt, expectedKind: 'move', reason: '말 이동 제한 시간이 만료되었습니다.' };
+  }
+  if (action.type === 'use_item') {
+    if (action.payload?.cancelTrapPlacement === true) {
+      return { deadlineAt: getNestedDeadline(state.pendingTrapPlacement) || state.turnDeadlineAt, expectedKind: 'trap_placement', reason: '함정 설치 제한 시간이 만료되었습니다.' };
+    }
+    return { deadlineAt: state.turnDeadlineAt, expectedKind: 'item_prompt', reason: '아이템 선택 제한 시간이 만료되었습니다.' };
+  }
+  if (action.type === 'place_trap') {
+    return { deadlineAt: getNestedDeadline(state.pendingTrapPlacement) || state.turnDeadlineAt, expectedKind: 'trap_placement', reason: '함정 설치 제한 시간이 만료되었습니다.' };
+  }
+  if (action.type === 'item_pickup_decision') {
+    return { deadlineAt: getNestedDeadline(state.pendingItemPickup) || state.turnDeadlineAt, expectedKind: 'item_prompt', reason: '아이템 교체 제한 시간이 만료되었습니다.' };
+  }
+  return null;
+};
+
+const getManualDeadlineGuard = (args: AuthoritativeArgs) => {
+  const action = args[1];
+  if (isDeadlineRecoveryAction(action) || isAutomatedAction(action)) return null;
+  return getActionDeadlineGuard(args);
+};
+
+const rejectInvalidDeadlineAutoAction = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const action = args[1];
+  if (action.payload?.deadlineAutoSubmitted !== true) return null;
+  const guard = getActionDeadlineGuard(args);
+  const expectedDeadlineAt = Number(guard?.deadlineAt ?? 0);
+  const submittedDeadlineAt = Number(action.payload?.autoSubmittedDeadlineAt ?? 0);
+  if (!guard || !expectedDeadlineAt || submittedDeadlineAt !== expectedDeadlineAt) {
+    return { status: 'rejected', reason: '자동 입력 대상 제한시간이 현재 상태와 일치하지 않습니다.' };
+  }
+  const startedAt = Number(action.payload?.clientActionStartedAt ?? 0);
+  if (!Number.isFinite(startedAt) || startedAt <= 0 || startedAt >= expectedDeadlineAt) {
+    return { status: 'rejected', reason: guard.reason };
+  }
+  return null;
+};
+
+const rejectExpiredManualTurnAction = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const [state, action] = args;
+  const guard = getManualDeadlineGuard(args);
+  if (!guard) return null;
+  if (!isManualTurnActionDeadlineExpired({
+    deadlineAt: guard.deadlineAt,
+    deadlineKind: state.turnDeadlineKind,
+    expectedKind: guard.expectedKind,
+    clientActionId: action.payload?.clientActionId,
+    clientActionStartedAt: action.payload?.clientActionStartedAt,
+    networkGraceMs: TURN_NETWORK_GRACE_MS,
+    missingStartedAtPolicy: action.type === 'roll_yut' ? 'allow' : 'reject-after-grace',
+  })) return null;
+  return { status: 'rejected', reason: guard.reason };
+};
+
+const applyRollPresentationTiming = (
+  args: AuthoritativeArgs,
+  reduction: AuthoritativeReduction,
+): AuthoritativeReduction => {
+  if (!isAuthoritativeCommitReduction(reduction)
+    || args[1].type !== 'roll_yut'
+    || args[1].payload?.completeFallPresentation === true) return reduction;
+
+  const resolvedAt = Date.now();
+  const authoritativeReadyAt = getAuthoritativeRollPresentationReadyAt({
+    actionStartedAt: args[1].payload?.clientActionStartedAt,
+    resolvedAt,
+  });
+  const coreReadyAt = Number(reduction.patch.rollResultReadyAt ?? 0);
+  const readyAt = Math.max(authoritativeReadyAt, Number.isFinite(coreReadyAt) ? coreReadyAt : 0);
+  const deadlineAt = Number(reduction.patch.turnDeadlineAt ?? 0);
+
+  return {
+    ...reduction,
+    patch: {
+      ...reduction.patch,
+      rollResultReadyAt: readyAt,
+      ...(Number.isFinite(deadlineAt) && deadlineAt > 0
+        ? { turnDeadlineAt: readyAt + TURN_ACTION_TIMEOUT_MS }
+        : {}),
+    },
+    payload: {
+      ...reduction.payload,
+      rollPresentationReadyAt: readyAt,
+    },
+  };
+};
+
+const applyFallPresentationGate = (
+  args: AuthoritativeArgs,
+  reduction: AuthoritativeReduction,
+): AuthoritativeReduction => {
+  if (!isAuthoritativeCommitReduction(reduction)
+    || args[1].type !== 'roll_yut'
+    || reduction.payload.fallOccurred !== true) return reduction;
+
+  const [, action] = args;
+  const actorLogName = typeof action.payload?.actorLogName === 'string' && action.payload.actorLogName.trim()
+    ? action.payload.actorLogName.trim()
+    : action.actorId;
+  const sourceLogs = Array.isArray(reduction.patch.logs) ? reduction.patch.logs as AuthoritativeLogShape[] : [];
+  const keepFallRerollPrompt = reduction.patch.itemPromptTiming === 'after_roll' && reduction.patch.roll != null;
+  const logs = keepFallRerollPrompt
+    ? sourceLogs
+    : sourceLogs.map((log, index) => index === 0 && typeof log?.text === 'string' && log.text.includes('낙')
+      ? { ...log, text: `${actorLogName}님이 낙이 나와 차례를 넘깁니다.` }
+      : log);
+  const presentationReadyAt = Number(reduction.patch.rollResultReadyAt ?? 0);
+  const readyAt = Math.max(
+    Number.isFinite(presentationReadyAt) ? presentationReadyAt : 0,
+    Date.now() + FALL_PRESENTATION_GATE_MS,
+  );
+  const fallEffect = getPendingFallEffect(reduction.patch.fallEffect);
+
+  return {
+    ...reduction,
+    patch: {
+      ...reduction.patch,
+      roll: keepFallRerollPrompt ? reduction.patch.roll : null,
+      rollResultReadyAt: readyAt,
+      // applyTurnActionTimeoutPolicy converts this core 15-second deadline to the visible
+      // timeout for roll/item-prompt while preserving the presentation gate offset.
+      turnDeadlineAt: readyAt + TURN_ACTION_TIMEOUT_MS,
+      ...(sourceLogs.length ? { logs } : {}),
+    },
+    payload: {
+      ...reduction.payload,
+      fallPresentationEventId: fallEffect?.id ?? null,
+      fallPresentationReadyAt: readyAt,
+      turnAdvancedIndependently: !keepFallRerollPrompt,
+    },
+  };
+};
+
+const resolvesAfterRollStackPrompt = (action: AuthoritativeArgs[1]) => action.type === 'use_item'
+  && (action.payload?.skipAfterRollItem === true
+    || action.payload?.itemType === 'move_plus_one'
+    || action.payload?.itemType === 'move_minus_one');
+
+const retryRollAfterResolvedBeforeRollPrompt = (
+  args: AuthoritativeArgs,
+  reduction: AuthoritativeReduction,
+) => {
+  const [state, action, room, sides] = args;
+  if (action.type !== 'roll_yut'
+    || reduction.status !== 'rejected'
+    || state.itemPromptTiming != null
+    || typeof state.pendingAfterMoveTurnIndex === 'number'
+    || state.pendingGoldenYutSelection != null
+    || state.roll != null) return reduction;
+
+  const ownedItems = (state.ownedItems ?? {}) as Record<string, ItemType[]>;
+  const actorItems = ownedItems[action.actorId] ?? [];
+  const itemsWithoutBeforeRollPrompt = actorItems.filter((type) => ITEM_DEFINITIONS[type]?.timing !== 'before_roll');
+  if (itemsWithoutBeforeRollPrompt.length === actorItems.length) return reduction;
+
+  return reduceCoreAuthoritativeGameAction({
+    ...state,
+    ownedItems: { ...ownedItems, [action.actorId]: itemsWithoutBeforeRollPrompt },
+  }, action, room, sides);
+};
+
+type PendingItemPickupShape = {
+  ownerId?: unknown;
+  itemType?: unknown;
+  existingItemType?: unknown;
+};
+
+const isItemType = (value: unknown): value is ItemType => typeof value === 'string' && value in ITEM_DEFINITIONS;
+
+const resolveAiPendingItemPickup = (
+  args: AuthoritativeArgs,
+  reduction: AuthoritativeReduction,
+): AuthoritativeReduction => {
+  if (!isAuthoritativeCommitReduction(reduction)) return reduction;
+
+  const [state, action, room, sides] = args;
+  const coordinatorSeatId = action.payload?.coordinatorSeatId;
+  const pending = reduction.patch.pendingItemPickup as PendingItemPickupShape | null | undefined;
+  if (action.type !== 'move_piece'
+    || typeof coordinatorSeatId !== 'string'
+    || !coordinatorSeatId
+    || coordinatorSeatId === action.actorId
+    || !pending
+    || pending.ownerId !== action.actorId
+    || !isItemType(pending.itemType)
+    || !isItemType(pending.existingItemType)) return reduction;
+
+  const decision = getAiItemValue(pending.itemType) > getAiItemValue(pending.existingItemType) ? 'replace' : 'keep';
+  const resolvedState = { ...state, ...reduction.patch };
+  const decisionReduction = reduceCoreAuthoritativeGameAction(
+    resolvedState,
+    {
+      type: 'item_pickup_decision',
+      actorId: action.actorId,
+      payload: {
+        decision,
+        actorLogName: action.payload?.actorLogName,
+        actorLabel: action.payload?.actorLabel,
+        actorName: action.payload?.actorName,
+      },
+    },
+    room,
+    sides,
+  );
+  if (!isAuthoritativeCommitReduction(decisionReduction)) return reduction;
+
+  return {
+    status: 'committed',
+    patch: { ...reduction.patch, ...decisionReduction.patch },
+    payload: {
+      ...reduction.payload,
+      ...decisionReduction.payload,
+      itemPickupDecision: decision,
+      autoResolvedItemPickup: true,
+    },
+  };
+};
+
+const finalizeIndividualWinner = (
+  args: AuthoritativeArgs,
+  reduction: AuthoritativeReduction,
+): AuthoritativeReduction => {
+  if (!isAuthoritativeCommitReduction(reduction)) return reduction;
+
+  const [, action, room] = args;
+  if (action.type !== 'move_piece'
+    || room.playMode !== 'individual'
+    || typeof reduction.patch.winner !== 'string'
+    || !reduction.patch.winner) return reduction;
+
+  return {
+    ...reduction,
+    patch: {
+      ...reduction.patch,
+      gameEndMode: 'final',
+    },
+    payload: {
+      ...reduction.payload,
+      gameEndMode: 'final',
+    },
+  };
+};
+
+type TurnDeadlineKind = 'roll' | 'move' | 'item_prompt' | 'trap_placement' | '';
+type TimeoutCountState = {
+  turnOrderIds?: unknown[];
+  turnIndex?: unknown;
+  turnDeadlineAt?: unknown;
+  turnDeadlineKind?: TurnDeadlineKind;
+  itemPromptTiming?: unknown;
+  lastMovedSeatId?: unknown;
+  pendingTrapPlacement?: unknown;
+  pendingGoldenYutSelection?: unknown;
+  pendingItemPickup?: unknown;
+  turnActionTimeoutCountBySeatId?: unknown;
+  autoPlayBySeatId?: unknown;
+  gameSeats?: unknown;
+};
+
+const getTimeoutCountMap = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {} as Record<string, number>;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .map(([seatId, count]) => [seatId, normalizeTurnActionTimeoutCount(count)]));
+};
+
+const getAutoPlayMap = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {} as Record<string, boolean>;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .map(([seatId, active]) => [seatId, active === true]));
+};
+
+const isHumanGameSeat = (state: TimeoutCountState, seatId: string) => {
+  if (!Array.isArray(state.gameSeats)) return true;
+  const seat = state.gameSeats.find((entry) => entry && typeof entry === 'object' && (entry as { id?: unknown }).id === seatId) as { isAI?: unknown; isSubstitutedByAI?: unknown } | undefined;
+  return !seat || (seat.isAI !== true && seat.isSubstitutedByAI !== true);
+};
+
+const getObjectOwnerId = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const ownerId = (value as { ownerId?: unknown }).ownerId;
+  return typeof ownerId === 'string' ? ownerId : '';
+};
+
+const getTimeoutTargetSeatId = (state: TimeoutCountState) => {
+  if (state.turnDeadlineKind === 'trap_placement') {
+    const placementOwnerId = getObjectOwnerId(state.pendingTrapPlacement);
+    if (placementOwnerId) return placementOwnerId;
+  }
+  if (state.turnDeadlineKind === 'item_prompt') {
+    const pickupOwnerId = getObjectOwnerId(state.pendingItemPickup);
+    if (pickupOwnerId) return pickupOwnerId;
+    if (state.itemPromptTiming === 'after_move' && typeof state.lastMovedSeatId === 'string') return state.lastMovedSeatId;
+  }
+  const turnOrderIds = Array.isArray(state.turnOrderIds) ? state.turnOrderIds : [];
+  const activeSeatId = turnOrderIds[Number(state.turnIndex ?? 0)];
+  return typeof activeSeatId === 'string' ? activeSeatId : '';
+};
+
+const isTimeoutRecoveryAction = (action: AuthoritativeArgs[1]) => {
+  const payload = action.payload;
+  if (!payload) return false;
+  if (payload.deadlineAutoSubmitted === true && typeof payload.autoSubmittedDeadlineAt === 'number') return true;
+  if (typeof payload.timeoutDeadlineAt !== 'number') return false;
+  return payload.timedOut === true
+    || payload.recoveredByCoordinator === true
+    || payload.itemPromptTimeoutRecovery === true
+    || payload.itemPickupTimeoutRecovery === true
+    || payload.trapPlacementTimeoutRecovery === true
+    || typeof payload.timeoutRecoveredBy === 'string';
+};
+
+const replaceNestedDeadline = (value: unknown, nextDeadline: number) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  return typeof record.deadline === 'number' ? { ...record, deadline: nextDeadline } : value;
+};
+
+const getCoreDeadlineBaseMs = (kind: TurnDeadlineKind) => (
+  kind === 'trap_placement' ? TURN_ITEM_PROMPT_TIMEOUT_MS : TURN_ACTION_TIMEOUT_MS
+);
+
+const getVisibleDeadlineBaseMs = (kind: TurnDeadlineKind) => (
+  kind === 'item_prompt' || kind === 'trap_placement'
+    ? TURN_ITEM_PROMPT_TIMEOUT_MS
+    : TURN_ACTION_TIMEOUT_MS
+);
+
+const rejectTurnActionBeforeReady = (args: AuthoritativeArgs): AuthoritativeReduction | null => {
+  const [state, action] = args;
+  if (isDeadlineRecoveryAction(action)) return null;
+  const guard = getActionDeadlineGuard(args);
+  if (!guard || normalizeTurnDeadlineKind(state.turnDeadlineKind) !== guard.expectedKind) return null;
+  const deadlineAt = Number(guard.deadlineAt ?? 0);
+  if (!Number.isFinite(deadlineAt) || deadlineAt <= 0) return null;
+  const timeoutState = state as TimeoutCountState;
+  const targetSeatId = getTimeoutTargetSeatId(timeoutState);
+  const timeoutCounts = getTimeoutCountMap(timeoutState.turnActionTimeoutCountBySeatId);
+  const durationMs = getTurnActionTimeoutMsForCount(timeoutCounts[targetSeatId], getVisibleDeadlineBaseMs(guard.expectedKind));
+  const readyAt = getTurnActionReadyAt({ deadlineAt, durationMs });
+  if (!readyAt) return null;
+  const startedAt = getTurnActionStartedAt({
+    clientActionId: action.payload?.clientActionId,
+    clientActionStartedAt: action.payload?.clientActionStartedAt,
+  }) || Date.now();
+  return startedAt < readyAt
+    ? { status: 'rejected', reason: '턴 전환 중입니다. 잠시 후 행동해주세요.' }
+    : null;
+};
+
+const applyTurnActionTimeoutPolicy = (
+  args: AuthoritativeArgs,
+  reduction: AuthoritativeReduction,
+): AuthoritativeReduction => {
+  if (!isAuthoritativeCommitReduction(reduction)) return reduction;
+
+  const [state, action] = args;
+  const currentState = state as TimeoutCountState;
+  const timeoutCounts = getTimeoutCountMap(currentState.turnActionTimeoutCountBySeatId);
+  const autoPlayBySeatId = getAutoPlayMap(currentState.autoPlayBySeatId);
+  const recoveredFromTimeout = isTimeoutRecoveryAction(action);
+  const previousActorTimeoutCount = action.actorId ? normalizeTurnActionTimeoutCount(timeoutCounts[action.actorId]) : 0;
+  let timeoutCountChanged = false;
+  let autoPlayChanged = false;
+  if (recoveredFromTimeout && action.actorId) {
+    const nextTimeoutCount = incrementTurnActionTimeoutCount(previousActorTimeoutCount);
+    timeoutCounts[action.actorId] = nextTimeoutCount;
+    timeoutCountChanged = true;
+    if (nextTimeoutCount >= 2 && isHumanGameSeat(currentState, action.actorId) && autoPlayBySeatId[action.actorId] !== true) {
+      autoPlayBySeatId[action.actorId] = true;
+      autoPlayChanged = true;
+    }
+  } else if (!isAutomatedAction(action) && action.actorId && previousActorTimeoutCount > 0) {
+    timeoutCounts[action.actorId] = 0;
+    timeoutCountChanged = true;
+  }
+
+  const patch = { ...reduction.patch };
+  const previousDeadline = Number(patch.turnDeadlineAt ?? 0);
+  const mergedState = { ...currentState, ...patch, turnActionTimeoutCountBySeatId: timeoutCounts, autoPlayBySeatId } as TimeoutCountState;
+  const deadlineKind = (mergedState.turnDeadlineKind ?? '') as TurnDeadlineKind;
+
+  if (previousDeadline > 0 && deadlineKind) {
+    const currentTurnSeatId = getTimeoutTargetSeatId(currentState);
+    const targetSeatId = getTimeoutTargetSeatId(mergedState);
+    const coreBaseTimeoutMs = getCoreDeadlineBaseMs(deadlineKind);
+    const visibleBaseTimeoutMs = getVisibleDeadlineBaseMs(deadlineKind);
+    const nextTimeoutMs = getTurnActionTimeoutMsForCount(timeoutCounts[targetSeatId], visibleBaseTimeoutMs);
+    // continue_race is a user-confirmed phase restart, not an automatic turn handoff.
+    const startsNextTurn = action.type !== 'continue_race' && Boolean(targetSeatId && targetSeatId !== currentTurnSeatId);
+    const nextDeadline = previousDeadline - coreBaseTimeoutMs + nextTimeoutMs + (startsNextTurn ? TURN_TRANSITION_DELAY_MS : 0);
+    patch.turnDeadlineAt = nextDeadline;
+    if ('pendingTrapPlacement' in patch) patch.pendingTrapPlacement = replaceNestedDeadline(patch.pendingTrapPlacement, nextDeadline);
+    if ('pendingGoldenYutSelection' in patch) patch.pendingGoldenYutSelection = replaceNestedDeadline(patch.pendingGoldenYutSelection, nextDeadline);
+    if ('pendingItemPickup' in patch) patch.pendingItemPickup = replaceNestedDeadline(patch.pendingItemPickup, nextDeadline);
+  }
+
+  if (timeoutCountChanged) patch.turnActionTimeoutCountBySeatId = timeoutCounts;
+  if (autoPlayChanged) patch.autoPlayBySeatId = autoPlayBySeatId;
+  return { ...reduction, patch };
+};
+
+export function reduceAuthoritativeGameAction(
+  ...inputArgs: AuthoritativeArgs
+): AuthoritativeReduction {
+  const args = normalizeLegacyRollTimingArgs(inputArgs);
+  const acknowledgedFall = acknowledgeFallPresentationCompletion(args);
+  if (acknowledgedFall) return acknowledgedFall;
+
+  const timeoutAutoPlayRejection = rejectManualActionDuringTimeoutAutoPlay(args);
+  if (timeoutAutoPlayRejection) return timeoutAutoPlayRejection;
+
+  const presentationGateRejection = rejectRollBeforePresentationGateEnds(args);
+  if (presentationGateRejection) return presentationGateRejection;
+
+  const transitionGateRejection = rejectTurnActionBeforeReady(args);
+  if (transitionGateRejection) return transitionGateRejection;
+
+  const invalidDeadlineAutoActionRejection = rejectInvalidDeadlineAutoAction(args);
+  if (invalidDeadlineAutoActionRejection) return invalidDeadlineAutoActionRejection;
+
+  const expiredManualActionRejection = rejectExpiredManualTurnAction(args);
+  if (expiredManualActionRejection) return expiredManualActionRejection;
+
+  let reduction = reduceCoreAuthoritativeGameAction(...args);
+  reduction = retryRollAfterResolvedBeforeRollPrompt(args, reduction);
+  reduction = resolveAiPendingItemPickup(args, reduction);
+  reduction = finalizeIndividualWinner(args, reduction);
+  reduction = applyRollPresentationTiming(args, reduction);
+  reduction = applyFallPresentationGate(args, reduction);
+
+  const [state, action, room] = args;
+  if (isAuthoritativeCommitReduction(reduction) && room.stackedRollMode && action.type === 'roll_yut') {
+    const nextRollStack = (reduction.patch.rollStack ?? state.rollStack) as unknown[] | undefined;
+    const nextRollStackClosed = reduction.patch.rollStackClosed ?? state.rollStackClosed;
+    if (nextRollStack?.length && nextRollStackClosed === false) {
+      reduction = {
+        ...reduction,
+        patch: {
+          ...reduction.patch,
+          roll: null,
+          selectedRollStackIndex: null,
+          turnDeadlineKind: 'roll',
+        },
+      };
+    }
+  }
+
+  if (isAuthoritativeCommitReduction(reduction) && room.stackedRollMode && resolvesAfterRollStackPrompt(action)) {
+    const resolvedRollStack = (reduction.patch.rollStack ?? state.rollStack) as unknown[] | undefined;
+    if (resolvedRollStack && resolvedRollStack.length >= 2) {
+      reduction = {
+        ...reduction,
+        patch: {
+          ...reduction.patch,
+          roll: null,
+          selectedRollStackIndex: null,
+          rollStackClosed: true,
+        },
+      };
+    }
+  }
+
+  return applyTurnActionTimeoutPolicy(args, reduction);
+}

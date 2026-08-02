@@ -13,6 +13,7 @@ import {
 import type { SequenceStateSnapshot } from '../appState';
 import { getQaMovePieceActionDelayMs, shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
+import { getAuthoritativeSnapshot } from '../flows/authoritativeSnapshot';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
 import {
   shouldConsumeLocalMoveCommitAck,
@@ -25,6 +26,7 @@ import {
   localMoveLedger,
   makeLocalMoveResultFingerprint,
   prepareLocalMoveOwnership,
+  withLocalMovePiecesFallback,
 } from '../flows/localMoveOwnership';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
@@ -43,6 +45,7 @@ type Params = {
   lastAppliedSequenceRef: MutableRefObject<number>;
   lastAppliedStateVersionRef: MutableRefObject<number>;
   applyingSyncedStateRef: MutableRefObject<boolean>;
+  currentPiecesRef: MutableRefObject<unknown[]>;
   replayMissingSequencesThenApply: (finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) => Promise<void>;
   applySyncedStateSnapshot: (state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => void;
   applyAuthoritativeResultSequence: (result: AuthoritativeCommitResult) => Promise<unknown>;
@@ -95,24 +98,6 @@ const markTimeoutRollAsRecovery = (action: CommittableGameAction): CommittableGa
       timeoutSource: payload.timeoutSource ?? 'client-retry-fallback',
     },
   };
-};
-
-const getAuthoritativeSnapshot = (
-  value: unknown,
-  fallback: SequenceStateSnapshot | null,
-): SequenceStateSnapshot | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
-  const record = value as Record<string, unknown>;
-  if (record.stateAfter && typeof record.stateAfter === 'object' && !Array.isArray(record.stateAfter)) {
-    return record.stateAfter as SequenceStateSnapshot;
-  }
-  if (record.patch && typeof record.patch === 'object' && !Array.isArray(record.patch) && fallback) {
-    return { ...fallback, ...(record.patch as SequenceStateSnapshot) };
-  }
-  if ('pieces' in record || 'lastSequence' in record || 'turnVersion' in record) {
-    return record as SequenceStateSnapshot;
-  }
-  return fallback;
 };
 
 const getLocalDisplayFinalState = (state: SequenceStateSnapshot): SequenceStateSnapshot => ({
@@ -171,7 +156,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
   const acknowledgeLocalMoveEcho = useCallback((roomId: string, value: unknown, explicitState?: SequenceStateSnapshot | null) => {
     const identity = getAuthoritativeDeliveryIdentity(value);
     if (!identity.clientMutationId || !localMoveLedger.has(identity.clientMutationId)) return null;
-    const authoritativeState = explicitState ?? getAuthoritativeSnapshot(value, null);
+    const authoritativeState = explicitState ?? getAuthoritativeSnapshot<SequenceStateSnapshot>(value, null);
     if (authoritativeState) latestSyncedStateRef.current = authoritativeState;
     params.lastAppliedSequenceRef.current = Math.max(params.lastAppliedSequenceRef.current, identity.sequence);
     params.lastAppliedStateVersionRef.current = Math.max(params.lastAppliedStateVersionRef.current, identity.stateVersion);
@@ -204,7 +189,10 @@ export function useAuthoritativeGameSyncController(params: Params) {
     if (action.type !== 'move_piece') return;
     const prepared = prepareLocalMoveOwnership({
       roomId,
-      state: latestSyncedStateRef.current as Record<string, unknown> | null,
+      state: withLocalMovePiecesFallback(
+        latestSyncedStateRef.current as Record<string, unknown> | null,
+        params.currentPiecesRef.current,
+      ),
       action,
     });
     if (!prepared) return;
@@ -232,7 +220,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
         params.acknowledgePendingLocalRemoteAction(actionKey);
       }
     });
-  }, [params.acknowledgePendingLocalRemoteAction, params.activeRoomIdRef]);
+  }, [params.acknowledgePendingLocalRemoteAction, params.activeRoomIdRef, params.currentPiecesRef]);
 
   const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
   const clearAuthoritativeApplyWake = useCallback(() => {
@@ -311,7 +299,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
 
   const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
     const roomId = params.activeRoomIdRef.current;
-    const aliasedState = aliasTimeoutRollMutationIds(roomId, state);
+    const rawAliasedState = aliasTimeoutRollMutationIds(roomId, state);
+    const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;
     const classification = getDeliveryClassification(aliasedState);
     if (classification === 'local-echo') {
       acknowledgeLocalMoveEcho(roomId, aliasedState, aliasedState);
@@ -328,7 +317,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
     lastAppliedStateVersionRef: params.lastAppliedStateVersionRef,
     applyingSyncedStateRef: params.applyingSyncedStateRef,
     replayMissingSequencesThenApply: async (state, localSequence, remoteSequence) => {
-      const aliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);
+      const rawAliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);
+      const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;
       const classification = getDeliveryClassification(aliasedState);
       if (classification === 'local-echo') {
         acknowledgeLocalMoveEcho(params.activeRoomId, aliasedState, aliasedState);

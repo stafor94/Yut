@@ -60,7 +60,10 @@ type LocalMoveAction = {
   payload?: Record<string, unknown>;
 };
 
+const LOCAL_MOVE_PIECES = Symbol('localMovePieces');
+
 type LocalMoveState = Record<string, unknown> & {
+  [LOCAL_MOVE_PIECES]?: unknown[];
   playMode?: 'individual' | 'team';
   pieceCount?: 1 | 2 | 3 | 4;
   stackedRollMode?: boolean;
@@ -176,13 +179,13 @@ const getPendingLocalMoveRoll = (action: LocalMoveAction) => {
   };
 };
 
-const getLocalMoveReductionState = (state: LocalMoveState, action: LocalMoveAction): LocalMoveState => {
-  if (normalizeRoll(state.roll)) return state;
-  const pendingRoll = getPendingLocalMoveRoll(action);
-  return pendingRoll ? { ...state, roll: pendingRoll } : state;
-};
-
 const keepLocalPiecesOutOfDisplaySpread = (state: LocalMoveState, pieces: unknown[]) => {
+  Object.defineProperty(state, LOCAL_MOVE_PIECES, {
+    value: pieces,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
   Object.defineProperty(state, 'pieces', {
     value: pieces,
     enumerable: false,
@@ -190,6 +193,35 @@ const keepLocalPiecesOutOfDisplaySpread = (state: LocalMoveState, pieces: unknow
     writable: true,
   });
   return state;
+};
+
+export function withLocalMovePiecesFallback(
+  state: Record<string, unknown> | null,
+  fallbackPieces: unknown[],
+): Record<string, unknown> | null {
+  const localState = state as LocalMoveState | null;
+  if (!localState || !Array.isArray(fallbackPieces)) return localState;
+  if (Array.isArray(localState.pieces)
+    && Object.prototype.propertyIsEnumerable.call(localState, 'pieces')) {
+    return localState;
+  }
+  return { ...localState, pieces: fallbackPieces };
+}
+
+const getLocalMoveReductionState = (state: LocalMoveState, action: LocalMoveAction): LocalMoveState => {
+  const pieces = Array.isArray(state.pieces)
+    ? state.pieces
+    : Array.isArray(state[LOCAL_MOVE_PIECES])
+      ? state[LOCAL_MOVE_PIECES]
+      : null;
+  const stateWithPieces = pieces && !Array.isArray(state.pieces)
+    ? keepLocalPiecesOutOfDisplaySpread({ ...state }, pieces)
+    : state;
+  if (normalizeRoll(stateWithPieces.roll)) return stateWithPieces;
+  const pendingRoll = getPendingLocalMoveRoll(action);
+  if (!pendingRoll) return stateWithPieces;
+  const stateWithRoll = { ...stateWithPieces, roll: pendingRoll };
+  return pieces ? keepLocalPiecesOutOfDisplaySpread(stateWithRoll, pieces) : stateWithRoll;
 };
 
 export function makeLocalMoveResultFingerprint(state: Record<string, unknown>) {
@@ -263,6 +295,7 @@ export function prepareLocalMoveOwnership({
   if (sides.length !== state.gameSeats.length) return null;
 
   const reductionState = getLocalMoveReductionState(state, action);
+  if (!Array.isArray(reductionState.pieces)) return null;
   const reduction = reduceAuthoritativeGameAction(
     reductionState as Parameters<typeof reduceAuthoritativeGameAction>[0],
     action as Parameters<typeof reduceAuthoritativeGameAction>[1],
