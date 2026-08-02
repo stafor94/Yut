@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: apply-main-protection
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply:
