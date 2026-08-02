@@ -1,8 +1,9 @@
 {
   "workflow": "qa.yml",
+  "targetEvent": "push",
   "targetRef": "firebase-smooth-integration",
   "targetSha": "bfd7fd90d47c8bdb657b50d30edf94d8232c3da7",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] corrected product fix bfd7fd9",
-  "trigger": 13
+  "reportTitle": "[QA snapshot] corrected product fix push bfd7fd9",
+  "trigger": 14
 }
