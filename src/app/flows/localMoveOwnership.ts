@@ -2,6 +2,10 @@ import {
   isAuthoritativeCommitReduction,
   reduceAuthoritativeGameAction,
 } from '../../features/room/services/roomAuthoritativeReducer';
+import {
+  localMovePresentationLifecycle,
+  type LocalMovePresentationLifecycle,
+} from './localMovePresentationLifecycle';
 
 export type AuthoritativeDeliveryClassification = 'local-echo' | 'remote-action' | 'stale';
 export type AuthoritativeDeliveryKind = 'action-result' | 'state-snapshot';
@@ -72,6 +76,8 @@ export type PreparedLocalMoveOwnership = {
   finalState: LocalMoveState;
   payload: Record<string, unknown>;
 };
+
+type LocalMoveSettlementExpectation = Pick<LocalMovePresentationLifecycle, 'expectNextSettlement'>;
 
 const toFiniteInteger = (value: unknown) => {
   const numericValue = Number(value ?? 0);
@@ -256,6 +262,8 @@ export function prepareLocalMoveOwnership({
 export class LocalMoveLedger {
   private records = new Map<string, LocalMoveLedgerRecord>();
 
+  constructor(private readonly settlementExpectation?: LocalMoveSettlementExpectation) {}
+
   register(input: RegisterLocalMoveInput) {
     const record: LocalMoveLedgerRecord = {
       ...input,
@@ -271,6 +279,7 @@ export class LocalMoveLedger {
       hardResyncStarted: false,
     };
     this.records.set(input.clientMutationId, record);
+    this.settlementExpectation?.expectNextSettlement(input.clientMutationId, input.pieceId);
     return record;
   }
 
@@ -363,7 +372,7 @@ export class LocalMoveLedger {
   }
 }
 
-export const localMoveLedger = new LocalMoveLedger();
+export const localMoveLedger = new LocalMoveLedger(localMovePresentationLifecycle);
 
 export function classifyAuthoritativeDelivery(
   input: DeliveryIdentityInput,
