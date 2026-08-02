@@ -75,15 +75,15 @@ if (!emulatorJob.includes('QA_PROJECT_ID: demo-yut-pr-${{ github.run_id }}-${{ g
 }
 
 const gateJob = getJobBlock(prWorkflow, 'required-pr-gate');
-if (!gateJob) fail('Required PR gate job이 없습니다.');
+if (!gateJob) fail('Validate PR gate job이 없습니다.');
 for (const contract of [
-  ['name: Required PR gate', 'Required PR gate의 check 이름이 다릅니다.'],
-  ['if: always()', 'Required PR gate는 if: always()로 실행되어야 합니다.'],
-  ['needs: [build-and-unit, firebase-emulator-qa]', 'Required PR gate가 build/unit과 emulator matrix 전체를 의존하지 않습니다.'],
-  ['${{ needs.build-and-unit.result }}', 'Required PR gate가 build/unit 결과를 확인하지 않습니다.'],
-  ['${{ needs.firebase-emulator-qa.result }}', 'Required PR gate가 emulator matrix 결과를 확인하지 않습니다.'],
-  ['test "$BUILD_AND_UNIT_RESULT" = success', 'Required PR gate가 build/unit의 success만 허용하지 않습니다.'],
-  ['test "$FIREBASE_EMULATOR_QA_RESULT" = success', 'Required PR gate가 emulator matrix의 success만 허용하지 않습니다.'],
+  ['name: Validate PR', '필수 status check는 PR Required QA / Validate PR을 생성해야 합니다.'],
+  ['if: always()', 'Validate PR gate는 if: always()로 실행되어야 합니다.'],
+  ['needs: [build-and-unit, firebase-emulator-qa]', 'Validate PR gate가 build/unit과 emulator matrix 전체를 의존하지 않습니다.'],
+  ['${{ needs.build-and-unit.result }}', 'Validate PR gate가 build/unit 결과를 확인하지 않습니다.'],
+  ['${{ needs.firebase-emulator-qa.result }}', 'Validate PR gate가 emulator matrix 결과를 확인하지 않습니다.'],
+  ['test "$BUILD_AND_UNIT_RESULT" = success', 'Validate PR gate가 build/unit의 success만 허용하지 않습니다.'],
+  ['test "$FIREBASE_EMULATOR_QA_RESULT" = success', 'Validate PR gate가 emulator matrix의 success만 허용하지 않습니다.'],
 ]) requireText(gateJob, contract[0], contract[1]);
 
 for (const [jobId, block] of [['build-and-unit', buildJob], ['firebase-emulator-qa', emulatorJob], ['required-pr-gate', gateJob]]) {
