@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { getAuthoritativeSnapshot } from '../../src/app/flows/authoritativeSnapshot';
 import { prepareLocalMoveOwnership } from '../../src/app/flows/localMoveOwnership';
 import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
 
@@ -47,7 +48,7 @@ const makeOnlineMoveState = () => ({
   turnVersion: 3,
 });
 
-test('patch-only 롤 snapshot 이후에도 숨긴 로컬 pieces로 지름길 이동을 계산한다', () => {
+test('partial authoritative snapshot 이후에도 숨긴 로컬 pieces로 지름길 이동을 계산한다', () => {
   const firstMove = prepareLocalMoveOwnership({
     roomId: 'room-a',
     state: makeOnlineMoveState(),
@@ -69,13 +70,13 @@ test('patch-only 롤 snapshot 이후에도 숨긴 로컬 pieces로 지름길 이
   assert.equal(firstMove.record.toNodeId, 'n06');
   assert.equal(Object.prototype.propertyIsEnumerable.call(firstMove.finalState, 'pieces'), false);
 
-  const patchMergedRollState = {
-    ...firstMove.finalState,
+  const patchMergedRollState = getAuthoritativeSnapshot({
     roll: { name: '걸', steps: 3, bonus: false },
     branchChoice: 'shortcut',
     lastSequence: 12,
     turnVersion: 4,
-  };
+  }, firstMove.finalState);
+  assert.ok(patchMergedRollState);
   assert.equal(Object.prototype.hasOwnProperty.call(patchMergedRollState, 'pieces'), false);
 
   const secondMove = prepareLocalMoveOwnership({
@@ -99,4 +100,15 @@ test('patch-only 롤 snapshot 이후에도 숨긴 로컬 pieces로 지름길 이
   assert.equal(secondMove.record.fromNodeId, 'n06');
   assert.ok(secondMove.record.pathNodeIds.length > 0);
   assert.equal(Object.prototype.propertyIsEnumerable.call(secondMove.finalState, 'pieces'), false);
+});
+
+test('완전 authoritative snapshot은 fallback 대신 자체 pieces를 사용한다', () => {
+  const fallback = makeOnlineMoveState();
+  const snapshot = {
+    ...fallback,
+    pieces: fallback.pieces.map((piece) => piece.id === 'piece-1' ? { ...piece, nodeId: 'n06', started: true } : piece),
+    lastSequence: 11,
+  };
+
+  assert.equal(getAuthoritativeSnapshot(snapshot, fallback), snapshot);
 });
