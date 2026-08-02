@@ -1,4 +1,4 @@
-import type { SequenceStateSnapshot } from '../../src/app/appState';
+import type { SequenceStateSnapshot } from '../appState';
 
 const mergePartialSnapshot = (
   snapshot: SequenceStateSnapshot,
