@@ -87,8 +87,9 @@ export class LocalMovePresentationLifecycle {
     return true;
   }
 
-  observe(pieceId: string, nodeId = '') {
+  observe(pieceId: string, nodeId = '', pathNodeIds: string[] = []) {
     if (!pieceId) return false;
+    const normalizedPathNodeIds = normalizePathNodeIds(pathNodeIds);
     if (this.snapshotValue.phase === 'idle') {
       if (!this.expectedSettlement || this.expectedSettlement.pieceId !== pieceId) return false;
       this.snapshotValue = {
@@ -98,6 +99,7 @@ export class LocalMovePresentationLifecycle {
         phase: 'presenting',
       };
       this.adoptExpectedSettlement();
+      if (normalizedPathNodeIds.length) this.setExpectedPath(normalizedPathNodeIds);
       this.observePathNode(nodeId);
       return true;
     }
@@ -106,6 +108,7 @@ export class LocalMovePresentationLifecycle {
       pieceId,
       phase: 'presenting',
     };
+    if (normalizedPathNodeIds.length) this.setExpectedPath(normalizedPathNodeIds);
     this.observePathNode(nodeId);
     return true;
   }
