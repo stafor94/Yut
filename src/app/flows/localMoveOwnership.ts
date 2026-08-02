@@ -200,10 +200,9 @@ export function withLocalMovePiecesFallback(
   fallbackPieces: unknown[],
 ): Record<string, unknown> | null {
   const localState = state as LocalMoveState | null;
-  if (!localState
-    || Array.isArray(localState.pieces)
-    || Array.isArray(localState[LOCAL_MOVE_PIECES])
-    || !Array.isArray(fallbackPieces)) {
+  if (!localState || !Array.isArray(fallbackPieces)) return localState;
+  if (Array.isArray(localState.pieces)
+    && Object.prototype.propertyIsEnumerable.call(localState, 'pieces')) {
     return localState;
   }
   return { ...localState, pieces: fallbackPieces };

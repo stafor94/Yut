@@ -148,3 +148,34 @@ test('uses rendered pieces when the controller snapshot has no pieces', () => {
   assert.ok(prepared);
   assert.equal(prepared.record.toNodeId, 'n06');
 });
+
+
+test('restores enumerable rendered pieces when hidden pieces have a symbol backup', () => {
+  const firstMove = prepareLocalMoveOwnership({
+    roomId: 'room-a',
+    state: {
+      ...makeOnlineMoveState(),
+      stackedRollMode: true,
+      roll: { name: MO, steps: 5, bonus: true },
+    },
+    action: {
+      type: 'move_piece',
+      actorId: 'P1',
+      payload: {
+        pieceId: 'piece-1',
+        extraSteps: 0,
+        branchChoice: 'outer',
+        rollStackIndex: null,
+        clientActionId: `move_piece:P1:10:0:${MO}:5:hidden`,
+        clientActionStartedAt: Date.now(),
+      },
+    },
+  });
+
+  assert.ok(firstMove);
+  assert.equal(Object.prototype.propertyIsEnumerable.call(firstMove.finalState, 'pieces'), false);
+  const restored = withLocalMovePiecesFallback(firstMove.finalState, firstMove.record.finalPieces);
+  assert.ok(restored);
+  assert.equal(Object.prototype.propertyIsEnumerable.call(restored, 'pieces'), true);
+  assert.equal(restored.pieces, firstMove.record.finalPieces);
+});
