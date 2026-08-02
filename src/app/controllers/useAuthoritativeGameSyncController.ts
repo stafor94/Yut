@@ -14,6 +14,7 @@ import type { SequenceStateSnapshot } from '../appState';
 import { getQaMovePieceActionDelayMs, shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
+import { getAuthoritativeSnapshot, primeAuthoritativeResultState } from '../flows/authoritativeResultState';
 import { localMovePresentationLifecycle } from '../flows/localMovePresentationLifecycle';
 import {
   classifyAuthoritativeDelivery,
@@ -91,24 +92,6 @@ const markTimeoutRollAsRecovery = (action: CommittableGameAction): CommittableGa
       timeoutSource: payload.timeoutSource ?? 'client-retry-fallback',
     },
   };
-};
-
-const getAuthoritativeSnapshot = (
-  value: unknown,
-  fallback: SequenceStateSnapshot | null,
-): SequenceStateSnapshot | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
-  const record = value as Record<string, unknown>;
-  if (record.stateAfter && typeof record.stateAfter === 'object' && !Array.isArray(record.stateAfter)) {
-    return record.stateAfter as SequenceStateSnapshot;
-  }
-  if (record.patch && typeof record.patch === 'object' && !Array.isArray(record.patch) && fallback) {
-    return { ...fallback, ...(record.patch as SequenceStateSnapshot) };
-  }
-  if ('pieces' in record || 'lastSequence' in record || 'turnVersion' in record) {
-    return record as SequenceStateSnapshot;
-  }
-  return fallback;
 };
 
 const getLocalDisplayFinalState = (state: SequenceStateSnapshot): SequenceStateSnapshot => ({
@@ -446,8 +429,13 @@ export function useAuthoritativeGameSyncController(params: Params) {
       return acknowledgeLocalMoveEcho(roomId, aliasedResult);
     }
     if (classification === 'stale') return null;
+    const primedState = primeAuthoritativeResultState(
+      aliasedResult,
+      latestSyncedStateRef.current,
+      (state) => { latestSyncedStateRef.current = state; },
+    );
     const applied = await params.applyAuthoritativeResultSequence(aliasedResult);
-    const appliedState = getAuthoritativeSnapshot(applied, getAuthoritativeSnapshot(aliasedResult, latestSyncedStateRef.current));
+    const appliedState = getAuthoritativeSnapshot(applied, primedState);
     if (appliedState) latestSyncedStateRef.current = appliedState;
     return applied;
   }, [acknowledgeLocalMoveEcho, getDeliveryClassification, params.activeRoomIdRef, params.applyAuthoritativeResultSequence]);
