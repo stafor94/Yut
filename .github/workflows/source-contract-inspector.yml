@@ -1,0 +1,72 @@
+name: Source contract inspector
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e79e7dd631a098cb59b6be486ba29d05092a65e3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Find branch move and pieces contracts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { execFileSync } = require('node:child_process');
+          (async () => {
+            const patterns = [
+              'onMoveSelectedPiece',
+              'branchChoice',
+              'moveSelectedPiece',
+              'pieces is not iterable',
+              '\\.\\.\\.[^\\n]*pieces',
+              'for \\(const [^\\n]+ of [^\\n]*pieces',
+            ];
+            const sections = [];
+            for (const pattern of patterns) {
+              let output = '';
+              try {
+                output = execFileSync('grep', ['-RInE', '-C', '12', '--exclude-dir=node_modules', '--exclude-dir=dist', pattern, 'src', 'tests'], {
+                  encoding: 'utf8',
+                  maxBuffer: 20 * 1024 * 1024,
+                });
+              } catch (error) {
+                output = error.stdout?.toString?.() ?? '';
+              }
+              sections.push(`### pattern: ${pattern}\n\n\`\`\`text\n${output.slice(0, 30000)}\n\`\`\``);
+            }
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
+              method: 'POST',
+              headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                'Content-Type': 'application/json',
+                'X-GitHub-Api-Version': '2022-11-28',
+                'User-Agent': 'yut-source-contract-inspector',
+              },
+              body: JSON.stringify({
+                title: '[Source contract] Branch move pieces TypeError',
+                body: ['## Source contract inspection', '', ...sections].join('\n\n').slice(0, 64000),
+              }),
+            });
+            if (!response.ok) throw new Error(`issue create failed: ${response.status} ${await response.text()}`);
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
