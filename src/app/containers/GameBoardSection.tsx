@@ -88,6 +88,7 @@ export function GameBoardSection({
   const moveSessionRef = useRef<MovePresentationSession<BoardPiece> | null>(null);
   const pendingSettlementPiecesRef = useRef<BoardPiece[]>(clonePieces(pieces));
   const pendingCaptureEffectRef = useRef<CaptureVisualEffect | null>(null);
+  const pendingLocalMovePathNodeIdsRef = useRef<string[]>([]);
   const moveFinalizationScheduledRef = useRef(false);
   const settlementRevisionGateRef = useRef(createPresentationRevisionGate());
   const lastCapturePresentationRef = useRef({ signature: '', queuedAt: 0 });
@@ -103,12 +104,18 @@ export function GameBoardSection({
       mountedRef.current = false;
       moveSessionRef.current = null;
       pendingCaptureEffectRef.current = null;
+      pendingLocalMovePathNodeIdsRef.current = [];
       moveFinalizationScheduledRef.current = false;
       settlementRevisionGateRef.current.invalidate();
       localMovePresentationLifecycle.cancel();
       releaseQueue();
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (movingPieceId || !previewNodeIds.length) return;
+    pendingLocalMovePathNodeIdsRef.current = [...previewNodeIds];
+  }, [movingPieceId, previewNodeIds]);
 
   const queueCaptureEffect = (queuedEffect: CaptureVisualEffect) => {
     const signature = getCapturePresentationSignature(queuedEffect);
@@ -140,7 +147,12 @@ export function GameBoardSection({
     const settlementRevision = settlementRevisionGateRef.current.issue();
 
     if (movingPieceId) {
-      localMovePresentationLifecycle.observe(movingPieceId);
+      const incomingMovingPiece = incomingPieces.find((piece) => piece.id === movingPieceId);
+      localMovePresentationLifecycle.observe(
+        movingPieceId,
+        incomingMovingPiece?.nodeId ?? '',
+        pendingLocalMovePathNodeIdsRef.current,
+      );
       moveFinalizationScheduledRef.current = false;
       let session = moveSessionRef.current;
       if (!session || session.pieceId !== movingPieceId) {
@@ -196,7 +208,9 @@ export function GameBoardSection({
           setPresentedMovingPieceId('');
           moveSessionRef.current = null;
           moveFinalizationScheduledRef.current = false;
-          localMovePresentationLifecycle.settle(activeSession.pieceId);
+          if (localMovePresentationLifecycle.settle(activeSession.pieceId)) {
+            pendingLocalMovePathNodeIdsRef.current = [];
+          }
           if (finalization.shouldPlayStackSound) {
             window.setTimeout(playConfirmedStackSoundEffect, STACK_SOUND_DELAY_MS);
           }
