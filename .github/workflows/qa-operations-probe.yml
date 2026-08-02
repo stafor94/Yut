@@ -1,0 +1,115 @@
+name: QA operations probe
+
+on:
+  push:
+    branches: [agent/qa-operations-probe]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: qa-operations-probe
+  cancel-in-progress: true
+
+jobs:
+  dispatch-and-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Dispatch full QA and report results
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const config = JSON.parse(fs.readFileSync('.github/qa-operations-probe.json', 'utf8'));
+          const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+          const apiBase = `https://api.github.com/repos/${owner}/${repo}`;
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${process.env.GH_TOKEN}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'yut-qa-operations-probe',
+          };
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          async function request(path, options = {}) {
+            const response = await fetch(`${apiBase}${path}`, {
+              ...options,
+              headers: { ...headers, ...(options.headers ?? {}) },
+            });
+            const text = await response.text();
+            if (!response.ok) throw new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${text}`);
+            return text ? JSON.parse(text) : null;
+          }
+          async function createReport(body) {
+            return request('/issues', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: config.reportTitle, body }),
+            });
+          }
+          async function findRun({ workflow, event, branch, headSha }) {
+            const query = new URLSearchParams({ event, branch, head_sha: headSha, per_page: '20' });
+            const data = await request(`/actions/workflows/${encodeURIComponent(workflow)}/runs?${query}`);
+            return data.workflow_runs?.find((run) => run.head_sha === headSha) ?? null;
+          }
+          let dispatchedRun = null;
+          let mainRun = null;
+          let error = null;
+          try {
+            await request(`/actions/workflows/${encodeURIComponent(config.workflow)}/dispatches`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ref: config.ref }),
+            });
+            for (let attempt = 0; attempt < 80; attempt += 1) {
+              dispatchedRun = await findRun({ workflow: config.workflow, event: 'workflow_dispatch', branch: config.ref, headSha: config.headSha });
+              if (dispatchedRun) break;
+              await sleep(15_000);
+            }
+            if (!dispatchedRun) throw new Error('workflow_dispatch run을 찾지 못했습니다.');
+            for (let attempt = 0; attempt < 300 && dispatchedRun.status !== 'completed'; attempt += 1) {
+              await sleep(15_000);
+              dispatchedRun = await request(`/actions/runs/${dispatchedRun.id}`);
+            }
+            if (dispatchedRun.status !== 'completed') throw new Error(`workflow run이 완료되지 않았습니다: ${dispatchedRun.status}`);
+            const jobs = await request(`/actions/runs/${dispatchedRun.id}/jobs?per_page=100`);
+            dispatchedRun.jobs = (jobs.jobs ?? []).map(({ name, status, conclusion }) => ({ name, status, conclusion }));
+            mainRun = await findRun({ workflow: config.workflow, event: 'push', branch: 'main', headSha: config.mainSha });
+            if (mainRun && mainRun.status !== 'completed') {
+              for (let attempt = 0; attempt < 300 && mainRun.status !== 'completed'; attempt += 1) {
+                await sleep(15_000);
+                mainRun = await request(`/actions/runs/${mainRun.id}`);
+              }
+            }
+          } catch (caught) {
+            error = caught instanceof Error ? caught.message : String(caught);
+          }
+          const lines = [
+            '## QA operations probe',
+            '',
+            `- target ref: \`${config.ref}\``,
+            `- target head: \`${config.headSha}\``,
+            `- dispatched run: ${dispatchedRun?.html_url ?? 'not found'}`,
+            `- dispatched status: \`${dispatchedRun?.status ?? 'unknown'}\``,
+            `- dispatched conclusion: \`${dispatchedRun?.conclusion ?? 'unknown'}\``,
+            `- current main QA: ${mainRun?.html_url ?? 'not found'}`,
+            `- current main QA status: \`${mainRun?.status ?? 'unknown'}\``,
+            `- current main QA conclusion: \`${mainRun?.conclusion ?? 'unknown'}\``,
+            `- error: ${error ? `\`${error.replaceAll('`', "'")}\`` : 'none'}`,
+            '',
+            '### Dispatched jobs',
+            '',
+            '```json',
+            JSON.stringify(dispatchedRun?.jobs ?? [], null, 2),
+            '```',
+          ];
+          await createReport(lines.join('\n'));
+          if (error || dispatchedRun?.conclusion !== 'success') process.exitCode = 1;
+          NODE
