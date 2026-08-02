@@ -1,7 +1,7 @@
 {
   "workflow": "qa.yml",
-  "targetEvent": "workflow_dispatch",
-  "targetRef": "agent/add-pr-required-qa",
-  "targetSha": "047066f2846b02b311642604fb48ec6f15b045ed",
-  "reportTitle": "[QA snapshot] PR1333 final bootstrap 047066f"
+  "targetEvent": "push",
+  "targetRef": "main",
+  "targetSha": "6812850b755ab2f397b9a4eaf25c21ec8ffd261f",
+  "reportTitle": "[QA snapshot] PR1333 merged main 6812850"
 }
