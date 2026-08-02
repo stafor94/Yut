@@ -56,7 +56,7 @@ export class LocalMovePresentationLifecycle {
     if (this.snapshotValue.phase !== 'idle') this.finishCurrent();
     if (this.expectedSettlement?.actionKey === actionKey && this.expectedSettlement.pieceId === pieceId) return true;
     this.resolveExpectedSettlement();
-    let resolve = () => undefined;
+    let resolve: () => void = () => {};
     const promise = new Promise<void>((nextResolve) => {
       resolve = nextResolve;
     });

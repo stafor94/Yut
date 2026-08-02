@@ -20,6 +20,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - PR #1308은 pending 등록 시 presentation lifecycle을 먼저 선점했다. 시작 경쟁은 줄였지만 server echo의 화면 상태 적용 자체는 유지했다.
 - PR #1309는 성공·오류 callback을 presentation settlement 뒤로 직렬화했다. callback 순서는 고정했지만 subscription, sequence replay, apply-wake, 수동 sync와 callback이 동일 로컬 결과를 다시 적용할 수 있었다.
 - PR #1310은 shared reducer 결과와 local move ledger를 추가했지만, controller가 lifecycle idle 상태에서 `waitForSettlement()`를 호출하면 이미 완료된 Promise를 받아 reducer 최종 상태를 실제 말 경로보다 먼저 적용할 수 있었다.
+- PR #1316은 동일 말의 실제 settlement 예약을 추가했지만 `let resolve = () => undefined`가 `() => undefined`로 추론되어 Promise resolver `() => void` 대입이 build에서 거부됐다. 런타임 로직과 무관한 타입 선언 누락이었다.
 
 ### Confirmed root cause
 
