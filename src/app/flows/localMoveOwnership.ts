@@ -295,6 +295,7 @@ export function prepareLocalMoveOwnership({
 
 export class LocalMoveLedger {
   private records = new Map<string, LocalMoveLedgerRecord>();
+  private settledRoomIdByClientMutationId = new Map<string, string>();
 
   constructor(private readonly settlementExpectation?: LocalMoveSettlementExpectation) {}
 
@@ -312,6 +313,7 @@ export class LocalMoveLedger {
       fingerprintMatched: null,
       hardResyncStarted: false,
     };
+    this.settledRoomIdByClientMutationId.delete(input.clientMutationId);
     this.records.set(input.clientMutationId, record);
     this.settlementExpectation?.expectNextSettlement(input.clientMutationId, input.pieceId, input.pathNodeIds);
     return record;
@@ -323,6 +325,11 @@ export class LocalMoveLedger {
 
   has(clientMutationId: unknown) {
     return Boolean(this.get(clientMutationId));
+  }
+
+  owns(clientMutationId: unknown) {
+    return typeof clientMutationId === 'string'
+      && (this.records.has(clientMutationId) || this.settledRoomIdByClientMutationId.has(clientMutationId));
   }
 
   findByRoom(roomId: string) {
@@ -379,7 +386,9 @@ export class LocalMoveLedger {
   }
 
   remove(clientMutationId: string) {
-    return this.records.delete(clientMutationId);
+    const activeRemoved = this.records.delete(clientMutationId);
+    const settledRemoved = this.settledRoomIdByClientMutationId.delete(clientMutationId);
+    return activeRemoved || settledRemoved;
   }
 
   clearRoom(roomId: string) {
@@ -387,10 +396,14 @@ export class LocalMoveLedger {
     for (const [clientMutationId, record] of this.records) {
       if (record.roomId === roomId) this.records.delete(clientMutationId);
     }
+    for (const [clientMutationId, settledRoomId] of this.settledRoomIdByClientMutationId) {
+      if (settledRoomId === roomId) this.settledRoomIdByClientMutationId.delete(clientMutationId);
+    }
   }
 
   clear() {
     this.records.clear();
+    this.settledRoomIdByClientMutationId.clear();
   }
 
   size() {
@@ -401,7 +414,10 @@ export class LocalMoveLedger {
     const settled = record.localPresentationCompleted
       && record.serverSequenceAcked
       && record.fingerprintMatched === true;
-    if (settled) this.records.delete(record.clientMutationId);
+    if (settled) {
+      this.records.delete(record.clientMutationId);
+      this.settledRoomIdByClientMutationId.set(record.clientMutationId, record.roomId);
+    }
     return settled;
   }
 }
@@ -418,7 +434,7 @@ export function classifyAuthoritativeDelivery(
   const presentationSnapshot = presentation.snapshot();
   const presentedLocally = presentationSnapshot.phase === 'presenting'
     && presentationSnapshot.actionKey === clientMutationId;
-  return clientMutationId && (ledger.has(clientMutationId) || presentedLocally)
+  return clientMutationId && (ledger.owns(clientMutationId) || presentedLocally)
     ? 'local-echo'
     : 'remote-action';
 }
