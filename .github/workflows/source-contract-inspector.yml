@@ -12,22 +12,34 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/fix-local-move-snapshot-pieces
-      - name: Locate result application and pieces iteration
-        run: |
-          {
-            echo '### authoritative result application'
-            grep -RInE -C 35 --exclude-dir=node_modules --exclude-dir=dist 'applyAuthoritativeResultSequence|applySyncedStateSnapshot|applyAuthoritativeResult|move_piece_resolved|onMoveSelectedPiece' src/app || true
-            echo
-            echo '### direct pieces iteration and spread'
-            grep -RInE -C 12 --exclude-dir=node_modules --exclude-dir=dist 'for \([^\n]* of [^\n]*\.pieces|\.\.\.[A-Za-z0-9_]+\.pieces|pieces: \[\.\.\.|new Map\([^\n]*pieces' src || true
-          } > /tmp/source-contract.txt
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build exact QA bundle
+        run: |
+          node .github/scripts/write-qa-firebase-env.mjs
+          npm run build:qa
+      - name: Extract failing minified stack locations
+        run: |
+          python3 <<'PY' > /tmp/source-contract.txt
+          from pathlib import Path
+          asset = next(Path('dist/assets').glob('index-*.js'))
+          lines = asset.read_text().splitlines()
+          print('asset', asset)
+          for line_no, col in [(9, 52630), (41, 124071), (41, 139266), (41, 150147), (41, 262851)]:
+              line = lines[line_no - 1]
+              start = max(0, col - 1200)
+              end = min(len(line), col + 1200)
+              print(f'\n### line {line_no} col {col}\n')
+              print(line[start:end])
+          PY
       - name: Publish source context
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,8 +59,8 @@ jobs:
                 'User-Agent': 'yut-source-contract-inspector',
               },
               body: JSON.stringify({
-                title: '[Source contract] Authoritative move presentation pieces',
-                body: `## Authoritative result and pieces contracts\n\n\`\`\`text\n${output.slice(0, 62000)}\n\`\`\``,
+                title: '[Source map] Mobile stacked timeout minified stack',
+                body: `## Exact bundle stack context\n\n\`\`\`javascript\n${output.slice(0, 62000)}\n\`\`\``,
               }),
             });
             if (!response.ok) throw new Error(`issue create failed: ${response.status} ${await response.text()}`);
