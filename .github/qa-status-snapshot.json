@@ -2,8 +2,8 @@
   "workflow": "qa.yml",
   "targetEvent": "push",
   "targetRef": "main",
-  "targetSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] pre-merge main e7b0828",
-  "trigger": 39
+  "targetSha": "5a126a0b68cb202c79d10779e2747c14157cdc37",
+  "mainSha": "5a126a0b68cb202c79d10779e2747c14157cdc37",
+  "reportTitle": "[QA snapshot] merged local move pieces 5a126a0",
+  "trigger": 40
 }
