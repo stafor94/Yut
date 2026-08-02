@@ -4,6 +4,6 @@
   "targetRef": "firebase-smooth-integration",
   "targetSha": "559544b6f5402773c0380d102cd2460be334ca66",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] local move pieces fallback trigger",
-  "trigger": 26
+  "reportTitle": "[QA snapshot] active fallback patcher trigger",
+  "trigger": 27
 }
