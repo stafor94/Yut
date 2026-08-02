@@ -46,7 +46,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - 같은 `clientMutationId`의 서버 결과는 sequence/version, authoritative 기준 상태, pending ACK와 fingerprint만 갱신하며 `pieces`, `roll`, `movingPieceId` 또는 이동·윷 presentation을 다시 변경하지 않는다.
 - 다른 플레이어의 새 sequence만 기존 replay 경로로 한 번 표시한다. 이미 적용한 sequence/version은 상태와 presentation 모두 생략한다.
 - local move ledger는 pending metadata와 독립적으로 유지하고 presentation 완료, server sequence ACK, fingerprint 일치가 모두 확인된 뒤 active record를 정리한다.
-- settled local move identity는 같은 방을 유지하는 동안 tombstone으로 보존해, 지연된 동일 mutation callback·subscription·snapshot도 계속 local echo로 처리한다.
+- settled local move identity는 확정 sequence/version과 함께 room 단위 tombstone으로 보존한다. 동일하거나 오래된 delivery만 local echo로 처리하고, 같은 mutation ID라도 더 최신 sequence/version은 정상 적용한다.
 - reducer 결과 finalization은 lifecycle이 이미 active인지와 무관하게 ledger가 예약한 동일 piece의 실제 GameBoard 관찰과 settlement 뒤에만 실행한다.
 - active local move settlement는 정확히 같은 `pieceId`를 가진 callback만 완료할 수 있다. 이전 queue의 generic settlement나 다른 말 settlement는 현재 waiter를 해제하지 않는다.
 - 최종 목적지가 먼저 관찰돼도 이동 직전의 전체 경로가 순서대로 관찰되기 전에는 settlement하지 않는다.
@@ -77,7 +77,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - [x] 최종 목적지가 먼저 들어온 뒤 `n02 → n03 → n04` 전체 경로를 관찰해야 settlement하는 단위 회귀 테스트 추가
 - [x] synced roll이 늦은 빠른 ACK 실행 클라이언트에서도 action identity로 local move ownership을 준비하는 단위 회귀 테스트 추가
 - [x] ledger가 없어도 동일 action key를 실제 presenting 중인 결과를 local echo로 분류하는 단위 회귀 테스트 추가
-- [x] active ledger 정리 후에도 동일 mutation snapshot을 local echo로 유지하고 room clear에서 해제하는 단위 회귀 테스트 추가
+- [x] active ledger 정리 후 동일 mutation의 확정 sequence/version만 local echo로 유지하고 더 최신 상태와 room clear를 검증하는 단위 회귀 테스트 추가
 - [ ] Unit tests pass
 - [ ] Build succeeds
 - [ ] QA architecture validation passes
