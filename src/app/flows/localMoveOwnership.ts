@@ -149,6 +149,38 @@ const normalizeOwnedItems = (value: unknown) => {
 
 const normalizeStringArray = (value: unknown) => Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 
+const BONUS_ROLL_NAMES = new Set(['윷', '모', '황금 윷']);
+
+const getPendingLocalMoveRoll = (action: LocalMoveAction) => {
+  const payloadRollName = typeof action.payload?.rollName === 'string' ? action.payload.rollName : '';
+  const payloadRollSteps = Number(action.payload?.rollSteps);
+  if (payloadRollName && Number.isFinite(payloadRollSteps)) {
+    return {
+      name: payloadRollName,
+      steps: payloadRollSteps,
+      bonus: BONUS_ROLL_NAMES.has(payloadRollName),
+    };
+  }
+
+  const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
+  const tokens = clientActionId.split(':');
+  if (tokens.length < 6 || tokens[0] !== 'move_piece' || tokens[1] !== action.actorId) return null;
+  const rollName = tokens[4] ?? '';
+  const rollSteps = Number(tokens[5]);
+  if (!rollName || rollName === 'ready' || !Number.isFinite(rollSteps)) return null;
+  return {
+    name: rollName,
+    steps: rollSteps,
+    bonus: BONUS_ROLL_NAMES.has(rollName),
+  };
+};
+
+const getLocalMoveReductionState = (state: LocalMoveState, action: LocalMoveAction): LocalMoveState => {
+  if (normalizeRoll(state.roll)) return state;
+  const pendingRoll = getPendingLocalMoveRoll(action);
+  return pendingRoll ? { ...state, roll: pendingRoll } : state;
+};
+
 export function makeLocalMoveResultFingerprint(state: Record<string, unknown>) {
   const pieces = Array.isArray(state.pieces) ? state.pieces.map(normalizePiece).sort((left, right) => {
     const leftId = left && typeof left === 'object' && 'id' in left ? String(left.id) : '';
@@ -219,13 +251,14 @@ export function prepareLocalMoveOwnership({
     .map((seat) => ({ id: seat.id, team: seat.team }));
   if (sides.length !== state.gameSeats.length) return null;
 
+  const reductionState = getLocalMoveReductionState(state, action);
   const reduction = reduceAuthoritativeGameAction(
-    state as Parameters<typeof reduceAuthoritativeGameAction>[0],
+    reductionState as Parameters<typeof reduceAuthoritativeGameAction>[0],
     action as Parameters<typeof reduceAuthoritativeGameAction>[1],
     {
-      playMode: state.playMode,
-      pieceCount: state.pieceCount,
-      stackedRollMode: state.stackedRollMode,
+      playMode: reductionState.playMode,
+      pieceCount: reductionState.pieceCount,
+      stackedRollMode: reductionState.stackedRollMode,
     },
     sides,
   );
@@ -237,7 +270,7 @@ export function prepareLocalMoveOwnership({
   if (!pieceId || !pathNodeIds.length) return null;
 
   const finalState: LocalMoveState = {
-    ...state,
+    ...reductionState,
     ...reduction.patch,
     lastClientMutationId: clientMutationId,
   };
