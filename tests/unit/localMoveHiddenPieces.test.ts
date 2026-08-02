@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getAuthoritativeSnapshot } from '../../src/app/flows/authoritativeSnapshot';
-import { prepareLocalMoveOwnership } from '../../src/app/flows/localMoveOwnership';
+import { prepareLocalMoveOwnership, withLocalMovePiecesFallback } from '../../src/app/flows/localMoveOwnership';
 import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
 
 const BLUE_TEAM = '\uCCAD\uD300' as const;
@@ -118,4 +118,33 @@ test('uses pieces from a complete authoritative snapshot', () => {
   };
 
   assert.equal(getAuthoritativeSnapshot(snapshot, fallback), snapshot);
+});
+
+
+test('uses rendered pieces when the controller snapshot has no pieces', () => {
+  const completeState = makeOnlineMoveState();
+  const { pieces, ...partialState } = completeState;
+  const restoredState = withLocalMovePiecesFallback(partialState, pieces);
+
+  assert.ok(restoredState);
+  assert.equal(restoredState.pieces, pieces);
+  const prepared = prepareLocalMoveOwnership({
+    roomId: 'room-a',
+    state: restoredState,
+    action: {
+      type: 'move_piece',
+      actorId: 'P1',
+      payload: {
+        pieceId: 'piece-1',
+        extraSteps: 0,
+        branchChoice: 'outer',
+        rollStackIndex: null,
+        clientActionId: `move_piece:P1:10:0:${MO}:5:fallback`,
+        clientActionStartedAt: Date.now(),
+      },
+    },
+  });
+
+  assert.ok(prepared);
+  assert.equal(prepared.record.toNodeId, 'n06');
 });

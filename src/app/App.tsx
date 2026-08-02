@@ -2943,6 +2943,7 @@ export function App() {
     lastAppliedSequenceRef,
     lastAppliedStateVersionRef,
     applyingSyncedStateRef,
+    currentPiecesRef: piecesRef,
     replayMissingSequencesThenApply,
     applySyncedStateSnapshot,
     applyAuthoritativeResultSequence,

@@ -26,6 +26,7 @@ import {
   localMoveLedger,
   makeLocalMoveResultFingerprint,
   prepareLocalMoveOwnership,
+  withLocalMovePiecesFallback,
 } from '../flows/localMoveOwnership';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
@@ -44,6 +45,7 @@ type Params = {
   lastAppliedSequenceRef: MutableRefObject<number>;
   lastAppliedStateVersionRef: MutableRefObject<number>;
   applyingSyncedStateRef: MutableRefObject<boolean>;
+  currentPiecesRef: MutableRefObject<unknown[]>;
   replayMissingSequencesThenApply: (finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) => Promise<void>;
   applySyncedStateSnapshot: (state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => void;
   applyAuthoritativeResultSequence: (result: AuthoritativeCommitResult) => Promise<unknown>;
@@ -187,7 +189,10 @@ export function useAuthoritativeGameSyncController(params: Params) {
     if (action.type !== 'move_piece') return;
     const prepared = prepareLocalMoveOwnership({
       roomId,
-      state: latestSyncedStateRef.current as Record<string, unknown> | null,
+      state: withLocalMovePiecesFallback(
+        latestSyncedStateRef.current as Record<string, unknown> | null,
+        params.currentPiecesRef.current,
+      ),
       action,
     });
     if (!prepared) return;
@@ -215,7 +220,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
         params.acknowledgePendingLocalRemoteAction(actionKey);
       }
     });
-  }, [params.acknowledgePendingLocalRemoteAction, params.activeRoomIdRef]);
+  }, [params.acknowledgePendingLocalRemoteAction, params.activeRoomIdRef, params.currentPiecesRef]);
 
   const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
   const clearAuthoritativeApplyWake = useCallback(() => {

@@ -195,6 +195,20 @@ const keepLocalPiecesOutOfDisplaySpread = (state: LocalMoveState, pieces: unknow
   return state;
 };
 
+export function withLocalMovePiecesFallback(
+  state: Record<string, unknown> | null,
+  fallbackPieces: unknown[],
+): Record<string, unknown> | null {
+  const localState = state as LocalMoveState | null;
+  if (!localState
+    || Array.isArray(localState.pieces)
+    || Array.isArray(localState[LOCAL_MOVE_PIECES])
+    || !Array.isArray(fallbackPieces)) {
+    return localState;
+  }
+  return { ...localState, pieces: fallbackPieces };
+}
+
 const getLocalMoveReductionState = (state: LocalMoveState, action: LocalMoveAction): LocalMoveState => {
   const pieces = Array.isArray(state.pieces)
     ? state.pieces
