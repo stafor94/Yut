@@ -4,5 +4,6 @@
   "headSha": "e79e7dd631a098cb59b6be486ba29d05092a65e3",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
   "reportTitle": "[QA probe] PR1 bootstrap rerun e79e7dd",
-  "trigger": 3
+  "excludeRunIds": [30736809205],
+  "trigger": 4
 }
