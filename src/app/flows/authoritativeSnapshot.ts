@@ -9,12 +9,7 @@ const mergePartialSnapshot = <T extends object>(
   fallback: T | null,
 ): T => {
   if (Array.isArray(snapshot.pieces) || !fallback) return snapshot as T;
-  const fallbackPieces = (fallback as SnapshotRecord).pieces;
-  return {
-    ...fallback,
-    ...(Array.isArray(fallbackPieces) ? { pieces: fallbackPieces } : {}),
-    ...snapshot,
-  } as T;
+  return { ...fallback, ...snapshot } as T;
 };
 
 export function getAuthoritativeSnapshot<T extends object>(

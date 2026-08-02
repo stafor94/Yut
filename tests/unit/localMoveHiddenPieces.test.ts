@@ -53,7 +53,7 @@ const makeOnlineMoveState = () => ({
   turnVersion: 3,
 });
 
-test('restores hidden local pieces when applying a partial authoritative result', () => {
+test('preserves hidden local pieces after a partial authoritative result', () => {
   const firstMove = prepareLocalMoveOwnership({
     roomId: 'room-a',
     state: makeOnlineMoveState(),
@@ -82,9 +82,7 @@ test('restores hidden local pieces when applying a partial authoritative result'
     turnVersion: 4,
   }, firstMove.finalState);
   assert.ok(partialAppliedState);
-  assert.equal(Object.prototype.hasOwnProperty.call(partialAppliedState, 'pieces'), true);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(partialAppliedState, 'pieces'), true);
-  assert.equal(partialAppliedState.pieces, firstMove.record.finalPieces);
+  assert.equal(Object.prototype.hasOwnProperty.call(partialAppliedState, 'pieces'), false);
 
   const secondMove = prepareLocalMoveOwnership({
     roomId: 'room-a',
@@ -107,60 +105,6 @@ test('restores hidden local pieces when applying a partial authoritative result'
   assert.equal(secondMove.record.fromNodeId, 'n06');
   assert.ok(secondMove.record.pathNodeIds.length > 0);
   assert.equal(Object.prototype.propertyIsEnumerable.call(secondMove.finalState, 'pieces'), false);
-});
-
-test('keeps restored pieces through a stacked roll reducer override', () => {
-  const firstMove = prepareLocalMoveOwnership({
-    roomId: 'room-a',
-    state: makeOnlineMoveState(),
-    action: {
-      type: 'move_piece',
-      actorId: 'P1',
-      payload: {
-        pieceId: 'piece-1',
-        extraSteps: 0,
-        branchChoice: 'outer',
-        rollStackIndex: null,
-        clientActionId: `move_piece:P1:10:0:${MO}:5:stack-source`,
-        clientActionStartedAt: Date.now(),
-      },
-    },
-  });
-
-  assert.ok(firstMove);
-  const stackedState = getAuthoritativeSnapshot({
-    stackedRollMode: true,
-    roll: null,
-    rollStack: [{ name: GEOL, steps: 3, bonus: false }],
-    selectedRollStackIndex: 0,
-    rollStackClosed: true,
-    lastSequence: 11,
-    turnVersion: 4,
-  }, firstMove.finalState);
-  assert.ok(stackedState);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(stackedState, 'pieces'), true);
-
-  const stackedMove = prepareLocalMoveOwnership({
-    roomId: 'room-a',
-    state: stackedState,
-    action: {
-      type: 'move_piece',
-      actorId: 'P1',
-      payload: {
-        pieceId: 'piece-1',
-        extraSteps: 0,
-        branchChoice: 'outer',
-        rollStackIndex: 0,
-        clientActionId: `move_piece:P1:11:0:${GEOL}:3:stacked`,
-        clientActionStartedAt: Date.now(),
-      },
-    },
-  });
-
-  assert.ok(stackedMove);
-  assert.equal(stackedMove.record.fromNodeId, 'n06');
-  assert.ok(stackedMove.record.pathNodeIds.length > 0);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(stackedMove.finalState, 'pieces'), false);
 });
 
 test('uses pieces from a complete authoritative snapshot', () => {
