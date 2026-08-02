@@ -15,13 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download failed Safari artifact
+      - name: Download failed Online core artifact
         uses: actions/download-artifact@v4
         with:
-          name: qa-safvis-results
+          name: qa-core-results
           path: inspected-artifact
           repository: stafor94/Yut
-          run-id: 30736809205
+          run-id: 30737095472
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
@@ -45,7 +45,7 @@ jobs:
               }
             }
             walk(root);
-            function clipped(file, limit = 16000) {
+            function clipped(file, limit = 20000) {
               const text = fs.readFileSync(file, 'utf8');
               return text.length <= limit ? text : text.slice(-limit);
             }
@@ -53,33 +53,36 @@ jobs:
             for (const file of files.filter((candidate) => candidate.endsWith('error-context.md'))) {
               sections.push(`### ${path.relative(root, file)}\n\n\`\`\`text\n${clipped(file)}\n\`\`\``);
             }
-            for (const file of files.filter((candidate) => /(?:console-log\.txt|playwright-.*\.log)$/u.test(candidate))) {
-              sections.push(`### ${path.relative(root, file)}\n\n\`\`\`text\n${clipped(file, 12000)}\n\`\`\``);
+            for (const file of files.filter((candidate) => /(?:console-log\.txt|playwright-.*\.log|qa-emulator-suite\.log)$/u.test(candidate))) {
+              const text = clipped(file, 30000);
+              const matched = text
+                .split('\n')
+                .filter((line) => /room-exit-resume|authoritative|sequence|activeSeat|isMyTurn|roll|move|timeout|error|warning|rejoin|resume|substitut/iu.test(line))
+                .slice(-240)
+                .join('\n');
+              sections.push(`### ${path.relative(root, file)} matched log\n\n\`\`\`text\n${matched}\n\`\`\``);
             }
             for (const file of files.filter((candidate) => candidate.endsWith('trace.zip'))) {
-              let listing = '';
               let matched = '';
               try {
-                listing = execFileSync('unzip', ['-l', file], { encoding: 'utf8' });
                 const traceName = execFileSync('unzip', ['-Z1', file], { encoding: 'utf8' })
                   .split('\n')
                   .find((name) => name.endsWith('trace.trace'));
                 if (traceName) {
                   const trace = execFileSync('unzip', ['-p', file, traceName], {
                     encoding: 'utf8',
-                    maxBuffer: 50 * 1024 * 1024,
+                    maxBuffer: 100 * 1024 * 1024,
                   });
                   matched = trace
                     .split('\n')
-                    .filter((line) => /room|방 생성|create-room|activeRoomId|alertdialog|waiting-room|Firestore|permission|error/iu.test(line))
-                    .slice(-160)
+                    .filter((line) => /authoritative|lastSequence|activeSeat|isMyTurn|roll-yut-button|move-piece-button|turn|rejoin|resume|substitut|error|warning|console/iu.test(line))
+                    .slice(-360)
                     .join('\n');
                 }
               } catch (error) {
                 matched = `trace inspection failed: ${error instanceof Error ? error.message : String(error)}`;
               }
-              sections.push(`### ${path.relative(root, file)} listing\n\n\`\`\`text\n${listing.slice(-12000)}\n\`\`\``);
-              sections.push(`### ${path.relative(root, file)} matched events\n\n\`\`\`jsonl\n${matched.slice(-24000)}\n\`\`\``);
+              sections.push(`### ${path.relative(root, file)} matched trace events\n\n\`\`\`jsonl\n${matched.slice(-48000)}\n\`\`\``);
             }
             const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
             const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
@@ -92,7 +95,7 @@ jobs:
                 'User-Agent': 'yut-qa-artifact-inspector',
               },
               body: JSON.stringify({
-                title: '[QA artifact] Safari visible mismatch bootstrap failure',
+                title: '[QA artifact] Online reconnect authoritative turn failure',
                 body: ['## Failed QA artifact inspection', '', ...sections].join('\n\n').slice(0, 64000),
               }),
             });
