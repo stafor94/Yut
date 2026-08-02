@@ -295,6 +295,7 @@ export function prepareLocalMoveOwnership({
   if (sides.length !== state.gameSeats.length) return null;
 
   const reductionState = getLocalMoveReductionState(state, action);
+  if (!Array.isArray(reductionState.pieces)) return null;
   const reduction = reduceAuthoritativeGameAction(
     reductionState as Parameters<typeof reduceAuthoritativeGameAction>[0],
     action as Parameters<typeof reduceAuthoritativeGameAction>[1],

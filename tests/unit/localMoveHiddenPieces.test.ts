@@ -179,3 +179,28 @@ test('restores enumerable rendered pieces when hidden pieces have a symbol backu
   assert.equal(Object.prototype.propertyIsEnumerable.call(restored, 'pieces'), true);
   assert.equal(restored.pieces, firstMove.record.finalPieces);
 });
+
+
+test('skips local presentation ownership when pieces are unavailable', () => {
+  const completeState = makeOnlineMoveState();
+  const { pieces: _pieces, ...stateWithoutPieces } = completeState;
+
+  const prepared = prepareLocalMoveOwnership({
+    roomId: 'room-a',
+    state: stateWithoutPieces,
+    action: {
+      type: 'move_piece',
+      actorId: 'P1',
+      payload: {
+        pieceId: 'piece-1',
+        extraSteps: 0,
+        branchChoice: 'outer',
+        rollStackIndex: null,
+        clientActionId: `move_piece:P1:10:0:${MO}:5:missing-pieces`,
+        clientActionStartedAt: Date.now(),
+      },
+    },
+  });
+
+  assert.equal(prepared, null);
+});
