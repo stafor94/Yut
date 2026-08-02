@@ -79,6 +79,11 @@ export type PreparedLocalMoveOwnership = {
 
 type LocalMoveSettlementExpectation = Pick<LocalMovePresentationLifecycle, 'expectNextSettlement'>;
 type LocalMovePresentationOwnership = Pick<LocalMovePresentationLifecycle, 'snapshot'>;
+type SettledLocalMoveOwnership = {
+  roomId: string;
+  serverSequence: number;
+  serverStateVersion: number;
+};
 
 const toFiniteInteger = (value: unknown) => {
   const numericValue = Number(value ?? 0);
@@ -295,6 +300,7 @@ export function prepareLocalMoveOwnership({
 
 export class LocalMoveLedger {
   private records = new Map<string, LocalMoveLedgerRecord>();
+  private settledOwnershipByClientMutationId = new Map<string, SettledLocalMoveOwnership>();
 
   constructor(private readonly settlementExpectation?: LocalMoveSettlementExpectation) {}
 
@@ -312,6 +318,7 @@ export class LocalMoveLedger {
       fingerprintMatched: null,
       hardResyncStarted: false,
     };
+    this.settledOwnershipByClientMutationId.delete(input.clientMutationId);
     this.records.set(input.clientMutationId, record);
     this.settlementExpectation?.expectNextSettlement(input.clientMutationId, input.pieceId, input.pathNodeIds);
     return record;
@@ -323,6 +330,33 @@ export class LocalMoveLedger {
 
   has(clientMutationId: unknown) {
     return Boolean(this.get(clientMutationId));
+  }
+
+  owns(clientMutationId: unknown) {
+    return typeof clientMutationId === 'string'
+      && (this.records.has(clientMutationId) || this.settledOwnershipByClientMutationId.has(clientMutationId));
+  }
+
+  ownsDelivery(clientMutationId: unknown, sequence?: unknown, stateVersion?: unknown) {
+    if (typeof clientMutationId !== 'string') return false;
+    if (this.records.has(clientMutationId)) return true;
+    const settled = this.settledOwnershipByClientMutationId.get(clientMutationId);
+    if (!settled) return false;
+
+    const incomingSequence = toFiniteInteger(sequence);
+    const incomingStateVersion = toFiniteInteger(stateVersion);
+    if (settled.serverSequence > 0 && incomingSequence > 0) {
+      if (incomingSequence < settled.serverSequence) return true;
+      if (incomingSequence > settled.serverSequence) return false;
+      if (settled.serverStateVersion > 0 && incomingStateVersion > 0) {
+        return incomingStateVersion <= settled.serverStateVersion;
+      }
+      return true;
+    }
+    if (settled.serverStateVersion > 0 && incomingStateVersion > 0) {
+      return incomingStateVersion <= settled.serverStateVersion;
+    }
+    return true;
   }
 
   findByRoom(roomId: string) {
@@ -379,7 +413,9 @@ export class LocalMoveLedger {
   }
 
   remove(clientMutationId: string) {
-    return this.records.delete(clientMutationId);
+    const activeRemoved = this.records.delete(clientMutationId);
+    const settledRemoved = this.settledOwnershipByClientMutationId.delete(clientMutationId);
+    return activeRemoved || settledRemoved;
   }
 
   clearRoom(roomId: string) {
@@ -387,10 +423,14 @@ export class LocalMoveLedger {
     for (const [clientMutationId, record] of this.records) {
       if (record.roomId === roomId) this.records.delete(clientMutationId);
     }
+    for (const [clientMutationId, settled] of this.settledOwnershipByClientMutationId) {
+      if (settled.roomId === roomId) this.settledOwnershipByClientMutationId.delete(clientMutationId);
+    }
   }
 
   clear() {
     this.records.clear();
+    this.settledOwnershipByClientMutationId.clear();
   }
 
   size() {
@@ -401,7 +441,14 @@ export class LocalMoveLedger {
     const settled = record.localPresentationCompleted
       && record.serverSequenceAcked
       && record.fingerprintMatched === true;
-    if (settled) this.records.delete(record.clientMutationId);
+    if (settled) {
+      this.records.delete(record.clientMutationId);
+      this.settledOwnershipByClientMutationId.set(record.clientMutationId, {
+        roomId: record.roomId,
+        serverSequence: record.serverSequence,
+        serverStateVersion: record.serverStateVersion,
+      });
+    }
     return settled;
   }
 }
@@ -418,7 +465,7 @@ export function classifyAuthoritativeDelivery(
   const presentationSnapshot = presentation.snapshot();
   const presentedLocally = presentationSnapshot.phase === 'presenting'
     && presentationSnapshot.actionKey === clientMutationId;
-  return clientMutationId && (ledger.has(clientMutationId) || presentedLocally)
+  return clientMutationId && (ledger.ownsDelivery(clientMutationId, input.sequence, input.stateVersion) || presentedLocally)
     ? 'local-echo'
     : 'remote-action';
 }
