@@ -39,6 +39,7 @@ jobs:
               'X-GitHub-Api-Version': '2022-11-28',
               'User-Agent': 'yut-qa-operations-probe',
             };
+            const excludedRunIds = new Set(config.excludeRunIds ?? []);
             const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
             async function request(path, options = {}) {
               const response = await fetch(`${apiBase}${path}`, {
@@ -59,7 +60,7 @@ jobs:
             async function findRun({ workflow, event, branch, headSha }) {
               const query = new URLSearchParams({ event, branch, head_sha: headSha, per_page: '20' });
               const data = await request(`/actions/workflows/${encodeURIComponent(workflow)}/runs?${query}`);
-              return data.workflow_runs?.find((run) => run.head_sha === headSha) ?? null;
+              return data.workflow_runs?.find((run) => run.head_sha === headSha && !excludedRunIds.has(run.id)) ?? null;
             }
             let dispatchedRun = null;
             let mainRun = null;
@@ -80,7 +81,7 @@ jobs:
                 if (dispatchedRun) break;
                 await sleep(15_000);
               }
-              if (!dispatchedRun) throw new Error('workflow_dispatch run을 찾지 못했습니다.');
+              if (!dispatchedRun) throw new Error('새 workflow_dispatch run을 찾지 못했습니다.');
               for (let attempt = 0; attempt < 300 && dispatchedRun.status !== 'completed'; attempt += 1) {
                 await sleep(15_000);
                 dispatchedRun = await request(`/actions/runs/${dispatchedRun.id}`);
@@ -94,12 +95,9 @@ jobs:
                 status,
                 conclusion,
               }));
-              mainRun = await findRun({
-                workflow: config.workflow,
-                event: 'push',
-                branch: 'main',
-                headSha: config.mainSha,
-              });
+              const mainQuery = new URLSearchParams({ event: 'push', branch: 'main', head_sha: config.mainSha, per_page: '20' });
+              const mainData = await request(`/actions/workflows/${encodeURIComponent(config.workflow)}/runs?${mainQuery}`);
+              mainRun = mainData.workflow_runs?.find((run) => run.head_sha === config.mainSha) ?? null;
               if (mainRun && mainRun.status !== 'completed') {
                 for (let attempt = 0; attempt < 300 && mainRun.status !== 'completed'; attempt += 1) {
                   await sleep(15_000);
