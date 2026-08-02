@@ -4,6 +4,6 @@
   "targetRef": "firebase-smooth-integration",
   "targetSha": "bfd7fd90d47c8bdb657b50d30edf94d8232c3da7",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] nested snapshot type trigger",
-  "trigger": 20
+  "reportTitle": "[QA snapshot] controller snapshot type trigger",
+  "trigger": 21
 }
