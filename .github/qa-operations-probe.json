@@ -1,5 +1,5 @@
 {
   "ref": "agent/fix-local-move-snapshot-pieces",
-  "headSha": "bfd7fd90d47c8bdb657b50d30edf94d8232c3da7",
-  "trigger": 7
+  "headSha": "08d33b23a89b5d7f0191249176f7117f658ebf47",
+  "trigger": 8
 }
