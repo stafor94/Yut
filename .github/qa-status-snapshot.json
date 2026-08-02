@@ -2,8 +2,8 @@
   "workflow": "qa.yml",
   "targetEvent": "workflow_dispatch",
   "targetRef": "agent/fix-local-move-snapshot-pieces",
-  "targetSha": "85b51bb47731ec2b6958823b357c4570032d534a",
+  "targetSha": "7b1dfba19bfbf0574c79eb4ca7182e78339706c3",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] reducer hidden pieces 85b51bb",
-  "trigger": 37
+  "reportTitle": "[QA snapshot] corrected reducer fixture 7b1dfba",
+  "trigger": 38
 }
