@@ -14,7 +14,10 @@ import type { SequenceStateSnapshot } from '../appState';
 import { getQaMovePieceActionDelayMs, shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
-import { shouldConsumeLocalMoveCommitAck } from '../flows/localMoveCommitAck';
+import {
+  shouldConsumeLocalMoveCommitAck,
+  shouldReleaseLocalMovePending,
+} from '../flows/localMoveCommitAck';
 import { localMovePresentationLifecycle } from '../flows/localMovePresentationLifecycle';
 import {
   classifyAuthoritativeDelivery,
@@ -172,7 +175,6 @@ export function useAuthoritativeGameSyncController(params: Params) {
     if (authoritativeState) latestSyncedStateRef.current = authoritativeState;
     params.lastAppliedSequenceRef.current = Math.max(params.lastAppliedSequenceRef.current, identity.sequence);
     params.lastAppliedStateVersionRef.current = Math.max(params.lastAppliedStateVersionRef.current, identity.stateVersion);
-    params.acknowledgePendingLocalRemoteAction(identity.clientMutationId);
 
     const observed = localMoveLedger.observeAuthoritativeResult({
       clientMutationId: identity.clientMutationId,
@@ -188,6 +190,12 @@ export function useAuthoritativeGameSyncController(params: Params) {
         identity.clientMutationId,
         `서버 move_piece 결과가 로컬 결과와 일치하지 않습니다. actionKey=${identity.clientMutationId}`,
       );
+      return authoritativeState;
+    }
+    if (observed.status === 'matched'
+      && observed.record
+      && shouldReleaseLocalMovePending(observed.record)) {
+      params.acknowledgePendingLocalRemoteAction(identity.clientMutationId);
     }
     return authoritativeState;
   }, [params.acknowledgePendingLocalRemoteAction, params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef, runLocalMoveHardResync]);
@@ -220,8 +228,11 @@ export function useAuthoritativeGameSyncController(params: Params) {
         updateSequence: false,
       });
       localMoveLedger.markPresentationCompleted(actionKey);
+      if (shouldReleaseLocalMovePending(record)) {
+        params.acknowledgePendingLocalRemoteAction(actionKey);
+      }
     });
-  }, [params.activeRoomIdRef]);
+  }, [params.acknowledgePendingLocalRemoteAction, params.activeRoomIdRef]);
 
   const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
   const clearAuthoritativeApplyWake = useCallback(() => {
