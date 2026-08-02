@@ -6,86 +6,44 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  actions: read
-  contents: read
-  issues: write
+  contents: write
+
+concurrency:
+  group: qa-artifact-inspector
+  cancel-in-progress: true
 
 jobs:
-  inspect:
+  patch-and-validate:
+    if: github.head_ref == 'agent/qa-status-snapshot'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Download failed Mobile Galaxy artifact
-        uses: actions/download-artifact@v4
         with:
-          name: qa-galaxy-results
-          path: inspected-artifact
-          repository: stafor94/Yut
-          run-id: 30737773072
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          ref: agent/fix-local-move-snapshot-pieces
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Summarize stacked roll timeout artifact
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          cache: npm
+      - name: Apply staged patch
         run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-          const { execFileSync } = require('node:child_process');
-          (async () => {
-            const root = path.resolve('inspected-artifact');
-            const files = [];
-            function walk(directory) {
-              for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-                const full = path.join(directory, entry.name);
-                if (entry.isDirectory()) walk(full);
-                else files.push(full);
-              }
-            }
-            walk(root);
-            const relevant = files.filter((file) => file.includes('stacked-roll-timeou'));
-            const sections = [];
-            for (const file of relevant.filter((candidate) => candidate.endsWith('error-context.md'))) {
-              sections.push(`### ${path.relative(root, file)}\n\n\`\`\`text\n${fs.readFileSync(file, 'utf8').slice(0, 24000)}\n\`\`\``);
-            }
-            for (const file of files.filter((candidate) => /(?:console-log\.txt|playwright-.*\.log|qa-emulator-suite\.log)$/u.test(candidate))) {
-              const text = fs.readFileSync(file, 'utf8');
-              const matched = text.split('\n').filter((line) => /stacked-roll-timeout|authoritative|sequence|rollStack|selectedRoll|backdo|빽도|move-piece|timeout|error|warning|pageerror/iu.test(line)).slice(-320).join('\n');
-              sections.push(`### ${path.relative(root, file)} matched log\n\n\`\`\`text\n${matched.slice(-36000)}\n\`\`\``);
-            }
-            for (const file of relevant.filter((candidate) => candidate.endsWith('trace.zip'))) {
-              let matched = '';
-              try {
-                const traceName = execFileSync('unzip', ['-Z1', file], { encoding: 'utf8' }).split('\n').find((name) => name.endsWith('trace.trace'));
-                if (traceName) {
-                  const trace = execFileSync('unzip', ['-p', file, traceName], { encoding: 'utf8', maxBuffer: 100 * 1024 * 1024 });
-                  matched = trace.split('\n').filter((line) => /authoritative|lastSequence|rollStack|selectedRoll|backdo|빽도|move-piece-button|roll-yut-button|timeout|error|warning|console|pageError/iu.test(line)).slice(-500).join('\n');
-                }
-              } catch (error) {
-                matched = `trace inspection failed: ${error instanceof Error ? error.message : String(error)}`;
-              }
-              sections.push(`### ${path.relative(root, file)} matched trace\n\n\`\`\`jsonl\n${matched.slice(-52000)}\n\`\`\``);
-            }
-            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
-            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
-              method: 'POST',
-              headers: {
-                Accept: 'application/vnd.github+json',
-                Authorization: `Bearer ${process.env.GH_TOKEN}`,
-                'Content-Type': 'application/json',
-                'X-GitHub-Api-Version': '2022-11-28',
-                'User-Agent': 'yut-qa-artifact-inspector',
-              },
-              body: JSON.stringify({
-                title: '[QA artifact] Mobile stacked roll timeout failure',
-                body: ['## Failed QA artifact inspection', '', ...sections].join('\n\n').slice(0, 64000),
-              }),
-            });
-            if (!response.ok) throw new Error(`issue create failed: ${response.status} ${await response.text()}`);
-          })().catch((error) => {
-            console.error(error);
-            process.exitCode = 1;
-          });
-          NODE
+          git fetch origin agent/qa-status-snapshot
+          git show origin/agent/qa-status-snapshot:.github/patches/apply-local-move-fallback.py > /tmp/apply-local-move-fallback.py
+          python3 /tmp/apply-local-move-fallback.py
+      - run: npm ci
+      - run: npm run qa:validate-architecture
+      - run: npm run test:unit
+      - run: npm run build
+      - name: Commit validated fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/app/App.tsx src/app/controllers/useAuthoritativeGameSyncController.ts src/app/flows/localMoveOwnership.ts tests/unit/localMoveHiddenPieces.test.ts
+          if git diff --cached --quiet; then
+            echo 'No changes to commit.'
+            exit 0
+          fi
+          git commit -m 'fix: supply rendered pieces to local move reducer'
+          git push origin HEAD:agent/fix-local-move-snapshot-pieces
