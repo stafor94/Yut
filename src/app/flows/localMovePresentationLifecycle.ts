@@ -87,7 +87,7 @@ export class LocalMovePresentationLifecycle {
 
   settle(pieceId = '') {
     if (this.snapshotValue.phase !== 'presenting') return false;
-    if (pieceId && this.snapshotValue.pieceId && pieceId !== this.snapshotValue.pieceId) return false;
+    if (!pieceId || pieceId !== this.snapshotValue.pieceId) return false;
     this.finishCurrent();
     return true;
   }
