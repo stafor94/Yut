@@ -35,32 +35,22 @@ jobs:
           path = Path('src/app/controllers/useAuthoritativeGameSyncController.ts')
           content = path.read_text()
 
-          old_remember = """  const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
-            const roomId = params.activeRoomIdRef.current;
-            const aliasedState = aliasTimeoutRollMutationIds(roomId, state);
-            const classification = getDeliveryClassification(aliasedState);
-          """.replace('          ', '')
-          new_remember = """  const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
-            const roomId = params.activeRoomIdRef.current;
-            const rawAliasedState = aliasTimeoutRollMutationIds(roomId, state);
-            const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;
-            const classification = getDeliveryClassification(aliasedState);
-          """.replace('          ', '')
-          if old_remember not in content:
-              raise SystemExit('rememberAndApplySyncedStateSnapshot marker not found')
+          old_remember = "    const aliasedState = aliasTimeoutRollMutationIds(roomId, state);"
+          new_remember = "\n".join([
+              "    const rawAliasedState = aliasTimeoutRollMutationIds(roomId, state);",
+              "    const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;",
+          ])
+          if content.count(old_remember) != 1:
+              raise SystemExit(f'unexpected remember marker count: {content.count(old_remember)}')
           content = content.replace(old_remember, new_remember, 1)
 
-          old_replay = """    replayMissingSequencesThenApply: async (state, localSequence, remoteSequence) => {
-            const aliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);
-            const classification = getDeliveryClassification(aliasedState);
-          """.replace('          ', '')
-          new_replay = """    replayMissingSequencesThenApply: async (state, localSequence, remoteSequence) => {
-            const rawAliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);
-            const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;
-            const classification = getDeliveryClassification(aliasedState);
-          """.replace('          ', '')
-          if old_replay not in content:
-              raise SystemExit('subscription replay marker not found')
+          old_replay = "      const aliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);"
+          new_replay = "\n".join([
+              "      const rawAliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);",
+              "      const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;",
+          ])
+          if content.count(old_replay) != 1:
+              raise SystemExit(f'unexpected replay marker count: {content.count(old_replay)}')
           content = content.replace(old_replay, new_replay, 1)
 
           path.write_text(content)
