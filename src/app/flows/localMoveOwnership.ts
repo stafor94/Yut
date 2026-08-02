@@ -256,9 +256,9 @@ export function prepareLocalMoveOwnership({
     reductionState as Parameters<typeof reduceAuthoritativeGameAction>[0],
     action as Parameters<typeof reduceAuthoritativeGameAction>[1],
     {
-      playMode: reductionState.playMode,
-      pieceCount: reductionState.pieceCount,
-      stackedRollMode: reductionState.stackedRollMode,
+      playMode: state.playMode,
+      pieceCount: state.pieceCount,
+      stackedRollMode: state.stackedRollMode,
     },
     sides,
   );
