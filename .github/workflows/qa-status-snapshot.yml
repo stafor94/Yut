@@ -54,12 +54,26 @@ jobs:
           )
           if removed != 1 and 'const getAuthoritativeSnapshot = (' in content:
               raise SystemExit('unexpected controller snapshot helper shape')
+          content = content.replace(
+              'getAuthoritativeSnapshot(value, null)',
+              'getAuthoritativeSnapshot<SequenceStateSnapshot>(value, null)',
+          )
           path.write_text(content)
           PY
       - run: npm ci
       - run: npm run qa:validate-architecture
       - run: npm run test:unit
-      - run: npm run build
+      - name: Build
+        run: |
+          set +e
+          npm run build > build.log 2>&1
+          code=$?
+          if [ "$code" -ne 0 ]; then
+            grep -nE 'error TS|Error:|failed|Type ' build.log | tail -160 || tail -160 build.log
+          else
+            tail -40 build.log
+          fi
+          exit "$code"
       - name: Commit validated fix
         run: |
           git config user.name 'github-actions[bot]'
