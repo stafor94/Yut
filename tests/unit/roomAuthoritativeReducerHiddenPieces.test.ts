@@ -48,7 +48,6 @@ const makeHiddenPiecesState = () => {
     pendingItemPickup: null,
     pendingTrapPlacement: null,
     itemPromptTiming: null,
-    pendingAfterMoveTurnIndex: null,
     lastMovedPieceIds: [],
     lastMovedSeatId: '',
     completedSeatIds: [],
