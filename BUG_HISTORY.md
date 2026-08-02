@@ -20,64 +20,50 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - PR #1308은 pending 등록 시 presentation lifecycle을 먼저 선점했다. 시작 경쟁은 줄였지만 server echo의 화면 상태 적용 자체는 유지했다.
 - PR #1309는 성공·오류 callback을 presentation settlement 뒤로 직렬화했다. callback 순서는 고정했지만 subscription, sequence replay, apply-wake, 수동 sync와 callback이 동일 로컬 결과를 다시 적용할 수 있었다.
 - PR #1310은 shared reducer 결과와 local move ledger를 추가했지만, controller가 lifecycle idle 상태에서 `waitForSettlement()`를 호출하면 이미 완료된 Promise를 받아 reducer 최종 상태를 실제 말 경로보다 먼저 적용할 수 있었다.
-- PR #1316은 동일 말의 실제 settlement 예약을 추가했지만 `let resolve = () => undefined`가 `() => undefined`로 추론되어 Promise resolver `() => void` 대입이 build에서 거부됐다. 런타임 로직과 무관한 타입 선언 누락이었다.
-- PR #1317은 resolver 타입을 수정해 build와 전체 unit·architecture·대부분의 브라우저 QA를 통과시켰지만, Galaxy timing에서 빠른 ACK의 canonical 경로가 `n04 → n02 → n03 → n04`로 시작했고 기존 디버그 상태에는 top-level `movingPieceId`가 없어 연출 시작 횟수를 관찰하지 못했다.
-- PR #1318은 정확히 같은 `pieceId`만 settlement할 수 있게 했지만, 같은 말의 최종 위치 `n04`가 첫 경로 프레임 `n02`보다 먼저 들어오는 경우까지 정상 완료로 인정했다. 말 ID 일치만으로는 경로 완료를 증명하지 못했다.
-- PR #1324는 `n02 → n03 → n04` 전체 경로 관찰을 settlement 조건으로 추가해 느린 ACK와 자동 이동을 통과시켰지만, 빠른 ACK 실행 클라이언트에서는 local move ledger 자체가 생성되지 않아 서버 최종 위치가 여전히 첫 프레임보다 먼저 적용됐다.
-- PR #1326은 synced state에 roll이 아직 없을 때 표준 move action identity에서 roll을 복구해 ledger 준비 범위를 넓혔다. 빠른 ACK 경로는 `n02 → n04 → n03 → n04`로 개선됐지만 active presentation 자체는 분류 기준이 아니어서 서버 최종 상태가 첫 프레임 뒤 canonical에 끼어들 수 있었다.
-- PR #1327은 #1326의 optional config TypeScript narrowing 오류만 수정했다. build·unit·전체 다른 QA는 통과했지만 빠른 ACK 한 건은 그대로 남았다.
-- PR #1328은 같은 action key를 실제 presenting 중인 결과도 local echo로 처리했다. 첫 ACK는 차단했지만 presentation·ACK·fingerprint 완료 직후 active ledger를 삭제해, 뒤늦은 동일 mutation snapshot이 다시 remote action으로 분류될 수 있었다.
+- PR #1316은 동일 말의 실제 settlement 예약을 추가했지만 Promise resolver 타입 선언 누락으로 build가 중단됐다.
+- PR #1317은 resolver 타입을 수정했지만 Galaxy timing에서 빠른 ACK의 canonical 경로가 `n04 → n02 → n03 → n04`로 시작했다.
+- PR #1318은 정확히 같은 `pieceId`만 settlement할 수 있게 했지만 말 ID 일치만으로는 경로 완료를 증명하지 못했다.
+- PR #1324는 `n02 → n03 → n04` 전체 경로 관찰을 settlement 조건으로 추가해 느린 ACK와 자동 이동을 통과시켰다.
+- PR #1326은 synced state에 roll이 아직 없을 때 표준 move action identity에서 roll을 복구해 ledger 준비 범위를 넓혔다.
+- PR #1327은 #1326의 optional config TypeScript narrowing 오류를 수정했다.
+- PR #1328은 같은 action key를 실제 presenting 중인 결과도 local echo로 처리했지만 빠른 ACK에서 reducer final `pieces`가 여전히 로컬 경로보다 먼저 화면 상태에 들어갈 수 있었다.
+- PR #1329는 active ledger 정리 뒤 동일 mutation을 tombstone으로 계속 차단하려 했다. 기존 sequence-first 계약을 깨뜨려 unit, Online core 재입장, Galaxy 제한시간 이동을 회귀시켰고 빠른 ACK도 해결하지 못했다.
 
 ### Confirmed root cause
 
-- 온라인 `move_piece`의 실행 클라이언트가 path frame만 재생하고 roll 소비, turn 전환, stack 소비와 최종 pieces 확정을 authoritative 결과에 위임했다.
-- pending metadata는 ACK 시 제거되므로 동일 `clientMutationId`를 이후 다시 수신하면 이미 로컬에서 재생한 이동을 remote action으로 오인할 수 있었다.
-- 모든 authoritative 적용 경로에 공통 local-echo/remote-action/stale 분류가 없었다.
-- Main Branch QA trace에서 서버 ACK와 다음 턴 전환이 완료된 뒤에도 `movingPieceId`가 유지되고 로컬 경로가 진행 중인 상태가 확인됐다. local reducer 계산과 ledger 등록은 성공했지만, idle lifecycle의 settlement Promise가 즉시 완료되어 최종 `pieces`, `roll`, `turnIndex`가 경로 중간에 적용된 것이 직접 원인이었다.
-- `GameBoardSection`은 animation queue가 바쁠 때 말 ID가 없는 generic `settle()` callback을 예약한다. 이 이전 callback이 새 이동의 `observe(pieceId)` 뒤 실행되면 현재 presentation을 잘못 완료해 reducer final state를 경로보다 먼저 적용할 수 있었다.
-- #1318 병합 후 trace에서는 같은 말의 최종 위치가 `n02`보다 먼저 canonical에 나타났다. 동일 말 여부뿐 아니라 이동 직전 계산된 `pathNodeIds`가 `n02 → n03 → n04` 순서로 실제 관찰됐는지를 settlement 조건으로 확인해야 했다.
-- #1324 병합 후 빠른 ACK trace에서는 실행 클라이언트만 canonical `n04 → n02 → n03 → n04`를 기록했고 원격 클라이언트와 느린 ACK는 정상 경로를 기록했다. 실행 클라이언트의 자체 roll은 화면에 먼저 확정되지만 controller의 synced 기준 상태에는 아직 `roll`이 없을 수 있어 `prepareLocalMoveOwnership()`이 null을 반환했고, ledger가 없는 서버 ACK가 remote action으로 분류될 수 있었다.
-- #1327 병합 후 trace에서는 실행 클라이언트의 실제 presentation이 `n02`를 시작한 뒤 서버의 `n04`가 canonical에 끼어들었다. 분류가 ledger 존재만 신뢰하고 있었기 때문에 ledger 준비 실패·정리 경쟁이 있으면 현재 lifecycle이 같은 action key를 실제로 presenting 중이어도 remote action으로 처리한 것이 남은 직접 원인이었다.
-- #1328 병합 후 빠른 ACK trace는 다시 `n04 → n02 → n03 → n04`였고 느린 ACK는 통과했다. 빠른 ACK의 첫 결과는 active ledger에서 local echo로 처리됐지만, 연출 완료 시 ledger가 정리된 뒤 같은 `clientMutationId`의 state snapshot이 도착해 새 remote action으로 적용된 것이 최종 원인이었다.
+- 온라인 `move_piece`의 실행 클라이언트가 로컬 `movePiece()`로 `pieces` 경로를 직접 재생하면서, controller도 shared reducer의 `finalState` 전체를 화면 snapshot으로 spread 적용했다.
+- shared reducer의 `finalState.pieces`는 fingerprint와 서버 결과 비교에는 필요하지만 실행 클라이언트 화면에 다시 적용하면 로컬 경로 소유권과 충돌한다.
+- 빠른 ACK에서는 reducer final 위치 `n04`가 로컬 첫 프레임보다 먼저 또는 중간에 화면 canonical 상태로 들어가 `n04 → n02 → n03 → n04` 또는 `n02 → n04 → n03 → n04`가 발생했다.
+- active ledger 정리 후 delivery는 기존 sequence/subscription 파이프라인에 위임해야 하며 mutation tombstone으로 장기간 차단하면 정상적인 이후 상태 전파와 재입장을 막는다.
 
 ### Required state invariants
 
-- 이동 실행 클라이언트는 서버와 같은 shared game-core reducer로 결과를 한 번 계산하고 local canonical 상태와 presentation을 한 번 완료한다.
-- 같은 `clientMutationId`의 서버 결과는 sequence/version, authoritative 기준 상태, pending ACK와 fingerprint만 갱신하며 `pieces`, `roll`, `movingPieceId` 또는 이동·윷 presentation을 다시 변경하지 않는다.
-- 다른 플레이어의 새 sequence만 기존 replay 경로로 한 번 표시한다. 이미 적용한 sequence/version은 상태와 presentation 모두 생략한다.
-- local move ledger는 pending metadata와 독립적으로 유지하고 presentation 완료, server sequence ACK, fingerprint 일치가 모두 확인된 뒤 active record를 정리한다.
-- settled local move identity는 확정 sequence/version과 함께 room 단위 tombstone으로 보존한다. 동일하거나 오래된 delivery만 local echo로 처리하고, 같은 mutation ID라도 더 최신 sequence/version은 정상 적용한다.
-- reducer 결과 finalization은 lifecycle이 이미 active인지와 무관하게 ledger가 예약한 동일 piece의 실제 GameBoard 관찰과 settlement 뒤에만 실행한다.
-- active local move settlement는 정확히 같은 `pieceId`를 가진 callback만 완료할 수 있다. 이전 queue의 generic settlement나 다른 말 settlement는 현재 waiter를 해제하지 않는다.
-- 최종 목적지가 먼저 관찰돼도 이동 직전의 전체 경로가 순서대로 관찰되기 전에는 settlement하지 않는다.
-- 실행 클라이언트의 자체 roll이 synced snapshot보다 먼저 활성화돼도 move action identity로 동일 roll을 복구해 ledger를 서버 ACK 전에 생성한다.
-- ledger 상태와 무관하게 lifecycle이 같은 action key를 실제 `presenting` 중이면 해당 authoritative 결과는 local echo다. 단순 pending 요청은 서버 결과를 무조건 숨기지 않는다.
+- 이동 실행 클라이언트는 로컬 `movePiece()`가 `pieces`, `movingPieceId`, 이동 경로 presentation을 한 번만 소유한다.
+- shared reducer final state는 roll 소비, turn 전환, stack, item, 로그와 fingerprint 검증에 사용한다.
+- shared reducer의 final `pieces`는 ledger와 fingerprint 내부에는 보존하되 실행 클라이언트 화면에 spread 적용하지 않는다.
+- 같은 `clientMutationId`의 서버 결과는 active ledger 또는 같은 presenting action에서 sequence/version, authoritative 기준 상태, pending ACK와 fingerprint만 갱신하고 로컬 말 경로를 다시 적용하지 않는다.
+- active ledger가 정상 정리된 뒤의 delivery는 기존 sequence-first subscription/replay 정책에 위임한다.
+- 다른 플레이어의 새 sequence는 기존 replay 경로로 한 번 표시한다.
 - 서버 거부나 fingerprint 불일치에서만 입력을 잠그고 corrective animation 없이 최신 snapshot을 한 번 hard resync한다.
 
 ### Do not try again
 
-- callback 대기, presentation lifecycle 시작 시점 이동, authoritative snapshot 적용 지연 또는 timeout 증가로 같은 local server echo의 재적용을 숨기지 않는다.
-- 동일 문제를 자동 이동 차단, `canRequestMove`/`actionReady` 정책 변경, sleep 증가나 assertion 완화로 수정하지 않는다.
+- callback 대기, presentation lifecycle 시작 시점 이동, authoritative snapshot 적용 지연 또는 timeout 증가로 재적용을 숨기지 않는다.
+- 자동 이동 차단, `canRequestMove`/`actionReady` 정책 변경, sleep 증가나 assertion 완화로 수정하지 않는다.
 - 클라이언트가 보낸 전체 pieces를 서버 authoritative 결과로 신뢰하지 않는다.
-- idle lifecycle을 이미 settlement된 것으로 간주해 reducer final state를 실제 `movingPieceId` 종료 전에 적용하지 않는다.
-- 말 ID가 없는 오래된 queue settlement로 현재 active move를 완료하지 않는다.
-- 같은 말의 최종 위치만 확인하고 중간 경로가 실제로 한 번 진행됐다고 판단하지 않는다.
-- ledger 준비 실패를 server ACK 지연이나 callback 대기로 숨기지 않는다.
-- active presentation의 action key를 무시하고 ledger map만으로 local echo 소유권을 판단하지 않는다.
-- active ledger 정리와 함께 같은 mutation의 로컬 소유권까지 즉시 삭제하지 않는다.
+- active ledger 정리 뒤 동일 mutation ID를 장기 tombstone으로 유지해 정상 sequence/stateVersion 전파를 막지 않는다.
+- shared reducer final `pieces`를 실행 클라이언트 화면 snapshot에 다시 spread 적용하지 않는다.
 
 ### Verification checklist
 
 - [x] shared reducer 기반 local move result와 독립 local move ledger 추가
-- [x] commit, subscription, replay, apply-wake, manual sync의 local-echo/remote-action/stale 공통 분류 추가
-- [x] ACK 전 ledger 유지, stale 재수신, remote replay, mismatch hard resync, room clear 단위 테스트 추가
+- [x] commit, subscription, replay, apply-wake, manual sync의 local-echo/remote-action 공통 분류 추가
+- [x] ACK 전 ledger 유지, remote replay, mismatch hard resync, room clear 단위 테스트 추가
 - [x] 실제 host·guest 2클라이언트의 빠른/느린 ACK와 `n01/off-board` 관찰 Playwright 추가
-- [x] ledger 등록 시 idle lifecycle이 동일 piece의 실제 관찰·settlement를 기다리는 단위 회귀 테스트 추가
-- [x] 이전 generic settlement가 active piece waiter를 해제하지 않는 단위 회귀 테스트 추가
-- [x] 최종 목적지가 먼저 들어온 뒤 `n02 → n03 → n04` 전체 경로를 관찰해야 settlement하는 단위 회귀 테스트 추가
+- [x] 동일 piece와 전체 `n02 → n03 → n04` 경로 완료 뒤 settlement하는 단위 회귀 테스트 추가
 - [x] synced roll이 늦은 빠른 ACK 실행 클라이언트에서도 action identity로 local move ownership을 준비하는 단위 회귀 테스트 추가
 - [x] ledger가 없어도 동일 action key를 실제 presenting 중인 결과를 local echo로 분류하는 단위 회귀 테스트 추가
-- [x] active ledger 정리 후 동일 mutation의 확정 sequence/version만 local echo로 유지하고 더 최신 상태와 room clear를 검증하는 단위 회귀 테스트 추가
+- [x] reducer final pieces는 fingerprint 내부에 보존하지만 화면 적용 spread에서는 제외하는 단위 회귀 테스트 추가
 - [ ] Unit tests pass
 - [ ] Build succeeds
 - [ ] QA architecture validation passes
