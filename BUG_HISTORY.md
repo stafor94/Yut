@@ -21,6 +21,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - PR #1309는 성공·오류 callback을 presentation settlement 뒤로 직렬화했다. callback 순서는 고정했지만 subscription, sequence replay, apply-wake, 수동 sync와 callback이 동일 로컬 결과를 다시 적용할 수 있었다.
 - PR #1310은 shared reducer 결과와 local move ledger를 추가했지만, controller가 lifecycle idle 상태에서 `waitForSettlement()`를 호출하면 이미 완료된 Promise를 받아 reducer 최종 상태를 실제 말 경로보다 먼저 적용할 수 있었다.
 - PR #1316은 동일 말의 실제 settlement 예약을 추가했지만 `let resolve = () => undefined`가 `() => undefined`로 추론되어 Promise resolver `() => void` 대입이 build에서 거부됐다. 런타임 로직과 무관한 타입 선언 누락이었다.
+- PR #1317은 resolver 타입을 수정해 build와 전체 unit·architecture·대부분의 브라우저 QA를 통과시켰지만, Galaxy timing에서 빠른 ACK의 canonical 경로가 `n04 → n02 → n03 → n04`로 시작했고 기존 디버그 상태에는 top-level `movingPieceId`가 없어 연출 시작 횟수를 관찰하지 못했다.
 
 ### Confirmed root cause
 
@@ -28,6 +29,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - pending metadata는 ACK 시 제거되므로 동일 `clientMutationId`를 이후 다시 수신하면 이미 로컬에서 재생한 이동을 remote action으로 오인할 수 있었다.
 - 모든 authoritative 적용 경로에 공통 local-echo/remote-action/stale 분류가 없었다.
 - Main Branch QA trace에서 서버 ACK와 다음 턴 전환이 완료된 뒤에도 `movingPieceId`가 유지되고 로컬 경로가 진행 중인 상태가 확인됐다. local reducer 계산과 ledger 등록은 성공했지만, idle lifecycle의 settlement Promise가 즉시 완료되어 최종 `pieces`, `roll`, `turnIndex`가 경로 중간에 적용된 것이 직접 원인이었다.
+- `GameBoardSection`은 animation queue가 바쁠 때 말 ID가 없는 generic `settle()` callback을 예약한다. 이 이전 callback이 새 이동의 `observe(pieceId)` 뒤 실행되면 현재 presentation을 잘못 완료해 reducer final state를 경로보다 먼저 적용했다. settlement가 active piece ID를 요구하지 않은 것이 남은 직접 원인이었다.
 
 ### Required state invariants
 
@@ -36,6 +38,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - 다른 플레이어의 새 sequence만 기존 replay 경로로 한 번 표시한다. 이미 적용한 sequence/version은 상태와 presentation 모두 생략한다.
 - local move ledger는 pending metadata와 독립적으로 유지하고 presentation 완료, server sequence ACK, fingerprint 일치가 모두 확인된 뒤 정리한다.
 - reducer 결과 finalization은 lifecycle이 이미 active인지와 무관하게 ledger가 예약한 동일 piece의 실제 GameBoard 관찰과 settlement 뒤에만 실행한다.
+- active local move settlement는 정확히 같은 `pieceId`를 가진 callback만 완료할 수 있다. 이전 queue의 generic settlement나 다른 말 settlement는 현재 waiter를 해제하지 않는다.
 - 서버 거부나 fingerprint 불일치에서만 입력을 잠그고 corrective animation 없이 최신 snapshot을 한 번 hard resync한다.
 
 ### Do not try again
@@ -44,6 +47,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - 동일 문제를 자동 이동 차단, `canRequestMove`/`actionReady` 정책 변경, sleep 증가나 assertion 완화로 수정하지 않는다.
 - 클라이언트가 보낸 전체 pieces를 서버 authoritative 결과로 신뢰하지 않는다.
 - idle lifecycle을 이미 settlement된 것으로 간주해 reducer final state를 실제 `movingPieceId` 종료 전에 적용하지 않는다.
+- 말 ID가 없는 오래된 queue settlement로 현재 active move를 완료하지 않는다.
 
 ### Verification checklist
 
@@ -52,6 +56,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - [x] ACK 전 ledger 유지, stale 재수신, remote replay, mismatch hard resync, room clear 단위 테스트 추가
 - [x] 실제 host·guest 2클라이언트의 빠른/느린 ACK와 `n01/off-board` 관찰 Playwright 추가
 - [x] ledger 등록 시 idle lifecycle이 동일 piece의 실제 관찰·settlement를 기다리는 단위 회귀 테스트 추가
+- [x] 이전 generic settlement가 active piece waiter를 해제하지 않는 단위 회귀 테스트 추가
 - [ ] Unit tests pass
 - [ ] Build succeeds
 - [ ] QA architecture validation passes

@@ -176,6 +176,9 @@ export const makeGameDiagnosticState = ({
   lastAppliedSequence: lastAppliedSequenceRef.current,
   syncPipeline: syncPipelineDiagnostic,
   actionPipeline: actionPipelineDiagnostic,
+  movingPieceId: typeof actionPipelineDiagnostic?.liveTurnGuard?.movingPieceId === 'string'
+    ? actionPipelineDiagnostic.liveTurnGuard.movingPieceId
+    : '',
   turnHealth: turnHealthDiagnostic,
   pendingLocalRemoteActionCount,
   pendingLocalRemoteActions: Array.from(pendingLocalRemoteActionsRef.current).map((key) => {
