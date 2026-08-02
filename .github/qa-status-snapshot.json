@@ -4,6 +4,6 @@
   "targetRef": "firebase-smooth-integration",
   "targetSha": "6c018c23548dafdc78f782f9a702b37667c160be",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] subscription ingestion patch trigger",
-  "trigger": 23
+  "reportTitle": "[QA snapshot] subscription ingestion patch retry",
+  "trigger": 24
 }
