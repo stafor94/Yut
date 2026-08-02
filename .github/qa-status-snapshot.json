@@ -3,6 +3,6 @@
   "targetRef": "agent/fix-local-move-snapshot-pieces",
   "targetSha": "8fb03d987098c18878b3d562e375fff82183f31c",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] local move pieces fix",
-  "trigger": 8
+  "reportTitle": "[QA snapshot] timeout move pieces source",
+  "trigger": 9
 }
