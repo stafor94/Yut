@@ -2,6 +2,6 @@
   "workflow": "qa.yml",
   "targetEvent": "workflow_dispatch",
   "targetRef": "agent/add-pr-required-qa",
-  "targetSha": "77a7ea45f050556a6d6135b90d45779ae95d6a86",
-  "reportTitle": "[QA snapshot] PR1333 bootstrap 77a7ea4"
+  "targetSha": "047066f2846b02b311642604fb48ec6f15b045ed",
+  "reportTitle": "[QA snapshot] PR1333 final bootstrap 047066f"
 }
