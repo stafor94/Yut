@@ -1,9 +1,9 @@
 {
   "workflow": "qa.yml",
-  "targetEvent": "workflow_dispatch",
-  "targetRef": "agent/fix-local-move-snapshot-pieces",
-  "targetSha": "7b1dfba19bfbf0574c79eb4ca7182e78339706c3",
+  "targetEvent": "push",
+  "targetRef": "main",
+  "targetSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] corrected reducer fixture 7b1dfba",
-  "trigger": 38
+  "reportTitle": "[QA snapshot] pre-merge main e7b0828",
+  "trigger": 39
 }
