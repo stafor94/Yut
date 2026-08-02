@@ -17,9 +17,6 @@ jobs:
     if: github.head_ref == 'agent/qa-status-snapshot'
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      HELPER_B64: aW1wb3J0IHR5cGUgeyBTZXF1ZW5jZVN0YXRlU25hcHNob3QgfSBmcm9tICcuLi9hcHBTdGF0ZSc7Cgpjb25zdCBtZXJnZVBhcnRpYWxTbmFwc2hvdCA9ICgKICBzbmFwc2hvdDogU2VxdWVuY2VTdGF0ZVNuYXBzaG90LAogIGZhbGxiYWNrOiBTZXF1ZW5jZVN0YXRlU25hcHNob3QgfCBudWxsLAopOiBTZXF1ZW5jZVN0YXRlU25hcHNob3QgPT4gewogIGlmIChBcnJheS5pc0FycmF5KHNuYXBzaG90LnBpZWNlcykgfHwgIWZhbGxiYWNrKSByZXR1cm4gc25hcHNob3Q7CiAgcmV0dXJuIHsgLi4uZmFsbGJhY2ssIC4uLnNuYXBzaG90IH0gYXMgU2VxdWVuY2VTdGF0ZVNuYXBzaG90Owp9OwoKZXhwb3J0IGZ1bmN0aW9uIGdldEF1dGhvcml0YXRpdmVTbmFwc2hvdCgKICB2YWx1ZTogdW5rbm93biwKICBmYWxsYmFjazogU2VxdWVuY2VTdGF0ZVNuYXBzaG90IHwgbnVsbCwKKTogU2VxdWVuY2VTdGF0ZVNuYXBzaG90IHwgbnVsbCB7CiAgaWYgKCF2YWx1ZSB8fCB0eXBlb2YgdmFsdWUgIT09ICdvYmplY3QnIHx8IEFycmF5LmlzQXJyYXkodmFsdWUpKSByZXR1cm4gZmFsbGJhY2s7CiAgY29uc3QgcmVjb3JkID0gdmFsdWUgYXMgUmVjb3JkPHN0cmluZywgdW5rbm93bj47CiAgaWYgKHJlY29yZC5zdGF0ZUFmdGVyICYmIHR5cGVvZiByZWNvcmQuc3RhdGVBZnRlciA9PT0gJ29iamVjdCcgJiYgIUFycmF5LmlzQXJyYXkocmVjb3JkLnN0YXRlQWZ0ZXIpKSB7CiAgICByZXR1cm4gbWVyZ2VQYXJ0aWFsU25hcHNob3QocmVjb3JkLnN0YXRlQWZ0ZXIgYXMgU2VxdWVuY2VTdGF0ZVNuYXBzaG90LCBmYWxsYmFjayk7CiAgfQogIGlmIChyZWNvcmQucGF0Y2ggJiYgdHlwZW9mIHJlY29yZC5wYXRjaCA9PT0gJ29iamVjdCcgJiYgIUFycmF5LmlzQXJyYXkocmVjb3JkLnBhdGNoKSkgewogICAgcmV0dXJuIG1lcmdlUGFydGlhbFNuYXBzaG90KHJlY29yZC5wYXRjaCBhcyBTZXF1ZW5jZVN0YXRlU25hcHNob3QsIGZhbGxiYWNrKTsKICB9CiAgaWYgKCdwaWVjZXMnIGluIHJlY29yZCB8fCAnbGFzdFNlcXVlbmNlJyBpbiByZWNvcmQgfHwgJ3R1cm5WZXJzaW9uJyBpbiByZWNvcmQpIHsKICAgIHJldHVybiBtZXJnZVBhcnRpYWxTbmFwc2hvdChyZWNvcmQgYXMgU2VxdWVuY2VTdGF0ZVNuYXBzaG90LCBmYWxsYmFjayk7CiAgfQogIHJldHVybiBmYWxsYmFjazsKfQo=
-      TEST_B64: aW1wb3J0IGFzc2VydCBmcm9tICdub2RlOmFzc2VydC9zdHJpY3QnOwppbXBvcnQgdGVzdCBmcm9tICdub2RlOnRlc3QnOwppbXBvcnQgeyBnZXRBdXRob3JpdGF0aXZlU25hcHNob3QgfSBmcm9tICcuLi8uLi9zcmMvYXBwL2Zsb3dzL2F1dGhvcml0YXRpdmVTbmFwc2hvdCc7CmltcG9ydCB7IHByZXBhcmVMb2NhbE1vdmVPd25lcnNoaXAgfSBmcm9tICcuLi8uLi9zcmMvYXBwL2Zsb3dzL2xvY2FsTW92ZU93bmVyc2hpcCc7CmltcG9ydCB7IFRVUk5fQUNUSU9OX1RJTUVPVVRfTVMgfSBmcm9tICcuLi8uLi9zcmMvZmVhdHVyZXMvcm9vbS9zZXJ2aWNlcy9yb29tVGltaW5nJzsKCmNvbnN0IG1ha2VPbmxpbmVNb3ZlU3RhdGUgPSAoKSA9PiAoewogIHBsYXlNb2RlOiAnaW5kaXZpZHVhbCcgYXMgY29uc3QsCiAgcGllY2VDb3VudDogMSBhcyBjb25zdCwKICBzdGFja2VkUm9sbE1vZGU6IGZhbHNlLAogIGdhbWVTZWF0czogWwogICAgeyBpZDogJ1AxJywgdGVhbTogJ+yyre2MgScgYXMgY29uc3QgfSwKICAgIHsgaWQ6ICdQMicsIHRlYW06ICntmY3thIwnIGFzIGNvbnN0IH0sCiAgXSwKICB0dXJuT3JkZXJJZHM6IFsnUDEnLCAnUDInXSwKICB0dXJuSW5kZXg6IDAsCiAgcGllY2VzOiBbCiAgICB7IGlkOiAncGllY2UtMScsIG93bmVySWQ6ICdQMScsIG5vZGVJZDogJ24wMScsIG5vZGVJbmRleDogMCwgc3RhcnRlZDogZmFsc2UsIGZpbmlzaGVkOiBmYWxzZSwgcHJldmlvdXNOb2RlSWQ6ICcnIH0sCiAgICB7IGlkOiAncGllY2UtMicsIG93bmVySWQ6ICdQMicsIG5vZGVJZDogJ24wMScsIG5vZGVJbmRleDogMCwgc3RhcnRlZDogZmFsc2UsIGZpbmlzaGVkOiBmYWxzZSwgcHJldmlvdXNOb2RlSWQ6ICcnIH0sCiAgXSwKICByb2xsOiB7IG5hbWU6ICfrrqgnLCBzdGVwczogNSwgYm9udXM6IHRydWUgfSwKICByb2xsU3RhY2s6IFtdLAogIHNlbGVjdGVkUm9sbFN0YWNrSW5kZXg6IG51bGwsCiAgcm9sbFN0YWNrQ2xvc2VkOiBmYWxzZSwKICBicmFuY2hDaG9pY2U6ICdvdXRlcicsCiAgYm9hcmRJdGVtczogW10sCiAgb3duZWRJdGVtczoge30sCiAgdHJhcE5vZGVzOiBbXSwKICBzaGllbGRlZFBpZWNlSWRzOiBbXSwKICBsb2dzOiBbXSwKICBsYXN0TW92ZWRQaWVjZUlkczogW10sCiAgbGFzdE1vdmVkU2VhdElkOiAnJywKICBwZW5kaW5nSXRlbVBpY2t1cDogbnVsbCwKICBpdGVtUHJvbXB0VGltaW5nOiBudWxsLAogIHBlbmRpbmdBZnRlck1vdmVUdXJuSW5kZXg6IG51bGwsCiAgcGVuZGluZ0dvbGRlbll1dFNlbGVjdGlvbjogbnVsbCwKICBwZW5kaW5nVHJhcFBsYWNlbWVudDogbnVsbCwKICBjb21wbGV0ZWRTZWF0SWRzOiBbXSwKICByYW5raW5nU2VhdElkczogW10sCiAgZ2FtZUVuZE1vZGU6ICcnLAogIGxhc3RGaW5pc2hlZFNlYXRJZDogJycsCiAgd2lubmVyOiAnJywKICBhdXRvUGxheUJ5U2VhdElkOiB7fSwKICB0dXJuQWN0aW9uVGltZW91dENvdW50QnlTZWF0SWQ6IHt9LAogIHR1cm5EZWFkbGluZUtpbmQ6ICdtb3ZlJywKICB0dXJuRGVhZGxpbmVBdDogRGF0ZS5ub3coKSArIFRVUk5fQUNUSU9OX1RJTUVPVVRfTVMsCiAgbGFzdFNlcXVlbmNlOiAxMCwKICB0dXJuVmVyc2lvbjogMywKfSk7Cgp0ZXN0KCfttoDrtoQgYXV0aG9yaXRhdGl2ZSDqsrDqs7wg7J2067aA7J6Q64+EIOyIoOq4tCDrqZzsubwg cGllY2Vz66GcIOuLpOydjCDsnbTrj5nsnYQg6rOE7IKw7ZWc64ukJywgKCkgPT4gewogIGNvbnN0IGZpcnN0TW92ZSA9IHByZXBhcmVMb2NhbE1vdmVPd25lcnNoaXAoewogICAgcm9vbUlkOiAncm9vbS1hJywKICAgIHN0YXRlOiBtYWtlT25saW5lTW92ZVN0YXRlKCksCiAgICBhY3Rpb246IHsKICAgICAgdHlwZTogJ21vdmVfcGllY2UnLAogICAgICBhY3RvcklkOiAnUDEnLAogICAgICBwYXlsb2FkOiB7CiAgICAgICAgcGllY2VJZDogJ3BpZWNlLTEnLAogICAgICAgIGV4dHJhU3RlcHM6IDAsCiAgICAgICAgYnJhbmNoQ2hvaWNlOiAnb3V0ZXInLAogICAgICAgIHJvbGxTdGFja0luZGV4OiBudWxsLAogICAgICAgIGNsaWVudEFjdGlvbklkOiAnbW92ZV9waWVjZTpQMToxMDowOuqqqDo1OmZpcnN0JywKICAgICAgICBjbGllbnRBY3Rpb25TdGFydGVkQXQ6IERhdGUubm93KCksCiAgICAgIH0sCiAgICB9LAogIH0pOwoKICBhc3NlcnQub2soZmlyc3RNb3ZlKTsKICBhc3NlcnQuZXF1YWwoZmlyc3RNb3ZlLnJlY29yZC50b05vZGVJZCwgJ24wNicpOwogIGFzc2VydC5lcXVhbChPYmplY3QucHJvdG90eXBlLnByb3BlcnR5SXNFbnVtZXJhYmxlLmNhbGwoZmlyc3RNb3ZlLmZpbmFsU3RhdGUsICdwaWVjZXMnKSwgZmFsc2UpOwoKICBjb25zdCBwYXJ0aWFsQXBwbGllZFN0YXRlID0gZ2V0QXV0aG9yaXRhdGl2ZVNuYXBzaG90KHsKICAgIHJvbGw6IHsgbmFtZTogJ+qxsCcsIHN0ZXBzOiAzLCBib251czogZmFsc2UgfSwKICAgIGJyYW5jaENob2ljZTogJ3Nob3J0Y3V0JywKICAgIGxhc3RTZXF1ZW5jZTogMTIsCiAgICB0dXJuVmVyc2lvbjogNCwKICB9LCBmaXJzdE1vdmUuZmluYWxTdGF0ZSk7CiAgYXNzZXJ0Lm9rKHBhcnRpYWxBcHBsaWVkU3RhdGUpOwogIGFzc2VydC5lcXVhbChPYmplY3QucHJvdG90eXBlLmhhc093blByb3BlcnR5LmNhbGwocGFydGlhbEFwcGxpZWRTdGF0ZSwgJ3BpZWNlcycpLCBmYWxzZSk7CgogIGNvbnN0IHNlY29uZE1vdmUgPSBwcmVwYXJlTG9jYWxNb3ZlT3duZXJzaGlwKHsKICAgIHJvb21JZDogJ3Jvb20tYScsCiAgICBzdGF0ZTogcGFydGlhbEFwcGxpZWRTdGF0ZSwKICAgIGFjdGlvbjogewogICAgICB0eXBlOiAnbW92ZV9waWVjZScsCiAgICAgIGFjdG9ySWQ6ICdQMScsCiAgICAgIHBheWxvYWQ6IHsKICAgICAgICBwaWVjZUlkOiAncGllY2UtMScsCiAgICAgICAgZXh0cmFTdGVwczogMCwKICAgICAgICBicmFuY2hDaG9pY2U6ICdzaG9ydGN1dCcsCiAgICAgICAgcm9sbFN0YWNrSW5kZXg6IG51bGwsCiAgICAgICAgY2xpZW50QWN0aW9uSWQ6ICdtb3ZlX3BpZWNlOlAxOjEyOjA66rG4OjM6c2Vjb25kJywKICAgICAgICBjbGllbnRBY3Rpb25TdGFydGVkQXQ6IERhdGUubm93KCksCiAgICAgIH0sCiAgICB9LAogIH0pOwoKICBhc3NlcnQub2soc2Vjb25kTW92ZSk7CiAgYXNzZXJ0LmVxdWFsKHNlY29uZE1vdmUucmVjb3JkLmZyb21Ob2RlSWQsICduMDYnKTsKICBhc3NlcnQub2soc2Vjb25kTW92ZS5yZWNvcmQucGF0aE5vZGVJZHMubGVuZ3RoID4gMCk7CiAgYXNzZXJ0LmVxdWFsKE9iamVjdC5wcm90b3R5cGUucHJvcGVydHlJc0VudW1lcmFibGUuY2FsbChzZWNvbmRNb3ZlLmZpbmFsU3RhdGUsICdwaWVjZXMnKSwgZmFsc2UpOwp9KTsKCnRlc3QoJ+uZsOyghCBhdXRob3JpdGF0aXZlIHNuYXBzaG907J2AIGZhbGxiYWNrIOuMgOyLoCDsnpDssrQg cGllY2Vz66GcIOyCrOyaqe2VnOuLpCcsICgpID0+IHsKICBjb25zdCBmYWxsYmFjayA9IG1ha2VPbmxpbmVNb3ZlU3RhdGUoKTsKICBjb25zdCBzbmFwc2hvdCA9IHsKICAgIC4uLmZhbGxiYWNrLAogICAgcGllY2VzOiBmYWxsYmFjay5waWVjZXMubWFwKChwaWVjZSkgPT4gcGllY2UuaWQgPT09ICdwaWVjZS0xJwogICAgICA/IHsgLi4ucGllY2UsIG5vZGVJZDogJ24wNicsIHN0YXJ0ZWQ6IHRydWUgfQogICAgICA6IHBpZWNlKSwKICAgIGxhc3RTZXF1ZW5jZTogMTEsCiAgfTsKCiAgYXNzZXJ0LmVxdWFsKGdldEF1dGhvcml0YXRpdmVTbmFwc2hvdChzbmFwc2hvdCwgZmFsbGJhY2spLCBzbmFwc2hvdCk7Cn0pOwo=
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,35 +29,32 @@ jobs:
           cache: npm
       - name: Apply confirmed snapshot boundary fix
         run: |
-          git fetch origin main
+          git fetch origin main agent/qa-status-snapshot
           git checkout origin/main -- src/app/hooks/applySequenceEvent.ts
+          git show origin/agent/qa-status-snapshot:.github/patches/authoritativeSnapshot.ts > src/app/flows/authoritativeSnapshot.ts
+          git show origin/agent/qa-status-snapshot:.github/patches/localMoveHiddenPieces.test.ts > tests/unit/localMoveHiddenPieces.test.ts
           python3 <<'PY'
-          import base64
-          import os
           import re
           from pathlib import Path
 
-          controller_path = Path('src/app/controllers/useAuthoritativeGameSyncController.ts')
-          controller = controller_path.read_text()
-          import_anchor = "import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';\n"
+          path = Path('src/app/controllers/useAuthoritativeGameSyncController.ts')
+          content = path.read_text()
+          anchor = "import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';\n"
           helper_import = "import { getAuthoritativeSnapshot } from '../flows/authoritativeSnapshot';\n"
-          if helper_import not in controller:
-              if import_anchor not in controller:
+          if helper_import not in content:
+              if anchor not in content:
                   raise SystemExit('controller import anchor not found')
-              controller = controller.replace(import_anchor, import_anchor + helper_import, 1)
-          controller, removed = re.subn(
+              content = content.replace(anchor, anchor + helper_import, 1)
+          content, removed = re.subn(
               r"const getAuthoritativeSnapshot = \(\n.*?\n\};\n\n",
               '',
-              controller,
+              content,
               count=1,
               flags=re.S,
           )
-          if removed != 1 and 'const getAuthoritativeSnapshot = (' in controller:
+          if removed != 1 and 'const getAuthoritativeSnapshot = (' in content:
               raise SystemExit('unexpected controller snapshot helper shape')
-          controller_path.write_text(controller)
-
-          Path('src/app/flows/authoritativeSnapshot.ts').write_bytes(base64.b64decode(os.environ['HELPER_B64']))
-          Path('tests/unit/localMoveHiddenPieces.test.ts').write_bytes(base64.b64decode(os.environ['TEST_B64']))
+          path.write_text(content)
           PY
       - run: npm ci
       - run: npm run qa:validate-architecture
