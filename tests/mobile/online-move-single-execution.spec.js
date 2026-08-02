@@ -36,7 +36,7 @@ async function installDeterministicHumanClient(context, { turnOrderResult, moveR
       if (button instanceof HTMLButtonElement && !button.disabled) button.click();
     };
     const observer = new MutationObserver(submitTurnOrderWhenReady);
-    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+    observer.observe(document, { childList: true, subtree: true, attributes: true });
     window.addEventListener('load', submitTurnOrderWhenReady);
   }, { queuedTurnOrderResult: turnOrderResult, configuredMoveResultDelayMs: moveResultDelayMs });
 }

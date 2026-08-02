@@ -1,0 +1,261 @@
+name: Apply main protection
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-main-protection.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: apply-main-protection
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply and verify ruleset
+    if: github.repository == 'stafor94/Yut'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ISSUE_NUMBER: '1509'
+      WORKFLOW_PATH: .github/workflows/apply-main-protection.yml
+      RULESET_NAME: main required PR QA
+      OAUTH_CLIENT_ID: 178c6fc778ccc68e1d6a
+      OAUTH_CLIENT_SECRET: 34ddeff2b558a23d38fba8a6de74f086ede1cc0b
+      API_VERSION: '2026-03-10'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Request owner authorization and apply protection
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          admin_token=''
+          completed=0
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+
+          comment_issue() {
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$1"
+          }
+
+          revoke_admin_token() {
+            if [[ -z "$admin_token" ]]; then
+              return 0
+            fi
+            local payload
+            payload=$(jq -n --arg access_token "$admin_token" '{access_token: $access_token}')
+            curl --fail-with-body --silent --show-error \
+              --request DELETE \
+              --user "${OAUTH_CLIENT_ID}:${OAUTH_CLIENT_SECRET}" \
+              --header 'Accept: application/vnd.github+json' \
+              --header "X-GitHub-Api-Version: ${API_VERSION}" \
+              "https://api.github.com/applications/${OAUTH_CLIENT_ID}/token" \
+              --data "$payload" >/dev/null
+            admin_token=''
+          }
+
+          cleanup() {
+            local status=$?
+            set +e
+            revoke_admin_token
+            if [[ "$completed" -ne 1 ]]; then
+              comment_issue "main 보호 규칙 자동 적용이 완료되지 않았습니다. 발급된 일회성 토큰은 저장하지 않고 폐기했습니다. 실행 로그: ${run_url}"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          device_response=$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header 'Accept: application/json' \
+            --data-urlencode "client_id=${OAUTH_CLIENT_ID}" \
+            --data-urlencode 'scope=repo workflow' \
+            https://github.com/login/device/code)
+
+          device_code=$(jq -er '.device_code' <<<"$device_response")
+          user_code=$(jq -er '.user_code' <<<"$device_response")
+          verification_uri=$(jq -er '.verification_uri' <<<"$device_response")
+          interval=$(jq -er '.interval' <<<"$device_response")
+          expires_in=$(jq -er '.expires_in' <<<"$device_response")
+
+          comment_issue "main 보호 규칙 적용을 승인하려면 ${verification_uri}에서 일회성 코드 **${user_code}**를 입력하세요. 코드는 약 15분 후 만료되며, 발급 토큰은 설정 적용·검증 직후 서버에서 폐기됩니다."
+
+          deadline=$((SECONDS + expires_in))
+          while (( SECONDS < deadline )); do
+            sleep "$interval"
+            token_response=$(curl --fail-with-body --silent --show-error \
+              --request POST \
+              --header 'Accept: application/json' \
+              --data-urlencode "client_id=${OAUTH_CLIENT_ID}" \
+              --data-urlencode "device_code=${device_code}" \
+              --data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:device_code' \
+              https://github.com/login/oauth/access_token)
+
+            admin_token=$(jq -r '.access_token // empty' <<<"$token_response")
+            if [[ -n "$admin_token" ]]; then
+              echo "::add-mask::$admin_token"
+              break
+            fi
+
+            oauth_error=$(jq -r '.error // empty' <<<"$token_response")
+            case "$oauth_error" in
+              authorization_pending) ;;
+              slow_down) interval=$((interval + 5)) ;;
+              expired_token|access_denied)
+                echo "OAuth authorization failed: $oauth_error" >&2
+                exit 1
+                ;;
+              *)
+                echo "Unexpected OAuth response: $oauth_error" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          if [[ -z "$admin_token" ]]; then
+            echo 'OAuth authorization expired before approval.' >&2
+            exit 1
+          fi
+
+          auth_headers=(
+            --header "Authorization: Bearer ${admin_token}"
+            --header 'Accept: application/vnd.github+json'
+            --header "X-GitHub-Api-Version: ${API_VERSION}"
+          )
+
+          viewer=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
+            https://api.github.com/user | jq -er '.login')
+          if [[ "$viewer" != 'stafor94' ]]; then
+            echo "Authorization must be completed by stafor94, got: $viewer" >&2
+            exit 1
+          fi
+
+          permission=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
+            "${api}/collaborators/${viewer}/permission" | jq -er '.permission')
+          if [[ "$permission" != 'admin' ]]; then
+            echo "Repository admin permission is required, got: $permission" >&2
+            exit 1
+          fi
+
+          workflow_info=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
+            "${api}/contents/${WORKFLOW_PATH}?ref=main")
+          workflow_sha=$(jq -er '.sha' <<<"$workflow_info")
+          delete_payload=$(jq -n \
+            --arg message 'chore: remove one-time protection workflow' \
+            --arg sha "$workflow_sha" \
+            --arg branch 'main' \
+            '{message: $message, sha: $sha, branch: $branch}')
+          delete_response=$(curl --fail-with-body --silent --show-error \
+            --request DELETE "${auth_headers[@]}" \
+            "${api}/contents/${WORKFLOW_PATH}" \
+            --data "$delete_payload")
+          cleanup_commit=$(jq -er '.commit.sha' <<<"$delete_response")
+
+          ruleset_payload=$(jq -n --arg name "$RULESET_NAME" '
+            {
+              name: $name,
+              target: "branch",
+              enforcement: "active",
+              bypass_actors: [],
+              conditions: {
+                ref_name: {include: ["refs/heads/main"], exclude: []}
+              },
+              rules: [
+                {type: "deletion"},
+                {type: "non_fast_forward"},
+                {
+                  type: "pull_request",
+                  parameters: {
+                    allowed_merge_methods: ["merge", "squash", "rebase"],
+                    dismiss_stale_reviews_on_push: true,
+                    require_code_owner_review: true,
+                    require_last_push_approval: false,
+                    required_approving_review_count: 1,
+                    required_review_thread_resolution: false
+                  }
+                },
+                {
+                  type: "required_status_checks",
+                  parameters: {
+                    do_not_enforce_on_create: false,
+                    required_status_checks: [
+                      {context: "PR Required QA / Validate PR"}
+                    ],
+                    strict_required_status_checks_policy: true
+                  }
+                }
+              ]
+            }')
+
+          existing=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
+            "${api}/rulesets?includes_parents=false")
+          ruleset_id=$(jq -r --arg name "$RULESET_NAME" \
+            '.[] | select(.name == $name) | .id' <<<"$existing" | head -n 1)
+
+          if [[ -n "$ruleset_id" ]]; then
+            ruleset_response=$(curl --fail-with-body --silent --show-error \
+              --request PUT "${auth_headers[@]}" \
+              "${api}/rulesets/${ruleset_id}" \
+              --data "$ruleset_payload")
+          else
+            ruleset_response=$(curl --fail-with-body --silent --show-error \
+              --request POST "${auth_headers[@]}" \
+              "${api}/rulesets" \
+              --data "$ruleset_payload")
+          fi
+          ruleset_id=$(jq -er '.id' <<<"$ruleset_response")
+
+          verified=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
+            "${api}/rulesets/${ruleset_id}")
+          jq -e --arg name "$RULESET_NAME" '
+            .name == $name and
+            .target == "branch" and
+            .enforcement == "active" and
+            (.bypass_actors | length) == 0 and
+            .conditions.ref_name.include == ["refs/heads/main"] and
+            .conditions.ref_name.exclude == [] and
+            any(.rules[]; .type == "deletion") and
+            any(.rules[]; .type == "non_fast_forward") and
+            any(.rules[];
+              .type == "pull_request" and
+              .parameters.required_approving_review_count == 1 and
+              .parameters.dismiss_stale_reviews_on_push == true and
+              .parameters.require_code_owner_review == true
+            ) and
+            any(.rules[];
+              .type == "required_status_checks" and
+              .parameters.strict_required_status_checks_policy == true and
+              (.parameters.required_status_checks | map(.context)) ==
+                ["PR Required QA / Validate PR"]
+            )
+          ' <<<"$verified" >/dev/null
+
+          active_rules=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
+            "${api}/rules/branches/main")
+          jq -e '
+            (map(.type) | index("deletion")) != null and
+            (map(.type) | index("non_fast_forward")) != null and
+            (map(.type) | index("pull_request")) != null and
+            (map(.type) | index("required_status_checks")) != null
+          ' <<<"$active_rules" >/dev/null
+
+          revoked_token="$admin_token"
+          revoke_admin_token
+          token_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${revoked_token}" \
+            https://api.github.com/user)
+          revoked_token=''
+          if [[ "$token_status" != '401' ]]; then
+            echo "Revoked OAuth token unexpectedly returned HTTP $token_status" >&2
+            exit 1
+          fi
+
+          comment_issue "main 보호 ruleset 적용과 API 재검증을 완료했습니다.\n\n- required check: PR Required QA / Validate PR\n- 최신 main 반영 필수\n- 승인 1명 및 stale 승인 해제\n- Code Owners 승인 필수\n- 관리자 우회 없음\n- force push 및 branch 삭제 금지\n- 임시 workflow 제거 commit: ${cleanup_commit}\n- ruleset id: ${ruleset_id}\n- 일회성 OAuth 토큰 폐기 확인: HTTP 401"
+          gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
+          completed=1
