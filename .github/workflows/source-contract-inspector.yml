@@ -6,174 +6,55 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
-
-concurrency:
-  group: source-contract-inspector
-  cancel-in-progress: true
+  contents: read
+  issues: write
 
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/fix-local-move-snapshot-pieces
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
+      - name: Locate timeout move state contracts
+        run: |
+          {
+            echo '### resolveMoveTimeout and timeout recovery call sites'
+            grep -RInE -C 24 --exclude-dir=node_modules --exclude-dir=dist 'resolveMoveTimeout\(|resolveMoveTimeoutContext\(|recoveredByCoordinator|timeoutDeadlineAt|makeTimeoutActionKey' src || true
+            echo
+            echo '### local move final state consumers'
+            grep -RInE -C 24 --exclude-dir=node_modules --exclude-dir=dist 'localMoveLedger|finalState|prepareLocalMoveOwnership|stateSnapshotRef|fallbackState' src/app src/features/room || true
+          } > /tmp/source-contract.txt
+          cat /tmp/source-contract.txt
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - name: Apply minimal product and unit changes
+      - name: Publish source context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          source_path = Path('src/app/flows/localMoveOwnership.ts')
-          source = source_path.read_text()
-          marker = "const LOCAL_MOVE_PIECES = Symbol('localMovePieces');"
-          if marker not in source:
-              source = source.replace(
-                  "type LocalMoveState = Record<string, unknown> & {",
-                  marker + "\n\ntype LocalMoveState = Record<string, unknown> & {\n  [LOCAL_MOVE_PIECES]?: unknown[];",
-                  1,
-              )
-              old = """const getLocalMoveReductionState = (state: LocalMoveState, action: LocalMoveAction): LocalMoveState => {
-  if (normalizeRoll(state.roll)) return state;
-  const pendingRoll = getPendingLocalMoveRoll(action);
-  return pendingRoll ? { ...state, roll: pendingRoll } : state;
-};
-
-const keepLocalPiecesOutOfDisplaySpread = (state: LocalMoveState, pieces: unknown[]) => {
-  Object.defineProperty(state, 'pieces', {
-    value: pieces,
-    enumerable: false,
-    configurable: true,
-    writable: true,
-  });
-  return state;
-};
-"""
-              new = """const keepLocalPiecesOutOfDisplaySpread = (state: LocalMoveState, pieces: unknown[]) => {
-  Object.defineProperty(state, LOCAL_MOVE_PIECES, {
-    value: pieces,
-    enumerable: true,
-    configurable: true,
-    writable: true,
-  });
-  Object.defineProperty(state, 'pieces', {
-    value: pieces,
-    enumerable: false,
-    configurable: true,
-    writable: true,
-  });
-  return state;
-};
-
-const getLocalMoveReductionState = (state: LocalMoveState, action: LocalMoveAction): LocalMoveState => {
-  const pieces = Array.isArray(state.pieces)
-    ? state.pieces
-    : Array.isArray(state[LOCAL_MOVE_PIECES])
-      ? state[LOCAL_MOVE_PIECES]
-      : null;
-  const stateWithPieces = pieces && !Array.isArray(state.pieces)
-    ? keepLocalPiecesOutOfDisplaySpread({ ...state }, pieces)
-    : state;
-  if (normalizeRoll(stateWithPieces.roll)) return stateWithPieces;
-  const pendingRoll = getPendingLocalMoveRoll(action);
-  if (!pendingRoll) return stateWithPieces;
-  const stateWithRoll = { ...stateWithPieces, roll: pendingRoll };
-  return pieces ? keepLocalPiecesOutOfDisplaySpread(stateWithRoll, pieces) : stateWithRoll;
-};
-"""
-              if old not in source:
-                  raise SystemExit('local move reduction marker not found')
-              source = source.replace(old, new, 1)
-              source_path.write_text(source)
-
-          test_path = Path('tests/unit/localMoveOwnership.test.ts')
-          tests = test_path.read_text()
-          test_name = "patch-only 롤 snapshot 이후에도 숨긴 로컬 pieces로 지름길 이동을 계산한다"
-          if test_name not in tests:
-              insert_before = "test('coordinator 복구 이동은 로컬 presentation 소유권을 선점하지 않는다', () => {"
-              test_block = """test('patch-only 롤 snapshot 이후에도 숨긴 로컬 pieces로 지름길 이동을 계산한다', () => {
-  const firstMove = prepareLocalMoveOwnership({
-    roomId: 'room-a',
-    state: {
-      ...makeOnlineMoveState(),
-      roll: { name: '모', steps: 5, bonus: true },
-    },
-    action: {
-      type: 'move_piece',
-      actorId: 'P1',
-      payload: {
-        pieceId: 'piece-1',
-        extraSteps: 0,
-        branchChoice: 'outer',
-        rollStackIndex: null,
-        clientActionId: 'move_piece:P1:10:0:모:5:first',
-        clientActionStartedAt: Date.now(),
-      },
-    },
-  });
-
-  assert.ok(firstMove);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(firstMove.finalState, 'pieces'), false);
-  const patchMergedRollState = {
-    ...firstMove.finalState,
-    roll: { name: '걸', steps: 3, bonus: false },
-    branchChoice: 'shortcut',
-    lastSequence: 12,
-    turnVersion: 4,
-  };
-  assert.equal(Object.prototype.hasOwnProperty.call(patchMergedRollState, 'pieces'), false);
-
-  const secondMove = prepareLocalMoveOwnership({
-    roomId: 'room-a',
-    state: patchMergedRollState,
-    action: {
-      type: 'move_piece',
-      actorId: 'P1',
-      payload: {
-        pieceId: 'piece-1',
-        extraSteps: 0,
-        branchChoice: 'shortcut',
-        rollStackIndex: null,
-        clientActionId: 'move_piece:P1:12:0:걸:3:second',
-        clientActionStartedAt: Date.now(),
-      },
-    },
-  });
-
-  assert.ok(secondMove);
-  assert.equal(secondMove.record.fromNodeId, 'n06');
-  assert.ok(secondMove.record.pathNodeIds.length > 0);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(secondMove.finalState, 'pieces'), false);
-});
-
-"""
-              if insert_before not in tests:
-                  raise SystemExit('unit insertion marker not found')
-              tests = tests.replace(insert_before, test_block + insert_before, 1)
-              test_path.write_text(tests)
-          PY
-      - run: npm ci
-      - name: Run architecture validator
-        run: npm run qa:validate-architecture
-      - name: Run unit tests
-        run: npm run test:unit
-      - name: Build
-        run: npm run build
-      - name: Commit validated fix
-        run: |
-          if git diff --quiet; then
-            echo 'No product changes to commit.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/app/flows/localMoveOwnership.ts tests/unit/localMoveOwnership.test.ts
-          git commit -m 'fix: preserve hidden local pieces across snapshots'
-          git push origin HEAD:agent/fix-local-move-snapshot-pieces
+          node <<'NODE'
+          const fs = require('node:fs');
+          (async () => {
+            const output = fs.readFileSync('/tmp/source-contract.txt', 'utf8');
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+            const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
+              method: 'POST',
+              headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                'Content-Type': 'application/json',
+                'X-GitHub-Api-Version': '2022-11-28',
+                'User-Agent': 'yut-source-contract-inspector',
+              },
+              body: JSON.stringify({
+                title: '[Source contract] Timeout move pieces call sites',
+                body: `## Timeout move source contracts\n\n\`\`\`text\n${output.slice(0, 62000)}\n\`\`\``,
+              }),
+            });
+            if (!response.ok) throw new Error(`issue create failed: ${response.status} ${await response.text()}`);
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
