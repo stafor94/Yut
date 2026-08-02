@@ -1,8 +1,9 @@
 name: QA status snapshot
 
 on:
-  push:
-    branches: [agent/qa-status-snapshot]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
 
 permissions:
   actions: read
