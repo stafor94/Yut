@@ -1,9 +1,9 @@
 {
   "workflow": "qa.yml",
-  "ref": "agent/add-pr-required-qa",
-  "headSha": "e79e7dd631a098cb59b6be486ba29d05092a65e3",
+  "ref": "agent/fix-local-move-snapshot-pieces",
+  "headSha": "8fb03d987098c18878b3d562e375fff82183f31c",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA probe] PR1 bootstrap rerun e79e7dd",
-  "excludeRunIds": [30736809205],
-  "trigger": 4
+  "reportTitle": "[QA probe] local move pieces fix 8fb03d9",
+  "excludeRunIds": [],
+  "trigger": 5
 }
