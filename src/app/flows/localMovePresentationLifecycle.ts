@@ -7,6 +7,13 @@ export type LocalMovePresentationSnapshot = {
   phase: LocalMovePresentationPhase;
 };
 
+type ExpectedLocalMoveSettlement = {
+  actionKey: string;
+  pieceId: string;
+  promise: Promise<void>;
+  resolve: () => void;
+};
+
 export class LocalMovePresentationLifecycle {
   private snapshotValue: LocalMovePresentationSnapshot = {
     generation: 0,
@@ -17,13 +24,17 @@ export class LocalMovePresentationLifecycle {
 
   private settlementPromise: Promise<void> = Promise.resolve();
   private resolveSettlement: (() => void) | null = null;
+  private expectedSettlement: ExpectedLocalMoveSettlement | null = null;
 
   begin(actionKey: string) {
     if (!actionKey) return this.snapshotValue.generation;
     if (this.snapshotValue.phase !== 'idle' && this.snapshotValue.actionKey === actionKey) {
       return this.snapshotValue.generation;
     }
-    this.finishCurrent();
+    if (this.snapshotValue.phase !== 'idle') this.finishCurrent();
+    if (this.expectedSettlement && this.expectedSettlement.actionKey !== actionKey) {
+      this.resolveExpectedSettlement();
+    }
     const generation = this.snapshotValue.generation + 1;
     this.snapshotValue = {
       generation,
@@ -31,14 +42,41 @@ export class LocalMovePresentationLifecycle {
       pieceId: '',
       phase: 'pending',
     };
-    this.settlementPromise = new Promise<void>((resolve) => {
-      this.resolveSettlement = resolve;
-    });
+    if (this.expectedSettlement?.actionKey === actionKey) {
+      this.adoptExpectedSettlement();
+    } else {
+      this.createSettlementPromise();
+    }
     return generation;
   }
 
+  expectNextSettlement(actionKey: string, pieceId: string) {
+    if (!actionKey || !pieceId) return false;
+    if (this.snapshotValue.phase !== 'idle' && this.snapshotValue.actionKey === actionKey) return true;
+    if (this.snapshotValue.phase !== 'idle') this.finishCurrent();
+    if (this.expectedSettlement?.actionKey === actionKey && this.expectedSettlement.pieceId === pieceId) return true;
+    this.resolveExpectedSettlement();
+    let resolve = () => undefined;
+    const promise = new Promise<void>((nextResolve) => {
+      resolve = nextResolve;
+    });
+    this.expectedSettlement = { actionKey, pieceId, promise, resolve };
+    return true;
+  }
+
   observe(pieceId: string) {
-    if (!pieceId || this.snapshotValue.phase === 'idle') return false;
+    if (!pieceId) return false;
+    if (this.snapshotValue.phase === 'idle') {
+      if (!this.expectedSettlement || this.expectedSettlement.pieceId !== pieceId) return false;
+      this.snapshotValue = {
+        generation: this.snapshotValue.generation + 1,
+        actionKey: this.expectedSettlement.actionKey,
+        pieceId,
+        phase: 'presenting',
+      };
+      this.adoptExpectedSettlement();
+      return true;
+    }
     this.snapshotValue = {
       ...this.snapshotValue,
       pieceId,
@@ -55,8 +93,10 @@ export class LocalMovePresentationLifecycle {
   }
 
   cancel() {
-    if (this.snapshotValue.phase === 'idle') return false;
-    this.finishCurrent();
+    const hadPendingSettlement = this.snapshotValue.phase !== 'idle' || Boolean(this.expectedSettlement);
+    if (!hadPendingSettlement) return false;
+    if (this.snapshotValue.phase !== 'idle') this.finishCurrent();
+    this.resolveExpectedSettlement();
     return true;
   }
 
@@ -69,7 +109,27 @@ export class LocalMovePresentationLifecycle {
   }
 
   waitForSettlement() {
-    return this.settlementPromise;
+    if (this.snapshotValue.phase !== 'idle') return this.settlementPromise;
+    return this.expectedSettlement?.promise ?? Promise.resolve();
+  }
+
+  private createSettlementPromise() {
+    this.settlementPromise = new Promise<void>((resolve) => {
+      this.resolveSettlement = resolve;
+    });
+  }
+
+  private adoptExpectedSettlement() {
+    if (!this.expectedSettlement) return;
+    this.settlementPromise = this.expectedSettlement.promise;
+    this.resolveSettlement = this.expectedSettlement.resolve;
+    this.expectedSettlement = null;
+  }
+
+  private resolveExpectedSettlement() {
+    const expectedSettlement = this.expectedSettlement;
+    this.expectedSettlement = null;
+    expectedSettlement?.resolve();
   }
 
   private finishCurrent() {
