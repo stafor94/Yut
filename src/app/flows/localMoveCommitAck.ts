@@ -6,6 +6,12 @@ type LocalMoveCommitAckInput = {
   sequence: unknown;
 };
 
+type LocalMovePendingReleaseInput = {
+  localPresentationCompleted: boolean;
+  serverSequenceAcked: boolean;
+  fingerprintMatched: boolean | null;
+};
+
 export function shouldConsumeLocalMoveCommitAck({
   actionType,
   actionKey,
@@ -20,4 +26,14 @@ export function shouldConsumeLocalMoveCommitAck({
     && (status === 'committed' || status === 'duplicate')
     && Number.isFinite(sequenceNumber)
     && sequenceNumber > 0;
+}
+
+export function shouldReleaseLocalMovePending({
+  localPresentationCompleted,
+  serverSequenceAcked,
+  fingerprintMatched,
+}: LocalMovePendingReleaseInput) {
+  return localPresentationCompleted
+    && serverSequenceAcked
+    && fingerprintMatched === true;
 }
