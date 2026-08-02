@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 concurrency:
@@ -38,6 +38,7 @@ jobs:
           admin_token=''
           completed=0
           run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
 
           comment_issue() {
             gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$1"
@@ -47,16 +48,15 @@ jobs:
             if [[ -z "$admin_token" ]]; then
               return 0
             fi
-
-            local revoke_payload
-            revoke_payload=$(jq -n --arg access_token "$admin_token" '{access_token: $access_token}')
+            local payload
+            payload=$(jq -n --arg access_token "$admin_token" '{access_token: $access_token}')
             curl --fail-with-body --silent --show-error \
               --request DELETE \
               --user "${OAUTH_CLIENT_ID}:${OAUTH_CLIENT_SECRET}" \
               --header 'Accept: application/vnd.github+json' \
               --header "X-GitHub-Api-Version: ${API_VERSION}" \
               "https://api.github.com/applications/${OAUTH_CLIENT_ID}/token" \
-              --data "$revoke_payload" >/dev/null
+              --data "$payload" >/dev/null
             admin_token=''
           }
 
@@ -65,7 +65,7 @@ jobs:
             set +e
             revoke_admin_token
             if [[ "$completed" -ne 1 ]]; then
-              comment_issue "main 보호 규칙 자동 적용이 완료되지 않았습니다. 토큰은 저장하지 않았으며 발급된 일회성 토큰은 폐기했습니다. 실행 로그: ${run_url}"
+              comment_issue "main 보호 규칙 자동 적용이 완료되지 않았습니다. 발급된 일회성 토큰은 저장하지 않고 폐기했습니다. 실행 로그: ${run_url}"
             fi
             exit "$status"
           }
@@ -75,7 +75,7 @@ jobs:
             --request POST \
             --header 'Accept: application/json' \
             --data-urlencode "client_id=${OAUTH_CLIENT_ID}" \
-            --data-urlencode 'scope=repo' \
+            --data-urlencode 'scope=repo workflow' \
             https://github.com/login/device/code)
 
           device_code=$(jq -er '.device_code' <<<"$device_response")
@@ -84,7 +84,7 @@ jobs:
           interval=$(jq -er '.interval' <<<"$device_response")
           expires_in=$(jq -er '.expires_in' <<<"$device_response")
 
-          comment_issue "저장소 소유자 권한으로 main 보호 규칙을 적용하려면 ${verification_uri}에서 다음 일회성 코드를 승인하세요: **${user_code}**\n\n이 코드는 약 15분 후 만료됩니다. 토큰은 저장되지 않으며 설정 적용·검증 직후 자동 폐기됩니다."
+          comment_issue "main 보호 규칙 적용을 승인하려면 ${verification_uri}에서 일회성 코드 **${user_code}**를 입력하세요. 코드는 약 15분 후 만료되며, 발급 토큰은 설정 적용·검증 직후 서버에서 폐기됩니다."
 
           deadline=$((SECONDS + expires_in))
           while (( SECONDS < deadline )); do
@@ -105,11 +105,8 @@ jobs:
 
             oauth_error=$(jq -r '.error // empty' <<<"$token_response")
             case "$oauth_error" in
-              authorization_pending)
-                ;;
-              slow_down)
-                interval=$((interval + 5))
-                ;;
+              authorization_pending) ;;
+              slow_down) interval=$((interval + 5)) ;;
               expired_token|access_denied)
                 echo "OAuth authorization failed: $oauth_error" >&2
                 exit 1
@@ -140,17 +137,14 @@ jobs:
           fi
 
           permission=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/collaborators/${viewer}/permission" | jq -er '.permission')
+            "${api}/collaborators/${viewer}/permission" | jq -er '.permission')
           if [[ "$permission" != 'admin' ]]; then
             echo "Repository admin permission is required, got: $permission" >&2
             exit 1
           fi
 
-          workflow_info=$(curl --fail-with-body --silent --show-error \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header 'Accept: application/vnd.github+json' \
-            --header "X-GitHub-Api-Version: ${API_VERSION}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${WORKFLOW_PATH}?ref=main")
+          workflow_info=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
+            "${api}/contents/${WORKFLOW_PATH}?ref=main")
           workflow_sha=$(jq -er '.sha' <<<"$workflow_info")
           delete_payload=$(jq -n \
             --arg message 'chore: remove one-time protection workflow' \
@@ -158,26 +152,19 @@ jobs:
             --arg branch 'main' \
             '{message: $message, sha: $sha, branch: $branch}')
           delete_response=$(curl --fail-with-body --silent --show-error \
-            --request DELETE \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header 'Accept: application/vnd.github+json' \
-            --header "X-GitHub-Api-Version: ${API_VERSION}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${WORKFLOW_PATH}" \
+            --request DELETE "${auth_headers[@]}" \
+            "${api}/contents/${WORKFLOW_PATH}" \
             --data "$delete_payload")
           cleanup_commit=$(jq -er '.commit.sha' <<<"$delete_response")
 
-          ruleset_payload=$(jq -n \
-            --arg name "$RULESET_NAME" \
-            '{
+          ruleset_payload=$(jq -n --arg name "$RULESET_NAME" '
+            {
               name: $name,
               target: "branch",
               enforcement: "active",
               bypass_actors: [],
               conditions: {
-                ref_name: {
-                  include: ["refs/heads/main"],
-                  exclude: []
-                }
+                ref_name: {include: ["refs/heads/main"], exclude: []}
               },
               rules: [
                 {type: "deletion"},
@@ -206,26 +193,26 @@ jobs:
               ]
             }')
 
-          existing_rulesets=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/rulesets?includes_parents=false")
-          existing_id=$(jq -r --arg name "$RULESET_NAME" '.[] | select(.name == $name) | .id' <<<"$existing_rulesets" | head -n 1)
+          existing=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
+            "${api}/rulesets?includes_parents=false")
+          ruleset_id=$(jq -r --arg name "$RULESET_NAME" \
+            '.[] | select(.name == $name) | .id' <<<"$existing" | head -n 1)
 
-          if [[ -n "$existing_id" ]]; then
+          if [[ -n "$ruleset_id" ]]; then
             ruleset_response=$(curl --fail-with-body --silent --show-error \
               --request PUT "${auth_headers[@]}" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/rulesets/${existing_id}" \
+              "${api}/rulesets/${ruleset_id}" \
               --data "$ruleset_payload")
           else
             ruleset_response=$(curl --fail-with-body --silent --show-error \
               --request POST "${auth_headers[@]}" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/rulesets" \
+              "${api}/rulesets" \
               --data "$ruleset_payload")
           fi
-
           ruleset_id=$(jq -er '.id' <<<"$ruleset_response")
-          verified_ruleset=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/rulesets/${ruleset_id}")
 
+          verified=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
+            "${api}/rulesets/${ruleset_id}")
           jq -e --arg name "$RULESET_NAME" '
             .name == $name and
             .target == "branch" and
@@ -244,12 +231,13 @@ jobs:
             any(.rules[];
               .type == "required_status_checks" and
               .parameters.strict_required_status_checks_policy == true and
-              (.parameters.required_status_checks | map(.context)) == ["PR Required QA / Validate PR"]
+              (.parameters.required_status_checks | map(.context)) ==
+                ["PR Required QA / Validate PR"]
             )
-          ' <<<"$verified_ruleset" >/dev/null
+          ' <<<"$verified" >/dev/null
 
           active_rules=$(curl --fail-with-body --silent --show-error "${auth_headers[@]}" \
-            "https://api.github.com/repos/${GITHUB_REPOSITORY}/rules/branches/main")
+            "${api}/rules/branches/main")
           jq -e '
             (map(.type) | index("deletion")) != null and
             (map(.type) | index("non_fast_forward")) != null and
@@ -257,15 +245,17 @@ jobs:
             (map(.type) | index("required_status_checks")) != null
           ' <<<"$active_rules" >/dev/null
 
+          revoked_token="$admin_token"
           revoke_admin_token
           token_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
-            --header "Authorization: Bearer ${admin_token:-revoked}" \
+            --header "Authorization: Bearer ${revoked_token}" \
             https://api.github.com/user)
+          revoked_token=''
           if [[ "$token_status" != '401' ]]; then
             echo "Revoked OAuth token unexpectedly returned HTTP $token_status" >&2
             exit 1
           fi
 
-          comment_issue "main 보호 ruleset 적용과 API 재검증을 완료했습니다.\n\n- required check: PR Required QA / Validate PR\n- 최신 main 반영 필수\n- 승인 1명 및 stale 승인 해제\n- Code Owners 승인 필수\n- 관리자 우회 없음\n- force push 및 branch 삭제 금지\n- 임시 workflow 제거 commit: ${cleanup_commit}\n- ruleset id: ${ruleset_id}"
+          comment_issue "main 보호 ruleset 적용과 API 재검증을 완료했습니다.\n\n- required check: PR Required QA / Validate PR\n- 최신 main 반영 필수\n- 승인 1명 및 stale 승인 해제\n- Code Owners 승인 필수\n- 관리자 우회 없음\n- force push 및 branch 삭제 금지\n- 임시 workflow 제거 commit: ${cleanup_commit}\n- ruleset id: ${ruleset_id}\n- 일회성 OAuth 토큰 폐기 확인: HTTP 401"
           gh issue close "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --reason completed
           completed=1
