@@ -294,7 +294,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
 
   const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
     const roomId = params.activeRoomIdRef.current;
-    const aliasedState = aliasTimeoutRollMutationIds(roomId, state);
+    const rawAliasedState = aliasTimeoutRollMutationIds(roomId, state);
+    const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;
     const classification = getDeliveryClassification(aliasedState);
     if (classification === 'local-echo') {
       acknowledgeLocalMoveEcho(roomId, aliasedState, aliasedState);
@@ -311,7 +312,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
     lastAppliedStateVersionRef: params.lastAppliedStateVersionRef,
     applyingSyncedStateRef: params.applyingSyncedStateRef,
     replayMissingSequencesThenApply: async (state, localSequence, remoteSequence) => {
-      const aliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);
+      const rawAliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);
+      const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;
       const classification = getDeliveryClassification(aliasedState);
       if (classification === 'local-echo') {
         acknowledgeLocalMoveEcho(params.activeRoomId, aliasedState, aliasedState);
