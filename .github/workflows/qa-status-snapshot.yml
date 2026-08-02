@@ -17,6 +17,9 @@ jobs:
     if: github.head_ref == 'agent/qa-status-snapshot'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      HELPER_B64: aW1wb3J0IHR5cGUgeyBTZXF1ZW5jZVN0YXRlU25hcHNob3QgfSBmcm9tICcuLi9hcHBTdGF0ZSc7Cgpjb25zdCBtZXJnZVBhcnRpYWxTbmFwc2hvdCA9ICgKICBzbmFwc2hvdDogU2VxdWVuY2VTdGF0ZVNuYXBzaG90LAogIGZhbGxiYWNrOiBTZXF1ZW5jZVN0YXRlU25hcHNob3QgfCBudWxsLAopOiBTZXF1ZW5jZVN0YXRlU25hcHNob3QgPT4gewogIGlmIChBcnJheS5pc0FycmF5KHNuYXBzaG90LnBpZWNlcykgfHwgIWZhbGxiYWNrKSByZXR1cm4gc25hcHNob3Q7CiAgcmV0dXJuIHsgLi4uZmFsbGJhY2ssIC4uLnNuYXBzaG90IH0gYXMgU2VxdWVuY2VTdGF0ZVNuYXBzaG90Owp9OwoKZXhwb3J0IGZ1bmN0aW9uIGdldEF1dGhvcml0YXRpdmVTbmFwc2hvdCgKICB2YWx1ZTogdW5rbm93biwKICBmYWxsYmFjazogU2VxdWVuY2VTdGF0ZVNuYXBzaG90IHwgbnVsbCwKKTogU2VxdWVuY2VTdGF0ZVNuYXBzaG90IHwgbnVsbCB7CiAgaWYgKCF2YWx1ZSB8fCB0eXBlb2YgdmFsdWUgIT09ICdvYmplY3QnIHx8IEFycmF5LmlzQXJyYXkodmFsdWUpKSByZXR1cm4gZmFsbGJhY2s7CiAgY29uc3QgcmVjb3JkID0gdmFsdWUgYXMgUmVjb3JkPHN0cmluZywgdW5rbm93bj47CiAgaWYgKHJlY29yZC5zdGF0ZUFmdGVyICYmIHR5cGVvZiByZWNvcmQuc3RhdGVBZnRlciA9PT0gJ29iamVjdCcgJiYgIUFycmF5LmlzQXJyYXkocmVjb3JkLnN0YXRlQWZ0ZXIpKSB7CiAgICByZXR1cm4gbWVyZ2VQYXJ0aWFsU25hcHNob3QocmVjb3JkLnN0YXRlQWZ0ZXIgYXMgU2VxdWVuY2VTdGF0ZVNuYXBzaG90LCBmYWxsYmFjayk7CiAgfQogIGlmIChyZWNvcmQucGF0Y2ggJiYgdHlwZW9mIHJlY29yZC5wYXRjaCA9PT0gJ29iamVjdCcgJiYgIUFycmF5LmlzQXJyYXkocmVjb3JkLnBhdGNoKSkgewogICAgcmV0dXJuIG1lcmdlUGFydGlhbFNuYXBzaG90KHJlY29yZC5wYXRjaCBhcyBTZXF1ZW5jZVN0YXRlU25hcHNob3QsIGZhbGxiYWNrKTsKICB9CiAgaWYgKCdwaWVjZXMnIGluIHJlY29yZCB8fCAnbGFzdFNlcXVlbmNlJyBpbiByZWNvcmQgfHwgJ3R1cm5WZXJzaW9uJyBpbiByZWNvcmQpIHsKICAgIHJldHVybiBtZXJnZVBhcnRpYWxTbmFwc2hvdChyZWNvcmQgYXMgU2VxdWVuY2VTdGF0ZVNuYXBzaG90LCBmYWxsYmFjayk7CiAgfQogIHJldHVybiBmYWxsYmFjazsKfQo=
+      TEST_B64: aW1wb3J0IGFzc2VydCBmcm9tICdub2RlOmFzc2VydC9zdHJpY3QnOwppbXBvcnQgdGVzdCBmcm9tICdub2RlOnRlc3QnOwppbXBvcnQgeyBnZXRBdXRob3JpdGF0aXZlU25hcHNob3QgfSBmcm9tICcuLi8uLi9zcmMvYXBwL2Zsb3dzL2F1dGhvcml0YXRpdmVTbmFwc2hvdCc7CmltcG9ydCB7IHByZXBhcmVMb2NhbE1vdmVPd25lcnNoaXAgfSBmcm9tICcuLi8uLi9zcmMvYXBwL2Zsb3dzL2xvY2FsTW92ZU93bmVyc2hpcCc7CmltcG9ydCB7IFRVUk5fQUNUSU9OX1RJTUVPVVRfTVMgfSBmcm9tICcuLi8uLi9zcmMvZmVhdHVyZXMvcm9vbS9zZXJ2aWNlcy9yb29tVGltaW5nJzsKCmNvbnN0IG1ha2VPbmxpbmVNb3ZlU3RhdGUgPSAoKSA9PiAoewogIHBsYXlNb2RlOiAnaW5kaXZpZHVhbCcgYXMgY29uc3QsCiAgcGllY2VDb3VudDogMSBhcyBjb25zdCwKICBzdGFja2VkUm9sbE1vZGU6IGZhbHNlLAogIGdhbWVTZWF0czogWwogICAgeyBpZDogJ1AxJywgdGVhbTogJ+yyre2MgScgYXMgY29uc3QgfSwKICAgIHsgaWQ6ICdQMicsIHRlYW06ICntmY3thIwnIGFzIGNvbnN0IH0sCiAgXSwKICB0dXJuT3JkZXJJZHM6IFsnUDEnLCAnUDInXSwKICB0dXJuSW5kZXg6IDAsCiAgcGllY2VzOiBbCiAgICB7IGlkOiAncGllY2UtMScsIG93bmVySWQ6ICdQMScsIG5vZGVJZDogJ24wMScsIG5vZGVJbmRleDogMCwgc3RhcnRlZDogZmFsc2UsIGZpbmlzaGVkOiBmYWxzZSwgcHJldmlvdXNOb2RlSWQ6ICcnIH0sCiAgICB7IGlkOiAncGllY2UtMicsIG93bmVySWQ6ICdQMicsIG5vZGVJZDogJ24wMScsIG5vZGVJbmRleDogMCwgc3RhcnRlZDogZmFsc2UsIGZpbmlzaGVkOiBmYWxzZSwgcHJldmlvdXNOb2RlSWQ6ICcnIH0sCiAgXSwKICByb2xsOiB7IG5hbWU6ICfrrqgnLCBzdGVwczogNSwgYm9udXM6IHRydWUgfSwKICByb2xsU3RhY2s6IFtdLAogIHNlbGVjdGVkUm9sbFN0YWNrSW5kZXg6IG51bGwsCiAgcm9sbFN0YWNrQ2xvc2VkOiBmYWxzZSwKICBicmFuY2hDaG9pY2U6ICdvdXRlcicsCiAgYm9hcmRJdGVtczogW10sCiAgb3duZWRJdGVtczoge30sCiAgdHJhcE5vZGVzOiBbXSwKICBzaGllbGRlZFBpZWNlSWRzOiBbXSwKICBsb2dzOiBbXSwKICBsYXN0TW92ZWRQaWVjZUlkczogW10sCiAgbGFzdE1vdmVkU2VhdElkOiAnJywKICBwZW5kaW5nSXRlbVBpY2t1cDogbnVsbCwKICBpdGVtUHJvbXB0VGltaW5nOiBudWxsLAogIHBlbmRpbmdBZnRlck1vdmVUdXJuSW5kZXg6IG51bGwsCiAgcGVuZGluZ0dvbGRlbll1dFNlbGVjdGlvbjogbnVsbCwKICBwZW5kaW5nVHJhcFBsYWNlbWVudDogbnVsbCwKICBjb21wbGV0ZWRTZWF0SWRzOiBbXSwKICByYW5raW5nU2VhdElkczogW10sCiAgZ2FtZUVuZE1vZGU6ICcnLAogIGxhc3RGaW5pc2hlZFNlYXRJZDogJycsCiAgd2lubmVyOiAnJywKICBhdXRvUGxheUJ5U2VhdElkOiB7fSwKICB0dXJuQWN0aW9uVGltZW91dENvdW50QnlTZWF0SWQ6IHt9LAogIHR1cm5EZWFkbGluZUtpbmQ6ICdtb3ZlJywKICB0dXJuRGVhZGxpbmVBdDogRGF0ZS5ub3coKSArIFRVUk5fQUNUSU9OX1RJTUVPVVRfTVMsCiAgbGFzdFNlcXVlbmNlOiAxMCwKICB0dXJuVmVyc2lvbjogMywKfSk7Cgp0ZXN0KCfttoDrtoQgYXV0aG9yaXRhdGl2ZSDqsrDqs7wg7J2067aA7J6Q64+EIOyIoOq4tCDrqZzsubwg cGllY2Vz66GcIOuLpOydjCDsnbTrj5nsnYQg6rOE7IKw7ZWc64ukJywgKCkgPT4gewogIGNvbnN0IGZpcnN0TW92ZSA9IHByZXBhcmVMb2NhbE1vdmVPd25lcnNoaXAoewogICAgcm9vbUlkOiAncm9vbS1hJywKICAgIHN0YXRlOiBtYWtlT25saW5lTW92ZVN0YXRlKCksCiAgICBhY3Rpb246IHsKICAgICAgdHlwZTogJ21vdmVfcGllY2UnLAogICAgICBhY3RvcklkOiAnUDEnLAogICAgICBwYXlsb2FkOiB7CiAgICAgICAgcGllY2VJZDogJ3BpZWNlLTEnLAogICAgICAgIGV4dHJhU3RlcHM6IDAsCiAgICAgICAgYnJhbmNoQ2hvaWNlOiAnb3V0ZXInLAogICAgICAgIHJvbGxTdGFja0luZGV4OiBudWxsLAogICAgICAgIGNsaWVudEFjdGlvbklkOiAnbW92ZV9waWVjZTpQMToxMDowOuqqqDo1OmZpcnN0JywKICAgICAgICBjbGllbnRBY3Rpb25TdGFydGVkQXQ6IERhdGUubm93KCksCiAgICAgIH0sCiAgICB9LAogIH0pOwoKICBhc3NlcnQub2soZmlyc3RNb3ZlKTsKICBhc3NlcnQuZXF1YWwoZmlyc3RNb3ZlLnJlY29yZC50b05vZGVJZCwgJ24wNicpOwogIGFzc2VydC5lcXVhbChPYmplY3QucHJvdG90eXBlLnByb3BlcnR5SXNFbnVtZXJhYmxlLmNhbGwoZmlyc3RNb3ZlLmZpbmFsU3RhdGUsICdwaWVjZXMnKSwgZmFsc2UpOwoKICBjb25zdCBwYXJ0aWFsQXBwbGllZFN0YXRlID0gZ2V0QXV0aG9yaXRhdGl2ZVNuYXBzaG90KHsKICAgIHJvbGw6IHsgbmFtZTogJ+qxsCcsIHN0ZXBzOiAzLCBib251czogZmFsc2UgfSwKICAgIGJyYW5jaENob2ljZTogJ3Nob3J0Y3V0JywKICAgIGxhc3RTZXF1ZW5jZTogMTIsCiAgICB0dXJuVmVyc2lvbjogNCwKICB9LCBmaXJzdE1vdmUuZmluYWxTdGF0ZSk7CiAgYXNzZXJ0Lm9rKHBhcnRpYWxBcHBsaWVkU3RhdGUpOwogIGFzc2VydC5lcXVhbChPYmplY3QucHJvdG90eXBlLmhhc093blByb3BlcnR5LmNhbGwocGFydGlhbEFwcGxpZWRTdGF0ZSwgJ3BpZWNlcycpLCBmYWxzZSk7CgogIGNvbnN0IHNlY29uZE1vdmUgPSBwcmVwYXJlTG9jYWxNb3ZlT3duZXJzaGlwKHsKICAgIHJvb21JZDogJ3Jvb20tYScsCiAgICBzdGF0ZTogcGFydGlhbEFwcGxpZWRTdGF0ZSwKICAgIGFjdGlvbjogewogICAgICB0eXBlOiAnbW92ZV9waWVjZScsCiAgICAgIGFjdG9ySWQ6ICdQMScsCiAgICAgIHBheWxvYWQ6IHsKICAgICAgICBwaWVjZUlkOiAncGllY2UtMScsCiAgICAgICAgZXh0cmFTdGVwczogMCwKICAgICAgICBicmFuY2hDaG9pY2U6ICdzaG9ydGN1dCcsCiAgICAgICAgcm9sbFN0YWNrSW5kZXg6IG51bGwsCiAgICAgICAgY2xpZW50QWN0aW9uSWQ6ICdtb3ZlX3BpZWNlOlAxOjEyOjA66rG4OjM6c2Vjb25kJywKICAgICAgICBjbGllbnRBY3Rpb25TdGFydGVkQXQ6IERhdGUubm93KCksCiAgICAgIH0sCiAgICB9LAogIH0pOwoKICBhc3NlcnQub2soc2Vjb25kTW92ZSk7CiAgYXNzZXJ0LmVxdWFsKHNlY29uZE1vdmUucmVjb3JkLmZyb21Ob2RlSWQsICduMDYnKTsKICBhc3NlcnQub2soc2Vjb25kTW92ZS5yZWNvcmQucGF0aE5vZGVJZHMubGVuZ3RoID4gMCk7CiAgYXNzZXJ0LmVxdWFsKE9iamVjdC5wcm90b3R5cGUucHJvcGVydHlJc0VudW1lcmFibGUuY2FsbChzZWNvbmRNb3ZlLmZpbmFsU3RhdGUsICdwaWVjZXMnKSwgZmFsc2UpOwp9KTsKCnRlc3QoJ+uZsOyghCBhdXRob3JpdGF0aXZlIHNuYXBzaG907J2AIGZhbGxiYWNrIOuMgOyLoCDsnpDssrQg cGllY2Vz66GcIOyCrOyaqe2VnOuLpCcsICgpID0+IHsKICBjb25zdCBmYWxsYmFjayA9IG1ha2VPbmxpbmVNb3ZlU3RhdGUoKTsKICBjb25zdCBzbmFwc2hvdCA9IHsKICAgIC4uLmZhbGxiYWNrLAogICAgcGllY2VzOiBmYWxsYmFjay5waWVjZXMubWFwKChwaWVjZSkgPT4gcGllY2UuaWQgPT09ICdwaWVjZS0xJwogICAgICA/IHsgLi4ucGllY2UsIG5vZGVJZDogJ24wNicsIHN0YXJ0ZWQ6IHRydWUgfQogICAgICA6IHBpZWNlKSwKICAgIGxhc3RTZXF1ZW5jZTogMTEsCiAgfTsKCiAgYXNzZXJ0LmVxdWFsKGdldEF1dGhvcml0YXRpdmVTbmFwc2hvdChzbmFwc2hvdCwgZmFsbGJhY2spLCBzbmFwc2hvdCk7Cn0pOwo=
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,6 +35,9 @@ jobs:
           git fetch origin main
           git checkout origin/main -- src/app/hooks/applySequenceEvent.ts
           python3 <<'PY'
+          import base64
+          import os
+          import re
           from pathlib import Path
 
           controller_path = Path('src/app/controllers/useAuthoritativeGameSyncController.ts')
@@ -42,178 +48,19 @@ jobs:
               if import_anchor not in controller:
                   raise SystemExit('controller import anchor not found')
               controller = controller.replace(import_anchor, import_anchor + helper_import, 1)
-
-          old_helper = """const getAuthoritativeSnapshot = (
-  value: unknown,
-  fallback: SequenceStateSnapshot | null,
-): SequenceStateSnapshot | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
-  const record = value as Record<string, unknown>;
-  if (record.stateAfter && typeof record.stateAfter === 'object' && !Array.isArray(record.stateAfter)) {
-    return record.stateAfter as SequenceStateSnapshot;
-  }
-  if (record.patch && typeof record.patch === 'object' && !Array.isArray(record.patch) && fallback) {
-    return { ...fallback, ...(record.patch as SequenceStateSnapshot) };
-  }
-  if ('pieces' in record || 'lastSequence' in record || 'turnVersion' in record) {
-    return record as SequenceStateSnapshot;
-  }
-  return fallback;
-};
-
-"""
-          if old_helper in controller:
-              controller = controller.replace(old_helper, '', 1)
-          elif 'const getAuthoritativeSnapshot = (' in controller:
+          controller, removed = re.subn(
+              r"const getAuthoritativeSnapshot = \(\n.*?\n\};\n\n",
+              '',
+              controller,
+              count=1,
+              flags=re.S,
+          )
+          if removed != 1 and 'const getAuthoritativeSnapshot = (' in controller:
               raise SystemExit('unexpected controller snapshot helper shape')
           controller_path.write_text(controller)
 
-          Path('src/app/flows/authoritativeSnapshot.ts').write_text("""import type { SequenceStateSnapshot } from '../appState';
-
-const mergePartialSnapshot = (
-  snapshot: SequenceStateSnapshot,
-  fallback: SequenceStateSnapshot | null,
-): SequenceStateSnapshot => {
-  if (Array.isArray(snapshot.pieces) || !fallback) return snapshot;
-  return { ...fallback, ...snapshot } as SequenceStateSnapshot;
-};
-
-export function getAuthoritativeSnapshot(
-  value: unknown,
-  fallback: SequenceStateSnapshot | null,
-): SequenceStateSnapshot | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
-  const record = value as Record<string, unknown>;
-  if (record.stateAfter && typeof record.stateAfter === 'object' && !Array.isArray(record.stateAfter)) {
-    return mergePartialSnapshot(record.stateAfter as SequenceStateSnapshot, fallback);
-  }
-  if (record.patch && typeof record.patch === 'object' && !Array.isArray(record.patch)) {
-    return mergePartialSnapshot(record.patch as SequenceStateSnapshot, fallback);
-  }
-  if ('pieces' in record || 'lastSequence' in record || 'turnVersion' in record) {
-    return mergePartialSnapshot(record as SequenceStateSnapshot, fallback);
-  }
-  return fallback;
-}
-""")
-
-          Path('tests/unit/localMoveHiddenPieces.test.ts').write_text("""import assert from 'node:assert/strict';
-import test from 'node:test';
-import { getAuthoritativeSnapshot } from '../../src/app/flows/authoritativeSnapshot';
-import { prepareLocalMoveOwnership } from '../../src/app/flows/localMoveOwnership';
-import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
-
-const makeOnlineMoveState = () => ({
-  playMode: 'individual' as const,
-  pieceCount: 1 as const,
-  stackedRollMode: false,
-  gameSeats: [
-    { id: 'P1', team: '청팀' as const },
-    { id: 'P2', team: '홍팀' as const },
-  ],
-  turnOrderIds: ['P1', 'P2'],
-  turnIndex: 0,
-  pieces: [
-    { id: 'piece-1', ownerId: 'P1', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
-    { id: 'piece-2', ownerId: 'P2', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
-  ],
-  roll: { name: '모', steps: 5, bonus: true },
-  rollStack: [],
-  selectedRollStackIndex: null,
-  rollStackClosed: false,
-  branchChoice: 'outer',
-  boardItems: [],
-  ownedItems: {},
-  trapNodes: [],
-  shieldedPieceIds: [],
-  logs: [],
-  lastMovedPieceIds: [],
-  lastMovedSeatId: '',
-  pendingItemPickup: null,
-  itemPromptTiming: null,
-  pendingAfterMoveTurnIndex: null,
-  pendingGoldenYutSelection: null,
-  pendingTrapPlacement: null,
-  completedSeatIds: [],
-  rankingSeatIds: [],
-  gameEndMode: '',
-  lastFinishedSeatId: '',
-  winner: '',
-  autoPlayBySeatId: {},
-  turnActionTimeoutCountBySeatId: {},
-  turnDeadlineKind: 'move',
-  turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
-  lastSequence: 10,
-  turnVersion: 3,
-});
-
-test('부분 authoritative 결과 이후에도 숨긴 로컬 pieces로 다음 이동을 계산한다', () => {
-  const firstMove = prepareLocalMoveOwnership({
-    roomId: 'room-a',
-    state: makeOnlineMoveState(),
-    action: {
-      type: 'move_piece',
-      actorId: 'P1',
-      payload: {
-        pieceId: 'piece-1',
-        extraSteps: 0,
-        branchChoice: 'outer',
-        rollStackIndex: null,
-        clientActionId: 'move_piece:P1:10:0:모:5:first',
-        clientActionStartedAt: Date.now(),
-      },
-    },
-  });
-
-  assert.ok(firstMove);
-  assert.equal(firstMove.record.toNodeId, 'n06');
-  assert.equal(Object.prototype.propertyIsEnumerable.call(firstMove.finalState, 'pieces'), false);
-
-  const partialAppliedState = getAuthoritativeSnapshot({
-    roll: { name: '걸', steps: 3, bonus: false },
-    branchChoice: 'shortcut',
-    lastSequence: 12,
-    turnVersion: 4,
-  }, firstMove.finalState);
-  assert.ok(partialAppliedState);
-  assert.equal(Object.prototype.hasOwnProperty.call(partialAppliedState, 'pieces'), false);
-
-  const secondMove = prepareLocalMoveOwnership({
-    roomId: 'room-a',
-    state: partialAppliedState,
-    action: {
-      type: 'move_piece',
-      actorId: 'P1',
-      payload: {
-        pieceId: 'piece-1',
-        extraSteps: 0,
-        branchChoice: 'shortcut',
-        rollStackIndex: null,
-        clientActionId: 'move_piece:P1:12:0:걸:3:second',
-        clientActionStartedAt: Date.now(),
-      },
-    },
-  });
-
-  assert.ok(secondMove);
-  assert.equal(secondMove.record.fromNodeId, 'n06');
-  assert.ok(secondMove.record.pathNodeIds.length > 0);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(secondMove.finalState, 'pieces'), false);
-});
-
-test('완전 authoritative snapshot은 fallback 대신 자체 pieces를 사용한다', () => {
-  const fallback = makeOnlineMoveState();
-  const snapshot = {
-    ...fallback,
-    pieces: fallback.pieces.map((piece) => piece.id === 'piece-1'
-      ? { ...piece, nodeId: 'n06', started: true }
-      : piece),
-    lastSequence: 11,
-  };
-
-  assert.equal(getAuthoritativeSnapshot(snapshot, fallback), snapshot);
-});
-""")
+          Path('src/app/flows/authoritativeSnapshot.ts').write_bytes(base64.b64decode(os.environ['HELPER_B64']))
+          Path('tests/unit/localMoveHiddenPieces.test.ts').write_bytes(base64.b64decode(os.environ['TEST_B64']))
           PY
       - run: npm ci
       - run: npm run qa:validate-architecture
