@@ -13,6 +13,7 @@ import {
 import type { SequenceStateSnapshot } from '../appState';
 import { getQaMovePieceActionDelayMs, shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
+import { getAuthoritativeSnapshot } from '../flows/authoritativeSnapshot';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
 import {
   shouldConsumeLocalMoveCommitAck,
@@ -97,24 +98,6 @@ const markTimeoutRollAsRecovery = (action: CommittableGameAction): CommittableGa
   };
 };
 
-const getAuthoritativeSnapshot = (
-  value: unknown,
-  fallback: SequenceStateSnapshot | null,
-): SequenceStateSnapshot | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
-  const record = value as Record<string, unknown>;
-  if (record.stateAfter && typeof record.stateAfter === 'object' && !Array.isArray(record.stateAfter)) {
-    return record.stateAfter as SequenceStateSnapshot;
-  }
-  if (record.patch && typeof record.patch === 'object' && !Array.isArray(record.patch) && fallback) {
-    return { ...fallback, ...(record.patch as SequenceStateSnapshot) };
-  }
-  if ('pieces' in record || 'lastSequence' in record || 'turnVersion' in record) {
-    return record as SequenceStateSnapshot;
-  }
-  return fallback;
-};
-
 const getLocalDisplayFinalState = (state: SequenceStateSnapshot): SequenceStateSnapshot => ({
   ...state,
   captureEffect: null,
@@ -171,7 +154,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
   const acknowledgeLocalMoveEcho = useCallback((roomId: string, value: unknown, explicitState?: SequenceStateSnapshot | null) => {
     const identity = getAuthoritativeDeliveryIdentity(value);
     if (!identity.clientMutationId || !localMoveLedger.has(identity.clientMutationId)) return null;
-    const authoritativeState = explicitState ?? getAuthoritativeSnapshot(value, null);
+    const authoritativeState = explicitState ?? getAuthoritativeSnapshot<SequenceStateSnapshot>(value, null);
     if (authoritativeState) latestSyncedStateRef.current = authoritativeState;
     params.lastAppliedSequenceRef.current = Math.max(params.lastAppliedSequenceRef.current, identity.sequence);
     params.lastAppliedStateVersionRef.current = Math.max(params.lastAppliedStateVersionRef.current, identity.stateVersion);

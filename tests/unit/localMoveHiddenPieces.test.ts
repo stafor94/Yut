@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { getAuthoritativeSnapshot } from '../../src/app/flows/authoritativeSnapshot';
 import { prepareLocalMoveOwnership } from '../../src/app/flows/localMoveOwnership';
-import { applySequenceEvent } from '../../src/app/hooks/applySequenceEvent';
 import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
+
+const BLUE_TEAM = '\uCCAD\uD300' as const;
+const RED_TEAM = '\uD64D\uD300' as const;
+const MO = '\uBAA8';
+const GEOL = '\uAC78';
 
 const makeOnlineMoveState = () => ({
   playMode: 'individual' as const,
   pieceCount: 1 as const,
   stackedRollMode: false,
   gameSeats: [
-    { id: 'P1', team: '청팀' as const },
-    { id: 'P2', team: '홍팀' as const },
+    { id: 'P1', team: BLUE_TEAM },
+    { id: 'P2', team: RED_TEAM },
   ],
   turnOrderIds: ['P1', 'P2'],
   turnIndex: 0,
@@ -18,7 +23,7 @@ const makeOnlineMoveState = () => ({
     { id: 'piece-1', ownerId: 'P1', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
     { id: 'piece-2', ownerId: 'P2', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
   ],
-  roll: { name: '모', steps: 5, bonus: true },
+  roll: { name: MO, steps: 5, bonus: true },
   rollStack: [],
   selectedRollStackIndex: null,
   rollStackClosed: false,
@@ -48,7 +53,7 @@ const makeOnlineMoveState = () => ({
   turnVersion: 3,
 });
 
-test('partial stateAfter 이후에도 숨긴 로컬 pieces로 지름길 이동을 계산한다', () => {
+test('preserves hidden local pieces after a partial authoritative result', () => {
   const firstMove = prepareLocalMoveOwnership({
     roomId: 'room-a',
     state: makeOnlineMoveState(),
@@ -60,7 +65,7 @@ test('partial stateAfter 이후에도 숨긴 로컬 pieces로 지름길 이동�
         extraSteps: 0,
         branchChoice: 'outer',
         rollStackIndex: null,
-        clientActionId: 'move_piece:P1:10:0:모:5:first',
+        clientActionId: `move_piece:P1:10:0:${MO}:5:first`,
         clientActionStartedAt: Date.now(),
       },
     },
@@ -70,21 +75,18 @@ test('partial stateAfter 이후에도 숨긴 로컬 pieces로 지름길 이동�
   assert.equal(firstMove.record.toNodeId, 'n06');
   assert.equal(Object.prototype.propertyIsEnumerable.call(firstMove.finalState, 'pieces'), false);
 
-  const partialStateAfter = applySequenceEvent(firstMove.finalState, {
-    sequence: 12,
-    stateAfter: {
-      roll: { name: '걸', steps: 3, bonus: false },
-      branchChoice: 'shortcut',
-      turnVersion: 4,
-      lastClientMutationId: firstMove.record.clientMutationId,
-    },
-  });
-  assert.ok(partialStateAfter);
-  assert.equal(Object.prototype.hasOwnProperty.call(partialStateAfter, 'pieces'), false);
+  const partialAppliedState = getAuthoritativeSnapshot({
+    roll: { name: GEOL, steps: 3, bonus: false },
+    branchChoice: 'shortcut',
+    lastSequence: 12,
+    turnVersion: 4,
+  }, firstMove.finalState);
+  assert.ok(partialAppliedState);
+  assert.equal(Object.prototype.hasOwnProperty.call(partialAppliedState, 'pieces'), false);
 
   const secondMove = prepareLocalMoveOwnership({
     roomId: 'room-a',
-    state: partialStateAfter,
+    state: partialAppliedState,
     action: {
       type: 'move_piece',
       actorId: 'P1',
@@ -93,7 +95,7 @@ test('partial stateAfter 이후에도 숨긴 로컬 pieces로 지름길 이동�
         extraSteps: 0,
         branchChoice: 'shortcut',
         rollStackIndex: null,
-        clientActionId: 'move_piece:P1:12:0:걸:3:second',
+        clientActionId: `move_piece:P1:12:0:${GEOL}:3:second`,
         clientActionStartedAt: Date.now(),
       },
     },
@@ -105,14 +107,15 @@ test('partial stateAfter 이후에도 숨긴 로컬 pieces로 지름길 이동�
   assert.equal(Object.prototype.propertyIsEnumerable.call(secondMove.finalState, 'pieces'), false);
 });
 
-test('완전 stateAfter snapshot은 자체 pieces를 사용한다', () => {
+test('uses pieces from a complete authoritative snapshot', () => {
   const fallback = makeOnlineMoveState();
   const snapshot = {
     ...fallback,
-    pieces: fallback.pieces.map((piece) => piece.id === 'piece-1' ? { ...piece, nodeId: 'n06', started: true } : piece),
+    pieces: fallback.pieces.map((piece) => piece.id === 'piece-1'
+      ? { ...piece, nodeId: 'n06', started: true }
+      : piece),
+    lastSequence: 11,
   };
-  const applied = applySequenceEvent(fallback, { sequence: 11, stateAfter: snapshot });
 
-  assert.ok(applied);
-  assert.deepEqual(applied.pieces, snapshot.pieces);
+  assert.equal(getAuthoritativeSnapshot(snapshot, fallback), snapshot);
 });
