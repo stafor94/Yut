@@ -16,16 +16,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/fix-local-move-snapshot-pieces
-      - name: Locate timeout move state contracts
+      - name: Locate result application and pieces iteration
         run: |
           {
-            echo '### resolveMoveTimeout and timeout recovery call sites'
-            grep -RInE -C 24 --exclude-dir=node_modules --exclude-dir=dist 'resolveMoveTimeout\(|resolveMoveTimeoutContext\(|recoveredByCoordinator|timeoutDeadlineAt|makeTimeoutActionKey' src || true
+            echo '### authoritative result application'
+            grep -RInE -C 35 --exclude-dir=node_modules --exclude-dir=dist 'applyAuthoritativeResultSequence|applySyncedStateSnapshot|applyAuthoritativeResult|move_piece_resolved|onMoveSelectedPiece' src/app || true
             echo
-            echo '### local move final state consumers'
-            grep -RInE -C 24 --exclude-dir=node_modules --exclude-dir=dist 'localMoveLedger|finalState|prepareLocalMoveOwnership|stateSnapshotRef|fallbackState' src/app src/features/room || true
+            echo '### direct pieces iteration and spread'
+            grep -RInE -C 12 --exclude-dir=node_modules --exclude-dir=dist 'for \([^\n]* of [^\n]*\.pieces|\.\.\.[A-Za-z0-9_]+\.pieces|pieces: \[\.\.\.|new Map\([^\n]*pieces' src || true
           } > /tmp/source-contract.txt
-          cat /tmp/source-contract.txt
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -48,13 +47,10 @@ jobs:
                 'User-Agent': 'yut-source-contract-inspector',
               },
               body: JSON.stringify({
-                title: '[Source contract] Timeout move pieces call sites',
-                body: `## Timeout move source contracts\n\n\`\`\`text\n${output.slice(0, 62000)}\n\`\`\``,
+                title: '[Source contract] Authoritative move presentation pieces',
+                body: `## Authoritative result and pieces contracts\n\n\`\`\`text\n${output.slice(0, 62000)}\n\`\`\``,
               }),
             });
             if (!response.ok) throw new Error(`issue create failed: ${response.status} ${await response.text()}`);
-          })().catch((error) => {
-            console.error(error);
-            process.exitCode = 1;
-          });
+          })().catch((error) => { console.error(error); process.exitCode = 1; });
           NODE
