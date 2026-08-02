@@ -4,6 +4,6 @@
   "targetRef": "firebase-smooth-integration",
   "targetSha": "ec03c8677438dbb44f442c21217aa8df57072888",
   "mainSha": "e7b0828022b45c4784a9826b8a306956f062ab12",
-  "reportTitle": "[QA snapshot] missing pieces guard ec03c86",
-  "trigger": 33
+  "reportTitle": "[QA snapshot] stacked hidden pieces validation",
+  "trigger": 34
 }
