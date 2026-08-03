@@ -1,11 +1,14 @@
-import type { GameAction } from '../../features/room/services/roomService';
+export type PendingLocalMoveAction = {
+  type: 'move_piece';
+  actorId: string;
+  payload?: Record<string, unknown>;
+};
 
-type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
-export type PendingLocalMoveOwnershipPreparer = (action: CommittableGameAction) => boolean;
+export type PendingLocalMoveOwnershipPreparer = (action: PendingLocalMoveAction) => boolean;
 
 let currentOwnershipPreparer: PendingLocalMoveOwnershipPreparer | null = null;
 
-function parsePendingMoveAction(actionKey: string): CommittableGameAction | null {
+function parsePendingMoveAction(actionKey: string): PendingLocalMoveAction | null {
   if (!actionKey.startsWith('move_piece:')) return null;
   const parts = actionKey.split(':');
   if (parts.lastIndexOf('stack') !== 11 || parts.length < 13) return null;
@@ -27,7 +30,7 @@ function parsePendingMoveAction(actionKey: string): CommittableGameAction | null
       branchChoice,
       rollStackIndex,
     },
-  } as CommittableGameAction;
+  };
 }
 
 export function requiresPendingLocalMoveOwnership(actionKey: string) {
