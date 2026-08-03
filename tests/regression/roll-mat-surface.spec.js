@@ -216,6 +216,75 @@ test.describe('roll mat surface regression', () => {
         window.__YUT_QA_ROLL_MAT_NODE__ = document.querySelector('[data-testid="roll-mat"]');
         window.__YUT_QA_ROLL_MAT_SURFACE_NODE__ = document.querySelector('[data-testid="roll-mat-surface"]');
         window.__YUT_QA_ROLL_SCENE_NODE__ = document.querySelector('[data-testid="yut-roll-scene"]');
+        window.__YUT_QA_ROLL_MAT_HOLD_OBSERVER__?.disconnect();
+        if (window.__YUT_QA_ROLL_MAT_HOLD_FRAME__) {
+          cancelAnimationFrame(window.__YUT_QA_ROLL_MAT_HOLD_FRAME__);
+        }
+        window.__YUT_QA_ROLL_MAT_HELD_SURFACE__ = null;
+
+        let observer;
+        const sample = () => {
+          const stage = document.querySelector('.roll-stage.result-hold-roll');
+          const matNode = stage?.querySelector('[data-testid="roll-mat"]') ?? null;
+          const surfaceNode = matNode?.querySelector('[data-testid="roll-mat-surface"]') ?? null;
+          const sceneNode = matNode?.querySelector('[data-testid="yut-roll-scene"]') ?? null;
+          const labelNode = stage?.querySelector('.roll-label') ?? null;
+          if (!stage || !matNode || !surfaceNode || !sceneNode || !labelNode) return false;
+          if (
+            matNode !== window.__YUT_QA_ROLL_MAT_NODE__
+            || surfaceNode !== window.__YUT_QA_ROLL_MAT_SURFACE_NODE__
+            || sceneNode !== window.__YUT_QA_ROLL_SCENE_NODE__
+          ) return false;
+
+          const style = getComputedStyle(surfaceNode);
+          const rect = surfaceNode.getBoundingClientRect();
+          const sceneRect = sceneNode.getBoundingClientRect();
+          const state = {
+            backgroundImage: style.backgroundImage,
+            borderTopWidth: style.borderTopWidth,
+            borderTopStyle: style.borderTopStyle,
+            boxShadow: style.boxShadow,
+            opacity: style.opacity,
+            layoutWidth: surfaceNode.offsetWidth,
+            layoutHeight: surfaceNode.offsetHeight,
+            visualInsetTop: Math.round(rect.top - sceneRect.top),
+            visualWidth: Math.round(rect.width),
+            visualHeight: Math.round(rect.height),
+            labelText: labelNode.textContent?.trim() ?? '',
+            sameNodes: true,
+          };
+          const stable = state.backgroundImage !== 'none'
+            && state.borderTopWidth === '10px'
+            && state.borderTopStyle === 'solid'
+            && state.boxShadow !== 'none'
+            && state.opacity === '1'
+            && state.layoutWidth > 0
+            && state.layoutHeight > 0
+            && state.visualWidth > 0
+            && state.visualHeight > 0
+            && state.labelText.length > 0;
+          if (!stable) return false;
+          window.__YUT_QA_ROLL_MAT_HELD_SURFACE__ = state;
+          observer?.disconnect();
+          if (window.__YUT_QA_ROLL_MAT_HOLD_FRAME__) {
+            cancelAnimationFrame(window.__YUT_QA_ROLL_MAT_HOLD_FRAME__);
+            window.__YUT_QA_ROLL_MAT_HOLD_FRAME__ = 0;
+          }
+          return true;
+        };
+        const tick = () => {
+          if (sample()) return;
+          window.__YUT_QA_ROLL_MAT_HOLD_FRAME__ = requestAnimationFrame(tick);
+        };
+        observer = new MutationObserver(sample);
+        observer.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['class', 'hidden', 'style'],
+          childList: true,
+          subtree: true,
+        });
+        window.__YUT_QA_ROLL_MAT_HOLD_OBSERVER__ = observer;
+        tick();
       });
 
       const readSurfaceState = () => surface.evaluate((node) => {
@@ -276,11 +345,20 @@ test.describe('roll mat surface regression', () => {
       expect(resolvedSurface.visualWidth).toBeGreaterThan(0);
       expect(resolvedSurface.visualHeight).toBeGreaterThan(0);
 
-      await expect(page.locator('.roll-stage.resolved-from-pending .roll-label')).toBeVisible({ timeout: 5_000 });
-      await expect(surface).toBeVisible();
-      const heldSurface = await readSurfaceState();
+      let heldSurface = null;
+      await expect.poll(async () => {
+        heldSurface = await page.evaluate(() => window.__YUT_QA_ROLL_MAT_HELD_SURFACE__ ?? null);
+        return heldSurface;
+      }, {
+        timeout: 10_000,
+        message: 'pending 전에 설치한 observer가 짧은 result-hold의 매트 표면과 결과 label을 보존해야 합니다.',
+      }).not.toBeNull();
+      if (!heldSurface) throw new Error('result-hold 매트 표면 snapshot을 수집하지 못했습니다.');
+      expect(heldSurface.sameNodes, 'pending부터 result-hold까지 같은 매트 DOM을 유지해야 합니다.').toBe(true);
+      expect(heldSurface.labelText, 'result-hold 결과 label이 실제 표시되어야 합니다.').not.toBe('');
       expect(heldSurface.backgroundImage).not.toBe('none');
       expect(heldSurface.borderTopWidth).toBe('10px');
+      expect(heldSurface.borderTopStyle).toBe('solid');
       expect(heldSurface.boxShadow).not.toBe('none');
       expect(heldSurface.opacity).toBe('1');
       expect(heldSurface.layoutWidth).toBe(pendingSurface.layoutWidth);
