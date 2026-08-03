@@ -13,11 +13,11 @@ import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../h
 const readRollGeometry = async (page, { requireResult = false } = {}) => page.evaluate(({ requireResult }) => {
   const board = document.querySelector('[data-testid="game-board"]');
   const stage = document.querySelector('.roll-stage');
-  const mat = document.querySelector('[data-testid="roll-mat"]');
-  const grade = document.querySelector('[data-testid="roll-timing-grade"]');
-  const resultPresentation = document.querySelector('[data-testid="roll-result-presentation"]');
-  const resultCard = document.querySelector('[data-testid="roll-result-card"]');
-  const surface = document.querySelector('[data-testid="roll-mat-surface"]');
+  const mat = stage?.querySelector('[data-testid="roll-mat"]') ?? null;
+  const grade = stage?.querySelector('[data-testid="roll-timing-grade"]') ?? null;
+  const resultPresentation = stage?.querySelector('[data-testid="roll-result-presentation"]:not([hidden])') ?? null;
+  const resultCard = resultPresentation?.querySelector('[data-testid="roll-result-card"]') ?? null;
+  const surface = stage?.querySelector('[data-testid="roll-mat-surface"]') ?? null;
   const missing = [
     ['board', board],
     ['stage', stage],
@@ -172,7 +172,7 @@ test.describe('local roll stage position regression', () => {
         }, {
           timeout: 2_000,
           intervals: [16, 32, 64],
-          message: '1초 result-hold 동안 실제 화면 좌표가 중앙 정렬과 매트 간격 계약에 도달해야 합니다.',
+          message: '1초 result-hold 동안 현재 roll-stage의 결과 카드가 중앙 정렬과 매트 간격 계약에 도달해야 합니다.',
         }).toBe('stable');
         if (!latestGeometry) throw new Error('안정된 결과 표시 geometry snapshot을 수집하지 못했습니다.');
 
