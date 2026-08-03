@@ -94,6 +94,5 @@ export function createSequenceRollAtPerfect(page) {
       await page.waitForTimeout(16);
     }
     throw new Error('8초 동안 Perfect 구간에서 윷 던지기 버튼을 클릭하지 못했습니다.');
-        };
   };
 }
