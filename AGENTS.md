@@ -4,6 +4,14 @@
 
 This repository is managed with Codex-assisted development.
 
+## Mandatory first read
+
+Before planning, investigating, editing, creating a PR, or handling Actions, read [`DEVELOPMENT_PLAYBOOK.md`](./DEVELOPMENT_PLAYBOOK.md) in full.
+
+This applies equally to plans written in Work and changes executed in Chat/Codex. The playbook defines the start gate, scope limits, verification map, GitHub/Actions restrictions, forced stop conditions, and merge-completion criteria. Also read `BUG_HISTORY.md` and any area-specific documentation required by the playbook.
+
+Do not proceed from remembered or copied instructions when the repository files can be read. Re-read the current versions at the start of every task and after a session interruption.
+
 Codex must act as a careful patch generator, not as an autonomous product owner.
 
 The highest priority is to avoid repeated failed fixes, unrelated changes, and speculative refactoring.
@@ -133,14 +141,11 @@ If verification was not possible, the final response must explicitly say:
 
 ## PR 및 GitHub Actions 운영 규칙
 
-이 저장소에서 PR을 생성해야 하는 작업은 다음 규칙을 따른다.
+PR 생성, 병합, Actions 확인과 실패 처리는 `DEVELOPMENT_PLAYBOOK.md`를 따른다.
 
-1. PR은 Draft PR이 아니라 일반 PR로 생성한다.
-2. 사용자가 merge를 요청했고 권한, 브랜치 보호 규칙, CI 상태가 허용하는 경우에만 merge를 진행한다.
-3. merge가 불가능하면 이유를 보고하고 가능한 다음 단계를 제안한다.
-4. merge 후 GitHub CLI 또는 API 권한이 있는 경우 가장 최근의 GitHub Actions workflow를 확인한다.
-5. workflow 확인은 merge 시점으로부터 3분 뒤에 시작하고, 이후 1분 주기로 최대 6분까지 반복한다.
-6. workflow가 실패하면 실패 이후 가장 최근에 생성된 Issue를 확인한다.
-7. 실패한 workflow와 최신 Issue를 기준으로 원인을 분석한다.
-8. 정확한 원인 파악이 어렵다면 해당 workflow run의 Artifacts를 내려받아 확인한다.
-9. 실패 직후 바로 수정하지 말고, 먼저 원인 분석과 수정 계획을 작성해서 보고한다.
+- 기본 PR은 Draft로 생성하고 병합 기준 충족 후 ready로 전환한다.
+- 기존 workflow와 branch event만 사용하며 workflow 변경은 사용자 승인이 필요하다.
+- 임시 workflow, inspector/integration PR, 상태 출력용 Issue와 빈 커밋을 만들지 않는다.
+- 실행 중인 Run을 불필요한 후속 push로 취소하지 않는다.
+- 동일 오류 2회, fix cycle 2회 실패, 범위 확대 또는 별도 검증 인프라 필요 시 교본의 강제 중단선을 적용한다.
+- 병합 후 해당 merge commit의 Main Branch QA `completed/success`를 직접 확인한다.
