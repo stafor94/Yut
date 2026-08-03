@@ -152,15 +152,18 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
         ? debug.pieces.filter((piece) => piece?.ownerId === debug.localSeatId)
         : [];
       const movedPieces = localPieces.filter((piece) => piece?.started && !piece?.finished);
-      const localMoveActionIds = Array.isArray(debug.actionPipeline?.localClientMutationIds)
-        ? debug.actionPipeline.localClientMutationIds.filter((actionId) => actionId.startsWith(`move_piece:${debug.localSeatId}:`))
+      const actionIds = Array.isArray(debug.actionPipeline?.localClientMutationIds)
+        ? debug.actionPipeline.localClientMutationIds
         : [];
+      const localMoveActionIds = actionIds.filter((actionId) => actionId.startsWith(`move_piece:${debug.localSeatId}:`));
+      const aiRollActionIds = actionIds.filter((actionId) => actionId.startsWith('roll_yut_ai:'));
+      const nextTurnStarted = debug.activeSeat?.id !== debug.localSeatId || aiRollActionIds.length > 0;
       return movedPieces.length === 1
         && movedPieces[0]?.nodeId === 'n03'
-        && debug.activeSeat?.id !== debug.localSeatId
+        && nextTurnStarted
         && debug.pendingLocalRemoteActionCount === 0
         && localMoveActionIds.length === 1;
-    }, { timeout: 15_000, intervals: [50, 100, 200], message: '개 자동 이동은 정확히 한 번 n03에 확정되고 다음 차례로 넘어가야 합니다.' }).toBe(true);
+    }, { timeout: 15_000, intervals: [50, 100, 200], message: '개 자동 이동은 정확히 한 번 n03에 확정되고 다음 차례가 시작되어야 합니다.' }).toBe(true);
 
     const settledState = await collectScreenState(page);
     const settledDebug = settledState.yutDebug ?? {};
