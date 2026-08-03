@@ -327,14 +327,24 @@ async function expectDelayedRollPresentationContract(roomId, actorId) {
       .filter((sequence) => sequence?.type === 'roll_yut' && sequence?.actorId === actorId)
       .sort((left, right) => Number(right.sequence ?? 0) - Number(left.sequence ?? 0))[0];
     const clientStartedAt = Number(rollSequence?.action?.payload?.clientActionStartedAt ?? 0);
-    const readyAt = Number(rollSequence?.payload?.rollPresentationReadyAt ?? rollSequence?.patch?.rollResultReadyAt ?? 0);
-    if (!clientStartedAt || !readyAt) return null;
-    return readyAt - clientStartedAt;
+    const clientCreatedAt = Number(rollSequence?.clientCreatedAt ?? 0);
+    const payloadReadyAt = Number(rollSequence?.payload?.rollPresentationReadyAt ?? 0);
+    const patchReadyAt = Number(rollSequence?.patch?.rollResultReadyAt ?? 0);
+    const deadlineAt = Number(rollSequence?.patch?.turnDeadlineAt ?? 0);
+    if (!clientStartedAt || !clientCreatedAt || !payloadReadyAt || !patchReadyAt || !deadlineAt) return false;
+
+    const delayedSubmissionMs = clientCreatedAt - clientStartedAt;
+    const remainingPresentationMs = payloadReadyAt - clientCreatedAt;
+    return delayedSubmissionMs >= 3_000
+      && remainingPresentationMs >= 2_000
+      && remainingPresentationMs <= 3_200
+      && patchReadyAt === payloadReadyAt
+      && deadlineAt - payloadReadyAt === 10_000;
   }, {
     timeout: 15_000,
     intervals: [100, 250, 500],
-    message: '3,000ms 지연 응답은 clientActionStartedAt 기준 6,200ms readyAt 계약을 기록해야 합니다.',
-  }).toBe(6_200);
+    message: '지연 응답 뒤 남은 extra-spin·landing·hold와 10초 move deadline 계약이 일치해야 합니다.',
+  }).toBe(true);
 }
 
 async function expectSingleAuthoritativeMove(roomId, localSeatId) {
