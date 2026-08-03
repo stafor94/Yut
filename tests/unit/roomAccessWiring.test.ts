@@ -7,10 +7,16 @@ const statisticsSpecSource = readFileSync('tests/regression/game-statistics-dial
 
 test('room access는 한 번의 브라우저 토큰 조회가 전체 deadline을 점유하지 못하게 한다', () => {
   assert.match(roomAccessSource, /DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS = 1_500/u);
-  assert.match(roomAccessSource, /Promise\.race\(\[\s*rememberRoomIdFromPage\(page\)/u);
-  assert.match(roomAccessSource, /attempt \+= 1;[\s\S]{0,250}rememberRoomIdWithAttemptTimeout/u);
+  assert.match(roomAccessSource, /Promise\.race\(\[\s*rememberRoomIdFromPage\(roomAccessPage\)/u);
+  assert.match(roomAccessSource, /attempt \+= 1;[\s\S]{0,500}rememberRoomIdWithAttemptTimeout/u);
   assert.match(roomAccessSource, /Math\.min\(DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS, remainingBeforeAttemptMs\)/u);
   assert.match(roomAccessSource, /pollIntervals\[Math\.min\(attempt - 1, pollIntervals\.length - 1\)\]/u);
+});
+
+test('room access는 화면 방 제목이 일치할 때만 Firestore room id를 토큰 조회 fallback으로 사용한다', () => {
+  assert.match(roomAccessSource, /const roomAccessPage = fallbackRoomId[\s\S]{0,400}__YUT_DEBUG_STATE__\?\.activeRoomId[\s\S]{0,250}: page;/u);
+  assert.match(roomAccessSource, /const fallbackRoomId = firestoreRoomId && displayedRoomTitle === roomTitle \? firestoreRoomId : '';/u);
+  assert.match(roomAccessSource, /rememberRoomIdWithAttemptTimeout\([\s\S]{0,180}fallbackRoomId,[\s\S]{0,40}\);/u);
 });
 
 test('Safari room access는 cleanup 토큰 확보 후 현재 페이지와 Firestore 연결을 유지한다', () => {
