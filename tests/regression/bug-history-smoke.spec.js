@@ -473,7 +473,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
         const debug = window.__YUT_DEBUG_STATE__ ?? {};
         const pieces = Array.isArray(debug.pieces) ? debug.pieces : [];
         const localSeatId = String(debug.localSeatId ?? '');
-        const movingLocalPiece = Array.from(document.querySelectorAll('[data-testid^="piece-"]-moving'))
+        const movingLocalPiece = Array.from(document.querySelectorAll('[data-testid^="piece-"].moving'))
           .some((node) => {
             const testId = node.getAttribute('data-testid') ?? '';
             const pieceId = testId.replace(/^piece-/, '');
