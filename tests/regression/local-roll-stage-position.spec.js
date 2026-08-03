@@ -165,18 +165,18 @@ test.describe('local roll stage position regression', () => {
       });
 
       await runQaStep(testInfo, '결과 카드 중앙 정렬과 매트 간격 확인', async () => {
-        const resultCard = page.getByTestId('roll-result-card');
-        await expect(resultCard).toBeVisible({ timeout: 10_000 });
+        let latestGeometry = null;
         await expect.poll(async () => {
           const current = await readRollGeometry(page, { requireResult: true });
-          return current.missing;
+          if (current.missing.length > 0) return null;
+          latestGeometry = current;
+          return current;
         }, {
-          timeout: 2_000,
-          intervals: [0, 50, 100, 200],
-          message: '결과 hold 구간에서 roll-stage와 결과 카드 geometry를 읽어야 합니다.',
-        }).toEqual([]);
-        const latestGeometry = await readRollGeometry(page, { requireResult: true });
-        expect(latestGeometry.missing, `결과 표시 위치 요소를 모두 찾을 수 있어야 합니다: ${JSON.stringify(latestGeometry, null, 2)}`).toEqual([]);
+          timeout: 10_000,
+          intervals: [16, 32, 64],
+          message: '1초 result-hold 동안 roll-stage와 결과 카드 geometry를 한 snapshot으로 읽어야 합니다.',
+        }).not.toBeNull();
+        if (!latestGeometry) throw new Error('결과 표시 geometry snapshot을 수집하지 못했습니다.');
 
         expect(latestGeometry.stageCenterOffset).toBeLessThanOrEqual(2);
         expect(latestGeometry.matCenterOffset).toBeLessThanOrEqual(2);
