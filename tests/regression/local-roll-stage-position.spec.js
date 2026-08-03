@@ -48,19 +48,6 @@ const readRollGeometry = async (page, { requireResult = false } = {}) => page.ev
   }
 
   const centerX = (rect) => rect.left + rect.width / 2;
-  const layoutRect = (element) => {
-    const rect = element.getBoundingClientRect();
-    if (!(element instanceof HTMLElement) || !element.offsetParent) return rect;
-    const parentRect = element.offsetParent.getBoundingClientRect();
-    return {
-      left: parentRect.left + element.offsetLeft,
-      top: parentRect.top + element.offsetTop,
-      width: element.offsetWidth,
-      height: element.offsetHeight,
-      right: parentRect.left + element.offsetLeft + element.offsetWidth,
-      bottom: parentRect.top + element.offsetTop + element.offsetHeight,
-    };
-  };
   const boardRect = board.getBoundingClientRect();
   const stageRect = stage.getBoundingClientRect();
   const matRect = mat.getBoundingClientRect();
@@ -68,7 +55,7 @@ const readRollGeometry = async (page, { requireResult = false } = {}) => page.ev
   const stageStyle = getComputedStyle(stage);
   const gradeStyle = getComputedStyle(grade);
   const resultStyle = resultPresentation ? getComputedStyle(resultPresentation) : null;
-  const cardRect = resultCard ? layoutRect(resultCard) : null;
+  const cardRect = resultCard?.getBoundingClientRect() ?? null;
   const surfaceRect = surface?.getBoundingClientRect() ?? null;
 
   return {
@@ -168,15 +155,26 @@ test.describe('local roll stage position regression', () => {
         let latestGeometry = null;
         await expect.poll(async () => {
           const current = await readRollGeometry(page, { requireResult: true });
-          if (current.missing.length > 0) return null;
+          if (current.missing.length > 0) return JSON.stringify(current);
+          const stable = current.resultCenterOffset !== null
+            && current.stageCenterOffset <= 2
+            && current.matCenterOffset <= 2
+            && current.gradeCenterOffset <= 2
+            && current.resultCenterOffset <= 2
+            && current.gradeTop === 20
+            && current.resultTop === 55
+            && current.gradeResultGap >= 0
+            && current.gradeResultGap <= 8
+            && current.resultSurfaceGap <= 100;
+          if (!stable) return JSON.stringify(current);
           latestGeometry = current;
-          return current;
+          return 'stable';
         }, {
-          timeout: 10_000,
+          timeout: 2_000,
           intervals: [16, 32, 64],
-          message: '1초 result-hold 동안 roll-stage와 결과 카드 geometry를 한 snapshot으로 읽어야 합니다.',
-        }).not.toBeNull();
-        if (!latestGeometry) throw new Error('결과 표시 geometry snapshot을 수집하지 못했습니다.');
+          message: '1초 result-hold 동안 실제 화면 좌표가 중앙 정렬과 매트 간격 계약에 도달해야 합니다.',
+        }).toBe('stable');
+        if (!latestGeometry) throw new Error('안정된 결과 표시 geometry snapshot을 수집하지 못했습니다.');
 
         expect(latestGeometry.stageCenterOffset).toBeLessThanOrEqual(2);
         expect(latestGeometry.matCenterOffset).toBeLessThanOrEqual(2);
