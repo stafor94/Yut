@@ -320,7 +320,7 @@ function observeMoveUntilStable(page, {
   });
 }
 
-async function expectFastRollPresentationContract(roomId, actorId) {
+async function expectDelayedRollPresentationContract(roomId, actorId) {
   await expect.poll(async () => {
     const sequences = await getRoomSequencesForQa(roomId);
     const rollSequence = sequences
@@ -333,8 +333,8 @@ async function expectFastRollPresentationContract(roomId, actorId) {
   }, {
     timeout: 15_000,
     intervals: [100, 250, 500],
-    message: '서버 roll sequence가 clientActionStartedAt 기준 3,200ms readyAt 계약을 기록해야 합니다.',
-  }).toBe(3_200);
+    message: '3,000ms 지연 응답은 clientActionStartedAt 기준 6,200ms readyAt 계약을 기록해야 합니다.',
+  }).toBe(6_200);
 }
 
 async function expectSingleAuthoritativeMove(roomId, localSeatId) {
@@ -431,7 +431,7 @@ async function runScenario({
     expect(ordering.rollResultReadyAt).toBeGreaterThan(0);
     expect(ordering.effectiveRollResultReadyAt).toBe(ordering.rollResultReadyAt);
     expect(ordering.enabledAt).toBeGreaterThanOrEqual(ordering.rollResultReadyAt);
-    await expectFastRollPresentationContract(game.roomId, identity.ownerSeatId);
+    await expectDelayedRollPresentationContract(game.roomId, identity.ownerSeatId);
 
     const [localTrace, remoteTrace] = await Promise.all([localTracePromise, remoteTracePromise]);
     expectSinglePresentation(localTrace, { expectedPath, finalNodeId, local: true });
