@@ -2,6 +2,6 @@
   "workflow": "qa.yml",
   "targetEvent": "push",
   "targetRef": "firebase-smooth-integration",
-  "targetSha": "6913c5008591cb748a9272c0c0f20ac4207b2a0b",
-  "reportTitle": "[QA snapshot] PR1520 lifecycle full matrix 6913c50 attempt 1"
+  "targetSha": "0a7f18373bdf592ab527b881bcfddd5b2b5b4530",
+  "reportTitle": "[QA snapshot] PR1520 final full matrix 0a7f183 attempt 1"
 }
