@@ -133,6 +133,18 @@ async function waitForPieceNode(page, pieceId, nodeId) {
   }).toBe(true);
 }
 
+async function refreshRoomFixtureState(page, roomId) {
+  await page.evaluate((activeRoomId) => {
+    window.dispatchEvent(new CustomEvent('yut:sequence-hard-recovery', {
+      detail: {
+        roomId: activeRoomId,
+        watchKey: `${activeRoomId}:qa-fixture`,
+        elapsedMs: 0,
+      },
+    }));
+  }, roomId);
+}
+
 async function submitPerfectGul(page, {
   clickMoveWhenReady = false,
   trackedPieceId,
@@ -153,7 +165,10 @@ async function submitPerfectGul(page, {
         && (trackedPiece.nodeId !== expectedInitialNodeId || debug.movingPieceId === targetPieceId)) {
         movedBeforeEnabled = true;
       }
-      if (!moveEnabled && document.querySelector('.turn-action-timer')) moveTimerVisibleBeforeEnabled = true;
+      const resolvedRollVisible = Number(debug.rollResultReadyAt ?? 0) > 0;
+      if (!moveEnabled && resolvedRollVisible && document.querySelector('.turn-action-timer')) {
+        moveTimerVisibleBeforeEnabled = true;
+      }
       if (moveEnabled) {
         const enabledAt = Date.now();
         if (shouldClickMoveWhenReady && moveButton instanceof HTMLButtonElement) moveButton.click();
@@ -346,67 +361,78 @@ async function runScenario({
   expectedPath = ['n02', 'n03', 'n04'],
   finalNodeId = 'n04',
 }) {
-  const game = await openTwoHumanGulGame({
-    browser,
-    hostPage: page,
-    hostContext: context,
-    testInfo,
-    suffix,
-    executorRole,
-    moveResultDelayMs,
-    pieceCount,
-  });
-  const identity = await getExecutorPieceIdentity(game.executorPage);
-  expect(identity.ownerSeatId).not.toBe('');
-  expect(identity.pieceId).not.toBe('');
-
-  if (initialNodeId !== 'n01') {
-    await seedRoomPieceAtNodeForQa({
-      roomId: game.roomId,
-      authPage: game.hostPage,
-      ownerSeatId: identity.ownerSeatId,
-      pieceId: identity.pieceId,
-      nodeId: initialNodeId,
-      previousNodeId,
+  let game;
+  try {
+    game = await openTwoHumanGulGame({
+      browser,
+      hostPage: page,
+      hostContext: context,
+      testInfo,
+      suffix,
+      executorRole,
+      moveResultDelayMs,
+      pieceCount,
     });
-    await Promise.all([
-      waitForPieceNode(game.executorPage, identity.pieceId, initialNodeId),
-      waitForPieceNode(game.observerPage, identity.pieceId, initialNodeId),
-    ]);
+    const identity = await getExecutorPieceIdentity(game.executorPage);
+    expect(identity.ownerSeatId).not.toBe('');
+    expect(identity.pieceId).not.toBe('');
+
+    if (initialNodeId !== 'n01') {
+      await seedRoomPieceAtNodeForQa({
+        roomId: game.roomId,
+        authPage: game.hostPage,
+        ownerSeatId: identity.ownerSeatId,
+        pieceId: identity.pieceId,
+        nodeId: initialNodeId,
+        previousNodeId,
+      });
+      await Promise.all([
+        refreshRoomFixtureState(game.executorPage, game.roomId),
+        refreshRoomFixtureState(game.observerPage, game.roomId),
+      ]);
+      await Promise.all([
+        waitForPieceNode(game.executorPage, identity.pieceId, initialNodeId),
+        waitForPieceNode(game.observerPage, identity.pieceId, initialNodeId),
+      ]);
+    }
+
+    const localTracePromise = observeMoveUntilStable(game.executorPage, {
+      ...identity,
+      initialNodeId,
+      expectedPath,
+      finalNodeId,
+      collectLocalMutationIds: true,
+    });
+    const remoteTracePromise = observeMoveUntilStable(game.observerPage, {
+      ...identity,
+      initialNodeId,
+      expectedPath,
+      finalNodeId,
+      collectLocalMutationIds: false,
+    });
+    const submission = await submitPerfectGul(game.executorPage, {
+      clickMoveWhenReady,
+      trackedPieceId: identity.pieceId,
+      initialNodeId,
+    });
+    const ordering = await submission.orderingPromise;
+    expect(ordering.movedBeforeEnabled).toBe(false);
+    expect(ordering.moveTimerVisibleBeforeEnabled).toBe(false);
+    expect(ordering.rollResultReadyAt).toBeGreaterThan(0);
+    expect(ordering.effectiveRollResultReadyAt).toBe(ordering.rollResultReadyAt);
+    expect(ordering.enabledAt).toBeGreaterThanOrEqual(ordering.rollResultReadyAt);
+    await expectFastRollPresentationContract(game.roomId, identity.ownerSeatId);
+
+    const [localTrace, remoteTrace] = await Promise.all([localTracePromise, remoteTracePromise]);
+    expectSinglePresentation(localTrace, { expectedPath, finalNodeId, local: true });
+    expectSinglePresentation(remoteTrace, { expectedPath, finalNodeId, local: false });
+    await expectSingleAuthoritativeMove(game.roomId, identity.ownerSeatId);
+    return game;
+  } catch (error) {
+    await game?.guestContext.close().catch(() => undefined);
+    await deleteRoomForQa(game?.roomId).catch(() => undefined);
+    throw error;
   }
-
-  const localTracePromise = observeMoveUntilStable(game.executorPage, {
-    ...identity,
-    initialNodeId,
-    expectedPath,
-    finalNodeId,
-    collectLocalMutationIds: true,
-  });
-  const remoteTracePromise = observeMoveUntilStable(game.observerPage, {
-    ...identity,
-    initialNodeId,
-    expectedPath,
-    finalNodeId,
-    collectLocalMutationIds: false,
-  });
-  const submission = await submitPerfectGul(game.executorPage, {
-    clickMoveWhenReady,
-    trackedPieceId: identity.pieceId,
-    initialNodeId,
-  });
-  const ordering = await submission.orderingPromise;
-  expect(ordering.movedBeforeEnabled).toBe(false);
-  expect(ordering.moveTimerVisibleBeforeEnabled).toBe(false);
-  expect(ordering.rollResultReadyAt).toBeGreaterThan(0);
-  expect(ordering.effectiveRollResultReadyAt).toBe(ordering.rollResultReadyAt);
-  expect(ordering.enabledAt).toBeGreaterThanOrEqual(ordering.rollResultReadyAt);
-  await expectFastRollPresentationContract(game.roomId, identity.ownerSeatId);
-
-  const [localTrace, remoteTrace] = await Promise.all([localTracePromise, remoteTracePromise]);
-  expectSinglePresentation(localTrace, { expectedPath, finalNodeId, local: true });
-  expectSinglePresentation(remoteTrace, { expectedPath, finalNodeId, local: false });
-  await expectSingleAuthoritativeMove(game.roomId, identity.ownerSeatId);
-  return game;
 }
 
 test.describe('Galaxy online move local ownership contract', () => {
