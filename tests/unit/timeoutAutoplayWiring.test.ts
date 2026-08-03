@@ -37,7 +37,7 @@ test('GameBoardControls는 자동 플레이 분기를 직접 조작 UI보다 우
   assert.match(controlsSource, /onClick=\{onResumeHumanControl\}/);
   assert.match(controlsSource, /disabled=\{resumeHumanControlPending\}/);
   assert.match(controlsSource, /resumeHumanControlPending \? '통제권 가져오는 중\.\.\.' : '직접 플레이로 돌아가기'/);
-  assert.match(controlsSource, /autoPlayActive \? <div[\s\S]*: transitionPhase === 'ending'/);
+  assert.match(controlsSource, /autoPlayActive \? <div[\s\S]*: seatTransitionPhase === 'ending'/);
 });
 
 test('자동 플레이 상태 패널은 play-controls 크기를 재사용하고 viewport positioning을 사용하지 않는다', () => {

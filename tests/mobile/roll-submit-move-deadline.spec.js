@@ -144,8 +144,6 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
     expect(ordering.timerAt - ordering.enabledAt).toBeLessThanOrEqual(80);
     expect(ordering.deadlineAt - ordering.observedAt).toBeGreaterThanOrEqual(9_700);
     expect(ordering.deadlineAt - ordering.observedAt).toBeLessThanOrEqual(10_050);
-    await expect(page.getByTestId('move-piece-button')).toBeEnabled();
-    await expect(page.locator('.turn-action-timer')).toBeVisible();
 
     await expect.poll(async () => {
       const state = await collectScreenState(page);

@@ -28,6 +28,11 @@ import {
   prepareLocalMoveOwnership,
   withLocalMovePiecesFallback,
 } from '../flows/localMoveOwnership';
+import { releaseMoveActionClaim, settleMoveActionClaim } from '../flows/moveExecutionPolicy';
+import {
+  clearPendingLocalMoveOwnershipPreparer,
+  publishPendingLocalMoveOwnershipPreparer,
+} from '../flows/pendingLocalMoveOwnership';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
 
@@ -130,6 +135,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
       try {
         await localMovePresentationLifecycle.waitForSettlement();
         if (params.activeRoomIdRef.current !== roomId) return false;
+        releaseMoveActionClaim(actionKey);
         localMoveLedger.remove(actionKey);
         params.removeSettledPendingLocalRemoteAction(actionKey);
         return await params.syncLatestAuthoritativeState(reason, {
@@ -180,13 +186,16 @@ export function useAuthoritativeGameSyncController(params: Params) {
     if (observed.status === 'matched'
       && observed.record
       && shouldReleaseLocalMovePending(observed.record)) {
+      settleMoveActionClaim(identity.clientMutationId);
       params.acknowledgePendingLocalRemoteAction(identity.clientMutationId);
     }
     return authoritativeState;
   }, [params.acknowledgePendingLocalRemoteAction, params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef, runLocalMoveHardResync]);
 
   const prepareAndFinalizeLocalMove = useCallback((roomId: string, action: CommittableGameAction) => {
-    if (action.type !== 'move_piece') return;
+    if (action.type !== 'move_piece') return false;
+    const actionId = getClientActionId(action);
+    if (actionId && localMoveLedger.has(actionId)) return true;
     const prepared = prepareLocalMoveOwnership({
       roomId,
       state: withLocalMovePiecesFallback(
@@ -195,15 +204,17 @@ export function useAuthoritativeGameSyncController(params: Params) {
       ),
       action,
     });
-    if (!prepared) return;
+    if (!prepared) return false;
 
     const actionKey = prepared.record.clientMutationId;
+    if (localMoveLedger.has(actionKey)) return true;
     localMoveLedger.register(prepared.record);
     const presentationSettlement = localMovePresentationLifecycle.waitForSettlement();
     void presentationSettlement.then(() => {
       const record = localMoveLedger.get(actionKey);
       if (!record || record.roomId !== roomId || record.hardResyncStarted) return;
       if (params.activeRoomIdRef.current !== roomId) {
+        releaseMoveActionClaim(actionKey);
         localMoveLedger.remove(actionKey);
         return;
       }
@@ -217,10 +228,22 @@ export function useAuthoritativeGameSyncController(params: Params) {
       });
       localMoveLedger.markPresentationCompleted(actionKey);
       if (shouldReleaseLocalMovePending(record)) {
+        settleMoveActionClaim(actionKey);
         params.acknowledgePendingLocalRemoteAction(actionKey);
       }
     });
+    return true;
   }, [params.acknowledgePendingLocalRemoteAction, params.activeRoomIdRef, params.currentPiecesRef]);
+
+  const preparePendingLocalMoveOwnership = useCallback((action: CommittableGameAction) => {
+    const roomId = params.activeRoomIdRef.current;
+    if (!roomId) return false;
+    return prepareAndFinalizeLocalMove(roomId, action);
+  }, [params.activeRoomIdRef, prepareAndFinalizeLocalMove]);
+  publishPendingLocalMoveOwnershipPreparer(preparePendingLocalMoveOwnership);
+  useEffect(() => () => {
+    clearPendingLocalMoveOwnershipPreparer(preparePendingLocalMoveOwnership);
+  }, [preparePendingLocalMoveOwnership]);
 
   const authoritativeApplyWakeTimerRef = useRef<number | null>(null);
   const clearAuthoritativeApplyWake = useCallback(() => {

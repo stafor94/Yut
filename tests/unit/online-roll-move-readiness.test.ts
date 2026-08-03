@@ -11,11 +11,12 @@ import {
 import { shouldResyncRejectedPendingMove } from '../../src/app/flows/optimisticMoveRejectionPolicy';
 import { ONLINE_ROLL_FAST_PRESENTATION_MS } from '../../src/features/room/services/rollPresentationTiming';
 
-test('authoritative 온라인 roll의 전체 4.8초 presentation readyAt을 유효하게 유지한다', () => {
+test('authoritative 온라인 roll의 3.2초 presentation readyAt과 지연 허용 범위를 유지한다', () => {
   const now = 100_000;
   const readyAt = now + ONLINE_ROLL_FAST_PRESENTATION_MS;
   assert.equal(normalizeRollResultReadyAt(readyAt, now), readyAt);
-  assert.equal(normalizeRollResultReadyAt(readyAt + 1, now), 0);
+  assert.equal(normalizeRollResultReadyAt(readyAt + 1, now), readyAt + 1);
+  assert.equal(normalizeRollResultReadyAt(now + 10_000, now), 0);
   assert.equal(normalizeRollResultReadyAt(now, now), 0);
 });
 
@@ -93,7 +94,7 @@ test('동일 렌더에서 선택한 누적 던지기 인덱스는 최종 turn ac
 });
 
 test('누적 던지기 선택 이동의 ready action key도 정상 실행한다', () => {
-  const actionKey = 'move_piece:seat-a:11:4:ready:seat-z:piece-z:piece-2:0:outer:stack:1';
+  const actionKey = 'move_piece:seat-a:11:4:ready::seat-z:piece-z:piece-2:0:outer:stack:1';
   publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState({
     canRequestMove: true,
     canSubmitTurnAction: true,
@@ -124,15 +125,15 @@ test('이동 가능한 말이 없는 빽도 통과 action key도 정상 실행�
   assert.equal(canExecuteMoveActionNow(actionKey), true);
 });
 
-test('기존 local client mutation id가 같은 턴 문맥의 재요청·낙관적 이동·연출을 차단한다', () => {
+test('같은 roll opportunity는 sequence 변화에도 중복으로 보고 다른 스택 선택은 분리한다', () => {
   const claimedActionKeys = new Set<string>();
   const moveActionKey = 'move_piece:seat-a:7:2:걸:3:seat-z:piece-z:piece-1:0:outer:stack:none';
-  const sameTurnDifferentSelection = 'move_piece:seat-a:7:2:개:2:seat-z:piece-z:piece-2:0:outer:stack:1';
-  const nextSequenceActionKey = 'move_piece:seat-a:8:2:걸:3:seat-a:piece-1:piece-1:0:outer:stack:none';
+  const differentStackSelection = 'move_piece:seat-a:7:2:개:2:seat-z:piece-z:piece-2:0:outer:stack:1';
+  const sameRollNextSequence = 'move_piece:seat-a:8:2:걸:3:seat-a:piece-1:piece-1:0:outer:stack:none';
   assert.equal(isMoveActionAlreadyClaimed(moveActionKey, claimedActionKeys), false);
   claimedActionKeys.add(moveActionKey);
   assert.equal(isMoveActionAlreadyClaimed(moveActionKey, claimedActionKeys), true);
-  assert.equal(isMoveActionAlreadyClaimed(sameTurnDifferentSelection, claimedActionKeys), true);
-  assert.equal(isMoveActionAlreadyClaimed(nextSequenceActionKey, claimedActionKeys), false);
+  assert.equal(isMoveActionAlreadyClaimed(differentStackSelection, claimedActionKeys), false);
+  assert.equal(isMoveActionAlreadyClaimed(sameRollNextSequence, claimedActionKeys), true);
   assert.equal(isMoveActionAlreadyClaimed('roll_yut:seat-a:7:2', claimedActionKeys), false);
 });

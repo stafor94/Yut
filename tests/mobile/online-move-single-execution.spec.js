@@ -9,6 +9,7 @@ import {
 import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { waitForRoomQaAccess } from '../helpers/room-access.js';
 import { deleteRoomForQa, getRoomSequencesForQa } from '../helpers/rooms.js';
+import { seedRoomPieceAtNodeForQa } from '../helpers/room-state-fixture.js';
 
 async function installDeterministicHumanClient(context, { turnOrderResult, moveResultDelayMs = 0 }) {
   await context.addInitScript(({ queuedTurnOrderResult, configuredMoveResultDelayMs }) => {
@@ -23,7 +24,6 @@ async function installDeterministicHumanClient(context, { turnOrderResult, moveR
       const target = event.target;
       if (!(target instanceof Element) || !target.closest('[data-testid="roll-yut-button"]')) return;
       if (document.querySelector('.turn-order-overlay')) return;
-      // Perfect 가중치에서 0.6은 걸(3칸)을 확정한다.
       Math.random = () => 0.6;
       queueMicrotask(() => {
         Math.random = nativeRandom;
@@ -62,103 +62,60 @@ async function openTwoHumanGulGame({
   suffix,
   executorRole,
   moveResultDelayMs = 0,
+  pieceCount = 1,
 }) {
   await hostPage.setViewportSize({ width: 412, height: 915 });
   const guestContext = await browser.newContext({ viewport: { width: 412, height: 915 } });
   const guestPage = await guestContext.newPage();
-  const hostName = normalizeQaNickname(makeQaName(testInfo, `${suffix}-host`));
-  const guestName = normalizeQaNickname(makeQaName(testInfo, `${suffix}-guest`));
-  const roomTitle = makeQaName(testInfo, `${suffix}-room`);
+  let roomId = '';
 
-  await primeLobbyStorage(hostContext, {
-    nickname: hostName,
-    maxPlayers: '2',
-    playMode: 'individual',
-    itemMode: 'false',
-    pieceCount: '1',
-  });
-  await primeLobbyStorage(guestContext, {
-    nickname: guestName,
-    maxPlayers: '2',
-    playMode: 'individual',
-    itemMode: 'false',
-    pieceCount: '1',
-  });
-  await installDeterministicHumanClient(hostContext, {
-    turnOrderResult: executorRole === 'host' ? '모' : '도',
-    moveResultDelayMs: executorRole === 'host' ? moveResultDelayMs : 0,
-  });
-  await installDeterministicHumanClient(guestContext, {
-    turnOrderResult: executorRole === 'guest' ? '모' : '도',
-    moveResultDelayMs: executorRole === 'guest' ? moveResultDelayMs : 0,
-  });
+  try {
+    const hostName = normalizeQaNickname(makeQaName(testInfo, `${suffix}-host`));
+    const guestName = normalizeQaNickname(makeQaName(testInfo, `${suffix}-guest`));
+    const roomTitle = makeQaName(testInfo, `${suffix}-room`);
 
-  await createRoomFromLobby(hostPage, roomTitle);
-  const roomId = await waitForRoomQaAccess(hostPage, { roomTitle });
-  await joinRoomFromLobby(guestPage, roomTitle);
-  await markGuestReady(guestPage);
-  await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 20_000 });
-  await hostPage.getByTestId('start-game-button').click();
+    await primeLobbyStorage(hostContext, {
+      nickname: hostName,
+      maxPlayers: '2',
+      playMode: 'individual',
+      itemMode: 'false',
+      pieceCount: String(pieceCount),
+    });
+    await primeLobbyStorage(guestContext, {
+      nickname: guestName,
+      maxPlayers: '2',
+      playMode: 'individual',
+      itemMode: 'false',
+      pieceCount: String(pieceCount),
+    });
+    await installDeterministicHumanClient(hostContext, {
+      turnOrderResult: executorRole === 'host' ? '모' : '도',
+      moveResultDelayMs: executorRole === 'host' ? moveResultDelayMs : 0,
+    });
+    await installDeterministicHumanClient(guestContext, {
+      turnOrderResult: executorRole === 'guest' ? '모' : '도',
+      moveResultDelayMs: executorRole === 'guest' ? moveResultDelayMs : 0,
+    });
 
-  const executorPage = executorRole === 'host' ? hostPage : guestPage;
-  const observerPage = executorRole === 'host' ? guestPage : hostPage;
-  await Promise.all([
-    waitForGameReady(executorPage, { expectRollEnabled: true }),
-    waitForGameReady(observerPage),
-  ]);
+    await createRoomFromLobby(hostPage, roomTitle);
+    roomId = await waitForRoomQaAccess(hostPage, { roomTitle });
+    await joinRoomFromLobby(guestPage, roomTitle);
+    await markGuestReady(guestPage);
+    await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 20_000 });
+    await hostPage.getByTestId('start-game-button').click();
 
-  return { roomId, guestContext, guestPage, executorPage, observerPage };
-}
-
-async function submitPerfectGul(page, { clickMoveWhenReady = false } = {}) {
-  const orderingPromise = page.evaluate((shouldClickMoveWhenReady) => new Promise((resolve, reject) => {
-    const startedAt = performance.now();
-    let movedBeforeEnabled = false;
-    const sample = () => {
-      const debug = window.__YUT_DEBUG_STATE__ ?? {};
-      const moveButton = document.querySelector('[data-testid="move-piece-button"]');
-      const moveEnabled = moveButton instanceof HTMLButtonElement && !moveButton.disabled;
-      const localSeatId = typeof debug.localSeatId === 'string' ? debug.localSeatId : '';
-      const localPieces = Array.isArray(debug.pieces)
-        ? debug.pieces.filter((piece) => piece?.ownerId === localSeatId)
-        : [];
-      if (!moveEnabled && localPieces.some((piece) => piece?.started || piece?.nodeId !== 'n01')) movedBeforeEnabled = true;
-      if (moveEnabled) {
-        if (shouldClickMoveWhenReady && moveButton instanceof HTMLButtonElement) moveButton.click();
-        resolve({ movedBeforeEnabled });
-        return;
-      }
-      if (performance.now() - startedAt > 30_000) {
-        reject(new Error('걸 결과 뒤 move action-ready 상태를 관찰하지 못했습니다.'));
-        return;
-      }
-      requestAnimationFrame(sample);
-    };
-    requestAnimationFrame(sample);
-  }), clickMoveWhenReady);
-
-  const submittedPositionPercent = await page.evaluate(() => new Promise((resolve, reject) => {
-    const startedAt = performance.now();
-    const submitInPerfectZone = () => {
-      const meter = document.querySelector('.roll-timing-live-meter');
-      const button = document.querySelector('[data-testid="roll-yut-button"]');
-      const positionPercent = Number(meter instanceof HTMLElement ? meter.dataset.positionPercent : NaN);
-      if (button instanceof HTMLButtonElement && positionPercent >= 45 && positionPercent <= 55) {
-        button.click();
-        resolve(positionPercent);
-        return;
-      }
-      if (performance.now() - startedAt > 3_000) {
-        reject(new Error('Perfect 구간에서 roll action을 제출하지 못했습니다.'));
-        return;
-      }
-      requestAnimationFrame(submitInPerfectZone);
-    };
-    requestAnimationFrame(submitInPerfectZone);
-  }));
-  expect(submittedPositionPercent).toBeGreaterThanOrEqual(45);
-  expect(submittedPositionPercent).toBeLessThanOrEqual(55);
-  return orderingPromise;
+    const executorPage = executorRole === 'host' ? hostPage : guestPage;
+    const observerPage = executorRole === 'host' ? guestPage : hostPage;
+    await Promise.all([
+      waitForGameReady(executorPage, { expectRollEnabled: true }),
+      waitForGameReady(observerPage),
+    ]);
+    return { roomId, hostPage, guestContext, guestPage, executorPage, observerPage };
+  } catch (error) {
+    await guestContext.close().catch(() => undefined);
+    await deleteRoomForQa(roomId).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function getExecutorPieceIdentity(page) {
@@ -172,25 +129,128 @@ async function getExecutorPieceIdentity(page) {
   });
 }
 
-function observeMoveUntilStable(page, { ownerSeatId, pieceId, collectLocalMutationIds }) {
-  return page.evaluate(({ trackedOwnerSeatId, trackedPieceId, shouldCollectLocalMutationIds }) => new Promise((resolve, reject) => {
+async function waitForPieceNode(page, pieceId, nodeId) {
+  await expect.poll(() => page.evaluate(({ trackedPieceId, expectedNodeId }) => {
+    const debug = window.__YUT_DEBUG_STATE__ ?? {};
+    return Array.isArray(debug.pieces)
+      ? debug.pieces.find((piece) => piece?.id === trackedPieceId)?.nodeId === expectedNodeId
+      : false;
+  }, { trackedPieceId: pieceId, expectedNodeId: nodeId }), {
+    timeout: 15_000,
+    message: `${pieceId} 말이 ${nodeId} fixture 상태로 동기화되어야 합니다.`,
+  }).toBe(true);
+}
+
+async function reloadSeededRoomState(game) {
+  await Promise.all([
+    game.executorPage.reload(),
+    game.observerPage.reload(),
+  ]);
+  await Promise.all([
+    waitForGameReady(game.executorPage, { expectRollEnabled: true }),
+    waitForGameReady(game.observerPage),
+  ]);
+}
+
+async function submitPerfectGul(page, {
+  clickMoveWhenReady = false,
+  trackedPieceId,
+  initialNodeId,
+} = {}) {
+  const orderingPromise = page.evaluate(({ shouldClickMoveWhenReady, targetPieceId, expectedInitialNodeId }) => new Promise((resolve, reject) => {
     const startedAt = performance.now();
-    let lastCanonicalNodeId = 'n01';
-    let lastRenderedNodeId = 'n01';
-    let canonicalMovementStarted = false;
-    let renderedMovementStarted = false;
+    let movedBeforeEnabled = false;
+    let moveTimerVisibleBeforeEnabled = false;
+    let observedRollResultReadyAt = 0;
+    let observedEffectiveRollResultReadyAt = 0;
+
+    const sample = () => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      const moveButton = document.querySelector('[data-testid="move-piece-button"]');
+      const moveEnabled = moveButton instanceof HTMLButtonElement && !moveButton.disabled;
+      const trackedPiece = Array.isArray(debug.pieces)
+        ? debug.pieces.find((piece) => piece?.id === targetPieceId)
+        : null;
+      const rollResultReadyAt = Number(debug.rollResultReadyAt ?? 0);
+      const effectiveRollResultReadyAt = Number(debug.effectiveRollResultReadyAt ?? 0);
+      if (rollResultReadyAt > 0) observedRollResultReadyAt = rollResultReadyAt;
+      if (effectiveRollResultReadyAt > 0) observedEffectiveRollResultReadyAt = effectiveRollResultReadyAt;
+
+      if (!moveEnabled && trackedPiece
+        && (trackedPiece.nodeId !== expectedInitialNodeId || debug.movingPieceId === targetPieceId)) {
+        movedBeforeEnabled = true;
+      }
+      if (!moveEnabled && observedRollResultReadyAt > 0 && document.querySelector('.turn-action-timer')) {
+        moveTimerVisibleBeforeEnabled = true;
+      }
+      if (moveEnabled) {
+        const enabledAt = Date.now();
+        if (shouldClickMoveWhenReady && moveButton instanceof HTMLButtonElement) moveButton.click();
+        resolve({
+          movedBeforeEnabled,
+          moveTimerVisibleBeforeEnabled,
+          enabledAt,
+          rollResultReadyAt: observedRollResultReadyAt,
+          effectiveRollResultReadyAt: observedEffectiveRollResultReadyAt,
+        });
+        return;
+      }
+      if (performance.now() - startedAt > 30_000) {
+        reject(new Error('걸 결과 뒤 move action-ready 상태를 관찰하지 못했습니다.'));
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }), {
+    shouldClickMoveWhenReady: clickMoveWhenReady,
+    targetPieceId: trackedPieceId,
+    expectedInitialNodeId: initialNodeId,
+  });
+
+  const submittedAt = await page.evaluate(() => new Promise((resolve, reject) => {
+    const startedAt = performance.now();
+    const submitInPerfectZone = () => {
+      const meter = document.querySelector('.roll-timing-live-meter');
+      const button = document.querySelector('[data-testid="roll-yut-button"]');
+      const positionPercent = Number(meter instanceof HTMLElement ? meter.dataset.positionPercent : NaN);
+      if (button instanceof HTMLButtonElement && positionPercent >= 45 && positionPercent <= 55) {
+        const clickedAt = Date.now();
+        button.click();
+        resolve(clickedAt);
+        return;
+      }
+      if (performance.now() - startedAt > 3_000) {
+        reject(new Error('Perfect 구간에서 roll action을 제출하지 못했습니다.'));
+        return;
+      }
+      requestAnimationFrame(submitInPerfectZone);
+    };
+    requestAnimationFrame(submitInPerfectZone);
+  }));
+  return { orderingPromise, submittedAt };
+}
+
+function observeMoveUntilStable(page, {
+  ownerSeatId,
+  pieceId,
+  initialNodeId,
+  finalNodeId,
+  collectLocalMutationIds,
+}) {
+  return page.evaluate((input) => new Promise((resolve, reject) => {
+    const startedAt = performance.now();
+    let lastCanonicalNodeId = input.initialNodeId;
+    let lastRenderedNodeId = input.initialNodeId;
     let settledAt = 0;
     let movingPieceActive = false;
     let movingPieceStartCount = 0;
-    let rollClearedAfterMove = false;
-    let rollReappearedAfterMove = false;
     const canonicalNodeTransitions = [];
     const renderedNodeTransitions = [];
     const moveActionIds = new Set();
 
-    const normalizeNodeId = (value) => typeof value === 'string' && value ? value : 'off-board';
     const getRenderedNodeId = () => {
-      const pieceElement = document.querySelector(`[data-testid="piece-${trackedPieceId}"]`);
+      const pieceElement = document.querySelector(`[data-testid="piece-${input.pieceId}"]`);
       if (!(pieceElement instanceof HTMLElement)) return 'off-board';
       if (pieceElement.classList.contains('off-board')) return 'n01';
       const nodeElement = [...document.querySelectorAll('[data-testid^="board-node-"]')]
@@ -200,54 +260,34 @@ function observeMoveUntilStable(page, { ownerSeatId, pieceId, collectLocalMutati
       return nodeElement?.getAttribute('data-testid')?.replace('board-node-', '') ?? 'off-board';
     };
 
-    const recordTransition = (transitions, previousNodeId, nextNodeId, movementStarted) => {
-      const normalized = normalizeNodeId(nextNodeId);
-      if (normalized === previousNodeId) return { nodeId: previousNodeId, movementStarted };
-      const nextMovementStarted = movementStarted || normalized !== 'n01';
-      if (nextMovementStarted) transitions.push(normalized);
-      return { nodeId: normalized, movementStarted: nextMovementStarted };
+    const recordTransition = (transitions, previousNodeId, nextNodeId) => {
+      const normalized = typeof nextNodeId === 'string' && nextNodeId ? nextNodeId : 'off-board';
+      if (normalized !== previousNodeId) transitions.push(normalized);
+      return normalized;
     };
 
     const sample = () => {
       const debug = window.__YUT_DEBUG_STATE__ ?? {};
       const trackedPiece = Array.isArray(debug.pieces)
-        ? debug.pieces.find((piece) => piece?.id === trackedPieceId && piece?.ownerId === trackedOwnerSeatId)
+        ? debug.pieces.find((piece) => piece?.id === input.pieceId && piece?.ownerId === input.ownerSeatId)
         : null;
-      const canonical = recordTransition(
-        canonicalNodeTransitions,
-        lastCanonicalNodeId,
-        trackedPiece?.nodeId,
-        canonicalMovementStarted,
-      );
-      lastCanonicalNodeId = canonical.nodeId;
-      canonicalMovementStarted = canonical.movementStarted;
-      const rendered = recordTransition(
-        renderedNodeTransitions,
-        lastRenderedNodeId,
-        getRenderedNodeId(),
-        renderedMovementStarted,
-      );
-      lastRenderedNodeId = rendered.nodeId;
-      renderedMovementStarted = rendered.movementStarted;
+      lastCanonicalNodeId = recordTransition(canonicalNodeTransitions, lastCanonicalNodeId, trackedPiece?.nodeId);
+      lastRenderedNodeId = recordTransition(renderedNodeTransitions, lastRenderedNodeId, getRenderedNodeId());
 
-      const movingNow = debug.movingPieceId === trackedPieceId;
+      const movingNow = debug.movingPieceId === input.pieceId;
       if (movingNow && !movingPieceActive) movingPieceStartCount += 1;
       movingPieceActive = movingNow;
-
-      if (canonicalMovementStarted && debug.roll == null) rollClearedAfterMove = true;
-      if (rollClearedAfterMove && debug.roll != null) rollReappearedAfterMove = true;
-
-      if (shouldCollectLocalMutationIds) {
-        const localActionIds = Array.isArray(debug.actionPipeline?.localClientMutationIds)
-          ? debug.actionPipeline.localClientMutationIds.filter((actionId) => actionId.startsWith(`move_piece:${trackedOwnerSeatId}:`))
+      if (input.collectLocalMutationIds) {
+        const ids = Array.isArray(debug.actionPipeline?.localClientMutationIds)
+          ? debug.actionPipeline.localClientMutationIds.filter((id) => id.startsWith(`move_piece:${input.ownerSeatId}:`))
           : [];
-        localActionIds.forEach((actionId) => moveActionIds.add(actionId));
+        ids.forEach((id) => moveActionIds.add(id));
       }
 
-      const settled = trackedPiece?.nodeId === 'n04'
-        && lastRenderedNodeId === 'n04'
+      const settled = trackedPiece?.nodeId === input.finalNodeId
+        && lastRenderedNodeId === input.finalNodeId
         && !movingNow
-        && (!shouldCollectLocalMutationIds || debug.pendingLocalRemoteActionCount === 0);
+        && (!input.collectLocalMutationIds || debug.pendingLocalRemoteActionCount === 0);
       if (settled && !settledAt) settledAt = performance.now();
       if (settledAt && performance.now() - settledAt >= 2_500) {
         resolve({
@@ -257,62 +297,54 @@ function observeMoveUntilStable(page, { ownerSeatId, pieceId, collectLocalMutati
           finalCanonicalNodeId: trackedPiece?.nodeId ?? '',
           finalRenderedNodeId: lastRenderedNodeId,
           movingPieceStartCount,
-          rollReappearedAfterMove,
+          winner: debug.winner ?? null,
+          gameEndMode: debug.gameEndMode ?? null,
+          pendingLocalRemoteActionCount: Number(debug.pendingLocalRemoteActionCount ?? 0),
+          roll: debug.roll ?? null,
         });
         return;
       }
       if (performance.now() - startedAt > 45_000) {
-        reject(new Error(`이동이 양쪽 canonical·DOM n04에 한 번 정착하지 못했습니다: ${JSON.stringify({ canonicalNodeTransitions, renderedNodeTransitions, movingPieceStartCount, finalCanonicalNodeId: trackedPiece?.nodeId ?? '', finalRenderedNodeId: lastRenderedNodeId })}`));
+        reject(new Error(`이동이 ${input.finalNodeId}에 한 번 정착하지 못했습니다: ${JSON.stringify({ canonicalNodeTransitions, renderedNodeTransitions, movingPieceStartCount, finalCanonicalNodeId: trackedPiece?.nodeId ?? '', finalRenderedNodeId: lastRenderedNodeId })}`));
         return;
       }
       requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
   }), {
-    trackedOwnerSeatId: ownerSeatId,
-    trackedPieceId: pieceId,
-    shouldCollectLocalMutationIds: collectLocalMutationIds,
+    ownerSeatId,
+    pieceId,
+    initialNodeId,
+    finalNodeId,
+    collectLocalMutationIds,
   });
 }
 
-async function submitNextOpponentRoll(page) {
-  const beforeSequence = await page.evaluate(() => Number(window.__YUT_DEBUG_STATE__?.lastAppliedSequence ?? 0));
+async function expectDelayedRollPresentationContract(roomId, actorId) {
   await expect.poll(async () => {
-    const state = await collectScreenState(page);
-    return state.rollButton.visible && !state.rollButton.disabled;
-  }, { timeout: 25_000, message: '이동 뒤 상대 플레이어가 다음 roll action을 실행할 수 있어야 합니다.' }).toBe(true);
-  await page.evaluate(() => new Promise((resolve, reject) => {
-    const startedAt = performance.now();
-    const submit = () => {
-      const meter = document.querySelector('.roll-timing-live-meter');
-      const button = document.querySelector('[data-testid="roll-yut-button"]');
-      const positionPercent = Number(meter instanceof HTMLElement ? meter.dataset.positionPercent : NaN);
-      if (button instanceof HTMLButtonElement && positionPercent >= 45 && positionPercent <= 55) {
-        button.click();
-        resolve();
-        return;
-      }
-      if (performance.now() - startedAt > 3_000) {
-        reject(new Error('상대 플레이어의 다음 roll action을 제출하지 못했습니다.'));
-        return;
-      }
-      requestAnimationFrame(submit);
-    };
-    requestAnimationFrame(submit);
-  }));
-  await expect.poll(() => page.evaluate(() => Number(window.__YUT_DEBUG_STATE__?.lastAppliedSequence ?? 0)), {
-    timeout: 20_000,
-    message: '상대의 다음 roll action sequence가 적용되어야 합니다.',
-  }).toBeGreaterThan(beforeSequence);
-}
+    const sequences = await getRoomSequencesForQa(roomId);
+    const rollSequence = sequences
+      .filter((sequence) => sequence?.type === 'roll_yut' && sequence?.actorId === actorId)
+      .sort((left, right) => Number(right.sequence ?? 0) - Number(left.sequence ?? 0))[0];
+    const clientStartedAt = Number(rollSequence?.action?.payload?.clientActionStartedAt ?? 0);
+    const clientCreatedAt = Number(rollSequence?.clientCreatedAt ?? 0);
+    const payloadReadyAt = Number(rollSequence?.payload?.rollPresentationReadyAt ?? 0);
+    const patchReadyAt = Number(rollSequence?.patch?.rollResultReadyAt ?? 0);
+    const deadlineAt = Number(rollSequence?.patch?.turnDeadlineAt ?? 0);
+    if (!clientStartedAt || !clientCreatedAt || !payloadReadyAt || !patchReadyAt || !deadlineAt) return false;
 
-async function expectPieceAtN04(page, pieceId) {
-  await expect.poll(() => page.evaluate((trackedPieceId) => {
-    const debug = window.__YUT_DEBUG_STATE__ ?? {};
-    return Array.isArray(debug.pieces)
-      ? debug.pieces.find((piece) => piece?.id === trackedPieceId)?.nodeId ?? ''
-      : '';
-  }, pieceId), { timeout: 10_000 }).toBe('n04');
+    const delayedSubmissionMs = clientCreatedAt - clientStartedAt;
+    const remainingPresentationMs = payloadReadyAt - clientCreatedAt;
+    return delayedSubmissionMs >= 3_000
+      && remainingPresentationMs >= 2_000
+      && remainingPresentationMs <= 3_200
+      && patchReadyAt === payloadReadyAt
+      && deadlineAt - payloadReadyAt === 10_000;
+  }, {
+    timeout: 15_000,
+    intervals: [100, 250, 500],
+    message: '지연 응답 뒤 남은 extra-spin·landing·hold와 10초 move deadline 계약이 일치해야 합니다.',
+  }).toBe(true);
 }
 
 async function expectSingleAuthoritativeMove(roomId, localSeatId) {
@@ -320,26 +352,23 @@ async function expectSingleAuthoritativeMove(roomId, localSeatId) {
     const sequences = await getRoomSequencesForQa(roomId);
     return sequences.filter((sequence) => sequence?.type === 'move_piece_resolved'
       && String(sequence?.clientMutationId ?? '').startsWith(`move_piece:${localSeatId}:`)).length;
-  }, { timeout: 15_000, intervals: [100, 250, 500], message: '로컬 걸 이동은 서버 sequence에 정확히 한 번만 기록되어야 합니다.' }).toBe(1);
+  }, { timeout: 15_000, intervals: [100, 250, 500] }).toBe(1);
 }
 
-function expectSingleGulPresentation(trace, { local }) {
-  if (local) expect(trace.moveActionIds, '동일한 걸 이동 client mutation은 한 번만 생성되어야 합니다.').toHaveLength(1);
-  expect(
-    trace.canonicalNodeTransitions,
-    'canonical 말 상태는 n01/off-board로 되돌아가지 않고 n02→n03→n04를 한 번만 진행해야 합니다.',
-  ).toEqual(['n02', 'n03', 'n04']);
-  expect(
-    trace.renderedNodeTransitions,
-    '실제 GameBoard 말은 n01/off-board로 되돌아가지 않고 n02→n03→n04 경로를 한 번만 표시해야 합니다.',
-  ).toEqual(['n02', 'n03', 'n04']);
-  expect(trace.movingPieceStartCount, 'movingPieceId는 동일 이동에서 두 번째로 시작되면 안 됩니다.').toBe(1);
-  expect(trace.rollReappearedAfterMove, '이동 완료 뒤 윷 결과가 다시 상태에 나타나면 안 됩니다.').toBe(false);
-  expect(trace.finalCanonicalNodeId).toBe('n04');
-  expect(trace.finalRenderedNodeId).toBe('n04');
+function expectSinglePresentation(trace, { expectedPath, finalNodeId, local }) {
+  if (local) expect(trace.moveActionIds).toHaveLength(1);
+  expect(trace.canonicalNodeTransitions).toEqual(expectedPath);
+  expect(trace.renderedNodeTransitions).toEqual(expectedPath);
+  expect(trace.movingPieceStartCount).toBe(1);
+  expect(trace.finalCanonicalNodeId).toBe(finalNodeId);
+  expect(trace.finalRenderedNodeId).toBe(finalNodeId);
+  expect(trace.winner).toBeFalsy();
+  expect(trace.gameEndMode).toBeFalsy();
+  expect(trace.roll).toBeNull();
+  if (local) expect(trace.pendingLocalRemoteActionCount).toBe(0);
 }
 
-async function runTwoClientOwnershipScenario({
+async function runScenario({
   browser,
   page,
   context,
@@ -348,44 +377,84 @@ async function runTwoClientOwnershipScenario({
   executorRole,
   moveResultDelayMs,
   clickMoveWhenReady,
+  pieceCount = 1,
+  initialNodeId = 'n01',
+  previousNodeId = '',
+  expectedPath = ['n02', 'n03', 'n04'],
+  finalNodeId = 'n04',
 }) {
-  const game = await openTwoHumanGulGame({
-    browser,
-    hostPage: page,
-    hostContext: context,
-    testInfo,
-    suffix,
-    executorRole,
-    moveResultDelayMs,
-  });
-  const identity = await getExecutorPieceIdentity(game.executorPage);
-  expect(identity.ownerSeatId).not.toBe('');
-  expect(identity.pieceId).not.toBe('');
+  let game;
+  let localTracePromise;
+  let remoteTracePromise;
 
-  const localTracePromise = observeMoveUntilStable(game.executorPage, {
-    ...identity,
-    collectLocalMutationIds: true,
-  });
-  const remoteTracePromise = observeMoveUntilStable(game.observerPage, {
-    ...identity,
-    collectLocalMutationIds: false,
-  });
-  const orderingPromise = submitPerfectGul(game.executorPage, { clickMoveWhenReady });
-  const ordering = await orderingPromise;
-  expect(ordering.movedBeforeEnabled).toBe(false);
+  try {
+    game = await openTwoHumanGulGame({
+      browser,
+      hostPage: page,
+      hostContext: context,
+      testInfo,
+      suffix,
+      executorRole,
+      moveResultDelayMs,
+      pieceCount,
+    });
+    const identity = await getExecutorPieceIdentity(game.executorPage);
+    expect(identity.ownerSeatId).not.toBe('');
+    expect(identity.pieceId).not.toBe('');
 
-  const [localTrace, remoteTrace] = await Promise.all([localTracePromise, remoteTracePromise]);
-  expectSingleGulPresentation(localTrace, { local: true });
-  expectSingleGulPresentation(remoteTrace, { local: false });
-  await expectSingleAuthoritativeMove(game.roomId, identity.ownerSeatId);
+    if (initialNodeId !== 'n01') {
+      await seedRoomPieceAtNodeForQa({
+        roomId: game.roomId,
+        authPage: game.hostPage,
+        ownerSeatId: identity.ownerSeatId,
+        pieceId: identity.pieceId,
+        nodeId: initialNodeId,
+        previousNodeId,
+      });
+      await reloadSeededRoomState(game);
+      await Promise.all([
+        waitForPieceNode(game.executorPage, identity.pieceId, initialNodeId),
+        waitForPieceNode(game.observerPage, identity.pieceId, initialNodeId),
+      ]);
+    }
 
-  await submitNextOpponentRoll(game.observerPage);
-  await Promise.all([
-    expectPieceAtN04(game.executorPage, identity.pieceId),
-    expectPieceAtN04(game.observerPage, identity.pieceId),
-  ]);
+    localTracePromise = observeMoveUntilStable(game.executorPage, {
+      ...identity,
+      initialNodeId,
+      finalNodeId,
+      collectLocalMutationIds: true,
+    });
+    remoteTracePromise = observeMoveUntilStable(game.observerPage, {
+      ...identity,
+      initialNodeId,
+      finalNodeId,
+      collectLocalMutationIds: false,
+    });
+    const submission = await submitPerfectGul(game.executorPage, {
+      clickMoveWhenReady,
+      trackedPieceId: identity.pieceId,
+      initialNodeId,
+    });
+    const ordering = await submission.orderingPromise;
+    expect(ordering.movedBeforeEnabled).toBe(false);
+    expect(ordering.moveTimerVisibleBeforeEnabled).toBe(false);
+    expect(ordering.rollResultReadyAt).toBeGreaterThan(0);
+    expect(ordering.effectiveRollResultReadyAt).toBe(ordering.rollResultReadyAt);
+    expect(ordering.enabledAt).toBeGreaterThanOrEqual(ordering.rollResultReadyAt);
+    await expectDelayedRollPresentationContract(game.roomId, identity.ownerSeatId);
 
-  return { ...game, identity };
+    const [localTrace, remoteTrace] = await Promise.all([localTracePromise, remoteTracePromise]);
+    expectSinglePresentation(localTrace, { expectedPath, finalNodeId, local: true });
+    expectSinglePresentation(remoteTrace, { expectedPath, finalNodeId, local: false });
+    await expectSingleAuthoritativeMove(game.roomId, identity.ownerSeatId);
+    return game;
+  } catch (error) {
+    void localTracePromise?.catch(() => undefined);
+    void remoteTracePromise?.catch(() => undefined);
+    await game?.guestContext.close().catch(() => undefined);
+    await deleteRoomForQa(game?.roomId).catch(() => undefined);
+    throw error;
+  }
 }
 
 test.describe('Galaxy online move local ownership contract', () => {
@@ -399,35 +468,62 @@ test.describe('Galaxy online move local ownership contract', () => {
     roomId = undefined;
   });
 
-  test('host 이동과 빠른 서버 ACK는 실행 클라이언트에서 재적용하지 않고 guest에 한 번 배포한다', async ({ browser, page, context }, testInfo) => {
+  for (const scenario of [
+    { name: '빠른 ACK', suffix: 'n16-fast', moveResultDelayMs: 0, clickMoveWhenReady: true },
+    { name: '느린 ACK와 수동 클릭 경합', suffix: 'n16-slow-race', moveResultDelayMs: 2_500, clickMoveWhenReady: true },
+  ]) {
+    test(`n16의 걸 이동은 ${scenario.name}에서도 n17→n18→n19를 한 번만 실행한다`, async ({ browser, page, context }, testInfo) => {
+      test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
+      testInfo.setTimeout(150_000);
+      const result = await runScenario({
+        browser,
+        page,
+        context,
+        testInfo,
+        suffix: scenario.suffix,
+        executorRole: scenario.moveResultDelayMs ? 'guest' : 'host',
+        moveResultDelayMs: scenario.moveResultDelayMs,
+        clickMoveWhenReady: scenario.clickMoveWhenReady,
+        pieceCount: 4,
+        initialNodeId: 'n16',
+        previousNodeId: 'n15',
+        expectedPath: ['n17', 'n18', 'n19'],
+        finalNodeId: 'n19',
+      });
+      roomId = result.roomId;
+      guestContext = result.guestContext;
+    });
+  }
+
+  test('출발점 자동 이동과 action-ready 순간 수동 클릭이 경합해도 한 번만 실행한다', async ({ browser, page, context }, testInfo) => {
     test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
     testInfo.setTimeout(150_000);
-    const result = await runTwoClientOwnershipScenario({
+    const result = await runScenario({
       browser,
       page,
       context,
       testInfo,
-      suffix: 'host-fast-gul',
-      executorRole: 'host',
-      moveResultDelayMs: 0,
-      clickMoveWhenReady: false,
+      suffix: 'start-gul-auto-manual-race',
+      executorRole: 'guest',
+      moveResultDelayMs: 2_500,
+      clickMoveWhenReady: true,
     });
     roomId = result.roomId;
     guestContext = result.guestContext;
   });
 
-  test('guest 이동과 로컬 연출보다 느린 서버 ACK도 양쪽에서 같은 경로를 한 번만 유지한다', async ({ browser, page, context }, testInfo) => {
+  test('기존 출발점 n01의 걸 이동은 n02→n03→n04를 유지한다', async ({ browser, page, context }, testInfo) => {
     test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
     testInfo.setTimeout(150_000);
-    const result = await runTwoClientOwnershipScenario({
+    const result = await runScenario({
       browser,
       page,
       context,
       testInfo,
-      suffix: 'guest-slow-gul',
-      executorRole: 'guest',
-      moveResultDelayMs: 2_500,
-      clickMoveWhenReady: true,
+      suffix: 'start-gul',
+      executorRole: 'host',
+      moveResultDelayMs: 0,
+      clickMoveWhenReady: false,
     });
     roomId = result.roomId;
     guestContext = result.guestContext;

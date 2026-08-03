@@ -19,7 +19,6 @@ import {
   normalizeTurnDeadlineKind,
   type TurnActionPhase,
   type TurnDeadlineKind,
-  type TurnTransitionPhase,
 } from '../../features/room/services/turnDeadlinePolicy';
 import type { BranchChoice } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
@@ -31,6 +30,16 @@ import { playStoredSoundEffect } from '../../shared/audio/sound';
 import { RollTimingControl } from '../components/RollTimingControl';
 import { createDeadlineTimerAnimationCache } from '../flows/deadlineTimerAnimation';
 import { getRollControlPresentation, shouldAutoScrollGameControls } from '../flows/rollControlPresentation';
+import {
+  canExecuteScheduledMoveNow,
+  getLatestMoveExecutionContextKey,
+  publishMoveTransitionReadiness,
+} from '../flows/moveExecutionPolicy';
+import {
+  getMoveActionButtonText,
+  getMoveControlsActionReady,
+  getMoveSeatTransitionPhase,
+} from '../flows/moveActionPresentationPolicy';
 import { isTurnActionPresentationPending } from '../flows/turnActionPresentationPolicy';
 import { shouldPlayLocalTurnSound } from '../flows/turnSound';
 import { scheduleTurnTransitionBoundary } from '../flows/turnTransitionClock';
@@ -196,20 +205,20 @@ export function GameBoardControls({
     ? getTurnDisplayAt({ deadlineAt: authoritativeTurnDeadline.at, durationMs: deadlineDurationMs, startDelayMs: TURN_START_DELAY_MS })
     : 0;
   const now = Date.now();
-  const transitionDisplayAt = hasAuthoritativeDeadline
-    ? localTransitionRef.current.holdFromReceipt
-      ? Math.max(authoritativeDisplayAt, localTransitionRef.current.displayAt)
-      : authoritativeDisplayAt
-    : localTransitionRef.current.displayAt;
-  const transitionReadyAt = hasAuthoritativeDeadline
-    ? localTransitionRef.current.holdFromReceipt
-      ? Math.max(authoritativeReadyAt, localTransitionRef.current.readyAt)
-      : authoritativeReadyAt
-    : localTransitionRef.current.readyAt;
-  const transitionPhase: TurnTransitionPhase = !actionableTurnKey || !transitionReadyAt || now >= transitionReadyAt
-    ? 'ready'
-    : transitionDisplayAt && now < transitionDisplayAt ? 'ending' : 'starting';
-  const actionReady = transitionPhase === 'ready';
+  const seatTransitionDisplayAt = localTransitionRef.current.displayAt;
+  const seatTransitionReadyAt = localTransitionRef.current.readyAt;
+  const seatTransitionPhase = getMoveSeatTransitionPhase({
+    actionableTurnKey,
+    displayAt: seatTransitionDisplayAt,
+    readyAt: seatTransitionReadyAt,
+    now,
+  });
+  const { authoritativeActionReady, actionReady } = getMoveControlsActionReady({
+    seatTransitionPhase,
+    hasAuthoritativeDeadline,
+    authoritativeReadyAt,
+    now,
+  });
   const soundSeatId = waitingForOnlineTurnOrder || hasActiveTurnOrderIntro ? '' : authoritativeActiveSeatId ?? '';
   if (soundTurnRef.current.seatId !== soundSeatId) {
     soundTurnRef.current = { seatId: soundSeatId, version: soundTurnRef.current.version + 1 };
@@ -224,6 +233,7 @@ export function GameBoardControls({
     : 0;
   const soundActionReady = Boolean(soundSeatId && (!soundReadyAt || now >= soundReadyAt));
   const turnActionDeadlineKey = `${turnActionTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
+  publishMoveTransitionReadiness({ actionReady, contextKey: turnActionDeadlineKey });
   const itemPromptDeadlineKey = `${itemPromptTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
   const turnActionDeadlineActive = authoritativeTurnDeadline.kind === turnActionPhase && authoritativeTurnDeadline.at > 0;
   const itemPromptDeadlineActive = authoritativeTurnDeadline.kind === 'item_prompt' && authoritativeTurnDeadline.at > 0;
@@ -268,7 +278,7 @@ export function GameBoardControls({
   });
 
   useEffect(() => {
-    const timestamps = Array.from(new Set([transitionDisplayAt, transitionReadyAt]))
+    const timestamps = Array.from(new Set([seatTransitionDisplayAt, seatTransitionReadyAt, authoritativeDisplayAt, authoritativeReadyAt]))
       .filter((timestamp) => timestamp > Date.now())
       .sort((left, right) => left - right);
     if (!timestamps.length || typeof window === 'undefined') return undefined;
@@ -282,7 +292,7 @@ export function GameBoardControls({
       },
     ));
     return () => cancelTimers.forEach((cancelTimer) => cancelTimer());
-  }, [actionableTurnKey, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, transitionDisplayAt, transitionReadyAt]);
+  }, [actionableTurnKey, authoritativeDisplayAt, authoritativeReadyAt, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, seatTransitionDisplayAt, seatTransitionReadyAt]);
 
   useEffect(() => {
     if (!soundTurnKey) return;
@@ -371,6 +381,7 @@ export function GameBoardControls({
       markTurnActionTimedOut();
       return undefined;
     }
+    const scheduledMoveContextKey = getLatestMoveExecutionContextKey();
     const runAutomaticAction = () => {
       if (autoTurnActionKeyRef.current === turnActionDeadlineKey) return;
       if (Date.now() >= authoritativeTurnDeadline.at) {
@@ -378,7 +389,9 @@ export function GameBoardControls({
         return;
       }
       autoTurnActionKeyRef.current = turnActionDeadlineKey;
-      if (turnActionPhase === 'move' && canRequestMove) {
+      if (turnActionPhase === 'move'
+        && canRequestMove
+        && canExecuteScheduledMoveNow(scheduledMoveContextKey)) {
         if (showRollStackPicker && rollStack.length > 0) {
           const selectedIndex = typeof selectedRollStackIndex === 'number'
             && isRollStackIndexSelectable(rollStackSelectionAvailability, selectedRollStackIndex)
@@ -454,17 +467,16 @@ export function GameBoardControls({
     showRollStackPicker,
     timedOut: turnActionTimedOut,
   });
-  const actionButtonText = turnActionTimedOut
-    ? '시간 초과 처리 중...'
-    : transitionPhase === 'ending'
-      ? '턴 전환 중...'
-      : transitionPhase === 'starting'
-        ? '잠시 후 행동 가능'
-        : roll
-          ? (rollResultHolding ? '결과 확인 중...' : '선택한 말 이동')
-          : pendingTrapPlacement ? '함정 설치 대기 중'
-            : waitingForOnlineTurnOrder ? '게임 시작 대기 중'
-              : hasActiveTurnOrderIntro ? '결과 확인 중' : '윷 던지기';
+  const actionButtonText = getMoveActionButtonText({
+    turnActionTimedOut,
+    seatTransitionPhase,
+    hasRoll: Boolean(roll),
+    rollResultHolding,
+    authoritativeActionReady,
+    pendingTrapPlacement,
+    waitingForOnlineTurnOrder,
+    hasActiveTurnOrderIntro,
+  });
   const rollTimingResetKey = `${turnActionDeadlineKey}:${timerDurationMs}`;
   const rollTimingStartedAt = turnActionDeadlineActive
     ? getTurnActionReadyAt({ deadlineAt: authoritativeTurnDeadline.at, durationMs: timerDurationMs })
@@ -502,7 +514,7 @@ export function GameBoardControls({
       >
         {resumeHumanControlPending ? '통제권 가져오는 중...' : '직접 플레이로 돌아가기'}
       </button>}
-    </div> : transitionPhase === 'ending' ? <button data-testid="turn-transition-button" className="roll-button" disabled>턴 전환 중...</button> : isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
+    </div> : seatTransitionPhase === 'ending' ? <button data-testid="turn-transition-button" className="roll-button" disabled>턴 전환 중...</button> : isOpponentTurn ? <button data-testid="turn-waiting-button" className="roll-button" disabled>{activeSeatTurnText} 차례</button> : activeItemPromptTypes.length > 0 ? <div className="inline-item-prompt" role="dialog" aria-label="아이템 사용 선택">
       <div><strong>아이템을 사용할까요?</strong></div>
       {itemPromptTimerVisible && <div key={`${itemPromptDeadlineKey}:${itemPromptFallbackDurationMs}`} className="time-limit-bar item-prompt-timer" style={itemPromptTimerStyle} data-deadline-at={authoritativeTurnDeadline.at} data-animation-delay-ms={itemPromptTimerAnimation.delayMs} aria-hidden="true"><span style={itemPromptTimerFillStyle}></span></div>}
       {itemPromptTimedOut && <div data-testid="item-timeout-status" role="status" aria-live="polite">시간 초과 처리 중...</div>}
