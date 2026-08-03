@@ -1,7 +1,7 @@
 {
   "workflow": "qa.yml",
   "targetEvent": "push",
-  "targetRef": "main",
-  "targetSha": "6812850b755ab2f397b9a4eaf25c21ec8ffd261f",
-  "reportTitle": "[QA snapshot] PR1333 merged main 6812850"
+  "targetRef": "firebase-smooth-integration",
+  "targetSha": "4c0cbe8a6aca13395d7c8c8b089a0a0c671445b3",
+  "reportTitle": "[QA snapshot] PR1520 full matrix 4c0cbe8"
 }
