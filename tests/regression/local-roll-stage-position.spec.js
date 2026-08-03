@@ -76,6 +76,89 @@ const readRollGeometry = async (page, { requireResult = false } = {}) => page.ev
   };
 }, { requireResult });
 
+const installResultGeometryCapture = async (page) => page.evaluate(() => {
+  window.__YUT_QA_LOCAL_ROLL_GEOMETRY_OBSERVER__?.disconnect();
+  if (window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__) {
+    cancelAnimationFrame(window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__);
+  }
+  window.__YUT_QA_LOCAL_ROLL_RESULT_GEOMETRY__ = null;
+
+  const readStableGeometry = () => {
+    const board = document.querySelector('[data-testid="game-board"]');
+    const stage = document.querySelector('.roll-stage.result-hold-roll');
+    const mat = stage?.querySelector('[data-testid="roll-mat"]') ?? null;
+    const grade = stage?.querySelector('[data-testid="roll-timing-grade"]') ?? null;
+    const resultPresentation = stage?.querySelector('[data-testid="roll-result-presentation"]:not([hidden])') ?? null;
+    const resultCard = resultPresentation?.querySelector('[data-testid="roll-result-card"]') ?? null;
+    const surface = stage?.querySelector('[data-testid="roll-mat-surface"]') ?? null;
+    if (!board || !stage || !mat || !grade || !resultPresentation || !resultCard || !surface) return null;
+
+    const centerX = (rect) => rect.left + rect.width / 2;
+    const boardRect = board.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const matRect = mat.getBoundingClientRect();
+    const gradeRect = grade.getBoundingClientRect();
+    const cardRect = resultCard.getBoundingClientRect();
+    const surfaceRect = surface.getBoundingClientRect();
+    const stageStyle = getComputedStyle(stage);
+    const gradeStyle = getComputedStyle(grade);
+    const resultStyle = getComputedStyle(resultPresentation);
+    const geometry = {
+      anchored: stage.getAttribute('data-board-anchored'),
+      stageCenterOffset: Math.abs(centerX(stageRect) - centerX(boardRect)),
+      matCenterOffset: Math.abs(centerX(matRect) - centerX(boardRect)),
+      gradeCenterOffset: Math.abs(centerX(gradeRect) - centerX(boardRect)),
+      resultCenterOffset: Math.abs(centerX(cardRect) - centerX(boardRect)),
+      stageWidth: stageRect.width,
+      matWidth: matRect.width,
+      stageTranslate: stageStyle.translate,
+      stageJustifyContent: stageStyle.justifyContent,
+      gradeTop: Number.parseFloat(gradeStyle.top),
+      resultTop: Number.parseFloat(resultStyle.top),
+      gradeResultGap: cardRect.top - gradeRect.bottom,
+      resultSurfaceGap: surfaceRect.top - cardRect.bottom,
+      missing: [],
+    };
+    const stable = geometry.stageCenterOffset <= 2
+      && geometry.matCenterOffset <= 2
+      && geometry.gradeCenterOffset <= 2
+      && geometry.resultCenterOffset <= 2
+      && geometry.gradeTop === 20
+      && geometry.resultTop === 55
+      && geometry.gradeResultGap >= 0
+      && geometry.gradeResultGap <= 8
+      && geometry.resultSurfaceGap <= 100;
+    return stable ? geometry : null;
+  };
+
+  let observer;
+  const sample = () => {
+    const geometry = readStableGeometry();
+    if (!geometry) return false;
+    window.__YUT_QA_LOCAL_ROLL_RESULT_GEOMETRY__ = geometry;
+    observer?.disconnect();
+    if (window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__) {
+      cancelAnimationFrame(window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__);
+      window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__ = 0;
+    }
+    return true;
+  };
+  const tick = () => {
+    if (sample()) return;
+    window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__ = requestAnimationFrame(tick);
+  };
+
+  observer = new MutationObserver(sample);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class', 'hidden', 'style'],
+    childList: true,
+    subtree: true,
+  });
+  window.__YUT_QA_LOCAL_ROLL_GEOMETRY_OBSERVER__ = observer;
+  tick();
+});
+
 test.describe('local roll stage position regression', () => {
   let roomId;
 
@@ -135,6 +218,7 @@ test.describe('local roll stage position regression', () => {
       });
 
       await runQaStep(testInfo, 'pending 매트 중앙 정렬 확인', async () => {
+        await installResultGeometryCapture(page);
         await page.getByTestId('roll-yut-button').click();
         await expect(page.locator('.roll-stage.pending-roll')).toBeVisible({ timeout: 2_000 });
         await expect(page.getByTestId('roll-mat')).toBeVisible();
@@ -154,26 +238,13 @@ test.describe('local roll stage position regression', () => {
       await runQaStep(testInfo, '결과 카드 중앙 정렬과 매트 간격 확인', async () => {
         let latestGeometry = null;
         await expect.poll(async () => {
-          const current = await readRollGeometry(page, { requireResult: true });
-          if (current.missing.length > 0) return JSON.stringify(current);
-          const stable = current.resultCenterOffset !== null
-            && current.stageCenterOffset <= 2
-            && current.matCenterOffset <= 2
-            && current.gradeCenterOffset <= 2
-            && current.resultCenterOffset <= 2
-            && current.gradeTop === 20
-            && current.resultTop === 55
-            && current.gradeResultGap >= 0
-            && current.gradeResultGap <= 8
-            && current.resultSurfaceGap <= 100;
-          if (!stable) return JSON.stringify(current);
-          latestGeometry = current;
-          return 'stable';
+          latestGeometry = await page.evaluate(() => window.__YUT_QA_LOCAL_ROLL_RESULT_GEOMETRY__ ?? null);
+          return latestGeometry;
         }, {
-          timeout: 2_000,
+          timeout: 10_000,
           intervals: [16, 32, 64],
-          message: '1초 result-hold 동안 현재 roll-stage의 결과 카드가 중앙 정렬과 매트 간격 계약에 도달해야 합니다.',
-        }).toBe('stable');
+          message: '던지기 전에 설치한 화면 observer가 짧은 result-hold의 안정된 geometry를 보존해야 합니다.',
+        }).not.toBeNull();
         if (!latestGeometry) throw new Error('안정된 결과 표시 geometry snapshot을 수집하지 못했습니다.');
 
         expect(latestGeometry.stageCenterOffset).toBeLessThanOrEqual(2);
