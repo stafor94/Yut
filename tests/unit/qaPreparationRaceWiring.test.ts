@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const sequenceQaSource = readFileSync('tests/regression/bug-history-smoke.spec.js', 'utf8');
+const sequenceQaSource = readFileSync('tests/regression/bug-history-smoke-ai.case.js', 'utf8');
 const timingQaSource = readFileSync('tests/mobile/roll-timing-pointer-capture.spec.js', 'utf8');
 const roomExitResumeSource = readFileSync('tests/online/room-exit-resume.spec.js', 'utf8');
 const roomAccessSource = readFileSync('tests/helpers/room-access.js', 'utf8');
