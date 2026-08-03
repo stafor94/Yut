@@ -1,5 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { expectAppShell } from '../helpers/ui.js';
+import {
+  countHtmlAudioEvents,
+  countWebAudioEvents,
+  dispatchLatestWebAudioEnded,
+  dispatchWebAudioEnded,
+  installWebAudioMock,
+  readWebAudioEvents,
+} from '../helpers/web-audio.js';
 
 const BONUS_RESULT_GLOW_DURATION = '1.4s';
 
@@ -25,66 +33,27 @@ const readGlowState = (surface) => surface.evaluate((node) => {
   };
 });
 
-const installAudioMock = async (page) => {
-  await page.addInitScript(() => {
-    window.__YUT_QA_AUDIO_EVENTS__ = [];
-    window.__YUT_QA_AUDIO_INSTANCES__ = [];
-
-    class MockAudio extends EventTarget {
-      constructor(source = '') {
-        super();
-        this.src = String(source);
-        this.currentTime = 0;
-        this.volume = 1;
-        this.muted = false;
-        this.preload = '';
-        this.paused = true;
-        window.__YUT_QA_AUDIO_INSTANCES__.push(this);
-      }
-
-      load() {}
-
-      pause() {
-        this.paused = true;
-        window.__YUT_QA_AUDIO_EVENTS__.push({ type: 'pause', src: this.src });
-      }
-
-      play() {
-        this.paused = false;
-        window.__YUT_QA_AUDIO_EVENTS__.push({ type: 'play', src: this.src });
-        return Promise.resolve();
-      }
-    }
-
-    Object.defineProperty(window, 'Audio', {
-      configurable: true,
-      writable: true,
-      value: MockAudio,
-    });
-  });
-};
-
-const countAudioEvents = (page, type, assetName) => page.evaluate(({ eventType, expectedAssetName }) => {
-  const matchesAsset = (source) => {
-    const filename = decodeURIComponent(String(source).split('/').pop()?.split('?')[0] ?? '');
-    return new RegExp(`^${expectedAssetName}(?:-[^.]+)?\\.wav$`).test(filename);
-  };
-  return window.__YUT_QA_AUDIO_EVENTS__.filter((event) => event.type === eventType && matchesAsset(event.src)).length;
-}, { eventType: type, expectedAssetName: assetName });
-
-const dispatchAudioEnded = (page, assetName) => page.evaluate((expectedAssetName) => {
-  const matchesAsset = (audio) => {
-    const filename = decodeURIComponent(String(audio.src).split('/').pop()?.split('?')[0] ?? '');
-    return new RegExp(`^${expectedAssetName}(?:-[^.]+)?\\.wav$`).test(filename);
-  };
-  const audio = window.__YUT_QA_AUDIO_INSTANCES__.find(matchesAsset);
-  if (!audio) throw new Error(`${expectedAssetName} 결과 음성 인스턴스를 찾지 못했습니다.`);
-  audio.dispatchEvent(new Event('ended'));
-}, assetName);
-
 const settleDomMutations = (page) => page.evaluate(() => new Promise((resolve) => {
   requestAnimationFrame(() => requestAnimationFrame(resolve));
 }));
+
+const expectWebAudioInitialization = async (page) => {
+  await expect.poll(() => countWebAudioEvents(page, 'decode'), {
+    timeout: 1_000,
+    message: '오디오 초기화는 WAV를 fetch/decode preload해야 합니다.',
+  }).toBeGreaterThan(0);
+  expect(await countWebAudioEvents(page, 'start')).toBe(0);
+  expect(await countHtmlAudioEvents(page)).toBe(0);
+
+  await page.locator('body').dispatchEvent('pointerdown');
+  await expect.poll(() => countWebAudioEvents(page, 'resume'), {
+    timeout: 1_000,
+    message: '첫 사용자 입력에서 공유 AudioContext가 resume되어야 합니다.',
+  }).toBeGreaterThan(0);
+  expect(await countWebAudioEvents(page, 'context-create')).toBe(1);
+  expect(await countWebAudioEvents(page, 'start')).toBe(0);
+  expect(await countHtmlAudioEvents(page)).toBe(0);
+};
 
 test.describe('bonus roll result glow regression', () => {
   test('내 던지기와 상대 던지기 모두 윷·모 텍스트 공개 순간부터 같은 황금 애니메이션을 실행한다', async ({ page }) => {
@@ -158,8 +127,9 @@ test.describe('bonus roll result glow regression', () => {
   });
 
   test('일반·순서 정하기 결과 카드는 숨겨진 동안 재생하지 않고 실제 공개 시 결과별 음성을 한 번 재생한다', async ({ page }) => {
-    await installAudioMock(page);
+    await installWebAudioMock(page);
     await expectAppShell(page);
+    await expectWebAudioInitialization(page);
 
     await page.evaluate(() => {
       document.getElementById('qa-yut-speech-root')?.remove();
@@ -181,7 +151,7 @@ test.describe('bonus roll result glow regression', () => {
     });
 
     for (const audioCase of RESULT_AUDIO_CASES) {
-      const baseline = await countAudioEvents(page, 'play', audioCase.asset);
+      const baseline = await countWebAudioEvents(page, 'start', audioCase.asset);
       await page.evaluate((nextCase) => {
         const root = document.getElementById('qa-yut-speech-root');
         const presentation = root?.querySelector('.roll-result-presentation');
@@ -218,7 +188,7 @@ test.describe('bonus roll result glow regression', () => {
       await settleDomMutations(page);
 
       expect(
-        await countAudioEvents(page, 'play', audioCase.asset),
+        await countWebAudioEvents(page, 'start', audioCase.asset),
         `${audioCase.result} 결과의 부모 presentation이 숨겨진 동안 음성을 선재생하면 안 됩니다.`,
       ).toBe(baseline);
 
@@ -229,10 +199,12 @@ test.describe('bonus roll result glow regression', () => {
         presentation.setAttribute('aria-hidden', 'false');
       });
 
-      await expect.poll(() => countAudioEvents(page, 'play', audioCase.asset), {
+      await expect.poll(() => countWebAudioEvents(page, 'start', audioCase.asset), {
         timeout: 1_000,
-        message: `${audioCase.result} 결과 카드가 실제 공개되면 ${audioCase.asset}.wav가 한 번 재생되어야 합니다.`,
+        message: `${audioCase.result} 결과 카드가 실제 공개되면 ${audioCase.asset}.wav Web Audio source가 한 번 재생되어야 합니다.`,
       }).toBe(baseline + 1);
+      const starts = await readWebAudioEvents(page, 'start', audioCase.asset);
+      expect(starts.at(-1)?.gain).toBe(0.9);
 
       await page.evaluate(() => {
         const presentation = document.querySelector('#qa-yut-speech-root .roll-result-presentation');
@@ -240,16 +212,17 @@ test.describe('bonus roll result glow regression', () => {
       });
       await settleDomMutations(page);
       expect(
-        await countAudioEvents(page, 'play', audioCase.asset),
+        await countWebAudioEvents(page, 'start', audioCase.asset),
         `${audioCase.result} 결과의 동일 DOM 갱신으로 음성이 중복 재생되면 안 됩니다.`,
       ).toBe(baseline + 1);
     }
 
+    expect(await countHtmlAudioEvents(page)).toBe(0);
     await page.locator('#qa-yut-speech-root').evaluate((node) => node.remove());
   });
 
   test('결과 표시가 사라져도 음성을 중단하지 않고 윷 보너스 음성을 이어 재생한다', async ({ page }) => {
-    await installAudioMock(page);
+    await installWebAudioMock(page);
     await expectAppShell(page);
 
     await page.evaluate(() => {
@@ -267,25 +240,63 @@ test.describe('bonus roll result glow regression', () => {
       document.body.append(root);
     });
 
-    await expect.poll(() => countAudioEvents(page, 'play', 'yut'), {
+    await expect.poll(() => countWebAudioEvents(page, 'start', 'yut'), {
       timeout: 1_000,
       message: '윷 결과가 보이면 결과 음성이 한 번 재생되어야 합니다.',
     }).toBe(1);
 
-    const pauseCountBeforeRemoval = await countAudioEvents(page, 'pause', 'yut');
+    const stopCountBeforeRemoval = await countWebAudioEvents(page, 'stop', 'yut');
     await page.locator('#qa-yut-speech-root').evaluate((node) => node.remove());
     await settleDomMutations(page);
 
     expect(
-      await countAudioEvents(page, 'pause', 'yut'),
-      '결과 DOM이 사라졌다는 이유만으로 재생 중인 음성을 pause하면 안 됩니다.',
-    ).toBe(pauseCountBeforeRemoval);
+      await countWebAudioEvents(page, 'stop', 'yut'),
+      '결과 DOM이 사라졌다는 이유만으로 재생 중인 음성 source를 중단하면 안 됩니다.',
+    ).toBe(stopCountBeforeRemoval);
 
-    await dispatchAudioEnded(page, 'yut');
+    await dispatchLatestWebAudioEnded(page, 'yut');
 
-    await expect.poll(() => countAudioEvents(page, 'play', 'bonus'), {
+    await expect.poll(() => countWebAudioEvents(page, 'start', 'bonus'), {
       timeout: 1_000,
       message: '윷 결과 음성이 끝나면 결과 표시 제거 여부와 관계없이 보너스 음성이 재생되어야 합니다.',
     }).toBe(1);
+    expect((await readWebAudioEvents(page, 'start', 'bonus')).at(-1)?.gain).toBe(0.9);
+    expect(await countHtmlAudioEvents(page)).toBe(0);
+  });
+
+  test('새 결과가 이전 음성을 교체하면 stale 종료 콜백은 보너스를 재생하지 않는다', async ({ page }) => {
+    await installWebAudioMock(page);
+    await expectAppShell(page);
+
+    await page.evaluate(() => {
+      document.getElementById('qa-yut-speech-root')?.remove();
+      const root = document.createElement('div');
+      root.id = 'qa-yut-speech-root';
+      root.innerHTML = `
+        <div class="roll-result-presentation" aria-hidden="false">
+          <span class="roll-label roll-result-card bonus">
+            <strong class="roll-result-name"><span>윷</span><span class="roll-result-symbol" aria-hidden="true">✦</span></strong>
+          </span>
+        </div>
+      `;
+      document.body.append(root);
+    });
+    await expect.poll(() => countWebAudioEvents(page, 'start', 'yut')).toBe(1);
+
+    await page.evaluate(() => {
+      const result = document.querySelector('#qa-yut-speech-root .roll-result-name > span:not(.roll-result-symbol)');
+      if (!(result instanceof HTMLElement)) throw new Error('결과 label fixture를 찾지 못했습니다.');
+      result.textContent = '모';
+    });
+    await expect.poll(() => countWebAudioEvents(page, 'start', 'mo')).toBe(1);
+    await expect.poll(() => countWebAudioEvents(page, 'stop', 'yut')).toBe(1);
+
+    await dispatchWebAudioEnded(page, 'yut', 0);
+    await settleDomMutations(page);
+    expect(await countWebAudioEvents(page, 'start', 'bonus')).toBe(0);
+
+    await dispatchLatestWebAudioEnded(page, 'mo');
+    await expect.poll(() => countWebAudioEvents(page, 'start', 'bonus')).toBe(1);
+    expect(await countHtmlAudioEvents(page)).toBe(0);
   });
 });
