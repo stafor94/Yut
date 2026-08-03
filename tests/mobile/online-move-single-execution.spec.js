@@ -67,47 +67,55 @@ async function openTwoHumanGulGame({
   await hostPage.setViewportSize({ width: 412, height: 915 });
   const guestContext = await browser.newContext({ viewport: { width: 412, height: 915 } });
   const guestPage = await guestContext.newPage();
-  const hostName = normalizeQaNickname(makeQaName(testInfo, `${suffix}-host`));
-  const guestName = normalizeQaNickname(makeQaName(testInfo, `${suffix}-guest`));
-  const roomTitle = makeQaName(testInfo, `${suffix}-room`);
+  let roomId = '';
 
-  await primeLobbyStorage(hostContext, {
-    nickname: hostName,
-    maxPlayers: '2',
-    playMode: 'individual',
-    itemMode: 'false',
-    pieceCount: String(pieceCount),
-  });
-  await primeLobbyStorage(guestContext, {
-    nickname: guestName,
-    maxPlayers: '2',
-    playMode: 'individual',
-    itemMode: 'false',
-    pieceCount: String(pieceCount),
-  });
-  await installDeterministicHumanClient(hostContext, {
-    turnOrderResult: executorRole === 'host' ? '모' : '도',
-    moveResultDelayMs: executorRole === 'host' ? moveResultDelayMs : 0,
-  });
-  await installDeterministicHumanClient(guestContext, {
-    turnOrderResult: executorRole === 'guest' ? '모' : '도',
-    moveResultDelayMs: executorRole === 'guest' ? moveResultDelayMs : 0,
-  });
+  try {
+    const hostName = normalizeQaNickname(makeQaName(testInfo, `${suffix}-host`));
+    const guestName = normalizeQaNickname(makeQaName(testInfo, `${suffix}-guest`));
+    const roomTitle = makeQaName(testInfo, `${suffix}-room`);
 
-  await createRoomFromLobby(hostPage, roomTitle);
-  const roomId = await waitForRoomQaAccess(hostPage, { roomTitle });
-  await joinRoomFromLobby(guestPage, roomTitle);
-  await markGuestReady(guestPage);
-  await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 20_000 });
-  await hostPage.getByTestId('start-game-button').click();
+    await primeLobbyStorage(hostContext, {
+      nickname: hostName,
+      maxPlayers: '2',
+      playMode: 'individual',
+      itemMode: 'false',
+      pieceCount: String(pieceCount),
+    });
+    await primeLobbyStorage(guestContext, {
+      nickname: guestName,
+      maxPlayers: '2',
+      playMode: 'individual',
+      itemMode: 'false',
+      pieceCount: String(pieceCount),
+    });
+    await installDeterministicHumanClient(hostContext, {
+      turnOrderResult: executorRole === 'host' ? '모' : '도',
+      moveResultDelayMs: executorRole === 'host' ? moveResultDelayMs : 0,
+    });
+    await installDeterministicHumanClient(guestContext, {
+      turnOrderResult: executorRole === 'guest' ? '모' : '도',
+      moveResultDelayMs: executorRole === 'guest' ? moveResultDelayMs : 0,
+    });
 
-  const executorPage = executorRole === 'host' ? hostPage : guestPage;
-  const observerPage = executorRole === 'host' ? guestPage : hostPage;
-  await Promise.all([
-    waitForGameReady(executorPage, { expectRollEnabled: true }),
-    waitForGameReady(observerPage),
-  ]);
-  return { roomId, hostPage, guestContext, guestPage, executorPage, observerPage };
+    await createRoomFromLobby(hostPage, roomTitle);
+    roomId = await waitForRoomQaAccess(hostPage, { roomTitle });
+    await joinRoomFromLobby(guestPage, roomTitle);
+    await markGuestReady(guestPage);
+    await expect(hostPage.getByTestId('start-game-button')).toBeEnabled({ timeout: 20_000 });
+    await hostPage.getByTestId('start-game-button').click();
+
+    const executorPage = executorRole === 'host' ? hostPage : guestPage;
+    const observerPage = executorRole === 'host' ? guestPage : hostPage;
+    await Promise.all([
+      waitForGameReady(executorPage, { expectRollEnabled: true }),
+      waitForGameReady(observerPage),
+    ]);
+    return { roomId, hostPage, guestContext, guestPage, executorPage, observerPage };
+  } catch (error) {
+    await guestContext.close().catch(() => undefined);
+    await deleteRoomForQa(roomId).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function getExecutorPieceIdentity(page) {
@@ -133,16 +141,15 @@ async function waitForPieceNode(page, pieceId, nodeId) {
   }).toBe(true);
 }
 
-async function refreshRoomFixtureState(page, roomId) {
-  await page.evaluate((activeRoomId) => {
-    window.dispatchEvent(new CustomEvent('yut:sequence-hard-recovery', {
-      detail: {
-        roomId: activeRoomId,
-        watchKey: `${activeRoomId}:qa-fixture`,
-        elapsedMs: 0,
-      },
-    }));
-  }, roomId);
+async function reloadSeededRoomState(game) {
+  await Promise.all([
+    game.executorPage.reload(),
+    game.observerPage.reload(),
+  ]);
+  await Promise.all([
+    waitForGameReady(game.executorPage, { expectRollEnabled: true }),
+    waitForGameReady(game.observerPage),
+  ]);
 }
 
 async function submitPerfectGul(page, {
@@ -154,6 +161,9 @@ async function submitPerfectGul(page, {
     const startedAt = performance.now();
     let movedBeforeEnabled = false;
     let moveTimerVisibleBeforeEnabled = false;
+    let observedRollResultReadyAt = 0;
+    let observedEffectiveRollResultReadyAt = 0;
+
     const sample = () => {
       const debug = window.__YUT_DEBUG_STATE__ ?? {};
       const moveButton = document.querySelector('[data-testid="move-piece-button"]');
@@ -161,12 +171,16 @@ async function submitPerfectGul(page, {
       const trackedPiece = Array.isArray(debug.pieces)
         ? debug.pieces.find((piece) => piece?.id === targetPieceId)
         : null;
+      const rollResultReadyAt = Number(debug.rollResultReadyAt ?? 0);
+      const effectiveRollResultReadyAt = Number(debug.effectiveRollResultReadyAt ?? 0);
+      if (rollResultReadyAt > 0) observedRollResultReadyAt = rollResultReadyAt;
+      if (effectiveRollResultReadyAt > 0) observedEffectiveRollResultReadyAt = effectiveRollResultReadyAt;
+
       if (!moveEnabled && trackedPiece
         && (trackedPiece.nodeId !== expectedInitialNodeId || debug.movingPieceId === targetPieceId)) {
         movedBeforeEnabled = true;
       }
-      const resolvedRollVisible = Number(debug.rollResultReadyAt ?? 0) > 0;
-      if (!moveEnabled && resolvedRollVisible && document.querySelector('.turn-action-timer')) {
+      if (!moveEnabled && observedRollResultReadyAt > 0 && document.querySelector('.turn-action-timer')) {
         moveTimerVisibleBeforeEnabled = true;
       }
       if (moveEnabled) {
@@ -176,8 +190,8 @@ async function submitPerfectGul(page, {
           movedBeforeEnabled,
           moveTimerVisibleBeforeEnabled,
           enabledAt,
-          rollResultReadyAt: Number(debug.rollResultReadyAt ?? 0),
-          effectiveRollResultReadyAt: Number(debug.effectiveRollResultReadyAt ?? 0),
+          rollResultReadyAt: observedRollResultReadyAt,
+          effectiveRollResultReadyAt: observedEffectiveRollResultReadyAt,
         });
         return;
       }
@@ -221,7 +235,6 @@ function observeMoveUntilStable(page, {
   ownerSeatId,
   pieceId,
   initialNodeId,
-  expectedPath,
   finalNodeId,
   collectLocalMutationIds,
 }) {
@@ -302,7 +315,6 @@ function observeMoveUntilStable(page, {
     ownerSeatId,
     pieceId,
     initialNodeId,
-    expectedPath,
     finalNodeId,
     collectLocalMutationIds,
   });
@@ -362,6 +374,9 @@ async function runScenario({
   finalNodeId = 'n04',
 }) {
   let game;
+  let localTracePromise;
+  let remoteTracePromise;
+
   try {
     game = await openTwoHumanGulGame({
       browser,
@@ -386,27 +401,22 @@ async function runScenario({
         nodeId: initialNodeId,
         previousNodeId,
       });
-      await Promise.all([
-        refreshRoomFixtureState(game.executorPage, game.roomId),
-        refreshRoomFixtureState(game.observerPage, game.roomId),
-      ]);
+      await reloadSeededRoomState(game);
       await Promise.all([
         waitForPieceNode(game.executorPage, identity.pieceId, initialNodeId),
         waitForPieceNode(game.observerPage, identity.pieceId, initialNodeId),
       ]);
     }
 
-    const localTracePromise = observeMoveUntilStable(game.executorPage, {
+    localTracePromise = observeMoveUntilStable(game.executorPage, {
       ...identity,
       initialNodeId,
-      expectedPath,
       finalNodeId,
       collectLocalMutationIds: true,
     });
-    const remoteTracePromise = observeMoveUntilStable(game.observerPage, {
+    remoteTracePromise = observeMoveUntilStable(game.observerPage, {
       ...identity,
       initialNodeId,
-      expectedPath,
       finalNodeId,
       collectLocalMutationIds: false,
     });
@@ -429,6 +439,8 @@ async function runScenario({
     await expectSingleAuthoritativeMove(game.roomId, identity.ownerSeatId);
     return game;
   } catch (error) {
+    void localTracePromise?.catch(() => undefined);
+    void remoteTracePromise?.catch(() => undefined);
     await game?.guestContext.close().catch(() => undefined);
     await deleteRoomForQa(game?.roomId).catch(() => undefined);
     throw error;
