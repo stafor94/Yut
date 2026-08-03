@@ -15,57 +15,16 @@ import {
   getRoomTurnOrderSubmissionsForQa,
   rememberRoomIdFromPage,
 } from '../helpers/rooms.js';
-
-const installAudioMock = async (context) => {
-  await context.addInitScript(() => {
-    window.__YUT_QA_AUDIO_EVENTS__ = [];
-
-    class MockAudio extends EventTarget {
-      constructor(source = '') {
-        super();
-        this.src = String(source);
-        this.currentTime = 0;
-        this.volume = 1;
-        this.muted = false;
-        this.preload = '';
-        this.paused = true;
-      }
-
-      load() {}
-
-      pause() {
-        this.paused = true;
-        window.__YUT_QA_AUDIO_EVENTS__.push({ type: 'pause', src: this.src, muted: this.muted });
-      }
-
-      play() {
-        this.paused = false;
-        window.__YUT_QA_AUDIO_EVENTS__.push({ type: 'play', src: this.src, muted: this.muted });
-        queueMicrotask(() => this.dispatchEvent(new Event('ended')));
-        return Promise.resolve();
-      }
-    }
-
-    Object.defineProperty(window, 'Audio', {
-      configurable: true,
-      writable: true,
-      value: MockAudio,
-    });
-  });
-};
-
-const countUnmutedAudioPlayEvents = (page, assetName) => page.evaluate((expectedAssetName) => {
-  const matchesAsset = (source) => {
-    const filename = decodeURIComponent(String(source).split('/').pop()?.split('?')[0] ?? '');
-    return new RegExp(`^${expectedAssetName}(?:-[^.]+)?\\.wav$`).test(filename);
-  };
-  return window.__YUT_QA_AUDIO_EVENTS__.filter((event) => event.type === 'play' && !event.muted && matchesAsset(event.src)).length;
-}, assetName);
+import {
+  countHtmlAudioEvents,
+  countWebAudioEvents,
+  installWebAudioMock,
+} from '../helpers/web-audio.js';
 
 async function prepareTurnOrderRoom(browser, testInfo) {
   const hostContext = await browser.newContext();
   const guestContext = await browser.newContext();
-  await Promise.all([installAudioMock(hostContext), installAudioMock(guestContext)]);
+  await Promise.all([installWebAudioMock(hostContext), installWebAudioMock(guestContext)]);
   const hostName = normalizeQaNickname(makeQaName(testInfo, 'to-host'));
   const guestName = normalizeQaNickname(makeQaName(testInfo, 'to-guest'));
   const roomTitle = makeQaName(testInfo, 'turn-order-room');
@@ -126,6 +85,13 @@ test.describe('simultaneous turn-order QA', () => {
         await expect(qa.guestPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
         await expect(qa.hostPage.getByTestId('turn-order-preparing')).toBeVisible({ timeout: 5_000 });
         await expect(qa.guestPage.getByTestId('turn-order-preparing')).toBeVisible({ timeout: 5_000 });
+        await expect.poll(() => countWebAudioEvents(qa.hostPage, 'resume'), {
+          timeout: 5_000,
+          message: '첫 사용자 입력에서 공유 AudioContext가 resume되어야 합니다.',
+        }).toBeGreaterThan(0);
+        expect(await countWebAudioEvents(qa.hostPage, 'context-create')).toBe(1);
+        expect(await countHtmlAudioEvents(qa.hostPage)).toBe(0);
+        expect(await countHtmlAudioEvents(qa.guestPage)).toBe(0);
 
         await expect.poll(async () => {
           const [room, state] = await Promise.all([getRoomForQa(qa.roomId), getRoomStateForQa(qa.roomId)]);
@@ -156,19 +122,19 @@ test.describe('simultaneous turn-order QA', () => {
           guestButton.click(),
         ]);
         await expect(qa.hostPage.getByTestId('turn-order-roll-stage-anchor').locator('.roll-timing-feedback')).toHaveCount(0);
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.hostPage, 'yut'), {
+        await expect.poll(() => countWebAudioEvents(qa.hostPage, 'start', 'yut'), {
           timeout: 5_000,
-          message: '호스트 순서 정하기 윷 결과 공개 시 yut.wav가 한 번 재생되어야 합니다.',
+          message: '호스트 순서 정하기 윷 결과 공개 시 yut.wav Web Audio source가 한 번 시작되어야 합니다.',
         }).toBe(1);
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.guestPage, 'yut'), {
+        await expect.poll(() => countWebAudioEvents(qa.guestPage, 'start', 'yut'), {
           timeout: 5_000,
-          message: '게스트 순서 정하기 윷 결과 공개 시 yut.wav가 한 번 재생되어야 합니다.',
+          message: '게스트 순서 정하기 윷 결과 공개 시 yut.wav Web Audio source가 한 번 시작되어야 합니다.',
         }).toBe(1);
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.hostPage, 'bonus'), {
+        await expect.poll(() => countWebAudioEvents(qa.hostPage, 'start', 'bonus'), {
           timeout: 2_000,
           message: '순서 정하기의 윷 결과에는 bonus.wav가 재생되면 안 됩니다.',
         }).toBe(0);
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.guestPage, 'bonus'), {
+        await expect.poll(() => countWebAudioEvents(qa.guestPage, 'start', 'bonus'), {
           timeout: 2_000,
           message: '순서 정하기의 윷 결과에는 bonus.wav가 재생되면 안 됩니다.',
         }).toBe(0);
@@ -208,11 +174,11 @@ test.describe('simultaneous turn-order QA', () => {
           hostButton.click(),
           guestButton.click(),
         ]);
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.hostPage, 'geol'), {
+        await expect.poll(() => countWebAudioEvents(qa.hostPage, 'start', 'geol'), {
           timeout: 5_000,
           message: '호스트 순서 정하기 걸 결과 공개 시 geol.wav가 한 번 재생되어야 합니다.',
         }).toBe(1);
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.guestPage, 'gae'), {
+        await expect.poll(() => countWebAudioEvents(qa.guestPage, 'start', 'gae'), {
           timeout: 5_000,
           message: '게스트 순서 정하기 개 결과 공개 시 gae.wav가 한 번 재생되어야 합니다.',
         }).toBe(1);
@@ -232,14 +198,16 @@ test.describe('simultaneous turn-order QA', () => {
 
         await expect(qa.hostPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
         await expect(qa.guestPage.getByTestId('turn-order-final-order')).toBeVisible({ timeout: 15_000 });
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.hostPage, 'door-bang'), {
+        await expect.poll(() => countWebAudioEvents(qa.hostPage, 'start', 'door-bang'), {
           timeout: 3_000,
           message: '호스트 최종 순서 확정 화면에서 door-bang.wav가 한 번 재생되어야 합니다.',
         }).toBe(1);
-        await expect.poll(() => countUnmutedAudioPlayEvents(qa.guestPage, 'door-bang'), {
+        await expect.poll(() => countWebAudioEvents(qa.guestPage, 'start', 'door-bang'), {
           timeout: 3_000,
           message: '게스트 최종 순서 확정 화면에서 door-bang.wav가 한 번 재생되어야 합니다.',
         }).toBe(1);
+        expect(await countHtmlAudioEvents(qa.hostPage)).toBe(0);
+        expect(await countHtmlAudioEvents(qa.guestPage)).toBe(0);
         const finalState = await getRoomStateForQa(qa.roomId);
         expect(finalState?.turnOrderIds).toEqual([
           finalState?.gameSeats?.[0]?.id,

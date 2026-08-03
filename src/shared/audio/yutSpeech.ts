@@ -1,4 +1,9 @@
 import { normalizeSpokenYutResult, type SpokenYutResult } from '../../app/flows/rollSpeech';
+import {
+  playWebAudioBuffer,
+  preloadWebAudioBuffers,
+  stopWebAudioChannel,
+} from './webAudioBufferPlayer';
 import backdoAudioSource from './assets/results/backdo.wav';
 import bonusAudioSource from './assets/results/bonus.wav';
 import doAudioSource from './assets/results/do.wav';
@@ -10,6 +15,8 @@ import yutAudioSource from './assets/results/yut.wav';
 
 const RESULT_AUDIO_VOLUME = 0.9;
 const BONUS_AUDIO_VOLUME = 0.9;
+const RESULT_AUDIO_CHANNEL = 'yut-result-speech';
+const RESULT_AUDIO_KEY = 'current-result';
 
 const RESULT_AUDIO_SOURCE: Record<SpokenYutResult, string> = {
   도: doAudioSource,
@@ -23,117 +30,73 @@ const RESULT_AUDIO_SOURCE: Record<SpokenYutResult, string> = {
 
 const playedByElement = new WeakMap<Element, SpokenYutResult>();
 const queuedByElement = new WeakMap<Element, SpokenYutResult>();
-const audioByResult = new Map<SpokenYutResult, HTMLAudioElement>();
 let observer: MutationObserver | null = null;
 let bindingScheduled = false;
 let currentVisibleLabel: HTMLElement | null = null;
-let activeAudio: HTMLAudioElement | null = null;
-let bonusAudio: HTMLAudioElement | null = null;
-let audioUnlocked = false;
+let stopActiveAudio: (() => void) | null = null;
 let playSequence = 0;
 
-const getResultAudio = (result: SpokenYutResult) => {
-  const cachedAudio = audioByResult.get(result);
-  if (cachedAudio) return cachedAudio;
-
-  const audio = new Audio(RESULT_AUDIO_SOURCE[result]);
-  audio.preload = 'auto';
-  audio.volume = RESULT_AUDIO_VOLUME;
-  audioByResult.set(result, audio);
-  return audio;
-};
-
-const getBonusAudio = () => {
-  if (bonusAudio) return bonusAudio;
-  bonusAudio = new Audio(bonusAudioSource);
-  bonusAudio.preload = 'auto';
-  bonusAudio.volume = BONUS_AUDIO_VOLUME;
-  return bonusAudio;
-};
-
 const preloadResultAudio = () => {
-  (Object.keys(RESULT_AUDIO_SOURCE) as SpokenYutResult[]).forEach((result) => {
-    getResultAudio(result).load();
-  });
-  getBonusAudio().load();
-};
-
-const unlockResultAudio = () => {
-  if (audioUnlocked) return;
-  const audio = getResultAudio('도');
-  audio.muted = true;
-  void audio.play().then(() => {
-    audio.pause();
-    audio.currentTime = 0;
-    audio.muted = false;
-    audioUnlocked = true;
-  }).catch(() => {
-    audio.muted = false;
-  });
+  void preloadWebAudioBuffers([...Object.values(RESULT_AUDIO_SOURCE), bonusAudioSource]);
 };
 
 const clearQueuedResult = (label: Element, result: SpokenYutResult) => {
   if (queuedByElement.get(label) === result) queuedByElement.delete(label);
 };
 
-const stopActiveAudio = () => {
-  if (!activeAudio) return;
-  activeAudio.pause();
-  activeAudio.currentTime = 0;
-  activeAudio = null;
+const stopCurrentAudio = () => {
+  stopActiveAudio?.();
+  stopActiveAudio = null;
+  stopWebAudioChannel(RESULT_AUDIO_CHANNEL);
 };
 
 const playBonus = (isEnabled: () => boolean, sequence: number) => {
   if (sequence !== playSequence || !isEnabled()) return;
-  const audio = getBonusAudio();
-  if (activeAudio && activeAudio !== audio) stopActiveAudio();
-  activeAudio = audio;
-  audio.pause();
-  audio.currentTime = 0;
-  audio.muted = false;
-  audio.volume = BONUS_AUDIO_VOLUME;
-  void audio.play().catch(() => undefined);
+  stopActiveAudio = playWebAudioBuffer({
+    channel: RESULT_AUDIO_CHANNEL,
+    key: RESULT_AUDIO_KEY,
+    url: bonusAudioSource,
+    volume: BONUS_AUDIO_VOLUME,
+  });
 };
 
 export const playBonusSpeech = (isEnabled: () => boolean) => {
-  if (typeof window === 'undefined' || typeof Audio === 'undefined' || !isEnabled()) return false;
+  if (typeof window === 'undefined' || !isEnabled()) return false;
   playSequence += 1;
   playBonus(isEnabled, playSequence);
   return true;
 };
 
 const playResult = (label: HTMLElement, result: SpokenYutResult, isEnabled: () => boolean) => {
-  if (typeof window === 'undefined' || typeof Audio === 'undefined') return false;
+  if (typeof window === 'undefined') return false;
   if (playedByElement.get(label) === result || queuedByElement.get(label) === result) return true;
   if (!isEnabled()) return false;
 
   playSequence += 1;
   const sequence = playSequence;
-  const audio = getResultAudio(result);
   const isTurnOrderResult = Boolean(label.closest('[data-testid="turn-order-roll-stage-anchor"]'));
   queuedByElement.set(label, result);
 
-  if (activeAudio && activeAudio !== audio) stopActiveAudio();
-  activeAudio = audio;
-  audio.pause();
-  audio.currentTime = 0;
-  audio.muted = false;
-  audio.volume = RESULT_AUDIO_VOLUME;
-
-  const handleEnded = () => {
-    clearQueuedResult(label, result);
-    if (!isTurnOrderResult && sequence === playSequence && (result === '윷' || result === '모')) playBonus(isEnabled, sequence);
-  };
-  const handleError = () => clearQueuedResult(label, result);
-  audio.addEventListener('ended', handleEnded, { once: true });
-  audio.addEventListener('error', handleError, { once: true });
-
-  void audio.play().then(() => {
-    playedByElement.set(label, result);
-  }).catch(() => {
-    audio.removeEventListener('ended', handleEnded);
-    audio.removeEventListener('error', handleError);
-    clearQueuedResult(label, result);
+  stopCurrentAudio();
+  stopActiveAudio = playWebAudioBuffer({
+    channel: RESULT_AUDIO_CHANNEL,
+    key: RESULT_AUDIO_KEY,
+    url: RESULT_AUDIO_SOURCE[result],
+    volume: RESULT_AUDIO_VOLUME,
+    onStarted: () => {
+      if (sequence !== playSequence) return;
+      playedByElement.set(label, result);
+    },
+    onEnded: () => {
+      clearQueuedResult(label, result);
+      if (!isTurnOrderResult && sequence === playSequence && (result === '윷' || result === '모')) {
+        playBonus(isEnabled, sequence);
+      }
+    },
+    onError: () => {
+      clearQueuedResult(label, result);
+      if (sequence === playSequence) stopActiveAudio = null;
+    },
   });
   return true;
 };
@@ -161,7 +124,7 @@ const playVisibleResultOnce = (isEnabled: () => boolean) => {
   if (!isEnabled()) return;
   if (currentVisibleLabel && currentVisibleLabel !== label) {
     playSequence += 1;
-    stopActiveAudio();
+    stopCurrentAudio();
     playedByElement.delete(currentVisibleLabel);
     queuedByElement.delete(currentVisibleLabel);
   }
@@ -183,13 +146,9 @@ const startObserving = (isEnabled: () => boolean) => {
     attributes: true,
     attributeFilter: ['class', 'hidden', 'aria-hidden'],
   });
-  const unlockAndCheck = () => {
-    unlockResultAudio();
-    check();
-  };
-  window.addEventListener('pointerdown', unlockAndCheck, { passive: true });
-  window.addEventListener('touchstart', unlockAndCheck, { passive: true });
-  window.addEventListener('keydown', unlockAndCheck);
+  window.addEventListener('pointerdown', check, { passive: true });
+  window.addEventListener('touchstart', check, { passive: true });
+  window.addEventListener('keydown', check);
   check();
 };
 
