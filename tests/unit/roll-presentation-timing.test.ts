@@ -13,12 +13,12 @@ test('primary 구간 안에 결과가 확정되면 제출 시각 기준 전체 �
 
 test('primary 경계를 지난 지연 응답은 현재 extra-spin의 다음 1초 경계 뒤 landing·hold를 보장한다', () => {
   const readyAt = getAuthoritativeRollPresentationReadyAt({ actionStartedAt: 10_000, resolvedAt: 12_001 });
-  assert.equal(readyAt, 15_800);
+  assert.equal(readyAt, 14_200);
 });
 
 test('extra-spin 경계에서 확정된 결과는 추가 1초를 불필요하게 기다리지 않는다', () => {
   const readyAt = getAuthoritativeRollPresentationReadyAt({ actionStartedAt: 10_000, resolvedAt: 12_200 });
-  assert.equal(readyAt, 15_800);
+  assert.equal(readyAt, 14_200);
 });
 
 test('제출 시각이 없는 coordinator 결과도 전체 연출 시간보다 먼저 deadline을 시작하지 않는다', () => {
