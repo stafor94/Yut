@@ -18,6 +18,23 @@ The highest priority is to avoid repeated failed fixes, unrelated changes, and s
 
 ---
 
+## Request interpretation and execution discipline
+
+The current user message takes priority over earlier conversation context. Classify the current message before using tools or modifying the repository.
+
+- A complaint, retrospective, question, explanation request, or documentation request is not permission to resume an earlier code, PR, merge, or Actions task.
+- Do not run repository mutations merely because an earlier task remains unfinished. Resume it only when the current message explicitly asks for that work.
+- Preserve approvals already given for the same scope. Do not ask for the same plan, implementation, push, review, or merge approval again unless the scope materially expands or a forced stop condition is reached.
+- After a tool or command fails, identify whether the cause is authentication, input, missing resource, unsupported capability, transient infrastructure, or a real product/CI failure before changing tools.
+- Do not repeat the same lookup through multiple tools without a specific missing datum. Reuse confirmed repository, branch, PR, SHA, Run, and issue identifiers.
+- Do not report that another approach will be tried unless it is immediately executed and produces a concrete result. Report results, not intentions.
+- Do not create extra branches, PRs, Issues, workflows, commits, or Runs to work around an information-access problem.
+- For documentation-only work, keep the change and verification documentation-only. Do not add or modify product code, tests, dependencies, fixtures, or workflows unless the user separately approves that expanded scope.
+
+When the user explicitly waives automated tests for a documentation-only change, manual review of the final Markdown diff, links, contradictions, and changed-file scope is the verification. Record automated checks as not run by request; do not invent replacement product QA.
+
+---
+
 ## Standard workflow
 
 For every task:
