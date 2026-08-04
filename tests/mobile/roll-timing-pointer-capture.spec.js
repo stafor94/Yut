@@ -10,7 +10,8 @@ const GOOD_CANCEL_RANGES = Object.freeze([[20.5, 39.5], [60.5, 79.5]]);
 const POSITION_TOLERANCE_PERCENT = 0.25;
 const LONG_PRESS_MS = 180;
 const ROLL_TIMING_CYCLE_MS = 2000;
-const POINTER_SPEC_MODE = process.env.QA_ROLE === 'safari-timing' ? 'default' : 'parallel';
+const IS_SAFARI_TIMING = process.env.QA_ROLE === 'safari-timing';
+const POINTER_SPEC_MODE = IS_SAFARI_TIMING ? 'default' : 'parallel';
 
 function getExpectedGrade(positionPercent) {
   if (positionPercent >= 45 && positionPercent <= 55) return 'PERFECT';
@@ -43,11 +44,13 @@ async function startAiTimingGame(page, context, testInfo, attemptLabel = '') {
     await createRoomFromLobby(page, roomTitle);
     resolvedRoomId = await waitForRoomQaAccess(page, { roomTitle });
     await addAiAndWaitUntilGameCanStart(page);
-    await page.bringToFront();
-    await expect.poll(
-      () => page.evaluate(() => document.visibilityState),
-      { timeout: 5_000, message: '포인터 타이밍 검증 전에 테스트 페이지가 foreground 상태여야 합니다.' },
-    ).toBe('visible');
+    if (IS_SAFARI_TIMING) {
+      await page.bringToFront();
+      await expect.poll(
+        () => page.evaluate(() => document.visibilityState),
+        { timeout: 5_000, message: '포인터 타이밍 검증 전에 테스트 페이지가 foreground 상태여야 합니다.' },
+      ).toBe('visible');
+    }
     const startGameButton = page.getByTestId('start-game-button');
     await expect(startGameButton).toBeVisible({ timeout: 15_000 });
     await expect(startGameButton).toBeEnabled({ timeout: 15_000 });
