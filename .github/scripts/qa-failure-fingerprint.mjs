@@ -278,7 +278,7 @@ async function syncIssues(reports) {
   const [owner, repo] = String(process.env.GITHUB_REPOSITORY ?? '').split('/');
   const current = reports[0];
   const occurrences = currentOccurrences(reports);
-  const payload = await api(`/repos/${owner}/${repo}/issues?state=open&labels=${encodeURIComponent(LABEL)}&per_page=100`);
+  const payload = await api(`/repos/${owner}/${repo}/issues?state=all&labels=${encodeURIComponent(LABEL)}&per_page=100`);
   const managed = (payload ?? []).filter((issue) => !issue.pull_request && isManagedIssue(issue.body));
   if (occurrences.length) await ensureLabel(owner, repo);
 
@@ -294,7 +294,7 @@ async function syncIssues(reports) {
       if (!metadata.alreadyProcessed) {
         await api(`/repos/${owner}/${repo}/issues/${canonical.number}/comments`, { method: 'POST', body: JSON.stringify({ body: `새 동일 원인 Run 감지: ${current.workflow.runUrl} (\`${current.workflow.headSha}\`)\n<!-- qa-occurrence:${runKey} -->` }) });
       }
-      await api(`/repos/${owner}/${repo}/issues/${canonical.number}`, { method: 'PATCH', body: JSON.stringify({ title: titleFor(occurrence), body }) });
+      await api(`/repos/${owner}/${repo}/issues/${canonical.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'open', title: titleFor(occurrence), body }) });
     } else {
       await api(`/repos/${owner}/${repo}/issues`, { method: 'POST', body: JSON.stringify({ title: titleFor(occurrence), body, labels: [LABEL] }) });
     }
@@ -304,13 +304,14 @@ async function syncIssues(reports) {
   }
 
   for (const issue of managed) {
+    if (issue.state !== 'open') continue;
     const metadata = parseIssueMetadata(issue.body);
     if (!metadata.fingerprint || active.has(metadata.fingerprint)) continue;
     if (!shouldCloseFingerprint({ reports, fingerprint: metadata.fingerprint, occurrenceCount: metadata.occurrenceCount })) continue;
     await api(`/repos/${owner}/${repo}/issues/${issue.number}/comments`, { method: 'POST', body: JSON.stringify({ body: `동일 lane의 해결 조건을 충족하여 자동 종료합니다.\n\n- Run: ${current.workflow.runUrl}\n- Head SHA: \`${current.workflow.headSha}\`` }) });
     await api(`/repos/${owner}/${repo}/issues/${issue.number}`, { method: 'PATCH', body: JSON.stringify({ state: 'closed', state_reason: 'completed' }) });
   }
-  console.log(`QA failure issue sync: ${occurrences.length} active fingerprint(s), ${managed.length} managed open issue(s)`);
+  console.log(`QA failure issue sync: ${occurrences.length} active fingerprint(s), ${managed.length} managed issue(s)`);
 }
 
 async function main() {
