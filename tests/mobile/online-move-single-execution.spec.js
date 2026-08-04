@@ -11,6 +11,8 @@ import { waitForRoomQaAccess } from '../helpers/room-access.js';
 import { deleteRoomForQa, getRoomSequencesForQa } from '../helpers/rooms.js';
 import { seedRoomPieceAtNodeForQa } from '../helpers/room-state-fixture.js';
 
+const SEEDED_ROOM_RELOAD_DEADLINE_MS = 60_000;
+
 async function installDeterministicHumanClient(context, { turnOrderResult, moveResultDelayMs = 0 }) {
   await context.addInitScript(({ queuedTurnOrderResult, configuredMoveResultDelayMs }) => {
     window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = [queuedTurnOrderResult];
@@ -403,6 +405,8 @@ async function runScenario({
     expect(identity.pieceId).not.toBe('');
 
     if (initialNodeId !== 'n01') {
+      // The fixture is applied after the first roll turn starts. Preserve that turn through
+      // the two-page reload so the test still exercises a manual delayed roll, not timeout recovery.
       await seedRoomPieceAtNodeForQa({
         roomId: game.roomId,
         authPage: game.hostPage,
@@ -410,6 +414,7 @@ async function runScenario({
         pieceId: identity.pieceId,
         nodeId: initialNodeId,
         previousNodeId,
+        turnDeadlineAt: Date.now() + SEEDED_ROOM_RELOAD_DEADLINE_MS,
       });
       await reloadSeededRoomState(game);
       await Promise.all([
