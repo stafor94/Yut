@@ -203,6 +203,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node .github/scripts/validate-qa-performance.mjs
+      - id: failure-report
+        name: Build QA failure report
+        if: always()
+        continue-on-error: true
+        env:
+          BUILD_RESULT: ${{ needs.build-and-unit.result }}
+          EMULATOR_RESULT: ${{ needs.qa-firebase-emulator.result }}
+          PERFORMANCE_RESULT: ${{ steps.performance.outcome }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          HEAD_BRANCH: ${{ github.ref_name }}
+          HEAD_SHA: ${{ github.sha }}
+        run: node .github/scripts/build-qa-failure-report.mjs
       - name: Write QA summary
         env:
           BUILD_RESULT: ${{ needs.build-and-unit.result }}
@@ -277,6 +289,7 @@ jobs:
             qa-summary.md
             qa-performance.json
             qa-performance.md
+            qa-failure-report.json
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
@@ -285,7 +298,9 @@ jobs:
           BUILD_RESULT: ${{ needs.build-and-unit.result }}
           EMULATOR_RESULT: ${{ needs.qa-firebase-emulator.result }}
           PERFORMANCE_RESULT: ${{ steps.performance.outcome }}
+          FAILURE_REPORT_RESULT: ${{ steps.failure-report.outcome }}
         run: |
           test "$BUILD_RESULT" = success
           test "$EMULATOR_RESULT" = success
           test "$PERFORMANCE_RESULT" = success
+          test "$FAILURE_REPORT_RESULT" = success
