@@ -28,6 +28,8 @@ export type PendingRemoteActionMeta = {
 
 type PendingMoveRuntimeState = {
   turnDeadlineExpired?: boolean;
+  turnDeadlineAt?: number;
+  turnDeadlineKind?: string;
   autoPlayBySeatId?: Record<string, boolean>;
   activeSeat?: { id?: string; isAI?: boolean } | null;
 };
@@ -52,7 +54,9 @@ export function shouldPrepareAtomicLocalMoveStart({
 }) {
   if (type !== 'move_piece' || !optimisticApplied || !requiresPendingLocalMoveOwnership(actionKey)) return false;
   const actorId = actionKey.split(':')[1] ?? '';
-  const automatedByTimeout = runtimeState.turnDeadlineExpired === true;
+  const moveDeadlineAt = Number(runtimeState.turnDeadlineAt ?? 0);
+  const automatedByTimeout = runtimeState.turnDeadlineExpired === true
+    || (runtimeState.turnDeadlineKind === 'move' && moveDeadlineAt > 0 && Date.now() >= moveDeadlineAt);
   const automatedBySeat = Boolean(actorId && runtimeState.autoPlayBySeatId?.[actorId]);
   const automatedAiSeat = Boolean(actorId && runtimeState.activeSeat?.id === actorId && runtimeState.activeSeat.isAI);
   return !automatedByTimeout && !automatedBySeat && !automatedAiSeat;
