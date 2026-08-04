@@ -494,7 +494,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     if (outcomeKey && lastRollOutcomeKeyRef.current !== outcomeKey) {
       lastRollOutcomeKeyRef.current = outcomeKey;
       const delayMs = rollAnimation.phase ? 0 : 420;
-      window.setTimeout(() => playStoredSoundEffect(outcomeEffect), 0 + delayMs);
+      window.setTimeout(() => playStoredSoundEffect(outcomeEffect), delayMs);
     }
   }, [rollAnimation]);
 
