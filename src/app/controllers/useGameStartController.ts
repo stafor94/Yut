@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
-import type { RoomSummary } from '../../features/room/services/roomService';
+import { claimGameCoordinatorLease, GAME_COORDINATOR_RETRY_MS, type RoomSummary } from '../../features/room/services/roomService';
 import { applySequenceEvents } from '../hooks/applySequenceEvent';
 import { useTurnOrderPortraitScroll } from '../hooks/useTurnOrderTimers';
 import type { SequenceStateSnapshot } from '../appState';
@@ -296,32 +296,46 @@ export function useGameStartController(ctx: any) {
     return () => window.clearTimeout(readyTimer);
   }, [ctx.activeRoomId, ctx.turnOrderIntro?.readyAt]);
   useEffect(() => {
-    if (!ctx.activeRoomId || !ctx.canCompleteInitialOnlineTurnOrderIntro || ctx.screen !== 'game' || !ctx.turnOrderIntro?.readyAt) return undefined;
+    if (!ctx.activeRoomId || ctx.screen !== 'game' || !ctx.turnOrderIntro?.readyAt || !ctx.localSeatId) return undefined;
     const readyAt = ctx.turnOrderIntro.readyAt;
     let cancelled = false;
     const timers = new Set<number>();
+    const getRetryDelay = (attemptIndex: number) => TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS[attemptIndex] ?? GAME_COORDINATOR_RETRY_MS;
     const scheduleCompletion = (attemptIndex: number, delayMs: number) => {
       const timer = window.setTimeout(async () => {
         timers.delete(timer);
         if (cancelled) return;
+        if (Date.now() < readyAt) {
+          scheduleCompletion(attemptIndex, Math.max(0, readyAt - Date.now()));
+          return;
+        }
         if (completingTurnOrderIntroRef.current.has(readyAt)) {
-          const retryDelay = TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS[attemptIndex];
-          if (retryDelay !== undefined) scheduleCompletion(attemptIndex + 1, retryDelay);
+          scheduleCompletion(attemptIndex + 1, getRetryDelay(attemptIndex));
           return;
         }
         completingTurnOrderIntroRef.current.add(readyAt);
         let version = 0;
         try {
-          version = Number(await completeTurnOrderIntro(ctx.activeRoomId, { readyAt, actorId: ctx.localSeatId, coordinatorEpoch: ctx.coordinatorEpoch })) || 0;
-          if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
+          const lease = await claimGameCoordinatorLease(ctx.activeRoomId, ctx.localSeatId);
+          if (cancelled) return;
+          const ownsLease = (lease.status === 'acquired' || lease.status === 'renewed')
+            && lease.coordinatorSeatId === ctx.localSeatId
+            && lease.coordinatorEpoch > 0;
+          if (ownsLease) {
+            version = Number(await completeTurnOrderIntro(ctx.activeRoomId, {
+              readyAt,
+              actorId: ctx.localSeatId,
+              coordinatorEpoch: lease.coordinatorEpoch,
+            })) || 0;
+            if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
+          }
         } catch {
           version = 0;
         } finally {
           completingTurnOrderIntroRef.current.delete(readyAt);
         }
         if (cancelled || version) return;
-        const retryDelay = TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS[attemptIndex];
-        if (retryDelay !== undefined) scheduleCompletion(attemptIndex + 1, retryDelay);
+        scheduleCompletion(attemptIndex + 1, getRetryDelay(attemptIndex));
       }, delayMs);
       timers.add(timer);
     };
@@ -330,7 +344,7 @@ export function useGameStartController(ctx: any) {
       cancelled = true;
       timers.forEach((timer) => window.clearTimeout(timer));
     };
-  }, [ctx.activeRoomId, ctx.canCompleteInitialOnlineTurnOrderIntro, ctx.coordinatorEpoch, ctx.localSeatId, ctx.screen, ctx.turnOrderIntro?.readyAt]);
+  }, [ctx.activeRoomId, ctx.localSeatId, ctx.screen, ctx.turnOrderIntro?.readyAt]);
   useEffect(() => {
     if (!ctx.startCountdownEffectActive) {
       if (ctx.countdown >= 0 && ctx.startStatus !== 'requested') setCountdown(-1);
