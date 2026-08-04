@@ -26,6 +26,38 @@ export type PendingRemoteActionMeta = {
   blocksTurnActions?: boolean;
 };
 
+type PendingMoveRuntimeState = {
+  turnDeadlineExpired?: boolean;
+  autoPlayBySeatId?: Record<string, boolean>;
+  activeSeat?: { id?: string; isAI?: boolean } | null;
+};
+
+const getPendingMoveRuntimeState = (): PendingMoveRuntimeState => {
+  const state = (globalThis as typeof globalThis & {
+    __YUT_DEBUG_STATE__?: PendingMoveRuntimeState;
+  }).__YUT_DEBUG_STATE__;
+  return state && typeof state === 'object' ? state : {};
+};
+
+export function shouldPrepareAtomicLocalMoveStart({
+  actionKey,
+  type,
+  optimisticApplied,
+  runtimeState = getPendingMoveRuntimeState(),
+}: {
+  actionKey: string;
+  type: GameAction['type'];
+  optimisticApplied: boolean;
+  runtimeState?: PendingMoveRuntimeState;
+}) {
+  if (type !== 'move_piece' || !optimisticApplied || !requiresPendingLocalMoveOwnership(actionKey)) return false;
+  const actorId = actionKey.split(':')[1] ?? '';
+  const automatedByTimeout = runtimeState.turnDeadlineExpired === true;
+  const automatedBySeat = Boolean(actorId && runtimeState.autoPlayBySeatId?.[actorId]);
+  const automatedAiSeat = Boolean(actorId && runtimeState.activeSeat?.id === actorId && runtimeState.activeSeat.isAI);
+  return !automatedByTimeout && !automatedBySeat && !automatedAiSeat;
+}
+
 class PendingLocalMoveStartError extends Error {
   constructor(actionKey: string, reason: string) {
     super(`로컬 말 이동 시작 준비에 실패했습니다. actionKey=${actionKey}, reason=${reason}`);
@@ -50,10 +82,9 @@ export function usePendingRemoteActions() {
   const addPendingLocalRemoteAction = (actionKey: string, meta: Partial<PendingRemoteActionMeta> & { type?: GameAction['type'] } = {}) => {
     const type = meta.type ?? getPendingLocalRemoteActionType(actionKey);
     const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied, blocksTurnActions: meta.blocksTurnActions });
-    const isOptimisticLocalMove = type === 'move_piece' && optimisticApplied;
-    const requiresAtomicLocalMoveStart = isOptimisticLocalMove && requiresPendingLocalMoveOwnership(actionKey);
+    const requiresAtomicLocalMoveStart = shouldPrepareAtomicLocalMoveStart({ actionKey, type, optimisticApplied });
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
-      if (isOptimisticLocalMove) throw new PendingLocalMoveStartError(actionKey, 'already-pending');
+      if (requiresAtomicLocalMoveStart) throw new PendingLocalMoveStartError(actionKey, 'already-pending');
       return false;
     }
     if (requiresAtomicLocalMoveStart) {
