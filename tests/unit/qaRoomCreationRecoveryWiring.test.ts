@@ -5,10 +5,12 @@ import test from 'node:test';
 const uiHelperSource = readFileSync('tests/helpers/ui.js', 'utf8');
 const suiteManifestSource = readFileSync('tests/qa/suite-manifest.mjs', 'utf8');
 
-test('QA 방 생성은 서버에 생성된 동일 제목 방만 저장 세션으로 복구한다', () => {
+test('QA 방 생성은 UI 지연 문구와 무관하게 서버에 생성된 동일 제목 방만 저장 세션으로 복구한다', () => {
   assert.match(uiHelperSource, /import \{ findRoomIdByTitle \} from '\.\/rooms\.js'/);
-  assert.match(uiHelperSource, /getByRole\('status', \{ name: '응답이 지연되어 생성된 방을 확인하고 있습니다\.\.\.' \}\)/);
-  assert.match(uiHelperSource, /const roomId = await findRoomIdByTitle\(roomTitle\)/);
+  const recoveryBlock = uiHelperSource.match(/async function recoverCreatedRoomSession\(page, roomTitle\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
+  assert.match(recoveryBlock, /const roomId = await findRoomIdByTitle\(roomTitle\)/);
+  assert.doesNotMatch(recoveryBlock, /getByRole\('status'/, '제품 timeout 문구 전환이 지연돼도 exact room 조회를 막지 않아야 합니다.');
+  assert.doesNotMatch(recoveryBlock, /delayedRecoveryStatus/);
   assert.match(uiHelperSource, /localStorage\.setItem\('yut-online:activeRoomId', nextRoomId\)/);
   assert.match(uiHelperSource, /localStorage\.setItem\('yut-online:isRoomHost', 'true'\)/);
   assert.match(uiHelperSource, /await page\.reload\(\{ waitUntil: 'domcontentloaded' \}\)/);
