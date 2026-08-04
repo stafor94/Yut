@@ -55,7 +55,7 @@ for (const contract of [
 
 const emulatorJob = getJobBlock(prWorkflow, 'firebase-emulator-qa');
 if (!emulatorJob) fail('Firebase emulator QA matrix job이 없습니다.');
-for (const group of ['online-core', 'mobile-galaxy', 'mobile-galaxy-timing', 'mobile-galaxy-move']) {
+for (const group of ['online-core', 'mobile-galaxy', 'mobile-galaxy-timing', 'mobile-galaxy-move-ack', 'mobile-galaxy-move-start']) {
   requireText(emulatorJob, `- group: ${group}`, `PR emulator matrix에 필수 group이 없습니다: ${group}`);
 }
 for (const contract of [
@@ -98,7 +98,8 @@ for (const group of [
   'desktop-regression',
   'mobile-galaxy',
   'mobile-galaxy-timing',
-  'mobile-galaxy-move',
+  'mobile-galaxy-move-ack',
+  'mobile-galaxy-move-start',
   'safari-visible-mismatch',
   'safari-timing',
 ]) {
