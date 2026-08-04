@@ -72,7 +72,7 @@ export type TurnOrderIntro = {
   finalOrderAt?: number;
   gameStartAt?: number;
 };
-export type CaptureEffect = { id: number; pieceIds: string[] };
+export type CaptureEffect = { id: number; presentationKey?: string; pieceIds: string[] };
 export type TrapEffect = { id: number; nodeId: string; pieceIds: string[] };
 export type FallEffect = { id: number; seatId: string; timingZone?: RollTimingZone };
 export type PendingTrapPlacement = { ownerId: string; pieceId: string; nodeIds: string[]; deadline: number };

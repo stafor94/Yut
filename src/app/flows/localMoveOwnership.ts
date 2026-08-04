@@ -195,17 +195,24 @@ const keepLocalPiecesOutOfDisplaySpread = (state: LocalMoveState, pieces: unknow
   return state;
 };
 
+const getCurrentMoveDiagnosticState = () => {
+  const diagnosticState = (globalThis as typeof globalThis & {
+    __YUT_DEBUG_STATE__?: Record<string, unknown>;
+  }).__YUT_DEBUG_STATE__;
+  return diagnosticState && typeof diagnosticState === 'object' ? diagnosticState : null;
+};
+
 export function withLocalMovePiecesFallback(
   state: Record<string, unknown> | null,
   fallbackPieces: unknown[],
 ): Record<string, unknown> | null {
   const localState = state as LocalMoveState | null;
   if (!localState || !Array.isArray(fallbackPieces)) return localState;
-  if (Array.isArray(localState.pieces)
-    && Object.prototype.propertyIsEnumerable.call(localState, 'pieces')) {
-    return localState;
-  }
-  return { ...localState, pieces: fallbackPieces };
+  return {
+    ...localState,
+    ...(getCurrentMoveDiagnosticState() ?? {}),
+    pieces: fallbackPieces,
+  };
 }
 
 const getLocalMoveReductionState = (state: LocalMoveState, action: LocalMoveAction): LocalMoveState => {
@@ -374,6 +381,10 @@ export class LocalMoveLedger {
       if (record.roomId === roomId) return record;
     }
     return undefined;
+  }
+
+  findActive() {
+    return this.records.values().next().value as LocalMoveLedgerRecord | undefined;
   }
 
   markPresentationCompleted(clientMutationId: string) {

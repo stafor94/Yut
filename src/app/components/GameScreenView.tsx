@@ -166,7 +166,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   const previousPiecesRef = useRef<BoardPiece[]>([]);
   const previousMovingPieceIdRef = useRef('');
   const activeMovePieceIdRef = useRef('');
-  const lastCaptureEffectIdRef = useRef('');
+  const presentedCaptureKeysRef = useRef<Set<string>>(new Set());
   const visualCaptureEffectRef = useRef<CaptureVisualEffect | null>(null);
   const captureClearTimerRef = useRef<number | null>(null);
   const captureSoundTimerRef = useRef<number | null>(null);
@@ -371,6 +371,8 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   });
 
   const startVisualCapture = (nextEffect: CaptureVisualEffect, playInferredSound: boolean) => {
+    if (presentedCaptureKeysRef.current.has(nextEffect.presentationKey)) return false;
+    presentedCaptureKeysRef.current.add(nextEffect.presentationKey);
     if (captureClearTimerRef.current !== null) window.clearTimeout(captureClearTimerRef.current);
     if (captureSoundTimerRef.current !== null) window.clearTimeout(captureSoundTimerRef.current);
     visualCaptureEffectRef.current = nextEffect;
@@ -382,12 +384,13 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
       }, CAPTURE_IMPACT_DELAY_MS);
     }
     captureClearTimerRef.current = window.setTimeout(() => {
-      if (visualCaptureEffectRef.current?.id === nextEffect.id) {
+      if (visualCaptureEffectRef.current?.presentationKey === nextEffect.presentationKey) {
         visualCaptureEffectRef.current = null;
         setVisualCaptureEffect(null);
       }
       captureClearTimerRef.current = null;
     }, nextEffect.durationMs);
+    return true;
   };
 
   const startVisualFinish = (nextEffect: FinishVisualEffect) => {
@@ -491,7 +494,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     if (outcomeKey && lastRollOutcomeKeyRef.current !== outcomeKey) {
       lastRollOutcomeKeyRef.current = outcomeKey;
       const delayMs = rollAnimation.phase ? 0 : 420;
-      window.setTimeout(() => playStoredSoundEffect(outcomeEffect), delayMs);
+      window.setTimeout(() => playStoredSoundEffect(outcomeEffect), 0 + delayMs);
     }
   }, [rollAnimation]);
 
@@ -505,13 +508,11 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
 
   useEffect(() => {
     if (!captureEffect?.id) return;
-    const captureEffectId = String(captureEffect.id);
-    if (lastCaptureEffectIdRef.current === captureEffectId) return;
-    lastCaptureEffectIdRef.current = captureEffectId;
     const capturedPiecesStillOnBoard = captureEffect.pieceIds.some((pieceId) => pieces.some((piece) => piece.id === pieceId && piece.started && !piece.finished));
     const sourcePieces = capturedPiecesStillOnBoard ? pieces : previousPiecesRef.current;
     const nextEffect = createCaptureVisualEffect({
       id: captureEffect.id,
+      presentationKey: captureEffect.presentationKey || `capture-effect:${captureEffect.id}`,
       pieceIds: captureEffect.pieceIds,
       pieces: sourcePieces,
       attackerPieceId: movingPieceId || previousMovingPieceIdRef.current,
@@ -543,8 +544,13 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         getPieceGroupKey: getPieceSideKey,
       });
       if (inferredPieceIds.length) {
+        const recoveryLogId = logs.find((log) => log.text.includes('잡았습니다.'))?.id ?? 0;
+        const captureNodeId = previousPieces.find((piece) => inferredPieceIds.includes(piece.id))?.nodeId ?? '';
+        const presentationKey = `capture-recovery:${recoveryLogId}:${attackerPieceId}:${captureNodeId}:${[...inferredPieceIds].sort().join(',')}`;
+        const recoveryEffectId = recoveryLogId || Array.from(presentationKey).reduce((hash, character) => ((hash * 31) + character.charCodeAt(0)) >>> 0, 7);
         const nextEffect = createCaptureVisualEffect({
-          id: Date.now(),
+          id: recoveryEffectId,
+          presentationKey,
           pieceIds: inferredPieceIds,
           pieces: previousPieces,
           attackerPieceId,
@@ -555,7 +561,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     }
     previousPiecesRef.current = pieces.map((piece) => ({ ...piece }));
     previousMovingPieceIdRef.current = movingPieceId;
-  }, [captureEffect, getPieceSideKey, movingPieceId, pieces, trapEffect]);
+  }, [captureEffect, getPieceSideKey, logs, movingPieceId, pieces, trapEffect]);
 
   useEffect(() => {
     const revealedItemsKey = revealedItems.join('|');
