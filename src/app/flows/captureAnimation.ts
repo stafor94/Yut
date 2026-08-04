@@ -11,6 +11,7 @@ export type CaptureAnimationPiece = {
 };
 
 import { getBoardNodeById } from '../../game-core/board/board';
+import { localMoveLedger } from './localMoveOwnership';
 
 export const CAPTURE_SLOW_MOTION_MS = 320;
 export const CAPTURE_IMPACT_DELAY_MS = 80;
@@ -141,6 +142,7 @@ export type CaptureVisualPiece = Pick<CaptureAnimationPiece, 'id' | 'label' | 'c
 
 export type CaptureVisualEffect = {
   id: number;
+  presentationKey: string;
   nodeId: string;
   pieceIds: string[];
   pieces: CaptureVisualPiece[];
@@ -217,6 +219,7 @@ export function getCaptureExitTarget(nodeId: string, previousNodeId = '', pieceI
 
 export function createCaptureVisualEffect(params: {
   id: number;
+  presentationKey?: string;
   pieceIds: string[];
   pieces: CaptureAnimationPiece[];
   attackerPieceId?: string;
@@ -270,9 +273,15 @@ export function createCaptureVisualEffect(params: {
       endScale: Number((0.68 + (index === capturedPieces.length - 1 ? 0.1 : index * 0.02)).toFixed(2)),
     };
   });
+  const requestedPresentationKey = params.presentationKey
+    || `capture-effect:${params.id}:${[...params.pieceIds].sort().join(',')}`;
+  const activeLocalMoveKey = requestedPresentationKey.startsWith('capture-effect:')
+    ? localMoveLedger.findActive()?.clientMutationId ?? ''
+    : '';
 
   return {
     id: params.id,
+    presentationKey: activeLocalMoveKey || requestedPresentationKey,
     nodeId,
     pieceIds: pieces.map((piece) => piece.id),
     pieces,

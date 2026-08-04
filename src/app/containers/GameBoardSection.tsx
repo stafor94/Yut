@@ -3,7 +3,7 @@ import { GameBoard, type BoardPiece } from '../../features/game/components/GameB
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
 import { playConfirmedStackSoundEffect } from '../../shared/audio/sound';
-import { createCaptureVisualEffect, type CaptureVisualEffect } from '../flows/captureAnimation';
+import type { CaptureVisualEffect } from '../flows/captureAnimation';
 import { enqueueCapturePresentation } from '../flows/capturePresentationQueue';
 import type { FinishVisualEffect } from '../flows/finishAnimation';
 import {
@@ -15,7 +15,6 @@ import { localMovePresentationLifecycle } from '../flows/localMovePresentationLi
 import {
   acceptMovePresentationFrame,
   createMovePresentationSession,
-  getCapturePresentationSignature,
   getMovePresentationFinalization,
   getMovePresentationFrameKey,
   type MovePresentationSession,
@@ -53,7 +52,6 @@ type GameBoardSectionProps = {
 };
 
 const clonePieces = (pieces: BoardPiece[]) => pieces.map((piece) => ({ ...piece }));
-const CAPTURE_DUPLICATE_WINDOW_MS = 3000;
 const STACK_SOUND_DELAY_MS = 120;
 
 export function GameBoardSection({
@@ -90,7 +88,7 @@ export function GameBoardSection({
   const pendingCaptureEffectRef = useRef<CaptureVisualEffect | null>(null);
   const moveFinalizationScheduledRef = useRef(false);
   const settlementRevisionGateRef = useRef(createPresentationRevisionGate());
-  const lastCapturePresentationRef = useRef({ signature: '', queuedAt: 0 });
+  const presentedCaptureKeysRef = useRef<Set<string>>(new Set());
   const [presentedPieces, setPresentedPieces] = useState<BoardPiece[]>(() => clonePieces(pieces));
   const [presentedMovingPieceId, setPresentedMovingPieceId] = useState(movingPieceId);
   const [presentedCaptureEffect, setPresentedCaptureEffect] = useState<CaptureVisualEffect | null>(null);
@@ -111,17 +109,11 @@ export function GameBoardSection({
   }, []);
 
   const queueCaptureEffect = (queuedEffect: CaptureVisualEffect) => {
-    const signature = getCapturePresentationSignature(queuedEffect);
-    const now = Date.now();
-    if (
-      lastCapturePresentationRef.current.signature === signature
-      && now - lastCapturePresentationRef.current.queuedAt < CAPTURE_DUPLICATE_WINDOW_MS
-    ) return;
-
-    lastCapturePresentationRef.current = { signature, queuedAt: now };
+    if (presentedCaptureKeysRef.current.has(queuedEffect.presentationKey)) return;
+    presentedCaptureKeysRef.current.add(queuedEffect.presentationKey);
     let presented = false;
     void enqueueCapturePresentation({
-      key: `capture:${signature}:${queuedEffect.id}`,
+      key: `capture:${queuedEffect.presentationKey}`,
       durationMs: queuedEffect.durationMs,
       start: () => {
         if (!mountedRef.current) return false;
@@ -130,7 +122,7 @@ export function GameBoardSection({
       },
     }).finally(() => {
       if (!presented || !mountedRef.current) return;
-      setPresentedCaptureEffect((current) => current?.id === queuedEffect.id ? null : current);
+      setPresentedCaptureEffect((current) => current?.presentationKey === queuedEffect.presentationKey ? null : current);
     });
   };
 
@@ -175,17 +167,8 @@ export function GameBoardSection({
           || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
         const settlementPieces = clonePieces(pendingSettlementPiecesRef.current);
         const finalization = getMovePresentationFinalization(activeSession, settlementPieces, getPieceSideKey);
-        let queuedEffect = pendingCaptureEffectRef.current;
+        const queuedEffect = pendingCaptureEffectRef.current;
         pendingCaptureEffectRef.current = null;
-        if (!queuedEffect && finalization.capturedPieceIds.length) {
-          queuedEffect = createCaptureVisualEffect({
-            id: Date.now(),
-            pieceIds: finalization.capturedPieceIds,
-            pieces: activeSession.acceptedPieces,
-            attackerPieceId: activeSession.pieceId,
-            getPieceGroupKey: getPieceSideKey,
-          });
-        }
         if (queuedEffect) queueCaptureEffect(queuedEffect);
 
         const settlementKey = getMovePresentationFrameKey(settlementPieces);

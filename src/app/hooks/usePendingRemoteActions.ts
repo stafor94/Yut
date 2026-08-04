@@ -6,14 +6,8 @@ import {
 } from '../flows/localMovePresentationLifecycle';
 import {
   clearMoveActionClaims,
-  ensureMoveActionClaimed,
   releaseMoveActionClaim,
-  tryClaimMoveAction,
 } from '../flows/moveExecutionPolicy';
-import {
-  preparePendingLocalMoveOwnership,
-  requiresPendingLocalMoveOwnership,
-} from '../flows/pendingLocalMoveOwnership';
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
 
@@ -27,23 +21,10 @@ export type PendingRemoteActionMeta = {
   blocksTurnActions?: boolean;
 };
 
-class PendingLocalRemoteActionSet extends Set<string> {
-  override has(actionKey: string) {
-    if (!actionKey.startsWith('move_piece:') || super.has(actionKey)) return super.has(actionKey);
-    if (!tryClaimMoveAction(actionKey)) return true;
-    if (requiresPendingLocalMoveOwnership(actionKey)
-      && !preparePendingLocalMoveOwnership(actionKey)) {
-      releaseMoveActionClaim(actionKey);
-      return true;
-    }
-    return false;
-  }
-}
-
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
-  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new PendingLocalRemoteActionSet());
+  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
   const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<PendingRemoteActionMetaStore<PendingRemoteActionMeta>>(
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
@@ -55,16 +36,9 @@ export function usePendingRemoteActions() {
     return (type || 'roll_yut') as GameAction['type'];
   };
   const addPendingLocalRemoteAction = (actionKey: string, meta: Partial<PendingRemoteActionMeta> & { type?: GameAction['type'] } = {}) => {
+    if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
     const type = meta.type ?? getPendingLocalRemoteActionType(actionKey);
     const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied, blocksTurnActions: meta.blocksTurnActions });
-    if (type === 'move_piece') {
-      if (!ensureMoveActionClaimed(actionKey)) return;
-      if (requiresPendingLocalMoveOwnership(actionKey)
-        && !preparePendingLocalMoveOwnership(actionKey)) {
-        releaseMoveActionClaim(actionKey);
-        return;
-      }
-    }
     pendingLocalRemoteActionsRef.current.add(actionKey);
     beginLocalMovePresentationForPendingAction({
       lifecycle: localMovePresentationLifecycle,
@@ -79,6 +53,7 @@ export function usePendingRemoteActions() {
       createdAt: meta.createdAt ?? Date.now(),
     });
     syncPendingLocalRemoteActionCount();
+    return true;
   };
   const deletePendingLocalRemoteAction = (actionKey: string) => {
     pendingLocalRemoteActionsRef.current.delete(actionKey);
@@ -90,6 +65,7 @@ export function usePendingRemoteActions() {
     if (typeof clientMutationId !== 'string' || !clientMutationId) return;
     if (!pendingLocalRemoteActionsRef.current.delete(clientMutationId)) return;
     pendingLocalRemoteActionMetaRef.current.acknowledge(clientMutationId);
+    releaseMoveActionClaim(clientMutationId);
     syncPendingLocalRemoteActionCount();
   };
   const clearPendingLocalRemoteActions = () => {

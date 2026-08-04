@@ -16,5 +16,26 @@ export const reduceAuthoritativeGameAction: typeof reduceAuthoritativeGameAction
     && !Object.prototype.propertyIsEnumerable.call(state, 'pieces')
     ? { ...state, pieces: state.pieces }
     : state;
-  return reduceAuthoritativeGameActionImplementation(reductionState, action, room, sides);
+  const reduction = reduceAuthoritativeGameActionImplementation(reductionState, action, room, sides);
+  if (reduction.status !== 'committed' || action.type !== 'move_piece') return reduction;
+
+  const patch = reduction.patch;
+  const clientActionId = typeof action.payload?.clientActionId === 'string'
+    ? action.payload.clientActionId
+    : '';
+  const captureEffect = patch?.captureEffect;
+  if (!patch || !clientActionId || !captureEffect || typeof captureEffect !== 'object' || Array.isArray(captureEffect)) {
+    return reduction;
+  }
+
+  return {
+    ...reduction,
+    patch: {
+      ...patch,
+      captureEffect: {
+        ...captureEffect,
+        presentationKey: clientActionId,
+      },
+    },
+  };
 };
