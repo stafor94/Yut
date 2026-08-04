@@ -219,7 +219,7 @@ export function getCaptureExitTarget(nodeId: string, previousNodeId = '', pieceI
 
 export function createCaptureVisualEffect(params: {
   id: number;
-  presentationKey: string;
+  presentationKey?: string;
   pieceIds: string[];
   pieces: CaptureAnimationPiece[];
   attackerPieceId?: string;
@@ -273,13 +273,15 @@ export function createCaptureVisualEffect(params: {
       endScale: Number((0.68 + (index === capturedPieces.length - 1 ? 0.1 : index * 0.02)).toFixed(2)),
     };
   });
-  const activeLocalMoveKey = params.presentationKey.startsWith('capture-effect:')
+  const requestedPresentationKey = params.presentationKey
+    || `capture-effect:${params.id}:${[...params.pieceIds].sort().join(',')}`;
+  const activeLocalMoveKey = requestedPresentationKey.startsWith('capture-effect:')
     ? localMoveLedger.findActive()?.clientMutationId ?? ''
     : '';
 
   return {
     id: params.id,
-    presentationKey: activeLocalMoveKey || params.presentationKey,
+    presentationKey: activeLocalMoveKey || requestedPresentationKey,
     nodeId,
     pieceIds: pieces.map((piece) => piece.id),
     pieces,

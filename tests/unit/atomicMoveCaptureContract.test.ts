@@ -11,16 +11,18 @@ const screenSource = readFileSync('src/app/components/GameScreenView.tsx', 'utf8
 const boardSource = readFileSync('src/app/containers/GameBoardSection.tsx', 'utf8');
 const reducerSource = readFileSync('src/features/room/services/roomAuthoritativeReducer.ts', 'utf8');
 
-test('pending membership is a pure Set lookup and move preparation cannot be ignored', () => {
+test('pending membership is pure and only optimistic local piece moves claim ownership', () => {
   assert.doesNotMatch(pendingSource, /class PendingLocalRemoteActionSet/);
   assert.match(pendingSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(new Set\(\)\)/);
-  assert.match(pendingSource, /if \(!ensureMoveActionClaimed\(actionKey\)\) \{\s*throw new PendingLocalMoveStartError\(actionKey, 'claim-rejected'\)/);
-  assert.match(pendingSource, /!preparePendingLocalMoveOwnership\(actionKey\)[\s\S]*releaseMoveActionClaim\(actionKey\);\s*throw new PendingLocalMoveStartError\(actionKey, 'ownership-rejected'\)/);
+  assert.match(pendingSource, /const isOptimisticLocalMove = type === 'move_piece' && optimisticApplied;/);
+  assert.match(pendingSource, /const requiresAtomicLocalMoveStart = isOptimisticLocalMove && requiresPendingLocalMoveOwnership\(actionKey\);/);
+  assert.match(pendingSource, /if \(requiresAtomicLocalMoveStart\) \{[\s\S]*ensureMoveActionClaimed\(actionKey\)[\s\S]*preparePendingLocalMoveOwnership\(actionKey\)/);
   assert.ok(
     pendingSource.indexOf('preparePendingLocalMoveOwnership(actionKey)')
       < pendingSource.indexOf('pendingLocalRemoteActionsRef.current.add(actionKey)'),
     'ownership must be prepared before pending registration',
   );
+  assert.match(pendingSource, /releaseMoveActionClaim\(actionKey\);\s*throw new PendingLocalMoveStartError\(actionKey, 'ownership-rejected'\)/);
   assert.match(pendingSource, /syncPendingLocalRemoteActionCount\(\);\s*return true;/);
 });
 
@@ -63,8 +65,10 @@ test('manual and automatic movement retain the same readiness-driven moveSelecte
 
 test('capture presentation uses one stable key across local, authoritative, and recovery paths', () => {
   assert.match(reducerSource, /presentationKey: clientActionId/);
+  assert.match(captureSource, /const requestedPresentationKey = params\.presentationKey/);
+  assert.match(captureSource, /`capture-effect:\$\{params\.id\}:\$\{\[\.\.\.params\.pieceIds\]\.sort\(\)\.join\(','\)\}`/);
   assert.match(captureSource, /localMoveLedger\.findActive\(\)\?\.clientMutationId/);
-  assert.match(captureSource, /presentationKey: activeLocalMoveKey \|\| params\.presentationKey/);
+  assert.match(captureSource, /presentationKey: activeLocalMoveKey \|\| requestedPresentationKey/);
   assert.match(screenSource, /presentedCaptureKeysRef = useRef<Set<string>>\(new Set\(\)\)/);
   assert.match(screenSource, /captureEffect\.presentationKey \|\| `capture-effect:\$\{captureEffect\.id\}`/);
   assert.match(screenSource, /const presentationKey = `capture-recovery:/);

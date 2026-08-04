@@ -49,17 +49,18 @@ export function usePendingRemoteActions() {
   };
   const addPendingLocalRemoteAction = (actionKey: string, meta: Partial<PendingRemoteActionMeta> & { type?: GameAction['type'] } = {}) => {
     const type = meta.type ?? getPendingLocalRemoteActionType(actionKey);
+    const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied, blocksTurnActions: meta.blocksTurnActions });
+    const isOptimisticLocalMove = type === 'move_piece' && optimisticApplied;
+    const requiresAtomicLocalMoveStart = isOptimisticLocalMove && requiresPendingLocalMoveOwnership(actionKey);
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
-      if (type === 'move_piece') throw new PendingLocalMoveStartError(actionKey, 'already-pending');
+      if (isOptimisticLocalMove) throw new PendingLocalMoveStartError(actionKey, 'already-pending');
       return false;
     }
-    const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied, blocksTurnActions: meta.blocksTurnActions });
-    if (type === 'move_piece') {
+    if (requiresAtomicLocalMoveStart) {
       if (!ensureMoveActionClaimed(actionKey)) {
         throw new PendingLocalMoveStartError(actionKey, 'claim-rejected');
       }
-      if (requiresPendingLocalMoveOwnership(actionKey)
-        && !preparePendingLocalMoveOwnership(actionKey)) {
+      if (!preparePendingLocalMoveOwnership(actionKey)) {
         releaseMoveActionClaim(actionKey);
         throw new PendingLocalMoveStartError(actionKey, 'ownership-rejected');
       }
