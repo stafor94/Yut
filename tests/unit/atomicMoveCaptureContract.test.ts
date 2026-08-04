@@ -24,6 +24,7 @@ test('pending membership is pure and only ready local user moves claim ownership
     'ownership must be prepared before pending registration',
   );
   assert.match(pendingSource, /releaseMoveActionClaim\(actionKey\);\s*throw new PendingLocalMoveStartError\(actionKey, 'ownership-rejected'\)/);
+  assert.match(pendingSource, /pendingLocalRemoteActionMetaRef\.current\.acknowledge\(clientMutationId\);\s*releaseMoveActionClaim\(clientMutationId\);/);
   assert.match(pendingSource, /syncPendingLocalRemoteActionCount\(\);\s*return true;/);
   assert.doesNotMatch(readFileSync('tests/unit/atomicMoveCaptureContract.test.ts', 'utf8'), /from '\.\.\/\.\.\/src\/app\/hooks\/usePendingRemoteActions'/);
 });
