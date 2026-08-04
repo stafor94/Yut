@@ -111,7 +111,16 @@ export const qaSuiteManifest = Object.freeze({
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     sharedTargets: Object.freeze([timingPointerSpec, timingOverflowSpec, timingTimeoutSpec, rollSubmitMoveDeadlineSpec]),
-    tests: Object.freeze([timingPointerSpec, timingOverflowSpec, timingTimeoutSpec, rollSubmitMoveDeadlineSpec, onlineMoveSingleExecutionSpec]),
+    tests: Object.freeze([timingPointerSpec, timingOverflowSpec, timingTimeoutSpec, rollSubmitMoveDeadlineSpec]),
+  }),
+  'mobile-galaxy-move': Object.freeze({
+    label: 'Mobile Galaxy move ownership',
+    code: 'galmove',
+    workers: 3,
+    browsers: Object.freeze(['chromium']),
+    projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
+    browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
+    tests: Object.freeze([onlineMoveSingleExecutionSpec]),
   }),
   'safari-visible-mismatch': Object.freeze({
     label: 'Safari visible mismatch',
