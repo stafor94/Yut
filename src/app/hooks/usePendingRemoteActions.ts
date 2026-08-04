@@ -8,7 +8,6 @@ import {
   clearMoveActionClaims,
   ensureMoveActionClaimed,
   releaseMoveActionClaim,
-  tryClaimMoveAction,
 } from '../flows/moveExecutionPolicy';
 import {
   preparePendingLocalMoveOwnership,
@@ -27,23 +26,17 @@ export type PendingRemoteActionMeta = {
   blocksTurnActions?: boolean;
 };
 
-class PendingLocalRemoteActionSet extends Set<string> {
-  override has(actionKey: string) {
-    if (!actionKey.startsWith('move_piece:') || super.has(actionKey)) return super.has(actionKey);
-    if (!tryClaimMoveAction(actionKey)) return true;
-    if (requiresPendingLocalMoveOwnership(actionKey)
-      && !preparePendingLocalMoveOwnership(actionKey)) {
-      releaseMoveActionClaim(actionKey);
-      return true;
-    }
-    return false;
+class PendingLocalMoveStartError extends Error {
+  constructor(actionKey: string, reason: string) {
+    super(`로컬 말 이동 시작 준비에 실패했습니다. actionKey=${actionKey}, reason=${reason}`);
+    this.name = 'PendingLocalMoveStartError';
   }
 }
 
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
-  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new PendingLocalRemoteActionSet());
+  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
   const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<PendingRemoteActionMetaStore<PendingRemoteActionMeta>>(
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
@@ -56,13 +49,19 @@ export function usePendingRemoteActions() {
   };
   const addPendingLocalRemoteAction = (actionKey: string, meta: Partial<PendingRemoteActionMeta> & { type?: GameAction['type'] } = {}) => {
     const type = meta.type ?? getPendingLocalRemoteActionType(actionKey);
+    if (pendingLocalRemoteActionsRef.current.has(actionKey)) {
+      if (type === 'move_piece') throw new PendingLocalMoveStartError(actionKey, 'already-pending');
+      return false;
+    }
     const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied, blocksTurnActions: meta.blocksTurnActions });
     if (type === 'move_piece') {
-      if (!ensureMoveActionClaimed(actionKey)) return;
+      if (!ensureMoveActionClaimed(actionKey)) {
+        throw new PendingLocalMoveStartError(actionKey, 'claim-rejected');
+      }
       if (requiresPendingLocalMoveOwnership(actionKey)
         && !preparePendingLocalMoveOwnership(actionKey)) {
         releaseMoveActionClaim(actionKey);
-        return;
+        throw new PendingLocalMoveStartError(actionKey, 'ownership-rejected');
       }
     }
     pendingLocalRemoteActionsRef.current.add(actionKey);
@@ -79,6 +78,7 @@ export function usePendingRemoteActions() {
       createdAt: meta.createdAt ?? Date.now(),
     });
     syncPendingLocalRemoteActionCount();
+    return true;
   };
   const deletePendingLocalRemoteAction = (actionKey: string) => {
     pendingLocalRemoteActionsRef.current.delete(actionKey);
