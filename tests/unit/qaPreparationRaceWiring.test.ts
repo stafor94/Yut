@@ -35,6 +35,8 @@ test('WebKit 타이밍 QA는 표시 방과 Firestore 방이 일치할 때 브라
   assert.ok(timingGameStart >= 0);
   assert.ok(timingGameEnd > timingGameStart);
   assert.match(timingQaSource, /import \{ waitForRoomQaAccess \} from '\.\.\/helpers\/room-access\.js';/);
+  assert.match(timingQaSource, /const IS_SAFARI_TIMING = process\.env\.QA_ROLE === 'safari-timing';/);
+  assert.match(timingGameSource, /if \(IS_SAFARI_TIMING\) \{\s*await page\.bringToFront\(\);\s*await expect\.poll\([\s\S]*document\.visibilityState[\s\S]*\)\.toBe\('visible'\);\s*\}/);
   assert.match(timingGameSource, /resolvedRoomId = await waitForRoomQaAccess\(page, \{ roomTitle \}\);/);
   assert.ok(timingGameSource.indexOf('waitForRoomQaAccess(page') < timingGameSource.indexOf('addAiAndWaitUntilGameCanStart(page)'));
   assert.doesNotMatch(timingGameSource, /rememberRoomIdFromPage/);
