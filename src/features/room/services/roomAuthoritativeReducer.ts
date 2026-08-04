@@ -19,18 +19,19 @@ export const reduceAuthoritativeGameAction: typeof reduceAuthoritativeGameAction
   const reduction = reduceAuthoritativeGameActionImplementation(reductionState, action, room, sides);
   if (reduction.status !== 'committed' || action.type !== 'move_piece') return reduction;
 
+  const patch = reduction.patch;
   const clientActionId = typeof action.payload?.clientActionId === 'string'
     ? action.payload.clientActionId
     : '';
-  const captureEffect = reduction.patch.captureEffect;
-  if (!clientActionId || !captureEffect || typeof captureEffect !== 'object' || Array.isArray(captureEffect)) {
+  const captureEffect = patch?.captureEffect;
+  if (!patch || !clientActionId || !captureEffect || typeof captureEffect !== 'object' || Array.isArray(captureEffect)) {
     return reduction;
   }
 
   return {
     ...reduction,
     patch: {
-      ...reduction.patch,
+      ...patch,
       captureEffect: {
         ...captureEffect,
         presentationKey: clientActionId,
