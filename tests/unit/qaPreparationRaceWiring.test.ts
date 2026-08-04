@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const sequenceQaSource = readFileSync('tests/regression/bug-history-smoke.spec.js', 'utf8');
+const sequenceQaSource = readFileSync('tests/regression/bug-history-smoke-ai.case.js', 'utf8');
 const timingQaSource = readFileSync('tests/mobile/roll-timing-pointer-capture.spec.js', 'utf8');
 const roomExitResumeSource = readFileSync('tests/online/room-exit-resume.spec.js', 'utf8');
 const roomAccessSource = readFileSync('tests/helpers/room-access.js', 'utf8');
@@ -27,7 +27,7 @@ test('재입장 턴 권한 QA는 방 생성 전에 두 사람의 순서 정하�
   assert.ok(targetTestSource.indexOf('primeTurnOrderResultQueues(hostContext') < targetTestSource.indexOf('createRoomFromLobby'));
 });
 
-test('WebKit 타이밍 QA는 방 cleanup 권한용 Firebase Auth 토큰을 실제 준비 조건으로 제한 polling한다', () => {
+test('WebKit 타이밍 QA는 표시 방과 Firestore 방이 일치할 때 브라우저 Auth 토큰과 cleanup 권한을 준비한다', () => {
   const timingGameStart = timingQaSource.indexOf('async function startAiTimingGame');
   const timingGameEnd = timingQaSource.indexOf('async function dispatchPointerDownSnapshotGesture');
   const timingGameSource = timingQaSource.slice(timingGameStart, timingGameEnd);
@@ -43,7 +43,9 @@ test('WebKit 타이밍 QA는 방 cleanup 권한용 Firebase Auth 토큰을 실�
   assert.match(roomAccessSource, /DEFAULT_ROOM_ACCESS_TIMEOUT_MS = 15_000/);
   assert.match(roomAccessSource, /DEFAULT_ROOM_ACCESS_INTERVALS_MS = Object\.freeze\(\[100, 200, 400, 800, 1200\]\)/);
   assert.match(roomAccessSource, /while \(Date\.now\(\) - startedAt < normalizedTimeoutMs\)/);
-  assert.match(roomAccessSource, /rememberRoomIdFromPage\(page\)/);
+  assert.match(roomAccessSource, /rememberRoomIdFromPage\(roomAccessPage\)/);
+  assert.match(roomAccessSource, /displayedRoomTitle === roomTitle/);
+  assert.match(roomAccessSource, /Promise\.resolve\(fallbackRoomId\)/);
   assert.match(roomAccessSource, /findRoomIdByTitle\(roomTitle\)/);
   assert.match(roomAccessSource, /Firebase Auth 토큰과 QA cleanup 권한이 준비되지 않았습니다/);
 });

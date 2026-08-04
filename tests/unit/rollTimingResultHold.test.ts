@@ -9,7 +9,7 @@ import {
 const turnIndicatorCss = readFileSync('src/styles/turn-indicator.css', 'utf8');
 const browserQaSource = readFileSync('tests/mobile/roll-timing-pointer-capture.spec.js', 'utf8');
 const timingControlSource = readFileSync('src/app/components/RollTimingControl.tsx', 'utf8');
-const regressionQaSource = readFileSync('tests/regression/bug-history-smoke.spec.js', 'utf8');
+const regressionQaSource = readFileSync('tests/regression/bug-history-smoke-ai.case.js', 'utf8');
 
 test('멈춘 타이밍 위치를 정확히 1초간 유지한다', () => {
   assert.equal(ROLL_TIMING_RESULT_HOLD_MS, 1000);

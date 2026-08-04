@@ -68,6 +68,7 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
     const orderingPromise = page.evaluate(() => new Promise((resolve, reject) => {
       const startedAt = performance.now();
       let sawConsumedRollTimerDisappear = false;
+      let sawRollStage = false;
       let movedBeforeEnabled = false;
       let enabledAt = 0;
       let timerAt = 0;
@@ -75,6 +76,7 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
       const sample = () => {
         const moveButton = document.querySelector('[data-testid="move-piece-button"]');
         const timer = document.querySelector('.turn-action-timer');
+        if (document.querySelector('.roll-stage')) sawRollStage = true;
         const moveEnabled = moveButton instanceof HTMLButtonElement && !moveButton.disabled;
         const debug = window.__YUT_DEBUG_STATE__ ?? {};
         const localSeatId = typeof debug.localSeatId === 'string' ? debug.localSeatId : '';
@@ -89,7 +91,7 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
           deadlineAt = Number(timer.dataset.deadlineAt ?? 0);
         }
         if (enabledAt && timerAt) {
-          resolve({ movedBeforeEnabled, enabledAt, timerAt, deadlineAt, observedAt: Date.now() });
+          resolve({ sawRollStage, movedBeforeEnabled, enabledAt, timerAt, deadlineAt, observedAt: Date.now() });
           return;
         }
         if (performance.now() - startedAt > 30_000) {
@@ -137,8 +139,8 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
     });
     expect(stayedHiddenDuringDelayedCommit, 'authoritative 응답 지연 중 소비된 roll timer/meter가 다시 나타나면 안 됩니다.').toBe(true);
 
-    await expect(page.locator('.roll-stage')).toBeVisible({ timeout: 10_000 });
     const ordering = await orderingPromise;
+    expect(ordering.sawRollStage, '제출 뒤 pending/landing/result-hold roll-stage가 한 프레임 이상 표시되어야 합니다.').toBe(true);
     expect(ordering.movedBeforeEnabled, 'move action-ready 이전에는 단일 후보 자동 이동이 시작되면 안 됩니다.').toBe(false);
     expect(ordering.timerAt).toBeGreaterThanOrEqual(ordering.enabledAt - 20);
     expect(ordering.timerAt - ordering.enabledAt).toBeLessThanOrEqual(80);
@@ -152,15 +154,18 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
         ? debug.pieces.filter((piece) => piece?.ownerId === debug.localSeatId)
         : [];
       const movedPieces = localPieces.filter((piece) => piece?.started && !piece?.finished);
-      const localMoveActionIds = Array.isArray(debug.actionPipeline?.localClientMutationIds)
-        ? debug.actionPipeline.localClientMutationIds.filter((actionId) => actionId.startsWith(`move_piece:${debug.localSeatId}:`))
+      const actionIds = Array.isArray(debug.actionPipeline?.localClientMutationIds)
+        ? debug.actionPipeline.localClientMutationIds
         : [];
+      const localMoveActionIds = actionIds.filter((actionId) => actionId.startsWith(`move_piece:${debug.localSeatId}:`));
+      const aiRollActionIds = actionIds.filter((actionId) => actionId.startsWith('roll_yut_ai:'));
+      const nextTurnStarted = debug.activeSeat?.id !== debug.localSeatId || aiRollActionIds.length > 0;
       return movedPieces.length === 1
         && movedPieces[0]?.nodeId === 'n03'
-        && debug.activeSeat?.id !== debug.localSeatId
+        && nextTurnStarted
         && debug.pendingLocalRemoteActionCount === 0
         && localMoveActionIds.length === 1;
-    }, { timeout: 15_000, intervals: [50, 100, 200], message: '개 자동 이동은 정확히 한 번 n03에 확정되고 다음 차례로 넘어가야 합니다.' }).toBe(true);
+    }, { timeout: 15_000, intervals: [50, 100, 200], message: '개 자동 이동은 정확히 한 번 n03에 확정되고 다음 차례가 시작되어야 합니다.' }).toBe(true);
 
     const settledState = await collectScreenState(page);
     const settledDebug = settledState.yutDebug ?? {};

@@ -271,6 +271,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
     const submissionPromise = shouldAwaitSubmission ? observeSubmission() : null;
     const nativeRandom = Math.random;
     const releasedAt = performance.now();
+    let releasedHold = null;
     Math.random = () => 0.9;
     try {
       if (requestedReleaseMode === 'cancel') {
@@ -300,6 +301,14 @@ async function dispatchPointerDownSnapshotGesture(page, {
           clientX: releaseX,
           clientY: buttonCenterY,
         }));
+        if (requestedReleaseMode === 'inside') {
+          releasedHold = await waitForCondition(
+            () => document.querySelector(holdSelector),
+            1000,
+            'pointerup 제출 뒤 정지 결과 막대가 생성되지 않았습니다.',
+          );
+          await new Promise((resolve) => window.requestAnimationFrame(resolve));
+        }
       }
       button.dispatchEvent(new MouseEvent('click', {
         bubbles: true,
@@ -326,7 +335,7 @@ async function dispatchPointerDownSnapshotGesture(page, {
     };
 
     if (requestedReleaseMode === 'inside') {
-      const heldMeter = await waitForCondition(
+      const heldMeter = releasedHold ?? await waitForCondition(
         () => document.querySelector(holdSelector),
         1000,
         '정지 결과 막대가 생성되지 않았습니다.',

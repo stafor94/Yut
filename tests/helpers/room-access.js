@@ -18,11 +18,18 @@ function isSafariPointerQaRole() {
   return SAFARI_POINTER_QA_ROLES.has(String(process.env.QA_ROLE ?? '').trim());
 }
 
-async function rememberRoomIdWithAttemptTimeout(page, timeoutMs) {
+async function rememberRoomIdWithAttemptTimeout(page, timeoutMs, fallbackRoomId = '') {
   let timeoutId;
+  const roomAccessPage = fallbackRoomId
+    ? {
+        evaluate: (expression, ...args) => String(expression).includes('__YUT_DEBUG_STATE__?.activeRoomId')
+          ? Promise.resolve(fallbackRoomId)
+          : page.evaluate(expression, ...args),
+      }
+    : page;
   try {
     return await Promise.race([
-      rememberRoomIdFromPage(page),
+      rememberRoomIdFromPage(roomAccessPage),
       new Promise((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error(`브라우저 Firebase Auth 토큰 조회가 ${timeoutMs}ms 안에 완료되지 않았습니다.`)), timeoutMs);
       }),
@@ -127,7 +134,15 @@ export async function waitForRoomQaAccess(page, {
     if (remainingBeforeAttemptMs <= 0) break;
     attempt += 1;
     try {
-      const roomId = await rememberRoomIdWithAttemptTimeout(page, Math.min(DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS, remainingBeforeAttemptMs));
+      const displayedRoomTitle = roomTitle
+        ? await page.evaluate(() => document.querySelector('[data-testid="waiting-room-title"]')?.textContent?.trim() ?? '').catch(() => '')
+        : '';
+      const fallbackRoomId = firestoreRoomId && displayedRoomTitle === roomTitle ? firestoreRoomId : '';
+      const roomId = await rememberRoomIdWithAttemptTimeout(
+        page,
+        Math.min(DEFAULT_ROOM_ACCESS_ATTEMPT_TIMEOUT_MS, remainingBeforeAttemptMs),
+        fallbackRoomId,
+      );
       if (roomId) {
         await installSafariTimingStartRetry(page);
         return roomId;

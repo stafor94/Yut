@@ -13,11 +13,11 @@ import { deleteRoomForQa, findRoomIdByTitle, rememberRoomIdFromPage } from '../h
 const readRollGeometry = async (page, { requireResult = false } = {}) => page.evaluate(({ requireResult }) => {
   const board = document.querySelector('[data-testid="game-board"]');
   const stage = document.querySelector('.roll-stage');
-  const mat = document.querySelector('[data-testid="roll-mat"]');
-  const grade = document.querySelector('[data-testid="roll-timing-grade"]');
-  const resultPresentation = document.querySelector('[data-testid="roll-result-presentation"]');
-  const resultCard = document.querySelector('[data-testid="roll-result-card"]');
-  const surface = document.querySelector('[data-testid="roll-mat-surface"]');
+  const mat = stage?.querySelector('[data-testid="roll-mat"]') ?? null;
+  const grade = stage?.querySelector('[data-testid="roll-timing-grade"]') ?? null;
+  const resultPresentation = stage?.querySelector('[data-testid="roll-result-presentation"]:not([hidden])') ?? null;
+  const resultCard = resultPresentation?.querySelector('[data-testid="roll-result-card"]') ?? null;
+  const surface = stage?.querySelector('[data-testid="roll-mat-surface"]') ?? null;
   const missing = [
     ['board', board],
     ['stage', stage],
@@ -48,19 +48,6 @@ const readRollGeometry = async (page, { requireResult = false } = {}) => page.ev
   }
 
   const centerX = (rect) => rect.left + rect.width / 2;
-  const layoutRect = (element) => {
-    const rect = element.getBoundingClientRect();
-    if (!(element instanceof HTMLElement) || !element.offsetParent) return rect;
-    const parentRect = element.offsetParent.getBoundingClientRect();
-    return {
-      left: parentRect.left + element.offsetLeft,
-      top: parentRect.top + element.offsetTop,
-      width: element.offsetWidth,
-      height: element.offsetHeight,
-      right: parentRect.left + element.offsetLeft + element.offsetWidth,
-      bottom: parentRect.top + element.offsetTop + element.offsetHeight,
-    };
-  };
   const boardRect = board.getBoundingClientRect();
   const stageRect = stage.getBoundingClientRect();
   const matRect = mat.getBoundingClientRect();
@@ -68,7 +55,7 @@ const readRollGeometry = async (page, { requireResult = false } = {}) => page.ev
   const stageStyle = getComputedStyle(stage);
   const gradeStyle = getComputedStyle(grade);
   const resultStyle = resultPresentation ? getComputedStyle(resultPresentation) : null;
-  const cardRect = resultCard ? layoutRect(resultCard) : null;
+  const cardRect = resultCard?.getBoundingClientRect() ?? null;
   const surfaceRect = surface?.getBoundingClientRect() ?? null;
 
   return {
@@ -88,6 +75,89 @@ const readRollGeometry = async (page, { requireResult = false } = {}) => page.ev
     missing: [],
   };
 }, { requireResult });
+
+const installResultGeometryCapture = async (page) => page.evaluate(() => {
+  window.__YUT_QA_LOCAL_ROLL_GEOMETRY_OBSERVER__?.disconnect();
+  if (window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__) {
+    cancelAnimationFrame(window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__);
+  }
+  window.__YUT_QA_LOCAL_ROLL_RESULT_GEOMETRY__ = null;
+
+  const readStableGeometry = () => {
+    const board = document.querySelector('[data-testid="game-board"]');
+    const stage = document.querySelector('.roll-stage.result-hold-roll');
+    const mat = stage?.querySelector('[data-testid="roll-mat"]') ?? null;
+    const grade = stage?.querySelector('[data-testid="roll-timing-grade"]') ?? null;
+    const resultPresentation = stage?.querySelector('[data-testid="roll-result-presentation"]:not([hidden])') ?? null;
+    const resultCard = resultPresentation?.querySelector('[data-testid="roll-result-card"]') ?? null;
+    const surface = stage?.querySelector('[data-testid="roll-mat-surface"]') ?? null;
+    if (!board || !stage || !mat || !grade || !resultPresentation || !resultCard || !surface) return null;
+
+    const centerX = (rect) => rect.left + rect.width / 2;
+    const boardRect = board.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const matRect = mat.getBoundingClientRect();
+    const gradeRect = grade.getBoundingClientRect();
+    const cardRect = resultCard.getBoundingClientRect();
+    const surfaceRect = surface.getBoundingClientRect();
+    const stageStyle = getComputedStyle(stage);
+    const gradeStyle = getComputedStyle(grade);
+    const resultStyle = getComputedStyle(resultPresentation);
+    const geometry = {
+      anchored: stage.getAttribute('data-board-anchored'),
+      stageCenterOffset: Math.abs(centerX(stageRect) - centerX(boardRect)),
+      matCenterOffset: Math.abs(centerX(matRect) - centerX(boardRect)),
+      gradeCenterOffset: Math.abs(centerX(gradeRect) - centerX(boardRect)),
+      resultCenterOffset: Math.abs(centerX(cardRect) - centerX(boardRect)),
+      stageWidth: stageRect.width,
+      matWidth: matRect.width,
+      stageTranslate: stageStyle.translate,
+      stageJustifyContent: stageStyle.justifyContent,
+      gradeTop: Number.parseFloat(gradeStyle.top),
+      resultTop: Number.parseFloat(resultStyle.top),
+      gradeResultGap: cardRect.top - gradeRect.bottom,
+      resultSurfaceGap: surfaceRect.top - cardRect.bottom,
+      missing: [],
+    };
+    const stable = geometry.stageCenterOffset <= 2
+      && geometry.matCenterOffset <= 2
+      && geometry.gradeCenterOffset <= 2
+      && geometry.resultCenterOffset <= 2
+      && geometry.gradeTop === 20
+      && geometry.resultTop === 55
+      && geometry.gradeResultGap >= 0
+      && geometry.gradeResultGap <= 8
+      && geometry.resultSurfaceGap <= 100;
+    return stable ? geometry : null;
+  };
+
+  let observer;
+  const sample = () => {
+    const geometry = readStableGeometry();
+    if (!geometry) return false;
+    window.__YUT_QA_LOCAL_ROLL_RESULT_GEOMETRY__ = geometry;
+    observer?.disconnect();
+    if (window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__) {
+      cancelAnimationFrame(window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__);
+      window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__ = 0;
+    }
+    return true;
+  };
+  const tick = () => {
+    if (sample()) return;
+    window.__YUT_QA_LOCAL_ROLL_GEOMETRY_FRAME__ = requestAnimationFrame(tick);
+  };
+
+  observer = new MutationObserver(sample);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class', 'hidden', 'style'],
+    childList: true,
+    subtree: true,
+  });
+  window.__YUT_QA_LOCAL_ROLL_GEOMETRY_OBSERVER__ = observer;
+  tick();
+});
 
 test.describe('local roll stage position regression', () => {
   let roomId;
@@ -148,6 +218,7 @@ test.describe('local roll stage position regression', () => {
       });
 
       await runQaStep(testInfo, 'pending 매트 중앙 정렬 확인', async () => {
+        await installResultGeometryCapture(page);
         await page.getByTestId('roll-yut-button').click();
         await expect(page.locator('.roll-stage.pending-roll')).toBeVisible({ timeout: 2_000 });
         await expect(page.getByTestId('roll-mat')).toBeVisible();
@@ -165,18 +236,16 @@ test.describe('local roll stage position regression', () => {
       });
 
       await runQaStep(testInfo, '결과 카드 중앙 정렬과 매트 간격 확인', async () => {
-        const resultCard = page.getByTestId('roll-result-card');
-        await expect(resultCard).toBeVisible({ timeout: 10_000 });
+        let latestGeometry = null;
         await expect.poll(async () => {
-          const current = await readRollGeometry(page, { requireResult: true });
-          return current.missing;
+          latestGeometry = await page.evaluate(() => window.__YUT_QA_LOCAL_ROLL_RESULT_GEOMETRY__ ?? null);
+          return latestGeometry;
         }, {
-          timeout: 2_000,
-          intervals: [0, 50, 100, 200],
-          message: '결과 hold 구간에서 roll-stage와 결과 카드 geometry를 읽어야 합니다.',
-        }).toEqual([]);
-        const latestGeometry = await readRollGeometry(page, { requireResult: true });
-        expect(latestGeometry.missing, `결과 표시 위치 요소를 모두 찾을 수 있어야 합니다: ${JSON.stringify(latestGeometry, null, 2)}`).toEqual([]);
+          timeout: 10_000,
+          intervals: [16, 32, 64],
+          message: '던지기 전에 설치한 화면 observer가 짧은 result-hold의 안정된 geometry를 보존해야 합니다.',
+        }).not.toBeNull();
+        if (!latestGeometry) throw new Error('안정된 결과 표시 geometry snapshot을 수집하지 못했습니다.');
 
         expect(latestGeometry.stageCenterOffset).toBeLessThanOrEqual(2);
         expect(latestGeometry.matCenterOffset).toBeLessThanOrEqual(2);
