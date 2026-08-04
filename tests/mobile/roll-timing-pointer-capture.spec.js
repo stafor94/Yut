@@ -43,6 +43,11 @@ async function startAiTimingGame(page, context, testInfo, attemptLabel = '') {
     await createRoomFromLobby(page, roomTitle);
     resolvedRoomId = await waitForRoomQaAccess(page, { roomTitle });
     await addAiAndWaitUntilGameCanStart(page);
+    await page.bringToFront();
+    await expect.poll(
+      () => page.evaluate(() => document.visibilityState),
+      { timeout: 5_000, message: '포인터 타이밍 검증 전에 테스트 페이지가 foreground 상태여야 합니다.' },
+    ).toBe('visible');
     const startGameButton = page.getByTestId('start-game-button');
     await expect(startGameButton).toBeVisible({ timeout: 15_000 });
     await expect(startGameButton).toBeEnabled({ timeout: 15_000 });

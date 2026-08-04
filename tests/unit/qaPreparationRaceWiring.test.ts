@@ -38,7 +38,7 @@ test('WebKit 타이밍 QA는 표시 방과 Firestore 방이 일치할 때 브라
   assert.match(timingGameSource, /resolvedRoomId = await waitForRoomQaAccess\(page, \{ roomTitle \}\);/);
   assert.ok(timingGameSource.indexOf('waitForRoomQaAccess(page') < timingGameSource.indexOf('addAiAndWaitUntilGameCanStart(page)'));
   assert.doesNotMatch(timingGameSource, /rememberRoomIdFromPage/);
-  assert.doesNotMatch(timingGameSource, /timeout:\s*5_000/);
+  assert.doesNotMatch(timingGameSource, /waitForRoomQaAccess\(page,\s*\{[^}]*timeout:\s*5_000[^}]*\}\)/);
 
   assert.match(roomAccessSource, /DEFAULT_ROOM_ACCESS_TIMEOUT_MS = 15_000/);
   assert.match(roomAccessSource, /DEFAULT_ROOM_ACCESS_INTERVALS_MS = Object\.freeze\(\[100, 200, 400, 800, 1200\]\)/);
