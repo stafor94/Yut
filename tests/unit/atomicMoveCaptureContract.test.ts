@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { withLocalMovePiecesFallback } from '../../src/app/flows/localMoveOwnership';
-import { shouldPrepareAtomicLocalMoveStart } from '../../src/app/hooks/usePendingRemoteActions';
 
 const pendingSource = readFileSync('src/app/hooks/usePendingRemoteActions.ts', 'utf8');
 const appSource = readFileSync('src/app/App.tsx', 'utf8');
@@ -12,12 +11,12 @@ const screenSource = readFileSync('src/app/components/GameScreenView.tsx', 'utf8
 const boardSource = readFileSync('src/app/containers/GameBoardSection.tsx', 'utf8');
 const reducerSource = readFileSync('src/features/room/services/roomAuthoritativeReducer.ts', 'utf8');
 
-const localMoveActionKey = 'move_piece:local-seat:4:0:개:2:::local-seat-piece-1:0:outer:stack:none';
-
 test('pending membership is pure and only ready local user moves claim ownership', () => {
   assert.doesNotMatch(pendingSource, /class PendingLocalRemoteActionSet/);
   assert.match(pendingSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(new Set\(\)\)/);
   assert.match(pendingSource, /shouldPrepareAtomicLocalMoveStart\(\{ actionKey, type, optimisticApplied \}\)/);
+  assert.match(pendingSource, /const moveDeadlineAt = Number\(runtimeState\.turnDeadlineAt \?\? 0\);/);
+  assert.match(pendingSource, /runtimeState\.turnDeadlineKind === 'move' && moveDeadlineAt > 0 && Date\.now\(\) >= moveDeadlineAt/);
   assert.match(pendingSource, /if \(requiresAtomicLocalMoveStart\) \{[\s\S]*ensureMoveActionClaimed\(actionKey\)[\s\S]*preparePendingLocalMoveOwnership\(actionKey\)/);
   assert.ok(
     pendingSource.indexOf('preparePendingLocalMoveOwnership(actionKey)')
@@ -26,25 +25,7 @@ test('pending membership is pure and only ready local user moves claim ownership
   );
   assert.match(pendingSource, /releaseMoveActionClaim\(actionKey\);\s*throw new PendingLocalMoveStartError\(actionKey, 'ownership-rejected'\)/);
   assert.match(pendingSource, /syncPendingLocalRemoteActionCount\(\);\s*return true;/);
-
-  assert.equal(shouldPrepareAtomicLocalMoveStart({
-    actionKey: localMoveActionKey,
-    type: 'move_piece',
-    optimisticApplied: true,
-    runtimeState: { turnDeadlineExpired: false, autoPlayBySeatId: {}, activeSeat: { id: 'local-seat', isAI: false } },
-  }), true);
-  assert.equal(shouldPrepareAtomicLocalMoveStart({
-    actionKey: localMoveActionKey,
-    type: 'move_piece',
-    optimisticApplied: true,
-    runtimeState: { turnDeadlineExpired: true, autoPlayBySeatId: {}, activeSeat: { id: 'local-seat', isAI: false } },
-  }), false);
-  assert.equal(shouldPrepareAtomicLocalMoveStart({
-    actionKey: localMoveActionKey,
-    type: 'move_piece',
-    optimisticApplied: true,
-    runtimeState: { turnDeadlineExpired: false, autoPlayBySeatId: { 'local-seat': true }, activeSeat: { id: 'local-seat', isAI: false } },
-  }), false);
+  assert.doesNotMatch(readFileSync('tests/unit/atomicMoveCaptureContract.test.ts', 'utf8'), /from '\.\.\/\.\.\/src\/app\/hooks\/usePendingRemoteActions'/);
 });
 
 test('current readiness state and pieces are used for ownership preparation', () => {
