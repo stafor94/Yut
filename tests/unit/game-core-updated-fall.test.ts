@@ -131,6 +131,24 @@ const replacementTests = new Map<string, () => void>([
     assert.equal(result.status, 'rejected');
     assert.equal(result.reason, '아이템 선택 시간초과 대상이 아닙니다.');
   })],
+  ['온라인 coordinator 아이템 deadline 복구는 실제 actor skip으로 다음 단계에 진입한다', () => withMockNow(10_000, () => {
+    const deadline = 10_000 - TURN_NETWORK_GRACE_MS - 1;
+    const result = reduceAuthoritativeGameAction(
+      {
+        ...baseState(),
+        roll: { name: '도', steps: 1 },
+        itemPromptTiming: 'after_roll',
+        turnDeadlineKind: 'item_prompt',
+        turnDeadlineAt: deadline,
+      } as EngineState & { itemPromptTiming: 'after_roll'; turnDeadlineKind: 'item_prompt'; turnDeadlineAt: number },
+      { type: 'use_item', actorId: 'seat-1', payload: { skipAfterRollItem: true, itemPromptTimeoutRecovery: true, timeoutDeadlineAt: deadline } },
+      { playMode: 'individual', pieceCount: 4, stackedRollMode: false },
+    );
+
+    assert.equal(result.status, 'committed');
+    assert.equal(result.patch?.itemPromptTiming, null);
+    assert.equal(result.patch?.turnDeadlineKind, 'move');
+  })],
   ['온라인 아이템 선택은 optimistic 처리하고 처리 중 문구 없이 방패 상태를 표시한다', () => {
     const appSource = readFileSync('src/app/App.tsx', 'utf8');
     const controlsSource = readFileSync('src/app/containers/GameBoardControls.tsx', 'utf8');
