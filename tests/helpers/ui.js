@@ -187,9 +187,6 @@ export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', p
 }
 
 async function recoverCreatedRoomSession(page, roomTitle) {
-  const delayedRecoveryStatus = page.getByRole('status', { name: '응답이 지연되어 생성된 방을 확인하고 있습니다...' });
-  if (!await delayedRecoveryStatus.isVisible().catch(() => false)) return false;
-
   const roomId = await findRoomIdByTitle(roomTitle).catch(() => undefined);
   if (!roomId) return false;
 
