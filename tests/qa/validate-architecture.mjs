@@ -17,6 +17,7 @@ const suiteContracts = Object.freeze({
   'desktop-regression': Object.freeze({ code: 'desk', label: 'Desktop regression', browsers: Object.freeze(['chromium']) }),
   'mobile-galaxy': Object.freeze({ code: 'galaxy', label: 'Mobile Galaxy', browsers: Object.freeze(['chromium']) }),
   'mobile-galaxy-timing': Object.freeze({ code: 'galtime', label: 'Mobile Galaxy timing', browsers: Object.freeze(['chromium']) }),
+  'mobile-galaxy-move': Object.freeze({ code: 'galmove', label: 'Mobile Galaxy move ownership', browsers: Object.freeze(['chromium']) }),
   'safari-visible-mismatch': Object.freeze({ code: 'safvis', label: 'Safari visible mismatch', browsers: Object.freeze(['webkit']) }),
   'safari-timing': Object.freeze({ code: 'safari', label: 'Safari timing', browsers: Object.freeze(['webkit']) }),
 });
@@ -187,9 +188,9 @@ for (const suiteName of qaSuiteNames) {
 if (!workflowSource.includes('npm run qa:validate-architecture')) fail('qa.yml build job이 QA architecture validator를 실행하지 않습니다.');
 if (!workflowSource.includes('qa-duration.json')) fail('qa.yml artifact가 lane별 duration 보고서를 수집하지 않습니다.');
 if (!workflowSource.includes('seq/result.txt') || !workflowSource.includes('galaxy/result.txt')
-  || !workflowSource.includes('galtime/result.txt') || !workflowSource.includes('safvis/result.txt')
-  || !workflowSource.includes('safari/result.txt')) {
-  fail('qa.yml summary가 분리된 sequence, Galaxy, Galaxy timing, Safari visible mismatch와 Safari timing 결과를 모두 집계하지 않습니다.');
+  || !workflowSource.includes('galtime/result.txt') || !workflowSource.includes('galmove/result.txt')
+  || !workflowSource.includes('safvis/result.txt') || !workflowSource.includes('safari/result.txt')) {
+  fail('qa.yml summary가 분리된 sequence, Galaxy, Galaxy timing, Galaxy move ownership, Safari visible mismatch와 Safari timing 결과를 모두 집계하지 않습니다.');
 }
 if (/^\s{2}deploy-pages:/mu.test(workflowSource) || workflowSource.includes('actions/deploy-pages@')) {
   fail('Main Branch QA에 Pages 배포 job을 다시 결합하지 마세요. 별도 deploy-pages.yml을 사용해야 합니다.');

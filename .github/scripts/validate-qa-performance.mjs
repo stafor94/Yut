@@ -11,6 +11,7 @@ export const QA_PERFORMANCE_TARGETS_MS = Object.freeze({
   desk: 295_000,
   galaxy: 240_000,
   galtime: 240_000,
+  galmove: 150_000,
   safvis: 195_000,
   safari: 250_000,
 });
@@ -23,6 +24,7 @@ export const QA_PERFORMANCE_HARD_LIMITS_MS = Object.freeze({
   desk: 345_000,
   galaxy: 285_000,
   galtime: 285_000,
+  galmove: 210_000,
   safvis: 240_000,
   safari: 300_000,
 });
@@ -37,6 +39,7 @@ const laneContracts = Object.freeze([
   Object.freeze({ code: 'desk', label: 'QA desktop regression', jobPath: 'desk/qa-job-timing.json', testPath: 'desk/qa-duration.json' }),
   Object.freeze({ code: 'galaxy', label: 'QA mobile Galaxy', jobPath: 'galaxy/qa-job-timing.json', testPath: 'galaxy/qa-duration.json' }),
   Object.freeze({ code: 'galtime', label: 'QA mobile Galaxy timing', jobPath: 'galtime/qa-job-timing.json', testPath: 'galtime/qa-duration.json' }),
+  Object.freeze({ code: 'galmove', label: 'QA mobile Galaxy move ownership', jobPath: 'galmove/qa-job-timing.json', testPath: 'galmove/qa-duration.json' }),
   Object.freeze({ code: 'safvis', label: 'QA Safari visible mismatch', jobPath: 'safvis/qa-job-timing.json', testPath: 'safvis/qa-duration.json' }),
   Object.freeze({ code: 'safari', label: 'QA Safari timing', jobPath: 'safari/qa-job-timing.json', testPath: 'safari/qa-duration.json' }),
 ]);
