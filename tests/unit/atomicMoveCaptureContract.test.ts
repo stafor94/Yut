@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { withLocalMovePiecesFallback } from '../../src/app/flows/localMoveOwnership';
-import { shouldPrepareAtomicLocalMoveStart } from '../../src/app/hooks/usePendingRemoteActions';
 
 const pendingSource = readFileSync('src/app/hooks/usePendingRemoteActions.ts', 'utf8');
 const appSource = readFileSync('src/app/App.tsx', 'utf8');
@@ -12,39 +11,39 @@ const screenSource = readFileSync('src/app/components/GameScreenView.tsx', 'utf8
 const boardSource = readFileSync('src/app/containers/GameBoardSection.tsx', 'utf8');
 const reducerSource = readFileSync('src/features/room/services/roomAuthoritativeReducer.ts', 'utf8');
 
-const localMoveActionKey = 'move_piece:local-seat:4:0:개:2:::local-seat-piece-1:0:outer:stack:none';
-
-test('pending membership is pure and only ready local user moves claim ownership', () => {
+test('pending registration is generic and local user moves own atomic preparation', () => {
   assert.doesNotMatch(pendingSource, /class PendingLocalRemoteActionSet/);
   assert.match(pendingSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(new Set\(\)\)/);
-  assert.match(pendingSource, /shouldPrepareAtomicLocalMoveStart\(\{ actionKey, type, optimisticApplied \}\)/);
-  assert.match(pendingSource, /if \(requiresAtomicLocalMoveStart\) \{[\s\S]*ensureMoveActionClaimed\(actionKey\)[\s\S]*preparePendingLocalMoveOwnership\(actionKey\)/);
-  assert.ok(
-    pendingSource.indexOf('preparePendingLocalMoveOwnership(actionKey)')
-      < pendingSource.indexOf('pendingLocalRemoteActionsRef.current.add(actionKey)'),
-    'ownership must be prepared before pending registration',
-  );
-  assert.match(pendingSource, /releaseMoveActionClaim\(actionKey\);\s*throw new PendingLocalMoveStartError\(actionKey, 'ownership-rejected'\)/);
-  assert.match(pendingSource, /syncPendingLocalRemoteActionCount\(\);\s*return true;/);
+  assert.doesNotMatch(pendingSource, /shouldPrepareAtomicLocalMoveStart/);
+  assert.doesNotMatch(pendingSource, /ensureMoveActionClaimed/);
+  assert.doesNotMatch(pendingSource, /preparePendingLocalMoveOwnership/);
+  assert.match(pendingSource, /if \(pendingLocalRemoteActionsRef\.current\.has\(actionKey\)\) return false;/);
+  assert.match(pendingSource, /pendingLocalRemoteActionsRef\.current\.add\(actionKey\);[\s\S]*syncPendingLocalRemoteActionCount\(\);\s*return true;/);
 
-  assert.equal(shouldPrepareAtomicLocalMoveStart({
-    actionKey: localMoveActionKey,
-    type: 'move_piece',
-    optimisticApplied: true,
-    runtimeState: { turnDeadlineExpired: false, autoPlayBySeatId: {}, activeSeat: { id: 'local-seat', isAI: false } },
-  }), true);
-  assert.equal(shouldPrepareAtomicLocalMoveStart({
-    actionKey: localMoveActionKey,
-    type: 'move_piece',
-    optimisticApplied: true,
-    runtimeState: { turnDeadlineExpired: true, autoPlayBySeatId: {}, activeSeat: { id: 'local-seat', isAI: false } },
-  }), false);
-  assert.equal(shouldPrepareAtomicLocalMoveStart({
-    actionKey: localMoveActionKey,
-    type: 'move_piece',
-    optimisticApplied: true,
-    runtimeState: { turnDeadlineExpired: false, autoPlayBySeatId: { 'local-seat': true }, activeSeat: { id: 'local-seat', isAI: false } },
-  }), false);
+  const helperStart = appSource.indexOf('function beginLocalMoveRequest(');
+  const helperEnd = appSource.indexOf('\n  function ', helperStart + 1);
+  assert.ok(helperStart >= 0, 'App must define the local user move request boundary');
+  const helperSource = appSource.slice(helperStart, helperEnd >= 0 ? helperEnd : undefined);
+  assert.match(helperSource, /ensureMoveActionClaimed\(actionKey\)/);
+  assert.match(helperSource, /preparePendingLocalMoveOwnership\(actionKey\)/);
+  assert.match(helperSource, /releaseMoveActionClaim\(actionKey\)/);
+  assert.match(helperSource, /addPendingLocalRemoteAction\(actionKey, meta\)/);
+  assert.ok(
+    helperSource.indexOf('ensureMoveActionClaimed(actionKey)')
+      < helperSource.indexOf('preparePendingLocalMoveOwnership(actionKey)'),
+    'move claim must precede ownership preparation',
+  );
+  assert.ok(
+    helperSource.indexOf('preparePendingLocalMoveOwnership(actionKey)')
+      < helperSource.indexOf('addPendingLocalRemoteAction(actionKey, meta)'),
+    'ownership must be prepared before generic pending registration',
+  );
+
+  const moveStart = appSource.indexOf('function moveSelectedPiece(');
+  const moveEnd = appSource.indexOf('\n  const getAiAutomationPayload', moveStart);
+  assert.ok(moveStart >= 0 && moveEnd > moveStart, 'moveSelectedPiece source must be available');
+  const moveSource = appSource.slice(moveStart, moveEnd);
+  assert.match(moveSource, /options\.timedOut\s*\?\s*addPendingLocalRemoteAction\(actionKey, pendingMoveMeta\)\s*:\s*beginLocalMoveRequest\(actionKey, pendingMoveMeta\)/);
 });
 
 test('current readiness state and pieces are used for ownership preparation', () => {
