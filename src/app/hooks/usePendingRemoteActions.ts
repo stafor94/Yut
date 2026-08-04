@@ -126,6 +126,7 @@ export function usePendingRemoteActions() {
     if (typeof clientMutationId !== 'string' || !clientMutationId) return;
     if (!pendingLocalRemoteActionsRef.current.delete(clientMutationId)) return;
     pendingLocalRemoteActionMetaRef.current.acknowledge(clientMutationId);
+    releaseMoveActionClaim(clientMutationId);
     syncPendingLocalRemoteActionCount();
   };
   const clearPendingLocalRemoteActions = () => {
