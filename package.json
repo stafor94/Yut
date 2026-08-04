@@ -10,7 +10,7 @@
     "test:mobile": "playwright test --project=mobile-galaxy tests/mobile",
     "qa:cleanup-rooms": "node tests/helpers/cleanup-qa-rooms.js",
     "qa:verify-emulator": "node .github/scripts/verify-qa-emulator-config.mjs --runtime",
-    "qa:validate-architecture": "node tests/qa/validate-architecture.mjs && node tests/qa/validate-pr-required-qa.mjs && node tests/qa/validate-project-execution-options.mjs && node tests/qa/validate-workflow-artifact-attempts.mjs && node tests/qa/validate-performance-wiring.mjs && node .github/scripts/validate-qa-performance.mjs --self-test",
+    "qa:validate-architecture": "node tests/qa/validate-architecture.mjs && node tests/qa/validate-pr-required-qa.mjs && node tests/qa/validate-project-execution-options.mjs && node tests/qa/validate-workflow-artifact-attempts.mjs && node tests/qa/validate-performance-wiring.mjs && node tests/qa/validate-ci-failure-issue.mjs && node .github/scripts/validate-qa-performance.mjs --self-test",
     "qa:emulator-suite": "node tests/helpers/run-qa-emulator-suite.mjs",
     "maintenance:cleanup-production-rooms": "node scripts/cleanup-production-room-backlog.mjs",
     "test:unit": "rm -rf .tmp-unit-tests && tsc -p tsconfig.test.json && node scripts/run-unit-tests.mjs"
