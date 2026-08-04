@@ -2937,6 +2937,7 @@ export function App() {
     enqueueAuthoritativeGameAction,
     manualSequenceSyncing,
     setManualSequenceSyncing,
+    syncLatestSequencesFromBadge: syncLatestSequencesFromBadgeSafely,
   } = useAuthoritativeGameSyncController({
     activeRoomId,
     activeRoomIdRef,
@@ -4405,7 +4406,7 @@ export function App() {
       soundEnabled={soundEnabled}
       winner={winner}
       onOpenNicknameDialog={openNicknameDialog}
-      onSyncLatestSequences={syncLatestSequencesFromBadge}
+      onSyncLatestSequences={syncLatestSequencesFromBadgeSafely}
       onToggleSoundEnabled={toggleSoundEnabled}
     />
 
