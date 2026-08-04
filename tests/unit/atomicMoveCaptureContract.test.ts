@@ -11,19 +11,19 @@ const screenSource = readFileSync('src/app/components/GameScreenView.tsx', 'utf8
 const boardSource = readFileSync('src/app/containers/GameBoardSection.tsx', 'utf8');
 const reducerSource = readFileSync('src/features/room/services/roomAuthoritativeReducer.ts', 'utf8');
 
-test('pending membership is pure and only ready local user moves claim ownership', () => {
+test('pending membership and registration stay side-effect free', () => {
   assert.doesNotMatch(pendingSource, /class PendingLocalRemoteActionSet/);
   assert.match(pendingSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(new Set\(\)\)/);
-  assert.match(pendingSource, /shouldPrepareAtomicLocalMoveStart\(\{ actionKey, type, optimisticApplied \}\)/);
-  assert.match(pendingSource, /const moveDeadlineAt = Number\(runtimeState\.turnDeadlineAt \?\? 0\);/);
-  assert.match(pendingSource, /runtimeState\.turnDeadlineKind === 'move' && moveDeadlineAt > 0 && Date\.now\(\) >= moveDeadlineAt/);
-  assert.match(pendingSource, /if \(requiresAtomicLocalMoveStart\) \{[\s\S]*ensureMoveActionClaimed\(actionKey\)[\s\S]*preparePendingLocalMoveOwnership\(actionKey\)/);
+  assert.doesNotMatch(pendingSource, /shouldPrepareAtomicLocalMoveStart/);
+  assert.doesNotMatch(pendingSource, /PendingLocalMoveStartError/);
+  assert.doesNotMatch(pendingSource, /ensureMoveActionClaimed/);
+  assert.doesNotMatch(pendingSource, /preparePendingLocalMoveOwnership/);
+  assert.match(pendingSource, /if \(pendingLocalRemoteActionsRef\.current\.has\(actionKey\)\) return false;/);
   assert.ok(
-    pendingSource.indexOf('preparePendingLocalMoveOwnership(actionKey)')
-      < pendingSource.indexOf('pendingLocalRemoteActionsRef.current.add(actionKey)'),
-    'ownership must be prepared before pending registration',
+    pendingSource.indexOf('pendingLocalRemoteActionsRef.current.add(actionKey)')
+      < pendingSource.indexOf('pendingLocalRemoteActionMetaRef.current.set(actionKey'),
+    'pending membership must be registered before metadata publication',
   );
-  assert.match(pendingSource, /releaseMoveActionClaim\(actionKey\);\s*throw new PendingLocalMoveStartError\(actionKey, 'ownership-rejected'\)/);
   assert.match(pendingSource, /pendingLocalRemoteActionMetaRef\.current\.acknowledge\(clientMutationId\);\s*releaseMoveActionClaim\(clientMutationId\);/);
   assert.match(pendingSource, /syncPendingLocalRemoteActionCount\(\);\s*return true;/);
   assert.doesNotMatch(readFileSync('tests/unit/atomicMoveCaptureContract.test.ts', 'utf8'), /from '\.\.\/\.\.\/src\/app\/hooks\/usePendingRemoteActions'/);
