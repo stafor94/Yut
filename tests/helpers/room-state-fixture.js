@@ -67,6 +67,7 @@ export async function seedRoomPieceAtNodeForQa({
   pieceId,
   nodeId,
   previousNodeId = '',
+  turnDeadlineAt = 0,
 }) {
   const config = await loadFirebaseConfig();
   if (!config?.projectId) throw new Error('Firebase projectId가 없어 room state fixture를 준비할 수 없습니다.');
@@ -90,15 +91,19 @@ export async function seedRoomPieceAtNodeForQa({
     finished: false,
   };
   const currentTurnVersion = Number(decodeFirestoreValue(fields.turnVersion) ?? 0);
+  const nextTurnDeadlineAt = Number(turnDeadlineAt);
+  const shouldUpdateTurnDeadline = Number.isFinite(nextTurnDeadlineAt) && nextTurnDeadlineAt > 0;
   const patchUrl = new URL(stateUrl);
   patchUrl.searchParams.append('updateMask.fieldPaths', 'pieces');
   patchUrl.searchParams.append('updateMask.fieldPaths', 'turnVersion');
+  if (shouldUpdateTurnDeadline) patchUrl.searchParams.append('updateMask.fieldPaths', 'turnDeadlineAt');
   await firestoreRequest(patchUrl.toString(), accessToken, {
     method: 'PATCH',
     body: JSON.stringify({
       fields: {
         pieces: encodeFirestoreValue(pieces),
         turnVersion: encodeFirestoreValue(currentTurnVersion + 1),
+        ...(shouldUpdateTurnDeadline ? { turnDeadlineAt: encodeFirestoreValue(nextTurnDeadlineAt) } : {}),
       },
     }),
   });
