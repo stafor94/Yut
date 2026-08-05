@@ -16,7 +16,7 @@ import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } fro
 import { getAuthoritativeSnapshot } from '../flows/authoritativeSnapshot';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
 import {
-  shouldConsumeLocalMoveCommitAck,
+  classifyLocalMoveCommitAck,
   shouldReleaseLocalMovePending,
 } from '../flows/localMoveCommitAck';
 import { localMovePresentationLifecycle } from '../flows/localMovePresentationLifecycle';
@@ -412,22 +412,27 @@ export function useAuthoritativeGameSyncController(params: Params) {
           const moveResultDelayMs = attachedAction.type === 'move_piece' ? getQaMovePieceActionDelayMs() : 0;
           if (moveResultDelayMs) await waitUntil(Date.now() + moveResultDelayMs);
           const actionKey = getClientActionId(attachedAction);
-          if (shouldConsumeLocalMoveCommitAck({
+          const aliasedResult = aliasTimeoutRollMutationIds(roomId, result);
+          const ackClassification = classifyLocalMoveCommitAck({
             actionType: attachedAction.type,
             actionKey,
             ownsLocalMove: localMoveLedger.has(actionKey),
-            status: result.status,
-            sequence: result.sequence,
-          })) {
+            status: aliasedResult.status,
+            sequence: aliasedResult.sequence,
+            stateAfter: aliasedResult.stateAfter,
+            patch: aliasedResult.patch,
+          });
+          if (ackClassification === 'stateful') {
             acknowledgeLocalMoveEcho(roomId, {
-              ...result,
+              ...aliasedResult,
               payload: {
-                ...(result.payload ?? {}),
+                ...(aliasedResult.payload ?? {}),
                 clientMutationId: actionKey,
               },
             });
             return;
           }
+          if (ackClassification === 'stateless-duplicate') return;
           if (attachedAction.type === 'move_piece'
             && actionKey
             && localMoveLedger.has(actionKey)
@@ -484,6 +489,17 @@ export function useAuthoritativeGameSyncController(params: Params) {
     const aliasedResult = aliasTimeoutRollMutationIds(roomId, result);
     const classification = getDeliveryClassification(aliasedResult);
     if (classification === 'local-echo') {
+      const identity = getAuthoritativeDeliveryIdentity(aliasedResult);
+      const ackClassification = classifyLocalMoveCommitAck({
+        actionType: 'move_piece',
+        actionKey: identity.clientMutationId,
+        ownsLocalMove: localMoveLedger.has(identity.clientMutationId),
+        status: aliasedResult.status,
+        sequence: aliasedResult.sequence,
+        stateAfter: aliasedResult.stateAfter,
+        patch: aliasedResult.patch,
+      });
+      if (ackClassification === 'stateless-duplicate') return null;
       return acknowledgeLocalMoveEcho(roomId, aliasedResult);
     }
     if (classification === 'stale') return null;

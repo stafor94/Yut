@@ -10,6 +10,7 @@ import {
   type MoveTimeoutRecoveryDisposition,
   type MoveTimeoutRecoveryScope,
 } from '../../features/room/services/moveTimeoutRecoveryPolicy';
+import { commitAuthoritativeGameAction } from '../../features/room/services/roomService';
 import {
   makeTimeoutActionKey,
   resolveMoveTimeout,
@@ -43,6 +44,9 @@ type StackedRollTimeoutRecoveryParams = {
   turnOrderBlocked: boolean;
   winner: string;
 };
+
+type QaMoveTimeoutRecoveryTrigger = { actionKey: string; actorId: string; invoke: () => ReturnType<typeof commitAuthoritativeGameAction>; roomId: string; timeoutDeadlineAt: number };
+const getQaWindow = () => window as typeof window & { __YUT_QA_MOVE_TIMEOUT_RECOVERY__?: QaMoveTimeoutRecoveryTrigger };
 
 const getActorLogPayload = (seat: Seat) => ({
   actorLabel: seat.label,
@@ -206,6 +210,26 @@ export function useStackedRollTimeoutRecovery({
         ...getActorLogPayload(activeSeat),
       },
     };
+    const qaAction = import.meta.env.MODE === 'qa' ? {
+      type: 'move_piece' as const,
+      actorId: activeSeat.id,
+      payload: {
+        pieceId: timeoutMove.reason === 'pass' ? '' : timeoutMove.pieceId,
+        extraSteps: 0,
+        branchChoice: timeoutMove.branchChoice,
+        rollStackIndex: timeoutContext.rollStackIndex,
+        clientActionId: actionKey,
+        deadlineAutoSubmitted: true,
+        autoSubmittedDeadlineAt: turnDeadlineAt,
+        clientActionStartedAt: turnDeadlineAt - 1,
+        ...getActorLogPayload(activeSeat),
+      },
+    } : null;
+    const qaTrigger = qaAction ? {
+      actionKey, actorId: activeSeat.id, roomId, timeoutDeadlineAt: turnDeadlineAt,
+      invoke: () => commitAuthoritativeGameAction(roomId, qaAction),
+    } satisfies QaMoveTimeoutRecoveryTrigger : null;
+    if (qaTrigger) getQaWindow().__YUT_QA_MOVE_TIMEOUT_RECOVERY__ = qaTrigger;
 
     let cancelled = false;
     let timer: number | null = null;
@@ -284,6 +308,7 @@ export function useStackedRollTimeoutRecovery({
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
       clearInFlight();
+      if (qaTrigger && getQaWindow().__YUT_QA_MOVE_TIMEOUT_RECOVERY__ === qaTrigger) delete getQaWindow().__YUT_QA_MOVE_TIMEOUT_RECOVERY__;
     };
   }, [
     activeSeat,

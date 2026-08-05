@@ -8,7 +8,7 @@ import {
   expectMoveTimeoutRecoveryUiProgress,
   prepareMoveTimeoutRecoveryFixture,
   waitForMoveTimeoutRecovery,
-} from '../helpers/move-timeout-recovery.js';
+} from '../helpers/move-timeout-stateless-duplicate.js';
 
 test.describe('일반 말 이동 제한시간 recovery', () => {
   test.describe.configure({ mode: 'serial' });
