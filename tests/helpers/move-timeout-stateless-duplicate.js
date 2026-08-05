@@ -5,7 +5,6 @@ import { expectMoveTimeoutRecoveryUiProgress, prepareMoveTimeoutRecoveryFixture 
 export { expectMoveTimeoutRecoveryUiProgress };
 
 const FIRESTORE_LISTEN_CHANNEL = /\/google\.firestore\.v1\.Firestore\/Listen\/channel(?:\?|$)/;
-const MAIN_CLOCK_OFFSET_MS = -5_000;
 const DONOR_CLOCK_OFFSET_MS = 5_000;
 
 async function installListenDeliveryGate(page) {
@@ -26,9 +25,7 @@ async function installListenDeliveryGate(page) {
 
     try {
       const response = await route.fetch({ timeout: 60_000 });
-      if (paused) {
-        await new Promise((resolve) => releaseWaiters.add(resolve));
-      }
+      if (paused) await new Promise((resolve) => releaseWaiters.add(resolve));
       await route.fulfill({ response });
     } catch {
       if (page.isClosed()) return;
@@ -59,16 +56,6 @@ async function prepareDonorPage({ page, context }) {
   return donorPage;
 }
 
-async function installMainClockDelay(page) {
-  await page.addInitScript((offsetMs) => {
-    const realNow = Date.now.bind(Date);
-    Object.defineProperty(Date, 'now', {
-      configurable: true,
-      value: () => realNow() + offsetMs,
-    });
-  }, MAIN_CLOCK_OFFSET_MS);
-}
-
 async function advanceDonorClockAndReload(donorPage) {
   await donorPage.addInitScript((offsetMs) => {
     const realNow = Date.now.bind(Date);
@@ -83,7 +70,6 @@ async function advanceDonorClockAndReload(donorPage) {
 
 export async function prepareMoveTimeoutRecoveryFixture(args) {
   const listenGate = await installListenDeliveryGate(args.page);
-  await installMainClockDelay(args.page);
   const donorReady = prepareDonorPage(args);
   let donorPage;
 
@@ -113,7 +99,6 @@ export async function prepareMoveTimeoutRecoveryFixture(args) {
     return { ...fixture, capturedSequence, listenGate };
   } catch (error) {
     await donorPage?.close().catch(() => undefined);
-    listenGate.release();
     await listenGate.dispose();
     throw error;
   }
@@ -152,7 +137,6 @@ export async function waitForMoveTimeoutRecovery(fixture) {
     expect(await fixture.page.evaluate(() => window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__?.length ?? 0)).toBe(1);
     return { ...recovery, statelessDuplicateAck: ack };
   } finally {
-    fixture.listenGate.release();
     await fixture.listenGate.dispose();
   }
 }
