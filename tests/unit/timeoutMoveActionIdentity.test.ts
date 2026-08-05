@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createAuthoritativeGameActionQueues } from '../../src/app/flows/authoritativeGameSyncFlow';
 import {
   attachClientActionStartedAt,
   clearNextDeadlineAutoAction,
@@ -11,34 +12,15 @@ import {
 } from '../../src/features/room/services/timeoutRollActionIdentity';
 import { makeTimeoutActionKey } from '../../src/features/room/services/timeoutResolvers';
 
-const ACTIVE_ROOM_STORAGE_KEY = 'yut-online:activeRoomId';
-
-function installActiveRoomStorage(roomId: string) {
-  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
-  Object.defineProperty(globalThis, 'window', {
-    configurable: true,
-    value: {
-      localStorage: {
-        getItem: (key: string) => key === ACTIVE_ROOM_STORAGE_KEY ? roomId : null,
-      },
-    },
-  });
-  return () => {
-    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
-    else Reflect.deleteProperty(globalThis, 'window');
-  };
-}
-
 test.afterEach(() => {
   clearNextDeadlineAutoAction();
 });
 
-test('온라인 이동 마감 UI와 stalled/coordinator 복구는 동일 timeout action identity를 사용한다', () => {
+test('온라인 이동 마감 UI와 stalled/coordinator 복구는 동일 timeout action identity를 사용한다', async () => {
   const roomId = 'room-timeout-move-identity';
   const actorId = 'seat-host';
   const timeoutDeadlineAt = 2_000_000;
   const localMoveActionId = 'move_piece:seat-host:17:3:개:2:::-piece-1:0:outer:stack:none';
-  const restoreWindow = installActiveRoomStorage(roomId);
 
   try {
     markNextDeadlineAutoAction({
@@ -72,11 +54,26 @@ test('온라인 이동 마감 UI와 stalled/coordinator 복구는 동일 timeout
       extra: 'coordinator-retry',
     });
     const deadlineUiPayload = deadlineUiAction.payload as Record<string, unknown>;
+    const committedActions: typeof deadlineUiAction[] = [];
+    const queues = createAuthoritativeGameActionQueues<typeof deadlineUiAction, { status: 'committed' }>({
+      activeRoomIdRef: { current: roomId },
+      commit: async (_committedRoomId, action) => {
+        committedActions.push(action);
+        return { status: 'committed' };
+      },
+      yieldBetweenApplies: async () => undefined,
+    });
 
     assert.equal(deadlineUiPayload.deadlineAutoSubmitted, true);
     assert.equal(deadlineUiPayload.autoSubmittedDeadlineAt, timeoutDeadlineAt);
-    assert.equal(deadlineUiPayload.clientActionId, stalledRecoveryActionId);
+    assert.equal(deadlineUiPayload.clientActionId, localMoveActionId);
     assert.equal(coordinatorRecoveryActionId, stalledRecoveryActionId);
+
+    await queues.commitQueuedAuthoritativeGameAction(roomId, deadlineUiAction);
+    assert.equal(committedActions.length, 1);
+    const committedPayload = committedActions[0].payload as Record<string, unknown>;
+    assert.equal(committedPayload.clientActionId, stalledRecoveryActionId);
+    assert.equal(committedPayload.timeoutDeadlineAt, timeoutDeadlineAt);
 
     const aliasedEcho = aliasTimeoutRollMutationIds(roomId, {
       clientMutationId: stalledRecoveryActionId,
@@ -91,7 +88,6 @@ test('온라인 이동 마감 UI와 stalled/coordinator 복구는 동일 timeout
     assert.equal(aliasedEcho.stateAfter.lastClientMutationId, localMoveActionId);
   } finally {
     clearTimeoutRollMutationAliases(roomId);
-    restoreWindow();
   }
 });
 
