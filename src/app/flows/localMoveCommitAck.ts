@@ -20,6 +20,10 @@ type StatelessDuplicateRecoveryKeyInput = {
   sequence: unknown;
 };
 
+type QaStatelessDuplicateTraceTarget = typeof globalThis & {
+  __YUT_STATELESS_DUPLICATE_ACK__?: { actionKey: string; sequence: number };
+};
+
 const ACK_METADATA_KEYS = new Set([
   'status', 'sequence', 'turnVersion', 'lastSequence', 'clientMutationId',
   'lastClientMutationId', 'reason', 'payload', 'sequenceEvent',
@@ -50,7 +54,12 @@ export function classifyLocalMoveCommitAck({
 
   const hasState = hasAuthoritativeStatePayload(stateAfter) || hasAuthoritativeStatePayload(patch);
   if ((status === 'committed' || status === 'duplicate') && hasState) return 'stateful';
-  if (status === 'duplicate' && !hasState) return 'stateless-duplicate';
+  if (status === 'duplicate' && !hasState) {
+    if (typeof window !== 'undefined' && import.meta.env.MODE === 'qa') {
+      (globalThis as QaStatelessDuplicateTraceTarget).__YUT_STATELESS_DUPLICATE_ACK__ = { actionKey, sequence: sequenceNumber };
+    }
+    return 'stateless-duplicate';
+  }
   return 'passthrough';
 }
 
