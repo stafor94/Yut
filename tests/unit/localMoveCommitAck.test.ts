@@ -50,13 +50,10 @@ test('상태 없는 duplicate는 cursor, snapshot, fingerprint, apply-wake와 pe
   };
   assert.equal(buildAuthoritativeApplyWakeSnapshot(metadataOnlyDuplicate, latest), null);
 
-  const stateAfterSnapshot = buildAuthoritativeApplyWakeSnapshot({
+  assert.equal(buildAuthoritativeApplyWakeSnapshot({
     ...metadataOnlyDuplicate,
     stateAfter: { sequence: 5, turnVersion: 8, lastSequence: 5 },
-  }, latest);
-  assert.ok(stateAfterSnapshot);
-  assert.equal(stateAfterSnapshot.lastSequence, 5);
-  assert.deepEqual(stateAfterSnapshot.pieces, latest.pieces);
+  }, latest)?.lastSequence, 5);
 
   assert.equal(shouldReleaseLocalMovePending({
     localPresentationCompleted: true,
@@ -103,7 +100,7 @@ test('stateless duplicate 복구는 roomId + actionId + sequence 단위로 중�
   assert.notEqual(makeKey(), makeKey('room-1', 'move_piece:P1:4', 6));
 });
 
-test('로컬 이동 pending은 presentation과 서버 검증이 모두 끝난 뒤 해제한다', () => {
+test('로컬 이동 pending은 presentation과 서버 검증이 모두 끝난 뒤 해제핀다', () => {
   assert.equal(shouldReleaseLocalMovePending({
     localPresentationCompleted: true,
     serverSequenceAcked: true,

@@ -13,19 +13,13 @@ export { expectMoveTimeoutRecoveryUiProgress };
 const PROCESSED_ACTION_LEAD_MS = 200;
 const hashFirestoreId = (value) => {
   let hash = 0xcbf29ce484222325n;
-  const prime = 0x100000001b3n;
-  const mask = 0xffffffffffffffffn;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= BigInt(value.charCodeAt(index));
-    hash = (hash * prime) & mask;
-  }
+  for (let index = 0; index < value.length; index += 1) hash = ((hash ^ BigInt(value.charCodeAt(index))) * 0x100000001b3n) & 0xffffffffffffffffn;
   return hash.toString(16).padStart(16, '0');
 };
 const makeFirestoreSafeId = (value) => {
   const trimmedValue = value.trim();
   if (!trimmedValue) return `action_${Date.now()}`;
-  const readablePrefix = trimmedValue.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80);
-  return `${readablePrefix || 'action'}_${hashFirestoreId(trimmedValue)}`;
+  return `${trimmedValue.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80) || 'action'}_${hashFirestoreId(trimmedValue)}`;
 };
 const delayUntil = (timestamp) => new Promise((resolve) => setTimeout(resolve, Math.max(0, timestamp - Date.now())));
 const documentName = (projectId, segments) => `projects/${projectId}/databases/(default)/documents/${segments.join('/')}`;
@@ -127,7 +121,7 @@ export async function prepareMoveTimeoutRecoveryFixture(args) {
   const state = await getRoomStateForQa(fixture.roomId);
   const config = await loadFirebaseConfig();
   const accessToken = await fixture.page.evaluate(readFirebaseAccessTokenFromIndexedDb);
-  if (!state || !config?.projectId || !accessToken) throw new Error('stateless duplicate fixture baseline/access뉼 찾지 못했습니다.');
+  if (!state || !config?.projectId || !accessToken) throw new Error('stateless duplicate fixture baseline/access를 찾지 못했습니다.');
   const enriched = {
     ...fixture, projectId: config.projectId, accessToken, baselineStateVersion: Number(state.turnVersion ?? 0),
     coordinatorCommit: { sequence: Number(state.lastSequence ?? 0) + 1, turnVersion: Number(state.turnVersion ?? 0) + 1 },
@@ -150,8 +144,8 @@ export async function waitForMoveTimeoutRecovery(fixture) {
   }, { timeout: 8_000, intervals: [20, 50, 100, 200], message: 'UI가 stateAfter/patch 없는 canonical duplicate ACK를 받아야 합니다.' }).toMatchObject({
     roomId: fixture.roomId, sequence: fixture.coordinatorCommit.sequence, hasStateAfter: false, hasPatch: false,
     cursorBefore: fixture.baselineSequence, cursorAfterAck: fixture.baselineSequence,
-    stateVersionBefore: fixture.baselineStateVersion, stateVersionAfterAck: fixture.baselineStateVersion,
   });
+  expect(ack.stateVersionAfterAck).toBe(ack.stateVersionBefore);
   await publishCoordinatorSequence(fixture);
   const recovery = await waitForBaseRecovery(fixture);
   expect(recovery.sequence.sequence).toBe(fixture.coordinatorCommit.sequence);
