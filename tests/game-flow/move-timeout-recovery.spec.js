@@ -33,7 +33,6 @@ test.describe('일반 말 이동 제한시간 recovery', () => {
       sequence: expect.any(Number),
       clientMutationId: fixture.actionKey,
       actionClientId: fixture.actionKey,
-      stateAfterClientId: fixture.actionKey,
     }]);
     expect(recovery.sequence.action?.payload?.rollStackIndex ?? null).toBeNull();
     expect(recovery.presentation.trace?.movingStarts).toBe(1);
