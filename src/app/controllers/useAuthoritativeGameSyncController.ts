@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
-import { commitAuthoritativeGameAction, getGameSequencesSince, getLatestGameState, withGameSequenceReplayCache, type GameAction } from '../../features/room/services/roomService';
+import { commitAuthoritativeGameAction, withGameSequenceReplayCache, type GameAction } from '../../features/room/services/roomService';
 import { getTurnRecoveryDeadlineAt } from '../../features/room/services/roomTiming';
 import { attachClientActionStartedAt } from '../../features/room/services/turnActionStartedAtPolicy';
 import {
@@ -17,7 +17,6 @@ import { getAuthoritativeSnapshot } from '../flows/authoritativeSnapshot';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
 import {
   classifyLocalMoveCommitAck,
-  makeStatelessDuplicateRecoveryKey,
   shouldReleaseLocalMovePending,
 } from '../flows/localMoveCommitAck';
 import { localMovePresentationLifecycle } from '../flows/localMovePresentationLifecycle';
@@ -112,61 +111,11 @@ const getLocalDisplayFinalState = (state: SequenceStateSnapshot): SequenceStateS
   trapEffect: null,
 });
 
-const normalizeMoveIdentityPiece = (value: unknown) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const piece = value as Record<string, unknown>;
-  return {
-    id: String(piece.id ?? ''),
-    nodeId: String(piece.nodeId ?? ''),
-    started: piece.started === true,
-    finished: piece.finished === true,
-    previousNodeId: typeof piece.previousNodeId === 'string' ? piece.previousNodeId : '',
-  };
-};
-
-const matchesStatelessDuplicateMoveIdentity = (
-  record: NonNullable<ReturnType<typeof localMoveLedger.get>>,
-  sequenceEvent: unknown,
-) => {
-  if (!sequenceEvent || typeof sequenceEvent !== 'object' || Array.isArray(sequenceEvent)) return false;
-  const event = sequenceEvent as Record<string, unknown>;
-  const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)
-    ? event.payload as Record<string, unknown>
-    : null;
-  if (event.type !== 'move_piece_resolved' || !payload) return false;
-  const pathNodeIds = Array.isArray(payload.pathNodeIds) ? payload.pathNodeIds.map(String) : [];
-  const movingGroupIds = Array.isArray(payload.movingGroupIds) ? payload.movingGroupIds.map(String) : [];
-  if (String(payload.pieceId ?? '') !== record.pieceId
-    || String(payload.fromNodeId ?? '') !== record.fromNodeId
-    || String(payload.toNodeId ?? '') !== record.toNodeId
-    || JSON.stringify(pathNodeIds) !== JSON.stringify(record.pathNodeIds)
-    || JSON.stringify(movingGroupIds) !== JSON.stringify(record.movingGroupIds)) return false;
-  const afterMovingPieces = Array.isArray(payload.afterMovingPieces) ? payload.afterMovingPieces : [];
-  const normalize = (pieces: unknown[]) => pieces
-    .map(normalizeMoveIdentityPiece)
-    .filter((piece): piece is NonNullable<ReturnType<typeof normalizeMoveIdentityPiece>> => Boolean(piece && movingGroupIds.includes(piece.id)))
-    .sort((left, right) => left.id.localeCompare(right.id));
-  return JSON.stringify(normalize(afterMovingPieces)) === JSON.stringify(normalize(record.finalPieces));
-};
-
 export function useAuthoritativeGameSyncController(params: Params) {
   const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
   applySyncedStateSnapshotRef.current = params.applySyncedStateSnapshot;
   const latestSyncedStateRef = useRef<SequenceStateSnapshot | null>(null);
   const hardResyncPromisesRef = useRef<Map<string, Promise<boolean>>>(new Map());
-  const statelessDuplicateRecoveryPromisesRef = useRef<Map<string, Promise<SequenceStateSnapshot | null>>>(new Map());
-  const authoritativeLifecycleKeyRef = useRef('');
-
-  const rememberAuthoritativeLifecycle = useCallback((state: SequenceStateSnapshot) => {
-    const startRequestVersion = Number(state.startRequestVersion ?? 0);
-    const startRequestId = String((state as SequenceStateSnapshot & { startRequestId?: unknown }).startRequestId ?? '');
-    if (!startRequestVersion || !startRequestId) return;
-    const lifecycleKey = `${startRequestVersion}:${startRequestId}`;
-    if (authoritativeLifecycleKeyRef.current && authoritativeLifecycleKeyRef.current !== lifecycleKey) {
-      statelessDuplicateRecoveryPromisesRef.current.clear();
-    }
-    authoritativeLifecycleKeyRef.current = lifecycleKey;
-  }, []);
 
   const runLocalMoveHardResync = useCallback((roomId: string, actionKey: string, reason: string) => {
     const existing = hardResyncPromisesRef.current.get(actionKey);
@@ -214,10 +163,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     const identity = getAuthoritativeDeliveryIdentity(value);
     if (!identity.clientMutationId || !localMoveLedger.has(identity.clientMutationId)) return null;
     const authoritativeState = explicitState ?? getAuthoritativeSnapshot<SequenceStateSnapshot>(value, null);
-    if (!authoritativeState) return null;
-
-    rememberAuthoritativeLifecycle(authoritativeState);
-    latestSyncedStateRef.current = authoritativeState;
+    if (authoritativeState) latestSyncedStateRef.current = authoritativeState;
     params.lastAppliedSequenceRef.current = Math.max(params.lastAppliedSequenceRef.current, identity.sequence);
     params.lastAppliedStateVersionRef.current = Math.max(params.lastAppliedStateVersionRef.current, identity.stateVersion);
 
@@ -225,7 +171,9 @@ export function useAuthoritativeGameSyncController(params: Params) {
       clientMutationId: identity.clientMutationId,
       sequence: identity.sequence,
       stateVersion: identity.stateVersion,
-      resultFingerprint: makeLocalMoveResultFingerprint(authoritativeState as Record<string, unknown>),
+      resultFingerprint: authoritativeState
+        ? makeLocalMoveResultFingerprint(authoritativeState as Record<string, unknown>)
+        : undefined,
     });
     if (observed.status === 'mismatch') {
       void runLocalMoveHardResync(
@@ -242,130 +190,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
       params.acknowledgePendingLocalRemoteAction(identity.clientMutationId);
     }
     return authoritativeState;
-  }, [params.acknowledgePendingLocalRemoteAction, params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef, rememberAuthoritativeLifecycle, runLocalMoveHardResync]);
-
-  const recoverStatelessDuplicateLocalMove = useCallback((
-    roomId: string,
-    actionKey: string,
-    result: AuthoritativeCommitResult,
-  ) => {
-    const recoveryKey = makeStatelessDuplicateRecoveryKey({ roomId, actionKey, sequence: result.sequence });
-    if (!recoveryKey) return Promise.resolve(null);
-    const existing = statelessDuplicateRecoveryPromisesRef.current.get(recoveryKey);
-    if (existing) return existing;
-
-    const cursorBefore = params.lastAppliedSequenceRef.current;
-    const stateVersionBefore = params.lastAppliedStateVersionRef.current;
-    const traceTarget = globalThis as typeof globalThis & {
-      __YUT_STATELESS_DUPLICATE_ACK_TRACE__?: Array<Record<string, unknown>>;
-    };
-    const trace = Array.isArray(traceTarget.__YUT_STATELESS_DUPLICATE_ACK_TRACE__)
-      ? traceTarget.__YUT_STATELESS_DUPLICATE_ACK_TRACE__
-      : [];
-    const traceEntry: Record<string, unknown> = {
-      roomId,
-      actionKey,
-      sequence: Number(result.sequence ?? 0),
-      hasStateAfter: Boolean(result.stateAfter && typeof result.stateAfter === 'object'),
-      hasPatch: Boolean(result.patch && typeof result.patch === 'object'),
-      cursorBefore,
-      cursorAfterAck: params.lastAppliedSequenceRef.current,
-      stateVersionBefore,
-      stateVersionAfterAck: params.lastAppliedStateVersionRef.current,
-    };
-    trace.push(traceEntry);
-    traceTarget.__YUT_STATELESS_DUPLICATE_ACK_TRACE__ = trace.slice(-8);
-
-    const aliasedResult = aliasTimeoutRollMutationIds(roomId, {
-      ...result,
-      payload: {
-        ...(result.payload ?? {}),
-        clientMutationId: actionKey,
-      },
-    });
-    const recovery = (async () => {
-      const targetSequence = Number(result.sequence ?? 0);
-      for (let attempt = 0; attempt < 4; attempt += 1) {
-        const localSequence = params.lastAppliedSequenceRef.current;
-        const sequences = await getGameSequencesSince(
-          roomId,
-          getSequenceRefetchAfter(Math.min(localSequence, targetSequence - 1)),
-        );
-        if (params.activeRoomIdRef.current !== roomId) return null;
-        const targetEvent = sequences.find((sequence) => Number(sequence.sequence ?? 0) === targetSequence);
-        if (targetEvent?.patch) {
-          const baseState = latestSyncedStateRef.current ?? await getLatestGameState(roomId) as SequenceStateSnapshot | null;
-          const patchedState = getAuthoritativeSnapshot<SequenceStateSnapshot>({ patch: targetEvent.patch }, baseState);
-          if (patchedState) {
-            const authoritativeState = aliasTimeoutRollMutationIds(roomId, {
-              ...patchedState,
-              lastSequence: targetSequence,
-              turnVersion: Number(result.turnVersion ?? patchedState.turnVersion ?? 0),
-              lastClientMutationId: actionKey,
-            });
-            const record = localMoveLedger.get(actionKey);
-            const actualFingerprint = makeLocalMoveResultFingerprint(authoritativeState as Record<string, unknown>);
-            const moveIdentityMatched = Boolean(record && matchesStatelessDuplicateMoveIdentity(record, targetEvent));
-            traceEntry.fullFingerprintMatched = Boolean(record && record.resultFingerprint === actualFingerprint);
-            traceEntry.moveIdentityMatched = moveIdentityMatched;
-            if (!record || !moveIdentityMatched) {
-              await runLocalMoveHardResync(
-                roomId,
-                actionKey,
-                `서버 move_piece sequence identity가 로컬 이동과 일치하지 않습니다. actionKey=${actionKey}`,
-              );
-              return authoritativeState;
-            }
-
-            rememberAuthoritativeLifecycle(authoritativeState);
-            latestSyncedStateRef.current = authoritativeState;
-            params.lastAppliedSequenceRef.current = Math.max(params.lastAppliedSequenceRef.current, targetSequence);
-            params.lastAppliedStateVersionRef.current = Math.max(
-              params.lastAppliedStateVersionRef.current,
-              Number(result.turnVersion ?? authoritativeState.turnVersion ?? 0),
-            );
-            const observed = localMoveLedger.observeAuthoritativeResult({
-              clientMutationId: actionKey,
-              sequence: targetSequence,
-              stateVersion: Number(result.turnVersion ?? authoritativeState.turnVersion ?? 0),
-              resultFingerprint: record.resultFingerprint,
-            });
-            if (observed.status !== 'matched') {
-              await runLocalMoveHardResync(roomId, actionKey, `서버 move_piece identity 확인을 완료하지 못했습니다. actionKey=${actionKey}`);
-              return authoritativeState;
-            }
-            if (observed.record && shouldReleaseLocalMovePending(observed.record)) {
-              settleMoveActionClaim(actionKey);
-              params.acknowledgePendingLocalRemoteAction(actionKey);
-            }
-
-            await localMovePresentationLifecycle.waitForSettlement();
-            if (params.activeRoomIdRef.current !== roomId) return null;
-            latestSyncedStateRef.current = authoritativeState;
-            applySyncedStateSnapshotRef.current(authoritativeState, {
-              allowMoveAnimation: false,
-              allowRollAnimation: false,
-              updateVersion: false,
-              updateSequence: false,
-            });
-            return authoritativeState;
-          }
-        }
-        if (attempt < 3) await waitUntil(Date.now() + 50 * (attempt + 1));
-      }
-      return null;
-    })().catch((error) => {
-      console.warn('상태 없는 duplicate move_piece ACK의 sequence-first 복구에 실패했습니다.', {
-        roomId,
-        actionKey,
-        sequence: result.sequence,
-        error,
-      });
-      return null;
-    });
-    statelessDuplicateRecoveryPromisesRef.current.set(recoveryKey, recovery);
-    return recovery;
-  }, [params.acknowledgePendingLocalRemoteAction, params.activeRoomIdRef, params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef, rememberAuthoritativeLifecycle, runLocalMoveHardResync]);
+  }, [params.acknowledgePendingLocalRemoteAction, params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef, runLocalMoveHardResync]);
 
   const prepareAndFinalizeLocalMove = useCallback((roomId: string, action: CommittableGameAction) => {
     if (action.type !== 'move_piece') return false;
@@ -450,7 +275,6 @@ export function useAuthoritativeGameSyncController(params: Params) {
         lastAppliedSequence: params.lastAppliedSequenceRef.current,
         deferred: false,
       })) return;
-      rememberAuthoritativeLifecycle(wakeSnapshot);
       latestSyncedStateRef.current = wakeSnapshot;
       applySyncedStateSnapshotRef.current(wakeSnapshot, {
         allowMoveAnimation: false,
@@ -459,7 +283,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
         updateSequence: false,
       });
     }, 0);
-  }, [acknowledgeLocalMoveEcho, clearAuthoritativeApplyWake, getDeliveryClassification, params.activeRoomIdRef, params.lastAppliedSequenceRef, rememberAuthoritativeLifecycle]);
+  }, [acknowledgeLocalMoveEcho, clearAuthoritativeApplyWake, getDeliveryClassification, params.activeRoomIdRef, params.lastAppliedSequenceRef]);
 
   const queuesRef = useRef<ReturnType<typeof createAuthoritativeGameActionQueues<CommittableGameAction, AuthoritativeCommitResult>> | null>(null);
   if (!queuesRef.current) {
@@ -480,8 +304,6 @@ export function useAuthoritativeGameSyncController(params: Params) {
     localMovePresentationLifecycle.cancel();
     localMoveLedger.clearRoom(previousRoomId);
     hardResyncPromisesRef.current.clear();
-    statelessDuplicateRecoveryPromisesRef.current.clear();
-    authoritativeLifecycleKeyRef.current = '';
     latestSyncedStateRef.current = null;
     queuesRef.current?.reset();
     setManualSequenceSyncing(false);
@@ -501,9 +323,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
   const rememberAndApplySyncedStateSnapshot = useCallback((state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => {
     const roomId = params.activeRoomIdRef.current;
     const rawAliasedState = aliasTimeoutRollMutationIds(roomId, state);
-    const aliasedState = getAuthoritativeSnapshot<SequenceStateSnapshot>(rawAliasedState, null);
-    if (!aliasedState) return;
-    rememberAuthoritativeLifecycle(aliasedState);
+    const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;
     const classification = getDeliveryClassification(aliasedState);
     if (classification === 'local-echo') {
       acknowledgeLocalMoveEcho(roomId, aliasedState, aliasedState);
@@ -512,7 +332,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     if (classification === 'stale') return;
     latestSyncedStateRef.current = aliasedState;
     applySyncedStateSnapshotRef.current(aliasedState, options);
-  }, [acknowledgeLocalMoveEcho, getDeliveryClassification, params.activeRoomIdRef, rememberAuthoritativeLifecycle]);
+  }, [acknowledgeLocalMoveEcho, getDeliveryClassification, params.activeRoomIdRef]);
 
   useGameSyncSubscription({
     activeRoomId: params.activeRoomId,
@@ -521,9 +341,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     applyingSyncedStateRef: params.applyingSyncedStateRef,
     replayMissingSequencesThenApply: async (state, localSequence, remoteSequence) => {
       const rawAliasedState = aliasTimeoutRollMutationIds(params.activeRoomId, state);
-      const aliasedState = getAuthoritativeSnapshot<SequenceStateSnapshot>(rawAliasedState, null);
-      if (!aliasedState) return;
-      rememberAuthoritativeLifecycle(aliasedState);
+      const aliasedState = getAuthoritativeSnapshot(rawAliasedState, latestSyncedStateRef.current) ?? rawAliasedState;
       const classification = getDeliveryClassification(aliasedState);
       if (classification === 'local-echo') {
         acknowledgeLocalMoveEcho(params.activeRoomId, aliasedState, aliasedState);
@@ -599,8 +417,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
             actionType: attachedAction.type,
             actionKey,
             ownsLocalMove: localMoveLedger.has(actionKey),
-            status: result.status,
-            sequence: result.sequence,
+            status: aliasedResult.status,
+            sequence: aliasedResult.sequence,
             stateAfter: aliasedResult.stateAfter,
             patch: aliasedResult.patch,
           });
@@ -614,10 +432,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
             });
             return;
           }
-          if (ackClassification === 'stateless-duplicate') {
-            await recoverStatelessDuplicateLocalMove(roomId, actionKey, aliasedResult);
-            return;
-          }
+          if (ackClassification === 'stateless-duplicate') return;
           if (attachedAction.type === 'move_piece'
             && actionKey
             && localMoveLedger.has(actionKey)
@@ -667,7 +482,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
         handleFinally();
       }
     })();
-  }, [acknowledgeLocalMoveEcho, commitCanonicalAction, prepareAndFinalizeLocalMove, recoverStatelessDuplicateLocalMove, runLocalMoveHardResync]);
+  }, [acknowledgeLocalMoveEcho, commitCanonicalAction, prepareAndFinalizeLocalMove, runLocalMoveHardResync]);
 
   const applyAuthoritativeResultSequence = useCallback(async (result: AuthoritativeCommitResult) => {
     const roomId = params.activeRoomIdRef.current;
@@ -679,26 +494,20 @@ export function useAuthoritativeGameSyncController(params: Params) {
         actionType: 'move_piece',
         actionKey: identity.clientMutationId,
         ownsLocalMove: localMoveLedger.has(identity.clientMutationId),
-        status: result.status,
-        sequence: result.sequence,
-        stateAfter: result.stateAfter,
-        patch: result.patch,
+        status: aliasedResult.status,
+        sequence: aliasedResult.sequence,
+        stateAfter: aliasedResult.stateAfter,
+        patch: aliasedResult.patch,
       });
-      if (ackClassification === 'stateless-duplicate') {
-        return recoverStatelessDuplicateLocalMove(roomId, identity.clientMutationId, result);
-      }
+      if (ackClassification === 'stateless-duplicate') return null;
       return acknowledgeLocalMoveEcho(roomId, aliasedResult);
     }
     if (classification === 'stale') return null;
     const applied = await params.applyAuthoritativeResultSequence(aliasedResult);
-    const appliedState = getAuthoritativeSnapshot<SequenceStateSnapshot>(applied, null)
-      ?? getAuthoritativeSnapshot<SequenceStateSnapshot>(aliasedResult, latestSyncedStateRef.current);
-    if (appliedState) {
-      rememberAuthoritativeLifecycle(appliedState);
-      latestSyncedStateRef.current = appliedState;
-    }
+    const appliedState = getAuthoritativeSnapshot(applied, getAuthoritativeSnapshot(aliasedResult, latestSyncedStateRef.current));
+    if (appliedState) latestSyncedStateRef.current = appliedState;
     return applied;
-  }, [acknowledgeLocalMoveEcho, getDeliveryClassification, params.activeRoomIdRef, params.applyAuthoritativeResultSequence, recoverStatelessDuplicateLocalMove, rememberAuthoritativeLifecycle]);
+  }, [acknowledgeLocalMoveEcho, getDeliveryClassification, params.activeRoomIdRef, params.applyAuthoritativeResultSequence]);
 
   const syncLatestAuthoritativeState = useCallback((reason: string, options?: SyncLatestOptions) => {
     const roomId = params.activeRoomIdRef.current;
