@@ -21,6 +21,7 @@ type StatelessDuplicateRecoveryKeyInput = {
 };
 
 type QaStatelessDuplicateTraceTarget = typeof globalThis & {
+  __YUT_CAPTURE_STATELESS_DUPLICATE_ACK__?: boolean;
   __YUT_STATELESS_DUPLICATE_ACK__?: { actionKey: string; sequence: number };
 };
 
@@ -55,8 +56,9 @@ export function classifyLocalMoveCommitAck({
   const hasState = hasAuthoritativeStatePayload(stateAfter) || hasAuthoritativeStatePayload(patch);
   if ((status === 'committed' || status === 'duplicate') && hasState) return 'stateful';
   if (status === 'duplicate' && !hasState) {
-    if (typeof window !== 'undefined' && import.meta.env.MODE === 'qa') {
-      (globalThis as QaStatelessDuplicateTraceTarget).__YUT_STATELESS_DUPLICATE_ACK__ = { actionKey, sequence: sequenceNumber };
+    const traceTarget = globalThis as QaStatelessDuplicateTraceTarget;
+    if (traceTarget.__YUT_CAPTURE_STATELESS_DUPLICATE_ACK__ === true) {
+      traceTarget.__YUT_STATELESS_DUPLICATE_ACK__ = { actionKey, sequence: sequenceNumber };
     }
     return 'stateless-duplicate';
   }
