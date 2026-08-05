@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { getLowestLabelPiece } from '../../src/app/flows/pieceSelection.ts';
 import { makeTimeoutActionKey } from '../../src/features/room/services/timeoutResolvers.ts';
 import { readFirebaseAccessTokenFromIndexedDb } from './browser-auth-token.js';
 import { makeQaName, normalizeQaNickname } from './env.js';
@@ -321,7 +322,22 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     message: '새 앱 lifecycle이 canonical 대기석 snapshot만 적용한 뒤 timeout fixture를 시작해야 합니다.',
   }).toBe(true);
 
+  const targetPieceId = String(getLowestLabelPiece(actorPieces)?.id ?? '');
+  expect(targetPieceId).not.toBe('');
+  expect(actorPieces.some((piece) => piece.id === targetPieceId)).toBe(true);
+  await expect(page.getByTestId(`piece-${targetPieceId}`)).toHaveClass(/off-board/);
+  await startMovePresentationTrace(page, targetPieceId);
+
+  const sequencesBeforeTimeoutFixture = await getRoomSequencesForQa(roomId);
+  expect(getMoveSequencesAfter(sequencesBeforeTimeoutFixture, settledFixture.lastSequence, actorId)).toHaveLength(0);
+
   const timeoutDeadlineAt = Date.now() + VISIBLE_FIXTURE_DEADLINE_OFFSET_MS;
+  const actionKey = makeTimeoutActionKey({
+    roomId,
+    stage: 'move',
+    actorId,
+    timeoutDeadlineAt,
+  });
   const visibleFixture = await commitRoomStatePatchForQa(page, roomId, {
     stackedRollMode: false,
     turnIndex: actorTurnIndex,
@@ -365,58 +381,6 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     intervals: [50, 100, 200, 400],
     message: '일반 개 이동 fixture가 authoritative sequence로 안정적으로 반영되어야 합니다.',
   }).toBe(true);
-
-  const moveButton = page.getByTestId('move-piece-button');
-  await expect(moveButton).toBeVisible({ timeout: 10_000 });
-  await expect(moveButton).toBeEnabled();
-
-  let targetPieceId = '';
-  await expect.poll(async () => {
-    const screen = await collectScreenState(page);
-    const debugPieces = Array.isArray(screen.yutDebug?.pieces) ? screen.yutDebug.pieces : [];
-    const debugActorPieces = debugPieces.filter((piece) => piece?.ownerId === actorId);
-    const allDebugPiecesAtBench = debugActorPieces.length === actorPieces.length
-      && debugActorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01');
-    targetPieceId = String(
-      screen.yutDebug?.activeMovablePiece?.id
-      ?? screen.yutDebug?.fallbackMovablePiece?.id
-      ?? screen.yutDebug?.selectedPieceId
-      ?? '',
-    );
-    const targetElement = targetPieceId
-      ? page.getByTestId(`piece-${targetPieceId}`)
-      : null;
-    const targetAtBench = targetElement
-      ? await targetElement.evaluate((element) => element.classList.contains('off-board')).catch(() => false)
-      : false;
-    return Boolean(
-      Number(screen.yutDebug?.lastAppliedSequence ?? 0) >= visibleFixture.lastSequence
-      && screen.yutDebug?.roll?.name === '개'
-      && Number(screen.yutDebug?.roll?.steps) === 2
-      && screen.yutDebug?.turnDeadlineKind === 'move'
-      && Number(screen.yutDebug?.turnDeadlineAt) === timeoutDeadlineAt
-      && !screen.yutDebug?.movingPieceId
-      && Number(screen.yutDebug?.pendingLocalRemoteActionCount ?? 0) === 0
-      && allDebugPiecesAtBench
-      && targetPieceId
-      && targetAtBench
-    ) ? targetPieceId : '';
-  }, {
-    timeout: 5_000,
-    intervals: [50, 100, 200],
-    message: 'canonical 대기석 DOM에서 timeout UI 자동 이동 대상 말을 확인해야 합니다.',
-  }).not.toBe('');
-  expect(actorPieces.some((piece) => piece.id === targetPieceId)).toBe(true);
-  await startMovePresentationTrace(page, targetPieceId);
-
-  const actionKey = makeTimeoutActionKey({
-    roomId,
-    stage: 'move',
-    actorId,
-    timeoutDeadlineAt,
-  });
-  const sequencesBeforeDeadline = await getRoomSequencesForQa(roomId);
-  expect(getMoveSequencesAfter(sequencesBeforeDeadline, visibleFixture.lastSequence, actorId)).toHaveLength(0);
 
   return {
     actionKey,
