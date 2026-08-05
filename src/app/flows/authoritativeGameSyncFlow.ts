@@ -1,3 +1,4 @@
+import { canonicalizeTimeoutMoveAction } from '../../features/room/services/timeoutRollActionIdentity';
 import { waitForNextRenderTask } from './renderTaskBoundary';
 
 export type RoomIdRef = { current: string };
@@ -23,7 +24,8 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
   };
 
   const commitQueuedAuthoritativeGameAction = (roomId: string, action: TAction) => {
-    const runCommit = () => params.commit(roomId, action);
+    const committedAction = canonicalizeTimeoutMoveAction(roomId, action);
+    const runCommit = () => params.commit(roomId, committedAction);
     const queuedCommit = commitQueue.then(runCommit, runCommit);
     commitQueue = queuedCommit.then(() => undefined, () => undefined);
     return queuedCommit;

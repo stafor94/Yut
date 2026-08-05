@@ -6,6 +6,50 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 
 ---
 
+## 2026-08-05 - timeout 이동 action identity 분리로 동일 말 되감기·반복 재생
+
+### Symptom
+
+- 온라인 이동 선택 제한시간 만료 시 내 말만 있는 윷판에서 같은 말이 `대기석 → n02 → n03 → 대기석 → n02 → n03`으로 반복 이동했다.
+- 상대 말은 목적지를 포함해 윷판에 없었으며 capture sequence, capture effect, `.capture-ghost`가 발생하지 않았다.
+- 애니메이션 모양만 보고 잡기로 분류했던 이전 분석은 실제 piece 위치 전이와 authoritative sequence를 확인하지 않은 오분류였다.
+
+### Confirmed root cause
+
+- 이동 마감 직전 UI 자동 이동은 일반 로컬 `move_piece:*` identity로 optimistic presentation을 시작했다.
+- `App.tsx`의 stalled-turn 복구와 `useStackedRollTimeoutRecovery.ts`의 coordinator 복구는 같은 authoritative deadline에 `timeout:v1:<room>:<actor>:move:<deadline>` identity를 사용했다.
+- 따라서 하나의 timeout 사건이 서로 다른 logical action으로 제출될 수 있었고, commit/subscription/replay에서 canonical 복구 결과가 최초 로컬 이동과 별도 action으로 보이면서 말 상태가 대기석으로 되감긴 뒤 presentation이 재시작됐다.
+- PR #1536의 capture 중복 방지는 별도 문제이며 이번 timeout 이동 identity 경합의 원인이나 수정 경로가 아니다.
+
+### Required state invariants
+
+- UI deadline auto move, stalled-turn recovery, coordinator recovery는 같은 room, actor, stage, authoritative deadline으로 만든 기존 canonical timeout identity를 공유한다.
+- 로컬 `move_piece:*` identity는 최초 optimistic presentation 소유권에만 유지하고, 서버 제출 직전에 canonical timeout identity로 정규화한다.
+- canonical commit/subscription/replay echo는 최초 로컬 presentation identity로 alias되어 같은 이동을 다시 시작하지 않는다.
+- timeout identity에 `Date.now()`, 렌더 횟수·상태, 최신 로그, `movingPieceId`, 임의 UUID를 사용하지 않는다.
+- 방 이탈이나 새 게임 같은 실제 lifecycle 경계 전에는 alias ledger를 transient rerender나 snapshot echo 때문에 정리하지 않는다.
+
+### Do not try again
+
+- 상대 말 존재 여부와 실제 piece 위치 전이를 확인하지 않고 이동 모양만으로 잡기라고 판단하지 않는다.
+- `captureEffect`, `.capture-ghost`, 잡기 복귀 애니메이션을 timeout 이동 반복의 우회 차단점으로 사용하지 않는다.
+- timeout 시간, 이동 애니메이션 속도, sleep, assertion 완화로 identity 경합을 숨기지 않는다.
+- 호출 시점마다 달라지는 값으로 UI·stalled·coordinator 경로의 action identity를 각각 만들지 않는다.
+
+### Verification checklist
+
+- [x] 실제 deadline marker와 authoritative queue를 실행해 UI 로컬 ID와 canonical server ID 정규화를 검증하는 unit test
+- [x] sequence·로그·`movingPieceId` 변화와 무관하게 deadline identity가 고정되는 unit test
+- [x] Desktop/Galaxy 실제 timeout fixture에서 모든 `move_piece_resolved` sequence와 세 ID를 검사
+- [x] `movingPieceId` 시작 1회, 대기석 복귀 0회, `n02 → n03` 재생 1회, canonical/DOM 최종 위치 일치 검사
+- [x] 상대 말 부재, capture sequence/effect와 `.capture-ghost` 미생성 검사
+- [ ] Build and unit job succeeds
+- [ ] Online core Desktop timeout recovery succeeds
+- [ ] Mobile Galaxy timeout recovery succeeds
+- [ ] Main Branch QA Desktop/Galaxy/Safari succeeds
+
+---
+
 ## 2026-08-04 - 요청 오해, 반복 조회와 대체 도구 전환 루프
 
 ### Symptom
