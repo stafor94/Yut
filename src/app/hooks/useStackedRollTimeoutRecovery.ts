@@ -44,6 +44,18 @@ type StackedRollTimeoutRecoveryParams = {
   winner: string;
 };
 
+type QaMoveTimeoutRecoveryTrigger = {
+  actionKey: string;
+  actorId: string;
+  invoke: () => ReturnType<typeof commitCoordinatorMoveTimeoutRecovery>;
+  roomId: string;
+  timeoutDeadlineAt: number;
+};
+
+const getQaMoveTimeoutRecoveryWindow = () => window as typeof window & {
+  __YUT_QA_MOVE_TIMEOUT_RECOVERY__?: QaMoveTimeoutRecoveryTrigger;
+};
+
 const getActorLogPayload = (seat: Seat) => ({
   actorLabel: seat.label,
   actorName: seat.name,
@@ -206,6 +218,16 @@ export function useStackedRollTimeoutRecovery({
         ...getActorLogPayload(activeSeat),
       },
     };
+    const qaTrigger: QaMoveTimeoutRecoveryTrigger | null = import.meta.env.MODE === 'qa'
+      ? {
+        actionKey,
+        actorId: activeSeat.id,
+        invoke: () => commitCoordinatorMoveTimeoutRecovery(roomId, action),
+        roomId,
+        timeoutDeadlineAt: turnDeadlineAt,
+      }
+      : null;
+    if (qaTrigger) getQaMoveTimeoutRecoveryWindow().__YUT_QA_MOVE_TIMEOUT_RECOVERY__ = qaTrigger;
 
     let cancelled = false;
     let timer: number | null = null;
@@ -284,6 +306,9 @@ export function useStackedRollTimeoutRecovery({
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);
       clearInFlight();
+      if (qaTrigger && getQaMoveTimeoutRecoveryWindow().__YUT_QA_MOVE_TIMEOUT_RECOVERY__ === qaTrigger) {
+        delete getQaMoveTimeoutRecoveryWindow().__YUT_QA_MOVE_TIMEOUT_RECOVERY__;
+      }
     };
   }, [
     activeSeat,
