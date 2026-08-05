@@ -4,27 +4,6 @@ type SnapshotRecord = Record<string, unknown> & {
   patch?: SnapshotRecord | null;
 };
 
-const ACK_METADATA_KEYS = new Set([
-  'status',
-  'sequence',
-  'turnVersion',
-  'lastSequence',
-  'clientMutationId',
-  'lastClientMutationId',
-  'reason',
-  'payload',
-  'sequenceEvent',
-]);
-
-const isSnapshotRecord = (value: unknown): value is SnapshotRecord => Boolean(
-  value && typeof value === 'object' && !Array.isArray(value),
-);
-
-export const hasAuthoritativeStatePayload = (value: unknown): value is SnapshotRecord => (
-  isSnapshotRecord(value)
-  && Object.keys(value).some((key) => !ACK_METADATA_KEYS.has(key))
-);
-
 const mergePartialSnapshot = <T extends object>(
   snapshot: SnapshotRecord,
   fallback: T | null,
@@ -37,16 +16,16 @@ export function getAuthoritativeSnapshot<T extends object>(
   value: unknown,
   fallback: T | null,
 ): T | null {
-  if (!isSnapshotRecord(value)) return fallback;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
   const record = value as SnapshotRecord;
-  if (hasAuthoritativeStatePayload(record.stateAfter)) {
+  if (record.stateAfter && typeof record.stateAfter === 'object' && !Array.isArray(record.stateAfter)) {
     return mergePartialSnapshot(record.stateAfter, fallback);
   }
-  if (hasAuthoritativeStatePayload(record.patch)) {
+  if (record.patch && typeof record.patch === 'object' && !Array.isArray(record.patch)) {
     return mergePartialSnapshot(record.patch, fallback);
   }
-  if (hasAuthoritativeStatePayload(record)) {
+  if ('pieces' in record || 'lastSequence' in record || 'turnVersion' in record) {
     return mergePartialSnapshot(record, fallback);
   }
-  return null;
+  return fallback;
 }
