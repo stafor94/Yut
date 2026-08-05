@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { buildAuthoritativeApplyWakeSnapshot } from '../../src/app/flows/authoritativeApplyWakeFlow';
 import {
+  classifyLocalMoveCommitAck,
   shouldConsumeLocalMoveCommitAck,
   shouldReleaseLocalMovePending,
 } from '../../src/app/flows/localMoveCommitAck';
@@ -12,6 +14,7 @@ test('실행 클라이언트가 소유한 move_piece 성공 결과는 ACK로 소
     ownsLocalMove: true,
     status: 'committed',
     sequence: 5,
+    stateAfter: { pieces: [] },
   }), true);
   assert.equal(shouldConsumeLocalMoveCommitAck({
     actionType: 'move_piece',
@@ -19,7 +22,24 @@ test('실행 클라이언트가 소유한 move_piece 성공 결과는 ACK로 소
     ownsLocalMove: true,
     status: 'duplicate',
     sequence: 5,
+    patch: { roll: null },
   }), true);
+});
+
+test('metadata-only duplicate는 sequence pipeline이 적용할 때까지 상태를 선점하지 않는다', () => {
+  const duplicate = {
+    actionType: 'move_piece',
+    actionKey: 'move_piece:P1:4',
+    ownsLocalMove: true,
+    status: 'duplicate',
+    sequence: 5,
+  };
+  assert.equal(classifyLocalMoveCommitAck(duplicate), 'stateless-duplicate');
+  assert.equal(shouldConsumeLocalMoveCommitAck(duplicate), false);
+  assert.equal(buildAuthoritativeApplyWakeSnapshot(
+    { status: 'duplicate', sequence: 5, turnVersion: 8 },
+    { pieces: [], lastSequence: 4 },
+  ), null);
 });
 
 test('소유하지 않은 이동과 실패 결과는 기존 callback 파이프라인에 남긴다', () => {

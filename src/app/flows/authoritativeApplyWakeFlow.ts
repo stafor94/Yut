@@ -1,6 +1,24 @@
-type SnapshotRecord = Record<string, unknown>;
+type SnapshotRecord = Record<string, unknown> & {
+  stateAfter?: unknown;
+  patch?: unknown;
+};
+
+const ACK_METADATA_KEYS = new Set([
+  'status',
+  'sequence',
+  'turnVersion',
+  'lastSequence',
+  'clientMutationId',
+  'lastClientMutationId',
+  'reason',
+  'payload',
+  'sequenceEvent',
+]);
 
 const isRecord = (value: unknown): value is SnapshotRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value));
+const hasStatePayload = (value: unknown): value is SnapshotRecord => (
+  isRecord(value) && Object.keys(value).some((key) => !ACK_METADATA_KEYS.has(key))
+);
 
 const cloneObjectValue = (value: unknown) => isRecord(value) ? { ...value } : value;
 
@@ -10,11 +28,14 @@ const cloneArrayValue = (value: unknown) => Array.isArray(value)
 
 const normalizeAppliedSnapshot = (appliedValue: unknown): SnapshotRecord | null => {
   if (!isRecord(appliedValue)) return null;
-  const appliedState = isRecord(appliedValue.stateAfter)
+  const appliedState = hasStatePayload(appliedValue.stateAfter)
     ? appliedValue.stateAfter
-    : isRecord(appliedValue.patch)
+    : hasStatePayload(appliedValue.patch)
       ? appliedValue.patch
-      : appliedValue;
+      : hasStatePayload(appliedValue)
+        ? appliedValue
+        : null;
+  if (!appliedState) return null;
   const appliedSequence = Number(appliedValue.sequence ?? appliedState.lastSequence ?? 0);
   return {
     ...appliedState,
