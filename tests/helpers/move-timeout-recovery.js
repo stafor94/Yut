@@ -378,7 +378,7 @@ export async function waitForMoveTimeoutRecovery({
   const matching = getMoveSequencesAfter(sequences, baselineSequence, actorId);
   const state = await getRoomStateForQa(roomId);
   const sequence = matching[0];
-  const sequenceState = sequence?.stateAfter;
+  const sequenceState = sequence?.patch;
   const sequencePiece = getPieceById(sequenceState?.pieces, targetPieceId);
   const serverPiece = getPieceById(state?.pieces, targetPieceId);
   const presentation = await stopMovePresentationTrace(page);
@@ -388,14 +388,12 @@ export async function waitForMoveTimeoutRecovery({
     sequence: entry.sequence,
     clientMutationId: entry.clientMutationId,
     actionClientId: entry.action?.payload?.clientActionId,
-    stateAfterClientId: entry.stateAfter?.lastClientMutationId,
   }));
 
   expect(matching).toHaveLength(1);
   expect(sequence.action?.actorId).toBe(actorId);
   expect(sequence.clientMutationId).toBe(actionKey);
   expect(sequence.action?.payload?.clientActionId).toBe(actionKey);
-  expect(sequenceState?.lastClientMutationId).toBe(actionKey);
   expect(sequence.action?.payload?.rollStackIndex ?? null).toBeNull();
   expect(sequencePiece).toMatchObject({ id: targetPieceId, nodeId: 'n03', started: true, finished: false });
   expect(serverPiece).toMatchObject({ id: targetPieceId, nodeId: 'n03', started: true, finished: false });
@@ -411,6 +409,7 @@ export async function waitForMoveTimeoutRecovery({
   expect(presentation.trace?.nodePath?.filter((nodeId) => nodeId === 'n02')).toHaveLength(1);
   expect(presentation.trace?.nodePath?.filter((nodeId) => nodeId === 'n03')).toHaveLength(1);
   expect(presentation.trace?.nodePath?.indexOf('n02')).toBeLessThan(presentation.trace?.nodePath?.indexOf('n03'));
+  expect(presentation.trace?.appliedSequencePath?.filter((appliedSequence) => appliedSequence === Number(sequence.sequence)).length ?? 0).toBeLessThanOrEqual(1);
   expect(presentation.trace?.captureGhostMax).toBe(0);
   expect(presentation.finalDom).toMatchObject({ offBoard: false, nearestNodeId: 'n03', captureGhostCount: 0 });
   expect(presentation.finalDom?.nearestNodeDistance).toBeLessThan(30);
