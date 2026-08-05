@@ -1,9 +1,11 @@
 import { expect } from '@playwright/test';
 import { makeTimeoutActionKey } from '../../src/features/room/services/timeoutResolvers.ts';
+import { readFirebaseAccessTokenFromIndexedDb } from './browser-auth-token.js';
 import { makeQaName, normalizeQaNickname } from './env.js';
 import {
   createRoomFromLobby,
   collectScreenState,
+  expectAppShell,
   primeLobbyStorage,
   primeTurnOrderResultQueues,
 } from './ui.js';
@@ -19,12 +21,16 @@ const VISIBLE_FIXTURE_DEADLINE_OFFSET_MS = 9_000;
 const INITIAL_TIMEOUT_COUNT = 1;
 const EXPECTED_TIMEOUT_COUNT = INITIAL_TIMEOUT_COUNT + 1;
 
-const commitRoomStatePatchForQa = (page, roomId, patch, actorId) => commitAuthoritativeStatePatchForQa(
+const commitRoomStatePatchForQa = (page, roomId, patch, actorId, options = {}) => commitAuthoritativeStatePatchForQa(
   page,
   roomId,
   patch,
   actorId,
-  { fixtureName: 'move-timeout-recovery', errorLabel: 'normal move timeout fixture' },
+  {
+    fixtureName: 'move-timeout-recovery',
+    errorLabel: 'normal move timeout fixture',
+    ...options,
+  },
 );
 
 const getMoveSequencesAfter = (sequences, baselineSequence, actorId) => sequences.filter((sequence) => (
@@ -230,6 +236,10 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   expect(actorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01')).toBe(true);
   expect(opponentPieces.some((piece) => piece?.started && !piece?.finished)).toBe(false);
 
+  const accessToken = await page.evaluate(readFirebaseAccessTokenFromIndexedDb);
+  if (!accessToken) throw new Error('timeout fixture 재구성을 위한 호스트 Firebase access token을 찾지 못했습니다.');
+  await page.goto('about:blank');
+
   const settledFixture = await commitRoomStatePatchForQa(page, roomId, {
     stackedRollMode: false,
     turnIndex: actorTurnIndex,
@@ -250,7 +260,7 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     turnDeadlineAt: 0,
     turnActionTimeoutCountBySeatId: { [actorId]: INITIAL_TIMEOUT_COUNT },
     autoPlayBySeatId: { [actorId]: false },
-  }, actorId);
+  }, actorId, { accessToken });
 
   await expect.poll(async () => {
     const current = await getRoomStateForQa(roomId);
@@ -269,8 +279,11 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   }, {
     timeout: 10_000,
     intervals: [50, 100, 200, 400],
-    message: 'timeout fixture 전에 authoritative 말을 모두 대기석 상태로 정규화해야 합니다.',
+    message: '분리된 앱 lifecycle에서 authoritative 말을 모두 대기석 상태로 정규화해야 합니다.',
   }).toBe(true);
+
+  await expectAppShell(page);
+  await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
 
   await expect.poll(() => page.evaluate(({ expectedActorId, expectedPieceIds, minimumSequence }) => {
     const debug = window.__YUT_DEBUG_STATE__ ?? {};
@@ -305,7 +318,7 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   }), {
     timeout: 12_000,
     intervals: [50, 100, 200, 400],
-    message: '기존 이동 presentation이 끝나고 canonical 대기석 DOM이 적용된 뒤 timeout fixture를 시작해야 합니다.',
+    message: '새 앱 lifecycle이 canonical 대기석 snapshot만 적용한 뒤 timeout fixture를 시작해야 합니다.',
   }).toBe(true);
 
   const timeoutDeadlineAt = Date.now() + VISIBLE_FIXTURE_DEADLINE_OFFSET_MS;
