@@ -71,6 +71,7 @@
 기존 저장소 workflow와 branch event만 사용한다.
 
 - workflow 파일·트리거·권한·matrix 변경은 사용자 승인 전 금지한다.
+- Draft PR의 `opened`, `synchronize`, `reopened`에서는 Build/Unit fast gate만 실행한다. 로컬 검증과 전체 diff 검토를 마치고 `ready_for_review`로 전환하면 전체 PR Firebase emulator QA를 실행하며, 이후 Ready PR의 새 commit도 전체 PR QA를 다시 실행한다.
 - QA 상태 조회를 위한 임시 workflow, inspector PR, 임시 integration PR/branch, 빈 커밋을 만들지 않는다.
 - Run 상태나 로그를 출력하기 위한 Issue를 만들지 않는다. 자동화된 기존 CI 실패 Issue 외에는 사용자 요청 없이 Issue를 생성하지 않는다.
 - 테스트용 merge commit을 반복해서 만들거나 PR을 CI 실행 버튼처럼 사용하지 않는다.
@@ -125,7 +126,7 @@
 
 검증 후 커밋·push하고 Draft PR을 만든다. PR 본문에는 원인·영향, 핵심 변경, 파일, 테스트, 실행 결과, 미실행 검증과 위험을 적는다.
 
-병합 전에는 최신 전체 diff, 최신 `main` 반영, 충돌, 호출부 계약, 비동기 경로, 테스트 포함 lane, 필수 Checks, 보안·데이터 손실 위험을 다시 검토한다. 조건이 충족되면 Draft를 해제하고 병합한다.
+Draft 상태에서는 Build/Unit fast gate로 반복 수정의 기본 건전성을 확인한다. 로컬 검증과 최신 전체 diff 검토가 끝나면 ready로 전환해 전체 PR Firebase emulator QA를 시작한다. Ready 상태의 필수 Checks가 모두 성공하고 최신 `main` 반영, 충돌, 호출부 계약, 비동기 경로, 테스트 포함 lane, 보안·데이터 손실 위험 검토가 완료된 경우에만 병합한다.
 
 병합 후 해당 merge commit의 Main Branch QA가 `completed/success`인지, 필수 job과 신규·수정 테스트가 실제 실행됐는지 확인한다. `queued`, `in_progress`, `cancelled`, 상태 없음은 성공이 아니다. 실패하면 이 문서의 실패 처리와 중단선을 적용한다.
 

@@ -59,6 +59,7 @@ for (const group of ['online-core', 'mobile-galaxy', 'mobile-galaxy-timing', 'mo
   requireText(emulatorJob, `- group: ${group}`, `PR emulator matrix에 필수 group이 없습니다: ${group}`);
 }
 for (const contract of [
+  ["if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false", 'PR emulator matrix는 수동 실행 또는 Ready PR에서만 실행되어야 합니다.'],
   ['node-version: 22', 'PR emulator matrix가 Node 22를 사용하지 않습니다.'],
   ['npm ci', 'PR emulator matrix가 npm ci를 실행하지 않습니다.'],
   ['npx playwright install --with-deps chromium', 'PR emulator matrix가 Chromium을 설치하지 않습니다.'],
@@ -80,10 +81,13 @@ for (const contract of [
   ['name: Validate PR', '필수 status check는 PR Required QA / Validate PR을 생성해야 합니다.'],
   ['if: always()', 'Validate PR gate는 if: always()로 실행되어야 합니다.'],
   ['needs: [build-and-unit, firebase-emulator-qa]', 'Validate PR gate가 build/unit과 emulator matrix 전체를 의존하지 않습니다.'],
+  ["PR_IS_DRAFT: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}", 'Validate PR gate가 Draft 상태를 판별하지 않습니다.'],
   ['${{ needs.build-and-unit.result }}', 'Validate PR gate가 build/unit 결과를 확인하지 않습니다.'],
   ['${{ needs.firebase-emulator-qa.result }}', 'Validate PR gate가 emulator matrix 결과를 확인하지 않습니다.'],
   ['test "$BUILD_AND_UNIT_RESULT" = success', 'Validate PR gate가 build/unit의 success만 허용하지 않습니다.'],
-  ['test "$FIREBASE_EMULATOR_QA_RESULT" = success', 'Validate PR gate가 emulator matrix의 success만 허용하지 않습니다.'],
+  ['if [ "$PR_IS_DRAFT" = true ]; then', 'Validate PR gate가 Draft fast gate 분기를 사용하지 않습니다.'],
+  ['test "$FIREBASE_EMULATOR_QA_RESULT" = skipped', 'Draft PR에서 emulator matrix skipped 결과를 요구하지 않습니다.'],
+  ['test "$FIREBASE_EMULATOR_QA_RESULT" = success', 'Ready PR에서 emulator matrix success를 요구하지 않습니다.'],
 ]) requireText(gateJob, contract[0], contract[1]);
 
 for (const [jobId, block] of [['build-and-unit', buildJob], ['firebase-emulator-qa', emulatorJob], ['required-pr-gate', gateJob]]) {

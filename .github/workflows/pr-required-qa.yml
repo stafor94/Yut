@@ -56,6 +56,7 @@ jobs:
 
   firebase-emulator-qa:
     name: ${{ matrix.label }}
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 75
     strategy:
@@ -147,10 +148,15 @@ jobs:
     needs: [build-and-unit, firebase-emulator-qa]
     runs-on: ubuntu-latest
     steps:
-      - name: Require every PR QA job to succeed
+      - name: Require draft fast gate or full ready QA
         env:
+          PR_IS_DRAFT: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
           BUILD_AND_UNIT_RESULT: ${{ needs.build-and-unit.result }}
           FIREBASE_EMULATOR_QA_RESULT: ${{ needs.firebase-emulator-qa.result }}
         run: |
           test "$BUILD_AND_UNIT_RESULT" = success
-          test "$FIREBASE_EMULATOR_QA_RESULT" = success
+          if [ "$PR_IS_DRAFT" = true ]; then
+            test "$FIREBASE_EMULATOR_QA_RESULT" = skipped
+          else
+            test "$FIREBASE_EMULATOR_QA_RESULT" = success
+          fi

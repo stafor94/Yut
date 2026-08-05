@@ -160,7 +160,7 @@ If verification was not possible, the final response must explicitly say:
 
 PR 생성, 병합, Actions 확인과 실패 처리는 `DEVELOPMENT_PLAYBOOK.md`를 따른다.
 
-- 기본 PR은 Draft로 생성하고 병합 기준 충족 후 ready로 전환한다.
+- 기본 PR은 Draft로 생성한다. 로컬 검증과 전체 diff 검토를 마치면 ready로 전환해 전체 PR QA를 시작하고, 해당 Required QA가 성공한 뒤에만 병합한다. Draft 반복 push에서는 빠른 Build/Unit gate만 실행한다.
 - 기존 workflow와 branch event만 사용하며 workflow 변경은 사용자 승인이 필요하다.
 - 임시 workflow, inspector/integration PR, 상태 출력용 Issue와 빈 커밋을 만들지 않는다.
 - 실행 중인 Run을 불필요한 후속 push로 취소하지 않는다.
