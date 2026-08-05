@@ -303,7 +303,8 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
 
   const accessToken = await page.evaluate(readFirebaseAccessTokenFromIndexedDb);
   if (!accessToken) throw new Error('timeout fixture 재구성을 위한 호스트 Firebase access token을 찾지 못했습니다.');
-  await page.goto('about:blank');
+  const detachedUrl = new URL('version.json', page.url()).toString();
+  await page.goto(detachedUrl, { waitUntil: 'domcontentloaded' });
 
   const settledFixture = await commitRoomStatePatchForQa(page, roomId, {
     stackedRollMode: false,
