@@ -71,9 +71,10 @@ export async function prepareMoveTimeoutRecoveryFixture(args) {
 
 export async function waitForMoveTimeoutRecovery(fixture) {
   try {
-    const ackBoundary = await expect.poll(async () => {
+    let ackBoundary = null;
+    await expect.poll(async () => {
       if (Date.now() < fixture.timeoutDeadlineAt + DUPLICATE_ACK_SETTLE_MS) return null;
-      return fixture.page.evaluate(() => {
+      ackBoundary = await fixture.page.evaluate(() => {
         const debug = window.__YUT_DEBUG_STATE__ ?? {};
         return {
           lastAppliedSequence: Number(debug.lastAppliedSequence ?? 0),
@@ -81,6 +82,7 @@ export async function waitForMoveTimeoutRecovery(fixture) {
           pendingCount: Number(debug.pendingLocalRemoteActionCount ?? 0),
         };
       });
+      return ackBoundary;
     }, {
       timeout: 20_000,
       intervals: [100, 200, 400],
@@ -90,6 +92,7 @@ export async function waitForMoveTimeoutRecovery(fixture) {
       movingStarts: 1,
       pendingCount: expect.any(Number),
     });
+    expect(ackBoundary).not.toBeNull();
     expect(ackBoundary.pendingCount).toBeGreaterThan(0);
 
     fixture.listenGate.release();
