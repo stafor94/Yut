@@ -303,7 +303,7 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     return Boolean(
       Number(debug.lastAppliedSequence ?? 0) >= minimumSequence
       && debug.roll == null
-      && debug.turnDeadlineKind == null
+      && String(debug.turnDeadlineKind ?? '') === ''
       && Number(debug.turnDeadlineAt ?? 0) === 0
       && (typeof debug.movingPieceId !== 'string' || debug.movingPieceId === '')
       && Number(debug.pendingLocalRemoteActionCount ?? 0) === 0
