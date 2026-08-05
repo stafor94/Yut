@@ -49,7 +49,10 @@ export async function prepareMoveTimeoutRecoveryFixture(args) {
       return trigger ? [trigger.roomId, trigger.actorId, trigger.actionKey, trigger.timeoutDeadlineAt] : null;
     }), { timeout: 10_000, message: 'donor가 실제 deadline-leading timeout action을 준비해야 합니다.' }).toEqual([fixture.roomId, fixture.actorId, actionKey, timeoutDeadlineAt]);
 
-    await args.page.evaluate(() => { delete window.__YUT_STATELESS_DUPLICATE_ACK__; });
+    await args.page.evaluate(() => {
+      window.__YUT_CAPTURE_STATELESS_DUPLICATE_ACK__ = true;
+      delete window.__YUT_STATELESS_DUPLICATE_ACK__;
+    });
     gate.pause();
     const donorCommit = await donorPage.evaluate(async () => {
       const trigger = window.__YUT_QA_MOVE_TIMEOUT_RECOVERY__;
@@ -99,5 +102,9 @@ export async function waitForMoveTimeoutRecovery(fixture) {
     const recovery = await waitForBaseRecovery(fixture);
     expect(Number(recovery.sequence.sequence)).toBe(fixture.donorSequence);
     return { ...recovery, statelessDuplicateAckBoundary: ackBoundary };
-  } finally { fixture.listenGate.release(); await fixture.listenGate.dispose(); }
+  } finally {
+    await fixture.page.evaluate(() => { delete window.__YUT_CAPTURE_STATELESS_DUPLICATE_ACK__; }).catch(() => undefined);
+    fixture.listenGate.release();
+    await fixture.listenGate.dispose();
+  }
 }
