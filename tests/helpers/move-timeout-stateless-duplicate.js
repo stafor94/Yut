@@ -49,6 +49,7 @@ export async function prepareMoveTimeoutRecoveryFixture(args) {
       return trigger ? [trigger.roomId, trigger.actorId, trigger.actionKey, trigger.timeoutDeadlineAt] : null;
     }), { timeout: 10_000, message: 'donor가 실제 deadline-leading timeout action을 준비해야 합니다.' }).toEqual([fixture.roomId, fixture.actorId, actionKey, timeoutDeadlineAt]);
 
+    await args.page.evaluate(() => { delete window.__YUT_STATELESS_DUPLICATE_ACK__; });
     gate.pause();
     const donorCommit = await donorPage.evaluate(async () => {
       const trigger = window.__YUT_QA_MOVE_TIMEOUT_RECOVERY__;
@@ -79,21 +80,20 @@ export async function waitForMoveTimeoutRecovery(fixture) {
         return {
           lastAppliedSequence: Number(debug.lastAppliedSequence ?? 0),
           movingStarts: Number(window.__YUT_TIMEOUT_MOVE_TRACE__?.movingStarts ?? 0),
-          pendingCount: Number(debug.pendingLocalRemoteActionCount ?? 0),
+          duplicateAck: window.__YUT_STATELESS_DUPLICATE_ACK__ ?? null,
         };
       });
       return ackBoundary;
     }, {
       timeout: 20_000,
       intervals: [100, 200, 400],
-      message: 'metadata-only duplicate ACK 뒤에도 실제 sequence 전달 전 cursor와 pending 소유권을 유지해야 합니다.',
+      message: 'metadata-only duplicate ACK가 cursor를 선점하지 않고 stateless receipt로 분류되어야 합니다.',
     }).toMatchObject({
       lastAppliedSequence: fixture.baselineSequence,
       movingStarts: 1,
-      pendingCount: expect.any(Number),
+      duplicateAck: { actionKey: fixture.actionKey, sequence: fixture.donorSequence },
     });
     expect(ackBoundary).not.toBeNull();
-    expect(ackBoundary.pendingCount).toBeGreaterThan(0);
 
     fixture.listenGate.release();
     const recovery = await waitForBaseRecovery(fixture);
