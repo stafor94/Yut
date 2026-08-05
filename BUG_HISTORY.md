@@ -122,7 +122,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - PR #1324는 `n02 → n03 → n04` 전체 경로 관찰을 settlement 조건으로 추가해 느린 ACK와 자동 이동을 통과시켰다.
 - PR #1326은 synced state에 roll이 아직 없을 때 표준 move action identity에서 roll을 복구해 ledger 준비 범위를 넓혔다.
 - PR #1327은 #1326의 optional config TypeScript narrowing 오류를 수정했다.
-- PR #1328은 같은 action key를 실제 presenting 중인 결과도 local echo로 처리했지만 빠른 ACK에서 reducer final `pieces`가 여전히 로컬 경로보다 먼저 화면 canonical 상태로 들어갈 수 있었다.
+- PR #1328은 같은 action key를 실제 presenting 중인 결과도 local echo로 처리했지만 빠른 ACK에서 reducer final `pieces`가 여전히 로컬 경로보다 먼저 화면 상태에 들어갈 수 있었다.
 - PR #1329는 active ledger 정리 뒤 동일 mutation을 tombstone으로 계속 차단하려 했다. 기존 sequence-first 계약을 깨뜨려 unit, Online core 재입장, Galaxy 제한시간 이동을 회귀시켰고 빠른 ACK도 해결하지 못했다.
 - PR #1330은 reducer final state의 `pieces`를 local settlement display spread에서 제외했다. settlement 자체의 조기 덮어쓰기는 막았지만 `App.tsx`의 commit callback은 controller가 반환한 local-echo 적용 래퍼를 사용하지 않고 기존 `applyAuthoritativeResultSequence()`를 직접 호출해 `stateAfter.pieces`를 다시 적용했다.
 - PR #1331은 실행 클라이언트의 성공 commit 결과를 controller에서 ACK로 소비해 `stateAfter.pieces` 재적용은 막았다. 그러나 ACK 수신 즉시 pending action을 해제해 local presentation이 roll 소비와 turn 전환을 적용하기 전에 기존 `걸`이 다시 action-ready가 되었고 두 번째 `move_piece` mutation이 생성됐다.
