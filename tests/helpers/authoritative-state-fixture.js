@@ -89,107 +89,66 @@ const getFirestoreDocumentName = (projectId, pathSegments) => `projects/${projec
 const makeSequenceDocId = (sequence) => String(sequence).padStart(SEQUENCE_ID_PAD_LENGTH, '0');
 const isRetryableFixtureCommitFailure = (status, responseText) => (status === 400 || status === 409) && /(ABORTED|ALREADY_EXISTS|FAILED_PRECONDITION)/u.test(responseText);
 
-const postFirestoreWritesForQa = async (projectId, accessToken, writes, errorLabel) => {
-  const response = await fetch(`${getFirestoreDocumentsBaseUrl(projectId)}:commit`, {
+const resolveFixtureAccess = async (page, accessToken, errorLabel) => {
+  const config = await loadFirebaseConfig();
+  if (!config?.projectId) throw new Error(`Firebase projectId가 없어 ${errorLabel}를 설정할 수 없습니다.`);
+  const token = accessToken || await readFirebaseAccessTokenFromPage(page);
+  if (!token) throw new Error('게임 호스트 Firebase access token을 찾지 못했습니다.');
+  return { projectId: config.projectId, token };
+};
+
+const commitFixtureWrites = async (access, writes, errorLabel) => {
+  const response = await fetch(`${getFirestoreDocumentsBaseUrl(access.projectId)}:commit`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${access.token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ writes }),
   });
   const responseText = await response.text();
   if (!response.ok) throw new Error(`${errorLabel} ${response.status}: ${responseText}`);
 };
 
-const resolveFixtureAccess = async (page, accessToken, errorLabel) => {
-  const config = await loadFirebaseConfig();
-  if (!config?.projectId) throw new Error(`Firebase projectId가 없어 ${errorLabel}를 설정할 수 없습니다.`);
-  const resolvedAccessToken = accessToken || await readFirebaseAccessTokenFromPage(page);
-  if (!resolvedAccessToken) throw new Error('게임 호스트 Firebase access token을 찾지 못했습니다.');
-  return { projectId: config.projectId, accessToken: resolvedAccessToken };
-};
+const encodeFields = (value) => Object.fromEntries(
+  Object.entries(value).map(([key, entry]) => [key, encodeFirestoreValue(entry)]),
+);
 
-export async function stageProcessedAuthoritativeActionForQa(page, roomId, {
-  clientMutationId,
-  sequence,
-  turnVersion,
-  type,
-  actorId,
-  coordinatorSeatId,
-  coordinatorEpoch,
-  accessToken = '',
-}) {
-  const access = await resolveFixtureAccess(page, accessToken, 'processed authoritative action fixture');
+export async function stageProcessedAuthoritativeActionForQa(page, roomId, fixture) {
+  const access = await resolveFixtureAccess(page, fixture.accessToken, 'processed authoritative action fixture');
   const createdAt = Date.now();
-  await postFirestoreWritesForQa(access.projectId, access.accessToken, [{
+  const { accessToken: _accessToken, ...processed } = fixture;
+  await commitFixtureWrites(access, [{
     update: {
-      name: getFirestoreDocumentName(access.projectId, ['rooms', roomId, 'processedActions', makeFirestoreSafeId(clientMutationId)]),
-      fields: Object.fromEntries(Object.entries({
-        clientMutationId,
-        sequence,
-        turnVersion,
-        type,
-        actorId,
-        coordinatorSeatId,
-        coordinatorEpoch,
-      }).map(([key, value]) => [key, encodeFirestoreValue(value)]).concat([
-        ['createdAt', { timestampValue: new Date(createdAt).toISOString() }],
-      ])),
+      name: getFirestoreDocumentName(access.projectId, ['rooms', roomId, 'processedActions', makeFirestoreSafeId(fixture.clientMutationId)]),
+      fields: { ...encodeFields(processed), createdAt: { timestampValue: new Date(createdAt).toISOString() } },
     },
     currentDocument: { exists: false },
   }], 'processed authoritative action fixture commit');
 }
 
-export async function publishAuthoritativeActionSequenceForQa(page, roomId, {
-  sequence,
-  turnVersion,
-  type,
-  actorId,
-  coordinatorSeatId,
-  coordinatorEpoch,
-  action,
-  payload,
-  patch,
-  clientMutationId,
-  accessToken = '',
-}) {
-  const access = await resolveFixtureAccess(page, accessToken, 'authoritative action sequence fixture');
+export async function publishAuthoritativeActionSequenceForQa(page, roomId, fixture) {
+  const access = await resolveFixtureAccess(page, fixture.accessToken, 'authoritative action sequence fixture');
   const committedAt = Date.now();
-  const sequenceFields = Object.fromEntries(Object.entries({
-    sequence,
-    type,
-    actorId,
-    coordinatorSeatId,
-    coordinatorEpoch,
-    payload,
-    schemaVersion: 2,
-    eventSchemaVersion: 2,
-    action,
-    patch,
-    logEntries: [],
-    expectedPreviousSequence: sequence - 1,
-    clientMutationId,
-    clientCreatedAt: committedAt,
-  }).map(([key, value]) => [key, encodeFirestoreValue(value)]));
-  sequenceFields.createdAt = { timestampValue: new Date(committedAt).toISOString() };
-  const stateFields = Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, encodeFirestoreValue(value)]));
-  stateFields.turnVersion = encodeFirestoreValue(turnVersion);
-  stateFields.lastSequence = encodeFirestoreValue(sequence);
-  stateFields.lastClientMutationId = encodeFirestoreValue(clientMutationId);
-  stateFields.updatedAt = { timestampValue: new Date(committedAt).toISOString() };
-  const stateFieldPaths = [...new Set([...Object.keys(patch), 'turnVersion', 'lastSequence', 'lastClientMutationId', 'updatedAt'])];
-  await postFirestoreWritesForQa(access.projectId, access.accessToken, [
+  const { sequence, turnVersion, clientMutationId, patch, accessToken: _accessToken, ...event } = fixture;
+  const stateFields = {
+    ...encodeFields(patch),
+    turnVersion: encodeFirestoreValue(turnVersion),
+    lastSequence: encodeFirestoreValue(sequence),
+    lastClientMutationId: encodeFirestoreValue(clientMutationId),
+    updatedAt: { timestampValue: new Date(committedAt).toISOString() },
+  };
+  await commitFixtureWrites(access, [
     {
       update: {
         name: getFirestoreDocumentName(access.projectId, ['rooms', roomId, 'sequences', makeSequenceDocId(sequence)]),
-        fields: sequenceFields,
+        fields: {
+          ...encodeFields({ ...event, sequence, patch, schemaVersion: 2, eventSchemaVersion: 2, logEntries: [], expectedPreviousSequence: sequence - 1, clientMutationId, clientCreatedAt: committedAt }),
+          createdAt: { timestampValue: new Date(committedAt).toISOString() },
+        },
       },
       currentDocument: { exists: false },
     },
     {
-      update: {
-        name: getFirestoreDocumentName(access.projectId, ['rooms', roomId, 'state', 'current']),
-        fields: stateFields,
-      },
-      updateMask: { fieldPaths: stateFieldPaths },
+      update: { name: getFirestoreDocumentName(access.projectId, ['rooms', roomId, 'state', 'current']), fields: stateFields },
+      updateMask: { fieldPaths: Object.keys(stateFields) },
     },
   ], 'authoritative action sequence fixture commit');
 }
