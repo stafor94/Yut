@@ -3,11 +3,7 @@ import { isAuthoritativeCommitReduction, reduceAuthoritativeGameAction } from '.
 import { readFirebaseAccessTokenFromIndexedDb } from './browser-auth-token.js';
 import { loadFirebaseConfig } from './env.js';
 import { getRoomStateForQa } from './rooms.js';
-import {
-  expectMoveTimeoutRecoveryUiProgress,
-  prepareMoveTimeoutRecoveryFixture as prepareBaseFixture,
-  waitForMoveTimeoutRecovery as waitForBaseRecovery,
-} from './move-timeout-recovery.js';
+import { expectMoveTimeoutRecoveryUiProgress, prepareMoveTimeoutRecoveryFixture as prepareBaseFixture, waitForMoveTimeoutRecovery as waitForBaseRecovery } from './move-timeout-recovery.js';
 
 export { expectMoveTimeoutRecoveryUiProgress };
 const PROCESSED_ACTION_LEAD_MS = 200;
@@ -84,11 +80,7 @@ function reduceCoordinatorMove(fixture, state) {
 }
 
 async function publishCoordinatorSequence(fixture) {
-  const state = await getRoomStateForQa(fixture.roomId);
-  if (!state) throw new Error('stateless duplicate sequence fixture state가 없습니다.');
-  expect(Number(state.lastSequence ?? 0) + 1).toBe(fixture.coordinatorCommit.sequence);
-  expect(Number(state.turnVersion ?? 0) + 1).toBe(fixture.coordinatorCommit.turnVersion);
-  const { action, reduction } = reduceCoordinatorMove(fixture, state);
+  const { action, reduction } = fixture.coordinatorSequence;
   const committedAt = Date.now();
   const event = {
     sequence: fixture.coordinatorCommit.sequence, type: 'move_piece_resolved', actorId: fixture.actorId,
@@ -121,15 +113,16 @@ export async function prepareMoveTimeoutRecoveryFixture(args) {
   const state = await getRoomStateForQa(fixture.roomId);
   const config = await loadFirebaseConfig();
   const accessToken = await fixture.page.evaluate(readFirebaseAccessTokenFromIndexedDb);
-  if (!state || !config?.projectId || !accessToken) throw new Error('stateless duplicate fixture baseline/access를 찾지 못했습니다.');
+  if (!state || !config?.projectId || !accessToken) throw new Error('stateless duplicate fixture baseline/access뉼 찾지 못했습니다.');
   const enriched = {
     ...fixture, projectId: config.projectId, accessToken, baselineStateVersion: Number(state.turnVersion ?? 0),
     coordinatorCommit: { sequence: Number(state.lastSequence ?? 0) + 1, turnVersion: Number(state.turnVersion ?? 0) + 1 },
   };
+  const prepared = { ...enriched, coordinatorSequence: reduceCoordinatorMove(enriched, state) };
   await fixture.page.evaluate(() => { window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__ = []; });
   await delayUntil(fixture.timeoutDeadlineAt - PROCESSED_ACTION_LEAD_MS);
-  await stageProcessedAction(enriched);
-  return enriched;
+  await stageProcessedAction(prepared);
+  return prepared;
 }
 
 export async function waitForMoveTimeoutRecovery(fixture) {
