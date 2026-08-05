@@ -28,11 +28,9 @@ const encodeValue = (value) => {
   return { mapValue: { fields: encodeFields(value) } };
 };
 const encodeFields = (value) => Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, encodeValue(nested)]));
-const setNetworkOffline = (session, offline) => session.send('Network.emulateNetworkConditions', { offline, latency: 0, downloadThroughput: offline ? 0 : -1, uploadThroughput: offline ? 0 : -1 });
 async function commitWrites(projectId, accessToken, writes, label) {
   const response = await fetch(`${documentsBaseUrl(projectId)}:commit`, {
-    method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ writes }),
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ writes }),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`${label} ${response.status}: ${text}`);
@@ -43,10 +41,7 @@ async function stageProcessedAction(fixture) {
     update: {
       name: documentName(fixture.projectId, ['rooms', fixture.roomId, 'processedActions', makeFirestoreSafeId(fixture.actionKey)]),
       fields: {
-        ...encodeFields({
-          clientMutationId: fixture.actionKey, sequence: fixture.coordinatorCommit.sequence, turnVersion: fixture.coordinatorCommit.turnVersion,
-          type: 'move_piece', actorId: fixture.actorId, coordinatorSeatId: fixture.coordinatorSeatId, coordinatorEpoch: fixture.coordinatorEpoch,
-        }),
+        ...encodeFields({ clientMutationId: fixture.actionKey, sequence: fixture.coordinatorCommit.sequence, turnVersion: fixture.coordinatorCommit.turnVersion, type: 'move_piece', actorId: fixture.actorId, coordinatorSeatId: fixture.coordinatorSeatId, coordinatorEpoch: fixture.coordinatorEpoch }),
         createdAt: { timestampValue: new Date(createdAt).toISOString() },
       },
     }, currentDocument: { exists: false },
@@ -63,90 +58,71 @@ async function restoreBaseline(fixture, sequences) {
   await commitWrites(fixture.projectId, fixture.accessToken, [
     ...sequences.map((sequence) => ({ delete: documentName(fixture.projectId, ['rooms', fixture.roomId, 'sequences', sequence.id]) })),
     ...[...mutationIds].map((id) => ({ delete: documentName(fixture.projectId, ['rooms', fixture.roomId, 'processedActions', makeFirestoreSafeId(id)]) })),
-    {
-      update: { name: documentName(fixture.projectId, ['rooms', fixture.roomId, 'state', 'current']), fields: baselineFields },
-      updateMask: { fieldPaths: Object.keys(baselineFields) },
-    },
+    { update: { name: documentName(fixture.projectId, ['rooms', fixture.roomId, 'state', 'current']), fields: baselineFields }, updateMask: { fieldPaths: Object.keys(baselineFields) } },
   ], 'canonical timeout capture reset');
 }
 async function publishCoordinatorSequence(fixture) {
   const { id: _id, name: _name, createdAt: _createdAt, ...event } = fixture.capturedSequence;
   const committedAt = Date.now();
   const stateFields = {
-    ...encodeFields(event.patch ?? {}), turnVersion: encodeValue(fixture.coordinatorCommit.turnVersion),
-    lastSequence: encodeValue(fixture.coordinatorCommit.sequence), lastClientMutationId: encodeValue(fixture.actionKey),
-    updatedAt: { timestampValue: new Date(committedAt).toISOString() },
+    ...encodeFields(event.patch ?? {}), turnVersion: encodeValue(fixture.coordinatorCommit.turnVersion), lastSequence: encodeValue(fixture.coordinatorCommit.sequence),
+    lastClientMutationId: encodeValue(fixture.actionKey), updatedAt: { timestampValue: new Date(committedAt).toISOString() },
   };
   await commitWrites(fixture.projectId, fixture.accessToken, [
-    {
-      update: {
-        name: documentName(fixture.projectId, ['rooms', fixture.roomId, 'sequences', String(fixture.coordinatorCommit.sequence).padStart(12, '0')]),
-        fields: { ...encodeFields(event), createdAt: { timestampValue: new Date(committedAt).toISOString() } },
-      }, currentDocument: { exists: false },
-    },
-    {
-      update: { name: documentName(fixture.projectId, ['rooms', fixture.roomId, 'state', 'current']), fields: stateFields },
-      updateMask: { fieldPaths: Object.keys(stateFields) },
-    },
+    { update: { name: documentName(fixture.projectId, ['rooms', fixture.roomId, 'sequences', String(fixture.coordinatorCommit.sequence).padStart(12, '0')]), fields: { ...encodeFields(event), createdAt: { timestampValue: new Date(committedAt).toISOString() } } }, currentDocument: { exists: false } },
+    { update: { name: documentName(fixture.projectId, ['rooms', fixture.roomId, 'state', 'current']), fields: stateFields }, updateMask: { fieldPaths: Object.keys(stateFields) } },
   ], 'captured authoritative sequence fixture commit');
 }
+async function startMoveTrace(page, pieceId) {
+  await page.evaluate((id) => {
+    const trace = { targetPieceId: id, movingStarts: 0, benchReturns: 0, nodePath: [], appliedSequencePath: [], captureGhostMax: 0, seenPresentation: false, lastMovingPieceId: '', lastAtBench: true, lastSignature: '', samples: [] };
+    const sample = () => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {}; const piece = debug.pieces?.find?.((entry) => entry?.id === id); const moving = typeof debug.movingPieceId === 'string' ? debug.movingPieceId : '';
+      const element = document.querySelector(`[data-testid="piece-${id}"]`); const offBoard = element instanceof HTMLElement && element.classList.contains('off-board'); const ghosts = document.querySelectorAll('.capture-ghost').length; const sequence = Number(debug.lastAppliedSequence ?? 0);
+      if (moving === id && trace.lastMovingPieceId !== id) trace.movingStarts += 1;
+      const presented = Boolean(piece && (piece.started || moving === id || !offBoard)); if (presented) trace.seenPresentation = true;
+      const atBench = Boolean(piece && !piece.started && !piece.finished && offBoard && moving !== id); if (trace.seenPresentation && atBench && !trace.lastAtBench) trace.benchReturns += 1;
+      if (presented && typeof piece?.nodeId === 'string' && trace.nodePath.at(-1) !== piece.nodeId) trace.nodePath.push(piece.nodeId);
+      if (sequence > 0 && trace.appliedSequencePath.at(-1) !== sequence) trace.appliedSequencePath.push(sequence);
+      trace.captureGhostMax = Math.max(trace.captureGhostMax, ghosts);
+      const signature = [moving, piece?.nodeId ?? '', piece?.started === true ? 'started' : 'bench', offBoard ? 'off-board' : 'on-board', sequence, ghosts].join('|');
+      if (signature !== trace.lastSignature && trace.samples.length < 120) { trace.samples.push({ at: Date.now(), movingPieceId: moving, nodeId: piece?.nodeId ?? '', started: piece?.started === true, offBoard, lastAppliedSequence: sequence, captureGhostCount: ghosts }); trace.lastSignature = signature; }
+      trace.lastMovingPieceId = moving; trace.lastAtBench = atBench;
+    };
+    window.__YUT_TIMEOUT_MOVE_TRACE__ = trace; sample(); window.__YUT_TIMEOUT_MOVE_TRACE_TIMER__ = window.setInterval(sample, 20);
+  }, pieceId);
+}
 export async function prepareMoveTimeoutRecoveryFixture(args) {
-  const fixture = await prepareBaseFixture(args);
-  const baselineState = await getRoomStateForQa(fixture.roomId);
-  const config = await loadFirebaseConfig(); const accessToken = await fixture.page.evaluate(readFirebaseAccessTokenFromIndexedDb);
+  const fixture = await prepareBaseFixture(args); const appUrl = fixture.page.url();
+  const baselineState = await getRoomStateForQa(fixture.roomId); const config = await loadFirebaseConfig(); const accessToken = await fixture.page.evaluate(readFirebaseAccessTokenFromIndexedDb);
   if (!baselineState || !config?.projectId || !accessToken) throw new Error('stateless duplicate fixture baseline/access를 찾지 못했습니다.');
-  const targetSession = await fixture.page.context().newCDPSession(fixture.page); await targetSession.send('Network.enable');
-  await fixture.page.evaluate(() => { window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__ = []; });
-  await setNetworkOffline(targetSession, true);
-  const donorPage = await fixture.page.context().newPage();
-  const donorSession = await fixture.page.context().newCDPSession(donorPage);
-  let capturedSequence;
+  await fixture.page.goto(new URL('version.json', appUrl).toString(), { waitUntil: 'domcontentloaded' });
+  const donorPage = await fixture.page.context().newPage(); let capturedSequence;
   try {
-    await donorSession.send('Network.enable');
-    await donorPage.goto(fixture.page.url(), { waitUntil: 'domcontentloaded' });
-    await expect(donorPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
+    await donorPage.goto(appUrl, { waitUntil: 'domcontentloaded' }); await expect(donorPage.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
     await expect.poll(async () => {
-      capturedSequence = (await getRoomSequencesForQa(fixture.roomId)).find((sequence) => (
-        Number(sequence.sequence ?? 0) > fixture.baselineSequence && sequence.type === 'move_piece_resolved' && sequence.clientMutationId === fixture.actionKey
-      ));
+      capturedSequence = (await getRoomSequencesForQa(fixture.roomId)).find((sequence) => Number(sequence.sequence ?? 0) > fixture.baselineSequence && sequence.type === 'move_piece_resolved' && sequence.clientMutationId === fixture.actionKey);
       return capturedSequence ?? null;
     }, { timeout: 20_000, intervals: [20, 50, 100, 200], message: '기존 timeout 경로가 canonical sequence를 실제 생성해야 합니다.' }).not.toBeNull();
-    await setNetworkOffline(donorSession, true);
+    await donorPage.close();
     const generatedSequences = (await getRoomSequencesForQa(fixture.roomId)).filter((sequence) => Number(sequence.sequence ?? 0) > fixture.baselineSequence);
-    const prepared = {
-      ...fixture, projectId: config.projectId, accessToken, baselineState, capturedSequence,
-      coordinatorCommit: { sequence: Number(capturedSequence.sequence), turnVersion: Number(baselineState.turnVersion ?? 0) + 1 },
-      donorPage,
-    };
-    await restoreBaseline(prepared, generatedSequences);
-    await stageProcessedAction(prepared);
-    await expect.poll(async () => Number((await getRoomStateForQa(fixture.roomId))?.lastSequence ?? -1), { timeout: 5_000, intervals: [20, 50, 100] }).toBe(fixture.baselineSequence);
-    await setNetworkOffline(targetSession, false);
-    await targetSession.detach();
+    const prepared = { ...fixture, appUrl, projectId: config.projectId, accessToken, baselineState, capturedSequence, coordinatorCommit: { sequence: Number(capturedSequence.sequence), turnVersion: Number(baselineState.turnVersion ?? 0) + 1 } };
+    await restoreBaseline(prepared, generatedSequences); await stageProcessedAction(prepared);
+    await fixture.page.addInitScript(() => { window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__ = []; });
+    await fixture.page.goto(appUrl, { waitUntil: 'domcontentloaded' }); await expect(fixture.page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
     return prepared;
-  } catch (error) {
-    await setNetworkOffline(targetSession, false).catch(() => {});
-    await targetSession.detach().catch(() => {});
-    await donorPage.close().catch(() => {});
-    throw error;
-  }
+  } catch (error) { await donorPage.close().catch(() => {}); throw error; }
 }
 export async function waitForMoveTimeoutRecovery(fixture) {
   let ack;
   await expect.poll(async () => {
-    ack = await fixture.page.evaluate(({ roomId, sequence }) => (
-      (window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__ ?? []).find((entry) => entry?.roomId === roomId && Number(entry?.sequence ?? 0) === sequence) ?? null
-    ), { roomId: fixture.roomId, sequence: fixture.coordinatorCommit.sequence });
+    ack = await fixture.page.evaluate(({ roomId, sequence }) => (window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__ ?? []).find((entry) => entry?.roomId === roomId && Number(entry?.sequence ?? 0) === sequence) ?? null, { roomId: fixture.roomId, sequence: fixture.coordinatorCommit.sequence });
     return ack;
-  }, { timeout: 8_000, intervals: [20, 50, 100, 200], message: 'UI가 stateAfter/patch 없는 canonical duplicate ACK를 받아야 합니다.' }).toMatchObject({
-    roomId: fixture.roomId, sequence: fixture.coordinatorCommit.sequence, hasStateAfter: false, hasPatch: false,
-    cursorBefore: fixture.baselineSequence, cursorAfterAck: fixture.baselineSequence,
-  });
+  }, { timeout: 8_000, intervals: [20, 50, 100, 200], message: 'UI가 stateAfter/patch 없는 canonical duplicate ACK를 받아야 합니다.' }).toMatchObject({ roomId: fixture.roomId, sequence: fixture.coordinatorCommit.sequence, hasStateAfter: false, hasPatch: false, cursorBefore: fixture.baselineSequence, cursorAfterAck: fixture.baselineSequence });
   expect(ack.stateVersionAfterAck).toBe(ack.stateVersionBefore);
-  await publishCoordinatorSequence(fixture);
+  await startMoveTrace(fixture.page, fixture.targetPieceId); await publishCoordinatorSequence(fixture);
   const recovery = await waitForBaseRecovery(fixture);
   expect(recovery.sequence.sequence).toBe(fixture.coordinatorCommit.sequence);
   expect(await fixture.page.evaluate(() => window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__?.length ?? 0)).toBe(1);
-  await fixture.donorPage.close().catch(() => {});
   return { ...recovery, statelessDuplicateAck: ack };
 }
