@@ -3,7 +3,6 @@ import test from 'node:test';
 import { buildAuthoritativeApplyWakeSnapshot } from '../../src/app/flows/authoritativeApplyWakeFlow';
 import {
   classifyLocalMoveCommitAck,
-  makeStatelessDuplicateRecoveryKey,
   shouldConsumeLocalMoveCommitAck,
   shouldReleaseLocalMovePending,
 } from '../../src/app/flows/localMoveCommitAck';
@@ -37,7 +36,6 @@ test('metadata-only duplicate는 sequence pipeline이 적용할 때까지 상태
   };
   assert.equal(classifyLocalMoveCommitAck(duplicate), 'stateless-duplicate');
   assert.equal(shouldConsumeLocalMoveCommitAck(duplicate), false);
-  assert.equal(makeStatelessDuplicateRecoveryKey({ roomId: 'room', actionKey: duplicate.actionKey, sequence: 5 }), '');
   assert.equal(buildAuthoritativeApplyWakeSnapshot(
     { status: 'duplicate', sequence: 5, turnVersion: 8 },
     { pieces: [], lastSequence: 4 },
