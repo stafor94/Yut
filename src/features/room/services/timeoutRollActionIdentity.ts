@@ -124,6 +124,8 @@ export const clearTimeoutRollMutationAliases = (roomId: string) => {
 /**
  * Keeps the deadline-leading UI move local identity for its optimistic presentation,
  * but submits the same deterministic identity used by stalled/coordinator recovery.
+ * The UI deadline action keeps deadlineAutoSubmitted metadata and must not gain
+ * timeoutDeadlineAt, which is reserved for recovery after the network grace window.
  */
 export const canonicalizeTimeoutMoveAction = <TAction,>(roomId: string, action: TAction): TAction => {
   if (!action || typeof action !== 'object') return action;
@@ -153,7 +155,6 @@ export const canonicalizeTimeoutMoveAction = <TAction,>(roomId: string, action: 
     payload: {
       ...payload,
       clientActionId: canonicalClientActionId,
-      timeoutDeadlineAt,
     },
   } as unknown as TAction;
 };
