@@ -112,6 +112,43 @@ const getLocalDisplayFinalState = (state: SequenceStateSnapshot): SequenceStateS
   trapEffect: null,
 });
 
+const normalizeMoveIdentityPiece = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const piece = value as Record<string, unknown>;
+  return {
+    id: String(piece.id ?? ''),
+    nodeId: String(piece.nodeId ?? ''),
+    started: piece.started === true,
+    finished: piece.finished === true,
+    previousNodeId: typeof piece.previousNodeId === 'string' ? piece.previousNodeId : '',
+  };
+};
+
+const matchesStatelessDuplicateMoveIdentity = (
+  record: NonNullable<ReturnType<typeof localMoveLedger.get>>,
+  sequenceEvent: unknown,
+) => {
+  if (!sequenceEvent || typeof sequenceEvent !== 'object' || Array.isArray(sequenceEvent)) return false;
+  const event = sequenceEvent as Record<string, unknown>;
+  const payload = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)
+    ? event.payload as Record<string, unknown>
+    : null;
+  if (event.type !== 'move_piece_resolved' || !payload) return false;
+  const pathNodeIds = Array.isArray(payload.pathNodeIds) ? payload.pathNodeIds.map(String) : [];
+  const movingGroupIds = Array.isArray(payload.movingGroupIds) ? payload.movingGroupIds.map(String) : [];
+  if (String(payload.pieceId ?? '') !== record.pieceId
+    || String(payload.fromNodeId ?? '') !== record.fromNodeId
+    || String(payload.toNodeId ?? '') !== record.toNodeId
+    || JSON.stringify(pathNodeIds) !== JSON.stringify(record.pathNodeIds)
+    || JSON.stringify(movingGroupIds) !== JSON.stringify(record.movingGroupIds)) return false;
+  const afterMovingPieces = Array.isArray(payload.afterMovingPieces) ? payload.afterMovingPieces : [];
+  const normalize = (pieces: unknown[]) => pieces
+    .map(normalizeMoveIdentityPiece)
+    .filter((piece): piece is NonNullable<ReturnType<typeof normalizeMoveIdentityPiece>> => Boolean(piece && movingGroupIds.includes(piece.id)))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  return JSON.stringify(normalize(afterMovingPieces)) === JSON.stringify(normalize(record.finalPieces));
+};
+
 export function useAuthoritativeGameSyncController(params: Params) {
   const applySyncedStateSnapshotRef = useRef(params.applySyncedStateSnapshot);
   applySyncedStateSnapshotRef.current = params.applySyncedStateSnapshot;
@@ -225,7 +262,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     const trace = Array.isArray(traceTarget.__YUT_STATELESS_DUPLICATE_ACK_TRACE__)
       ? traceTarget.__YUT_STATELESS_DUPLICATE_ACK_TRACE__
       : [];
-    trace.push({
+    const traceEntry: Record<string, unknown> = {
       roomId,
       actionKey,
       sequence: Number(result.sequence ?? 0),
@@ -235,7 +272,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
       cursorAfterAck: params.lastAppliedSequenceRef.current,
       stateVersionBefore,
       stateVersionAfterAck: params.lastAppliedStateVersionRef.current,
-    });
+    };
+    trace.push(traceEntry);
     traceTarget.__YUT_STATELESS_DUPLICATE_ACK_TRACE__ = trace.slice(-8);
 
     const aliasedResult = aliasTimeoutRollMutationIds(roomId, {
@@ -265,10 +303,52 @@ export function useAuthoritativeGameSyncController(params: Params) {
               turnVersion: Number(result.turnVersion ?? patchedState.turnVersion ?? 0),
               lastClientMutationId: actionKey,
             });
-            return acknowledgeLocalMoveEcho(roomId, {
-              ...aliasedResult,
-              stateAfter: authoritativeState,
-            }, authoritativeState);
+            const record = localMoveLedger.get(actionKey);
+            const actualFingerprint = makeLocalMoveResultFingerprint(authoritativeState as Record<string, unknown>);
+            const moveIdentityMatched = Boolean(record && matchesStatelessDuplicateMoveIdentity(record, targetEvent));
+            traceEntry.fullFingerprintMatched = Boolean(record && record.resultFingerprint === actualFingerprint);
+            traceEntry.moveIdentityMatched = moveIdentityMatched;
+            if (!record || !moveIdentityMatched) {
+              await runLocalMoveHardResync(
+                roomId,
+                actionKey,
+                `서버 move_piece sequence identity가 로컬 이동과 일치하지 않습니다. actionKey=${actionKey}`,
+              );
+              return authoritativeState;
+            }
+
+            rememberAuthoritativeLifecycle(authoritativeState);
+            latestSyncedStateRef.current = authoritativeState;
+            params.lastAppliedSequenceRef.current = Math.max(params.lastAppliedSequenceRef.current, targetSequence);
+            params.lastAppliedStateVersionRef.current = Math.max(
+              params.lastAppliedStateVersionRef.current,
+              Number(result.turnVersion ?? authoritativeState.turnVersion ?? 0),
+            );
+            const observed = localMoveLedger.observeAuthoritativeResult({
+              clientMutationId: actionKey,
+              sequence: targetSequence,
+              stateVersion: Number(result.turnVersion ?? authoritativeState.turnVersion ?? 0),
+              resultFingerprint: record.resultFingerprint,
+            });
+            if (observed.status !== 'matched') {
+              await runLocalMoveHardResync(roomId, actionKey, `서버 move_piece identity 확인을 완료하지 못했습니다. actionKey=${actionKey}`);
+              return authoritativeState;
+            }
+            if (observed.record && shouldReleaseLocalMovePending(observed.record)) {
+              settleMoveActionClaim(actionKey);
+              params.acknowledgePendingLocalRemoteAction(actionKey);
+            }
+
+            await localMovePresentationLifecycle.waitForSettlement();
+            if (params.activeRoomIdRef.current !== roomId) return null;
+            latestSyncedStateRef.current = authoritativeState;
+            applySyncedStateSnapshotRef.current(authoritativeState, {
+              allowMoveAnimation: false,
+              allowRollAnimation: false,
+              updateVersion: false,
+              updateSequence: false,
+            });
+            return authoritativeState;
           }
         }
         if (attempt < 3) await waitUntil(Date.now() + 50 * (attempt + 1));
@@ -285,7 +365,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
     });
     statelessDuplicateRecoveryPromisesRef.current.set(recoveryKey, recovery);
     return recovery;
-  }, [acknowledgeLocalMoveEcho, params.activeRoomIdRef, params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef]);
+  }, [params.acknowledgePendingLocalRemoteAction, params.activeRoomIdRef, params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef, rememberAuthoritativeLifecycle, runLocalMoveHardResync]);
 
   const prepareAndFinalizeLocalMove = useCallback((roomId: string, action: CommittableGameAction) => {
     if (action.type !== 'move_piece') return false;
