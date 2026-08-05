@@ -27,11 +27,126 @@ const commitRoomStatePatchForQa = (page, roomId, patch, actorId) => commitAuthor
   { fixtureName: 'move-timeout-recovery', errorLabel: 'normal move timeout fixture' },
 );
 
-const getRecoverySequences = (sequences, actionKey) => sequences.filter((sequence) => (
-  sequence.type === 'move_piece_resolved'
+const getMoveSequencesAfter = (sequences, baselineSequence, actorId) => sequences.filter((sequence) => (
+  Number(sequence.sequence ?? 0) > Number(baselineSequence ?? 0)
+  && sequence.type === 'move_piece_resolved'
   && sequence.action?.type === 'move_piece'
-  && sequence.action?.payload?.clientActionId === actionKey
+  && sequence.action?.actorId === actorId
 ));
+
+const getPieceById = (pieces, pieceId) => (
+  Array.isArray(pieces) ? pieces.find((piece) => piece?.id === pieceId) : undefined
+);
+
+async function startMovePresentationTrace(page, targetPieceId) {
+  await page.evaluate((pieceId) => {
+    const findPieceElement = () => Array.from(document.querySelectorAll('[data-testid^="piece-"]'))
+      .find((node) => node.getAttribute('data-testid') === `piece-${pieceId}`);
+    const trace = {
+      targetPieceId: pieceId,
+      movingStarts: 0,
+      benchReturns: 0,
+      nodePath: [],
+      appliedSequencePath: [],
+      captureGhostMax: 0,
+      seenPresentation: false,
+      lastMovingPieceId: '',
+      lastAtBench: true,
+      lastSignature: '',
+      samples: [],
+    };
+    const sample = () => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      const piece = Array.isArray(debug.pieces)
+        ? debug.pieces.find((candidate) => candidate?.id === pieceId)
+        : undefined;
+      const movingPieceId = typeof debug.movingPieceId === 'string' ? debug.movingPieceId : '';
+      const pieceElement = findPieceElement();
+      const offBoard = pieceElement instanceof HTMLElement && pieceElement.classList.contains('off-board');
+      const captureGhostCount = document.querySelectorAll('.capture-ghost').length;
+      const lastAppliedSequence = Number(debug.lastAppliedSequence ?? 0);
+
+      if (movingPieceId === pieceId && trace.lastMovingPieceId !== pieceId) trace.movingStarts += 1;
+      const presentedOnBoard = Boolean(piece && (piece.started || movingPieceId === pieceId || !offBoard));
+      if (presentedOnBoard) trace.seenPresentation = true;
+      const atBench = Boolean(piece && !piece.started && !piece.finished && offBoard && movingPieceId !== pieceId);
+      if (trace.seenPresentation && atBench && !trace.lastAtBench) trace.benchReturns += 1;
+      if (presentedOnBoard && typeof piece?.nodeId === 'string' && trace.nodePath.at(-1) !== piece.nodeId) {
+        trace.nodePath.push(piece.nodeId);
+      }
+      if (lastAppliedSequence > 0 && trace.appliedSequencePath.at(-1) !== lastAppliedSequence) {
+        trace.appliedSequencePath.push(lastAppliedSequence);
+      }
+      trace.captureGhostMax = Math.max(trace.captureGhostMax, captureGhostCount);
+
+      const signature = [
+        movingPieceId,
+        piece?.nodeId ?? '',
+        piece?.started === true ? 'started' : 'bench',
+        offBoard ? 'off-board' : 'on-board',
+        lastAppliedSequence,
+        captureGhostCount,
+      ].join('|');
+      if (signature !== trace.lastSignature && trace.samples.length < 120) {
+        trace.samples.push({
+          at: Date.now(),
+          movingPieceId,
+          nodeId: piece?.nodeId ?? '',
+          started: piece?.started === true,
+          offBoard,
+          lastAppliedSequence,
+          captureGhostCount,
+        });
+        trace.lastSignature = signature;
+      }
+      trace.lastMovingPieceId = movingPieceId;
+      trace.lastAtBench = atBench;
+    };
+
+    window.__YUT_TIMEOUT_MOVE_TRACE__ = trace;
+    sample();
+    window.__YUT_TIMEOUT_MOVE_TRACE_TIMER__ = window.setInterval(sample, 20);
+  }, targetPieceId);
+}
+
+async function stopMovePresentationTrace(page) {
+  return page.evaluate(() => {
+    const timer = window.__YUT_TIMEOUT_MOVE_TRACE_TIMER__;
+    if (typeof timer === 'number') window.clearInterval(timer);
+    window.__YUT_TIMEOUT_MOVE_TRACE_TIMER__ = undefined;
+    const trace = window.__YUT_TIMEOUT_MOVE_TRACE__ ?? null;
+    if (!trace?.targetPieceId) return { trace, finalDom: null };
+
+    const pieceElement = Array.from(document.querySelectorAll('[data-testid^="piece-"]'))
+      .find((node) => node.getAttribute('data-testid') === `piece-${trace.targetPieceId}`);
+    const pieceRect = pieceElement instanceof HTMLElement ? pieceElement.getBoundingClientRect() : null;
+    const pieceCenter = pieceRect
+      ? { x: pieceRect.left + pieceRect.width / 2, y: pieceRect.top + pieceRect.height / 2 }
+      : null;
+    const nearestNode = pieceCenter
+      ? Array.from(document.querySelectorAll('[data-testid^="board-node-"]'))
+        .map((node) => {
+          const rect = node.getBoundingClientRect();
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + rect.height / 2;
+          return {
+            nodeId: node.getAttribute('data-testid')?.replace('board-node-', '') ?? '',
+            distance: Math.hypot(pieceCenter.x - x, pieceCenter.y - y),
+          };
+        })
+        .sort((left, right) => left.distance - right.distance)[0]
+      : null;
+    return {
+      trace,
+      finalDom: {
+        offBoard: pieceElement instanceof HTMLElement && pieceElement.classList.contains('off-board'),
+        nearestNodeId: nearestNode?.nodeId ?? '',
+        nearestNodeDistance: nearestNode?.distance ?? Number.POSITIVE_INFINITY,
+        captureGhostCount: document.querySelectorAll('.capture-ghost').length,
+      },
+    };
+  });
+}
 
 export async function expectMoveTimeoutRecoveryUiProgress(page, { message }) {
   await expect(page.getByTestId('game-screen')).toBeVisible();
@@ -108,7 +223,13 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   const coordinatorEpoch = Number(state.coordinatorEpoch ?? 0);
   const actorTurnIndex = state.turnOrderIds.findIndex((seatId) => seatId === actorId);
   if (actorTurnIndex < 0) throw new Error('coordinator 좌석이 authoritative turn order에 없습니다.');
-  const visibleDeadlineAt = Date.now() + VISIBLE_FIXTURE_DEADLINE_OFFSET_MS;
+  const actorPieces = (state.pieces ?? []).filter((piece) => piece?.ownerId === actorId);
+  const opponentPieces = (state.pieces ?? []).filter((piece) => piece?.ownerId !== actorId);
+  expect(actorPieces.length).toBeGreaterThan(0);
+  expect(actorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01')).toBe(true);
+  expect(opponentPieces.some((piece) => piece?.started && !piece?.finished)).toBe(false);
+
+  const timeoutDeadlineAt = Date.now() + VISIBLE_FIXTURE_DEADLINE_OFFSET_MS;
   const visibleFixture = await commitRoomStatePatchForQa(page, roomId, {
     stackedRollMode: false,
     turnIndex: actorTurnIndex,
@@ -124,7 +245,7 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     itemPromptTiming: null,
     branchChoice: 'outer',
     turnDeadlineKind: 'move',
-    turnDeadlineAt: visibleDeadlineAt,
+    turnDeadlineAt: timeoutDeadlineAt,
     turnActionTimeoutCountBySeatId: { [actorId]: INITIAL_TIMEOUT_COUNT },
     autoPlayBySeatId: { [actorId]: false },
   }, actorId);
@@ -140,7 +261,7 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
       && Number(current.roll?.steps) === 2
       && current.stackedRollMode === false
       && current.turnDeadlineKind === 'move'
-      && Number(current.turnDeadlineAt) === visibleDeadlineAt,
+      && Number(current.turnDeadlineAt) === timeoutDeadlineAt,
     );
   }, {
     timeout: 10_000,
@@ -152,50 +273,42 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   await expect(moveButton).toBeVisible({ timeout: 10_000 });
   await expect(moveButton).toBeEnabled();
 
-  const timeoutDeadlineAt = Date.now() - 1;
+  let targetPieceId = '';
+  await expect.poll(async () => {
+    const screen = await collectScreenState(page);
+    targetPieceId = String(
+      screen.yutDebug?.activeMovablePiece?.id
+      ?? screen.yutDebug?.fallbackMovablePiece?.id
+      ?? screen.yutDebug?.selectedPieceId
+      ?? '',
+    );
+    return targetPieceId;
+  }, {
+    timeout: 3_000,
+    intervals: [50, 100, 200],
+    message: 'timeout UI 자동 이동의 대상 말을 확인해야 합니다.',
+  }).not.toBe('');
+  expect(actorPieces.some((piece) => piece.id === targetPieceId)).toBe(true);
+  await startMovePresentationTrace(page, targetPieceId);
+
   const actionKey = makeTimeoutActionKey({
     roomId,
     stage: 'move',
     actorId,
     timeoutDeadlineAt,
   });
-  const expiredFixture = await commitRoomStatePatchForQa(page, roomId, {
-    turnDeadlineAt: timeoutDeadlineAt,
-  }, actorId);
-  await expect.poll(async () => {
-    const current = await getRoomStateForQa(roomId);
-    return Boolean(
-      current
-      && Number(current.turnVersion) === expiredFixture.turnVersion
-      && Number(current.lastSequence) === expiredFixture.lastSequence
-      && current.roll?.name === '개'
-      && current.turnDeadlineKind === 'move'
-      && Number(current.turnDeadlineAt) === timeoutDeadlineAt,
-    );
-  }, {
-    timeout: 2_000,
-    intervals: [25, 50, 100],
-    message: '만료된 일반 move deadline fixture가 authoritative sequence로 반영되어야 합니다.',
-  }).toBe(true);
-
-  await expect.poll(() => page.evaluate(() => {
-    const button = document.querySelector('[data-testid="move-piece-button"]');
-    return !button || button.hasAttribute('disabled');
-  }), {
-    timeout: 900,
-    intervals: [25, 50, 100],
-    message: 'deadline 이후 일반 이동 버튼은 다시 활성화되지 않아야 합니다.',
-  }).toBe(true);
-  const sequencesBeforeGrace = await getRoomSequencesForQa(roomId);
-  expect(getRecoverySequences(sequencesBeforeGrace, actionKey)).toHaveLength(0);
+  const sequencesBeforeDeadline = await getRoomSequencesForQa(roomId);
+  expect(getMoveSequencesAfter(sequencesBeforeDeadline, visibleFixture.lastSequence, actorId)).toHaveLength(0);
 
   return {
     actionKey,
     actorId,
+    baselineSequence: visibleFixture.lastSequence,
     coordinatorEpoch,
     coordinatorSeatId: String(state.coordinatorSeatId),
-    expiredFixtureSequence: expiredFixture.lastSequence,
+    page,
     roomId,
+    targetPieceId,
     timeoutDeadlineAt,
   };
 }
@@ -203,47 +316,33 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
 export async function waitForMoveTimeoutRecovery({
   actionKey,
   actorId,
+  baselineSequence,
   coordinatorEpoch,
   coordinatorSeatId,
-  expiredFixtureSequence,
+  page,
   roomId,
+  targetPieceId,
   timeoutDeadlineAt,
 }) {
   await expect.poll(async () => {
     const sequences = await getRoomSequencesForQa(roomId);
-    const matching = getRecoverySequences(sequences, actionKey);
+    const matching = getMoveSequencesAfter(sequences, baselineSequence, actorId);
     const state = await getRoomStateForQa(roomId);
-    if (matching.length !== 1 || !state) return null;
-    if (Number(state.lastSequence ?? 0) <= Number(expiredFixtureSequence ?? 0)) return null;
+    const movedPiece = getPieceById(state?.pieces, targetPieceId);
+    if (matching.length !== 1 || !state || !movedPiece) return null;
+    if (movedPiece.nodeId !== 'n03' || movedPiece.started !== true || movedPiece.finished === true) return null;
     return { matching, state };
   }, {
-    timeout: 15_000,
+    timeout: 20_000,
     intervals: [100, 200, 400, 800],
-    message: 'deadline+network grace 이후 일반 이동 recovery sequence가 정확히 한 번 생성되어야 합니다.',
+    message: 'deadline UI와 coordinator가 경합해도 일반 개 이동 sequence와 최종 상태는 정확히 한 번 반영되어야 합니다.',
   }).not.toBeNull();
-
-  const sequences = await getRoomSequencesForQa(roomId);
-  const matching = getRecoverySequences(sequences, actionKey);
-  const state = await getRoomStateForQa(roomId);
-  expect(matching).toHaveLength(1);
-  expect(matching[0].action?.actorId).toBe(actorId);
-  expect(matching[0].action?.payload).toMatchObject({
-    clientActionId: actionKey,
-    coordinatorEpoch,
-    coordinatorSeatId,
-    recoveredByCoordinator: true,
-    reason: 'stalled-roll-move-timeout',
-    timeoutDeadlineAt,
-  });
-  expect(matching[0].action?.payload?.rollStackIndex ?? null).toBeNull();
-  expect(state?.roll).toBeNull();
-  expect(state?.turnActionTimeoutCountBySeatId?.[actorId]).toBe(EXPECTED_TIMEOUT_COUNT);
-  expect(state?.autoPlayBySeatId?.[actorId]).toBe(true);
-  expect(Number(state?.turnDeadlineAt ?? 0)).not.toBe(timeoutDeadlineAt);
 
   let nextAiSequence;
   await expect.poll(async () => {
     const nextSequences = await getRoomSequencesForQa(roomId);
+    const matching = getMoveSequencesAfter(nextSequences, baselineSequence, actorId);
+    if (matching.length !== 1) return null;
     nextAiSequence = nextSequences.find((sequence) => (
       Number(sequence.sequence ?? 0) > Number(matching[0].sequence ?? 0)
       && sequence.type === 'roll_yut'
@@ -268,12 +367,59 @@ export async function waitForMoveTimeoutRecovery({
   await expect.poll(async () => {
     if (Date.now() < duplicateCheckAt) return null;
     const nextSequences = await getRoomSequencesForQa(roomId);
-    return getRecoverySequences(nextSequences, actionKey).length;
+    return getMoveSequencesAfter(nextSequences, baselineSequence, actorId).length;
   }, {
     timeout: 3_000,
     intervals: [100, 200, 400],
-    message: '추가 대기 후에도 같은 일반 이동 timeout recovery가 중복 생성되면 안 됩니다.',
+    message: '추가 대기 후에도 같은 일반 이동 timeout이 별도 identity로 중복 생성되면 안 됩니다.',
   }).toBe(1);
 
-  return { nextAiSequence, sequence: matching[0], state };
+  const sequences = await getRoomSequencesForQa(roomId);
+  const matching = getMoveSequencesAfter(sequences, baselineSequence, actorId);
+  const state = await getRoomStateForQa(roomId);
+  const sequence = matching[0];
+  const sequencePiece = getPieceById(sequence?.stateAfter?.pieces, targetPieceId);
+  const serverPiece = getPieceById(state?.pieces, targetPieceId);
+  const presentation = await stopMovePresentationTrace(page);
+  const screen = await collectScreenState(page);
+  const domPiece = getPieceById(screen.yutDebug?.pieces, targetPieceId);
+  const moveActionIds = matching.map((entry) => ({
+    sequence: entry.sequence,
+    clientMutationId: entry.clientMutationId,
+    actionClientId: entry.action?.payload?.clientActionId,
+    stateAfterClientId: entry.stateAfter?.lastClientMutationId,
+  }));
+
+  expect(matching).toHaveLength(1);
+  expect(sequence.action?.actorId).toBe(actorId);
+  expect(sequence.clientMutationId).toBe(actionKey);
+  expect(sequence.action?.payload?.clientActionId).toBe(actionKey);
+  expect(sequence.stateAfter?.lastClientMutationId).toBe(actionKey);
+  expect(sequence.action?.payload?.rollStackIndex ?? null).toBeNull();
+  expect(sequencePiece).toMatchObject({ id: targetPieceId, nodeId: 'n03', started: true, finished: false });
+  expect(serverPiece).toMatchObject({ id: targetPieceId, nodeId: 'n03', started: true, finished: false });
+  expect(state?.roll).toBeNull();
+  expect(state?.turnActionTimeoutCountBySeatId?.[actorId]).toBe(EXPECTED_TIMEOUT_COUNT);
+  expect(state?.autoPlayBySeatId?.[actorId]).toBe(true);
+  expect(Number(state?.turnDeadlineAt ?? 0)).not.toBe(timeoutDeadlineAt);
+  expect(sequence.payload?.capturedPieceIds ?? sequence.action?.payload?.capturedPieceIds ?? []).toEqual([]);
+  expect(sequence.stateAfter?.captureEffect ?? null).toBeNull();
+
+  expect(presentation.trace?.movingStarts, JSON.stringify(presentation.trace?.samples ?? [])).toBe(1);
+  expect(presentation.trace?.benchReturns, JSON.stringify(presentation.trace?.samples ?? [])).toBe(0);
+  expect(presentation.trace?.nodePath?.filter((nodeId) => nodeId === 'n02')).toHaveLength(1);
+  expect(presentation.trace?.nodePath?.filter((nodeId) => nodeId === 'n03')).toHaveLength(1);
+  expect(presentation.trace?.nodePath?.indexOf('n02')).toBeLessThan(presentation.trace?.nodePath?.indexOf('n03'));
+  expect(presentation.trace?.captureGhostMax).toBe(0);
+  expect(presentation.finalDom).toMatchObject({ offBoard: false, nearestNodeId: 'n03', captureGhostCount: 0 });
+  expect(presentation.finalDom?.nearestNodeDistance).toBeLessThan(30);
+  expect(domPiece).toMatchObject({ id: targetPieceId, nodeId: serverPiece?.nodeId, started: true, finished: false });
+
+  return {
+    moveActionIds,
+    nextAiSequence,
+    presentation,
+    sequence,
+    state,
+  };
 }
