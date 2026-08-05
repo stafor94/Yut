@@ -122,7 +122,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
 
   const rememberAuthoritativeLifecycle = useCallback((state: SequenceStateSnapshot) => {
     const startRequestVersion = Number(state.startRequestVersion ?? 0);
-    const startRequestId = String(state.startRequestId ?? '');
+    const startRequestId = String((state as SequenceStateSnapshot & { startRequestId?: unknown }).startRequestId ?? '');
     if (!startRequestVersion || !startRequestId) return;
     const lifecycleKey = `${startRequestVersion}:${startRequestId}`;
     if (authoritativeLifecycleKeyRef.current && authoritativeLifecycleKeyRef.current !== lifecycleKey) {
