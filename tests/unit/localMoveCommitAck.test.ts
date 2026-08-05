@@ -90,17 +90,20 @@ test('소유하지 않은 이동과 실패 결과는 기존 callback 파이프�
   }), false);
 });
 
-test('stateless duplicate 복구는 roomId + actionId + sequence 단위로 중복 제거한다', () => {
-  const makeKey = (roomId = 'room-1', actionKey = 'move_piece:P1:4', sequence = 5) => (
-    makeStatelessDuplicateRecoveryKey({ roomId, actionKey, sequence })
-  );
-  assert.equal(makeKey(), makeKey());
-  assert.notEqual(makeKey(), makeKey('room-2'));
-  assert.notEqual(makeKey(), makeKey('room-1', 'move_piece:P1:5'));
-  assert.notEqual(makeKey(), makeKey('room-1', 'move_piece:P1:4', 6));
+test('stateless duplicate는 직접 복구 key를 만들지 않고 기존 sequence pipeline에 위임한다', () => {
+  assert.equal(makeStatelessDuplicateRecoveryKey({
+    roomId: 'room-1',
+    actionKey: 'move_piece:P1:4',
+    sequence: 5,
+  }), '');
+  assert.equal(makeStatelessDuplicateRecoveryKey({
+    roomId: '',
+    actionKey: '',
+    sequence: 0,
+  }), '');
 });
 
-test('로컬 이동 pending은 presentation과 서버 검증이 모두 끝난 뒤 해제핀다', () => {
+test('로컬 이동 pending은 presentation과 서버 검증이 모두 끝난 뒤 해제한다', () => {
   assert.equal(shouldReleaseLocalMovePending({
     localPresentationCompleted: true,
     serverSequenceAcked: true,
