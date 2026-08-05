@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import { getLowestLabelPiece } from '../../src/app/flows/pieceSelection.ts';
+import { getTurnActionTimeoutMsForCount } from '../../src/features/room/services/roomTiming.ts';
 import { makeTimeoutActionKey } from '../../src/features/room/services/timeoutResolvers.ts';
 import { readFirebaseAccessTokenFromIndexedDb } from './browser-auth-token.js';
 import { makeQaName, normalizeQaNickname } from './env.js';
@@ -19,8 +20,14 @@ import {
 import { commitAuthoritativeStatePatchForQa } from './authoritative-state-fixture.js';
 
 const VISIBLE_FIXTURE_DEADLINE_OFFSET_MS = 9_000;
+const PRE_DEADLINE_ASSERTION_OFFSET_MS = 2_500;
 const INITIAL_TIMEOUT_COUNT = 1;
 const EXPECTED_TIMEOUT_COUNT = INITIAL_TIMEOUT_COUNT + 1;
+const TARGET_START_NODE_ID = 'n02';
+const TARGET_START_NODE_INDEX = 1;
+const ALTERNATE_START_NODE_ID = 'n08';
+const ALTERNATE_START_NODE_INDEX = 7;
+const EXPECTED_TARGET_NODE_ID = 'n04';
 
 const commitRoomStatePatchForQa = (page, roomId, patch, actorId, options = {}) => commitAuthoritativeStatePatchForQa(
   page,
@@ -233,9 +240,66 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   const actorPieces = (state.pieces ?? []).filter((piece) => piece?.ownerId === actorId);
   const opponentPieces = (state.pieces ?? []).filter((piece) => piece?.ownerId !== actorId);
   const actorPieceIds = actorPieces.map((piece) => piece.id);
-  expect(actorPieces.length).toBeGreaterThan(0);
+  expect(actorPieces.length).toBeGreaterThanOrEqual(2);
   expect(actorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01')).toBe(true);
   expect(opponentPieces.some((piece) => piece?.started && !piece?.finished)).toBe(false);
+
+  const targetPiece = getLowestLabelPiece(actorPieces);
+  const alternatePiece = getLowestLabelPiece(actorPieces.filter((piece) => piece.id !== targetPiece?.id));
+  if (!targetPiece || !alternatePiece) throw new Error('timeout 선택 fixture에 서로 다른 두 개의 내 말이 필요합니다.');
+  const targetPieceId = targetPiece.id;
+  const alternatePieceId = alternatePiece.id;
+  const timeoutSelectionPieces = (state.pieces ?? []).map((piece) => {
+    if (piece?.ownerId !== actorId) return piece;
+    if (piece.id === targetPieceId) {
+      return {
+        ...piece,
+        nodeIndex: TARGET_START_NODE_INDEX,
+        nodeId: TARGET_START_NODE_ID,
+        started: true,
+        finished: false,
+        previousNodeId: undefined,
+      };
+    }
+    if (piece.id === alternatePieceId) {
+      return {
+        ...piece,
+        nodeIndex: ALTERNATE_START_NODE_INDEX,
+        nodeId: ALTERNATE_START_NODE_ID,
+        started: true,
+        finished: false,
+        previousNodeId: undefined,
+      };
+    }
+    return {
+      ...piece,
+      nodeIndex: 0,
+      nodeId: 'n01',
+      started: false,
+      finished: false,
+      previousNodeId: undefined,
+    };
+  });
+  const expectedActorPieceStates = actorPieces.map((piece) => ({
+    id: piece.id,
+    nodeId: piece.id === targetPieceId
+      ? TARGET_START_NODE_ID
+      : piece.id === alternatePieceId ? ALTERNATE_START_NODE_ID : 'n01',
+    started: piece.id === targetPieceId || piece.id === alternatePieceId,
+  }));
+  const hasExpectedActorPieceLayout = (pieces) => {
+    const currentActorPieces = (pieces ?? []).filter((piece) => piece?.ownerId === actorId);
+    return currentActorPieces.length === expectedActorPieceStates.length
+      && expectedActorPieceStates.every((expectedPiece) => {
+        const currentPiece = getPieceById(currentActorPieces, expectedPiece.id);
+        return Boolean(
+          currentPiece
+          && currentPiece.nodeId === expectedPiece.nodeId
+          && currentPiece.started === expectedPiece.started
+          && currentPiece.finished === false
+        );
+      });
+  };
 
   const accessToken = await page.evaluate(readFirebaseAccessTokenFromIndexedDb);
   if (!accessToken) throw new Error('timeout fixture 재구성을 위한 호스트 Firebase access token을 찾지 못했습니다.');
@@ -244,7 +308,7 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   const settledFixture = await commitRoomStatePatchForQa(page, roomId, {
     stackedRollMode: false,
     turnIndex: actorTurnIndex,
-    pieces: state.pieces,
+    pieces: timeoutSelectionPieces,
     roll: null,
     rollStack: [],
     selectedRollStackIndex: null,
@@ -265,7 +329,6 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
 
   await expect.poll(async () => {
     const current = await getRoomStateForQa(roomId);
-    const currentActorPieces = (current?.pieces ?? []).filter((piece) => piece?.ownerId === actorId);
     return Boolean(
       current
       && Number(current.turnVersion) === settledFixture.turnVersion
@@ -274,32 +337,36 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
       && current.roll == null
       && current.turnDeadlineKind == null
       && Number(current.turnDeadlineAt ?? 0) === 0
-      && currentActorPieces.length === actorPieces.length
-      && currentActorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01'),
+      && hasExpectedActorPieceLayout(current.pieces),
     );
   }, {
     timeout: 10_000,
     intervals: [50, 100, 200, 400],
-    message: '분리된 앱 lifecycle에서 authoritative 말을 모두 대기석 상태로 정규화해야 합니다.',
+    message: '분리된 앱 lifecycle에서 authoritative 말을 유효한 timeout 선택 상태로 정규화해야 합니다.',
   }).toBe(true);
 
   await expectAppShell(page);
   await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 25_000 });
 
-  await expect.poll(() => page.evaluate(({ expectedActorId, expectedPieceIds, minimumSequence }) => {
+  await expect.poll(() => page.evaluate(({ expectedActorId, expectedPieceStates, minimumSequence }) => {
     const debug = window.__YUT_DEBUG_STATE__ ?? {};
     const debugPieces = Array.isArray(debug.pieces) ? debug.pieces : [];
     const actorDebugPieces = debugPieces.filter((piece) => piece?.ownerId === expectedActorId);
-    const allDebugPiecesAtBench = actorDebugPieces.length === expectedPieceIds.length
-      && actorDebugPieces.every((piece) => (
-        expectedPieceIds.includes(piece?.id)
-        && piece?.nodeId === 'n01'
-        && piece?.started !== true
-        && piece?.finished !== true
-      ));
-    const allDomPiecesAtBench = expectedPieceIds.every((pieceId) => {
-      const element = document.querySelector(`[data-testid="piece-${pieceId}"]`);
-      return element instanceof HTMLElement && element.classList.contains('off-board');
+    const allDebugPiecesMatch = actorDebugPieces.length === expectedPieceStates.length
+      && expectedPieceStates.every((expectedPiece) => {
+        const currentPiece = actorDebugPieces.find((piece) => piece?.id === expectedPiece.id);
+        return Boolean(
+          currentPiece
+          && currentPiece.nodeId === expectedPiece.nodeId
+          && currentPiece.started === expectedPiece.started
+          && currentPiece.finished !== true
+        );
+      });
+    const allDomPiecesMatch = expectedPieceStates.every((expectedPiece) => {
+      const element = document.querySelector(`[data-testid="piece-${expectedPiece.id}"]`);
+      if (!(element instanceof HTMLElement)) return false;
+      const isOffBoard = element.classList.contains('off-board');
+      return expectedPiece.started ? !isOffBoard : isOffBoard;
     });
     return Boolean(
       Number(debug.lastAppliedSequence ?? 0) >= minimumSequence
@@ -308,30 +375,30 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
       && Number(debug.turnDeadlineAt ?? 0) === 0
       && (typeof debug.movingPieceId !== 'string' || debug.movingPieceId === '')
       && Number(debug.pendingLocalRemoteActionCount ?? 0) === 0
-      && allDebugPiecesAtBench
-      && allDomPiecesAtBench
+      && allDebugPiecesMatch
+      && allDomPiecesMatch
       && document.querySelectorAll('.capture-ghost').length === 0
     );
   }, {
     expectedActorId: actorId,
-    expectedPieceIds: actorPieceIds,
+    expectedPieceStates: expectedActorPieceStates,
     minimumSequence: settledFixture.lastSequence,
   }), {
     timeout: 12_000,
     intervals: [50, 100, 200, 400],
-    message: '새 앱 lifecycle이 canonical 대기석 snapshot만 적용한 뒤 timeout fixture를 시작해야 합니다.',
+    message: '새 앱 lifecycle이 canonical timeout 선택 snapshot만 적용한 뒤 fixture를 시작해야 합니다.',
   }).toBe(true);
 
-  const targetPieceId = String(getLowestLabelPiece(actorPieces)?.id ?? '');
-  expect(targetPieceId).not.toBe('');
   expect(actorPieces.some((piece) => piece.id === targetPieceId)).toBe(true);
-  await expect(page.getByTestId(`piece-${targetPieceId}`)).toHaveClass(/off-board/);
+  await expect(page.getByTestId(`piece-${targetPieceId}`)).not.toHaveClass(/off-board/);
   await startMovePresentationTrace(page, targetPieceId);
 
   const sequencesBeforeTimeoutFixture = await getRoomSequencesForQa(roomId);
   expect(getMoveSequencesAfter(sequencesBeforeTimeoutFixture, settledFixture.lastSequence, actorId)).toHaveLength(0);
 
+  const timeoutDurationMs = getTurnActionTimeoutMsForCount(INITIAL_TIMEOUT_COUNT);
   const timeoutDeadlineAt = Date.now() + VISIBLE_FIXTURE_DEADLINE_OFFSET_MS;
+  const rollResultReadyAt = timeoutDeadlineAt - timeoutDurationMs;
   const actionKey = makeTimeoutActionKey({
     roomId,
     stage: 'move',
@@ -341,13 +408,13 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   const visibleFixture = await commitRoomStatePatchForQa(page, roomId, {
     stackedRollMode: false,
     turnIndex: actorTurnIndex,
-    pieces: state.pieces,
+    pieces: timeoutSelectionPieces,
     roll: { name: '개', steps: 2 },
     rollStack: [],
     selectedRollStackIndex: null,
     rollStackClosed: false,
     rollAnimation: null,
-    rollResultReadyAt: 0,
+    rollResultReadyAt,
     pendingGoldenYutSelection: null,
     pendingTrapPlacement: null,
     pendingItemPickup: null,
@@ -362,7 +429,6 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
 
   await expect.poll(async () => {
     const current = await getRoomStateForQa(roomId);
-    const currentActorPieces = (current?.pieces ?? []).filter((piece) => piece?.ownerId === actorId);
     return Boolean(
       current
       && Number(current.turnVersion) === visibleFixture.turnVersion
@@ -371,16 +437,54 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
       && current.roll?.name === '개'
       && Number(current.roll?.steps) === 2
       && current.stackedRollMode === false
+      && Number(current.rollResultReadyAt ?? 0) === rollResultReadyAt
       && current.turnDeadlineKind === 'move'
       && Number(current.turnDeadlineAt) === timeoutDeadlineAt
-      && currentActorPieces.length === actorPieces.length
-      && currentActorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01'),
+      && hasExpectedActorPieceLayout(current.pieces),
     );
   }, {
     timeout: 10_000,
     intervals: [50, 100, 200, 400],
-    message: '일반 개 이동 fixture가 authoritative sequence로 안정적으로 반영되어야 합니다.',
+    message: '두 개의 선택 가능한 내 말을 가진 일반 개 이동 fixture가 authoritative sequence로 반영되어야 합니다.',
   }).toBe(true);
+
+  const preDeadlineCheckAt = timeoutDeadlineAt - PRE_DEADLINE_ASSERTION_OFFSET_MS;
+  await expect.poll(async () => {
+    if (Date.now() < preDeadlineCheckAt) return null;
+    const sequences = await getRoomSequencesForQa(roomId);
+    const current = await getRoomStateForQa(roomId);
+    const serverPiece = getPieceById(current?.pieces, targetPieceId);
+    const browserState = await page.evaluate((pieceId) => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      const debugPiece = Array.isArray(debug.pieces)
+        ? debug.pieces.find((piece) => piece?.id === pieceId)
+        : undefined;
+      return {
+        debugMovingPieceId: typeof debug.movingPieceId === 'string' ? debug.movingPieceId : '',
+        debugNodeId: debugPiece?.nodeId ?? '',
+        movingStarts: Number(window.__YUT_TIMEOUT_MOVE_TRACE__?.movingStarts ?? -1),
+      };
+    }, targetPieceId);
+    return {
+      beforeDeadline: Date.now() < timeoutDeadlineAt,
+      moveSequenceCount: getMoveSequencesAfter(sequences, visibleFixture.lastSequence, actorId).length,
+      serverNodeId: serverPiece?.nodeId ?? '',
+      serverStarted: serverPiece?.started === true,
+      ...browserState,
+    };
+  }, {
+    timeout: VISIBLE_FIXTURE_DEADLINE_OFFSET_MS,
+    intervals: [100, 200, 400],
+    message: '선택 가능한 말이 두 개이면 마감 전 자동 단일 이동이 시작되면 안 됩니다.',
+  }).toEqual({
+    beforeDeadline: true,
+    moveSequenceCount: 0,
+    serverNodeId: TARGET_START_NODE_ID,
+    serverStarted: true,
+    debugMovingPieceId: '',
+    debugNodeId: TARGET_START_NODE_ID,
+    movingStarts: 0,
+  });
 
   return {
     actionKey,
@@ -412,7 +516,7 @@ export async function waitForMoveTimeoutRecovery({
     const state = await getRoomStateForQa(roomId);
     const movedPiece = getPieceById(state?.pieces, targetPieceId);
     if (matching.length !== 1 || !state || !movedPiece) return null;
-    if (movedPiece.nodeId !== 'n03' || movedPiece.started !== true || movedPiece.finished === true) return null;
+    if (movedPiece.nodeId !== EXPECTED_TARGET_NODE_ID || movedPiece.started !== true || movedPiece.finished === true) return null;
     return { matching, state };
   }, {
     timeout: 20_000,
@@ -477,8 +581,8 @@ export async function waitForMoveTimeoutRecovery({
   expect(sequence.clientMutationId).toBe(actionKey);
   expect(sequence.action?.payload?.clientActionId).toBe(actionKey);
   expect(sequence.action?.payload?.rollStackIndex ?? null).toBeNull();
-  expect(sequencePiece).toMatchObject({ id: targetPieceId, nodeId: 'n03', started: true, finished: false });
-  expect(serverPiece).toMatchObject({ id: targetPieceId, nodeId: 'n03', started: true, finished: false });
+  expect(sequencePiece).toMatchObject({ id: targetPieceId, nodeId: EXPECTED_TARGET_NODE_ID, started: true, finished: false });
+  expect(serverPiece).toMatchObject({ id: targetPieceId, nodeId: EXPECTED_TARGET_NODE_ID, started: true, finished: false });
   expect(sequenceState?.roll).toBeNull();
   expect(sequenceState?.turnActionTimeoutCountBySeatId?.[actorId]).toBe(EXPECTED_TIMEOUT_COUNT);
   expect(sequenceState?.autoPlayBySeatId?.[actorId]).toBe(true);
@@ -488,12 +592,14 @@ export async function waitForMoveTimeoutRecovery({
 
   expect(presentation.trace?.movingStarts, JSON.stringify(presentation.trace?.samples ?? [])).toBe(1);
   expect(presentation.trace?.benchReturns, JSON.stringify(presentation.trace?.samples ?? [])).toBe(0);
-  expect(presentation.trace?.nodePath?.filter((nodeId) => nodeId === 'n02')).toHaveLength(1);
+  expect(presentation.trace?.nodePath?.filter((nodeId) => nodeId === TARGET_START_NODE_ID)).toHaveLength(1);
   expect(presentation.trace?.nodePath?.filter((nodeId) => nodeId === 'n03')).toHaveLength(1);
-  expect(presentation.trace?.nodePath?.indexOf('n02')).toBeLessThan(presentation.trace?.nodePath?.indexOf('n03'));
+  expect(presentation.trace?.nodePath?.filter((nodeId) => nodeId === EXPECTED_TARGET_NODE_ID)).toHaveLength(1);
+  expect(presentation.trace?.nodePath?.indexOf(TARGET_START_NODE_ID)).toBeLessThan(presentation.trace?.nodePath?.indexOf('n03'));
+  expect(presentation.trace?.nodePath?.indexOf('n03')).toBeLessThan(presentation.trace?.nodePath?.indexOf(EXPECTED_TARGET_NODE_ID));
   expect(presentation.trace?.appliedSequencePath?.filter((appliedSequence) => appliedSequence === Number(sequence.sequence)).length ?? 0).toBeLessThanOrEqual(1);
   expect(presentation.trace?.captureGhostMax).toBe(0);
-  expect(presentation.finalDom).toMatchObject({ offBoard: false, nearestNodeId: 'n03', captureGhostCount: 0 });
+  expect(presentation.finalDom).toMatchObject({ offBoard: false, nearestNodeId: EXPECTED_TARGET_NODE_ID, captureGhostCount: 0 });
   expect(presentation.finalDom?.nearestNodeDistance).toBeLessThan(30);
   expect(domPiece).toMatchObject({ id: targetPieceId, nodeId: serverPiece?.nodeId, started: true, finished: false });
 
