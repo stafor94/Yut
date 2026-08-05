@@ -1,9 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  createAuthoritativeGameActionQueues,
-  shouldDeferTimeoutMoveRecoveryResult,
-} from '../../src/app/flows/authoritativeGameSyncFlow';
+import { createAuthoritativeGameActionQueues } from '../../src/app/flows/authoritativeGameSyncFlow';
 import {
   attachClientActionStartedAt,
   clearNextDeadlineAutoAction,
@@ -76,7 +73,10 @@ test('온라인 이동 마감 UI와 stalled/coordinator 복구는 동일 timeout
     assert.equal(committedActions.length, 1);
     const committedPayload = committedActions[0].payload as Record<string, unknown>;
     assert.equal(committedPayload.clientActionId, stalledRecoveryActionId);
-    assert.equal(committedPayload.timeoutDeadlineAt, timeoutDeadlineAt);
+    assert.equal(committedPayload.deadlineAutoSubmitted, true);
+    assert.equal(committedPayload.autoSubmittedDeadlineAt, timeoutDeadlineAt);
+    assert.equal(committedPayload.clientActionStartedAt, timeoutDeadlineAt - 10);
+    assert.equal('timeoutDeadlineAt' in committedPayload, false, 'UI deadline action을 post-grace recovery로 바꾸면 안 됩니다.');
 
     const aliasedEcho = aliasTimeoutRollMutationIds(roomId, {
       clientMutationId: stalledRecoveryActionId,
@@ -89,72 +89,6 @@ test('온라인 이동 마감 UI와 stalled/coordinator 복구는 동일 timeout
     assert.equal(aliasedEcho.clientMutationId, localMoveActionId);
     assert.equal(aliasedEcho.action.payload.clientActionId, localMoveActionId);
     assert.equal(aliasedEcho.stateAfter.lastClientMutationId, localMoveActionId);
-  } finally {
-    clearTimeoutRollMutationAliases(roomId);
-  }
-});
-
-test('deadline UI 이동의 전환 경합 거절은 canonical recovery까지 로컬 presentation claim을 유지한다', async () => {
-  const roomId = 'room-timeout-move-rejection';
-  const actorId = 'seat-host';
-  const timeoutDeadlineAt = 3_000_000;
-  const localMoveActionId = 'move_piece:seat-host:21:0:개:2:::seat-host-piece-1:0:outer:stack:none';
-
-  try {
-    markNextDeadlineAutoAction({
-      actionType: 'move_piece',
-      actorId,
-      deadlineAt: timeoutDeadlineAt,
-      now: timeoutDeadlineAt - 1_000,
-    });
-    const deadlineUiAction = attachClientActionStartedAt({
-      type: 'move_piece',
-      actorId,
-      payload: {
-        clientActionId: localMoveActionId,
-        pieceId: `${actorId}-piece-1`,
-        branchChoice: 'outer',
-        rollStackIndex: null,
-      },
-    }, timeoutDeadlineAt - 10);
-    const transientRejection = {
-      status: 'rejected' as const,
-      reason: '턴 전환 중입니다. 잠시 후 행동해주세요.',
-    };
-    let handledResultCount = 0;
-    let finalizedCount = 0;
-    let resolveSettled: () => void = () => {};
-    const settled = new Promise<void>((resolve) => {
-      resolveSettled = resolve;
-    });
-    const queues = createAuthoritativeGameActionQueues<typeof deadlineUiAction, typeof transientRejection>({
-      activeRoomIdRef: { current: roomId },
-      commit: async () => transientRejection,
-      yieldBetweenApplies: async () => undefined,
-    });
-
-    assert.equal(shouldDeferTimeoutMoveRecoveryResult(deadlineUiAction, transientRejection), true);
-    assert.equal(shouldDeferTimeoutMoveRecoveryResult(deadlineUiAction, {
-      status: 'rejected',
-      reason: '말 이동 요청이 유효하지 않습니다.',
-    }), false);
-
-    queues.enqueueAuthoritativeGameAction(roomId, deadlineUiAction, {
-      handleResult: () => {
-        handledResultCount += 1;
-      },
-      handleError: () => {
-        assert.fail('전환 경합 거절은 commit error로 처리하면 안 됩니다.');
-      },
-      handleFinally: () => {
-        finalizedCount += 1;
-        resolveSettled();
-      },
-    });
-    await settled;
-
-    assert.equal(handledResultCount, 0);
-    assert.equal(finalizedCount, 1);
   } finally {
     clearTimeoutRollMutationAliases(roomId);
   }
