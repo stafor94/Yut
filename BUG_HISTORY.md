@@ -6,6 +6,34 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 
 ---
 
+## 2026-08-05 - 상태 없는 duplicate ACK가 timeout 이동 sequence를 선점
+
+### Symptom
+
+- coordinator가 canonical timeout 이동을 먼저 처리한 뒤 UI 제출이 `duplicate` metadata만 받으면 같은 말이 대기석으로 되감긴 뒤 이동을 반복했다.
+- 응답에는 `sequence`와 `turnVersion`만 있고 `stateAfter`와 `patch`는 없었다. 상대 말과 capture effect는 없었다.
+
+### Confirmed root cause
+
+- 로컬 move ACK 소비가 authoritative state 존재 여부를 확인하지 않아 metadata-only duplicate로 cursor와 ledger sequence를 먼저 갱신했다.
+- snapshot/apply-wake가 해당 metadata를 기존 로컬 상태와 합성해 실제 sequence 조회를 생략하거나 현재 상태 fingerprint를 서버 결과로 오인했다.
+
+### Required state invariants
+
+- `committed/duplicate`에 실제 `stateAfter` 또는 `patch`가 있을 때만 stateful ACK로 소비한다.
+- 상태 없는 duplicate는 `roomId + actionId + sequence`별로 한 번만 기존 sequence-first 경로에서 복구한다.
+- 실제 authoritative state가 적용되기 전에는 cursor, latest snapshot, fingerprint, pending, apply-wake를 변경하지 않는다.
+- fingerprint 불일치가 실제 authoritative state에서 확인된 경우에만 hard resync한다.
+- 복구 중복 상태는 방 이탈이나 새 게임 lifecycle 경계에서만 정리한다.
+
+### Do not try again
+
+- `sequence`, `turnVersion`, action metadata만 있는 객체를 authoritative snapshot으로 합성하지 않는다.
+- 상태 없는 duplicate 직후 pending을 해제하거나 현재 로컬 상태로 fingerprint를 만들지 않는다.
+- timeout 시간, 애니메이션, capture 코드 또는 assertion 완화로 순서 경합을 숨기지 않는다.
+
+---
+
 ## 2026-08-05 - timeout 이동 action identity 분리로 동일 말 되감기·반복 재생
 
 ### Symptom
@@ -82,7 +110,7 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 - 도구 실패 후에는 원인을 분류하고 실패한 기능만 대체한다.
 - 이미 확인한 저장소, branch, PR, SHA, Run, Issue는 재사용한다.
 - 다른 도구는 부족한 단일 정보를 제공할 근거가 있을 때만 사용한다.
-- 진행 보고는 실제 조회 결과, diff, commit, PR, Check 또는 Run 상태 변화가 생겼을 때만 한다.
+- 진행 보고는 실제 조회 결과, diff, commit, PR 또는 Run 상태 변화가 생겼을 때만 한다.
 - 문서 전용 작업은 문서 변경과 수동 diff 검토로 범위를 제한하며 제품 코드·테스트·workflow를 추가하지 않는다.
 
 ### Do not try again
