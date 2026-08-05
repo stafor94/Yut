@@ -58,14 +58,13 @@ export function shouldConsumeLocalMoveCommitAck(input: LocalMoveCommitAckInput) 
   return classifyLocalMoveCommitAck(input) === 'stateful';
 }
 
-export function makeStatelessDuplicateRecoveryKey({
-  roomId,
-  actionKey,
-  sequence,
-}: StatelessDuplicateRecoveryKeyInput) {
-  const sequenceNumber = Number(sequence ?? 0);
-  if (!roomId || !actionKey || !Number.isFinite(sequenceNumber) || sequenceNumber <= 0) return '';
-  return `${roomId}:${actionKey}:${Math.trunc(sequenceNumber)}`;
+/**
+ * Metadata-only duplicate ACKs are receipts, not authoritative state.
+ * Returning no recovery key keeps the direct recovery branch inert so the
+ * existing sequence subscription/replay pipeline remains the single state owner.
+ */
+export function makeStatelessDuplicateRecoveryKey(_input: StatelessDuplicateRecoveryKeyInput) {
+  return '';
 }
 
 export function shouldReleaseLocalMovePending({
