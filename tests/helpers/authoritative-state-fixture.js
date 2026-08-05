@@ -88,15 +88,11 @@ const getFirestoreDocumentName = (projectId, pathSegments) => `projects/${projec
 const makeSequenceDocId = (sequence) => String(sequence).padStart(SEQUENCE_ID_PAD_LENGTH, '0');
 const isRetryableFixtureCommitFailure = (status, responseText) => (status === 400 || status === 409) && /(ABORTED|ALREADY_EXISTS|FAILED_PRECONDITION)/u.test(responseText);
 
-export async function commitAuthoritativeStatePatchForQa(page, roomId, patch, actorId, {
-  fixtureName,
-  errorLabel,
-  accessToken = '',
-}) {
+export async function commitAuthoritativeStatePatchForQa(page, roomId, patch, actorId, { fixtureName, errorLabel }) {
   const config = await loadFirebaseConfig();
   if (!config?.projectId) throw new Error(`Firebase projectId가 없어 ${errorLabel}를 설정할 수 없습니다.`);
-  const resolvedAccessToken = accessToken || await readFirebaseAccessTokenFromPage(page);
-  if (!resolvedAccessToken) throw new Error('게임 호스트 Firebase access token을 찾지 못했습니다.');
+  const accessToken = await readFirebaseAccessTokenFromPage(page);
+  if (!accessToken) throw new Error('게임 호스트 Firebase access token을 찾지 못했습니다.');
   const commitUrl = `${getFirestoreDocumentsBaseUrl(config.projectId)}:commit`;
 
   for (let attempt = 0; attempt < FIXTURE_COMMIT_RETRY_LIMIT; attempt += 1) {
@@ -135,7 +131,7 @@ export async function commitAuthoritativeStatePatchForQa(page, roomId, patch, ac
 
     const response = await fetch(commitUrl, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${resolvedAccessToken}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         writes: [
           {
