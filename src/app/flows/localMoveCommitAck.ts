@@ -14,12 +14,6 @@ type LocalMovePendingReleaseInput = {
   fingerprintMatched: boolean | null;
 };
 
-type StatelessDuplicateRecoveryKeyInput = {
-  roomId: string;
-  actionKey: string;
-  sequence: unknown;
-};
-
 type QaStatelessDuplicateTraceTarget = typeof globalThis & {
   __YUT_CAPTURE_STATELESS_DUPLICATE_ACK__?: boolean;
   __YUT_STATELESS_DUPLICATE_ACK__?: { actionKey: string; sequence: number };
@@ -67,15 +61,6 @@ export function classifyLocalMoveCommitAck({
 
 export function shouldConsumeLocalMoveCommitAck(input: LocalMoveCommitAckInput) {
   return classifyLocalMoveCommitAck(input) === 'stateful';
-}
-
-/**
- * Metadata-only duplicate ACKs are receipts, not authoritative state.
- * Returning no recovery key keeps the direct recovery branch inert so the
- * existing sequence subscription/replay pipeline remains the single state owner.
- */
-export function makeStatelessDuplicateRecoveryKey(_input: StatelessDuplicateRecoveryKeyInput) {
-  return '';
 }
 
 export function shouldReleaseLocalMovePending({
