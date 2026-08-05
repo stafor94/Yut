@@ -225,14 +225,94 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   if (actorTurnIndex < 0) throw new Error('coordinator 좌석이 authoritative turn order에 없습니다.');
   const actorPieces = (state.pieces ?? []).filter((piece) => piece?.ownerId === actorId);
   const opponentPieces = (state.pieces ?? []).filter((piece) => piece?.ownerId !== actorId);
+  const actorPieceIds = actorPieces.map((piece) => piece.id);
   expect(actorPieces.length).toBeGreaterThan(0);
   expect(actorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01')).toBe(true);
   expect(opponentPieces.some((piece) => piece?.started && !piece?.finished)).toBe(false);
+
+  const settledFixture = await commitRoomStatePatchForQa(page, roomId, {
+    stackedRollMode: false,
+    turnIndex: actorTurnIndex,
+    pieces: state.pieces,
+    roll: null,
+    rollStack: [],
+    selectedRollStackIndex: null,
+    rollStackClosed: false,
+    rollAnimation: null,
+    rollResultReadyAt: 0,
+    pendingGoldenYutSelection: null,
+    pendingTrapPlacement: null,
+    pendingItemPickup: null,
+    itemPromptTiming: null,
+    pendingAfterMoveTurnIndex: null,
+    branchChoice: 'outer',
+    turnDeadlineKind: null,
+    turnDeadlineAt: 0,
+    turnActionTimeoutCountBySeatId: { [actorId]: INITIAL_TIMEOUT_COUNT },
+    autoPlayBySeatId: { [actorId]: false },
+  }, actorId);
+
+  await expect.poll(async () => {
+    const current = await getRoomStateForQa(roomId);
+    const currentActorPieces = (current?.pieces ?? []).filter((piece) => piece?.ownerId === actorId);
+    return Boolean(
+      current
+      && Number(current.turnVersion) === settledFixture.turnVersion
+      && Number(current.lastSequence) === settledFixture.lastSequence
+      && Number(current.turnIndex) === actorTurnIndex
+      && current.roll == null
+      && current.turnDeadlineKind == null
+      && Number(current.turnDeadlineAt ?? 0) === 0
+      && currentActorPieces.length === actorPieces.length
+      && currentActorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01'),
+    );
+  }, {
+    timeout: 10_000,
+    intervals: [50, 100, 200, 400],
+    message: 'timeout fixture 전에 authoritative 말을 모두 대기석 상태로 정규화해야 합니다.',
+  }).toBe(true);
+
+  await expect.poll(() => page.evaluate(({ expectedActorId, expectedPieceIds, minimumSequence }) => {
+    const debug = window.__YUT_DEBUG_STATE__ ?? {};
+    const debugPieces = Array.isArray(debug.pieces) ? debug.pieces : [];
+    const actorDebugPieces = debugPieces.filter((piece) => piece?.ownerId === expectedActorId);
+    const allDebugPiecesAtBench = actorDebugPieces.length === expectedPieceIds.length
+      && actorDebugPieces.every((piece) => (
+        expectedPieceIds.includes(piece?.id)
+        && piece?.nodeId === 'n01'
+        && piece?.started !== true
+        && piece?.finished !== true
+      ));
+    const allDomPiecesAtBench = expectedPieceIds.every((pieceId) => {
+      const element = document.querySelector(`[data-testid="piece-${pieceId}"]`);
+      return element instanceof HTMLElement && element.classList.contains('off-board');
+    });
+    return Boolean(
+      Number(debug.lastAppliedSequence ?? 0) >= minimumSequence
+      && debug.roll == null
+      && debug.turnDeadlineKind == null
+      && Number(debug.turnDeadlineAt ?? 0) === 0
+      && (typeof debug.movingPieceId !== 'string' || debug.movingPieceId === '')
+      && Number(debug.pendingLocalRemoteActionCount ?? 0) === 0
+      && allDebugPiecesAtBench
+      && allDomPiecesAtBench
+      && document.querySelectorAll('.capture-ghost').length === 0
+    );
+  }, {
+    expectedActorId: actorId,
+    expectedPieceIds: actorPieceIds,
+    minimumSequence: settledFixture.lastSequence,
+  }), {
+    timeout: 12_000,
+    intervals: [50, 100, 200, 400],
+    message: '기존 이동 presentation이 끝나고 canonical 대기석 DOM이 적용된 뒤 timeout fixture를 시작해야 합니다.',
+  }).toBe(true);
 
   const timeoutDeadlineAt = Date.now() + VISIBLE_FIXTURE_DEADLINE_OFFSET_MS;
   const visibleFixture = await commitRoomStatePatchForQa(page, roomId, {
     stackedRollMode: false,
     turnIndex: actorTurnIndex,
+    pieces: state.pieces,
     roll: { name: '개', steps: 2 },
     rollStack: [],
     selectedRollStackIndex: null,
@@ -243,6 +323,7 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
     pendingTrapPlacement: null,
     pendingItemPickup: null,
     itemPromptTiming: null,
+    pendingAfterMoveTurnIndex: null,
     branchChoice: 'outer',
     turnDeadlineKind: 'move',
     turnDeadlineAt: timeoutDeadlineAt,
@@ -252,6 +333,7 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
 
   await expect.poll(async () => {
     const current = await getRoomStateForQa(roomId);
+    const currentActorPieces = (current?.pieces ?? []).filter((piece) => piece?.ownerId === actorId);
     return Boolean(
       current
       && Number(current.turnVersion) === visibleFixture.turnVersion
@@ -261,7 +343,9 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
       && Number(current.roll?.steps) === 2
       && current.stackedRollMode === false
       && current.turnDeadlineKind === 'move'
-      && Number(current.turnDeadlineAt) === timeoutDeadlineAt,
+      && Number(current.turnDeadlineAt) === timeoutDeadlineAt
+      && currentActorPieces.length === actorPieces.length
+      && currentActorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01'),
     );
   }, {
     timeout: 10_000,
@@ -276,17 +360,38 @@ export async function prepareMoveTimeoutRecoveryFixture({ page, context, testInf
   let targetPieceId = '';
   await expect.poll(async () => {
     const screen = await collectScreenState(page);
+    const debugPieces = Array.isArray(screen.yutDebug?.pieces) ? screen.yutDebug.pieces : [];
+    const debugActorPieces = debugPieces.filter((piece) => piece?.ownerId === actorId);
+    const allDebugPiecesAtBench = debugActorPieces.length === actorPieces.length
+      && debugActorPieces.every((piece) => !piece.started && !piece.finished && piece.nodeId === 'n01');
     targetPieceId = String(
       screen.yutDebug?.activeMovablePiece?.id
       ?? screen.yutDebug?.fallbackMovablePiece?.id
       ?? screen.yutDebug?.selectedPieceId
       ?? '',
     );
-    return targetPieceId;
+    const targetElement = targetPieceId
+      ? page.getByTestId(`piece-${targetPieceId}`)
+      : null;
+    const targetAtBench = targetElement
+      ? await targetElement.evaluate((element) => element.classList.contains('off-board')).catch(() => false)
+      : false;
+    return Boolean(
+      Number(screen.yutDebug?.lastAppliedSequence ?? 0) >= visibleFixture.lastSequence
+      && screen.yutDebug?.roll?.name === '개'
+      && Number(screen.yutDebug?.roll?.steps) === 2
+      && screen.yutDebug?.turnDeadlineKind === 'move'
+      && Number(screen.yutDebug?.turnDeadlineAt) === timeoutDeadlineAt
+      && !screen.yutDebug?.movingPieceId
+      && Number(screen.yutDebug?.pendingLocalRemoteActionCount ?? 0) === 0
+      && allDebugPiecesAtBench
+      && targetPieceId
+      && targetAtBench
+    ) ? targetPieceId : '';
   }, {
-    timeout: 3_000,
+    timeout: 5_000,
     intervals: [50, 100, 200],
-    message: 'timeout UI 자동 이동의 대상 말을 확인해야 합니다.',
+    message: 'canonical 대기석 DOM에서 timeout UI 자동 이동 대상 말을 확인해야 합니다.',
   }).not.toBe('');
   expect(actorPieces.some((piece) => piece.id === targetPieceId)).toBe(true);
   await startMovePresentationTrace(page, targetPieceId);
