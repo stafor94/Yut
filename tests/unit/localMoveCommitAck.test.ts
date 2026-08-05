@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildAuthoritativeApplyWakeSnapshot } from '../../src/app/flows/authoritativeApplyWakeFlow';
-import { getAuthoritativeSnapshot } from '../../src/app/flows/authoritativeSnapshot';
 import {
   classifyLocalMoveCommitAck,
   makeStatelessDuplicateRecoveryKey,
@@ -44,12 +43,11 @@ test('상태 없는 duplicate는 cursor, snapshot, fingerprint, apply-wake와 pe
   assert.equal(cursor, 4);
 
   const latest = { pieces: [{ id: 'P1-1', nodeId: 'n03' }], turnIndex: 0, lastSequence: 4 };
-  assert.equal(getAuthoritativeSnapshot(duplicate, latest), null);
-  assert.equal(getAuthoritativeSnapshot({
+  assert.equal(buildAuthoritativeApplyWakeSnapshot(duplicate, latest), null);
+  assert.equal(buildAuthoritativeApplyWakeSnapshot({
     ...duplicate,
     stateAfter: { sequence: 5, turnVersion: 8, lastSequence: 5 },
   }, latest), null);
-  assert.equal(buildAuthoritativeApplyWakeSnapshot(duplicate, latest), null);
   assert.equal(shouldReleaseLocalMovePending({
     localPresentationCompleted: true,
     serverSequenceAcked: false,
