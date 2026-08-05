@@ -9,34 +9,6 @@ export type AuthoritativeQueueHooks<T> = {
   handleFinally: () => void;
 };
 
-type TimeoutMoveActionLike = {
-  type?: unknown;
-  payload?: Record<string, unknown>;
-};
-
-type TimeoutMoveResultLike = {
-  status?: unknown;
-  reason?: unknown;
-};
-
-const RECOVERABLE_TIMEOUT_MOVE_REJECTION_REASONS = new Set([
-  '턴 전환 중입니다. 잠시 후 행동해주세요.',
-  '말 이동 제한 시간이 만료되었습니다.',
-]);
-
-export function shouldDeferTimeoutMoveRecoveryResult(action: unknown, result: unknown) {
-  if (!action || typeof action !== 'object' || !result || typeof result !== 'object') return false;
-  const candidateAction = action as TimeoutMoveActionLike;
-  const candidateResult = result as TimeoutMoveResultLike;
-  const payload = candidateAction.payload;
-  return candidateAction.type === 'move_piece'
-    && payload?.deadlineAutoSubmitted === true
-    && Number(payload.autoSubmittedDeadlineAt ?? 0) > 0
-    && candidateResult.status === 'rejected'
-    && typeof candidateResult.reason === 'string'
-    && RECOVERABLE_TIMEOUT_MOVE_REJECTION_REASONS.has(candidateResult.reason);
-}
-
 export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
   activeRoomIdRef: RoomIdRef;
   commit: (roomId: string, action: TAction) => Promise<TResult>;
@@ -98,9 +70,7 @@ export function createAuthoritativeGameActionQueues<TAction, TResult>(params: {
     void commitQueuedAuthoritativeGameAction(roomId, action)
       .then((result) => enqueueAuthoritativeResultApplication(roomId, async () => {
         try {
-          if (!shouldDeferTimeoutMoveRecoveryResult(action, result)) {
-            await hooks.handleResult(result);
-          }
+          await hooks.handleResult(result);
           return result;
         }
         finally { hooks.handleFinally(); }
