@@ -1,6 +1,5 @@
 import { loadFirebaseConfig } from './env.js';
 import { getRoomStateForQa } from './rooms.js';
-import { makeFirestoreSafeId } from '../../src/features/room/services/roomFirestore.ts';
 
 const SEQUENCE_ID_PAD_LENGTH = 12;
 const FIXTURE_COMMIT_RETRY_LIMIT = 3;
@@ -88,70 +87,6 @@ const getFirestoreDocumentsBaseUrl = (projectId) => {
 const getFirestoreDocumentName = (projectId, pathSegments) => `projects/${projectId}/databases/(default)/documents/${pathSegments.join('/')}`;
 const makeSequenceDocId = (sequence) => String(sequence).padStart(SEQUENCE_ID_PAD_LENGTH, '0');
 const isRetryableFixtureCommitFailure = (status, responseText) => (status === 400 || status === 409) && /(ABORTED|ALREADY_EXISTS|FAILED_PRECONDITION)/u.test(responseText);
-
-const resolveFixtureAccess = async (page, accessToken, errorLabel) => {
-  const config = await loadFirebaseConfig();
-  if (!config?.projectId) throw new Error(`Firebase projectId가 없어 ${errorLabel}를 설정할 수 없습니다.`);
-  const token = accessToken || await readFirebaseAccessTokenFromPage(page);
-  if (!token) throw new Error('게임 호스트 Firebase access token을 찾지 못했습니다.');
-  return { projectId: config.projectId, token };
-};
-
-const commitFixtureWrites = async (access, writes, errorLabel) => {
-  const response = await fetch(`${getFirestoreDocumentsBaseUrl(access.projectId)}:commit`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${access.token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ writes }),
-  });
-  const responseText = await response.text();
-  if (!response.ok) throw new Error(`${errorLabel} ${response.status}: ${responseText}`);
-};
-
-const encodeFields = (value) => Object.fromEntries(
-  Object.entries(value).map(([key, entry]) => [key, encodeFirestoreValue(entry)]),
-);
-
-export async function stageProcessedAuthoritativeActionForQa(page, roomId, fixture) {
-  const access = await resolveFixtureAccess(page, fixture.accessToken, 'processed authoritative action fixture');
-  const createdAt = Date.now();
-  const { accessToken: _accessToken, ...processed } = fixture;
-  await commitFixtureWrites(access, [{
-    update: {
-      name: getFirestoreDocumentName(access.projectId, ['rooms', roomId, 'processedActions', makeFirestoreSafeId(fixture.clientMutationId)]),
-      fields: { ...encodeFields(processed), createdAt: { timestampValue: new Date(createdAt).toISOString() } },
-    },
-    currentDocument: { exists: false },
-  }], 'processed authoritative action fixture commit');
-}
-
-export async function publishAuthoritativeActionSequenceForQa(page, roomId, fixture) {
-  const access = await resolveFixtureAccess(page, fixture.accessToken, 'authoritative action sequence fixture');
-  const committedAt = Date.now();
-  const { sequence, turnVersion, clientMutationId, patch, accessToken: _accessToken, ...event } = fixture;
-  const stateFields = {
-    ...encodeFields(patch),
-    turnVersion: encodeFirestoreValue(turnVersion),
-    lastSequence: encodeFirestoreValue(sequence),
-    lastClientMutationId: encodeFirestoreValue(clientMutationId),
-    updatedAt: { timestampValue: new Date(committedAt).toISOString() },
-  };
-  await commitFixtureWrites(access, [
-    {
-      update: {
-        name: getFirestoreDocumentName(access.projectId, ['rooms', roomId, 'sequences', makeSequenceDocId(sequence)]),
-        fields: {
-          ...encodeFields({ ...event, sequence, patch, schemaVersion: 2, eventSchemaVersion: 2, logEntries: [], expectedPreviousSequence: sequence - 1, clientMutationId, clientCreatedAt: committedAt }),
-          createdAt: { timestampValue: new Date(committedAt).toISOString() },
-        },
-      },
-      currentDocument: { exists: false },
-    },
-    {
-      update: { name: getFirestoreDocumentName(access.projectId, ['rooms', roomId, 'state', 'current']), fields: stateFields },
-      updateMask: { fieldPaths: Object.keys(stateFields) },
-    },
-  ], 'authoritative action sequence fixture commit');
-}
 
 export async function commitAuthoritativeStatePatchForQa(page, roomId, patch, actorId, {
   fixtureName,

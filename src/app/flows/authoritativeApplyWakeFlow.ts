@@ -1,5 +1,3 @@
-import { getAuthoritativeSnapshot } from './authoritativeSnapshot';
-
 type SnapshotRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is SnapshotRecord => Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -12,8 +10,11 @@ const cloneArrayValue = (value: unknown) => Array.isArray(value)
 
 const normalizeAppliedSnapshot = (appliedValue: unknown): SnapshotRecord | null => {
   if (!isRecord(appliedValue)) return null;
-  const appliedState = getAuthoritativeSnapshot<SnapshotRecord>(appliedValue, null);
-  if (!appliedState) return null;
+  const appliedState = isRecord(appliedValue.stateAfter)
+    ? appliedValue.stateAfter
+    : isRecord(appliedValue.patch)
+      ? appliedValue.patch
+      : appliedValue;
   const appliedSequence = Number(appliedValue.sequence ?? appliedState.lastSequence ?? 0);
   return {
     ...appliedState,
