@@ -47,19 +47,6 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, makeError: () =>
   });
 });
 
-const maybeReturnQaStatelessDuplicateMoveAck = <T extends AuthoritativeCommitResultShape>(actionType: string, result: T): T => {
-  const qa = globalThis as typeof globalThis & {
-    __YUT_QA_STATELESS_DUPLICATE_MOVE_ACK_COUNT__?: unknown;
-    __YUT_QA_STATELESS_DUPLICATE_MOVE_ACK_USED__?: unknown;
-  };
-  const remaining = Math.max(0, Math.trunc(Number(qa.__YUT_QA_STATELESS_DUPLICATE_MOVE_ACK_COUNT__ ?? 0)));
-  const sequence = Number(result.sequence ?? 0);
-  if (actionType !== 'move_piece' || remaining <= 0 || !Number.isFinite(sequence) || sequence <= 0) return result;
-  qa.__YUT_QA_STATELESS_DUPLICATE_MOVE_ACK_COUNT__ = remaining - 1;
-  qa.__YUT_QA_STATELESS_DUPLICATE_MOVE_ACK_USED__ = Number(qa.__YUT_QA_STATELESS_DUPLICATE_MOVE_ACK_USED__ ?? 0) + 1;
-  return { status: 'duplicate', sequence, turnVersion: result.turnVersion } as T;
-};
-
 export async function settleAuthoritativeCommit<T extends AuthoritativeCommitResultShape>(options: {
   actionType: string;
   commit: () => Promise<T>;
@@ -71,12 +58,11 @@ export async function settleAuthoritativeCommit<T extends AuthoritativeCommitRes
   const recoveryTimeoutMs = options.recoveryTimeoutMs ?? AUTHORITATIVE_COMMIT_RECOVERY_TIMEOUT_MS;
 
   try {
-    const result = await withTimeout(
+    return await withTimeout(
       Promise.resolve().then(options.commit),
       timeoutMs,
       () => new AuthoritativeCommitTimeoutError(options.actionType),
     );
-    return maybeReturnQaStatelessDuplicateMoveAck(options.actionType, result);
   } catch (error) {
     if (!(error instanceof AuthoritativeCommitTimeoutError)) throw error;
 
