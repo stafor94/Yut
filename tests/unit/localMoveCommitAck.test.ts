@@ -43,9 +43,14 @@ test('상태 없는 duplicate는 cursor, snapshot, fingerprint, apply-wake와 pe
   assert.equal(cursor, 4);
 
   const latest = { pieces: [{ id: 'P1-1', nodeId: 'n03' }], turnIndex: 0, lastSequence: 4 };
-  assert.equal(buildAuthoritativeApplyWakeSnapshot(duplicate, latest), null);
+  const metadataOnlyDuplicate = {
+    status: 'duplicate',
+    sequence: 5,
+    turnVersion: 8,
+  };
+  assert.equal(buildAuthoritativeApplyWakeSnapshot(metadataOnlyDuplicate, latest), null);
   assert.equal(buildAuthoritativeApplyWakeSnapshot({
-    ...duplicate,
+    ...metadataOnlyDuplicate,
     stateAfter: { sequence: 5, turnVersion: 8, lastSequence: 5 },
   }, latest), null);
   assert.equal(shouldReleaseLocalMovePending({
