@@ -378,7 +378,8 @@ export async function waitForMoveTimeoutRecovery({
   const matching = getMoveSequencesAfter(sequences, baselineSequence, actorId);
   const state = await getRoomStateForQa(roomId);
   const sequence = matching[0];
-  const sequencePiece = getPieceById(sequence?.stateAfter?.pieces, targetPieceId);
+  const sequenceState = sequence?.stateAfter;
+  const sequencePiece = getPieceById(sequenceState?.pieces, targetPieceId);
   const serverPiece = getPieceById(state?.pieces, targetPieceId);
   const presentation = await stopMovePresentationTrace(page);
   const screen = await collectScreenState(page);
@@ -394,16 +395,16 @@ export async function waitForMoveTimeoutRecovery({
   expect(sequence.action?.actorId).toBe(actorId);
   expect(sequence.clientMutationId).toBe(actionKey);
   expect(sequence.action?.payload?.clientActionId).toBe(actionKey);
-  expect(sequence.stateAfter?.lastClientMutationId).toBe(actionKey);
+  expect(sequenceState?.lastClientMutationId).toBe(actionKey);
   expect(sequence.action?.payload?.rollStackIndex ?? null).toBeNull();
   expect(sequencePiece).toMatchObject({ id: targetPieceId, nodeId: 'n03', started: true, finished: false });
   expect(serverPiece).toMatchObject({ id: targetPieceId, nodeId: 'n03', started: true, finished: false });
-  expect(state?.roll).toBeNull();
-  expect(state?.turnActionTimeoutCountBySeatId?.[actorId]).toBe(EXPECTED_TIMEOUT_COUNT);
-  expect(state?.autoPlayBySeatId?.[actorId]).toBe(true);
-  expect(Number(state?.turnDeadlineAt ?? 0)).not.toBe(timeoutDeadlineAt);
+  expect(sequenceState?.roll).toBeNull();
+  expect(sequenceState?.turnActionTimeoutCountBySeatId?.[actorId]).toBe(EXPECTED_TIMEOUT_COUNT);
+  expect(sequenceState?.autoPlayBySeatId?.[actorId]).toBe(true);
+  expect(Number(sequenceState?.turnDeadlineAt ?? 0)).not.toBe(timeoutDeadlineAt);
   expect(sequence.payload?.capturedPieceIds ?? sequence.action?.payload?.capturedPieceIds ?? []).toEqual([]);
-  expect(sequence.stateAfter?.captureEffect ?? null).toBeNull();
+  expect(sequenceState?.captureEffect ?? null).toBeNull();
 
   expect(presentation.trace?.movingStarts, JSON.stringify(presentation.trace?.samples ?? [])).toBe(1);
   expect(presentation.trace?.benchReturns, JSON.stringify(presentation.trace?.samples ?? [])).toBe(0);
