@@ -49,10 +49,15 @@ test('상태 없는 duplicate는 cursor, snapshot, fingerprint, apply-wake와 pe
     turnVersion: 8,
   };
   assert.equal(buildAuthoritativeApplyWakeSnapshot(metadataOnlyDuplicate, latest), null);
-  assert.equal(buildAuthoritativeApplyWakeSnapshot({
+
+  const stateAfterSnapshot = buildAuthoritativeApplyWakeSnapshot({
     ...metadataOnlyDuplicate,
     stateAfter: { sequence: 5, turnVersion: 8, lastSequence: 5 },
-  }, latest), null);
+  }, latest);
+  assert.ok(stateAfterSnapshot);
+  assert.equal(stateAfterSnapshot.lastSequence, 5);
+  assert.deepEqual(stateAfterSnapshot.pieces, latest.pieces);
+
   assert.equal(shouldReleaseLocalMovePending({
     localPresentationCompleted: true,
     serverSequenceAcked: false,
