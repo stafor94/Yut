@@ -94,9 +94,12 @@ export async function waitForMoveTimeoutRecovery(fixture) {
     }).toMatchObject({
       lastAppliedSequence: fixture.baselineSequence,
       movingStarts: 1,
-      duplicateAck: { actionKey: fixture.actionKey, sequence: fixture.donorSequence },
+      duplicateAck: { actionKey: expect.stringMatching(/^move_piece:/), sequence: fixture.donorSequence },
     });
     expect(ackBoundary).not.toBeNull();
+    expect(ackBoundary.duplicateAck.actionKey).toContain(`:${fixture.actorId}:`);
+    expect(ackBoundary.duplicateAck.actionKey).toContain(`:${fixture.targetPieceId}:`);
+    expect(ackBoundary.duplicateAck.actionKey).not.toBe(fixture.actionKey);
 
     fixture.listenGate.release();
     const recovery = await waitForBaseRecovery(fixture);
