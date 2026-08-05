@@ -1,5 +1,3 @@
-import { hasAuthoritativeStatePayload } from './authoritativeSnapshot';
-
 type LocalMoveCommitAckInput = {
   actionType: string;
   actionKey: string;
@@ -21,6 +19,15 @@ type StatelessDuplicateRecoveryKeyInput = {
   actionKey: string;
   sequence: unknown;
 };
+
+const ACK_METADATA_KEYS = new Set([
+  'status', 'sequence', 'turnVersion', 'lastSequence', 'clientMutationId',
+  'lastClientMutationId', 'reason', 'payload', 'sequenceEvent',
+]);
+const hasAuthoritativeStatePayload = (value: unknown) => Boolean(
+  value && typeof value === 'object' && !Array.isArray(value)
+  && Object.keys(value).some((key) => !ACK_METADATA_KEYS.has(key)),
+);
 
 export type LocalMoveCommitAckClassification = 'stateful' | 'stateless-duplicate' | 'passthrough';
 
