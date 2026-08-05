@@ -1,9 +1,5 @@
 import { expect } from '@playwright/test';
-import {
-  expectMoveTimeoutRecoveryUiProgress,
-  prepareMoveTimeoutRecoveryFixture as prepareBaseFixture,
-  waitForMoveTimeoutRecovery as waitForBaseRecovery,
-} from './move-timeout-recovery.js';
+import { expectMoveTimeoutRecoveryUiProgress, prepareMoveTimeoutRecoveryFixture as prepareBaseFixture, waitForMoveTimeoutRecovery as waitForBaseRecovery } from './move-timeout-recovery.js';
 
 export { expectMoveTimeoutRecoveryUiProgress };
 
@@ -77,8 +73,8 @@ export async function waitForMoveTimeoutRecovery(fixture) {
     });
     expect(ack.stateVersionAfterAck).toBe(ack.stateVersionBefore);
     expect(await fixture.page.evaluate(() => window.__YUT_QA_STATELESS_DUPLICATE_MOVE_ACK_USED__ ?? 0)).toBe(1);
-
     fixture.listenGate.release();
+
     const recovery = await waitForBaseRecovery(fixture);
     expect(Number(ack.sequence)).toBe(Number(recovery.sequence.sequence));
     expect(await fixture.page.evaluate(() => window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__?.length ?? 0)).toBe(1);
