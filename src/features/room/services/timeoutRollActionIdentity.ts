@@ -1,6 +1,7 @@
 import type { RollTimingZone, YutResult } from '../../../game-core/roll';
 import {
   ROLL_TIMEOUT_RESOLVER_VERSION,
+  makeTimeoutActionKey,
   resolveRollTimeoutAction,
 } from './timeoutResolvers';
 
@@ -8,6 +9,8 @@ type TimeoutRollPayload = Record<string, unknown> & {
   clientActionId?: unknown;
   timedOut?: unknown;
   timeoutDeadlineAt?: unknown;
+  deadlineAutoSubmitted?: unknown;
+  autoSubmittedDeadlineAt?: unknown;
   timingPositionPercent?: unknown;
   rollTimingZone?: unknown;
   selectedGoldenYutResult?: unknown;
@@ -116,6 +119,43 @@ export const clearTimeoutRollMutationAliases = (roomId: string) => {
   if (!roomId) return;
   mutationAliasesByRoom.delete(roomId);
   pendingTimeoutRollCandidatesByRoom.delete(roomId);
+};
+
+/**
+ * Keeps the deadline-leading UI move local identity for its optimistic presentation,
+ * but submits the same deterministic identity used by stalled/coordinator recovery.
+ */
+export const canonicalizeTimeoutMoveAction = <TAction,>(roomId: string, action: TAction): TAction => {
+  if (!action || typeof action !== 'object') return action;
+  const candidate = action as unknown as TimeoutRollAction;
+  const payload = candidate.payload;
+  const timeoutDeadlineAt = Math.trunc(Number(payload?.autoSubmittedDeadlineAt ?? 0));
+  if (
+    candidate.type !== 'move_piece'
+    || typeof candidate.actorId !== 'string'
+    || !candidate.actorId
+    || payload?.deadlineAutoSubmitted !== true
+    || !Number.isFinite(timeoutDeadlineAt)
+    || timeoutDeadlineAt <= 0
+  ) return action;
+
+  const canonicalClientActionId = makeTimeoutActionKey({
+    roomId,
+    stage: 'move',
+    actorId: candidate.actorId,
+    timeoutDeadlineAt,
+  });
+  const localClientActionId = typeof payload.clientActionId === 'string' ? payload.clientActionId.trim() : '';
+  rememberMutationAlias(roomId, canonicalClientActionId, localClientActionId);
+
+  return {
+    ...candidate,
+    payload: {
+      ...payload,
+      clientActionId: canonicalClientActionId,
+      timeoutDeadlineAt,
+    },
+  } as unknown as TAction;
 };
 
 /**
