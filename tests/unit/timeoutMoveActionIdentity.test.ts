@@ -71,10 +71,11 @@ test('온라인 이동 마감 UI와 stalled/coordinator 복구는 동일 timeout
       sequence: 99,
       extra: 'coordinator-retry',
     });
+    const deadlineUiPayload = deadlineUiAction.payload as Record<string, unknown>;
 
-    assert.equal(deadlineUiAction.payload?.deadlineAutoSubmitted, true);
-    assert.equal(deadlineUiAction.payload?.autoSubmittedDeadlineAt, timeoutDeadlineAt);
-    assert.equal(deadlineUiAction.payload?.clientActionId, stalledRecoveryActionId);
+    assert.equal(deadlineUiPayload.deadlineAutoSubmitted, true);
+    assert.equal(deadlineUiPayload.autoSubmittedDeadlineAt, timeoutDeadlineAt);
+    assert.equal(deadlineUiPayload.clientActionId, stalledRecoveryActionId);
     assert.equal(coordinatorRecoveryActionId, stalledRecoveryActionId);
 
     const aliasedEcho = aliasTimeoutRollMutationIds(roomId, {
