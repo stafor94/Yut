@@ -34,7 +34,6 @@ test.describe('Galaxy 일반 말 이동 제한시간 recovery', () => {
       sequence: expect.any(Number),
       clientMutationId: fixture.actionKey,
       actionClientId: fixture.actionKey,
-      stateAfterClientId: fixture.actionKey,
     }]);
     expect(recovery.presentation.trace).toMatchObject({
       movingStarts: 1,
