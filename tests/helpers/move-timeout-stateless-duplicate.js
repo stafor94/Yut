@@ -6,6 +6,7 @@ import { expectMoveTimeoutRecoveryUiProgress, prepareMoveTimeoutRecoveryFixture 
 export { expectMoveTimeoutRecoveryUiProgress };
 const LISTEN_CHANNEL = /\/google\.firestore\.v1\.Firestore\/Listen\/channel(?:\?|$)/;
 const DONOR_DEADLINE_OFFSET_MS = 15_000;
+const DUPLICATE_ACK_SETTLE_MS = 1_000;
 
 async function installListenGate(page) {
   let paused = false;
@@ -39,24 +40,30 @@ export async function prepareMoveTimeoutRecoveryFixture(args) {
     }), { timeout: 8_000, message: 'primary가 연장된 timeout state를 listener 차단 전에 적용해야 합니다.' }).toEqual([timeoutDeadlineAt, '', extension.lastSequence]);
 
     const browser = args.context.browser();
-    if (!browser) throw new Error('coordinator donor context를 만들 browser가 없습니다.');
+    if (!browser) throw new Error('deadline-leading donor context를 만들 browser가 없습니다.');
     donorContext = await browser.newContext({ storageState: await args.context.storageState({ indexedDB: true }), viewport: args.page.viewportSize() ?? undefined });
     const donorPage = await donorContext.newPage();
     await donorPage.goto(args.page.url(), { waitUntil: 'domcontentloaded' });
     await expect.poll(() => donorPage.evaluate(() => {
       const trigger = window.__YUT_QA_MOVE_TIMEOUT_RECOVERY__;
       return trigger ? [trigger.roomId, trigger.actorId, trigger.actionKey, trigger.timeoutDeadlineAt] : null;
-    }), { timeout: 10_000, message: 'donor가 실제 coordinator timeout callback을 준비해야 합니다.' }).toEqual([fixture.roomId, fixture.actorId, actionKey, timeoutDeadlineAt]);
+    }), { timeout: 10_000, message: 'donor가 실제 deadline-leading timeout action을 준비해야 합니다.' }).toEqual([fixture.roomId, fixture.actorId, actionKey, timeoutDeadlineAt]);
 
-    await args.page.evaluate(() => { window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__ = []; });
     gate.pause();
     const donorCommit = await donorPage.evaluate(async () => {
       const trigger = window.__YUT_QA_MOVE_TIMEOUT_RECOVERY__;
       if (!trigger) return null;
       const result = await trigger.invoke();
-      return [trigger.actionKey, result.status, Number(result.sequence ?? 0), Boolean(result.patch), Boolean(result.stateAfter)];
+      return [
+        trigger.actionKey,
+        result.status,
+        Number(result.sequence ?? 0),
+        Boolean(result.patch),
+        Boolean(result.stateAfter),
+        String(result.reason ?? ''),
+      ];
     });
-    expect(donorCommit).toEqual([actionKey, 'committed', extension.lastSequence + 1, true, true]);
+    expect(donorCommit).toEqual([actionKey, 'committed', extension.lastSequence + 1, true, true, '']);
     await donorContext.close(); donorContext = undefined;
     return { ...fixture, actionKey, baselineSequence: extension.lastSequence, donorSequence: extension.lastSequence + 1, listenGate: gate, timeoutDeadlineAt };
   } catch (error) { await donorContext?.close().catch(() => undefined); await gate.dispose(); throw error; }
@@ -64,22 +71,30 @@ export async function prepareMoveTimeoutRecoveryFixture(args) {
 
 export async function waitForMoveTimeoutRecovery(fixture) {
   try {
-    let ack;
-    await expect.poll(async () => {
-      ack = await fixture.page.evaluate((roomId) => (
-        (window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__ ?? []).find((entry) => entry?.roomId === roomId && entry?.moveIdentityMatched === true) ?? null
-      ), fixture.roomId);
-      return ack;
-    }, { timeout: 20_000, message: 'UI가 실제 metadata-only duplicate ACK를 sequence identity로 복구해야 합니다.' }).toMatchObject({
-      actionKey: fixture.actionKey, roomId: fixture.roomId, hasStateAfter: false, hasPatch: false,
-      cursorBefore: fixture.baselineSequence, cursorAfterAck: fixture.baselineSequence, moveIdentityMatched: true,
+    const ackBoundary = await expect.poll(async () => {
+      if (Date.now() < fixture.timeoutDeadlineAt + DUPLICATE_ACK_SETTLE_MS) return null;
+      return fixture.page.evaluate(() => {
+        const debug = window.__YUT_DEBUG_STATE__ ?? {};
+        return {
+          lastAppliedSequence: Number(debug.lastAppliedSequence ?? 0),
+          movingStarts: Number(window.__YUT_TIMEOUT_MOVE_TRACE__?.movingStarts ?? 0),
+          pendingCount: Number(debug.pendingLocalRemoteActionCount ?? 0),
+        };
+      });
+    }, {
+      timeout: 20_000,
+      intervals: [100, 200, 400],
+      message: 'metadata-only duplicate ACK 뒤에도 실제 sequence 전달 전 cursor와 pending 소유권을 유지해야 합니다.',
+    }).toMatchObject({
+      lastAppliedSequence: fixture.baselineSequence,
+      movingStarts: 1,
+      pendingCount: expect.any(Number),
     });
-    expect(ack.stateVersionAfterAck).toBe(ack.stateVersionBefore);
-    expect(Number(ack.sequence)).toBe(fixture.donorSequence);
+    expect(ackBoundary.pendingCount).toBeGreaterThan(0);
+
     fixture.listenGate.release();
     const recovery = await waitForBaseRecovery(fixture);
     expect(Number(recovery.sequence.sequence)).toBe(fixture.donorSequence);
-    expect(await fixture.page.evaluate(() => window.__YUT_STATELESS_DUPLICATE_ACK_TRACE__?.length ?? 0)).toBe(1);
-    return { ...recovery, statelessDuplicateAck: ack };
+    return { ...recovery, statelessDuplicateAckBoundary: ackBoundary };
   } finally { fixture.listenGate.release(); await fixture.listenGate.dispose(); }
 }
