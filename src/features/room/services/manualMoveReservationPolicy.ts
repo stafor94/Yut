@@ -49,10 +49,10 @@ export const getManualMoveActionIdentity = (action: CommittableGameAction) => {
   const clientActionId = getClientActionId(action);
   const prefix = `move_piece:${action.actorId}:`;
   const [sequenceText = '', turnIndexText = ''] = clientActionId.slice(prefix.length).split(':', 2);
+  if (!/^\d+$/.test(sequenceText) || !/^\d+$/.test(turnIndexText)) return null;
   const expectedPreviousSequence = Number(sequenceText);
   const expectedTurnIndex = Number(turnIndexText);
-  if (!Number.isInteger(expectedPreviousSequence) || expectedPreviousSequence < 0) return null;
-  if (!Number.isInteger(expectedTurnIndex) || expectedTurnIndex < 0) return null;
+  if (!Number.isSafeInteger(expectedPreviousSequence) || !Number.isSafeInteger(expectedTurnIndex)) return null;
   return { expectedPreviousSequence, expectedTurnIndex };
 };
 
@@ -95,9 +95,9 @@ export const isActiveManualMoveReservation = ({
     && Number.isFinite(clientActionStartedAt)
     && clientActionStartedAt > 0
     && clientActionStartedAt <= timeoutDeadlineAt
-    && Number.isInteger(expectedPreviousSequence)
+    && Number.isSafeInteger(expectedPreviousSequence)
     && expectedPreviousSequence === stateSequence
-    && Number.isInteger(expectedTurnIndex)
+    && Number.isSafeInteger(expectedTurnIndex)
     && expectedTurnIndex === stateTurnIndex
     && state.turnDeadlineKind === 'move'
     && stateDeadlineAt === timeoutDeadlineAt
