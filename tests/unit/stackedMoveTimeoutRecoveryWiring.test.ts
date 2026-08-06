@@ -14,14 +14,28 @@ test('미선택 이동 스택 timeout은 일반 actor commit이 아니라 coordi
   assert.doesNotMatch(hookSource, /commitAuthoritativeGameAction\(roomId, action\)/);
 });
 
-test('coordinator recovery는 reducer 검증 후 lease·sequence·action key가 있는 saveGameState로 저장한다', () => {
-  assert.match(recoveryServiceSource, /reduceAuthoritativeGameAction\(state, action,/);
-  assert.match(recoveryServiceSource, /if \(!isAuthoritativeCommitReduction\(reduction\)\) return reduction;/);
-  assert.match(recoveryServiceSource, /saveGameState\(roomId, stateForSave,/);
-  assert.match(recoveryServiceSource, /coordinatorSeatId: action\.payload\.coordinatorSeatId/);
-  assert.match(recoveryServiceSource, /coordinatorEpoch,/);
+test('coordinator recovery는 reservation 확인 후 reducer와 lease·sequence·action key를 atomic commit한다', () => {
+  const reservationRead = recoveryServiceSource.indexOf('await transaction.get(manualMoveReservationRef)');
+  const reservationDecision = recoveryServiceSource.indexOf('isActiveManualMoveReservation({', reservationRead);
+  const leaseCheck = recoveryServiceSource.indexOf('matchesActiveGameCoordinatorLease(state, coordinatorLease', reservationDecision);
+  const reducer = recoveryServiceSource.indexOf('reduceAuthoritativeGameAction(state, action', leaseCheck);
+  const sequenceWrite = recoveryServiceSource.indexOf('transaction.set(sequenceRef', reducer);
+  const stateWrite = recoveryServiceSource.indexOf('transaction.set(gameStateRef', sequenceWrite);
+  const processedWrite = recoveryServiceSource.indexOf('transaction.set(processedActionRef', stateWrite);
+
+  assert.match(recoveryServiceSource, /runTransaction\(firestore, async \(transaction\)/);
+  assert.ok(reservationRead >= 0);
+  assert.ok(reservationDecision > reservationRead);
+  assert.ok(leaseCheck > reservationDecision);
+  assert.ok(reducer > leaseCheck);
+  assert.match(recoveryServiceSource.slice(reducer), /if \(!isAuthoritativeCommitReduction\(reduction\)\) return reduction;/);
+  assert.ok(sequenceWrite > reducer);
+  assert.ok(stateWrite > sequenceWrite);
+  assert.ok(processedWrite > stateWrite);
+  assert.match(recoveryServiceSource, /const coordinatorLease = \{ coordinatorSeatId, coordinatorEpoch \};/);
   assert.match(recoveryServiceSource, /clientMutationId: clientActionId/);
   assert.match(recoveryServiceSource, /expectedPreviousSequence: currentSequence/);
+  assert.doesNotMatch(recoveryServiceSource, /\bgetLatestGameState\b|\bsaveGameState\b/);
 });
 
 test('공통 saveGameState는 processed action, expected sequence, 현재 coordinator lease를 모두 검사한다', () => {
