@@ -84,13 +84,14 @@ export async function commitCoordinatorMoveTimeoutRecovery(
   roomId: string,
   action: CoordinatorMoveTimeoutAction,
 ): Promise<CommitAuthoritativeGameActionResult> {
+  const firestore = db;
   const clientActionId = getRecoveryClientActionId(action);
   const timeoutDeadlineAt = Number(action.payload?.timeoutDeadlineAt ?? 0);
   const coordinatorSeatId = typeof action.payload?.coordinatorSeatId === 'string'
     ? action.payload.coordinatorSeatId
     : '';
   const coordinatorEpoch = normalizeCoordinatorEpoch(action.payload?.coordinatorEpoch);
-  if (!db
+  if (!firestore
     || !roomId
     || action.payload?.recoveredByCoordinator !== true
     || !clientActionId
@@ -101,17 +102,17 @@ export async function commitCoordinatorMoveTimeoutRecovery(
     return { status: 'rejected', reason: 'coordinator 이동 timeout recovery 정보가 올바르지 않습니다.' };
   }
 
-  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
+  const gameStateRef = doc(firestore, 'rooms', roomId, 'state', 'current');
   const processedActionRef = getClientMutationDocRef(roomId, clientActionId);
   const manualMoveReservationRef = doc(
-    db,
+    firestore,
     'rooms',
     roomId,
     'actions',
     makeFirestoreSafeId(getManualMoveReservationKey(roomId, action.actorId)),
   );
 
-  return runTransaction(db, async (transaction): Promise<CommitAuthoritativeGameActionResult> => {
+  return runTransaction(firestore, async (transaction): Promise<CommitAuthoritativeGameActionResult> => {
     const processedActionSnapshot = await transaction.get(processedActionRef);
     if (processedActionSnapshot.exists()) {
       return {
@@ -167,7 +168,7 @@ export async function commitCoordinatorMoveTimeoutRecovery(
       lastSequence: nextSequence,
       lastClientMutationId: clientActionId,
     };
-    const sequenceRef = doc(db, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
+    const sequenceRef = doc(firestore, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
     const sequenceEvent: GameSequence = {
       id: makeSequenceDocId(nextSequence),
       sequence: nextSequence,
