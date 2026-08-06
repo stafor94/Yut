@@ -1,6 +1,7 @@
 import {
   reduceAuthoritativeGameAction as reduceAuthoritativeGameActionImplementation,
 } from './roomAuthoritativeReducerImplementation';
+import { getTrustedManualMoveReservationContextFromAction } from './manualMoveReservationPolicy';
 
 export * from './roomAuthoritativeReducerImplementation';
 
@@ -16,7 +17,31 @@ export const reduceAuthoritativeGameAction: typeof reduceAuthoritativeGameAction
     && !Object.prototype.propertyIsEnumerable.call(state, 'pieces')
     ? { ...state, pieces: state.pieces }
     : state;
-  const reduction = reduceAuthoritativeGameActionImplementation(reductionState, action, room, sides);
+  const trustedManualMoveReservation = getTrustedManualMoveReservationContextFromAction(action);
+  const canHonorTrustedManualMoveStart = action.type === 'move_piece'
+    && trustedManualMoveReservation != null
+    && trustedManualMoveReservation.actorId === action.actorId
+    && trustedManualMoveReservation.clientActionId === action.payload?.clientActionId
+    && trustedManualMoveReservation.clientActionStartedAt === Number(action.payload?.clientActionStartedAt ?? 0)
+    && trustedManualMoveReservation.expectedPreviousSequence === Number(state.lastSequence ?? 0)
+    && trustedManualMoveReservation.expectedTurnIndex === Number(state.turnIndex ?? -1)
+    && trustedManualMoveReservation.deadlineAt === Number(state.turnDeadlineAt ?? 0)
+    && trustedManualMoveReservation.serverReceivedAt <= trustedManualMoveReservation.deadlineAt
+    && trustedManualMoveReservation.expiresAt > Date.now();
+  const reductionAction = canHonorTrustedManualMoveStart
+    ? {
+        ...action,
+        payload: {
+          ...action.payload,
+          // The transaction already proved that the matching server-authored
+          // reservation arrived before this exact deadline. Clearing only the
+          // reducer-local timestamp bypasses the post-grace guard without
+          // exposing a client-controlled payload flag or changing the event.
+          clientActionStartedAt: 0,
+        },
+      }
+    : action;
+  const reduction = reduceAuthoritativeGameActionImplementation(reductionState, reductionAction, room, sides);
   if (reduction.status !== 'committed' || action.type !== 'move_piece') return reduction;
 
   const patch = reduction.patch;
