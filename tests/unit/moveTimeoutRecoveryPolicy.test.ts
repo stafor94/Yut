@@ -5,7 +5,7 @@ import {
   forgetPendingOptimisticMoveAction,
   getPendingOptimisticMoveAction,
   rememberPendingOptimisticMoveAction,
-} from '../../src/app/hooks/usePendingRemoteActions';
+} from '../../src/app/flows/pendingOptimisticMoveOwnership';
 import {
   MOVE_TIMEOUT_RECOVERY_RETRY_LIMIT,
   canRetryMoveTimeoutRecovery,
