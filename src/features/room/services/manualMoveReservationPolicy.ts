@@ -20,6 +20,23 @@ type ManualMoveReservationData = {
   expectedPreviousSequence?: unknown;
   expectedTurnIndex?: unknown;
   expiresAt?: unknown;
+  createdAt?: unknown;
+};
+
+export type TrustedManualMoveReservationContext = {
+  actorId: string;
+  clientActionId: string;
+  clientActionStartedAt: number;
+  expectedPreviousSequence: number;
+  expectedTurnIndex: number;
+  deadlineAt: number;
+  serverReceivedAt: number;
+  expiresAt: number;
+};
+
+const TRUSTED_MANUAL_MOVE_RESERVATION = Symbol('trusted-manual-move-reservation');
+type TrustedManualMoveAction = CommittableGameAction & {
+  [TRUSTED_MANUAL_MOVE_RESERVATION]?: TrustedManualMoveReservationContext;
 };
 
 export const MANUAL_MOVE_RESERVATION_TTL_MS = 30_000;
@@ -56,6 +73,22 @@ export const getManualMoveActionIdentity = (action: CommittableGameAction) => {
   return { expectedPreviousSequence, expectedTurnIndex };
 };
 
+const getServerTimestampMillis = (value: unknown) => {
+  if (!value || typeof value !== 'object' || !('toMillis' in value)) return 0;
+  const toMillis = value.toMillis;
+  if (typeof toMillis !== 'function') return 0;
+  const millis = Number(toMillis.call(value));
+  return Number.isFinite(millis) && millis > 0 ? millis : 0;
+};
+
+const getReservationLifetime = (reservation: ManualMoveReservationData) => {
+  const serverReceivedAt = getServerTimestampMillis(reservation.createdAt);
+  return {
+    serverReceivedAt,
+    expiresAt: serverReceivedAt ? serverReceivedAt + MANUAL_MOVE_RESERVATION_TTL_MS : 0,
+  };
+};
+
 export const getCoordinatorTimeoutDeadlineAt = (action: CommittableGameAction) => {
   if (action.type !== 'move_piece') return 0;
   const deadlineAt = Number(action.payload?.timeoutDeadlineAt ?? 0);
@@ -83,10 +116,10 @@ export const isActiveManualMoveReservation = ({
   const clientActionStartedAt = Number(reservation.clientActionStartedAt ?? 0);
   const expectedPreviousSequence = Number(reservation.expectedPreviousSequence ?? -1);
   const expectedTurnIndex = Number(reservation.expectedTurnIndex ?? -1);
-  const expiresAt = Number(reservation.expiresAt ?? 0);
   const stateSequence = Number(state.lastSequence ?? 0);
   const stateTurnIndex = Number(state.turnIndex ?? -1);
   const stateDeadlineAt = Number(state.turnDeadlineAt ?? 0);
+  const { serverReceivedAt, expiresAt } = getReservationLifetime(reservation);
 
   return reservation.reservationType === 'manual_move'
     && reservation.processed === true
@@ -101,6 +134,85 @@ export const isActiveManualMoveReservation = ({
     && expectedTurnIndex === stateTurnIndex
     && state.turnDeadlineKind === 'move'
     && stateDeadlineAt === timeoutDeadlineAt
-    && Number.isFinite(expiresAt)
+    && serverReceivedAt > 0
+    && serverReceivedAt <= timeoutDeadlineAt
     && expiresAt > now;
 };
+
+export const getTrustedManualMoveReservationContext = ({
+  reservation,
+  action,
+  state,
+  now,
+}: {
+  reservation: ManualMoveReservationData;
+  action: CommittableGameAction;
+  state: AuthoritativeMoveStateIdentity;
+  now: number;
+}): TrustedManualMoveReservationContext | null => {
+  const actionIdentity = getManualMoveActionIdentity(action);
+  if (!actionIdentity) return null;
+
+  const clientActionId = getClientActionId(action);
+  const clientActionStartedAt = Number(action.payload?.clientActionStartedAt ?? 0);
+  const reservationClientActionStartedAt = Number(reservation.clientActionStartedAt ?? 0);
+  const expectedPreviousSequence = Number(reservation.expectedPreviousSequence ?? -1);
+  const expectedTurnIndex = Number(reservation.expectedTurnIndex ?? -1);
+  const stateSequence = Number(state.lastSequence ?? 0);
+  const stateTurnIndex = Number(state.turnIndex ?? -1);
+  const deadlineAt = Number(state.turnDeadlineAt ?? 0);
+  const { serverReceivedAt, expiresAt } = getReservationLifetime(reservation);
+
+  if (reservation.reservationType !== 'manual_move'
+    || reservation.processed !== true
+    || String(reservation.actorId ?? '') !== action.actorId
+    || String(reservation.clientActionId ?? '') !== clientActionId
+    || !Number.isFinite(clientActionStartedAt)
+    || clientActionStartedAt <= 0
+    || reservationClientActionStartedAt !== clientActionStartedAt
+    || expectedPreviousSequence !== actionIdentity.expectedPreviousSequence
+    || expectedPreviousSequence !== stateSequence
+    || expectedTurnIndex !== actionIdentity.expectedTurnIndex
+    || expectedTurnIndex !== stateTurnIndex
+    || state.turnDeadlineKind !== 'move'
+    || !Number.isFinite(deadlineAt)
+    || deadlineAt <= 0
+    || clientActionStartedAt > deadlineAt
+    || serverReceivedAt <= 0
+    || serverReceivedAt > deadlineAt
+    || expiresAt <= now) return null;
+
+  return {
+    actorId: action.actorId,
+    clientActionId,
+    clientActionStartedAt,
+    expectedPreviousSequence,
+    expectedTurnIndex,
+    deadlineAt,
+    serverReceivedAt,
+    expiresAt,
+  };
+};
+
+export const attachTrustedManualMoveReservationContext = <TAction extends CommittableGameAction>(
+  action: TAction,
+  context: TrustedManualMoveReservationContext,
+): TAction => {
+  const trustedAction = {
+    ...action,
+    ...(action.payload ? { payload: { ...action.payload } } : {}),
+  } as TAction & TrustedManualMoveAction;
+  Object.defineProperty(trustedAction, TRUSTED_MANUAL_MOVE_RESERVATION, {
+    value: context,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return trustedAction;
+};
+
+export const getTrustedManualMoveReservationContextFromAction = (
+  action: CommittableGameAction,
+): TrustedManualMoveReservationContext | null => (
+  (action as TrustedManualMoveAction)[TRUSTED_MANUAL_MOVE_RESERVATION] ?? null
+);
