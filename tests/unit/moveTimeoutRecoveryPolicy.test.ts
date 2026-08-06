@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  clearPendingOptimisticMoveActions,
+  forgetPendingOptimisticMoveAction,
+  getPendingOptimisticMoveAction,
+  rememberPendingOptimisticMoveAction,
+} from '../../src/app/flows/pendingOptimisticMoveOwnership';
+import {
   MOVE_TIMEOUT_RECOVERY_RETRY_LIMIT,
   canRetryMoveTimeoutRecovery,
   classifyMoveTimeoutRecoveryResult,
   getMoveTimeoutRecoverySchedule,
   isMoveTimeoutRecoveryScopeCurrent,
+  shouldDeferMoveTimeoutRecoveryForPendingMove,
   type MoveTimeoutRecoveryScope,
 } from '../../src/features/room/services/moveTimeoutRecoveryPolicy';
 
@@ -40,6 +47,58 @@ test('effect 활성화 시점과 표시 제한시간이 달라도 authoritative 
   assert.equal(activatedAfterPresentation.recoveryAt, 11_000);
   assert.equal(activatedAfterPresentation.delayMs, 2_250);
   assert.equal(fiveSecondDisplayActivation.recoveryAt, tenSecondDisplayActivation.recoveryAt);
+});
+
+test('deadline 전에 시작한 같은 actor의 optimistic 이동은 stale 전까지 timeout recovery보다 우선한다', () => {
+  const pendingMove = { actorId: 'seat-1', createdAt: deadlineAt - 500 };
+  assert.equal(shouldDeferMoveTimeoutRecoveryForPendingMove({
+    pendingMove,
+    actorId: 'seat-1',
+    turnDeadlineAt: deadlineAt,
+    now: deadlineAt + 1_000,
+    staleAfterMs: 30_000,
+  }), true);
+  assert.equal(shouldDeferMoveTimeoutRecoveryForPendingMove({
+    pendingMove,
+    actorId: 'seat-2',
+    turnDeadlineAt: deadlineAt,
+    now: deadlineAt + 1_000,
+    staleAfterMs: 30_000,
+  }), false);
+  assert.equal(shouldDeferMoveTimeoutRecoveryForPendingMove({
+    pendingMove: { actorId: 'seat-1', createdAt: deadlineAt + 1 },
+    actorId: 'seat-1',
+    turnDeadlineAt: deadlineAt,
+    now: deadlineAt + 1_000,
+    staleAfterMs: 30_000,
+  }), false);
+  assert.equal(shouldDeferMoveTimeoutRecoveryForPendingMove({
+    pendingMove,
+    actorId: 'seat-1',
+    turnDeadlineAt: deadlineAt,
+    now: pendingMove.createdAt + 30_000,
+    staleAfterMs: 30_000,
+  }), false);
+});
+
+test('optimistic move registry는 actor별 최신 pending만 반환하고 settle 시 제거한다', () => {
+  clearPendingOptimisticMoveActions();
+  assert.equal(rememberPendingOptimisticMoveAction({ actionKey: 'move_piece:seat-1:old', actorId: 'seat-1', createdAt: 1_000 }), true);
+  assert.equal(rememberPendingOptimisticMoveAction({ actionKey: 'move_piece:seat-1:new', actorId: 'seat-1', createdAt: 2_000 }), true);
+  assert.equal(rememberPendingOptimisticMoveAction({ actionKey: 'move_piece:seat-2', actorId: 'seat-2', createdAt: 3_000 }), true);
+  assert.deepEqual(getPendingOptimisticMoveAction('seat-1'), {
+    actionKey: 'move_piece:seat-1:new',
+    actorId: 'seat-1',
+    createdAt: 2_000,
+  });
+  assert.equal(forgetPendingOptimisticMoveAction('move_piece:seat-1:new'), true);
+  assert.deepEqual(getPendingOptimisticMoveAction('seat-1'), {
+    actionKey: 'move_piece:seat-1:old',
+    actorId: 'seat-1',
+    createdAt: 1_000,
+  });
+  clearPendingOptimisticMoveActions();
+  assert.equal(getPendingOptimisticMoveAction('seat-1'), undefined);
 });
 
 test('timer callback은 room·actor·phase·deadline·coordinator seat·epoch가 모두 같은 경우만 유효하다', () => {

@@ -18,6 +18,11 @@ export type MoveTimeoutRecoveryDisposition =
   | 'retryable-state'
   | 'permanent';
 
+type PendingOptimisticMoveAction = {
+  actorId: string;
+  createdAt: number;
+};
+
 const RETRYABLE_STATE_REASONS = [
   'coordinator lease가 만료되었거나 epoch가 일치하지 않습니다.',
   'authoritative sequence가 변경되어 최신 상태 재평가가 필요합니다.',
@@ -42,6 +47,32 @@ export const getMoveTimeoutRecoverySchedule = (
     delayMs: Math.max(0, recoveryAt - now),
   };
 };
+
+export const shouldDeferMoveTimeoutRecoveryForPendingMove = ({
+  pendingMove,
+  actorId,
+  turnDeadlineAt,
+  now = Date.now(),
+  staleAfterMs,
+}: {
+  pendingMove: PendingOptimisticMoveAction | undefined;
+  actorId: string;
+  turnDeadlineAt: number;
+  now?: number;
+  staleAfterMs: number;
+}) => Boolean(
+  pendingMove
+  && actorId
+  && pendingMove.actorId === actorId
+  && Number.isFinite(pendingMove.createdAt)
+  && pendingMove.createdAt > 0
+  && Number.isFinite(turnDeadlineAt)
+  && turnDeadlineAt > 0
+  && pendingMove.createdAt <= turnDeadlineAt
+  && Number.isFinite(staleAfterMs)
+  && staleAfterMs > 0
+  && Math.max(0, now - pendingMove.createdAt) < staleAfterMs
+);
 
 export const isMoveTimeoutRecoveryScopeCurrent = (
   expected: MoveTimeoutRecoveryScope,

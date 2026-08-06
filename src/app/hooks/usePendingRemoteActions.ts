@@ -8,8 +8,15 @@ import {
   clearMoveActionClaims,
   releaseMoveActionClaim,
 } from '../flows/moveExecutionPolicy';
+import {
+  clearPendingOptimisticMoveActions,
+  forgetPendingOptimisticMoveAction,
+  rememberPendingOptimisticMoveAction,
+} from '../flows/pendingOptimisticMoveOwnership';
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
+
+export { getPendingOptimisticMoveAction } from '../flows/pendingOptimisticMoveOwnership';
 
 export type PendingRemoteActionMeta = {
   type: GameAction['type'];
@@ -39,6 +46,7 @@ export function usePendingRemoteActions() {
     if (pendingLocalRemoteActionsRef.current.has(actionKey)) return false;
     const type = meta.type ?? getPendingLocalRemoteActionType(actionKey);
     const optimisticApplied = getPendingRemoteActionOptimisticApplied(actionKey, { type, optimisticApplied: meta.optimisticApplied, blocksTurnActions: meta.blocksTurnActions });
+    const createdAt = meta.createdAt ?? Date.now();
     pendingLocalRemoteActionsRef.current.add(actionKey);
     beginLocalMovePresentationForPendingAction({
       lifecycle: localMovePresentationLifecycle,
@@ -50,20 +58,30 @@ export function usePendingRemoteActions() {
       ...meta,
       type,
       optimisticApplied,
-      createdAt: meta.createdAt ?? Date.now(),
+      createdAt,
     });
+    if (type === 'move_piece' && optimisticApplied && meta.actorId) {
+      rememberPendingOptimisticMoveAction({
+        actionKey,
+        actorId: meta.actorId,
+        createdAt,
+      });
+    }
     syncPendingLocalRemoteActionCount();
     return true;
   };
   const deletePendingLocalRemoteAction = (actionKey: string) => {
     pendingLocalRemoteActionsRef.current.delete(actionKey);
     pendingLocalRemoteActionMetaRef.current.delete(actionKey);
+    forgetPendingOptimisticMoveAction(actionKey);
     releaseMoveActionClaim(actionKey);
     syncPendingLocalRemoteActionCount();
   };
   const acknowledgePendingLocalRemoteAction = (clientMutationId: unknown) => {
     if (typeof clientMutationId !== 'string' || !clientMutationId) return;
-    if (!pendingLocalRemoteActionsRef.current.delete(clientMutationId)) return;
+    const removed = pendingLocalRemoteActionsRef.current.delete(clientMutationId);
+    forgetPendingOptimisticMoveAction(clientMutationId);
+    if (!removed) return;
     pendingLocalRemoteActionMetaRef.current.acknowledge(clientMutationId);
     releaseMoveActionClaim(clientMutationId);
     syncPendingLocalRemoteActionCount();
@@ -71,6 +89,7 @@ export function usePendingRemoteActions() {
   const clearPendingLocalRemoteActions = () => {
     pendingLocalRemoteActionsRef.current.clear();
     pendingLocalRemoteActionMetaRef.current.clear();
+    clearPendingOptimisticMoveActions();
     clearMoveActionClaims();
     syncPendingLocalRemoteActionCount();
   };
