@@ -34,12 +34,9 @@ export type TrustedManualMoveReservationContext = {
   expiresAt: number;
 };
 
-const TRUSTED_MANUAL_MOVE_RESERVATION = Symbol('trusted-manual-move-reservation');
 const MANUAL_MOVE_RESERVATION_READ_SENTINEL = -1;
+const MAX_PENDING_TRUSTED_MANUAL_MOVE_RESERVATIONS = 64;
 const pendingTrustedManualMoveReservations = new Map<string, TrustedManualMoveReservationContext>();
-type TrustedManualMoveAction = CommittableGameAction & {
-  [TRUSTED_MANUAL_MOVE_RESERVATION]?: TrustedManualMoveReservationContext;
-};
 
 export const MANUAL_MOVE_RESERVATION_TTL_MS = 30_000;
 export const MOVE_RESERVATION_REEVALUATE_REASON = 'authoritative sequence가 변경되어 최신 상태 재평가가 필요합니다.';
@@ -89,6 +86,17 @@ const getReservationLifetime = (reservation: ManualMoveReservationData) => {
     serverReceivedAt,
     expiresAt: serverReceivedAt ? serverReceivedAt + MANUAL_MOVE_RESERVATION_TTL_MS : 0,
   };
+};
+
+const prunePendingTrustedManualMoveReservations = (now: number) => {
+  for (const [clientActionId, context] of pendingTrustedManualMoveReservations) {
+    if (context.expiresAt <= now) pendingTrustedManualMoveReservations.delete(clientActionId);
+  }
+  while (pendingTrustedManualMoveReservations.size >= MAX_PENDING_TRUSTED_MANUAL_MOVE_RESERVATIONS) {
+    const oldestClientActionId = pendingTrustedManualMoveReservations.keys().next().value;
+    if (typeof oldestClientActionId !== 'string') break;
+    pendingTrustedManualMoveReservations.delete(oldestClientActionId);
+  }
 };
 
 const getTrustedReservationFromStoredData = ({
@@ -166,6 +174,7 @@ export const isActiveManualMoveReservation = ({
   const trustedReservation = getTrustedReservationFromStoredData({ reservation, actorId, state, now });
   if (timeoutDeadlineAt === MANUAL_MOVE_RESERVATION_READ_SENTINEL) {
     if (trustedReservation) {
+      prunePendingTrustedManualMoveReservations(now);
       pendingTrustedManualMoveReservations.set(trustedReservation.clientActionId, trustedReservation);
     }
     return false;
@@ -203,28 +212,9 @@ export const getTrustedManualMoveReservationContext = ({
     : null;
 };
 
-export const attachTrustedManualMoveReservationContext = <TAction extends CommittableGameAction>(
-  action: TAction,
-  context: TrustedManualMoveReservationContext,
-): TAction => {
-  const trustedAction = {
-    ...action,
-    ...(action.payload ? { payload: { ...action.payload } } : {}),
-  } as TAction & TrustedManualMoveAction;
-  Object.defineProperty(trustedAction, TRUSTED_MANUAL_MOVE_RESERVATION, {
-    value: context,
-    enumerable: false,
-    configurable: false,
-    writable: false,
-  });
-  return trustedAction;
-};
-
 export const getTrustedManualMoveReservationContextFromAction = (
   action: CommittableGameAction,
 ): TrustedManualMoveReservationContext | null => {
-  const attachedContext = (action as TrustedManualMoveAction)[TRUSTED_MANUAL_MOVE_RESERVATION];
-  if (attachedContext) return attachedContext;
   const clientActionId = getClientActionId(action);
   if (!clientActionId) return null;
   const pendingContext = pendingTrustedManualMoveReservations.get(clientActionId) ?? null;
