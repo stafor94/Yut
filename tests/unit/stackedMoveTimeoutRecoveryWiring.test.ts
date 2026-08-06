@@ -19,7 +19,8 @@ test('coordinator recovery는 reservation 확인 후 reducer와 lease·sequence�
   const reservationDecision = recoveryServiceSource.indexOf('isActiveManualMoveReservation({', reservationRead);
   const leaseCheck = recoveryServiceSource.indexOf('matchesActiveGameCoordinatorLease(state, coordinatorLease', reservationDecision);
   const reducer = recoveryServiceSource.indexOf('reduceAuthoritativeGameAction(state, action', leaseCheck);
-  const sequenceWrite = recoveryServiceSource.indexOf('transaction.set(sequenceRef', reducer);
+  const reducerGuard = recoveryServiceSource.indexOf('if (!isAuthoritativeCommitReduction(reduction)) return reduction;', reducer);
+  const sequenceWrite = recoveryServiceSource.indexOf('transaction.set(sequenceRef', reducerGuard);
   const stateWrite = recoveryServiceSource.indexOf('transaction.set(gameStateRef', sequenceWrite);
   const processedWrite = recoveryServiceSource.indexOf('transaction.set(processedActionRef', stateWrite);
 
@@ -28,8 +29,8 @@ test('coordinator recovery는 reservation 확인 후 reducer와 lease·sequence�
   assert.ok(reservationDecision > reservationRead);
   assert.ok(leaseCheck > reservationDecision);
   assert.ok(reducer > leaseCheck);
-  assert.match(recoveryServiceSource.slice(reducer), /if \(!isAuthoritativeCommitReduction\(reduction\)\) return reduction;/);
-  assert.ok(sequenceWrite > reducer);
+  assert.ok(reducerGuard > reducer);
+  assert.ok(sequenceWrite > reducerGuard);
   assert.ok(stateWrite > sequenceWrite);
   assert.ok(processedWrite > stateWrite);
   assert.match(recoveryServiceSource, /const coordinatorLease = \{ coordinatorSeatId, coordinatorEpoch \};/);
