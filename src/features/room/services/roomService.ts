@@ -2,7 +2,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
   limit,
   onSnapshot,
   orderBy,
@@ -42,6 +41,12 @@ import {
   resolveFallPresentationCompletionLocally,
   shouldWaitForGamePresentationBeforeCommit,
 } from './fallPresentationCommitPolicy';
+import {
+  getClientActionId,
+  getManualMoveActionIdentity,
+  getManualMoveReservationKey,
+  MANUAL_MOVE_RESERVATION_TTL_MS,
+} from './manualMoveReservationPolicy';
 import { makeFirestoreSafeId } from './roomFirestore';
 import { isAiSubstitutionUpdate } from './roomExitPolicy';
 import {
@@ -70,6 +75,7 @@ import {
   removeRoomPlayerNow,
   removeRoomPlayerSafely,
 } from './roomExitService';
+import { waitForQaMoveCommitDelayAfterReservation } from './roomQaDelays';
 import {
   clearCachedGameSequences,
   getCachedGameSequencesForReplay,
@@ -88,93 +94,17 @@ export { withGameSequenceReplayCache } from './roomSequenceReplayCache';
 
 const RECENT_GAME_SEQUENCE_CACHE_LIMIT = 8;
 const ROOM_SUMMARY_HEARTBEAT_INTERVAL_MS = 30_000;
-const MANUAL_MOVE_RESERVATION_TTL_MS = 10_000;
-const MOVE_RESERVATION_REEVALUATE_REASON = 'authoritative sequence가 변경되어 최신 상태 재평가가 필요합니다.';
 const roomSummaryHeartbeatAtByRoomId = new Map<string, number>();
 
 type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
-
-type ManualMoveReservation = {
-  actorId: string;
-  clientActionId: string;
-  clientActionStartedAt: number;
-  expiresAt: number;
-};
-
-const getClientActionId = (action: CommittableGameAction) => (
-  typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : ''
-);
 
 const getManualMoveReservationRef = (roomId: string, actorId: string) => doc(
   db!,
   'rooms',
   roomId,
   'actions',
-  makeFirestoreSafeId(`manual_move_reservation:v1:${roomId}:${actorId}`),
+  makeFirestoreSafeId(getManualMoveReservationKey(roomId, actorId)),
 );
-
-const isManualPlayerMove = (action: CommittableGameAction) => {
-  const clientActionId = getClientActionId(action);
-  return action.type === 'move_piece'
-    && Boolean(action.actorId)
-    && clientActionId.startsWith(`move_piece:${action.actorId}:`)
-    && action.payload?.recoveredByCoordinator !== true
-    && action.payload?.deadlineAutoSubmitted !== true
-    && typeof action.payload?.automationSource !== 'string'
-    && typeof action.payload?.coordinatorSeatId !== 'string';
-};
-
-const getCoordinatorTimeoutDeadlineAt = (action: CommittableGameAction) => {
-  if (action.type !== 'move_piece') return 0;
-  const deadlineAt = Number(action.payload?.timeoutDeadlineAt ?? 0);
-  const coordinatorRecovery = action.payload?.recoveredByCoordinator === true
-    || typeof action.payload?.timeoutRecoveredBy === 'string';
-  return coordinatorRecovery && Number.isFinite(deadlineAt) && deadlineAt > 0
-    ? Math.trunc(deadlineAt)
-    : 0;
-};
-
-const getQaMoveCommitDelayAfterReservationMs = () => {
-  if (typeof window === 'undefined') return 0;
-  const value = Number((window as typeof window & {
-    __YUT_QA_DELAY_MOVE_PIECE_COMMIT_AFTER_RESERVATION_MS__?: unknown;
-  }).__YUT_QA_DELAY_MOVE_PIECE_COMMIT_AFTER_RESERVATION_MS__ ?? 0);
-  return Number.isFinite(value) ? Math.max(0, value) : 0;
-};
-
-const waitForDelay = (delayMs: number) => new Promise<void>((resolve) => {
-  window.setTimeout(resolve, delayMs);
-});
-
-const readActiveManualMoveReservation = async (
-  roomId: string,
-  actorId: string,
-  timeoutDeadlineAt: number,
-): Promise<ManualMoveReservation | null> => {
-  if (!db || !roomId || !actorId || !timeoutDeadlineAt) return null;
-  const reservationRef = getManualMoveReservationRef(roomId, actorId);
-  const snapshot = await getDoc(reservationRef);
-  if (!snapshot.exists()) return null;
-  const data = snapshot.data();
-  const reservation: ManualMoveReservation = {
-    actorId: String(data.actorId ?? ''),
-    clientActionId: String(data.clientActionId ?? ''),
-    clientActionStartedAt: Number(data.clientActionStartedAt ?? 0),
-    expiresAt: Number(data.expiresAt ?? 0),
-  };
-  const active = data.reservationType === 'manual_move'
-    && data.processed === true
-    && reservation.actorId === actorId
-    && reservation.clientActionId.startsWith(`move_piece:${actorId}:`)
-    && Number.isFinite(reservation.clientActionStartedAt)
-    && reservation.clientActionStartedAt > 0
-    && reservation.clientActionStartedAt <= timeoutDeadlineAt
-    && Number.isFinite(reservation.expiresAt)
-    && reservation.expiresAt > Date.now();
-  if (active) return reservation;
-  void deleteDoc(reservationRef).catch(() => undefined);
-  return null;
-};
 
 export function subscribeGameState(roomId: string, callback: (state: SyncedGameState | null) => void): Unsubscribe {
   if (!db) return subscribeGameStateCore(roomId, callback);
@@ -286,27 +216,22 @@ const settleRoomAction = async (
 ): Promise<CommitAuthoritativeGameActionResult> => {
   const normalizedAction = normalizeLegacyRollTimingAction(action);
   const clientActionId = getClientActionId(normalizedAction);
-  const timeoutDeadlineAt = getCoordinatorTimeoutDeadlineAt(normalizedAction);
-  if (timeoutDeadlineAt) {
-    const pendingManualMove = await readActiveManualMoveReservation(
-      roomId,
-      normalizedAction.actorId,
-      timeoutDeadlineAt,
-    );
-    if (pendingManualMove) {
-      return {
-        status: 'rejected',
-        reason: MOVE_RESERVATION_REEVALUATE_REASON,
-      };
-    }
-  }
-
-  const manualMove = isManualPlayerMove(normalizedAction);
-  const reservationRef = manualMove && db
+  const manualMoveIdentity = getManualMoveActionIdentity(normalizedAction);
+  const clientActionStartedAt = manualMoveIdentity ? Date.now() : 0;
+  const actionWithClientStart = manualMoveIdentity
+    ? {
+        ...normalizedAction,
+        payload: {
+          ...normalizedAction.payload,
+          clientActionStartedAt,
+        },
+      }
+    : normalizedAction;
+  const reservationRef = manualMoveIdentity && db
     ? getManualMoveReservationRef(roomId, normalizedAction.actorId)
     : null;
-  if (reservationRef) {
-    const clientActionStartedAt = Number(normalizedAction.payload?.clientActionStartedAt ?? 0);
+
+  if (reservationRef && manualMoveIdentity) {
     const reservedAt = Date.now();
     await setDoc(reservationRef, {
       type: 'move_piece',
@@ -315,43 +240,41 @@ const settleRoomAction = async (
       reservationType: 'manual_move',
       clientActionId,
       clientActionStartedAt,
+      expectedPreviousSequence: manualMoveIdentity.expectedPreviousSequence,
+      expectedTurnIndex: manualMoveIdentity.expectedTurnIndex,
       reservedAt,
       expiresAt: reservedAt + MANUAL_MOVE_RESERVATION_TTL_MS,
       createdAt: serverTimestamp(),
     });
   }
 
-  try {
-    return await settleAuthoritativeCommit({
-      actionType: normalizedAction.type,
-      commit: async () => {
-        if (shouldWaitForGamePresentationBeforeCommit(normalizedAction)) {
-          const presentationWaitResult = await waitForGamePresentationBeforeAction(normalizedAction.type);
-          if (presentationWaitResult === 'timeout') {
-            console.warn('게임 연출 완료 대기 상한을 초과해 authoritative action 제출을 계속합니다.', {
-              actionType: normalizedAction.type,
-              clientActionId,
-            });
-          }
+  return settleAuthoritativeCommit({
+    actionType: actionWithClientStart.type,
+    commit: async () => {
+      if (shouldWaitForGamePresentationBeforeCommit(actionWithClientStart)) {
+        const presentationWaitResult = await waitForGamePresentationBeforeAction(actionWithClientStart.type);
+        if (presentationWaitResult === 'timeout') {
+          console.warn('게임 연출 완료 대기 상한을 초과해 authoritative action 제출을 계속합니다.', {
+            actionType: actionWithClientStart.type,
+            clientActionId,
+          });
         }
-        const qaDelayMs = reservationRef ? getQaMoveCommitDelayAfterReservationMs() : 0;
-        if (qaDelayMs) await waitForDelay(qaDelayMs);
-        return commitAuthoritativeGameActionCore(roomId, normalizedAction);
-      },
-      recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
-    });
-  } finally {
-    if (reservationRef) {
-      await deleteDoc(reservationRef).catch((error) => {
-        console.warn('수동 이동 reservation 정리에 실패했습니다.', {
-          roomId,
-          actorId: normalizedAction.actorId,
-          clientActionId,
-          error,
-        });
+      }
+      await waitForQaMoveCommitDelayAfterReservation(Boolean(reservationRef));
+      return commitAuthoritativeGameActionCore(roomId, actionWithClientStart);
+    },
+    recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
+  }).finally(async () => {
+    if (!reservationRef) return;
+    await deleteDoc(reservationRef).catch((error) => {
+      console.warn('수동 이동 reservation 정리에 실패했습니다.', {
+        roomId,
+        actorId: normalizedAction.actorId,
+        clientActionId,
+        error,
       });
-    }
-  }
+    });
+  });
 };
 
 export async function commitAuthoritativeGameAction(
