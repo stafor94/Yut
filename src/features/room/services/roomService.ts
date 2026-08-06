@@ -1,6 +1,5 @@
 import {
   collection,
-  deleteDoc,
   doc,
   limit,
   onSnapshot,
@@ -264,16 +263,6 @@ const settleRoomAction = async (
       return commitAuthoritativeGameActionCore(roomId, actionWithClientStart);
     },
     recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
-  }).finally(async () => {
-    if (!reservationRef) return;
-    await deleteDoc(reservationRef).catch((error) => {
-      console.warn('수동 이동 reservation 정리에 실패했습니다.', {
-        roomId,
-        actorId: normalizedAction.actorId,
-        clientActionId,
-        error,
-      });
-    });
   });
 };
 
