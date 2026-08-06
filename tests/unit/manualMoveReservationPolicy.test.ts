@@ -106,7 +106,7 @@ test('coordinator timeout은 state와 reservation을 읽고 같은 transaction�
   const source = readFileSync('src/features/room/services/coordinatorMoveTimeoutRecovery.ts', 'utf8');
   const functionStart = source.indexOf('export async function commitCoordinatorMoveTimeoutRecovery');
   const reservationRef = source.indexOf('getManualMoveReservationKey(roomId, action.actorId)', functionStart);
-  const transactionStart = source.indexOf('return runTransaction(db, async (transaction)', reservationRef);
+  const transactionStart = source.indexOf('return runTransaction(firestore, async (transaction)', reservationRef);
   const stateRead = source.indexOf('await transaction.get(gameStateRef)', transactionStart);
   const reservationRead = source.indexOf('await transaction.get(manualMoveReservationRef)', stateRead);
   const reservationDecision = source.indexOf('isActiveManualMoveReservation({', reservationRead);
