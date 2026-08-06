@@ -22,7 +22,7 @@ type ManualMoveReservationData = {
   expiresAt?: unknown;
 };
 
-export const MANUAL_MOVE_RESERVATION_TTL_MS = 10_000;
+export const MANUAL_MOVE_RESERVATION_TTL_MS = 30_000;
 export const MOVE_RESERVATION_REEVALUATE_REASON = 'authoritative sequence가 변경되어 최신 상태 재평가가 필요합니다.';
 
 export const getClientActionId = (action: CommittableGameAction) => (
