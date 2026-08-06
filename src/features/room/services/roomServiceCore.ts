@@ -91,6 +91,7 @@ const waitForQaDelayAfterRoomPlayerSave = async () => {
   await new Promise((resolve) => window.setTimeout(resolve, delayMs));
 };
 
+
 const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, options: { coordinatorPlayerIds?: string[]; allowCoordinator?: boolean; actorIsAiControlled?: boolean } = {}) => {
   if (!auth) return true;
   const uid = auth.currentUser?.uid;
@@ -302,6 +303,7 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   return roomRef.id;
 }
 
+
 async function syncRoomPlayerCount(roomId: string) {
   if (!db) return;
   const playersSnapshot = await getDocs(collection(db, 'rooms', roomId, 'players'));
@@ -428,6 +430,7 @@ export function subscribeRoomPlayers(roomId: string, callback: (players: RoomPla
   if (!db) { callback([]); return () => undefined; }
   return onSnapshot(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc')), (snapshot) => callback(snapshot.docs.map((playerDoc) => ({ id: playerDoc.id, ...(playerDoc.data() as Omit<RoomPlayer, 'id'>) }))));
 }
+
 
 export async function heartbeatRoomPlayer(roomId: string, playerId: string) {
   if (!db || !roomId || !playerId) return false;
@@ -691,6 +694,7 @@ export async function claimGameCoordinatorLease(roomId: string, candidateSeatId:
     return decision;
   });
 }
+
 
 const stableSequenceValue = (value: unknown) => JSON.stringify(value ?? null);
 
@@ -994,7 +998,7 @@ export function subscribeTurnOrderSubmissions(
     callback(snapshot.docs.map((submissionDoc) => ({
       id: submissionDoc.id,
       ...(submissionDoc.data() as Omit<TurnOrderSubmissionRecord, 'id'>),
-    }));
+    })));
   }, (error) => {
     onError?.(error);
   });
