@@ -5,7 +5,6 @@ import {
   getCoordinatorTimeoutDeadlineAt,
   getManualMoveActionIdentity,
   isActiveManualMoveReservation,
-  MOVE_RESERVATION_REEVALUATE_REASON,
 } from '../../src/features/room/services/manualMoveReservationPolicy';
 
 const actorId = 'guest-player';
@@ -68,7 +67,10 @@ test('coordinator timeout 이동만 authoritative deadline을 노출한다', () 
 test('같은 actor·sequence·turn·deadline의 미만료 선행 수동 이동만 timeout을 보류한다', () => {
   assert.equal(isActiveManualMoveReservation({ reservation, actorId, timeoutDeadlineAt, state, now }), true);
 
-  const invalidCases = [
+  const invalidCases: Array<{
+    reservation?: typeof reservation;
+    state?: typeof state;
+  }> = [
     { reservation: { ...reservation, actorId: 'other-player' } },
     { reservation: { ...reservation, clientActionStartedAt: timeoutDeadlineAt + 1 } },
     { reservation: { ...reservation, expiresAt: now } },
@@ -104,7 +106,7 @@ test('reservation 판정은 game state commit과 동일 transaction에서 수행
   assert.ok(reservationRead > stateRead);
   assert.ok(reservationDecision > reservationRead);
   assert.ok(reducer > reservationDecision);
-  assert.match(coreSource.slice(reservationDecision, reducer), new RegExp(MOVE_RESERVATION_REEVALUATE_REASON));
+  assert.match(coreSource.slice(reservationDecision, reducer), /MOVE_RESERVATION_REEVALUATE_REASON/);
 });
 
 test('wrapper는 reservation 게시 뒤 기존 presentation commit wiring을 보존한다', () => {
