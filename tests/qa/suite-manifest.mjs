@@ -100,6 +100,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/game-guide-dialog.spec.js',
       'tests/mobile/stacked-roll-timeout.spec.js',
       'tests/mobile/move-timeout-recovery.spec.js',
+      'tests/mobile/cross-client-manual-move-timeout-reservation.spec.js',
       'tests/mobile/ai-stacked-strategy.spec.js',
       'tests/mobile/hard-ai-authoritative-strategy.spec.js',
       'tests/mobile/online-ai-presentation-stall.spec.js',
