@@ -194,6 +194,46 @@ if (!workflowSource.includes('seq/result.txt') || !workflowSource.includes('gala
   || !workflowSource.includes('safari/result.txt')) {
   fail('qa.yml summary가 분리된 sequence, Galaxy, Galaxy timing, Galaxy move ACK/start, Safari visible mismatch와 Safari timing 결과를 모두 집계하지 않습니다.');
 }
+const topLevelPermissionsSource = workflowSource.match(
+  /^permissions:\n(?<body>(?:  [a-z-]+: .+\n)+)/mu,
+)?.groups?.body ?? '';
+const summaryJobSource = workflowSource.match(
+  /^  summarize-qa-result:\n(?<body>[\s\S]*)$/mu,
+)?.groups?.body ?? '';
+const publishStatusStepSource = summaryJobSource.match(
+  /^      - name: Publish Main Branch QA commit status\n(?<body>[\s\S]*?)(?=^      - name: Fail when a required stage failed)/mu,
+)?.groups?.body ?? '';
+const statusPermissionCount = workflowSource.split('statuses: write').length - 1;
+if (topLevelPermissionsSource.includes('statuses: write') || statusPermissionCount !== 1
+  || !summaryJobSource.includes('statuses: write')) {
+  fail('statuses: write는 Main Branch QA summary job에만 한 번 부여해야 합니다.');
+}
+if (!publishStatusStepSource.includes("if: ${{ always() && github.event_name == 'push' && github.ref_name == 'main' }}")) {
+  fail('Main Branch QA commit status는 main push에만 게시되어야 합니다.');
+}
+if (!publishStatusStepSource.includes('uses: actions/github-script@v7')
+  || !publishStatusStepSource.includes('github.rest.repos.createCommitStatus')) {
+  fail('Main Branch QA summary가 GitHub commit status를 게시하지 않습니다.');
+}
+for (const requiredResultSource of [
+  'BUILD_RESULT: ${{ needs.build-and-unit.result }}',
+  'EMULATOR_RESULT: ${{ needs.qa-firebase-emulator.result }}',
+  'PERFORMANCE_RESULT: ${{ steps.performance.outcome }}',
+  'FAILURE_REPORT_RESULT: ${{ steps.failure-report.outcome }}',
+  'SUMMARY_JOB_STATUS: ${{ job.status }}',
+]) {
+  if (!publishStatusStepSource.includes(requiredResultSource)) {
+    fail(`Main Branch QA commit status가 필수 결과를 포함하지 않습니다: ${requiredResultSource}`);
+  }
+}
+if (!publishStatusStepSource.includes("process.env.SUMMARY_JOB_STATUS === 'success'")
+  || !publishStatusStepSource.includes("state: passed ? 'success' : 'failure'")
+  || !publishStatusStepSource.includes("context: 'Main Branch QA / main-push'")) {
+  fail('Main Branch QA commit status의 성공·실패 또는 context 계약이 고정되지 않았습니다.');
+}
+if (!publishStatusStepSource.includes('/actions/runs/${process.env.GITHUB_RUN_ID}')) {
+  fail('Main Branch QA commit status target_url이 현재 Run ID를 가리키지 않습니다.');
+}
 if (/^\s{2}deploy-pages:/mu.test(workflowSource) || workflowSource.includes('actions/deploy-pages@')) {
   fail('Main Branch QA에 Pages 배포 job을 다시 결합하지 마세요. 별도 deploy-pages.yml을 사용해야 합니다.');
 }
