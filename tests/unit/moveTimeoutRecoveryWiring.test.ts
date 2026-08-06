@@ -39,10 +39,18 @@ test('commit과 duplicate만 terminal이며 실패는 in-flight를 해제하고 
   assert.match(hookSource, /console\.warn\('\[move-timeout-recovery\] recovery stopped'/);
 });
 
-test('일반 이동 timeout도 reducer와 coordinator lease·sequence·processed action transaction을 사용한다', () => {
+test('일반 이동 timeout은 reservation·reducer·lease·sequence·processed action을 같은 transaction에서 처리한다', () => {
   assert.match(hookSource, /commitCoordinatorMoveTimeoutRecovery\(roomId, action\)/);
+  assert.match(recoveryServiceSource, /runTransaction\(firestore, async \(transaction\)/);
+  assert.match(recoveryServiceSource, /transaction\.get\(gameStateRef\)/);
+  assert.match(recoveryServiceSource, /transaction\.get\(manualMoveReservationRef\)/);
+  assert.match(recoveryServiceSource, /isActiveManualMoveReservation\(\{/);
+  assert.match(recoveryServiceSource, /matchesActiveGameCoordinatorLease\(state, coordinatorLease/);
   assert.match(recoveryServiceSource, /reduceAuthoritativeGameAction\(state, action,/);
-  assert.match(recoveryServiceSource, /saveGameState\(roomId, stateForSave,/);
+  assert.match(recoveryServiceSource, /transaction\.set\(sequenceRef/);
+  assert.match(recoveryServiceSource, /transaction\.set\(gameStateRef/);
+  assert.match(recoveryServiceSource, /transaction\.set\(processedActionRef/);
   assert.match(recoveryServiceSource, /clientMutationId: clientActionId/);
   assert.match(recoveryServiceSource, /expectedPreviousSequence: currentSequence/);
+  assert.doesNotMatch(recoveryServiceSource, /\bgetLatestGameState\b|\bsaveGameState\b/);
 });
