@@ -102,22 +102,30 @@ test('reservation TTL은 commit timeout과 recovery가 끝날 때까지 유지�
   ));
 });
 
-test('reservation 판정은 game state commit과 동일 transaction에서 수행된다', () => {
-  const coreSource = readFileSync('src/features/room/services/roomServiceCore.ts', 'utf8');
-  const commitStart = coreSource.indexOf('export async function commitAuthoritativeGameAction');
-  const transactionStart = coreSource.indexOf('return runTransaction(db, async (transaction)', commitStart);
-  const stateRead = coreSource.indexOf('const stateSnapshot = await transaction.get(gameStateRef);', transactionStart);
-  const reservationRead = coreSource.indexOf('await transaction.get(manualMoveReservationRef)', stateRead);
-  const reservationDecision = coreSource.indexOf('isActiveManualMoveReservation({', reservationRead);
-  const reducer = coreSource.indexOf('reduceAuthoritativeGameAction(state, action', reservationDecision);
+test('coordinator timeout은 state와 reservation을 읽고 같은 transaction에서 reduce·commit한다', () => {
+  const source = readFileSync('src/features/room/services/coordinatorMoveTimeoutRecovery.ts', 'utf8');
+  const functionStart = source.indexOf('export async function commitCoordinatorMoveTimeoutRecovery');
+  const reservationRef = source.indexOf('getManualMoveReservationKey(roomId, action.actorId)', functionStart);
+  const transactionStart = source.indexOf('return runTransaction(db, async (transaction)', reservationRef);
+  const stateRead = source.indexOf('await transaction.get(gameStateRef)', transactionStart);
+  const reservationRead = source.indexOf('await transaction.get(manualMoveReservationRef)', stateRead);
+  const reservationDecision = source.indexOf('isActiveManualMoveReservation({', reservationRead);
+  const reservationRejection = source.indexOf('MOVE_RESERVATION_REEVALUATE_REASON', reservationDecision);
+  const reducer = source.indexOf('reduceAuthoritativeGameAction(state, action', reservationRejection);
+  const sequenceWrite = source.indexOf('transaction.set(sequenceRef', reducer);
+  const stateWrite = source.indexOf('transaction.set(gameStateRef', sequenceWrite);
 
-  assert.ok(commitStart >= 0);
-  assert.ok(transactionStart > commitStart);
+  assert.ok(functionStart >= 0);
+  assert.ok(reservationRef > functionStart);
+  assert.ok(transactionStart > reservationRef);
   assert.ok(stateRead > transactionStart);
   assert.ok(reservationRead > stateRead);
   assert.ok(reservationDecision > reservationRead);
-  assert.ok(reducer > reservationDecision);
-  assert.match(coreSource.slice(reservationDecision, reducer), /MOVE_RESERVATION_REEVALUATE_REASON/);
+  assert.ok(reservationRejection > reservationDecision);
+  assert.ok(reducer > reservationRejection);
+  assert.ok(sequenceWrite > reducer);
+  assert.ok(stateWrite > sequenceWrite);
+  assert.doesNotMatch(source, /\bgetLatestGameState\b|\bsaveGameState\b/);
 });
 
 test('wrapper는 reservation 게시 뒤 기존 presentation commit wiring과 TTL 수명을 보존한다', () => {
