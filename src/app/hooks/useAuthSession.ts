@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { listenAuthState, signInAsGuest } from '../../services/firebase/firebaseAuth';
+import { startAuthSession } from '../flows/authSessionInitialization';
 
 export function useAuthSession(onAuthError: (message: string) => void) {
   const [user, setUser] = useState<User | null>(null);
@@ -10,21 +11,13 @@ export function useAuthSession(onAuthError: (message: string) => void) {
     setUser(nextUser);
   };
 
-  useEffect(() => {
-    let mounted = true;
-    const applyUser = (nextUser: User | null) => { if (mounted) rememberUser(nextUser); };
-    const unsubscribe = listenAuthState(applyUser);
-    signInAsGuest()
-      .then((nextUser) => {
-        if (!nextUser) return;
-        applyUser(nextUser);
-      })
-      .catch((error) => onAuthError(error.message));
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, [onAuthError]);
+  useEffect(() => startAuthSession(
+    { listenAuthState, signInAsGuest },
+    {
+      onUser: rememberUser,
+      onError: (error) => onAuthError(error instanceof Error ? error.message : '익명 로그인에 실패했습니다.'),
+    },
+  ), [onAuthError]);
 
   return { user, userRef, rememberUser };
 }
