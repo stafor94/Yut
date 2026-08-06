@@ -37,6 +37,14 @@ requireDeploy(
   'name: build-and-unit\n          path: build-and-unit',
   'Pages 배포가 overwrite된 검증 build artifact를 다운로드하지 않습니다.',
 );
+requireDeploy(
+  'name: github-pages-${{ github.run_attempt }}\n          path: build-and-unit/dist',
+  'Pages artifact 이름이 workflow attempt별로 분리되지 않았습니다.',
+);
+requireDeploy(
+  'uses: actions/deploy-pages@v4\n        with:\n          artifact_name: github-pages-${{ github.run_attempt }}',
+  'Pages 배포가 현재 workflow attempt의 artifact를 지정하지 않습니다.',
+);
 
 if (/pattern:\s*'\*'\s*$/mu.test(qaWorkflow)) {
   failures.push('summary가 QA summary를 포함한 모든 artifact를 다시 합치는 광역 pattern을 사용하고 있습니다.');
