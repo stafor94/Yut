@@ -8,6 +8,8 @@ import {
 import {
   getCoordinatorTimeoutDeadlineAt,
   getManualMoveActionIdentity,
+  getTrustedManualMoveReservationContext,
+  getTrustedManualMoveReservationContextFromAction,
   isActiveManualMoveReservation,
   MANUAL_MOVE_RESERVATION_TTL_MS,
 } from '../../src/features/room/services/manualMoveReservationPolicy';
@@ -21,6 +23,7 @@ const state = {
   turnDeadlineAt: timeoutDeadlineAt,
   turnDeadlineKind: 'move',
 };
+const serverTimestampAt = (millis: number) => ({ toMillis: () => millis });
 const reservation = {
   reservationType: 'manual_move',
   processed: true,
@@ -30,14 +33,19 @@ const reservation = {
   expectedPreviousSequence: 17,
   expectedTurnIndex: 1,
   expiresAt: 25_000,
+  createdAt: serverTimestampAt(19_750),
+};
+const manualAction = {
+  type: 'move_piece',
+  actorId,
+  payload: {
+    clientActionId: reservation.clientActionId,
+    clientActionStartedAt: reservation.clientActionStartedAt,
+  },
 };
 
 test('수동 이동 식별자는 actor 뒤 authoritative sequence와 turn을 추출한다', () => {
-  assert.deepEqual(getManualMoveActionIdentity({
-    type: 'move_piece',
-    actorId,
-    payload: { clientActionId: reservation.clientActionId },
-  }), {
+  assert.deepEqual(getManualMoveActionIdentity(manualAction), {
     expectedPreviousSequence: 17,
     expectedTurnIndex: 1,
   });
@@ -51,12 +59,13 @@ test('수동 이동 식별자는 actor 뒤 authoritative sequence와 turn을 추
   }
 });
 
-test('coordinator timeout 이동만 authoritative deadline을 노출한다', () => {
+test('coordinator timeout deadline과 수동 reservation transaction read marker를 구분한다', () => {
   assert.equal(getCoordinatorTimeoutDeadlineAt({
     type: 'move_piece',
     actorId,
     payload: { recoveredByCoordinator: true, timeoutDeadlineAt },
   }), timeoutDeadlineAt);
+  assert.ok(getCoordinatorTimeoutDeadlineAt(manualAction) < 0);
   assert.equal(getCoordinatorTimeoutDeadlineAt({
     type: 'move_piece',
     actorId,
@@ -69,20 +78,30 @@ test('coordinator timeout 이동만 authoritative deadline을 노출한다', () 
   }), 0);
 });
 
-test('같은 actor·sequence·turn·deadline의 미만료 선행 수동 이동만 timeout을 보류한다', () => {
+test('서버가 deadline 전에 받은 같은 actor·sequence·turn reservation만 timeout을 보류한다', () => {
   assert.equal(isActiveManualMoveReservation({ reservation, actorId, timeoutDeadlineAt, state, now }), true);
+  assert.equal(isActiveManualMoveReservation({
+    reservation: { ...reservation, expiresAt: 1 },
+    actorId,
+    timeoutDeadlineAt,
+    state,
+    now,
+  }), true, 'client expiresAt이 아니라 server timestamp 기반 TTL을 사용해야 합니다.');
 
   const invalidCases: Array<{
-    reservation?: typeof reservation;
+    reservation?: Record<string, unknown>;
     state?: typeof state;
+    receivedAt?: number;
   }> = [
     { reservation: { ...reservation, actorId: 'other-player' } },
     { reservation: { ...reservation, clientActionStartedAt: timeoutDeadlineAt + 1 } },
-    { reservation: { ...reservation, expiresAt: now } },
+    { reservation: { ...reservation, createdAt: serverTimestampAt(timeoutDeadlineAt + 1) } },
+    { reservation: { ...reservation, createdAt: timeoutDeadlineAt - 1 } },
     { reservation: { ...reservation, expectedPreviousSequence: 18 } },
     { reservation: { ...reservation, expectedTurnIndex: 0 } },
     { state: { ...state, turnDeadlineKind: 'roll' } },
     { state: { ...state, turnDeadlineAt: timeoutDeadlineAt + 1 } },
+    { receivedAt: 19_750 + MANUAL_MOVE_RESERVATION_TTL_MS },
   ];
 
   for (const invalid of invalidCases) {
@@ -91,9 +110,62 @@ test('같은 actor·sequence·turn·deadline의 미만료 선행 수동 이동�
       actorId,
       timeoutDeadlineAt,
       state: invalid.state ?? state,
-      now,
+      now: invalid.receivedAt ?? now,
     }), false);
   }
+});
+
+test('manual transaction은 exact reservation을 reducer가 한 번만 소비할 trusted context로 연결한다', () => {
+  const reservationReadMarker = getCoordinatorTimeoutDeadlineAt(manualAction);
+  assert.ok(reservationReadMarker < 0);
+  assert.equal(isActiveManualMoveReservation({
+    reservation,
+    actorId,
+    timeoutDeadlineAt: reservationReadMarker,
+    state,
+    now,
+  }), false, '수동 action은 timeout 보류 결과를 반환하지 않고 transaction을 계속해야 합니다.');
+
+  assert.deepEqual(getTrustedManualMoveReservationContextFromAction(manualAction), {
+    actorId,
+    clientActionId: reservation.clientActionId,
+    clientActionStartedAt: reservation.clientActionStartedAt,
+    expectedPreviousSequence: 17,
+    expectedTurnIndex: 1,
+    deadlineAt: timeoutDeadlineAt,
+    serverReceivedAt: 19_750,
+    expiresAt: 19_750 + MANUAL_MOVE_RESERVATION_TTL_MS,
+  });
+  assert.equal(getTrustedManualMoveReservationContextFromAction(manualAction), null);
+});
+
+test('exact action ID·start·state가 다르거나 forged payload만 있으면 trusted context가 생기지 않는다', () => {
+  assert.equal(getTrustedManualMoveReservationContext({
+    reservation,
+    action: {
+      ...manualAction,
+      payload: { ...manualAction.payload, clientActionStartedAt: 19_499 },
+    },
+    state,
+    now,
+  }), null);
+  assert.equal(getTrustedManualMoveReservationContext({
+    reservation,
+    action: {
+      ...manualAction,
+      payload: { ...manualAction.payload, clientActionId: `${reservation.clientActionId}:forged` },
+    },
+    state,
+    now,
+  }), null);
+  assert.equal(getTrustedManualMoveReservationContextFromAction({
+    ...manualAction,
+    payload: {
+      ...manualAction.payload,
+      trustedManualMoveReservation: true,
+      reservationVerified: true,
+    },
+  }), null);
 });
 
 test('reservation TTL은 commit timeout과 recovery가 끝날 때까지 유지된다', () => {
@@ -126,6 +198,38 @@ test('coordinator timeout은 state와 reservation을 읽고 같은 transaction�
   assert.ok(sequenceWrite > reducer);
   assert.ok(stateWrite > sequenceWrite);
   assert.doesNotMatch(source, /\bgetLatestGameState\b|\bsaveGameState\b/);
+});
+
+test('manual authoritative transaction은 reservation read 뒤 reducer가 private context를 소비한다', () => {
+  const coreSource = readFileSync('src/features/room/services/roomServiceCore.ts', 'utf8');
+  const reducerSource = readFileSync('src/features/room/services/roomAuthoritativeReducer.ts', 'utf8');
+  const policySource = readFileSync('src/features/room/services/manualMoveReservationPolicy.ts', 'utf8');
+  const functionStart = coreSource.indexOf('export async function commitAuthoritativeGameAction');
+  const marker = coreSource.indexOf('getCoordinatorTimeoutDeadlineAt(action)', functionStart);
+  const reservationRef = coreSource.indexOf('const manualMoveReservationRef = timeoutDeadlineAt', marker);
+  const transactionStart = coreSource.indexOf('return runTransaction(db, async (transaction)', reservationRef);
+  const stateRead = coreSource.indexOf('await transaction.get(gameStateRef)', transactionStart);
+  const reservationRead = coreSource.indexOf('await transaction.get(manualMoveReservationRef)', stateRead);
+  const reservationDecision = coreSource.indexOf('isActiveManualMoveReservation({', reservationRead);
+  const reducer = coreSource.indexOf('reduceAuthoritativeGameAction(state, action, room, actionSides)', reservationDecision);
+  const trustedContextRead = reducerSource.indexOf('getTrustedManualMoveReservationContextFromAction(action)');
+  const localDeadlineBypass = reducerSource.indexOf('clientActionStartedAt: 0', trustedContextRead);
+  const implementationCall = reducerSource.indexOf('reduceAuthoritativeGameActionImplementation(reductionState, reductionAction', localDeadlineBypass);
+
+  assert.ok(functionStart >= 0);
+  assert.ok(marker > functionStart);
+  assert.ok(reservationRef > marker);
+  assert.ok(transactionStart > reservationRef);
+  assert.ok(stateRead > transactionStart);
+  assert.ok(reservationRead > stateRead);
+  assert.ok(reservationDecision > reservationRead);
+  assert.ok(reducer > reservationDecision);
+  assert.ok(trustedContextRead >= 0);
+  assert.ok(localDeadlineBypass > trustedContextRead);
+  assert.ok(implementationCall > localDeadlineBypass);
+  assert.match(policySource, /const pendingTrustedManualMoveReservations = new Map/);
+  assert.match(policySource, /pendingTrustedManualMoveReservations\.delete\(clientActionId\)/);
+  assert.doesNotMatch(policySource, /action\.payload\?\.(trustedManualMoveReservation|reservationVerified)/);
 });
 
 test('wrapper는 reservation 게시 뒤 기존 presentation commit wiring과 TTL 수명을 보존한다', () => {
