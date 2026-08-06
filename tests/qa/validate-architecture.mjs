@@ -249,7 +249,12 @@ if (!deployWorkflowSource.includes("github.event.workflow_run.head_branch == 'ma
 if (!deployWorkflowSource.includes('actions/download-artifact@v4')) fail('Pages 배포 workflow가 검증된 build artifact를 다운로드하지 않습니다.');
 if (!deployWorkflowSource.includes('run-id: ${{ github.event.workflow_run.id }}')) fail('Pages 배포 artifact는 triggering QA Run ID로 고정해야 합니다.');
 if (!deployWorkflowSource.includes('github-token: ${{ secrets.GITHUB_TOKEN }}')) fail('다른 workflow Run artifact 다운로드에 GitHub token이 필요합니다.');
-if (!deployWorkflowSource.includes('actions/deploy-pages@v4')) fail('Pages 배포 action 연결이 없습니다.');
+if (!deployWorkflowSource.includes('node .github/scripts/deploy-pages-with-deadline.mjs')) {
+  fail('Pages 배포 deadline script 연결이 없습니다.');
+}
+if (deployWorkflowSource.includes('uses: actions/deploy-pages@v4')) {
+  fail('Pages 배포가 commit SHA를 deployment ID로 재사용하는 action을 사용합니다.');
+}
 if (!deployWorkflowSource.includes('group: github-pages-deploy') || !deployWorkflowSource.includes('cancel-in-progress: true')) {
   fail('Pages 배포 workflow는 stale deployment를 취소하는 전용 concurrency 계약이 필요합니다.');
 }
