@@ -16,6 +16,8 @@ import {
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
 
+export { getPendingOptimisticMoveAction } from '../flows/pendingOptimisticMoveOwnership';
+
 export type PendingRemoteActionMeta = {
   type: GameAction['type'];
   createdAt: number;
