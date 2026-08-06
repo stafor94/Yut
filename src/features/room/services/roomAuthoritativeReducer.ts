@@ -17,13 +17,14 @@ export const reduceAuthoritativeGameAction: typeof reduceAuthoritativeGameAction
     && !Object.prototype.propertyIsEnumerable.call(state, 'pieces')
     ? { ...state, pieces: state.pieces }
     : state;
+  const stateSequence = Number((state as typeof state & { lastSequence?: unknown }).lastSequence ?? 0);
   const trustedManualMoveReservation = getTrustedManualMoveReservationContextFromAction(action);
   const canHonorTrustedManualMoveStart = action.type === 'move_piece'
     && trustedManualMoveReservation != null
     && trustedManualMoveReservation.actorId === action.actorId
     && trustedManualMoveReservation.clientActionId === action.payload?.clientActionId
     && trustedManualMoveReservation.clientActionStartedAt === Number(action.payload?.clientActionStartedAt ?? 0)
-    && trustedManualMoveReservation.expectedPreviousSequence === Number(state.lastSequence ?? 0)
+    && trustedManualMoveReservation.expectedPreviousSequence === stateSequence
     && trustedManualMoveReservation.expectedTurnIndex === Number(state.turnIndex ?? -1)
     && trustedManualMoveReservation.deadlineAt === Number(state.turnDeadlineAt ?? 0)
     && trustedManualMoveReservation.serverReceivedAt <= trustedManualMoveReservation.deadlineAt
