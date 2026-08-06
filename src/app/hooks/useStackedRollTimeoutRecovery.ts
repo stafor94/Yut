@@ -7,6 +7,7 @@ import {
   classifyMoveTimeoutRecoveryResult,
   getMoveTimeoutRecoverySchedule,
   isMoveTimeoutRecoveryScopeCurrent,
+  shouldDeferMoveTimeoutRecoveryForPendingMove,
   type MoveTimeoutRecoveryDisposition,
   type MoveTimeoutRecoveryScope,
 } from '../../features/room/services/moveTimeoutRecoveryPolicy';
@@ -19,6 +20,8 @@ import {
 import { BRANCH_NODE_IDS } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { STORAGE_KEYS, type Seat } from '../appState';
+import { STALE_PENDING_REMOTE_ACTION_MS } from '../config/gameTimings';
+import { getPendingOptimisticMoveAction } from './usePendingRemoteActions';
 
 type StackedRollTimeoutRecoveryParams = {
   activeSeat: Seat | undefined;
@@ -276,6 +279,16 @@ export function useStackedRollTimeoutRecovery({
       const currentSchedule = getMoveTimeoutRecoverySchedule(turnDeadlineAt);
       if (!currentSchedule.ready) {
         schedule(currentSchedule.delayMs);
+        return;
+      }
+      const pendingMove = getPendingOptimisticMoveAction(activeSeat.id);
+      if (shouldDeferMoveTimeoutRecoveryForPendingMove({
+        pendingMove,
+        actorId: activeSeat.id,
+        turnDeadlineAt,
+        staleAfterMs: STALE_PENDING_REMOTE_ACTION_MS,
+      })) {
+        schedule(MOVE_TIMEOUT_RECOVERY_RETRY_DELAY_MS);
         return;
       }
       if (inFlightActionKeyRef.current === actionKey) return;
