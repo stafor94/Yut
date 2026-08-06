@@ -181,7 +181,7 @@ if (workflowSource.includes('Mobile Galaxy + Safari timing')) fail('Galaxy와 Sa
 for (const suiteName of qaSuiteNames) {
   const suite = qaSuiteManifest[suiteName];
   const matrixEntry = new RegExp(
-    `- group: ${escapeRegex(suiteName)}\\n\\s+code: ${escapeRegex(suite.code)}\\n\\s+label: ${escapeRegex(suite.label)}\\n\\s+browsers: ${escapeRegex(suite.browsers.join(' '))}`,
+    `- group: ${escapeRegex(suiteName)}\n\s+code: ${escapeRegex(suite.code)}\n\s+label: ${escapeRegex(suite.label)}\n\s+browsers: ${escapeRegex(suite.browsers.join(' '))}`,
     'u',
   );
   if (!matrixEntry.test(workflowSource)) fail(`qa.yml matrix 계약이 manifest와 다릅니다: ${suiteName}`);
@@ -249,11 +249,17 @@ if (!deployWorkflowSource.includes("github.event.workflow_run.head_branch == 'ma
 if (!deployWorkflowSource.includes('actions/download-artifact@v4')) fail('Pages 배포 workflow가 검증된 build artifact를 다운로드하지 않습니다.');
 if (!deployWorkflowSource.includes('run-id: ${{ github.event.workflow_run.id }}')) fail('Pages 배포 artifact는 triggering QA Run ID로 고정해야 합니다.');
 if (!deployWorkflowSource.includes('github-token: ${{ secrets.GITHUB_TOKEN }}')) fail('다른 workflow Run artifact 다운로드에 GitHub token이 필요합니다.');
-if (!deployWorkflowSource.includes('node .github/scripts/deploy-pages-with-deadline.mjs')) {
-  fail('Pages 배포 deadline script 연결이 없습니다.');
+if (!deployWorkflowSource.includes('uses: actions/deploy-pages@v4')) {
+  fail('Pages 배포는 공식 deploy-pages action을 사용해야 합니다.');
 }
-if (deployWorkflowSource.includes('uses: actions/deploy-pages@v4')) {
-  fail('Pages 배포가 commit SHA를 deployment ID로 재사용하는 action을 사용합니다.');
+if (!deployWorkflowSource.includes('artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}')) {
+  fail('Pages 배포 action은 attempt별 고유 artifact 이름을 사용해야 합니다.');
+}
+if (!deployWorkflowSource.includes('timeout: 240000')) {
+  fail('Pages 배포 action timeout은 4분으로 고정해야 합니다.');
+}
+if (deployWorkflowSource.includes('deploy-pages-with-deadline.mjs')) {
+  fail('공식 action을 우회하는 직접 Pages REST script를 사용하지 마세요.');
 }
 if (!deployWorkflowSource.includes('group: github-pages-deploy') || !deployWorkflowSource.includes('cancel-in-progress: true')) {
   fail('Pages 배포 workflow는 stale deployment를 취소하는 전용 concurrency 계약이 필요합니다.');
