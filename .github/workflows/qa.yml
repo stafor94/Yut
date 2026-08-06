@@ -184,6 +184,10 @@ jobs:
     if: always()
     needs: [build-and-unit, qa-firebase-emulator]
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      statuses: write
     steps:
       - uses: actions/checkout@v4
       - name: Download build artifact
@@ -293,6 +297,36 @@ jobs:
             console-log.txt
           if-no-files-found: ignore
           retention-days: 7
+      - name: Publish Main Branch QA commit status
+        if: ${{ always() && github.event_name == 'push' && github.ref_name == 'main' }}
+        uses: actions/github-script@v7
+        env:
+          BUILD_RESULT: ${{ needs.build-and-unit.result }}
+          EMULATOR_RESULT: ${{ needs.qa-firebase-emulator.result }}
+          PERFORMANCE_RESULT: ${{ steps.performance.outcome }}
+          FAILURE_REPORT_RESULT: ${{ steps.failure-report.outcome }}
+          SUMMARY_JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const requiredResults = [
+              process.env.BUILD_RESULT,
+              process.env.EMULATOR_RESULT,
+              process.env.PERFORMANCE_RESULT,
+              process.env.FAILURE_REPORT_RESULT,
+            ];
+            const passed = requiredResults.every((result) => result === 'success')
+              && process.env.SUMMARY_JOB_STATUS === 'success';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? 'success' : 'failure',
+              context: 'Main Branch QA / main-push',
+              description: passed
+                ? 'All required Main Branch QA stages passed'
+                : 'One or more required Main Branch QA stages failed',
+              target_url: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            });
       - name: Fail when a required stage failed
         env:
           BUILD_RESULT: ${{ needs.build-and-unit.result }}
