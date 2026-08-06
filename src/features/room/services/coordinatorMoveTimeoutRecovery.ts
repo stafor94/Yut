@@ -53,6 +53,14 @@ const getRecoveryClientActionId = (action: CoordinatorMoveTimeoutAction) => (
   typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : ''
 );
 
+const getCoordinatorSequenceFields = (state: SyncedGameState) => {
+  const lease = getGameCoordinatorLeaseSnapshot(state);
+  return {
+    coordinatorSeatId: lease.coordinatorSeatId,
+    coordinatorEpoch: lease.coordinatorEpoch,
+  };
+};
+
 const makeFirestoreStateData = (state: SyncedGameState) => {
   const compactState = {
     ...state,
@@ -165,7 +173,7 @@ export async function commitCoordinatorMoveTimeoutRecovery(
       sequence: nextSequence,
       type: 'move_piece_resolved',
       actorId: action.actorId,
-      ...getGameCoordinatorLeaseSnapshot(state),
+      ...getCoordinatorSequenceFields(state),
       payload: sanitizeForFirestore(reduction.payload) as Record<string, unknown>,
       ...makeSequenceEventFields({ stateBefore: state, stateAfter, patch: reduction.patch, action }),
       expectedPreviousSequence: currentSequence,
@@ -189,7 +197,7 @@ export async function commitCoordinatorMoveTimeoutRecovery(
       turnVersion: nextVersion,
       type: 'move_piece_resolved',
       actorId: action.actorId,
-      ...getGameCoordinatorLeaseSnapshot(state),
+      ...getCoordinatorSequenceFields(state),
       createdAt: serverTimestamp(),
     });
 
