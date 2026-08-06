@@ -235,44 +235,55 @@ test.describe('cross-client manual move reservation', () => {
       errorLabel: 'cross-client manual timeout reservation fixture',
     });
 
-    await Promise.all([page, guestPage].map((clientPage) => expect.poll(async () => {
-      const state = await collectScreenState(clientPage);
-      const debug = state.yutDebug ?? {};
-      return Number(debug.lastSequence ?? 0) === fixture.lastSequence
-        && Number(debug.turnIndex ?? -1) === guestTurnIndex
-        && debug.roll === null
-        && debug.rollStackClosed === true
-        && debug.selectedRollStackIndex === null
-        && Number(debug.turnDeadlineAt ?? 0) === deadlineAt
-        && Array.isArray(debug.rollStack)
-        && debug.rollStack.length === 2
-        && debug.rollStack[0]?.name === '윷'
-        && debug.rollStack[1]?.name === '개';
+    await expect.poll(async () => {
+      const current = await getRoomStateForQa(roomId);
+      const currentStack = Array.isArray(current?.rollStack) ? current.rollStack : [];
+      return Boolean(
+        current
+        && Number(current.turnVersion) === fixture.turnVersion
+        && Number(current.lastSequence) === fixture.lastSequence
+        && Number(current.turnIndex) === guestTurnIndex
+        && current.roll === null
+        && current.rollStackClosed === true
+        && current.selectedRollStackIndex === null
+        && Number(current.turnDeadlineAt) === deadlineAt
+        && current.turnDeadlineKind === 'move'
+        && currentStack.length === 2
+        && currentStack[0]?.name === '윷'
+        && currentStack[1]?.name === '개',
+      );
     }, {
-      timeout: 12_000,
+      timeout: 4_000,
       intervals: [50, 100, 200, 400],
-      message: '두 클라이언트가 동일한 윷·개 닫힌 스택 fixture를 반영해야 합니다.',
+      message: '윷·개 닫힌 이동 스택 fixture가 authoritative state에 반영되어야 합니다.',
+    }).toBe(true);
+
+    await Promise.all([page, guestPage].map((clientPage) => expect.poll(async () => {
+      const debug = (await collectScreenState(clientPage)).yutDebug ?? {};
+      return Number(debug.lastAppliedSequence ?? 0) === fixture.lastSequence
+        && Number(debug.turnIndex ?? -1) === guestTurnIndex
+        && Number(debug.turnDeadlineAt ?? 0) === deadlineAt
+        && debug.turnDeadlineKind === 'move';
+    }, {
+      timeout: 4_000,
+      intervals: [50, 100, 200, 400],
+      message: '두 클라이언트가 동일한 authoritative fixture sequence를 적용해야 합니다.',
     }).toBe(true)));
 
     const baselineSequences = await getRoomSequencesForQa(roomId);
     const picker = guestPage.locator('.roll-stack-picker');
-    await expect(picker).toBeVisible({ timeout: 10_000 });
+    await expect(picker).toBeVisible({ timeout: 4_000 });
     const stackButtons = picker.getByRole('button');
     await expect(stackButtons).toHaveCount(2);
+    await expect(stackButtons.first()).toHaveText('윷');
+    await expect(stackButtons.nth(1)).toHaveText('개');
     await stackButtons.first().click();
-    await expect.poll(async () => (await collectScreenState(guestPage)).yutDebug?.selectedRollStackIndex ?? null, {
-      timeout: 2_000,
-      intervals: [25, 50, 100],
-      message: 'guest가 윷 스택 결과를 선택해야 합니다.',
-    }).toBe(0);
-
-    await guestPage.getByTestId(`piece-${guestIdentity.pieceId}`).click();
+    await expect(picker).toBeHidden({ timeout: 2_000 });
     await expect.poll(async () => (await collectScreenState(guestPage)).yutDebug?.selectedPieceId ?? '', {
       timeout: 2_000,
       intervals: [25, 50, 100],
-      message: 'guest가 이동할 말을 선택해야 합니다.',
+      message: '윷 선택 뒤 guest의 유효한 말이 자동 선택되어야 합니다.',
     }).toBe(guestIdentity.pieceId);
-    expect(Date.now()).toBeLessThan(deadlineAt);
 
     const guestTracePromise = observePieceWithoutRollback(guestPage, {
       pieceId: guestIdentity.pieceId,
@@ -285,9 +296,11 @@ test.describe('cross-client manual move reservation', () => {
       requirePendingClear: false,
     });
     await expect(guestPage.getByTestId('move-piece-button')).toBeEnabled({ timeout: 2_000 });
+    expect(Date.now()).toBeLessThan(deadlineAt);
     await guestPage.getByTestId('move-piece-button').click();
 
     const [guestTrace, hostTrace] = await Promise.all([guestTracePromise, hostTracePromise]);
+    expect(Date.now()).toBeGreaterThan(deadlineAt);
     expect(guestTrace.returnedOffBoardAfterStart).toBe(false);
     expect(guestTrace.movingStartCount).toBe(1);
     expect(guestTrace.finalNodeId).toBe('n05');
@@ -304,6 +317,8 @@ test.describe('cross-client manual move reservation', () => {
     expect(newMoveSequences).toHaveLength(1);
     expect(String(newMoveSequences[0].clientMutationId ?? '')).toMatch(new RegExp(`^move_piece:${guestIdentity.ownerSeatId}:`));
     expect(String(newMoveSequences[0].clientMutationId ?? '')).not.toContain('timeout:v1:');
+    expect(Number(newMoveSequences[0].action?.payload?.clientActionStartedAt ?? 0)).toBeGreaterThan(0);
+    expect(Number(newMoveSequences[0].action?.payload?.clientActionStartedAt ?? 0)).toBeLessThanOrEqual(deadlineAt);
 
     const finalState = await getRoomStateForQa(roomId);
     const finalPiece = finalState.pieces.find((piece) => piece?.id === guestIdentity.pieceId);
