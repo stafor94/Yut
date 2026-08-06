@@ -16,6 +16,12 @@ import {
   normalizeCoordinatorEpoch,
   type GameCoordinatorLeaseToken,
 } from './roomCoordinatorLease';
+import {
+  getCoordinatorTimeoutDeadlineAt,
+  getManualMoveReservationKey,
+  isActiveManualMoveReservation,
+  MOVE_RESERVATION_REEVALUATE_REASON,
+} from './manualMoveReservationPolicy';
 
 export interface RoomSummary {
   id: string; title: string; hostId?: string; status: 'waiting' | 'playing' | 'finished'; maxPlayers: number; itemMode: boolean; stackedRollMode?: boolean; playMode: 'individual' | 'team'; pieceCount: 1 | 2 | 3 | 4; createdAt?: unknown; emptySince?: number | null; currentPlayers?: number; playerIds?: string[]; startCountdownUntil?: number; startRequestVersion?: number; startRequestedAt?: number; startCountdownStartsAt?: number; startCountdownEndsAt?: number; startCancelledAt?: number | null; startStatus?: 'idle' | 'requested' | 'cancelled' | 'entering' | 'playing'; startRequestId?: string; roomConfigVersion?: number; presenceCleanupLeaseOwnerId?: string; presenceCleanupLeaseExpiresAt?: number; presenceCleanupLeaseVersion?: number; presenceCleanupLeaseUpdatedAt?: unknown; qaRunId?: string; createRequestId?: string;
@@ -84,7 +90,6 @@ const waitForQaDelayAfterRoomPlayerSave = async () => {
   if (delayMs <= 0) return;
   await new Promise((resolve) => window.setTimeout(resolve, delayMs));
 };
-
 
 const canAuthenticatedUserActForPlayer = (playerId: string, player: RoomPlayer | null, room: Pick<RoomSummary, 'hostId'>, options: { coordinatorPlayerIds?: string[]; allowCoordinator?: boolean; actorIsAiControlled?: boolean } = {}) => {
   if (!auth) return true;
@@ -297,7 +302,6 @@ export async function createRoom(params: { title: string; hostId: string; nickna
   return roomRef.id;
 }
 
-
 async function syncRoomPlayerCount(roomId: string) {
   if (!db) return;
   const playersSnapshot = await getDocs(collection(db, 'rooms', roomId, 'players'));
@@ -424,7 +428,6 @@ export function subscribeRoomPlayers(roomId: string, callback: (players: RoomPla
   if (!db) { callback([]); return () => undefined; }
   return onSnapshot(query(collection(db, 'rooms', roomId, 'players'), orderBy('seatIndex', 'asc')), (snapshot) => callback(snapshot.docs.map((playerDoc) => ({ id: playerDoc.id, ...(playerDoc.data() as Omit<RoomPlayer, 'id'>) }))));
 }
-
 
 export async function heartbeatRoomPlayer(roomId: string, playerId: string) {
   if (!db || !roomId || !playerId) return false;
@@ -688,7 +691,6 @@ export async function claimGameCoordinatorLease(roomId: string, candidateSeatId:
     return decision;
   });
 }
-
 
 const stableSequenceValue = (value: unknown) => JSON.stringify(value ?? null);
 
@@ -992,7 +994,7 @@ export function subscribeTurnOrderSubmissions(
     callback(snapshot.docs.map((submissionDoc) => ({
       id: submissionDoc.id,
       ...(submissionDoc.data() as Omit<TurnOrderSubmissionRecord, 'id'>),
-    })));
+    }));
   }, (error) => {
     onError?.(error);
   });
@@ -1244,6 +1246,10 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
   const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : `${action.type}:${action.actorId}:${Date.now()}`;
   const processedActionRef = getClientMutationDocRef(roomId, clientActionId);
   const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
+  const timeoutDeadlineAt = getCoordinatorTimeoutDeadlineAt(action);
+  const manualMoveReservationRef = timeoutDeadlineAt
+    ? doc(db, 'rooms', roomId, 'actions', makeFirestoreSafeId(getManualMoveReservationKey(roomId, action.actorId)))
+    : null;
 
   return runTransaction(db, async (transaction): Promise<CommitAuthoritativeGameActionResult> => {
     const processedActionSnapshot = await transaction.get(processedActionRef);
@@ -1251,6 +1257,21 @@ export async function commitAuthoritativeGameAction(roomId: string, action: Omit
     const stateSnapshot = await transaction.get(gameStateRef);
     if (!stateSnapshot.exists()) return { status: 'rejected', reason: '아직 게임 상태가 준비되지 않았습니다.' };
     const state = stateSnapshot.data() as SyncedGameState;
+    const manualMoveReservationSnapshot = manualMoveReservationRef
+      ? await transaction.get(manualMoveReservationRef)
+      : null;
+    if (
+      manualMoveReservationSnapshot?.exists()
+      && isActiveManualMoveReservation({
+        reservation: manualMoveReservationSnapshot.data(),
+        actorId: action.actorId,
+        timeoutDeadlineAt,
+        state,
+        now: Date.now(),
+      })
+    ) {
+      return { status: 'rejected', reason: MOVE_RESERVATION_REEVALUATE_REASON };
+    }
     const uid = auth?.currentUser?.uid ?? '';
     const snapshotSeats = (state.gameSeats ?? []) as GameSeatSnapshot[];
     const actorSeat = snapshotSeats.find((seat) => seat.id === action.actorId);
