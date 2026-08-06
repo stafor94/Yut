@@ -29,6 +29,7 @@ import {
 } from '../flows/fallPresentationCompletion';
 import { getBoardTurnIndicatorText } from '../flows/boardTurnIndicator';
 import { getGamePresentationTurn } from '../flows/gamePresentationTurn';
+import { getStackedRollAutomaticPiece } from '../flows/stackedRollAutomaticPieceSelection';
 import {
   EMPTY_ROLL_PRESENTATION_STATE,
   shouldDeferRollDerivedContent,
@@ -235,6 +236,28 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     if (!isRollStackIndexSelectable(rollStackSelectionAvailability, index)) return;
     onMoveRollStackIndex(index);
   };
+
+  useEffect(() => {
+    if (deferRollDerivedContent
+      || movingPieceId
+      || pendingTrapPlacement
+      || rollResultHolding
+      || winner
+      || activeTurnOrderIntro
+      || turnOrderPhase.active
+      || waitingForOnlineTurnOrder) return;
+    const automaticPiece = getStackedRollAutomaticPiece({
+      pieces,
+      selectedPieceId,
+      rollStack,
+      selectedRollStackIndex,
+      rollStackClosed,
+      isLocalTurn: isMyTurn,
+      canControlPiece: (piece) => canSeatControlPiece(activeSeat, piece),
+      isSameSidePiece: (piece, selectedPiece) => canSeatControlPiece(activeSeat, piece) && canSeatControlPiece(activeSeat, selectedPiece),
+    });
+    if (automaticPiece && automaticPiece.id !== selectedPieceId) onSelectPieceId(automaticPiece.id);
+  }, [activeSeat, activeTurnOrderIntro, canSeatControlPiece, deferRollDerivedContent, isMyTurn, movingPieceId, onSelectPieceId, pendingTrapPlacement, pieces, rollResultHolding, rollStack, rollStackClosed, selectedPieceId, selectedRollStackIndex, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
 
   useLayoutEffect(() => {
     if (revealedRollSnapshot) {
