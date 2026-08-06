@@ -108,9 +108,17 @@ test('모든 온라인 사용자·AI·자동 행동은 reducer 호출 전에 동
   const settleStart = source.indexOf('const settleRoomAction');
   const settleEnd = source.indexOf('export async function commitAuthoritativeGameAction', settleStart);
   const settleSource = source.slice(settleStart, settleEnd);
+  const normalizeStart = settleSource.indexOf('const normalizedAction = normalizeLegacyRollTimingAction(action);');
+  const enrichedStart = settleSource.indexOf('const actionWithClientStart = manualMoveIdentity', normalizeStart);
+  const normalizedSpread = settleSource.indexOf('...normalizedAction,', enrichedStart);
+  const normalizedFallback = settleSource.indexOf(': normalizedAction;', normalizedSpread);
+  const coreCommit = settleSource.indexOf('commitAuthoritativeGameActionCore(roomId, actionWithClientStart)', normalizedFallback);
 
   assert.ok(settleStart >= 0);
-  assert.match(settleSource, /normalizeLegacyRollTimingAction\(action\)/);
-  assert.match(settleSource, /commitAuthoritativeGameActionCore\(roomId, normalizedAction\)/);
+  assert.ok(normalizeStart >= 0);
+  assert.ok(enrichedStart > normalizeStart);
+  assert.ok(normalizedSpread > enrichedStart);
+  assert.ok(normalizedFallback > normalizedSpread);
+  assert.ok(coreCommit > normalizedFallback);
   assert.equal(/commitAuthoritativeGameActionCore\(roomId, action\)/.test(settleSource), false);
 });

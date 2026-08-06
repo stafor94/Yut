@@ -40,6 +40,13 @@ import {
   resolveFallPresentationCompletionLocally,
   shouldWaitForGamePresentationBeforeCommit,
 } from './fallPresentationCommitPolicy';
+import {
+  getClientActionId,
+  getManualMoveActionIdentity,
+  getManualMoveReservationKey,
+  MANUAL_MOVE_RESERVATION_TTL_MS,
+} from './manualMoveReservationPolicy';
+import { makeFirestoreSafeId } from './roomFirestore';
 import { isAiSubstitutionUpdate } from './roomExitPolicy';
 import {
   ROOM_LIST_CANDIDATE_LIMIT,
@@ -67,6 +74,7 @@ import {
   removeRoomPlayerNow,
   removeRoomPlayerSafely,
 } from './roomExitService';
+import { waitForQaMoveCommitDelayAfterReservation } from './roomQaDelays';
 import {
   clearCachedGameSequences,
   getCachedGameSequencesForReplay,
@@ -86,6 +94,16 @@ export { withGameSequenceReplayCache } from './roomSequenceReplayCache';
 const RECENT_GAME_SEQUENCE_CACHE_LIMIT = 8;
 const ROOM_SUMMARY_HEARTBEAT_INTERVAL_MS = 30_000;
 const roomSummaryHeartbeatAtByRoomId = new Map<string, number>();
+
+type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
+
+const getManualMoveReservationRef = (roomId: string, actorId: string) => doc(
+  db!,
+  'rooms',
+  roomId,
+  'actions',
+  makeFirestoreSafeId(getManualMoveReservationKey(roomId, actorId)),
+);
 
 export function subscribeGameState(roomId: string, callback: (state: SyncedGameState | null) => void): Unsubscribe {
   if (!db) return subscribeGameStateCore(roomId, callback);
@@ -191,27 +209,58 @@ export function subscribeActiveRooms(callback: (rooms: RoomSummary[]) => void): 
   }, () => callback([]));
 }
 
-type CommittableGameAction = Omit<GameAction, 'id' | 'createdAt' | 'processed'>;
-
-const settleRoomAction = (
+const settleRoomAction = async (
   roomId: string,
   action: CommittableGameAction,
 ): Promise<CommitAuthoritativeGameActionResult> => {
   const normalizedAction = normalizeLegacyRollTimingAction(action);
-  const clientActionId = typeof normalizedAction.payload?.clientActionId === 'string' ? normalizedAction.payload.clientActionId : '';
+  const clientActionId = getClientActionId(normalizedAction);
+  const manualMoveIdentity = getManualMoveActionIdentity(normalizedAction);
+  const clientActionStartedAt = manualMoveIdentity ? Date.now() : 0;
+  const actionWithClientStart = manualMoveIdentity
+    ? {
+        ...normalizedAction,
+        payload: {
+          ...normalizedAction.payload,
+          clientActionStartedAt,
+        },
+      }
+    : normalizedAction;
+  const reservationRef = manualMoveIdentity && db
+    ? getManualMoveReservationRef(roomId, normalizedAction.actorId)
+    : null;
+
+  if (reservationRef && manualMoveIdentity) {
+    const reservedAt = Date.now();
+    await setDoc(reservationRef, {
+      type: 'move_piece',
+      actorId: normalizedAction.actorId,
+      processed: true,
+      reservationType: 'manual_move',
+      clientActionId,
+      clientActionStartedAt,
+      expectedPreviousSequence: manualMoveIdentity.expectedPreviousSequence,
+      expectedTurnIndex: manualMoveIdentity.expectedTurnIndex,
+      reservedAt,
+      expiresAt: reservedAt + MANUAL_MOVE_RESERVATION_TTL_MS,
+      createdAt: serverTimestamp(),
+    });
+  }
+
   return settleAuthoritativeCommit({
-    actionType: normalizedAction.type,
+    actionType: actionWithClientStart.type,
     commit: async () => {
-      if (shouldWaitForGamePresentationBeforeCommit(normalizedAction)) {
-        const presentationWaitResult = await waitForGamePresentationBeforeAction(normalizedAction.type);
+      if (shouldWaitForGamePresentationBeforeCommit(actionWithClientStart)) {
+        const presentationWaitResult = await waitForGamePresentationBeforeAction(actionWithClientStart.type);
         if (presentationWaitResult === 'timeout') {
           console.warn('게임 연출 완료 대기 상한을 초과해 authoritative action 제출을 계속합니다.', {
-            actionType: normalizedAction.type,
+            actionType: actionWithClientStart.type,
             clientActionId,
           });
         }
       }
-      return commitAuthoritativeGameActionCore(roomId, normalizedAction);
+      await waitForQaMoveCommitDelayAfterReservation(Boolean(reservationRef));
+      return commitAuthoritativeGameActionCore(roomId, actionWithClientStart);
     },
     recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
   });
