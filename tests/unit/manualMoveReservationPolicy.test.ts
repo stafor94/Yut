@@ -2,9 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  AUTHORITATIVE_COMMIT_RECOVERY_TIMEOUT_MS,
+  AUTHORITATIVE_COMMIT_TIMEOUT_MS,
+} from '../../src/features/room/services/authoritativeCommitTimeout';
+import {
   getCoordinatorTimeoutDeadlineAt,
   getManualMoveActionIdentity,
   isActiveManualMoveReservation,
+  MANUAL_MOVE_RESERVATION_TTL_MS,
 } from '../../src/features/room/services/manualMoveReservationPolicy';
 
 const actorId = 'guest-player';
@@ -91,6 +96,12 @@ test('같은 actor·sequence·turn·deadline의 미만료 선행 수동 이동�
   }
 });
 
+test('reservation TTL은 commit timeout과 recovery가 끝날 때까지 유지된다', () => {
+  assert.ok(MANUAL_MOVE_RESERVATION_TTL_MS > (
+    AUTHORITATIVE_COMMIT_TIMEOUT_MS + AUTHORITATIVE_COMMIT_RECOVERY_TIMEOUT_MS
+  ));
+});
+
 test('reservation 판정은 game state commit과 동일 transaction에서 수행된다', () => {
   const coreSource = readFileSync('src/features/room/services/roomServiceCore.ts', 'utf8');
   const commitStart = coreSource.indexOf('export async function commitAuthoritativeGameAction');
@@ -109,7 +120,7 @@ test('reservation 판정은 game state commit과 동일 transaction에서 수행
   assert.match(coreSource.slice(reservationDecision, reducer), /MOVE_RESERVATION_REEVALUATE_REASON/);
 });
 
-test('wrapper는 reservation 게시 뒤 기존 presentation commit wiring을 보존한다', () => {
+test('wrapper는 reservation 게시 뒤 기존 presentation commit wiring과 TTL 수명을 보존한다', () => {
   const roomServiceSource = readFileSync('src/features/room/services/roomService.ts', 'utf8');
   const qaDelaySource = readFileSync('src/features/room/services/roomQaDelays.ts', 'utf8');
   const reservationPublish = roomServiceSource.indexOf('await setDoc(reservationRef');
@@ -124,5 +135,6 @@ test('wrapper는 reservation 게시 뒤 기존 presentation commit wiring을 보
   assert.ok(presentationWait > commitStart);
   assert.ok(coreCommit > presentationWait);
   assert.doesNotMatch(roomServiceSource, /readActiveManualMoveReservation/);
+  assert.doesNotMatch(roomServiceSource, /deleteDoc\(reservationRef\)/);
   assert.doesNotMatch(qaDelaySource, /\bwindow\b|\bdocument\b|import\.meta/);
 });
