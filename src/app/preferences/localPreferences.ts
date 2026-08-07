@@ -10,6 +10,7 @@ export const STORAGE_KEYS = {
   pieceCount: 'yut-online:pieceCount',
   soundEnabled: 'yut-online:soundEnabled',
   activeRoomId: 'yut-online:activeRoomId',
+  activeRoomUserId: 'yut-online:activeRoomUserId',
   isRoomHost: 'yut-online:isRoomHost',
 } as const;
 

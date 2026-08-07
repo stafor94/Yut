@@ -38,7 +38,7 @@ type RoomEntryRuntime = {
   leaveDuplicatePlayerRooms: (userId: string, activeRoomId: string) => Promise<unknown>;
   isRoomInGame: (room: RoomSummary) => boolean;
   setTimeout: (callback: () => void, delayMs: number) => number;
-  localStorage: Pick<Storage, 'getItem' | 'removeItem'>;
+  localStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 };
 
 export type RoomEntryControllerParams = RoomSessionActions & {
@@ -74,7 +74,10 @@ export async function leavePreviousOnlineRoomForEntry(params: Pick<RoomEntryCont
     const transitioningToNextRoom = isRoomTransitionInProgress(previousRoomId, nextRoomId);
     const activeRoomIsPrevious = !params.activeRoomIdRef.current || params.activeRoomIdRef.current === previousRoomId;
     if (!transitioningToNextRoom && params.activeRoomIdRef.current === previousRoomId) params.onActiveRoomIdChange('');
-    if (params.runtime.localStorage.getItem(STORAGE_KEYS.activeRoomId) === previousRoomId) params.runtime.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+    if (params.runtime.localStorage.getItem(STORAGE_KEYS.activeRoomId) === previousRoomId) {
+      params.runtime.localStorage.removeItem(STORAGE_KEYS.activeRoomId);
+      params.runtime.localStorage.removeItem(STORAGE_KEYS.activeRoomUserId);
+    }
     if (!transitioningToNextRoom && activeRoomIsPrevious) params.runtime.localStorage.removeItem(STORAGE_KEYS.isRoomHost);
   }
 }
@@ -96,6 +99,8 @@ export async function openWaitingRoomForEntry(params: RoomEntryControllerParams 
     if (asHost) void previousRoomCleanup;
     else await previousRoomCleanup;
     const joinResult = !asHost && room.id && joiningUser ? await runtime.joinRoom(room.id, { userId: joiningUser.uid, nickname: params.nickname, playMode: room.playMode }) : null;
+    const activeRoomUser = asHost ? roomUser : joiningUser;
+    if (room.id && activeRoomUser) runtime.localStorage.setItem(STORAGE_KEYS.activeRoomUserId, activeRoomUser.uid);
     params.onActiveRoomIdChange(room.id ?? '');
     params.onRoomHostChange(asHost);
     params.onActiveRoomTitleChange(room.title);

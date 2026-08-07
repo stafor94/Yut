@@ -26,7 +26,11 @@ const baseParams = (overrides: Partial<RoomEntryControllerParams> = {}) => {
     leaveDuplicatePlayerRooms: async (userId: string, roomId: string) => { calls.push(`dedupe:${userId}:${roomId}`); },
     isRoomInGame: (nextRoom: RoomSummary) => nextRoom.status === 'playing',
     setTimeout: (callback: () => void) => { callback(); return 1; },
-    localStorage: { getItem: (key: string) => storage.get(key) ?? null, removeItem: (key: string) => { storage.delete(key); } },
+    localStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value); },
+      removeItem: (key: string) => { storage.delete(key); },
+    },
   };
   const params: RoomEntryControllerParams = {
     nickname: '나',

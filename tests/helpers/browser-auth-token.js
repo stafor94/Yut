@@ -19,6 +19,36 @@ export function readFirebaseAccessTokenFromIndexedDb(indexedDb = globalThis.inde
     return '';
   };
 
+  const readLocalStorageToken = () => {
+    let storage;
+    try {
+      storage = globalThis.localStorage;
+    } catch {
+      return '';
+    }
+    if (!storage) return '';
+    try {
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (!key?.startsWith('firebase:authUser:')) continue;
+        const value = storage.getItem(key);
+        if (!value) continue;
+        try {
+          const token = findToken(JSON.parse(value));
+          if (token) return token;
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      return '';
+    }
+    return '';
+  };
+
+  const localStorageToken = readLocalStorageToken();
+  if (localStorageToken) return Promise.resolve(localStorageToken);
+
   return new Promise((resolve) => {
     let settled = false;
     const finish = (database, token = '') => {

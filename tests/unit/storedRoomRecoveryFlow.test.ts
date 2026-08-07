@@ -16,17 +16,26 @@ const deferred = <T>() => {
 
 const baseParams = (overrides: Partial<StoredRoomRecoveryFlowParams> = {}) => {
   const state = { activeRoomId: '', isRoomHost: false, activeRoomTitle: 'old-title', activeRoomHostId: 'old-host', playMode: '', maxPlayers: 0, itemMode: false, stackedRollMode: false, pieceCount: 0, seats: [] as unknown[], screen: '', message: '', loadingMessage: '' };
-  const storage = new Map<string, string>([[STORAGE_KEYS.activeRoomId, 'stored-room'], [STORAGE_KEYS.isRoomHost, 'true']]);
+  const currentUser = overrides.currentUser ?? user('current-1');
+  const storage = new Map<string, string>([
+    [STORAGE_KEYS.activeRoomId, 'stored-room'],
+    [STORAGE_KEYS.activeRoomUserId, currentUser.uid],
+    [STORAGE_KEYS.isRoomHost, 'true'],
+  ]);
   const calls: string[] = [];
   const runtime = {
     getRoom: async (roomId: string) => { calls.push(`get:${roomId}`); return room({ id: roomId }); },
     joinRoom: async (roomId: string, params: { userId: string }) => { calls.push(`join:${roomId}:${params.userId}`); return { role: 'player' as const, seatIndex: 2 }; },
     isRoomInGame: (nextRoom: RoomSummary) => nextRoom.status === 'playing',
-    localStorage: { getItem: (key: string) => storage.get(key) ?? null, removeItem: (key: string) => { calls.push(`removeStorage:${key}`); storage.delete(key); } },
+    localStorage: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { calls.push(`setStorage:${key}:${value}`); storage.set(key, value); },
+      removeItem: (key: string) => { calls.push(`removeStorage:${key}`); storage.delete(key); },
+    },
     getCurrentActiveRoomId: () => state.activeRoomId,
   };
   const params: StoredRoomRecoveryFlowParams = {
-    currentUser: user('current-1'),
+    currentUser,
     nickname: '나나',
     hostingRoomUserIdRef: { current: 'host-old' },
     storedRoomId: 'stored-room',
@@ -80,6 +89,7 @@ test('방을 찾지 못하면 storage와 loading을 정리하고 기존 메시�
   context.params.runtime.getRoom = async () => null;
   await recoverStoredRoom(context.params);
   assert.equal(context.storage.has(STORAGE_KEYS.activeRoomId), false);
+  assert.equal(context.storage.has(STORAGE_KEYS.activeRoomUserId), false);
   assert.equal(context.storage.has(STORAGE_KEYS.isRoomHost), false);
   assert.equal(context.state.loadingMessage, '');
   assert.equal(context.state.message, '이전에 참여했던 방이 없어져 대기화면으로 돌아왔습니다.');
@@ -91,6 +101,7 @@ test('finished 방이면 storage 정리 후 대기화면 복귀 메시지를 표
   context.params.runtime.getRoom = async () => room({ status: 'finished' });
   await recoverStoredRoom(context.params);
   assert.equal(context.storage.has(STORAGE_KEYS.activeRoomId), false);
+  assert.equal(context.storage.has(STORAGE_KEYS.activeRoomUserId), false);
   assert.equal(context.state.screen, '');
   assert.equal(context.state.message, '이전에 참여했던 방이 없어져 대기화면으로 돌아왔습니다.');
 });
@@ -99,6 +110,7 @@ test('대기 중인 방 복구 시 방장 여부와 좌석 index를 복원하고
   const context = baseParams({ currentUser: user('host-1') });
   await recoverStoredRoom(context.params);
   assert.deepEqual(context.calls.slice(0, 2), ['get:stored-room', 'join:stored-room:host-1']);
+  assert.equal(context.storage.get(STORAGE_KEYS.activeRoomUserId), 'host-1');
   assert.equal(context.state.activeRoomId, 'stored-room');
   assert.equal(context.state.isRoomHost, true);
   assert.equal(context.state.activeRoomHostId, 'host-1');
@@ -106,6 +118,55 @@ test('대기 중인 방 복구 시 방장 여부와 좌석 index를 복원하고
   assert.equal(context.state.screen, 'waitingRoom');
   assert.equal(context.state.loadingMessage, '');
   assert.equal(context.state.message, '참여 중이던 방에 다시 입장했습니다.');
+});
+
+test('exact-title host recovery는 저장 UID가 없어도 authoritative host UID가 같으면 기존 membership으로 복구한다', async () => {
+  const context = baseParams({ currentUser: user('host-1') });
+  context.storage.delete(STORAGE_KEYS.activeRoomUserId);
+  context.storage.set(STORAGE_KEYS.isRoomHost, 'true');
+  const result = await recoverStoredRoom(context.params);
+  assert.equal(result, 'recovered');
+  assert.equal(context.calls.includes('join:stored-room:host-1'), true);
+  assert.equal(context.storage.get(STORAGE_KEYS.activeRoomUserId), 'host-1');
+  assert.equal(context.state.isRoomHost, true);
+  assert.equal(context.state.screen, 'waitingRoom');
+});
+
+test('exact-title host recovery에서 현재 UID가 authoritative host UID와 다르면 새 P2로 join하지 않는다', async () => {
+  const context = baseParams({ currentUser: user('new-guest') });
+  context.storage.delete(STORAGE_KEYS.activeRoomUserId);
+  context.storage.set(STORAGE_KEYS.isRoomHost, 'true');
+  const result = await recoverStoredRoom(context.params);
+  assert.equal(result, 'permanent-failure');
+  assert.equal(context.calls.some((call) => call.startsWith('join:')), false);
+  assert.equal(context.storage.has(STORAGE_KEYS.activeRoomId), false);
+  assert.equal(context.storage.has(STORAGE_KEYS.activeRoomUserId), false);
+  assert.equal(context.storage.has(STORAGE_KEYS.isRoomHost), false);
+  assert.equal(context.state.activeRoomId, '');
+  assert.equal(context.state.isRoomHost, false);
+  assert.equal(context.state.screen, 'lobby');
+  assert.match(context.state.message, /사용자 정보가 현재 로그인과 달라/);
+});
+
+test('guest recovery에서 저장 expected UID와 현재 UID가 다르면 같은 방에 새 player로 join하지 않는다', async () => {
+  const context = baseParams({ currentUser: user('new-guest') });
+  context.storage.set(STORAGE_KEYS.activeRoomUserId, 'old-guest');
+  context.storage.set(STORAGE_KEYS.isRoomHost, 'false');
+  const result = await recoverStoredRoom(context.params);
+  assert.equal(result, 'permanent-failure');
+  assert.equal(context.calls.some((call) => call.startsWith('join:')), false);
+  assert.equal(context.storage.has(STORAGE_KEYS.activeRoomUserId), false);
+  assert.equal(context.state.screen, 'lobby');
+});
+
+test('expected UID가 없는 legacy guest recovery는 identity를 추측해 새 player로 join하지 않는다', async () => {
+  const context = baseParams();
+  context.storage.delete(STORAGE_KEYS.activeRoomUserId);
+  context.storage.set(STORAGE_KEYS.isRoomHost, 'false');
+  const result = await recoverStoredRoom(context.params);
+  assert.equal(result, 'permanent-failure');
+  assert.equal(context.calls.some((call) => call.startsWith('join:')), false);
+  assert.equal(context.state.screen, 'lobby');
 });
 
 test('진행 중인 방 복구 시 game 화면으로 이동한다', async () => {
@@ -128,6 +189,7 @@ test('영구 joinRoom 오류 시 active room 관련 상태 전체 정리 후 lob
   const result = await recoverStoredRoom(context.params);
   assert.equal(result, 'permanent-failure');
   assert.equal(context.params.hostingRoomUserIdRef.current, '');
+  assert.equal(context.storage.has(STORAGE_KEYS.activeRoomUserId), false);
   assert.equal(context.state.activeRoomId, '');
   assert.equal(context.state.isRoomHost, false);
   assert.equal(context.state.activeRoomTitle, '');
@@ -144,6 +206,7 @@ test('재시도 가능한 joinRoom 오류는 저장된 방 포인터와 기존 �
   assert.equal(result, 'retryable-failure');
   assert.equal(context.params.hostingRoomUserIdRef.current, 'host-old');
   assert.equal(context.storage.get(STORAGE_KEYS.activeRoomId), 'stored-room');
+  assert.equal(context.storage.get(STORAGE_KEYS.activeRoomUserId), 'current-1');
   assert.equal(context.storage.get(STORAGE_KEYS.isRoomHost), 'true');
   assert.equal(context.state.activeRoomTitle, 'old-title');
   assert.equal(context.state.activeRoomHostId, 'old-host');

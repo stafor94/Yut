@@ -12,7 +12,11 @@ const storedRoom: RoomSummary = {
 };
 
 function createParams(error: Error & { code?: string }) {
-  const storage = new Map<string, string>([[STORAGE_KEYS.activeRoomId, storedRoom.id], [STORAGE_KEYS.isRoomHost, 'false']]);
+  const storage = new Map<string, string>([
+    [STORAGE_KEYS.activeRoomId, storedRoom.id],
+    [STORAGE_KEYS.activeRoomUserId, currentUser.uid],
+    [STORAGE_KEYS.isRoomHost, 'false'],
+  ]);
   const state = { activeRoomId: '', screen: '', loading: '', message: '' };
   const params: StoredRoomRecoveryFlowParams = {
     currentUser,
@@ -37,7 +41,11 @@ function createParams(error: Error & { code?: string }) {
       getRoom: async () => storedRoom,
       joinRoom: async () => { throw error; },
       isRoomInGame: () => false,
-      localStorage: { getItem: (key) => storage.get(key) ?? null, removeItem: (key) => { storage.delete(key); } },
+      localStorage: {
+        getItem: (key) => storage.get(key) ?? null,
+        setItem: (key, value) => { storage.set(key, value); },
+        removeItem: (key) => { storage.delete(key); },
+      },
       getCurrentActiveRoomId: () => state.activeRoomId,
     },
   };
@@ -54,6 +62,7 @@ test('일시적 자동 복구 오류는 activeRoomId와 isRoomHost 복구 포인
   const context = createParams(error);
   assert.equal(await recoverStoredRoom(context.params), 'retryable-failure');
   assert.equal(context.storage.get(STORAGE_KEYS.activeRoomId), storedRoom.id);
+  assert.equal(context.storage.get(STORAGE_KEYS.activeRoomUserId), currentUser.uid);
   assert.equal(context.storage.get(STORAGE_KEYS.isRoomHost), 'false');
   assert.equal(context.state.screen, '');
   assert.equal(context.state.loading, '');
@@ -63,6 +72,7 @@ test('영구 입장 오류만 저장된 복구 포인터를 제거하고 lobby �
   const context = createParams(new Error('존재하지 않는 방입니다.'));
   assert.equal(await recoverStoredRoom(context.params), 'permanent-failure');
   assert.equal(context.storage.has(STORAGE_KEYS.activeRoomId), false);
+  assert.equal(context.storage.has(STORAGE_KEYS.activeRoomUserId), false);
   assert.equal(context.storage.has(STORAGE_KEYS.isRoomHost), false);
   assert.equal(context.state.screen, 'lobby');
   assert.equal(context.state.loading, '');

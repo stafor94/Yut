@@ -4,6 +4,7 @@ import type { User } from 'firebase/auth';
 import { clearGameStateSync, getGameStateSyncPresentation } from '../../src/app/flows/gameStateSyncPresentation.js';
 import { openWaitingRoomForEntry, type RoomEntryControllerParams, type RoomSummary } from '../../src/app/flows/roomEntryControllerFlow.js';
 import { recoverStoredRoom, type StoredRoomRecoveryFlowParams } from '../../src/app/flows/storedRoomRecoveryFlow.js';
+import { STORAGE_KEYS } from '../../src/app/preferences/localPreferences.js';
 
 const user = { uid: 'user-1' } as User;
 const room = (status: RoomSummary['status']): RoomSummary => ({
@@ -47,7 +48,7 @@ function createEntryParams(joinRoom: RoomEntryControllerParams['runtime']['joinR
       leaveDuplicatePlayerRooms: async () => undefined,
       isRoomInGame: (summary) => summary.status === 'playing',
       setTimeout: () => 0,
-      localStorage: { getItem: () => null, removeItem: () => undefined },
+      localStorage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined },
     },
   };
   return { params, getScreen: () => screen, getSyncStatusAtScreen: () => syncStatusAtScreen };
@@ -56,7 +57,11 @@ function createEntryParams(joinRoom: RoomEntryControllerParams['runtime']['joinR
 function createRecoveryParams(storedRoom: RoomSummary, roomInGame: boolean) {
   let screen = '';
   let syncStatusAtScreen = '';
-  const storage = new Map([['yut-online:activeRoomId', storedRoom.id], ['yut-online:isRoomHost', 'false']]);
+  const storage = new Map<string, string>([
+    [STORAGE_KEYS.activeRoomId, storedRoom.id],
+    [STORAGE_KEYS.activeRoomUserId, user.uid],
+    [STORAGE_KEYS.isRoomHost, 'false'],
+  ]);
   const params: StoredRoomRecoveryFlowParams = {
     currentUser: user,
     nickname: '재접속자',
@@ -83,7 +88,11 @@ function createRecoveryParams(storedRoom: RoomSummary, roomInGame: boolean) {
       getRoom: async () => storedRoom,
       joinRoom: async () => ({ role: 'player', seatIndex: 0, roomInGame }),
       isRoomInGame: (summary) => summary.status === 'playing',
-      localStorage: { getItem: (key) => storage.get(key) ?? null, removeItem: (key) => { storage.delete(key); } },
+      localStorage: {
+        getItem: (key) => storage.get(key) ?? null,
+        setItem: (key, value) => { storage.set(key, value); },
+        removeItem: (key) => { storage.delete(key); },
+      },
       getCurrentActiveRoomId: () => '',
     },
   };

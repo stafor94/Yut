@@ -29,7 +29,7 @@ type StoredRoomRecoveryRuntime = {
   getRoom: (roomId: string) => Promise<RoomSummary | null>;
   joinRoom: (roomId: string, params: { userId: string; nickname: string; playMode: PlayMode }) => Promise<JoinRoomResult>;
   isRoomInGame: (room: RoomSummary) => boolean;
-  localStorage: Pick<Storage, 'getItem' | 'removeItem'>;
+  localStorage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
   getCurrentActiveRoomId: () => string;
 };
 
@@ -51,7 +51,14 @@ const normalizeRecoveryMaxPlayers = (value: number): 2 | 3 | 4 => (value === 2 |
 
 const clearStoredRoomRecoveryStorage = (storage: StoredRoomRecoveryRuntime['localStorage']) => {
   storage.removeItem(STORAGE_KEYS.activeRoomId);
+  storage.removeItem(STORAGE_KEYS.activeRoomUserId);
   storage.removeItem(STORAGE_KEYS.isRoomHost);
+};
+
+const getExpectedStoredRoomUserId = (storage: StoredRoomRecoveryRuntime['localStorage'], room: RoomSummary) => {
+  const storedUserId = storage.getItem(STORAGE_KEYS.activeRoomUserId)?.trim() ?? '';
+  if (storedUserId) return storedUserId;
+  return storage.getItem(STORAGE_KEYS.isRoomHost) === 'true' ? String(room.hostId ?? '').trim() : '';
 };
 
 const shouldApplyRecoveryResult = (params: StoredRoomRecoveryFlowParams) => (
@@ -98,9 +105,19 @@ export async function recoverStoredRoom(params: StoredRoomRecoveryFlowParams): P
 
     const restoredAsHost = storedRoom.hostId === currentUser.uid;
     const restoredMaxPlayers = normalizeRecoveryMaxPlayers(storedRoom.maxPlayers);
+    const expectedUserId = getExpectedStoredRoomUserId(runtime.localStorage, storedRoom);
+    if (!expectedUserId || expectedUserId !== currentUser.uid) {
+      clearStoredRoomRecoveryStorage(runtime.localStorage);
+      resetPermanentRecoveryState(params);
+      params.onLoadingMessage('');
+      params.onMessage('이전 방의 사용자 정보가 현재 로그인과 달라 자동 복구를 중단했습니다. 방 목록에서 다시 참가해 주세요.');
+      return 'permanent-failure';
+    }
+
     const joinResult = await runtime.joinRoom(storedRoom.id, { userId: currentUser.uid, nickname, playMode: storedRoom.playMode });
     if (!shouldApplyRecoveryResult(params)) return params.isCancelled() ? 'cancelled' : 'ignored';
 
+    runtime.localStorage.setItem(STORAGE_KEYS.activeRoomUserId, currentUser.uid);
     params.onActiveRoomIdChange(storedRoom.id);
     params.onRoomHostChange(restoredAsHost);
     params.onActiveRoomTitleChange(storedRoom.title);
