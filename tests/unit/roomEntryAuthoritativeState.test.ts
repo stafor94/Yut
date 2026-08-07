@@ -57,7 +57,7 @@ function createEntryParams(joinRoom: RoomEntryControllerParams['runtime']['joinR
 function createRecoveryParams(storedRoom: RoomSummary, roomInGame: boolean) {
   let screen = '';
   let syncStatusAtScreen = '';
-  const storage = new Map([
+  const storage = new Map<string, string>([
     [STORAGE_KEYS.activeRoomId, storedRoom.id],
     [STORAGE_KEYS.activeRoomUserId, user.uid],
     [STORAGE_KEYS.isRoomHost, 'false'],
