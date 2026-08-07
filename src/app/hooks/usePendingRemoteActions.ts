@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { GameAction } from '../../features/room/services/roomService';
-import { gamePresentationLock } from '../../shared/gamePresentationLock';
 import {
   beginLocalMovePresentationForPendingAction,
   localMovePresentationLifecycle,
@@ -29,50 +28,16 @@ export type PendingRemoteActionMeta = {
   blocksTurnActions?: boolean;
 };
 
-const PRESENTATION_BLOCKER_ACTION_KEY = '__roll_presentation_lock__';
-const PRESENTATION_BLOCKER_META: PendingRemoteActionMeta = {
-  type: 'roll_yut',
-  createdAt: 0,
-  createdTurnIndex: -1,
-  actorId: '',
-  optimisticApplied: false,
-  blocksTurnActions: true,
-};
-
-class PresentationAwarePendingActionSet extends Set<string> {
-  override get size() {
-    return super.size + (gamePresentationLock.isLocked() ? 1 : 0);
-  }
-}
-
-const syncPresentationBlockerMeta = (store: PendingRemoteActionMetaStore<PendingRemoteActionMeta>) => {
-  if (gamePresentationLock.isLocked()) {
-    store.set(PRESENTATION_BLOCKER_ACTION_KEY, PRESENTATION_BLOCKER_META);
-    return;
-  }
-  store.delete(PRESENTATION_BLOCKER_ACTION_KEY);
-};
-
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
-  const [, setPresentationLockVersion] = useState(0);
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
-  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new PresentationAwarePendingActionSet());
+  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
   const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<PendingRemoteActionMetaStore<PendingRemoteActionMeta>>(
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
   );
 
-  useEffect(() => {
-    const syncPresentationLock = () => {
-      syncPresentationBlockerMeta(pendingLocalRemoteActionMetaRef.current);
-      setPresentationLockVersion((version) => version + 1);
-    };
-    syncPresentationLock();
-    return gamePresentationLock.subscribe(syncPresentationLock);
-  }, []);
-
-  const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(Array.from(pendingLocalRemoteActionsRef.current).length);
+  const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(pendingLocalRemoteActionsRef.current.size);
   const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {
     const [type] = actionKey.split(':');
     return (type || 'roll_yut') as GameAction['type'];
@@ -124,7 +89,6 @@ export function usePendingRemoteActions() {
   const clearPendingLocalRemoteActions = () => {
     pendingLocalRemoteActionsRef.current.clear();
     pendingLocalRemoteActionMetaRef.current.clear();
-    syncPresentationBlockerMeta(pendingLocalRemoteActionMetaRef.current);
     clearPendingOptimisticMoveActions();
     clearMoveActionClaims();
     syncPendingLocalRemoteActionCount();
