@@ -1,3 +1,8 @@
+import {
+  clearStackedMoveSelectionIdentityContext,
+  publishAuthoritativeStackedMoveContext,
+} from '../../features/room/services/stackedMoveSelectionIdentity';
+
 type SnapshotRecord = Record<string, unknown> & {
   pieces?: unknown[];
   stateAfter?: SnapshotRecord | null;
@@ -12,20 +17,28 @@ const mergePartialSnapshot = <T extends object>(
   return { ...fallback, ...snapshot } as T;
 };
 
+const publishResolvedSnapshot = <T extends object>(snapshot: T | null) => {
+  if (snapshot) publishAuthoritativeStackedMoveContext(snapshot);
+  return snapshot;
+};
+
 export function getAuthoritativeSnapshot<T extends object>(
   value: unknown,
   fallback: T | null,
 ): T | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    if (!fallback) clearStackedMoveSelectionIdentityContext();
+    return publishResolvedSnapshot(fallback);
+  }
   const record = value as SnapshotRecord;
   if (record.stateAfter && typeof record.stateAfter === 'object' && !Array.isArray(record.stateAfter)) {
-    return mergePartialSnapshot(record.stateAfter, fallback);
+    return publishResolvedSnapshot(mergePartialSnapshot(record.stateAfter, fallback));
   }
   if (record.patch && typeof record.patch === 'object' && !Array.isArray(record.patch)) {
-    return mergePartialSnapshot(record.patch, fallback);
+    return publishResolvedSnapshot(mergePartialSnapshot(record.patch, fallback));
   }
   if ('pieces' in record || 'lastSequence' in record || 'turnVersion' in record) {
-    return mergePartialSnapshot(record, fallback);
+    return publishResolvedSnapshot(mergePartialSnapshot(record, fallback));
   }
-  return fallback;
+  return publishResolvedSnapshot(fallback);
 }
