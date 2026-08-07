@@ -21,8 +21,7 @@ const createDeferred = () => {
 };
 
 const flushMicrotasks = async () => {
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let index = 0; index < 6; index += 1) await Promise.resolve();
 };
 
 test('renderer settle 이후에만 result hold를 시작하고 요청된 hold 시간을 그대로 사용한다', async () => {
