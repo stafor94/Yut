@@ -10,6 +10,7 @@ import {
 } from '../flows/gameAnimationQueue';
 import {
   notifyFallPresentationActive,
+  notifyRollPresentationActive,
   notifyRollPresentationCompleted,
 } from '../flows/rollPresentationEvents';
 import {
@@ -101,6 +102,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
 
   const emitPresentationChange = (state: RollPresentationState) => {
     onPresentationChangeRef.current?.(state);
+    notifyRollPresentationActive(state.active);
     notifyFallPresentationActive(state.active && state.fallCount > 0);
   };
 
