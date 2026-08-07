@@ -187,6 +187,10 @@ export async function primeLobbyStorage(context, { nickname, maxPlayers = '2', p
 }
 
 async function recoverCreatedRoomSession(page, roomTitle) {
+  const waitingRoom = page.getByTestId('waiting-room');
+  const recoveryModal = page.locator('.stored-room-recovery-modal');
+  if (await recoveryModal.isVisible().catch(() => false)) return false;
+
   const roomId = await findRoomIdByTitle(roomTitle).catch(() => undefined);
   if (!roomId) return false;
 
@@ -197,7 +201,8 @@ async function recoverCreatedRoomSession(page, roomTitle) {
   }, { nextRoomId: roomId, nextRoomTitle: roomTitle });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('app-shell')).toBeVisible({ timeout: 10_000 });
-  return page.getByTestId('waiting-room').isVisible().catch(() => false);
+  await expect(waitingRoom.or(recoveryModal)).toBeVisible({ timeout: 10_000 });
+  return waitingRoom.isVisible().catch(() => false);
 }
 
 async function waitForRoomCreationResult(page, roomTitle, { timeout = 45_000, maxSubmitAttempts = 3 } = {}) {
