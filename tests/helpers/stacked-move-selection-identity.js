@@ -44,9 +44,12 @@ export async function prepareStackedMoveIdentityFixture({ page, context, testInf
   await expect.poll(async () => {
     const debug = (await collectScreenState(page)).yutDebug ?? {};
     return Number(debug.lastAppliedSequence ?? 0) === fixture.lastSequence
-      && Number(debug.turnIndex ?? -1) === turnIndex
-      && Array.isArray(debug.rollStack) && debug.rollStack.map((roll) => roll?.name).join(',') === '모,빽도';
-  }, { timeout: 10_000 }).toBe(true);
+      && Number(debug.turnIndex ?? -1) === turnIndex;
+  }, {
+    timeout: 10_000,
+    intervals: [50, 100, 200, 400],
+    message: 'stacked move identity fixture sequence가 브라우저 authoritative state에 적용되어야 합니다.',
+  }).toBe(true);
   return { actorId, baselineSequences: await getRoomSequencesForQa(roomId), pieceId, roomId, turnIndex };
 }
 
@@ -57,7 +60,14 @@ export async function exerciseStackedMoBackDoMoves(page, fixture) {
   const choices = picker.getByRole('button');
   await expect(choices).toHaveCount(2);
   await expect(choices.first()).toHaveText('모');
+  await expect(choices.nth(1)).toHaveText('빽도');
   await expect(choices.nth(1)).toBeDisabled();
+  if (await choices.first().isDisabled()) {
+    const pieceButton = page.getByTestId(`piece-${pieceId}`);
+    await expect(pieceButton).toBeEnabled({ timeout: 5_000 });
+    await pieceButton.click();
+  }
+  await expect(choices.first()).toBeEnabled({ timeout: 5_000 });
   await choices.first().click();
   await expect(page.getByTestId('move-piece-button')).toBeEnabled({ timeout: 5_000 });
   await page.getByTestId('move-piece-button').click();
@@ -72,8 +82,10 @@ export async function exerciseStackedMoBackDoMoves(page, fixture) {
     const debug = (await collectScreenState(page)).yutDebug ?? {};
     const piece = debug.pieces?.find((entry) => entry?.id === pieceId);
     return piece?.nodeId === 'n06' && piece?.started === true && !debug.movingPieceId
-      && debug.turnIndex === turnIndex && debug.rollStack?.length === 1 && debug.rollStack[0]?.name === '빽도';
+      && debug.turnIndex === turnIndex;
   }, { timeout: 10_000, message: '모 이동 뒤 말이 대기석으로 되감기면 안 됩니다.' }).toBe(true);
+  await expect(picker.getByRole('button')).toHaveCount(1, { timeout: 10_000 });
+  await expect(picker.getByRole('button').first()).toHaveText('빽도');
 
   await expect(page.getByTestId('move-piece-button')).toBeEnabled({ timeout: 5_000 });
   await page.getByTestId('move-piece-button').click();
