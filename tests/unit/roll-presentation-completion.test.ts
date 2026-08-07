@@ -44,6 +44,35 @@ test('remote roll presentation waits for the Three.js renderer settled signal an
   assert.equal(finished, true);
 });
 
+test('terminal parent input reuses the renderer-settle completion and does not restart the result hold clock', async () => {
+  const hold = createDeferred();
+  let holdCalls = 0;
+  const completion = createRollPresentationCompletion({
+    resultHoldMs: 1000,
+    watchdogMs: 1000,
+    waitForHold: async () => {
+      holdCalls += 1;
+      await hold.promise;
+    },
+  });
+
+  const visiblePresentation = completion.waitForCompletion();
+  await flushMicrotasks();
+  assert.equal(holdCalls, 0, 'renderer settle 전에는 result hold가 시작되면 안 됩니다.');
+
+  completion.markSettled('three-renderer');
+  await flushMicrotasks();
+  assert.equal(holdCalls, 1, '실제 renderer settle이 result hold clock을 시작해야 합니다.');
+
+  const terminalParentInput = completion.waitForCompletion();
+  await flushMicrotasks();
+  assert.equal(holdCalls, 1, '부모 null 입력은 같은 completion을 재사용해야 합니다.');
+
+  hold.resolve();
+  assert.equal(await visiblePresentation, 'three-renderer');
+  assert.equal(await terminalParentInput, 'three-renderer');
+});
+
 test('queued remote roll keeps the presentation lock until the renderer settles', async () => {
   const queue = createGameAnimationQueue();
   const lock = createGamePresentationLock();
