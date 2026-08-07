@@ -29,6 +29,7 @@ export function createRollPresentationCompletion({
   let settled = false;
   let cancelled = false;
   let watchdogSettled = false;
+  let completionPromise: Promise<RollPresentationCompletionResult> | null = null;
   let resolveSettled!: (source: RollPresentationSettleSource) => void;
   let resolveCancelled!: () => void;
   const settledPromise = new Promise<RollPresentationSettleSource>((resolve) => {
@@ -75,11 +76,16 @@ export function createRollPresentationCompletion({
     ]);
   };
 
-  const waitForCompletion = async (): Promise<RollPresentationCompletionResult> => {
-    const visualResult = await waitForVisualSettle();
-    if (visualResult === 'cancelled') return 'cancelled';
-    const holdResult = await waitForResultHold();
-    return holdResult === 'cancelled' ? 'cancelled' : visualResult;
+  const waitForCompletion = (): Promise<RollPresentationCompletionResult> => {
+    if (!completionPromise) {
+      completionPromise = (async () => {
+        const visualResult = await waitForVisualSettle();
+        if (visualResult === 'cancelled') return 'cancelled';
+        const holdResult = await waitForResultHold();
+        return holdResult === 'cancelled' ? 'cancelled' : visualResult;
+      })();
+    }
+    return completionPromise;
   };
 
   return {
