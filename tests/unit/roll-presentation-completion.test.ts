@@ -7,9 +7,15 @@ import {
   enqueueRollPresentation,
 } from '../../src/app/flows/gameAnimationQueue.js';
 import { createRollPresentationCompletion } from '../../src/app/flows/rollPresentationCompletion.js';
+import {
+  getRollPresentationActive,
+  notifyRollPresentationActive,
+  subscribeRollPresentationActive,
+} from '../../src/app/flows/rollPresentationEvents.js';
 
 const rollStageSource = readFileSync('src/app/containers/RollStage.tsx', 'utf8');
 const pendingRemoteActionsSource = readFileSync('src/app/hooks/usePendingRemoteActions.ts', 'utf8');
+const gameScreenViewSource = readFileSync('src/app/components/GameScreenView.tsx', 'utf8');
 const appSource = readFileSync('src/app/App.tsx', 'utf8');
 
 const createDeferred = () => {
@@ -77,29 +83,29 @@ test('terminal 부모 null은 live presentation을 직접 종료하지 않고 �
   assert.ok(clearIndex > completedIndex, 'completion 전에 presentation을 제거하면 안 됩니다.');
 });
 
-test('presentation lock은 실제 visual lifetime 동안 부모 action guard를 다시 계산하게 한다', async () => {
-  const lock = createGamePresentationLock();
+test('presentation active 상태는 visual completion 전까지 부모 move/roll action gate를 차단한다', () => {
+  notifyRollPresentationActive(false);
   const states: boolean[] = [];
-  const unsubscribe = lock.subscribe((locked) => states.push(locked));
+  const unsubscribe = subscribeRollPresentationActive((active) => states.push(active));
 
-  const release = lock.acquire();
-  assert.equal(lock.isLocked(), true);
-  assert.deepEqual(states, [true]);
-
-  release();
-  await flushMicrotasks();
-  assert.equal(lock.isLocked(), false);
-  assert.deepEqual(states, [true, false]);
+  notifyRollPresentationActive(true);
+  assert.equal(getRollPresentationActive(), true);
+  notifyRollPresentationActive(false);
+  assert.equal(getRollPresentationActive(), false);
+  assert.deepEqual(states, [false, true, false]);
   unsubscribe();
 
-  assert.match(pendingRemoteActionsSource, /class PresentationAwarePendingActionSet extends Set<string>/);
-  assert.match(pendingRemoteActionsSource, /gamePresentationLock\.isLocked\(\) \? 1 : 0/);
-  assert.match(pendingRemoteActionsSource, /gamePresentationLock\.subscribe/);
-  assert.match(pendingRemoteActionsSource, /PRESENTATION_BLOCKER_ACTION_KEY/);
+  assert.match(rollStageSource, /notifyRollPresentationActive\(state\.active\)/);
+  assert.match(pendingRemoteActionsSource, /class RollPresentationAwarePendingActionSet extends Set<string>/);
+  assert.match(pendingRemoteActionsSource, /getRollPresentationActive\(\) \? 1 : 0/);
+  assert.match(pendingRemoteActionsSource, /ROLL_PRESENTATION_BLOCKER_ACTION_KEY/);
+  assert.match(pendingRemoteActionsSource, /subscribeRollPresentationActive/);
   assert.match(appSource, /hasPendingOnlineMoveRequest = Boolean\(activeRoomId && pendingBlockingRemoteActionCount > 0\)/);
   assert.match(appSource, /canRequestMove = Boolean\(canSubmitTurnAction && !hasPendingOnlineMoveRequest/);
   assert.match(appSource, /pendingLocalRemoteActionsRef\.current\.size > 0/);
   assert.match(appSource, /pendingLocalRemoteActionCount: activeRoomId \? pendingBlockingRemoteActionCount/);
+  assert.match(gameScreenViewSource, /canRequestMove=\{canRequestMove && !presentationTurn\.isFrozen && !deferRollDerivedContent\}/);
+  assert.match(gameScreenViewSource, /canRollNow=\{canRollNow && !presentationTurn\.isFrozen && !deferRollDerivedContent\}/);
 });
 
 test('queued remote roll keeps the presentation lock until the renderer settles', async () => {
