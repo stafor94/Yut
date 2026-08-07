@@ -6,6 +6,47 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 
 ---
 
+## 2026-08-07 - 온라인 로컬 윷 결과 hold가 renderer settle보다 먼저 소진됨
+
+### Symptom
+
+- 온라인 로컬 윷 결과에서 `모` 같은 결과 카드가 윷이 실제로 착지한 뒤 아주 짧게 보이거나 곧바로 사라졌다.
+- 논리 `result-hold` phase는 정상적으로 들어가지만 사용자에게 보이는 결과 카드는 renderer settle 뒤에만 나타나므로 두 수명주기가 일치하지 않았다.
+
+### Confirmed root cause
+
+- `App.tsx`의 local pending roll은 `primary → landing → result-hold`를 자체 timer로 진행하고 `result-hold` 진입 시점부터 `PENDING_ROLL_RESULT_HOLD_MS` 뒤 `rollAnimation=null`을 보냈다.
+- `YutRollScenePhysics`는 local landing을 실제 renderer timeline으로 계속 진행하며, `RollStage` 결과 카드는 `settledAnimationId`가 현재 animation id와 일치한 뒤에만 visible이 된다.
+- 현재 timing 계약에서 App의 논리 landing은 1000ms지만 renderer local landing은 1700ms이므로 nominal 경로에서도 1000ms result hold 중 약 700ms가 결과 카드가 아직 hidden인 동안 소진될 수 있었다.
+- 부모가 terminal live `result-hold` 뒤 `null`을 보내면 `rollPresentationSession`의 `complete-live` 결정을 받은 `RollStage`가 기존 표시를 즉시 `completed → null`로 만들었고, 공통 `createRollPresentationCompletion()`의 `visual settle → result hold` 완료 경로를 우회했다.
+- 따라서 renderer settle이 늦을수록 실제 visible result hold가 줄어들었다.
+
+### Required state invariants
+
+- result hold clock은 논리 `result-hold` phase 진입이 아니라 실제 renderer settle 뒤 결과가 visible이 된 시점부터 시작한다.
+- terminal 부모 `null`은 화면 종료 신호가 아니라 같은 visual completion을 기다리는 입력으로 처리하며, settle 전 presentation을 직접 제거하지 않는다.
+- local live result와 remote resolved result는 같은 `RollPresentationCompletion`의 `visual settle → hold → complete` 계약을 사용한다. 제품별 hold duration 상수는 유지할 수 있지만 completion ownership은 분리하지 않는다.
+- 동일 presentation을 여러 consumer가 기다려도 `waitForCompletion()`은 하나의 settle/hold lifecycle을 공유한다.
+- watchdog은 renderer settle 신호가 사라진 비정상 fallback에서만 bounded completion을 제공하며 정상 hold clock을 대체하지 않는다.
+- presentation이 active인 동안 결과가 이미 visible이어도 다음 move/roll/submit action은 활성화하지 않는다.
+
+### Do not try again
+
+- `PENDING_ROLL_RESULT_HOLD_MS`, landing timeout, sleep을 늘려 renderer settle과 논리 clock 차이를 가리지 않는다.
+- 결과 phase 진입 시 renderer를 강제로 settle 처리해 실제 landing을 잘라내지 않는다.
+- `App.tsx`의 `rollAnimation=null`만으로 visual presentation을 완료 처리하지 않는다.
+- local/remote에 서로 다른 ad-hoc completion timer를 추가하지 않는다.
+- watchdog 정상 경로에 추가 hold를 붙이거나 watchdog timeout을 늘려 문제를 숨기지 않는다.
+
+### Verification checklist
+
+- [x] renderer settle 전 hold가 시작되지 않고 terminal 부모 입력이 같은 completion을 재사용하는 unit regression
+- [x] presentation active/result visible 동안 다음 roll-derived action을 지연하는 unit regression
+- [ ] 전체 unit/build/architecture 검증
+- [ ] Mobile Galaxy 실제 `모` 결과 카드 visible hold 및 action 비노출 검증
+
+---
+
 ## 2026-08-05 - timeout 이동 action identity 분리로 동일 말 되감기·반복 재생
 
 ### Symptom
