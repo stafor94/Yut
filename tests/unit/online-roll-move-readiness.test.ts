@@ -11,11 +11,11 @@ import {
 import { shouldResyncRejectedPendingMove } from '../../src/app/flows/optimisticMoveRejectionPolicy';
 import { ONLINE_ROLL_FAST_PRESENTATION_MS } from '../../src/features/room/services/rollPresentationTiming';
 
-test('authoritative 온라인 roll의 3.2초 presentation readyAt과 지연 허용 범위를 유지한다', () => {
+test('authoritative 온라인 roll의 3.9초 presentation readyAt과 stale future 상한을 유지한다', () => {
   const now = 100_000;
   const readyAt = now + ONLINE_ROLL_FAST_PRESENTATION_MS;
   assert.equal(normalizeRollResultReadyAt(readyAt, now), readyAt);
-  assert.equal(normalizeRollResultReadyAt(readyAt + 1, now), readyAt + 1);
+  assert.equal(normalizeRollResultReadyAt(readyAt + 1, now), 0);
   assert.equal(normalizeRollResultReadyAt(now + 10_000, now), 0);
   assert.equal(normalizeRollResultReadyAt(now, now), 0);
 });
