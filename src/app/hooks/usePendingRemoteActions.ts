@@ -42,12 +42,6 @@ const ROLL_PRESENTATION_BLOCKER_META: PendingRemoteActionMeta = {
   blocksTurnActions: true,
 };
 
-class RollPresentationAwarePendingActionSet extends Set<string> {
-  override get size() {
-    return super.size + (getRollPresentationActive() ? 1 : 0);
-  }
-}
-
 const syncRollPresentationBlockerMeta = (store: PendingRemoteActionMetaStore<PendingRemoteActionMeta>) => {
   if (getRollPresentationActive()) {
     store.set(ROLL_PRESENTATION_BLOCKER_ACTION_KEY, ROLL_PRESENTATION_BLOCKER_META);
@@ -60,7 +54,7 @@ export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
   const [, setRollPresentationVersion] = useState(0);
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
-  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new RollPresentationAwarePendingActionSet());
+  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
   const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<PendingRemoteActionMetaStore<PendingRemoteActionMeta>>(
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
