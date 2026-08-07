@@ -1,6 +1,7 @@
 export const ONLINE_ROLL_PRIMARY_MS = 1200;
 export const ONLINE_ROLL_EXTRA_SPIN_MS = 1000;
-export const ONLINE_ROLL_LANDING_MS = 1000;
+// Keep this aligned with YutRollScenePhysics' LOCAL_ROLL_LANDING_MS contract.
+export const ONLINE_ROLL_LANDING_MS = 1700;
 export const ONLINE_ROLL_RESULT_HOLD_MS = 1000;
 
 export const ONLINE_ROLL_FAST_PRESENTATION_MS = ONLINE_ROLL_PRIMARY_MS
