@@ -67,10 +67,8 @@ export function shouldDeferRollDerivedContent({
   presentation,
 }: RollDerivedContentDeferralInput) {
   rememberRollPresentationLifecycle(presentation);
-  if (rollAnimationId !== null) {
-    if (!presentation.active && completedRollPresentationIds.has(rollAnimationId)) return false;
-    return presentation.sourceAnimationId !== rollAnimationId || !presentation.resultVisible;
-  }
-  if (!presentation.active) completedRollPresentationIds.clear();
-  return presentation.active && !presentation.resultVisible;
+  if (presentation.active) return true;
+  if (rollAnimationId !== null) return !completedRollPresentationIds.has(rollAnimationId);
+  completedRollPresentationIds.clear();
+  return false;
 }
