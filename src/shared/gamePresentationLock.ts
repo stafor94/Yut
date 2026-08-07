@@ -31,6 +31,8 @@ export function createGamePresentationLock(): GamePresentationLock {
     waiters.forEach((resolve) => resolve());
   };
 
+  const isLocked = () => activeCount > 0 || idleCheckPending;
+
   return {
     acquire() {
       activeCount += 1;
@@ -51,11 +53,9 @@ export function createGamePresentationLock(): GamePresentationLock {
         });
       };
     },
-    isLocked() {
-      return activeCount > 0 || idleCheckPending;
-    },
+    isLocked,
     waitUntilIdle(timeoutMs) {
-      if (activeCount === 0 && !idleCheckPending) return Promise.resolve('idle');
+      if (!isLocked()) return Promise.resolve('idle');
       return new Promise<GamePresentationWaitResult>((resolve) => {
         let timer: ReturnType<typeof setTimeout> | null = null;
         let settled = false;
