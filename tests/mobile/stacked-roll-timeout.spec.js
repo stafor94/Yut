@@ -8,6 +8,10 @@ import {
   prepareStackedRollTimeoutFixture,
   waitForStackedRollTimeoutRecovery,
 } from '../helpers/stacked-roll-timeout.js';
+import {
+  exerciseStackedMoBackDoMoves,
+  prepareStackedMoveIdentityFixture,
+} from '../helpers/stacked-move-selection-identity.js';
 
 test.describe('Galaxy 누적 이동 스택 제한시간 recovery', () => {
   test.describe.configure({ mode: 'serial' });
@@ -58,5 +62,12 @@ test.describe('Galaxy 누적 이동 스택 제한시간 recovery', () => {
     }).toBe(true);
     expect(page.url()).toContain('/Yut/');
     expectNoBlockingConsoleErrors(consoleErrors);
+  });
+
+  test('412×915 [모, 빽도] 이동도 동일 authoritative identity로 한 번씩 실행한다', async ({ page, context }, testInfo) => {
+    expect(page.viewportSize()).toEqual({ width: 412, height: 915 });
+    const fixture = await prepareStackedMoveIdentityFixture({ page, context, testInfo });
+    roomId = fixture.roomId;
+    await exerciseStackedMoBackDoMoves(page, fixture);
   });
 });

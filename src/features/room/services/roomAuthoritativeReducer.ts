@@ -2,6 +2,10 @@ import {
   reduceAuthoritativeGameAction as reduceAuthoritativeGameActionImplementation,
 } from './roomAuthoritativeReducerImplementation';
 import { getTrustedManualMoveReservationContextFromAction } from './manualMoveReservationPolicy';
+import {
+  attachLatestStackedMoveSelectionIdentity,
+  validateStackedMoveSelectionIdentity,
+} from './stackedMoveSelectionIdentity';
 
 export * from './roomAuthoritativeReducerImplementation';
 
@@ -13,6 +17,16 @@ export * from './roomAuthoritativeReducerImplementation';
  */
 export const reduceAuthoritativeGameAction: typeof reduceAuthoritativeGameActionImplementation = (...args) => {
   const [state, action, room, sides] = args;
+  attachLatestStackedMoveSelectionIdentity(action);
+  const stackedMoveSelectionRejection = validateStackedMoveSelectionIdentity({
+    state,
+    action,
+    stackedRollMode: room.stackedRollMode === true,
+  });
+  if (stackedMoveSelectionRejection) {
+    return { status: 'rejected', reason: stackedMoveSelectionRejection };
+  }
+
   const reductionState = Array.isArray(state.pieces)
     && !Object.prototype.propertyIsEnumerable.call(state, 'pieces')
     ? { ...state, pieces: state.pieces }

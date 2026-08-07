@@ -8,6 +8,10 @@ import {
   prepareStackedRollTimeoutFixture,
   waitForStackedRollTimeoutRecovery,
 } from '../helpers/stacked-roll-timeout.js';
+import {
+  exerciseStackedMoBackDoMoves,
+  prepareStackedMoveIdentityFixture,
+} from '../helpers/stacked-move-selection-identity.js';
 
 test.describe('누적 이동 스택 제한시간 recovery', () => {
   test.describe.configure({ mode: 'serial' });
@@ -63,5 +67,11 @@ test.describe('누적 이동 스택 제한시간 recovery', () => {
       message: '복구 후 다중 스택 선택 또는 비활성 이동 버튼 상태에 고착되면 안 됩니다.',
     }).toBe(true);
     expectNoBlockingConsoleErrors(consoleErrors);
+  });
+
+  test('[모, 빽도]는 모 이동을 되감지 않고 빽도를 같은 턴에 한 번 더 소비한다', async ({ page, context }, testInfo) => {
+    const fixture = await prepareStackedMoveIdentityFixture({ page, context, testInfo });
+    roomId = fixture.roomId;
+    await exerciseStackedMoBackDoMoves(page, fixture);
   });
 });
