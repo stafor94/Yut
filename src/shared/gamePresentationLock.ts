@@ -15,6 +15,7 @@ export type GamePresentationWaitResult = 'idle' | 'timeout';
 export type GamePresentationLock = {
   acquire: () => () => void;
   isLocked: () => boolean;
+  subscribe: (listener: (locked: boolean) => void) => () => void;
   waitUntilIdle: (timeoutMs?: number) => Promise<GamePresentationWaitResult>;
   reset: () => void;
 };
@@ -24,6 +25,7 @@ export function createGamePresentationLock(): GamePresentationLock {
   let idleCheckVersion = 0;
   let idleCheckPending = false;
   const idleWaiters = new Set<() => void>();
+  const listeners = new Set<(locked: boolean) => void>();
 
   const releaseIdleWaiters = () => {
     const waiters = Array.from(idleWaiters);
@@ -32,12 +34,15 @@ export function createGamePresentationLock(): GamePresentationLock {
   };
 
   const isLocked = () => activeCount > 0 || idleCheckPending;
+  const notifyLockState = (locked: boolean) => listeners.forEach((listener) => listener(locked));
 
   return {
     acquire() {
+      const wasLocked = isLocked();
       activeCount += 1;
       idleCheckPending = false;
       idleCheckVersion += 1;
+      if (!wasLocked) notifyLockState(true);
       let released = false;
       return () => {
         if (released) return;
@@ -50,10 +55,15 @@ export function createGamePresentationLock(): GamePresentationLock {
           if (activeCount !== 0 || !idleCheckPending || idleCheckVersion !== scheduledVersion) return;
           idleCheckPending = false;
           releaseIdleWaiters();
+          notifyLockState(false);
         });
       };
     },
     isLocked,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     waitUntilIdle(timeoutMs) {
       if (!isLocked()) return Promise.resolve('idle');
       return new Promise<GamePresentationWaitResult>((resolve) => {
@@ -74,10 +84,12 @@ export function createGamePresentationLock(): GamePresentationLock {
       });
     },
     reset() {
+      const wasLocked = isLocked();
       activeCount = 0;
       idleCheckPending = false;
       idleCheckVersion += 1;
       releaseIdleWaiters();
+      if (wasLocked) notifyLockState(false);
     },
   };
 }
