@@ -41,18 +41,9 @@ export function resolveEffectiveMoveContext(params: {
     : null;
   const effectiveRoll = validIndex === null ? null : rollStack[validIndex] ?? null;
   if (validIndex !== null) {
-    const selectionIdentity = captureStackedMoveSelectionIdentity({
-      rollStack,
-      rollStackClosed,
-      rollStackIndex: validIndex,
-    });
-    if (selectionIdentity.status === 'stale') {
-      return {
-        roll: null,
-        rollStackIndex: validIndex,
-        steps: 0,
-        fromStack: true,
-      };
+    const selectionIdentity = captureStackedMoveSelectionIdentity({ rollStack, rollStackClosed, rollStackIndex: validIndex });
+    if (selectionIdentity === 'stale') {
+      return { roll: null, rollStackIndex: validIndex, steps: 0, fromStack: true };
     }
   }
   return {
