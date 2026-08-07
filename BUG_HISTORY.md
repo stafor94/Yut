@@ -17,31 +17,33 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 
 - `App.tsx`의 local pending roll은 `primary → landing → result-hold`를 자체 timer로 진행하고 `result-hold` 진입 시점부터 `PENDING_ROLL_RESULT_HOLD_MS` 뒤 `rollAnimation=null`을 보냈다.
 - `YutRollScenePhysics`는 local landing을 실제 renderer timeline으로 계속 진행하며, `RollStage` 결과 카드는 `settledAnimationId`가 현재 animation id와 일치한 뒤에만 visible이 된다.
-- 현재 timing 계약에서 App의 논리 landing은 1000ms지만 renderer local landing은 1700ms이므로 nominal 경로에서도 1000ms result hold 중 약 700ms가 결과 카드가 아직 hidden인 동안 소진될 수 있었다.
+- 현재 main에서 논리·authoritative landing 계약은 1000ms지만 renderer local landing은 1700ms이므로 nominal 경로에서도 1000ms result hold 중 약 700ms가 결과 카드가 아직 hidden인 동안 소진될 수 있었다.
 - 부모가 terminal live `result-hold` 뒤 `null`을 보내면 `rollPresentationSession`의 `complete-live` 결정을 받은 `RollStage`가 기존 표시를 즉시 `completed → null`로 만들었고, 공통 `createRollPresentationCompletion()`의 `visual settle → result hold` 완료 경로를 우회했다.
-- 따라서 renderer settle이 늦을수록 실제 visible result hold가 줄어들었다.
+- 같은 논리 landing 1000ms를 기준으로 authoritative `rollResultReadyAt`을 계산하므로 visual presentation을 실제 renderer settle 뒤까지 보존하기만 하면 다음 행동의 10초 deadline이 그 차이만큼 먼저 시작되는 부작용도 있었다.
 
 ### Required state invariants
 
 - result hold clock은 논리 `result-hold` phase 진입이 아니라 실제 renderer settle 뒤 결과가 visible이 된 시점부터 시작한다.
 - terminal 부모 `null`은 화면 종료 신호가 아니라 같은 visual completion을 기다리는 입력으로 처리하며, settle 전 presentation을 직접 제거하지 않는다.
 - local live result와 remote resolved result는 같은 `RollPresentationCompletion`의 `visual settle → hold → complete` 계약을 사용한다. 제품별 hold duration 상수는 유지할 수 있지만 completion ownership은 분리하지 않는다.
-- 동일 presentation을 여러 consumer가 기다려도 `waitForCompletion()`은 하나의 settle/hold lifecycle을 공유한다.
+- 동일 local presentation을 여러 consumer가 기다려도 animation id별 completion promise는 하나의 settle/hold lifecycle을 공유한다.
+- authoritative action-ready의 landing 경계는 실제 renderer landing 계약과 일치해야 하며, 정상 presentation 종료 뒤부터 기존 전체 행동 제한시간을 보장한다.
 - watchdog은 renderer settle 신호가 사라진 비정상 fallback에서만 bounded completion을 제공하며 정상 hold clock을 대체하지 않는다.
-- presentation이 active인 동안 결과가 이미 visible이어도 다음 move/roll/submit action은 활성화하지 않는다.
+- roll presentation이 active인 동안 결과가 이미 visible이어도 부모와 화면의 다음 move/roll/submit action은 활성화하지 않는다.
 
 ### Do not try again
 
-- `PENDING_ROLL_RESULT_HOLD_MS`, landing timeout, sleep을 늘려 renderer settle과 논리 clock 차이를 가리지 않는다.
-- 결과 phase 진입 시 renderer를 강제로 settle 처리해 실제 landing을 잘라내지 않는다.
+- `PENDING_ROLL_RESULT_HOLD_MS`, watchdog timeout, sleep 또는 임의 padding을 늘려 renderer settle과 visible hold 차이를 가리지 않는다.
+- 실제 renderer landing을 더 길게 만들거나 결과 phase 진입 시 renderer를 강제로 settle 처리해 문제를 숨기지 않는다.
+- 논리·authoritative landing 경계를 실제 고정 renderer landing 계약과 다르게 유지한 채 행동 deadline만 별도로 보정하지 않는다.
 - `App.tsx`의 `rollAnimation=null`만으로 visual presentation을 완료 처리하지 않는다.
 - local/remote에 서로 다른 ad-hoc completion timer를 추가하지 않는다.
-- watchdog 정상 경로에 추가 hold를 붙이거나 watchdog timeout을 늘려 문제를 숨기지 않는다.
+- child control만 비활성화하고 부모 자동 이동·재던지기 action gate를 열어 두지 않는다.
 
 ### Verification checklist
 
 - [x] renderer settle 전 hold가 시작되지 않고 terminal 부모 입력이 같은 completion을 재사용하는 unit regression
-- [x] presentation active/result visible 동안 다음 roll-derived action을 지연하는 unit regression
+- [x] presentation active 동안 부모 move/roll action gate가 유지되는 unit regression
 - [ ] 전체 unit/build/architecture 검증
 - [ ] Mobile Galaxy 실제 `모` 결과 카드 visible hold 및 action 비노출 검증
 
