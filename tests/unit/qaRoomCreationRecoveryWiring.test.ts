@@ -20,12 +20,14 @@ test('QA 방 생성은 UI 지연 문구와 무관하게 서버에 생성된 동�
   assert.match(uiHelperSource, /waitForRoomCreationResult\(page, roomTitle\)/);
 });
 
-test('online-core 동시성은 2 workers로 유지하고 장시간 AI presence spec만 desktop regression으로 분산한다', () => {
+test('online-core 동시성은 2 workers로 유지하고 장시간 독립 AI spec은 desktop regression으로 분산한다', () => {
   const onlineCoreBlock = suiteManifestSource.match(/'online-core': Object\.freeze\(\{([\s\S]*?)\n  \}\),\n  'desktop-sequence'/)?.[1] ?? '';
   const desktopRegressionBlock = suiteManifestSource.match(/'desktop-regression': Object\.freeze\(\{([\s\S]*?)\n  \}\),\n  'mobile-galaxy'/)?.[1] ?? '';
 
   assert.match(onlineCoreBlock, /workers:\s*2/);
   assert.doesNotMatch(onlineCoreBlock, /ai-presence-recovery\.spec\.js/);
+  assert.doesNotMatch(onlineCoreBlock, /hard-ai-authoritative-strategy\.spec\.js/);
   assert.match(desktopRegressionBlock, /workers:\s*2/);
   assert.match(desktopRegressionBlock, /tests\/game-flow\/ai-presence-recovery\.spec\.js/);
+  assert.match(desktopRegressionBlock, /tests\/game-flow\/hard-ai-authoritative-strategy\.spec\.js/);
 });
