@@ -1,4 +1,5 @@
 import type { YutResult } from '../../game-core/roll';
+import { captureStackedMoveSelectionIdentity } from '../../features/room/services/stackedMoveSelectionIdentity';
 
 export type EffectiveMoveContext = {
   roll: YutResult | null;
@@ -39,6 +40,21 @@ export function resolveEffectiveMoveContext(params: {
     ? requestedIndex
     : null;
   const effectiveRoll = validIndex === null ? null : rollStack[validIndex] ?? null;
+  if (validIndex !== null) {
+    const selectionIdentity = captureStackedMoveSelectionIdentity({
+      rollStack,
+      rollStackClosed,
+      rollStackIndex: validIndex,
+    });
+    if (selectionIdentity.status === 'stale') {
+      return {
+        roll: null,
+        rollStackIndex: validIndex,
+        steps: 0,
+        fromStack: true,
+      };
+    }
+  }
   return {
     roll: effectiveRoll,
     rollStackIndex: validIndex,
