@@ -6,6 +6,7 @@ import { collectScreenState, createRoomFromLobby, primeLobbyStorage, primeTurnOr
 
 const MO = { name: '모', steps: 5, bonus: true };
 const BACKDO = { name: '빽도', steps: -1, bonus: false };
+const VISIBLE_FIXTURE_DEADLINE_OFFSET_MS = 9_000;
 
 export async function prepareStackedMoveIdentityFixture({ page, context, testInfo }) {
   await primeLobbyStorage(context, {
@@ -39,7 +40,8 @@ export async function prepareStackedMoveIdentityFixture({ page, context, testInf
     turnIndex, roll: null, rollStack: [MO, BACKDO], selectedRollStackIndex: null, rollStackClosed: true,
     rollAnimation: null, rollResultReadyAt: 0, pendingGoldenYutSelection: null, pendingTrapPlacement: null,
     pendingItemPickup: null, itemPromptTiming: null, branchChoice: 'outer', turnDeadlineKind: 'move',
-    turnDeadlineAt: Date.now() + 30_000, turnActionTimeoutCountBySeatId: { [actorId]: 0 }, autoPlayBySeatId: { [actorId]: false },
+    turnDeadlineAt: Date.now() + VISIBLE_FIXTURE_DEADLINE_OFFSET_MS,
+    turnActionTimeoutCountBySeatId: { [actorId]: 0 }, autoPlayBySeatId: { [actorId]: false },
   }, actorId, { fixtureName: 'stacked-move-selection-identity', errorLabel: 'stacked move identity fixture' });
   await expect.poll(async () => {
     const debug = (await collectScreenState(page)).yutDebug ?? {};
@@ -61,13 +63,8 @@ export async function exerciseStackedMoBackDoMoves(page, fixture) {
   await expect(choices).toHaveCount(2);
   await expect(choices.first()).toHaveText('모');
   await expect(choices.nth(1)).toHaveText('빽도');
-  await expect(choices.nth(1)).toBeDisabled();
-  if (await choices.first().isDisabled()) {
-    const pieceButton = page.getByTestId(`piece-${pieceId}`);
-    await expect(pieceButton).toBeEnabled({ timeout: 5_000 });
-    await pieceButton.click();
-  }
   await expect(choices.first()).toBeEnabled({ timeout: 5_000 });
+  await expect(choices.nth(1)).toBeDisabled();
   await choices.first().click();
   await expect(page.getByTestId('move-piece-button')).toBeEnabled({ timeout: 5_000 });
   await page.getByTestId('move-piece-button').click();
