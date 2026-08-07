@@ -96,9 +96,10 @@ test('presentation active 상태는 visual completion 전까지 부모 move/roll
   unsubscribe();
 
   assert.match(rollStageSource, /notifyRollPresentationActive\(state\.active\)/);
-  assert.match(pendingRemoteActionsSource, /class RollPresentationAwarePendingActionSet extends Set<string>/);
-  assert.match(pendingRemoteActionsSource, /getRollPresentationActive\(\) \? 1 : 0/);
+  assert.match(pendingRemoteActionsSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(new Set\(\)\)/);
   assert.match(pendingRemoteActionsSource, /ROLL_PRESENTATION_BLOCKER_ACTION_KEY/);
+  assert.match(pendingRemoteActionsSource, /store\.set\(ROLL_PRESENTATION_BLOCKER_ACTION_KEY, ROLL_PRESENTATION_BLOCKER_META\)/);
+  assert.match(pendingRemoteActionsSource, /syncRollPresentationBlockerMeta/);
   assert.match(pendingRemoteActionsSource, /subscribeRollPresentationActive/);
   assert.match(appSource, /hasPendingOnlineMoveRequest = Boolean\(activeRoomId && pendingBlockingRemoteActionCount > 0\)/);
   assert.match(appSource, /canRequestMove = Boolean\(canSubmitTurnAction && !hasPendingOnlineMoveRequest/);
