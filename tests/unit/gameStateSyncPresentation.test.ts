@@ -15,6 +15,7 @@ import {
   type GameSyncRuntime,
   type GameSyncSnapshotIdentity,
 } from '../../src/app/hooks/gameSyncSubscription.js';
+import { STORAGE_KEYS } from '../../src/app/preferences/localPreferences.js';
 
 const flushController = () => new Promise<void>((resolve) => setImmediate(resolve));
 const testUser = { uid: 'user-1' } as User;
@@ -30,10 +31,11 @@ const playingRoom: RoomSummary = {
   pieceCount: 4,
 };
 
-const createStorage = () => {
-  const values = new Map<string, string>();
+const createStorage = (initialEntries: Array<[string, string]> = []) => {
+  const values = new Map<string, string>(initialEntries);
   return {
     getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
     removeItem: (key: string) => { values.delete(key); },
   };
 };
@@ -173,7 +175,7 @@ test('참가자 자동 재접속도 game 화면 전환 전에 동기화 게이�
       getRoom: async () => playingRoom,
       joinRoom: async () => ({ role: 'player', seatIndex: 1 }),
       isRoomInGame: () => true,
-      localStorage: createStorage(),
+      localStorage: createStorage([[STORAGE_KEYS.activeRoomUserId, testUser.uid]]),
       getCurrentActiveRoomId: () => '',
     },
   });
