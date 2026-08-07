@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { gamePresentationLock } from '../../shared/gamePresentationLock';
 import { YutRollScenePhysics } from '../components/YutRollScenePhysics';
+import { PENDING_ROLL_RESULT_HOLD_MS } from '../config/gameTimings';
 import {
   createGameAnimationSequence,
   gameAnimationQueue,
@@ -101,10 +102,23 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     notifyFallPresentationActive(state.active && state.fallCount > 0);
   };
 
+  const getOrCreateLiveResultHoldCompletion = (animation: RollAnimation) => {
+    const existing = presentationCompletionByIdRef.current.get(animation.id);
+    if (existing) return existing;
+    const completion = createRollPresentationCompletion({ resultHoldMs: PENDING_ROLL_RESULT_HOLD_MS });
+    presentationCompletionByIdRef.current.set(animation.id, completion);
+    if (settledAnimationId === animation.id && (settleSource === 'three-renderer' || settleSource === 'css-animation-end')) {
+      completion.markSettled(settleSource);
+    }
+    void completion.waitForCompletion();
+    return completion;
+  };
+
   const presentAnimation = (nextAnimation: RollAnimation | null, sourceAnimationId = nextAnimation?.id ?? null) => {
     presentedAnimationRef.current = nextAnimation;
     presentedSourceAnimationIdRef.current = sourceAnimationId;
     setPresentedAnimation(nextAnimation);
+    if (nextAnimation?.phase === 'result-hold') getOrCreateLiveResultHoldCompletion(nextAnimation);
   };
 
   const updatePresentationSession = (
@@ -208,6 +222,26 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       const session = presentationSessionByIdRef.current.get(sourceAnimationId);
       if (session?.liveCompleted) {
         if (presentedLive || presentedSourceAnimationIdRef.current === sourceAnimationId) {
+          const completion = getOrCreateLiveResultHoldCompletion(resolvedAnimation);
+          let completionResult: Awaited<ReturnType<RollPresentationCompletion['waitForCompletion']>>;
+          try {
+            completionResult = await completion.waitForCompletion();
+          } finally {
+            presentationCompletionByIdRef.current.delete(resolvedAnimation.id);
+          }
+          if (completionResult === 'cancelled') {
+            updatePresentationSession(sourceAnimationId, markRollPresentationCancelled);
+            return;
+          }
+          if (!mountedRef.current) return;
+          if (completionResult === 'watchdog') {
+            console.warn('로컬 윷 애니메이션 렌더러 완료 신호가 없어 watchdog으로 결과를 확정합니다.', {
+              animationId: resolvedAnimation.id,
+              sourceAnimationId,
+            });
+            setSettleSource('watchdog');
+            setSettledAnimationId(resolvedAnimation.id);
+          }
           updatePresentationSession(sourceAnimationId, markRollPresentationCompleted);
           if (presentedSourceAnimationIdRef.current === sourceAnimationId) presentAnimation(null);
           return;
@@ -232,6 +266,9 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       liveAnimationByIdRef.current.delete(sourceAnimationId);
       presentationSessionByIdRef.current.delete(sourceAnimationId);
       queuedPresentationMetaRef.current.delete(sourceAnimationId);
+      const liveCompletion = presentationCompletionByIdRef.current.get(sourceAnimationId);
+      liveCompletion?.cancel();
+      presentationCompletionByIdRef.current.delete(sourceAnimationId);
       if (mountedRef.current) notifyQueuedPresentation();
     });
     return sequence;
