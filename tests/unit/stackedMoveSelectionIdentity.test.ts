@@ -10,9 +10,10 @@ import {
   publishAuthoritativeStackedMoveContext,
 } from '../../src/features/room/services/stackedMoveSelectionIdentity';
 import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
+import type { YutResult } from '../../src/game-core/roll';
 
-const MO = { name: '모', steps: 5, bonus: true };
-const BACKDO = { name: '빽도', steps: -1, bonus: false };
+const MO: YutResult = { name: '모', steps: 5, bonus: true };
+const BACKDO: YutResult = { name: '빽도', steps: -1, bonus: false };
 const SIDES = [{ id: 'P1', team: '청팀' as const }, { id: 'P2', team: '홍팀' as const }];
 const ROOM = { playMode: 'individual' as const, pieceCount: 1 as const, stackedRollMode: true };
 const makeState = (overrides: Record<string, unknown> = {}) => ({
@@ -25,7 +26,7 @@ const makeState = (overrides: Record<string, unknown> = {}) => ({
   roll: null, rollStack: [MO, BACKDO], selectedRollStackIndex: null, rollStackClosed: true,
   logs: [], winner: '', branchChoice: 'outer', boardItems: [], ownedItems: {}, trapNodes: [], shieldedPieceIds: [],
   lastMovedPieceIds: [], lastMovedSeatId: '', itemPromptTiming: null, pendingItemPickup: null,
-  pendingGoldenYutSelection: null, pendingTrapPlacement: null, turnDeadlineKind: 'move',
+  pendingGoldenYutSelection: null, pendingTrapPlacement: null, turnDeadlineKind: 'move' as const,
   turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS, lastSequence: 10, turnVersion: 3, ...overrides,
 });
 const makeAction = (sequence: number) => ({
@@ -34,13 +35,11 @@ const makeAction = (sequence: number) => ({
     clientActionId: `move_piece:P1:${sequence}:0:ready:0:::piece-1:0:outer:stack:0`, clientActionStartedAt: Date.now(),
   } as Record<string, unknown>,
 });
-const select = (state: ReturnType<typeof makeState>, rollStack = state.rollStack) => {
+const select = (state: ReturnType<typeof makeState>, rollStack: YutResult[] = state.rollStack) => {
   publishAuthoritativeStackedMoveContext(state);
-  return resolveEffectiveMoveContext({
-    stackedRollMode: true, roll: null, rollStack: rollStack as typeof MO[], rollStackClosed: true, selectedRollStackIndex: 0,
-  });
+  return resolveEffectiveMoveContext({ stackedRollMode: true, roll: null, rollStack, rollStackClosed: true, selectedRollStackIndex: 0 });
 };
-const findPiece = (patch: Record<string, unknown>) => (patch.pieces as Array<{ id: string; nodeId: string }> | undefined)?.find((piece) => piece.id === 'piece-1');
+const findPiece = (patch?: { pieces?: Array<{ id: string; nodeId: string }> }) => patch?.pieces?.find((piece) => piece.id === 'piece-1');
 
 test.afterEach(clearStackedMoveSelectionIdentityContext);
 
@@ -59,7 +58,8 @@ test('[모, 빽도]는 모 +5 뒤 빽도 -1을 소비하고 마지막에만 턴�
   select(firstState);
   const first = reduceAuthoritativeGameAction(firstState, makeAction(10), ROOM, SIDES);
   assert.equal(first.status, 'committed');
-  if (first.status !== 'committed') return;
+  assert.ok(first.patch);
+  if (first.status !== 'committed' || !first.patch) return;
   assert.equal(findPiece(first.patch)?.nodeId, 'n06');
   assert.deepEqual(first.patch.rollStack, [BACKDO]);
   assert.equal(first.patch.turnIndex, 0);
@@ -68,7 +68,8 @@ test('[모, 빽도]는 모 +5 뒤 빽도 -1을 소비하고 마지막에만 턴�
   select(secondState);
   const second = reduceAuthoritativeGameAction(secondState, makeAction(11), ROOM, SIDES);
   assert.equal(second.status, 'committed');
-  if (second.status !== 'committed') return;
+  assert.ok(second.patch);
+  if (second.status !== 'committed' || !second.patch) return;
   assert.equal(findPiece(second.patch)?.nodeId, 'n05');
   assert.deepEqual(second.patch.rollStack, []);
   assert.equal(second.patch.turnIndex, 1);
