@@ -226,9 +226,54 @@ test.describe('Galaxy roll submit and move deadline presentation contract', () =
         && !state.rollButton.disabled;
     }, { timeout: 45_000, message: '첫 누적 roll action이 가능한 상태여야 합니다.' }).toBe(true);
 
+    const visibleHoldPromise = page.evaluate(() => new Promise((resolve, reject) => {
+      const startedAt = performance.now();
+      let resultVisibleAt = 0;
+      let actionExposedWhileVisible = false;
+      const sample = () => {
+        const stage = document.querySelector('.roll-stage');
+        const resultPresentation = document.querySelector('[data-testid="roll-result-presentation"]');
+        const resultCard = document.querySelector('[data-testid="roll-result-card"]');
+        const resultVisible = resultPresentation instanceof HTMLElement
+          && resultCard instanceof HTMLElement
+          && !resultPresentation.hidden
+          && resultPresentation.getClientRects().length > 0
+          && resultCard.getClientRects().length > 0;
+        if (!resultVisibleAt && resultVisible) resultVisibleAt = performance.now();
+        if (resultVisibleAt && resultVisible) {
+          const rollButton = document.querySelector('[data-testid="roll-yut-button"]');
+          const moveButton = document.querySelector('[data-testid="move-piece-button"]');
+          if ((rollButton instanceof HTMLButtonElement && !rollButton.disabled)
+            || (moveButton instanceof HTMLButtonElement && !moveButton.disabled)) {
+            actionExposedWhileVisible = true;
+          }
+        }
+        if (resultVisibleAt && !stage) {
+          resolve({
+            visibleHoldMs: performance.now() - resultVisibleAt,
+            actionExposedWhileVisible,
+          });
+          return;
+        }
+        if (performance.now() - startedAt > 15_000) {
+          reject(new Error('모 결과 카드의 visible hold 완료를 관찰하지 못했습니다.'));
+          return;
+        }
+        requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    }));
+
     await page.getByTestId('roll-yut-button').evaluate((button) => button.click());
     await expect(page.locator('.roll-stage')).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 15_000 });
+    await expect(page.getByTestId('roll-result-card')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('roll-result-card')).toContainText('모');
+
+    const visibleHold = await visibleHoldPromise;
+    expect(visibleHold.visibleHoldMs, 'renderer settle 뒤 모 결과 카드는 제품 1초 hold를 한두 프레임 수준보다 짧게 표시하면 안 됩니다.').toBeGreaterThanOrEqual(975);
+    expect(visibleHold.actionExposedWhileVisible, '결과 presentation 종료 전에는 다음 roll/move action이 활성화되면 안 됩니다.').toBe(false);
+    await expect(page.locator('.roll-stage')).toBeHidden({ timeout: 1_000 });
+
     await expect.poll(async () => {
       const state = await collectScreenState(page);
       const debug = state.yutDebug ?? {};
