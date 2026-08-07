@@ -67,34 +67,74 @@ export async function exerciseStackedMoBackDoMoves(page, fixture) {
   await expect(choices.nth(1)).toBeDisabled();
   await choices.first().click();
   await expect(page.getByTestId('move-piece-button')).toBeEnabled({ timeout: 5_000 });
+
+  const clientFlow = page.evaluate(({ trackedPieceId, initialTurnIndex }) => new Promise((resolve, reject) => {
+    const startedAt = performance.now();
+    let canonicalSawMo = false;
+    let renderedSawMo = false;
+    let canonicalRewound = false;
+    let renderedRewound = false;
+    let sawBackDoOnly = false;
+    const getRenderedNodeId = () => {
+      const pieceElement = document.querySelector(`[data-testid="piece-${trackedPieceId}"]`);
+      if (!(pieceElement instanceof HTMLElement)) return '';
+      if (pieceElement.classList.contains('off-board')) return 'n01';
+      const nodeElement = [...document.querySelectorAll('[data-testid^="board-node-"]')]
+        .find((candidate) => candidate instanceof HTMLElement
+          && candidate.style.left === pieceElement.style.left
+          && candidate.style.top === pieceElement.style.top);
+      return nodeElement?.getAttribute('data-testid')?.replace('board-node-', '') ?? '';
+    };
+    const sample = () => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      const piece = Array.isArray(debug.pieces) ? debug.pieces.find((entry) => entry?.id === trackedPieceId) : null;
+      const canonicalNodeId = typeof piece?.nodeId === 'string' ? piece.nodeId : '';
+      const renderedNodeId = getRenderedNodeId();
+      if (canonicalNodeId === 'n06') canonicalSawMo = true;
+      if (renderedNodeId === 'n06') renderedSawMo = true;
+      if (canonicalSawMo && canonicalNodeId === 'n01') canonicalRewound = true;
+      if (renderedSawMo && renderedNodeId === 'n01') renderedRewound = true;
+      if (document.querySelector('.turn-roll-stack-badges')?.getAttribute('aria-label') === '남은 이동 스택: 빽도') sawBackDoOnly = true;
+      if (canonicalNodeId === 'n05' && renderedNodeId === 'n05'
+        && Number(debug.turnIndex ?? -1) !== initialTurnIndex && !debug.movingPieceId) {
+        resolve({ canonicalSawMo, renderedSawMo, canonicalRewound, renderedRewound, sawBackDoOnly });
+        return;
+      }
+      if (performance.now() - startedAt > 20_000) {
+        reject(new Error('모 뒤 자동 빽도 이동이 최종 n05 상태로 수렴하지 않았습니다.'));
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }), { trackedPieceId: pieceId, initialTurnIndex: turnIndex });
   await page.getByTestId('move-piece-button').click();
 
-  await expect.poll(async () => {
-    const state = await getRoomStateForQa(roomId);
-    const piece = state?.pieces?.find((entry) => entry?.id === pieceId);
-    return piece?.nodeId === 'n06' && state?.turnIndex === turnIndex
-      && state?.rollStack?.length === 1 && state.rollStack[0]?.name === '빽도';
-  }, { timeout: 20_000, message: '모 +5 뒤 authoritative stack에는 빽도만 남아야 합니다.' }).toBe(true);
-  await expect.poll(async () => {
-    const debug = (await collectScreenState(page)).yutDebug ?? {};
-    const piece = debug.pieces?.find((entry) => entry?.id === pieceId);
-    return piece?.nodeId === 'n06' && piece?.started === true && !debug.movingPieceId
-      && debug.turnIndex === turnIndex;
-  }, { timeout: 10_000, message: '모 이동 뒤 말이 대기석으로 되감기면 안 됩니다.' }).toBe(true);
-  await expect(picker.getByRole('button')).toHaveCount(1, { timeout: 10_000 });
-  await expect(picker.getByRole('button').first()).toHaveText('빽도');
-
-  await expect(page.getByTestId('move-piece-button')).toBeEnabled({ timeout: 5_000 });
-  await page.getByTestId('move-piece-button').click();
   await expect.poll(async () => {
     const state = await getRoomStateForQa(roomId);
     const piece = state?.pieces?.find((entry) => entry?.id === pieceId);
     return piece?.nodeId === 'n05' && state?.rollStack?.length === 0 && state?.turnIndex !== turnIndex;
-  }, { timeout: 20_000, message: '빽도 -1 뒤에만 stack이 비고 상대 턴으로 넘어가야 합니다.' }).toBe(true);
+  }, { timeout: 20_000, message: '모 뒤 남은 빽도가 자동 소비된 뒤에만 stack이 비고 상대 턴으로 넘어가야 합니다.' }).toBe(true);
+  const observed = await clientFlow;
+  expect(observed.canonicalSawMo).toBe(true);
+  expect(observed.renderedSawMo).toBe(true);
+  expect(observed.sawBackDoOnly).toBe(true);
+  expect(observed.canonicalRewound).toBe(false);
+  expect(observed.renderedRewound).toBe(false);
 
+  await expect.poll(async () => (await getRoomSequencesForQa(roomId)).slice(baselineSequences.length)
+    .filter((sequence) => sequence.type === 'move_piece_resolved' && sequence.actorId === actorId).length,
+  { timeout: 20_000, message: '모와 빽도 authoritative move sequence가 각각 하나씩 생성되어야 합니다.' }).toBe(2);
   const moves = (await getRoomSequencesForQa(roomId)).slice(baselineSequences.length)
-    .filter((sequence) => sequence.type === 'move_piece_resolved' && sequence.actorId === actorId);
+    .filter((sequence) => sequence.type === 'move_piece_resolved' && sequence.actorId === actorId)
+    .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0));
   expect(moves).toHaveLength(2);
   expect(moves.map((move) => move.action?.payload?.stackedMoveSelection?.roll?.name)).toEqual(['모', '빽도']);
   expect(new Set(moves.map((move) => move.clientMutationId)).size).toBe(2);
+  expect(moves[0].patch?.pieces?.find((piece) => piece?.id === pieceId)?.nodeId).toBe('n06');
+  expect(moves[0].patch?.rollStack?.map((roll) => roll?.name)).toEqual(['빽도']);
+  expect(moves[0].patch?.turnIndex).toBe(turnIndex);
+  expect(moves[1].patch?.pieces?.find((piece) => piece?.id === pieceId)?.nodeId).toBe('n05');
+  expect(moves[1].patch?.rollStack ?? []).toHaveLength(0);
+  expect(moves[1].patch?.turnIndex).not.toBe(turnIndex);
 }
