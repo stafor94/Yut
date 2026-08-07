@@ -151,7 +151,12 @@ export function validateStackedMoveSelectionIdentity({ state, action, stackedRol
   const selection = payloadIdentity(action);
   const stack = stackFingerprint(state.rollStack);
   const stateIdentity = [integer(state.lastSequence), integer(state.turnVersion), integer(state.turnIndex)];
-  const valid = selection && stack && stateIdentity.every((value) => value !== null)
+  const hasAuthoritativeRevision = stateIdentity.every((value) => value !== null);
+  // Reducer-only fixtures may intentionally omit Firestore revision metadata. An
+  // explicit selection against such a state is still stale; only legacy fixture
+  // calls with neither side of the revision contract bypass this wrapper guard.
+  if (!hasAuthoritativeRevision) return selection ? STACKED_MOVE_SELECTION_STALE_REASON : null;
+  const valid = selection && stack
     && selection.expectedPreviousSequence === expected.expectedPreviousSequence
     && selection.expectedTurnIndex === expected.expectedTurnIndex
     && selection.expectedPreviousSequence === stateIdentity[0]
