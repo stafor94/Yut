@@ -20,7 +20,7 @@ test('roll-derived UI remains hidden until the presented result has settled', ()
   assert.equal(isRollPresentationResultVisible(resolvedWithoutPhase, 10), true);
 });
 
-test('authoritative stack and logs are deferred for a new or queued presentation', () => {
+test('presentation은 결과가 visible이어도 종료 전까지 다음 roll-derived action을 지연한다', () => {
   assert.equal(shouldDeferRollDerivedContent({
     rollAnimationId: 20,
     presentation: EMPTY_ROLL_PRESENTATION_STATE,
@@ -44,7 +44,7 @@ test('authoritative stack and logs are deferred for a new or queued presentation
       sourceAnimationId: 20,
       resultVisible: true,
     },
-  }), false);
+  }), true);
   assert.equal(shouldDeferRollDerivedContent({
     rollAnimationId: null,
     presentation: {
@@ -52,7 +52,7 @@ test('authoritative stack and logs are deferred for a new or queued presentation
       actorId: 'seat-2',
       fallCount: 0,
       sourceAnimationId: 30,
-      resultVisible: false,
+      resultVisible: true,
     },
   }), true);
   assert.equal(shouldDeferRollDerivedContent({
@@ -61,7 +61,7 @@ test('authoritative stack and logs are deferred for a new or queued presentation
   }), false);
 });
 
-test('결과 표시가 끝난 같은 animation id는 presentation 종료 후에도 지연 잠금을 해제한다', () => {
+test('결과 표시가 끝난 같은 animation id는 presentation 종료 후 지연 잠금을 해제한다', () => {
   const animationId = 7401;
   const activePresentation = {
     active: true,
@@ -74,7 +74,7 @@ test('결과 표시가 끝난 같은 animation id는 presentation 종료 후에�
   assert.equal(shouldDeferRollDerivedContent({
     rollAnimationId: animationId,
     presentation: activePresentation,
-  }), false);
+  }), true);
   assert.equal(shouldDeferRollDerivedContent({
     rollAnimationId: animationId,
     presentation: EMPTY_ROLL_PRESENTATION_STATE,
@@ -92,6 +92,10 @@ test('완료된 이전 ID가 있어도 새 animation은 presentation 시작 전�
       sourceAnimationId: completedAnimationId,
       resultVisible: true,
     },
+  }), true);
+  assert.equal(shouldDeferRollDerivedContent({
+    rollAnimationId: completedAnimationId,
+    presentation: EMPTY_ROLL_PRESENTATION_STATE,
   }), false);
 
   assert.equal(shouldDeferRollDerivedContent({
