@@ -1,8 +1,10 @@
-import { connectAuthEmulator, getAuth, onAuthStateChanged, signInAnonymously, type User } from 'firebase/auth';
+import { browserLocalPersistence, connectAuthEmulator, inMemoryPersistence, initializeAuth, onAuthStateChanged, signInAnonymously, type User } from 'firebase/auth';
 import { firebaseApp, isFirebaseEmulatorMode } from './firebaseApp';
 import { getFirebaseAuthErrorCode, retryFirebaseAuthOperation } from './firebaseAuthRetry';
 
-export const auth = firebaseApp ? getAuth(firebaseApp) : null;
+export const auth = firebaseApp ? initializeAuth(firebaseApp, {
+  persistence: [browserLocalPersistence, inMemoryPersistence],
+}) : null;
 
 if (auth && isFirebaseEmulatorMode) {
   const emulatorUrl = String(import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099');
