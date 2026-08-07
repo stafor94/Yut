@@ -45,6 +45,14 @@ class PresentationAwarePendingActionSet extends Set<string> {
   }
 }
 
+const syncPresentationBlockerMeta = (store: PendingRemoteActionMetaStore<PendingRemoteActionMeta>) => {
+  if (gamePresentationLock.isLocked()) {
+    store.set(PRESENTATION_BLOCKER_ACTION_KEY, PRESENTATION_BLOCKER_META);
+    return;
+  }
+  store.delete(PRESENTATION_BLOCKER_ACTION_KEY);
+};
+
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
   const [, setPresentationLockVersion] = useState(0);
@@ -55,20 +63,13 @@ export function usePendingRemoteActions() {
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
   );
 
-  const syncPresentationBlockerMeta = () => {
-    if (gamePresentationLock.isLocked()) {
-      pendingLocalRemoteActionMetaRef.current.set(PRESENTATION_BLOCKER_ACTION_KEY, PRESENTATION_BLOCKER_META);
-      return;
-    }
-    pendingLocalRemoteActionMetaRef.current.delete(PRESENTATION_BLOCKER_ACTION_KEY);
-  };
-
   useEffect(() => {
-    syncPresentationBlockerMeta();
-    return gamePresentationLock.subscribe(() => {
-      syncPresentationBlockerMeta();
+    const syncPresentationLock = () => {
+      syncPresentationBlockerMeta(pendingLocalRemoteActionMetaRef.current);
       setPresentationLockVersion((version) => version + 1);
-    });
+    };
+    syncPresentationLock();
+    return gamePresentationLock.subscribe(syncPresentationLock);
   }, []);
 
   const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(Array.from(pendingLocalRemoteActionsRef.current).length);
@@ -123,7 +124,7 @@ export function usePendingRemoteActions() {
   const clearPendingLocalRemoteActions = () => {
     pendingLocalRemoteActionsRef.current.clear();
     pendingLocalRemoteActionMetaRef.current.clear();
-    syncPresentationBlockerMeta();
+    syncPresentationBlockerMeta(pendingLocalRemoteActionMetaRef.current);
     clearPendingOptimisticMoveActions();
     clearMoveActionClaims();
     syncPendingLocalRemoteActionCount();
