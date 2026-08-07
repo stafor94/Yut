@@ -1,34 +1,19 @@
 import type { YutResult } from '../../../game-core/roll';
 
-export type StackedRollFingerprint = {
-  name: string;
-  steps: number;
-  bonus: boolean;
-};
-
-export type StackedMoveSelectionIdentity = {
+type RollFingerprint = { name: string; steps: number; bonus: boolean };
+type SelectionIdentity = {
   expectedPreviousSequence: number;
   expectedTurnVersion: number;
   expectedTurnIndex: number;
   rollStackIndex: number;
-  roll: StackedRollFingerprint;
+  roll: RollFingerprint;
 };
-
-type AuthoritativeStackedMoveContext = {
-  lastSequence: number;
-  turnVersion: number;
-  turnIndex: number;
-  rollStack: StackedRollFingerprint[];
+type StackContext = Omit<SelectionIdentity, 'rollStackIndex' | 'roll'> & {
+  rollStack: RollFingerprint[];
   rollStackClosed: boolean;
 };
-
-type StackedMoveAction = {
-  type: string;
-  actorId: string;
-  payload?: Record<string, unknown>;
-};
-
-type StackedMoveState = {
+type MoveAction = { type: string; actorId: string; payload?: Record<string, unknown> };
+type MoveState = {
   lastSequence?: unknown;
   turnVersion?: unknown;
   turnIndex?: unknown;
@@ -38,204 +23,141 @@ type StackedMoveState = {
 
 export const STACKED_MOVE_SELECTION_STALE_REASON = '선택한 누적 윷 결과가 최신 상태와 일치하지 않습니다. 최신 상태에서 다시 선택해주세요.';
 
-let latestAuthoritativeContext: AuthoritativeStackedMoveContext | null = null;
-let latestClientSelection: StackedMoveSelectionIdentity | null = null;
+let authoritativeContext: StackContext | null = null;
+let clientSelection: SelectionIdentity | null = null;
 
-const toSafeInteger = (value: unknown) => {
-  const numericValue = Number(value);
-  return Number.isSafeInteger(numericValue) ? numericValue : null;
+const integer = (value: unknown) => Number.isSafeInteger(Number(value)) ? Number(value) : null;
+const rollFingerprint = (value: unknown): RollFingerprint | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const roll = value as { name?: unknown; steps?: unknown; bonus?: unknown };
+  const steps = Number(roll.steps);
+  return typeof roll.name === 'string' && roll.name && Number.isFinite(steps)
+    ? { name: roll.name, steps, bonus: roll.bonus === true }
+    : null;
 };
-
-export const makeStackedRollFingerprint = (roll: unknown): StackedRollFingerprint | null => {
-  if (!roll || typeof roll !== 'object' || Array.isArray(roll)) return null;
-  const source = roll as { name?: unknown; steps?: unknown; bonus?: unknown };
-  const name = typeof source.name === 'string' ? source.name : '';
-  const steps = Number(source.steps);
-  if (!name || !Number.isFinite(steps)) return null;
-  return { name, steps, bonus: source.bonus === true };
+const stackFingerprint = (value: unknown) => {
+  if (!Array.isArray(value)) return null;
+  const stack = value.map(rollFingerprint);
+  return stack.every((roll): roll is RollFingerprint => Boolean(roll)) ? stack : null;
 };
-
-const makeStackFingerprint = (rollStack: unknown) => {
-  if (!Array.isArray(rollStack)) return null;
-  const normalized = rollStack.map(makeStackedRollFingerprint);
-  return normalized.every((roll): roll is StackedRollFingerprint => Boolean(roll)) ? normalized : null;
-};
-
-const rollsMatch = (left: StackedRollFingerprint, right: StackedRollFingerprint) => (
-  left.name === right.name
-  && left.steps === right.steps
-  && left.bonus === right.bonus
+const rollMatches = (left: RollFingerprint, right: RollFingerprint) => (
+  left.name === right.name && left.steps === right.steps && left.bonus === right.bonus
 );
-
-const stacksMatch = (left: StackedRollFingerprint[], right: StackedRollFingerprint[]) => (
-  left.length === right.length && left.every((roll, index) => rollsMatch(roll, right[index]))
+const stackMatches = (left: RollFingerprint[], right: RollFingerprint[]) => (
+  left.length === right.length && left.every((roll, index) => rollMatches(roll, right[index]))
 );
-
-const parseManualMoveClientIdentity = (action: StackedMoveAction) => {
-  const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
+const manualIdentity = (action: MoveAction) => {
+  const id = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
   const prefix = `move_piece:${action.actorId}:`;
-  if (action.type !== 'move_piece'
-    || !action.actorId
-    || !clientActionId.startsWith(prefix)
+  if (action.type !== 'move_piece' || !id.startsWith(prefix)
     || action.payload?.recoveredByCoordinator === true
     || action.payload?.deadlineAutoSubmitted === true
     || typeof action.payload?.automationSource === 'string'
     || typeof action.payload?.coordinatorSeatId === 'string') return null;
-  const [sequenceText = '', turnIndexText = ''] = clientActionId.slice(prefix.length).split(':', 2);
-  if (!/^\d+$/.test(sequenceText) || !/^\d+$/.test(turnIndexText)) return null;
-  const expectedPreviousSequence = Number(sequenceText);
-  const expectedTurnIndex = Number(turnIndexText);
-  if (!Number.isSafeInteger(expectedPreviousSequence) || !Number.isSafeInteger(expectedTurnIndex)) return null;
-  return { expectedPreviousSequence, expectedTurnIndex };
+  const [sequenceText = '', turnText = ''] = id.slice(prefix.length).split(':', 2);
+  if (!/^\d+$/.test(sequenceText) || !/^\d+$/.test(turnText)) return null;
+  return { expectedPreviousSequence: Number(sequenceText), expectedTurnIndex: Number(turnText) };
 };
-
-const readPayloadSelectionIdentity = (action: StackedMoveAction): StackedMoveSelectionIdentity | null => {
-  const rawIdentity = action.payload?.stackedMoveSelection;
-  if (!rawIdentity || typeof rawIdentity !== 'object' || Array.isArray(rawIdentity)) return null;
-  const source = rawIdentity as Record<string, unknown>;
-  const expectedPreviousSequence = toSafeInteger(source.expectedPreviousSequence);
-  const expectedTurnVersion = toSafeInteger(source.expectedTurnVersion);
-  const expectedTurnIndex = toSafeInteger(source.expectedTurnIndex);
-  const rollStackIndex = toSafeInteger(source.rollStackIndex);
-  const roll = makeStackedRollFingerprint(source.roll);
-  if (expectedPreviousSequence === null
-    || expectedTurnVersion === null
-    || expectedTurnIndex === null
-    || rollStackIndex === null
-    || rollStackIndex < 0
-    || !roll) return null;
-  return {
-    expectedPreviousSequence,
-    expectedTurnVersion,
-    expectedTurnIndex,
-    rollStackIndex,
-    roll,
+const payloadIdentity = (action: MoveAction): SelectionIdentity | null => {
+  const raw = action.payload?.stackedMoveSelection;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  const identity = {
+    expectedPreviousSequence: integer(value.expectedPreviousSequence),
+    expectedTurnVersion: integer(value.expectedTurnVersion),
+    expectedTurnIndex: integer(value.expectedTurnIndex),
+    rollStackIndex: integer(value.rollStackIndex),
+    roll: rollFingerprint(value.roll),
   };
+  return Object.values(identity).some((entry) => entry === null) || Number(identity.rollStackIndex) < 0
+    ? null
+    : identity as SelectionIdentity;
 };
 
 export function publishAuthoritativeStackedMoveContext(state: unknown) {
   if (!state || typeof state !== 'object' || Array.isArray(state)) return false;
-  const source = state as StackedMoveState;
-  const lastSequence = toSafeInteger(source.lastSequence);
-  const turnVersion = toSafeInteger(source.turnVersion);
-  const turnIndex = toSafeInteger(source.turnIndex);
-  const rollStack = makeStackFingerprint(source.rollStack);
+  const value = state as MoveState;
+  const lastSequence = integer(value.lastSequence);
+  const turnVersion = integer(value.turnVersion);
+  const turnIndex = integer(value.turnIndex);
+  const rollStack = stackFingerprint(value.rollStack);
   if (lastSequence === null || turnVersion === null || turnIndex === null || !rollStack) return false;
-  latestAuthoritativeContext = {
-    lastSequence,
-    turnVersion,
-    turnIndex,
+  authoritativeContext = {
+    expectedPreviousSequence: lastSequence,
+    expectedTurnVersion: turnVersion,
+    expectedTurnIndex: turnIndex,
     rollStack,
-    rollStackClosed: source.rollStackClosed === true,
+    rollStackClosed: value.rollStackClosed === true,
   };
-  if (latestClientSelection
-    && (latestClientSelection.expectedPreviousSequence !== lastSequence
-      || latestClientSelection.expectedTurnVersion !== turnVersion
-      || latestClientSelection.expectedTurnIndex !== turnIndex)) {
-    latestClientSelection = null;
-  }
+  if (clientSelection && (
+    clientSelection.expectedPreviousSequence !== lastSequence
+    || clientSelection.expectedTurnVersion !== turnVersion
+    || clientSelection.expectedTurnIndex !== turnIndex
+  )) clientSelection = null;
   return true;
 }
 
 export function clearStackedMoveSelectionIdentityContext() {
-  latestAuthoritativeContext = null;
-  latestClientSelection = null;
+  authoritativeContext = null;
+  clientSelection = null;
 }
 
-export function captureStackedMoveSelectionIdentity({
-  rollStack,
-  rollStackClosed,
-  rollStackIndex,
-}: {
+export function captureStackedMoveSelectionIdentity({ rollStack, rollStackClosed, rollStackIndex }: {
   rollStack: YutResult[];
   rollStackClosed: boolean;
   rollStackIndex: number;
 }) {
-  const displayedStack = makeStackFingerprint(rollStack);
-  const authoritative = latestAuthoritativeContext;
-  if (!displayedStack || !Number.isInteger(rollStackIndex) || rollStackIndex < 0 || rollStackIndex >= displayedStack.length) {
-    latestClientSelection = null;
-    return { status: 'invalid' as const, identity: null };
+  const displayedStack = stackFingerprint(rollStack);
+  const current = authoritativeContext;
+  if (!displayedStack || !Number.isInteger(rollStackIndex) || !displayedStack[rollStackIndex]) {
+    clientSelection = null;
+    return 'invalid' as const;
   }
-  if (!authoritative) {
-    latestClientSelection = null;
-    return { status: 'untracked' as const, identity: null };
+  if (!current) return 'untracked' as const;
+  if (current.rollStackClosed !== rollStackClosed || !stackMatches(current.rollStack, displayedStack)) {
+    clientSelection = null;
+    return 'stale' as const;
   }
-  if (authoritative.rollStackClosed !== rollStackClosed || !stacksMatch(authoritative.rollStack, displayedStack)) {
-    latestClientSelection = null;
-    return { status: 'stale' as const, identity: null };
-  }
-  const selectedRoll = displayedStack[rollStackIndex];
-  const identity: StackedMoveSelectionIdentity = {
-    expectedPreviousSequence: authoritative.lastSequence,
-    expectedTurnVersion: authoritative.turnVersion,
-    expectedTurnIndex: authoritative.turnIndex,
+  clientSelection = {
+    expectedPreviousSequence: current.expectedPreviousSequence,
+    expectedTurnVersion: current.expectedTurnVersion,
+    expectedTurnIndex: current.expectedTurnIndex,
     rollStackIndex,
-    roll: selectedRoll,
+    roll: displayedStack[rollStackIndex],
   };
-  latestClientSelection = identity;
-  return { status: 'ready' as const, identity };
+  return 'ready' as const;
 }
 
-export function attachLatestStackedMoveSelectionIdentity(action: StackedMoveAction) {
-  const manualIdentity = parseManualMoveClientIdentity(action);
-  const rollStackIndex = typeof action.payload?.rollStackIndex === 'number'
-    ? Number(action.payload.rollStackIndex)
-    : null;
-  if (!manualIdentity || !Number.isInteger(rollStackIndex) || Number(rollStackIndex) < 0) return false;
-  if (readPayloadSelectionIdentity(action)) return true;
-  const selection = latestClientSelection;
-  if (!selection
-    || selection.rollStackIndex !== rollStackIndex
-    || selection.expectedPreviousSequence !== manualIdentity.expectedPreviousSequence
-    || selection.expectedTurnIndex !== manualIdentity.expectedTurnIndex) return false;
-  action.payload = {
-    ...(action.payload ?? {}),
-    stackedMoveSelection: {
-      expectedPreviousSequence: selection.expectedPreviousSequence,
-      expectedTurnVersion: selection.expectedTurnVersion,
-      expectedTurnIndex: selection.expectedTurnIndex,
-      rollStackIndex: selection.rollStackIndex,
-      roll: { ...selection.roll },
-    },
-  };
+export function attachLatestStackedMoveSelectionIdentity(action: MoveAction) {
+  const expected = manualIdentity(action);
+  const stackIndex = typeof action.payload?.rollStackIndex === 'number' ? action.payload.rollStackIndex : null;
+  if (!expected || !Number.isInteger(stackIndex) || Number(stackIndex) < 0) return false;
+  if (payloadIdentity(action)) return true;
+  if (!clientSelection || clientSelection.rollStackIndex !== stackIndex
+    || clientSelection.expectedPreviousSequence !== expected.expectedPreviousSequence
+    || clientSelection.expectedTurnIndex !== expected.expectedTurnIndex) return false;
+  action.payload = { ...action.payload, stackedMoveSelection: { ...clientSelection, roll: { ...clientSelection.roll } } };
   return true;
 }
 
-export function validateStackedMoveSelectionIdentity({
-  state,
-  action,
-  stackedRollMode,
-}: {
-  state: StackedMoveState;
-  action: StackedMoveAction;
+export function validateStackedMoveSelectionIdentity({ state, action, stackedRollMode }: {
+  state: MoveState;
+  action: MoveAction;
   stackedRollMode: boolean;
 }) {
-  const rollStackIndex = typeof action.payload?.rollStackIndex === 'number'
-    ? Number(action.payload.rollStackIndex)
-    : null;
-  const manualIdentity = parseManualMoveClientIdentity(action);
-  if (!stackedRollMode || rollStackIndex === null || !manualIdentity) return null;
-  const selection = readPayloadSelectionIdentity(action);
-  const stateSequence = toSafeInteger(state.lastSequence);
-  const stateTurnVersion = toSafeInteger(state.turnVersion);
-  const stateTurnIndex = toSafeInteger(state.turnIndex);
-  const rollStack = makeStackFingerprint(state.rollStack);
-  if (!selection
-    || stateSequence === null
-    || stateTurnVersion === null
-    || stateTurnIndex === null
-    || !rollStack
-    || selection.expectedPreviousSequence !== manualIdentity.expectedPreviousSequence
-    || selection.expectedTurnIndex !== manualIdentity.expectedTurnIndex
-    || selection.expectedPreviousSequence !== stateSequence
-    || selection.expectedTurnVersion !== stateTurnVersion
-    || selection.expectedTurnIndex !== stateTurnIndex
-    || selection.rollStackIndex !== rollStackIndex
-    || rollStackIndex < 0
-    || rollStackIndex >= rollStack.length
-    || !rollsMatch(selection.roll, rollStack[rollStackIndex])) {
-    return STACKED_MOVE_SELECTION_STALE_REASON;
-  }
-  return null;
+  const stackIndex = typeof action.payload?.rollStackIndex === 'number' ? action.payload.rollStackIndex : null;
+  const expected = manualIdentity(action);
+  if (!stackedRollMode || stackIndex === null || !expected) return null;
+  const selection = payloadIdentity(action);
+  const stack = stackFingerprint(state.rollStack);
+  const stateIdentity = [integer(state.lastSequence), integer(state.turnVersion), integer(state.turnIndex)];
+  const valid = selection && stack && stateIdentity.every((value) => value !== null)
+    && selection.expectedPreviousSequence === expected.expectedPreviousSequence
+    && selection.expectedTurnIndex === expected.expectedTurnIndex
+    && selection.expectedPreviousSequence === stateIdentity[0]
+    && selection.expectedTurnVersion === stateIdentity[1]
+    && selection.expectedTurnIndex === stateIdentity[2]
+    && selection.rollStackIndex === stackIndex
+    && Boolean(stack[stackIndex] && rollMatches(selection.roll, stack[stackIndex]));
+  return valid ? null : STACKED_MOVE_SELECTION_STALE_REASON;
 }
