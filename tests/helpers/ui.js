@@ -2,7 +2,7 @@ import { expect } from '@playwright/test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { normalizeQaNickname } from './env.js';
-import { findRoomIdByTitle } from './rooms.js';
+import { findRoomIdByTitle, getRoomForQa } from './rooms.js';
 
 export const consoleLogPath = path.join(process.cwd(), 'console-log.txt');
 
@@ -193,12 +193,16 @@ async function recoverCreatedRoomSession(page, roomTitle) {
 
   const roomId = await findRoomIdByTitle(roomTitle).catch(() => undefined);
   if (!roomId) return false;
+  const room = await getRoomForQa(roomId).catch(() => null);
+  const expectedUserId = String(room?.hostId ?? '').trim();
+  if (!expectedUserId) return false;
 
-  await page.evaluate(({ nextRoomId, nextRoomTitle }) => {
+  await page.evaluate(({ nextRoomId, nextRoomTitle, nextRoomUserId }) => {
     window.localStorage.setItem('yut-online:activeRoomId', nextRoomId);
+    window.localStorage.setItem('yut-online:activeRoomUserId', nextRoomUserId);
     window.localStorage.setItem('yut-online:isRoomHost', 'true');
     window.localStorage.setItem('yut-online:title', nextRoomTitle);
-  }, { nextRoomId: roomId, nextRoomTitle: roomTitle });
+  }, { nextRoomId: roomId, nextRoomTitle: roomTitle, nextRoomUserId: expectedUserId });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('app-shell')).toBeVisible({ timeout: 10_000 });
   await expect(waitingRoom.or(recoveryModal)).toBeVisible({ timeout: 10_000 });
