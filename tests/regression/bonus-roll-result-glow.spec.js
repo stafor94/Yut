@@ -105,6 +105,7 @@ test.describe('bonus roll result glow regression', () => {
         presentation.setAttribute('aria-hidden', 'false');
       });
     });
+    await settleDomMutations(page);
 
     for (const [pathName, surface] of [['내 던지기', localSurface], ['상대 던지기', remoteSurface]]) {
       await expect.poll(async () => readGlowState(surface), {
