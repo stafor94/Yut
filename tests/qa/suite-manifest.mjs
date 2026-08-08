@@ -51,7 +51,6 @@ export const qaSuiteManifest = Object.freeze({
     code: 'desk',
     workers: 2,
     browsers: Object.freeze(['chromium']),
-    timeoutMs: 150_000,
     projects: Object.freeze(['desktop-chromium']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     grepInvert: timeoutPenaltyTitle,

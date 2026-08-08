@@ -1,4 +1,4 @@
-import { browserLocalPersistence, connectAuthEmulator, inMemoryPersistence, initializeAuth, onAuthStateChanged, signInAnonymously, type User } from 'firebase/auth';
+import { browserLocalPersistence, connectAuthEmulator, inMemoryPersistence, initializeAuth, onAuthStateChanged, signInAnonymously, updateCurrentUser, type User } from 'firebase/auth';
 import { firebaseApp, isFirebaseEmulatorMode } from './firebaseApp';
 import { getFirebaseAuthErrorCode, retryFirebaseAuthOperation } from './firebaseAuthRetry';
 
@@ -49,6 +49,11 @@ export async function signInAsGuest() {
       });
   }
   return guestSignInPromise;
+}
+
+export async function restoreAuthUser(user: User) {
+  if (!auth) return;
+  await updateCurrentUser(auth, user);
 }
 
 export function listenAuthState(callback: (user: User | null) => void) {
