@@ -100,22 +100,20 @@ export async function verifyMovePreviewRemoval({
     });
 
     const moveButton = page.getByTestId('move-piece-button');
-    await expect.poll(async () => {
+    const moveStartAttempt = expect.poll(async () => {
       const flow = await page.evaluate(() => window.__YUT_QA_MOVE_PREVIEW_FLOW__ ?? null);
-      if (flow?.started) return 'started';
-      if (await moveButton.isVisible().catch(() => false)
-        && await moveButton.isEnabled().catch(() => false)) {
-        await moveButton.click({ timeout: 2_000 }).catch(async (error) => {
-          const started = await page.evaluate(() => window.__YUT_QA_MOVE_PREVIEW_FLOW__?.started ?? false);
-          if (!started) throw error;
-        });
-      }
-      return 'waiting';
+      return flow?.started ? 'started' : 'waiting';
     }, {
       timeout: 2_000,
       intervals: [50, 100, 200],
       message: '말 선택 단계가 있으면 선택과 이동 확정을 완료해 실제 이동 상태 전환이 시작되어야 합니다.',
     }).toBe('started');
+    const clickAttempt = moveButton.click({ timeout: 2_000 });
+    const [moveStartResult, clickResult] = await Promise.allSettled([moveStartAttempt, clickAttempt]);
+    if (moveStartResult.status === 'rejected') {
+      if (clickResult.status === 'rejected') throw clickResult.reason;
+      throw moveStartResult.reason;
+    }
 
     let moveFlow = null;
     await expect.poll(async () => {
