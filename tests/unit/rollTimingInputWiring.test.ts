@@ -19,7 +19,8 @@ test('타이밍 오브는 deadline opportunity와 leaf rAF canonical percent를 
   assert.match(controlSource, /frameAnchorElapsedMsRef\.current[\s\S]*capturedAt - frameAnchorCapturedAtRef\.current[\s\S]*pausedDurationMsRef\.current/);
   assert.doesNotMatch(controlSource, /performanceEpochOffsetRef/);
   assert.match(controlSource, /track\.style\.transform = 'none';[\s\S]*orb\.style\.left = getRollTimingOrbLeft\(snapshot\.positionPercent\)/);
-  assert.match(controlSource, /const snapshot = lastRenderedSnapshotRef\.current;[\s\S]*cancelFrameLoop\(\);[\s\S]*capturedPointerTimingRef\.current = \{ pointerId: event\.pointerId, resetKey, snapshot \}/);
+  assert.match(controlSource, /const snapshot = lastRenderedSnapshotRef\.current;[\s\S]*cancelFrameLoop\(\);[\s\S]*const targetRect = event\.currentTarget\.getBoundingClientRect\(\);[\s\S]*capturedPointerTimingRef\.current = \{[\s\S]*pointerId: event\.pointerId,[\s\S]*resetKey,[\s\S]*snapshot,[\s\S]*releaseBounds: \{[\s\S]*left: targetRect\.left,[\s\S]*right: targetRect\.right,[\s\S]*top: targetRect\.top,[\s\S]*bottom: targetRect\.bottom/);
+  assert.match(controlSource, /const targetRect = capturedTiming\.releaseBounds;[\s\S]*const releasedInsideButton = event\.clientX >= targetRect\.left[\s\S]*event\.clientY <= targetRect\.bottom/);
   assert.match(controlSource, /if \(releasedInsideButton\) submitSnapshot\(deadlineExpired \? makeDeadlineSnapshot\(\) : capturedTiming\.snapshot, deadlineExpired\)/);
   assert.match(controlSource, /pendingTimeoutSnapshotRef\.current = makeDeadlineSnapshot\(\) \?\? capturedTiming\.snapshot/);
   assert.match(controlSource, /heldTrack\.style\.transform = 'none';[\s\S]*heldOrb\.style\.left = getRollTimingOrbLeft\(snapshot\.positionPercent\)/);

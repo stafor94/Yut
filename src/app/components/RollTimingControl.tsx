@@ -36,6 +36,12 @@ type CapturedPointerTiming = {
   pointerId: number;
   resetKey: string;
   snapshot: RollTimingSnapshot;
+  releaseBounds: Readonly<{
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  }>;
 };
 
 type ReleasedPointerTiming = {
@@ -280,7 +286,18 @@ export function RollTimingControl({
     if (!snapshot || snapshot.resetKey !== resetKey) return;
     cancelFrameLoop();
     applyRenderedSnapshot(snapshot);
-    capturedPointerTimingRef.current = { pointerId: event.pointerId, resetKey, snapshot };
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    capturedPointerTimingRef.current = {
+      pointerId: event.pointerId,
+      resetKey,
+      snapshot,
+      releaseBounds: {
+        left: targetRect.left,
+        right: targetRect.right,
+        top: targetRect.top,
+        bottom: targetRect.bottom,
+      },
+    };
     releasedPointerTimingRef.current = null;
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -294,7 +311,7 @@ export function RollTimingControl({
     if (capturedTiming?.pointerId !== event.pointerId || capturedTiming.resetKey !== resetKey) return;
     capturedPointerTimingRef.current = null;
     releasedPointerTimingRef.current = { releasedAt: performance.now() };
-    const targetRect = event.currentTarget.getBoundingClientRect();
+    const targetRect = capturedTiming.releaseBounds;
     const releasedInsideButton = event.clientX >= targetRect.left && event.clientX <= targetRect.right
       && event.clientY >= targetRect.top && event.clientY <= targetRect.bottom;
     const deadlineExpired = autoSubmitAt > 0 && Date.now() >= autoSubmitAt;
