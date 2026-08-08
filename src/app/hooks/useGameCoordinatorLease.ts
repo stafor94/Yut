@@ -10,9 +10,12 @@ import {
   type GameSeatSnapshot,
 } from '../../features/room/services/roomService';
 import {
+  isCurrentClientGameCoordinatorLeaseRequest,
+  shouldApplyDisposedClientGameCoordinatorLeaseResult,
   stabilizeClientGameCoordinatorLease,
   type ClientGameCoordinatorLease,
   type ClientGameCoordinatorLeaseContext,
+  type ClientGameCoordinatorLeaseRequestContext,
 } from './clientGameCoordinatorLease';
 import { useDeadlineReached } from './useDeadlineReached';
 
@@ -48,6 +51,29 @@ export function useGameCoordinatorLease(params: Params) {
   }, [stableLeaseContext]);
   const stableLease = stableLeaseContext.lease;
 
+  const currentRequestContextRef = useRef<ClientGameCoordinatorLeaseRequestContext>({
+    roomId: params.activeRoomId,
+    screen: params.screen,
+    candidateSeatId: params.candidateSeatId,
+    eligible: params.eligible,
+  });
+  useLayoutEffect(() => {
+    currentRequestContextRef.current = {
+      roomId: params.activeRoomId,
+      screen: params.screen,
+      candidateSeatId: params.candidateSeatId,
+      eligible: params.eligible,
+    };
+  }, [params.activeRoomId, params.candidateSeatId, params.eligible, params.screen]);
+  useLayoutEffect(() => () => {
+    currentRequestContextRef.current = {
+      roomId: '',
+      screen: '',
+      candidateSeatId: '',
+      eligible: false,
+    };
+  }, []);
+
   const leaseState = useMemo(() => ({ ...stableLease, gameSeats: params.gameSeats }), [
     params.gameSeats,
     stableLease.coordinatorEpoch,
@@ -60,6 +86,16 @@ export function useGameCoordinatorLease(params: Params) {
 
   useEffect(() => {
     if (!params.activeRoomId || params.screen !== 'game' || !params.eligible || !params.candidateSeatId) return undefined;
+    const requestContext: ClientGameCoordinatorLeaseRequestContext = {
+      roomId: params.activeRoomId,
+      screen: params.screen,
+      candidateSeatId: params.candidateSeatId,
+      eligible: params.eligible,
+    };
+    const requestStillCurrent = () => isCurrentClientGameCoordinatorLeaseRequest(
+      requestContext,
+      currentRequestContextRef.current,
+    );
     const now = Date.now();
     const currentOwnerActive = isGameCoordinatorLeaseActive(leaseState, now);
     const renewAt = snapshot.coordinatorSeatId === params.candidateSeatId
@@ -73,15 +109,25 @@ export function useGameCoordinatorLease(params: Params) {
     const timer = window.setTimeout(() => {
       void claimGameCoordinatorLease(params.activeRoomId, params.candidateSeatId)
         .then((result) => {
-          if (disposed) return;
-          if (result.status === 'acquired' || result.status === 'renewed' || result.status === 'held') {
-            params.onLeaseChange(resultToLease(result));
+          const requestCurrent = requestStillCurrent();
+          if (requestCurrent && (result.status === 'acquired' || result.status === 'renewed' || result.status === 'held')) {
+            const resultLease = resultToLease(result);
+            if (!disposed || shouldApplyDisposedClientGameCoordinatorLeaseResult(stableLeaseContextRef.current.lease, resultLease)) {
+              stableLeaseContextRef.current = {
+                roomId: requestContext.roomId,
+                screen: requestContext.screen,
+                lease: resultLease,
+              };
+              params.onLeaseChange(resultLease);
+            }
           }
+          if (disposed || !requestCurrent) return;
           if (result.status === 'unavailable') {
             window.setTimeout(() => { if (!disposed) setRetryTick((tick) => tick + 1); }, GAME_COORDINATOR_RETRY_MS);
           }
         })
         .catch(() => {
+          if (disposed || !requestStillCurrent()) return;
           window.setTimeout(() => { if (!disposed) setRetryTick((tick) => tick + 1); }, GAME_COORDINATOR_RETRY_MS);
         });
     }, delayMs);
