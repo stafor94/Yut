@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { withLocalMovePiecesFallback } from '../../src/app/flows/localMoveOwnership';
+import { reduceMoveCommand } from '../../src/game-core/gameEngineCore';
 
 const pendingSource = readFileSync('src/app/hooks/usePendingRemoteActions.ts', 'utf8');
 const appSource = readFileSync('src/app/App.tsx', 'utf8');
@@ -57,13 +58,64 @@ test('current readiness state and pieces are used for ownership preparation', ()
   assert.match(ownershipSource, /findActive\(\)/);
 });
 
-test('manual and automatic movement retain the same readiness-driven moveSelectedPiece path', () => {
+test('internal BackDo pass readiness stays separate from move button eligibility', () => {
   assert.match(appSource, /onMoveSelectedPiece=\{\(\) => moveSelectedPiece\(\)\}/);
   assert.match(appSource, /\[activeRoomId, activeSeat, canRequestMove,[\s\S]*selectedPieceId,[\s\S]*roll/);
   assert.match(appSource, /sort\(\(left, right\) => left\.label\.localeCompare\(right\.label, undefined, \{ numeric: true \}\)\)\[0\]/);
   assert.match(appSource, /if \(activeRoomId\) \{\s*if \(!canRequestMove\) return;\s*void moveSelectedPiece\(\);/);
   assert.match(appSource, /const canRequestMove = Boolean\(canSubmitTurnAction && !hasPendingOnlineMoveRequest/);
-  assert.match(appSource, /const canUseMoveButton = canRequestMove;/);
+  assert.match(appSource, /const canUseMoveButton = Boolean\(canRequestMove && canMoveSelectedPiece\);/);
+  assert.match(appSource, /canUseMoveButton=\{canUseMoveButton\}/);
+  assert.match(screenSource, /canUseMoveButton: boolean;/);
+  assert.match(screenSource, /canRequestMove=\{canUseMoveButton && !presentationTurn\.isFrozen && !deferRollDerivedContent\}/);
+
+  const noMovableAutoPassEffect = appSource.match(/if \(movablePieces\.length === 0\) \{[\s\S]*?NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS\);/u)?.[0] ?? '';
+  assert.ok(noMovableAutoPassEffect, 'no-movable auto-pass effect must remain present');
+  assert.equal((noMovableAutoPassEffect.match(/moveSelectedPiece\(0, \{ timedOut: true \}\)/g) ?? []).length, 1);
+  assert.match(appSource, /const payload = \{\s*pieceId: '',\s*extraSteps,/);
+});
+
+test('empty-piece BackDo move command advances to the next turn exactly once', () => {
+  let movePieceSubmissionCount = 0;
+  const submitBackDoPass = () => {
+    movePieceSubmissionCount += 1;
+    return reduceMoveCommand({
+      state: {
+        pieces: [
+          { id: 'host-piece-1', ownerId: 'host', label: '말1', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+          { id: 'guest-piece-1', ownerId: 'guest', label: '말1', nodeIndex: 0, nodeId: 'n01', started: false, finished: false },
+        ],
+        turnIndex: 0,
+        turnOrderIds: ['host', 'guest'],
+        roll: { name: '빽도', steps: -1, bonus: false },
+        logs: [],
+        winner: '',
+        turnOrderPhase: { active: false },
+        turnOrderIntro: null,
+        pendingTrapPlacement: null,
+        shieldedPieceIds: [],
+        trapNodes: [],
+        boardItems: [],
+        ownedItems: {},
+      } as never,
+      actorId: 'host',
+      pieceId: '',
+      branchChoice: 'outer',
+      actorLogName: 'P1',
+      playMode: 'individual',
+      sides: [],
+      makeLog: (logs, text) => ({ id: logs.length + 1, text }),
+    });
+  };
+
+  const result = submitBackDoPass();
+  assert.equal(movePieceSubmissionCount, 1);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.payload.pieceId, '');
+  assert.equal(result.payload.skipped, true);
+  assert.equal(result.patch.turnIndex, 1);
+  assert.equal(result.patch.roll, null);
 });
 
 test('capture presentation uses one stable key across local, authoritative, and recovery paths', () => {
