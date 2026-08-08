@@ -14,7 +14,7 @@ Do not proceed from remembered or copied instructions when the repository files 
 
 Codex must act as a careful patch generator, not as an autonomous product owner.
 
-The highest priority is to avoid repeated failed fixes, unrelated changes, and speculative refactoring.
+The highest priority is to avoid repeated failed fixes, unrelated changes, speculative refactoring, and unnecessary user confirmation loops.
 
 ---
 
@@ -24,12 +24,15 @@ The current user message takes priority over earlier conversation context. Class
 
 - A complaint, retrospective, question, explanation request, or documentation request is not permission to resume an earlier code, PR, merge, or Actions task.
 - Do not run repository mutations merely because an earlier task remains unfinished. Resume it only when the current message explicitly asks for that work.
-- Preserve approvals already given for the same scope. Do not ask for the same plan, implementation, push, review, or merge approval again unless the scope materially expands or a forced stop condition is reached.
+- An explicit modification request is standing authorization for the safe in-scope workflow through investigation, implementation, verification, push, Draft PR, Ready transition, Required Checks, merge, and exact merge-SHA Main Branch QA unless the user limits the completion scope.
+- Do not ask for approval or confirmation again merely because a session/tool changed, a command failed, a Check failed, a root-cause analysis was revised, or a directly related follow-up fix is required. Re-analyze, keep the task within its requested product goal, and continue through the normal gates.
+- Ask the user a question only when the task cannot be completed safely without a genuinely non-inferable product choice, or when the next action has material irreversible/destructive, security, credential, privacy, or data-loss risk.
+- If investigation exposes an unrelated root cause or separate product goal, keep it out of the current PR and report it as out of scope. Do not turn that discovery into a routine approval request for expanding the current PR.
 - After a tool or command fails, identify whether the cause is authentication, input, missing resource, unsupported capability, transient infrastructure, or a real product/CI failure before changing tools.
 - Do not repeat the same lookup through multiple tools without a specific missing datum. Reuse confirmed repository, branch, PR, SHA, Run, and issue identifiers.
 - Do not report that another approach will be tried unless it is immediately executed and produces a concrete result. Report results, not intentions.
 - Do not create extra branches, PRs, Issues, workflows, commits, or Runs to work around an information-access problem.
-- For documentation-only work, keep the change and verification documentation-only. Do not add or modify product code, tests, dependencies, fixtures, or workflows unless the user separately approves that expanded scope.
+- For documentation-only work, keep the change and verification documentation-only. Do not add or modify product code, tests, dependencies, fixtures, or workflows unless the user's requested outcome actually requires that expanded scope.
 
 When the user explicitly waives automated tests for a documentation-only change, manual review of the final Markdown diff, links, contradictions, and changed-file scope is the verification. Record automated checks as not run by request; do not invent replacement product QA.
 
@@ -45,7 +48,8 @@ For every task:
 4. Do not modify files until the root cause or implementation target is clear.
 5. Make the smallest safe change possible and avoid unrelated changes.
 6. Verify the result using available commands or manual reasoning.
-7. Report exactly what changed and how it was verified.
+7. Continue through the completion gates authorized by the current request without asking for routine confirmations.
+8. Report exactly what changed and how it was verified.
 
 ---
 
@@ -61,20 +65,21 @@ For bug fixes:
 6. Verify the fix.
 7. Report the root cause, files changed, change summary, verification result, and remaining risks.
 
-If the same bug has already failed to be fixed two times:
+If the same bug or a structurally equivalent fix attempt has already failed two times:
 
-1. Stop making code changes.
+1. Stop the current edit/retry loop.
 2. Re-read the relevant files.
 3. Re-check `BUG_HISTORY.md`.
-4. Identify why previous fixes failed.
-5. Propose a new fix plan.
-6. Wait for approval before editing code.
+4. Identify why previous fixes failed and discard the invalid assumption.
+5. Rebuild the minimum fix plan from the new evidence.
+6. If the revised plan still serves the same explicit user goal and does not require a genuinely non-inferable or materially risky decision, continue automatically with the revised plan. Do not ask for approval merely because the plan changed.
+7. If the new evidence proves the required work is a separate product goal, leave it out of the current PR and report the boundary.
 
 ---
 
 ## Strict change limits
 
-Do not do any of the following unless explicitly requested:
+Do not do any of the following unless the user's requested outcome actually requires it:
 
 - Do not redesign the UI.
 - Do not rewrite large parts of the code.
@@ -85,6 +90,8 @@ Do not do any of the following unless explicitly requested:
 - Do not perform broad refactoring.
 - Do not make speculative improvements.
 - Do not claim the issue is fixed without verification.
+
+If a larger change is genuinely necessary for the same requested outcome, first prove why the smaller path cannot work, keep the change as narrow as possible, and document the reason. Do not insert a routine user-approval gate solely because the diff became larger.
 
 ---
 
@@ -161,8 +168,8 @@ If verification was not possible, the final response must explicitly say:
 PR 생성, 병합, Actions 확인과 실패 처리는 `DEVELOPMENT_PLAYBOOK.md`를 따른다.
 
 - 기본 PR은 Draft로 생성한다. 로컬 검증과 전체 diff 검토를 마치면 ready로 전환해 전체 PR QA를 시작하고, 해당 Required QA가 성공한 뒤에만 병합한다. Draft 반복 push에서는 빠른 Build/Unit gate만 실행한다.
-- 기존 workflow와 branch event만 사용하며 workflow 변경은 사용자 승인이 필요하다.
+- 기존 workflow와 branch event를 우선 사용한다. workflow 변경은 진단 편의나 상태 조회를 위해 만들지 않는다. 명시된 사용자 목표를 달성하는 데 필수이고 기존 공식 경로로는 충족할 수 없음이 확인된 경우에는 별도 승인 요청 없이 최소 변경으로 진행하고 변경 이유와 검증 경로를 기록한다.
 - 임시 workflow, inspector/integration PR, 상태 출력용 Issue와 빈 커밋을 만들지 않는다.
 - 실행 중인 Run을 불필요한 후속 push로 취소하지 않는다.
-- 동일 오류 2회, fix cycle 2회 실패, 범위 확대 또는 별도 검증 인프라 필요 시 교본의 강제 중단선을 적용한다.
+- 동일 오류 2회, fix cycle 2회 실패, 범위 확대 또는 별도 검증 인프라 필요 시 교본의 재분석 중단선을 적용하되, 같은 사용자 목표 안에서 안전하게 새 계획을 확정할 수 있으면 승인 요청 없이 이어서 진행한다.
 - 병합 후 해당 merge commit의 Main Branch QA `completed/success`를 직접 확인한다.
