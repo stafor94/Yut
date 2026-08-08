@@ -693,7 +693,7 @@ export function App() {
   const hasPendingOnlineMoveRequest = Boolean(activeRoomId && pendingBlockingRemoteActionCount > 0);
   const canRequestMove = Boolean(canSubmitTurnAction && !hasPendingOnlineMoveRequest && (roll || stackedRollSelectedResult) && !rollResultHolding && !rollAnimation && !moveInProgress && !movingPieceId && (canMoveSelectedPiece || noMovableBackDoRoll));
   const previewNodeIds = useMemo(() => canRequestMove && canSeatControlPiece(activeSeat, selectedPiece) ? getMovePreviewNodeIds(selectedPiece, effectiveMoveContext.roll, displayBranchChoice) : [], [activeSeat, canRequestMove, displayBranchChoice, effectiveMoveContext.roll, selectedPiece]);
-  const canUseMoveButton = canRequestMove;
+  const canUseMoveButton = Boolean(canRequestMove && canMoveSelectedPiece);
   const rollActionBlockReasons = useMemo(() => getRollActionBlockReasons(rollActionGuardInput), [activeRoomId, activeSeat?.id, activeSeat?.isAI, activeSeatAutoPlay, activeItemPromptTypes.length, activeTurnOrderIntro, hasPendingGameStateSave, isRollLocked, isSpectator, localSeatId, movingPieceId, pendingItemPickup, effectivePendingLocalRemoteActionCount, pendingLocalRemoteActionCount, roll, rollInProgress, trapPlacementActive, turnOrderPhase.active, waitingForOnlineTurnOrder, winner, stackedRollMode, rollStack.length, rollStackClosed]);
   const canRollNow = canRoll(rollActionGuardInput) && !rollAnimation;
   const stalledTurnMovablePieces = useMemo(() => {
@@ -4499,7 +4499,7 @@ export function App() {
       boardTurnIndicatorRollStack={boardTurnIndicatorRollStack}
       branchChoice={branchChoice}
       canContinueRace={canShowContinueRaceButton}
-      canRequestMove={canRequestMove}
+      canUseMoveButton={canUseMoveButton}
       canRollNow={canRollNow}
       canRollForTurnOrderNow={canRollForTurnOrderNow}
       canSeatControlPiece={canSeatControlPiece}
