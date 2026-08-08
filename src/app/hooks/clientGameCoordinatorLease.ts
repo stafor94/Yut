@@ -10,6 +10,13 @@ export type ClientGameCoordinatorLeaseContext = {
   lease: ClientGameCoordinatorLease;
 };
 
+export type ClientGameCoordinatorLeaseRequestContext = {
+  roomId: string;
+  screen: string;
+  candidateSeatId: string;
+  eligible: boolean;
+};
+
 const getLeaseExpiryMillis = (value: unknown) => {
   if (value && typeof value === 'object' && 'toMillis' in value && typeof value.toMillis === 'function') {
     const millis = Number(value.toMillis());
@@ -36,6 +43,32 @@ export const isCompleteClientGameCoordinatorLease = (lease: ClientGameCoordinato
   && getLeaseEpoch(lease.coordinatorEpoch) > 0
   && getLeaseExpiryMillis(lease.coordinatorLeaseExpiresAt) > 0,
 );
+
+export const isCurrentClientGameCoordinatorLeaseRequest = (
+  request: ClientGameCoordinatorLeaseRequestContext,
+  current: ClientGameCoordinatorLeaseRequestContext,
+) => Boolean(
+  request.roomId
+  && request.eligible
+  && request.roomId === current.roomId
+  && request.screen === 'game'
+  && current.screen === 'game'
+  && request.candidateSeatId
+  && request.candidateSeatId === current.candidateSeatId
+  && current.eligible
+);
+
+export const shouldApplyDisposedClientGameCoordinatorLeaseResult = (
+  current: ClientGameCoordinatorLease,
+  result: ClientGameCoordinatorLease,
+) => {
+  if (!isCompleteClientGameCoordinatorLease(result)) return false;
+  const currentEpoch = getLeaseEpoch(current.coordinatorEpoch);
+  const resultEpoch = getLeaseEpoch(result.coordinatorEpoch);
+  if (resultEpoch !== currentEpoch) return resultEpoch > currentEpoch;
+  if (current.coordinatorSeatId && result.coordinatorSeatId !== current.coordinatorSeatId) return false;
+  return getLeaseExpiryMillis(result.coordinatorLeaseExpiresAt) >= getLeaseExpiryMillis(current.coordinatorLeaseExpiresAt);
+};
 
 export const stabilizeClientGameCoordinatorLease = (
   previous: ClientGameCoordinatorLeaseContext,
