@@ -41,7 +41,8 @@ test('브라우저 QA가 실제 가시성·고정 좌표·1000ms 제거 시점�
   assert.match(browserQaSource, /new MutationObserver/);
   assert.match(browserQaSource, /performance\.now\(\)/);
   assert.match(browserQaSource, /const sampleAt = \(elapsedMs\) => new Promise/);
-  assert.match(browserQaSource, /Promise\.all\(\[0, 500, 900\]\.map\(sampleAt\)\)/);
+  assert.match(browserQaSource, /samplesPromise: Promise\.all\(\[0, 500, 900\]\.map\(sampleAt\)\)/);
+  assert.match(browserQaSource, /releasedHoldObservation = createResultHoldObservation\(releasedHold\);\s*await new Promise\(\(resolve\) => window\.requestAnimationFrame\(resolve\)\);/);
   assert.doesNotMatch(browserQaSource, /waitUntilElapsed\(holdStartedAt, (?:500|900)\)/);
   assert.match(browserQaSource, /rollStageVisibleWhileHeld/);
   assert.match(browserQaSource, /snapshot\.capturedAt > pointerDownSnapshot\.capturedAt/);
