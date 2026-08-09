@@ -276,97 +276,12 @@ async function dispatchPointerDownSnapshotGesture(page, {
     });
     holdObserver.observe(document.body, { childList: true, subtree: true });
 
-    const submissionPromise = shouldAwaitSubmission ? observeSubmission() : null;
-    const nativeRandom = Math.random;
-    const releasedAt = performance.now();
-    let releasedHold = null;
-    Math.random = () => 0.9;
-    try {
-      if (requestedReleaseMode === 'cancel') {
-        button.dispatchEvent(new PointerEvent('pointercancel', {
-          bubbles: true,
-          cancelable: true,
-          composed: true,
-          pointerId,
-          pointerType: 'touch',
-          isPrimary: true,
-          button: 0,
-          buttons: 0,
-          clientX: buttonCenterX,
-          clientY: buttonCenterY,
-        }));
-      } else {
-        const releaseX = requestedReleaseMode === 'inside' ? buttonCenterX : buttonRect.right + 24;
-        button.dispatchEvent(new PointerEvent('pointerup', {
-          bubbles: true,
-          cancelable: true,
-          composed: true,
-          pointerId,
-          pointerType: 'touch',
-          isPrimary: true,
-          button: 0,
-          buttons: 0,
-          clientX: releaseX,
-          clientY: buttonCenterY,
-        }));
-        if (requestedReleaseMode === 'inside') {
-          releasedHold = await waitForCondition(
-            () => document.querySelector(holdSelector),
-            1000,
-            'pointerup 제출 뒤 정지 결과 막대가 생성되지 않았습니다.',
-          );
-          await new Promise((resolve) => window.requestAnimationFrame(resolve));
-        }
-      }
-      button.dispatchEvent(new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-        detail: 1,
-      }));
-    } finally {
-      Math.random = nativeRandom;
-    }
-
-    const resultHold = {
-      exists: false,
-      parentIsPlayControls: false,
-      snapshotPositionPercent: Number.NaN,
-      snapshotPhaseMs: Number.NaN,
-      widthDeltaPx: Number.NaN,
-      heightDeltaPx: Number.NaN,
-      rollStageVisible: false,
-      rollStageVisibleWhileHeld: false,
-      samples: [],
-      observerAddedDelayMs: Number.NaN,
-      removalDelayMs: Number.NaN,
-    };
-
-    if (requestedReleaseMode === 'inside') {
-      const heldMeter = releasedHold ?? await waitForCondition(
-        () => document.querySelector(holdSelector),
-        1000,
-        '정지 결과 막대가 생성되지 않았습니다.',
-      );
+    const createResultHoldObservation = (heldMeter) => {
       if (!(heldMeter instanceof HTMLElement)) throw new Error('정지 결과 막대가 HTMLElement가 아닙니다.');
       const heldOrb = heldMeter.querySelector('.roll-timing-orb');
       if (!(heldOrb instanceof HTMLElement)) throw new Error('정지 결과 오브를 찾지 못했습니다.');
       const holdStartedAt = Number(heldMeter.dataset.holdStartedAt);
       if (!Number.isFinite(holdStartedAt)) throw new Error('정지 결과 실제 표시 시작 시각을 찾지 못했습니다.');
-      await waitForCondition(
-        () => Number.isFinite(holdLifecycle.addedAt),
-        1000,
-        'MutationObserver가 정지 결과 생성을 감지하지 못했습니다.',
-      );
-
-      resultHold.exists = true;
-      resultHold.parentIsPlayControls = heldMeter.parentElement?.classList.contains('play-controls') ?? false;
-      resultHold.snapshotPositionPercent = Number(heldMeter.dataset.positionPercent);
-      resultHold.snapshotPhaseMs = Number(heldMeter.dataset.phaseMs);
-      const heldMeterRect = heldMeter.getBoundingClientRect();
-      resultHold.widthDeltaPx = Math.abs(heldMeterRect.width - originalMeterWidth);
-      resultHold.heightDeltaPx = Math.abs(heldMeterRect.height - originalMeterHeight);
-      resultHold.observerAddedDelayMs = holdLifecycle.addedAt - holdStartedAt;
 
       const sampleHold = (elapsedMs) => {
         const style = window.getComputedStyle(heldMeter);
@@ -404,7 +319,104 @@ async function dispatchPointerDownSnapshotGesture(page, {
           }
         }, delayMs);
       });
-      resultHold.samples.push(...await Promise.all([0, 500, 900].map(sampleAt)));
+
+      return {
+        heldMeter,
+        holdStartedAt,
+        samplesPromise: Promise.all([0, 500, 900].map(sampleAt)),
+      };
+    };
+
+    const submissionPromise = shouldAwaitSubmission ? observeSubmission() : null;
+    const nativeRandom = Math.random;
+    const releasedAt = performance.now();
+    let releasedHold = null;
+    let releasedHoldObservation = null;
+    Math.random = () => 0.9;
+    try {
+      if (requestedReleaseMode === 'cancel') {
+        button.dispatchEvent(new PointerEvent('pointercancel', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          pointerId,
+          pointerType: 'touch',
+          isPrimary: true,
+          button: 0,
+          buttons: 0,
+          clientX: buttonCenterX,
+          clientY: buttonCenterY,
+        }));
+      } else {
+        const releaseX = requestedReleaseMode === 'inside' ? buttonCenterX : buttonRect.right + 24;
+        button.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          pointerId,
+          pointerType: 'touch',
+          isPrimary: true,
+          button: 0,
+          buttons: 0,
+          clientX: releaseX,
+          clientY: buttonCenterY,
+        }));
+        if (requestedReleaseMode === 'inside') {
+          releasedHold = await waitForCondition(
+            () => document.querySelector(holdSelector),
+            1000,
+            'pointerup 제출 뒤 정지 결과 막대가 생성되지 않았습니다.',
+          );
+          releasedHoldObservation = createResultHoldObservation(releasedHold);
+          await new Promise((resolve) => window.requestAnimationFrame(resolve));
+        }
+      }
+      button.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        detail: 1,
+      }));
+    } finally {
+      Math.random = nativeRandom;
+    }
+
+    const resultHold = {
+      exists: false,
+      parentIsPlayControls: false,
+      snapshotPositionPercent: Number.NaN,
+      snapshotPhaseMs: Number.NaN,
+      widthDeltaPx: Number.NaN,
+      heightDeltaPx: Number.NaN,
+      rollStageVisible: false,
+      rollStageVisibleWhileHeld: false,
+      samples: [],
+      observerAddedDelayMs: Number.NaN,
+      removalDelayMs: Number.NaN,
+    };
+
+    if (requestedReleaseMode === 'inside') {
+      const observation = releasedHoldObservation ?? createResultHoldObservation(releasedHold ?? await waitForCondition(
+        () => document.querySelector(holdSelector),
+        1000,
+        '정지 결과 막대가 생성되지 않았습니다.',
+      ));
+      const { heldMeter, holdStartedAt, samplesPromise } = observation;
+      await waitForCondition(
+        () => Number.isFinite(holdLifecycle.addedAt),
+        1000,
+        'MutationObserver가 정지 결과 생성을 감지하지 못했습니다.',
+      );
+
+      resultHold.exists = true;
+      resultHold.parentIsPlayControls = heldMeter.parentElement?.classList.contains('play-controls') ?? false;
+      resultHold.snapshotPositionPercent = Number(heldMeter.dataset.positionPercent);
+      resultHold.snapshotPhaseMs = Number(heldMeter.dataset.phaseMs);
+      const heldMeterRect = heldMeter.getBoundingClientRect();
+      resultHold.widthDeltaPx = Math.abs(heldMeterRect.width - originalMeterWidth);
+      resultHold.heightDeltaPx = Math.abs(heldMeterRect.height - originalMeterHeight);
+      resultHold.observerAddedDelayMs = holdLifecycle.addedAt - holdStartedAt;
+      resultHold.samples.push(...await samplesPromise);
       await waitForCondition(
         () => Number.isFinite(holdLifecycle.removedAt),
         1000,
