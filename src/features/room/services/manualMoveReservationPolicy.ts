@@ -52,6 +52,8 @@ export const getManualMoveReservationKey = (roomId: string, actorId: string) => 
 export const isManualPlayerMove = (action: CommittableGameAction) => {
   const clientActionId = getClientActionId(action);
   return action.type === 'move_piece'
+    && typeof action.payload?.pieceId === 'string'
+    && Boolean(action.payload.pieceId)
     && Boolean(action.actorId)
     && clientActionId.startsWith(`move_piece:${action.actorId}:`)
     && action.payload?.recoveredByCoordinator !== true
