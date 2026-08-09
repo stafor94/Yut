@@ -39,6 +39,7 @@ const manualAction = {
   type: 'move_piece',
   actorId,
   payload: {
+    pieceId: 'piece-1',
     clientActionId: reservation.clientActionId,
     clientActionStartedAt: reservation.clientActionStartedAt,
   },
@@ -57,6 +58,19 @@ test('수동 이동 식별자는 actor 뒤 authoritative sequence와 turn을 추
   ]) {
     assert.equal(getManualMoveActionIdentity({ type: 'move_piece', actorId, payload: { clientActionId } }), null);
   }
+});
+
+test('빈 pieceId 빽도 자동 패스는 수동 이동 reservation으로 분류하지 않는다', () => {
+  const backDoAutoPassAction = {
+    ...manualAction,
+    payload: {
+      ...manualAction.payload,
+      pieceId: '',
+    },
+  };
+
+  assert.equal(getManualMoveActionIdentity(backDoAutoPassAction), null);
+  assert.equal(getCoordinatorTimeoutDeadlineAt(backDoAutoPassAction), 0);
 });
 
 test('coordinator timeout deadline과 수동 reservation transaction read marker를 구분한다', () => {
