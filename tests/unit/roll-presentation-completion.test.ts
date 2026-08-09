@@ -105,7 +105,7 @@ test('presentation active 상태는 visual completion 전까지 부모 move/roll
   assert.match(appSource, /canRequestMove = Boolean\(canSubmitTurnAction && !hasPendingOnlineMoveRequest/);
   assert.match(appSource, /pendingLocalRemoteActionsRef\.current\.size > 0/);
   assert.match(appSource, /pendingLocalRemoteActionCount: activeRoomId \? pendingBlockingRemoteActionCount/);
-  assert.match(gameScreenViewSource, /canRequestMove=\{canRequestMove && !presentationTurn\.isFrozen && !deferRollDerivedContent\}/);
+  assert.match(gameScreenViewSource, /canRequestMove=\{canUseMoveButton && !presentationTurn\.isFrozen && !deferRollDerivedContent\}/);
   assert.match(gameScreenViewSource, /canRollNow=\{canRollNow && !presentationTurn\.isFrozen && !deferRollDerivedContent\}/);
 });
 
