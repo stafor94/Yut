@@ -349,7 +349,16 @@ test.describe('온라인 빽도 no-movable 자동 패스', () => {
     ]);
     const passSequences = getBackDoPassSequences(sequences, actor.seatId);
     expect(passSequences).toHaveLength(1);
-    expect(passSequences[0]?.action?.payload?.clientActionStartedAt ?? 0).toBe(0);
+    expect(passSequences[0]?.clientMutationId).toBe(actorTrace.moveMutationIds[0]);
+    const backDoRollSequence = sequences.find((sequence) => sequence?.type === 'roll_yut'
+      && sequence?.actorId === actor.seatId
+      && sequence?.payload?.rollName === '빽도');
+    const rollReadyAt = Number(backDoRollSequence?.payload?.rollPresentationReadyAt
+      ?? backDoRollSequence?.patch?.rollResultReadyAt
+      ?? 0);
+    const passStartedAt = Number(passSequences[0]?.action?.payload?.clientActionStartedAt ?? 0);
+    expect(rollReadyAt).toBeGreaterThan(0);
+    expect(passStartedAt).toBeGreaterThanOrEqual(rollReadyAt);
     expect(Number(authoritativeState?.turnIndex ?? -1)).toBe(actorStateBefore.turnIndex + 1);
     expect(authoritativeState?.roll ?? null).toBeNull();
     expect(authoritativeState?.lastMovedPieceIds ?? []).toEqual([]);
