@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { getTurnActionTimeoutMsForCount } from '../../src/features/room/services/roomTiming.ts';
 import { commitAuthoritativeStatePatchForQa } from './authoritative-state-fixture.js';
 import { makeQaName, normalizeQaNickname } from './env.js';
 import { waitForRoomQaAccess } from './room-access.js';
@@ -238,8 +239,9 @@ async function prepareAuthoritativeBackDoState({ roomId, page, guestPage, actor,
     captureEffect: null,
     trapEffect: null,
     fallEffect: null,
+    turnActionTimeoutCountBySeatId: {},
     turnDeadlineKind: 'roll',
-    turnDeadlineAt: readyAt + 60_000,
+    turnDeadlineAt: readyAt + getTurnActionTimeoutMsForCount(0),
   }, actor.seatId, {
     fixtureName: 'backdo-no-movable-ready',
     errorLabel: 'BackDo no-movable ready fixture',
