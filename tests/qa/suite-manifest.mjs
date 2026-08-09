@@ -3,6 +3,7 @@ const timingPointerSpec = 'tests/mobile/roll-timing-pointer-capture.spec.js';
 const timingOverflowSpec = 'tests/mobile/roll-timing-overflow.spec.js';
 const timingTimeoutSpec = 'tests/mobile/roll-timing-timeout-deadline.spec.js';
 const rollSubmitMoveDeadlineSpec = 'tests/mobile/roll-submit-move-deadline.spec.js';
+const branchActionGateSpec = 'tests/mobile/branch-action-gate.spec.js';
 const onlineMoveSingleExecutionSpec = 'tests/mobile/online-move-single-execution.spec.js';
 const firebaseIsolationTitle = 'QA browser app uses only the isolated Firebase emulators';
 const timingNiceSnapshotTitle = 'pointerdown Nice snapshot은 오래 눌러도 live freeze·result hold·authoritative 판정이 Nice로 유지된다';
@@ -115,8 +116,8 @@ export const qaSuiteManifest = Object.freeze({
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    sharedTargets: Object.freeze([timingPointerSpec, timingOverflowSpec, timingTimeoutSpec, rollSubmitMoveDeadlineSpec]),
-    tests: Object.freeze([timingPointerSpec, timingOverflowSpec, timingTimeoutSpec, rollSubmitMoveDeadlineSpec]),
+    sharedTargets: Object.freeze([timingPointerSpec, timingOverflowSpec, timingTimeoutSpec, rollSubmitMoveDeadlineSpec, branchActionGateSpec]),
+    tests: Object.freeze([timingPointerSpec, timingOverflowSpec, timingTimeoutSpec, rollSubmitMoveDeadlineSpec, branchActionGateSpec]),
   }),
   'mobile-galaxy-move-ack': Object.freeze({
     label: 'Mobile Galaxy move ACK',
