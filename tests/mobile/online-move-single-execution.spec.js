@@ -13,8 +13,8 @@ import { seedRoomPieceAtNodeForQa } from '../helpers/room-state-fixture.js';
 
 const SEEDED_ROOM_RELOAD_DEADLINE_MS = 60_000;
 
-async function installDeterministicHumanClient(context, { turnOrderResult, moveResultDelayMs = 0 }) {
-  await context.addInitScript(({ queuedTurnOrderResult, configuredMoveResultDelayMs }) => {
+async function installDeterministicHumanClient(context, { turnOrderResult, moveResultDelayMs = 0, rollRandom = 0.6 }) {
+  await context.addInitScript(({ queuedTurnOrderResult, configuredMoveResultDelayMs, configuredRollRandom }) => {
     window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = [queuedTurnOrderResult];
     window.__YUT_QA_ROLL_TIMING_INITIAL_POSITION_PERCENT__ = 30;
     window.__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__ = 3_000;
@@ -26,7 +26,7 @@ async function installDeterministicHumanClient(context, { turnOrderResult, moveR
       const target = event.target;
       if (!(target instanceof Element) || !target.closest('[data-testid="roll-yut-button"]')) return;
       if (document.querySelector('.turn-order-overlay')) return;
-      Math.random = () => 0.6;
+      Math.random = () => configuredRollRandom;
       queueMicrotask(() => {
         Math.random = nativeRandom;
       });
@@ -40,7 +40,7 @@ async function installDeterministicHumanClient(context, { turnOrderResult, moveR
     const observer = new MutationObserver(submitTurnOrderWhenReady);
     observer.observe(document, { childList: true, subtree: true, attributes: true });
     window.addEventListener('load', submitTurnOrderWhenReady);
-  }, { queuedTurnOrderResult: turnOrderResult, configuredMoveResultDelayMs: moveResultDelayMs });
+  }, { queuedTurnOrderResult: turnOrderResult, configuredMoveResultDelayMs: moveResultDelayMs, configuredRollRandom: rollRandom });
 }
 
 async function waitForGameReady(page, { expectRollEnabled = false } = {}) {
@@ -65,6 +65,7 @@ async function openTwoHumanGulGame({
   executorRole,
   moveResultDelayMs = 0,
   pieceCount = 1,
+  rollRandom = 0.6,
 }) {
   await hostPage.setViewportSize({ width: 412, height: 915 });
   const guestContext = await browser.newContext({ viewport: { width: 412, height: 915 } });
@@ -93,10 +94,12 @@ async function openTwoHumanGulGame({
     await installDeterministicHumanClient(hostContext, {
       turnOrderResult: executorRole === 'host' ? '모' : '도',
       moveResultDelayMs: executorRole === 'host' ? moveResultDelayMs : 0,
+      rollRandom,
     });
     await installDeterministicHumanClient(guestContext, {
       turnOrderResult: executorRole === 'guest' ? '모' : '도',
       moveResultDelayMs: executorRole === 'guest' ? moveResultDelayMs : 0,
+      rollRandom,
     });
 
     await createRoomFromLobby(hostPage, roomTitle);
@@ -124,10 +127,18 @@ async function getExecutorPieceIdentity(page) {
   return page.evaluate(() => {
     const debug = window.__YUT_DEBUG_STATE__ ?? {};
     const ownerSeatId = typeof debug.localSeatId === 'string' ? debug.localSeatId : '';
-    const piece = Array.isArray(debug.pieces)
-      ? debug.pieces.find((candidate) => candidate?.ownerId === ownerSeatId)
-      : null;
-    return { ownerSeatId, pieceId: typeof piece?.id === 'string' ? piece.id : '' };
+    const ownedPieces = Array.isArray(debug.pieces)
+      ? debug.pieces
+        .filter((candidate) => candidate?.ownerId === ownerSeatId)
+        .sort((left, right) => String(left?.label ?? '').localeCompare(String(right?.label ?? ''), undefined, { numeric: true }))
+      : [];
+    const piece = ownedPieces[0] ?? null;
+    return {
+      ownerSeatId,
+      pieceId: typeof piece?.id === 'string' ? piece.id : '',
+      pieceLabel: typeof piece?.label === 'string' ? piece.label : '',
+      otherPieceIds: ownedPieces.slice(1).map((candidate) => String(candidate?.id ?? '')).filter(Boolean),
+    };
   });
 }
 
@@ -198,7 +209,29 @@ async function submitPerfectGul(page, {
         return;
       }
       if (performance.now() - startedAt > 30_000) {
-        reject(new Error('걸 결과 뒤 move action-ready 상태를 관찰하지 못했습니다.'));
+        const pendingDebug = window.__YUT_PENDING_REMOTE_ACTION_DEBUG__ ?? null;
+        reject(new Error(`move action-ready 상태를 관찰하지 못했습니다: ${JSON.stringify({
+          activeSeat: debug.activeSeat,
+          localSeatId: debug.localSeatId,
+          isMyTurn: debug.isMyTurn,
+          pieces: debug.pieces,
+          selectedPieceId: debug.selectedPieceId,
+          activeMovablePiece: debug.activeMovablePiece,
+          canMoveSelectedPiece: debug.canMoveSelectedPiece,
+          canSubmitTurnAction: debug.canSubmitTurnAction,
+          canRequestMove: debug.canRequestMove,
+          pendingLocalRemoteActionCount: debug.pendingLocalRemoteActionCount,
+          pendingLocalRemoteActions: debug.actionPipeline?.pendingLocalRemoteActions,
+          pendingRemoteActionGate: pendingDebug,
+          roll: debug.roll,
+          rollResultHolding: debug.rollResultHolding,
+          rollInProgress: debug.rollInProgress,
+          movingPieceId: debug.movingPieceId,
+          turnDeadlineKind: debug.turnDeadlineKind,
+          turnDeadlineAt: debug.turnDeadlineAt,
+          rollResultReadyAt: debug.rollResultReadyAt,
+          effectiveRollResultReadyAt: debug.effectiveRollResultReadyAt,
+        })}`));
         return;
       }
       requestAnimationFrame(sample);
@@ -357,6 +390,19 @@ async function expectSingleAuthoritativeMove(roomId, localSeatId) {
   }, { timeout: 15_000, intervals: [100, 250, 500] }).toBe(1);
 }
 
+async function expectAuthoritativeRoll(roomId, localSeatId, expectedName, expectedSteps) {
+  await expect.poll(async () => {
+    const sequences = await getRoomSequencesForQa(roomId);
+    const rollSequence = sequences
+      .filter((sequence) => sequence?.type === 'roll_yut' && sequence?.actorId === localSeatId)
+      .sort((left, right) => Number(right.sequence ?? 0) - Number(left.sequence ?? 0))[0];
+    return {
+      name: String(rollSequence?.payload?.rollName ?? rollSequence?.patch?.roll?.name ?? ''),
+      steps: Number(rollSequence?.payload?.rollSteps ?? rollSequence?.patch?.roll?.steps ?? NaN),
+    };
+  }, { timeout: 15_000, intervals: [100, 250, 500] }).toEqual({ name: expectedName, steps: expectedSteps });
+}
+
 function expectSinglePresentation(trace, { expectedPath, finalNodeId, local }) {
   if (local) expect(trace.moveActionIds).toHaveLength(1);
   expect(trace.canonicalNodeTransitions).toEqual(expectedPath);
@@ -380,6 +426,9 @@ async function runScenario({
   moveResultDelayMs,
   clickMoveWhenReady,
   pieceCount = 1,
+  rollRandom = 0.6,
+  expectedRollName = '걸',
+  expectedRollSteps = 3,
   initialNodeId = 'n01',
   previousNodeId = '',
   expectedPath = ['n02', 'n03', 'n04'],
@@ -399,6 +448,7 @@ async function runScenario({
       executorRole,
       moveResultDelayMs,
       pieceCount,
+      rollRandom,
     });
     const identity = await getExecutorPieceIdentity(game.executorPage);
     expect(identity.ownerSeatId).not.toBe('');
@@ -447,12 +497,13 @@ async function runScenario({
     expect(ordering.effectiveRollResultReadyAt).toBe(ordering.rollResultReadyAt);
     expect(ordering.enabledAt).toBeGreaterThanOrEqual(ordering.rollResultReadyAt);
     await expectDelayedRollPresentationContract(game.roomId, identity.ownerSeatId);
+    await expectAuthoritativeRoll(game.roomId, identity.ownerSeatId, expectedRollName, expectedRollSteps);
 
     const [localTrace, remoteTrace] = await Promise.all([localTracePromise, remoteTracePromise]);
     expectSinglePresentation(localTrace, { expectedPath, finalNodeId, local: true });
     expectSinglePresentation(remoteTrace, { expectedPath, finalNodeId, local: false });
     await expectSingleAuthoritativeMove(game.roomId, identity.ownerSeatId);
-    return game;
+    return { ...game, identity };
   } catch (error) {
     void localTracePromise?.catch(() => undefined);
     void remoteTracePromise?.catch(() => undefined);
@@ -515,6 +566,43 @@ test.describe('Galaxy online move local ownership contract', () => {
     });
     roomId = result.roomId;
     guestContext = result.guestContext;
+  });
+
+  test('출발점에 말 2개가 대기 중일 때 개는 lowest-label 말을 자동 이동하고 수동 클릭 경합에도 한 번만 실행한다', async ({ browser, page, context }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
+    testInfo.setTimeout(150_000);
+    const result = await runScenario({
+      browser,
+      page,
+      context,
+      testInfo,
+      suffix: 'start-two-piece-gae-auto-manual-race',
+      executorRole: 'guest',
+      moveResultDelayMs: 2_500,
+      clickMoveWhenReady: true,
+      pieceCount: 2,
+      rollRandom: 0.4,
+      expectedRollName: '개',
+      expectedRollSteps: 2,
+      expectedPath: ['n02', 'n03'],
+      finalNodeId: 'n03',
+    });
+    roomId = result.roomId;
+    guestContext = result.guestContext;
+
+    expect(result.identity.otherPieceIds).toHaveLength(1);
+    const waitingPiece = await result.executorPage.evaluate(({ ownerSeatId, otherPieceId }) => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      return Array.isArray(debug.pieces)
+        ? debug.pieces.find((piece) => piece?.ownerId === ownerSeatId && piece?.id === otherPieceId) ?? null
+        : null;
+    }, { ownerSeatId: result.identity.ownerSeatId, otherPieceId: result.identity.otherPieceIds[0] });
+    expect(waitingPiece).toMatchObject({ nodeId: 'n01', started: false, finished: false });
+
+    await expect.poll(async () => {
+      const state = await collectScreenState(result.observerPage);
+      return state.rollButton.visible && !state.rollButton.disabled;
+    }, { timeout: 15_000, intervals: [100, 250, 500], message: '개 이동 완료 뒤 다음 실제 플레이어의 roll action으로 전환되어야 합니다.' }).toBe(true);
   });
 
   test('기존 출발점 n01의 걸 이동은 n02→n03→n04를 유지한다', async ({ browser, page, context }, testInfo) => {
