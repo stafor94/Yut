@@ -8,6 +8,7 @@ export function createQaPlaywrightArgs(suiteName) {
     `--workers=${suite.workers}`,
     `--output=test-results/${suiteName}`,
   ];
+  if (suite.fullyParallel) args.push('--fully-parallel');
   if (suite.timeoutMs) args.push(`--timeout=${suite.timeoutMs}`);
   if (suite.grep) args.push('--grep', suite.grep);
   if (suite.grepInvert) args.push('--grep-invert', suite.grepInvert);

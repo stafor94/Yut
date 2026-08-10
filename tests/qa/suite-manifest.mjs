@@ -135,6 +135,7 @@ export const qaSuiteManifest = Object.freeze({
     label: 'Mobile Galaxy move start',
     code: 'galstart',
     workers: 3,
+    fullyParallel: true,
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
