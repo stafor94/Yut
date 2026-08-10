@@ -6,6 +6,7 @@ import {
   type TurnActionGuardInput,
 } from './gameEngineCore';
 import { isPendingStackedBonusRoll } from './stackedRollTurnGuard';
+import { getRollPresentationActive } from '../app/flows/rollPresentationEvents';
 
 export * from './gameEngineCore';
 
@@ -26,5 +27,5 @@ export function canSubmitTurnAction(input: TurnActionGuardInput) {
 }
 
 export function canRoll(input: RollGuardInput) {
-  return canRollFromCore(input);
+  return !getRollPresentationActive() && canRollFromCore(input);
 }
