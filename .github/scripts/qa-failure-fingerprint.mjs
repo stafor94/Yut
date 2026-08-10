@@ -10,6 +10,7 @@ const MARKER_PREFIX = '<!-- qa-fingerprint:v1:';
 const LEGACY_MARKER = '<!-- ci-failure:main-branch-qa -->';
 const MAX_HISTORY = 5;
 const MAX_BODY = 60_000;
+const MAX_QA_SUMMARY_ARCHIVE_BYTES = 25_000_000;
 
 const laneLabels = Object.freeze({
   build: 'Build and unit', core: 'Online core', seq: 'Desktop sequence replay', desk: 'Desktop regression',
@@ -53,6 +54,11 @@ export function nextOccurrenceMetadata(metadata, runKey, runId) {
 export function chooseCanonicalIssue(issues) {
   const ordered = [...issues].sort((left, right) => left.number - right.number);
   return { canonical: ordered[0] ?? null, duplicates: ordered.slice(1) };
+}
+
+export function qaSummaryArtifactExceedsReadLimit(value) {
+  const bytes = Number(value);
+  return Number.isFinite(bytes) && bytes > MAX_QA_SUMMARY_ARCHIVE_BYTES;
 }
 
 function reportCandidate(report, lane) {
@@ -185,10 +191,18 @@ function zipEntry(zipPath, basename) {
   return entry ? execFileSync('unzip', ['-p', zipPath, entry], { encoding: 'utf8', maxBuffer: 5_000_000 }) : '';
 }
 
+function workflowSource(run) {
+  return {
+    runId: String(run.id ?? ''), runAttempt: Number(run.run_attempt ?? 1), runUrl: String(run.html_url ?? ''),
+    event: String(run.event ?? 'push'), branch: String(run.head_branch ?? ''), headSha: String(run.head_sha ?? ''),
+    conclusion: String(run.conclusion ?? ''), name: String(run.name ?? 'Main Branch QA'),
+  };
+}
+
 function performanceOnlyReport(performance, run) {
   return {
     schemaVersion: 1,
-    workflow: { runId: String(run.id), runAttempt: run.run_attempt ?? 1, runUrl: run.html_url, headSha: run.head_sha, branch: run.head_branch },
+    workflow: workflowSource(run),
     summaryResult: run.conclusion === 'success' ? 'success' : 'failure',
     laneStates: (performance.lanes ?? []).map((lane) => ({
       code: lane.code, label: lane.label, result: 'unknown', durationMs: lane.durationMs,
@@ -203,8 +217,16 @@ async function reportFromArtifact(run, owner, repo) {
   const artifacts = await api(`/repos/${owner}/${repo}/actions/runs/${run.id}/artifacts?name=qa-summary&per_page=10`);
   const artifact = artifacts.artifacts?.find((item) => item.name === 'qa-summary' && !item.expired);
   if (!artifact) return null;
+  const source = workflowSource(run);
+  if (qaSummaryArtifactExceedsReadLimit(artifact.size_in_bytes)) {
+    console.warn(`QA summary artifact is too large to inspect safely; using workflow jobs fallback for run ${run.id}.`);
+    return fallbackReport(run.id, source);
+  }
   const buffer = Buffer.from(await api(`/repos/${owner}/${repo}/actions/artifacts/${artifact.id}/zip`));
-  if (buffer.length > 25_000_000) throw new Error(`qa-summary artifact too large: ${buffer.length}`);
+  if (qaSummaryArtifactExceedsReadLimit(buffer.length)) {
+    console.warn(`Downloaded QA summary artifact is too large to inspect safely; using workflow jobs fallback for run ${run.id}.`);
+    return fallbackReport(run.id, source);
+  }
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-history-'));
   const zipPath = path.join(directory, 'artifact.zip');
   try {
