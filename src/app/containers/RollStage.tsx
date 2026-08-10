@@ -516,16 +516,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   return <div ref={rollStageRef} className={`roll-stage ${phaseClass}`} style={anchoredStageStyle} data-settle-source={settleSource} data-board-anchored={rollStageLayout ? 'true' : 'false'} role="status" aria-live="polite">
     <div className="roll-aura" aria-hidden="true"></div>
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${presentedAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
-    <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`} onAnimationEnd={(event) => {
-      if (isPreResult) return;
-      const target = event.target;
-      if (!(target instanceof HTMLElement) || !target.classList.contains('yut-stick')) return;
-      const scene = target.closest<HTMLElement>('[data-testid="yut-roll-scene"]');
-      if (scene?.dataset.renderer !== 'fallback') return;
-      const sticks = scene.querySelectorAll<HTMLElement>('.yut-stick');
-      if (sticks.item(sticks.length - 1) !== target) return;
-      markCurrentAnimationSettled('css-animation-end');
-    }}>
+    <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`}>
       <span data-testid="roll-mat-surface" className="roll-mat-surface" aria-hidden="true">
         <span className="roll-mat-depth"></span>
         <span className="roll-mat-inlay"></span>
@@ -547,16 +538,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
           <small className="roll-result-description">{resultPresentation.description}</small>
         </span>
       </div>}
-      <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={() => {
-        const scene = rollStageRef.current?.querySelector<HTMLElement>('[data-testid="yut-roll-scene"]');
-        if (scene?.dataset.renderer === 'fallback') {
-          const animations = Array.from(scene.querySelectorAll<HTMLElement>('.yut-stick')).flatMap((stick) => stick.getAnimations());
-          const allAnimationsFinished = animations.every((animation) => animation.playState === 'finished' || animation.playState === 'idle');
-          if (allAnimationsFinished) markCurrentAnimationSettled('css-animation-end');
-          return;
-        }
-        markCurrentAnimationSettled('three-renderer');
-      }} />
+      <YutRollScenePhysics rollAnimation={presentedAnimation} onSettled={markCurrentAnimationSettled} />
     </div>
   </div>;
 }

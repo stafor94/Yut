@@ -23,18 +23,18 @@ test('기존 시작 시각은 덮어쓰지 않는다', () => {
   assert.equal(attachClientActionStartedAt(action, 9_999), action);
 });
 
-test('제한시간 직전 자동 입력은 현재 deadline metadata와 함께 기록한다', () => {
+test('move_piece는 global deadline marker를 거절하고 callback의 직접 metadata만 유지한다', () => {
   clearNextDeadlineAutoAction();
-  assert.equal(markNextDeadlineAutoAction({ actionType: 'move_piece', actorId: 'seat-1', deadlineAt: 10_000, now: 9_900 }), true);
-  const action = { type: 'move_piece', actorId: 'seat-1', payload: { clientActionId: 'move:seat-1:auto' } };
+  assert.equal(markNextDeadlineAutoAction({ actionType: 'move_piece', actorId: 'seat-1', deadlineAt: 10_000, now: 9_900 }), false);
+  const action = { type: 'move_piece', actorId: 'seat-1', payload: {
+    clientActionId: 'move:seat-1:auto',
+    clientActionStartedAt: 9_920,
+    deadlineAutoSubmitted: true,
+    autoSubmittedDeadlineAt: 10_000,
+  } };
   assert.deepEqual(attachClientActionStartedAt(action, 9_920), {
     ...action,
-    payload: {
-      ...action.payload,
-      clientActionStartedAt: 9_920,
-      deadlineAutoSubmitted: true,
-      autoSubmittedDeadlineAt: 10_000,
-    },
+    payload: action.payload,
   });
 });
 
