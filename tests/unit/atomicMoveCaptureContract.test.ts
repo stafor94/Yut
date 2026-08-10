@@ -5,6 +5,7 @@ import { withLocalMovePiecesFallback } from '../../src/app/flows/localMoveOwners
 import { reduceMoveCommand } from '../../src/game-core/gameEngineCore';
 
 const pendingSource = readFileSync('src/app/hooks/usePendingRemoteActions.ts', 'utf8');
+const pendingSetSource = readFileSync('src/app/hooks/pendingRemoteActionSet.ts', 'utf8');
 const appSource = readFileSync('src/app/App.tsx', 'utf8');
 const ownershipSource = readFileSync('src/app/flows/localMoveOwnership.ts', 'utf8');
 const captureSource = readFileSync('src/app/flows/captureAnimation.ts', 'utf8');
@@ -14,7 +15,10 @@ const reducerSource = readFileSync('src/features/room/services/roomAuthoritative
 
 test('pending membership and registration stay side-effect free', () => {
   assert.doesNotMatch(pendingSource, /class PendingLocalRemoteActionSet/);
-  assert.match(pendingSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(new Set\(\)\)/);
+  assert.match(pendingSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(\s*new PresentationAwarePendingActionSet\(getRollPresentationActive\),\s*\)/);
+  assert.match(pendingSetSource, /class PresentationAwarePendingActionSet extends Set<string>/);
+  assert.match(pendingSetSource, /override get size\(\)/);
+  assert.doesNotMatch(pendingSetSource, /override\s+(add|has|delete|clear)\b/);
   assert.doesNotMatch(pendingSource, /shouldPrepareAtomicLocalMoveStart/);
   assert.doesNotMatch(pendingSource, /PendingLocalMoveStartError/);
   assert.doesNotMatch(pendingSource, /ensureMoveActionClaimed/);

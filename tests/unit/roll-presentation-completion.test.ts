@@ -15,6 +15,7 @@ import {
 
 const rollStageSource = readFileSync('src/app/containers/RollStage.tsx', 'utf8');
 const pendingRemoteActionsSource = readFileSync('src/app/hooks/usePendingRemoteActions.ts', 'utf8');
+const pendingRemoteActionSetSource = readFileSync('src/app/hooks/pendingRemoteActionSet.ts', 'utf8');
 const gameScreenViewSource = readFileSync('src/app/components/GameScreenView.tsx', 'utf8');
 const appSource = readFileSync('src/app/App.tsx', 'utf8');
 
@@ -96,7 +97,8 @@ test('presentation active 상태는 visual completion 전까지 부모 move/roll
   unsubscribe();
 
   assert.match(rollStageSource, /notifyRollPresentationActive\(state\.active\)/);
-  assert.match(pendingRemoteActionsSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(new Set\(\)\)/);
+  assert.match(pendingRemoteActionsSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(\s*new PresentationAwarePendingActionSet\(getRollPresentationActive\),\s*\)/);
+  assert.match(pendingRemoteActionSetSource, /override get size\(\)/);
   assert.match(pendingRemoteActionsSource, /ROLL_PRESENTATION_BLOCKER_ACTION_KEY/);
   assert.match(pendingRemoteActionsSource, /store\.set\(ROLL_PRESENTATION_BLOCKER_ACTION_KEY, ROLL_PRESENTATION_BLOCKER_META\)/);
   assert.match(pendingRemoteActionsSource, /syncRollPresentationBlockerMeta/);

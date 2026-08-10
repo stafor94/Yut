@@ -19,6 +19,7 @@ import {
 } from '../flows/pendingOptimisticMoveOwnership';
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
+import { PresentationAwarePendingActionSet } from './pendingRemoteActionSet';
 
 export { getPendingOptimisticMoveAction } from '../flows/pendingOptimisticMoveOwnership';
 
@@ -45,16 +46,18 @@ const ROLL_PRESENTATION_BLOCKER_META: PendingRemoteActionMeta = {
 const syncRollPresentationBlockerMeta = (store: PendingRemoteActionMetaStore<PendingRemoteActionMeta>) => {
   if (getRollPresentationActive()) {
     store.set(ROLL_PRESENTATION_BLOCKER_ACTION_KEY, ROLL_PRESENTATION_BLOCKER_META);
-    return;
+  } else {
+    store.delete(ROLL_PRESENTATION_BLOCKER_ACTION_KEY);
   }
-  store.delete(ROLL_PRESENTATION_BLOCKER_ACTION_KEY);
 };
 
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
   const [, setRollPresentationVersion] = useState(0);
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
-  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
+  const pendingLocalRemoteActionsRef = useRef<Set<string>>(
+    new PresentationAwarePendingActionSet(getRollPresentationActive),
+  );
   const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<PendingRemoteActionMetaStore<PendingRemoteActionMeta>>(
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
@@ -66,7 +69,9 @@ export function usePendingRemoteActions() {
     setRollPresentationVersion((version) => version + 1);
   }), []);
 
-  const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(Array.from(pendingLocalRemoteActionsRef.current).length);
+  const syncPendingLocalRemoteActionCount = () => {
+    setPendingLocalRemoteActionCount(Array.from(pendingLocalRemoteActionsRef.current).length);
+  };
   const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {
     const [type] = actionKey.split(':');
     return (type || 'roll_yut') as GameAction['type'];
