@@ -11,6 +11,7 @@ const POSITION_TOLERANCE_PERCENT = 0.25;
 const LONG_PRESS_MS = 180;
 const ROLL_TIMING_CYCLE_MS = 2000;
 const IS_SAFARI_TIMING = process.env.QA_ROLE === 'safari-timing';
+const IS_WEBKIT_TIMING_QA = IS_SAFARI_TIMING || process.env.QA_ROLE === 'safari-visible-mismatch';
 const POINTER_SPEC_MODE = IS_SAFARI_TIMING ? 'default' : 'parallel';
 
 function getExpectedGrade(positionPercent) {
@@ -44,7 +45,7 @@ async function startAiTimingGame(page, context, testInfo, attemptLabel = '') {
     await createRoomFromLobby(page, roomTitle);
     resolvedRoomId = await waitForRoomQaAccess(page, { roomTitle });
     await addAiAndWaitUntilGameCanStart(page);
-    if (IS_SAFARI_TIMING) {
+    if (IS_WEBKIT_TIMING_QA) {
       await page.bringToFront();
       await expect.poll(
         () => page.evaluate(() => document.visibilityState),
