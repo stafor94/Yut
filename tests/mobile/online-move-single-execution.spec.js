@@ -377,13 +377,13 @@ async function expectDelayedRollPresentationContract(roomId, actorId) {
     const remainingPresentationMs = payloadReadyAt - clientCreatedAt;
     return delayedSubmissionMs >= 3_000
       && remainingPresentationMs >= 2_000
-      && remainingPresentationMs <= 3_200
+      && remainingPresentationMs <= 3_700
       && patchReadyAt === payloadReadyAt
       && deadlineAt - payloadReadyAt === 10_000;
   }, {
     timeout: 15_000,
     intervals: [100, 250, 500],
-    message: '지연 응답 뒤 남은 extra-spin·landing·hold와 10초 move deadline 계약이 일치해야 합니다.',
+    message: '지연 응답 뒤 다음 extra-spin 경계·landing·hold와 10초 move deadline 계약이 일치해야 합니다.',
   }).toBe(true);
 }
 
