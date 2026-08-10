@@ -10,11 +10,10 @@ import { makeQaName, normalizeQaNickname } from '../helpers/env.js';
 import { waitForRoomQaAccess } from '../helpers/room-access.js';
 import { deleteRoomForQa, getRoomSequencesForQa } from '../helpers/rooms.js';
 
-async function installTwoPieceGaeClient(context, turnOrderResult) {
+async function installFastGaeClient(context, turnOrderResult) {
   await context.addInitScript((queuedTurnOrderResult) => {
     window.__YUT_QA_TURN_ORDER_RESULT_QUEUE__ = [queuedTurnOrderResult];
     window.__YUT_QA_ROLL_TIMING_INITIAL_POSITION_PERCENT__ = 30;
-    window.__YUT_QA_DELAY_ROLL_YUT_ACTION_MS__ = 3_000;
     window.localStorage.setItem('yut-online:stackedRollMode', 'false');
 
     const nativeRandom = Math.random;
@@ -65,6 +64,7 @@ async function getLocalPieceIdentity(page) {
       seatId,
       pieceId: String(pieces[0]?.id ?? ''),
       otherPieceId: String(pieces[1]?.id ?? ''),
+      pieceLabel: String(pieces[0]?.label ?? ''),
     };
   });
 }
@@ -91,32 +91,48 @@ async function submitPerfectGae(page) {
   }));
 }
 
-async function waitForAutoMoveTurnCompletion(page, pieceId, nextTurnPage) {
-  await expect.poll(async () => page.evaluate((trackedPieceId) => {
-    const debug = window.__YUT_DEBUG_STATE__ ?? {};
-    const piece = Array.isArray(debug.pieces) ? debug.pieces.find((candidate) => candidate?.id === trackedPieceId) : null;
-    return piece?.nodeId === 'n03'
-      && debug.roll == null
-      && !debug.movingPieceId
-      && Number(debug.pendingLocalRemoteActionCount ?? 0) === 0;
-  }, pieceId), { timeout: 45_000, intervals: [100, 250, 500], message: '선행 actor의 개 자동 이동이 완료되어야 합니다.' }).toBe(true);
-  await expect.poll(async () => {
-    const state = await collectScreenState(nextTurnPage);
-    return state.rollButton.visible && !state.rollButton.disabled;
-  }, { timeout: 15_000, intervals: [100, 250, 500], message: '선행 actor 이동 뒤 다음 실제 플레이어의 roll action이 열려야 합니다.' }).toBe(true);
-}
-
-function observeTwoPieceGaeAutoMove(page, { pieceId, otherPieceId, seatId }) {
+function observeFastGaeMove(page, { seatId, pieceId, otherPieceId }) {
   return page.evaluate((input) => new Promise((resolve, reject) => {
     const startedAt = performance.now();
     let moveButtonEnabledSeen = false;
     let movedBeforeEnabled = false;
-    let lastNodeId = 'n01';
     let movingActive = false;
     let movingStarts = 0;
+    let lastNodeId = 'n01';
     const nodeTransitions = [];
     const moveActionIds = new Set();
-    let pendingAtReady = null;
+    let readySnapshot = null;
+
+    const snapshot = (debug) => ({
+      activeSeat: debug.activeSeat,
+      localSeatId: debug.localSeatId,
+      isMyTurn: debug.isMyTurn,
+      pieces: debug.pieces,
+      selectedPieceId: debug.selectedPieceId,
+      activeMovablePiece: debug.activeMovablePiece,
+      canMoveSelectedPiece: debug.canMoveSelectedPiece,
+      canSubmitTurnAction: debug.canSubmitTurnAction,
+      canRequestMove: debug.canRequestMove,
+      canUseMoveButton: debug.canUseMoveButton,
+      hasPendingGameStateSave: debug.hasPendingGameStateSave,
+      coordinatorStateSaveKey: debug.coordinatorStateSaveKey,
+      turnActionBlockReasons: debug.turnActionBlockReasons,
+      moveActionBlockReasons: debug.moveActionBlockReasons,
+      turnHealth: debug.turnHealth,
+      pendingLocalRemoteActionCount: debug.pendingLocalRemoteActionCount,
+      pendingLocalRemoteActions: debug.actionPipeline?.pendingLocalRemoteActions,
+      pendingRemoteActionGate: window.__YUT_PENDING_REMOTE_ACTION_DEBUG__ ?? null,
+      roll: debug.roll,
+      rollResultHolding: debug.rollResultHolding,
+      rollInProgress: debug.rollInProgress,
+      rollAnimation: debug.rollAnimation,
+      moveInProgress: debug.moveInProgress,
+      movingPieceId: debug.movingPieceId,
+      turnDeadlineKind: debug.turnDeadlineKind,
+      turnDeadlineAt: debug.turnDeadlineAt,
+      rollResultReadyAt: debug.rollResultReadyAt,
+      effectiveRollResultReadyAt: debug.effectiveRollResultReadyAt,
+    });
 
     const sample = () => {
       const debug = window.__YUT_DEBUG_STATE__ ?? {};
@@ -125,9 +141,10 @@ function observeTwoPieceGaeAutoMove(page, { pieceId, otherPieceId, seatId }) {
       const pieces = Array.isArray(debug.pieces) ? debug.pieces : [];
       const piece = pieces.find((candidate) => candidate?.id === input.pieceId);
       const otherPiece = pieces.find((candidate) => candidate?.id === input.otherPieceId);
+
       if (moveEnabled && !moveButtonEnabledSeen) {
         moveButtonEnabledSeen = true;
-        pendingAtReady = window.__YUT_PENDING_REMOTE_ACTION_DEBUG__ ?? null;
+        readySnapshot = snapshot(debug);
       }
       if (!moveButtonEnabledSeen && piece && (piece.nodeId !== 'n01' || debug.movingPieceId === input.pieceId)) movedBeforeEnabled = true;
       if (piece?.nodeId && piece.nodeId !== lastNodeId) {
@@ -148,45 +165,20 @@ function observeTwoPieceGaeAutoMove(page, { pieceId, otherPieceId, seatId }) {
         && debug.roll == null
         && Number(debug.pendingLocalRemoteActionCount ?? 0) === 0;
       if (settled) {
-        resolve({ moveButtonEnabledSeen, movedBeforeEnabled, nodeTransitions, movingStarts, moveActionIds: [...moveActionIds], pendingAtReady });
+        resolve({ moveButtonEnabledSeen, movedBeforeEnabled, movingStarts, nodeTransitions, moveActionIds: [...moveActionIds], readySnapshot });
         return;
       }
       if (performance.now() - startedAt > 35_000) {
-        reject(new Error(`이전 상대 턴 뒤 말 2개+개 action-ready가 고착됐습니다: ${JSON.stringify({
-          activeSeat: debug.activeSeat,
-          localSeatId: debug.localSeatId,
-          isMyTurn: debug.isMyTurn,
-          pieces: debug.pieces,
-          selectedPieceId: debug.selectedPieceId,
-          activeMovablePiece: debug.activeMovablePiece,
-          canMoveSelectedPiece: debug.canMoveSelectedPiece,
-          canSubmitTurnAction: debug.canSubmitTurnAction,
-          canRequestMove: debug.canRequestMove,
-          hasPendingGameStateSave: debug.hasPendingGameStateSave,
-          coordinatorStateSaveKey: debug.coordinatorStateSaveKey,
-          turnActionBlockReasons: debug.turnActionBlockReasons,
-          moveActionBlockReasons: debug.moveActionBlockReasons,
-          pendingLocalRemoteActionCount: debug.pendingLocalRemoteActionCount,
-          pendingLocalRemoteActions: debug.actionPipeline?.pendingLocalRemoteActions,
-          pendingRemoteActionGate: window.__YUT_PENDING_REMOTE_ACTION_DEBUG__ ?? null,
-          roll: debug.roll,
-          rollResultHolding: debug.rollResultHolding,
-          rollInProgress: debug.rollInProgress,
-          movingPieceId: debug.movingPieceId,
-          turnDeadlineKind: debug.turnDeadlineKind,
-          turnDeadlineAt: debug.turnDeadlineAt,
-          rollResultReadyAt: debug.rollResultReadyAt,
-          effectiveRollResultReadyAt: debug.effectiveRollResultReadyAt,
-        })}`));
+        reject(new Error(`빠른 roll ACK의 말 2개+개 action-ready가 고착됐습니다: ${JSON.stringify(snapshot(debug))}`));
         return;
       }
       requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  }), { pieceId, otherPieceId, seatId });
+  }), { seatId, pieceId, otherPieceId });
 }
 
-function observeRemotePieceMove(page, pieceId) {
+function observeRemotePresentation(page, pieceId) {
   return page.evaluate((trackedPieceId) => new Promise((resolve, reject) => {
     const startedAt = performance.now();
     let movingActive = false;
@@ -202,7 +194,7 @@ function observeRemotePieceMove(page, pieceId) {
         return;
       }
       if (performance.now() - startedAt > 35_000) {
-        reject(new Error('상대 클라이언트가 개 이동 presentation을 완료하지 못했습니다.'));
+        reject(new Error('상대 클라이언트의 개 presentation이 완료되지 않았습니다.'));
         return;
       }
       requestAnimationFrame(sample);
@@ -211,22 +203,22 @@ function observeRemotePieceMove(page, pieceId) {
   }), pieceId);
 }
 
-test('출발점 상대 턴 lifecycle 뒤 말 2개가 대기 중인 actor의 개는 lowest-label 말을 자동 이동한다', async ({ browser, page, context }, testInfo) => {
+test('출발점 말 2개에서 지연 없는 roll ACK의 개는 lowest-label 말을 자동 이동한다', async ({ browser, page, context }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
-  testInfo.setTimeout(180_000);
+  testInfo.setTimeout(150_000);
   await page.setViewportSize({ width: 412, height: 915 });
   const guestContext = await browser.newContext({ viewport: { width: 412, height: 915 } });
   const guestPage = await guestContext.newPage();
   let roomId = '';
 
   try {
-    const hostName = normalizeQaNickname(makeQaName(testInfo, 'prior-turn-host'));
-    const guestName = normalizeQaNickname(makeQaName(testInfo, 'prior-turn-guest'));
-    const roomTitle = makeQaName(testInfo, 'prior-turn-room');
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'fast-roll-host'));
+    const guestName = normalizeQaNickname(makeQaName(testInfo, 'fast-roll-guest'));
+    const roomTitle = makeQaName(testInfo, 'fast-roll-room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '2' });
     await primeLobbyStorage(guestContext, { nickname: guestName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '2' });
-    await installTwoPieceGaeClient(context, '모');
-    await installTwoPieceGaeClient(guestContext, '도');
+    await installFastGaeClient(context, '모');
+    await installFastGaeClient(guestContext, '도');
 
     await createRoomFromLobby(page, roomTitle);
     roomId = await waitForRoomQaAccess(page, { roomTitle });
@@ -236,26 +228,14 @@ test('출발점 상대 턴 lifecycle 뒤 말 2개가 대기 중인 actor의 개�
     await page.getByTestId('start-game-button').click();
     await Promise.all([waitForGameReady(page, { rollEnabled: true }), waitForGameReady(guestPage)]);
 
-    const [hostIdentity, guestIdentity] = await Promise.all([getLocalPieceIdentity(page), getLocalPieceIdentity(guestPage)]);
-    expect(hostIdentity.pieceId).not.toBe('');
-    expect(guestIdentity.pieceId).not.toBe('');
-    expect(guestIdentity.otherPieceId).not.toBe('');
+    const identity = await getLocalPieceIdentity(page);
+    expect(identity.seatId).not.toBe('');
+    expect(identity.pieceId).not.toBe('');
+    expect(identity.otherPieceId).not.toBe('');
 
+    const localTracePromise = observeFastGaeMove(page, identity);
+    const remoteTracePromise = observeRemotePresentation(guestPage, identity.pieceId);
     await submitPerfectGae(page);
-    await waitForAutoMoveTurnCompletion(page, hostIdentity.pieceId, guestPage);
-
-    const guestBefore = await guestPage.evaluate((seatId) => {
-      const debug = window.__YUT_DEBUG_STATE__ ?? {};
-      return Array.isArray(debug.pieces)
-        ? debug.pieces.filter((piece) => piece?.ownerId === seatId).map((piece) => ({ id: piece.id, nodeId: piece.nodeId, started: piece.started, finished: piece.finished }))
-        : [];
-    }, guestIdentity.seatId);
-    expect(guestBefore).toHaveLength(2);
-    expect(guestBefore.every((piece) => piece.nodeId === 'n01' && piece.started === false && piece.finished === false)).toBe(true);
-
-    const localTracePromise = observeTwoPieceGaeAutoMove(guestPage, guestIdentity);
-    const remoteTracePromise = observeRemotePieceMove(page, guestIdentity.pieceId);
-    await submitPerfectGae(guestPage);
     const [localTrace, remoteTrace] = await Promise.all([localTracePromise, remoteTracePromise]);
 
     expect(localTrace.moveButtonEnabledSeen).toBe(true);
@@ -263,22 +243,22 @@ test('출발점 상대 턴 lifecycle 뒤 말 2개가 대기 중인 actor의 개�
     expect(localTrace.nodeTransitions).toEqual(['n02', 'n03']);
     expect(localTrace.movingStarts).toBe(1);
     expect(localTrace.moveActionIds).toHaveLength(1);
-    expect(localTrace.pendingAtReady?.entries ?? []).toEqual([]);
+    expect(localTrace.readySnapshot?.pendingRemoteActionGate?.entries ?? []).toEqual([]);
     expect(remoteTrace.movingStarts).toBe(1);
 
     const sequences = await getRoomSequencesForQa(roomId);
-    const guestRolls = sequences.filter((sequence) => sequence?.type === 'roll_yut' && sequence?.actorId === guestIdentity.seatId);
-    expect(guestRolls.some((sequence) => String(sequence?.payload?.rollName ?? sequence?.patch?.roll?.name ?? '') === '개'
+    const hostRolls = sequences.filter((sequence) => sequence?.type === 'roll_yut' && sequence?.actorId === identity.seatId);
+    expect(hostRolls.some((sequence) => String(sequence?.payload?.rollName ?? sequence?.patch?.roll?.name ?? '') === '개'
       && Number(sequence?.payload?.rollSteps ?? sequence?.patch?.roll?.steps ?? NaN) === 2)).toBe(true);
-    const guestMoves = sequences.filter((sequence) => sequence?.type === 'move_piece_resolved'
-      && sequence?.actorId === guestIdentity.seatId
-      && String(sequence?.clientMutationId ?? '').startsWith(`move_piece:${guestIdentity.seatId}:`));
-    expect(guestMoves).toHaveLength(1);
+    const hostMoves = sequences.filter((sequence) => sequence?.type === 'move_piece_resolved'
+      && sequence?.actorId === identity.seatId
+      && String(sequence?.clientMutationId ?? '').startsWith(`move_piece:${identity.seatId}:`));
+    expect(hostMoves).toHaveLength(1);
 
     await expect.poll(async () => {
-      const state = await collectScreenState(page);
+      const state = await collectScreenState(guestPage);
       return state.rollButton.visible && !state.rollButton.disabled;
-    }, { timeout: 15_000, intervals: [100, 250, 500], message: '두 번째 개 이동 뒤 다음 실제 플레이어 턴으로 전환되어야 합니다.' }).toBe(true);
+    }, { timeout: 15_000, intervals: [100, 250, 500], message: '개 자동 이동 뒤 다음 실제 플레이어의 roll action으로 전환되어야 합니다.' }).toBe(true);
   } finally {
     await guestContext.close().catch(() => undefined);
     await deleteRoomForQa(roomId).catch(() => undefined);
