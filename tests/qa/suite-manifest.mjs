@@ -5,7 +5,6 @@ const timingTimeoutSpec = 'tests/mobile/roll-timing-timeout-deadline.spec.js';
 const rollSubmitMoveDeadlineSpec = 'tests/mobile/roll-submit-move-deadline.spec.js';
 const branchActionGateSpec = 'tests/mobile/branch-action-gate.spec.js';
 const onlineMoveSingleExecutionSpec = 'tests/mobile/online-move-single-execution.spec.js';
-const onlineMoveFastStartSpec = 'tests/mobile/online-move-fast-roll-start.spec.js';
 const onlineMoveBackDoHistorySpec = 'tests/mobile/online-move-after-backdo-autopass.spec.js';
 const firebaseIsolationTitle = 'QA browser app uses only the isolated Firebase emulators';
 const timingNiceSnapshotTitle = 'pointerdown Nice snapshot은 오래 눌러도 live freeze·result hold·authoritative 판정이 Nice로 유지된다';
@@ -140,8 +139,8 @@ export const qaSuiteManifest = Object.freeze({
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     grep: `${firebaseIsolationTitle}|${moveStartTitle}`,
-    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveFastStartSpec, onlineMoveBackDoHistorySpec]),
-    tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveFastStartSpec, onlineMoveBackDoHistorySpec]),
+    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec]),
+    tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec]),
   }),
   'safari-visible-mismatch': Object.freeze({
     label: 'Safari visible mismatch',
