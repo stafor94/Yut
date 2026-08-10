@@ -13,6 +13,7 @@ import {
   isManagedIssue,
   nextOccurrenceMetadata,
   parseIssueMetadata,
+  qaSummaryArtifactExceedsReadLimit,
   qualifiesPerformanceIssue,
   shouldCloseFingerprint,
 } from '../../.github/scripts/qa-failure-fingerprint.mjs';
@@ -20,6 +21,7 @@ import {
 const root = process.cwd();
 const qaWorkflow = fs.readFileSync(path.join(root, '.github/workflows/qa.yml'), 'utf8');
 const issueWorkflow = fs.readFileSync(path.join(root, '.github/workflows/ci-failure-issue.yml'), 'utf8');
+const fingerprintScript = fs.readFileSync(path.join(root, '.github/scripts/qa-failure-fingerprint.mjs'), 'utf8');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
 const dynamicA = 'TimeoutError at 2026-08-05T01:02:03.000Z room:room-abc demo-yut-1234 took 301.2s sha 0123456789012345678901234567890123456789';
@@ -32,6 +34,12 @@ const sameB = makeFailureFingerprint({ category: 'test', lane: 'galtime', source
 assert.equal(sameA, sameB, '동일 오류의 동적 값 차이는 같은 fingerprint여야 합니다.');
 assert.notEqual(sameA, makeFailureFingerprint({ category: 'test', lane: 'galack', source: 'qa-emulator-suite.log', normalizedError: normalized }), '다른 lane은 다른 fingerprint여야 합니다.');
 assert.notEqual(sameA, makeFailureFingerprint({ category: 'performance', lane: 'galtime', source: 'duration-threshold', normalizedError: normalized }), '테스트 실패와 성능 실패는 분리되어야 합니다.');
+
+assert.equal(qaSummaryArtifactExceedsReadLimit(230_919), false, '정상 크기의 qa-summary artifact는 기존 상세 report 경로를 유지해야 합니다.');
+assert.equal(qaSummaryArtifactExceedsReadLimit(62_535_795), true, '25MB를 초과한 과거 qa-summary artifact는 jobs fallback 경로를 사용해야 합니다.');
+assert.match(fingerprintScript, /qaSummaryArtifactExceedsReadLimit\(artifact\.size_in_bytes\)[\s\S]*return fallbackReport\(run\.id, source\)/u, 'artifact metadata가 제한을 넘으면 다운로드 전에 jobs fallback을 사용해야 합니다.');
+assert.match(fingerprintScript, /qaSummaryArtifactExceedsReadLimit\(buffer\.length\)[\s\S]*return fallbackReport\(run\.id, source\)/u, '다운로드 결과가 제한을 넘더라도 throw하지 않고 jobs fallback을 사용해야 합니다.');
+assert.doesNotMatch(fingerprintScript, /throw new Error\(`qa-summary artifact too large:/u, '과거 oversized artifact가 CI failure issue sync 전체를 실패시키면 안 됩니다.');
 
 const primary = selectPrimaryRootCause([
   { category: 'summary', fingerprint: 'summary' },
