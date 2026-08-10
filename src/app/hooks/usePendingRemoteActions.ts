@@ -19,6 +19,7 @@ import {
 } from '../flows/pendingOptimisticMoveOwnership';
 import { PendingRemoteActionMetaStore } from './pendingRemoteActionMetaStore';
 import { getPendingRemoteActionOptimisticApplied } from './pendingRemoteActionPolicy';
+import { PresentationAwarePendingActionSet } from './pendingRemoteActionSet';
 
 export { getPendingOptimisticMoveAction } from '../flows/pendingOptimisticMoveOwnership';
 
@@ -42,42 +43,21 @@ const ROLL_PRESENTATION_BLOCKER_META: PendingRemoteActionMeta = {
   blocksTurnActions: true,
 };
 
-const publishPendingRemoteActionDebug = (store: PendingRemoteActionMetaStore<PendingRemoteActionMeta>) => {
-  if (typeof window === 'undefined') return;
-  const debugWindow = window as typeof window & {
-    __YUT_PENDING_REMOTE_ACTION_DEBUG__?: {
-      rollPresentationActive: boolean;
-      localMovePresentation: ReturnType<typeof localMovePresentationLifecycle.snapshot>;
-      entries: Array<{ key: string; type: GameAction['type']; actorId: string; blocksTurnActions: boolean; optimisticApplied: boolean }>;
-    };
-  };
-  debugWindow.__YUT_PENDING_REMOTE_ACTION_DEBUG__ = {
-    rollPresentationActive: getRollPresentationActive(),
-    localMovePresentation: localMovePresentationLifecycle.snapshot(),
-    entries: Array.from(store.entries()).map(([key, meta]) => ({
-      key,
-      type: meta.type,
-      actorId: meta.actorId ?? '',
-      blocksTurnActions: meta.blocksTurnActions !== false,
-      optimisticApplied: meta.optimisticApplied === true,
-    })),
-  };
-};
-
 const syncRollPresentationBlockerMeta = (store: PendingRemoteActionMetaStore<PendingRemoteActionMeta>) => {
   if (getRollPresentationActive()) {
     store.set(ROLL_PRESENTATION_BLOCKER_ACTION_KEY, ROLL_PRESENTATION_BLOCKER_META);
   } else {
     store.delete(ROLL_PRESENTATION_BLOCKER_ACTION_KEY);
   }
-  publishPendingRemoteActionDebug(store);
 };
 
 export function usePendingRemoteActions() {
   const [pendingLocalRemoteActionCount, setPendingLocalRemoteActionCount] = useState(0);
   const [, setRollPresentationVersion] = useState(0);
   const localClientMutationIdsRef = useRef<Set<string>>(new Set());
-  const pendingLocalRemoteActionsRef = useRef<Set<string>>(new Set());
+  const pendingLocalRemoteActionsRef = useRef<Set<string>>(
+    new PresentationAwarePendingActionSet(getRollPresentationActive),
+  );
   const rejectedRemoteActionKeysRef = useRef<Set<string>>(new Set());
   const pendingLocalRemoteActionMetaRef = useRef<PendingRemoteActionMetaStore<PendingRemoteActionMeta>>(
     new PendingRemoteActionMetaStore<PendingRemoteActionMeta>(),
@@ -90,7 +70,6 @@ export function usePendingRemoteActions() {
   }), []);
 
   const syncPendingLocalRemoteActionCount = () => {
-    publishPendingRemoteActionDebug(pendingLocalRemoteActionMetaRef.current);
     setPendingLocalRemoteActionCount(Array.from(pendingLocalRemoteActionsRef.current).length);
   };
   const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {
