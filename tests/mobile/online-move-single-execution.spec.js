@@ -220,6 +220,11 @@ async function submitPerfectGul(page, {
           canMoveSelectedPiece: debug.canMoveSelectedPiece,
           canSubmitTurnAction: debug.canSubmitTurnAction,
           canRequestMove: debug.canRequestMove,
+          hasPendingGameStateSave: debug.hasPendingGameStateSave,
+          coordinatorStateSaveKey: debug.coordinatorStateSaveKey,
+          turnActionBlockReasons: debug.turnActionBlockReasons,
+          moveActionBlockReasons: debug.moveActionBlockReasons,
+          turnHealth: debug.turnHealth,
           pendingLocalRemoteActionCount: debug.pendingLocalRemoteActionCount,
           pendingLocalRemoteActions: debug.actionPipeline?.pendingLocalRemoteActions,
           pendingRemoteActionGate: pendingDebug,
@@ -566,6 +571,43 @@ test.describe('Galaxy online move local ownership contract', () => {
     });
     roomId = result.roomId;
     guestContext = result.guestContext;
+  });
+
+  test('출발점에 말 2개가 대기 중인 coordinator의 개는 lowest-label 말을 자동 이동한다', async ({ browser, page, context }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
+    testInfo.setTimeout(150_000);
+    const result = await runScenario({
+      browser,
+      page,
+      context,
+      testInfo,
+      suffix: 'start-two-piece-gae-coordinator-auto',
+      executorRole: 'host',
+      moveResultDelayMs: 0,
+      clickMoveWhenReady: false,
+      pieceCount: 2,
+      rollRandom: 0.4,
+      expectedRollName: '개',
+      expectedRollSteps: 2,
+      expectedPath: ['n02', 'n03'],
+      finalNodeId: 'n03',
+    });
+    roomId = result.roomId;
+    guestContext = result.guestContext;
+
+    expect(result.identity.otherPieceIds).toHaveLength(1);
+    const waitingPiece = await result.executorPage.evaluate(({ ownerSeatId, otherPieceId }) => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      return Array.isArray(debug.pieces)
+        ? debug.pieces.find((piece) => piece?.ownerId === ownerSeatId && piece?.id === otherPieceId) ?? null
+        : null;
+    }, { ownerSeatId: result.identity.ownerSeatId, otherPieceId: result.identity.otherPieceIds[0] });
+    expect(waitingPiece).toMatchObject({ nodeId: 'n01', started: false, finished: false });
+
+    await expect.poll(async () => {
+      const state = await collectScreenState(result.observerPage);
+      return state.rollButton.visible && !state.rollButton.disabled;
+    }, { timeout: 15_000, intervals: [100, 250, 500], message: '개 자동 이동 완료 뒤 다음 실제 플레이어의 roll action으로 전환되어야 합니다.' }).toBe(true);
   });
 
   test('출발점에 말 2개가 대기 중일 때 개는 lowest-label 말을 자동 이동하고 수동 클릭 경합에도 한 번만 실행한다', async ({ browser, page, context }, testInfo) => {
