@@ -47,11 +47,13 @@ const publishPendingRemoteActionDebug = (store: PendingRemoteActionMetaStore<Pen
   const debugWindow = window as typeof window & {
     __YUT_PENDING_REMOTE_ACTION_DEBUG__?: {
       rollPresentationActive: boolean;
+      localMovePresentation: ReturnType<typeof localMovePresentationLifecycle.snapshot>;
       entries: Array<{ key: string; type: GameAction['type']; actorId: string; blocksTurnActions: boolean; optimisticApplied: boolean }>;
     };
   };
   debugWindow.__YUT_PENDING_REMOTE_ACTION_DEBUG__ = {
     rollPresentationActive: getRollPresentationActive(),
+    localMovePresentation: localMovePresentationLifecycle.snapshot(),
     entries: Array.from(store.entries()).map(([key, meta]) => ({
       key,
       type: meta.type,
