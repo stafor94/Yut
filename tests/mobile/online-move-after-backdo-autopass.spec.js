@@ -64,7 +64,6 @@ async function getLocalIdentity(page) {
       seatId,
       firstPieceId: String(pieces[0]?.id ?? ''),
       secondPieceId: String(pieces[1]?.id ?? ''),
-      firstPieceLabel: String(pieces[0]?.label ?? ''),
     };
   });
 }
@@ -82,11 +81,7 @@ async function submitPerfectRoll(page) {
         return;
       }
       if (performance.now() - startedAt > 5_000) {
-        reject(new Error(`roll action 제출 실패: ${JSON.stringify({
-          rollButtonDisabled: button instanceof HTMLButtonElement ? button.disabled : null,
-          debug: window.__YUT_DEBUG_STATE__ ?? null,
-          pending: window.__YUT_PENDING_REMOTE_ACTION_DEBUG__ ?? null,
-        })}`));
+        reject(new Error('Perfect 구간에서 roll action을 제출하지 못했습니다.'));
         return;
       }
       requestAnimationFrame(submit);
@@ -95,104 +90,42 @@ async function submitPerfectRoll(page) {
   }));
 }
 
-async function runBackDoPassAndKeepStaleState(actorPage, nextPage) {
-  const before = await actorPage.evaluate(() => ({
-    turnIndex: Number(window.__YUT_DEBUG_STATE__?.turnIndex ?? -1),
-    seatId: String(window.__YUT_DEBUG_STATE__?.localSeatId ?? ''),
-  }));
-  const tracePromise = actorPage.evaluate(({ previousTurnIndex, actorSeatId }) => new Promise((resolve, reject) => {
-    const startedAt = performance.now();
-    let backDoSeen = false;
-    let moveButtonEnabled = false;
-    let movingPieceSeen = false;
-    const moveActionIds = new Set();
-    const sample = () => {
-      const debug = window.__YUT_DEBUG_STATE__ ?? {};
-      const moveButton = document.querySelector('[data-testid="move-piece-button"]');
-      if (moveButton instanceof HTMLButtonElement && !moveButton.disabled) moveButtonEnabled = true;
-      if (debug.roll?.name === '빽도') backDoSeen = true;
-      if (debug.movingPieceId) movingPieceSeen = true;
-      const ids = Array.isArray(debug.actionPipeline?.localClientMutationIds) ? debug.actionPipeline.localClientMutationIds : [];
-      ids.filter((id) => typeof id === 'string' && id.startsWith(`move_piece:${actorSeatId}:`)).forEach((id) => moveActionIds.add(id));
-      if (Number(debug.turnIndex ?? -1) === previousTurnIndex + 1 && debug.roll == null) {
-        resolve({
-          backDoSeen,
-          moveButtonEnabled,
-          movingPieceSeen,
-          moveActionIds: [...moveActionIds],
-          pendingLocalRemoteActionCount: Number(debug.pendingLocalRemoteActionCount ?? 0),
-          pendingGateAfterPass: window.__YUT_PENDING_REMOTE_ACTION_DEBUG__ ?? null,
-        });
-        return;
-      }
-      if (performance.now() - startedAt > 35_000) {
-        reject(new Error(`말 없는 빽도 authoritative pass가 완료되지 않았습니다: ${JSON.stringify({
-          turnIndex: debug.turnIndex,
-          roll: debug.roll,
-          canSubmitTurnAction: debug.canSubmitTurnAction,
-          canRequestMove: debug.canRequestMove,
-          pendingLocalRemoteActionCount: debug.pendingLocalRemoteActionCount,
-          pendingGate: window.__YUT_PENDING_REMOTE_ACTION_DEBUG__ ?? null,
-        })}`));
-        return;
-      }
-      requestAnimationFrame(sample);
-    };
-    requestAnimationFrame(sample);
-  }), { previousTurnIndex: before.turnIndex, actorSeatId: before.seatId });
-
+async function expectNoPieceBackDoWaitsForPresentation({ actorPage, nextPage, roomId, actorSeatId }) {
   await submitPerfectRoll(actorPage);
-  const trace = await tracePromise;
-  expect(trace.backDoSeen).toBe(true);
-  expect(trace.moveButtonEnabled).toBe(false);
-  expect(trace.movingPieceSeen).toBe(false);
-  expect(trace.moveActionIds).toHaveLength(1);
+  await expect(actorPage.getByTestId('roll-result-card')).toBeVisible({ timeout: 10_000 });
+  await expect(actorPage.getByTestId('roll-result-card')).toContainText('빽도');
+
+  const sequencesWhileVisible = await getRoomSequencesForQa(roomId);
+  expect(sequencesWhileVisible.filter((sequence) => sequence?.type === 'move_piece_resolved'
+    && sequence?.actorId === actorSeatId
+    && sequence?.action?.payload?.pieceId === '')).toHaveLength(0);
+  const moveButton = actorPage.getByTestId('move-piece-button');
+  if (await moveButton.count()) await expect(moveButton).toBeDisabled();
+
+  await expect(actorPage.locator('.roll-stage')).toBeHidden({ timeout: 10_000 });
+  await expect.poll(async () => {
+    const sequences = await getRoomSequencesForQa(roomId);
+    return sequences.filter((sequence) => sequence?.type === 'move_piece_resolved'
+      && sequence?.actorId === actorSeatId
+      && sequence?.action?.payload?.pieceId === '').length;
+  }, { timeout: 15_000, intervals: [50, 100, 200, 400], message: 'presentation 완료 뒤 말 없는 빽도 자동 패스가 정확히 한 번 제출되어야 합니다.' }).toBe(1);
+
   await expect.poll(async () => {
     const state = await collectScreenState(nextPage);
     return state.rollButton.visible && !state.rollButton.disabled;
-  }, { timeout: 15_000, intervals: [50, 100, 200, 400], message: '말 없는 빽도 authoritative pass 뒤 다음 플레이어 roll action이 열려야 합니다.' }).toBe(true);
-  return trace;
+  }, { timeout: 15_000, intervals: [50, 100, 200, 400], message: '빽도 자동 패스 뒤 다음 실제 플레이어의 roll action이 열려야 합니다.' }).toBe(true);
 }
 
-function observeGaeMoveAfterStaleBackDo(page, identity, previousMoveActionIds) {
-  return page.evaluate(({ target, oldMoveActionIds }) => new Promise((resolve, reject) => {
+function observeGaeAutoMove(page, identity) {
+  return page.evaluate((target) => new Promise((resolve, reject) => {
     const startedAt = performance.now();
-    let actionReadyAt = 0;
     let buttonEnabledSeen = false;
-    let movedBeforeReady = false;
+    let movedBeforeEnabled = false;
     let movingActive = false;
     let movingStarts = 0;
     let lastNodeId = 'n01';
     const nodeTransitions = [];
     const moveActionIds = new Set();
-
-    const snapshot = (debug) => ({
-      activeSeat: debug.activeSeat,
-      localSeatId: debug.localSeatId,
-      isMyTurn: debug.isMyTurn,
-      pieces: debug.pieces,
-      selectedPieceId: debug.selectedPieceId,
-      activeMovablePiece: debug.activeMovablePiece,
-      canMoveSelectedPiece: debug.canMoveSelectedPiece,
-      canSubmitTurnAction: debug.canSubmitTurnAction,
-      canRequestMove: debug.canRequestMove,
-      turnActionBlockReasons: debug.turnActionBlockReasons,
-      moveActionBlockReasons: debug.moveActionBlockReasons,
-      hasPendingGameStateSave: debug.hasPendingGameStateSave,
-      coordinatorStateSaveKey: debug.coordinatorStateSaveKey,
-      pendingLocalRemoteActionCount: debug.pendingLocalRemoteActionCount,
-      actionPipelinePending: debug.actionPipeline?.pendingLocalRemoteActions,
-      pendingRemoteActionGate: window.__YUT_PENDING_REMOTE_ACTION_DEBUG__ ?? null,
-      roll: debug.roll,
-      rollResultHolding: debug.rollResultHolding,
-      rollInProgress: debug.rollInProgress,
-      movingPieceId: debug.movingPieceId,
-      turnDeadlineKind: debug.turnDeadlineKind,
-      turnDeadlineAt: debug.turnDeadlineAt,
-      rollResultReadyAt: debug.rollResultReadyAt,
-      effectiveRollResultReadyAt: debug.effectiveRollResultReadyAt,
-      stalledTurn: debug.stalledTurn,
-    });
 
     const sample = () => {
       const debug = window.__YUT_DEBUG_STATE__ ?? {};
@@ -202,20 +135,7 @@ function observeGaeMoveAfterStaleBackDo(page, identity, previousMoveActionIds) {
       const button = document.querySelector('[data-testid="move-piece-button"]');
       const moveEnabled = button instanceof HTMLButtonElement && !button.disabled;
       if (moveEnabled) buttonEnabledSeen = true;
-
-      const effectiveReadyAt = Number(debug.effectiveRollResultReadyAt ?? debug.rollResultReadyAt ?? 0);
-      const authoritativeReady = debug.roll?.name === '개'
-        && debug.turnDeadlineKind === 'move'
-        && !debug.rollResultHolding
-        && effectiveReadyAt > 0
-        && Date.now() >= effectiveReadyAt;
-      if (!actionReadyAt && authoritativeReady) actionReadyAt = Date.now();
-      if (!actionReadyAt && firstPiece && (firstPiece.nodeId !== 'n01' || debug.movingPieceId === target.firstPieceId)) movedBeforeReady = true;
-      if (actionReadyAt && !moveEnabled && debug.canRequestMove === false && Date.now() - actionReadyAt >= 500) {
-        reject(new Error(`말 2개+개 고착 프레임: ${JSON.stringify(snapshot(debug))}`));
-        return;
-      }
-
+      if (!buttonEnabledSeen && firstPiece && (firstPiece.nodeId !== 'n01' || debug.movingPieceId === target.firstPieceId)) movedBeforeEnabled = true;
       if (firstPiece?.nodeId && firstPiece.nodeId !== lastNodeId) {
         lastNodeId = firstPiece.nodeId;
         nodeTransitions.push(firstPiece.nodeId);
@@ -224,29 +144,69 @@ function observeGaeMoveAfterStaleBackDo(page, identity, previousMoveActionIds) {
       if (movingNow && !movingActive) movingStarts += 1;
       movingActive = movingNow;
       const ids = Array.isArray(debug.actionPipeline?.localClientMutationIds) ? debug.actionPipeline.localClientMutationIds : [];
-      ids.filter((id) => typeof id === 'string' && id.startsWith(`move_piece:${target.seatId}:`) && !oldMoveActionIds.includes(id)).forEach((id) => moveActionIds.add(id));
+      ids.filter((id) => typeof id === 'string' && id.startsWith(`move_piece:${target.seatId}:`)).forEach((id) => moveActionIds.add(id));
 
       const settled = firstPiece?.nodeId === 'n03'
         && secondPiece?.nodeId === 'n01'
         && secondPiece?.started === false
         && secondPiece?.finished === false
         && !movingNow
-        && debug.roll == null;
+        && debug.roll == null
+        && Number(debug.pendingLocalRemoteActionCount ?? 0) === 0;
       if (settled) {
-        resolve({ buttonEnabledSeen, movedBeforeReady, movingStarts, nodeTransitions, moveActionIds: [...moveActionIds] });
+        resolve({ buttonEnabledSeen, movedBeforeEnabled, movingStarts, nodeTransitions, moveActionIds: [...moveActionIds] });
         return;
       }
       if (performance.now() - startedAt > 35_000) {
-        reject(new Error(`빽도 stale 상태 뒤 개 이동이 완료되지 않았습니다: ${JSON.stringify(snapshot(debug))}`));
+        reject(new Error(`빽도 이력 뒤 말 2개+개 이동이 완료되지 않았습니다: ${JSON.stringify({
+          activeSeat: debug.activeSeat,
+          localSeatId: debug.localSeatId,
+          isMyTurn: debug.isMyTurn,
+          pieces: debug.pieces,
+          canMoveSelectedPiece: debug.canMoveSelectedPiece,
+          canSubmitTurnAction: debug.canSubmitTurnAction,
+          canRequestMove: debug.canRequestMove,
+          pendingLocalRemoteActionCount: debug.pendingLocalRemoteActionCount,
+          roll: debug.roll,
+          rollResultHolding: debug.rollResultHolding,
+          movingPieceId: debug.movingPieceId,
+          turnDeadlineKind: debug.turnDeadlineKind,
+          turnDeadlineAt: debug.turnDeadlineAt,
+        })}`));
         return;
       }
       requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  }), { target: identity, oldMoveActionIds: previousMoveActionIds });
+  }), identity);
 }
 
-test('출발점 말 2개가 남은 플레이어가 이전 말 없는 빽도 stale lifecycle 뒤 개를 던져도 자동 이동한다', async ({ browser, page, context }, testInfo) => {
+function observeRemoteMove(page, pieceId) {
+  return page.evaluate((trackedPieceId) => new Promise((resolve, reject) => {
+    const startedAt = performance.now();
+    let movingActive = false;
+    let movingStarts = 0;
+    const sample = () => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      const piece = Array.isArray(debug.pieces) ? debug.pieces.find((candidate) => candidate?.id === trackedPieceId) : null;
+      const movingNow = debug.movingPieceId === trackedPieceId;
+      if (movingNow && !movingActive) movingStarts += 1;
+      movingActive = movingNow;
+      if (piece?.nodeId === 'n03' && !movingNow && debug.roll == null) {
+        resolve(movingStarts);
+        return;
+      }
+      if (performance.now() - startedAt > 35_000) {
+        reject(new Error('상대 클라이언트의 개 이동 presentation이 완료되지 않았습니다.'));
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }), pieceId);
+}
+
+test('출발점 말 2개는 말 없는 빽도 presentation 완료 뒤 자동 패스한 후 개를 정상 자동 이동한다', async ({ browser, page, context }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
   testInfo.setTimeout(180_000);
   await page.setViewportSize({ width: 412, height: 915 });
@@ -255,9 +215,9 @@ test('출발점 말 2개가 남은 플레이어가 이전 말 없는 빽도 stal
   let roomId = '';
 
   try {
-    const hostName = normalizeQaNickname(makeQaName(testInfo, 'stale-backdo-host'));
-    const guestName = normalizeQaNickname(makeQaName(testInfo, 'stale-backdo-guest'));
-    const roomTitle = makeQaName(testInfo, 'stale-backdo-room');
+    const hostName = normalizeQaNickname(makeQaName(testInfo, 'backdo-gate-host'));
+    const guestName = normalizeQaNickname(makeQaName(testInfo, 'backdo-gate-guest'));
+    const roomTitle = makeQaName(testInfo, 'backdo-gate-room');
     await primeLobbyStorage(context, { nickname: hostName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '2' });
     await primeLobbyStorage(guestContext, { nickname: guestName, maxPlayers: '2', playMode: 'individual', itemMode: 'false', pieceCount: '2' });
     await installQueuedRollClient(context, { turnOrderResult: '모', rollRandoms: [0.01, 0.4] });
@@ -277,51 +237,34 @@ test('출발점 말 2개가 남은 플레이어가 이전 말 없는 빽도 stal
     expect(guestIdentity.firstPieceId).not.toBe('');
     expect(guestIdentity.secondPieceId).not.toBe('');
 
-    const hostBackDo = await runBackDoPassAndKeepStaleState(page, guestPage);
-    expect(hostBackDo.pendingLocalRemoteActionCount).toBe(1);
-    expect(hostBackDo.pendingGateAfterPass?.entries?.some((entry) => entry.key === '__roll_presentation_active__')).toBe(true);
-    expect(hostBackDo.pendingGateAfterPass?.entries?.some((entry) => entry.type === 'roll_yut' && entry.key !== '__roll_presentation_active__')).toBe(true);
+    await expectNoPieceBackDoWaitsForPresentation({ actorPage: page, nextPage: guestPage, roomId, actorSeatId: hostIdentity.seatId });
+    await expectNoPieceBackDoWaitsForPresentation({ actorPage: guestPage, nextPage: page, roomId, actorSeatId: guestIdentity.seatId });
 
-    const guestBackDo = await runBackDoPassAndKeepStaleState(guestPage, page);
-    expect(guestBackDo.pendingLocalRemoteActionCount).toBe(1);
-    expect(guestBackDo.pendingGateAfterPass?.entries?.some((entry) => entry.key === '__roll_presentation_active__')).toBe(true);
+    const beforeGae = await page.evaluate((seatId) => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      return (Array.isArray(debug.pieces) ? debug.pieces : []).filter((piece) => piece?.ownerId === seatId);
+    }, hostIdentity.seatId);
+    expect(beforeGae).toHaveLength(2);
+    expect(beforeGae.every((piece) => piece.nodeId === 'n01' && piece.started === false && piece.finished === false)).toBe(true);
 
-    const boardBeforeGae = await page.evaluate(() => ({
-      pieces: window.__YUT_DEBUG_STATE__?.pieces ?? [],
-      rollEnabled: (() => {
-        const button = document.querySelector('[data-testid="roll-yut-button"]');
-        return button instanceof HTMLButtonElement && !button.disabled;
-      })(),
-      pending: window.__YUT_PENDING_REMOTE_ACTION_DEBUG__ ?? null,
-    }));
-    expect(boardBeforeGae.pieces).toHaveLength(4);
-    expect(boardBeforeGae.pieces.every((piece) => piece.nodeId === 'n01' && piece.started === false && piece.finished === false)).toBe(true);
-    expect(boardBeforeGae.rollEnabled).toBe(true);
-
-    const moveTracePromise = observeGaeMoveAfterStaleBackDo(page, hostIdentity, hostBackDo.moveActionIds);
+    const localMovePromise = observeGaeAutoMove(page, hostIdentity);
+    const remoteMovePromise = observeRemoteMove(guestPage, hostIdentity.firstPieceId);
     await submitPerfectRoll(page);
-    const moveTrace = await moveTracePromise;
+    const [localMove, remoteMovingStarts] = await Promise.all([localMovePromise, remoteMovePromise]);
 
-    expect(moveTrace.buttonEnabledSeen).toBe(true);
-    expect(moveTrace.movedBeforeReady).toBe(false);
-    expect(moveTrace.nodeTransitions).toEqual(['n02', 'n03']);
-    expect(moveTrace.movingStarts).toBe(1);
-    expect(moveTrace.moveActionIds).toHaveLength(1);
+    expect(localMove.buttonEnabledSeen).toBe(true);
+    expect(localMove.movedBeforeEnabled).toBe(false);
+    expect(localMove.nodeTransitions).toEqual(['n02', 'n03']);
+    expect(localMove.movingStarts).toBe(1);
+    expect(remoteMovingStarts).toBe(1);
 
     const sequences = await getRoomSequencesForQa(roomId);
-    const hostBackDoPasses = sequences.filter((sequence) => sequence?.type === 'move_piece_resolved'
-      && sequence?.actorId === hostIdentity.seatId
-      && sequence?.action?.payload?.pieceId === ''
-      && sequence?.payload?.skipped === true);
-    const guestBackDoPasses = sequences.filter((sequence) => sequence?.type === 'move_piece_resolved'
-      && sequence?.actorId === guestIdentity.seatId
-      && sequence?.action?.payload?.pieceId === ''
-      && sequence?.payload?.skipped === true);
+    const hostRolls = sequences.filter((sequence) => sequence?.type === 'roll_yut' && sequence?.actorId === hostIdentity.seatId);
+    expect(hostRolls.some((sequence) => String(sequence?.payload?.rollName ?? sequence?.patch?.roll?.name ?? '') === '개'
+      && Number(sequence?.payload?.rollSteps ?? sequence?.patch?.roll?.steps ?? NaN) === 2)).toBe(true);
     const hostConcreteMoves = sequences.filter((sequence) => sequence?.type === 'move_piece_resolved'
       && sequence?.actorId === hostIdentity.seatId
       && sequence?.action?.payload?.pieceId === hostIdentity.firstPieceId);
-    expect(hostBackDoPasses).toHaveLength(1);
-    expect(guestBackDoPasses).toHaveLength(1);
     expect(hostConcreteMoves).toHaveLength(1);
   } finally {
     await guestContext.close().catch(() => undefined);
