@@ -42,12 +42,33 @@ const ROLL_PRESENTATION_BLOCKER_META: PendingRemoteActionMeta = {
   blocksTurnActions: true,
 };
 
+const publishPendingRemoteActionDebug = (store: PendingRemoteActionMetaStore<PendingRemoteActionMeta>) => {
+  if (typeof window === 'undefined') return;
+  const debugWindow = window as typeof window & {
+    __YUT_PENDING_REMOTE_ACTION_DEBUG__?: {
+      rollPresentationActive: boolean;
+      entries: Array<{ key: string; type: GameAction['type']; actorId: string; blocksTurnActions: boolean; optimisticApplied: boolean }>;
+    };
+  };
+  debugWindow.__YUT_PENDING_REMOTE_ACTION_DEBUG__ = {
+    rollPresentationActive: getRollPresentationActive(),
+    entries: Array.from(store.entries()).map(([key, meta]) => ({
+      key,
+      type: meta.type,
+      actorId: meta.actorId ?? '',
+      blocksTurnActions: meta.blocksTurnActions !== false,
+      optimisticApplied: meta.optimisticApplied === true,
+    })),
+  };
+};
+
 const syncRollPresentationBlockerMeta = (store: PendingRemoteActionMetaStore<PendingRemoteActionMeta>) => {
   if (getRollPresentationActive()) {
     store.set(ROLL_PRESENTATION_BLOCKER_ACTION_KEY, ROLL_PRESENTATION_BLOCKER_META);
-    return;
+  } else {
+    store.delete(ROLL_PRESENTATION_BLOCKER_ACTION_KEY);
   }
-  store.delete(ROLL_PRESENTATION_BLOCKER_ACTION_KEY);
+  publishPendingRemoteActionDebug(store);
 };
 
 export function usePendingRemoteActions() {
@@ -66,7 +87,10 @@ export function usePendingRemoteActions() {
     setRollPresentationVersion((version) => version + 1);
   }), []);
 
-  const syncPendingLocalRemoteActionCount = () => setPendingLocalRemoteActionCount(Array.from(pendingLocalRemoteActionsRef.current).length);
+  const syncPendingLocalRemoteActionCount = () => {
+    publishPendingRemoteActionDebug(pendingLocalRemoteActionMetaRef.current);
+    setPendingLocalRemoteActionCount(Array.from(pendingLocalRemoteActionsRef.current).length);
+  };
   const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {
     const [type] = actionKey.split(':');
     return (type || 'roll_yut') as GameAction['type'];
