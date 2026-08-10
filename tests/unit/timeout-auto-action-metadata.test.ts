@@ -5,7 +5,6 @@ import {
   clearNextClientActionStartedAt,
   clearNextDeadlineAutoAction,
   markNextClientActionStartedAt,
-  markNextDeadlineAutoAction,
 } from '../../src/features/room/services/turnActionStartedAtPolicy';
 import { canonicalizeTimeoutRollAction } from '../../src/features/room/services/timeoutRollActionIdentity';
 
@@ -20,9 +19,8 @@ test('로컬 roll presentation 시작 시각은 Firestore 제출 지연 뒤에�
   assert.equal((action.payload as Record<string, unknown>).clientActionStartedAt, 10_000);
 });
 
-test('timedOut move는 deadline 뒤 commit이 지연돼도 authoritative timeout metadata를 유지한다', () => {
+test('timedOut move는 global marker 없이 직접 전달한 authoritative timeout metadata를 유지한다', () => {
   clearNextDeadlineAutoAction();
-  markNextDeadlineAutoAction({ actionType: 'move_piece', actorId: 'seat-1', deadlineAt: 10_000, now: 9_800 });
   const action = attachClientActionStartedAt({
     type: 'move_piece',
     actorId: 'seat-1',
@@ -30,6 +28,9 @@ test('timedOut move는 deadline 뒤 commit이 지연돼도 authoritative timeout
       clientActionId: 'move:seat-1:auto',
       timedOut: true,
       recoveredByCoordinator: true,
+      deadlineAutoSubmitted: true,
+      autoSubmittedDeadlineAt: 10_000,
+      clientActionStartedAt: 9_999,
     },
   }, 13_000);
   const payload = action.payload as Record<string, unknown>;

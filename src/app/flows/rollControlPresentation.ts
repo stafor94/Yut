@@ -40,8 +40,6 @@ export function getRollControlPresentation({
       ? 'turn-waiting-button'
       : hasRoll
         ? 'move-piece-button'
-        : canStartRoll
-          ? 'roll-yut-button'
-          : 'turn-waiting-button',
+        : 'roll-yut-button',
   } as const;
 }

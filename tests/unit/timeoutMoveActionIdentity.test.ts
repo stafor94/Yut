@@ -4,7 +4,6 @@ import { createAuthoritativeGameActionQueues } from '../../src/app/flows/authori
 import {
   attachClientActionStartedAt,
   clearNextDeadlineAutoAction,
-  markNextDeadlineAutoAction,
 } from '../../src/features/room/services/turnActionStartedAtPolicy';
 import {
   aliasTimeoutRollMutationIds,
@@ -23,12 +22,6 @@ test('온라인 이동 마감 UI와 stalled/coordinator 복구는 동일 timeout
   const localMoveActionId = 'move_piece:seat-host:17:3:개:2:::-piece-1:0:outer:stack:none';
 
   try {
-    markNextDeadlineAutoAction({
-      actionType: 'move_piece',
-      actorId,
-      deadlineAt: timeoutDeadlineAt,
-      now: timeoutDeadlineAt - 1_000,
-    });
     const deadlineUiAction = attachClientActionStartedAt({
       type: 'move_piece',
       actorId,
@@ -37,6 +30,9 @@ test('온라인 이동 마감 UI와 stalled/coordinator 복구는 동일 timeout
         pieceId: `${actorId}-piece-1`,
         branchChoice: 'outer',
         rollStackIndex: null,
+        deadlineAutoSubmitted: true,
+        autoSubmittedDeadlineAt: timeoutDeadlineAt,
+        clientActionStartedAt: timeoutDeadlineAt - 10,
       },
     }, timeoutDeadlineAt - 10);
     const stalledRecoveryActionId = makeTimeoutActionKey({

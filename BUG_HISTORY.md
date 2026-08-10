@@ -6,6 +6,37 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 
 ---
 
+## 2026-08-10 - roll presentation pending 혼합으로 이동 버튼 readiness 불일치
+
+### Confirmed root cause
+
+- roll presentation 차단 상태를 실제 remote action `Set`의 synthetic entry와 `size`로 표현해 화면, controls, `moveSelectedPiece`가 서로 다른 pending 조건을 사용했다.
+- 외부 CDN Three import와 WebGL 초기화 실패가 정상 CSS settle 대신 watchdog까지 presentation을 붙잡을 수 있었다.
+- deadline 자동 이동 metadata를 전역 next-action marker로 전달하면 제출되지 않은 자동 이동의 metadata가 다음 수동 이동에 누출될 수 있었다.
+
+### Required state invariants
+
+- pending action `Set`에는 실제 제출 action만 존재하며 presentation은 별도 external-store boolean snapshot으로 차단한다.
+- 화면, controls, handler는 `move_piece` pending만 구분하는 동일 canonical move readiness를 사용한다.
+- deadline 자동 이동 metadata와 stack index는 callback에서 실제 `move_piece` payload까지 직접 전달하고, 실제 제출 성공 때만 timeout action을 완료 처리한다.
+- bundled `three@0.154.0`을 사용하며 WebGL 초기화 실패는 즉시 CSS fallback으로 전환한다. 정상 settle source는 `three-renderer` 또는 `css-animation-end`이고 watchdog은 신호 유실 복구에만 사용한다.
+
+### Do not try again
+
+- presentation을 synthetic pending action이나 `Set.size` override로 표현하지 않는다.
+- 모든 pending action을 하나의 move guard로 묶지 않는다.
+- `move_piece` deadline metadata에 전역 next-action marker를 사용하지 않는다.
+- CDN import 실패, WebGL 실패 또는 테스트 timing을 watchdog/timeout/sleep 증가로 가리지 않는다.
+
+### Regression and verification
+
+- unit: pending Set semantics, presentation 전후 canonical readiness, WebGL 즉시 fallback, CSS settle source, move marker 제외, handler/controls wiring.
+- Galaxy: `tests/mobile/online-move-single-execution.spec.js`의 출발점 WebGL 실패 `[모, 개]` 누적 이동 단일 실행 회귀.
+- 실행 성공: `npm ci`, `npm run test:unit` (667 tests), `npm run build`, `npm run build:qa`, `npm run qa:validate-architecture`, `node --check tests/mobile/online-move-single-execution.spec.js`.
+- 로컬 Galaxy runner는 제품 assertion 진입 전에 Playwright Chromium 미설치로 중단됐고, 브라우저 다운로드도 CDN 403으로 불가능했다. Ready PR의 공식 `mobile-galaxy-move-start` 결과를 최종 판정에 사용한다.
+- PR: Draft 생성 후 기록.
+- merge SHA / Main Branch QA: 병합 후 후속 history에서 실제 값만 기록.
+
 ## 2026-08-07 - 온라인 로컬 윷 결과 hold가 renderer settle보다 먼저 소진됨
 
 ### Symptom

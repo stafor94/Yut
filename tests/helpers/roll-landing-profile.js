@@ -21,7 +21,13 @@ async function addAiAndWaitUntilGameCanStart(page) {
 }
 
 export async function blockThreeRendererModules(context) {
-  await context.route(/https:\/\/(?:cdn\.jsdelivr\.net|unpkg\.com)\/.*three(?:@|\/).*three\.module\.js(?:\?.*)?$/u, (route) => route.abort());
+  await context.addInitScript(() => {
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function getContext(type, ...args) {
+      if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') return null;
+      return originalGetContext.call(this, type, ...args);
+    };
+  });
 }
 
 export async function startRollLandingProfileGame(page, context, testInfo, suffix) {
