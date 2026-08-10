@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { User } from 'firebase/auth';
 import type { BoardPiece } from '../features/game/components/GameBoard';
 import type { ItemTiming, ItemType } from '../features/items/logic/items';
@@ -249,7 +249,7 @@ export function App() {
   const autoPlayBySeatIdRef = useRef<Record<string, boolean>>({});
   const [resumeHumanControlPending, setResumeHumanControlPending] = useState(false);
   const [rollAnimation, setRollAnimation] = useState<RollAnimation | null>(null);
-  const piecesRef = useRef<BoardPiece[]>([]);
+  const piecesRef = useRef<BoardPiece[]>(pieces);
   const [captureEffect, setCaptureEffect] = useState<CaptureEffect | null>(null);
   const [trapEffect, setTrapEffect] = useState<TrapEffect | null>(null);
   const [fallEffect, setFallEffect] = useState<FallEffect | null>(null);
@@ -1089,7 +1089,7 @@ export function App() {
     pendingItemPickupRef.current = pendingItemPickup;
   }, [pendingItemPickup]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     piecesRef.current = pieces;
   }, [pieces]);
 

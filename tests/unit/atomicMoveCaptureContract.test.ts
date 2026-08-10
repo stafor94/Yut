@@ -59,6 +59,13 @@ test('current readiness state and pieces are used for ownership preparation', ()
   assert.match(ownershipSource, /findActive\(\)/);
 });
 
+test('move selection and optimistic presentation share the current pieces snapshot before input', () => {
+  assert.match(appSource, /useLayoutEffect/);
+  assert.match(appSource, /const piecesRef = useRef<BoardPiece\[\]>\(pieces\);/);
+  assert.match(appSource, /useLayoutEffect\(\(\) => \{\s*piecesRef\.current = pieces;\s*\}, \[pieces\]\);/);
+  assert.doesNotMatch(appSource, /useEffect\(\(\) => \{\s*piecesRef\.current = pieces;\s*\}, \[pieces\]\);/);
+});
+
 test('internal BackDo pass readiness stays separate from move button eligibility', () => {
   assert.match(appSource, /onMoveSelectedPiece=\{\(options\) => moveSelectedPiece\(0, options\)\}/);
   assert.match(appSource, /\[activeRoomId, activeSeat, canRequestMove,[\s\S]*selectedPieceId,[\s\S]*roll/);

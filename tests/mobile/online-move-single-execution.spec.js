@@ -12,6 +12,7 @@ import { deleteRoomForQa, getRoomSequencesForQa } from '../helpers/rooms.js';
 import { seedRoomPieceAtNodeForQa } from '../helpers/room-state-fixture.js';
 
 const SEEDED_ROOM_RELOAD_DEADLINE_MS = 60_000;
+const MAX_LOCAL_MOVE_START_DELAY_MS = 1_500;
 
 async function installDeterministicHumanClient(context, { turnOrderResult, moveResultDelayMs = 0, rollRandom = 0.6, stackedRollMode = false, forceWebGLFailure = false }) {
   await context.addInitScript(({ queuedTurnOrderResult, configuredMoveResultDelayMs, configuredRollRandom, configuredStackedRollMode, configuredForceWebGLFailure }) => {
@@ -204,6 +205,7 @@ async function submitPerfectGul(page, {
     let moveTimerVisibleBeforeEnabled = false;
     let observedRollResultReadyAt = 0;
     let observedEffectiveRollResultReadyAt = 0;
+    let enabledAt = 0;
 
     const sample = () => {
       const debug = window.__YUT_DEBUG_STATE__ ?? {};
@@ -217,20 +219,24 @@ async function submitPerfectGul(page, {
       if (rollResultReadyAt > 0) observedRollResultReadyAt = rollResultReadyAt;
       if (effectiveRollResultReadyAt > 0) observedEffectiveRollResultReadyAt = effectiveRollResultReadyAt;
 
-      if (!moveEnabled && trackedPiece
-        && (trackedPiece.nodeId !== expectedInitialNodeId || debug.movingPieceId === targetPieceId)) {
+      const localMoveStarted = Boolean(trackedPiece
+        && (trackedPiece.nodeId !== expectedInitialNodeId || debug.movingPieceId === targetPieceId));
+      if (!enabledAt && !moveEnabled && localMoveStarted) {
         movedBeforeEnabled = true;
       }
-      if (!moveEnabled && observedRollResultReadyAt > 0 && document.querySelector('.turn-action-timer')) {
+      if (!enabledAt && !moveEnabled && observedRollResultReadyAt > 0 && document.querySelector('.turn-action-timer')) {
         moveTimerVisibleBeforeEnabled = true;
       }
-      if (moveEnabled) {
-        const enabledAt = Date.now();
+      if (!enabledAt && moveEnabled) {
+        enabledAt = Date.now();
         if (shouldClickMoveWhenReady && moveButton instanceof HTMLButtonElement) moveButton.click();
+      }
+      if (enabledAt && localMoveStarted) {
         resolve({
           movedBeforeEnabled,
           moveTimerVisibleBeforeEnabled,
           enabledAt,
+          localMoveStartDelayMs: Date.now() - enabledAt,
           rollResultReadyAt: observedRollResultReadyAt,
           effectiveRollResultReadyAt: observedEffectiveRollResultReadyAt,
         });
@@ -529,6 +535,7 @@ async function runScenario({
     expect(ordering.rollResultReadyAt).toBeGreaterThan(0);
     expect(ordering.effectiveRollResultReadyAt).toBe(ordering.rollResultReadyAt);
     expect(ordering.enabledAt).toBeGreaterThanOrEqual(ordering.rollResultReadyAt);
+    expect(ordering.localMoveStartDelayMs).toBeLessThanOrEqual(MAX_LOCAL_MOVE_START_DELAY_MS);
     await expectDelayedRollPresentationContract(game.roomId, identity.ownerSeatId);
     await expectAuthoritativeRoll(game.roomId, identity.ownerSeatId, expectedRollName, expectedRollSteps);
 
@@ -673,6 +680,25 @@ test.describe('Galaxy online move local ownership contract', () => {
       const state = await collectScreenState(result.observerPage);
       return state.rollButton.visible && !state.rollButton.disabled;
     }, { timeout: 15_000, intervals: [100, 250, 500], message: '개 이동 완료 뒤 다음 실제 플레이어의 roll action으로 전환되어야 합니다.' }).toBe(true);
+  });
+
+  test('출발점에 말 2개가 대기 중인 걸은 버튼 클릭 즉시 lowest-label 말의 로컬 이동을 시작한다', async ({ browser, page, context }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
+    testInfo.setTimeout(150_000);
+    const result = await runScenario({
+      browser,
+      page,
+      context,
+      testInfo,
+      suffix: 'start-two-piece-gul-immediate-click',
+      executorRole: 'guest',
+      moveResultDelayMs: 2_500,
+      clickMoveWhenReady: true,
+      pieceCount: 2,
+    });
+    roomId = result.roomId;
+    guestContext = result.guestContext;
+    expect(result.identity.otherPieceIds).toHaveLength(1);
   });
 
   test('출발점 WebGL 실패의 [모, 개] 누적 결과는 CSS 완료 뒤 클릭 한 번만 이동한다', async ({ browser, page, context }, testInfo) => {
