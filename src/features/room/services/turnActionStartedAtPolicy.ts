@@ -26,6 +26,13 @@ const DEADLINE_ACTION_TYPES = new Set([
   'item_pickup_decision',
 ]);
 
+const NEXT_ACTION_MARKER_TYPES = new Set([
+  'roll_yut',
+  'use_item',
+  'place_trap',
+  'item_pickup_decision',
+]);
+
 const AI_ACTION_ID_PREFIXES = [
   'roll_yut_ai',
   'move_piece_ai',
@@ -64,8 +71,7 @@ export const markNextClientActionStartedAt = ({
   actorId?: string;
   startedAt?: number;
 }) => {
-  if (!DEADLINE_ACTION_TYPES.has(actionType) || !Number.isFinite(startedAt) || startedAt <= 0) {
-    nextClientActionStartedAt = null;
+  if (!NEXT_ACTION_MARKER_TYPES.has(actionType) || !Number.isFinite(startedAt) || startedAt <= 0) {
     return false;
   }
   nextClientActionStartedAt = {
@@ -92,8 +98,7 @@ export const markNextDeadlineAutoAction = ({
   deadlineAt: number;
   now?: number;
 }) => {
-  if (!DEADLINE_ACTION_TYPES.has(actionType) || !Number.isFinite(deadlineAt) || deadlineAt <= now) {
-    nextDeadlineAutoAction = null;
+  if (!NEXT_ACTION_MARKER_TYPES.has(actionType) || !Number.isFinite(deadlineAt) || deadlineAt <= now) {
     return false;
   }
   nextDeadlineAutoAction = {
@@ -110,6 +115,7 @@ export const clearNextDeadlineAutoAction = () => {
 };
 
 const consumeClientActionStartedAt = (action: TurnActionLike, now: number) => {
+  if (!NEXT_ACTION_MARKER_TYPES.has(action.type)) return null;
   const marker = nextClientActionStartedAt;
   if (!marker) return null;
   if (marker.expiresAt < now) {
@@ -123,6 +129,7 @@ const consumeClientActionStartedAt = (action: TurnActionLike, now: number) => {
 };
 
 const consumeDeadlineAutoAction = (action: TurnActionLike, now: number) => {
+  if (!NEXT_ACTION_MARKER_TYPES.has(action.type)) return null;
   const marker = nextDeadlineAutoAction;
   if (!marker) return null;
   if (marker.expiresAt < now) {
@@ -150,8 +157,8 @@ export const attachClientActionStartedAt = <T extends TurnActionLike>(action: T,
   if (!payload) return action;
 
   const clientMarker = consumeClientActionStartedAt(action, startedAt);
-  // The deadline marker is authoritative metadata for a UI-triggered automatic action.
-  // It must survive even when the action also carries timedOut/recovery/coordinator fields.
+  // The marker path is intentionally unavailable to move_piece. Move metadata must be carried
+  // directly by the move callback payload so a blocked automatic move cannot leak into a later click.
   const autoMarker = consumeDeadlineAutoAction(action, startedAt);
   const attachStartedAt = shouldAttachClientActionStartedAt(action);
   if (!attachStartedAt && !clientMarker && !autoMarker) return action;

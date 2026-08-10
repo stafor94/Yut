@@ -12,10 +12,13 @@ import {
   notifyRollPresentationActive,
   subscribeRollPresentationActive,
 } from '../../src/app/flows/rollPresentationEvents.js';
+import { getMoveActionReady } from '../../src/app/flows/moveActionReadiness.js';
+import { initializeYutWebGLRenderer } from '../../src/app/components/YutRollScenePhysics.js';
+import { LOCAL_ROLL_LANDING_MS } from '../../src/app/flows/yutRollAnimation.js';
 
 const rollStageSource = readFileSync('src/app/containers/RollStage.tsx', 'utf8');
+const rollPhysicsSource = readFileSync('src/app/components/YutRollScenePhysics.tsx', 'utf8');
 const pendingRemoteActionsSource = readFileSync('src/app/hooks/usePendingRemoteActions.ts', 'utf8');
-const pendingRemoteActionSetSource = readFileSync('src/app/hooks/pendingRemoteActionSet.ts', 'utf8');
 const gameScreenViewSource = readFileSync('src/app/components/GameScreenView.tsx', 'utf8');
 const appSource = readFileSync('src/app/App.tsx', 'utf8');
 
@@ -29,6 +32,16 @@ const createDeferred = () => {
 
 const flushMicrotasks = async () => {
   for (let index = 0; index < 6; index += 1) await Promise.resolve();
+};
+
+const readyInput = {
+  canSubmitTurnAction: true,
+  hasPendingMoveAction: false,
+  hasValidMoveSelection: true,
+  rollResultHolding: false,
+  rollAnimationActive: false,
+  moveInProgress: false,
+  movingPieceActive: false,
 };
 
 test('renderer settle 이후에만 result hold를 시작하고 요청된 hold 시간을 그대로 사용한다', async () => {
@@ -84,31 +97,42 @@ test('terminal 부모 null은 live presentation을 직접 종료하지 않고 �
   assert.ok(clearIndex > completedIndex, 'completion 전에 presentation을 제거하면 안 됩니다.');
 });
 
-test('presentation active 상태는 visual completion 전까지 부모 move/roll action gate를 차단한다', () => {
+test('WebGL 초기화 실패는 즉시 CSS fallback이 되고 정상 fallback settle은 watchdog을 사용하지 않는다', async () => {
+  const renderer = initializeYutWebGLRenderer(() => {
+    throw new Error('webgl unavailable');
+  });
+  assert.equal(renderer.status, 'fallback');
+  assert.equal(renderer.renderer, null);
+
+  const completion = createRollPresentationCompletion({ resultHoldMs: 0, watchdogMs: LOCAL_ROLL_LANDING_MS * 4 });
+  const waiting = completion.waitForCompletion();
+  completion.markSettled('css-animation-end');
+  assert.equal(await waiting, 'css-animation-end');
+
+  assert.match(rollPhysicsSource, /import \* as THREE from 'three'/);
+  assert.doesNotMatch(rollPhysicsSource, /jsdelivr|unpkg|THREE_MODULE_URLS|threeModulePromise/);
+  assert.doesNotMatch(rollPhysicsSource, /RendererStatus = 'loading'/);
+  assert.match(rollPhysicsSource, /LOCAL_ROLL_LANDING_MS - landingElapsedMs/);
+});
+
+test('presentation active 동안 canonical moveActionReady는 false이고 completion 직후 true가 된다', () => {
   notifyRollPresentationActive(false);
   const states: boolean[] = [];
   const unsubscribe = subscribeRollPresentationActive((active) => states.push(active));
 
   notifyRollPresentationActive(true);
-  assert.equal(getRollPresentationActive(), true);
+  assert.equal(getMoveActionReady({ ...readyInput, rollPresentationBlocked: getRollPresentationActive() }), false);
   notifyRollPresentationActive(false);
-  assert.equal(getRollPresentationActive(), false);
+  assert.equal(getMoveActionReady({ ...readyInput, rollPresentationBlocked: getRollPresentationActive() }), true);
   assert.deepEqual(states, [false, true, false]);
   unsubscribe();
 
   assert.match(rollStageSource, /notifyRollPresentationActive\(state\.active\)/);
-  assert.match(pendingRemoteActionsSource, /pendingLocalRemoteActionsRef = useRef<Set<string>>\(\s*new PresentationAwarePendingActionSet\(getRollPresentationActive\),\s*\)/);
-  assert.match(pendingRemoteActionSetSource, /override get size\(\)/);
-  assert.match(pendingRemoteActionsSource, /ROLL_PRESENTATION_BLOCKER_ACTION_KEY/);
-  assert.match(pendingRemoteActionsSource, /store\.set\(ROLL_PRESENTATION_BLOCKER_ACTION_KEY, ROLL_PRESENTATION_BLOCKER_META\)/);
-  assert.match(pendingRemoteActionsSource, /syncRollPresentationBlockerMeta/);
-  assert.match(pendingRemoteActionsSource, /subscribeRollPresentationActive/);
-  assert.match(appSource, /hasPendingOnlineMoveRequest = Boolean\(activeRoomId && pendingBlockingRemoteActionCount > 0\)/);
-  assert.match(appSource, /canRequestMove = Boolean\(canSubmitTurnAction && !hasPendingOnlineMoveRequest/);
-  assert.match(appSource, /pendingLocalRemoteActionsRef\.current\.size > 0/);
-  assert.match(appSource, /pendingLocalRemoteActionCount: activeRoomId \? pendingBlockingRemoteActionCount/);
-  assert.match(gameScreenViewSource, /canRequestMove=\{canUseMoveButton && !presentationTurn\.isFrozen && !deferRollDerivedContent\}/);
-  assert.match(gameScreenViewSource, /canRollNow=\{canRollNow && !presentationTurn\.isFrozen && !deferRollDerivedContent\}/);
+  assert.match(pendingRemoteActionsSource, /useRef<Set<string>>\(new Set\(\)\)/);
+  assert.doesNotMatch(pendingRemoteActionsSource, /PresentationAwarePendingActionSet|__roll_presentation_active__|ROLL_PRESENTATION_BLOCKER_ACTION_KEY/);
+  assert.match(appSource, /getMoveActionReady/);
+  assert.match(appSource, /rollPresentationBlocked/);
+  assert.match(gameScreenViewSource, /moveActionReady=\{moveActionReady\}/);
 });
 
 test('queued remote roll keeps the presentation lock until the renderer settles', async () => {

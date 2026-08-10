@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import * as THREE from 'three';
 import { isRollTimingZone, normalizeRollFallCount, type RollTimingZone } from '../../game-core/roll';
 import type { RollAnimation } from '../appState';
 import {
@@ -32,13 +33,17 @@ import {
   type YutRollMatWorldBounds,
 } from '../flows/yutRollSceneLayout';
 
-const THREE_MODULE_URLS = [
-  'https://cdn.jsdelivr.net/npm/three@0.154.0/build/three.module.js',
-  'https://unpkg.com/three@0.154.0/build/three.module.js',
-] as const;
+type ThreeModule = typeof THREE;
+type RendererStatus = 'three' | 'fallback';
+export type YutRollSceneSettleSource = 'three-renderer' | 'css-animation-end';
 
-type ThreeModule = Record<string, any>;
-type RendererStatus = 'loading' | 'three' | 'fallback';
+export function initializeYutWebGLRenderer<T>(createRenderer: () => T) {
+  try {
+    return { status: 'three' as const, renderer: createRenderer(), error: null };
+  } catch (error) {
+    return { status: 'fallback' as const, renderer: null, error };
+  }
+}
 
 type RuntimeStick = {
   group: any;
@@ -70,26 +75,6 @@ type SceneRuntime = {
   resizeObserver: ResizeObserver | null;
   disposed: boolean;
 };
-
-let threeModulePromise: Promise<ThreeModule> | null = null;
-const loadThreeModule = () => {
-  if (!threeModulePromise) {
-    threeModulePromise = (async () => {
-      let lastError: unknown;
-      for (const url of THREE_MODULE_URLS) {
-        try {
-          return await import(/* @vite-ignore */ url) as ThreeModule;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      throw lastError;
-    })();
-  }
-  return threeModulePromise;
-};
-
-void loadThreeModule().catch(() => undefined);
 
 const getPhase = (animation: RollAnimation): YutRollScenePhase => animation.phase ?? 'resolved';
 const getTimingZone = (animation: RollAnimation): RollTimingZone => {
@@ -133,10 +118,10 @@ function getInitialPhaseElapsedMs(animation: RollAnimation, phase: YutRollSceneP
   return 0;
 }
 
-function createCrossMark(THREE: ThreeModule, material: any, y: number, z: number, inverted = false) {
-  const mark = new THREE.Group();
+function createCrossMark(three: ThreeModule, material: any, y: number, z: number, inverted = false) {
+  const mark = new three.Group();
   for (const rotation of [-Math.PI / 4, Math.PI / 4]) {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.018, 0.32), material);
+    const bar = new three.Mesh(new three.BoxGeometry(0.075, 0.018, 0.32), material);
     bar.rotation.y = rotation;
     mark.add(bar);
   }
@@ -145,22 +130,22 @@ function createCrossMark(THREE: ThreeModule, material: any, y: number, z: number
   return mark;
 }
 
-function createYutStick(THREE: ThreeModule, index: number): RuntimeStick {
-  const group = new THREE.Group();
-  const wood = new THREE.MeshStandardMaterial({ color: 0xb87835, roughness: 0.78, metalness: 0, flatShading: true });
-  const flatFace = new THREE.MeshStandardMaterial({ color: 0xf0c47d, roughness: 0.7, metalness: 0 });
-  const roundFace = new THREE.MeshStandardMaterial({ color: 0x865027, roughness: 0.84, metalness: 0, flatShading: true });
-  const markMaterial = new THREE.MeshStandardMaterial({ color: 0x4d2817, roughness: 0.9, metalness: 0 });
-  const center = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.22, 1.55), wood);
-  const capGeometry = new THREE.CylinderGeometry(0.24, 0.24, 0.22, 8);
-  const capFront = new THREE.Mesh(capGeometry, wood);
-  const capBack = new THREE.Mesh(capGeometry, wood);
+function createYutStick(three: ThreeModule, index: number): RuntimeStick {
+  const group = new three.Group();
+  const wood = new three.MeshStandardMaterial({ color: 0xb87835, roughness: 0.78, metalness: 0, flatShading: true });
+  const flatFace = new three.MeshStandardMaterial({ color: 0xf0c47d, roughness: 0.7, metalness: 0 });
+  const roundFace = new three.MeshStandardMaterial({ color: 0x865027, roughness: 0.84, metalness: 0, flatShading: true });
+  const markMaterial = new three.MeshStandardMaterial({ color: 0x4d2817, roughness: 0.9, metalness: 0 });
+  const center = new three.Mesh(new three.BoxGeometry(0.48, 0.22, 1.55), wood);
+  const capGeometry = new three.CylinderGeometry(0.24, 0.24, 0.22, 8);
+  const capFront = new three.Mesh(capGeometry, wood);
+  const capBack = new three.Mesh(capGeometry, wood);
   capFront.position.z = 0.775;
   capBack.position.z = -0.775;
-  const top = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 1.98), flatFace);
+  const top = new three.Mesh(new three.PlaneGeometry(0.46, 1.98), flatFace);
   top.rotation.x = -Math.PI / 2;
   top.position.y = 0.112;
-  const bottom = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 1.94), roundFace);
+  const bottom = new three.Mesh(new three.PlaneGeometry(0.45, 1.94), roundFace);
   bottom.rotation.x = Math.PI / 2;
   bottom.position.y = -0.112;
   group.add(center, capFront, capBack, top, bottom);
@@ -170,20 +155,20 @@ function createYutStick(THREE: ThreeModule, index: number): RuntimeStick {
     object.receiveShadow = true;
   });
 
-  const flatMark = createCrossMark(THREE, markMaterial, 0.124, 0);
+  const flatMark = createCrossMark(three, markMaterial, 0.124, 0);
   group.add(flatMark);
   const roundMarks = [-0.52, 0, 0.52].map((z) => {
-    const mark = createCrossMark(THREE, markMaterial, -0.124, z, true);
+    const mark = createCrossMark(three, markMaterial, -0.124, z, true);
     group.add(mark);
     return mark;
   });
-  const startPosition = new THREE.Vector3(-0.54 + index * 0.36, -0.14, 1.02 + (index % 2) * 0.1);
-  const spinAxis = new THREE.Vector3(
+  const startPosition = new three.Vector3(-0.54 + index * 0.36, -0.14, 1.02 + (index % 2) * 0.1);
+  const spinAxis = new three.Vector3(
     0.55 + seededUnit(index + 2) * 0.35,
     0.25 + seededUnit(index + 9) * 0.35,
     0.6 + seededUnit(index + 17) * 0.3,
   ).normalize();
-  const startQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+  const startQuaternion = new three.Quaternion().setFromEuler(new three.Euler(
     -0.45 + index * 0.17,
     -0.65 + index * 0.31,
     0.24 - index * 0.11,
@@ -199,8 +184,8 @@ function createYutStick(THREE: ThreeModule, index: number): RuntimeStick {
     phaseQuaternion: startQuaternion.clone(),
     fallImpactPosition: startPosition.clone(),
     fallEdgePosition: startPosition.clone(),
-    targetPosition: new THREE.Vector3(),
-    targetQuaternion: new THREE.Quaternion(),
+    targetPosition: new three.Vector3(),
+    targetQuaternion: new three.Quaternion(),
     flatMark,
     roundMarks,
     isFallen: false,
@@ -208,7 +193,7 @@ function createYutStick(THREE: ThreeModule, index: number): RuntimeStick {
 }
 
 function updateStickTargets(runtime: SceneRuntime, animation: RollAnimation) {
-  const { THREE } = runtime;
+  const { THREE: three } = runtime;
   const phase = getPhase(animation);
   const timingZone = getTimingZone(animation);
   const isPreResult = phase === 'primary' || phase === 'extra-spin';
@@ -232,7 +217,7 @@ function updateStickTargets(runtime: SceneRuntime, animation: RollAnimation) {
       isFallen ? fallTarget.y : 0,
       isFallen ? fallTarget.z : landingTarget.z,
     );
-    entry.targetQuaternion.setFromEuler(new THREE.Euler(
+    entry.targetQuaternion.setFromEuler(new three.Euler(
       (stick.flat ? 0 : Math.PI) + (isFallen ? 0.18 : 0.025 * (index % 2 === 0 ? -1 : 1)),
       yaw,
       isFallen ? 0.18 * (index % 2 === 0 ? -1 : 1) : -0.035 + index * 0.022,
@@ -435,7 +420,7 @@ function disposeRuntime(runtime: SceneRuntime) {
   runtime.renderer.dispose();
 }
 
-type YutRollSceneProps = { rollAnimation: RollAnimation; onSettled: () => void };
+type YutRollSceneProps = { rollAnimation: RollAnimation; onSettled: (source: YutRollSceneSettleSource) => void };
 
 export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -444,7 +429,7 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
   const settledRef = useRef(false);
   const onSettledRef = useRef(onSettled);
   const landingStartedAtRef = useRef<number | null>(null);
-  const [rendererStatus, setRendererStatus] = useState<RendererStatus>('loading');
+  const [rendererStatus, setRendererStatus] = useState<RendererStatus>('fallback');
   const phase = getPhase(rollAnimation);
   const timingZone = getTimingZone(rollAnimation);
   const landingProfile = getYutRollLandingProfile(timingZone);
@@ -456,131 +441,136 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
   latestAnimationRef.current = rollAnimation;
   onSettledRef.current = onSettled;
 
-  const notifySettled = () => {
+  const notifySettled = (source: YutRollSceneSettleSource) => {
     if (settledRef.current) return;
     settledRef.current = true;
-    onSettledRef.current();
+    onSettledRef.current(source);
   };
 
   useEffect(() => {
     settledRef.current = false;
     landingStartedAtRef.current = null;
-    setRendererStatus('loading');
+    setRendererStatus('fallback');
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
     let cancelled = false;
+    let createdRenderer: THREE.WebGLRenderer | null = null;
 
-    const setup = async () => {
-      try {
-        const THREE = await loadThreeModule();
-        if (cancelled || !canvasRef.current) return;
-        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-        renderer.setClearColor(0x000000, 0);
-        renderer.shadowMap.enabled = true;
-        if (THREE.PCFSoftShadowMap) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        if ('outputColorSpace' in renderer && THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 60);
-        scene.add(new THREE.HemisphereLight(0xfff3d5, 0x4f2c1f, 1.5));
-        const keyLight = new THREE.DirectionalLight(0xfff2cf, 2.2);
-        keyLight.position.set(-3.4, 6.2, 4.8);
-        keyLight.castShadow = true;
-        keyLight.shadow.mapSize.set(512, 512);
-        scene.add(keyLight);
-        const fillLight = new THREE.DirectionalLight(0xf1a764, 0.65);
-        fillLight.position.set(4, 2.4, 1);
-        scene.add(fillLight);
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(6.8, 4.8), new THREE.ShadowMaterial({ color: 0x3c2116, opacity: 0.22 }));
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.y = -0.145;
-        floor.receiveShadow = true;
-        scene.add(floor);
-
-        const sticks = Array.from({ length: 4 }, (_, index) => createYutStick(THREE, index));
-        sticks.forEach((entry) => scene.add(entry.group));
-        const initialAnimation = latestAnimationRef.current;
-        const initialPhase = getRuntimeInitialPhase(initialAnimation);
-        const now = performance.now();
-        const initialPhaseElapsedMs = getInitialPhaseElapsedMs(initialAnimation, initialPhase);
-        const initialAnimationElapsedMs = initialPhase === 'resolved' ? Math.min(getAnimationAgeMs(initialAnimation), REMOTE_ROLL_PRE_RESULT_MS) : 0;
-        const runtime: SceneRuntime = {
-          THREE,
-          renderer,
-          scene,
-          camera,
-          sticks,
-          matBounds: getYutRollMatWorldBounds(620, 430, 96, 524),
-          phase: initialPhase,
-          phaseStartedAt: now - initialPhaseElapsedMs,
-          animationStartedAt: now - initialAnimationElapsedMs,
-          frameId: 0,
-          resizeObserver: null,
-          disposed: false,
-        };
-        runtimeRef.current = runtime;
-        if (initialPhase === 'landing') landingStartedAtRef.current = runtime.phaseStartedAt;
-
-        const resize = () => {
-          const element = canvas.parentElement;
-          if (!element) return;
-          const width = Math.max(1, element.clientWidth);
-          const height = Math.max(1, element.clientHeight);
-          const framing = getYutRollSceneFraming(width, height);
-          const sceneRect = element.getBoundingClientRect();
-          const matNode = element.closest('[data-testid="roll-mat"]');
-          const surfaceNode = matNode?.querySelector<HTMLElement>('[data-testid="roll-mat-surface"]');
-          const surfaceRect = surfaceNode?.getBoundingClientRect();
-          const sceneScaleX = sceneRect.width > 0 ? sceneRect.width / width : 1;
-          const surfaceLeftPx = surfaceRect ? (surfaceRect.left - sceneRect.left) / sceneScaleX : width * 0.2;
-          const surfaceRightPx = surfaceRect ? (surfaceRect.right - sceneRect.left) / sceneScaleX : width * 0.8;
-          runtime.matBounds = getYutRollMatWorldBounds(width, height, surfaceLeftPx, surfaceRightPx);
-          updateStickTargets(runtime, latestAnimationRef.current);
-          renderer.setSize(width, height, false);
-          camera.aspect = framing.aspect;
-          camera.position.set(0, framing.cameraY, framing.cameraZ);
-          camera.lookAt(0, framing.targetY, framing.targetZ);
-          camera.updateProjectionMatrix();
-        };
-        resize();
-        runtime.resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
-        runtime.resizeObserver?.observe(canvas.parentElement ?? canvas);
-
-        const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-        const renderFrame = (time: number) => {
-          if (runtime.disposed) return;
-          const activePhase = runtime.phase;
-          const elapsed = time - runtime.phaseStartedAt;
-          if (reducedMotion || activePhase === 'result-hold') {
-            setFinalTransforms(runtime);
-            notifySettled();
-          } else if (activePhase === 'primary') renderPrimary(runtime, elapsed);
-          else if (activePhase === 'extra-spin') renderExtraSpin(runtime, elapsed);
-          else if (activePhase === 'landing') {
-            renderLanding(runtime, elapsed);
-            if (elapsed >= LOCAL_ROLL_LANDING_MS) notifySettled();
-          } else {
-            renderResolved(runtime, time - runtime.animationStartedAt);
-            if (time - runtime.animationStartedAt >= REMOTE_ROLL_PRE_RESULT_MS) notifySettled();
-          }
-          renderer.render(scene, camera);
-          runtime.frameId = requestAnimationFrame(renderFrame);
-        };
-        runtime.frameId = requestAnimationFrame(renderFrame);
-        setRendererStatus('three');
-      } catch (error) {
-        console.warn('Three.js 윷 애니메이션을 초기화하지 못해 CSS 연출을 사용합니다.', error);
-        if (!cancelled) setRendererStatus('fallback');
+    try {
+      const initialized = initializeYutWebGLRenderer(() => new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' }));
+      if (initialized.status === 'fallback' || !initialized.renderer) {
+        console.warn('Three.js 윷 애니메이션을 초기화하지 못해 CSS 연출을 사용합니다.', initialized.error);
+        return () => { cancelled = true; };
       }
-    };
+      createdRenderer = initialized.renderer;
+      if (cancelled || !canvasRef.current) return undefined;
+      const renderer = initialized.renderer;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+      renderer.setClearColor(0x000000, 0);
+      renderer.shadowMap.enabled = true;
+      if (THREE.PCFSoftShadowMap) renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      if ('outputColorSpace' in renderer && THREE.SRGBColorSpace) renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-    void setup();
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 60);
+      scene.add(new THREE.HemisphereLight(0xfff3d5, 0x4f2c1f, 1.5));
+      const keyLight = new THREE.DirectionalLight(0xfff2cf, 2.2);
+      keyLight.position.set(-3.4, 6.2, 4.8);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.set(512, 512);
+      scene.add(keyLight);
+      const fillLight = new THREE.DirectionalLight(0xf1a764, 0.65);
+      fillLight.position.set(4, 2.4, 1);
+      scene.add(fillLight);
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(6.8, 4.8), new THREE.ShadowMaterial({ color: 0x3c2116, opacity: 0.22 }));
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = -0.145;
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      const sticks = Array.from({ length: 4 }, (_, index) => createYutStick(THREE, index));
+      sticks.forEach((entry) => scene.add(entry.group));
+      const initialAnimation = latestAnimationRef.current;
+      const initialPhase = getRuntimeInitialPhase(initialAnimation);
+      const now = performance.now();
+      const initialPhaseElapsedMs = getInitialPhaseElapsedMs(initialAnimation, initialPhase);
+      const initialAnimationElapsedMs = initialPhase === 'resolved' ? Math.min(getAnimationAgeMs(initialAnimation), REMOTE_ROLL_PRE_RESULT_MS) : 0;
+      const runtime: SceneRuntime = {
+        THREE,
+        renderer,
+        scene,
+        camera,
+        sticks,
+        matBounds: getYutRollMatWorldBounds(620, 430, 96, 524),
+        phase: initialPhase,
+        phaseStartedAt: now - initialPhaseElapsedMs,
+        animationStartedAt: now - initialAnimationElapsedMs,
+        frameId: 0,
+        resizeObserver: null,
+        disposed: false,
+      };
+      runtimeRef.current = runtime;
+      if (initialPhase === 'landing') landingStartedAtRef.current = runtime.phaseStartedAt;
+
+      const resize = () => {
+        const element = canvas.parentElement;
+        if (!element) return;
+        const width = Math.max(1, element.clientWidth);
+        const height = Math.max(1, element.clientHeight);
+        const framing = getYutRollSceneFraming(width, height);
+        const sceneRect = element.getBoundingClientRect();
+        const matNode = element.closest('[data-testid="roll-mat"]');
+        const surfaceNode = matNode?.querySelector<HTMLElement>('[data-testid="roll-mat-surface"]');
+        const surfaceRect = surfaceNode?.getBoundingClientRect();
+        const sceneScaleX = sceneRect.width > 0 ? sceneRect.width / width : 1;
+        const surfaceLeftPx = surfaceRect ? (surfaceRect.left - sceneRect.left) / sceneScaleX : width * 0.2;
+        const surfaceRightPx = surfaceRect ? (surfaceRect.right - sceneRect.left) / sceneScaleX : width * 0.8;
+        runtime.matBounds = getYutRollMatWorldBounds(width, height, surfaceLeftPx, surfaceRightPx);
+        updateStickTargets(runtime, latestAnimationRef.current);
+        renderer.setSize(width, height, false);
+        camera.aspect = framing.aspect;
+        camera.position.set(0, framing.cameraY, framing.cameraZ);
+        camera.lookAt(0, framing.targetY, framing.targetZ);
+        camera.updateProjectionMatrix();
+      };
+      resize();
+      runtime.resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
+      runtime.resizeObserver?.observe(canvas.parentElement ?? canvas);
+
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+      const renderFrame = (time: number) => {
+        if (runtime.disposed) return;
+        const activePhase = runtime.phase;
+        const elapsed = time - runtime.phaseStartedAt;
+        if (reducedMotion || activePhase === 'result-hold') {
+          setFinalTransforms(runtime);
+          notifySettled('three-renderer');
+        } else if (activePhase === 'primary') renderPrimary(runtime, elapsed);
+        else if (activePhase === 'extra-spin') renderExtraSpin(runtime, elapsed);
+        else if (activePhase === 'landing') {
+          renderLanding(runtime, elapsed);
+          if (elapsed >= LOCAL_ROLL_LANDING_MS) notifySettled('three-renderer');
+        } else {
+          renderResolved(runtime, time - runtime.animationStartedAt);
+          if (time - runtime.animationStartedAt >= REMOTE_ROLL_PRE_RESULT_MS) notifySettled('three-renderer');
+        }
+        renderer.render(scene, camera);
+        runtime.frameId = requestAnimationFrame(renderFrame);
+      };
+      runtime.frameId = requestAnimationFrame(renderFrame);
+      setRendererStatus('three');
+    } catch (error) {
+      console.warn('Three.js 윷 애니메이션을 초기화하지 못해 CSS 연출을 사용합니다.', error);
+      createdRenderer?.dispose();
+      if (!cancelled) setRendererStatus('fallback');
+    }
+
     return () => {
       cancelled = true;
       const runtime = runtimeRef.current;
       runtimeRef.current = null;
       if (runtime) disposeRuntime(runtime);
+      else createdRenderer?.dispose();
     };
   }, [rollAnimation.id]);
 
@@ -594,7 +584,7 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
       landingStartedAtRef.current = phase === 'landing' ? runtime.phaseStartedAt : null;
       if (phase === 'result-hold') {
         setFinalTransforms(runtime);
-        notifySettled();
+        notifySettled('three-renderer');
       }
     }
   }, [phase, sticksKey, timingZone, getFallCount(rollAnimation)]);
@@ -612,7 +602,7 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
           ? Math.max(0, LOCAL_ROLL_LANDING_MS - landingElapsedMs)
           : null;
     if (delayMs === null) return undefined;
-    const timer = window.setTimeout(notifySettled, delayMs);
+    const timer = window.setTimeout(() => notifySettled('css-animation-end'), delayMs);
     return () => window.clearTimeout(timer);
   }, [phase, rendererStatus, rollAnimation.id]);
 
