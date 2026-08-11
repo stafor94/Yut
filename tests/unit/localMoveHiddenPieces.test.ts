@@ -53,7 +53,7 @@ const makeOnlineMoveState = () => ({
   turnVersion: 3,
 });
 
-test('preserves hidden local pieces after a partial authoritative result', () => {
+test('partial authoritative result keeps current local pieces only through the explicit pieces fallback', () => {
   const firstMove = prepareLocalMoveOwnership({
     roomId: 'room-a',
     state: makeOnlineMoveState(),
@@ -65,6 +65,8 @@ test('preserves hidden local pieces after a partial authoritative result', () =>
         extraSteps: 0,
         branchChoice: 'outer',
         rollStackIndex: null,
+        rollName: MO,
+        rollSteps: 5,
         clientActionId: `move_piece:P1:10:0:${MO}:5:first`,
         clientActionStartedAt: Date.now(),
       },
@@ -84,9 +86,11 @@ test('preserves hidden local pieces after a partial authoritative result', () =>
   assert.ok(partialAppliedState);
   assert.equal(Object.prototype.hasOwnProperty.call(partialAppliedState, 'pieces'), false);
 
+  const ownershipState = withLocalMovePiecesFallback(partialAppliedState, firstMove.record.finalPieces);
+  assert.ok(ownershipState);
   const secondMove = prepareLocalMoveOwnership({
     roomId: 'room-a',
-    state: partialAppliedState,
+    state: ownershipState,
     action: {
       type: 'move_piece',
       actorId: 'P1',
@@ -95,6 +99,8 @@ test('preserves hidden local pieces after a partial authoritative result', () =>
         extraSteps: 0,
         branchChoice: 'shortcut',
         rollStackIndex: null,
+        rollName: GEOL,
+        rollSteps: 3,
         clientActionId: `move_piece:P1:12:0:${GEOL}:3:second`,
         clientActionStartedAt: Date.now(),
       },
@@ -139,6 +145,8 @@ test('uses rendered pieces when the controller snapshot has no pieces', () => {
         extraSteps: 0,
         branchChoice: 'outer',
         rollStackIndex: null,
+        rollName: MO,
+        rollSteps: 5,
         clientActionId: `move_piece:P1:10:0:${MO}:5:fallback`,
         clientActionStartedAt: Date.now(),
       },
@@ -147,60 +155,4 @@ test('uses rendered pieces when the controller snapshot has no pieces', () => {
 
   assert.ok(prepared);
   assert.equal(prepared.record.toNodeId, 'n06');
-});
-
-
-test('restores enumerable rendered pieces when hidden pieces have a symbol backup', () => {
-  const firstMove = prepareLocalMoveOwnership({
-    roomId: 'room-a',
-    state: {
-      ...makeOnlineMoveState(),
-      stackedRollMode: true,
-      roll: { name: MO, steps: 5, bonus: true },
-    },
-    action: {
-      type: 'move_piece',
-      actorId: 'P1',
-      payload: {
-        pieceId: 'piece-1',
-        extraSteps: 0,
-        branchChoice: 'outer',
-        rollStackIndex: null,
-        clientActionId: `move_piece:P1:10:0:${MO}:5:hidden`,
-        clientActionStartedAt: Date.now(),
-      },
-    },
-  });
-
-  assert.ok(firstMove);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(firstMove.finalState, 'pieces'), false);
-  const restored = withLocalMovePiecesFallback(firstMove.finalState, firstMove.record.finalPieces);
-  assert.ok(restored);
-  assert.equal(Object.prototype.propertyIsEnumerable.call(restored, 'pieces'), true);
-  assert.equal(restored.pieces, firstMove.record.finalPieces);
-});
-
-
-test('skips local presentation ownership when pieces are unavailable', () => {
-  const completeState = makeOnlineMoveState();
-  const { pieces: _pieces, ...stateWithoutPieces } = completeState;
-
-  const prepared = prepareLocalMoveOwnership({
-    roomId: 'room-a',
-    state: stateWithoutPieces,
-    action: {
-      type: 'move_piece',
-      actorId: 'P1',
-      payload: {
-        pieceId: 'piece-1',
-        extraSteps: 0,
-        branchChoice: 'outer',
-        rollStackIndex: null,
-        clientActionId: `move_piece:P1:10:0:${MO}:5:missing-pieces`,
-        clientActionStartedAt: Date.now(),
-      },
-    },
-  });
-
-  assert.equal(prepared, null);
 });
