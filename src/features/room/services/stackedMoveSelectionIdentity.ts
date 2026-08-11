@@ -169,13 +169,38 @@ export function attachLatestStackedMoveSelectionIdentity(action: MoveAction) {
     rememberFrozenSelection(actionId, attachedSelection);
     return true;
   }
-  const liveSelection = selectionMatchesAction(clientSelection, expected, Number(stackIndex))
+
+  const numericStackIndex = Number(stackIndex);
+  const current = authoritativeContext;
+  const authoritativeRoll = current?.rollStack[numericStackIndex];
+  const actionRollName = typeof action.payload?.rollName === 'string' ? action.payload.rollName : '';
+  const actionRollSteps = Number(action.payload?.rollSteps);
+  const authoritativeSelection = current
+    && current.rollStackClosed
+    && current.expectedPreviousSequence === expected.expectedPreviousSequence
+    && current.expectedTurnIndex === expected.expectedTurnIndex
+    && authoritativeRoll
+    && actionRollName === authoritativeRoll.name
+    && Number.isFinite(actionRollSteps)
+    && actionRollSteps === authoritativeRoll.steps
+    ? {
+        expectedPreviousSequence: current.expectedPreviousSequence,
+        expectedTurnVersion: current.expectedTurnVersion,
+        expectedTurnIndex: current.expectedTurnIndex,
+        rollStackIndex: numericStackIndex,
+        roll: { ...authoritativeRoll },
+      }
+    : null;
+  const liveSelection = selectionMatchesAction(clientSelection, expected, numericStackIndex)
     ? clientSelection
     : null;
-  const frozenSelection = selectionMatchesAction(frozenSelectionByActionId.get(actionId), expected, Number(stackIndex))
+  const frozenSelection = selectionMatchesAction(frozenSelectionByActionId.get(actionId), expected, numericStackIndex)
     ? frozenSelectionByActionId.get(actionId)
     : null;
-  const selection = liveSelection ?? frozenSelection;
+  // When the render-time selection was invalidated by a newer authoritative
+  // snapshot before the click handler runs, freeze the exact current revision
+  // from the action's own roll fingerprint instead of dropping the input.
+  const selection = authoritativeSelection ?? liveSelection ?? frozenSelection;
   if (!selection) return false;
   const frozen = cloneSelectionIdentity(selection);
   action.payload = { ...action.payload, stackedMoveSelection: frozen };
@@ -191,38 +216,14 @@ export function validateStackedMoveSelectionIdentity({ state, action, stackedRol
   const stackIndex = typeof action.payload?.rollStackIndex === 'number' ? action.payload.rollStackIndex : null;
   const expected = manualIdentity(action);
   if (!stackedRollMode || stackIndex === null || !expected) return null;
-  let selection = payloadIdentity(action);
+  const selection = payloadIdentity(action);
   const stack = stackFingerprint(state.rollStack);
   const stateIdentity = [integer(state.lastSequence), integer(state.turnVersion), integer(state.turnIndex)];
   const hasAuthoritativeRevision = stateIdentity.every((value) => value !== null);
+  // Reducer-only fixtures may intentionally omit Firestore revision metadata. An
+  // explicit selection against such a state is still stale; only legacy fixture
+  // calls with neither side of the revision contract bypass this wrapper guard.
   if (!hasAuthoritativeRevision) return selection ? STACKED_MOVE_SELECTION_STALE_REASON : null;
-
-  if (!selection && stack && action.payload) {
-    const actionRollName = typeof action.payload.rollName === 'string' ? action.payload.rollName : '';
-    const actionRollSteps = Number(action.payload.rollSteps);
-    const authoritativeRoll = stack[stackIndex];
-    const expectedMatchesState = expected.expectedPreviousSequence === stateIdentity[0]
-      && expected.expectedTurnIndex === stateIdentity[2];
-    const actionRollMatchesState = Boolean(
-      authoritativeRoll
-      && actionRollName === authoritativeRoll.name
-      && Number.isFinite(actionRollSteps)
-      && actionRollSteps === authoritativeRoll.steps,
-    );
-    if (expectedMatchesState && actionRollMatchesState) {
-      selection = {
-        expectedPreviousSequence: Number(stateIdentity[0]),
-        expectedTurnVersion: Number(stateIdentity[1]),
-        expectedTurnIndex: Number(stateIdentity[2]),
-        rollStackIndex: stackIndex,
-        roll: { ...authoritativeRoll },
-      };
-      action.payload.stackedMoveSelection = cloneSelectionIdentity(selection);
-      const actionId = typeof action.payload.clientActionId === 'string' ? action.payload.clientActionId : '';
-      rememberFrozenSelection(actionId, selection);
-    }
-  }
-
   const valid = selection && stack
     && selection.expectedPreviousSequence === expected.expectedPreviousSequence
     && selection.expectedTurnIndex === expected.expectedTurnIndex

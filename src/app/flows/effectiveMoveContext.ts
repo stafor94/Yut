@@ -41,10 +41,10 @@ export function resolveEffectiveMoveContext(params: {
     : null;
   const effectiveRoll = validIndex === null ? null : rollStack[validIndex] ?? null;
   if (validIndex !== null) {
-    const selectionIdentity = captureStackedMoveSelectionIdentity({ rollStack, rollStackClosed, rollStackIndex: validIndex });
-    if (selectionIdentity === 'stale') {
-      return { roll: null, rollStackIndex: validIndex, steps: 0, fromStack: true };
-    }
+    // Keep the rendered/action-ready move context stable. Selection freshness is
+    // frozen onto the exact action and rejected by the authoritative reducer;
+    // it must not turn an already enabled move control into a no-op at click time.
+    captureStackedMoveSelectionIdentity({ rollStack, rollStackClosed, rollStackIndex: validIndex });
   }
   return {
     roll: effectiveRoll,
