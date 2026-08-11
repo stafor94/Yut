@@ -102,14 +102,14 @@ async function openTwoHumanGulGame({
       moveResultDelayMs: executorRole === 'host' ? moveResultDelayMs : 0,
       rollRandom,
       stackedRollMode,
-      forceWebGLFailure,
+      forceWebGLFailure: executorRole === 'host' && forceWebGLFailure,
     });
     await installDeterministicHumanClient(guestContext, {
       turnOrderResult: executorRole === 'guest' ? '모' : '도',
       moveResultDelayMs: executorRole === 'guest' ? moveResultDelayMs : 0,
       rollRandom,
       stackedRollMode,
-      forceWebGLFailure,
+      forceWebGLFailure: executorRole === 'guest' && forceWebGLFailure,
     });
 
     await createRoomFromLobby(hostPage, roomTitle);
