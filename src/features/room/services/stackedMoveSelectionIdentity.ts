@@ -159,6 +159,59 @@ export function captureStackedMoveSelectionIdentity({ rollStack, rollStackClosed
   return 'ready' as const;
 }
 
+export function attachStackedMoveSelectionIdentityFromState({ state, action, stackedRollMode }: {
+  state: MoveState;
+  action: MoveAction;
+  stackedRollMode: boolean;
+}): { ok: true; attached: boolean } | { ok: false; reason: string } {
+  const expected = manualIdentity(action);
+  const stackIndex = typeof action.payload?.rollStackIndex === 'number' ? action.payload.rollStackIndex : null;
+  if (!stackedRollMode || stackIndex === null || !expected) return { ok: true, attached: false };
+  if (!Number.isInteger(stackIndex) || stackIndex < 0) return { ok: false, reason: STACKED_MOVE_SELECTION_STALE_REASON };
+
+  const existingSelection = payloadIdentity(action);
+  if (existingSelection) {
+    const rejection = validateStackedMoveSelectionIdentity({ state, action, stackedRollMode });
+    if (rejection) return { ok: false, reason: rejection };
+    const actionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
+    rememberFrozenSelection(actionId, existingSelection);
+    return { ok: true, attached: true };
+  }
+
+  const lastSequence = integer(state.lastSequence);
+  const turnVersion = integer(state.turnVersion);
+  const turnIndex = integer(state.turnIndex);
+  const stack = stackFingerprint(state.rollStack);
+  const currentRoll = stack?.[stackIndex] ?? null;
+  const actionRollName = typeof action.payload?.rollName === 'string' ? action.payload.rollName : '';
+  const actionRollSteps = Number(action.payload?.rollSteps);
+  if (lastSequence === null
+    || turnVersion === null
+    || turnIndex === null
+    || state.rollStackClosed !== true
+    || !stack
+    || !currentRoll
+    || expected.expectedPreviousSequence !== lastSequence
+    || expected.expectedTurnIndex !== turnIndex
+    || actionRollName !== currentRoll.name
+    || !Number.isFinite(actionRollSteps)
+    || actionRollSteps !== currentRoll.steps) {
+    return { ok: false, reason: STACKED_MOVE_SELECTION_STALE_REASON };
+  }
+
+  const selection: SelectionIdentity = {
+    expectedPreviousSequence: lastSequence,
+    expectedTurnVersion: turnVersion,
+    expectedTurnIndex: turnIndex,
+    rollStackIndex: stackIndex,
+    roll: { ...currentRoll },
+  };
+  action.payload = { ...action.payload, stackedMoveSelection: cloneSelectionIdentity(selection) };
+  const actionId = typeof action.payload.clientActionId === 'string' ? action.payload.clientActionId : '';
+  rememberFrozenSelection(actionId, selection);
+  return { ok: true, attached: true };
+}
+
 export function attachLatestStackedMoveSelectionIdentity(action: MoveAction) {
   const expected = manualIdentity(action);
   const actionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
@@ -197,9 +250,6 @@ export function attachLatestStackedMoveSelectionIdentity(action: MoveAction) {
   const frozenSelection = selectionMatchesAction(frozenSelectionByActionId.get(actionId), expected, numericStackIndex)
     ? frozenSelectionByActionId.get(actionId)
     : null;
-  // When the render-time selection was invalidated by a newer authoritative
-  // snapshot before the click handler runs, freeze the exact current revision
-  // from the action's own roll fingerprint instead of dropping the input.
   const selection = authoritativeSelection ?? liveSelection ?? frozenSelection;
   if (!selection) return false;
   const frozen = cloneSelectionIdentity(selection);
@@ -220,9 +270,6 @@ export function validateStackedMoveSelectionIdentity({ state, action, stackedRol
   const stack = stackFingerprint(state.rollStack);
   const stateIdentity = [integer(state.lastSequence), integer(state.turnVersion), integer(state.turnIndex)];
   const hasAuthoritativeRevision = stateIdentity.every((value) => value !== null);
-  // Reducer-only fixtures may intentionally omit Firestore revision metadata. An
-  // explicit selection against such a state is still stale; only legacy fixture
-  // calls with neither side of the revision contract bypass this wrapper guard.
   if (!hasAuthoritativeRevision) return selection ? STACKED_MOVE_SELECTION_STALE_REASON : null;
   const valid = selection && stack
     && selection.expectedPreviousSequence === expected.expectedPreviousSequence
