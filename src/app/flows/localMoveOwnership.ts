@@ -2,6 +2,7 @@ import {
   isAuthoritativeCommitReduction,
   reduceAuthoritativeGameAction,
 } from '../../features/room/services/roomAuthoritativeReducer';
+import { attachStackedMoveSelectionIdentityFromState } from '../../features/room/services/stackedMoveSelectionIdentity';
 import {
   localMovePresentationLifecycle,
   type LocalMovePresentationLifecycle,
@@ -270,6 +271,15 @@ export function prepareLocalMoveOwnershipResult({
     return ownershipFailure('authoritative-state', 'game-seat-context-incomplete');
   }
   if (!Array.isArray(state.pieces)) return ownershipFailure('authoritative-state', 'authoritative-pieces-missing');
+
+  const stackedIdentity = attachStackedMoveSelectionIdentityFromState({
+    state,
+    action,
+    stackedRollMode: state.stackedRollMode === true,
+  });
+  if (!stackedIdentity.ok) {
+    return ownershipFailure('stacked-selection-identity', stackedIdentity.reason);
+  }
 
   const reduction = reduceAuthoritativeGameAction(
     state as Parameters<typeof reduceAuthoritativeGameAction>[0],
