@@ -339,7 +339,6 @@ async function scheduleReloadAtMoveReady(page) {
 }
 
 test.describe('AI 1:1 human atomic move start', () => {
-  test.describe.configure({ mode: 'serial' });
   test.setTimeout(150_000);
 
   let roomId;
