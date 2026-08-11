@@ -20,12 +20,13 @@ export async function completeTurnOrderIntroAtActionReady(
   roomId: string,
   params: { readyAt: number; actorId: string; coordinatorEpoch: number },
 ) {
-  if (!db || !roomId || !params.readyAt) return null;
+  const firestore = db;
+  if (!firestore || !roomId || !params.readyAt) return null;
   const clientMutationId = `turn_order_intro_completed:${roomId}:${params.readyAt}`;
   const processedActionRef = getClientMutationDocRef(roomId, clientMutationId);
-  const gameStateRef = doc(db, 'rooms', roomId, 'state', 'current');
+  const gameStateRef = doc(firestore, 'rooms', roomId, 'state', 'current');
 
-  return runTransaction(db, async (transaction) => {
+  return runTransaction(firestore, async (transaction) => {
     const processedActionSnapshot = await transaction.get(processedActionRef);
     if (processedActionSnapshot.exists()) return Number(processedActionSnapshot.data().turnVersion ?? 0);
 
@@ -61,7 +62,7 @@ export async function completeTurnOrderIntroAtActionReady(
       ...timing,
     };
     const coordinator = getGameCoordinatorLeaseSnapshot(currentState);
-    const sequenceRef = doc(db, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
+    const sequenceRef = doc(firestore, 'rooms', roomId, 'sequences', makeSequenceDocId(nextSequence));
 
     transaction.set(sequenceRef, {
       sequence: nextSequence,
@@ -81,7 +82,7 @@ export async function completeTurnOrderIntroAtActionReady(
       createdAt: serverTimestamp(),
     });
     transaction.set(gameStateRef, {
-      ...sanitizeForFirestore(statePatch),
+      ...(sanitizeForFirestore(statePatch) as Record<string, unknown>),
       updatedAt: serverTimestamp(),
       turnVersion: nextVersion,
       lastSequence: nextSequence,
