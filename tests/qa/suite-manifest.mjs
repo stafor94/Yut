@@ -6,10 +6,12 @@ const rollSubmitMoveDeadlineSpec = 'tests/mobile/roll-submit-move-deadline.spec.
 const branchActionGateSpec = 'tests/mobile/branch-action-gate.spec.js';
 const onlineMoveSingleExecutionSpec = 'tests/mobile/online-move-single-execution.spec.js';
 const onlineMoveBackDoHistorySpec = 'tests/mobile/online-move-after-backdo-autopass.spec.js';
+const onlineAiHumanAtomicMoveStartSpec = 'tests/mobile/online-ai-human-atomic-move-start.spec.js';
 const firebaseIsolationTitle = 'QA browser app uses only the isolated Firebase emulators';
 const timingNiceSnapshotTitle = 'pointerdown Nice snapshot은 오래 눌러도 live freeze·result hold·authoritative 판정이 Nice로 유지된다';
 const timingOverflowTitle = '오브는 고정 트랙 안에서 0·50·100%를 표시하며 이동 중 문서 가로 폭과 scrollLeft를 바꾸지 않는다';
 const moveAckTitle = 'n16의 걸 이동은';
+const atomicMoveAckTitle = 'AI 1:1 2말 개 수동 ACK';
 const moveStartTitle = '출발점';
 
 export const qaSuiteManifest = Object.freeze({
@@ -127,9 +129,9 @@ export const qaSuiteManifest = Object.freeze({
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    grep: `${firebaseIsolationTitle}|${moveAckTitle}`,
-    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec]),
-    tests: Object.freeze([onlineMoveSingleExecutionSpec]),
+    grep: `${firebaseIsolationTitle}|${moveAckTitle}|${atomicMoveAckTitle}`,
+    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineAiHumanAtomicMoveStartSpec]),
+    tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineAiHumanAtomicMoveStartSpec]),
   }),
   'mobile-galaxy-move-start': Object.freeze({
     label: 'Mobile Galaxy move start',
@@ -140,8 +142,8 @@ export const qaSuiteManifest = Object.freeze({
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     grep: `${firebaseIsolationTitle}|${moveStartTitle}`,
-    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec]),
-    tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec]),
+    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec]),
+    tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec]),
   }),
   'safari-visible-mismatch': Object.freeze({
     label: 'Safari visible mismatch',
