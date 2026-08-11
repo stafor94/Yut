@@ -144,7 +144,10 @@ test('revision 변경 뒤 같은 index의 다른 roll은 mutation 전에 거부�
 test('local ownership ACK는 같은 selection identity fingerprint와 일치하고 hard resync하지 않는다', () => {
   const state = makeState();
   select(state);
-  const prepared = prepareLocalMoveOwnership({ roomId: 'room-a', state, action: makeAction(10) });
+  const action = makeAction(10);
+  action.payload.rollName = MO.name;
+  action.payload.rollSteps = MO.steps;
+  const prepared = prepareLocalMoveOwnership({ roomId: 'room-a', state, action });
   assert.ok(prepared);
   const ledger = new LocalMoveLedger();
   const record = ledger.register(prepared.record);

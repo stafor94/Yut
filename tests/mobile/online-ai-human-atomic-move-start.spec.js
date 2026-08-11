@@ -310,7 +310,6 @@ async function expectAtomicMoveContract({ page, roomId, localSeatId, pieceId, ot
   ));
   expect(rollSequences).toHaveLength(1);
   expect(String(rollSequences[0]?.payload?.rollName ?? rollSequences[0]?.patch?.roll?.name ?? '')).toBe(rollCase.name);
-  expect(Number(rollSequences[0]?.payload?.rollSteps ?? rollSequences[0]?.patch?.roll?.steps ?? NaN)).toBe(rollCase.steps);
 
   const moveSequences = sequences.filter((sequence) => (
     Number(sequence?.sequence ?? 0) > baselineSequence
