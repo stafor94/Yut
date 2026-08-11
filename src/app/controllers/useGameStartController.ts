@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { RoomSummary } from '../../features/room/services/roomService';
+import { completeTurnOrderIntroAtActionReady } from '../../features/room/services/turnOrderIntroCompletionService';
 import { applySequenceEvents } from '../hooks/applySequenceEvent';
 import { useTurnOrderPortraitScroll } from '../hooks/useTurnOrderTimers';
 import type { SequenceStateSnapshot } from '../appState';
@@ -33,7 +34,7 @@ export function useGameStartController(ctx: any) {
   } = helpers;
   const {
     requestRoomGameStart, cancelRoomGameStart, initializeGameState, getLatestGameState, getGameSequencesSince, updateRoomPlayer,
-    resolveTurnOrderIntro, completeTurnOrderIntro,
+    resolveTurnOrderIntro,
   } = services;
 
   const applyAuthoritativeStartRequest = (startState: Pick<RoomSummary, 'startRequestVersion' | 'startRequestedAt' | 'startCountdownStartsAt' | 'startCountdownEndsAt' | 'startRequestId' | 'startStatus'>, requestId = pendingStartRequestIdRef.current) => {
@@ -312,7 +313,7 @@ export function useGameStartController(ctx: any) {
         completingTurnOrderIntroRef.current.add(readyAt);
         let version = 0;
         try {
-          version = Number(await completeTurnOrderIntro(ctx.activeRoomId, { readyAt, actorId: ctx.localSeatId, coordinatorEpoch: ctx.coordinatorEpoch })) || 0;
+          version = Number(await completeTurnOrderIntroAtActionReady(ctx.activeRoomId, { readyAt, actorId: ctx.localSeatId, coordinatorEpoch: ctx.coordinatorEpoch })) || 0;
           if (version) lastAppliedStateVersionRef.current = Math.max(lastAppliedStateVersionRef.current, version);
         } catch {
           version = 0;
