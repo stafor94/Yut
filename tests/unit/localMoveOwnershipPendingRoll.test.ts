@@ -61,13 +61,15 @@ const prepareGulMove = () => prepareLocalMoveOwnership({
       extraSteps: 0,
       branchChoice: 'outer',
       rollStackIndex: null,
+      rollName: '걸',
+      rollSteps: 3,
       clientActionId: 'move_piece:P1:10:0:걸:3:::piece-1:0:outer:stack:none',
       clientActionStartedAt: Date.now(),
     },
   },
 });
 
-test('빠른 ACK 전에 synced roll이 늦어도 local action identity로 move ledger 결과를 준비한다', () => {
+test('빠른 ACK 전에 synced roll이 늦어도 exact local action payload로 move ledger 결과를 준비한다', () => {
   const prepared = prepareGulMove();
 
   assert.ok(prepared);
