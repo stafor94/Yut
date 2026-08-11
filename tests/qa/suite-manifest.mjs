@@ -43,7 +43,6 @@ export const qaSuiteManifest = Object.freeze({
       'tests/game-flow/turn-order-simultaneous.spec.js',
       'tests/game-flow/ai-substitution.spec.js',
       'tests/game-flow/ai-stacked-strategy.spec.js',
-      'tests/game-flow/online-ai-presentation-stall.spec.js',
       'tests/online/room-lifecycle.spec.js',
       'tests/online/room-leave-ui-race.spec.js',
       'tests/online/room-exit-resume.spec.js',
@@ -74,6 +73,7 @@ export const qaSuiteManifest = Object.freeze({
     tests: Object.freeze([
       'tests/game-flow/ai-presence-recovery.spec.js',
       'tests/game-flow/hard-ai-authoritative-strategy.spec.js',
+      'tests/game-flow/online-ai-presentation-stall.spec.js',
       'tests/game-flow/turn-order-auto-timeout.spec.js',
       'tests/regression/finish-step-animation.spec.js',
       'tests/regression/roll-mat-surface.spec.js',
