@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { localMovePresentationLifecycle } from '../../src/app/flows/localMovePresentationLifecycle.js';
 import {
   clearPendingLocalMoveOwnershipPreparer,
   preparePendingLocalMoveOwnership,
@@ -32,4 +33,22 @@ test('pending claim 단계에서 pre-move action snapshot을 동기적으로 own
     },
   });
   clearPendingLocalMoveOwnershipPreparer(preparer);
+});
+
+test('0칸 이동은 경로 ledger를 만들지 않고 pending presentation lifecycle만 해제한다', () => {
+  const calls: unknown[] = [];
+  const preparer: PendingLocalMoveOwnershipPreparer = (action) => {
+    calls.push(action);
+    return true;
+  };
+  publishPendingLocalMoveOwnershipPreparer(preparer);
+  const actionKey = 'move_piece:P1:10:0:도:1:::P1-1:-1:outer:stack:none';
+  localMovePresentationLifecycle.begin(actionKey);
+
+  assert.equal(preparePendingLocalMoveOwnership(actionKey), true);
+  assert.equal(calls.length, 0);
+  assert.equal(localMovePresentationLifecycle.snapshot().phase, 'idle');
+
+  clearPendingLocalMoveOwnershipPreparer(preparer);
+  localMovePresentationLifecycle.cancel();
 });
