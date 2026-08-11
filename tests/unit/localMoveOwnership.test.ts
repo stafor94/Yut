@@ -215,7 +215,8 @@ for (const stackedRollMode of [false, true] as const) {
       const state = makeFirstTurnTwoPieceState(roll, stackedRollMode);
       const action = makeFirstTurnMoveAction(roll, stackedRollMode);
       const result = prepareLocalMoveOwnershipResult({ roomId: 'room-first-turn', state, action });
-      assert.equal(result.ok, true, result.ok ? undefined : `${result.stage}:${result.reason}`);
+      const failureMessage = result.ok ? 'ownership preparation unexpectedly failed' : `${result.stage}:${result.reason}`;
+      assert.equal(result.ok, true, failureMessage);
       if (!result.ok) return;
       assert.equal(result.prepared.record.clientMutationId, action.payload.clientActionId);
       assert.equal(result.prepared.record.pieceId, 'P1-piece-1');

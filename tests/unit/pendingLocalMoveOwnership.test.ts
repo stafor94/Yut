@@ -35,9 +35,9 @@ const makeExactMoveAction = () => ({
 
 test('pending local move ownership은 exact action 객체와 payload를 preparer에 그대로 전달한다', () => {
   const action = makeExactMoveAction();
-  let receivedRequest: Parameters<PendingLocalMoveOwnershipPreparer>[0] | null = null;
+  const receivedRequests: Parameters<PendingLocalMoveOwnershipPreparer>[0][] = [];
   const preparer: PendingLocalMoveOwnershipPreparer = (request) => {
-    receivedRequest = request;
+    receivedRequests.push(request);
     return {
       ok: true,
       action: request.action,
@@ -47,15 +47,17 @@ test('pending local move ownership은 exact action 객체와 payload를 preparer
   publishPendingLocalMoveOwnershipPreparer(preparer);
   try {
     const result = preparePendingLocalMoveOwnership({ action, totalSteps: 2 });
+    const receivedRequest = receivedRequests[0];
     assert.equal(result.ok, true);
-    assert.equal(receivedRequest?.action, action);
+    assert.ok(receivedRequest);
+    assert.equal(receivedRequest.action, action);
     assert.equal(result.action, action);
-    assert.equal(receivedRequest?.totalSteps, 2);
-    assert.deepEqual(receivedRequest?.action.payload, action.payload);
-    assert.equal(receivedRequest?.action.payload?.clientActionStartedAt, 1_234_567);
-    assert.equal(receivedRequest?.action.payload?.deadlineAutoSubmitted, true);
-    assert.equal(receivedRequest?.action.payload?.autoSubmittedDeadlineAt, 1_234_000);
-    assert.deepEqual(receivedRequest?.action.payload?.stackedMoveSelection, action.payload.stackedMoveSelection);
+    assert.equal(receivedRequest.totalSteps, 2);
+    assert.deepEqual(receivedRequest.action.payload, action.payload);
+    assert.equal(receivedRequest.action.payload?.clientActionStartedAt, 1_234_567);
+    assert.equal(receivedRequest.action.payload?.deadlineAutoSubmitted, true);
+    assert.equal(receivedRequest.action.payload?.autoSubmittedDeadlineAt, 1_234_000);
+    assert.deepEqual(receivedRequest.action.payload?.stackedMoveSelection, action.payload.stackedMoveSelection);
   } finally {
     clearPendingLocalMoveOwnershipPreparer(preparer);
   }
@@ -63,9 +65,9 @@ test('pending local move ownership은 exact action 객체와 payload를 preparer
 
 test('actionKey 토큰이 payload와 충돌해도 문자열 parser로 piece/roll/stack identity를 복원하지 않는다', () => {
   const action = makeExactMoveAction();
-  let receivedAction: typeof action | null = null;
+  const receivedActions: typeof action[] = [];
   const preparer: PendingLocalMoveOwnershipPreparer = (request) => {
-    receivedAction = request.action as typeof action;
+    receivedActions.push(request.action as typeof action);
     return {
       ok: true,
       action: request.action,
@@ -75,12 +77,14 @@ test('actionKey 토큰이 payload와 충돌해도 문자열 parser로 piece/roll
   publishPendingLocalMoveOwnershipPreparer(preparer);
   try {
     const result = preparePendingLocalMoveOwnership({ action, totalSteps: 2 });
+    const receivedAction = receivedActions[0];
     assert.equal(result.ok, true);
+    assert.ok(receivedAction);
     assert.equal(receivedAction, action);
-    assert.equal(receivedAction?.payload.pieceId, 'P1-piece-1');
-    assert.equal(receivedAction?.payload.rollName, '개');
-    assert.equal(receivedAction?.payload.rollSteps, 2);
-    assert.equal(receivedAction?.payload.rollStackIndex, 0);
+    assert.equal(receivedAction.payload.pieceId, 'P1-piece-1');
+    assert.equal(receivedAction.payload.rollName, '개');
+    assert.equal(receivedAction.payload.rollSteps, 2);
+    assert.equal(receivedAction.payload.rollStackIndex, 0);
   } finally {
     clearPendingLocalMoveOwnershipPreparer(preparer);
   }
