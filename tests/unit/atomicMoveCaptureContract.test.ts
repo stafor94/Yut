@@ -31,7 +31,7 @@ test('pending membership and registration stay side-effect free', () => {
   assert.doesNotMatch(readFileSync('tests/unit/atomicMoveCaptureContract.test.ts', 'utf8'), /from '\.\.\/\.\.\/src\/app\/hooks\/usePendingRemoteActions'/);
 });
 
-test('current readiness state and pieces are used for ownership preparation', () => {
+test('authoritative readiness state is preserved while only current local pieces are replaced for ownership preparation', () => {
   const globalState = globalThis as typeof globalThis & { __YUT_DEBUG_STATE__?: Record<string, unknown> };
   const previousDiagnostic = globalState.__YUT_DEBUG_STATE__;
   globalState.__YUT_DEBUG_STATE__ = {
@@ -47,16 +47,18 @@ test('current readiness state and pieces are used for ownership preparation', ()
       stackedRollMode: true,
       pieces: ['stale-piece'],
       selectedRollStackIndex: null,
+      rollStackClosed: false,
     }, ['current-piece']);
     assert.ok(result);
-    assert.equal(result.selectedRollStackIndex, 1);
-    assert.equal(result.rollStackClosed, true);
+    assert.equal(result.selectedRollStackIndex, null);
+    assert.equal(result.rollStackClosed, false);
     assert.deepEqual(result.pieces, ['current-piece']);
   } finally {
     if (previousDiagnostic) globalState.__YUT_DEBUG_STATE__ = previousDiagnostic;
     else delete globalState.__YUT_DEBUG_STATE__;
   }
-  assert.match(ownershipSource, /findActive\(\)/);
+  assert.doesNotMatch(ownershipSource, /__YUT_DEBUG_STATE__/);
+  assert.match(ownershipSource, /pieces: fallbackPieces/);
 });
 
 test('move selection and optimistic presentation share the current pieces snapshot before input', () => {
