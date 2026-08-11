@@ -167,7 +167,7 @@ async function openOnlineAiOneOnOneGame({ page, context, testInfo, suffix, moveA
       localSeatId,
       pieceId: String(ownedPieces[0]?.id ?? ''),
       otherPieceId: String(ownedPieces[1]?.id ?? ''),
-      stackedRollMode: debug.stackedRollMode,
+      stackedRollMode: window.localStorage.getItem('yut-online:stackedRollMode') === 'true',
     };
   });
   expect(identity.localSeatId).not.toBe('');
