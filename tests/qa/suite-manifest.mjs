@@ -136,7 +136,7 @@ export const qaSuiteManifest = Object.freeze({
   'mobile-galaxy-move-start': Object.freeze({
     label: 'Mobile Galaxy move start',
     code: 'galstart',
-    workers: 3,
+    workers: 4,
     fullyParallel: true,
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
