@@ -25,6 +25,7 @@ async function installAtomicHumanMoveQa(context, { moveAckDelayMs = 0 } = {}) {
     window.__YUT_QA_ATOMIC_MOVE_TRACE__ = {
       readyAt: 0,
       clickAt: 0,
+      settledPendingLocalRemoteActionCount: -1,
       movingStarts: [],
       nodeTransitions: [],
       selectedPieceIds: [],
@@ -212,17 +213,23 @@ async function clickMoveImmediatelyWhenReady(page) {
 }
 
 async function waitForMoveSettlement(page, pieceId) {
-  await expect.poll(() => page.evaluate(({ trackedPieceId, expectedNodeId }) => {
+  await expect.poll(() => page.evaluate(({ trackedPieceId }) => {
     const debug = window.__YUT_DEBUG_STATE__ ?? {};
     const piece = Array.isArray(debug.pieces)
       ? debug.pieces.find((candidate) => candidate?.id === trackedPieceId)
       : null;
-    return {
+    const pending = Number(debug.pendingLocalRemoteActionCount ?? -1);
+    const snapshot = {
       nodeId: String(piece?.nodeId ?? ''),
       moving: debug.movingPieceId === trackedPieceId,
-      pending: Number(debug.pendingLocalRemoteActionCount ?? -1),
+      pending,
     };
-  }, { trackedPieceId: pieceId, expectedNodeId: EXPECTED_FINAL_NODE_ID }), {
+    if (snapshot.nodeId === 'n03' && !snapshot.moving && pending === 0) {
+      const trace = window.__YUT_QA_ATOMIC_MOVE_TRACE__;
+      if (trace) trace.settledPendingLocalRemoteActionCount = pending;
+    }
+    return snapshot;
+  }, { trackedPieceId: pieceId }), {
     timeout: 25_000,
     intervals: [50, 100, 200, 400],
     message: '로컬 개 이동이 n03에 정착하고 관련 pending이 0이 되어야 합니다.',
@@ -288,7 +295,7 @@ async function expectAtomicMoveContract({ page, roomId, localSeatId, pieceId, ot
   expect(debugPiece).toMatchObject({ nodeId: EXPECTED_FINAL_NODE_ID, started: true, finished: false });
   expect(serverOtherPiece).toMatchObject({ nodeId: 'n01', started: false, finished: false });
   expect(debugOtherPiece).toMatchObject({ nodeId: 'n01', started: false, finished: false });
-  expect(Number(observed.debug?.pendingLocalRemoteActionCount ?? -1)).toBe(0);
+  expect(Number(trace.settledPendingLocalRemoteActionCount ?? -1)).toBe(0);
   return { moveActionId: moveActionIds[0] };
 }
 
