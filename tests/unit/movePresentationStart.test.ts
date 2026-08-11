@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { commitAcceptedMovePresentation, prepareMovePresentationStart } from '../../src/app/flows/movePresentationStart.ts';
+import { commitAcceptedMovePresentation, prepareMovePresentationStart } from '../../src/app/flows/movePresentationStart.js';
 
 type Piece = { id: string; ownerId: string; started: boolean; finished: boolean };
 
