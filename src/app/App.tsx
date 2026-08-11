@@ -53,7 +53,7 @@ import { calculatePieceSelection } from './flows/pieceSelection';
 import { resolveEffectiveMoveContext } from './flows/effectiveMoveContext';
 import { getMoveActionReady, type MoveActionSubmissionOptions } from './flows/moveActionReadiness';
 import { commitAcceptedMovePresentation, prepareMovePresentationStart } from './flows/movePresentationStart';
-import { preparePendingLocalMoveOwnership } from './flows/pendingLocalMoveOwnership';
+import { preparePendingLocalMoveOwnership, type PendingLocalMoveOwnershipFailure } from './flows/pendingLocalMoveOwnership';
 import { localMoveLedger } from './flows/localMoveOwnership';
 import { localMovePresentationLifecycle } from './flows/localMovePresentationLifecycle';
 import {
@@ -1780,7 +1780,7 @@ export function App() {
     setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, started: true, finished: false } : piece));
     for (const nextNodeId of pathNodeIds) {
       const nextNodeIndex = Math.max(0, BOARD_NODES.findIndex((node) => node.id === nextNodeId));
-      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeId: nextNodeId, nodeIndex: nextNodeIndex, started: nextNodeId !== 'finish', finished: nextNodeId === 'finish' } : piece));
+      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeId: nextNodeId, nodeIndex: nextNodeIndex, started: true, finished: false } : piece));
       playSyncedMoveSoundOnce(`sequence:${sequence.sequence}:${nextNodeId}`, sequence.clientMutationId);
       await delay(STEP_DELAY_MS);
       if (nextNodeId === anchorAfter.nodeId) break;
@@ -2949,6 +2949,7 @@ export function App() {
     lastAppliedStateVersionRef,
     applyingSyncedStateRef,
     currentPiecesRef: piecesRef,
+    currentSequenceStateRef,
     replayMissingSequencesThenApply,
     applySyncedStateSnapshot,
     applyAuthoritativeResultSequence,
@@ -3330,6 +3331,7 @@ export function App() {
     localClientMutationIdsRef.current.delete(actionKey);
     localMoveLedger.remove(actionKey);
     if (localMovePresentationLifecycle.snapshot().actionKey === actionKey) localMovePresentationLifecycle.cancel();
+    releasePreparedMovePresentation();
   }
 
   async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number; rollStackSnapshot?: YutResult[]; consumedItemType?: ItemType; deferFinalizationToAuthoritative?: boolean; preparedPresentation?: PreparedMovePiecePresentation; presentationStarted?: boolean } = {}) {
@@ -3576,10 +3578,15 @@ export function App() {
   }
 
   function moveSelectedPiece(extraSteps = 0, options: MoveActionSubmissionOptions & { timedOut?: boolean } = {}) {
+    const submittedClientActionStartedAt = typeof options.clientActionStartedAt === 'number'
+      && Number.isFinite(options.clientActionStartedAt)
+      && options.clientActionStartedAt > 0
+      ? Math.trunc(options.clientActionStartedAt)
+      : Date.now();
     const moveSubmissionMetadata = {
+      clientActionStartedAt: submittedClientActionStartedAt,
       ...(options.deadlineAutoSubmitted === true ? { deadlineAutoSubmitted: true } : {}),
       ...(typeof options.autoSubmittedDeadlineAt === 'number' ? { autoSubmittedDeadlineAt: options.autoSubmittedDeadlineAt } : {}),
-      ...(typeof options.clientActionStartedAt === 'number' ? { clientActionStartedAt: options.clientActionStartedAt } : {}),
     };
     if (pendingItemPickupRef.current) {
       reportTurnActionBlocked('move_piece', ['pending-item-pickup'], '아이템 교체 선택을 먼저 완료해주세요');
@@ -3632,6 +3639,8 @@ export function App() {
             extraSteps,
             branchChoice: 'outer' as BranchChoice,
             rollStackIndex,
+            rollName: effectiveMoveRoll?.name ?? '',
+            rollSteps: effectiveMoveRoll?.steps ?? 0,
           };
           const actionKey = getLocalActionKey('move_piece', payload);
           if (rejectedRemoteActionKeysRef.current.has(actionKey)) {
@@ -3642,6 +3651,7 @@ export function App() {
             reportTurnActionBlocked('move_piece', ['pending-local-remote-action'], '이미 말 이동 요청을 처리 중입니다');
             return false;
           }
+          const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, ...moveSubmissionMetadata, clientActionId: actionKey }, activeSeat) };
           addPendingLocalRemoteAction(actionKey, {
             type: 'move_piece',
             actorId: localSeatId,
@@ -3650,7 +3660,6 @@ export function App() {
             optimisticApplied: true,
           });
           localClientMutationIdsRef.current.add(actionKey);
-          const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, ...moveSubmissionMetadata, clientActionId: actionKey }, activeSeat) };
           addLog(`${getSeatDisplayName(activeSeat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
           setBranchChoice('outer');
           enqueueAuthoritativeGameAction(
@@ -3693,6 +3702,8 @@ export function App() {
         extraSteps,
         branchChoice: resolvedBranchChoice,
         rollStackIndex: stackedRollMode && rollStackClosed ? options.rollStackIndex ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null,
+        rollName: effectiveMoveRoll.name,
+        rollSteps: effectiveMoveRoll.steps,
       };
       const actionKey = getLocalActionKey('move_piece', payload);
       if (rejectedRemoteActionKeysRef.current.has(actionKey)) {
@@ -3703,6 +3714,7 @@ export function App() {
         reportTurnActionBlocked('move_piece', ['pending-local-remote-action'], '이미 말 이동 요청을 처리 중입니다');
         return false;
       }
+      const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, ...moveSubmissionMetadata, clientActionId: actionKey }, activeSeat) };
 
       const preparation = prepareMovePiecePresentation(pieceToMove.id, effectiveMoveRoll, activeSeat, extraSteps, resolvedBranchChoice);
       if (!preparation.accepted) {
@@ -3711,6 +3723,7 @@ export function App() {
         return false;
       }
 
+      let ownershipFailure: PendingLocalMoveOwnershipFailure | null = null;
       const presentation = commitAcceptedMovePresentation({
         prepared: preparation.prepared,
         registerOwnership: () => {
@@ -3723,7 +3736,17 @@ export function App() {
           });
           if (!pendingAdded) return false;
           localClientMutationIdsRef.current.add(actionKey);
-          if (preparePendingLocalMoveOwnership(actionKey)) return true;
+          const ownership = preparePendingLocalMoveOwnership({ action, totalSteps: preparation.prepared.steps });
+          if (ownership.ok && ownership.action === action && ownership.actionKey === actionKey) return true;
+          ownershipFailure = ownership.ok
+            ? {
+                ok: false,
+                action,
+                actionKey,
+                stage: 'ownership-registration',
+                reason: 'prepared-action-identity-mismatch',
+              }
+            : ownership;
           rollbackMovePresentationOwnership(actionKey);
           return false;
         },
@@ -3753,38 +3776,50 @@ export function App() {
         releaseExecution: releasePreparedMovePresentation,
       });
       if (!presentation.started) {
-        recordRemoteActionDiagnostic('move_piece', 'presentation-start-failed', presentation.reason, { actionKey });
+        if (ownershipFailure) {
+          const diagnosticReason = `${ownershipFailure.stage}:${ownershipFailure.reason}`;
+          recordRemoteActionDiagnostic('move_piece', 'ownership-registration-failed', diagnosticReason, { actionKey });
+          setMessage(`말 이동 준비에 실패했습니다. ${diagnosticReason}`);
+        } else {
+          recordRemoteActionDiagnostic('move_piece', 'presentation-start-failed', presentation.reason, { actionKey });
+        }
         return false;
       }
 
-      const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, ...moveSubmissionMetadata, clientActionId: actionKey }, activeSeat) };
       void presentation.completion.catch((error) => {
         recordRemoteActionDiagnostic('move_piece', 'presentation-completion-error', error instanceof Error ? error.message : '말 이동 연출 완료에 실패했습니다.', { actionKey });
         void syncLatestAuthoritativeState('로컬 말 이동 연출 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
       });
-      enqueueAuthoritativeGameAction(
-        activeRoomId,
-        action,
-        async (result) => {
-          if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
-            await applyAuthoritativeResultSequence(result);
-            acknowledgePendingLocalRemoteAction(actionKey);
-          }
-          if (result.status === 'rejected' || result.status === 'unsupported') {
-            void handleAuthoritativeActionRejected('move_piece', 'commit-result', result, {
-              actionKey,
-              fallbackMessage: '말 이동 처리에 실패했습니다.',
-              optimisticApplied: true,
-              resyncMessage: '서버가 말 이동 요청을 거부해 최신 authoritative 상태로 재동기화합니다.',
-            });
-          }
-        },
-        (error) => {
-          recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey });
-          void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('말 이동 요청 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' }));
-        },
-        () => undefined,
-      );
+      try {
+        enqueueAuthoritativeGameAction(
+          activeRoomId,
+          action,
+          async (result) => {
+            if ((result.status === 'committed' || result.status === 'duplicate') && result.sequence) {
+              await applyAuthoritativeResultSequence(result);
+              acknowledgePendingLocalRemoteAction(actionKey);
+            }
+            if (result.status === 'rejected' || result.status === 'unsupported') {
+              void handleAuthoritativeActionRejected('move_piece', 'commit-result', result, {
+                actionKey,
+                fallbackMessage: '말 이동 처리에 실패했습니다.',
+                optimisticApplied: true,
+                resyncMessage: '서버가 말 이동 요청을 거부해 최신 authoritative 상태로 재동기화합니다.',
+              });
+            }
+          },
+          (error) => {
+            recordRemoteActionDiagnostic('move_piece', 'commit-error', error instanceof Error ? error.message : '말 이동 처리에 실패했습니다.', { actionKey });
+            void reconcilePendingLocalRemoteActions({ forceStaleClear: false }).then(() => syncLatestAuthoritativeState('말 이동 요청 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' }));
+          },
+          () => undefined,
+        );
+      } catch (error) {
+        rollbackMovePresentationOwnership(actionKey);
+        recordRemoteActionDiagnostic('move_piece', 'enqueue-start-failed', error instanceof Error ? error.message : '말 이동 제출을 시작하지 못했습니다.', { actionKey });
+        setMessage(error instanceof Error ? error.message : '말 이동 제출을 시작하지 못했습니다.');
+        return false;
+      }
       return true;
     }
     void movePiece(pieceToMove.id, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove.nodeId, displayBranchChoice));

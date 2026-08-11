@@ -1,80 +1,97 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { localMovePresentationLifecycle } from '../../src/app/flows/localMovePresentationLifecycle.js';
 import {
   clearPendingLocalMoveOwnershipPreparer,
   preparePendingLocalMoveOwnership,
   publishPendingLocalMoveOwnershipPreparer,
-  requiresPendingLocalMoveOwnership,
   type PendingLocalMoveOwnershipPreparer,
 } from '../../src/app/flows/pendingLocalMoveOwnership.js';
 
-test('pending claim 단계에서 pre-move action snapshot을 동기적으로 ownership preparer에 전달한다', () => {
-  const calls: unknown[] = [];
-  const preparer: PendingLocalMoveOwnershipPreparer = (action) => {
-    calls.push(action);
-    return true;
-  };
-  publishPendingLocalMoveOwnershipPreparer(preparer);
-  const actionKey = 'move_piece:P1:10:0:걸:3:::P1-1:0:outer:stack:none';
-
-  assert.equal(requiresPendingLocalMoveOwnership(actionKey), true);
-  assert.equal(preparePendingLocalMoveOwnership(actionKey), true);
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], {
-    type: 'move_piece',
-    actorId: 'P1',
-    payload: {
-      clientActionId: actionKey,
-      pieceId: 'P1-1',
-      extraSteps: 0,
-      branchChoice: 'outer',
-      rollStackIndex: null,
-    },
-  });
-  clearPendingLocalMoveOwnershipPreparer(preparer);
-});
-
-test('roll이 ready인 명시적 stacked move도 marker 기준으로 ownership preparer에 전달한다', () => {
-  const calls: unknown[] = [];
-  const preparer: PendingLocalMoveOwnershipPreparer = (action) => {
-    calls.push(action);
-    return true;
-  };
-  publishPendingLocalMoveOwnershipPreparer(preparer);
-  const actionKey = 'move_piece:P1:10:0:ready:::P1-1:0:outer:stack:0';
-
-  assert.equal(requiresPendingLocalMoveOwnership(actionKey), true);
-  assert.equal(preparePendingLocalMoveOwnership(actionKey), true);
-  assert.deepEqual(calls, [{
-    type: 'move_piece',
-    actorId: 'P1',
-    payload: {
-      clientActionId: actionKey,
-      pieceId: 'P1-1',
-      extraSteps: 0,
-      branchChoice: 'outer',
+const makeExactMoveAction = () => ({
+  type: 'move_piece' as const,
+  actorId: 'P1',
+  payload: {
+    pieceId: 'P1-piece-1',
+    extraSteps: 0,
+    branchChoice: 'outer',
+    rollStackIndex: 0,
+    rollName: '개',
+    rollSteps: 2,
+    clientActionId: 'move_piece:P1:misleading:tokens:must:not:be:parsed:stack:99',
+    clientActionStartedAt: 1_234_567,
+    deadlineAutoSubmitted: true,
+    autoSubmittedDeadlineAt: 1_234_000,
+    stackedMoveSelection: {
+      selectionId: 'selection-exact',
+      sourceSequence: 41,
+      turnIndex: 0,
       rollStackIndex: 0,
     },
-  }]);
-
-  clearPendingLocalMoveOwnershipPreparer(preparer);
+    actorLabel: 'P1',
+    actorName: '사람',
+    actorLogName: '사람',
+  },
 });
 
-test('0칸 이동은 경로 ledger를 만들지 않고 pending presentation lifecycle만 해제한다', () => {
-  const calls: unknown[] = [];
-  const preparer: PendingLocalMoveOwnershipPreparer = (action) => {
-    calls.push(action);
-    return true;
+test('pending local move ownership은 exact action 객체와 payload를 preparer에 그대로 전달한다', () => {
+  const action = makeExactMoveAction();
+  let receivedRequest: Parameters<PendingLocalMoveOwnershipPreparer>[0] | null = null;
+  const preparer: PendingLocalMoveOwnershipPreparer = (request) => {
+    receivedRequest = request;
+    return {
+      ok: true,
+      action: request.action,
+      actionKey: String(request.action.payload?.clientActionId ?? ''),
+    };
   };
   publishPendingLocalMoveOwnershipPreparer(preparer);
-  const actionKey = 'move_piece:P1:10:0:도:1:::P1-1:-1:outer:stack:none';
-  localMovePresentationLifecycle.begin(actionKey);
+  try {
+    const result = preparePendingLocalMoveOwnership({ action, totalSteps: 2 });
+    assert.equal(result.ok, true);
+    assert.equal(receivedRequest?.action, action);
+    assert.equal(result.action, action);
+    assert.equal(receivedRequest?.totalSteps, 2);
+    assert.deepEqual(receivedRequest?.action.payload, action.payload);
+    assert.equal(receivedRequest?.action.payload?.clientActionStartedAt, 1_234_567);
+    assert.equal(receivedRequest?.action.payload?.deadlineAutoSubmitted, true);
+    assert.equal(receivedRequest?.action.payload?.autoSubmittedDeadlineAt, 1_234_000);
+    assert.deepEqual(receivedRequest?.action.payload?.stackedMoveSelection, action.payload.stackedMoveSelection);
+  } finally {
+    clearPendingLocalMoveOwnershipPreparer(preparer);
+  }
+});
 
-  assert.equal(preparePendingLocalMoveOwnership(actionKey), true);
-  assert.equal(calls.length, 0);
-  assert.equal(localMovePresentationLifecycle.snapshot().phase, 'idle');
+test('actionKey 토큰이 payload와 충돌해도 문자열 parser로 piece/roll/stack identity를 복원하지 않는다', () => {
+  const action = makeExactMoveAction();
+  let receivedAction: typeof action | null = null;
+  const preparer: PendingLocalMoveOwnershipPreparer = (request) => {
+    receivedAction = request.action as typeof action;
+    return {
+      ok: true,
+      action: request.action,
+      actionKey: String(request.action.payload?.clientActionId ?? ''),
+    };
+  };
+  publishPendingLocalMoveOwnershipPreparer(preparer);
+  try {
+    const result = preparePendingLocalMoveOwnership({ action, totalSteps: 2 });
+    assert.equal(result.ok, true);
+    assert.equal(receivedAction, action);
+    assert.equal(receivedAction?.payload.pieceId, 'P1-piece-1');
+    assert.equal(receivedAction?.payload.rollName, '개');
+    assert.equal(receivedAction?.payload.rollSteps, 2);
+    assert.equal(receivedAction?.payload.rollStackIndex, 0);
+  } finally {
+    clearPendingLocalMoveOwnershipPreparer(preparer);
+  }
+});
 
-  clearPendingLocalMoveOwnershipPreparer(preparer);
-  localMovePresentationLifecycle.cancel();
+test('ownership preparer가 없으면 stage/reason을 보존한 구조화된 실패를 반환한다', () => {
+  const action = makeExactMoveAction();
+  const result = preparePendingLocalMoveOwnership({ action, totalSteps: 2 });
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.action, action);
+  assert.equal(result.stage, 'ownership-preparer');
+  assert.equal(result.reason, 'ownership-preparer-unavailable');
 });

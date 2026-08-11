@@ -80,6 +80,10 @@ export type PreparedLocalMoveOwnership = {
   payload: Record<string, unknown>;
 };
 
+export type LocalMoveOwnershipPreparationResult =
+  | { ok: true; prepared: PreparedLocalMoveOwnership }
+  | { ok: false; stage: string; reason: string };
+
 type LocalMoveSettlementExpectation = Pick<LocalMovePresentationLifecycle, 'expectNextSettlement'>;
 type LocalMovePresentationOwnership = Pick<LocalMovePresentationLifecycle, 'snapshot'>;
 
@@ -153,32 +157,6 @@ const normalizeOwnedItems = (value: unknown) => {
 
 const normalizeStringArray = (value: unknown) => Array.isArray(value) ? value.map(String).filter(Boolean) : [];
 
-const BONUS_ROLL_NAMES = new Set(['윷', '모', '황금 윷']);
-
-const getPendingLocalMoveRoll = (action: LocalMoveAction) => {
-  const payloadRollName = typeof action.payload?.rollName === 'string' ? action.payload.rollName : '';
-  const payloadRollSteps = Number(action.payload?.rollSteps);
-  if (payloadRollName && Number.isFinite(payloadRollSteps)) {
-    return {
-      name: payloadRollName,
-      steps: payloadRollSteps,
-      bonus: BONUS_ROLL_NAMES.has(payloadRollName),
-    };
-  }
-
-  const clientActionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
-  const tokens = clientActionId.split(':');
-  if (tokens.length < 6 || tokens[0] !== 'move_piece' || tokens[1] !== action.actorId) return null;
-  const rollName = tokens[4] ?? '';
-  const rollSteps = Number(tokens[5]);
-  if (!rollName || rollName === 'ready' || !Number.isFinite(rollSteps)) return null;
-  return {
-    name: rollName,
-    steps: rollSteps,
-    bonus: BONUS_ROLL_NAMES.has(rollName),
-  };
-};
-
 const keepLocalPiecesOutOfDisplaySpread = (state: LocalMoveState, pieces: unknown[]) => {
   Object.defineProperty(state, LOCAL_MOVE_PIECES, {
     value: pieces,
@@ -195,13 +173,6 @@ const keepLocalPiecesOutOfDisplaySpread = (state: LocalMoveState, pieces: unknow
   return state;
 };
 
-const getCurrentMoveDiagnosticState = () => {
-  const diagnosticState = (globalThis as typeof globalThis & {
-    __YUT_DEBUG_STATE__?: Record<string, unknown>;
-  }).__YUT_DEBUG_STATE__;
-  return diagnosticState && typeof diagnosticState === 'object' ? diagnosticState : null;
-};
-
 export function withLocalMovePiecesFallback(
   state: Record<string, unknown> | null,
   fallbackPieces: unknown[],
@@ -210,26 +181,9 @@ export function withLocalMovePiecesFallback(
   if (!localState || !Array.isArray(fallbackPieces)) return localState;
   return {
     ...localState,
-    ...(getCurrentMoveDiagnosticState() ?? {}),
     pieces: fallbackPieces,
   };
 }
-
-const getLocalMoveReductionState = (state: LocalMoveState, action: LocalMoveAction): LocalMoveState => {
-  const pieces = Array.isArray(state.pieces)
-    ? state.pieces
-    : Array.isArray(state[LOCAL_MOVE_PIECES])
-      ? state[LOCAL_MOVE_PIECES]
-      : null;
-  const stateWithPieces = pieces && !Array.isArray(state.pieces)
-    ? keepLocalPiecesOutOfDisplaySpread({ ...state }, pieces)
-    : state;
-  if (normalizeRoll(stateWithPieces.roll)) return stateWithPieces;
-  const pendingRoll = getPendingLocalMoveRoll(action);
-  if (!pendingRoll) return stateWithPieces;
-  const stateWithRoll = { ...stateWithPieces, roll: pendingRoll };
-  return pieces ? keepLocalPiecesOutOfDisplaySpread(stateWithRoll, pieces) : stateWithRoll;
-};
 
 export function makeLocalMoveResultFingerprint(state: Record<string, unknown>) {
   const pieces = Array.isArray(state.pieces) ? state.pieces.map(normalizePiece).sort((left, right) => {
@@ -271,7 +225,13 @@ export function makeLocalMoveResultFingerprint(state: Record<string, unknown>) {
   }));
 }
 
-export function prepareLocalMoveOwnership({
+const ownershipFailure = (stage: string, reason: string): LocalMoveOwnershipPreparationResult => ({
+  ok: false,
+  stage,
+  reason,
+});
+
+export function prepareLocalMoveOwnershipResult({
   roomId,
   state,
   action,
@@ -279,17 +239,24 @@ export function prepareLocalMoveOwnership({
   roomId: string;
   state: LocalMoveState | null | undefined;
   action: LocalMoveAction;
-}): PreparedLocalMoveOwnership | null {
+}): LocalMoveOwnershipPreparationResult {
   const clientMutationId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
-  if (!roomId || !state || !clientMutationId || action.type !== 'move_piece') return null;
+  if (!roomId) return ownershipFailure('action-validation', 'active-room-id-missing');
+  if (!state) return ownershipFailure('authoritative-state', 'current-sequence-state-missing');
+  if (action.type !== 'move_piece') return ownershipFailure('action-validation', 'move-piece-action-required');
+  if (!clientMutationId) return ownershipFailure('action-validation', 'move-client-action-id-missing');
   if (action.payload?.recoveredByCoordinator === true
     || typeof action.payload?.automationSource === 'string'
-    || typeof action.payload?.coordinatorSeatId === 'string') return null;
+    || typeof action.payload?.coordinatorSeatId === 'string') {
+    return ownershipFailure('action-validation', 'non-local-move-action');
+  }
   if ((state.playMode !== 'individual' && state.playMode !== 'team')
     || ![1, 2, 3, 4].includes(Number(state.pieceCount))
     || typeof state.stackedRollMode !== 'boolean'
     || !Array.isArray(state.gameSeats)
-    || !state.gameSeats.length) return null;
+    || !state.gameSeats.length) {
+    return ownershipFailure('authoritative-state', 'move-rule-context-incomplete');
+  }
 
   const sides = state.gameSeats
     .filter((seat): seat is { id: string; team: '청팀' | '홍팀' } => Boolean(
@@ -299,12 +266,13 @@ export function prepareLocalMoveOwnership({
       && (seat.team === '청팀' || seat.team === '홍팀'),
     ))
     .map((seat) => ({ id: seat.id, team: seat.team }));
-  if (sides.length !== state.gameSeats.length) return null;
+  if (sides.length !== state.gameSeats.length) {
+    return ownershipFailure('authoritative-state', 'game-seat-context-incomplete');
+  }
+  if (!Array.isArray(state.pieces)) return ownershipFailure('authoritative-state', 'authoritative-pieces-missing');
 
-  const reductionState = getLocalMoveReductionState(state, action);
-  if (!Array.isArray(reductionState.pieces)) return null;
   const reduction = reduceAuthoritativeGameAction(
-    reductionState as Parameters<typeof reduceAuthoritativeGameAction>[0],
+    state as Parameters<typeof reduceAuthoritativeGameAction>[0],
     action as Parameters<typeof reduceAuthoritativeGameAction>[1],
     {
       playMode: state.playMode,
@@ -313,19 +281,27 @@ export function prepareLocalMoveOwnership({
     },
     sides,
   );
-  if (!isAuthoritativeCommitReduction(reduction)) return null;
+  if (!isAuthoritativeCommitReduction(reduction)) {
+    const rejected = reduction as { status?: unknown; reason?: unknown };
+    const reducerReason = typeof rejected.reason === 'string' && rejected.reason
+      ? rejected.reason
+      : `reducer-${String(rejected.status ?? 'rejected')}`;
+    return ownershipFailure('reducer-prevalidation', reducerReason);
+  }
 
   const payload = reduction.payload ?? {};
   const pieceId = String(payload.pieceId ?? action.payload?.pieceId ?? '');
   const pathNodeIds = normalizeStringArray(payload.pathNodeIds);
-  if (!pieceId || !pathNodeIds.length) return null;
+  if (!pieceId) return ownershipFailure('reducer-result', 'move-piece-id-missing');
+  if (!pathNodeIds.length) return ownershipFailure('reducer-result', 'move-path-missing');
 
   const finalState = {
-    ...reductionState,
+    ...state,
     ...reduction.patch,
     lastClientMutationId: clientMutationId,
   } as LocalMoveState;
   const finalPieces = Array.isArray(finalState.pieces) ? finalState.pieces : [];
+  if (!finalPieces.length) return ownershipFailure('reducer-result', 'move-final-pieces-missing');
   keepLocalPiecesOutOfDisplaySpread(finalState, finalPieces);
   const record: RegisterLocalMoveInput = {
     roomId,
@@ -341,7 +317,16 @@ export function prepareLocalMoveOwnership({
     finalState,
     resultFingerprint: makeLocalMoveResultFingerprint(finalState),
   };
-  return { record, finalState, payload };
+  return { ok: true, prepared: { record, finalState, payload } };
+}
+
+export function prepareLocalMoveOwnership(input: {
+  roomId: string;
+  state: LocalMoveState | null | undefined;
+  action: LocalMoveAction;
+}): PreparedLocalMoveOwnership | null {
+  const result = prepareLocalMoveOwnershipResult(input);
+  return result.ok ? result.prepared : null;
 }
 
 export class LocalMoveLedger {

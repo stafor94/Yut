@@ -25,13 +25,15 @@ import {
   getAuthoritativeDeliveryIdentity,
   localMoveLedger,
   makeLocalMoveResultFingerprint,
-  prepareLocalMoveOwnership,
+  prepareLocalMoveOwnershipResult,
   withLocalMovePiecesFallback,
 } from '../flows/localMoveOwnership';
 import { releaseMoveActionClaim, settleMoveActionClaim } from '../flows/moveExecutionPolicy';
 import {
   clearPendingLocalMoveOwnershipPreparer,
   publishPendingLocalMoveOwnershipPreparer,
+  type PendingLocalMoveOwnershipRequest,
+  type PendingLocalMoveOwnershipResult,
 } from '../flows/pendingLocalMoveOwnership';
 import { useGameSyncSubscription } from '../hooks/useGameSync';
 import { getSequenceRefetchAfter } from '../utils/sequenceRefetch';
@@ -51,6 +53,7 @@ type Params = {
   lastAppliedStateVersionRef: MutableRefObject<number>;
   applyingSyncedStateRef: MutableRefObject<boolean>;
   currentPiecesRef: MutableRefObject<unknown[]>;
+  currentSequenceStateRef: MutableRefObject<SequenceStateSnapshot | null>;
   replayMissingSequencesThenApply: (finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) => Promise<void>;
   applySyncedStateSnapshot: (state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => void;
   applyAuthoritativeResultSequence: (result: AuthoritativeCommitResult) => Promise<unknown>;
@@ -71,7 +74,7 @@ const isTimedOutRollAction = (action: CommittableGameAction) => (
   && Boolean(action.payload && typeof action.payload === 'object' && (action.payload as Record<string, unknown>).timedOut === true)
 );
 
-const getClientActionId = (action: CommittableGameAction) => {
+const getClientActionId = (action: { payload?: unknown }) => {
   if (!action.payload || typeof action.payload !== 'object') return '';
   const clientActionId = (action.payload as Record<string, unknown>).clientActionId;
   return typeof clientActionId === 'string' ? clientActionId : '';
@@ -192,22 +195,35 @@ export function useAuthoritativeGameSyncController(params: Params) {
     return authoritativeState;
   }, [params.acknowledgePendingLocalRemoteAction, params.lastAppliedSequenceRef, params.lastAppliedStateVersionRef, runLocalMoveHardResync]);
 
-  const prepareAndFinalizeLocalMove = useCallback((roomId: string, action: CommittableGameAction) => {
-    if (action.type !== 'move_piece') return false;
-    const actionId = getClientActionId(action);
-    if (actionId && localMoveLedger.has(actionId)) return true;
-    const prepared = prepareLocalMoveOwnership({
-      roomId,
-      state: withLocalMovePiecesFallback(
-        latestSyncedStateRef.current as Record<string, unknown> | null,
-        params.currentPiecesRef.current,
-      ),
+  const prepareAndFinalizeLocalMove = useCallback((
+    roomId: string,
+    request: PendingLocalMoveOwnershipRequest,
+  ): PendingLocalMoveOwnershipResult => {
+    const { action } = request;
+    const actionKey = getClientActionId(action);
+    const fail = (stage: string, reason: string): PendingLocalMoveOwnershipResult => ({
+      ok: false,
       action,
+      actionKey,
+      stage,
+      reason,
     });
-    if (!prepared) return false;
+    if (action.type !== 'move_piece') return fail('action-validation', 'move-piece-action-required');
+    if (!actionKey) return fail('action-validation', 'move-client-action-id-missing');
+    if (localMoveLedger.has(actionKey)) return { ok: true, action, actionKey };
+    if (!roomId) return fail('authoritative-state', 'active-room-id-missing');
 
-    const actionKey = prepared.record.clientMutationId;
-    if (localMoveLedger.has(actionKey)) return true;
+    const state = withLocalMovePiecesFallback(
+      params.currentSequenceStateRef.current as Record<string, unknown> | null,
+      params.currentPiecesRef.current,
+    );
+    const preparedResult = prepareLocalMoveOwnershipResult({ roomId, state, action });
+    if (!preparedResult.ok) return fail(preparedResult.stage, preparedResult.reason);
+    const prepared = preparedResult.prepared;
+    if (prepared.record.clientMutationId !== actionKey) {
+      return fail('ledger-registration', 'prepared-client-action-id-mismatch');
+    }
+
     localMoveLedger.register(prepared.record);
     const presentationSettlement = localMovePresentationLifecycle.waitForSettlement();
     void presentationSettlement.then(() => {
@@ -232,13 +248,26 @@ export function useAuthoritativeGameSyncController(params: Params) {
         params.acknowledgePendingLocalRemoteAction(actionKey);
       }
     });
-    return true;
-  }, [params.acknowledgePendingLocalRemoteAction, params.activeRoomIdRef, params.currentPiecesRef]);
+    return { ok: true, action, actionKey };
+  }, [
+    params.acknowledgePendingLocalRemoteAction,
+    params.activeRoomIdRef,
+    params.currentPiecesRef,
+    params.currentSequenceStateRef,
+  ]);
 
-  const preparePendingLocalMoveOwnership = useCallback((action: CommittableGameAction) => {
+  const preparePendingLocalMoveOwnership = useCallback((request: PendingLocalMoveOwnershipRequest) => {
     const roomId = params.activeRoomIdRef.current;
-    if (!roomId) return false;
-    return prepareAndFinalizeLocalMove(roomId, action);
+    if (!roomId) {
+      return {
+        ok: false as const,
+        action: request.action,
+        actionKey: getClientActionId(request.action),
+        stage: 'authoritative-state',
+        reason: 'active-room-id-missing',
+      };
+    }
+    return prepareAndFinalizeLocalMove(roomId, request);
   }, [params.activeRoomIdRef, prepareAndFinalizeLocalMove]);
   publishPendingLocalMoveOwnershipPreparer(preparePendingLocalMoveOwnership);
   useEffect(() => () => {
@@ -405,7 +434,6 @@ export function useAuthoritativeGameSyncController(params: Params) {
     handleFinally: () => void,
   ) => {
     const attachedAction = attachClientActionStartedAt(action);
-    prepareAndFinalizeLocalMove(roomId, attachedAction);
     if (!isTimedOutRollAction(attachedAction)) {
       queuesRef.current!.enqueueAuthoritativeGameAction(roomId, attachedAction, {
         handleResult: async (result) => {
@@ -482,7 +510,7 @@ export function useAuthoritativeGameSyncController(params: Params) {
         handleFinally();
       }
     })();
-  }, [acknowledgeLocalMoveEcho, commitCanonicalAction, prepareAndFinalizeLocalMove, runLocalMoveHardResync]);
+  }, [acknowledgeLocalMoveEcho, commitCanonicalAction, runLocalMoveHardResync]);
 
   const applyAuthoritativeResultSequence = useCallback(async (result: AuthoritativeCommitResult) => {
     const roomId = params.activeRoomIdRef.current;
