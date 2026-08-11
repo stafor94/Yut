@@ -116,15 +116,15 @@ test('표시 stack이 authoritative context보다 오래돼도 이미 활성화�
 test('render-time selection이 revision 변경으로 지워져도 action roll fingerprint가 최신 authoritative stack과 맞으면 같은 action에 identity를 고정한다', () => {
   const previous = makeState({ lastSequence: 10, turnVersion: 3, rollStack: [MO] });
   assert.deepEqual(select(previous).roll, MO);
-  const current = makeState({ lastSequence: 11, turnVersion: 4, rollStack: [BACKDO] });
+  const current = makeState({ lastSequence: 11, turnVersion: 4, rollStack: [MO] });
   publishAuthoritativeStackedMoveContext(current);
 
   const action = makeAction(11);
-  action.payload.rollName = BACKDO.name;
-  action.payload.rollSteps = BACKDO.steps;
+  action.payload.rollName = MO.name;
+  action.payload.rollSteps = MO.steps;
   assert.equal(attachLatestStackedMoveSelectionIdentity(action), true);
   assert.deepEqual(action.payload.stackedMoveSelection, {
-    expectedPreviousSequence: 11, expectedTurnVersion: 4, expectedTurnIndex: 0, rollStackIndex: 0, roll: BACKDO,
+    expectedPreviousSequence: 11, expectedTurnVersion: 4, expectedTurnIndex: 0, rollStackIndex: 0, roll: MO,
   });
   assert.equal(reduceAuthoritativeGameAction(current, action, ROOM, SIDES).status, 'committed');
 });
