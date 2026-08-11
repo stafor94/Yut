@@ -23,8 +23,10 @@ type MoveState = {
 
 export const STACKED_MOVE_SELECTION_STALE_REASON = '선택한 누적 윷 결과가 최신 상태와 일치하지 않습니다. 최신 상태에서 다시 선택해주세요.';
 
+const MAX_FROZEN_SELECTION_IDENTITIES = 64;
 let authoritativeContext: StackContext | null = null;
 let clientSelection: SelectionIdentity | null = null;
+const frozenSelectionByActionId = new Map<string, SelectionIdentity>();
 
 const integer = (value: unknown) => Number.isSafeInteger(Number(value)) ? Number(value) : null;
 const rollFingerprint = (value: unknown): RollFingerprint | null => {
@@ -45,6 +47,29 @@ const rollMatches = (left: RollFingerprint, right: RollFingerprint) => (
 );
 const stackMatches = (left: RollFingerprint[], right: RollFingerprint[]) => (
   left.length === right.length && left.every((roll, index) => rollMatches(roll, right[index]))
+);
+const cloneSelectionIdentity = (selection: SelectionIdentity): SelectionIdentity => ({
+  ...selection,
+  roll: { ...selection.roll },
+});
+const rememberFrozenSelection = (actionId: string, selection: SelectionIdentity) => {
+  if (!actionId) return;
+  frozenSelectionByActionId.set(actionId, cloneSelectionIdentity(selection));
+  while (frozenSelectionByActionId.size > MAX_FROZEN_SELECTION_IDENTITIES) {
+    const oldestActionId = frozenSelectionByActionId.keys().next().value;
+    if (typeof oldestActionId !== 'string') break;
+    frozenSelectionByActionId.delete(oldestActionId);
+  }
+};
+const selectionMatchesAction = (
+  selection: SelectionIdentity | null | undefined,
+  expected: { expectedPreviousSequence: number; expectedTurnIndex: number },
+  stackIndex: number,
+) => Boolean(
+  selection
+  && selection.rollStackIndex === stackIndex
+  && selection.expectedPreviousSequence === expected.expectedPreviousSequence
+  && selection.expectedTurnIndex === expected.expectedTurnIndex
 );
 const manualIdentity = (action: MoveAction) => {
   const id = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
@@ -94,12 +119,18 @@ export function publishAuthoritativeStackedMoveContext(state: unknown) {
     || clientSelection.expectedTurnVersion !== turnVersion
     || clientSelection.expectedTurnIndex !== turnIndex
   )) clientSelection = null;
+  for (const [actionId, selection] of frozenSelectionByActionId) {
+    if (selection.expectedPreviousSequence < lastSequence || selection.expectedTurnIndex !== turnIndex) {
+      frozenSelectionByActionId.delete(actionId);
+    }
+  }
   return true;
 }
 
 export function clearStackedMoveSelectionIdentityContext() {
   authoritativeContext = null;
   clientSelection = null;
+  frozenSelectionByActionId.clear();
 }
 
 export function captureStackedMoveSelectionIdentity({ rollStack, rollStackClosed, rollStackIndex }: {
@@ -130,13 +161,25 @@ export function captureStackedMoveSelectionIdentity({ rollStack, rollStackClosed
 
 export function attachLatestStackedMoveSelectionIdentity(action: MoveAction) {
   const expected = manualIdentity(action);
+  const actionId = typeof action.payload?.clientActionId === 'string' ? action.payload.clientActionId : '';
   const stackIndex = typeof action.payload?.rollStackIndex === 'number' ? action.payload.rollStackIndex : null;
-  if (!expected || !Number.isInteger(stackIndex) || Number(stackIndex) < 0) return false;
-  if (payloadIdentity(action)) return true;
-  if (!clientSelection || clientSelection.rollStackIndex !== stackIndex
-    || clientSelection.expectedPreviousSequence !== expected.expectedPreviousSequence
-    || clientSelection.expectedTurnIndex !== expected.expectedTurnIndex) return false;
-  action.payload = { ...action.payload, stackedMoveSelection: { ...clientSelection, roll: { ...clientSelection.roll } } };
+  if (!expected || !actionId || !Number.isInteger(stackIndex) || Number(stackIndex) < 0) return false;
+  const attachedSelection = payloadIdentity(action);
+  if (attachedSelection) {
+    rememberFrozenSelection(actionId, attachedSelection);
+    return true;
+  }
+  const liveSelection = selectionMatchesAction(clientSelection, expected, Number(stackIndex))
+    ? clientSelection
+    : null;
+  const frozenSelection = selectionMatchesAction(frozenSelectionByActionId.get(actionId), expected, Number(stackIndex))
+    ? frozenSelectionByActionId.get(actionId)
+    : null;
+  const selection = liveSelection ?? frozenSelection;
+  if (!selection) return false;
+  const frozen = cloneSelectionIdentity(selection);
+  action.payload = { ...action.payload, stackedMoveSelection: frozen };
+  rememberFrozenSelection(actionId, frozen);
   return true;
 }
 
