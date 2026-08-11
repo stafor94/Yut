@@ -52,6 +52,10 @@ import { getHumanSeatsWaitingForGameEntry, getOnlineGameCoordinatorSeatId, haveA
 import { calculatePieceSelection } from './flows/pieceSelection';
 import { resolveEffectiveMoveContext } from './flows/effectiveMoveContext';
 import { getMoveActionReady, type MoveActionSubmissionOptions } from './flows/moveActionReadiness';
+import { commitAcceptedMovePresentation, prepareMovePresentationStart } from './flows/movePresentationStart';
+import { preparePendingLocalMoveOwnership } from './flows/pendingLocalMoveOwnership';
+import { localMoveLedger } from './flows/localMoveOwnership';
+import { localMovePresentationLifecycle } from './flows/localMovePresentationLifecycle';
 import {
   buildAlternatingTeamTurnOrder,
   createTurnOrderIntro,
@@ -402,7 +406,6 @@ export function App() {
   const confirmedRoomPlayerRef = useRef(false);
   const leavingRoomRef = useRef(false);
   const hostingRoomUserIdRef = useRef('');
-
 
   const currentUser = userRef.current ?? user;
   const currentUserId = currentUser?.uid ?? '';
@@ -1006,7 +1009,6 @@ export function App() {
   }), [actionErrorDialog, actionPipelineDiagnostic, activeRoomId, activeSeat, activeTurnOrderIntro, allReady, autoPlayBySeatId, onlineGameRole, isRoomManager, isOnlinePlayer, onlineGameCoordinatorSeatId, canCoordinateOnlineGame, canManageRoom, canMoveSelectedPiece, canRequestMove, canRollNow, canShowContinueRaceButton, canSubmitTurnAction, completedSeatIds, continuationRound, currentUserId, effectiveRollResultReadyAt, gameEndMode, hasAuthoritativeSequence, hasPendingGameStateSave, waitingRoomHostSeatId, coordinatorStateSaveKey, initialGameEntryPending, initialTurnOrderIds, isMyTurn, isRollLocked, isWaitingRoomHost, lastActionDiagnostic, lastFinishedSeatId, lastManualSyncResolution, localSeatId, message, moveActionBlockReasons, pendingAiSeatCount, pendingLocalRemoteActionCount, remoteActionDiagnostics, syncPipelineDiagnostic, turnActionTimeoutCountBySeatId, turnActionTimeoutPenaltyBySeatId, turnHealthDiagnostic, pieces, rankingSeatIds, roll, rollInProgress, rollLockUntil, rollActionBlockReasons, rollResultHolding, rollResultReadyAt, screen, seats, selectedPiece, selectedPieceId, teamBalanced, turnActionBlockReasons, turnDeadlineAt, turnDeadlineKind, turnIndex, turnOrderIds, turnOrderIntro, unfinishedRaceSeatIds, waitingForOnlineTurnOrder, lastMovedSeatId, lastMovedPieceIds, visibleLogs, displaySeats, boardItems, ownedItems, trapNodes, shieldedPieceIds, pendingTrapPlacement, itemPromptTiming, branchChoice, selectedPieceCanMove, activeSeatPiecesOnBoard, fallbackMovablePiece, activeMovablePiece, selectedMoveSteps, stalledTurnAgeMs, stalledTurnDetected, stalledTurnFallbackPiece, stalledTurnMovablePieces, stalledTurnNeedsBranchChoice, stalledTurnReason, stalledTurnSyncAgeMs, stalledTurnWatchKey]);
   const diagnosticText = useMemo(() => JSON.stringify({ capturedAt: new Date().toISOString(), state: diagnosticState }, null, 2), [diagnosticState]);
 
-
   useGameSyncDebugState(diagnosticState);
 
   useEffect(() => {
@@ -1071,7 +1073,6 @@ export function App() {
       document.removeEventListener('visibilitychange', handleResume);
     };
   }, [activeRoomId, activeSeat, pendingLocalRemoteActionCount, roll, screen, stalledTurnWatchKey, turnDeadlineAt, turnDeadlineKind, turnIndex]);
-
 
   useEffect(() => () => {
     remoteActionRetryTimersRef.current.forEach((timer) => window.clearTimeout(timer));
@@ -1347,7 +1348,6 @@ export function App() {
     onEndGameDialogOpenChange: setEndGameDialogOpen,
     onMessage: setMessage,
   });
-
 
   useRoomPlayersSubscription({
     activeRoomId,
@@ -1869,7 +1869,6 @@ export function App() {
     }
   }
 
-
   async function syncLatestAuthoritativeState(reason: string, options: { allowRollAnimation?: boolean; diagnosticType?: 'roll_yut' | 'move_piece' } = {}) {
     if (!activeRoomId || screen !== 'game') return false;
     const localSequence = lastAppliedSequenceRef.current;
@@ -2164,7 +2163,6 @@ export function App() {
     if (!pendingItemPickup && !activeRoomId && screen === 'game' && lastMovedSeatId === localSeatId && !movingPieceId && (!stackedRollMode || rollStack.length === 0)) showItemPrompt('after_move');
   }, [pendingItemPickup, lastMovedPieceIds, lastMovedSeatId, localSeatId, stackedRollMode, rollStack.length]);
 
-
   useEffect(() => {
     if (screen !== 'game' || !activeSeat || winner || turnOrderPhase.active || activeTurnOrderIntro) {
       lastTurnToastKeyRef.current = '';
@@ -2221,7 +2219,6 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [activeRoomId, activeSeat, activeSeatAutoPlay, activeTurnOrderIntro, canCoordinateOnlineGame, isMyTurn, pendingItemPickup, itemPromptTiming, lastMovedPieceIds, lastMovedSeatId, movingPieceId, pendingGoldenYutSelection, pendingTrapPlacement, pieces, roll, rollAnimation?.phase, rollStack, rollStackClosed, screen, selectedRollStackIndex, turnIndex, turnOrderPhase.active, winner]);
 
-
   useEffect(() => {
     if (!showBottomBranchControls || !selectedBranchControlKey) {
       lastBranchControlKeyRef.current = '';
@@ -2231,8 +2228,6 @@ export function App() {
     lastBranchControlKeyRef.current = selectedBranchControlKey;
     setBranchChoice('shortcut');
   }, [selectedBranchControlKey, showBottomBranchControls]);
-
-
 
   useEffect(() => {
     if (activeRoomId || screen !== 'game' || !canRollNow || !activeSeat || activeSeat.id !== localSeatId || roll || rollAnimation) return undefined;
@@ -2393,7 +2388,6 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [activeRoomId, canCoordinateOnlineGame, localSeatId, pendingTrapPlacement?.deadline, pendingTrapPlacement?.ownerId, pendingLocalRemoteActionCount, pendingTrapPlacement?.pieceId, playableSeats, screen, turnIndex]);
 
-
   useEffect(() => {
     if (!pendingItemPickup) return undefined;
     const runTimeoutDecision = () => {
@@ -2428,7 +2422,6 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [activeRoomId, autoPlayBySeatId, canCoordinateOnlineGame, pendingItemPickup]);
 
-
   const getLocalActionKey = (type: GameAction['type'], payload: Record<string, unknown> = {}) => {
     const turnKey = `${lastAppliedSequenceRef.current}:${turnIndex}:${roll ? `${roll.name}:${roll.steps}` : 'ready'}:${lastMovedSeatId}:${lastMovedPieceIds.join(',')}`;
     if (type === 'roll_yut') return `${type}:${localSeatId}:${turnKey}`;
@@ -2461,7 +2454,6 @@ export function App() {
   function withActorLogPayload(payload: Record<string, unknown> = {}, seat: Seat | undefined = getSeatById(localSeatId)) {
     return { ...payload, actorLabel: seat?.label ?? '', actorName: seat?.name ?? '', actorLogName: getActorLogName(seat) };
   }
-
 
   const { openWaitingRoom } = useRoomEntryController({
     nickname,
@@ -2769,7 +2761,6 @@ export function App() {
     return { nickname: aiName, ready: true, isAI: true, isSubstitutedByAI: false, seatIndex, color: ['red', 'blue', 'green', 'yellow'][seatIndex] ?? 'black', team: seat.team };
   }
 
-
   function rollYutFor(seat: Seat, forcedResult: YutResult | null = forcedRoll, sourceAction: Omit<GameAction, 'id' | 'createdAt' | 'processed'> | null = null, options: { recordSequence?: boolean; timingZone?: RollTimingZone } = {}) {
     if (rollInProgressRef.current || currentRollRef.current) return null;
     rollInProgressRef.current = true;
@@ -2906,7 +2897,6 @@ export function App() {
     setRemoteActionDiagnostics((current) => [entry, ...current].slice(0, 20));
     setLastActionDiagnostic({ type, message: messageText, reasons: [stage, params.status].filter((value): value is string => Boolean(value)), createdAt: entry.createdAt });
   }
-
 
   async function applyAuthoritativeResultSequence(result: Awaited<ReturnType<typeof commitAuthoritativeGameAction>>): Promise<SequenceStateSnapshot | null> {
     if (!activeRoomId || !(result.status === 'committed' || result.status === 'duplicate') || !result.sequence) return null;
@@ -3132,7 +3122,6 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [rollTimingFeedback]);
 
-
   useEffect(() => {
     if (pendingItemPickup || !stackedRollMode || !rollStackClosed || rollStack.length === 0) return;
     const firstRoll = rollStack[0];
@@ -3286,12 +3275,70 @@ export function App() {
     else rollYutFor(activeSeat, localRoll, null, { timingZone: rollTimingZone });
   }
 
-  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number; rollStackSnapshot?: YutResult[]; consumedItemType?: ItemType; deferFinalizationToAuthoritative?: boolean } = {}) {
-    if (winner || movingPieceId || moveInProgressRef.current) return false;
-    ensureRollLogExists(seat, result);
-    setMoveInProgressState(true);
+  type PreparedMovePiecePresentation = {
+    currentPieces: BoardPiece[];
+    movingPiece: BoardPiece;
+    steps: number;
+    movingGroupIds: string[];
+    movePathNodeIds: string[];
+    branchChoice: BranchChoice;
+  };
+
+  function prepareMovePiecePresentation(pieceId: string, result: YutResult, seat: Seat, extraSteps: number, branchOverride: BranchChoice) {
     const currentPieces = piecesRef.current;
-    const movingPiece = currentPieces.find((piece) => piece.id === pieceId && canSeatControlPiece(seat, piece) && !piece.finished);
+    const steps = result.steps + extraSteps;
+    return prepareMovePresentationStart({
+      winner: Boolean(winner),
+      movingPieceId,
+      moveInProgress: moveInProgressRef.current,
+      pieces: currentPieces,
+      pieceId,
+      steps,
+      canControlPiece: (piece) => canSeatControlPiece(seat, piece),
+      prepare: (movingPiece): PreparedMovePiecePresentation => {
+        const resolvedBranchChoice = getEffectiveBranchChoice(movingPiece.nodeId, branchOverride);
+        const movingGroupIds = movingPiece.started
+          ? currentPieces.filter((piece) => canSeatControlPiece(seat, piece) && !piece.finished && piece.started && piece.nodeId === movingPiece.nodeId).map((piece) => piece.id)
+          : [movingPiece.id];
+        const movePathNodeIds = steps === 0
+          ? []
+          : getMovePathNodeIdsWithPrevious(movingPiece.nodeId, steps, resolvedBranchChoice, movingPiece.previousNodeId);
+        return {
+          currentPieces,
+          movingPiece,
+          steps,
+          movingGroupIds,
+          movePathNodeIds,
+          branchChoice: resolvedBranchChoice,
+        };
+      },
+      acquireExecution: () => {
+        if (moveInProgressRef.current) return false;
+        setMoveInProgressState(true);
+        return true;
+      },
+    });
+  }
+
+  function releasePreparedMovePresentation() {
+    setMovingPieceId('');
+    setMoveInProgressState(false);
+  }
+
+  function rollbackMovePresentationOwnership(actionKey: string) {
+    deletePendingLocalRemoteAction(actionKey);
+    localClientMutationIdsRef.current.delete(actionKey);
+    localMoveLedger.remove(actionKey);
+    if (localMovePresentationLifecycle.snapshot().actionKey === actionKey) localMovePresentationLifecycle.cancel();
+  }
+
+  async function movePiece(pieceId: string, result: YutResult, seat: Seat, extraSteps = 0, branchOverride: BranchChoice = branchChoice, options: { recordSequence?: boolean; consumeStackedRollIndex?: number; rollStackSnapshot?: YutResult[]; consumedItemType?: ItemType; deferFinalizationToAuthoritative?: boolean; preparedPresentation?: PreparedMovePiecePresentation; presentationStarted?: boolean } = {}) {
+    const preparedPresentation = options.preparedPresentation;
+    if (!preparedPresentation && (winner || movingPieceId || moveInProgressRef.current)) return false;
+    ensureRollLogExists(seat, result);
+    if (!preparedPresentation) setMoveInProgressState(true);
+    const currentPieces = preparedPresentation?.currentPieces ?? piecesRef.current;
+    const movingPiece = preparedPresentation?.movingPiece ?? currentPieces.find((piece) => piece.id === pieceId && canSeatControlPiece(seat, piece) && !piece.finished);
     if (!movingPiece) {
       if (!options.deferFinalizationToAuthoritative) {
         setTurnIndex((current) => (current + 1) % Math.max(turnSeats.length, 1));
@@ -3300,7 +3347,7 @@ export function App() {
       setMoveInProgressState(false);
       return false;
     }
-    const steps = result.steps + extraSteps;
+    const steps = preparedPresentation?.steps ?? result.steps + extraSteps;
     if (steps < 0 && !movingPiece.started) {
       addLog(`${getSeatDisplayName(seat)}님은 판 위에 나온 말이 없어 빽도를 이동하지 못합니다.`);
       setBranchChoice('outer');
@@ -3334,15 +3381,15 @@ export function App() {
       setMoveInProgressState(false);
       return true;
     }
-    setMovingPieceId(pieceId);
-    const movingGroupIds = movingPiece.started
+    if (!options.presentationStarted) setMovingPieceId(pieceId);
+    const movingGroupIds = preparedPresentation?.movingGroupIds ?? (movingPiece.started
       ? currentPieces.filter((piece) => canSeatControlPiece(seat, piece) && !piece.finished && piece.started && piece.nodeId === movingPiece.nodeId).map((piece) => piece.id)
-      : [movingPiece.id];
+      : [movingPiece.id]);
     if (!movingPiece.started) await delay(STEP_DELAY_MS);
     let nextNodeIndex = movingPiece.nodeIndex;
     let currentNodeId = movingPiece.nodeId;
     let finishedMove = false;
-    const movePathNodeIds = getMovePathNodeIdsWithPrevious(currentNodeId, steps, getEffectiveBranchChoice(currentNodeId, branchOverride), movingPiece.previousNodeId);
+    const movePathNodeIds = preparedPresentation?.movePathNodeIds ?? getMovePathNodeIdsWithPrevious(currentNodeId, steps, getEffectiveBranchChoice(currentNodeId, branchOverride), movingPiece.previousNodeId);
     for (let step = 0; step < Math.abs(steps); step += 1) {
       if (steps > 0 && movingPiece.started && currentNodeId === 'n01') {
         currentNodeId = 'finish';
@@ -3511,7 +3558,7 @@ export function App() {
           rollSteps: result.steps,
           extraSteps,
           totalSteps: steps,
-          branchChoice: getEffectiveBranchChoice(movingPiece.nodeId, branchOverride),
+          branchChoice: preparedPresentation?.branchChoice ?? getEffectiveBranchChoice(movingPiece.nodeId, branchOverride),
           fromNodeId: movingPiece.nodeId,
           toNodeId: currentNodeId,
           pathNodeIds: movePathNodeIds,
@@ -3547,24 +3594,9 @@ export function App() {
     const effectiveMoveRoll = moveContext.roll;
     const steps = effectiveMoveRoll && activeSeat ? effectiveMoveRoll.steps + extraSteps : 0;
     const canMovePiece = (piece: BoardPiece) => steps >= 0 || piece.started;
-    const canPassBackDoWithoutMovablePiece = Boolean(effectiveMoveRoll && activeSeat && canSubmitTurnAction && !rollResultHolding && !rollAnimation && steps < 0 && !pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece)));
-    const handlerMoveReady = getMoveActionReady({
-      canSubmitTurnAction,
-      rollPresentationBlocked,
-      hasPendingMoveAction: hasPendingOnlineMoveRequest,
-      hasValidMoveSelection: Boolean((roll || stackedRollSelectedResult || overriddenStackRoll) && (activeMovablePiece || canPassBackDoWithoutMovablePiece)),
-      rollResultHolding,
-      rollAnimationActive: Boolean(rollAnimation),
-      moveInProgress,
-      movingPieceActive: Boolean(movingPieceId),
-    });
-    if (!activeSeat || !handlerMoveReady) {
-      reportTurnActionBlocked('move_piece', moveActionBlockReasons, '말 이동을 진행할 수 없습니다');
-      return false;
-    }
-    if (!activeRoomId && !options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
+    const latestPieces = piecesRef.current;
     const moveSelection = calculatePieceSelection({
-      pieces,
+      pieces: latestPieces,
       selectedPieceId,
       hasMoveRoll: Boolean(effectiveMoveRoll),
       isLocalTurn: true,
@@ -3573,6 +3605,22 @@ export function App() {
       isSameSidePiece: (piece, selected) => isSameSide(getSeatById(piece.ownerId), getSeatById(selected.ownerId)),
     });
     const pieceToMove = moveSelection.pieceToMove;
+    const canPassBackDoWithoutMovablePiece = Boolean(effectiveMoveRoll && activeSeat && canSubmitTurnAction && !rollResultHolding && !rollAnimation && steps < 0 && !latestPieces.some((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished && canMovePiece(piece)));
+    const handlerMoveReady = getMoveActionReady({
+      canSubmitTurnAction,
+      rollPresentationBlocked,
+      hasPendingMoveAction: hasPendingOnlineMoveRequest,
+      hasValidMoveSelection: Boolean((roll || stackedRollSelectedResult || overriddenStackRoll) && (pieceToMove || canPassBackDoWithoutMovablePiece)),
+      rollResultHolding,
+      rollAnimationActive: Boolean(rollAnimation),
+      moveInProgress: moveInProgressRef.current,
+      movingPieceActive: Boolean(movingPieceId),
+    });
+    if (!activeSeat || !handlerMoveReady) {
+      reportTurnActionBlocked('move_piece', moveActionBlockReasons, '말 이동을 진행할 수 없습니다');
+      return false;
+    }
+    if (!activeRoomId && !options.timedOut) clearTurnActionTimeoutPenalty(activeSeat.id);
     if (pieceToMove) setSelectedPieceId(pieceToMove.id);
     if (!pieceToMove) {
       if (steps < 0) {
@@ -3639,10 +3687,11 @@ export function App() {
     }
     if (!effectiveMoveRoll) return false;
     if (activeRoomId) {
+      const resolvedBranchChoice = getEffectiveBranchChoice(pieceToMove.nodeId, displayBranchChoice);
       const payload = {
         pieceId: pieceToMove.id,
         extraSteps,
-        branchChoice: getEffectiveBranchChoice(pieceToMove.nodeId, displayBranchChoice),
+        branchChoice: resolvedBranchChoice,
         rollStackIndex: stackedRollMode && rollStackClosed ? options.rollStackIndex ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : null) : null,
       };
       const actionKey = getLocalActionKey('move_piece', payload);
@@ -3654,16 +3703,65 @@ export function App() {
         reportTurnActionBlocked('move_piece', ['pending-local-remote-action'], '이미 말 이동 요청을 처리 중입니다');
         return false;
       }
-      addPendingLocalRemoteAction(actionKey, {
-        type: 'move_piece',
-        actorId: localSeatId,
-        createdSequence: lastAppliedSequenceRef.current,
-        createdTurnIndex: turnIndex,
-        optimisticApplied: true,
+
+      const preparation = prepareMovePiecePresentation(pieceToMove.id, effectiveMoveRoll, activeSeat, extraSteps, resolvedBranchChoice);
+      if (!preparation.accepted) {
+        const diagnosticReason = preparation.message ? `${preparation.reason}:${preparation.message}` : preparation.reason;
+        recordRemoteActionDiagnostic('move_piece', 'presentation-start-blocked', diagnosticReason, { actionKey });
+        return false;
+      }
+
+      const presentation = commitAcceptedMovePresentation({
+        prepared: preparation.prepared,
+        registerOwnership: () => {
+          const pendingAdded = addPendingLocalRemoteAction(actionKey, {
+            type: 'move_piece',
+            actorId: localSeatId,
+            createdSequence: lastAppliedSequenceRef.current,
+            createdTurnIndex: turnIndex,
+            optimisticApplied: true,
+          });
+          if (!pendingAdded) return false;
+          localClientMutationIdsRef.current.add(actionKey);
+          if (preparePendingLocalMoveOwnership(actionKey)) return true;
+          rollbackMovePresentationOwnership(actionKey);
+          return false;
+        },
+        startPresentation: (prepared) => {
+          try {
+            if (prepared.steps !== 0) setMovingPieceId(prepared.movingPiece.id);
+            const completion = movePiece(
+              prepared.movingPiece.id,
+              effectiveMoveRoll,
+              activeSeat,
+              extraSteps,
+              prepared.branchChoice,
+              {
+                recordSequence: false,
+                consumeStackedRollIndex: stackedRollMode && rollStackClosed ? options.rollStackIndex ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined,
+                deferFinalizationToAuthoritative: true,
+                preparedPresentation: prepared,
+                presentationStarted: true,
+              },
+            );
+            return { started: true as const, completion };
+          } catch (error) {
+            return { started: false as const, reason: error instanceof Error ? error.message : 'presentation-start-failed' };
+          }
+        },
+        rollbackOwnership: () => rollbackMovePresentationOwnership(actionKey),
+        releaseExecution: releasePreparedMovePresentation,
       });
-      localClientMutationIdsRef.current.add(actionKey);
+      if (!presentation.started) {
+        recordRemoteActionDiagnostic('move_piece', 'presentation-start-failed', presentation.reason, { actionKey });
+        return false;
+      }
+
       const action = { type: 'move_piece' as const, actorId: localSeatId, payload: withActorLogPayload({ ...payload, ...moveSubmissionMetadata, clientActionId: actionKey }, activeSeat) };
-      void movePiece(pieceToMove.id, effectiveMoveRoll, activeSeat, extraSteps, getEffectiveBranchChoice(pieceToMove.nodeId, displayBranchChoice), { recordSequence: false, consumeStackedRollIndex: stackedRollMode && rollStackClosed ? options.rollStackIndex ?? selectedRollStackIndex ?? (rollStack.length === 1 ? 0 : undefined) : undefined, deferFinalizationToAuthoritative: true });
+      void presentation.completion.catch((error) => {
+        recordRemoteActionDiagnostic('move_piece', 'presentation-completion-error', error instanceof Error ? error.message : '말 이동 연출 완료에 실패했습니다.', { actionKey });
+        void syncLatestAuthoritativeState('로컬 말 이동 연출 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
+      });
       enqueueAuthoritativeGameAction(
         activeRoomId,
         action,
@@ -3739,7 +3837,6 @@ export function App() {
       return null;
     }
   }
-
 
   async function submitAiRoll(seat: Seat, timingZone: RollTimingZone | undefined, selectedGoldenYutResult?: YutResult | null): Promise<YutResult | null> {
     if (!activeRoomId || !canCoordinateOnlineGame) {
@@ -4382,7 +4479,6 @@ export function App() {
     }
   }
 
-
   const lifecycleController = useGameLifecycleController({
     activeRoomId, activeRoomHostId, activeRoomIdRef, canShowContinueRaceButton, continuationRound,
     confirmedRoomPlayerRef, currentSequenceStateRef, hostingRoomUserIdRef, enqueueAuthoritativeGameAction, getGameSequencesSince,
@@ -4414,7 +4510,6 @@ export function App() {
     setSoundEnabled(nextEnabled);
     if (nextEnabled) playSoundEffect('toast', true);
   }
-
 
   const showStartCountdownOverlay = screen === 'waitingRoom' && startStatus === 'requested' && countdown >= 0 && Date.now() >= startCountdownStartsAt;
 

@@ -53,6 +53,31 @@ test('선택 identity는 authoritative revision과 roll fingerprint를 action에
   });
 });
 
+test('원자적 local ownership이 고정한 selection identity는 presentation 중 표시 stack이 바뀌어도 delayed commit action에 복구된다', () => {
+  const authoritativeState = makeState();
+  assert.deepEqual(select(authoritativeState).roll, MO);
+
+  const ownershipAction = makeAction(10);
+  assert.equal(attachLatestStackedMoveSelectionIdentity(ownershipAction), true);
+  assert.deepEqual(ownershipAction.payload.stackedMoveSelection, {
+    expectedPreviousSequence: 10, expectedTurnVersion: 3, expectedTurnIndex: 0, rollStackIndex: 0, roll: MO,
+  });
+
+  const localFinalDisplay = resolveEffectiveMoveContext({
+    stackedRollMode: true,
+    roll: null,
+    rollStack: [BACKDO],
+    rollStackClosed: true,
+    selectedRollStackIndex: 0,
+  });
+  assert.equal(localFinalDisplay.roll, null);
+
+  const delayedCommitAction = makeAction(10);
+  assert.equal(attachLatestStackedMoveSelectionIdentity(delayedCommitAction), true);
+  assert.deepEqual(delayedCommitAction.payload.stackedMoveSelection, ownershipAction.payload.stackedMoveSelection);
+  assert.equal(reduceAuthoritativeGameAction(authoritativeState, delayedCommitAction, ROOM, SIDES).status, 'committed');
+});
+
 test('[모, 빽도]는 모 +5 뒤 빽도 -1을 소비하고 마지막에만 턴을 넘긴다', () => {
   const firstState = makeState();
   select(firstState);
