@@ -18,16 +18,17 @@ type ParsedPendingMoveAction = {
 function parsePendingMoveAction(actionKey: string): ParsedPendingMoveAction | null {
   if (!actionKey.startsWith('move_piece:')) return null;
   const parts = actionKey.split(':');
-  if (parts.lastIndexOf('stack') !== 11 || parts.length < 13) return null;
+  const stackMarkerIndex = parts.lastIndexOf('stack');
+  if (stackMarkerIndex < 4 || stackMarkerIndex !== parts.length - 2) return null;
   const actorId = parts[1] ?? '';
-  const rollSteps = Number(parts[5]);
-  const pieceId = parts[8] ?? '';
-  const extraSteps = Number(parts[9] ?? 0);
-  const branchChoice = parts[10] ?? '';
-  const stackIndexToken = parts[12] ?? 'none';
+  const pieceId = parts[stackMarkerIndex - 3] ?? '';
+  const extraSteps = Number(parts[stackMarkerIndex - 2] ?? 0);
+  const branchChoice = parts[stackMarkerIndex - 1] ?? '';
+  const stackIndexToken = parts[stackMarkerIndex + 1] ?? 'none';
   if (!actorId || !pieceId || !Number.isFinite(extraSteps)) return null;
   const rollStackIndex = stackIndexToken === 'none' ? null : Number(stackIndexToken);
   if (rollStackIndex !== null && (!Number.isInteger(rollStackIndex) || rollStackIndex < 0)) return null;
+  const rollSteps = parts[4] === 'ready' ? null : Number(parts[5]);
   return {
     action: {
       type: 'move_piece',
@@ -40,7 +41,7 @@ function parsePendingMoveAction(actionKey: string): ParsedPendingMoveAction | nu
         rollStackIndex,
       },
     },
-    totalSteps: Number.isFinite(rollSteps) ? rollSteps + extraSteps : null,
+    totalSteps: rollSteps !== null && Number.isFinite(rollSteps) ? rollSteps + extraSteps : null,
   };
 }
 
