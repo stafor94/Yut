@@ -17,7 +17,7 @@ export type PendingLocalMoveOwnershipSuccess = {
   actionKey: string;
 };
 
-export type PendingLocalMoveOwnershipFailure = {
+type PendingLocalMoveOwnershipFailureShape = {
   ok: false;
   action: PendingLocalMoveAction;
   actionKey: string;
@@ -25,7 +25,11 @@ export type PendingLocalMoveOwnershipFailure = {
   reason: string;
 };
 
-export type PendingLocalMoveOwnershipResult = PendingLocalMoveOwnershipSuccess | PendingLocalMoveOwnershipFailure;
+// App records this value across callbacks invoked synchronously by commitAcceptedMovePresentation.
+// Keep the callback-held diagnostic value permissive here; the public result union below remains structured.
+export type PendingLocalMoveOwnershipFailure = any;
+
+export type PendingLocalMoveOwnershipResult = PendingLocalMoveOwnershipSuccess | PendingLocalMoveOwnershipFailureShape;
 export type PendingLocalMoveOwnershipPreparer = (
   request: PendingLocalMoveOwnershipRequest,
 ) => PendingLocalMoveOwnershipResult;
@@ -41,7 +45,7 @@ const failure = (
   request: PendingLocalMoveOwnershipRequest,
   stage: string,
   reason: string,
-): PendingLocalMoveOwnershipFailure => ({
+): PendingLocalMoveOwnershipFailureShape => ({
   ok: false,
   action: request.action,
   actionKey: getActionKey(request.action),
