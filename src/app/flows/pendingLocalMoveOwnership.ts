@@ -1,3 +1,5 @@
+import { localMovePresentationLifecycle } from './localMovePresentationLifecycle';
+
 export type PendingLocalMoveAction = {
   type: 'move_piece';
   actorId: string;
@@ -8,11 +10,17 @@ export type PendingLocalMoveOwnershipPreparer = (action: PendingLocalMoveAction)
 
 let currentOwnershipPreparer: PendingLocalMoveOwnershipPreparer | null = null;
 
-function parsePendingMoveAction(actionKey: string): PendingLocalMoveAction | null {
+type ParsedPendingMoveAction = {
+  action: PendingLocalMoveAction;
+  totalSteps: number | null;
+};
+
+function parsePendingMoveAction(actionKey: string): ParsedPendingMoveAction | null {
   if (!actionKey.startsWith('move_piece:')) return null;
   const parts = actionKey.split(':');
   if (parts.lastIndexOf('stack') !== 11 || parts.length < 13) return null;
   const actorId = parts[1] ?? '';
+  const rollSteps = Number(parts[5]);
   const pieceId = parts[8] ?? '';
   const extraSteps = Number(parts[9] ?? 0);
   const branchChoice = parts[10] ?? '';
@@ -21,15 +29,18 @@ function parsePendingMoveAction(actionKey: string): PendingLocalMoveAction | nul
   const rollStackIndex = stackIndexToken === 'none' ? null : Number(stackIndexToken);
   if (rollStackIndex !== null && (!Number.isInteger(rollStackIndex) || rollStackIndex < 0)) return null;
   return {
-    type: 'move_piece',
-    actorId,
-    payload: {
-      clientActionId: actionKey,
-      pieceId,
-      extraSteps,
-      branchChoice,
-      rollStackIndex,
+    action: {
+      type: 'move_piece',
+      actorId,
+      payload: {
+        clientActionId: actionKey,
+        pieceId,
+        extraSteps,
+        branchChoice,
+        rollStackIndex,
+      },
     },
+    totalSteps: Number.isFinite(rollSteps) ? rollSteps + extraSteps : null,
   };
 }
 
@@ -46,7 +57,12 @@ export function clearPendingLocalMoveOwnershipPreparer(preparer: PendingLocalMov
 }
 
 export function preparePendingLocalMoveOwnership(actionKey: string) {
-  const action = parsePendingMoveAction(actionKey);
-  if (!action || !currentOwnershipPreparer) return false;
-  return currentOwnershipPreparer(action);
+  const parsed = parsePendingMoveAction(actionKey);
+  if (!parsed || !currentOwnershipPreparer) return false;
+  if (parsed.totalSteps === 0) {
+    const presentation = localMovePresentationLifecycle.snapshot();
+    if (presentation.actionKey === actionKey) localMovePresentationLifecycle.cancel();
+    return true;
+  }
+  return currentOwnershipPreparer(parsed.action);
 }
