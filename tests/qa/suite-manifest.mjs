@@ -16,7 +16,13 @@ const moveStartAckRaceTitle = 'action-ready 순간 수동 클릭이 경합해도
 const twoPieceMoveStartAckRaceTitle = '수동 클릭 경합에도 한 번만 실행한다';
 const twoPieceImmediateMoveStartTitle = '버튼 클릭 즉시 lowest-label 말의 로컬 이동을 시작한다';
 const moveStartAckTitles = `${moveStartAckRaceTitle}|${twoPieceMoveStartAckRaceTitle}|${twoPieceImmediateMoveStartTitle}`;
-const moveStartTitle = '출발점';
+const atomicAutoMoveStartTitle = 'AI 1:1 2말 개 출발점 자동';
+const atomicReloadMoveStartTitle = 'AI 1:1 2말 개 출발점 reload';
+const backDoMoveStartTitle = '말 없는 빽도 presentation 완료 뒤 자동 패스한 후 개를 정상 자동 이동한다';
+const coordinatorMoveStartTitle = 'coordinator의 개는 lowest-label 말을 자동 이동한다';
+const webGlMoveStartTitle = '출발점 WebGL 실패의';
+const legacyMoveStartTitle = '기존 출발점 n01의 걸 이동은';
+const retainedMoveStartTitles = `${atomicAutoMoveStartTitle}|${atomicReloadMoveStartTitle}|${backDoMoveStartTitle}|${coordinatorMoveStartTitle}|${webGlMoveStartTitle}|${legacyMoveStartTitle}`;
 
 export const qaSuiteManifest = Object.freeze({
   'online-core': Object.freeze({
@@ -146,8 +152,7 @@ export const qaSuiteManifest = Object.freeze({
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    grep: `${firebaseIsolationTitle}|${moveStartTitle}`,
-    grepInvert: moveStartAckTitles,
+    grep: `${firebaseIsolationTitle}|${retainedMoveStartTitles}`,
     sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec]),
     tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec]),
   }),
