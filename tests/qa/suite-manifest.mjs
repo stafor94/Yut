@@ -12,6 +12,10 @@ const timingNiceSnapshotTitle = 'pointerdown Nice snapshot은 오래 눌러도 l
 const timingOverflowTitle = '오브는 고정 트랙 안에서 0·50·100%를 표시하며 이동 중 문서 가로 폭과 scrollLeft를 바꾸지 않는다';
 const moveAckTitle = 'n16의 걸 이동은';
 const atomicMoveAckTitle = 'AI 1:1 2말 개 수동 ACK';
+const moveStartAckRaceTitle = 'action-ready 순간 수동 클릭이 경합해도 한 번만 실행한다';
+const twoPieceMoveStartAckRaceTitle = '수동 클릭 경합에도 한 번만 실행한다';
+const twoPieceImmediateMoveStartTitle = '버튼 클릭 즉시 lowest-label 말의 로컬 이동을 시작한다';
+const moveStartAckTitles = `${moveStartAckRaceTitle}|${twoPieceMoveStartAckRaceTitle}|${twoPieceImmediateMoveStartTitle}`;
 const moveStartTitle = '출발점';
 
 export const qaSuiteManifest = Object.freeze({
@@ -126,10 +130,11 @@ export const qaSuiteManifest = Object.freeze({
     label: 'Mobile Galaxy move ACK',
     code: 'galack',
     workers: 3,
+    fullyParallel: true,
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    grep: `${firebaseIsolationTitle}|${moveAckTitle}|${atomicMoveAckTitle}`,
+    grep: `${firebaseIsolationTitle}|${moveAckTitle}|${atomicMoveAckTitle}|${moveStartAckTitles}`,
     sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineAiHumanAtomicMoveStartSpec]),
     tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineAiHumanAtomicMoveStartSpec]),
   }),
@@ -142,6 +147,7 @@ export const qaSuiteManifest = Object.freeze({
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     grep: `${firebaseIsolationTitle}|${moveStartTitle}`,
+    grepInvert: moveStartAckTitles,
     sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec]),
     tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec]),
   }),
