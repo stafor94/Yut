@@ -26,4 +26,31 @@ export const incrementTurnActionTimeoutCount = (count: unknown) => Math.min(
   normalizeTurnActionTimeoutCount(count) + 1,
 );
 
+export const getTurnOrderIntroCompletionTiming = ({
+  completedAt,
+  turnOrderIds,
+  turnIndex,
+  turnActionTimeoutCountBySeatId,
+}: {
+  completedAt: number;
+  turnOrderIds: unknown;
+  turnIndex: unknown;
+  turnActionTimeoutCountBySeatId?: Record<string, unknown> | null;
+}) => {
+  const normalizedCompletedAt = Number(completedAt);
+  const ids = Array.isArray(turnOrderIds)
+    ? turnOrderIds.filter((seatId): seatId is string => typeof seatId === 'string' && Boolean(seatId))
+    : [];
+  if (!Number.isFinite(normalizedCompletedAt) || normalizedCompletedAt <= 0 || ids.length === 0) {
+    return { turnDeadlineAt: 0, turnDeadlineKind: '' as const };
+  }
+  const rawTurnIndex = Number(turnIndex ?? 0);
+  const normalizedTurnIndex = Number.isFinite(rawTurnIndex) ? Math.floor(rawTurnIndex) : 0;
+  const activeSeatId = ids[((normalizedTurnIndex % ids.length) + ids.length) % ids.length];
+  return {
+    turnDeadlineAt: normalizedCompletedAt + getTurnActionTimeoutMsForCount(turnActionTimeoutCountBySeatId?.[activeSeatId]),
+    turnDeadlineKind: 'roll' as const,
+  };
+};
+
 export const getTurnRecoveryDeadlineAt = (turnDeadlineAt: number) => turnDeadlineAt + TURN_NETWORK_GRACE_MS;

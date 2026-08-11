@@ -33,7 +33,7 @@ test('authoritative 순서 정하기 완료는 coordinator 복구와 일시적 t
   assert.match(controllerSource, /TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS = \[250, 500, 1_000, 2_000\] as const/);
   assert.match(completionEffect, /const timers = new Set<number>\(\)/);
   assert.match(completionEffect, /const scheduleCompletion = \(attemptIndex: number, delayMs: number\)/);
-  assert.match(completionEffect, /completeTurnOrderIntro\(ctx\.activeRoomId, \{ readyAt, actorId: ctx\.localSeatId, coordinatorEpoch: ctx\.coordinatorEpoch \}\)/);
+  assert.match(completionEffect, /completeTurnOrderIntroAtActionReady\(ctx\.activeRoomId, \{ readyAt, actorId: ctx\.localSeatId, coordinatorEpoch: ctx\.coordinatorEpoch \}\)/);
   assert.match(completionEffect, /if \(cancelled \|\| version\) return/);
   assert.match(completionEffect, /TURN_ORDER_INTRO_COMPLETION_RETRY_DELAYS_MS\[attemptIndex\]/);
   assert.match(completionEffect, /scheduleCompletion\(attemptIndex \+ 1, retryDelay\)/);
