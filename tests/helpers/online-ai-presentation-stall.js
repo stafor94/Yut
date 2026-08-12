@@ -163,50 +163,38 @@ export async function prepareOnlineAiPresentationStallFixture({ page, context, t
 }
 
 export async function waitForOnlineAiPresentationStallRecovery(page, fixture) {
-  let winningMoveSequence;
+  let normalAiMoveSequence;
   let nextAiRollSequence;
   await expect.poll(async () => {
     const sequences = await getRoomSequencesForQa(fixture.roomId);
     const recoverySequences = getRecoverySequences(sequences, fixture.actionKey);
     const normalAiMoves = getNormalAiMoveSequences(sequences, fixture.fixtureSequence, fixture.firstAiSeatId);
-    const moveWinners = [...recoverySequences, ...normalAiMoves]
-      .sort((left, right) => getSequenceNumber(left) - getSequenceNumber(right));
-    if (moveWinners.length !== 1) return null;
+    if (normalAiMoves.length !== 1 || recoverySequences.length !== 0) return null;
 
-    winningMoveSequence = moveWinners[0];
+    normalAiMoveSequence = normalAiMoves[0];
     nextAiRollSequence = sequences.find((sequence) => (
-      getSequenceNumber(sequence) > getSequenceNumber(winningMoveSequence)
+      getSequenceNumber(sequence) > getSequenceNumber(normalAiMoveSequence)
       && sequence.type === 'roll_yut'
       && sequence.actorId === fixture.secondAiSeatId
     ));
     return nextAiRollSequence ? {
-      moveResolutionCount: moveWinners.length,
+      normalAiMoveCount: normalAiMoves.length,
       nextActorId: nextAiRollSequence.actorId,
+      recoveryCount: recoverySequences.length,
     } : null;
   }, {
     timeout: 20_000,
     intervals: [100, 200, 400, 800],
-    message: '정상 AI 이동과 timeout recovery 중 하나만 확정되고 다음 AI 좌석의 던지기가 예약되어야 합니다.',
-  }).toEqual({ moveResolutionCount: 1, nextActorId: fixture.secondAiSeatId });
+    message: '정상 AI 이동이 정확히 한 번 확정되고 timeout recovery 없이 다음 AI 좌석의 던지기가 뒤이어야 합니다.',
+  }).toEqual({ normalAiMoveCount: 1, nextActorId: fixture.secondAiSeatId, recoveryCount: 0 });
 
   const sequences = await getRoomSequencesForQa(fixture.roomId);
   const recoverySequences = getRecoverySequences(sequences, fixture.actionKey);
   const normalAiMoves = getNormalAiMoveSequences(sequences, fixture.fixtureSequence, fixture.firstAiSeatId);
-  expect(recoverySequences.length + normalAiMoves.length).toBe(1);
-
-  const recoverySequence = recoverySequences[0];
-  if (recoverySequence) {
-    expect(recoverySequence.action?.payload).toMatchObject({
-      clientActionId: fixture.actionKey,
-      coordinatorEpoch: fixture.coordinatorEpoch,
-      coordinatorSeatId: fixture.coordinatorSeatId,
-      recoveredByCoordinator: true,
-      reason: 'stalled-roll-move-timeout',
-      timeoutDeadlineAt: fixture.deadlineAt,
-    });
-  } else {
-    expect(getActionKey(normalAiMoves[0])).toMatch(/^move_piece_ai:/);
-  }
+  expect(normalAiMoves).toHaveLength(1);
+  expect(recoverySequences).toHaveLength(0);
+  expect(getActionKey(normalAiMoves[0])).toMatch(/^move_piece_ai:/);
+  expect(getSequenceNumber(nextAiRollSequence)).toBeGreaterThan(getSequenceNumber(normalAiMoves[0]));
 
   await expect.poll(async () => {
     const state = await getRoomStateForQa(fixture.roomId);
@@ -232,15 +220,16 @@ export async function waitForOnlineAiPresentationStallRecovery(page, fixture) {
     const latestRecoveryCount = getRecoverySequences(latestSequences, fixture.actionKey).length;
     const latestNormalMoveCount = getNormalAiMoveSequences(latestSequences, fixture.fixtureSequence, fixture.firstAiSeatId).length;
     return {
-      moveResolutionCount: latestRecoveryCount + latestNormalMoveCount,
+      normalAiMoveCount: latestNormalMoveCount,
+      recoveryCount: latestRecoveryCount,
       nextAiRollDuplicateCount: latestSequences.filter((sequence) => (
         sequence.type === 'roll_yut'
         && sequence.actorId === fixture.secondAiSeatId
         && getActionKey(sequence) === nextAiRollActionKey
       )).length,
     };
-  }, { timeout: 3_000, intervals: [100, 200, 400], message: '경합 이후 이동 확정과 다음 AI 던지기 action key가 중복 생성되면 안 됩니다.' })
-    .toEqual({ moveResolutionCount: 1, nextAiRollDuplicateCount: 1 });
+  }, { timeout: 3_000, intervals: [100, 200, 400], message: '정상 AI 이동 이후 timeout recovery 또는 다음 AI 던지기 action key가 중복 생성되면 안 됩니다.' })
+    .toEqual({ normalAiMoveCount: 1, recoveryCount: 0, nextAiRollDuplicateCount: 1 });
 
-  return { nextAiRollSequence, recoverySequence: recoverySequence ?? null, winningMoveSequence };
+  return { nextAiRollSequence, recoverySequence: null, winningMoveSequence: normalAiMoveSequence };
 }
