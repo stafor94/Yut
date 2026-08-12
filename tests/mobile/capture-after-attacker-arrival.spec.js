@@ -306,8 +306,7 @@ test('잡기 source/ghost는 공격 말의 실제 마지막 transitionend 뒤에
 
     const baselineSequences = await getRoomSequencesForQa(game.roomId);
     await clickPerfectRoll(game.actorPage);
-    await expect(game.actorPage.getByTestId('move-piece-button')).toBeEnabled({ timeout: 20_000 });
-    await game.actorPage.getByTestId('move-piece-button').click();
+    // pieceCount=1 uses the product's automatic single-piece move path. Do not race it with a manual move click.
 
     await expect.poll(async () => (await getCaptureTrace(game.actorPage)).finalTransitionStartedAt, {
       timeout: 20_000,
