@@ -26,7 +26,6 @@ import {
   localMoveLedger,
   makeLocalMoveResultFingerprint,
   prepareLocalMoveOwnershipResult,
-  withLocalMovePiecesFallback,
 } from '../flows/localMoveOwnership';
 import { releaseMoveActionClaim, settleMoveActionClaim } from '../flows/moveExecutionPolicy';
 import {
@@ -52,7 +51,6 @@ type Params = {
   lastAppliedSequenceRef: MutableRefObject<number>;
   lastAppliedStateVersionRef: MutableRefObject<number>;
   applyingSyncedStateRef: MutableRefObject<boolean>;
-  currentPiecesRef: MutableRefObject<unknown[]>;
   currentSequenceStateRef: MutableRefObject<SequenceStateSnapshot | null>;
   replayMissingSequencesThenApply: (finalState: SequenceStateSnapshot, localSequence: number, remoteSequence: number) => Promise<void>;
   applySyncedStateSnapshot: (state: SequenceStateSnapshot, options?: SnapshotApplyOptions) => void;
@@ -213,10 +211,19 @@ export function useAuthoritativeGameSyncController(params: Params) {
     if (localMoveLedger.has(actionKey)) return { ok: true, action, actionKey };
     if (!roomId) return fail('authoritative-state', 'active-room-id-missing');
 
-    const state = withLocalMovePiecesFallback(
-      params.currentSequenceStateRef.current as Record<string, unknown> | null,
-      params.currentPiecesRef.current,
-    );
+    const state = request.authoritativeSnapshot;
+    const currentState = params.currentSequenceStateRef.current as Record<string, unknown> | null;
+    if (!state) return fail('authoritative-state', 'current-sequence-state-missing');
+    if (!currentState
+      || Number(state.lastSequence ?? 0) !== Number(currentState.lastSequence ?? 0)
+      || Number(state.turnIndex ?? 0) !== Number(currentState.turnIndex ?? 0)) {
+      void params.syncLatestAuthoritativeState(
+        '말 이동 ownership snapshot이 최신 authoritative 상태와 달라 재동기화합니다.',
+        { allowRollAnimation: false, diagnosticType: 'move_piece' },
+      );
+      return fail('authoritative-state', 'ownership-snapshot-stale');
+    }
+
     const preparedResult = prepareLocalMoveOwnershipResult({ roomId, state, action });
     if (!preparedResult.ok) return fail(preparedResult.stage, preparedResult.reason);
     const prepared = preparedResult.prepared;
@@ -252,8 +259,8 @@ export function useAuthoritativeGameSyncController(params: Params) {
   }, [
     params.acknowledgePendingLocalRemoteAction,
     params.activeRoomIdRef,
-    params.currentPiecesRef,
     params.currentSequenceStateRef,
+    params.syncLatestAuthoritativeState,
   ]);
 
   const preparePendingLocalMoveOwnership = useCallback((request: PendingLocalMoveOwnershipRequest) => {
