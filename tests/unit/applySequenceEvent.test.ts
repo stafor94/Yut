@@ -120,6 +120,43 @@ test('v2 sequence는 patch와 메타데이터를 직전 state에 적용하고 �
   assert.equal(applySequenceEvent(result as any, event), result);
 });
 
+test('잡기 move sequence는 authoritative capturedPieceIds를 동일 mutation presentation으로 전달한다', () => {
+  const result = applySequenceEvent(baseState({ captureEffect: null }) as any, sequence({
+    sequence: 2,
+    type: 'move_piece_resolved',
+    schemaVersion: 2,
+    clientMutationId: 'move-capture-2',
+    payload: { capturedPieceIds: ['target-1'] },
+    patch: { pieces: [{ id: 'attacker', nodeId: 'n19' }, { id: 'target-1', nodeId: 'n01', started: false }] },
+  }));
+
+  assert.deepEqual(result?.captureEffect, {
+    id: 2,
+    presentationKey: 'move-capture-2',
+    pieceIds: ['target-1'],
+  });
+
+  const next = applySequenceEvent(result as any, sequence({
+    sequence: 3,
+    type: 'turn_state_updated',
+    schemaVersion: 2,
+    patch: { turnIndex: 0 },
+  }));
+  assert.deepEqual(next?.captureEffect, result?.captureEffect);
+});
+
+test('잡지 않은 move sequence는 capture presentation을 만들지 않는다', () => {
+  const result = applySequenceEvent(baseState({ captureEffect: null }) as any, sequence({
+    sequence: 2,
+    type: 'move_piece_resolved',
+    schemaVersion: 2,
+    clientMutationId: 'move-no-capture-2',
+    payload: { capturedPieceIds: [] },
+    patch: { pieces: [{ id: 'p1', nodeId: 'n02' }] },
+  }));
+  assert.equal(result?.captureEffect, null);
+});
+
 test('authoritative 윷 sequence는 원격 표시용 Nice 등급을 결과에 보존한다', () => {
   const event = sequence({
     sequence: 2,
