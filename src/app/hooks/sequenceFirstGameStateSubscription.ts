@@ -1,9 +1,11 @@
 import type { Unsubscribe } from 'firebase/firestore';
 import {
   getLatestGameState,
+  getRoom,
   subscribeGameSequences,
   type GameSequence,
   type GameSequenceSnapshotMeta,
+  type RoomSummary,
   type SyncedGameState,
 } from '../../features/room/services/roomService';
 import { publishGameConnectionState } from './gameConnectionState';
@@ -12,8 +14,11 @@ import { advanceSequenceFirstState } from './sequenceFirstGameState';
 const SERVER_CHECK_INDICATOR_DELAY_MS = 1_200;
 const RECONNECT_RETRY_MS = 1_000;
 
+type RoomStartRevision = Pick<RoomSummary, 'startRequestVersion' | 'startRequestId'>;
+
 type SequenceFirstDependencies = {
   getLatestState: (roomId: string) => Promise<SyncedGameState | null>;
+  getCurrentRoomStart: (roomId: string) => Promise<RoomStartRevision | null>;
   subscribeSequences: (
     roomId: string,
     afterSequence: number,
@@ -29,9 +34,26 @@ type SequenceFirstDependencies = {
 
 const defaultDependencies: SequenceFirstDependencies = {
   getLatestState: getLatestGameState,
+  getCurrentRoomStart: async (roomId) => getRoom(roomId),
   subscribeSequences: subscribeGameSequences,
   setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
   clearTimeout: (timer) => globalThis.clearTimeout(timer),
+};
+
+const getStartRevisionKey = (value: RoomStartRevision | SyncedGameState | null | undefined) => {
+  const version = Number(value?.startRequestVersion ?? 0);
+  const requestId = String(value?.startRequestId ?? '');
+  return Number.isFinite(version) && version > 0 && requestId ? `${Math.trunc(version)}:${requestId}` : '';
+};
+
+export const matchesCurrentRoomStartRevision = (
+  roomStart: RoomStartRevision | null,
+  state: SyncedGameState | null,
+) => {
+  if (!state) return false;
+  const roomStartKey = getStartRevisionKey(roomStart);
+  if (!roomStartKey) return true;
+  return getStartRevisionKey(state) === roomStartKey;
 };
 
 const getBrowserRuntime = () => globalThis as typeof globalThis & {
@@ -78,13 +100,29 @@ export function createSequenceFirstGameStateSubscriber(dependencies: SequenceFir
         hasPendingWrites: false,
       });
     };
+    const readCurrentRevisionState = async () => {
+      const [latestState, roomStart] = await Promise.all([
+        dependencies.getLatestState(roomId),
+        dependencies.getCurrentRoomStart(roomId),
+      ]);
+      if (disposed) return { status: 'disposed' as const, state: null };
+      if (!latestState) return { status: 'missing' as const, state: null };
+      if (!matchesCurrentRoomStartRevision(roomStart, latestState)) {
+        return { status: 'stale-start-revision' as const, state: null };
+      }
+      return { status: 'current' as const, state: latestState };
+    };
     const recoverSnapshot = async (status: 'recovering' | 'reconnecting') => {
       publishGameConnectionState({ roomId, status });
-      const latestState = await dependencies.getLatestState(roomId);
-      if (disposed) return false;
-      if (!latestState) return false;
-      currentState = latestState;
-      callback(latestState);
+      const result = await readCurrentRevisionState();
+      if (result.status !== 'current' || !result.state) {
+        if (result.status === 'stale-start-revision') {
+          publishGameConnectionState({ roomId, status: 'server-checking' });
+        }
+        return false;
+      }
+      currentState = result.state;
+      callback(result.state);
       publishGameConnectionState({
         roomId,
         status: 'online',
@@ -126,17 +164,30 @@ export function createSequenceFirstGameStateSubscriber(dependencies: SequenceFir
         }, RECONNECT_RETRY_MS);
       });
     };
+    const loadInitialState = async () => {
+      try {
+        const result = await readCurrentRevisionState();
+        if (result.status === 'disposed') return;
+        if (result.status === 'stale-start-revision') {
+          publishGameConnectionState({ roomId, status: 'server-checking' });
+          clearRetryTimer();
+          retryTimer = dependencies.setTimeout(() => {
+            retryTimer = null;
+            if (!disposed) void loadInitialState();
+          }, RECONNECT_RETRY_MS);
+          return;
+        }
+        currentState = result.state;
+        callback(result.state);
+        bindSequenceListener(Number(result.state?.lastSequence ?? 0));
+      } catch {
+        if (disposed) return;
+        callback(null);
+        bindSequenceListener(0);
+      }
+    };
 
-    void dependencies.getLatestState(roomId).then((initialState) => {
-      if (disposed) return;
-      currentState = initialState;
-      callback(initialState);
-      bindSequenceListener(Number(initialState?.lastSequence ?? 0));
-    }).catch(() => {
-      if (disposed) return;
-      callback(null);
-      bindSequenceListener(0);
-    });
+    void loadInitialState();
 
     const handleOffline = () => {
       if (!disposed) publishGameConnectionState({ roomId, status: 'offline' });
