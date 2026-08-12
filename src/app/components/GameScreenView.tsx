@@ -59,6 +59,7 @@ type GameScreenViewProps = {
   boardTurnIndicatorRollStack: YutResult[];
   branchChoice: BranchChoice;
   canContinueRace: boolean;
+  moveRequestReady: boolean;
   moveActionReady: boolean;
   canRollNow: boolean;
   canRollForTurnOrderNow: boolean;
@@ -155,7 +156,7 @@ type GameScreenViewProps = {
 
 const FALL_COMPLETION_RETRY_MS = 800;
 
-export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorRollStack, branchChoice, canContinueRace, moveActionReady, canRollNow, canRollForTurnOrderNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, goldenYutDeadlineAt, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, onlineGameCoordinatorSeatId, coordinatorEpoch, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, shieldedPieceIds, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementDeadlineAt, turnActionTimeoutMs, turnOrderPhase, turnDeadlineAt, turnDeadlineKind, turnActionTimeoutCountBySeatId, autoPlayBySeatId, resumeHumanControlPending, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenSequenceExportDialog, onRollYut, onResumeHumanControl, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
+export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, activeRoomTitle, activeSeat, activeTurnOrderIntro, boardItems, boardTurnIndicatorColor, boardTurnIndicatorRollStack, branchChoice, canContinueRace, moveRequestReady, moveActionReady, canRollNow, canRollForTurnOrderNow, canSeatControlPiece, canSubmitTurnAction, captureEffect, fallEffect, displayBranchChoice, finalHoldMs, formatStoredLogSequence, getItemPromptTimeoutMs, getLogCardStyle, getPieceSideKey, getPlayerCardName, getSeatPieceColor, getTurnActionTimeoutMs, goldenYutChoices, goldenYutPickerOpen, goldenYutDeadlineAt, hasActiveTurnOrderIntro, highlightedNodeId, isMyTurn, localSeatId, onlineGameCoordinatorSeatId, coordinatorEpoch, logs, movingPieceId, ownedItems, pendingTrapPlacement, pieces, playMode, maxPlayers, pieceCount, itemMode, stackedRollMode, rollStack, selectedRollStackIndex, rollStackClosed, onSelectRollStackIndex, onMoveRollStackIndex, previewNodeIds, previousBoardTurnText, previousBoardTurnColor, nextBoardTurnText, nextBoardTurnColor, revealedItems, roll, rollAnimation, rollResultHolding, selectedGroupPieceIds, selectedPieceId, shieldedPieceIds, playerPanelSeats, completedSeatIds, rankingSeatIds, seats, showBottomBranchControls, showBoardTurnNeighbors, spectators, title, activeSeatTurnText, toast, trapEffect, trapNodes, trapPlacementNodeIds, trapPlacementDeadlineAt, turnActionTimeoutMs, turnOrderPhase, turnDeadlineAt, turnDeadlineKind, turnActionTimeoutCountBySeatId, autoPlayBySeatId, resumeHumanControlPending, turnToast, waitingForOnlineTurnOrder, winner, winnerText, onBranchChoiceChange, onContinueRace, onFinishGame, onReturnToWaitingRoom, onGoldenYutSelect, onMoveSelectedPiece, onOpenEndGameDialog, onOpenSequenceExportDialog, onRollYut, onResumeHumanControl, onSelectPieceId, onSelectTrapNode, onSkipItemPrompt, onUseItem, renderLogText }: GameScreenViewProps) {
   const trapPlacementClock = useDisplayClock(pendingTrapPlacement, 250, trapPlacementDeadlineAt);
   const trapPlacementSecondsLeft = Math.max(0, Math.ceil((trapPlacementDeadlineAt - trapPlacementClock) / 1000));
   const moveSelectionTimedOut = useDeadlineReached(turnDeadlineKind === 'move' ? turnDeadlineAt : 0);
@@ -697,6 +698,7 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         showBottomBranchControls={showBottomBranchControls}
         displayBranchChoice={displayBranchChoice}
         onBranchChoiceChange={onBranchChoiceChange}
+        moveRequestReady={moveRequestReady}
         moveActionReady={moveActionReady}
         activeSeatId={displayedActiveGameSeatId}
         activeSeatTurnText={displayedActiveSeatTurnText}
