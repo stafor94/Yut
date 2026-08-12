@@ -9,6 +9,7 @@ export type PendingLocalMoveAction = {
 export type PendingLocalMoveOwnershipRequest = {
   action: PendingLocalMoveAction;
   totalSteps: number;
+  authoritativeSnapshot: Record<string, unknown> | null;
 };
 
 export type PendingLocalMoveOwnershipSuccess = {
@@ -76,6 +77,7 @@ export function preparePendingLocalMoveOwnership(
     if (presentation.actionKey === actionKey) localMovePresentationLifecycle.cancel();
     return { ok: true, action: request.action, actionKey };
   }
+  if (!request.authoritativeSnapshot) return failure(request, 'authoritative-state', 'current-sequence-state-missing');
   if (!currentOwnershipPreparer) return failure(request, 'ownership-preparer', 'ownership-preparer-unavailable');
   return currentOwnershipPreparer(request);
 }
