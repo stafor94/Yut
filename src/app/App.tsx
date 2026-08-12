@@ -1328,7 +1328,7 @@ export function App() {
     onScreenChange: setScreen,
     onActiveRoomIdChange: setActiveRoomId,
     onActiveRoomTitleChange: setActiveRoomTitle,
-    onRoomHostIdChange: setActiveRoomHostId,
+    onActiveRoomHostIdChange: setActiveRoomHostId,
     onRoomHostChange: setIsRoomHost,
     onPlayModeChange: setPlayMode,
     onMaxPlayersChange: setMaxPlayers,
@@ -1780,7 +1780,7 @@ export function App() {
     setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, started: true, finished: false } : piece));
     for (const nextNodeId of pathNodeIds) {
       const nextNodeIndex = Math.max(0, BOARD_NODES.findIndex((node) => node.id === nextNodeId));
-      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeId: nextNodeId, nodeIndex: nextNodeIndex, started: nextNodeId !== 'finish', finished: nextNodeId === 'finish' } : piece));
+      setPieces((currentPieces) => currentPieces.map((piece) => movingGroupIds.includes(piece.id) ? { ...piece, nodeId: nextNodeId, nodeIndex: nextNodeIndex, started: true, finished: false } : piece));
       playSyncedMoveSoundOnce(`sequence:${sequence.sequence}:${nextNodeId}`, sequence.clientMutationId);
       await delay(STEP_DELAY_MS);
       if (nextNodeId === anchorAfter.nodeId) break;
