@@ -184,7 +184,7 @@ test('remote capture inference requires the moving attacker to remain on the cap
     previousPieces,
     pieces: capturedPieces,
     getPieceGroupKey: (piece) => piece.ownerId,
-  }), ['target']);
+  }), []);
 
   assert.deepEqual(inferCapturedPieceIds({
     previousPieces,
