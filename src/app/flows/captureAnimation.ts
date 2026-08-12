@@ -297,41 +297,22 @@ export function inferCapturedPieceIds(params: {
   attackerPieceId?: string;
   getPieceGroupKey: (piece: CaptureAnimationPiece) => string;
 }) {
-  const previousById = new Map(params.previousPieces.map((piece) => [piece.id, piece]));
-  const returnedHome = (previousPiece: CaptureAnimationPiece) => {
-    const currentPiece = params.pieces.find((piece) => piece.id === previousPiece.id);
-    return Boolean(currentPiece
-      && !currentPiece.started
-      && !currentPiece.finished
-      && currentPiece.nodeId === 'n01');
-  };
+  if (!params.attackerPieceId) return [];
+  const attacker = params.pieces.find((piece) => piece.id === params.attackerPieceId);
+  const previousAttacker = params.previousPieces.find((piece) => piece.id === params.attackerPieceId);
+  if (!attacker?.started || attacker.finished || !previousAttacker) return [];
 
-  if (params.attackerPieceId) {
-    const attacker = params.pieces.find((piece) => piece.id === params.attackerPieceId);
-    const previousAttacker = previousById.get(params.attackerPieceId);
-    if (!attacker?.started || attacker.finished || !previousAttacker) return [];
-
-    const attackerSideKey = params.getPieceGroupKey(attacker);
-    return params.previousPieces
-      .filter((previousPiece) => {
-        if (previousPiece.id === attacker.id || !previousPiece.started || previousPiece.finished) return false;
-        if (previousPiece.nodeId !== attacker.nodeId) return false;
-        if (params.getPieceGroupKey(previousPiece) === attackerSideKey) return false;
-        return returnedHome(previousPiece);
-      })
-      .map((piece) => piece.id);
-  }
-
+  const attackerSideKey = params.getPieceGroupKey(attacker);
   return params.previousPieces
     .filter((previousPiece) => {
-      if (!previousPiece.started || previousPiece.finished || !returnedHome(previousPiece)) return false;
-      const capturedSideKey = params.getPieceGroupKey(previousPiece);
-      return params.pieces.some((candidate) => candidate.id !== previousPiece.id
-        && candidate.started
-        && !candidate.finished
-        && candidate.nodeId === previousPiece.nodeId
-        && previousById.has(candidate.id)
-        && params.getPieceGroupKey(candidate) !== capturedSideKey);
+      if (previousPiece.id === attacker.id || !previousPiece.started || previousPiece.finished) return false;
+      if (previousPiece.nodeId !== attacker.nodeId) return false;
+      if (params.getPieceGroupKey(previousPiece) === attackerSideKey) return false;
+      const currentPiece = params.pieces.find((piece) => piece.id === previousPiece.id);
+      return Boolean(currentPiece
+        && !currentPiece.started
+        && !currentPiece.finished
+        && currentPiece.nodeId === 'n01');
     })
     .map((piece) => piece.id);
 }
