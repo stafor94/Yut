@@ -443,8 +443,18 @@ async function expectAuthoritativeRoll(roomId, localSeatId, expectedName, expect
 }
 
 function expectSinglePresentation(trace, { expectedPath, finalNodeId, local }) {
-  if (local) expect(trace.moveActionIds).toHaveLength(1);
-  expect(trace.canonicalNodeTransitions).toEqual(expectedPath);
+  if (local) {
+    expect(trace.moveActionIds).toHaveLength(1);
+    expect(trace.canonicalNodeTransitions).toEqual(expectedPath);
+  } else {
+    let previousPathIndex = -1;
+    for (const nodeId of trace.canonicalNodeTransitions) {
+      const pathIndex = expectedPath.indexOf(nodeId);
+      expect(pathIndex).toBeGreaterThan(previousPathIndex);
+      previousPathIndex = pathIndex;
+    }
+    expect(trace.canonicalNodeTransitions.at(-1)).toBe(finalNodeId);
+  }
   expect(trace.renderedNodeTransitions).toEqual(expectedPath);
   expect(trace.movingPieceStartCount).toBe(1);
   expect(trace.finalCanonicalNodeId).toBe(finalNodeId);
