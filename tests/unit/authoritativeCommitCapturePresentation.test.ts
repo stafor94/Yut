@@ -28,7 +28,7 @@ test('local authoritative capture commit keeps one-shot presentation metadata in
     commit: async () => persistedResult,
   });
 
-  assert.deepEqual(result.stateAfter?.captureEffect, {
+  assert.deepEqual((result.stateAfter as Record<string, unknown> | undefined)?.captureEffect, {
     id: 12,
     presentationKey: 'capture-move-12',
     pieceIds: ['target-1'],
