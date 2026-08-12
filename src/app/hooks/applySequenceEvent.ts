@@ -89,7 +89,13 @@ export function applySequenceEvent<TState extends SequencePatchState>(state: TSt
   let nextState = { ...state, ...patch, lastSequence: sequenceNumber } as TState;
 
   if (!hasOwn(patch, 'turnVersion')) {
-    nextState.turnVersion = Number(state.turnVersion ?? 0) + 1;
+    const currentTurnVersion = Number(state.turnVersion ?? 0);
+    const replayingAlreadyAppliedMutation = typeof sequence.clientMutationId === 'string'
+      && sequence.clientMutationId.length > 0
+      && state.lastClientMutationId === sequence.clientMutationId;
+    nextState.turnVersion = replayingAlreadyAppliedMutation
+      ? currentTurnVersion
+      : currentTurnVersion + 1;
   }
   if (typeof sequence.clientMutationId === 'string' && sequence.clientMutationId) {
     nextState.lastClientMutationId = sequence.clientMutationId;

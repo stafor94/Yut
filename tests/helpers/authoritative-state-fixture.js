@@ -58,7 +58,7 @@ export async function commitAuthoritativeStatePatchForQa(page, roomId, patch, ac
       schemaVersion: encodeFirestoreValue(2),
       eventSchemaVersion: encodeFirestoreValue(2),
       action: encodeFirestoreValue(null),
-      patch: encodeFirestoreValue(patch),
+      patch: encodeFirestoreValue({ ...patch, turnVersion: nextTurnVersion }),
       logEntries: encodeFirestoreValue([]),
       expectedPreviousSequence: encodeFirestoreValue(currentSequence),
       clientMutationId: encodeFirestoreValue(clientMutationId),

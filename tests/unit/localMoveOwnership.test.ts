@@ -5,6 +5,8 @@ import {
   classifyAuthoritativeDelivery,
   makeLocalMoveResultFingerprint,
   prepareLocalMoveOwnership,
+  prepareLocalMoveOwnershipResult,
+  withLocalMovePiecesFallback,
 } from '../../src/app/flows/localMoveOwnership';
 import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
 
@@ -98,6 +100,47 @@ const makeOnlineMoveState = () => ({
   turnVersion: 3,
 });
 
+const makeFirstTurnTwoPieceState = (roll: { name: '도' | '개'; steps: 1 | 2; bonus: false }, stackedRollMode: boolean) => ({
+  ...makeOnlineMoveState(),
+  pieceCount: 2 as const,
+  stackedRollMode,
+  pieces: [
+    { id: 'P1-piece-1', ownerId: 'P1', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
+    { id: 'P1-piece-2', ownerId: 'P1', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
+    { id: 'P2-piece-1', ownerId: 'P2', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
+    { id: 'P2-piece-2', ownerId: 'P2', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
+  ],
+  roll,
+  rollStack: stackedRollMode ? [roll] : [],
+  selectedRollStackIndex: stackedRollMode ? 0 : null,
+  rollStackClosed: stackedRollMode,
+  turnDeadlineKind: 'move',
+  turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
+  lastSequence: 20,
+  turnVersion: 5,
+});
+
+const makeFirstTurnMoveAction = (
+  roll: { name: '도' | '개'; steps: 1 | 2; bonus: false },
+  stackedRollMode: boolean,
+) => ({
+  type: 'move_piece' as const,
+  actorId: 'P1',
+  payload: {
+    pieceId: 'P1-piece-1',
+    extraSteps: 0,
+    branchChoice: 'outer',
+    rollStackIndex: stackedRollMode ? 0 : null,
+    rollName: roll.name,
+    rollSteps: roll.steps,
+    clientActionId: `move_piece:P1:20:0:${roll.name}:P1-piece-1:stack:${stackedRollMode ? 0 : 'none'}`,
+    clientActionStartedAt: Date.now(),
+    actorLabel: 'P1',
+    actorName: '사람',
+    actorLogName: '사람',
+  },
+});
+
 test('온라인 로컬 이동은 서버 응답 전에 공유 reducer로 최종 상태와 path를 확정한다', () => {
   const clientMutationId = 'move_piece:P1:10:0:piece-1';
   const prepared = prepareLocalMoveOwnership({
@@ -127,6 +170,81 @@ test('온라인 로컬 이동은 서버 응답 전에 공유 reducer로 최종 �
   assert.equal(prepared.finalState.roll, null);
   assert.equal(prepared.finalState.turnIndex, 1);
   assert.deepEqual(prepared.finalState.lastMovedPieceIds, ['piece-1']);
+});
+
+test('stale __YUT_DEBUG_STATE__는 authoritative move snapshot의 rule/sequence/turn/deadline/stack 값을 덮지 않는다', () => {
+  const roll = { name: '개' as const, steps: 2 as const, bonus: false as const };
+  const authoritative = makeFirstTurnTwoPieceState(roll, true);
+  const localPieces = authoritative.pieces.map((piece) => ({ ...piece }));
+  const debugGlobal = globalThis as typeof globalThis & { __YUT_DEBUG_STATE__?: unknown };
+  debugGlobal.__YUT_DEBUG_STATE__ = {
+    playMode: 'team',
+    pieceCount: 4,
+    stackedRollMode: false,
+    turnIndex: 99,
+    lastSequence: 999,
+    turnVersion: 999,
+    turnDeadlineAt: 1,
+    roll: { name: '모', steps: 5, bonus: true },
+    rollStack: [{ name: '모', steps: 5, bonus: true }],
+    pieces: [{ id: 'stale-piece', nodeId: 'finish' }],
+  };
+  try {
+    const snapshot = withLocalMovePiecesFallback(authoritative, localPieces) as typeof authoritative;
+    assert.equal(snapshot.playMode, 'individual');
+    assert.equal(snapshot.pieceCount, 2);
+    assert.equal(snapshot.stackedRollMode, true);
+    assert.equal(snapshot.turnIndex, 0);
+    assert.equal(snapshot.lastSequence, 20);
+    assert.equal(snapshot.turnVersion, 5);
+    assert.equal(snapshot.turnDeadlineAt, authoritative.turnDeadlineAt);
+    assert.deepEqual(snapshot.roll, roll);
+    assert.deepEqual(snapshot.rollStack, [roll]);
+    assert.equal(snapshot.pieces, localPieces);
+  } finally {
+    delete debugGlobal.__YUT_DEBUG_STATE__;
+  }
+});
+
+for (const stackedRollMode of [false, true] as const) {
+  for (const roll of [
+    { name: '도' as const, steps: 1 as const, bonus: false as const, expectedPath: ['n02'], expectedNodeId: 'n02' },
+    { name: '개' as const, steps: 2 as const, bonus: false as const, expectedPath: ['n02', 'n03'], expectedNodeId: 'n03' },
+  ]) {
+    test(`AI 1:1 개인전 2말 첫 턴 ${roll.name} ownership 준비 성공 - 누적던지기 ${stackedRollMode ? 'ON' : 'OFF'}`, () => {
+      const state = makeFirstTurnTwoPieceState(roll, stackedRollMode);
+      const action = makeFirstTurnMoveAction(roll, stackedRollMode);
+      const result = prepareLocalMoveOwnershipResult({ roomId: 'room-first-turn', state, action });
+      const failureMessage = result.ok ? 'ownership preparation unexpectedly failed' : `${result.stage}:${result.reason}`;
+      assert.equal(result.ok, true, failureMessage);
+      if (!result.ok) return;
+      assert.equal(result.prepared.record.clientMutationId, action.payload.clientActionId);
+      assert.equal(result.prepared.record.pieceId, 'P1-piece-1');
+      assert.deepEqual(result.prepared.record.pathNodeIds, roll.expectedPath);
+      assert.equal(result.prepared.record.fromNodeId, 'n01');
+      assert.equal(result.prepared.record.toNodeId, roll.expectedNodeId);
+      const movedPiece = result.prepared.finalState.pieces?.find((piece) => (piece as { id?: string }).id === 'P1-piece-1') as { nodeId?: string; started?: boolean } | undefined;
+      const otherHumanPiece = result.prepared.finalState.pieces?.find((piece) => (piece as { id?: string }).id === 'P1-piece-2') as { nodeId?: string; started?: boolean } | undefined;
+      assert.equal(movedPiece?.nodeId, roll.expectedNodeId);
+      assert.equal(movedPiece?.started, true);
+      assert.equal(otherHumanPiece?.nodeId, 'n01');
+      assert.equal(otherHumanPiece?.started, false);
+    });
+  }
+}
+
+test('reducer 선검증 실패는 실제 stage/reason을 보존한다', () => {
+  const roll = { name: '도' as const, steps: 1 as const, bonus: false as const };
+  const action = makeFirstTurnMoveAction(roll, false);
+  const result = prepareLocalMoveOwnershipResult({
+    roomId: 'room-a',
+    state: { ...makeFirstTurnTwoPieceState(roll, false), turnIndex: 1 },
+    action,
+  });
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.stage, 'reducer-prevalidation');
+  assert.ok(result.reason);
 });
 
 test('coordinator 복구 이동은 로컬 presentation 소유권을 선점하지 않는다', () => {

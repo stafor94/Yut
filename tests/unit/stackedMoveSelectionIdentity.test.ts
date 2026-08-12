@@ -70,7 +70,7 @@ test('원자적 local ownership이 고정한 selection identity는 presentation 
     rollStackClosed: true,
     selectedRollStackIndex: 0,
   });
-  assert.equal(localFinalDisplay.roll, null);
+  assert.deepEqual(localFinalDisplay.roll, BACKDO);
 
   const delayedCommitAction = makeAction(10);
   assert.equal(attachLatestStackedMoveSelectionIdentity(delayedCommitAction), true);
@@ -100,12 +100,33 @@ test('[모, 빽도]는 모 +5 뒤 빽도 -1을 소비하고 마지막에만 턴�
   assert.equal(second.patch.turnIndex, 1);
 });
 
-test('표시 stack이 최신 authoritative stack과 다르면 presentation 전에 차단한다', () => {
+test('표시 stack이 authoritative context보다 오래돼도 이미 활성화된 이동 입력은 no-op으로 바뀌지 않는다', () => {
   const authoritative = makeState({ lastSequence: 11, turnVersion: 4, rollStack: [BACKDO] });
   publishAuthoritativeStackedMoveContext(authoritative);
-  const stale = resolveEffectiveMoveContext({ stackedRollMode: true, roll: null, rollStack: [MO, BACKDO], rollStackClosed: true, selectedRollStackIndex: 0 });
-  assert.equal(stale.roll, null);
-  assert.equal(stale.steps, 0);
+  const staleDisplay = resolveEffectiveMoveContext({ stackedRollMode: true, roll: null, rollStack: [MO, BACKDO], rollStackClosed: true, selectedRollStackIndex: 0 });
+  assert.deepEqual(staleDisplay.roll, MO);
+  assert.equal(staleDisplay.steps, MO.steps);
+
+  const staleAction = makeAction(10);
+  assert.deepEqual(reduceAuthoritativeGameAction(authoritative, staleAction, ROOM, SIDES), {
+    status: 'rejected', reason: STACKED_MOVE_SELECTION_STALE_REASON,
+  });
+});
+
+test('render-time selection이 revision 변경으로 지워져도 action roll fingerprint가 최신 authoritative stack과 맞으면 같은 action에 identity를 고정한다', () => {
+  const previous = makeState({ lastSequence: 10, turnVersion: 3, rollStack: [MO] });
+  assert.deepEqual(select(previous).roll, MO);
+  const current = makeState({ lastSequence: 11, turnVersion: 4, rollStack: [MO] });
+  publishAuthoritativeStackedMoveContext(current);
+
+  const action = makeAction(11);
+  action.payload.rollName = MO.name;
+  action.payload.rollSteps = MO.steps;
+  assert.equal(attachLatestStackedMoveSelectionIdentity(action), true);
+  assert.deepEqual(action.payload.stackedMoveSelection, {
+    expectedPreviousSequence: 11, expectedTurnVersion: 4, expectedTurnIndex: 0, rollStackIndex: 0, roll: MO,
+  });
+  assert.equal(reduceAuthoritativeGameAction(current, action, ROOM, SIDES).status, 'committed');
 });
 
 test('revision 변경 뒤 같은 index의 다른 roll은 mutation 전에 거부한다', () => {
@@ -123,7 +144,10 @@ test('revision 변경 뒤 같은 index의 다른 roll은 mutation 전에 거부�
 test('local ownership ACK는 같은 selection identity fingerprint와 일치하고 hard resync하지 않는다', () => {
   const state = makeState();
   select(state);
-  const prepared = prepareLocalMoveOwnership({ roomId: 'room-a', state, action: makeAction(10) });
+  const action = makeAction(10);
+  action.payload.rollName = MO.name;
+  action.payload.rollSteps = MO.steps;
+  const prepared = prepareLocalMoveOwnership({ roomId: 'room-a', state, action });
   assert.ok(prepared);
   const ledger = new LocalMoveLedger();
   const record = ledger.register(prepared.record);

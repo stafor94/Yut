@@ -49,8 +49,9 @@ test('공통 authoritative QA fixture는 state와 sequence를 atomic commit하�
   assert.match(authoritativeFixtureSource, /const commitUrl = `\$\{getFirestoreDocumentsBaseUrl\(config\.projectId\)\}:commit`/);
   assert.match(authoritativeFixtureSource, /'sequences', makeSequenceDocId\(nextSequence\)/);
   assert.match(authoritativeFixtureSource, /currentDocument: \{ exists: false \}/);
+  assert.match(authoritativeFixtureSource, /stateFields\.turnVersion = encodeFirestoreValue\(nextTurnVersion\)/);
   assert.match(authoritativeFixtureSource, /stateFields\.lastSequence = encodeFirestoreValue\(nextSequence\)/);
-  assert.match(authoritativeFixtureSource, /patch: encodeFirestoreValue\(patch\)/);
+  assert.match(authoritativeFixtureSource, /patch: encodeFirestoreValue\(\{ \.\.\.patch, turnVersion: nextTurnVersion \}\)/);
   assert.doesNotMatch(authoritativeFixtureSource, /method: 'PATCH'/);
 
   assert.match(qaHelperSource, /import \{ commitAuthoritativeStatePatchForQa \} from '\.\/authoritative-state-fixture\.js';/);

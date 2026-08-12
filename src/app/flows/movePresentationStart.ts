@@ -84,6 +84,7 @@ export function commitAcceptedMovePresentation<TPrepared, TCompletion>({
   let ownershipRegistered = false;
   try {
     if (!registerOwnership()) {
+      rollbackOwnership();
       releaseExecution();
       return { started: false, reason: 'ownership-registration-failed' };
     }

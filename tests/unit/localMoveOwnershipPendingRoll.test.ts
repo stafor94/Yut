@@ -6,7 +6,7 @@ import {
 } from '../../src/app/flows/localMoveOwnership';
 import { TURN_ACTION_TIMEOUT_MS } from '../../src/features/room/services/roomTiming';
 
-const makePreRollSyncedState = () => ({
+const makeActionReadyMoveState = () => ({
   playMode: 'individual' as const,
   pieceCount: 1 as const,
   stackedRollMode: false,
@@ -20,7 +20,7 @@ const makePreRollSyncedState = () => ({
     { id: 'piece-1', ownerId: 'P1', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
     { id: 'piece-2', ownerId: 'P2', nodeId: 'n01', nodeIndex: 0, started: false, finished: false, previousNodeId: '' },
   ],
-  roll: null,
+  roll: { name: '걸', steps: 3, bonus: false },
   rollStack: [],
   selectedRollStackIndex: null,
   rollStackClosed: false,
@@ -44,7 +44,7 @@ const makePreRollSyncedState = () => ({
   winner: '',
   autoPlayBySeatId: {},
   turnActionTimeoutCountBySeatId: {},
-  turnDeadlineKind: 'roll' as const,
+  turnDeadlineKind: 'move' as const,
   turnDeadlineAt: Date.now() + TURN_ACTION_TIMEOUT_MS,
   lastSequence: 10,
   turnVersion: 3,
@@ -52,7 +52,7 @@ const makePreRollSyncedState = () => ({
 
 const prepareGulMove = () => prepareLocalMoveOwnership({
   roomId: 'room-a',
-  state: makePreRollSyncedState(),
+  state: makeActionReadyMoveState(),
   action: {
     type: 'move_piece',
     actorId: 'P1',
@@ -61,13 +61,15 @@ const prepareGulMove = () => prepareLocalMoveOwnership({
       extraSteps: 0,
       branchChoice: 'outer',
       rollStackIndex: null,
+      rollName: '걸',
+      rollSteps: 3,
       clientActionId: 'move_piece:P1:10:0:걸:3:::piece-1:0:outer:stack:none',
       clientActionStartedAt: Date.now(),
     },
   },
 });
 
-test('빠른 ACK 전에 synced roll이 늦어도 local action identity로 move ledger 결과를 준비한다', () => {
+test('action-ready current sequence state와 exact local action payload로 move ledger 결과를 준비한다', () => {
   const prepared = prepareGulMove();
 
   assert.ok(prepared);
@@ -97,7 +99,7 @@ test('local reducer final pieces는 fingerprint에 보존하되 화면 적용용
 test('roll 정보가 없는 비표준 move id는 local ownership을 추측하지 않는다', () => {
   const prepared = prepareLocalMoveOwnership({
     roomId: 'room-a',
-    state: makePreRollSyncedState(),
+    state: { ...makeActionReadyMoveState(), roll: null, turnDeadlineKind: 'roll' as const },
     action: {
       type: 'move_piece',
       actorId: 'P1',
