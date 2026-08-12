@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   clearCachedGameSequences,
+  getCachedGameSequence,
   getCachedGameSequencesForReplay,
   hasCachedGameSequence,
   replaceCachedGameSequences,
@@ -22,6 +23,23 @@ test('snapshot replay 대상 범위가 연속으로 캐시되어 있으면 Fires
 
   assert.deepEqual(cached?.map((sequence) => sequence.sequence), [8, 9]);
   assert.equal(hasCachedGameSequence(roomId, 9), true);
+  assert.deepEqual(getCachedGameSequence<{ sequence: number; value: string }>(roomId, 9), { sequence: 9, value: 'nine' });
+  clearCachedGameSequences(roomId);
+});
+
+test('exact sequence lookup은 replay scope 없이도 동일 room cache의 authoritative event를 반환한다', () => {
+  const roomId = 'room-exact-sequence';
+  replaceCachedGameSequences(roomId, [
+    { sequence: 21, type: 'roll_yut' },
+    { sequence: 22, type: 'move_piece_resolved', payload: { capturedPieceIds: ['target-1'] } },
+  ]);
+
+  assert.deepEqual(getCachedGameSequence(roomId, 22), {
+    sequence: 22,
+    type: 'move_piece_resolved',
+    payload: { capturedPieceIds: ['target-1'] },
+  });
+  assert.equal(getCachedGameSequence(roomId, 23), null);
   clearCachedGameSequences(roomId);
 });
 
