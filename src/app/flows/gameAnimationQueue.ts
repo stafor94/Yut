@@ -64,6 +64,7 @@ export type GameAnimationQueue = {
   isBusy: () => boolean;
   acquire: () => () => void;
   reset: () => void;
+  onReset?: (listener: () => void) => () => void;
 };
 
 export function createGameAnimationQueue(): GameAnimationQueue {
@@ -73,6 +74,7 @@ export function createGameAnimationQueue(): GameAnimationQueue {
   let consumerCount = 0;
   let releaseCheckVersion = 0;
   const pendingByKey = new Map<string, Promise<void>>();
+  const resetListeners = new Set<() => void>();
 
   const reset = () => {
     generation += 1;
@@ -80,6 +82,7 @@ export function createGameAnimationQueue(): GameAnimationQueue {
     tail = Promise.resolve();
     pendingCount = 0;
     pendingByKey.clear();
+    resetListeners.forEach((listener) => listener());
   };
 
   return {
@@ -126,6 +129,10 @@ export function createGameAnimationQueue(): GameAnimationQueue {
       };
     },
     reset,
+    onReset(listener) {
+      resetListeners.add(listener);
+      return () => resetListeners.delete(listener);
+    },
   };
 }
 

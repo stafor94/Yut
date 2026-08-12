@@ -1,5 +1,6 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, type CSSProperties } from 'react';
 import { CAPTURE_IMPACT_DELAY_MS, getCaptureMotionProfile, type CaptureVisualEffect } from '../../../app/flows/captureAnimation';
+import { createMoveFrameTransitionIdentityQueue, getMoveFrameTransitionMs, isMovePositionTransitionProperty } from '../../../app/flows/moveFrameCompletion';
 import type { FinishVisualEffect } from '../../../app/flows/finishAnimation';
 import type { BoardItem, BoardNode, BranchChoice } from '../../../game-core/board/board';
 import { BOARD_NODES, FINISH_NODE_ID } from '../../../game-core/board/board';
@@ -25,6 +26,9 @@ type GameBoardProps = {
   selectedPieceId?: string;
   selectedPieceIds?: string[];
   movingPieceId?: string;
+  movingPieceFrameKey?: string;
+  onMovingPieceTransitionPrepared?: (pieceId: string, frameKey: string, durationMs: number) => void;
+  onMovingPieceTransitionComplete?: (pieceId: string, frameKey: string) => void;
   onSelectPiece: (pieceId: string) => void;
   revealedItems: ItemType[];
   highlightedNodeId?: string;
@@ -138,7 +142,7 @@ function PieceFigure() {
   </span>;
 }
 
-export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, onSelectPiece, highlightedNodeId, trapNodeIds = [], shieldedPieceIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], captureEffect = null, captureDestinationNodeId = '', finishEffect = null, trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
+export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, movingPieceId, movingPieceFrameKey = '', onMovingPieceTransitionPrepared, onMovingPieceTransitionComplete, onSelectPiece, highlightedNodeId, trapNodeIds = [], shieldedPieceIds = [], previewNodeIds = [], branchChoice = 'outer', onBranchChoiceChange, showBranchControls = false, capturedPieceIds = [], captureEffect = null, captureDestinationNodeId = '', finishEffect = null, trapEffectNodeId = '', selectableNodeIds = [], onSelectNode, boardShaking = false, isPieceSelectable, showFallEffect = false, getPieceGroupKey = (piece) => piece.ownerId }: GameBoardProps) {
   void branchChoice;
   void onBranchChoiceChange;
   void showBranchControls;
@@ -147,6 +151,11 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
   const stackTopPieceIdByKeyRef = useRef<Map<string, string>>(new Map());
   const lastCaptureBonusIdRef = useRef<number | null>(null);
   const captureBonusTimerRef = useRef<number | null>(null);
+  const movingPieceElementRef = useRef<HTMLButtonElement | null>(null);
+  const movingFrameTransitionMsRef = useRef(0);
+  const completedMovingFrameKeyRef = useRef('');
+  const activeMovingFramePropertiesRef = useRef<Set<string>>(new Set());
+  const movingTransitionIdentityQueueRef = useRef(createMoveFrameTransitionIdentityQueue());
 
   useEffect(() => {
     if (!captureEffect || lastCaptureBonusIdRef.current === captureEffect.id) return;
@@ -160,7 +169,19 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
 
   useEffect(() => () => {
     if (captureBonusTimerRef.current !== null) window.clearTimeout(captureBonusTimerRef.current);
+    movingTransitionIdentityQueueRef.current.clear();
   }, []);
+
+  useLayoutEffect(() => {
+    completedMovingFrameKeyRef.current = '';
+    activeMovingFramePropertiesRef.current.clear();
+    if (!movingPieceId || !movingPieceFrameKey || !onMovingPieceTransitionPrepared) return;
+    const element = movingPieceElementRef.current;
+    if (!element || element.dataset.testid !== `piece-${movingPieceId}`) return;
+    const durationMs = getMoveFrameTransitionMs(window.getComputedStyle(element));
+    movingFrameTransitionMsRef.current = durationMs;
+    onMovingPieceTransitionPrepared(movingPieceId, movingPieceFrameKey, durationMs);
+  }, [movingPieceFrameKey, movingPieceId, onMovingPieceTransitionPrepared]);
 
   const selectedIds = selectedPieceIds ?? (selectedPieceId ? [selectedPieceId] : []);
   const previewFinishes = previewNodeIds.includes(FINISH_NODE_ID);
@@ -256,8 +277,42 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
         type="button"
         data-testid={`piece-${piece.id}`}
         key={piece.id}
+        ref={movingPieceId === piece.id ? movingPieceElementRef : undefined}
         className={`piece-token ${((!piece.started && movingPieceId !== piece.id) || piece.finished) ? 'off-board' : ''} ${stackedPieceCount > 1 ? 'stacked' : ''} ${pieceSelected ? 'selected' : ''} ${movingPieceId === piece.id ? 'moving' : ''} ${piece.finished ? 'finished' : ''} ${shieldedPieceIds.includes(piece.id) ? 'shielded' : ''} ${piece.started && !piece.finished && capturedPieceIds.includes(piece.id) ? 'captured-highlight' : ''} ${captureApproachPieceIds.has(piece.id) ? 'capture-approach' : ''} ${captureAttackerPieceIds.has(piece.id) ? 'capture-attacker-recoil' : ''} ${visualCapturePieceIds.has(piece.id) ? 'capture-source-hidden' : ''} ${finishPieceIds.has(piece.id) ? 'finish-arrival' : ''}`}
         style={pieceStyle}
+        onTransitionRun={(event) => {
+          if (event.target !== event.currentTarget
+            || piece.id !== movingPieceId
+            || !movingPieceFrameKey
+            || !isMovePositionTransitionProperty(event.propertyName)) return;
+          const propertyName = event.propertyName.trim().toLowerCase();
+          const identity = { pieceId: piece.id, frameKey: movingPieceFrameKey, propertyName };
+          movingTransitionIdentityQueueRef.current.remember(identity);
+          const wasEmpty = activeMovingFramePropertiesRef.current.size === 0;
+          activeMovingFramePropertiesRef.current.add(propertyName);
+          if (wasEmpty) {
+            onMovingPieceTransitionPrepared?.(piece.id, movingPieceFrameKey, movingFrameTransitionMsRef.current);
+          }
+        }}
+        onTransitionCancel={(event) => {
+          if (event.target !== event.currentTarget || !isMovePositionTransitionProperty(event.propertyName)) return;
+          const identity = movingTransitionIdentityQueueRef.current.consume(piece.id, event.propertyName);
+          if (!identity || identity.frameKey !== movingPieceFrameKey || identity.pieceId !== movingPieceId) return;
+          activeMovingFramePropertiesRef.current.delete(identity.propertyName);
+        }}
+        onTransitionEnd={(event) => {
+          if (event.target !== event.currentTarget
+            || piece.id !== movingPieceId
+            || !movingPieceFrameKey
+            || !isMovePositionTransitionProperty(event.propertyName)) return;
+          const identity = movingTransitionIdentityQueueRef.current.consume(piece.id, event.propertyName);
+          if (!identity || identity.frameKey !== movingPieceFrameKey || identity.pieceId !== movingPieceId) return;
+          activeMovingFramePropertiesRef.current.delete(identity.propertyName);
+          if (activeMovingFramePropertiesRef.current.size > 0
+            || completedMovingFrameKeyRef.current === movingPieceFrameKey) return;
+          completedMovingFrameKeyRef.current = movingPieceFrameKey;
+          onMovingPieceTransitionComplete?.(piece.id, movingPieceFrameKey);
+        }}
         onClick={() => onSelectPiece(piece.id)}
         disabled={piece.finished || !pieceSelectable}
         aria-label={`${piece.label} 말 선택${shieldedPieceIds.includes(piece.id) ? ', 방패 적용됨' : ''}`}

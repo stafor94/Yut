@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { enqueueCapturePresentation } from '../../src/app/flows/capturePresentationQueue.js';
 import { createGameAnimationQueue } from '../../src/app/flows/gameAnimationQueue.js';
+import { createMoveFrameCompletionGate } from '../../src/app/flows/moveFrameCompletion.js';
 import { createGamePresentationLock } from '../../src/shared/gamePresentationLock.js';
 
 const createDeferred = () => {
@@ -20,17 +21,18 @@ const waitForCondition = async (predicate: () => boolean, message: string) => {
   assert.fail(message);
 };
 
-test('capture presentation waits for movement, blocks following animations, and holds the action lock', async () => {
+test('capture presentation starts only after attacker arrival, then holds settlement and following animations', async () => {
   const queue = createGameAnimationQueue();
   const lock = createGamePresentationLock();
-  const movementGate = createDeferred();
+  const arrivalGate = createMoveFrameCompletionGate({ pieceId: 'attacker', frameKey: '1:final' });
   const captureGate = createDeferred();
   const order: string[] = [];
+  let captureStartCount = 0;
 
-  const movement = queue.enqueue('move:piece-1', async () => {
-    order.push('move-start');
-    await movementGate.promise;
-    order.push('move-end');
+  const movement = queue.enqueue('move:attacker:final', async () => {
+    order.push('final-move-start');
+    await arrivalGate.promise;
+    order.push('attacker-arrival-complete');
   });
   const capture = enqueueCapturePresentation({
     key: 'capture:1',
@@ -38,6 +40,7 @@ test('capture presentation waits for movement, blocks following animations, and 
     queue,
     lock,
     start: () => {
+      captureStartCount += 1;
       order.push('capture-start');
     },
     wait: async (durationMs) => {
@@ -47,22 +50,36 @@ test('capture presentation waits for movement, blocks following animations, and 
       order.push('capture-end');
     },
   });
-  const following = queue.enqueue('move:piece-2', () => {
-    order.push('following-move');
+  const settlement = queue.enqueue('move:settled:attacker', () => {
+    order.push('authoritative-settlement');
+  });
+  const following = queue.enqueue('next-animation', () => {
+    order.push('following-animation');
   });
 
-  await waitForCondition(() => order.length >= 1, 'movement task did not start');
-  assert.deepEqual(order, ['move-start']);
+  await waitForCondition(() => order.length >= 1, 'final move task did not start');
+  assert.deepEqual(order, ['final-move-start']);
+  assert.equal(captureStartCount, 0);
   assert.equal(lock.isLocked(), true);
 
-  movementGate.resolve();
-  await waitForCondition(() => order.length >= 4, 'capture task did not start after movement');
-  assert.deepEqual(order, ['move-start', 'move-end', 'capture-start', 'capture-hold']);
+  arrivalGate.complete({ pieceId: 'attacker', frameKey: '1:final' });
+  await waitForCondition(() => order.length >= 4, 'capture task did not start after attacker arrival');
+  assert.deepEqual(order, ['final-move-start', 'attacker-arrival-complete', 'capture-start', 'capture-hold']);
+  assert.equal(captureStartCount, 1);
   assert.equal(lock.isLocked(), true);
 
   captureGate.resolve();
-  await Promise.all([movement, capture, following]);
-  assert.deepEqual(order, ['move-start', 'move-end', 'capture-start', 'capture-hold', 'capture-end', 'following-move']);
+  await Promise.all([movement, capture, settlement, following]);
+  assert.deepEqual(order, [
+    'final-move-start',
+    'attacker-arrival-complete',
+    'capture-start',
+    'capture-hold',
+    'capture-end',
+    'authoritative-settlement',
+    'following-animation',
+  ]);
+  assert.equal(captureStartCount, 1);
   await waitForCondition(() => !lock.isLocked(), 'capture presentation lock did not release');
 });
 

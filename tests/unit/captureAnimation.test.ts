@@ -15,7 +15,6 @@ import {
   getCaptureStaggerMs,
   inferCapturedPieceIds,
 } from '../../src/app/flows/captureAnimation.js';
-import { MOVE_FRAME_PRESENTATION_MS } from '../../src/app/flows/gameAnimationQueue.js';
 
 const makePiece = (overrides: Partial<CaptureAnimationPiece>): CaptureAnimationPiece => ({
   id: 'piece',
@@ -30,14 +29,22 @@ const makePiece = (overrides: Partial<CaptureAnimationPiece>): CaptureAnimationP
 });
 
 const captureEffectsCss = readFileSync('src/styles/capture-effects.css', 'utf8');
+const gameBoardSource = readFileSync('src/features/game/components/GameBoard.tsx', 'utf8');
+const gameBoardSectionSource = readFileSync('src/app/containers/GameBoardSection.tsx', 'utf8');
 
-test('capture impact begins 320ms after the landing frame starts', () => {
+test('capture presentation cannot hide the source or create ghosts before attacker arrival completion', () => {
   assert.equal(CAPTURE_SLOW_MOTION_MS, 320);
   assert.equal(CAPTURE_IMPACT_DELAY_MS, 80);
-  assert.equal(MOVE_FRAME_PRESENTATION_MS + CAPTURE_IMPACT_DELAY_MS, CAPTURE_SLOW_MOTION_MS);
   assert.equal(CAPTURE_EFFECT_MS, 720);
   assert.equal(CAPTURE_EFFECT_MS, CAPTURE_IMPACT_DELAY_MS + CAPTURE_FLIGHT_MS);
   assert.match(captureEffectsCss, /\.piece-token\.capture-approach\s*\{[^}]*transition-duration:\s*320ms;/s);
+  assert.match(captureEffectsCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.piece-token\.capture-approach\s*\{\s*transition-duration:\s*160ms;/s);
+  assert.match(gameBoardSource, /const visualCapturePieceIds = new Set\(captureEffect\?\.pieceIds \?\? \[\]\)/);
+  assert.match(gameBoardSource, /visualCapturePieceIds\.has\(piece\.id\) \? 'capture-source-hidden'/);
+  assert.match(gameBoardSource, /captureEffect\?\.pieces\.map\(\(piece\) => <span[\s\S]*?className="piece-token capture-ghost"/);
+  assert.match(gameBoardSectionSource, /await frameCompletionGate\.promise/);
+  assert.match(gameBoardSectionSource, /start: \(\) => \{[\s\S]*?setPresentedCaptureEffect\(queuedEffect\)/);
+  assert.doesNotMatch(gameBoardSectionSource, /MOVE_FRAME_PRESENTATION_MS\s*\+\s*CAPTURE_IMPACT_DELAY_MS/);
   assert.match(captureEffectsCss, /@keyframes capture-piece-ejection\s*\{\s*0%, 10%/s);
   assert.match(captureEffectsCss, /@keyframes capture-board-impact\s*\{\s*0%, 10%, 100%/s);
 });

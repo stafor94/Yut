@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { GameBoard, type BoardPiece } from '../../features/game/components/GameBoard';
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
@@ -12,6 +12,10 @@ import {
   waitForGameAnimation,
 } from '../flows/gameAnimationQueue';
 import { localMovePresentationLifecycle } from '../flows/localMovePresentationLifecycle';
+import {
+  createMoveFrameCompletionGate,
+  type MoveFrameCompletionGate,
+} from '../flows/moveFrameCompletion';
 import {
   acceptMovePresentationFrame,
   createMovePresentationSession,
@@ -54,6 +58,31 @@ type GameBoardSectionProps = {
 const clonePieces = (pieces: BoardPiece[]) => pieces.map((piece) => ({ ...piece }));
 const STACK_SOUND_DELAY_MS = 120;
 
+function isCaptureApproachFrame({
+  pieces,
+  movingPieceId,
+  captureDestinationNodeId,
+  shieldedPieceIds,
+  getPieceSideKey,
+}: {
+  pieces: BoardPiece[];
+  movingPieceId: string;
+  captureDestinationNodeId: string;
+  shieldedPieceIds: string[];
+  getPieceSideKey: (piece: BoardPiece) => string;
+}) {
+  if (!movingPieceId || !captureDestinationNodeId) return false;
+  const attacker = pieces.find((piece) => piece.id === movingPieceId);
+  if (!attacker || attacker.nodeId !== captureDestinationNodeId || attacker.finished) return false;
+  const attackerSideKey = getPieceSideKey(attacker);
+  return pieces.some((piece) => piece.id !== movingPieceId
+    && piece.started
+    && !piece.finished
+    && piece.nodeId === attacker.nodeId
+    && getPieceSideKey(piece) !== attackerSideKey
+    && !shieldedPieceIds.includes(piece.id));
+}
+
 export function GameBoardSection({
   pieces,
   boardItems,
@@ -84,28 +113,60 @@ export function GameBoardSection({
 }: GameBoardSectionProps) {
   const mountedRef = useRef(true);
   const moveSessionRef = useRef<MovePresentationSession<BoardPiece> | null>(null);
+  const settledPresentationPiecesRef = useRef<BoardPiece[]>(clonePieces(pieces));
+  const moveGenerationRef = useRef(0);
+  const moveFrameCompletionGateRef = useRef<MoveFrameCompletionGate | null>(null);
   const pendingSettlementPiecesRef = useRef<BoardPiece[]>(clonePieces(pieces));
   const pendingCaptureEffectRef = useRef<CaptureVisualEffect | null>(null);
+  const pendingCaptureFinalizationRef = useRef<((queuedEffect: CaptureVisualEffect) => void) | null>(null);
   const moveFinalizationScheduledRef = useRef(false);
   const settlementRevisionGateRef = useRef(createPresentationRevisionGate());
   const presentedCaptureKeysRef = useRef<Set<string>>(new Set());
+  const previewDestinationNodeIdRef = useRef(previewNodeIds[previewNodeIds.length - 1] ?? '');
+  const activeMoveDestinationRef = useRef({ pieceId: '', nodeId: '' });
   const [presentedPieces, setPresentedPieces] = useState<BoardPiece[]>(() => clonePieces(pieces));
   const [presentedMovingPieceId, setPresentedMovingPieceId] = useState(movingPieceId);
+  const [presentedMovingFrameKey, setPresentedMovingFrameKey] = useState('');
   const [presentedCaptureEffect, setPresentedCaptureEffect] = useState<CaptureVisualEffect | null>(null);
   const [trapPlacementClock, setTrapPlacementClock] = useState(() => Date.now());
 
   useLayoutEffect(() => {
+    if (movingPieceId || moveSessionRef.current) return;
+    previewDestinationNodeIdRef.current = previewNodeIds[previewNodeIds.length - 1] ?? '';
+  }, [movingPieceId, previewNodeIds]);
+
+  useLayoutEffect(() => {
     mountedRef.current = true;
     const releaseQueue = gameAnimationQueue.acquire();
+    const cancelActiveMoveFrame = () => {
+      moveGenerationRef.current += 1;
+      moveFrameCompletionGateRef.current?.cancel();
+      moveFrameCompletionGateRef.current = null;
+    };
+    const unsubscribeQueueReset = gameAnimationQueue.onReset?.(cancelActiveMoveFrame) ?? (() => undefined);
     return () => {
       mountedRef.current = false;
+      unsubscribeQueueReset();
+      cancelActiveMoveFrame();
       moveSessionRef.current = null;
       pendingCaptureEffectRef.current = null;
+      pendingCaptureFinalizationRef.current = null;
+      activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
       moveFinalizationScheduledRef.current = false;
       settlementRevisionGateRef.current.invalidate();
       localMovePresentationLifecycle.cancel();
       releaseQueue();
     };
+  }, []);
+
+  const handleMovingPieceTransitionPrepared = useCallback((pieceId: string, frameKey: string, durationMs: number) => {
+    const gate = moveFrameCompletionGateRef.current;
+    if (!gate || gate.pieceId !== pieceId || gate.frameKey !== frameKey) return;
+    gate.armFallback({ pieceId, frameKey }, durationMs);
+  }, []);
+
+  const handleMovingPieceTransitionComplete = useCallback((pieceId: string, frameKey: string) => {
+    moveFrameCompletionGateRef.current?.complete({ pieceId, frameKey });
   }, []);
 
   const queueCaptureEffect = (queuedEffect: CaptureVisualEffect) => {
@@ -137,9 +198,27 @@ export function GameBoardSection({
       moveFinalizationScheduledRef.current = false;
       let session = moveSessionRef.current;
       if (!session || session.pieceId !== movingPieceId) {
-        session = createMovePresentationSession(incomingPieces, movingPieceId, getPieceSideKey);
+        moveFrameCompletionGateRef.current?.cancel();
+        moveFrameCompletionGateRef.current = null;
+        pendingCaptureFinalizationRef.current = null;
+        moveGenerationRef.current += 1;
+        const stablePieces = settledPresentationPiecesRef.current.some((piece) => piece.id === movingPieceId)
+          ? clonePieces(settledPresentationPiecesRef.current)
+          : incomingPieces;
+        session = createMovePresentationSession(stablePieces, movingPieceId, getPieceSideKey);
         moveSessionRef.current = session;
         pendingCaptureEffectRef.current = null;
+        activeMoveDestinationRef.current = {
+          pieceId: movingPieceId,
+          nodeId: captureDestinationNodeId || previewDestinationNodeIdRef.current,
+        };
+      } else if (activeMoveDestinationRef.current.pieceId !== movingPieceId) {
+        activeMoveDestinationRef.current = {
+          pieceId: movingPieceId,
+          nodeId: captureDestinationNodeId || previewDestinationNodeIdRef.current,
+        };
+      } else if (!activeMoveDestinationRef.current.nodeId && captureDestinationNodeId) {
+        activeMoveDestinationRef.current = { pieceId: movingPieceId, nodeId: captureDestinationNodeId };
       }
       if (!session) return;
 
@@ -149,11 +228,41 @@ export function GameBoardSection({
       if (!acceptedFrame.changed) return;
 
       const framePieces = acceptedFrame.pieces;
-      void gameAnimationQueue.enqueue(`move:${movingPieceId}:${acceptedFrame.frameKey}`, async () => {
+      const retainedDestinationNodeId = activeMoveDestinationRef.current.pieceId === movingPieceId
+        ? activeMoveDestinationRef.current.nodeId
+        : '';
+      const awaitArrivalTransition = isCaptureApproachFrame({
+        pieces: framePieces,
+        movingPieceId,
+        captureDestinationNodeId: retainedDestinationNodeId || captureDestinationNodeId,
+        shieldedPieceIds,
+        getPieceSideKey,
+      });
+      const framePresentationKey = awaitArrivalTransition
+        ? `${moveGenerationRef.current}:${acceptedFrame.frameKey}`
+        : '';
+      const queueFrameKey = framePresentationKey || acceptedFrame.frameKey;
+      void gameAnimationQueue.enqueue(`move:${movingPieceId}:${queueFrameKey}`, async () => {
         if (!mountedRef.current) return;
+        let frameCompletionGate: MoveFrameCompletionGate | null = null;
+        if (awaitArrivalTransition) {
+          frameCompletionGate = createMoveFrameCompletionGate({ pieceId: movingPieceId, frameKey: framePresentationKey });
+          moveFrameCompletionGateRef.current?.cancel();
+          moveFrameCompletionGateRef.current = frameCompletionGate;
+          setPresentedMovingFrameKey(framePresentationKey);
+        } else {
+          setPresentedMovingFrameKey('');
+        }
         setPresentedPieces(framePieces);
         setPresentedMovingPieceId(movingPieceId);
-        await waitForGameAnimation(MOVE_FRAME_PRESENTATION_MS);
+        if (!frameCompletionGate) {
+          await waitForGameAnimation(MOVE_FRAME_PRESENTATION_MS);
+          return;
+        }
+        await frameCompletionGate.promise;
+        if (moveFrameCompletionGateRef.current === frameCompletionGate) {
+          moveFrameCompletionGateRef.current = null;
+        }
       });
       return;
     }
@@ -167,43 +276,73 @@ export function GameBoardSection({
           || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
         const settlementPieces = clonePieces(pendingSettlementPiecesRef.current);
         const finalization = getMovePresentationFinalization(activeSession, settlementPieces, getPieceSideKey);
-        const queuedEffect = pendingCaptureEffectRef.current;
-        pendingCaptureEffectRef.current = null;
-        if (queuedEffect) queueCaptureEffect(queuedEffect);
-
         const settlementKey = getMovePresentationFrameKey(settlementPieces);
-        void gameAnimationQueue.enqueue(`move:settled:${activeSession.pieceId}:${settlementKey}`, async () => {
+        const scheduleSettlement = () => {
+          void gameAnimationQueue.enqueue(`move:settled:${activeSession.pieceId}:${settlementKey}`, async () => {
+            if (!mountedRef.current
+              || moveSessionRef.current !== activeSession
+              || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
+            const settledPieces = clonePieces(settlementPieces);
+            settledPresentationPiecesRef.current = settledPieces;
+            setPresentedPieces(settledPieces);
+            setPresentedMovingPieceId('');
+            setPresentedMovingFrameKey('');
+            activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
+            moveSessionRef.current = null;
+            pendingCaptureFinalizationRef.current = null;
+            moveFinalizationScheduledRef.current = false;
+            localMovePresentationLifecycle.settle(activeSession.pieceId);
+            if (finalization.shouldPlayStackSound) {
+              window.setTimeout(playConfirmedStackSoundEffect, STACK_SOUND_DELAY_MS);
+            }
+          });
+        };
+        const queueCaptureThenSettlement = (queuedEffect: CaptureVisualEffect) => {
           if (!mountedRef.current
             || moveSessionRef.current !== activeSession
             || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
-          setPresentedPieces(settlementPieces);
-          setPresentedMovingPieceId('');
-          moveSessionRef.current = null;
-          moveFinalizationScheduledRef.current = false;
-          localMovePresentationLifecycle.settle(activeSession.pieceId);
-          if (finalization.shouldPlayStackSound) {
-            window.setTimeout(playConfirmedStackSoundEffect, STACK_SOUND_DELAY_MS);
+          pendingCaptureFinalizationRef.current = null;
+          pendingCaptureEffectRef.current = null;
+          queueCaptureEffect(queuedEffect);
+          scheduleSettlement();
+        };
+
+        if (finalization.capturedPieceIds.length > 0) {
+          const queuedEffect = pendingCaptureEffectRef.current;
+          if (queuedEffect) {
+            queueCaptureThenSettlement(queuedEffect);
+            return;
           }
-        });
+          pendingCaptureFinalizationRef.current = queueCaptureThenSettlement;
+          return;
+        }
+        scheduleSettlement();
       });
       return;
     }
 
     const frameKey = getMovePresentationFrameKey(incomingPieces);
     if (!gameAnimationQueue.isBusy()) {
+      settledPresentationPiecesRef.current = clonePieces(incomingPieces);
       setPresentedPieces(incomingPieces);
       setPresentedMovingPieceId('');
+      setPresentedMovingFrameKey('');
+      activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
       localMovePresentationLifecycle.settle();
       return;
     }
 
     void gameAnimationQueue.enqueue(`move:settled:${frameKey}`, async () => {
       if (!mountedRef.current || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
-      setPresentedPieces(incomingPieces);
+      const settledPieces = clonePieces(incomingPieces);
+      settledPresentationPiecesRef.current = settledPieces;
+      setPresentedPieces(settledPieces);
       setPresentedMovingPieceId('');
+      setPresentedMovingFrameKey('');
+      activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
       localMovePresentationLifecycle.settle();
     });
-  }, [getPieceSideKey, movingPieceId, pieces]);
+  }, [captureDestinationNodeId, getPieceSideKey, movingPieceId, pieces, shieldedPieceIds]);
 
   useLayoutEffect(() => {
     if (!captureEffect) return;
@@ -213,7 +352,17 @@ export function GameBoardSection({
       pieces: captureEffect.pieces.map((piece) => ({ ...piece })),
       attackerPieceIds: [...captureEffect.attackerPieceIds],
     };
-    if (moveSessionRef.current || movingPieceId) {
+    if (movingPieceId) {
+      pendingCaptureEffectRef.current = queuedEffect;
+      return;
+    }
+    const finalizeCapture = pendingCaptureFinalizationRef.current;
+    if (finalizeCapture) {
+      pendingCaptureEffectRef.current = queuedEffect;
+      finalizeCapture(queuedEffect);
+      return;
+    }
+    if (moveSessionRef.current) {
       pendingCaptureEffectRef.current = queuedEffect;
       return;
     }
@@ -239,6 +388,9 @@ export function GameBoardSection({
   const trapAffectedPieceIds = trapEffect?.pieceIds ?? [];
   const trapNodeIds = trapNodes.map((trap) => trap.nodeId);
   const trapPlacementExpired = Boolean(trapPlacementDeadlineAt && trapPlacementClock >= trapPlacementDeadlineAt);
+  const presentedCaptureDestinationNodeId = activeMoveDestinationRef.current.pieceId === presentedMovingPieceId
+    ? activeMoveDestinationRef.current.nodeId
+    : captureDestinationNodeId;
 
   return <GameBoard
     pieces={presentedPieces}
@@ -246,6 +398,9 @@ export function GameBoardSection({
     selectedPieceId={selectedPieceId || activeMovablePiece?.id}
     selectedPieceIds={selectedPieceIds}
     movingPieceId={presentedMovingPieceId}
+    movingPieceFrameKey={presentedMovingFrameKey}
+    onMovingPieceTransitionPrepared={handleMovingPieceTransitionPrepared}
+    onMovingPieceTransitionComplete={handleMovingPieceTransitionComplete}
     onSelectPiece={(pieceId) => {
       const targetPiece = presentedPieces.find((piece) => piece.id === pieceId);
       if (!targetPiece || !isMyTurn || !activeSeat || !canSeatControlPiece(activeSeat, targetPiece)) return;
@@ -262,7 +417,7 @@ export function GameBoardSection({
     showBranchControls={false}
     capturedPieceIds={trapAffectedPieceIds}
     captureEffect={presentedCaptureEffect}
-    captureDestinationNodeId={captureDestinationNodeId}
+    captureDestinationNodeId={presentedCaptureDestinationNodeId}
     finishEffect={finishEffect}
     trapEffectNodeId={trapEffect?.nodeId}
     selectableNodeIds={trapPlacementExpired ? [] : trapPlacementNodeIds}
