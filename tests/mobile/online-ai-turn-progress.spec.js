@@ -11,7 +11,6 @@ import {
 import {
   deleteRoomForQa,
   getRoomSequencesForQa,
-  getRoomStateForQa,
   rememberRoomIdFromPage,
 } from '../helpers/rooms.js';
 
@@ -115,16 +114,19 @@ test.describe('AI turn progress after human move', () => {
     const identity = await page.evaluate(() => {
       const debug = window.__YUT_DEBUG_STATE__ ?? {};
       const localSeatId = String(debug.localSeatId ?? '');
-      const gameSeats = Array.isArray(debug.gameSeats) ? debug.gameSeats : [];
-      const aiSeat = gameSeats.find((seat) => seat?.id && seat.id !== localSeatId && seat?.isAI === true);
-      return { localSeatId, aiSeatId: String(aiSeat?.id ?? '') };
+      const turnOrderIds = Array.isArray(debug.turnOrderIds)
+        ? debug.turnOrderIds.map((seatId) => String(seatId ?? '')).filter(Boolean)
+        : [];
+      const aiSeatId = turnOrderIds.find((seatId) => seatId !== localSeatId) ?? '';
+      return { localSeatId, aiSeatId, turnOrderIds };
     });
     expect(identity.localSeatId).not.toBe('');
+    expect(identity.turnOrderIds).toHaveLength(2);
     expect(identity.aiSeatId).not.toBe('');
 
     await clickPerfectDo(page);
 
-    const humanMoveSequence = await expect.poll(async () => {
+    await expect.poll(async () => {
       const sequences = await getRoomSequencesForQa(roomId);
       const move = sequences.find((sequence) => sequence?.type === 'move_piece_resolved' && sequence?.actorId === identity.localSeatId);
       return move ? { sequence: Number(move.sequence ?? 0), actorId: String(move.actorId ?? '') } : null;
@@ -134,30 +136,44 @@ test.describe('AI turn progress after human move', () => {
       message: '사람의 첫 도가 자동 이동으로 authoritative move_piece_resolved를 만들어야 합니다.',
     }).not.toBeNull();
 
-    const stateAfterHumanMove = await getRoomStateForQa(roomId);
-    expect(String(stateAfterHumanMove?.gameSeats?.find((seat) => seat?.isAI)?.id ?? identity.aiSeatId)).toBe(identity.aiSeatId);
-
     await expect.poll(async () => {
       const sequences = await getRoomSequencesForQa(roomId);
       const humanMove = sequences.find((sequence) => sequence?.type === 'move_piece_resolved' && sequence?.actorId === identity.localSeatId);
-      const humanMoveSequenceNumber = Number(humanMove?.sequence ?? 0);
+      const humanMoveSequence = Number(humanMove?.sequence ?? 0);
       const aiAction = sequences.find((sequence) => (
-        Number(sequence?.sequence ?? 0) > humanMoveSequenceNumber
+        humanMoveSequence > 0
+        && Number(sequence?.sequence ?? 0) > humanMoveSequence
         && sequence?.actorId === identity.aiSeatId
         && sequence?.type === 'roll_yut'
       ));
+      const debug = await page.evaluate(() => {
+        const current = window.__YUT_DEBUG_STATE__ ?? {};
+        return {
+          activeSeatId: String(current.activeSeatId ?? current.activeSeat?.id ?? ''),
+          localSeatId: String(current.localSeatId ?? ''),
+          onlineGameCoordinatorSeatId: String(current.onlineGameCoordinatorSeatId ?? ''),
+          canCoordinateOnlineGame: Boolean(current.canCoordinateOnlineGame),
+          turnIndex: Number(current.turnIndex ?? -1),
+          turnDeadlineKind: String(current.turnDeadlineKind ?? ''),
+          turnDeadlineAt: Number(current.turnDeadlineAt ?? 0),
+          canRollNow: Boolean(current.canRollNow),
+          canRequestMove: Boolean(current.canRequestMove),
+          pendingLocalRemoteActionCount: Number(current.pendingLocalRemoteActionCount ?? -1),
+        };
+      });
       return {
-        humanMoveSequence: humanMoveSequenceNumber,
+        progressed: Boolean(humanMoveSequence > 0 && aiAction),
+        humanMoveSequence,
         aiActionSequence: Number(aiAction?.sequence ?? 0),
         aiActorId: String(aiAction?.actorId ?? ''),
+        debug,
       };
     }, {
       timeout: AI_ACTION_BEFORE_TIMEOUT_MS,
       intervals: [100, 200, 400],
       message: '사람 첫 자동 이동 뒤 AI 턴은 행동 제한시간 만료를 기다리지 않고 정상 roll_yut action을 시작해야 합니다.',
     }).toMatchObject({
-      humanMoveSequence: expect.any(Number),
-      aiActionSequence: expect.any(Number),
+      progressed: true,
       aiActorId: identity.aiSeatId,
     });
 
