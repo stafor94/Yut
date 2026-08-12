@@ -65,6 +65,7 @@ type GameBoardControlsProps = {
   showBottomBranchControls: boolean;
   displayBranchChoice: BranchChoice;
   onBranchChoiceChange: (choice: BranchChoice) => void;
+  moveRequestReady: boolean;
   moveActionReady: boolean;
   activeSeatId?: string;
   activeSeatTurnText: string;
@@ -115,6 +116,7 @@ export function GameBoardControls({
   showBottomBranchControls,
   displayBranchChoice,
   onBranchChoiceChange,
+  moveRequestReady,
   moveActionReady,
   activeSeatId,
   activeSeatTurnText,
@@ -219,6 +221,8 @@ export function GameBoardControls({
     hasAuthoritativeDeadline,
     authoritativeReadyAt,
     now,
+    turnActionPhase,
+    moveRequestReady,
   });
   const soundSeatId = waitingForOnlineTurnOrder || hasActiveTurnOrderIntro ? '' : authoritativeActiveSeatId ?? '';
   if (soundTurnRef.current.seatId !== soundSeatId) {
@@ -275,7 +279,7 @@ export function GameBoardControls({
     canRollForTurnOrderNow,
     hasActiveTurnOrderIntro,
     showBottomBranchControls,
-    canRequestMove: moveActionReady,
+    canRequestMove: moveRequestReady,
   });
 
   useEffect(() => {
@@ -311,7 +315,7 @@ export function GameBoardControls({
       controlsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [activeSeatId, actionReady, moveActionReady, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll, shouldAutoScrollControls, showBottomBranchControls]);
+  }, [activeSeatId, actionReady, moveRequestReady, moveActionReady, canRollForTurnOrderNow, canRollNow, hasActiveTurnOrderIntro, roll, shouldAutoScrollControls, showBottomBranchControls]);
 
   useEffect(() => {
     setTimeoutCountBySeatId(Object.fromEntries(
