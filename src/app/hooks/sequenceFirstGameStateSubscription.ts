@@ -5,20 +5,21 @@ import {
   subscribeGameSequences,
   type GameSequence,
   type GameSequenceSnapshotMeta,
-  type RoomSummary,
   type SyncedGameState,
 } from '../../features/room/services/roomService';
+import {
+  matchesCurrentRoomStartRevision,
+  type GameStartRevisionLike,
+} from '../flows/gameStartRevisionPolicy';
 import { publishGameConnectionState } from './gameConnectionState';
 import { advanceSequenceFirstState } from './sequenceFirstGameState';
 
 const SERVER_CHECK_INDICATOR_DELAY_MS = 1_200;
 const RECONNECT_RETRY_MS = 1_000;
 
-type RoomStartRevision = Pick<RoomSummary, 'startRequestVersion' | 'startRequestId'>;
-
 type SequenceFirstDependencies = {
   getLatestState: (roomId: string) => Promise<SyncedGameState | null>;
-  getCurrentRoomStart: (roomId: string) => Promise<RoomStartRevision | null>;
+  getCurrentRoomStart: (roomId: string) => Promise<GameStartRevisionLike | null>;
   subscribeSequences: (
     roomId: string,
     afterSequence: number,
@@ -38,22 +39,6 @@ const defaultDependencies: SequenceFirstDependencies = {
   subscribeSequences: subscribeGameSequences,
   setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
   clearTimeout: (timer) => globalThis.clearTimeout(timer),
-};
-
-const getStartRevisionKey = (value: RoomStartRevision | SyncedGameState | null | undefined) => {
-  const version = Number(value?.startRequestVersion ?? 0);
-  const requestId = String(value?.startRequestId ?? '');
-  return Number.isFinite(version) && version > 0 && requestId ? `${Math.trunc(version)}:${requestId}` : '';
-};
-
-export const matchesCurrentRoomStartRevision = (
-  roomStart: RoomStartRevision | null,
-  state: SyncedGameState | null,
-) => {
-  if (!state) return false;
-  const roomStartKey = getStartRevisionKey(roomStart);
-  if (!roomStartKey) return true;
-  return getStartRevisionKey(state) === roomStartKey;
 };
 
 const getBrowserRuntime = () => globalThis as typeof globalThis & {
