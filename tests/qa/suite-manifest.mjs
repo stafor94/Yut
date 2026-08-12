@@ -7,6 +7,7 @@ const branchActionGateSpec = 'tests/mobile/branch-action-gate.spec.js';
 const onlineMoveSingleExecutionSpec = 'tests/mobile/online-move-single-execution.spec.js';
 const onlineMoveBackDoHistorySpec = 'tests/mobile/online-move-after-backdo-autopass.spec.js';
 const onlineAiHumanAtomicMoveStartSpec = 'tests/mobile/online-ai-human-atomic-move-start.spec.js';
+const onlineAiTurnProgressSpec = 'tests/mobile/online-ai-turn-progress.spec.js';
 const firebaseIsolationTitle = 'QA browser app uses only the isolated Firebase emulators';
 const timingNiceSnapshotTitle = 'pointerdown Nice snapshot은 오래 눌러도 live freeze·result hold·authoritative 판정이 Nice로 유지된다';
 const timingOverflowTitle = '오브는 고정 트랙 안에서 0·50·100%를 표시하며 이동 중 문서 가로 폭과 scrollLeft를 바꾸지 않는다';
@@ -121,6 +122,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/ai-stacked-strategy.spec.js',
       'tests/mobile/hard-ai-authoritative-strategy.spec.js',
       'tests/mobile/online-ai-presentation-stall.spec.js',
+      onlineAiTurnProgressSpec,
     ]),
   }),
   'mobile-galaxy-timing': Object.freeze({
