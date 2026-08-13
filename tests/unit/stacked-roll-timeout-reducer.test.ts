@@ -16,6 +16,7 @@ type StackedTimeoutPatch = {
   rollStackClosed?: boolean;
   selectedRollStackIndex?: number | null;
   turnActionTimeoutCountBySeatId?: Record<string, number>;
+  turnDeadlineAt?: number;
   turnDeadlineKind?: string;
   turnIndex?: number;
 };
@@ -86,7 +87,9 @@ test('deadline+grace 이후 coordinator가 0번 스택 하나만 소비하고 �
   assert.equal(patch.selectedRollStackIndex, 0);
   assert.equal(patch.rollStackClosed, true);
   assert.equal(patch.turnIndex, 0);
-  assert.equal(patch.turnDeadlineKind, 'roll');
+  assert.equal(patch.turnDeadlineKind, 'move');
+  assert.equal(typeof patch.turnDeadlineAt, 'number');
+  assert.ok((patch.turnDeadlineAt ?? 0) > 0);
   assert.equal(patch.roll, null);
   assert.equal(patch.turnActionTimeoutCountBySeatId?.['seat-1'], 1);
   const movedPiece = patch.pieces?.find((piece) => piece.id === 'p1');

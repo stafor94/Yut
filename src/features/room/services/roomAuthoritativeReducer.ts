@@ -6,6 +6,7 @@ import {
   attachLatestStackedMoveSelectionIdentity,
   validateStackedMoveSelectionIdentity,
 } from './stackedMoveSelectionIdentity';
+import { preserveRemainingStackMoveDeadline } from './stackedMoveDeadlinePolicy';
 
 export * from './roomAuthoritativeReducerImplementation';
 
@@ -60,18 +61,27 @@ export const reduceAuthoritativeGameAction: typeof reduceAuthoritativeGameAction
   if (reduction.status !== 'committed' || action.type !== 'move_piece') return reduction;
 
   const patch = reduction.patch;
+  const normalizedPatch = patch
+    ? preserveRemainingStackMoveDeadline(patch, {
+        stackedRollMode: room.stackedRollMode === true,
+        captured: Boolean(reduction.payload?.captured),
+      })
+    : patch;
+  const normalizedReduction = normalizedPatch === patch
+    ? reduction
+    : { ...reduction, patch: normalizedPatch };
   const clientActionId = typeof action.payload?.clientActionId === 'string'
     ? action.payload.clientActionId
     : '';
-  const captureEffect = patch?.captureEffect;
-  if (!patch || !clientActionId || !captureEffect || typeof captureEffect !== 'object' || Array.isArray(captureEffect)) {
-    return reduction;
+  const captureEffect = normalizedPatch?.captureEffect;
+  if (!normalizedPatch || !clientActionId || !captureEffect || typeof captureEffect !== 'object' || Array.isArray(captureEffect)) {
+    return normalizedReduction;
   }
 
   return {
-    ...reduction,
+    ...normalizedReduction,
     patch: {
-      ...patch,
+      ...normalizedPatch,
       captureEffect: {
         ...captureEffect,
         presentationKey: clientActionId,

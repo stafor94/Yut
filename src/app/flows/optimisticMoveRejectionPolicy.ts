@@ -4,6 +4,12 @@ type OptimisticMoveRejectionInput = {
   hasPendingMove: boolean;
 };
 
+const DEADLINE_AUTO_MOVE_SUPERSEDED_REASON = '자동 입력 대상 제한시간이 현재 상태와 일치하지 않습니다.';
+
+export const isSupersededDeadlineAutoMoveRejection = (reason: unknown) => (
+  reason === DEADLINE_AUTO_MOVE_SUPERSEDED_REASON
+);
+
 export const shouldResyncRejectedPendingMove = ({
   actionType,
   status,

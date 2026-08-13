@@ -29,6 +29,7 @@ import {
   withLocalMovePiecesFallback,
 } from '../flows/localMoveOwnership';
 import { releaseMoveActionClaim, settleMoveActionClaim } from '../flows/moveExecutionPolicy';
+import { isSupersededDeadlineAutoMoveRejection } from '../flows/optimisticMoveRejectionPolicy';
 import {
   clearPendingLocalMoveOwnershipPreparer,
   publishPendingLocalMoveOwnershipPreparer,
@@ -129,11 +130,13 @@ export function useAuthoritativeGameSyncController(params: Params) {
     }
 
     params.applyingSyncedStateRef.current = true;
-    console.error('온라인 로컬 말 이동 결과를 hard resync합니다.', {
-      roomId,
-      actionKey,
-      reason,
-    });
+    if (!isSupersededDeadlineAutoMoveRejection(reason)) {
+      console.error('온라인 로컬 말 이동 결과를 hard resync합니다.', {
+        roomId,
+        actionKey,
+        reason,
+      });
+    }
     const promise = (async () => {
       try {
         await localMovePresentationLifecycle.waitForSettlement();
