@@ -308,7 +308,13 @@ export function GameBoardSection({
         };
 
         if (finalization.capturedPieceIds.length > 0) {
-          const queuedEffect = pendingCaptureEffectRef.current;
+          const queuedEffect = pendingCaptureEffectRef.current
+            ?? (captureEffect ? {
+              ...captureEffect,
+              pieceIds: [...captureEffect.pieceIds],
+              pieces: captureEffect.pieces.map((piece) => ({ ...piece })),
+              attackerPieceIds: [...captureEffect.attackerPieceIds],
+            } : null);
           if (queuedEffect) {
             queueCaptureThenSettlement(queuedEffect);
             return;
@@ -342,7 +348,7 @@ export function GameBoardSection({
       activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
       localMovePresentationLifecycle.settle();
     });
-  }, [captureDestinationNodeId, getPieceSideKey, movingPieceId, pieces, shieldedPieceIds]);
+  }, [captureDestinationNodeId, captureEffect, getPieceSideKey, movingPieceId, pieces, shieldedPieceIds]);
 
   useLayoutEffect(() => {
     if (!captureEffect) return;
