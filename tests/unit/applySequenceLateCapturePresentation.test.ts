@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { applySequenceEvent } from '../../src/app/hooks/applySequenceEvent.js';
 
-test('snapshot이 먼저 반영된 동일 sequence 잡기는 authoritative state를 재적용하지 않고 capture presentation만 보강한다', () => {
+test('snapshot이 먼저 반영된 동일 sequence 잡기는 authoritative patch presentation만 보강하고 state는 재적용하지 않는다', () => {
   const pieces = [
     { id: 'attacker', nodeId: 'n19', started: true },
     { id: 'target-1', nodeId: 'n01', started: false },
@@ -17,14 +17,20 @@ test('snapshot이 먼저 반영된 동일 sequence 잡기는 authoritative state
     turnIndex: 1,
     captureEffect: null,
   } as any;
+  const authoritativeCaptureEffect = {
+    id: 777,
+    presentationKey: 'move-capture-2',
+    pieceIds: ['target-1'],
+  };
   const lateEvent = {
     sequence: 2,
     type: 'move_piece_resolved',
     clientMutationId: 'move-capture-2',
-    payload: { capturedPieceIds: ['target-1'] },
+    payload: { captured: true },
     patch: {
       turnIndex: 0,
       pieces: [{ id: 'should-not-apply', nodeId: 'n03' }],
+      captureEffect: authoritativeCaptureEffect,
     },
     logEntries: [{ id: 10, text: 'should not replay' }],
   };
@@ -38,15 +44,11 @@ test('snapshot이 먼저 반영된 동일 sequence 잡기는 authoritative state
   assert.equal(result?.turnIndex, 1);
   assert.equal(result?.pieces, pieces);
   assert.equal(result?.logs, logs);
-  assert.deepEqual(result?.captureEffect, {
-    id: 2,
-    presentationKey: 'move-capture-2',
-    pieceIds: ['target-1'],
-  });
+  assert.deepEqual(result?.captureEffect, authoritativeCaptureEffect);
   assert.equal(applySequenceEvent(result, lateEvent), result);
 });
 
-test('현재 sequence보다 오래된 잡기 event는 presentation metadata도 다시 적용하지 않는다', () => {
+test('현재 sequence보다 오래된 authoritative capture patch는 presentation metadata도 다시 적용하지 않는다', () => {
   const before = {
     pieces: [{ id: 'attacker', nodeId: 'n20' }],
     logs: [],
@@ -58,8 +60,14 @@ test('현재 sequence보다 오래된 잡기 event는 presentation metadata도 �
     sequence: 2,
     type: 'move_piece_resolved',
     clientMutationId: 'old-capture-2',
-    payload: { capturedPieceIds: ['target-1'] },
-    patch: { turnIndex: 1 },
+    patch: {
+      turnIndex: 1,
+      captureEffect: {
+        id: 776,
+        presentationKey: 'old-capture-2',
+        pieceIds: ['target-1'],
+      },
+    },
   };
 
   assert.equal(applySequenceEvent(before, oldEvent), before);

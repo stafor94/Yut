@@ -70,6 +70,26 @@ const preserveSequenceRollTimingGrade = (sequence: SequenceEventLike, state: Seq
 
 const getSequenceCaptureEffect = (sequence: SequenceEventLike, sequenceNumber: number): SequenceCaptureEffect | null => {
   if (sequence.type !== 'move_piece_resolved') return null;
+
+  const patchCaptureEffect = sequence.patch?.captureEffect;
+  if (patchCaptureEffect && typeof patchCaptureEffect === 'object' && !Array.isArray(patchCaptureEffect)) {
+    const authoritativeEffect = patchCaptureEffect as { id?: unknown; presentationKey?: unknown; pieceIds?: unknown };
+    const authoritativePieceIds = Array.isArray(authoritativeEffect.pieceIds)
+      ? authoritativeEffect.pieceIds.map((pieceId) => String(pieceId)).filter(Boolean)
+      : [];
+    const authoritativePresentationKey = typeof authoritativeEffect.presentationKey === 'string'
+      ? authoritativeEffect.presentationKey.trim()
+      : '';
+    if (authoritativePieceIds.length && authoritativePresentationKey) {
+      const authoritativeId = Number(authoritativeEffect.id ?? sequenceNumber);
+      return {
+        id: Number.isFinite(authoritativeId) ? authoritativeId : sequenceNumber,
+        presentationKey: authoritativePresentationKey,
+        pieceIds: authoritativePieceIds,
+      };
+    }
+  }
+
   const capturedPieceIds = Array.isArray(sequence.payload?.capturedPieceIds)
     ? sequence.payload.capturedPieceIds.map((pieceId) => String(pieceId)).filter(Boolean)
     : [];
