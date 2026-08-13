@@ -262,7 +262,7 @@ const settleRoomAction = async (
     });
   }
 
-  return settleAuthoritativeCommit({
+  const result = await settleAuthoritativeCommit({
     actionType: actionWithClientStart.type,
     commit: async () => {
       if (shouldWaitForGamePresentationBeforeCommit(actionWithClientStart)) {
@@ -279,6 +279,10 @@ const settleRoomAction = async (
     },
     recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
   });
+  if (result.sequenceEvent) {
+    mergeCachedGameSequences(roomId, [result.sequenceEvent], RECENT_GAME_SEQUENCE_CACHE_LIMIT);
+  }
+  return result;
 };
 
 export async function commitAuthoritativeGameAction(
