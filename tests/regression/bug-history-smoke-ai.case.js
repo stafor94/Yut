@@ -101,7 +101,13 @@ test.describe('BUG_HISTORY regression smoke', () => {
             ? ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100
             : -1;
           if (positionPercent >= 47 && positionPercent <= 53) {
-            button.click();
+            const nativeRandom = Math.random;
+            Math.random = () => 0.3;
+            try {
+              button.click();
+            } finally {
+              Math.random = nativeRandom;
+            }
             resolve(positionPercent);
             return;
           }
@@ -146,7 +152,7 @@ test.describe('BUG_HISTORY regression smoke', () => {
         const debug = window.__YUT_DEBUG_STATE__ ?? {};
         const pieces = Array.isArray(debug.pieces) ? debug.pieces : [];
         const localSeatId = String(debug.localSeatId ?? '');
-        const movingLocalPiece = Array.from(document.querySelectorAll('[data-testid^="piece-"].moving'))
+        const movingLocalPiece = Array.from(document.querySelectorAll('[data-testid^="piece-"]].moving'))
           .some((node) => {
             const testId = node.getAttribute('data-testid') ?? '';
             const pieceId = testId.replace(/^piece-/, '');
