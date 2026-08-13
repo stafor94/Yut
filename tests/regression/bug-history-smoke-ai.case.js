@@ -101,7 +101,13 @@ test.describe('BUG_HISTORY regression smoke', () => {
             ? ((orbRect.left + orbRect.width / 2 - meterRect.left) / meterRect.width) * 100
             : -1;
           if (positionPercent >= 47 && positionPercent <= 53) {
-            button.click();
+            const nativeRandom = Math.random;
+            Math.random = () => 0.3;
+            try {
+              button.click();
+            } finally {
+              Math.random = nativeRandom;
+            }
             resolve(positionPercent);
             return;
           }

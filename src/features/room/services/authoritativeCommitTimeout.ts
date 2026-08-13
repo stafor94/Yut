@@ -4,20 +4,11 @@ export const AUTHORITATIVE_ITEM_TIMEOUT_REASON = '서버 응답 시간이 초과
 
 const ITEM_ACTION_TYPES = new Set(['use_item', 'place_trap', 'item_pickup_decision']);
 
-type CommitSequenceShape = {
-  sequence?: number;
-  type?: string;
-  clientMutationId?: string;
-  payload?: Record<string, unknown>;
-};
-
 type AuthoritativeCommitResultShape = {
   status: string;
   sequence?: number;
   turnVersion?: number;
   reason?: string;
-  sequenceEvent?: CommitSequenceShape | null;
-  stateAfter?: Record<string, unknown> | null;
 };
 
 type ProcessedActionShape = {
@@ -56,32 +47,6 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, makeError: () =>
   });
 });
 
-export function withAuthoritativeCapturePresentation<T extends AuthoritativeCommitResultShape>(result: T): T {
-  const sequence = result.sequenceEvent;
-  if (!sequence || sequence.type !== 'move_piece_resolved' || !result.stateAfter) return result;
-  const capturedPieceIds = Array.isArray(sequence.payload?.capturedPieceIds)
-    ? sequence.payload.capturedPieceIds.map((pieceId) => String(pieceId)).filter(Boolean)
-    : [];
-  if (!capturedPieceIds.length) return result;
-
-  const sequenceNumber = Number(sequence.sequence ?? result.sequence ?? 0);
-  if (!Number.isInteger(sequenceNumber) || sequenceNumber <= 0) return result;
-  const clientMutationId = typeof sequence.clientMutationId === 'string'
-    ? sequence.clientMutationId.trim()
-    : '';
-  return {
-    ...result,
-    stateAfter: {
-      ...result.stateAfter,
-      captureEffect: {
-        id: sequenceNumber,
-        presentationKey: clientMutationId || `capture-sequence:${sequenceNumber}`,
-        pieceIds: capturedPieceIds,
-      },
-    },
-  } as T;
-}
-
 export async function settleAuthoritativeCommit<T extends AuthoritativeCommitResultShape>(options: {
   actionType: string;
   commit: () => Promise<T>;
@@ -93,12 +58,11 @@ export async function settleAuthoritativeCommit<T extends AuthoritativeCommitRes
   const recoveryTimeoutMs = options.recoveryTimeoutMs ?? AUTHORITATIVE_COMMIT_RECOVERY_TIMEOUT_MS;
 
   try {
-    const committed = await withTimeout(
+    return await withTimeout(
       Promise.resolve().then(options.commit),
       timeoutMs,
       () => new AuthoritativeCommitTimeoutError(options.actionType),
     );
-    return withAuthoritativeCapturePresentation(committed);
   } catch (error) {
     if (!(error instanceof AuthoritativeCommitTimeoutError)) throw error;
 

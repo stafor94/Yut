@@ -25,13 +25,16 @@ export function getMoveControlsActionReady({
   hasAuthoritativeDeadline: boolean;
   authoritativeReadyAt: number;
   now: number;
+  turnActionPhase: 'roll' | 'move';
+  moveRequestReady: boolean;
 }) {
   const authoritativeActionReady = !hasAuthoritativeDeadline
     || !authoritativeReadyAt
     || now >= authoritativeReadyAt;
+  const transitionReady = seatTransitionPhase === 'ready' && authoritativeActionReady;
   return {
     authoritativeActionReady,
-    actionReady: seatTransitionPhase === 'ready' && authoritativeActionReady,
+    actionReady: transitionReady,
   };
 }
 

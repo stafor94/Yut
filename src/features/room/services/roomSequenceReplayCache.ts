@@ -58,16 +58,11 @@ export function clearCachedGameSequences(roomId: string) {
   replayTargetsByRoom.delete(roomId);
 }
 
-export function getCachedGameSequence<TSequence extends CachedGameSequence>(roomId: string, sequence: number): TSequence | null {
-  const targetSequence = normalizeSequence(sequence);
-  if (!roomId || targetSequence <= 0) return null;
-  const cached = (sequencesByRoom.get(roomId) ?? [])
-    .find((entry) => normalizeSequence(entry.sequence) === targetSequence);
-  return cached ? aliasTimeoutRollMutationIds(roomId, cached) as TSequence : null;
-}
-
 export function hasCachedGameSequence(roomId: string, sequence: number) {
-  return getCachedGameSequence(roomId, sequence) !== null;
+  const targetSequence = normalizeSequence(sequence);
+  if (!roomId || targetSequence <= 0) return false;
+  return (sequencesByRoom.get(roomId) ?? [])
+    .some((entry) => normalizeSequence(entry.sequence) === targetSequence);
 }
 
 export function getCachedGameSequencesForReplay<TSequence extends CachedGameSequence>(

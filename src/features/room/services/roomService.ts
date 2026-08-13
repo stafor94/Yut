@@ -35,7 +35,7 @@ import {
   type RoomSummary,
   type SyncedGameState,
 } from './roomServiceCore';
-import { settleAuthoritativeCommit, withAuthoritativeCapturePresentation } from './authoritativeCommitTimeout';
+import { settleAuthoritativeCommit } from './authoritativeCommitTimeout';
 import {
   resolveFallPresentationCompletionLocally,
   shouldWaitForGamePresentationBeforeCommit,
@@ -77,7 +77,6 @@ import {
 import { waitForQaMoveCommitDelayAfterReservation } from './roomQaDelays';
 import {
   clearCachedGameSequences,
-  getCachedGameSequence,
   getCachedGameSequencesForReplay,
   hasCachedGameSequence,
   mergeCachedGameSequences,
@@ -106,20 +105,6 @@ const getManualMoveReservationRef = (roomId: string, actorId: string) => doc(
   makeFirestoreSafeId(getManualMoveReservationKey(roomId, actorId)),
 );
 
-const withCachedCapturePresentation = (roomId: string, state: SyncedGameState): SyncedGameState => {
-  const targetSequence = Number(state.lastSequence ?? 0);
-  if (!Number.isInteger(targetSequence) || targetSequence <= 0) return state;
-  const sequenceEvent = getCachedGameSequence<GameSequence>(roomId, targetSequence);
-  if (!sequenceEvent) return state;
-  const decorated = withAuthoritativeCapturePresentation({
-    status: 'snapshot',
-    sequence: targetSequence,
-    sequenceEvent,
-    stateAfter: state as unknown as Record<string, unknown>,
-  });
-  return (decorated.stateAfter ?? state) as unknown as SyncedGameState;
-};
-
 export function subscribeGameState(roomId: string, callback: (state: SyncedGameState | null) => void): Unsubscribe {
   if (!db) return subscribeGameStateCore(roomId, callback);
 
@@ -138,7 +123,7 @@ export function subscribeGameState(roomId: string, callback: (state: SyncedGameS
     pendingState = undefined;
     clearFlushTimer();
     deliveredInitialState = true;
-    callback(state ? withCachedCapturePresentation(roomId, state) : state);
+    callback(state);
   };
   const flushWhenSequenceReady = () => {
     if (pendingState === undefined) return;
@@ -262,7 +247,7 @@ const settleRoomAction = async (
     });
   }
 
-  const result = await settleAuthoritativeCommit({
+  return settleAuthoritativeCommit({
     actionType: actionWithClientStart.type,
     commit: async () => {
       if (shouldWaitForGamePresentationBeforeCommit(actionWithClientStart)) {
@@ -279,10 +264,6 @@ const settleRoomAction = async (
     },
     recoverProcessed: clientActionId ? () => getProcessedGameActionCore(roomId, clientActionId) : undefined,
   });
-  if (result.sequenceEvent) {
-    mergeCachedGameSequences(roomId, [result.sequenceEvent], RECENT_GAME_SEQUENCE_CACHE_LIMIT);
-  }
-  return result;
 };
 
 export async function commitAuthoritativeGameAction(

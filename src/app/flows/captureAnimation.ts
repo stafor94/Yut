@@ -298,8 +298,10 @@ export function inferCapturedPieceIds(params: {
   getPieceGroupKey: (piece: CaptureAnimationPiece) => string;
 }) {
   if (!params.attackerPieceId) return [];
+
+  const previousById = new Map(params.previousPieces.map((piece) => [piece.id, piece]));
   const attacker = params.pieces.find((piece) => piece.id === params.attackerPieceId);
-  const previousAttacker = params.previousPieces.find((piece) => piece.id === params.attackerPieceId);
+  const previousAttacker = previousById.get(params.attackerPieceId);
   if (!attacker?.started || attacker.finished || !previousAttacker) return [];
 
   const attackerSideKey = params.getPieceGroupKey(attacker);

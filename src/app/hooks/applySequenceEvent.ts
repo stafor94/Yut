@@ -109,7 +109,20 @@ export function applySequenceEvent<TState extends SequencePatchState>(state: TSt
   if (!Number.isInteger(sequenceNumber) || sequenceNumber <= 0) return state ?? null;
 
   const currentSequence = Number(state?.lastSequence ?? 0);
-  if (currentSequence >= sequenceNumber) return state ?? null;
+  if (currentSequence > sequenceNumber) return state ?? null;
+  if (currentSequence === sequenceNumber) {
+    if (!state) return null;
+    const captureEffect = getSequenceCaptureEffect(sequence, sequenceNumber);
+    if (!captureEffect) return state;
+    const currentCaptureEffect = state.captureEffect;
+    if (currentCaptureEffect
+      && typeof currentCaptureEffect === 'object'
+      && !Array.isArray(currentCaptureEffect)
+      && (currentCaptureEffect as { presentationKey?: unknown }).presentationKey === captureEffect.presentationKey) {
+      return state;
+    }
+    return { ...state, captureEffect } as TState;
+  }
 
   if (sequence.stateAfter) {
     const nextState = preserveCoordinatorLeaseFields(state, { ...sequence.stateAfter, lastSequence: sequenceNumber });
