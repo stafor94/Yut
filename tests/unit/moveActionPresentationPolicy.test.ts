@@ -35,8 +35,8 @@ test('같은 플레이어의 roll→move phase는 실제 좌석 turn 교체로 �
   }), '결과 확인 중...');
 });
 
-test('move phase controls는 canonical move request readiness가 false면 활성화하지 않는다', () => {
-  const blocked = getMoveControlsActionReady({
+test('move phase controls는 스택 선택 전에도 authoritative transition readiness만으로 활성화된다', () => {
+  const beforeSelection = getMoveControlsActionReady({
     seatTransitionPhase: 'ready',
     hasAuthoritativeDeadline: true,
     authoritativeReadyAt: 2_000,
@@ -44,10 +44,10 @@ test('move phase controls는 canonical move request readiness가 false면 활성
     turnActionPhase: 'move',
     moveRequestReady: false,
   });
-  assert.equal(blocked.authoritativeActionReady, true);
-  assert.equal(blocked.actionReady, false);
+  assert.equal(beforeSelection.authoritativeActionReady, true);
+  assert.equal(beforeSelection.actionReady, true);
 
-  const ready = getMoveControlsActionReady({
+  const afterSelection = getMoveControlsActionReady({
     seatTransitionPhase: 'ready',
     hasAuthoritativeDeadline: true,
     authoritativeReadyAt: 2_000,
@@ -55,7 +55,20 @@ test('move phase controls는 canonical move request readiness가 false면 활성
     turnActionPhase: 'move',
     moveRequestReady: true,
   });
-  assert.equal(ready.actionReady, true);
+  assert.equal(afterSelection.actionReady, true);
+});
+
+test('move phase controls는 authoritative readyAt 전에는 selection readiness와 무관하게 잠긴다', () => {
+  const readiness = getMoveControlsActionReady({
+    seatTransitionPhase: 'ready',
+    hasAuthoritativeDeadline: true,
+    authoritativeReadyAt: 4_000,
+    now: 3_000,
+    turnActionPhase: 'move',
+    moveRequestReady: false,
+  });
+  assert.equal(readiness.authoritativeActionReady, false);
+  assert.equal(readiness.actionReady, false);
 });
 
 test('roll phase는 move request readiness와 독립적으로 기존 전환 gate를 유지한다', () => {
