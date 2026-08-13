@@ -20,8 +20,6 @@ export function getMoveControlsActionReady({
   hasAuthoritativeDeadline,
   authoritativeReadyAt,
   now,
-  turnActionPhase,
-  moveRequestReady,
 }: {
   seatTransitionPhase: MoveSeatTransitionPhase;
   hasAuthoritativeDeadline: boolean;
@@ -36,9 +34,7 @@ export function getMoveControlsActionReady({
   const transitionReady = seatTransitionPhase === 'ready' && authoritativeActionReady;
   return {
     authoritativeActionReady,
-    actionReady: turnActionPhase === 'move'
-      ? transitionReady && moveRequestReady
-      : transitionReady,
+    actionReady: transitionReady,
   };
 }
 
