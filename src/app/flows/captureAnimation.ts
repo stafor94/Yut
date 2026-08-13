@@ -238,8 +238,9 @@ export function createCaptureVisualEffect(params: {
   const activeLocalMovePieces = activeLocalMove && Array.isArray(activeLocalMove.finalPieces)
     ? activeLocalMove.finalPieces as CaptureAnimationPiece[]
     : [];
-  const localMoveAttacker = activeLocalMove?.pieceId === params.attackerPieceId
-    ? activeLocalMovePieces.find((piece) => piece.id === activeLocalMove.pieceId
+  const activeLocalMovePieceId = activeLocalMove?.pieceId ?? '';
+  const localMoveAttacker = activeLocalMovePieceId === params.attackerPieceId
+    ? activeLocalMovePieces.find((piece) => piece.id === activeLocalMovePieceId
       && piece.started
       && !piece.finished
       && piece.nodeId === nodeId)
