@@ -288,11 +288,8 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
           const propertyName = event.propertyName.trim().toLowerCase();
           const identity = { pieceId: piece.id, frameKey: movingPieceFrameKey, propertyName };
           movingTransitionIdentityQueueRef.current.remember(identity);
-          const wasEmpty = activeMovingFramePropertiesRef.current.size === 0;
           activeMovingFramePropertiesRef.current.add(propertyName);
-          if (wasEmpty) {
-            onMovingPieceTransitionPrepared?.(piece.id, movingPieceFrameKey, movingFrameTransitionMsRef.current);
-          }
+          onMovingPieceTransitionPrepared?.(piece.id, movingPieceFrameKey, movingFrameTransitionMsRef.current);
         }}
         onTransitionCancel={(event) => {
           if (event.target !== event.currentTarget || !isMovePositionTransitionProperty(event.propertyName)) return;
