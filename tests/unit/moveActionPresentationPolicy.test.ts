@@ -18,6 +18,8 @@ test('같은 플레이어의 roll→move phase는 실제 좌석 turn 교체로 �
     hasAuthoritativeDeadline: true,
     authoritativeReadyAt: 4_200,
     now: 3_000,
+    turnActionPhase: 'move',
+    moveRequestReady: true,
   });
   assert.equal(seatTransitionPhase, 'ready');
   assert.equal(readiness.actionReady, false);
@@ -31,6 +33,41 @@ test('같은 플레이어의 roll→move phase는 실제 좌석 turn 교체로 �
     waitingForOnlineTurnOrder: false,
     hasActiveTurnOrderIntro: false,
   }), '결과 확인 중...');
+});
+
+test('move phase controls는 canonical move request readiness가 false면 활성화하지 않는다', () => {
+  const blocked = getMoveControlsActionReady({
+    seatTransitionPhase: 'ready',
+    hasAuthoritativeDeadline: true,
+    authoritativeReadyAt: 2_000,
+    now: 3_000,
+    turnActionPhase: 'move',
+    moveRequestReady: false,
+  });
+  assert.equal(blocked.authoritativeActionReady, true);
+  assert.equal(blocked.actionReady, false);
+
+  const ready = getMoveControlsActionReady({
+    seatTransitionPhase: 'ready',
+    hasAuthoritativeDeadline: true,
+    authoritativeReadyAt: 2_000,
+    now: 3_000,
+    turnActionPhase: 'move',
+    moveRequestReady: true,
+  });
+  assert.equal(ready.actionReady, true);
+});
+
+test('roll phase는 move request readiness와 독립적으로 기존 전환 gate를 유지한다', () => {
+  const readiness = getMoveControlsActionReady({
+    seatTransitionPhase: 'ready',
+    hasAuthoritativeDeadline: false,
+    authoritativeReadyAt: 0,
+    now: 3_000,
+    turnActionPhase: 'roll',
+    moveRequestReady: false,
+  });
+  assert.equal(readiness.actionReady, true);
 });
 
 test('실제 플레이어 turn 교체에서만 전환 문구를 사용한다', () => {
