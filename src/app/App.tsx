@@ -706,6 +706,9 @@ export function App() {
     rollAnimationActive: Boolean(rollAnimation),
     moveInProgress,
     movingPieceActive: Boolean(movingPieceId),
+    isOnlineMode: Boolean(activeRoomId),
+    turnDeadlineAt,
+    turnDeadlineKind,
   });
   const previewNodeIds = useMemo(() => canRequestMove && canSeatControlPiece(activeSeat, selectedPiece) ? getMovePreviewNodeIds(selectedPiece, effectiveMoveContext.roll, displayBranchChoice) : [], [activeSeat, canRequestMove, displayBranchChoice, effectiveMoveContext.roll, selectedPiece]);
   const canUseMoveButton = Boolean(canRequestMove && canMoveSelectedPiece);
@@ -3622,6 +3625,9 @@ export function App() {
       rollAnimationActive: Boolean(rollAnimation),
       moveInProgress: moveInProgressRef.current,
       movingPieceActive: Boolean(movingPieceId),
+      isOnlineMode: Boolean(activeRoomId),
+      turnDeadlineAt,
+      turnDeadlineKind,
     });
     if (!activeSeat || !handlerMoveReady) {
       reportTurnActionBlocked('move_piece', moveActionBlockReasons, '말 이동을 진행할 수 없습니다');
@@ -4654,6 +4660,7 @@ export function App() {
       branchChoice={branchChoice}
       canContinueRace={canShowContinueRaceButton}
       moveActionReady={canUseMoveButton}
+      moveRequestReady={canRequestMove}
       canRollNow={canRollNow}
       canRollForTurnOrderNow={canRollForTurnOrderNow}
       canSeatControlPiece={canSeatControlPiece}
