@@ -234,23 +234,38 @@ export function createCaptureVisualEffect(params: {
 
   const nodeId = capturedPieces[0].nodeId;
   const capturedSideKey = params.getPieceGroupKey(capturedPieces[0]);
+  const activeLocalMove = localMoveLedger.findActive();
+  const activeLocalMovePieces = Array.isArray(activeLocalMove?.finalPieces)
+    ? activeLocalMove.finalPieces as CaptureAnimationPiece[]
+    : [];
+  const localMoveAttacker = activeLocalMove?.pieceId === params.attackerPieceId
+    ? activeLocalMovePieces.find((piece) => piece.id === activeLocalMove.pieceId
+      && piece.started
+      && !piece.finished
+      && piece.nodeId === nodeId)
+    : undefined;
   const attacker = params.pieces.find((piece) => piece.id === params.attackerPieceId && piece.started && !piece.finished)
     ?? params.pieces.find((piece) => !pieceIdSet.has(piece.id)
       && piece.started
       && !piece.finished
       && piece.nodeId === nodeId
-      && params.getPieceGroupKey(piece) !== capturedSideKey);
+      && params.getPieceGroupKey(piece) !== capturedSideKey)
+    ?? localMoveAttacker;
   const previousNodeId = attacker?.previousNodeId ?? '';
   const attackerSideKey = attacker ? params.getPieceGroupKey(attacker) : '';
-  const attackerPieceIds = attackerSideKey
-    ? params.pieces
-      .filter((piece) => !pieceIdSet.has(piece.id)
-        && piece.started
-        && !piece.finished
-        && piece.nodeId === nodeId
-        && params.getPieceGroupKey(piece) === attackerSideKey)
-      .map((piece) => piece.id)
-    : [];
+  const attackerPieceIds = activeLocalMove
+    && localMoveAttacker
+    && activeLocalMove.toNodeId === nodeId
+    ? [...new Set([activeLocalMove.pieceId, ...activeLocalMove.movingGroupIds])]
+    : attackerSideKey
+      ? params.pieces
+        .filter((piece) => !pieceIdSet.has(piece.id)
+          && piece.started
+          && !piece.finished
+          && piece.nodeId === nodeId
+          && params.getPieceGroupKey(piece) === attackerSideKey)
+        .map((piece) => piece.id)
+      : [];
   const node = getBoardNodeById(nodeId);
   if (!node) return null;
 
@@ -276,7 +291,8 @@ export function createCaptureVisualEffect(params: {
   const requestedPresentationKey = params.presentationKey
     || `capture-effect:${params.id}:${[...params.pieceIds].sort().join(',')}`;
   const activeLocalMoveKey = requestedPresentationKey.startsWith('capture-effect:')
-    ? localMoveLedger.findActive()?.clientMutationId ?? ''
+    || requestedPresentationKey.startsWith('capture-recovery:')
+    ? activeLocalMove?.clientMutationId ?? ''
     : '';
 
   return {
@@ -305,7 +321,7 @@ export function inferCapturedPieceIds(params: {
   if (!attacker?.started || attacker.finished || !previousAttacker) return [];
 
   const attackerSideKey = params.getPieceGroupKey(attacker);
-  return params.previousPieces
+  const inferredPieceIds = params.previousPieces
     .filter((previousPiece) => {
       if (previousPiece.id === attacker.id || !previousPiece.started || previousPiece.finished) return false;
       if (previousPiece.nodeId !== attacker.nodeId) return false;
@@ -315,6 +331,28 @@ export function inferCapturedPieceIds(params: {
         && !currentPiece.started
         && !currentPiece.finished
         && currentPiece.nodeId === 'n01');
+    })
+    .map((piece) => piece.id);
+  if (inferredPieceIds.length) return inferredPieceIds;
+
+  const activeLocalMove = localMoveLedger.findActive();
+  if (!activeLocalMove
+    || activeLocalMove.pieceId !== params.attackerPieceId
+    || attacker.nodeId !== activeLocalMove.toNodeId) return [];
+  const finalPieces = Array.isArray(activeLocalMove.finalPieces)
+    ? activeLocalMove.finalPieces as CaptureAnimationPiece[]
+    : [];
+  const finalById = new Map(finalPieces.map((piece) => [piece.id, piece]));
+  return params.pieces
+    .filter((piece) => {
+      if (piece.id === attacker.id || !piece.started || piece.finished) return false;
+      if (piece.nodeId !== attacker.nodeId) return false;
+      if (params.getPieceGroupKey(piece) === attackerSideKey) return false;
+      const finalPiece = finalById.get(piece.id);
+      return Boolean(finalPiece
+        && !finalPiece.started
+        && !finalPiece.finished
+        && finalPiece.nodeId === 'n01');
     })
     .map((piece) => piece.id);
 }
