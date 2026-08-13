@@ -235,7 +235,7 @@ export function createCaptureVisualEffect(params: {
   const nodeId = capturedPieces[0].nodeId;
   const capturedSideKey = params.getPieceGroupKey(capturedPieces[0]);
   const activeLocalMove = localMoveLedger.findActive();
-  const activeLocalMovePieces = Array.isArray(activeLocalMove?.finalPieces)
+  const activeLocalMovePieces = activeLocalMove && Array.isArray(activeLocalMove.finalPieces)
     ? activeLocalMove.finalPieces as CaptureAnimationPiece[]
     : [];
   const localMoveAttacker = activeLocalMove?.pieceId === params.attackerPieceId
