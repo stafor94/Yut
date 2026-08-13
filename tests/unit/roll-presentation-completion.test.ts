@@ -43,6 +43,9 @@ const readyInput = {
   rollAnimationActive: false,
   moveInProgress: false,
   movingPieceActive: false,
+  isOnlineMode: true,
+  turnDeadlineAt: 12_345,
+  turnDeadlineKind: 'move',
 };
 
 test('renderer settle 이후에만 result hold를 시작하고 요청된 hold 시간을 그대로 사용한다', async () => {
