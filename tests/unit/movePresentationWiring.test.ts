@@ -25,7 +25,8 @@ test('capture approach wiring waits for the matching attacker transition while p
   assert.match(boardSectionSource, /const queueFrameKey = framePresentationKey \|\| acceptedFrame\.frameKey/);
   assert.match(boardSectionSource, /if \(!frameCompletionGate\) \{\s*await waitForGameAnimation\(MOVE_FRAME_PRESENTATION_MS\);\s*return;\s*\}\s*await frameCompletionGate\.promise/);
   assert.match(boardSectionSource, /gate\.armFallback\(\{ pieceId, frameKey \}, durationMs\)/);
-  assert.match(boardSectionSource, /moveFrameCompletionGateRef\.current\?\.complete\(\{ pieceId, frameKey \}\)/);
+  assert.match(boardSectionSource, /const gate = moveFrameCompletionGateRef\.current;\s*if \(!gate \|\| gate\.pieceId !== pieceId \|\| gate\.frameKey !== frameKey\) return;\s*gate\.complete\(\{ pieceId, frameKey \}\);/);
+  assert.match(boardSectionSource, /const queuedEffect = pendingCaptureEffectRef\.current;\s*if \(!queuedEffect\) return;\s*pendingCaptureEffectRef\.current = null;\s*queueCaptureEffect\(queuedEffect\);/);
   assert.match(boardSectionSource, /gameAnimationQueue\.onReset\?\.\(cancelActiveMoveFrame\)/);
   assert.match(boardSectionSource, /moveGenerationRef\.current \+= 1;[\s\S]*?moveFrameCompletionGateRef\.current\?\.cancel\(\)/);
 

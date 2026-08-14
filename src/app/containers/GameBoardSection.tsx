@@ -159,17 +159,7 @@ export function GameBoardSection({
     };
   }, []);
 
-  const handleMovingPieceTransitionPrepared = useCallback((pieceId: string, frameKey: string, durationMs: number) => {
-    const gate = moveFrameCompletionGateRef.current;
-    if (!gate || gate.pieceId !== pieceId || gate.frameKey !== frameKey) return;
-    gate.armFallback({ pieceId, frameKey }, durationMs);
-  }, []);
-
-  const handleMovingPieceTransitionComplete = useCallback((pieceId: string, frameKey: string) => {
-    moveFrameCompletionGateRef.current?.complete({ pieceId, frameKey });
-  }, []);
-
-  const queueCaptureEffect = (queuedEffect: CaptureVisualEffect) => {
+  const queueCaptureEffect = useCallback((queuedEffect: CaptureVisualEffect) => {
     if (presentedCaptureKeysRef.current.has(queuedEffect.presentationKey)) return;
     presentedCaptureKeysRef.current.add(queuedEffect.presentationKey);
     let presented = false;
@@ -185,7 +175,23 @@ export function GameBoardSection({
       if (!presented || !mountedRef.current) return;
       setPresentedCaptureEffect((current) => current?.presentationKey === queuedEffect.presentationKey ? null : current);
     });
-  };
+  }, []);
+
+  const handleMovingPieceTransitionPrepared = useCallback((pieceId: string, frameKey: string, durationMs: number) => {
+    const gate = moveFrameCompletionGateRef.current;
+    if (!gate || gate.pieceId !== pieceId || gate.frameKey !== frameKey) return;
+    gate.armFallback({ pieceId, frameKey }, durationMs);
+  }, []);
+
+  const handleMovingPieceTransitionComplete = useCallback((pieceId: string, frameKey: string) => {
+    const gate = moveFrameCompletionGateRef.current;
+    if (!gate || gate.pieceId !== pieceId || gate.frameKey !== frameKey) return;
+    gate.complete({ pieceId, frameKey });
+    const queuedEffect = pendingCaptureEffectRef.current;
+    if (!queuedEffect) return;
+    pendingCaptureEffectRef.current = null;
+    queueCaptureEffect(queuedEffect);
+  }, [queueCaptureEffect]);
 
   useLayoutEffect(() => {
     const incomingPieces = clonePieces(pieces);
@@ -348,7 +354,7 @@ export function GameBoardSection({
       activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
       localMovePresentationLifecycle.settle();
     });
-  }, [captureDestinationNodeId, captureEffect, getPieceSideKey, movingPieceId, pieces, shieldedPieceIds]);
+  }, [captureDestinationNodeId, captureEffect, getPieceSideKey, movingPieceId, pieces, queueCaptureEffect, shieldedPieceIds]);
 
   useLayoutEffect(() => {
     if (!captureEffect) return;
@@ -373,7 +379,7 @@ export function GameBoardSection({
       return;
     }
     queueCaptureEffect(queuedEffect);
-  }, [captureEffect, movingPieceId]);
+  }, [captureEffect, movingPieceId, queueCaptureEffect]);
 
   useEffect(() => {
     setTrapPlacementClock(Date.now());
