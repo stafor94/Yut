@@ -4488,7 +4488,7 @@ export function App() {
       if (!shieldTargets.length) return;
       submitItemActionIfRemote();
       consumeItem();
-      setShieldedPieceIds((ids) => Array.from(new Set([...ids, ...shieldTargets]));
+      setShieldedPieceIds((ids) => Array.from(new Set([...ids, ...shieldTargets])));
       addLog(`${getSeatDisplayName(itemOwnerSeat)}님의 방금 이동한 말에 방패를 씌웠습니다.`);
       finishAfterMoveItem();
       return;
