@@ -4,7 +4,6 @@ import { createGameAnimationQueue } from '../../src/app/flows/gameAnimationQueue
 import {
   createMoveFrameCompletionGate,
   createMoveFrameTransitionIdentityQueue,
-  createMoveFrameTransitionTracker,
   getMoveFrameTransitionMs,
   isMovePositionTransitionProperty,
 } from '../../src/app/flows/moveFrameCompletion.js';
@@ -59,24 +58,6 @@ test('late same-property transitionend keeps the frame identity captured at tran
     propertyName: 'left',
   });
   assert.equal(identities.consume('attacker', 'left'), null);
-});
-
-test('move frame transition tracker preserves duplicate positional runs until every end or cancel settles', () => {
-  const tracker = createMoveFrameTransitionTracker();
-  assert.equal(tracker.start('left'), true);
-  assert.equal(tracker.start('left'), true);
-  assert.equal(tracker.start('top'), true);
-  assert.equal(tracker.start('opacity'), false);
-  assert.equal(tracker.getPendingCount(), 3);
-
-  assert.equal(tracker.settle('left'), true);
-  assert.equal(tracker.getPendingCount(), 2);
-  assert.equal(tracker.hasPending(), true);
-  assert.equal(tracker.settle('top'), true);
-  assert.equal(tracker.hasPending(), true);
-  assert.equal(tracker.settle('left'), true);
-  assert.equal(tracker.hasPending(), false);
-  assert.equal(tracker.settle('left'), false);
 });
 
 test('missing transition property metadata is ignored instead of breaking unrelated move presentations', () => {

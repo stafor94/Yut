@@ -78,42 +78,6 @@ export function getMoveFrameTransitionMs(style: TransitionStyleSnapshot) {
   return completionMs;
 }
 
-export function createMoveFrameTransitionTracker() {
-  const pendingByProperty = new Map<string, number>();
-  let pendingCount = 0;
-
-  const normalizeProperty = (propertyName: string | null | undefined) => normalizeCssText(propertyName).trim().toLowerCase();
-
-  return {
-    start(propertyName: string | null | undefined) {
-      const property = normalizeProperty(propertyName);
-      if (!isMovePositionTransitionProperty(property)) return false;
-      pendingByProperty.set(property, (pendingByProperty.get(property) ?? 0) + 1);
-      pendingCount += 1;
-      return true;
-    },
-    settle(propertyName: string | null | undefined) {
-      const property = normalizeProperty(propertyName);
-      const count = pendingByProperty.get(property) ?? 0;
-      if (count <= 0) return false;
-      if (count === 1) pendingByProperty.delete(property);
-      else pendingByProperty.set(property, count - 1);
-      pendingCount = Math.max(0, pendingCount - 1);
-      return true;
-    },
-    hasPending() {
-      return pendingCount > 0;
-    },
-    getPendingCount() {
-      return pendingCount;
-    },
-    clear() {
-      pendingByProperty.clear();
-      pendingCount = 0;
-    },
-  };
-}
-
 export function createMoveFrameTransitionIdentityQueue() {
   const queues = new Map<string, MoveFrameTransitionEventIdentity[]>();
   const getKey = (pieceId: string, propertyName: string | null | undefined) => `${pieceId}:${normalizeCssText(propertyName).trim().toLowerCase()}`;

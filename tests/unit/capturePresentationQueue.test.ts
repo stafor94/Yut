@@ -83,6 +83,45 @@ test('capture presentation starts only after attacker arrival, then holds settle
   await waitForCondition(() => !lock.isLocked(), 'capture presentation lock did not release');
 });
 
+test('capture presentation waits one renderer settle boundary before source and ghost become visible', async () => {
+  const queue = createGameAnimationQueue();
+  const lock = createGamePresentationLock();
+  const visualSettleGate = createDeferred();
+  const captureGate = createDeferred();
+  const order: string[] = [];
+
+  const capture = enqueueCapturePresentation({
+    key: 'capture:renderer-settle',
+    durationMs: 720,
+    queue,
+    lock,
+    waitForVisualSettle: async () => {
+      order.push('visual-settle-wait');
+      await visualSettleGate.promise;
+      order.push('visual-settle-complete');
+    },
+    start: () => {
+      order.push('capture-start');
+    },
+    wait: async () => {
+      order.push('capture-hold');
+      await captureGate.promise;
+    },
+  });
+
+  await waitForCondition(() => order.length >= 1, 'visual settle wait did not start');
+  assert.deepEqual(order, ['visual-settle-wait']);
+  assert.equal(lock.isLocked(), true);
+
+  visualSettleGate.resolve();
+  await waitForCondition(() => order.includes('capture-start'), 'capture started before renderer settle completed');
+  assert.deepEqual(order, ['visual-settle-wait', 'visual-settle-complete', 'capture-start', 'capture-hold']);
+
+  captureGate.resolve();
+  await capture;
+  await waitForCondition(() => !lock.isLocked(), 'capture presentation lock did not release after renderer-settled capture');
+});
+
 test('a capture task can cancel before presentation without waiting for its duration', async () => {
   const queue = createGameAnimationQueue();
   const lock = createGamePresentationLock();
