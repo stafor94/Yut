@@ -175,13 +175,51 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
   useLayoutEffect(() => {
     completedMovingFrameKeyRef.current = '';
     activeMovingFramePropertiesRef.current.clear();
-    if (!movingPieceId || !movingPieceFrameKey || !onMovingPieceTransitionPrepared) return;
+    if (!movingPieceId || !movingPieceFrameKey || !onMovingPieceTransitionPrepared) return undefined;
     const element = movingPieceElementRef.current;
-    if (!element || element.dataset.testid !== `piece-${movingPieceId}`) return;
+    if (!element || element.dataset.testid !== `piece-${movingPieceId}`) return undefined;
+
+    const handleNativeTransitionRun = (event: TransitionEvent) => {
+      if (event.target !== element || !isMovePositionTransitionProperty(event.propertyName)) return;
+      const propertyName = event.propertyName.trim().toLowerCase();
+      const identity = { pieceId: movingPieceId, frameKey: movingPieceFrameKey, propertyName };
+      movingTransitionIdentityQueueRef.current.remember(identity);
+      activeMovingFramePropertiesRef.current.add(propertyName);
+      const durationMs = getMoveFrameTransitionMs(window.getComputedStyle(element));
+      movingFrameTransitionMsRef.current = durationMs;
+      onMovingPieceTransitionPrepared(movingPieceId, movingPieceFrameKey, durationMs);
+    };
+    const handleNativeTransitionCancel = (event: TransitionEvent) => {
+      if (event.target !== element || !isMovePositionTransitionProperty(event.propertyName)) return;
+      const identity = movingTransitionIdentityQueueRef.current.consume(movingPieceId, event.propertyName);
+      if (!identity || identity.frameKey !== movingPieceFrameKey || identity.pieceId !== movingPieceId) return;
+      activeMovingFramePropertiesRef.current.delete(identity.propertyName);
+    };
+    const handleNativeTransitionEnd = (event: TransitionEvent) => {
+      if (event.target !== element || !isMovePositionTransitionProperty(event.propertyName)) return;
+      const identity = movingTransitionIdentityQueueRef.current.consume(movingPieceId, event.propertyName);
+      if (!identity || identity.frameKey !== movingPieceFrameKey || identity.pieceId !== movingPieceId) return;
+      activeMovingFramePropertiesRef.current.delete(identity.propertyName);
+      if (activeMovingFramePropertiesRef.current.size > 0
+        || completedMovingFrameKeyRef.current === movingPieceFrameKey) return;
+      completedMovingFrameKeyRef.current = movingPieceFrameKey;
+      onMovingPieceTransitionComplete?.(movingPieceId, movingPieceFrameKey);
+    };
+
+    element.addEventListener('transitionrun', handleNativeTransitionRun);
+    element.addEventListener('transitioncancel', handleNativeTransitionCancel);
+    element.addEventListener('transitionend', handleNativeTransitionEnd);
+
     const durationMs = getMoveFrameTransitionMs(window.getComputedStyle(element));
     movingFrameTransitionMsRef.current = durationMs;
     onMovingPieceTransitionPrepared(movingPieceId, movingPieceFrameKey, durationMs);
-  }, [movingPieceFrameKey, movingPieceId, onMovingPieceTransitionPrepared]);
+
+    return () => {
+      element.removeEventListener('transitionrun', handleNativeTransitionRun);
+      element.removeEventListener('transitioncancel', handleNativeTransitionCancel);
+      element.removeEventListener('transitionend', handleNativeTransitionEnd);
+    };
+  }, [movingPieceFrameKey, movingPieceId, onMovingPieceTransitionComplete, onMovingPieceTransitionPrepared]);
 
   const selectedIds = selectedPieceIds ?? (selectedPieceId ? [selectedPieceId] : []);
   const previewFinishes = previewNodeIds.includes(FINISH_NODE_ID);
