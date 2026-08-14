@@ -213,6 +213,13 @@ function inferActiveLocalCapturedPieceIds(params: {
     .map((piece) => piece.id);
 }
 
+const getCaptureEffectIdFromPresentationKey = (presentationKey: string) => {
+  const hash = Array.from(presentationKey).reduce((value, character) => (
+    ((value * 31) + character.charCodeAt(0)) >>> 0
+  ), 7);
+  return hash || 1;
+};
+
 function normalizeDirection(direction: Direction, fallback: Direction = { x: 1, y: -1 }): Direction {
   const length = Math.hypot(direction.x, direction.y);
   if (length > 0.0001) return { x: direction.x / length, y: direction.y / length };
@@ -352,6 +359,29 @@ export function createCaptureVisualEffect(params: {
     pieceCount: pieces.length,
     durationMs: getCaptureEffectDurationMs(pieces.length),
   };
+}
+
+export function createActiveLocalCaptureVisualEffect(params: {
+  pieces: CaptureAnimationPiece[];
+  attackerPieceId: string;
+  getPieceGroupKey: (piece: CaptureAnimationPiece) => string;
+}): CaptureVisualEffect | null {
+  const record = localMoveLedger.findActive();
+  if (!record?.clientMutationId || record.pieceId !== params.attackerPieceId) return null;
+  const pieceIds = inferActiveLocalCapturedPieceIds({
+    pieces: params.pieces,
+    attackerPieceId: params.attackerPieceId,
+    getPieceGroupKey: params.getPieceGroupKey,
+  });
+  if (!pieceIds.length) return null;
+  return createCaptureVisualEffect({
+    id: getCaptureEffectIdFromPresentationKey(record.clientMutationId),
+    presentationKey: record.clientMutationId,
+    pieceIds,
+    pieces: params.pieces,
+    attackerPieceId: params.attackerPieceId,
+    getPieceGroupKey: params.getPieceGroupKey,
+  });
 }
 
 export function inferCapturedPieceIds(params: {

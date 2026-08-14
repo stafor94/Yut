@@ -3,7 +3,7 @@ import { GameBoard, type BoardPiece } from '../../features/game/components/GameB
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
 import { playConfirmedStackSoundEffect } from '../../shared/audio/sound';
-import type { CaptureVisualEffect } from '../flows/captureAnimation';
+import { createActiveLocalCaptureVisualEffect, type CaptureVisualEffect } from '../flows/captureAnimation';
 import { enqueueCapturePresentation } from '../flows/capturePresentationQueue';
 import type { FinishVisualEffect } from '../flows/finishAnimation';
 import {
@@ -257,6 +257,14 @@ export function GameBoardSection({
         shieldedPieceIds,
         getPieceSideKey,
       });
+      if (awaitArrivalTransition && !pendingCaptureEffectRef.current) {
+        const primedCaptureEffect = createActiveLocalCaptureVisualEffect({
+          pieces: framePieces,
+          attackerPieceId: movingPieceId,
+          getPieceGroupKey: getPieceSideKey,
+        });
+        if (primedCaptureEffect) pendingCaptureEffectRef.current = primedCaptureEffect;
+      }
       const framePresentationKey = awaitArrivalTransition
         ? `${moveGenerationRef.current}:${acceptedFrame.frameKey}`
         : '';

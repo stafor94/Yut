@@ -20,6 +20,7 @@ test('capture approach wiring waits for the matching attacker transition while p
   assert.match(boardSectionSource, /captureDestinationNodeId=\{presentedCaptureDestinationNodeId\}/);
   assert.match(boardSectionSource, /setPresentedMovingPieceId\(''\);\s*setPresentedMovingFrameKey\(''\);[\s\S]*?activeMoveDestinationRef\.current = \{ pieceId: '', nodeId: '' \}/);
 
+  assert.match(boardSectionSource, /if \(awaitArrivalTransition && !pendingCaptureEffectRef\.current\) \{[\s\S]*?createActiveLocalCaptureVisualEffect\(\{[\s\S]*?attackerPieceId: movingPieceId,[\s\S]*?if \(primedCaptureEffect\) pendingCaptureEffectRef\.current = primedCaptureEffect;/);
   assert.match(boardSectionSource, /createMoveFrameCompletionGate\(\{ pieceId: movingPieceId, frameKey: framePresentationKey \}\)/);
   assert.match(boardSectionSource, /moveFrameCompletionGateRef\.current = frameCompletionGate;[\s\S]*?completedMoveFrameRef\.current = \{ pieceId: '', frameKey: '' \};[\s\S]*?setPresentedMovingFrameKey\(framePresentationKey\);[\s\S]*?setPresentedPieces\(framePieces\)/);
   assert.match(boardSectionSource, /const queueFrameKey = framePresentationKey \|\| acceptedFrame\.frameKey/);
