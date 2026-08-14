@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-const appSource = fs.readFileSync(new URL('../../src/app/App.tsx', import.meta.url), 'utf8');
+const appSource = fs.readFileSync('src/app/App.tsx', 'utf8');
 
 type RacePiece = {
   id: string;

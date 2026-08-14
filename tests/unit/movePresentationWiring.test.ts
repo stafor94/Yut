@@ -50,7 +50,10 @@ test('capture approach wiring waits for the matching attacker transition while p
   assert.match(boardSectionSource, /const queueCaptureThenSettlement = \(queuedEffect: CaptureVisualEffect\) => \{[\s\S]*?queueCaptureEffect\(queuedEffect\);\s*scheduleSettlement\(\);/);
   assert.match(boardSectionSource, /if \(finalization\.capturedPieceIds\.length > 0\) \{[\s\S]*?pendingCaptureFinalizationRef\.current = queueCaptureThenSettlement;\s*return;/);
   assert.match(boardSectionSource, /const finalizeCapture = pendingCaptureFinalizationRef\.current;[\s\S]*?if \(finalizeCapture\) \{[\s\S]*?finalizeCapture\(queuedEffect\);\s*return;/);
-  assert.doesNotMatch(boardSectionSource, /pieceIds: finalization\.capturedPieceIds/);
+  assert.match(boardSectionSource, /createCaptureVisualEffect\(\{[\s\S]*?pieceIds: finalization\.capturedPieceIds,[\s\S]*?pieces: activeSession\.acceptedPieces,[\s\S]*?attackerPieceId: activeSession\.pieceId,[\s\S]*?getPieceGroupKey: getPieceSideKey/);
+  assert.match(boardSectionSource, /const signature = getCapturePresentationSignature\(queuedEffect\)/);
+  assert.match(boardSectionSource, /presentedCaptureSignaturesRef\.current\.has\(signature\)/);
+  assert.match(boardSectionSource, /presentedCaptureSignaturesRef\.current\.add\(signature\)/);
   assert.match(boardSectionSource, /window\.setTimeout\(playConfirmedStackSoundEffect, STACK_SOUND_DELAY_MS\)/);
   assert.match(soundSource, /export const playConfirmedStackSoundEffect = \(\) => playSoundEffect\('stack', isStoredSoundEnabled\(\)\)/);
   assert.match(soundSource, /if \(effect === 'stack'\) \{[\s\S]*?onEnded\?\.\(\);[\s\S]*?return undefined;/);
