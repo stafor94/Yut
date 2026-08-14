@@ -270,7 +270,15 @@ export function GameBoardSection({
           await waitForGameAnimation(MOVE_FRAME_PRESENTATION_MS);
           return;
         }
-        await frameCompletionGate.promise;
+        const completionSource = await frameCompletionGate.promise;
+        if (completionSource !== 'cancelled') {
+          completedMoveFrameRef.current = { pieceId: movingPieceId, frameKey: framePresentationKey };
+          const queuedEffect = pendingCaptureEffectRef.current;
+          if (queuedEffect) {
+            pendingCaptureEffectRef.current = null;
+            queueCaptureEffect(queuedEffect);
+          }
+        }
         if (moveFrameCompletionGateRef.current === frameCompletionGate) {
           moveFrameCompletionGateRef.current = null;
         }
