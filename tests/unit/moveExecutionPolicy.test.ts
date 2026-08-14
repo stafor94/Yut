@@ -83,7 +83,7 @@ test('같은 roll이 남아 있으면 lastAppliedSequence 증가만으로 두 �
   assert.equal(tryClaimMoveAction(sequenceOnlyChangedActionKey), false);
 });
 
-test('settlement 뒤 실제 새 roll opportunity가 생성되면 다음 이동을 허용한다', () => {
+test('capture settlement가 presentation 문맥을 바꿔도 같은 roll은 다시 claim하지 않는다', () => {
   publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(makeDiagnostic()));
   publishMoveTransitionReadiness({ actionReady: true, contextKey: 'ready' });
   const firstActionKey = makeActionKey(10);
@@ -91,15 +91,55 @@ test('settlement 뒤 실제 새 roll opportunity가 생성되면 다음 이동�
   assert.equal(settleMoveActionClaim(firstActionKey), true);
 
   publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(makeDiagnostic({
-    lastAppliedSequence: 12,
-    roll: { name: '걸', steps: 3 },
+    lastAppliedSequence: 11,
     turnDeadlineAt: 20_000,
-    rollResultReadyAt: 13_200,
+    rollResultReadyAt: 0,
     lastMovedSeatId: 'P1',
     lastMovedPieceIds: ['P1-1'],
   })));
-  const nextActionKey = 'move_piece:P1:12:0:걸:3:P1:P1-1:P1-1:0:outer:stack:none';
-  assert.equal(tryClaimMoveAction(nextActionKey), true);
+  const replayActionKey = 'move_piece:P1:11:0:걸:3:P1:P1-1:P1-1:0:outer:stack:none';
+  assert.equal(canExecuteMoveActionNow(replayActionKey), true);
+  assert.equal(tryClaimMoveAction(replayActionKey), false);
+});
+
+test('roll이 실제로 소진된 뒤 같은 결과를 다시 던지면 새 claim을 허용한다', () => {
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(makeDiagnostic()));
+  publishMoveTransitionReadiness({ actionReady: true, contextKey: 'ready' });
+  const firstActionKey = makeActionKey(10);
+  assert.equal(tryClaimMoveAction(firstActionKey), true);
+  assert.equal(settleMoveActionClaim(firstActionKey), true);
+
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(makeDiagnostic({
+    roll: null,
+    activeMovablePiece: null,
+    canRequestMove: false,
+    canSubmitTurnAction: false,
+  })));
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(makeDiagnostic({
+    lastAppliedSequence: 12,
+    turnDeadlineAt: 30_000,
+    rollResultReadyAt: 23_200,
+  })));
+  assert.equal(tryClaimMoveAction(makeActionKey(12)), true);
+});
+
+test('stacked roll은 동일 결과여도 남은 stack이 바뀌면 다음 이동 claim을 허용한다', () => {
+  const stackedRoll = { name: '걸', steps: 3 };
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(makeDiagnostic({
+    rollStack: [stackedRoll, stackedRoll],
+    selectedRollStackIndex: 0,
+  })));
+  publishMoveTransitionReadiness({ actionReady: true, contextKey: 'ready' });
+  const firstActionKey = makeActionKey(10, { stackIndex: 0 });
+  assert.equal(tryClaimMoveAction(firstActionKey), true);
+  assert.equal(settleMoveActionClaim(firstActionKey), true);
+
+  publishMoveExecutionReadiness(getMoveExecutionReadinessFromDiagnosticState(makeDiagnostic({
+    lastAppliedSequence: 11,
+    rollStack: [stackedRoll],
+    selectedRollStackIndex: 0,
+  })));
+  assert.equal(tryClaimMoveAction(makeActionKey(11, { stackIndex: 0 })), true);
 });
 
 test('수동 클릭과 예약 자동 이동 callback 경합에서는 하나의 claim만 성공한다', () => {
