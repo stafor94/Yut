@@ -11,7 +11,7 @@ export type CaptureAnimationPiece = {
 };
 
 import { getBoardNodeById } from '../../game-core/board/board';
-import { localMoveLedger } from './localMoveOwnership';
+import { localMoveLedger, type LocalMoveLedgerRecord } from './localMoveOwnership';
 
 export const CAPTURE_SLOW_MOTION_MS = 320;
 export const CAPTURE_IMPACT_DELAY_MS = 80;
@@ -153,40 +153,64 @@ export type CaptureVisualEffect = {
 
 type Direction = { x: number; y: number };
 
-type ActiveLocalCaptureContext = {
-  clientMutationId: string;
-  attackerPieceId: string;
-  nodeId: string;
-  capturedPieceIds: string[];
-};
-
 const BOARD_CENTER = 50;
 const EXIT_MIN = -14;
 const EXIT_MAX = 114;
 const EXIT_OVERSHOOT = 6;
 
-const normalizePieceIds = (pieceIds: string[]) => [...pieceIds].filter(Boolean).sort();
+const isResetAtStart = (piece: unknown) => {
+  if (!piece || typeof piece !== 'object' || Array.isArray(piece)) return false;
+  const candidate = piece as Partial<CaptureAnimationPiece>;
+  return candidate.nodeId === 'n01' && candidate.started === false && candidate.finished === false;
+};
 
-function getActiveLocalCaptureContext(requestedPieceIds?: string[]): ActiveLocalCaptureContext | null {
+const getRecordFinalPiece = (record: LocalMoveLedgerRecord, pieceId: string) => record.finalPieces.find((piece) => (
+  piece && typeof piece === 'object' && !Array.isArray(piece) && (piece as { id?: unknown }).id === pieceId
+));
+
+const getMatchingActiveLocalCaptureRecord = (
+  pieceIds: string[],
+  capturedPieces: CaptureAnimationPiece[],
+): LocalMoveLedgerRecord | null => {
   const record = localMoveLedger.findActive();
-  if (!record?.clientMutationId || !record.pieceId || !record.toNodeId) return null;
-  const captureEffect = record.finalState.captureEffect;
-  if (!captureEffect || typeof captureEffect !== 'object' || Array.isArray(captureEffect)) return null;
-  const rawPieceIds = (captureEffect as { pieceIds?: unknown }).pieceIds;
-  if (!Array.isArray(rawPieceIds)) return null;
-  const capturedPieceIds = normalizePieceIds(rawPieceIds.map(String));
-  if (!capturedPieceIds.length) return null;
-  if (requestedPieceIds) {
-    const requested = normalizePieceIds(requestedPieceIds);
-    if (requested.length !== capturedPieceIds.length
-      || requested.some((pieceId, index) => pieceId !== capturedPieceIds[index])) return null;
-  }
-  return {
-    clientMutationId: record.clientMutationId,
-    attackerPieceId: record.pieceId,
-    nodeId: record.toNodeId,
-    capturedPieceIds,
-  };
+  if (!record?.clientMutationId || !record.pieceId || !record.toNodeId || !pieceIds.length) return null;
+  if (pieceIds.length !== capturedPieces.length) return null;
+  const requestedIds = [...pieceIds].sort();
+  const sourceIds = capturedPieces.map((piece) => piece.id).sort();
+  if (requestedIds.some((pieceId, index) => pieceId !== sourceIds[index])) return null;
+  if (capturedPieces.some((piece) => (
+    record.movingGroupIds.includes(piece.id)
+    || !piece.started
+    || piece.finished
+    || piece.nodeId !== record.toNodeId
+    || !isResetAtStart(getRecordFinalPiece(record, piece.id))
+  ))) return null;
+  const finalAttacker = getRecordFinalPiece(record, record.pieceId) as Partial<CaptureAnimationPiece> | undefined;
+  if (!finalAttacker?.started || finalAttacker.finished || finalAttacker.nodeId !== record.toNodeId) return null;
+  return record;
+};
+
+function inferActiveLocalCapturedPieceIds(params: {
+  pieces: CaptureAnimationPiece[];
+  attackerPieceId?: string;
+  getPieceGroupKey: (piece: CaptureAnimationPiece) => string;
+}) {
+  const record = localMoveLedger.findActive();
+  if (!record?.clientMutationId || !record.pieceId || !record.toNodeId) return [];
+  if (params.attackerPieceId && params.attackerPieceId !== record.pieceId) return [];
+  const attacker = params.pieces.find((piece) => piece.id === record.pieceId);
+  if (!attacker?.started || attacker.finished || attacker.nodeId !== record.toNodeId) return [];
+  const attackerSideKey = params.getPieceGroupKey(attacker);
+  return params.pieces
+    .filter((piece) => (
+      !record.movingGroupIds.includes(piece.id)
+      && piece.started
+      && !piece.finished
+      && piece.nodeId === record.toNodeId
+      && params.getPieceGroupKey(piece) !== attackerSideKey
+      && isResetAtStart(getRecordFinalPiece(record, piece.id))
+    ))
+    .map((piece) => piece.id);
 }
 
 function normalizeDirection(direction: Direction, fallback: Direction = { x: 1, y: -1 }): Direction {
@@ -257,46 +281,38 @@ export function createCaptureVisualEffect(params: {
   getPieceGroupKey: (piece: CaptureAnimationPiece) => string;
 }): CaptureVisualEffect | null {
   const pieceIdSet = new Set(params.pieceIds);
-  const localCaptureContext = getActiveLocalCaptureContext(params.pieceIds);
-  let capturedPieces = params.pieceIds
+  const capturedPieces = params.pieceIds
     .map((pieceId) => params.pieces.find((piece) => piece.id === pieceId))
-    .filter((piece): piece is CaptureAnimationPiece => Boolean(piece && piece.nodeId && piece.nodeId !== 'finish' && piece.started));
-
-  if (capturedPieces.length !== params.pieceIds.length && localCaptureContext) {
-    const reconstructedPieces = params.pieceIds
-      .map((pieceId) => params.pieces.find((piece) => piece.id === pieceId))
-      .filter((piece): piece is CaptureAnimationPiece => Boolean(piece && !piece.finished))
-      .map((piece) => ({
-        ...piece,
-        nodeId: localCaptureContext.nodeId,
-        started: true,
-        finished: false,
-      }));
-    if (reconstructedPieces.length === params.pieceIds.length) capturedPieces = reconstructedPieces;
-  }
+    .filter((piece): piece is CaptureAnimationPiece => Boolean(piece && piece.nodeId && piece.nodeId !== 'finish'));
 
   if (!capturedPieces.length) return null;
 
+  const localCaptureRecord = getMatchingActiveLocalCaptureRecord(params.pieceIds, capturedPieces);
   const nodeId = capturedPieces[0].nodeId;
   const capturedSideKey = params.getPieceGroupKey(capturedPieces[0]);
-  const effectiveAttackerPieceId = params.attackerPieceId || localCaptureContext?.attackerPieceId;
+  const effectiveAttackerPieceId = params.attackerPieceId || localCaptureRecord?.pieceId;
   const attacker = params.pieces.find((piece) => piece.id === effectiveAttackerPieceId && piece.started && !piece.finished)
     ?? params.pieces.find((piece) => !pieceIdSet.has(piece.id)
       && piece.started
       && !piece.finished
       && piece.nodeId === nodeId
       && params.getPieceGroupKey(piece) !== capturedSideKey);
-  const previousNodeId = attacker?.previousNodeId ?? '';
+  const localPreviousNodeId = localCaptureRecord
+    ? localCaptureRecord.pathNodeIds[localCaptureRecord.pathNodeIds.length - 2] ?? localCaptureRecord.fromNodeId
+    : '';
+  const previousNodeId = localPreviousNodeId || attacker?.previousNodeId || '';
   const attackerSideKey = attacker ? params.getPieceGroupKey(attacker) : '';
-  const attackerPieceIds = attackerSideKey
-    ? params.pieces
-      .filter((piece) => !pieceIdSet.has(piece.id)
-        && piece.started
-        && !piece.finished
-        && piece.nodeId === nodeId
-        && params.getPieceGroupKey(piece) === attackerSideKey)
-      .map((piece) => piece.id)
-    : [];
+  const attackerPieceIds = localCaptureRecord
+    ? localCaptureRecord.movingGroupIds.filter((pieceId) => !pieceIdSet.has(pieceId))
+    : attackerSideKey
+      ? params.pieces
+        .filter((piece) => !pieceIdSet.has(piece.id)
+          && piece.started
+          && !piece.finished
+          && piece.nodeId === nodeId
+          && params.getPieceGroupKey(piece) === attackerSideKey)
+        .map((piece) => piece.id)
+      : [];
   const node = getBoardNodeById(nodeId);
   if (!node) return null;
 
@@ -321,7 +337,7 @@ export function createCaptureVisualEffect(params: {
   });
   const requestedPresentationKey = params.presentationKey
     || `capture-effect:${params.id}:${[...params.pieceIds].sort().join(',')}`;
-  const activeLocalMoveKey = localCaptureContext?.clientMutationId
+  const activeLocalMoveKey = localCaptureRecord?.clientMutationId
     ?? (requestedPresentationKey.startsWith('capture-effect:')
       ? localMoveLedger.findActive()?.clientMutationId ?? ''
       : '');
@@ -344,37 +360,30 @@ export function inferCapturedPieceIds(params: {
   attackerPieceId?: string;
   getPieceGroupKey: (piece: CaptureAnimationPiece) => string;
 }) {
-  const previousById = new Map(params.previousPieces.map((piece) => [piece.id, piece]));
-  const getCapturedPieceIdsForAttacker = (attacker: CaptureAnimationPiece | undefined) => {
-    if (!attacker?.started || attacker.finished || !previousById.has(attacker.id)) return [];
-    const attackerSideKey = params.getPieceGroupKey(attacker);
-    return params.previousPieces
-      .filter((previousPiece) => {
-        if (previousPiece.id === attacker.id || !previousPiece.started || previousPiece.finished) return false;
-        if (previousPiece.nodeId !== attacker.nodeId) return false;
-        if (params.getPieceGroupKey(previousPiece) === attackerSideKey) return false;
-        const currentPiece = params.pieces.find((piece) => piece.id === previousPiece.id);
-        return Boolean(currentPiece
-          && !currentPiece.started
-          && !currentPiece.finished
-          && currentPiece.nodeId === 'n01');
-      })
-      .map((piece) => piece.id);
-  };
-
-  if (params.attackerPieceId) {
-    const inferredPieceIds = getCapturedPieceIdsForAttacker(params.pieces.find((piece) => piece.id === params.attackerPieceId));
-    if (inferredPieceIds.length) return inferredPieceIds;
-  }
-
-  const localCaptureContext = getActiveLocalCaptureContext();
-  if (!localCaptureContext) return [];
-  if (params.attackerPieceId && params.attackerPieceId !== localCaptureContext.attackerPieceId) return [];
-  const attacker = params.pieces.find((piece) => piece.id === localCaptureContext.attackerPieceId);
-  if (!attacker?.started || attacker.finished || attacker.nodeId !== localCaptureContext.nodeId) return [];
-  const capturedResetMatches = localCaptureContext.capturedPieceIds.every((pieceId) => {
-    const piece = params.pieces.find((candidate) => candidate.id === pieceId);
-    return Boolean(piece && !piece.started && !piece.finished && piece.nodeId === 'n01');
+  const localCapturedPieceIds = inferActiveLocalCapturedPieceIds({
+    pieces: params.pieces,
+    attackerPieceId: params.attackerPieceId,
+    getPieceGroupKey: params.getPieceGroupKey,
   });
-  return capturedResetMatches ? [...localCaptureContext.capturedPieceIds] : [];
+  if (localCapturedPieceIds.length) return localCapturedPieceIds;
+  if (!params.attackerPieceId) return [];
+
+  const previousById = new Map(params.previousPieces.map((piece) => [piece.id, piece]));
+  const attacker = params.pieces.find((piece) => piece.id === params.attackerPieceId);
+  const previousAttacker = previousById.get(params.attackerPieceId);
+  if (!attacker?.started || attacker.finished || !previousAttacker) return [];
+
+  const attackerSideKey = params.getPieceGroupKey(attacker);
+  return params.previousPieces
+    .filter((previousPiece) => {
+      if (previousPiece.id === attacker.id || !previousPiece.started || previousPiece.finished) return false;
+      if (previousPiece.nodeId !== attacker.nodeId) return false;
+      if (params.getPieceGroupKey(previousPiece) === attackerSideKey) return false;
+      const currentPiece = params.pieces.find((piece) => piece.id === previousPiece.id);
+      return Boolean(currentPiece
+        && !currentPiece.started
+        && !currentPiece.finished
+        && currentPiece.nodeId === 'n01');
+    })
+    .map((piece) => piece.id);
 }

@@ -160,11 +160,13 @@ test('stacked captured pieces leave in a timed sequence and the last piece trave
   assert.ok(distances[1] > distances[0]);
 });
 
-test('local ownership recovers capture after presentation snapshots already settled', () => {
+test('local reducer finalPieces identify capture before authoritative reset reaches the presentation', () => {
   const actionKey = 'move_piece:player-1:10:attacker';
   const attacker = makePiece({ id: 'attacker', ownerId: 'player-1', nodeId: 'n06', previousNodeId: 'n05' });
+  const capturedAtDestination = makePiece({ id: 'target', ownerId: 'player-2', nodeId: 'n06', started: true, finished: false });
   const capturedReset = makePiece({ id: 'target', ownerId: 'player-2', nodeId: 'n01', started: false, finished: false });
-  const settledPieces = [attacker, capturedReset];
+  const presentationPieces = [attacker, capturedAtDestination];
+  const finalPieces = [attacker, capturedReset];
   localMoveLedger.remove(actionKey);
   localMoveLedger.register({
     roomId: 'room-capture-recovery',
@@ -173,32 +175,28 @@ test('local ownership recovers capture after presentation snapshots already sett
     startTurnIndex: 0,
     pieceId: attacker.id,
     movingGroupIds: [attacker.id],
-    fromNodeId: 'n05',
+    fromNodeId: 'n03',
     toNodeId: 'n06',
-    pathNodeIds: ['n06'],
-    finalPieces: settledPieces,
-    finalState: {
-      captureEffect: {
-        id: 11,
-        pieceIds: [capturedReset.id],
-        presentationKey: actionKey,
-      },
-    },
+    pathNodeIds: ['n04', 'n05', 'n06'],
+    finalPieces,
+    finalState: { pieces: finalPieces },
     resultFingerprint: 'capture-recovery',
   });
 
   try {
     assert.deepEqual(inferCapturedPieceIds({
-      previousPieces: settledPieces,
-      pieces: settledPieces,
+      previousPieces: presentationPieces,
+      pieces: presentationPieces,
+      attackerPieceId: attacker.id,
       getPieceGroupKey: (piece) => piece.ownerId,
     }), ['target']);
 
     const effect = createCaptureVisualEffect({
       id: 11,
-      presentationKey: 'capture-recovery:11::n06:target',
+      presentationKey: 'capture-recovery:11:attacker:n06:target',
       pieceIds: ['target'],
-      pieces: settledPieces,
+      pieces: presentationPieces,
+      attackerPieceId: attacker.id,
       getPieceGroupKey: (piece) => piece.ownerId,
     });
     assert.ok(effect);
@@ -206,6 +204,39 @@ test('local ownership recovers capture after presentation snapshots already sett
     assert.equal(effect.nodeId, 'n06');
     assert.deepEqual(effect.pieceIds, ['target']);
     assert.deepEqual(effect.attackerPieceIds, ['attacker']);
+  } finally {
+    localMoveLedger.remove(actionKey);
+  }
+});
+
+test('local reducer finalPieces do not infer a shielded opponent that remains on the destination', () => {
+  const actionKey = 'move_piece:player-1:11:attacker';
+  const attacker = makePiece({ id: 'attacker', ownerId: 'player-1', nodeId: 'n06' });
+  const shieldedTarget = makePiece({ id: 'target', ownerId: 'player-2', nodeId: 'n06', started: true, finished: false });
+  const pieces = [attacker, shieldedTarget];
+  localMoveLedger.remove(actionKey);
+  localMoveLedger.register({
+    roomId: 'room-shielded-capture',
+    clientMutationId: actionKey,
+    startSequence: 11,
+    startTurnIndex: 0,
+    pieceId: attacker.id,
+    movingGroupIds: [attacker.id],
+    fromNodeId: 'n05',
+    toNodeId: 'n06',
+    pathNodeIds: ['n06'],
+    finalPieces: pieces,
+    finalState: { pieces },
+    resultFingerprint: 'shielded-capture',
+  });
+
+  try {
+    assert.deepEqual(inferCapturedPieceIds({
+      previousPieces: pieces,
+      pieces,
+      attackerPieceId: attacker.id,
+      getPieceGroupKey: (piece) => piece.ownerId,
+    }), []);
   } finally {
     localMoveLedger.remove(actionKey);
   }
