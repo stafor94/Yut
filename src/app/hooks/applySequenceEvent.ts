@@ -7,7 +7,6 @@ type SequencePatchState = Record<string, unknown> & {
 
 type SequenceEventLike = {
   sequence?: number;
-  type?: string;
   clientMutationId?: string;
   stateAfter?: SequencePatchState | null;
   patch?: SequencePatchState | null;
@@ -16,12 +15,6 @@ type SequenceEventLike = {
 };
 
 type PresentationTimingGrade = 'perfect' | 'nice' | 'good' | 'bad';
-
-type SequenceCaptureEffect = {
-  id: number;
-  presentationKey: string;
-  pieceIds: string[];
-};
 
 const MAX_STORED_LOGS = 200;
 const COORDINATOR_LEASE_FIELDS = [
@@ -68,52 +61,6 @@ const preserveSequenceRollTimingGrade = (sequence: SequenceEventLike, state: Seq
   return { ...state, roll: withPresentationTimingGrade(state.roll, timingGrade) };
 };
 
-const getSequenceCaptureEffect = (sequence: SequenceEventLike, sequenceNumber: number): SequenceCaptureEffect | null => {
-  if (sequence.type !== 'move_piece_resolved') return null;
-
-  const patchCaptureEffect = sequence.patch?.captureEffect;
-  if (patchCaptureEffect && typeof patchCaptureEffect === 'object' && !Array.isArray(patchCaptureEffect)) {
-    const authoritativeEffect = patchCaptureEffect as { id?: unknown; presentationKey?: unknown; pieceIds?: unknown };
-    const authoritativePieceIds = Array.isArray(authoritativeEffect.pieceIds)
-      ? authoritativeEffect.pieceIds.map((pieceId) => String(pieceId)).filter(Boolean)
-      : [];
-    const authoritativePresentationKey = typeof authoritativeEffect.presentationKey === 'string'
-      ? authoritativeEffect.presentationKey.trim()
-      : '';
-    if (authoritativePieceIds.length && authoritativePresentationKey) {
-      const authoritativeId = Number(authoritativeEffect.id ?? sequenceNumber);
-      return {
-        id: Number.isFinite(authoritativeId) ? authoritativeId : sequenceNumber,
-        presentationKey: authoritativePresentationKey,
-        pieceIds: authoritativePieceIds,
-      };
-    }
-  }
-
-  const capturedPieceIds = Array.isArray(sequence.payload?.capturedPieceIds)
-    ? sequence.payload.capturedPieceIds.map((pieceId) => String(pieceId)).filter(Boolean)
-    : [];
-  if (!capturedPieceIds.length) return null;
-
-  const clientMutationId = typeof sequence.clientMutationId === 'string'
-    ? sequence.clientMutationId.trim()
-    : '';
-  return {
-    id: sequenceNumber,
-    presentationKey: clientMutationId || `capture-sequence:${sequenceNumber}`,
-    pieceIds: capturedPieceIds,
-  };
-};
-
-const withSequenceCaptureEffect = (
-  sequence: SequenceEventLike,
-  sequenceNumber: number,
-  state: SequencePatchState,
-) => {
-  const captureEffect = getSequenceCaptureEffect(sequence, sequenceNumber);
-  return captureEffect ? { ...state, captureEffect } : state;
-};
-
 const getLogKey = (log: unknown) => {
   const id = (log as { id?: unknown } | null)?.id;
   if (typeof id === 'string' || typeof id === 'number') return `id:${String(id)}`;
@@ -129,25 +76,11 @@ export function applySequenceEvent<TState extends SequencePatchState>(state: TSt
   if (!Number.isInteger(sequenceNumber) || sequenceNumber <= 0) return state ?? null;
 
   const currentSequence = Number(state?.lastSequence ?? 0);
-  if (currentSequence > sequenceNumber) return state ?? null;
-  if (currentSequence === sequenceNumber) {
-    if (!state) return null;
-    const captureEffect = getSequenceCaptureEffect(sequence, sequenceNumber);
-    if (!captureEffect) return state;
-    const currentCaptureEffect = state.captureEffect;
-    if (currentCaptureEffect
-      && typeof currentCaptureEffect === 'object'
-      && !Array.isArray(currentCaptureEffect)
-      && (currentCaptureEffect as { presentationKey?: unknown }).presentationKey === captureEffect.presentationKey) {
-      return state;
-    }
-    return { ...state, captureEffect } as TState;
-  }
+  if (currentSequence >= sequenceNumber) return state ?? null;
 
   if (sequence.stateAfter) {
     const nextState = preserveCoordinatorLeaseFields(state, { ...sequence.stateAfter, lastSequence: sequenceNumber });
-    const timedState = preserveSequenceRollTimingGrade(sequence, nextState);
-    return withSequenceCaptureEffect(sequence, sequenceNumber, timedState) as TState;
+    return preserveSequenceRollTimingGrade(sequence, nextState) as TState;
   }
 
   if (!state || currentSequence !== sequenceNumber - 1) return null;
@@ -185,7 +118,6 @@ export function applySequenceEvent<TState extends SequencePatchState>(state: TSt
 
   nextState = preserveCoordinatorLeaseFields(state, nextState) as TState;
   nextState = preserveSequenceRollTimingGrade(sequence, nextState) as TState;
-  nextState = withSequenceCaptureEffect(sequence, sequenceNumber, nextState) as TState;
   return nextState;
 }
 

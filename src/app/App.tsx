@@ -3481,7 +3481,7 @@ export function App() {
     }
     let captured = false;
     if (currentNodeId !== 'finish') {
-      const capturablePieces = piecesRef.current.filter((piece) => !isSameSide(getSeatById(piece.ownerId), seat) && !piece.finished && piece.started && piece.nodeId === currentNodeId);
+      const capturablePieces = currentPieces.filter((piece) => !isSameSide(getSeatById(piece.ownerId), seat) && !piece.finished && piece.started && piece.nodeId === currentNodeId);
       const shieldedCaptures = capturablePieces.filter((piece) => shieldedPieceIds.includes(piece.id));
       captured = capturablePieces.some((piece) => !shieldedPieceIds.includes(piece.id));
       if (shieldedCaptures.length) {
@@ -4488,7 +4488,7 @@ export function App() {
       if (!shieldTargets.length) return;
       submitItemActionIfRemote();
       consumeItem();
-      setShieldedPieceIds((ids) => Array.from(new Set([...ids, ...shieldTargets])));
+      setShieldedPieceIds((ids) => Array.from(new Set([...ids, ...shieldTargets]));
       addLog(`${getSeatDisplayName(itemOwnerSeat)}님의 방금 이동한 말에 방패를 씌웠습니다.`);
       finishAfterMoveItem();
       return;
