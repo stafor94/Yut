@@ -145,6 +145,7 @@ export function validateQaPerformance({ workflowStartedAtMs, measuredAtMs, laneT
       jobStatus,
     };
   });
+
   const blockingDurations = lanes.map((lane) => lane.blockingDurationMs).filter(Number.isFinite);
   const criticalPathMs = blockingDurations.length === lanes.length ? Math.max(...blockingDurations) : null;
   const projectedCompletionMs = criticalPathMs === null ? null : criticalPathMs + QA_PERFORMANCE_TARGETS_MS.summaryReserve;
