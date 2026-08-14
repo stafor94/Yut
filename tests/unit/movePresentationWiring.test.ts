@@ -18,15 +18,17 @@ test('capture approach wiring waits for the matching attacker transition while p
   assert.match(boardSectionSource, /const retainedDestinationNodeId = activeMoveDestinationRef\.current\.pieceId === movingPieceId[\s\S]*?captureDestinationNodeId: retainedDestinationNodeId \|\| captureDestinationNodeId/);
   assert.match(boardSectionSource, /const presentedCaptureDestinationNodeId = activeMoveDestinationRef\.current\.pieceId === presentedMovingPieceId[\s\S]*?: captureDestinationNodeId/);
   assert.match(boardSectionSource, /captureDestinationNodeId=\{presentedCaptureDestinationNodeId\}/);
-  assert.match(boardSectionSource, /setPresentedMovingPieceId\(''\);\s*setPresentedMovingFrameKey\(''\);\s*activeMoveDestinationRef\.current = \{ pieceId: '', nodeId: '' \}/);
+  assert.match(boardSectionSource, /setPresentedMovingPieceId\(''\);\s*setPresentedMovingFrameKey\(''\);[\s\S]*?activeMoveDestinationRef\.current = \{ pieceId: '', nodeId: '' \}/);
 
   assert.match(boardSectionSource, /createMoveFrameCompletionGate\(\{ pieceId: movingPieceId, frameKey: framePresentationKey \}\)/);
-  assert.match(boardSectionSource, /moveFrameCompletionGateRef\.current = frameCompletionGate;[\s\S]*?setPresentedMovingFrameKey\(framePresentationKey\);[\s\S]*?setPresentedPieces\(framePieces\)/);
+  assert.match(boardSectionSource, /moveFrameCompletionGateRef\.current = frameCompletionGate;[\s\S]*?completedMoveFrameRef\.current = \{ pieceId: '', frameKey: '' \};[\s\S]*?setPresentedMovingFrameKey\(framePresentationKey\);[\s\S]*?setPresentedPieces\(framePieces\)/);
   assert.match(boardSectionSource, /const queueFrameKey = framePresentationKey \|\| acceptedFrame\.frameKey/);
   assert.match(boardSectionSource, /if \(!frameCompletionGate\) \{\s*await waitForGameAnimation\(MOVE_FRAME_PRESENTATION_MS\);\s*return;\s*\}\s*await frameCompletionGate\.promise/);
   assert.match(boardSectionSource, /gate\.armFallback\(\{ pieceId, frameKey \}, durationMs\)/);
-  assert.match(boardSectionSource, /const gate = moveFrameCompletionGateRef\.current;\s*if \(!gate \|\| gate\.pieceId !== pieceId \|\| gate\.frameKey !== frameKey\) return;\s*gate\.complete\(\{ pieceId, frameKey \}\);/);
+  assert.match(boardSectionSource, /const completedMoveFrameRef = useRef\(\{ pieceId: '', frameKey: '' \}\)/);
+  assert.match(boardSectionSource, /completedMoveFrameRef\.current = \{ pieceId, frameKey \};\s*gate\.complete\(\{ pieceId, frameKey \}\);/);
   assert.match(boardSectionSource, /const queuedEffect = pendingCaptureEffectRef\.current;\s*if \(!queuedEffect\) return;\s*pendingCaptureEffectRef\.current = null;\s*queueCaptureEffect\(queuedEffect\);/);
+  assert.match(boardSectionSource, /const completedFrame = completedMoveFrameRef\.current;\s*if \(completedFrame\.pieceId === movingPieceId[\s\S]*?completedFrame\.frameKey === presentedMovingFrameKey\) \{\s*queueCaptureEffect\(queuedEffect\);\s*return;\s*\}/);
   assert.match(boardSectionSource, /gameAnimationQueue\.onReset\?\.\(cancelActiveMoveFrame\)/);
   assert.match(boardSectionSource, /moveGenerationRef\.current \+= 1;[\s\S]*?moveFrameCompletionGateRef\.current\?\.cancel\(\)/);
 

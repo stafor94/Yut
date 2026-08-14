@@ -116,6 +116,7 @@ export function GameBoardSection({
   const settledPresentationPiecesRef = useRef<BoardPiece[]>(clonePieces(pieces));
   const moveGenerationRef = useRef(0);
   const moveFrameCompletionGateRef = useRef<MoveFrameCompletionGate | null>(null);
+  const completedMoveFrameRef = useRef({ pieceId: '', frameKey: '' });
   const pendingSettlementPiecesRef = useRef<BoardPiece[]>(clonePieces(pieces));
   const pendingCaptureEffectRef = useRef<CaptureVisualEffect | null>(null);
   const pendingCaptureFinalizationRef = useRef<((queuedEffect: CaptureVisualEffect) => void) | null>(null);
@@ -142,6 +143,7 @@ export function GameBoardSection({
       moveGenerationRef.current += 1;
       moveFrameCompletionGateRef.current?.cancel();
       moveFrameCompletionGateRef.current = null;
+      completedMoveFrameRef.current = { pieceId: '', frameKey: '' };
     };
     const unsubscribeQueueReset = gameAnimationQueue.onReset?.(cancelActiveMoveFrame) ?? (() => undefined);
     return () => {
@@ -186,6 +188,7 @@ export function GameBoardSection({
   const handleMovingPieceTransitionComplete = useCallback((pieceId: string, frameKey: string) => {
     const gate = moveFrameCompletionGateRef.current;
     if (!gate || gate.pieceId !== pieceId || gate.frameKey !== frameKey) return;
+    completedMoveFrameRef.current = { pieceId, frameKey };
     gate.complete({ pieceId, frameKey });
     const queuedEffect = pendingCaptureEffectRef.current;
     if (!queuedEffect) return;
@@ -206,6 +209,7 @@ export function GameBoardSection({
       if (!session || session.pieceId !== movingPieceId) {
         moveFrameCompletionGateRef.current?.cancel();
         moveFrameCompletionGateRef.current = null;
+        completedMoveFrameRef.current = { pieceId: '', frameKey: '' };
         pendingCaptureFinalizationRef.current = null;
         moveGenerationRef.current += 1;
         const stablePieces = settledPresentationPiecesRef.current.some((piece) => piece.id === movingPieceId)
@@ -255,6 +259,7 @@ export function GameBoardSection({
           frameCompletionGate = createMoveFrameCompletionGate({ pieceId: movingPieceId, frameKey: framePresentationKey });
           moveFrameCompletionGateRef.current?.cancel();
           moveFrameCompletionGateRef.current = frameCompletionGate;
+          completedMoveFrameRef.current = { pieceId: '', frameKey: '' };
           setPresentedMovingFrameKey(framePresentationKey);
         } else {
           setPresentedMovingFrameKey('');
@@ -293,6 +298,7 @@ export function GameBoardSection({
             setPresentedPieces(settledPieces);
             setPresentedMovingPieceId('');
             setPresentedMovingFrameKey('');
+            completedMoveFrameRef.current = { pieceId: '', frameKey: '' };
             activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
             moveSessionRef.current = null;
             pendingCaptureFinalizationRef.current = null;
@@ -339,6 +345,7 @@ export function GameBoardSection({
       setPresentedPieces(incomingPieces);
       setPresentedMovingPieceId('');
       setPresentedMovingFrameKey('');
+      completedMoveFrameRef.current = { pieceId: '', frameKey: '' };
       activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
       localMovePresentationLifecycle.settle();
       return;
@@ -351,6 +358,7 @@ export function GameBoardSection({
       setPresentedPieces(settledPieces);
       setPresentedMovingPieceId('');
       setPresentedMovingFrameKey('');
+      completedMoveFrameRef.current = { pieceId: '', frameKey: '' };
       activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
       localMovePresentationLifecycle.settle();
     });
@@ -365,6 +373,13 @@ export function GameBoardSection({
       attackerPieceIds: [...captureEffect.attackerPieceIds],
     };
     if (movingPieceId) {
+      const completedFrame = completedMoveFrameRef.current;
+      if (completedFrame.pieceId === movingPieceId
+        && completedFrame.frameKey
+        && completedFrame.frameKey === presentedMovingFrameKey) {
+        queueCaptureEffect(queuedEffect);
+        return;
+      }
       pendingCaptureEffectRef.current = queuedEffect;
       return;
     }
@@ -379,7 +394,7 @@ export function GameBoardSection({
       return;
     }
     queueCaptureEffect(queuedEffect);
-  }, [captureEffect, movingPieceId, queueCaptureEffect]);
+  }, [captureEffect, movingPieceId, presentedMovingFrameKey, queueCaptureEffect]);
 
   useEffect(() => {
     setTrapPlacementClock(Date.now());
