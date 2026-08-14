@@ -150,19 +150,15 @@ export function getMoveExecutionReadinessFromDiagnosticState(
   const baseContextParts = [
     'move_piece', actorId, turnIndex, lastMovedSeatId, lastMovedPieceIds.join(','),
   ];
-  const opportunityKey = [
-    actorId,
-    turnIndex,
-    rollName,
-    rollSteps,
-    lastMovedSeatId,
-    lastMovedPieceIds.join(','),
-    String(diagnosticState.turnDeadlineKind ?? ''),
-    String(diagnosticState.turnDeadlineAt ?? ''),
-    String(diagnosticState.rollResultReadyAt ?? ''),
-    rollStackKey,
-    selectedRollStackIndex,
-  ].join(':');
+  const opportunityKey = roll
+    ? [
+        actorId,
+        turnIndex,
+        rollName,
+        rollSteps,
+        rollStackKey ? `stack:${selectedRollStackIndex}:${rollStackKey}` : 'single',
+      ].join(':')
+    : '';
   return {
     canRequestMove: diagnosticState.canRequestMove === true,
     canSubmitTurnAction: diagnosticState.canSubmitTurnAction === true,
