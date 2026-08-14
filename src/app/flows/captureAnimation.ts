@@ -153,10 +153,41 @@ export type CaptureVisualEffect = {
 
 type Direction = { x: number; y: number };
 
+type ActiveLocalCaptureContext = {
+  clientMutationId: string;
+  attackerPieceId: string;
+  nodeId: string;
+  capturedPieceIds: string[];
+};
+
 const BOARD_CENTER = 50;
 const EXIT_MIN = -14;
 const EXIT_MAX = 114;
 const EXIT_OVERSHOOT = 6;
+
+const normalizePieceIds = (pieceIds: string[]) => [...pieceIds].filter(Boolean).sort();
+
+function getActiveLocalCaptureContext(requestedPieceIds?: string[]): ActiveLocalCaptureContext | null {
+  const record = localMoveLedger.findActive();
+  if (!record?.clientMutationId || !record.pieceId || !record.toNodeId) return null;
+  const captureEffect = record.finalState.captureEffect;
+  if (!captureEffect || typeof captureEffect !== 'object' || Array.isArray(captureEffect)) return null;
+  const rawPieceIds = (captureEffect as { pieceIds?: unknown }).pieceIds;
+  if (!Array.isArray(rawPieceIds)) return null;
+  const capturedPieceIds = normalizePieceIds(rawPieceIds.map(String));
+  if (!capturedPieceIds.length) return null;
+  if (requestedPieceIds) {
+    const requested = normalizePieceIds(requestedPieceIds);
+    if (requested.length !== capturedPieceIds.length
+      || requested.some((pieceId, index) => pieceId !== capturedPieceIds[index])) return null;
+  }
+  return {
+    clientMutationId: record.clientMutationId,
+    attackerPieceId: record.pieceId,
+    nodeId: record.toNodeId,
+    capturedPieceIds,
+  };
+}
 
 function normalizeDirection(direction: Direction, fallback: Direction = { x: 1, y: -1 }): Direction {
   const length = Math.hypot(direction.x, direction.y);
@@ -226,15 +257,30 @@ export function createCaptureVisualEffect(params: {
   getPieceGroupKey: (piece: CaptureAnimationPiece) => string;
 }): CaptureVisualEffect | null {
   const pieceIdSet = new Set(params.pieceIds);
-  const capturedPieces = params.pieceIds
+  const localCaptureContext = getActiveLocalCaptureContext(params.pieceIds);
+  let capturedPieces = params.pieceIds
     .map((pieceId) => params.pieces.find((piece) => piece.id === pieceId))
-    .filter((piece): piece is CaptureAnimationPiece => Boolean(piece && piece.nodeId && piece.nodeId !== 'finish'));
+    .filter((piece): piece is CaptureAnimationPiece => Boolean(piece && piece.nodeId && piece.nodeId !== 'finish' && piece.started));
+
+  if (capturedPieces.length !== params.pieceIds.length && localCaptureContext) {
+    const reconstructedPieces = params.pieceIds
+      .map((pieceId) => params.pieces.find((piece) => piece.id === pieceId))
+      .filter((piece): piece is CaptureAnimationPiece => Boolean(piece && !piece.finished))
+      .map((piece) => ({
+        ...piece,
+        nodeId: localCaptureContext.nodeId,
+        started: true,
+        finished: false,
+      }));
+    if (reconstructedPieces.length === params.pieceIds.length) capturedPieces = reconstructedPieces;
+  }
 
   if (!capturedPieces.length) return null;
 
   const nodeId = capturedPieces[0].nodeId;
   const capturedSideKey = params.getPieceGroupKey(capturedPieces[0]);
-  const attacker = params.pieces.find((piece) => piece.id === params.attackerPieceId && piece.started && !piece.finished)
+  const effectiveAttackerPieceId = params.attackerPieceId || localCaptureContext?.attackerPieceId;
+  const attacker = params.pieces.find((piece) => piece.id === effectiveAttackerPieceId && piece.started && !piece.finished)
     ?? params.pieces.find((piece) => !pieceIdSet.has(piece.id)
       && piece.started
       && !piece.finished
@@ -275,9 +321,10 @@ export function createCaptureVisualEffect(params: {
   });
   const requestedPresentationKey = params.presentationKey
     || `capture-effect:${params.id}:${[...params.pieceIds].sort().join(',')}`;
-  const activeLocalMoveKey = requestedPresentationKey.startsWith('capture-effect:')
-    ? localMoveLedger.findActive()?.clientMutationId ?? ''
-    : '';
+  const activeLocalMoveKey = localCaptureContext?.clientMutationId
+    ?? (requestedPresentationKey.startsWith('capture-effect:')
+      ? localMoveLedger.findActive()?.clientMutationId ?? ''
+      : '');
 
   return {
     id: params.id,
@@ -316,32 +363,18 @@ export function inferCapturedPieceIds(params: {
   };
 
   if (params.attackerPieceId) {
-    return getCapturedPieceIdsForAttacker(params.pieces.find((piece) => piece.id === params.attackerPieceId));
+    const inferredPieceIds = getCapturedPieceIdsForAttacker(params.pieces.find((piece) => piece.id === params.attackerPieceId));
+    if (inferredPieceIds.length) return inferredPieceIds;
   }
 
-  const resetCandidates = params.previousPieces.filter((previousPiece) => {
-    if (!previousPiece.started || previousPiece.finished || previousPiece.nodeId === 'n01' || previousPiece.nodeId === 'finish') return false;
-    const currentPiece = params.pieces.find((piece) => piece.id === previousPiece.id);
-    return Boolean(currentPiece
-      && !currentPiece.started
-      && !currentPiece.finished
-      && currentPiece.nodeId === 'n01');
+  const localCaptureContext = getActiveLocalCaptureContext();
+  if (!localCaptureContext) return [];
+  if (params.attackerPieceId && params.attackerPieceId !== localCaptureContext.attackerPieceId) return [];
+  const attacker = params.pieces.find((piece) => piece.id === localCaptureContext.attackerPieceId);
+  if (!attacker?.started || attacker.finished || attacker.nodeId !== localCaptureContext.nodeId) return [];
+  const capturedResetMatches = localCaptureContext.capturedPieceIds.every((pieceId) => {
+    const piece = params.pieces.find((candidate) => candidate.id === pieceId);
+    return Boolean(piece && !piece.started && !piece.finished && piece.nodeId === 'n01');
   });
-  if (!resetCandidates.length) return [];
-
-  const captureNodeIds = new Set(resetCandidates.map((piece) => piece.nodeId));
-  const capturedSideKeys = new Set(resetCandidates.map((piece) => params.getPieceGroupKey(piece)));
-  if (captureNodeIds.size !== 1 || capturedSideKeys.size !== 1) return [];
-  const captureNodeId = resetCandidates[0].nodeId;
-  const capturedSideKey = params.getPieceGroupKey(resetCandidates[0]);
-  const candidateAttackers = params.pieces.filter((piece) => piece.started
-    && !piece.finished
-    && piece.nodeId === captureNodeId
-    && params.getPieceGroupKey(piece) !== capturedSideKey
-    && previousById.has(piece.id));
-  const attackerSideKeys = new Set(candidateAttackers.map((piece) => params.getPieceGroupKey(piece)));
-  if (attackerSideKeys.size !== 1) return [];
-  const attackerSideKey = params.getPieceGroupKey(candidateAttackers[0]);
-  const attacker = candidateAttackers.find((piece) => params.getPieceGroupKey(piece) === attackerSideKey);
-  return getCapturedPieceIdsForAttacker(attacker);
+  return capturedResetMatches ? [...localCaptureContext.capturedPieceIds] : [];
 }

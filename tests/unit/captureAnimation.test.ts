@@ -15,6 +15,7 @@ import {
   getCaptureStaggerMs,
   inferCapturedPieceIds,
 } from '../../src/app/flows/captureAnimation.js';
+import { localMoveLedger } from '../../src/app/flows/localMoveOwnership.js';
 
 const makePiece = (overrides: Partial<CaptureAnimationPiece>): CaptureAnimationPiece => ({
   id: 'piece',
@@ -159,7 +160,58 @@ test('stacked captured pieces leave in a timed sequence and the last piece trave
   assert.ok(distances[1] > distances[0]);
 });
 
-test('remote capture inference recovers a unique attacker side when moving identity is lost', () => {
+test('local ownership recovers capture after presentation snapshots already settled', () => {
+  const actionKey = 'move_piece:player-1:10:attacker';
+  const attacker = makePiece({ id: 'attacker', ownerId: 'player-1', nodeId: 'n06', previousNodeId: 'n05' });
+  const capturedReset = makePiece({ id: 'target', ownerId: 'player-2', nodeId: 'n01', started: false, finished: false });
+  const settledPieces = [attacker, capturedReset];
+  localMoveLedger.remove(actionKey);
+  localMoveLedger.register({
+    roomId: 'room-capture-recovery',
+    clientMutationId: actionKey,
+    startSequence: 10,
+    startTurnIndex: 0,
+    pieceId: attacker.id,
+    movingGroupIds: [attacker.id],
+    fromNodeId: 'n05',
+    toNodeId: 'n06',
+    pathNodeIds: ['n06'],
+    finalPieces: settledPieces,
+    finalState: {
+      captureEffect: {
+        id: 11,
+        pieceIds: [capturedReset.id],
+        presentationKey: actionKey,
+      },
+    },
+    resultFingerprint: 'capture-recovery',
+  });
+
+  try {
+    assert.deepEqual(inferCapturedPieceIds({
+      previousPieces: settledPieces,
+      pieces: settledPieces,
+      getPieceGroupKey: (piece) => piece.ownerId,
+    }), ['target']);
+
+    const effect = createCaptureVisualEffect({
+      id: 11,
+      presentationKey: 'capture-recovery:11::n06:target',
+      pieceIds: ['target'],
+      pieces: settledPieces,
+      getPieceGroupKey: (piece) => piece.ownerId,
+    });
+    assert.ok(effect);
+    assert.equal(effect.presentationKey, actionKey);
+    assert.equal(effect.nodeId, 'n06');
+    assert.deepEqual(effect.pieceIds, ['target']);
+    assert.deepEqual(effect.attackerPieceIds, ['attacker']);
+  } finally {
+    localMoveLedger.remove(actionKey);
+  }
+});
+
+test('remote capture inference requires the moving attacker identity', () => {
   const previousPieces = [
     makePiece({ id: 'attacker', nodeId: 'n06', ownerId: 'player-1' }),
     makePiece({ id: 'target', nodeId: 'n06', ownerId: 'player-2' }),
@@ -167,10 +219,6 @@ test('remote capture inference recovers a unique attacker side when moving ident
   const capturedPieces = [
     makePiece({ id: 'attacker', nodeId: 'n06', ownerId: 'player-1' }),
     makePiece({ id: 'target', nodeId: 'n01', nodeIndex: 0, ownerId: 'player-2', started: false }),
-  ];
-  const ambiguousAttackers = [
-    ...capturedPieces,
-    makePiece({ id: 'other-attacker', nodeId: 'n06', ownerId: 'player-3' }),
   ];
   const trapReturnPieces = [
     makePiece({ id: 'attacker', nodeId: 'n01', nodeIndex: 0, ownerId: 'player-1', started: false }),
@@ -187,12 +235,6 @@ test('remote capture inference recovers a unique attacker side when moving ident
   assert.deepEqual(inferCapturedPieceIds({
     previousPieces,
     pieces: capturedPieces,
-    getPieceGroupKey: (piece) => piece.ownerId,
-  }), ['target']);
-
-  assert.deepEqual(inferCapturedPieceIds({
-    previousPieces: [...previousPieces, makePiece({ id: 'other-attacker', nodeId: 'n06', ownerId: 'player-3' })],
-    pieces: ambiguousAttackers,
     getPieceGroupKey: (piece) => piece.ownerId,
   }), []);
 
