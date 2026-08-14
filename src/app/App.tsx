@@ -3481,7 +3481,7 @@ export function App() {
     }
     let captured = false;
     if (currentNodeId !== 'finish') {
-      const capturablePieces = piecesRef.current.filter((piece) => !isSameSide(getSeatById(piece.ownerId), seat) && !piece.finished && piece.started && piece.nodeId === currentNodeId);
+      const capturablePieces = currentPieces.filter((piece) => !isSameSide(getSeatById(piece.ownerId), seat) && !piece.finished && piece.started && piece.nodeId === currentNodeId);
       const shieldedCaptures = capturablePieces.filter((piece) => shieldedPieceIds.includes(piece.id));
       captured = capturablePieces.some((piece) => !shieldedPieceIds.includes(piece.id));
       if (shieldedCaptures.length) {

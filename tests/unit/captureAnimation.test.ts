@@ -15,7 +15,7 @@ import {
   getCaptureStaggerMs,
   inferCapturedPieceIds,
 } from '../../src/app/flows/captureAnimation.js';
-import { MOVE_FRAME_PRESENTATION_MS } from '../../src/app/flows/gameAnimationQueue.js';
+import { localMoveLedger } from '../../src/app/flows/localMoveOwnership.js';
 
 const makePiece = (overrides: Partial<CaptureAnimationPiece>): CaptureAnimationPiece => ({
   id: 'piece',
@@ -30,14 +30,22 @@ const makePiece = (overrides: Partial<CaptureAnimationPiece>): CaptureAnimationP
 });
 
 const captureEffectsCss = readFileSync('src/styles/capture-effects.css', 'utf8');
+const gameBoardSource = readFileSync('src/features/game/components/GameBoard.tsx', 'utf8');
+const gameBoardSectionSource = readFileSync('src/app/containers/GameBoardSection.tsx', 'utf8');
 
-test('capture impact begins 320ms after the landing frame starts', () => {
+test('capture presentation cannot hide the source or create ghosts before attacker arrival completion', () => {
   assert.equal(CAPTURE_SLOW_MOTION_MS, 320);
   assert.equal(CAPTURE_IMPACT_DELAY_MS, 80);
-  assert.equal(MOVE_FRAME_PRESENTATION_MS + CAPTURE_IMPACT_DELAY_MS, CAPTURE_SLOW_MOTION_MS);
   assert.equal(CAPTURE_EFFECT_MS, 720);
   assert.equal(CAPTURE_EFFECT_MS, CAPTURE_IMPACT_DELAY_MS + CAPTURE_FLIGHT_MS);
   assert.match(captureEffectsCss, /\.piece-token\.capture-approach\s*\{[^}]*transition-duration:\s*320ms;/s);
+  assert.match(captureEffectsCss, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.piece-token\.capture-approach\s*\{\s*transition-duration:\s*160ms;/s);
+  assert.match(gameBoardSource, /const visualCapturePieceIds = new Set\(captureEffect\?\.pieceIds \?\? \[\]\)/);
+  assert.match(gameBoardSource, /visualCapturePieceIds\.has\(piece\.id\) \? 'capture-source-hidden'/);
+  assert.match(gameBoardSource, /captureEffect\?\.pieces\.map\(\(piece\) => <span[\s\S]*?className="piece-token capture-ghost"/);
+  assert.match(gameBoardSectionSource, /await frameCompletionGate\.promise/);
+  assert.match(gameBoardSectionSource, /start: \(\) => \{[\s\S]*?setPresentedCaptureEffect\(queuedEffect\)/);
+  assert.doesNotMatch(gameBoardSectionSource, /MOVE_FRAME_PRESENTATION_MS\s*\+\s*CAPTURE_IMPACT_DELAY_MS/);
   assert.match(captureEffectsCss, /@keyframes capture-piece-ejection\s*\{\s*0%, 10%/s);
   assert.match(captureEffectsCss, /@keyframes capture-board-impact\s*\{\s*0%, 10%, 100%/s);
 });
@@ -152,7 +160,89 @@ test('stacked captured pieces leave in a timed sequence and the last piece trave
   assert.ok(distances[1] > distances[0]);
 });
 
-test('remote capture inference requires the moving attacker to remain on the captured node', () => {
+test('local reducer finalPieces identify capture before authoritative reset reaches the presentation', () => {
+  const actionKey = 'move_piece:player-1:10:attacker';
+  const attacker = makePiece({ id: 'attacker', ownerId: 'player-1', nodeId: 'n06', previousNodeId: 'n05' });
+  const capturedAtDestination = makePiece({ id: 'target', ownerId: 'player-2', nodeId: 'n06', started: true, finished: false });
+  const capturedReset = makePiece({ id: 'target', ownerId: 'player-2', nodeId: 'n01', started: false, finished: false });
+  const presentationPieces = [attacker, capturedAtDestination];
+  const finalPieces = [attacker, capturedReset];
+  localMoveLedger.remove(actionKey);
+  localMoveLedger.register({
+    roomId: 'room-capture-recovery',
+    clientMutationId: actionKey,
+    startSequence: 10,
+    startTurnIndex: 0,
+    pieceId: attacker.id,
+    movingGroupIds: [attacker.id],
+    fromNodeId: 'n03',
+    toNodeId: 'n06',
+    pathNodeIds: ['n04', 'n05', 'n06'],
+    finalPieces,
+    finalState: { pieces: finalPieces },
+    resultFingerprint: 'capture-recovery',
+  });
+
+  try {
+    assert.deepEqual(inferCapturedPieceIds({
+      previousPieces: presentationPieces,
+      pieces: presentationPieces,
+      attackerPieceId: attacker.id,
+      getPieceGroupKey: (piece) => piece.ownerId,
+    }), ['target']);
+
+    const effect = createCaptureVisualEffect({
+      id: 11,
+      presentationKey: 'capture-recovery:11:attacker:n06:target',
+      pieceIds: ['target'],
+      pieces: presentationPieces,
+      attackerPieceId: attacker.id,
+      getPieceGroupKey: (piece) => piece.ownerId,
+    });
+    assert.ok(effect);
+    assert.equal(effect.presentationKey, actionKey);
+    assert.equal(effect.nodeId, 'n06');
+    assert.deepEqual(effect.pieceIds, ['target']);
+    assert.deepEqual(effect.attackerPieceIds, ['attacker']);
+  } finally {
+    localMoveLedger.remove(actionKey);
+  }
+});
+
+test('local reducer finalPieces do not infer a shielded opponent that remains on the destination', () => {
+  const actionKey = 'move_piece:player-1:11:attacker';
+  const attacker = makePiece({ id: 'attacker', ownerId: 'player-1', nodeId: 'n06' });
+  const shieldedTarget = makePiece({ id: 'target', ownerId: 'player-2', nodeId: 'n06', started: true, finished: false });
+  const pieces = [attacker, shieldedTarget];
+  localMoveLedger.remove(actionKey);
+  localMoveLedger.register({
+    roomId: 'room-shielded-capture',
+    clientMutationId: actionKey,
+    startSequence: 11,
+    startTurnIndex: 0,
+    pieceId: attacker.id,
+    movingGroupIds: [attacker.id],
+    fromNodeId: 'n05',
+    toNodeId: 'n06',
+    pathNodeIds: ['n06'],
+    finalPieces: pieces,
+    finalState: { pieces },
+    resultFingerprint: 'shielded-capture',
+  });
+
+  try {
+    assert.deepEqual(inferCapturedPieceIds({
+      previousPieces: pieces,
+      pieces,
+      attackerPieceId: attacker.id,
+      getPieceGroupKey: (piece) => piece.ownerId,
+    }), []);
+  } finally {
+    localMoveLedger.remove(actionKey);
+  }
+});
+
+test('remote capture inference requires the moving attacker identity', () => {
   const previousPieces = [
     makePiece({ id: 'attacker', nodeId: 'n06', ownerId: 'player-1' }),
     makePiece({ id: 'target', nodeId: 'n06', ownerId: 'player-2' }),
@@ -172,6 +262,18 @@ test('remote capture inference requires the moving attacker to remain on the cap
     attackerPieceId: 'attacker',
     getPieceGroupKey: (piece) => piece.ownerId,
   }), ['target']);
+
+  assert.deepEqual(inferCapturedPieceIds({
+    previousPieces,
+    pieces: capturedPieces,
+    getPieceGroupKey: (piece) => piece.ownerId,
+  }), []);
+
+  assert.deepEqual(inferCapturedPieceIds({
+    previousPieces,
+    pieces: capturedPieces.filter((piece) => piece.id !== 'attacker'),
+    getPieceGroupKey: (piece) => piece.ownerId,
+  }), []);
 
   assert.deepEqual(inferCapturedPieceIds({
     previousPieces,
