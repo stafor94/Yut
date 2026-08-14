@@ -3,7 +3,7 @@ import { GameBoard, type BoardPiece } from '../../features/game/components/GameB
 import type { ItemType } from '../../features/items/logic/items';
 import type { BoardItem, BranchChoice } from '../../game-core/board/board';
 import { playConfirmedStackSoundEffect } from '../../shared/audio/sound';
-import type { CaptureVisualEffect } from '../flows/captureAnimation';
+import { createCaptureVisualEffect, type CaptureVisualEffect } from '../flows/captureAnimation';
 import { enqueueCapturePresentation } from '../flows/capturePresentationQueue';
 import type { FinishVisualEffect } from '../flows/finishAnimation';
 import {
@@ -309,6 +309,7 @@ export function GameBoardSection({
             completedMoveFrameRef.current = { pieceId: '', frameKey: '' };
             activeMoveDestinationRef.current = { pieceId: '', nodeId: '' };
             moveSessionRef.current = null;
+            pendingCaptureEffectRef.current = null;
             pendingCaptureFinalizationRef.current = null;
             moveFinalizationScheduledRef.current = false;
             localMovePresentationLifecycle.settle(activeSession.pieceId);
@@ -328,13 +329,22 @@ export function GameBoardSection({
         };
 
         if (finalization.capturedPieceIds.length > 0) {
+          const retainedCaptureEffect = createCaptureVisualEffect({
+            id: moveGenerationRef.current,
+            presentationKey: `capture-finalization:${moveGenerationRef.current}:${activeSession.pieceId}`,
+            pieceIds: finalization.capturedPieceIds,
+            pieces: activeSession.acceptedPieces,
+            attackerPieceId: activeSession.pieceId,
+            getPieceGroupKey: getPieceSideKey,
+          });
           const queuedEffect = pendingCaptureEffectRef.current
             ?? (captureEffect ? {
               ...captureEffect,
               pieceIds: [...captureEffect.pieceIds],
               pieces: captureEffect.pieces.map((piece) => ({ ...piece })),
               attackerPieceIds: [...captureEffect.attackerPieceIds],
-            } : null);
+            } : null)
+            ?? retainedCaptureEffect;
           if (queuedEffect) {
             queueCaptureThenSettlement(queuedEffect);
             return;
