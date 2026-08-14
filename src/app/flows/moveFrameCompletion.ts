@@ -108,6 +108,7 @@ export function createMoveFrameTransitionIdentityQueue() {
 
 export function createMoveFrameCompletionGate(identity: MoveFrameCompletionIdentity) {
   let settled = false;
+  let transitionStarted = false;
   let cancelFallback: (() => void) | null = null;
   let resolvePromise!: (source: MoveFrameCompletionSource) => void;
   const promise = new Promise<MoveFrameCompletionSource>((resolve) => {
@@ -117,11 +118,15 @@ export function createMoveFrameCompletionGate(identity: MoveFrameCompletionIdent
   const matches = (candidate: MoveFrameCompletionIdentity) => candidate.pieceId === identity.pieceId
     && candidate.frameKey === identity.frameKey;
 
+  const clearFallback = () => {
+    cancelFallback?.();
+    cancelFallback = null;
+  };
+
   const settle = (source: MoveFrameCompletionSource) => {
     if (settled) return false;
     settled = true;
-    cancelFallback?.();
-    cancelFallback = null;
+    clearFallback();
     resolvePromise(source);
     return true;
   };
@@ -134,9 +139,16 @@ export function createMoveFrameCompletionGate(identity: MoveFrameCompletionIdent
       return settle('transition');
     },
     armFallback(candidate: MoveFrameCompletionIdentity, delayMs: number, schedule: ScheduleFallback = scheduleFallbackWithTimer) {
-      if (settled || !matches(candidate)) return false;
-      cancelFallback?.();
-      cancelFallback = schedule(() => settle('fallback'), Math.max(0, delayMs));
+      if (settled || transitionStarted || !matches(candidate)) return false;
+      if (cancelFallback) {
+        transitionStarted = true;
+        clearFallback();
+        return false;
+      }
+      cancelFallback = schedule(() => {
+        if (transitionStarted) return;
+        settle('fallback');
+      }, Math.max(0, delayMs));
       return true;
     },
     cancel() {

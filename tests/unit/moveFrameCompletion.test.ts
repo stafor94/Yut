@@ -30,15 +30,15 @@ test('move frame gate stays pending until the matching transition completes and 
 
 test('stale frame completion cannot release a newer movement frame', async () => {
   const previous = createMoveFrameCompletionGate({ pieceId: 'attacker', frameKey: '7:frame-final' });
-  const next = createMoveFrameCompletionGate({ pieceId: 'attacker', frameKey: '8:frame-final' });
+  const next = createMoveFrameCompletionGate({ pieceId: 'attacker', frameKey: '8:new-final' });
 
   assert.equal(previous.cancel(), true);
   assert.equal(await previous.promise, 'cancelled');
   assert.equal(next.complete({ pieceId: 'attacker', frameKey: '7:frame-final' }), false);
-  assert.equal(next.complete({ pieceId: 'other-piece', frameKey: '8:frame-final' }), false);
+  assert.equal(next.complete({ pieceId: 'other-piece', frameKey: '8:new-final' }), false);
   assert.equal(next.isSettled(), false);
 
-  assert.equal(next.complete({ pieceId: 'attacker', frameKey: '8:frame-final' }), true);
+  assert.equal(next.complete({ pieceId: 'attacker', frameKey: '8:new-final' }), true);
   assert.equal(await next.promise, 'transition');
 });
 
@@ -87,6 +87,32 @@ test('queue reset cancels the current presentation gate without releasing the ne
   assert.equal(next.complete({ pieceId: 'attacker', frameKey: '11:new-final' }), true);
   assert.equal(await next.promise, 'transition');
   unsubscribe?.();
+});
+
+test('transitionrun re-arm cancels the missing-signal fallback and waits for transitionend', async () => {
+  const gate = createMoveFrameCompletionGate({ pieceId: 'attacker', frameKey: '11:transition-run' });
+  let fallback: () => void = () => assert.fail('fallback was not scheduled');
+  let cancelled = false;
+  assert.equal(gate.armFallback(
+    { pieceId: 'attacker', frameKey: '11:transition-run' },
+    220,
+    (callback, delayMs) => {
+      assert.equal(delayMs, 220);
+      fallback = callback;
+      return () => {
+        cancelled = true;
+      };
+    },
+  ), true);
+
+  assert.equal(gate.armFallback({ pieceId: 'attacker', frameKey: '11:transition-run' }, 320), false);
+  assert.equal(cancelled, true);
+  fallback();
+  await flushMicrotasks();
+  assert.equal(gate.isSettled(), false);
+
+  assert.equal(gate.complete({ pieceId: 'attacker', frameKey: '11:transition-run' }), true);
+  assert.equal(await gate.promise, 'transition');
 });
 
 test('computed transition fallback uses the real positional duration and only fires when the signal is missing', async () => {
