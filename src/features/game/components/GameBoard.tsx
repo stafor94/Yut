@@ -289,7 +289,9 @@ export function GameBoard({ pieces, items, selectedPieceId, selectedPieceIds, mo
           const identity = { pieceId: piece.id, frameKey: movingPieceFrameKey, propertyName };
           movingTransitionIdentityQueueRef.current.remember(identity);
           activeMovingFramePropertiesRef.current.add(propertyName);
-          onMovingPieceTransitionPrepared?.(piece.id, movingPieceFrameKey, movingFrameTransitionMsRef.current);
+          const durationMs = getMoveFrameTransitionMs(window.getComputedStyle(event.currentTarget));
+          movingFrameTransitionMsRef.current = durationMs;
+          onMovingPieceTransitionPrepared?.(piece.id, movingPieceFrameKey, durationMs);
         }}
         onTransitionCancel={(event) => {
           if (event.target !== event.currentTarget || !isMovePositionTransitionProperty(event.propertyName)) return;
