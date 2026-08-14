@@ -12,7 +12,9 @@ export const QA_PERFORMANCE_TARGETS_MS = Object.freeze({
   galaxy: 240_000,
   galtime: 240_000,
   galack: 210_000,
-  galstart: 120_000,
+  // #1600 expanded the mandatory move-start product regressions from 6 to 7.
+  // Preserve the original per-regression budget while keeping the 3-worker room cap unchanged.
+  galstart: 140_000,
   safvis: 195_000,
   safari: 250_000,
 });
@@ -20,7 +22,8 @@ export const QA_PERFORMANCE_TARGETS_MS = Object.freeze({
 export const QA_PERFORMANCE_ISSUE_THRESHOLDS_MS = Object.freeze({
   galtime: 300_000,
   galack: 240_000,
-  galstart: 150_000,
+  // 150s * (7 required move-start regressions / 6 at the original calibration) = 175s.
+  galstart: 175_000,
 });
 
 export const QA_PERFORMANCE_EMERGENCY_LIMITS_MS = Object.freeze({
@@ -295,6 +298,8 @@ function withLaneTiming(laneTimings, code, testDurationMs, durationMs = testDura
 }
 
 function runSelfTest() {
+  assert.equal(QA_PERFORMANCE_TARGETS_MS.galstart, 140_000);
+  assert.equal(QA_PERFORMANCE_ISSUE_THRESHOLDS_MS.galstart, 175_000);
   const laneTimings = makeSelfTestTimings();
   const passReport = validateQaPerformance({ workflowStartedAtMs: 0, measuredAtMs: 289_999, laneTimings });
   assert.equal(passReport.passed, true);
@@ -352,7 +357,7 @@ function runSelfTest() {
   assert.equal(galaxyEmergencyFailure.performanceIssueCandidates[0]?.blocking, true);
   assert.match(galaxyEmergencyFailure.failures.join('\n'), /비상 차단 한계/u);
 
-  for (const [code, threshold] of [['galack', 240_000], ['galstart', 150_000]]) {
+  for (const [code, threshold] of [['galack', 240_000], ['galstart', 175_000]]) {
     const report = validateQaPerformance({
       workflowStartedAtMs: 0,
       measuredAtMs: 289_999,
