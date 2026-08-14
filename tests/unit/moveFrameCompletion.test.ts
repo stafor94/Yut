@@ -4,6 +4,7 @@ import { createGameAnimationQueue } from '../../src/app/flows/gameAnimationQueue
 import {
   createMoveFrameCompletionGate,
   createMoveFrameTransitionIdentityQueue,
+  createMoveFrameTransitionTracker,
   getMoveFrameTransitionMs,
   isMovePositionTransitionProperty,
 } from '../../src/app/flows/moveFrameCompletion.js';
@@ -30,15 +31,15 @@ test('move frame gate stays pending until the matching transition completes and 
 
 test('stale frame completion cannot release a newer movement frame', async () => {
   const previous = createMoveFrameCompletionGate({ pieceId: 'attacker', frameKey: '7:frame-final' });
-  const next = createMoveFrameCompletionGate({ pieceId: 'attacker', frameKey: '8:new-final' });
+  const next = createMoveFrameCompletionGate({ pieceId: 'attacker', frameKey: '8:frame-final' });
 
   assert.equal(previous.cancel(), true);
   assert.equal(await previous.promise, 'cancelled');
   assert.equal(next.complete({ pieceId: 'attacker', frameKey: '7:frame-final' }), false);
-  assert.equal(next.complete({ pieceId: 'other-piece', frameKey: '8:new-final' }), false);
+  assert.equal(next.complete({ pieceId: 'other-piece', frameKey: '8:frame-final' }), false);
   assert.equal(next.isSettled(), false);
 
-  assert.equal(next.complete({ pieceId: 'attacker', frameKey: '8:new-final' }), true);
+  assert.equal(next.complete({ pieceId: 'attacker', frameKey: '8:frame-final' }), true);
   assert.equal(await next.promise, 'transition');
 });
 
@@ -58,6 +59,24 @@ test('late same-property transitionend keeps the frame identity captured at tran
     propertyName: 'left',
   });
   assert.equal(identities.consume('attacker', 'left'), null);
+});
+
+test('move frame transition tracker preserves duplicate positional runs until every end or cancel settles', () => {
+  const tracker = createMoveFrameTransitionTracker();
+  assert.equal(tracker.start('left'), true);
+  assert.equal(tracker.start('left'), true);
+  assert.equal(tracker.start('top'), true);
+  assert.equal(tracker.start('opacity'), false);
+  assert.equal(tracker.getPendingCount(), 3);
+
+  assert.equal(tracker.settle('left'), true);
+  assert.equal(tracker.getPendingCount(), 2);
+  assert.equal(tracker.hasPending(), true);
+  assert.equal(tracker.settle('top'), true);
+  assert.equal(tracker.hasPending(), true);
+  assert.equal(tracker.settle('left'), true);
+  assert.equal(tracker.hasPending(), false);
+  assert.equal(tracker.settle('left'), false);
 });
 
 test('missing transition property metadata is ignored instead of breaking unrelated move presentations', () => {
