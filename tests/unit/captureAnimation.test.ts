@@ -159,7 +159,7 @@ test('stacked captured pieces leave in a timed sequence and the last piece trave
   assert.ok(distances[1] > distances[0]);
 });
 
-test('remote capture inference requires the moving attacker to remain on the captured node', () => {
+test('remote capture inference recovers a unique attacker side when moving identity is lost', () => {
   const previousPieces = [
     makePiece({ id: 'attacker', nodeId: 'n06', ownerId: 'player-1' }),
     makePiece({ id: 'target', nodeId: 'n06', ownerId: 'player-2' }),
@@ -167,6 +167,10 @@ test('remote capture inference requires the moving attacker to remain on the cap
   const capturedPieces = [
     makePiece({ id: 'attacker', nodeId: 'n06', ownerId: 'player-1' }),
     makePiece({ id: 'target', nodeId: 'n01', nodeIndex: 0, ownerId: 'player-2', started: false }),
+  ];
+  const ambiguousAttackers = [
+    ...capturedPieces,
+    makePiece({ id: 'other-attacker', nodeId: 'n06', ownerId: 'player-3' }),
   ];
   const trapReturnPieces = [
     makePiece({ id: 'attacker', nodeId: 'n01', nodeIndex: 0, ownerId: 'player-1', started: false }),
@@ -183,6 +187,12 @@ test('remote capture inference requires the moving attacker to remain on the cap
   assert.deepEqual(inferCapturedPieceIds({
     previousPieces,
     pieces: capturedPieces,
+    getPieceGroupKey: (piece) => piece.ownerId,
+  }), ['target']);
+
+  assert.deepEqual(inferCapturedPieceIds({
+    previousPieces: [...previousPieces, makePiece({ id: 'other-attacker', nodeId: 'n06', ownerId: 'player-3' })],
+    pieces: ambiguousAttackers,
     getPieceGroupKey: (piece) => piece.ownerId,
   }), []);
 

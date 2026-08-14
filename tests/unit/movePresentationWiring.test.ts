@@ -54,11 +54,9 @@ test('capture approach wiring waits for the matching attacker transition while p
   assert.match(boardSectionSource, /const pendingCaptureFinalizationRef = useRef<\(\(queuedEffect: CaptureVisualEffect\) => void\) \| null>\(null\)/);
   assert.match(boardSectionSource, /getMovePresentationFinalization\(activeSession, settlementPieces, getPieceSideKey\)/);
   assert.match(boardSectionSource, /const queueCaptureThenSettlement = \(queuedEffect: CaptureVisualEffect\) => \{[\s\S]*?queueCaptureEffect\(queuedEffect\);\s*scheduleSettlement\(\);/);
-  assert.match(boardSectionSource, /const retainedCaptureEffect = createCaptureVisualEffect\(\{[\s\S]*?pieceIds: finalization\.capturedPieceIds,[\s\S]*?pieces: activeSession\.acceptedPieces,[\s\S]*?attackerPieceId: activeSession\.pieceId,[\s\S]*?getPieceGroupKey: getPieceSideKey,/);
-  assert.match(boardSectionSource, /const queuedEffect = pendingCaptureEffectRef\.current[\s\S]*?\?\? retainedCaptureEffect;/);
   assert.match(boardSectionSource, /if \(finalization\.capturedPieceIds\.length > 0\) \{[\s\S]*?pendingCaptureFinalizationRef\.current = queueCaptureThenSettlement;\s*return;/);
   assert.match(boardSectionSource, /const finalizeCapture = pendingCaptureFinalizationRef\.current;[\s\S]*?if \(finalizeCapture\) \{[\s\S]*?finalizeCapture\(queuedEffect\);\s*return;/);
-  assert.match(boardSectionSource, /moveSessionRef\.current = null;\s*pendingCaptureEffectRef\.current = null;\s*pendingCaptureFinalizationRef\.current = null;/);
+  assert.doesNotMatch(boardSectionSource, /createCaptureVisualEffect/);
   assert.doesNotMatch(boardSectionSource, /getCapturePresentationSignature/);
   assert.match(boardSectionSource, /presentedCaptureKeysRef\.current\.has\(queuedEffect\.presentationKey\)/);
   assert.match(boardSectionSource, /window\.setTimeout\(playConfirmedStackSoundEffect, STACK_SOUND_DELAY_MS\)/);
