@@ -2,283 +2,45 @@
 
 This file records repeated bugs, failed fixes, root causes, and approaches that must not be repeated.
 
-The earlier active history is preserved without modification in [`BUG_HISTORY_BEFORE_2026-08-01_LOCAL_MOVE_OWNERSHIP.md`](./BUG_HISTORY_BEFORE_2026-08-01_LOCAL_MOVE_OWNERSHIP.md).
+The active history before this fix is preserved without modification in [`BUG_HISTORY_BEFORE_2026-08-16_AUTO_MOVE_TIMER.md`](./BUG_HISTORY_BEFORE_2026-08-16_AUTO_MOVE_TIMER.md).
 
 ---
 
-## 2026-08-15 - 비누적 윷/모 bonus가 이동 deadline을 다시 던지기로 잘못 지정
+## 2026-08-16 - 출발 말 자동 이동 one-shot 유실과 move pending 타이머 잔존
 
 ### Symptom
 
-- Main Branch QA Online core의 재입장 장기 턴 일치 회귀에서 비누적 모드의 윷/모 결과 뒤 서버에는 이동할 결과가 남아 있는데 roll/move 버튼이 모두 잠겨 `waiting`에 고착됐다.
-- 동일 영역의 실패가 run 31814609865와 31851976750에서 반복되어 단순 재실행으로 처리할 수 없는 구조적 상태 불일치였다.
+- 실제 온라인 플레이어가 판 위에 말을 하나도 올리지 않은 상태에서 이동 경로와 활성 이동 버튼은 정상인데 자동 이동이 실행되지 않는 경우가 있었다.
+- 말 이동을 제출해 버튼은 즉시 비활성화됐는데도 서버 ACK를 기다리는 동안 `.turn-action-timer`가 계속 표시됐다.
 
 ### Confirmed root cause
 
-- `reduceAuthoritativeRoll()`이 다음 deadline을 `fallOccurred || nextRoll.bonus ? 'roll' : 'move'`로 계산해 `nextRoll.bonus`만 보고 누적 모드 여부를 확인하지 않았다.
-- 비누적 모드에서는 윷/모의 bonus가 추가 던지기 스택을 열지 않으므로 결과를 이동에 사용해야 하지만 authoritative `turnDeadlineKind`만 `roll`로 남아 UI 행동 권한과 서버 상태가 모순됐다.
+- 기존 출발 말 자동 이동은 500ms effect timer 한 번에 `moveSelectedPiece()`를 맡겼고, authoritative snapshot 재렌더로 effect가 정리되면 대기 시간이 다시 시작됐다. callback 시점의 transient canonical readiness가 false면 반환값을 소비하지도 보존하지도 않아 같은 이동 기회를 다시 실행할 안정적인 identity가 없었다.
+- move 제출 자체는 `moveInProgressRef`/local presentation ownership을 먼저 선점해 성공 제출의 중복 실행은 막고 있었지만, 그 이전의 자동 이동 opportunity lifecycle은 별도 one-shot timer에만 의존했다.
+- move controls는 authoritative deadline과 transition readiness만으로 timer visibility를 계산해, accepted/pending move presentation을 별도 소비 상태로 보지 않았다. 따라서 이동 버튼과 타이머가 서로 다른 pending 계약을 사용했다.
 
 ### Required state invariants
 
-- 낙은 다음 deadline을 `roll`로 둔다.
-- 누적 모드의 윷/모 bonus는 추가 던지기가 남으므로 `roll`로 둔다.
-- 비누적 모드의 윷/모 bonus는 현재 결과를 이동해야 하므로 `move`로 둔다.
-- 일반 결과는 모드와 무관하게 현재 결과를 이동하는 단계에서 `move`로 둔다.
-- item prompt가 존재하는 경우 기존 `item_prompt` 우선순위를 유지한다.
+- 출발 말 자동 이동은 room/actor/authoritative move deadline/roll로 만든 안정적인 move opportunity key를 사용한다. 같은 snapshot 재렌더는 최초 `readyAt`을 유지한다.
+- canonical `moveRequestReady`와 실제 UI `moveActionReady`가 모두 준비되지 않은 transient 상태에서는 opportunity를 소비하지 않는다. readiness가 복구되면 같은 key와 기존 `readyAt`으로 다시 평가한다.
+- 자동 제출, 수동 클릭, deadline callback 중 하나가 성공 제출을 선점하면 synchronous local move ownership과 presentation pending이 같은 opportunity를 소비해 `move_piece_resolved`를 정확히 한 번만 만든다.
+- 판 위에 말이 없을 때 기존 lowest-label 선택, 분기/경로, local presentation ownership은 변경하지 않는다.
+- accepted move submission은 authoritative deadline과 별개의 presentation-pending 상태를 가진다. pending 동안 move timer만 숨기며 deadline 값 자체는 변경하지 않는다.
+- 느린 ACK에서 이동 애니메이션이 먼저 끝나도 request가 pending이면 timer가 다시 나타나지 않는다. 서버 거부/재동기화로 같은 deadline의 `moveRequestReady`가 복구되면 pending을 해제하고 기존 deadline의 실제 남은 시간으로 timer를 다시 표시한다.
+- 누적 윷의 stack 선택 전 move deadline은 submission pending이 아니므로 기존처럼 표시한다.
 
 ### Do not try again
 
-- 재입장 E2E assertion, timeout, sleep, retry를 완화해 authoritative phase 불일치를 숨기지 않는다.
-- UI에서 버튼을 강제로 풀거나 reconnect 전용 예외를 추가해 reducer의 잘못된 `turnDeadlineKind`를 우회하지 않는다.
-- `nextRoll.bonus`만으로 추가 던지기 여부를 판단하지 않는다. bonus와 `stackedRollMode`를 함께 판단한다.
+- 자동 이동 실패를 delay 증가, sleep, 주기적 retry, timeout 증가로 숨기지 않는다.
+- snapshot마다 500ms one-shot timer를 새 기회처럼 다시 시작하거나 `moveSelectedPiece()`의 false 반환을 성공처럼 소비하지 않는다.
+- timer를 `!moveRequestReady`, `!moveActionReady`, CSS visibility만으로 숨기지 않는다.
+- UI 편의를 위해 authoritative `turnDeadlineAt`/`turnDeadlineKind`를 조기 삭제하거나 서버 상태를 변경하지 않는다.
+- 수동 클릭·deadline callback·자동 이동에 서로 다른 중복 방지 identity를 추가하지 않는다.
 
 ### Regression and verification
 
-- `tests/unit/turn-deadline-reducer.test.ts`에서 비누적 bonus=`move`, 누적 bonus=`roll`, 낙=`roll`, 일반 결과=`move` 네 상태를 직접 고정한다.
-- `tests/unit/stacked-roll-bonus-guard.test.ts`의 기존 열린 누적 bonus stack=`roll` 계약을 그대로 유지한다.
-- Firebase emulator Online core의 `tests/online/room-exit-resume.spec.js` 재입장 장기 턴 일치 회귀를 실제 lane에서 검증한다.
-
-## 2026-08-10 - roll presentation pending 혼합으로 이동 버튼 readiness 불일치
-
-### Confirmed root cause
-
-- roll presentation 차단 상태를 실제 remote action `Set`의 synthetic entry와 `size`로 표현해 화면, controls, `moveSelectedPiece`가 서로 다른 pending 조건을 사용했다.
-- 외부 CDN Three import와 WebGL 초기화 실패가 정상 CSS settle 대신 watchdog까지 presentation을 붙잡을 수 있었다.
-- deadline 자동 이동 metadata를 전역 next-action marker로 전달하면 제출되지 않은 자동 이동의 metadata가 다음 수동 이동에 누출될 수 있었다.
-
-### Required state invariants
-
-- pending action `Set`에는 실제 제출 action만 존재하며 presentation은 별도 external-store boolean snapshot으로 차단한다.
-- 화면, controls, handler는 `move_piece` pending만 구분하는 동일 canonical move readiness를 사용한다.
-- deadline 자동 이동 metadata와 stack index는 callback에서 실제 `move_piece` payload까지 직접 전달하고, 실제 제출 성공 때만 timeout action을 완료 처리한다.
-- bundled `three@0.154.0`을 사용하며 WebGL 초기화 실패는 즉시 CSS fallback으로 전환한다. 정상 settle source는 `three-renderer` 또는 `css-animation-end`이고 watchdog은 신호 유실 복구에만 사용한다.
-
-### Do not try again
-
-- presentation을 synthetic pending action이나 `Set.size` override로 표현하지 않는다.
-- 모든 pending action을 하나의 move guard로 묶지 않는다.
-- `move_piece` deadline metadata에 전역 next-action marker를 사용하지 않는다.
-- CDN import 실패, WebGL 실패 또는 테스트 timing을 watchdog/timeout/sleep 증가로 가리지 않는다.
-
-### Regression and verification
-
-- unit: pending Set semantics, presentation 전후 canonical readiness, WebGL 즉시 fallback, CSS settle source, move marker 제외, handler/controls wiring.
-- Galaxy: `tests/mobile/online-move-single-execution.spec.js`의 출발점 WebGL 실패 `[모, 개]` 누적 이동 단일 실행 회귀.
-- 실행 성공: `npm ci`, `npm run test:unit` (667 tests), `npm run build`, `npm run build:qa`, `npm run qa:validate-architecture`, `node --check tests/mobile/online-move-single-execution.spec.js`.
-- 로컬 Galaxy runner는 제품 assertion 진입 전에 Playwright Chromium 미설치로 중단됐고, 브라우저 다운로드도 CDN 403으로 불가능했다. Ready PR의 공식 `mobile-galaxy-move-start` 결과를 최종 판정에 사용한다.
-- PR: Draft 생성 후 기록.
-- merge SHA / Main Branch QA: 병합 후 후속 history에서 실제 값만 기록.
-
-## 2026-08-07 - 온라인 로컬 윷 결과 hold가 renderer settle보다 먼저 소진됨
-
-### Symptom
-
-- 온라인 로컬 윷 결과에서 `모` 같은 결과 카드가 윷이 실제로 착지한 뒤 아주 짧게 보이거나 곧바로 사라졌다.
-- 논리 `result-hold` phase는 정상적으로 들어가지만 사용자에게 보이는 결과 카드는 renderer settle 뒤에만 나타나므로 두 수명주기가 일치하지 않았다.
-
-### Confirmed root cause
-
-- `App.tsx`의 local pending roll은 `primary → landing → result-hold`를 자체 timer로 진행하고 `result-hold` 진입 시점부터 `PENDING_ROLL_RESULT_HOLD_MS` 뒤 `rollAnimation=null`을 보냈다.
-- `YutRollScenePhysics`는 local landing을 실제 renderer timeline으로 계속 진행하며, `RollStage` 결과 카드는 `settledAnimationId`가 현재 animation id와 일치한 뒤에만 visible이 된다.
-- 현재 main에서 논리·authoritative landing 계약은 1000ms지만 renderer local landing은 1700ms이므로 nominal 경로에서도 1000ms result hold 중 약 700ms가 결과 카드가 아직 hidden인 동안 소진될 수 있었다.
-- 부모가 terminal live `result-hold` 뒤 `null`을 보내면 `rollPresentationSession`의 `complete-live` 결정을 받은 `RollStage`가 기존 표시를 즉시 `completed → null`로 만들었고, 공통 `createRollPresentationCompletion()`의 `visual settle → result hold` 완료 경로를 우회했다.
-- 같은 논리 landing 1000ms를 기준으로 authoritative `rollResultReadyAt`을 계산하므로 visual presentation을 실제 renderer settle 뒤까지 보존하기만 하면 다음 행동의 10초 deadline이 그 차이만큼 먼저 시작되는 부작용도 있었다.
-
-### Required state invariants
-
-- result hold clock은 논리 `result-hold` phase 진입이 아니라 실제 renderer settle 뒤 결과가 visible이 된 시점부터 시작한다.
-- terminal 부모 `null`은 화면 종료 신호가 아니라 같은 visual completion을 기다리는 입력으로 처리하며, settle 전 presentation을 직접 제거하지 않는다.
-- local live result와 remote resolved result는 같은 `RollPresentationCompletion`의 `visual settle → hold → complete` 계약을 사용한다. 제품별 hold duration 상수는 유지할 수 있지만 completion ownership은 분리하지 않는다.
-- 동일 local presentation을 여러 consumer가 기다려도 animation id별 completion promise는 하나의 settle/hold lifecycle을 공유한다.
-- authoritative action-ready의 landing 경계는 실제 renderer landing 계약과 일치해야 하며, 정상 presentation 종료 뒤부터 기존 전체 행동 제한시간을 보장한다.
-- watchdog은 renderer settle 신호가 사라진 비정상 fallback에서만 bounded completion을 제공하며 정상 hold clock을 대체하지 않는다.
-- roll presentation이 active인 동안 결과가 이미 visible이어도 부모와 화면의 다음 move/roll/submit action은 활성화하지 않는다.
-
-### Do not try again
-
-- `PENDING_ROLL_RESULT_HOLD_MS`, watchdog timeout, sleep 또는 임의 padding을 늘려 renderer settle과 visible hold 차이를 가리지 않는다.
-- 실제 renderer landing을 더 길게 만들거나 결과 phase 진입 시 renderer를 강제로 settle 처리해 문제를 숨기지 않는다.
-- 논리·authoritative landing 경계를 실제 고정 renderer landing 계약과 다르게 유지한 채 행동 deadline만 별도로 보정하지 않는다.
-- `App.tsx`의 `rollAnimation=null`만으로 visual presentation을 완료 처리하지 않는다.
-- local/remote에 서로 다른 ad-hoc completion timer를 추가하지 않는다.
-- child control만 비활성화하고 부모 자동 이동·재던지기 action gate를 열어 두지 않는다.
-
-### Verification checklist
-
-- [x] renderer settle 전 hold가 시작되지 않고 terminal 부모 입력이 같은 completion을 재사용하는 unit regression
-- [x] presentation active 동안 부모 move/roll action gate가 유지되는 unit regression
-- [ ] 전체 unit/build/architecture 검증
-- [ ] Mobile Galaxy 실제 `모` 결과 카드 visible hold 및 action 비노출 검증
-
----
-
-## 2026-08-05 - timeout 이동 action identity 분리로 동일 말 되감기·반복 재생
-
-### Symptom
-
-- 온라인 이동 선택 제한시간 만료 시 내 말만 있는 윷판에서 같은 말이 `대기석 → n02 → n03 → 대기석 → n02 → n03`으로 반복 이동했다.
-- 상대 말은 목적지를 포함해 윷판에 없었으며 capture sequence, capture effect, `.capture-ghost`가 발생하지 않았다.
-- 애니메이션 모양만 보고 잡기로 분류했던 이전 분석은 실제 piece 위치 전이와 authoritative sequence를 확인하지 않은 오분류였다.
-
-### Confirmed root cause
-
-- 이동 마감 직전 UI 자동 이동은 일반 로컬 `move_piece:*` identity로 optimistic presentation을 시작했다.
-- `App.tsx`의 stalled-turn 복구와 `useStackedRollTimeoutRecovery.ts`의 coordinator 복구는 같은 authoritative deadline에 `timeout:v1:<room>:<actor>:move:<deadline>` identity를 사용했다.
-- 따라서 하나의 timeout 사건이 서로 다른 logical action으로 제출될 수 있었고, commit/subscription/replay에서 canonical 복구 결과가 최초 로컬 이동과 별도 action으로 보이면서 말 상태가 대기석으로 되감긴 뒤 presentation이 재시작됐다.
-- PR #1536의 capture 중복 방지는 별도 문제이며 이번 timeout 이동 identity 경합의 원인이나 수정 경로가 아니다.
-
-### Required state invariants
-
-- UI deadline auto move, stalled-turn recovery, coordinator recovery는 같은 room, actor, stage, authoritative deadline으로 만든 기존 canonical timeout identity를 공유한다.
-- 로컬 `move_piece:*` identity는 최초 optimistic presentation 소유권에만 유지하고, 서버 제출 직전에 canonical timeout identity로 정규화한다.
-- canonical commit/subscription/replay echo는 최초 로컬 presentation identity로 alias되어 같은 이동을 다시 시작하지 않는다.
-- timeout identity에 `Date.now()`, 렌더 횟수·상태, 최신 로그, `movingPieceId`, 임의 UUID를 사용하지 않는다.
-- 방 이탈이나 새 게임 같은 실제 lifecycle 경계 전에는 alias ledger를 transient rerender나 snapshot echo 때문에 정리하지 않는다.
-
-### Do not try again
-
-- 상대 말 존재 여부와 실제 piece 위치 전이를 확인하지 않고 이동 모양만으로 잡기라고 판단하지 않는다.
-- `captureEffect`, `.capture-ghost`, 잡기 복귀 애니메이션을 timeout 이동 반복의 우회 차단점으로 사용하지 않는다.
-- timeout 시간, 이동 애니메이션 속도, sleep, assertion 완화로 identity 경합을 숨기지 않는다.
-- 호출 시점마다 달라지는 값으로 UI·stalled·coordinator 경로의 action identity를 각각 만들지 않는다.
-
-### Verification checklist
-
-- [x] 실제 deadline marker와 authoritative queue를 실행해 UI 로컬 ID와 canonical server ID 정규화를 검증하는 unit test
-- [x] sequence·로그·`movingPieceId` 변화와 무관하게 deadline identity가 고정되는 unit test
-- [x] Desktop/Galaxy 실제 timeout fixture에서 모든 `move_piece_resolved` sequence와 세 ID를 검사
-- [x] `movingPieceId` 시작 1회, 대기석 복귀 0회, `n02 → n03` 재생 1회, canonical/DOM 최종 위치 일치 검사
-- [x] 상대 말 부재, capture sequence/effect와 `.capture-ghost` 미생성 검사
-- [ ] Build and unit job succeeds
-- [ ] Online core Desktop timeout recovery succeeds
-- [ ] Mobile Galaxy timeout recovery succeeds
-- [ ] Main Branch QA Desktop/Galaxy/Safari succeeds
-
----
-
-## 2026-08-04 - 요청 오해, 반복 조회와 대체 도구 전환 루프
-
-### Symptom
-
-- 사용자가 과거 작업 실패를 지적하거나 개선책을 요구했는데, 이전 미완료 PR 작업을 다시 시작했다.
-- 사용자가 현재 요청은 수정 지시가 아니라고 정정한 뒤에도 GitHub 스킬과 도구를 계속 조회했다.
-- 조회나 mutation이 실패하면 실제 오류를 분류하기보다 권한·환경 제약을 추측하거나 다른 방식으로 다시 시도하겠다는 설명을 반복했다.
-- 이미 확인한 저장소, PR, 승인과 계획을 다시 조회·질문하면서 실제 완료보다 준비와 설명이 길어졌다.
-
-### Failed operating assumptions
-
-- 이전 작업이 미완료이면 현재 메시지와 관계없이 계속 진행해도 된다고 잘못 판단했다.
-- 도구를 더 많이 호출하면 진전이 생긴다고 보고, 현재 요청의 목적과 필요한 단일 정보를 먼저 고정하지 않았다.
-- 한 경로가 실패하면 원인 분석 전에 다른 connector, API 또는 조회 방식으로 전환했다.
-- “다른 방식으로 시도하겠다”는 보고 자체를 진행으로 취급했다.
-- 사용자 승인과 명시된 수정 방향을 세션 또는 도구 전환 뒤 다시 확인해야 한다고 잘못 판단했다.
-
-### Confirmed root cause
-
-- 현재 사용자 메시지를 작업 상태보다 우선하지 않았고, 질문·항의·회고와 실제 저장소 mutation 요청을 구분하지 않았다.
-- 실패를 인증·입력·리소스·기능 미지원·일시적 오류·제품/CI 실패로 분류하는 단계가 없었다.
-- 저장소, branch, PR, SHA, Run 등 이미 확정된 식별자를 작업 상태로 유지하지 않아 같은 조회를 반복했다.
-- 도구 사용과 설명을 산출물로 착각해 실제 수정, 검증, terminal 상태 확인과 완료 판정이 뒤로 밀렸다.
-
-### Required operating invariants
-
-- 현재 사용자 메시지가 과거 대화의 미완료 작업보다 우선한다.
-- 질문·항의·회고·정리 요청에는 저장소 mutation을 수행하지 않는다.
-- 같은 범위의 승인은 보존하며 범위 확대나 강제 중단선이 없는 한 재요청하지 않는다.
-- 도구 실패 후에는 원인을 분류하고 실패한 기능만 대체한다.
-- 이미 확인한 저장소, branch, PR, SHA, Run, Issue는 재사용한다.
-- 다른 도구는 부족한 단일 정보를 제공할 근거가 있을 때만 사용한다.
-- 진행 보고는 실제 조회 결과, diff, commit, PR, Check 또는 Run 상태 변화가 생겼을 때만 한다.
-- 문서 전용 작업은 문서 변경과 수동 diff 검토로 범위를 제한하며 제품 코드·테스트·workflow를 추가하지 않는다.
-
-### Do not try again
-
-- 현재 메시지와 무관한 이전 작업을 자동 재개하지 않는다.
-- 사용자가 작업 오해를 정정한 뒤 기존 도구 호출을 계속하지 않는다.
-- 실제 권한 오류를 확인하기 전에 “권한이 없어서 불가능하다”고 단정하지 않는다.
-- 같은 상태를 connector, CLI, API, 임시 workflow, Issue, 대체 PR로 반복 조회하지 않는다.
-- 조회 한계 때문에 새 branch·PR·Issue·workflow를 만들지 않는다.
-- 같은 승인이나 계획을 다시 요구하지 않는다.
-- 실행 결과 없이 “다른 방식으로 시도하겠다”고 보고하지 않는다.
-
-### Documentation promotion
-
-- `AGENTS.md`: 현재 요청 우선, 승인 보존, 반복 조회·실행 없는 대체 시도 금지, 문서 전용 범위 규칙으로 승격했다.
-- `DEVELOPMENT_PLAYBOOK.md`: 요청 분류, 도구 실패 분류표, 문서 전용 검증, 중복 branch·PR 금지 절차로 승격했다.
-
----
-
-## 2026-08-01 - 온라인 move_piece 로컬 상태 소유권과 server echo 재적용
-
-### Symptom
-
-- 온라인에서 이동 실행 클라이언트가 `n01 → n02 → n03 → n04` 경로를 표시한 뒤 같은 말을 다시 출발 상태나 중간 칸으로 되돌렸다가 이동했다.
-- 서버의 `clientMutationId`와 `move_piece_resolved` sequence는 각각 하나여도 commit callback, subscription, replay 또는 apply-wake가 같은 로컬 결과를 화면 상태에 다시 적용할 수 있었다.
-
-### Previous fixes and why they were insufficient
-
-- PR #1304는 stale 자동 이동 callback과 동일 턴의 두 번째 이동 요청을 차단했다. 두 번째 서버 요청은 막았지만 첫 번째 요청의 로컬 결과가 server echo로 다시 적용되는 구조는 남았다.
-- PR #1306은 authoritative settlement를 local presentation 완료 뒤로 직렬화했다. 재적용 시점만 늦췄고 동일 로컬 결과가 다시 `pieces`, `roll`, `turnIndex`를 덮는 소유권은 바꾸지 않았다.
-- PR #1308은 pending 등록 시 presentation lifecycle을 먼저 선점했다. 시작 경쟁은 줄였지만 server echo의 화면 상태 적용 자체는 유지했다.
-- PR #1309는 성공·오류 callback을 presentation settlement 뒤로 직렬화했다. callback 순서는 고정했지만 subscription, sequence replay, apply-wake, 수동 sync와 callback이 동일 로컬 결과를 다시 적용할 수 있었다.
-- PR #1310은 shared reducer 결과와 local move ledger를 추가했지만, controller가 lifecycle idle 상태에서 `waitForSettlement()`를 호출하면 이미 완료된 Promise를 받아 reducer 최종 상태를 실제 말 경로보다 먼저 적용할 수 있었다.
-- PR #1316은 동일 말의 실제 settlement 예약을 추가했지만 Promise resolver 타입 선언 누락으로 build가 중단됐다.
-- PR #1317은 resolver 타입을 수정했지만 Galaxy timing에서 빠른 ACK의 canonical 경로가 `n04 → n02 → n03 → n04`로 시작했다.
-- PR #1318은 정확히 같은 `pieceId`만 settlement할 수 있게 했지만 말 ID 일치만으로는 경로 완료를 증명하지 못했다.
-- PR #1324는 `n02 → n03 → n04` 전체 경로 관찰을 settlement 조건으로 추가해 느린 ACK와 자동 이동을 통과시켰다.
-- PR #1326은 synced state에 roll이 아직 없을 때 표준 move action identity에서 roll을 복구해 ledger 준비 범위를 넓혔다.
-- PR #1327은 #1326의 optional config TypeScript narrowing 오류를 수정했다.
-- PR #1328은 같은 action key를 실제 presenting 중인 결과도 local echo로 처리했지만 빠른 ACK에서 reducer final `pieces`가 여전히 로컬 경로보다 먼저 화면 상태에 들어갈 수 있었다.
-- PR #1329는 active ledger 정리 뒤 동일 mutation을 tombstone으로 계속 차단하려 했다. 기존 sequence-first 계약을 깨뜨려 unit, Online core 재입장, Galaxy 제한시간 이동을 회귀시켰고 빠른 ACK도 해결하지 못했다.
-- PR #1330은 reducer final state의 `pieces`를 local settlement display spread에서 제외했다. settlement 자체의 조기 덮어쓰기는 막았지만 `App.tsx`의 commit callback은 controller가 반환한 local-echo 적용 래퍼를 사용하지 않고 기존 `applyAuthoritativeResultSequence()`를 직접 호출해 `stateAfter.pieces`를 다시 적용했다.
-- PR #1331은 실행 클라이언트의 성공 commit 결과를 controller에서 ACK로 소비해 `stateAfter.pieces` 재적용은 막았다. 그러나 ACK 수신 즉시 pending action을 해제해 local presentation이 roll 소비와 turn 전환을 적용하기 전에 기존 `걸`이 다시 action-ready가 되었고 두 번째 `move_piece` mutation이 생성됐다.
-
-### Confirmed root cause
-
-- 온라인 `move_piece`의 실행 클라이언트가 로컬 `movePiece()`로 `pieces` 경로를 직접 재생하면서, controller도 shared reducer의 `finalState` 전체를 화면 snapshot으로 spread 적용했다.
-- shared reducer의 `finalState.pieces`는 fingerprint와 서버 결과 비교에는 필요하지만 실행 클라이언트 화면에 다시 적용하면 로컬 경로 소유권과 충돌한다.
-- 빠른 ACK에서는 reducer final 위치 `n04`가 로컬 첫 프레임보다 먼저 또는 중간에 화면 canonical 상태로 들어가 `n04 → n02 → n03 → n04` 또는 `n02 → n04 → n03 → n04`가 발생했다.
-- controller의 subscription, replay, apply-wake에는 local echo 분류가 있었지만, `enqueueAuthoritativeGameAction()`이 성공 결과를 consumer callback에 그대로 넘겼고 consumer는 원본 `applyAuthoritativeResultSequence()`로 `stateAfter.pieces`를 적용했다.
-- 성공 ACK를 소비한 뒤 pending action을 presentation 완료 전에 제거하면 `roll`, `turnIndex` 등 reducer final non-piece state가 아직 적용되지 않은 동안 같은 roll의 자동 이동 guard가 사라져 두 번째 이동 요청이 가능해진다.
-- active ledger 정리 후 delivery는 기존 sequence/subscription 파이프라인에 위임해야 하며 mutation tombstone으로 장기간 차단하면 정상적인 이후 상태 전파와 재입장을 막는다.
-
-### Required state invariants
-
-- 이동 실행 클라이언트는 로컬 `movePiece()`가 `pieces`, `movingPieceId`, 이동 경로 presentation을 한 번만 소유한다.
-- shared reducer final state는 roll 소비, turn 전환, stack, item, 로그와 fingerprint 검증에 사용한다.
-- shared reducer의 final `pieces`는 ledger와 fingerprint 내부에는 보존하되 실행 클라이언트 화면에 spread 적용하지 않는다.
-- 같은 `clientMutationId`의 성공 commit 결과는 controller가 consumer callback 전에 ACK로 소비하고 sequence/version, authoritative 기준 상태와 fingerprint만 갱신한다.
-- 같은 `clientMutationId`의 서버 snapshot은 active ledger 또는 같은 presenting action에서 sequence/version, authoritative 기준 상태와 fingerprint만 갱신하고 로컬 말 경로를 다시 적용하지 않는다.
-- pending action은 local presentation 완료, 서버 sequence ACK, fingerprint 일치가 모두 확인된 뒤에만 해제한다.
-- 빠른 ACK에서는 final non-piece state를 적용한 뒤 pending을 해제하고, 느린 ACK에서는 presentation 완료 뒤에도 서버 검증 전까지 pending을 유지한다.
-- active ledger가 정상 정리된 뒤의 delivery는 기존 sequence-first subscription/replay 정책에 위임한다.
-- 다른 플레이어의 새 sequence는 기존 replay 경로로 한 번 표시한다.
-- 서버 거부나 fingerprint 불일치에서만 입력을 잠그고 corrective animation 없이 최신 snapshot을 한 번 hard resync한다.
-
-### Do not try again
-
-- callback 대기, presentation lifecycle 시작 시점 이동, authoritative snapshot 적용 지연 또는 timeout 증가로 재적용을 숨기지 않는다.
-- 자동 이동 차단, `canRequestMove`/`actionReady` 정책 변경, sleep 증가나 assertion 완화로 수정하지 않는다.
-- 클라이언트가 보낸 전체 pieces를 서버 authoritative 결과로 신뢰하지 않는다.
-- active ledger 정리 뒤 동일 mutation ID를 장기 tombstone으로 유지해 정상 sequence/stateVersion 전파를 막지 않는다.
-- shared reducer final `pieces`를 실행 클라이언트 화면 snapshot에 다시 spread 적용하지 않는다.
-- local move 성공 commit 결과를 원본 consumer apply callback에 다시 전달하지 않는다.
-- server ACK 수신만으로 local move pending을 즉시 해제하지 않는다.
-
-### Verification checklist
-
-- [x] shared reducer 기반 local move result와 독립 local move ledger 추가
-- [x] commit, subscription, replay, apply-wake, manual sync의 local-echo/remote-action 공통 분류 추가
-- [x] ACK 전 ledger 유지, remote replay, mismatch hard resync, room clear 단위 테스트 추가
-- [x] 실제 host·guest 2클라이언트의 빠른/느린 ACK와 `n01/off-board` 관찰 Playwright 추가
-- [x] 동일 piece와 전체 `n02 → n03 → n04` 경로 완료 뒤 settlement하는 단위 회귀 테스트 추가
-- [x] synced roll이 늦은 빠른 ACK 실행 클라이언트에서도 action identity로 local move ownership을 준비하는 단위 회귀 테스트 추가
-- [x] ledger가 없어도 동일 action key를 실제 presenting 중인 결과를 local echo로 분류하는 단위 회귀 테스트 추가
-- [x] reducer final pieces는 fingerprint 내부에 보존하지만 화면 적용 spread에서는 제외하는 단위 회귀 테스트 추가
-- [x] 실행 클라이언트가 소유한 성공 commit 결과만 controller에서 ACK로 소비하는 단위 회귀 테스트 추가
-- [x] presentation, sequence ACK, fingerprint 일치가 모두 끝난 뒤 pending을 해제하는 단위 회귀 테스트 추가
-- [ ] Unit tests pass
-- [ ] Build succeeds
-- [ ] QA architecture validation passes
-- [ ] Target Mobile Galaxy Playwright passes
-- [ ] Main Branch QA succeeds
+- unit: `tests/unit/move-submission-opportunity-policy.test.ts`에서 snapshot readyAt 보존, transient not-ready→ready, accepted pending의 slow-ACK 유지·거부 복구, 성공 opportunity 단일 소비를 고정한다.
+- Galaxy: `tests/mobile/auto-move-pending-timer.spec.js`에서 실제 guest/2말/걸 무클릭 자동 이동, authoritative snapshot 재렌더, lowest-label n01→n02→n03→n04 단일 이동, 다른 말 n01 유지, 양쪽 수렴, `move_piece_resolved` 1개를 검증한다.
+- Galaxy move ACK: 같은 spec에서 느린 ACK 직후 버튼 비활성화와 `.turn-action-timer` 즉시 0개 및 ACK 대기 중 재노출 방지를 검증한다.
+- Main QA manifest의 `mobile-galaxy-move-start`와 `mobile-galaxy-move-ack`에 위 신규 테스트 제목과 spec을 직접 포함한다.
+- 최종 build/unit/architecture/Galaxy/Required Checks/Main Branch QA 결과는 이 변경의 PR 및 merge SHA 기준으로 확인한다.
