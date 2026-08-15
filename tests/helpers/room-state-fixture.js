@@ -60,6 +60,33 @@ async function firestoreRequest(url, accessToken, options = {}) {
   return response.json();
 }
 
+async function getRoomStateFixtureAccess(roomId, authPage) {
+  const config = await loadFirebaseConfig();
+  if (!config?.projectId) throw new Error('Firebase projectId가 없어 room state fixture를 준비할 수 없습니다.');
+  const accessToken = await authPage.evaluate(readFirebaseAccessTokenFromIndexedDb);
+  if (!accessToken) throw new Error('방 참가자의 Firebase access token을 읽지 못했습니다.');
+  return {
+    accessToken,
+    stateUrl: getStateDocumentUrl(config.projectId, roomId),
+  };
+}
+
+export async function bumpRoomStateTurnVersionForQa({ roomId, authPage }) {
+  const { accessToken, stateUrl } = await getRoomStateFixtureAccess(roomId, authPage);
+  const document = await firestoreRequest(stateUrl, accessToken);
+  const currentTurnVersion = Number(decodeFirestoreValue(document.fields?.turnVersion) ?? 0);
+  const patchUrl = new URL(stateUrl);
+  patchUrl.searchParams.append('updateMask.fieldPaths', 'turnVersion');
+  await firestoreRequest(patchUrl.toString(), accessToken, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      fields: {
+        turnVersion: encodeFirestoreValue(currentTurnVersion + 1),
+      },
+    }),
+  });
+}
+
 export async function seedRoomPieceAtNodeForQa({
   roomId,
   authPage,
@@ -69,12 +96,7 @@ export async function seedRoomPieceAtNodeForQa({
   previousNodeId = '',
   turnDeadlineAt = 0,
 }) {
-  const config = await loadFirebaseConfig();
-  if (!config?.projectId) throw new Error('Firebase projectId가 없어 room state fixture를 준비할 수 없습니다.');
-  const accessToken = await authPage.evaluate(readFirebaseAccessTokenFromIndexedDb);
-  if (!accessToken) throw new Error('방 참가자의 Firebase access token을 읽지 못했습니다.');
-
-  const stateUrl = getStateDocumentUrl(config.projectId, roomId);
+  const { accessToken, stateUrl } = await getRoomStateFixtureAccess(roomId, authPage);
   const document = await firestoreRequest(stateUrl, accessToken);
   const fields = document.fields ?? {};
   const pieces = decodeFirestoreValue(fields.pieces);
