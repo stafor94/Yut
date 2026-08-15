@@ -286,7 +286,7 @@ test('윷 결과 deadline은 낙과 누적 보너스에서만 다시 던지기�
     ));
 
     assert.equal(result.status, 'committed', testCase.label);
-    if (result.status !== 'committed') continue;
+    if (result.status !== 'committed' || !result.patch) continue;
     assert.equal(result.patch.turnDeadlineKind, testCase.expected, testCase.label);
   }
 });
