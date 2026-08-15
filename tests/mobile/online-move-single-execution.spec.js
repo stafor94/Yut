@@ -11,7 +11,7 @@ import { waitForRoomQaAccess } from '../helpers/room-access.js';
 import { deleteRoomForQa, getRoomSequencesForQa } from '../helpers/rooms.js';
 import { seedRoomPieceAtNodeForQa } from '../helpers/room-state-fixture.js';
 
-const SEEDED_ROOM_RELOAD_DEADLINE_MS = 60_000;
+const SEEDED_ROOM_RELOAD_DEADLINE_MS = 11_000;
 const MAX_LOCAL_MOVE_START_DELAY_MS = 1_500;
 
 async function installDeterministicHumanClient(context, { turnOrderResult, moveResultDelayMs = 0, rollRandom = 0.6, stackedRollMode = false, forceWebGLFailure = false }) {

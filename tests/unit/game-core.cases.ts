@@ -1782,7 +1782,7 @@ test('온라인 황금 윷 선택 deadline 만료 시 서버 기본 결과로 �
 
   assert.equal(result.status, 'committed');
   assert.deepEqual(result.patch?.roll, { name: '모', steps: 5, bonus: true });
-  assert.equal(result.patch?.turnDeadlineKind, 'roll');
+  assert.equal(result.patch?.turnDeadlineKind, 'move');
   assert.equal(result.patch?.pendingGoldenYutSelection, null);
 });
 

@@ -54,8 +54,8 @@ test('capture approach wiring waits for the matching attacker transition while p
 
   assert.match(boardSectionSource, /const pendingCaptureFinalizationRef = useRef<\(\(queuedEffect: CaptureVisualEffect\) => void\) \| null>\(null\)/);
   assert.match(boardSectionSource, /getMovePresentationFinalization\(activeSession, settlementPieces, getPieceSideKey\)/);
-  assert.match(boardSectionSource, /const queueCaptureThenSettlement = \(queuedEffect: CaptureVisualEffect\) => \{[\s\S]*?queueCaptureEffect\(queuedEffect\);\s*scheduleSettlement\(\);/);
-  assert.match(boardSectionSource, /if \(finalization\.capturedPieceIds\.length > 0\) \{[\s\S]*?const activeGate = moveFrameCompletionGateRef\.current;[\s\S]*?activeGate\?\.pieceId === activeSession\.pieceId && !activeGate\.isSettled\(\)[\s\S]*?pendingCaptureEffectRef\.current = queuedEffect;\s*pendingCaptureFinalizationRef\.current = queueCaptureThenSettlement;\s*return;/);
+  assert.match(boardSectionSource, /const queueSettlementThenCapture = \(queuedEffect: CaptureVisualEffect\) => \{[\s\S]*?scheduleSettlement\(\);\s*queueCaptureEffect\(queuedEffect\);/);
+  assert.match(boardSectionSource, /if \(finalization\.capturedPieceIds\.length > 0\) \{[\s\S]*?const activeGate = moveFrameCompletionGateRef\.current;[\s\S]*?activeGate\?\.pieceId === activeSession\.pieceId && !activeGate\.isSettled\(\)[\s\S]*?pendingCaptureEffectRef\.current = queuedEffect;\s*pendingCaptureFinalizationRef\.current = queueSettlementThenCapture;\s*return;/);
   assert.match(boardSectionSource, /const finalizeCapture = pendingCaptureFinalizationRef\.current;[\s\S]*?if \(finalizeCapture\) \{\s*pendingCaptureEffectRef\.current = queuedEffect;\s*const activeGate = moveFrameCompletionGateRef\.current;\s*if \(activeGate && !activeGate\.isSettled\(\)\) return;\s*finalizeCapture\(queuedEffect\);\s*return;/);
   assert.doesNotMatch(boardSectionSource, /createCaptureVisualEffect/);
   assert.doesNotMatch(boardSectionSource, /capture-finalization:/);

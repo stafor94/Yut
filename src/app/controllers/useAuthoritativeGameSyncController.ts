@@ -14,6 +14,7 @@ import type { SequenceStateSnapshot } from '../appState';
 import { getQaMovePieceActionDelayMs, shouldFailQaTimeoutRollCommit } from '../config/qaDelays';
 import { buildAuthoritativeApplyWakeSnapshot, shouldApplyAuthoritativeWake } from '../flows/authoritativeApplyWakeFlow';
 import { getAuthoritativeSnapshot } from '../flows/authoritativeSnapshot';
+import { selectNewerAuthoritativeState } from '../flows/authoritativeMoveStateFreshness';
 import { createAuthoritativeGameActionQueues } from '../flows/authoritativeGameSyncFlow';
 import {
   classifyLocalMoveCommitAck,
@@ -216,8 +217,12 @@ export function useAuthoritativeGameSyncController(params: Params) {
     if (localMoveLedger.has(actionKey)) return { ok: true, action, actionKey };
     if (!roomId) return fail('authoritative-state', 'active-room-id-missing');
 
+    const authoritativeState = selectNewerAuthoritativeState(
+      params.currentSequenceStateRef.current,
+      latestSyncedStateRef.current,
+    );
     const state = withLocalMovePiecesFallback(
-      params.currentSequenceStateRef.current as Record<string, unknown> | null,
+      authoritativeState as Record<string, unknown> | null,
       params.currentPiecesRef.current,
     );
     const preparedResult = prepareLocalMoveOwnershipResult({ roomId, state, action });
@@ -237,7 +242,10 @@ export function useAuthoritativeGameSyncController(params: Params) {
         localMoveLedger.remove(actionKey);
         return;
       }
-      const finalState = prepared.finalState as SequenceStateSnapshot;
+      const finalState = selectNewerAuthoritativeState(
+        prepared.finalState as SequenceStateSnapshot,
+        latestSyncedStateRef.current,
+      ) ?? (prepared.finalState as SequenceStateSnapshot);
       latestSyncedStateRef.current = finalState;
       applySyncedStateSnapshotRef.current(getLocalDisplayFinalState(finalState), {
         allowMoveAnimation: false,
