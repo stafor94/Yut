@@ -8,10 +8,10 @@ import {
 import { deleteRoomForQa } from '../helpers/rooms.js';
 
 const GALAXY_VIEWPORT = { width: 412, height: 915 };
-const PRIMARY_PROFILE_CASES = ROLL_LANDING_PROFILE_CASES.slice(0, 2);
+const SECONDARY_PROFILE_CASES = ROLL_LANDING_PROFILE_CASES.slice(2);
 
 test.describe('Galaxy CSS fallback roll landing profiles QA', () => {
-  for (const profileCase of PRIMARY_PROFILE_CASES) {
+  for (const profileCase of SECONDARY_PROFILE_CASES) {
     test(`${profileCase.zone} 등급은 CSS fallback에서 지정된 착지 프로필과 낙 개수를 사용한다`, async ({ page, context }, testInfo) => {
       let roomId;
       try {
