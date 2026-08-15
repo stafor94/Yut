@@ -331,14 +331,14 @@ export function GameBoardSection({
             }
           });
         };
-        const queueCaptureThenSettlement = (queuedEffect: CaptureVisualEffect) => {
+        const queueSettlementThenCapture = (queuedEffect: CaptureVisualEffect) => {
           if (!mountedRef.current
             || moveSessionRef.current !== activeSession
             || !settlementRevisionGateRef.current.isCurrent(settlementRevision)) return;
           pendingCaptureFinalizationRef.current = null;
           pendingCaptureEffectRef.current = null;
-          queueCaptureEffect(queuedEffect);
           scheduleSettlement();
+          queueCaptureEffect(queuedEffect);
         };
 
         if (finalization.capturedPieceIds.length > 0) {
@@ -353,13 +353,13 @@ export function GameBoardSection({
             const activeGate = moveFrameCompletionGateRef.current;
             if (activeGate?.pieceId === activeSession.pieceId && !activeGate.isSettled()) {
               pendingCaptureEffectRef.current = queuedEffect;
-              pendingCaptureFinalizationRef.current = queueCaptureThenSettlement;
+              pendingCaptureFinalizationRef.current = queueSettlementThenCapture;
               return;
             }
-            queueCaptureThenSettlement(queuedEffect);
+            queueSettlementThenCapture(queuedEffect);
             return;
           }
-          pendingCaptureFinalizationRef.current = queueCaptureThenSettlement;
+          pendingCaptureFinalizationRef.current = queueSettlementThenCapture;
           return;
         }
         scheduleSettlement();
