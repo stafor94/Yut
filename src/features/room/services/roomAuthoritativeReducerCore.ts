@@ -267,7 +267,7 @@ function reduceAuthoritativeRoll(state: SyncedGameStateShape, action: Omit<GameA
       shieldedPieceIds,
       ...(shouldPromptFallReroll ? { roll: nextRoll, turnIndex: Number(state.turnIndex ?? 0), pendingAfterMoveTurnIndex: nextTurnIndexAfterFall, logs: nextLogs } : {}),
       turnDeadlineAt: shouldPromptAfterRoll || shouldPromptFallReroll ? now + 2600 + TURN_ACTION_TIMEOUT_MS : fallOccurred ? now + TURN_ACTION_TIMEOUT_MS : now + 2600 + TURN_ACTION_TIMEOUT_MS,
-      turnDeadlineKind: shouldPromptAfterRoll || shouldPromptFallReroll || shouldPromptBeforeRollAfterFall ? 'item_prompt' : fallOccurred || nextRoll.bonus ? 'roll' : 'move',
+      turnDeadlineKind: shouldPromptAfterRoll || shouldPromptFallReroll || shouldPromptBeforeRollAfterFall ? 'item_prompt' : fallOccurred || (room.stackedRollMode && nextRoll.bonus) ? 'roll' : 'move',
       itemPromptTiming: shouldPromptAfterRoll || shouldPromptFallReroll ? 'after_roll' : shouldPromptBeforeRollAfterFall ? 'before_roll' : null,
       pendingGoldenYutSelection: null,
       ...(pendingReroll ? { selectedRollStackIndex: null } : {}),
