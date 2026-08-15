@@ -1,3 +1,5 @@
+import { getMoveSubmissionPendingSnapshot } from './moveSubmissionPresentationState';
+
 export type TurnActionPresentationPhase = 'roll' | 'move';
 
 export const isTurnActionPresentationPending = ({
@@ -14,5 +16,6 @@ export const isTurnActionPresentationPending = ({
   rollResultHolding: boolean;
 }) => Boolean(
   rollResultHolding
+  || (phase === 'move' && getMoveSubmissionPendingSnapshot())
   || (phase === 'roll' && !hasRoll && !canRollNow)
 );

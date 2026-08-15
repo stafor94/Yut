@@ -208,6 +208,12 @@ test.describe('Galaxy durable auto move and move timer pending', () => {
     const moveButton = game.guestPage.getByTestId('move-piece-button');
     await expect(moveButton).toBeEnabled({ timeout: 20_000 });
     await expect(game.guestPage.locator('.turn-action-timer')).toHaveCount(1);
+    await game.guestPage.evaluate(() => {
+      window.setTimeout(() => {
+        const button = document.querySelector('[data-testid="move-piece-button"]');
+        if (button instanceof HTMLButtonElement && !button.disabled) button.click();
+      }, 450);
+    });
 
     await expect.poll(() => game.guestPage.evaluate(() => String(window.__YUT_DEBUG_STATE__?.movingPieceId ?? '')), {
       timeout: 10_000,

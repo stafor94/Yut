@@ -4,11 +4,6 @@ export type AutoMoveOpportunity = {
   submitted: boolean;
 };
 
-export type MoveSubmissionPresentationState = {
-  key: string;
-  sawRequestBlocked: boolean;
-};
-
 export function getOrCreateAutoMoveOpportunity(
   current: AutoMoveOpportunity | null,
   key: string,
@@ -50,29 +45,6 @@ export function shouldAttemptAutoMove({
   );
 }
 
-export function beginMoveSubmissionPresentation(key: string): MoveSubmissionPresentationState | null {
-  return key ? { key, sawRequestBlocked: false } : null;
-}
-
-export function reconcileMoveSubmissionPresentation(
-  current: MoveSubmissionPresentationState | null,
-  {
-    currentKey,
-    isMyTurn,
-    moveRequestReady,
-    movingPieceActive,
-  }: {
-    currentKey: string;
-    isMyTurn: boolean;
-    moveRequestReady: boolean;
-    movingPieceActive: boolean;
-  },
-): MoveSubmissionPresentationState | null {
-  if (!current) return null;
-  if (!currentKey || current.key !== currentKey || !isMyTurn) return null;
-  if (!moveRequestReady) {
-    return current.sawRequestBlocked ? current : { ...current, sawRequestBlocked: true };
-  }
-  if (current.sawRequestBlocked && !movingPieceActive) return null;
-  return current;
+export function markAutoMoveSubmitted(current: AutoMoveOpportunity | null, key: string) {
+  if (current?.key === key) current.submitted = true;
 }
