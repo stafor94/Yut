@@ -104,6 +104,7 @@ export const qaSuiteManifest = Object.freeze({
       'tests/mobile/lobby-app-version-auto-reload.spec.js',
       'tests/mobile/roll-timing-grades.spec.js',
       'tests/mobile/roll-landing-profiles-fallback.spec.js',
+      'tests/mobile/roll-landing-profiles-fallback-secondary.spec.js',
       'tests/mobile/roll-stage-board-alignment.spec.js',
       'tests/mobile/turn-order-layout.spec.js',
       'tests/mobile/turn-order-final-alignment.spec.js',
