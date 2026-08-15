@@ -6,6 +6,38 @@ The earlier active history is preserved without modification in [`BUG_HISTORY_BE
 
 ---
 
+## 2026-08-15 - 비누적 윷/모 bonus가 이동 deadline을 다시 던지기로 잘못 지정
+
+### Symptom
+
+- Main Branch QA Online core의 재입장 장기 턴 일치 회귀에서 비누적 모드의 윷/모 결과 뒤 서버에는 이동할 결과가 남아 있는데 roll/move 버튼이 모두 잠겨 `waiting`에 고착됐다.
+- 동일 영역의 실패가 run 31814609865와 31851976750에서 반복되어 단순 재실행으로 처리할 수 없는 구조적 상태 불일치였다.
+
+### Confirmed root cause
+
+- `reduceAuthoritativeRoll()`이 다음 deadline을 `fallOccurred || nextRoll.bonus ? 'roll' : 'move'`로 계산해 `nextRoll.bonus`만 보고 누적 모드 여부를 확인하지 않았다.
+- 비누적 모드에서는 윷/모의 bonus가 추가 던지기 스택을 열지 않으므로 결과를 이동에 사용해야 하지만 authoritative `turnDeadlineKind`만 `roll`로 남아 UI 행동 권한과 서버 상태가 모순됐다.
+
+### Required state invariants
+
+- 낙은 다음 deadline을 `roll`로 둔다.
+- 누적 모드의 윷/모 bonus는 추가 던지기가 남으므로 `roll`로 둔다.
+- 비누적 모드의 윷/모 bonus는 현재 결과를 이동해야 하므로 `move`로 둔다.
+- 일반 결과는 모드와 무관하게 현재 결과를 이동하는 단계에서 `move`로 둔다.
+- item prompt가 존재하는 경우 기존 `item_prompt` 우선순위를 유지한다.
+
+### Do not try again
+
+- 재입장 E2E assertion, timeout, sleep, retry를 완화해 authoritative phase 불일치를 숨기지 않는다.
+- UI에서 버튼을 강제로 풀거나 reconnect 전용 예외를 추가해 reducer의 잘못된 `turnDeadlineKind`를 우회하지 않는다.
+- `nextRoll.bonus`만으로 추가 던지기 여부를 판단하지 않는다. bonus와 `stackedRollMode`를 함께 판단한다.
+
+### Regression and verification
+
+- `tests/unit/turn-deadline-reducer.test.ts`에서 비누적 bonus=`move`, 누적 bonus=`roll`, 낙=`roll`, 일반 결과=`move` 네 상태를 직접 고정한다.
+- `tests/unit/stacked-roll-bonus-guard.test.ts`의 기존 열린 누적 bonus stack=`roll` 계약을 그대로 유지한다.
+- Firebase emulator Online core의 `tests/online/room-exit-resume.spec.js` 재입장 장기 턴 일치 회귀를 실제 lane에서 검증한다.
+
 ## 2026-08-10 - roll presentation pending 혼합으로 이동 버튼 readiness 불일치
 
 ### Confirmed root cause
