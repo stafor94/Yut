@@ -8,10 +8,13 @@ const toVersion = (value: unknown) => {
   return Number.isFinite(numericValue) ? Math.max(0, Math.trunc(numericValue)) : 0;
 };
 
-export function selectNewerAuthoritativeState<T extends SequencedAuthoritativeState>(
-  currentState: T | null | undefined,
-  candidateState: T | null | undefined,
-): T | null {
+export function selectNewerAuthoritativeState<
+  TCurrent extends SequencedAuthoritativeState,
+  TCandidate extends SequencedAuthoritativeState,
+>(
+  currentState: TCurrent | null | undefined,
+  candidateState: TCandidate | null | undefined,
+): TCurrent | TCandidate | null {
   if (!currentState) return candidateState ?? null;
   if (!candidateState) return currentState;
 
