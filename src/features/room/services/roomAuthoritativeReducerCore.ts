@@ -107,7 +107,7 @@ const validateItemPickupTimeoutRecovery = (state: SyncedGameStateShape, action: 
 const validateItemPromptTimeoutRecovery = (state: SyncedGameStateShape, action: Omit<GameActionShape, 'id' | 'createdAt' | 'processed'>) => {
   if (!isItemPromptTimeoutRecoveryPayload(action.payload)) return null;
   const deadlineRejection = validateTimeoutDeadline(state, action.payload, 'item_prompt');
-  if (deadlineRejection) return makeActionReject(deadlineRejection).reason ?? deadlineRejection;
+  if (deadlineRejection) return deadlineRejection;
   const expectedActorId = state.itemPromptTiming === 'after_move' ? state.lastMovedSeatId : (state.turnOrderIds ?? [])[Number(state.turnIndex ?? 0)];
   if (!expectedActorId || expectedActorId !== action.actorId) return '아이템 선택 시간초과 대상이 아닙니다.';
   return null;
