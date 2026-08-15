@@ -9,6 +9,7 @@ const onlineMoveBackDoHistorySpec = 'tests/mobile/online-move-after-backdo-autop
 const onlineAiHumanAtomicMoveStartSpec = 'tests/mobile/online-ai-human-atomic-move-start.spec.js';
 const onlineAiTurnProgressSpec = 'tests/mobile/online-ai-turn-progress.spec.js';
 const captureAfterAttackerArrivalSpec = 'tests/mobile/capture-after-attacker-arrival.spec.js';
+const autoMovePendingTimerSpec = 'tests/mobile/auto-move-pending-timer.spec.js';
 const firebaseIsolationTitle = 'QA browser app uses only the isolated Firebase emulators';
 const timingNiceSnapshotTitle = 'pointerdown Nice snapshot은 오래 눌러도 live freeze·result hold·authoritative 판정이 Nice로 유지된다';
 const timingOverflowTitle = '오브는 고정 트랙 안에서 0·50·100%를 표시하며 이동 중 문서 가로 폭과 scrollLeft를 바꾸지 않는다';
@@ -24,7 +25,9 @@ const backDoMoveStartTitle = '말 없는 빽도 presentation 완료 뒤 자동 �
 const coordinatorMoveStartTitle = 'coordinator의 개는 lowest-label 말을 자동 이동한다';
 const webGlMoveStartTitle = '출발점 WebGL 실패의';
 const legacyMoveStartTitle = '기존 출발점 n01의 걸 이동은';
-const retainedMoveStartTitles = `${atomicAutoMoveStartTitle}|${atomicReloadMoveStartTitle}|${backDoMoveStartTitle}|${coordinatorMoveStartTitle}|${webGlMoveStartTitle}|${legacyMoveStartTitle}`;
+const durableAutoMoveTitle = 'guest의 걸 출발점 자동 이동은 snapshot 재렌더에도 lowest-label 말을 정확히 한 번만 n01→n02→n03→n04 이동한다';
+const movePendingTimerTitle = '느린 move ACK 동안 제출 pending은 이동 버튼을 잠그고 turn-action-timer를 ACK까지 숨긴다';
+const retainedMoveStartTitles = `${atomicAutoMoveStartTitle}|${atomicReloadMoveStartTitle}|${backDoMoveStartTitle}|${coordinatorMoveStartTitle}|${webGlMoveStartTitle}|${legacyMoveStartTitle}|${durableAutoMoveTitle}`;
 
 export const qaSuiteManifest = Object.freeze({
   'online-core': Object.freeze({
@@ -146,9 +149,9 @@ export const qaSuiteManifest = Object.freeze({
     browsers: Object.freeze(['chromium']),
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
-    grep: `${firebaseIsolationTitle}|${moveAckTitle}|${atomicMoveAckTitle}|${moveStartAckTitles}`,
-    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineAiHumanAtomicMoveStartSpec]),
-    tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineAiHumanAtomicMoveStartSpec]),
+    grep: `${firebaseIsolationTitle}|${moveAckTitle}|${atomicMoveAckTitle}|${moveStartAckTitles}|${movePendingTimerTitle}`,
+    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineAiHumanAtomicMoveStartSpec, autoMovePendingTimerSpec]),
+    tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineAiHumanAtomicMoveStartSpec, autoMovePendingTimerSpec]),
   }),
   'mobile-galaxy-move-start': Object.freeze({
     label: 'Mobile Galaxy move start',
@@ -159,8 +162,8 @@ export const qaSuiteManifest = Object.freeze({
     projects: Object.freeze(['desktop-chromium', 'mobile-galaxy']),
     browserIsolationTest: 'tests/smoke/firebase-emulator-isolation.spec.js',
     grep: `${firebaseIsolationTitle}|${retainedMoveStartTitles}`,
-    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec]),
-    tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec]),
+    sharedTargets: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec, autoMovePendingTimerSpec]),
+    tests: Object.freeze([onlineMoveSingleExecutionSpec, onlineMoveBackDoHistorySpec, onlineAiHumanAtomicMoveStartSpec, autoMovePendingTimerSpec]),
   }),
   'safari-visible-mismatch': Object.freeze({
     label: 'Safari visible mismatch',
