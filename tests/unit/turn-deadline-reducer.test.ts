@@ -219,3 +219,74 @@ test('다음 플레이어는 종료 유지와 턴 시작 대기가 끝나기 전
   ));
   assert.equal(readyResult.status, 'committed');
 });
+
+test('윷 결과 deadline은 낙과 누적 보너스에서만 다시 던지기로 유지한다', () => {
+  const now = 20_000;
+  const state = {
+    ...makeState(now + TURN_ACTION_TIMEOUT_MS, 'roll'),
+    roll: null,
+    rollStack: [],
+    selectedRollStackIndex: null,
+    rollStackClosed: false,
+    itemPromptTiming: null,
+    pendingAfterMoveTurnIndex: null,
+    pendingGoldenYutSelection: null,
+  };
+  const cases = [
+    {
+      label: '비누적 윷/모',
+      stackedRollMode: false,
+      roll: { name: '윷', steps: 4, bonus: true },
+      fallOccurred: false,
+      fallCount: 0,
+      expected: 'move',
+    },
+    {
+      label: '누적 윷/모',
+      stackedRollMode: true,
+      roll: { name: '윷', steps: 4, bonus: true },
+      fallOccurred: false,
+      fallCount: 0,
+      expected: 'roll',
+    },
+    {
+      label: '낙',
+      stackedRollMode: false,
+      roll: { name: '도', steps: 1 },
+      fallOccurred: true,
+      fallCount: 1,
+      expected: 'roll',
+    },
+    {
+      label: '일반 결과',
+      stackedRollMode: false,
+      roll: { name: '개', steps: 2 },
+      fallOccurred: false,
+      fallCount: 0,
+      expected: 'move',
+    },
+  ] as const;
+
+  for (const testCase of cases) {
+    const result = withMockNow(now, () => reduceAuthoritativeGameAction(
+      state as never,
+      {
+        type: 'roll_yut',
+        actorId: 'seat-1',
+        payload: {
+          rollTimingZone: 'normal',
+          clientRollResult: testCase.roll,
+          clientFallOccurred: testCase.fallOccurred,
+          clientFallCount: testCase.fallCount,
+          actorLogName: 'P1',
+        },
+      } as never,
+      { ...room, stackedRollMode: testCase.stackedRollMode },
+      sides,
+    ));
+
+    assert.equal(result.status, 'committed', testCase.label);
+    if (result.status !== 'committed') continue;
+    assert.equal(result.patch.turnDeadlineKind, testCase.expected, testCase.label);
+  }
+});
