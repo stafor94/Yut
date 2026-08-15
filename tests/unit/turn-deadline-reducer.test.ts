@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { reduceAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducer';
+import { reduceAuthoritativeGameAction as reduceCoreAuthoritativeGameAction } from '../../src/features/room/services/roomAuthoritativeReducerCore';
 import {
   TURN_ACTION_TIMEOUT_MS,
   TURN_NETWORK_GRACE_MS,
@@ -268,7 +269,7 @@ test('윷 결과 deadline은 낙과 누적 보너스에서만 다시 던지기�
   ] as const;
 
   for (const testCase of cases) {
-    const result = withMockNow(now, () => reduceAuthoritativeGameAction(
+    const result = withMockNow(now, () => reduceCoreAuthoritativeGameAction(
       state as never,
       {
         type: 'roll_yut',
