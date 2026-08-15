@@ -274,7 +274,7 @@ test('윷 결과 deadline은 낙과 누적 보너스에서만 다시 던지기�
         type: 'roll_yut',
         actorId: 'seat-1',
         payload: {
-          rollTimingZone: 'normal',
+          rollTimingZone: 'bad',
           clientRollResult: testCase.roll,
           clientFallOccurred: testCase.fallOccurred,
           clientFallCount: testCase.fallCount,
