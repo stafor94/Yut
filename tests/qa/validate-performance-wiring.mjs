@@ -17,7 +17,7 @@ function readDuration(block, code) {
 
 assert.match(targetBlock, /overall: 300_000/u, '전체 Main Branch QA 관찰 목표는 5분이어야 합니다.');
 assert.match(targetBlock, /summaryReserve: [1-9][0-9_]*/u, 'summary job 완료 여유 시간이 필요합니다.');
-assert.equal(readDuration(emergencyLimitBlock, 'overall'), 370_000, 'Galaxy 비상 한계 360초와 summary 여유 10초를 함께 수용해야 합니다.');
+assert.equal(readDuration(emergencyLimitBlock, 'overall'), 370_000, 'Galaxy timing 비상 한계 360초와 summary 여유 10초를 함께 수용해야 합니다.');
 
 const allLaneCodes = ['build', 'core', 'seq', 'desk', 'galaxy', 'galtime', 'galack', 'galstart', 'safvis', 'safari'];
 for (const code of allLaneCodes) {
@@ -27,10 +27,14 @@ for (const code of allLaneCodes) {
   assert.match(performanceScript, new RegExp(`code: '${code}'`, 'u'), `${code} lane이 성능 보고서에 등록되어야 합니다.`);
 }
 
-for (const code of ['galtime', 'galack', 'galstart']) {
+for (const code of ['galaxy', 'galtime', 'galack', 'galstart']) {
   assert.ok(Number.isFinite(readDuration(issueThresholdBlock, code)), `${code} lane 반복 이슈 기준이 필요합니다.`);
   assert.ok(readDuration(issueThresholdBlock, code) > readDuration(targetBlock, code), `${code} 반복 이슈 기준은 관찰 목표보다 커야 합니다.`);
   assert.ok(readDuration(emergencyLimitBlock, code) > readDuration(issueThresholdBlock, code), `${code} 비상 차단 한계는 반복 이슈 기준보다 커야 합니다.`);
+}
+assert.equal(readDuration(issueThresholdBlock, 'galaxy'), 285_000, '확장 전 Galaxy 285초 경계는 반복 이슈 기준으로 유지해야 합니다.');
+assert.equal(readDuration(emergencyLimitBlock, 'galaxy'), 340_000, '44-test Galaxy 비상 차단 한계는 실측 확장분을 반영한 340초여야 합니다.');
+for (const code of ['galtime', 'galack', 'galstart']) {
   assert.equal(readDuration(emergencyLimitBlock, code), 360_000, `${code} 비상 차단 한계는 360초여야 합니다.`);
 }
 
@@ -39,9 +43,11 @@ assert.match(performanceScript, /const performanceIssueCandidates = \[\]/u, '반
 assert.match(performanceScript, /issueEligible/u, '반복 이슈 기준 초과 여부를 구조화해야 합니다.');
 assert.match(performanceScript, /performance\|\$\{contract\.code\}\|duration-threshold/u, '성능 후보 fingerprint가 안정적으로 생성되어야 합니다.');
 assert.match(performanceScript, /passed: failures\.length === 0/u, '경고와 반복 후보만으로 workflow를 실패시키지 않아야 합니다.');
+assert.match(performanceScript, /340_001/u, '확장된 Galaxy 340초 초과 비상 차단 self-test가 필요합니다.');
+assert.match(performanceScript, /340_000/u, '확장된 Galaxy 340초 경계 성공 self-test가 필요합니다.');
 assert.match(performanceScript, /360_001/u, '360초 초과 비상 차단 self-test가 필요합니다.');
 assert.match(performanceScript, /360_000/u, '360초 경계 성공 self-test가 필요합니다.');
-assert.match(performanceScript, /285_001/u, '기존 285초 단발 초과가 더 이상 차단되지 않는 self-test가 필요합니다.');
+assert.match(performanceScript, /285_001/u, '기존 285초 경계가 반복 이슈 후보로 남는 self-test가 필요합니다.');
 assert.match(performanceScript, /300_001/u, 'Galaxy timing 반복 후보 self-test가 필요합니다.');
 assert.match(performanceScript, /비상 차단 한계/u, '성능 보고서가 반복 기준과 비상 차단 한계를 구분해야 합니다.');
 

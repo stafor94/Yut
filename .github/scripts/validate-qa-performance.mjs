@@ -20,6 +20,9 @@ export const QA_PERFORMANCE_TARGETS_MS = Object.freeze({
 });
 
 export const QA_PERFORMANCE_ISSUE_THRESHOLDS_MS = Object.freeze({
+  // #1604/#1606 expanded the mandatory Galaxy product regressions from 42 to 44 tests.
+  // Preserve the former 285s emergency boundary as the repeated-issue threshold so drift remains tracked.
+  galaxy: 285_000,
   galtime: 300_000,
   galack: 240_000,
   // 150s * (7 required move-start regressions / 6 at the original calibration) = 175s.
@@ -32,7 +35,9 @@ export const QA_PERFORMANCE_EMERGENCY_LIMITS_MS = Object.freeze({
   core: 320_000,
   seq: 270_000,
   desk: 345_000,
-  galaxy: 285_000,
+  // Run 31573865697 completed the 42-test Galaxy suite in 255.4s under the former 285s limit.
+  // Run 31880946402 attempt 2 completed the expanded 44-test suite in 310.6s; preserve the same ~30s emergency headroom.
+  galaxy: 340_000,
   galtime: 360_000,
   galack: 360_000,
   galstart: 360_000,
@@ -206,7 +211,7 @@ function renderMarkdown(report) {
   const lines = [
     '## QA 성능 목표',
     '',
-    '측정 누락과 비상 차단 한계 초과만 workflow를 실패시킵니다. Galaxy timing 계열의 반복 이슈 기준 초과는 구조화된 후보로 기록하며 단일 Run은 경고로 유지합니다.',
+    '측정 누락과 비상 차단 한계 초과만 workflow를 실패시킵니다. Galaxy 계열의 반복 이슈 기준 초과는 구조화된 후보로 기록하며 단일 Run은 경고로 유지합니다.',
     '',
     '| 단계 | 실제 검증 시간 | runner 포함 전체 | 목표 | 반복 이슈 기준 | 비상 차단 한계 | 결과 |',
     '|---|---:|---:|---:|---:|---:|---|',
@@ -300,6 +305,8 @@ function withLaneTiming(laneTimings, code, testDurationMs, durationMs = testDura
 function runSelfTest() {
   assert.equal(QA_PERFORMANCE_TARGETS_MS.galstart, 140_000);
   assert.equal(QA_PERFORMANCE_ISSUE_THRESHOLDS_MS.galstart, 175_000);
+  assert.equal(QA_PERFORMANCE_ISSUE_THRESHOLDS_MS.galaxy, 285_000);
+  assert.equal(QA_PERFORMANCE_EMERGENCY_LIMITS_MS.galaxy, 340_000);
   const laneTimings = makeSelfTestTimings();
   const passReport = validateQaPerformance({ workflowStartedAtMs: 0, measuredAtMs: 289_999, laneTimings });
   assert.equal(passReport.passed, true);
@@ -315,6 +322,32 @@ function runSelfTest() {
   assert.match(testWarning.warnings.join('\n'), /실제 검증 시간/u);
   assert.match(testWarning.warnings.join('\n'), /runner 준비·설치 포함 전체 시간/u);
   assert.equal(testWarning.lanes.find(({ code }) => code === 'safari')?.status, 'warning');
+
+  const baseGalaxyIssueCandidate = validateQaPerformance({
+    workflowStartedAtMs: 0,
+    measuredAtMs: 289_999,
+    laneTimings: withLaneTiming(laneTimings, 'galaxy', 285_001),
+  });
+  assert.equal(baseGalaxyIssueCandidate.passed, true);
+  assert.equal(baseGalaxyIssueCandidate.performanceIssueCandidates[0]?.fingerprint, 'performance|galaxy|duration-threshold');
+  assert.equal(baseGalaxyIssueCandidate.performanceIssueCandidates[0]?.blocking, false);
+
+  const baseGalaxyEmergencyBoundary = validateQaPerformance({
+    workflowStartedAtMs: 0,
+    measuredAtMs: 289_999,
+    laneTimings: withLaneTiming(laneTimings, 'galaxy', 340_000),
+  });
+  assert.equal(baseGalaxyEmergencyBoundary.passed, true);
+  assert.equal(baseGalaxyEmergencyBoundary.performanceIssueCandidates[0]?.blocking, false);
+
+  const baseGalaxyEmergencyFailure = validateQaPerformance({
+    workflowStartedAtMs: 0,
+    measuredAtMs: 289_999,
+    laneTimings: withLaneTiming(laneTimings, 'galaxy', 340_001),
+  });
+  assert.equal(baseGalaxyEmergencyFailure.passed, false);
+  assert.equal(baseGalaxyEmergencyFailure.performanceIssueCandidates[0]?.blocking, true);
+  assert.match(baseGalaxyEmergencyFailure.failures.join('\n'), /비상 차단 한계/u);
 
   const galaxyTargetWarning = validateQaPerformance({
     workflowStartedAtMs: 0,
@@ -357,7 +390,7 @@ function runSelfTest() {
   assert.equal(galaxyEmergencyFailure.performanceIssueCandidates[0]?.blocking, true);
   assert.match(galaxyEmergencyFailure.failures.join('\n'), /비상 차단 한계/u);
 
-  for (const [code, threshold] of [['galack', 240_000], ['galstart', 175_000]]) {
+  for (const [code, threshold] of [['galaxy', 285_000], ['galack', 240_000], ['galstart', 175_000]]) {
     const report = validateQaPerformance({
       workflowStartedAtMs: 0,
       measuredAtMs: 289_999,
