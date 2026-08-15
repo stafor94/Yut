@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState, type ComponentProps } from 'react';
 import { STORAGE_KEYS } from '../appState';
 import { MoveSubmissionPresentationContext } from '../flows/moveSubmissionPresentationContext';
+import {
+  beginMoveSubmissionPresentation,
+  getOrCreateAutoMoveOpportunity,
+  reconcileMoveSubmissionPresentation,
+  shouldAttemptAutoMove,
+  type AutoMoveOpportunity,
+  type MoveSubmissionPresentationState,
+} from '../flows/moveSubmissionOpportunityPolicy';
 import { GameScreenView as GameScreenViewCore } from './GameScreenViewCore';
 
 type GameScreenViewProps = ComponentProps<typeof GameScreenViewCore>;
-
-type AutoMoveOpportunity = {
-  key: string;
-  readyAt: number;
-  submitted: boolean;
-};
 
 const AUTO_SINGLE_MOVE_DELAY_MS = 500;
 
@@ -28,13 +30,11 @@ function getMoveOpportunityKey(props: GameScreenViewProps) {
 export function GameScreenView(props: GameScreenViewProps) {
   const moveOpportunityKey = getMoveOpportunityKey(props);
   const autoMoveOpportunityRef = useRef<AutoMoveOpportunity | null>(null);
-  const pendingMoveObservedBlockedRef = useRef(false);
-  const [pendingMoveOpportunityKey, setPendingMoveOpportunityKey] = useState('');
+  const [pendingMovePresentation, setPendingMovePresentation] = useState<MoveSubmissionPresentationState | null>(null);
 
   const markMoveSubmissionAccepted = (submitted: boolean) => {
     if (!submitted || !moveOpportunityKey) return submitted;
-    pendingMoveObservedBlockedRef.current = false;
-    setPendingMoveOpportunityKey(moveOpportunityKey);
+    setPendingMovePresentation(beginMoveSubmissionPresentation(moveOpportunityKey));
     const autoOpportunity = autoMoveOpportunityRef.current;
     if (autoOpportunity?.key === moveOpportunityKey) autoOpportunity.submitted = true;
     return true;
@@ -49,28 +49,19 @@ export function GameScreenView(props: GameScreenViewProps) {
 
   useEffect(() => {
     if (!props.movingPieceId || !moveOpportunityKey) return;
-    pendingMoveObservedBlockedRef.current = false;
-    setPendingMoveOpportunityKey((current) => current || moveOpportunityKey);
+    setPendingMovePresentation((current) => current ?? beginMoveSubmissionPresentation(moveOpportunityKey));
     const autoOpportunity = autoMoveOpportunityRef.current;
     if (autoOpportunity?.key === moveOpportunityKey) autoOpportunity.submitted = true;
   }, [moveOpportunityKey, props.movingPieceId]);
 
   useEffect(() => {
-    if (!pendingMoveOpportunityKey) return;
-    if (!moveOpportunityKey || moveOpportunityKey !== pendingMoveOpportunityKey || !props.isMyTurn) {
-      pendingMoveObservedBlockedRef.current = false;
-      setPendingMoveOpportunityKey('');
-      return;
-    }
-    if (!props.moveRequestReady) {
-      pendingMoveObservedBlockedRef.current = true;
-      return;
-    }
-    if (pendingMoveObservedBlockedRef.current && !props.movingPieceId) {
-      pendingMoveObservedBlockedRef.current = false;
-      setPendingMoveOpportunityKey('');
-    }
-  }, [moveOpportunityKey, pendingMoveOpportunityKey, props.isMyTurn, props.moveRequestReady, props.movingPieceId]);
+    setPendingMovePresentation((current) => reconcileMoveSubmissionPresentation(current, {
+      currentKey: moveOpportunityKey,
+      isMyTurn: props.isMyTurn,
+      moveRequestReady: props.moveRequestReady,
+      movingPieceActive: Boolean(props.movingPieceId),
+    }));
+  }, [moveOpportunityKey, props.isMyTurn, props.moveRequestReady, props.movingPieceId]);
 
   useEffect(() => {
     if (!moveOpportunityKey
@@ -94,17 +85,17 @@ export function GameScreenView(props: GameScreenViewProps) {
     if (!lowestLabelPiece || props.selectedPieceId !== lowestLabelPiece.id) return undefined;
 
     const now = Date.now();
-    let opportunity = autoMoveOpportunityRef.current;
-    if (!opportunity || opportunity.key !== moveOpportunityKey) {
-      opportunity = {
-        key: moveOpportunityKey,
-        readyAt: now + AUTO_SINGLE_MOVE_DELAY_MS,
-        submitted: false,
-      };
-      autoMoveOpportunityRef.current = opportunity;
-    }
+    const opportunity = getOrCreateAutoMoveOpportunity(
+      autoMoveOpportunityRef.current,
+      moveOpportunityKey,
+      now,
+      AUTO_SINGLE_MOVE_DELAY_MS,
+    );
+    autoMoveOpportunityRef.current = opportunity;
+    if (!opportunity) return undefined;
 
-    if (pendingMoveOpportunityKey === moveOpportunityKey || opportunity.submitted) {
+    const submissionPending = pendingMovePresentation?.key === moveOpportunityKey;
+    if (submissionPending || opportunity.submitted) {
       opportunity.submitted = true;
       return undefined;
     }
@@ -112,12 +103,17 @@ export function GameScreenView(props: GameScreenViewProps) {
 
     const attemptSubmission = () => {
       const current = autoMoveOpportunityRef.current;
-      if (!current || current.key !== moveOpportunityKey || current.submitted) return;
-      if (!props.moveRequestReady || !props.moveActionReady) return;
+      if (!shouldAttemptAutoMove({
+        opportunity: current,
+        key: moveOpportunityKey,
+        now: Date.now(),
+        moveRequestReady: props.moveRequestReady,
+        moveActionReady: props.moveActionReady,
+        submissionPending: pendingMovePresentation?.key === moveOpportunityKey,
+      })) return;
       if (props.onMoveSelectedPiece()) {
-        current.submitted = true;
-        pendingMoveObservedBlockedRef.current = false;
-        setPendingMoveOpportunityKey(moveOpportunityKey);
+        if (current) current.submitted = true;
+        setPendingMovePresentation(beginMoveSubmissionPresentation(moveOpportunityKey));
       }
     };
 
@@ -130,7 +126,7 @@ export function GameScreenView(props: GameScreenViewProps) {
     return () => window.clearTimeout(timer);
   }, [
     moveOpportunityKey,
-    pendingMoveOpportunityKey,
+    pendingMovePresentation,
     props.activeSeat,
     props.activeTurnOrderIntro,
     props.canSeatControlPiece,
@@ -149,9 +145,7 @@ export function GameScreenView(props: GameScreenViewProps) {
     props.winner,
   ]);
 
-  const moveSubmissionPresentationPending = Boolean(
-    pendingMoveOpportunityKey && pendingMoveOpportunityKey === moveOpportunityKey,
-  );
+  const moveSubmissionPresentationPending = pendingMovePresentation?.key === moveOpportunityKey;
 
   return (
     <MoveSubmissionPresentationContext.Provider value={moveSubmissionPresentationPending}>
