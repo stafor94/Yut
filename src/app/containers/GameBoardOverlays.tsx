@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { markNextDeadlineAutoAction } from '../../features/room/services/turnActionStartedAtPolicy';
-import { TURN_END_HOLD_MS } from '../../features/room/services/roomTiming';
 import type { YutResult } from '../../game-core/roll';
 import {
   dismissGoldenYutPicker,
@@ -140,71 +139,12 @@ type TurnIndicatorProps = {
 };
 
 type TurnNeighborSnapshot = Pick<TurnIndicatorProps, 'previousText' | 'previousColor' | 'nextText' | 'nextColor'>;
-type TurnIndicatorSnapshot = TurnIndicatorProps;
 
 const getTurnIndicatorSnapshotKey = (currentText: ReactNode) => (
   typeof currentText === 'string' || typeof currentText === 'number' ? String(currentText) : ''
 );
 
-const makeTurnIndicatorSnapshot = (props: TurnIndicatorProps): TurnIndicatorSnapshot => ({ ...props });
-
 export function TurnIndicator(props: TurnIndicatorProps) {
-  const { currentText } = props;
-  const nextTurnKey = getTurnIndicatorSnapshotKey(currentText);
-  const initialSnapshot = makeTurnIndicatorSnapshot(props);
-  const visibleSnapshotRef = useRef<TurnIndicatorSnapshot>(initialSnapshot);
-  const pendingSnapshotRef = useRef<TurnIndicatorSnapshot | null>(null);
-  const transitionTimerRef = useRef<number | null>(null);
-  const [visibleSnapshot, setVisibleSnapshot] = useState(initialSnapshot);
-  const initialNeighbors = {
-    previousText: visibleSnapshot.previousText,
-    previousColor: visibleSnapshot.previousColor,
-    nextText: visibleSnapshot.nextText,
-    nextColor: visibleSnapshot.nextColor,
-  };
-  const lastVisibleNeighborsRef = useRef<TurnNeighborSnapshot>(initialNeighbors);
-  const neighborsByCurrentTextRef = useRef<Map<string, TurnNeighborSnapshot>>(new Map());
-  const preservedFallTurnKeyRef = useRef('');
-  const [keepNeighborsVisible, setKeepNeighborsVisible] = useState(getFallPresentationActive);
-
-  useEffect(() => subscribeFallPresentationActive(setKeepNeighborsVisible), []);
-
-  useEffect(() => {
-    const nextSnapshot = makeTurnIndicatorSnapshot(props);
-    const visibleKey = getTurnIndicatorSnapshotKey(visibleSnapshotRef.current.currentText);
-    if (!visibleKey || !nextTurnKey || visibleKey === nextTurnKey) {
-      pendingSnapshotRef.current = null;
-      visibleSnapshotRef.current = nextSnapshot;
-      setVisibleSnapshot(nextSnapshot);
-      return;
-    }
-    pendingSnapshotRef.current = nextSnapshot;
-  }, [nextTurnKey, props.color, props.currentRollStack, props.currentText, props.nextColor, props.nextText, props.previousColor, props.previousText, props.showNeighbors]);
-
-  useEffect(() => {
-    const visibleKey = getTurnIndicatorSnapshotKey(visibleSnapshotRef.current.currentText);
-    if (!visibleKey || !nextTurnKey || visibleKey === nextTurnKey) return undefined;
-    if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
-    transitionTimerRef.current = window.setTimeout(() => {
-      transitionTimerRef.current = null;
-      const pendingSnapshot = pendingSnapshotRef.current;
-      if (!pendingSnapshot || getTurnIndicatorSnapshotKey(pendingSnapshot.currentText) !== nextTurnKey) return;
-      pendingSnapshotRef.current = null;
-      visibleSnapshotRef.current = pendingSnapshot;
-      setVisibleSnapshot(pendingSnapshot);
-    }, TURN_END_HOLD_MS);
-    return () => {
-      if (transitionTimerRef.current !== null) {
-        window.clearTimeout(transitionTimerRef.current);
-        transitionTimerRef.current = null;
-      }
-    };
-  }, [nextTurnKey]);
-
-  useEffect(() => () => {
-    if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
-  }, []);
-
   const {
     color,
     showNeighbors,
@@ -214,7 +154,19 @@ export function TurnIndicator(props: TurnIndicatorProps) {
     currentRollStack,
     nextText,
     nextColor,
-  } = visibleSnapshot;
+  } = props;
+  const initialNeighbors = {
+    previousText,
+    previousColor,
+    nextText,
+    nextColor,
+  };
+  const lastVisibleNeighborsRef = useRef<TurnNeighborSnapshot>(initialNeighbors);
+  const neighborsByCurrentTextRef = useRef<Map<string, TurnNeighborSnapshot>>(new Map());
+  const preservedFallTurnKeyRef = useRef('');
+  const [keepNeighborsVisible, setKeepNeighborsVisible] = useState(getFallPresentationActive);
+
+  useEffect(() => subscribeFallPresentationActive(setKeepNeighborsVisible), []);
 
   if (showNeighbors) {
     const visibleNeighbors = { previousText, previousColor, nextText, nextColor };
