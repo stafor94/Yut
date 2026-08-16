@@ -88,11 +88,17 @@ export const getAiTurnScheduleDelayMs = ({
   now?: number;
 }) => {
   const fallbackDelay = normalizePositiveMs(fallbackDelayMs);
-  const readyAt = resolveAiTurnActionReadyAt({ deadlineAt, deadlineKind, hintedDurationMs, now });
-  if (!readyAt || readyAt <= now) return fallbackDelay;
+  const normalizedDeadlineAt = normalizeTurnDeadlineAt(deadlineAt);
+  const readyAt = resolveAiTurnActionReadyAt({
+    deadlineAt: normalizedDeadlineAt,
+    deadlineKind,
+    hintedDurationMs,
+    now,
+  });
+  if (!normalizedDeadlineAt || normalizedDeadlineAt <= now || !readyAt) return fallbackDelay;
 
   const boundaryBuffer = normalizePositiveMs(boundaryBufferMs);
-  return Math.max(fallbackDelay, Math.ceil(readyAt - now + boundaryBuffer));
+  return Math.ceil(Math.max(0, readyAt - now) + boundaryBuffer);
 };
 
 export const getAiTurnScheduleDelayFromDiagnosticState = (

@@ -15,6 +15,7 @@ import {
 } from '../helpers/rooms.js';
 
 const AI_ACTION_BEFORE_TIMEOUT_MS = 10_000;
+const LEGACY_AI_FALLBACK_DELAY_MS = 1_000;
 
 async function waitForHumanTurnReady(page) {
   await expect(page.getByTestId('game-screen')).toBeVisible({ timeout: 35_000 });
@@ -58,6 +59,61 @@ async function clickPerfectDo(page) {
   }));
 }
 
+async function startAiReadyTimingProbe(page, aiSeatId) {
+  await page.evaluate(({ aiSeatId: targetAiSeatId }) => {
+    const runtime = window;
+    runtime.__YUT_QA_AI_READY_TIMING__ = {
+      aiActionStartedAt: 0,
+      authoritativeReadyAt: 0,
+      deadlineAt: 0,
+      presentationCompletedAt: 0,
+      presentationCompletedWallAt: 0,
+      sawMovePresentation: false,
+    };
+
+    const sample = () => {
+      const timing = runtime.__YUT_QA_AI_READY_TIMING__;
+      if (!timing || timing.aiActionStartedAt > 0) return;
+      const debug = runtime.__YUT_DEBUG_STATE__ ?? {};
+      const movingPieceId = String(debug.movingPieceId ?? '');
+      if (movingPieceId) timing.sawMovePresentation = true;
+
+      const activeSeatId = String(debug.activeSeat?.id ?? '');
+      const deadlineAt = Number(debug.turnDeadlineAt ?? 0);
+      const durationMs = Number(debug.currentTurnActionTimeoutMs ?? 0);
+      const authoritativeReadyAt = deadlineAt > 0 && durationMs > 0 ? deadlineAt - durationMs : 0;
+      const wallNow = Date.now();
+      const presentationCompleted = Boolean(
+        timing.sawMovePresentation
+        && activeSeatId === targetAiSeatId
+        && !movingPieceId
+        && debug.turnDeadlineKind === 'roll'
+        && deadlineAt > wallNow
+        && authoritativeReadyAt > 0,
+      );
+      if (!timing.presentationCompletedAt && presentationCompleted) {
+        timing.presentationCompletedAt = performance.now();
+        timing.presentationCompletedWallAt = wallNow;
+        timing.authoritativeReadyAt = authoritativeReadyAt;
+        timing.deadlineAt = deadlineAt;
+      }
+
+      const pendingActions = Array.isArray(debug.pendingLocalRemoteActions)
+        ? debug.pendingLocalRemoteActions
+        : [];
+      if (timing.presentationCompletedAt > 0 && pendingActions.some((entry) => (
+        entry?.type === 'roll_yut'
+        && String(entry?.key ?? '').startsWith(`roll_yut_ai:${targetAiSeatId}:`)
+      ))) {
+        timing.aiActionStartedAt = performance.now();
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, { aiSeatId });
+}
+
 test.describe('AI turn progress after human move', () => {
   test.setTimeout(150_000);
 
@@ -68,7 +124,7 @@ test.describe('AI turn progress after human move', () => {
     roomId = undefined;
   });
 
-  test('사람 첫 자동 이동 뒤 AI 턴은 timeout 대기 없이 authoritative action을 시작한다', async ({ page, context }, testInfo) => {
+  test('사람 첫 자동 이동 presentation 뒤 AI는 기본 1초 추가 대기 없이 authoritative action을 시작한다', async ({ page, context }, testInfo) => {
     test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 AI 턴 진행 회귀에서만 실행합니다.');
 
     await page.setViewportSize({ width: 412, height: 915 });
@@ -124,6 +180,7 @@ test.describe('AI turn progress after human move', () => {
     expect(identity.turnOrderIds).toHaveLength(2);
     expect(identity.aiSeatId).not.toBe('');
 
+    await startAiReadyTimingProbe(page, identity.aiSeatId);
     await clickPerfectDo(page);
 
     await expect.poll(async () => {
@@ -135,6 +192,34 @@ test.describe('AI turn progress after human move', () => {
       intervals: [100, 200, 400],
       message: '사람의 첫 도가 자동 이동으로 authoritative move_piece_resolved를 만들어야 합니다.',
     }).not.toBeNull();
+
+    await expect.poll(async () => page.evaluate(() => {
+      const timing = window.__YUT_QA_AI_READY_TIMING__;
+      return {
+        aiActionStarted: Number(timing?.aiActionStartedAt ?? 0) > 0,
+        presentationCompleted: Number(timing?.presentationCompletedAt ?? 0) > 0,
+        sawMovePresentation: timing?.sawMovePresentation === true,
+      };
+    }), {
+      timeout: AI_ACTION_BEFORE_TIMEOUT_MS,
+      intervals: [50, 100, 200],
+      message: '사람 이동 presentation 종료 뒤 AI roll_yut 예약이 관찰되어야 합니다.',
+    }).toEqual({
+      aiActionStarted: true,
+      presentationCompleted: true,
+      sawMovePresentation: true,
+    });
+
+    const timing = await page.evaluate(() => window.__YUT_QA_AI_READY_TIMING__);
+    const authoritativeReadyAt = Number(timing?.authoritativeReadyAt ?? 0);
+    const presentationCompletedWallAt = Number(timing?.presentationCompletedWallAt ?? 0);
+    expect(authoritativeReadyAt).toBeGreaterThan(0);
+    expect(presentationCompletedWallAt).toBeGreaterThan(0);
+    expect(authoritativeReadyAt).toBeLessThanOrEqual(presentationCompletedWallAt);
+    expect(Number(timing?.deadlineAt ?? 0)).toBeGreaterThan(presentationCompletedWallAt);
+    const actionStartDelayMs = Number(timing?.aiActionStartedAt ?? 0) - Number(timing?.presentationCompletedAt ?? 0);
+    expect(actionStartDelayMs).toBeGreaterThanOrEqual(0);
+    expect(actionStartDelayMs).toBeLessThan(LEGACY_AI_FALLBACK_DELAY_MS - 100);
 
     await expect.poll(async () => {
       const sequences = await getRoomSequencesForQa(roomId);
