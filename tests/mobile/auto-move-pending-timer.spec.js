@@ -187,9 +187,20 @@ test.describe('Galaxy durable auto move and move timer pending', () => {
     expect(identity.otherId).not.toBe('');
 
     await clickPerfectRoll(game.guestPage);
-    const moveButton = game.guestPage.getByTestId('move-piece-button');
-    await expect(moveButton).toBeEnabled({ timeout: 20_000 });
-    await expect(game.guestPage.locator('.turn-action-timer')).toHaveCount(1);
+    await expect.poll(() => game.guestPage.evaluate(({ lowestId }) => {
+      const debug = window.__YUT_DEBUG_STATE__ ?? {};
+      const piece = Array.isArray(debug.pieces)
+        ? debug.pieces.find((candidate) => candidate?.id === lowestId)
+        : undefined;
+      return {
+        turnDeadlineKind: String(debug.turnDeadlineKind ?? ''),
+        movingPieceId: String(debug.movingPieceId ?? ''),
+        nodeId: String(piece?.nodeId ?? ''),
+      };
+    }, { lowestId: identity.lowestId }), {
+      timeout: 20_000,
+      intervals: [20, 50, 100],
+    }).toEqual({ turnDeadlineKind: 'move', movingPieceId: '', nodeId: 'n01' });
     await bumpRoomStateTurnVersionForQa({ roomId, authPage: game.hostPage });
 
     await expectPieceConvergence(game.guestPage, game.hostPage, identity);
