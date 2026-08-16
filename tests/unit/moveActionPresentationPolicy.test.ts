@@ -4,7 +4,7 @@ import {
   getMoveActionButtonText,
   getMoveControlsActionReady,
   getMoveSeatTransitionPhase,
-} from '../../src/app/flows/moveActionPresentationPolicy.ts';
+} from '../../src/app/flows/moveActionPresentationPolicy.js';
 
 test('같은 플레이어의 roll→move phase는 실제 좌석 turn 교체로 표시하지 않는다', () => {
   const seatTransitionPhase = getMoveSeatTransitionPhase({

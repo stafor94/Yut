@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { shouldRenderTurnIndicatorNeighbors } from '../../src/app/flows/turnIndicatorPresentation.ts';
+import { shouldRenderTurnIndicatorNeighbors } from '../../src/app/flows/turnIndicatorPresentation.js';
 
 test('turn neighbors remain visible during the fall completion handoff gap', () => {
   assert.equal(shouldRenderTurnIndicatorNeighbors({
@@ -33,10 +33,7 @@ test('normal and active-fall visibility paths continue to render neighbors', () 
 });
 
 test('TurnIndicator는 activeSeat 수신 시각 기준 별도 handoff hold를 다시 시작하지 않는다', () => {
-  const source = readFileSync(
-    new URL('../../src/app/containers/GameBoardOverlays.tsx', import.meta.url),
-    'utf8',
-  );
+  const source = readFileSync('src/app/containers/GameBoardOverlays.tsx', 'utf8');
   const start = source.indexOf('export function TurnIndicator');
   const end = source.indexOf('type BoardMessageStackProps');
   assert.ok(start >= 0);
