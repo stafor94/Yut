@@ -40,6 +40,7 @@ import {
   getMoveControlsActionReady,
   getMoveSeatTransitionPhase,
 } from '../flows/moveActionPresentationPolicy';
+import { markManualStackMoveSelection } from '../flows/moveSubmissionOpportunityPolicy';
 import { isTurnActionPresentationPending } from '../flows/turnActionPresentationPolicy';
 import { shouldPlayLocalTurnSound } from '../flows/turnSound';
 import { scheduleTurnTransitionBoundary } from '../flows/turnTransitionClock';
@@ -528,7 +529,17 @@ export function GameBoardControls({
       {turnActionTimerVisible && <div key={`${turnActionDeadlineKey}:${timerDurationMs}`} className="time-limit-bar turn-action-timer" style={turnActionTimerStyle} data-deadline-at={authoritativeTurnDeadline.at} data-animation-delay-ms={turnActionTimerAnimation.delayMs} aria-hidden="true"><span style={turnActionTimerFillStyle}></span></div>}
       {showRollStackPicker && <div className="roll-stack-picker" aria-label="이동 스택 선택"><div className="roll-stack-options">{rollStack.map((entry, index) => <button type="button" key={`${entry.name}-${index}`} onClick={() => {
         if (!isRollStackIndexSelectable(rollStackSelectionAvailability, index)) return;
-        runTurnAction(() => moveSelectionTimedOut ? onMoveRollStackIndex(index) : onSelectRollStackIndex(index));
+        runTurnAction(() => {
+          if (moveSelectionTimedOut) return onMoveRollStackIndex(index);
+          markManualStackMoveSelection({
+            activeSeatId: activeSeatId ?? '',
+            turnDeadlineAt: authoritativeTurnDeadline.at,
+            rollStackIndex: index,
+            roll: entry,
+          });
+          onSelectRollStackIndex(index);
+          return true;
+        });
       }} disabled={!actionReady || turnActionTimedOut || !isRollStackIndexSelectable(rollStackSelectionAvailability, index)}>{entry.name}</button>)}</div></div>}
       {turnActionTimedOut && showRollStackPicker && <div data-testid="turn-timeout-status" role="status" aria-live="polite">시간 초과 처리 중...</div>}
       {showRollTimingControl && <RollTimingControl resetKey={rollTimingResetKey} timingStartedAt={rollTimingStartedAt} autoSubmitAt={authoritativeTurnDeadline.at} buttonTestId={rollControlPresentation.actionButtonTestId} buttonText={actionButtonText} onRoll={handleRollButtonClick} disabled={!canRollNow} />}
