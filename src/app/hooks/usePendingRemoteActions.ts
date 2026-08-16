@@ -8,6 +8,7 @@ import {
   clearMoveActionClaims,
   releaseMoveActionClaim,
 } from '../flows/moveExecutionPolicy';
+import { publishMoveSubmissionPending } from '../flows/moveSubmissionPresentationState';
 import {
   clearPendingOptimisticMoveActions,
   forgetPendingOptimisticMoveAction,
@@ -38,6 +39,9 @@ export function usePendingRemoteActions() {
   );
 
   const syncPendingLocalRemoteActionCount = () => {
+    publishMoveSubmissionPending(
+      Array.from(pendingLocalRemoteActionMetaRef.current.values()).some((meta) => meta.type === 'move_piece'),
+    );
     setPendingLocalRemoteActionCount(pendingLocalRemoteActionsRef.current.size);
   };
   const getPendingLocalRemoteActionType = (actionKey: string): GameAction['type'] => {

@@ -40,6 +40,7 @@ let latestMoveTransitionReadiness: MoveTransitionReadiness = {
   contextKey: '',
 };
 
+const moveTransitionReadinessListeners = new Set<() => void>();
 const moveActionClaims = new Map<string, MoveActionClaim>();
 
 export function shouldExecuteScheduledMove({
@@ -177,8 +178,22 @@ export function publishMoveExecutionReadiness(readiness: MoveExecutionReadiness)
   cleanupSettledMoveActionClaims();
 }
 
+export function getMoveTransitionReadinessSnapshot() {
+  return latestMoveTransitionReadiness;
+}
+
+export function subscribeMoveTransitionReadiness(listener: () => void) {
+  moveTransitionReadinessListeners.add(listener);
+  return () => moveTransitionReadinessListeners.delete(listener);
+}
+
 export function publishMoveTransitionReadiness(readiness: MoveTransitionReadiness) {
+  if (latestMoveTransitionReadiness.actionReady === readiness.actionReady
+    && latestMoveTransitionReadiness.contextKey === readiness.contextKey) return;
   latestMoveTransitionReadiness = readiness;
+  queueMicrotask(() => {
+    moveTransitionReadinessListeners.forEach((listener) => listener());
+  });
 }
 
 export function canExecuteMoveActionNow(actionKey: string) {

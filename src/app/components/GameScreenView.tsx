@@ -45,6 +45,7 @@ import { GameBoardSection } from '../containers/GameBoardSection';
 import { TurnOrderIntroOverlay } from './TurnOrderIntroOverlay';
 import { useDeadlineReached } from '../hooks/useDeadlineReached';
 import { useDisplayClock } from '../hooks/useDisplayClock';
+import { useDurableStartPieceAutoMove } from '../hooks/useDurableStartPieceAutoMove';
 import { useStackedRollTimeoutRecovery } from '../hooks/useStackedRollTimeoutRecovery';
 
 type GameScreenViewProps = {
@@ -260,6 +261,29 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
     });
     if (automaticPiece && automaticPiece.id !== selectedPieceId) onSelectPieceId(automaticPiece.id);
   }, [activeSeat, activeTurnOrderIntro, canSeatControlPiece, deferRollDerivedContent, isMyTurn, movingPieceId, onSelectPieceId, pendingTrapPlacement, pieces, rollResultHolding, rollStack, rollStackClosed, selectedPieceId, selectedRollStackIndex, turnOrderPhase.active, waitingForOnlineTurnOrder, winner]);
+
+  useDurableStartPieceAutoMove({
+    activeSeat,
+    activeTurnOrderIntro,
+    canSeatControlPiece,
+    isMyTurn,
+    moveActionReady,
+    moveRequestReady,
+    movingPieceId,
+    onMoveSelectedPiece,
+    onSelectPieceId,
+    pendingTrapPlacement,
+    pieces,
+    roll,
+    rollResultHolding,
+    selectedPieceId,
+    selectedRollStackIndex,
+    turnDeadlineAt,
+    turnDeadlineKind,
+    turnOrderActive: turnOrderPhase.active,
+    waitingForOnlineTurnOrder,
+    winner,
+  });
 
   useLayoutEffect(() => {
     if (revealedRollSnapshot) {
