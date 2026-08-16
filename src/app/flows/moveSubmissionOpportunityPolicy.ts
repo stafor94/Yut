@@ -20,6 +20,17 @@ export function getOrCreateAutoMoveOpportunity(
   };
 }
 
+export function shouldPreserveManualStackMoveOwnership({
+  selectedRollStackIndex,
+  rollBonus,
+}: {
+  selectedRollStackIndex: number | null;
+  rollBonus: boolean;
+}) {
+  return selectedRollStackIndex !== null
+    && (selectedRollStackIndex > 0 || rollBonus);
+}
+
 export function shouldAttemptAutoMove({
   opportunity,
   key,

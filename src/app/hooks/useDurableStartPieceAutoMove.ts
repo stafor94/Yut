@@ -13,6 +13,7 @@ import {
   getOrCreateAutoMoveOpportunity,
   markAutoMoveSubmitted,
   shouldAttemptAutoMove,
+  shouldPreserveManualStackMoveOwnership,
   type AutoMoveOpportunity,
 } from '../flows/moveSubmissionOpportunityPolicy';
 
@@ -150,7 +151,10 @@ export function useDurableStartPieceAutoMove({
       return undefined;
     }
 
-    if (selectedRollStackIndex !== null) {
+    if (shouldPreserveManualStackMoveOwnership({
+      selectedRollStackIndex,
+      rollBonus: roll.bonus,
+    })) {
       opportunityRef.current = null;
       return undefined;
     }

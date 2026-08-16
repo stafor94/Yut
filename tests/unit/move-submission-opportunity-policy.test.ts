@@ -9,6 +9,7 @@ import {
   getOrCreateAutoMoveOpportunity,
   markAutoMoveSubmitted,
   shouldAttemptAutoMove,
+  shouldPreserveManualStackMoveOwnership,
 } from '../../src/app/flows/moveSubmissionOpportunityPolicy';
 import { publishMoveSubmissionPending } from '../../src/app/flows/moveSubmissionPresentationState';
 import { isTurnActionPresentationPending } from '../../src/app/flows/turnActionPresentationPolicy';
@@ -74,6 +75,25 @@ test('성공 제출로 소비된 auto move opportunity는 수동 클릭·snapsho
     submissionPending: false,
   }), false);
   assert.equal(getOrCreateAutoMoveOpportunity(opportunity, key, 9_000, true), opportunity);
+});
+
+test('수동 stacked roll 선택만 durable auto move ownership을 양보하고 단일 자동 preselection은 유지한다', () => {
+  assert.equal(shouldPreserveManualStackMoveOwnership({
+    selectedRollStackIndex: null,
+    rollBonus: false,
+  }), false);
+  assert.equal(shouldPreserveManualStackMoveOwnership({
+    selectedRollStackIndex: 0,
+    rollBonus: false,
+  }), false);
+  assert.equal(shouldPreserveManualStackMoveOwnership({
+    selectedRollStackIndex: 1,
+    rollBonus: false,
+  }), true);
+  assert.equal(shouldPreserveManualStackMoveOwnership({
+    selectedRollStackIndex: 0,
+    rollBonus: true,
+  }), true);
 });
 
 test('move transition readiness snapshot은 현재 GameBoardControls context를 그대로 보존한다', () => {
