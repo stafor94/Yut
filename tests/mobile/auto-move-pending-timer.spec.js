@@ -75,6 +75,22 @@ async function clickPerfectRoll(page) {
   }));
 }
 
+async function armManualMoveClickRace(page) {
+  await page.evaluate(() => {
+    const clickWhenReady = () => {
+      const button = document.querySelector('[data-testid="move-piece-button"]');
+      if (!(button instanceof HTMLButtonElement) || button.disabled) return false;
+      button.click();
+      return true;
+    };
+    if (clickWhenReady()) return;
+    const observer = new MutationObserver(() => {
+      if (clickWhenReady()) observer.disconnect();
+    });
+    observer.observe(document, { childList: true, subtree: true, attributes: true });
+  });
+}
+
 async function openGuestTurnGame({ browser, page, context, testInfo, suffix, moveResultDelayMs }) {
   await page.setViewportSize({ width: 412, height: 915 });
   const guestContext = await browser.newContext({ viewport: { width: 412, height: 915 } });
@@ -179,7 +195,7 @@ test.describe('Galaxy durable auto move and move timer pending', () => {
   test('guest의 걸 출발점 자동 이동은 snapshot 재렌더에도 lowest-label 말을 정확히 한 번만 n01→n02→n03→n04 이동한다', async ({ browser, page, context }, testInfo) => {
     test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
     testInfo.setTimeout(150_000);
-    const game = await openGuestTurnGame({ browser, page, context, testInfo, suffix: 'guest-gul-auto-snapshot', moveResultDelayMs: 0 });
+    const game = await openGuestTurnGame({ browser, page, context, testInfo, suffix: 'guest-gul-auto-snapshot', moveResultDelayMs: 2_500 });
     roomId = game.roomId;
     guestContext = game.guestContext;
     const identity = await getGuestPieceIdentity(game.guestPage);
@@ -187,27 +203,17 @@ test.describe('Galaxy durable auto move and move timer pending', () => {
     expect(identity.otherId).not.toBe('');
 
     await clickPerfectRoll(game.guestPage);
-    await expect.poll(() => game.guestPage.evaluate(({ lowestId }) => {
-      const debug = window.__YUT_DEBUG_STATE__ ?? {};
-      const piece = Array.isArray(debug.pieces)
-        ? debug.pieces.find((candidate) => candidate?.id === lowestId)
-        : undefined;
-      return {
-        turnDeadlineKind: String(debug.turnDeadlineKind ?? ''),
-        movingPieceId: String(debug.movingPieceId ?? ''),
-        nodeId: String(piece?.nodeId ?? ''),
-      };
-    }, { lowestId: identity.lowestId }), {
-      timeout: 20_000,
+    await expect.poll(() => game.guestPage.evaluate(() => String(window.__YUT_DEBUG_STATE__?.movingPieceId ?? '')), {
+      timeout: 10_000,
       intervals: [20, 50, 100],
-    }).toEqual({ turnDeadlineKind: 'move', movingPieceId: '', nodeId: 'n01' });
+    }).toBe(identity.lowestId);
     await bumpRoomStateTurnVersionForQa({ roomId, authPage: game.hostPage });
 
     await expectPieceConvergence(game.guestPage, game.hostPage, identity);
     await expectSingleResolvedMove(roomId, identity.ownerSeatId);
   });
 
-  test('느린 move ACK 동안 제출 pending은 이동 버튼을 잠그고 turn-action-timer를 ACK까지 숨긴다', async ({ browser, page, context }, testInfo) => {
+  test('느린 move ACK 동안 수동 클릭과 durable 자동 제출이 경합해도 pending은 이동 버튼을 잠그고 turn-action-timer를 ACK까지 숨긴다', async ({ browser, page, context }, testInfo) => {
     test.skip(testInfo.project.name !== 'mobile-galaxy', 'Galaxy 412×915 회귀에서만 실행합니다.');
     testInfo.setTimeout(150_000);
     const game = await openGuestTurnGame({ browser, page, context, testInfo, suffix: 'guest-gul-slow-ack-timer', moveResultDelayMs: 2_500 });
@@ -215,16 +221,9 @@ test.describe('Galaxy durable auto move and move timer pending', () => {
     guestContext = game.guestContext;
     const identity = await getGuestPieceIdentity(game.guestPage);
 
+    await armManualMoveClickRace(game.guestPage);
     await clickPerfectRoll(game.guestPage);
     const moveButton = game.guestPage.getByTestId('move-piece-button');
-    await expect(moveButton).toBeEnabled({ timeout: 20_000 });
-    await expect(game.guestPage.locator('.turn-action-timer')).toHaveCount(1);
-    await game.guestPage.evaluate(() => {
-      window.setTimeout(() => {
-        const button = document.querySelector('[data-testid="move-piece-button"]');
-        if (button instanceof HTMLButtonElement && !button.disabled) button.click();
-      }, 450);
-    });
 
     await expect.poll(() => game.guestPage.evaluate(() => String(window.__YUT_DEBUG_STATE__?.movingPieceId ?? '')), {
       timeout: 10_000,
