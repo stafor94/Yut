@@ -7,9 +7,11 @@ import {
 } from '../../src/app/flows/moveExecutionPolicy';
 import {
   getOrCreateAutoMoveOpportunity,
+  isManualStackMoveSelectionCurrent,
   markAutoMoveSubmitted,
+  markManualStackMoveSelection,
+  resetManualStackMoveSelectionForTests,
   shouldAttemptAutoMove,
-  shouldPreserveManualStackMoveOwnership,
 } from '../../src/app/flows/moveSubmissionOpportunityPolicy';
 import { publishMoveSubmissionPending } from '../../src/app/flows/moveSubmissionPresentationState';
 import { isTurnActionPresentationPending } from '../../src/app/flows/turnActionPresentationPolicy';
@@ -77,16 +79,64 @@ test('성공 제출로 소비된 auto move opportunity는 수동 클릭·snapsho
   assert.equal(getOrCreateAutoMoveOpportunity(opportunity, key, 9_000, true), opportunity);
 });
 
-test('비zero stacked 선택은 수동 소유권을 유지하고 단일 잔여 stack의 index 0 preselection은 auto move를 허용한다', () => {
-  assert.equal(shouldPreserveManualStackMoveOwnership({
-    selectedRollStackIndex: null,
+test('수동 stacked 선택 source는 같은 authoritative roll identity에만 소유권을 유지한다', () => {
+  resetManualStackMoveSelectionForTests();
+  const yut = { name: '윷', steps: 4, bonus: true } as const;
+  const gae = { name: '개', steps: 2 } as const;
+  const backDo = { name: '빽도', steps: -1 } as const;
+
+  assert.equal(isManualStackMoveSelectionCurrent({
+    activeSeatId: 'P1',
+    turnDeadlineAt: 20_000,
+    rollStackIndex: 0,
+    roll: yut,
   }), false);
-  assert.equal(shouldPreserveManualStackMoveOwnership({
-    selectedRollStackIndex: 0,
-  }), false);
-  assert.equal(shouldPreserveManualStackMoveOwnership({
-    selectedRollStackIndex: 1,
+
+  markManualStackMoveSelection({
+    activeSeatId: 'P1',
+    turnDeadlineAt: 20_000,
+    rollStackIndex: 0,
+    roll: yut,
+  });
+  assert.equal(isManualStackMoveSelectionCurrent({
+    activeSeatId: 'P1',
+    turnDeadlineAt: 20_000,
+    rollStackIndex: 0,
+    roll: yut,
   }), true);
+  assert.equal(isManualStackMoveSelectionCurrent({
+    activeSeatId: 'P1',
+    turnDeadlineAt: 20_000,
+    rollStackIndex: 0,
+    roll: backDo,
+  }), false);
+  assert.equal(isManualStackMoveSelectionCurrent({
+    activeSeatId: 'P1',
+    turnDeadlineAt: 20_001,
+    rollStackIndex: 0,
+    roll: yut,
+  }), false);
+
+  markManualStackMoveSelection({
+    activeSeatId: 'P1',
+    turnDeadlineAt: 30_000,
+    rollStackIndex: 1,
+    roll: gae,
+  });
+  assert.equal(isManualStackMoveSelectionCurrent({
+    activeSeatId: 'P1',
+    turnDeadlineAt: 30_000,
+    rollStackIndex: 1,
+    roll: gae,
+  }), true);
+  assert.equal(isManualStackMoveSelectionCurrent({
+    activeSeatId: 'P1',
+    turnDeadlineAt: 30_000,
+    rollStackIndex: 0,
+    roll: gae,
+  }), false);
+
+  resetManualStackMoveSelectionForTests();
 });
 
 test('move transition readiness snapshot은 현재 GameBoardControls context를 그대로 보존한다', () => {
