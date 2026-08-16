@@ -1,7 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
 import type { YutResult } from '../../game-core/roll';
 import { STORAGE_KEYS, type Seat } from '../appState';
+import {
+  canExecuteScheduledMoveNow,
+  getLatestMoveExecutionContextKey,
+  getMoveTransitionReadinessSnapshot,
+  subscribeMoveTransitionReadiness,
+} from '../flows/moveExecutionPolicy';
 import type { MoveActionSubmissionOptions } from '../flows/moveActionReadiness';
 import {
   getOrCreateAutoMoveOpportunity,
@@ -54,6 +60,25 @@ function getMoveOpportunityKey({
   ].join(':');
 }
 
+function isCurrentMoveTransitionReady({
+  activeSeatId,
+  turnDeadlineAt,
+  transitionActionReady,
+  transitionContextKey,
+}: {
+  activeSeatId: string;
+  turnDeadlineAt: number;
+  transitionActionReady: boolean;
+  transitionContextKey: string;
+}) {
+  return Boolean(
+    transitionActionReady
+    && activeSeatId
+    && transitionContextKey.startsWith(`${activeSeatId}:move:`)
+    && transitionContextKey.endsWith(`:move:${turnDeadlineAt}`),
+  );
+}
+
 export function useDurableStartPieceAutoMove({
   activeSeat,
   activeTurnOrderIntro,
@@ -77,6 +102,18 @@ export function useDurableStartPieceAutoMove({
   winner,
 }: DurableStartPieceAutoMoveInput) {
   const opportunityRef = useRef<AutoMoveOpportunity | null>(null);
+  const moveTransitionReadiness = useSyncExternalStore(
+    subscribeMoveTransitionReadiness,
+    getMoveTransitionReadinessSnapshot,
+    getMoveTransitionReadinessSnapshot,
+  );
+  const transitionReadyForCurrentMove = isCurrentMoveTransitionReady({
+    activeSeatId: activeSeat?.id ?? '',
+    turnDeadlineAt,
+    transitionActionReady: moveTransitionReadiness.actionReady,
+    transitionContextKey: moveTransitionReadiness.contextKey,
+  });
+  const canonicalMoveReady = moveRequestReady && moveActionReady && transitionReadyForCurrentMove;
 
   useEffect(() => {
     if (!activeSeat || !isMyTurn || !roll || turnDeadlineKind !== 'move' || turnDeadlineAt <= 0) {
@@ -110,31 +147,41 @@ export function useDurableStartPieceAutoMove({
       return undefined;
     }
 
+    if (selectedPieceId !== lowestLabelPiece.id) {
+      onSelectPieceId(lowestLabelPiece.id);
+      return undefined;
+    }
+
     const now = Date.now();
     const opportunity = getOrCreateAutoMoveOpportunity(
       opportunityRef.current,
       opportunityKey,
       now,
       AUTO_SINGLE_MOVE_DELAY_MS,
+      canonicalMoveReady,
     );
     opportunityRef.current = opportunity;
     if (!opportunity || opportunity.submitted) return undefined;
 
-    if (selectedPieceId !== lowestLabelPiece.id) {
-      onSelectPieceId(lowestLabelPiece.id);
-      return undefined;
-    }
-
     const attemptSubmission = () => {
       const current = opportunityRef.current;
+      const currentTransition = getMoveTransitionReadinessSnapshot();
+      const transitionActionReady = isCurrentMoveTransitionReady({
+        activeSeatId: activeSeat.id,
+        turnDeadlineAt,
+        transitionActionReady: currentTransition.actionReady,
+        transitionContextKey: currentTransition.contextKey,
+      });
+      const executionContextKey = getLatestMoveExecutionContextKey();
       if (!shouldAttemptAutoMove({
         opportunity: current,
         key: opportunityKey,
         now: Date.now(),
         moveRequestReady,
         moveActionReady,
+        transitionActionReady,
         submissionPending: Boolean(movingPieceId),
-      })) return;
+      }) || !canExecuteScheduledMoveNow(executionContextKey)) return;
       if (onMoveSelectedPiece()) markAutoMoveSubmitted(current, opportunityKey);
     };
 
@@ -149,6 +196,7 @@ export function useDurableStartPieceAutoMove({
     activeSeat,
     activeTurnOrderIntro,
     canSeatControlPiece,
+    canonicalMoveReady,
     isMyTurn,
     moveActionReady,
     moveRequestReady,

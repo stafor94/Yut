@@ -9,9 +9,11 @@ export function getOrCreateAutoMoveOpportunity(
   key: string,
   now: number,
   delayMs: number,
+  canStart: boolean,
 ): AutoMoveOpportunity | null {
   if (!key) return null;
   if (current?.key === key) return current;
+  if (!canStart) return null;
   return {
     key,
     readyAt: now + Math.max(0, delayMs),
@@ -25,6 +27,7 @@ export function shouldAttemptAutoMove({
   now,
   moveRequestReady,
   moveActionReady,
+  transitionActionReady,
   submissionPending,
 }: {
   opportunity: AutoMoveOpportunity | null;
@@ -32,6 +35,7 @@ export function shouldAttemptAutoMove({
   now: number;
   moveRequestReady: boolean;
   moveActionReady: boolean;
+  transitionActionReady: boolean;
   submissionPending: boolean;
 }) {
   return Boolean(
@@ -41,6 +45,7 @@ export function shouldAttemptAutoMove({
     && !submissionPending
     && moveRequestReady
     && moveActionReady
+    && transitionActionReady
     && now >= opportunity.readyAt,
   );
 }
