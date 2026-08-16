@@ -1,8 +1,20 @@
+import type { YutResult } from '../../game-core/roll';
+
 export type AutoMoveOpportunity = {
   key: string;
   readyAt: number;
   submitted: boolean;
 };
+
+type ManualStackMoveSelection = {
+  activeSeatId: string;
+  turnDeadlineAt: number;
+  rollStackIndex: number;
+  rollName: YutResult['name'];
+  rollSteps: number;
+};
+
+let latestManualStackMoveSelection: ManualStackMoveSelection | null = null;
 
 export function getOrCreateAutoMoveOpportunity(
   current: AutoMoveOpportunity | null,
@@ -20,12 +32,51 @@ export function getOrCreateAutoMoveOpportunity(
   };
 }
 
-export function shouldPreserveManualStackMoveOwnership({
-  selectedRollStackIndex,
+export function markManualStackMoveSelection({
+  activeSeatId,
+  turnDeadlineAt,
+  rollStackIndex,
+  roll,
 }: {
-  selectedRollStackIndex: number | null;
+  activeSeatId: string;
+  turnDeadlineAt: number;
+  rollStackIndex: number;
+  roll: YutResult;
 }) {
-  return selectedRollStackIndex !== null && selectedRollStackIndex > 0;
+  latestManualStackMoveSelection = {
+    activeSeatId,
+    turnDeadlineAt,
+    rollStackIndex,
+    rollName: roll.name,
+    rollSteps: roll.steps,
+  };
+}
+
+export function isManualStackMoveSelectionCurrent({
+  activeSeatId,
+  turnDeadlineAt,
+  rollStackIndex,
+  roll,
+}: {
+  activeSeatId: string;
+  turnDeadlineAt: number;
+  rollStackIndex: number | null;
+  roll: YutResult;
+}) {
+  const current = latestManualStackMoveSelection;
+  return Boolean(
+    current
+    && rollStackIndex !== null
+    && current.activeSeatId === activeSeatId
+    && current.turnDeadlineAt === turnDeadlineAt
+    && current.rollStackIndex === rollStackIndex
+    && current.rollName === roll.name
+    && current.rollSteps === roll.steps,
+  );
+}
+
+export function resetManualStackMoveSelectionForTests() {
+  latestManualStackMoveSelection = null;
 }
 
 export function shouldAttemptAutoMove({
