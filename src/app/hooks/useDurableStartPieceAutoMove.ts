@@ -182,13 +182,26 @@ export function useDurableStartPieceAutoMove({
       if (onMoveSelectedPiece()) markAutoMoveSubmitted(current, opportunityKey);
     };
 
+    let readyFrameId = 0;
+    let submitFrameId = 0;
+    let readyTimerId = 0;
+    const scheduleAfterPresentedReadyFrame = () => {
+      readyFrameId = window.requestAnimationFrame(() => {
+        submitFrameId = window.requestAnimationFrame(attemptSubmission);
+      });
+    };
+
     const remainingDelayMs = opportunity.readyAt - now;
     if (remainingDelayMs <= 0) {
-      attemptSubmission();
-      return undefined;
+      scheduleAfterPresentedReadyFrame();
+    } else {
+      readyTimerId = window.setTimeout(scheduleAfterPresentedReadyFrame, remainingDelayMs);
     }
-    const timer = window.setTimeout(attemptSubmission, remainingDelayMs);
-    return () => window.clearTimeout(timer);
+    return () => {
+      if (readyTimerId) window.clearTimeout(readyTimerId);
+      if (readyFrameId) window.cancelAnimationFrame(readyFrameId);
+      if (submitFrameId) window.cancelAnimationFrame(submitFrameId);
+    };
   }, [
     activeSeat,
     activeTurnOrderIntro,
