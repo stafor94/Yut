@@ -153,7 +153,7 @@ export function useDurableStartPieceAutoMove({
 
     if (shouldPreserveManualStackMoveOwnership({
       selectedRollStackIndex,
-      rollBonus: roll.bonus,
+      rollBonus: Boolean(roll.bonus),
     })) {
       opportunityRef.current = null;
       return undefined;
