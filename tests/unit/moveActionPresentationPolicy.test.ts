@@ -4,7 +4,7 @@ import {
   getMoveActionButtonText,
   getMoveControlsActionReady,
   getMoveSeatTransitionPhase,
-} from '../../src/app/flows/moveActionPresentationPolicy.js';
+} from '../../src/app/flows/moveActionPresentationPolicy.ts';
 
 test('같은 플레이어의 roll→move phase는 실제 좌석 turn 교체로 표시하지 않는다', () => {
   const seatTransitionPhase = getMoveSeatTransitionPhase({
@@ -69,6 +69,19 @@ test('move phase controls는 authoritative readyAt 전에는 selection readiness
   });
   assert.equal(readiness.authoritativeActionReady, false);
   assert.equal(readiness.actionReady, false);
+});
+
+test('authoritative readyAt이 지나면 visual starting phase를 별도 action gate로 사용하지 않는다', () => {
+  const readiness = getMoveControlsActionReady({
+    seatTransitionPhase: 'starting',
+    hasAuthoritativeDeadline: true,
+    authoritativeReadyAt: 4_000,
+    now: 4_000,
+    turnActionPhase: 'move',
+    moveRequestReady: true,
+  });
+  assert.equal(readiness.authoritativeActionReady, true);
+  assert.equal(readiness.actionReady, true);
 });
 
 test('roll phase는 move request readiness와 독립적으로 기존 전환 gate를 유지한다', () => {

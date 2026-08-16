@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ITEM_DEFINITIONS, type ItemType } from '../../features/items/logic/items';
 import {
-  TURN_END_HOLD_MS,
   TURN_ITEM_PROMPT_TIMEOUT_MS,
   TURN_START_DELAY_MS,
   getTurnActionTimeoutMsForCount,
@@ -91,13 +90,6 @@ type GameBoardControlsProps = {
   onResumeHumanControl: () => void;
 };
 
-type LocalTurnTransition = {
-  key: string;
-  displayAt: number;
-  readyAt: number;
-  holdFromReceipt: boolean;
-};
-
 export function GameBoardControls({
   roll,
   stackedRollMode,
@@ -152,7 +144,6 @@ export function GameBoardControls({
   const onMoveSelectedPieceRef = useRef(onMoveSelectedPiece);
   const onMoveRollStackIndexRef = useRef(onMoveRollStackIndex);
   const onSkipItemPromptRef = useRef(onSkipItemPrompt);
-  const localTransitionRef = useRef<LocalTurnTransition>({ key: '', displayAt: 0, readyAt: 0, holdFromReceipt: false });
   onRollYutRef.current = onRollYut;
   onMoveSelectedPieceRef.current = onMoveSelectedPiece;
   onMoveRollStackIndexRef.current = onMoveRollStackIndex;
@@ -169,16 +160,6 @@ export function GameBoardControls({
     kind: normalizeTurnDeadlineKind(turnDeadlineKind),
   };
   const actionableTurnKey = activeSeatId && !waitingForOnlineTurnOrder && !hasActiveTurnOrderIntro ? activeSeatId : '';
-  if (localTransitionRef.current.key !== actionableTurnKey) {
-    const now = Date.now();
-    const hadPreviousTurn = Boolean(localTransitionRef.current.key && actionableTurnKey);
-    localTransitionRef.current = {
-      key: actionableTurnKey,
-      displayAt: actionableTurnKey ? now + (hadPreviousTurn ? TURN_END_HOLD_MS : 0) : 0,
-      readyAt: actionableTurnKey ? now + (hadPreviousTurn ? TURN_END_HOLD_MS : 0) + TURN_START_DELAY_MS : 0,
-      holdFromReceipt: hadPreviousTurn,
-    };
-  }
 
   const isOpponentTurn = Boolean(actionableTurnKey && activeSeatId !== localSeatId);
   const canShowLocalRollStack = canSubmitTurnAction && stackedRollMode && rollStackClosed;
@@ -208,8 +189,8 @@ export function GameBoardControls({
     ? getTurnDisplayAt({ deadlineAt: authoritativeTurnDeadline.at, durationMs: deadlineDurationMs, startDelayMs: TURN_START_DELAY_MS })
     : 0;
   const now = Date.now();
-  const seatTransitionDisplayAt = localTransitionRef.current.displayAt;
-  const seatTransitionReadyAt = localTransitionRef.current.readyAt;
+  const seatTransitionDisplayAt = authoritativeDisplayAt;
+  const seatTransitionReadyAt = authoritativeReadyAt;
   const seatTransitionPhase = getMoveSeatTransitionPhase({
     actionableTurnKey,
     displayAt: seatTransitionDisplayAt,
@@ -238,7 +219,7 @@ export function GameBoardControls({
     : 0;
   const soundActionReady = Boolean(soundSeatId && (!soundReadyAt || now >= soundReadyAt));
   const turnActionDeadlineKey = `${turnActionTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
-  publishMoveTransitionReadiness({ actionReady, contextKey: turnActionDeadlineKey });
+  publishMoveTransitionReadiness({ actionReady: actionReady && moveActionReady, contextKey: turnActionDeadlineKey });
   const itemPromptDeadlineKey = `${itemPromptTimerKey}:${authoritativeTurnDeadline.kind}:${authoritativeTurnDeadline.at}`;
   const turnActionDeadlineActive = authoritativeTurnDeadline.kind === turnActionPhase && authoritativeTurnDeadline.at > 0;
   const itemPromptDeadlineActive = authoritativeTurnDeadline.kind === 'item_prompt' && authoritativeTurnDeadline.at > 0;
@@ -283,7 +264,7 @@ export function GameBoardControls({
   });
 
   useEffect(() => {
-    const timestamps = Array.from(new Set([seatTransitionDisplayAt, seatTransitionReadyAt, authoritativeDisplayAt, authoritativeReadyAt]))
+    const timestamps = Array.from(new Set([authoritativeDisplayAt, authoritativeReadyAt]))
       .filter((timestamp) => timestamp > Date.now())
       .sort((left, right) => left - right);
     if (!timestamps.length || typeof window === 'undefined') return undefined;
@@ -297,7 +278,7 @@ export function GameBoardControls({
       },
     ));
     return () => cancelTimers.forEach((cancelTimer) => cancelTimer());
-  }, [actionableTurnKey, authoritativeDisplayAt, authoritativeReadyAt, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind, seatTransitionDisplayAt, seatTransitionReadyAt]);
+  }, [actionableTurnKey, authoritativeDisplayAt, authoritativeReadyAt, authoritativeTurnDeadline.at, authoritativeTurnDeadline.kind]);
 
   useEffect(() => {
     if (!soundTurnKey) return;
