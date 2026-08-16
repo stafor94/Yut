@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import type { BoardPiece } from '../../features/game/components/GameBoard';
+import { BRANCH_NODE_IDS } from '../../game-core/board/board';
 import type { YutResult } from '../../game-core/roll';
 import { STORAGE_KEYS, type Seat } from '../appState';
 import {
@@ -78,6 +79,45 @@ function isCurrentMoveTransitionReady({
   );
 }
 
+function getDeterministicAutoMovePiece({
+  activeSeat,
+  canSeatControlPiece,
+  pieces,
+  roll,
+}: {
+  activeSeat: Seat;
+  canSeatControlPiece: DurableStartPieceAutoMoveInput['canSeatControlPiece'];
+  pieces: BoardPiece[];
+  roll: YutResult;
+}) {
+  const movablePieces = pieces.filter((piece) => (
+    canSeatControlPiece(activeSeat, piece)
+    && !piece.finished
+    && (roll.steps >= 0 || piece.started)
+  ));
+  if (movablePieces.length === 0) return undefined;
+
+  const hasPieceOnBoard = pieces.some((piece) => (
+    canSeatControlPiece(activeSeat, piece)
+    && piece.started
+    && !piece.finished
+  ));
+  const autoMovePiece = !hasPieceOnBoard
+    ? [...movablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0]
+    : (() => {
+        const movableGroups = Array.from(new Map(
+          movablePieces.map((piece) => [piece.started ? piece.nodeId : piece.id, piece]),
+        ).values());
+        return movableGroups.length === 1 ? movableGroups[0] : undefined;
+      })();
+  if (!autoMovePiece) return undefined;
+
+  const needsBranchChoice = roll.steps > 0
+    && autoMovePiece.started
+    && BRANCH_NODE_IDS.includes(autoMovePiece.nodeId as typeof BRANCH_NODE_IDS[number]);
+  return needsBranchChoice ? undefined : autoMovePiece;
+}
+
 export function useDurableStartPieceAutoMove({
   activeSeat,
   activeTurnOrderIntro,
@@ -127,12 +167,13 @@ export function useDurableStartPieceAutoMove({
       || turnOrderActive
       || waitingForOnlineTurnOrder) return undefined;
 
-    const controlledPieces = pieces.filter((piece) => canSeatControlPiece(activeSeat, piece) && !piece.finished);
-    if (controlledPieces.length === 0 || controlledPieces.some((piece) => piece.started)) return undefined;
-
-    const lowestLabelPiece = [...controlledPieces]
-      .sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0];
-    if (!lowestLabelPiece) return undefined;
+    const autoMovePiece = getDeterministicAutoMovePiece({
+      activeSeat,
+      canSeatControlPiece,
+      pieces,
+      roll,
+    });
+    if (!autoMovePiece) return undefined;
 
     const opportunityKey = getMoveOpportunityKey({
       activeSeat,
@@ -140,14 +181,14 @@ export function useDurableStartPieceAutoMove({
       selectedRollStackIndex,
       turnDeadlineAt,
       turnDeadlineKind,
-    }, lowestLabelPiece.id);
+    }, autoMovePiece.id);
     if (!opportunityKey) {
       opportunityRef.current = null;
       return undefined;
     }
 
-    if (selectedPieceId !== lowestLabelPiece.id) {
-      onSelectPieceId(lowestLabelPiece.id);
+    if (selectedPieceId !== autoMovePiece.id) {
+      onSelectPieceId(autoMovePiece.id);
       return undefined;
     }
 
