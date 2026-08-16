@@ -16,8 +16,6 @@ import {
   type AutoMoveOpportunity,
 } from '../flows/moveSubmissionOpportunityPolicy';
 
-const AUTO_SINGLE_MOVE_DELAY_MS = 500;
-
 type DurableStartPieceAutoMoveInput = {
   activeSeat: Seat | undefined;
   activeTurnOrderIntro: unknown;
@@ -157,7 +155,6 @@ export function useDurableStartPieceAutoMove({
       opportunityRef.current,
       opportunityKey,
       now,
-      AUTO_SINGLE_MOVE_DELAY_MS,
       canonicalMoveReady,
     );
     opportunityRef.current = opportunity;

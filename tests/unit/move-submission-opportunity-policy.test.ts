@@ -13,22 +13,31 @@ import {
 import { publishMoveSubmissionPending } from '../../src/app/flows/moveSubmissionPresentationState';
 import { isTurnActionPresentationPending } from '../../src/app/flows/turnActionPresentationPolicy';
 
-test('canonical transition readiness 전에는 auto move opportunity를 시작하지 않고 ready 이후 최초 500ms 기준을 만든다', () => {
+test('canonical transition readiness 전에는 auto move opportunity를 시작하지 않고 ready가 되면 추가 지연 없이 즉시 제출 가능하다', () => {
   const key = 'room-1:seat-2:20000:걸:3:single:p1';
-  const beforeReady = getOrCreateAutoMoveOpportunity(null, key, 1_000, 500, false);
+  const beforeReady = getOrCreateAutoMoveOpportunity(null, key, 1_000, false);
   assert.equal(beforeReady, null);
-  const created = getOrCreateAutoMoveOpportunity(beforeReady, key, 1_250, 500, true);
+  const created = getOrCreateAutoMoveOpportunity(beforeReady, key, 1_250, true);
   assert.ok(created);
-  assert.equal(created.readyAt, 1_750);
+  assert.equal(created.readyAt, 1_250);
+  assert.equal(shouldAttemptAutoMove({
+    opportunity: created,
+    key,
+    now: 1_250,
+    moveRequestReady: true,
+    moveActionReady: true,
+    transitionActionReady: true,
+    submissionPending: false,
+  }), true);
 });
 
-test('동일 move opportunity의 snapshot 재렌더는 readyAt을 유지하고 transient not-ready에서 기회를 소비하지 않는다', () => {
+test('동일 move opportunity의 snapshot 재렌더는 최초 readyAt을 유지하고 transient not-ready에서 기회를 소비하지 않는다', () => {
   const key = 'room-1:seat-2:20000:걸:3:single:p1';
-  const created = getOrCreateAutoMoveOpportunity(null, key, 1_000, 500, true);
+  const created = getOrCreateAutoMoveOpportunity(null, key, 1_000, true);
   assert.ok(created);
-  const afterSnapshot = getOrCreateAutoMoveOpportunity(created, key, 1_250, 500, false);
+  const afterSnapshot = getOrCreateAutoMoveOpportunity(created, key, 1_250, false);
   assert.equal(afterSnapshot, created);
-  assert.equal(afterSnapshot?.readyAt, 1_500);
+  assert.equal(afterSnapshot?.readyAt, 1_000);
   assert.equal(shouldAttemptAutoMove({
     opportunity: afterSnapshot,
     key,
@@ -52,7 +61,7 @@ test('동일 move opportunity의 snapshot 재렌더는 readyAt을 유지하고 t
 
 test('성공 제출로 소비된 auto move opportunity는 수동 클릭·snapshot 재렌더와 경합해도 다시 실행하지 않는다', () => {
   const key = 'room-1:seat-2:20000:걸:3:single:p1';
-  const opportunity = getOrCreateAutoMoveOpportunity(null, key, 1_000, 500, true);
+  const opportunity = getOrCreateAutoMoveOpportunity(null, key, 1_000, true);
   assert.ok(opportunity);
   markAutoMoveSubmitted(opportunity, key);
   assert.equal(shouldAttemptAutoMove({
@@ -64,7 +73,7 @@ test('성공 제출로 소비된 auto move opportunity는 수동 클릭·snapsho
     transitionActionReady: true,
     submissionPending: false,
   }), false);
-  assert.equal(getOrCreateAutoMoveOpportunity(opportunity, key, 9_000, 500, true), opportunity);
+  assert.equal(getOrCreateAutoMoveOpportunity(opportunity, key, 9_000, true), opportunity);
 });
 
 test('move transition readiness snapshot은 현재 GameBoardControls context를 그대로 보존한다', () => {

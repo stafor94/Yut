@@ -8,7 +8,6 @@ export function getOrCreateAutoMoveOpportunity(
   current: AutoMoveOpportunity | null,
   key: string,
   now: number,
-  delayMs: number,
   canStart: boolean,
 ): AutoMoveOpportunity | null {
   if (!key) return null;
@@ -16,7 +15,7 @@ export function getOrCreateAutoMoveOpportunity(
   if (!canStart) return null;
   return {
     key,
-    readyAt: now + Math.max(0, delayMs),
+    readyAt: now,
     submitted: false,
   };
 }

@@ -206,7 +206,6 @@ export function App() {
   const [startRequestPending, setStartRequestPending] = useState(false);
   const [initialGameEntryPending, setInitialGameEntryPending] = useState(false);
   const [authoritativeGameStateReady, setAuthoritativeGameStateReady] = useState(false);
-  const [firebaseLatencySamples, setFirebaseLatencySamples] = useState<number[]>([]);
   const [spectators, setSpectators] = useState<Seat[]>([]);
   const [presenceCleanupEligibility, setPresenceCleanupEligibility] = useState({ roomId: '', eligible: false });
   const [gameCoordinatorLease, setGameCoordinatorLease] = useState<ClientGameCoordinatorLease>({ coordinatorSeatId: '', coordinatorEpoch: 0, coordinatorLeaseExpiresAt: 0 });
@@ -356,15 +355,7 @@ export function App() {
       ? { ...current, [seatId]: 0 }
       : current);
   };
-  const recordFirebaseLatency = (elapsedMs: number) => {
-    if (!Number.isFinite(elapsedMs)) return;
-    setFirebaseLatencySamples((samples) => [...samples.slice(-9), Math.max(0, Math.round(elapsedMs))]);
-  };
-  const measureFirebaseLatency = async <T,>(operation: () => Promise<T>) => {
-    const startedAt = performance.now();
-    try { return await operation(); }
-    finally { recordFirebaseLatency(performance.now() - startedAt); }
-  };
+  const measureFirebaseLatency = <T,>(operation: () => Promise<T>) => operation();
   const lastAnimatedRollKeyRef = useRef('');
   const lastSyncedRollSoundKeyRef = useRef('');
   const lastSyncedItemEventKeyRef = useRef('');
@@ -2271,6 +2262,7 @@ export function App() {
       }, NO_MOVABLE_PIECE_AUTO_PASS_DELAY_MS);
       return () => window.clearTimeout(timer);
     }
+    if (activeRoomId) return;
     const hasPieceOnBoard = pieces.some((piece) => canSeatControlPiece(activeSeat, piece) && piece.started && !piece.finished);
     const autoMovePiece = !hasPieceOnBoard
       ? [...movablePieces].sort((left, right) => left.label.localeCompare(right.label, undefined, { numeric: true }))[0]
@@ -2283,15 +2275,10 @@ export function App() {
     if (needsBranchChoice) return;
     setSelectedPieceId(autoMovePiece.id);
     const timer = window.setTimeout(() => {
-      if (activeRoomId) {
-        if (!canRequestMove) return;
-        void moveSelectedPiece();
-      } else {
-        void movePiece(autoMovePiece.id, roll, activeSeat);
-      }
+      void movePiece(autoMovePiece.id, roll, activeSeat);
     }, AUTO_SINGLE_MOVE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [activeRoomId, activeSeat, canRequestMove, isMyTurn, movingPieceId, pendingItemPickup, pieces, turnSeats.length, roll, winner, rollResultHolding, pendingTrapPlacement]);
+  }, [activeRoomId, activeSeat, isMyTurn, movingPieceId, pendingItemPickup, pieces, turnSeats.length, roll, winner, rollResultHolding, pendingTrapPlacement]);
 
   sequenceRecoveryCheckRef.current = async (): Promise<SequenceRecoveryCheckResult> => {
     const roomId = activeRoomId;
