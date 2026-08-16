@@ -22,13 +22,10 @@ export function getOrCreateAutoMoveOpportunity(
 
 export function shouldPreserveManualStackMoveOwnership({
   selectedRollStackIndex,
-  rollBonus,
 }: {
   selectedRollStackIndex: number | null;
-  rollBonus: boolean;
 }) {
-  return selectedRollStackIndex !== null
-    && (selectedRollStackIndex > 0 || rollBonus);
+  return selectedRollStackIndex !== null && selectedRollStackIndex > 0;
 }
 
 export function shouldAttemptAutoMove({
