@@ -16,27 +16,53 @@ import {
 
 const now = 10_000;
 
-test('다음 AI 턴은 authoritative readyAt과 경계 버퍼까지 기다린다', () => {
+test('미래 authoritative readyAt은 남은 시간과 경계 버퍼만 기다린다', () => {
   assert.equal(resolveAiTurnActionReadyAt({
-    deadlineAt: now + 17_000,
+    deadlineAt: now + 15_500,
     deadlineKind: 'roll',
     hintedDurationMs: 15_000,
     now,
-  }), now + 2_000);
+  }), now + 500);
   assert.equal(getAiTurnScheduleDelayMs({
-    deadlineAt: now + 17_000,
+    deadlineAt: now + 15_500,
     deadlineKind: 'roll',
     hintedDurationMs: 15_000,
     fallbackDelayMs: DEFAULT_TURN_DELAY_MS,
     now,
-  }), 2_000 + AI_TURN_READY_BOUNDARY_BUFFER_MS);
+  }), 500 + AI_TURN_READY_BOUNDARY_BUFFER_MS);
 });
 
-test('같은 AI 턴 내부 단계는 기존 1초 생각 시간을 유지한다', () => {
-  assert.equal(getAiTurnScheduleDelayMs({
-    deadlineAt: now + 15_000,
+test('이미 지난 authoritative readyAt은 기본 1초 없이 경계 버퍼만 기다린다', () => {
+  assert.equal(resolveAiTurnActionReadyAt({
+    deadlineAt: now + 14_500,
     deadlineKind: 'move',
     hintedDurationMs: 15_000,
+    now,
+  }), now - 500);
+  assert.equal(getAiTurnScheduleDelayMs({
+    deadlineAt: now + 14_500,
+    deadlineKind: 'move',
+    hintedDurationMs: 15_000,
+    fallbackDelayMs: DEFAULT_TURN_DELAY_MS,
+    now,
+  }), AI_TURN_READY_BOUNDARY_BUFFER_MS);
+});
+
+test('authoritative deadline이 없으면 기존 기본 AI delay로 fallback한다', () => {
+  assert.equal(getAiTurnScheduleDelayMs({
+    deadlineAt: 0,
+    deadlineKind: 'roll',
+    hintedDurationMs: 15_000,
+    fallbackDelayMs: DEFAULT_TURN_DELAY_MS,
+    now,
+  }), DEFAULT_TURN_DELAY_MS);
+});
+
+test('이미 만료된 authoritative deadline은 timeout recovery와 경합하지 않도록 fallback한다', () => {
+  assert.equal(getAiTurnScheduleDelayMs({
+    deadlineAt: now - 1,
+    deadlineKind: 'roll',
+    hintedDurationMs: 5_000,
     fallbackDelayMs: DEFAULT_TURN_DELAY_MS,
     now,
   }), DEFAULT_TURN_DELAY_MS);
@@ -76,7 +102,7 @@ test('아이템과 함정 단계도 실제 10초 또는 5초 제한시간을 사
   }), 2_000 + AI_TURN_READY_BOUNDARY_BUFFER_MS);
 });
 
-test('게임 밖, 사람 턴, deadline 누락은 기존 지연으로 돌아간다', () => {
+test('게임 밖과 사람 턴은 기존 지연으로 돌아간다', () => {
   assert.equal(getAiTurnScheduleDelayFromDiagnosticState({
     screen: 'lobby',
     activeSeat: { isAI: true },
@@ -87,12 +113,6 @@ test('게임 밖, 사람 턴, deadline 누락은 기존 지연으로 돌아간�
     screen: 'game',
     activeSeat: { isAI: false },
     turnDeadlineAt: now + 17_000,
-    turnDeadlineKind: 'roll',
-  }, DEFAULT_TURN_DELAY_MS, now), DEFAULT_TURN_DELAY_MS);
-  assert.equal(getAiTurnScheduleDelayFromDiagnosticState({
-    screen: 'game',
-    activeSeat: { isAI: true },
-    turnDeadlineAt: 0,
     turnDeadlineKind: 'roll',
   }, DEFAULT_TURN_DELAY_MS, now), DEFAULT_TURN_DELAY_MS);
 });

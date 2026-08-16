@@ -26,7 +26,7 @@ const coordinatorMoveStartTitle = 'coordinator의 개는 lowest-label 말을 자
 const webGlMoveStartTitle = '출발점 WebGL 실패의';
 const legacyMoveStartTitle = '기존 출발점 n01의 걸 이동은';
 const durableAutoMoveTitle = 'guest의 걸 출발점 자동 이동은 snapshot 재렌더에도 lowest-label 말을 정확히 한 번만 n01→n02→n03→n04 이동한다';
-const movePendingTimerTitle = '느린 move ACK 동안 제출 pending은 이동 버튼을 잠그고 turn-action-timer를 ACK까지 숨긴다';
+const movePendingTimerTitle = '느린 move ACK 동안 수동 클릭과 durable 자동 제출이 경합해도 pending은 이동 버튼을 잠그고 turn-action-timer를 ACK까지 숨긴다';
 const retainedMoveStartTitles = `${atomicAutoMoveStartTitle}|${atomicReloadMoveStartTitle}|${backDoMoveStartTitle}|${coordinatorMoveStartTitle}|${webGlMoveStartTitle}|${legacyMoveStartTitle}|${durableAutoMoveTitle}`;
 
 export const qaSuiteManifest = Object.freeze({

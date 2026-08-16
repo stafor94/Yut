@@ -68,14 +68,15 @@ test('move selection and optimistic presentation share the current pieces snapsh
   assert.doesNotMatch(appSource, /useEffect\(\(\) => \{\s*piecesRef\.current = pieces;\s*\}, \[pieces\]\);/);
 });
 
-test('internal BackDo pass readiness stays separate from move button eligibility', () => {
+test('internal BackDo pass readiness stays separate from move button eligibility and online auto move ownership', () => {
   assert.match(appSource, /onMoveSelectedPiece=\{\(options\) => moveSelectedPiece\(0, options\)\}/);
-  assert.match(appSource, /\[activeRoomId, activeSeat, canRequestMove,[\s\S]*selectedPieceId,[\s\S]*roll/);
   assert.match(appSource, /sort\(\(left, right\) => left\.label\.localeCompare\(right\.label, undefined, \{ numeric: true \}\)\)\[0\]/);
-  assert.match(appSource, /if \(activeRoomId\) \{\s*if \(!canRequestMove\) return;\s*void moveSelectedPiece\(\);/);
+  assert.match(appSource, /if \(activeRoomId\) return;\s*const hasPieceOnBoard/);
   assert.match(appSource, /const canRequestMove = getMoveActionReady\(\{/);
   assert.match(appSource, /const canUseMoveButton = Boolean\(canRequestMove && canMoveSelectedPiece\);/);
   assert.match(appSource, /moveActionReady=\{canUseMoveButton\}/);
+  assert.match(screenSource, /useDurableStartPieceAutoMove\(\{/);
+  assert.match(screenSource, /moveActionReady,\s*moveRequestReady,/);
   assert.match(screenSource, /moveActionReady: boolean;/);
   assert.match(screenSource, /moveActionReady=\{moveActionReady\}/);
 

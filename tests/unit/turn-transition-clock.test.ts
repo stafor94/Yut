@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { scheduleTurnTransitionBoundary } from '../../src/app/flows/turnTransitionClock';
+import { getMoveSeatTransitionPhase } from '../../src/app/flows/moveActionPresentationPolicy.js';
+import { scheduleTurnTransitionBoundary } from '../../src/app/flows/turnTransitionClock.js';
 
 type ScheduledCallback = {
   callback: () => void;
@@ -68,4 +69,31 @@ test('turn transition 예약을 해제하면 최신 timer를 정리하고 callba
 
   assert.equal(clearedId, timerId);
   assert.equal(reached, 0);
+});
+
+test('다음 플레이어가 늦게 activeSeat를 받아도 authoritative boundary의 남은 시간만 기다린다', () => {
+  const authoritativeDisplayAt = 9_000;
+  const authoritativeReadyAt = 10_000;
+  const receivedAt = 9_500;
+  const phase = getMoveSeatTransitionPhase({
+    actionableTurnKey: 'seat-b',
+    displayAt: authoritativeDisplayAt,
+    readyAt: authoritativeReadyAt,
+    now: receivedAt,
+  });
+  assert.equal(phase, 'starting');
+
+  let scheduledDelay = -1;
+  const timerId = 11 as unknown as ReturnType<typeof setTimeout>;
+  const cancel = scheduleTurnTransitionBoundary(authoritativeReadyAt, () => {}, {
+    now: () => receivedAt,
+    setTimeout: (_callback, delayMs) => {
+      scheduledDelay = delayMs;
+      return timerId;
+    },
+    clearTimeout: () => {},
+  });
+
+  assert.equal(scheduledDelay, 500);
+  cancel();
 });
