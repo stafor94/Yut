@@ -1,5 +1,58 @@
 export type MoveSeatTransitionPhase = 'ending' | 'starting' | 'ready';
 
+export type AuthoritativeTurnPresentationClock = {
+  turnKey: string;
+  hasAuthoritativeDeadline: boolean;
+  displayAt: number;
+  readyAt: number;
+};
+
+const EMPTY_TURN_PRESENTATION_CLOCK: AuthoritativeTurnPresentationClock = {
+  turnKey: '',
+  hasAuthoritativeDeadline: false,
+  displayAt: 0,
+  readyAt: 0,
+};
+
+let authoritativeTurnPresentationClock = EMPTY_TURN_PRESENTATION_CLOCK;
+const authoritativeTurnPresentationListeners = new Set<() => void>();
+
+export function publishAuthoritativeTurnPresentationClock(next: AuthoritativeTurnPresentationClock) {
+  if (authoritativeTurnPresentationClock.turnKey === next.turnKey
+    && authoritativeTurnPresentationClock.hasAuthoritativeDeadline === next.hasAuthoritativeDeadline
+    && authoritativeTurnPresentationClock.displayAt === next.displayAt
+    && authoritativeTurnPresentationClock.readyAt === next.readyAt) return;
+  authoritativeTurnPresentationClock = next;
+  authoritativeTurnPresentationListeners.forEach((listener) => listener());
+}
+
+export function getAuthoritativeTurnPresentationClockSnapshot() {
+  return authoritativeTurnPresentationClock;
+}
+
+export function subscribeAuthoritativeTurnPresentationClock(listener: () => void) {
+  authoritativeTurnPresentationListeners.add(listener);
+  return () => authoritativeTurnPresentationListeners.delete(listener);
+}
+
+export function getTurnIndicatorTransitionDelayMs({
+  turnKey,
+  clock,
+  now,
+  fallbackMs,
+}: {
+  turnKey: string;
+  clock: AuthoritativeTurnPresentationClock;
+  now: number;
+  fallbackMs: number;
+}) {
+  if (!turnKey
+    || !clock.hasAuthoritativeDeadline
+    || clock.turnKey !== turnKey
+    || clock.displayAt <= 0) return Math.max(0, fallbackMs);
+  return Math.max(0, clock.displayAt - now);
+}
+
 export function getMoveSeatTransitionPhase({
   actionableTurnKey,
   displayAt,
