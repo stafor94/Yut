@@ -150,6 +150,11 @@ export function useDurableStartPieceAutoMove({
       return undefined;
     }
 
+    if (selectedRollStackIndex !== null) {
+      opportunityRef.current = null;
+      return undefined;
+    }
+
     const now = Date.now();
     const opportunity = getOrCreateAutoMoveOpportunity(
       opportunityRef.current,
