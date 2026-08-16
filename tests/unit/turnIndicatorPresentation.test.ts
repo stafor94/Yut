@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { shouldRenderTurnIndicatorNeighbors } from '../../src/app/flows/turnIndicatorPresentation.js';
+import { shouldRenderTurnIndicatorNeighbors } from '../../src/app/flows/turnIndicatorPresentation.ts';
 
 test('turn neighbors remain visible during the fall completion handoff gap', () => {
   assert.equal(shouldRenderTurnIndicatorNeighbors({
