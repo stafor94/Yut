@@ -11,9 +11,9 @@ import {
 import type { MoveActionSubmissionOptions } from '../flows/moveActionReadiness';
 import {
   getOrCreateAutoMoveOpportunity,
+  isManualStackMoveSelectionCurrent,
   markAutoMoveSubmitted,
   shouldAttemptAutoMove,
-  shouldPreserveManualStackMoveOwnership,
   type AutoMoveOpportunity,
 } from '../flows/moveSubmissionOpportunityPolicy';
 
@@ -151,7 +151,12 @@ export function useDurableStartPieceAutoMove({
       return undefined;
     }
 
-    if (shouldPreserveManualStackMoveOwnership({ selectedRollStackIndex })) {
+    if (isManualStackMoveSelectionCurrent({
+      activeSeatId: activeSeat.id,
+      turnDeadlineAt,
+      rollStackIndex: selectedRollStackIndex,
+      roll,
+    })) {
       opportunityRef.current = null;
       return undefined;
     }
