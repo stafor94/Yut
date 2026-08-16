@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getMoveSeatTransitionPhase } from '../../src/app/flows/moveActionPresentationPolicy.js';
-import { scheduleTurnTransitionBoundary } from '../../src/app/flows/turnTransitionClock';
+import { getMoveSeatTransitionPhase } from '../../src/app/flows/moveActionPresentationPolicy.ts';
+import { scheduleTurnTransitionBoundary } from '../../src/app/flows/turnTransitionClock.ts';
 
 type ScheduledCallback = {
   callback: () => void;
