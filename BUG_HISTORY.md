@@ -6,6 +6,46 @@ The active history before this fix is preserved without modification in [`BUG_HI
 
 ---
 
+## 2026-08-16 - 턴 handoff receipt 지연, 중복 auto-move producer, AI fallback 지연
+
+### Symptom
+
+- 온라인 다음 턴의 `activeSeat` snapshot을 늦게 받은 클라이언트가 서버 ready 경계의 남은 시간만 기다리지 않고 receipt 시점부터 약 2초 전환 대기를 다시 시작할 수 있었다.
+- 출발점 단일 말 자동 이동은 App effect와 durable hook 두 producer가 경합했고, canonical readiness 이후에도 별도 500ms가 붙었다.
+- AI는 유효한 authoritative ready 경계가 이미 열렸거나 1초 미만 남았어도 기본 1초 fallback을 다시 적용할 수 있었다.
+
+### Confirmed root cause
+
+- action readiness가 서버 deadline에서 파생한 `readyAt` 외에 receipt-relative local transition과 TurnIndicator hold를 함께 소비했다.
+- 온라인 start-piece auto-move ownership이 App effect와 `useDurableStartPieceAutoMove`에 중복되어 있었고 durable opportunity 자체에도 500ms delay가 있었다.
+- AI scheduling이 authoritative `readyAt`을 계산한 뒤에도 fallback delay를 최소값처럼 적용했다.
+
+### Required state invariants
+
+- 온라인 action readiness 시계는 authoritative deadline에서 파생한 하나의 `readyAt`만 사용한다. 늦은 snapshot 수신은 이미 지난 시간을 다시 기다리지 않는다.
+- move 실행 readiness는 authoritative action readiness와 실제 move presentation readiness가 모두 충족될 때만 publish한다. presentation 완료 전 자동 제출이나 pending 해제는 금지한다.
+- 온라인 start-piece auto-move producer는 durable hook 하나다. readiness 이후 deterministic 자동 이동에 별도 500ms를 추가하지 않는다.
+- 오프라인 `AUTO_SINGLE_MOVE_DELAY_MS` 500ms는 기존 UX 경로로 유지하며 온라인 producer와 공유하지 않는다.
+- AI는 유효한 authoritative deadline이 살아 있으면 남은 ready 시간 + 80ms boundary buffer만 기다리고, ready 경계가 이미 지났다면 80ms만 기다린다. deadline 누락/해석 불가/만료로 timeout recovery가 ownership을 가져간 경우에만 기존 1초 fallback을 사용한다.
+- accepted move submission의 pending/claim identity와 서버 early-submit guard는 유지한다.
+
+### Do not try again
+
+- `activeSeat` receipt 시각을 기준으로 별도 end-hold + start-delay를 재시작하지 않는다.
+- TurnIndicator에 authoritative handoff와 별개인 receipt-relative hold timer를 추가하지 않는다.
+- 온라인 자동 이동을 App effect와 durable hook에서 동시에 생산하지 않는다.
+- readiness 이후 500ms sleep/retry나 AI 1초 fallback을 성능 안정화 명목으로 다시 추가하지 않는다.
+- presentation/pending 경합을 timeout 증가, retry 추가, assertion 완화로 숨기지 않는다.
+
+### Regression and verification
+
+- unit: `tests/unit/turn-transition-clock.test.ts`, `tests/unit/moveActionPresentationPolicy.test.ts`, `tests/unit/turnIndicatorPresentation.test.ts`, `tests/unit/move-submission-opportunity-policy.test.ts`, `tests/unit/aiTurnScheduling.test.ts`에서 authoritative boundary, 단일 producer, 즉시 auto-move, AI ready scheduling을 고정한다.
+- Galaxy: `tests/mobile/auto-move-pending-timer.spec.js`, `tests/mobile/online-ai-human-atomic-move-start.spec.js`, `tests/mobile/online-ai-turn-progress.spec.js`에서 slow ACK 경합, 단일 move execution, presentation 뒤 AI action 시작을 검증한다.
+- QA manifest는 durable 수동 클릭 경합 테스트의 최신 제목을 `mobile-galaxy-move-ack`에 연결하며 workflow/성능 threshold는 변경하지 않는다.
+- 최종 build/unit/Required QA 및 exact merge-SHA Main Branch QA 결과는 통합 PR에 기록한다.
+
+---
+
 ## 2026-08-16 - 출발 말 자동 이동 one-shot 유실과 move pending 타이머 잔존
 
 ### Symptom
