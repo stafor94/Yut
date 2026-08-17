@@ -869,6 +869,7 @@ export function App() {
     if (winner) return { status: 'blocked', reason: 'winner', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
     if (rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return { status: 'blocked', reason: 'transient-turn-effect', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
     if (!stalledTurnMovablePieces.length || !stalledTurnFallbackPiece) return { status: 'blocked', reason: 'no-movable-piece', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey };
+    if (hasPendingCurrentTurnAction('move_piece', activeSeat.id)) return { status: 'blocked', reason: 'pending-move-piece', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
     if (stalledTurnNeedsBranchChoice) return { status: 'blocked', reason: 'branch-choice-required', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
     if (stalledTurnRollStackAmbiguous) return { status: 'blocked', reason: 'roll-stack-index-ambiguous', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
     if (!isOnlinePlayer) return { status: 'blocked', reason: 'not-online-player', ageMs: currentAgeMs, recoveryKey: stalledTurnWatchKey, pieceId: stalledTurnFallbackPiece.id };
@@ -3078,6 +3079,7 @@ export function App() {
 
   async function recoverStalledTurnMove(recoveryKey: string, options: { source?: string } = {}) {
     if (!activeRoomId || onlineAuthoritativeGameStatePending || !canSubmitDeadlineRecovery() || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
+    if (hasPendingCurrentTurnAction('move_piece', activeSeat.id)) return false;
     const recoveryToken = `${activeRoomId}:move:${recoveryKey}`;
     if (turnRecoveryInFlightRef.current?.roomId === activeRoomId || stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
     if (winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return false;
