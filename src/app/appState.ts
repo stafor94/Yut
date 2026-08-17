@@ -14,7 +14,7 @@ export type ToastMessage = { id: number; title: string; description?: string; ic
 export type RollAnimation =
   | { id: number; phase: 'primary' | 'extra-spin'; actionKey: string; sticks: YutStick[]; timingZone?: RollTimingZone }
   | { id: number; phase: 'landing' | 'result-hold'; result: YutResult; sticks: YutStick[]; actionKey?: string; fallCount?: number; timingZone?: RollTimingZone }
-  | { id: number; phase?: 'resolved'; result: YutResult; sticks: YutStick[]; turnOrder?: boolean; fallCount?: number; timingZone?: RollTimingZone };
+  | { id: number; phase?: 'resolved'; result: YutResult; sticks: YutStick[]; turnOrder?: boolean; fallCount?: number; timingZone?: RollTimingZone; animationStartedAt?: number; resultRevealAt?: number };
 export type TurnOrderRoll = { seat: Seat; result: YutResult; rollOffRound: number };
 export type TurnOrderPhase = { active: boolean; index: number; rolls: TurnOrderRoll[]; deadline: number; readyAt: number };
 export type TurnOrderResultName = Exclude<YutResultName, '황금 윷'> | '낙';
