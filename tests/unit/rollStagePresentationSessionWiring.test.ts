@@ -47,8 +47,8 @@ test('authoritative 결과가 유실되어 sequence가 취소되면 보존 프�
 test('authoritative resolved timing은 queue 재구성에서 보존되고 online 공통 hold의 절대 종료 시각을 사용한다', () => {
   assert.match(source, /'animationStartedAt' in resolvedAnimation/);
   assert.match(source, /'resultRevealAt' in resolvedAnimation/);
-  assert.match(source, /resultHoldMs: PENDING_ROLL_RESULT_HOLD_MS/);
-  assert.match(source, /authoritativeResultRevealAt \+ PENDING_ROLL_RESULT_HOLD_MS - Date\.now\(\)/);
+  assert.match(source, /resultHoldMs: ONLINE_ROLL_RESULT_HOLD_MS/);
+  assert.match(source, /authoritativeResultRevealAt \+ ONLINE_ROLL_RESULT_HOLD_MS - Date\.now\(\)/);
   assert.match(source, /authoritativeResultRevealAt === null\s*\? createRollPresentationCompletion\(\)/);
 });
 

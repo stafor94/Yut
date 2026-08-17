@@ -503,13 +503,21 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   useEffect(() => {
     if (!rollAnimation) return;
     const animationId = String(rollAnimation.id);
-    const resolvedAnimation = rollAnimation as RollAnimation & { result?: YutResult; fallCount?: number; turnOrder?: boolean };
+    const resolvedAnimation = rollAnimation as RollAnimation & {
+      result?: YutResult;
+      fallCount?: number;
+      turnOrder?: boolean;
+      animationStartedAt?: number;
+      resultRevealAt?: number;
+    };
     const rollSoundState = {
       phase: rollAnimation.phase,
       resultName: resolvedAnimation.result?.name,
       fallCount: resolvedAnimation.fallCount,
       timingZone: rollAnimation.timingZone,
       turnOrder: resolvedAnimation.turnOrder,
+      animationStartedAt: resolvedAnimation.animationStartedAt,
+      resultRevealAt: resolvedAnimation.resultRevealAt,
     };
     if (lastRollAnimationIdRef.current !== animationId) {
       const landingEffect = getRollLandingSoundEffect(rollSoundState);

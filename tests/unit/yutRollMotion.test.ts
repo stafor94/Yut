@@ -86,6 +86,7 @@ test('local throw reaches an earlier and visibly higher apex before descending',
   const apexHeight = getPrimaryThrowHeight(startY, LOCAL_THROW_APEX_PROGRESS, 0);
   const lateHeight = getPrimaryThrowHeight(startY, 0.82, 0);
   const endHeight = getPrimaryThrowHeight(startY, 1, 0);
+
   assert.ok(LOCAL_THROW_APEX_PROGRESS < 0.5);
   assert.ok(apexHeight > 4);
   assert.ok(lateHeight < apexHeight);
@@ -116,6 +117,7 @@ test('fall motion lands first, rolls across the mat, and exits only near the end
   const beforeExit = getFallLandingMotion(FALL_EXIT_START_PROGRESS - 0.01);
   const exiting = getFallLandingMotion((FALL_EXIT_START_PROGRESS + 1) / 2);
   const completed = getFallLandingMotion(1);
+
   assert.equal(beforeImpact.onMatRollProgress, 0);
   assert.equal(beforeImpact.exitProgress, 0);
   assert.ok(afterImpact.onMatRollProgress > 0);
@@ -134,6 +136,7 @@ test('landing dedicates more time to two visible bounces before settling exactly
   const firstBounce = getLandingMotion(LOCAL_LANDING_IMPACT_PROGRESS + 0.1, 1);
   const lateBounce = getLandingMotion(0.85, 1);
   const settled = getLandingMotion(1, 1);
+
   assert.equal(impact.bounceHeight, 0);
   assert.ok(firstBounce.bounceHeight > 0.25);
   assert.ok(lateBounce.bounceHeight > 0.05);
@@ -148,6 +151,7 @@ test('each stick stays below the three-turn rotation cap', () => {
   assert.equal(MAX_TOTAL_SPIN_TURNS, 3);
   assert.equal(EXTRA_SPIN_RADIANS_PER_SECOND_BASE, 0);
   assert.equal(EXTRA_SPIN_RADIANS_PER_SECOND_STEP, 0);
+
   for (let index = 0; index < 4; index += 1) {
     const totalTurns = PRIMARY_SPIN_TURNS_BASE
       + index * PRIMARY_SPIN_TURNS_STEP
