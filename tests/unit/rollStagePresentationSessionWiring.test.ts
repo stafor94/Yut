@@ -44,6 +44,14 @@ test('authoritative 결과가 유실되어 sequence가 취소되면 보존 프�
   assert.ok(clearIndex > sameSourceIndex);
 });
 
+test('authoritative resolved timing은 queue 재구성에서 보존되고 online 공통 hold의 절대 종료 시각을 사용한다', () => {
+  assert.match(source, /'animationStartedAt' in resolvedAnimation/);
+  assert.match(source, /'resultRevealAt' in resolvedAnimation/);
+  assert.match(source, /resultHoldMs: PENDING_ROLL_RESULT_HOLD_MS/);
+  assert.match(source, /authoritativeResultRevealAt \+ PENDING_ROLL_RESULT_HOLD_MS - Date\.now\(\)/);
+  assert.match(source, /authoritativeResultRevealAt === null\s*\? createRollPresentationCompletion\(\)/);
+});
+
 test('상태 머신 단위 테스트는 appState의 TSX·DOM·Firebase 의존 그래프를 가져오지 않는다', () => {
   assert.doesNotMatch(sessionSource, /from ['"]\.\.\/appState['"]/);
   assert.match(sessionSource, /from ['"]\.\.\/types\/rollAnimation['"]/);

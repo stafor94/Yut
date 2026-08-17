@@ -1,6 +1,15 @@
 import type { RollTimingZone, YutResultName } from '../../game-core/roll';
-import { LOCAL_ROLL_LANDING_MS, LOCAL_ROLL_PRE_RESULT_MS, LOCAL_ROLL_PRIMARY_MS } from './yutRollAnimation';
-import { LOCAL_LANDING_IMPACT_PROGRESS, REMOTE_ROLL_LOCAL_TIMELINE_START_MS } from './yutRollMotion';
+import {
+  LOCAL_ROLL_LANDING_MS,
+  LOCAL_ROLL_PRE_RESULT_MS,
+  LOCAL_ROLL_PRIMARY_MS,
+  REMOTE_ROLL_PRE_RESULT_MS,
+} from './yutRollAnimation';
+import {
+  LOCAL_LANDING_IMPACT_PROGRESS,
+  REMOTE_ROLL_LOCAL_TIMELINE_START_MS,
+  getRemoteRollMotionElapsedMs,
+} from './yutRollMotion';
 
 export type RollSoundState = {
   phase?: 'primary' | 'extra-spin' | 'landing' | 'result-hold' | 'resolved';
@@ -8,6 +17,8 @@ export type RollSoundState = {
   fallCount?: number;
   timingZone?: RollTimingZone;
   turnOrder?: boolean;
+  animationStartedAt?: number;
+  resultRevealAt?: number;
 };
 
 export const isRollResultVisibleForSound = (state: RollSoundState) => {
@@ -23,19 +34,44 @@ export const REMOTE_ROLL_LANDING_SOUND_DELAY_MS = Math.max(
   Math.round(
     ((LOCAL_ROLL_PRIMARY_MS + ROLL_LANDING_IMPACT_ELAPSED_MS - REMOTE_ROLL_LOCAL_TIMELINE_START_MS)
       / (LOCAL_ROLL_PRE_RESULT_MS - REMOTE_ROLL_LOCAL_TIMELINE_START_MS))
-      * 2200,
+      * REMOTE_ROLL_PRE_RESULT_MS,
   ) - ROLL_LANDING_SOUND_LEAD_MS,
 );
 
+const hasAuthoritativeResultRevealAt = (state: RollSoundState) => Number.isFinite(state.resultRevealAt)
+  && Number(state.resultRevealAt) > 0;
+
 export const getRollLandingSoundDelayMs = (state: RollSoundState, animationId: number, nowMs = Date.now()) => {
-  const animationAgeMs = Number.isFinite(animationId) ? Math.max(0, nowMs - animationId) : 0;
+  const animationStartedAt = Number.isFinite(state.animationStartedAt)
+    ? Number(state.animationStartedAt)
+    : animationId;
+  const animationAgeMs = Number.isFinite(animationStartedAt) ? Math.max(0, nowMs - animationStartedAt) : 0;
   if (state.phase === 'primary' || state.phase === 'extra-spin') return null;
   if (state.phase === 'landing') {
     const landingElapsedMs = Math.max(0, animationAgeMs - LOCAL_ROLL_PRIMARY_MS);
     return Math.max(0, ROLL_LANDING_SOUND_DELAY_MS - landingElapsedMs);
   }
   if (state.phase === 'result-hold') return 0;
-  return Math.max(0, REMOTE_ROLL_LANDING_SOUND_DELAY_MS - animationAgeMs);
+
+  const remoteElapsedMs = getRemoteRollMotionElapsedMs(
+    animationStartedAt,
+    state.resultRevealAt,
+    nowMs,
+  );
+  if (remoteElapsedMs >= REMOTE_ROLL_LANDING_SOUND_DELAY_MS) return 0;
+  if (!hasAuthoritativeResultRevealAt(state)) {
+    return Math.max(0, REMOTE_ROLL_LANDING_SOUND_DELAY_MS - remoteElapsedMs);
+  }
+
+  const remainingRemoteMs = Math.max(0, REMOTE_ROLL_PRE_RESULT_MS - remoteElapsedMs);
+  const remainingWallMs = Math.max(0, Number(state.resultRevealAt) - nowMs);
+  if (remainingRemoteMs <= 0 || remainingWallMs <= 0) return 0;
+  return Math.max(
+    0,
+    remainingWallMs
+      * (REMOTE_ROLL_LANDING_SOUND_DELAY_MS - remoteElapsedMs)
+      / remainingRemoteMs,
+  );
 };
 
 export const getRollLandingSoundEffect = (state: RollSoundState): 'roll' | 'fall' | null => {

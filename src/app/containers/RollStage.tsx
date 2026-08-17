@@ -6,6 +6,7 @@ import {
   createGameAnimationSequence,
   gameAnimationQueue,
   getRollPresentationAnimationId,
+  waitForGameAnimation,
   type GameAnimationSequence,
 } from '../flows/gameAnimationQueue';
 import {
@@ -66,6 +67,12 @@ const getPresentationTimingGrade = (animation: RollAnimation): PresentationTimin
 };
 
 const isResolvedRollAnimation = (animation: RollAnimation) => animation.phase === undefined || animation.phase === 'resolved';
+const getAuthoritativeResultRevealAt = (animation: RollAnimation) => isResolvedRollAnimation(animation)
+  && 'resultRevealAt' in animation
+  && Number.isFinite(animation.resultRevealAt)
+  && Number(animation.resultRevealAt) > 0
+    ? Number(animation.resultRevealAt)
+    : null;
 
 const isSameRollStageLayout = (current: RollStageLayout | null, next: RollStageLayout) => Boolean(
   current
@@ -132,10 +139,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     }
   };
 
-  const updatePresentationSession = (
-    sourceAnimationId: number,
-    update: (session: RollPresentationSession) => RollPresentationSession,
-  ) => {
+  const updatePresentationSession = (sourceAnimationId: number, update: (session: RollPresentationSession) => RollPresentationSession) => {
     const session = presentationSessionByIdRef.current.get(sourceAnimationId);
     if (!session) return;
     presentationSessionByIdRef.current.set(sourceAnimationId, update(session));
@@ -155,13 +159,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       return;
     }
     const [sourceAnimationId, meta] = firstEntry;
-    emitPresentationChange({
-      active: true,
-      actorId: meta.actorId,
-      fallCount: meta.fallCount,
-      sourceAnimationId,
-      resultVisible: false,
-    });
+    emitPresentationChange({ active: true, actorId: meta.actorId, fallCount: meta.fallCount, sourceAnimationId, resultVisible: false });
   };
 
   const runResolvedPresentation = async (sourceAnimationId: number, sourceAnimation: RollAnimation) => {
@@ -171,7 +169,16 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       id: getRollPresentationAnimationId(sourceAnimation.id),
       sticks: sourceAnimation.sticks.map((stick) => ({ ...stick })),
     };
-    const completion = createRollPresentationCompletion();
+    const authoritativeResultRevealAt = getAuthoritativeResultRevealAt(queuedAnimation);
+    const completion = authoritativeResultRevealAt === null
+      ? createRollPresentationCompletion()
+      : createRollPresentationCompletion({
+          resultHoldMs: PENDING_ROLL_RESULT_HOLD_MS,
+          waitForHold: () => waitForGameAnimation(Math.max(
+            0,
+            authoritativeResultRevealAt + PENDING_ROLL_RESULT_HOLD_MS - Date.now(),
+          )),
+        });
     presentationCompletionByIdRef.current.set(queuedAnimation.id, completion);
     setSettledAnimationId(null);
     setSettleSource('pending');
@@ -207,7 +214,6 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
   const queueRollSequence = (sourceAnimationId: number) => {
     const existing = rollSequenceByIdRef.current.get(sourceAnimationId);
     if (existing) return existing;
-
     const sequence = createGameAnimationSequence<RollAnimation>();
     rollSequenceByIdRef.current.set(sourceAnimationId, sequence);
     const releaseQueuedPresentation = gamePresentationLock.acquire();
@@ -224,9 +230,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       const resolvedAnimation = await sequence.wait();
       if (!resolvedAnimation) {
         updatePresentationSession(sourceAnimationId, markRollPresentationCancelled);
-        if (mountedRef.current && presentedSourceAnimationIdRef.current === sourceAnimationId) {
-          presentAnimation(null);
-        }
+        if (mountedRef.current && presentedSourceAnimationIdRef.current === sourceAnimationId) presentAnimation(null);
         return;
       }
       if (!mountedRef.current) return;
@@ -266,6 +270,8 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
           sticks: resolvedAnimation.sticks,
           fallCount: resolvedAnimation.fallCount,
           timingZone: resolvedAnimation.timingZone,
+          animationStartedAt: 'animationStartedAt' in resolvedAnimation ? resolvedAnimation.animationStartedAt : undefined,
+          resultRevealAt: 'resultRevealAt' in resolvedAnimation ? resolvedAnimation.resultRevealAt : undefined,
         });
         return;
       }
@@ -332,7 +338,6 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       setRollStageLayout(null);
       return undefined;
     }
-
     let animationFrame = 0;
     const updateLayout = () => {
       animationFrame = 0;
@@ -350,20 +355,13 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       if (animationFrame) cancelAnimationFrame(animationFrame);
       animationFrame = requestAnimationFrame(updateLayout);
     };
-
     updateLayout();
     const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(scheduleLayoutUpdate);
     resizeObserver?.observe(boardPanel);
     resizeObserver?.observe(board);
     const mutationObserver = new MutationObserver(scheduleLayoutUpdate);
-    mutationObserver.observe(boardPanel, {
-      attributes: true,
-      childList: true,
-      subtree: true,
-      attributeFilter: ['class', 'hidden', 'style'],
-    });
+    mutationObserver.observe(boardPanel, { attributes: true, childList: true, subtree: true, attributeFilter: ['class', 'hidden', 'style'] });
     window.addEventListener('resize', scheduleLayoutUpdate);
-
     return () => {
       if (animationFrame) cancelAnimationFrame(animationFrame);
       resizeObserver?.disconnect();
@@ -386,24 +384,15 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
         const currentSession = presentationSessionByIdRef.current.get(sourceAnimationId) ?? null;
         const decision = applyRollPresentationInput(currentSession, null);
         if (decision.session) presentationSessionByIdRef.current.set(sourceAnimationId, decision.session);
-
         if (decision.kind === 'complete-live') {
           const sequence = rollSequenceByIdRef.current.get(sourceAnimationId);
-          if (sequence && !sequence.isSettled() && decision.session) {
-            sequence.resolve(decision.session.latestAnimation);
-          }
+          if (sequence && !sequence.isSettled() && decision.session) sequence.resolve(decision.session.latestAnimation);
           return;
         }
-
-        if (decision.preserveDisplayedAnimation) {
-          return;
-        }
+        if (decision.preserveDisplayedAnimation) return;
       }
-
       const displayedSourceAnimationId = presentedSourceAnimationIdRef.current;
-      const displayedSession = displayedSourceAnimationId === null
-        ? null
-        : presentationSessionByIdRef.current.get(displayedSourceAnimationId);
+      const displayedSession = displayedSourceAnimationId === null ? null : presentationSessionByIdRef.current.get(displayedSourceAnimationId);
       if (shouldPreserveRollPresentation(displayedSession)) return;
       const currentAnimation = presentedAnimationRef.current;
       if (currentAnimation && isResolvedRollAnimation(currentAnimation) && queuedPresentationMetaRef.current.size > 0) return;
@@ -414,15 +403,9 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     const sourceAnimationId = rollAnimation.id;
     if (!isResolvedRollAnimation(rollAnimation)) {
       currentInputSessionIdRef.current = sourceAnimationId;
-      const liveAnimation: RollAnimation = {
-        ...rollAnimation,
-        sticks: rollAnimation.sticks.map((stick) => ({ ...stick })),
-      };
+      const liveAnimation: RollAnimation = { ...rollAnimation, sticks: rollAnimation.sticks.map((stick) => ({ ...stick })) };
       liveAnimationByIdRef.current.set(sourceAnimationId, liveAnimation);
-      const decision = applyRollPresentationInput(
-        presentationSessionByIdRef.current.get(sourceAnimationId) ?? null,
-        liveAnimation,
-      );
+      const decision = applyRollPresentationInput(presentationSessionByIdRef.current.get(sourceAnimationId) ?? null, liveAnimation);
       if (decision.session) presentationSessionByIdRef.current.set(sourceAnimationId, decision.session);
       const existingMeta = queuedPresentationMetaRef.current.get(sourceAnimationId);
       queuedPresentationMetaRef.current.set(sourceAnimationId, {
@@ -431,9 +414,7 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       });
       notifyQueuedPresentation();
       const sequence = queueRollSequence(sourceAnimationId);
-      if (activeRollSequenceIdRef.current === sourceAnimationId && !sequence.isSettled()) {
-        presentAnimation(liveAnimation, sourceAnimationId);
-      }
+      if (activeRollSequenceIdRef.current === sourceAnimationId && !sequence.isSettled()) presentAnimation(liveAnimation, sourceAnimationId);
       return;
     }
 
@@ -442,32 +423,18 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     const existingMeta = queuedPresentationMetaRef.current.get(sourceAnimationId);
     if (seenResolvedAnimationIdsRef.current.has(sourceAnimationId)) {
       if (existingMeta && presentationActorId && existingMeta.actorId !== presentationActorId) {
-        queuedPresentationMetaRef.current.set(sourceAnimationId, {
-          actorId: presentationActorId,
-          fallCount,
-        });
+        queuedPresentationMetaRef.current.set(sourceAnimationId, { actorId: presentationActorId, fallCount });
         notifyQueuedPresentation();
       }
       return;
     }
-    queuedPresentationMetaRef.current.set(sourceAnimationId, {
-      actorId: presentationActorId || existingMeta?.actorId || '',
-      fallCount,
-    });
+    queuedPresentationMetaRef.current.set(sourceAnimationId, { actorId: presentationActorId || existingMeta?.actorId || '', fallCount });
     notifyQueuedPresentation();
     seenResolvedAnimationIdsRef.current.add(sourceAnimationId);
-    if (seenResolvedAnimationIdsRef.current.size > 120) {
-      seenResolvedAnimationIdsRef.current = new Set(Array.from(seenResolvedAnimationIdsRef.current).slice(-60));
-    }
+    if (seenResolvedAnimationIdsRef.current.size > 120) seenResolvedAnimationIdsRef.current = new Set(Array.from(seenResolvedAnimationIdsRef.current).slice(-60));
 
-    const sourceAnimation: RollAnimation = {
-      ...rollAnimation,
-      sticks: rollAnimation.sticks.map((stick) => ({ ...stick })),
-    };
-    const decision = applyRollPresentationInput(
-      presentationSessionByIdRef.current.get(sourceAnimationId) ?? null,
-      sourceAnimation,
-    );
+    const sourceAnimation: RollAnimation = { ...rollAnimation, sticks: rollAnimation.sticks.map((stick) => ({ ...stick })) };
+    const decision = applyRollPresentationInput(presentationSessionByIdRef.current.get(sourceAnimationId) ?? null, sourceAnimation);
     if (decision.session) presentationSessionByIdRef.current.set(sourceAnimationId, decision.session);
     queueRollSequence(sourceAnimationId).resolve(sourceAnimation);
   }, [presentationActorId, rollAnimation]);
@@ -518,14 +485,10 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
     <div className="roll-impact-burst" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <span key={`spark-${presentedAnimation.id}-${index}`} style={{ '--spark-index': index } as CSSProperties}></span>)}</div>
     <div data-testid="roll-mat" className={`roll-mat ${isBonusResult ? 'bonus-roll' : ''} ${hasResolvedResult && fallCount ? 'fall-roll' : ''}`}>
       <span data-testid="roll-mat-surface" className="roll-mat-surface" aria-hidden="true">
-        <span className="roll-mat-depth"></span>
-        <span className="roll-mat-inlay"></span>
-        <span className="roll-mat-corner roll-mat-corner-nw"></span>
-        <span className="roll-mat-corner roll-mat-corner-ne"></span>
-        <span className="roll-mat-corner roll-mat-corner-sw"></span>
-        <span className="roll-mat-corner roll-mat-corner-se"></span>
-        <span className="roll-mat-leg roll-mat-leg-left"></span>
-        <span className="roll-mat-leg roll-mat-leg-right"></span>
+        <span className="roll-mat-depth"></span><span className="roll-mat-inlay"></span>
+        <span className="roll-mat-corner roll-mat-corner-nw"></span><span className="roll-mat-corner roll-mat-corner-ne"></span>
+        <span className="roll-mat-corner roll-mat-corner-sw"></span><span className="roll-mat-corner roll-mat-corner-se"></span>
+        <span className="roll-mat-leg roll-mat-leg-left"></span><span className="roll-mat-leg roll-mat-leg-right"></span>
       </span>
       {timingGrade && <span key={`${timingGradeSourceId}:${timingGrade}`} data-testid="roll-timing-grade" className={`roll-timing-feedback ${hasResolvedResult ? 'roll-stage-timing' : 'roll-stage-timing-preview'} transient ${timingGrade}`}>{TIMING_GRADE_LABELS[timingGrade]}</span>}
       {hasResolvedResult && resultPresentation && <div data-testid="roll-result-presentation" className="roll-result-presentation" hidden={!shouldShowResult} aria-hidden={!shouldShowResult}>

@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ROLL_LANDING_SOUND_DELAY_MS, getRollLandingSoundDelayMs, getRollLandingSoundEffect, getRollOutcomeSoundEffect, isRollResultVisibleForSound, shouldPlayPerfectRollSound } from '../../src/app/flows/rollSound.js';
+import { REMOTE_ROLL_PRE_RESULT_MS } from '../../src/app/flows/yutRollAnimation.js';
+import {
+  REMOTE_ROLL_LANDING_SOUND_DELAY_MS,
+  ROLL_LANDING_SOUND_DELAY_MS,
+  getRollLandingSoundDelayMs,
+  getRollLandingSoundEffect,
+  getRollOutcomeSoundEffect,
+  isRollResultVisibleForSound,
+  shouldPlayPerfectRollSound,
+} from '../../src/app/flows/rollSound.js';
 
 test('윷과 모는 결과가 노출된 뒤 긍정 효과음을 선택한다', () => {
   assert.equal(getRollOutcomeSoundEffect({ phase: 'result-hold', resultName: '윷' }), 'bonus');
@@ -37,4 +46,29 @@ test('착지 효과음은 착지 phase의 충돌 진행률 기준 지연을 사�
   assert.equal(getRollLandingSoundDelayMs({ phase: 'primary' }, animationId, animationId), null);
   assert.equal(getRollLandingSoundDelayMs({ phase: 'landing' }, animationId, animationId), ROLL_LANDING_SOUND_DELAY_MS);
   assert.equal(getRollLandingSoundDelayMs({ phase: 'landing' }, animationId, animationId + ROLL_LANDING_SOUND_DELAY_MS + 2200), 0);
+});
+
+test('authoritative remote landing sound follows the same compressed or stretched reveal timeline', () => {
+  const resultRevealAt = 10_000;
+  const targetProgress = REMOTE_ROLL_LANDING_SOUND_DELAY_MS / REMOTE_ROLL_PRE_RESULT_MS;
+  const earlyStart = 6_000;
+  const lateStart = 8_000;
+  const earlyExpectedAt = earlyStart + (resultRevealAt - earlyStart) * targetProgress;
+  const lateExpectedAt = lateStart + (resultRevealAt - lateStart) * targetProgress;
+
+  assert.ok(Math.abs(getRollLandingSoundDelayMs({
+    phase: 'resolved',
+    animationStartedAt: earlyStart,
+    resultRevealAt,
+  }, 123, earlyStart) - (earlyExpectedAt - earlyStart)) < 1e-9);
+  assert.ok(Math.abs(getRollLandingSoundDelayMs({
+    phase: 'resolved',
+    animationStartedAt: lateStart,
+    resultRevealAt,
+  }, 456, lateStart) - (lateExpectedAt - lateStart)) < 1e-9);
+  assert.equal(getRollLandingSoundDelayMs({
+    phase: 'resolved',
+    animationStartedAt: 10_500,
+    resultRevealAt,
+  }, 789, 10_500), 0);
 });

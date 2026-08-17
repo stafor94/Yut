@@ -22,6 +22,7 @@ import {
   getLandingMotion,
   getPrimaryHorizontalProgress,
   getPrimaryThrowHeight,
+  getRemoteRollMotionElapsedMs,
   getRemoteTimelineElapsedMs,
 } from '../flows/yutRollMotion';
 import {
@@ -89,6 +90,18 @@ const seededUnit = (seed: number) => {
 const lerp = (from: number, to: number, progress: number) => from + (to - from) * progress;
 const getPrimarySpinTurns = (index: number) => PRIMARY_SPIN_TURNS_BASE + index * PRIMARY_SPIN_TURNS_STEP;
 const getLandingSpinTurns = (index: number) => LANDING_FLIGHT_SPIN_TURNS_BASE + index * LANDING_FLIGHT_SPIN_TURNS_STEP;
+const getAuthoritativeResultRevealAt = (animation: RollAnimation) => getPhase(animation) === 'resolved'
+  && 'resultRevealAt' in animation
+  && Number.isFinite(animation.resultRevealAt)
+  && Number(animation.resultRevealAt) > 0
+    ? Number(animation.resultRevealAt)
+    : undefined;
+const getResolvedAnimationStartedAt = (animation: RollAnimation, fallbackStartedAt: number) => getPhase(animation) === 'resolved'
+  && 'animationStartedAt' in animation
+  && Number.isFinite(animation.animationStartedAt)
+  && Number(animation.animationStartedAt) > 0
+    ? Number(animation.animationStartedAt)
+    : fallbackStartedAt;
 
 function getAnimationAgeMs(animation: RollAnimation) {
   const animationId = Number(animation.id);
@@ -107,7 +120,6 @@ function getInitialPhaseElapsedMs(animation: RollAnimation, phase: YutRollSceneP
   if (phase === 'primary') return Math.min(animationAgeMs, LOCAL_ROLL_PRIMARY_MS);
   if (phase === 'extra-spin') return Math.max(0, animationAgeMs - LOCAL_ROLL_PRIMARY_MS);
   if (phase === 'landing') return Math.min(Math.max(0, animationAgeMs - LOCAL_ROLL_PRIMARY_MS), LOCAL_ROLL_LANDING_MS);
-  if (phase === 'resolved') return Math.min(animationAgeMs, REMOTE_ROLL_PRE_RESULT_MS);
   return 0;
 }
 
@@ -422,15 +434,21 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
   const settledRef = useRef(false);
   const onSettledRef = useRef(onSettled);
   const landingStartedAtRef = useRef<number | null>(null);
+  const resolvedFallbackStartRef = useRef({ id: rollAnimation.id, startedAt: Date.now() });
   const [rendererStatus, setRendererStatus] = useState<RendererStatus>('fallback');
   const phase = getPhase(rollAnimation);
   const timingZone = getTimingZone(rollAnimation);
   const landingProfile = getYutRollLandingProfile(timingZone);
+  const resolvedAnimationStartedAtInput = 'animationStartedAt' in rollAnimation ? rollAnimation.animationStartedAt : undefined;
+  const resultRevealAtInput = 'resultRevealAt' in rollAnimation ? rollAnimation.resultRevealAt : undefined;
   const sticksKey = useMemo(
     () => rollAnimation.sticks.map((stick) => `${stick.flat ? 1 : 0}:${stick.marked ? 1 : 0}`).join('|'),
     [rollAnimation.sticks],
   );
 
+  if (resolvedFallbackStartRef.current.id !== rollAnimation.id) {
+    resolvedFallbackStartRef.current = { id: rollAnimation.id, startedAt: Date.now() };
+  }
   latestAnimationRef.current = rollAnimation;
   onSettledRef.current = onSettled;
 
@@ -487,7 +505,8 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
       const initialPhase = getRuntimeInitialPhase(initialAnimation);
       const now = performance.now();
       const initialPhaseElapsedMs = getInitialPhaseElapsedMs(initialAnimation, initialPhase);
-      const initialAnimationElapsedMs = initialPhase === 'resolved' ? Math.min(getAnimationAgeMs(initialAnimation), REMOTE_ROLL_PRE_RESULT_MS) : 0;
+      const wallNow = Date.now();
+      const resolvedAnimationStartedAt = getResolvedAnimationStartedAt(initialAnimation, resolvedFallbackStartRef.current.startedAt);
       const runtime: SceneRuntime = {
         THREE,
         renderer,
@@ -497,7 +516,7 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         matBounds: getYutRollMatWorldBounds(620, 430, 96, 524),
         phase: initialPhase,
         phaseStartedAt: now - initialPhaseElapsedMs,
-        animationStartedAt: now - initialAnimationElapsedMs,
+        animationStartedAt: resolvedAnimationStartedAt,
         frameId: 0,
         resizeObserver: null,
         disposed: false,
@@ -527,6 +546,9 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         camera.updateProjectionMatrix();
       };
       resize();
+      if (initialPhase === 'resolved') {
+        renderResolved(runtime, getRemoteRollMotionElapsedMs(runtime.animationStartedAt, getAuthoritativeResultRevealAt(initialAnimation), wallNow));
+      }
       runtime.resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
       runtime.resizeObserver?.observe(canvas.parentElement ?? canvas);
 
@@ -535,7 +557,25 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         if (runtime.disposed) return;
         const activePhase = runtime.phase;
         const elapsed = time - runtime.phaseStartedAt;
-        if (reducedMotion || activePhase === 'result-hold') {
+        if (activePhase === 'resolved') {
+          const activeAnimation = latestAnimationRef.current;
+          const authoritativeResultRevealAt = getAuthoritativeResultRevealAt(activeAnimation);
+          const remoteElapsedMs = getRemoteRollMotionElapsedMs(runtime.animationStartedAt, authoritativeResultRevealAt, Date.now());
+          if (reducedMotion && authoritativeResultRevealAt === undefined) {
+            setFinalTransforms(runtime);
+            notifySettled('three-renderer');
+          } else if (reducedMotion) {
+            if (remoteElapsedMs >= REMOTE_ROLL_PRE_RESULT_MS) {
+              setFinalTransforms(runtime);
+              notifySettled('three-renderer');
+            } else {
+              renderResolved(runtime, 0);
+            }
+          } else {
+            renderResolved(runtime, remoteElapsedMs);
+            if (remoteElapsedMs >= REMOTE_ROLL_PRE_RESULT_MS) notifySettled('three-renderer');
+          }
+        } else if (reducedMotion || activePhase === 'result-hold') {
           setFinalTransforms(runtime);
           notifySettled('three-renderer');
         } else if (activePhase === 'primary') renderPrimary(runtime, elapsed);
@@ -543,9 +583,6 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
         else if (activePhase === 'landing') {
           renderLanding(runtime, elapsed);
           if (elapsed >= LOCAL_ROLL_LANDING_MS) notifySettled('three-renderer');
-        } else {
-          renderResolved(runtime, time - runtime.animationStartedAt);
-          if (time - runtime.animationStartedAt >= REMOTE_ROLL_PRE_RESULT_MS) notifySettled('three-renderer');
         }
         renderer.render(scene, camera);
         runtime.frameId = requestAnimationFrame(renderFrame);
@@ -587,20 +624,38 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
     const landingElapsedMs = landingStartedAtRef.current === null
       ? Math.max(0, getAnimationAgeMs(rollAnimation) - LOCAL_ROLL_PRIMARY_MS)
       : Math.max(0, performance.now() - landingStartedAtRef.current);
+    const now = Date.now();
+    const resolvedAnimationStartedAt = getResolvedAnimationStartedAt(rollAnimation, resolvedFallbackStartRef.current.startedAt);
+    const authoritativeResultRevealAt = getAuthoritativeResultRevealAt(rollAnimation);
+    const remoteElapsedMs = getRemoteRollMotionElapsedMs(resolvedAnimationStartedAt, authoritativeResultRevealAt, now);
     const delayMs = phase === 'landing'
       ? Math.max(0, LOCAL_ROLL_LANDING_MS - landingElapsedMs)
       : phase === 'resolved'
-        ? REMOTE_ROLL_PRE_RESULT_MS
+        ? authoritativeResultRevealAt === undefined
+          ? Math.max(0, REMOTE_ROLL_PRE_RESULT_MS - remoteElapsedMs)
+          : Math.max(0, authoritativeResultRevealAt - now)
         : phase === 'result-hold'
           ? Math.max(0, LOCAL_ROLL_LANDING_MS - landingElapsedMs)
           : null;
     if (delayMs === null) return undefined;
     const timer = window.setTimeout(() => notifySettled('css-animation-end'), delayMs);
     return () => window.clearTimeout(timer);
-  }, [phase, rendererStatus, rollAnimation.id]);
+  }, [phase, rendererStatus, rollAnimation.id, resolvedAnimationStartedAtInput, resultRevealAtInput]);
 
   const isPreResult = phase === 'primary' || phase === 'extra-spin';
   const fallCount = getFallCount(rollAnimation);
+  const cssNow = Date.now();
+  const cssResolvedStartedAt = getResolvedAnimationStartedAt(rollAnimation, resolvedFallbackStartRef.current.startedAt);
+  const cssResultRevealAt = getAuthoritativeResultRevealAt(rollAnimation);
+  const cssAuthoritativeDurationMs = phase === 'resolved' && cssResultRevealAt !== undefined
+    ? Math.max(1, cssResultRevealAt - cssResolvedStartedAt)
+    : null;
+  const cssRemoteElapsedMs = phase === 'resolved'
+    ? getRemoteRollMotionElapsedMs(cssResolvedStartedAt, cssResultRevealAt, cssNow)
+    : 0;
+  const cssAuthoritativeElapsedMs = cssAuthoritativeDurationMs === null
+    ? null
+    : cssAuthoritativeDurationMs * cssRemoteElapsedMs / REMOTE_ROLL_PRE_RESULT_MS;
   return <div
     className="yut-roll-scene"
     data-testid="yut-roll-scene"
@@ -643,6 +698,10 @@ export function YutRollScenePhysics({ rollAnimation, onSettled }: YutRollScenePr
             '--fall-x': fallX,
             '--fall-y': `${96 + index * 14}px`,
             '--fall-rotate': `${fallDirection < 0 ? -64 - index * 18 : 62 + index * 16}deg`,
+            ...(cssAuthoritativeDurationMs === null || cssAuthoritativeElapsedMs === null ? {} : {
+              animationDuration: `${cssAuthoritativeDurationMs}ms`,
+              animationDelay: `${-cssAuthoritativeElapsedMs}ms`,
+            }),
           } as CSSProperties}
         >
           <span className="yut-stick-body">
