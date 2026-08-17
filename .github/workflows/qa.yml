@@ -307,6 +307,7 @@ jobs:
           FAILURE_REPORT_RESULT: ${{ steps.failure-report.outcome }}
           SUMMARY_JOB_STATUS: ${{ job.status }}
         with:
+          retries: 3
           script: |
             const requiredResults = [
               process.env.BUILD_RESULT,
