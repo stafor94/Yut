@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import test from 'node:test';
 
-const appSource = readFileSync(new URL('../../src/app/App.tsx', import.meta.url), 'utf8');
+const appSource = readFileSync(resolve('src/app/App.tsx'), 'utf8');
 
 test('stalled move recovery preserves accepted pending move ownership across every recovery entry point', () => {
   const resolutionStart = appSource.indexOf('const getStalledTurnSyncResolution');
