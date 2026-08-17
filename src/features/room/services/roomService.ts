@@ -226,6 +226,10 @@ const settleRoomAction = async (
         },
       }
     : normalizedAction;
+  const prearmedRollPresentationWait = actionWithClientStart.type === 'roll_yut'
+    && shouldWaitForGamePresentationBeforeCommit(actionWithClientStart)
+    ? waitForGamePresentationBeforeAction(actionWithClientStart.type)
+    : null;
   const reservationRef = manualMoveIdentity && db
     ? getManualMoveReservationRef(roomId, normalizedAction.actorId)
     : null;
@@ -251,7 +255,9 @@ const settleRoomAction = async (
     actionType: actionWithClientStart.type,
     commit: async () => {
       if (shouldWaitForGamePresentationBeforeCommit(actionWithClientStart)) {
-        const presentationWaitResult = await waitForGamePresentationBeforeAction(actionWithClientStart.type);
+        const presentationWaitResult = prearmedRollPresentationWait !== null
+          ? await prearmedRollPresentationWait
+          : await waitForGamePresentationBeforeAction(actionWithClientStart.type);
         if (presentationWaitResult === 'timeout') {
           console.warn('게임 연출 완료 대기 상한을 초과해 authoritative action 제출을 계속합니다.', {
             actionType: actionWithClientStart.type,
