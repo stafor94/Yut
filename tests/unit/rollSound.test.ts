@@ -56,16 +56,16 @@ test('authoritative remote landing sound follows the same compressed or stretche
   const earlyExpectedAt = earlyStart + (resultRevealAt - earlyStart) * targetProgress;
   const lateExpectedAt = lateStart + (resultRevealAt - lateStart) * targetProgress;
 
-  assert.ok(Math.abs(getRollLandingSoundDelayMs({
+  assert.ok(Math.abs((getRollLandingSoundDelayMs({
     phase: 'resolved',
     animationStartedAt: earlyStart,
     resultRevealAt,
-  }, 123, earlyStart) - (earlyExpectedAt - earlyStart)) < 1e-9);
-  assert.ok(Math.abs(getRollLandingSoundDelayMs({
+  }, 123, earlyStart) ?? Number.NaN) - (earlyExpectedAt - earlyStart)) < 1e-9);
+  assert.ok(Math.abs((getRollLandingSoundDelayMs({
     phase: 'resolved',
     animationStartedAt: lateStart,
     resultRevealAt,
-  }, 456, lateStart) - (lateExpectedAt - lateStart)) < 1e-9);
+  }, 456, lateStart) ?? Number.NaN) - (lateExpectedAt - lateStart)) < 1e-9);
   assert.equal(getRollLandingSoundDelayMs({
     phase: 'resolved',
     animationStartedAt: 10_500,
