@@ -8,6 +8,7 @@ import {
   createGameAnimationQueue,
   createGameAnimationSequence,
   enqueueRollPresentation,
+  getRemoteRollResultHoldDelayMs,
   getRollPresentationAnimationId,
 } from '../../src/app/flows/gameAnimationQueue.js';
 import { REMOTE_ROLL_PRE_RESULT_MS } from '../../src/app/flows/yutRollAnimation.js';
@@ -29,6 +30,16 @@ test('remote roll presentation preserves 1.4 seconds for the settled result', ()
   assert.equal(REMOTE_ROLL_RESULT_HOLD_MS, 1400);
   assert.equal(REMOTE_ROLL_PRESENTATION_MS, REMOTE_ROLL_PRE_RESULT_MS + REMOTE_ROLL_RESULT_HOLD_MS);
   assert.equal(REMOTE_ROLL_PRESENTATION_MS - REMOTE_ROLL_PRE_RESULT_MS, 1400);
+});
+
+test('authoritative remote result hold keeps the shared end while available and restores the legacy hold after it expires', () => {
+  const resultRevealAt = 10_000;
+  const authoritativeHoldMs = 1_000;
+
+  assert.equal(getRemoteRollResultHoldDelayMs(resultRevealAt, authoritativeHoldMs, 10_000), 1_000);
+  assert.equal(getRemoteRollResultHoldDelayMs(resultRevealAt, authoritativeHoldMs, 10_600), 400);
+  assert.equal(getRemoteRollResultHoldDelayMs(resultRevealAt, authoritativeHoldMs, 11_000), REMOTE_ROLL_RESULT_HOLD_MS);
+  assert.equal(getRemoteRollResultHoldDelayMs(resultRevealAt, authoritativeHoldMs, 12_500), REMOTE_ROLL_RESULT_HOLD_MS);
 });
 
 test('stale remote animation timestamps restart from the local presentation time', () => {

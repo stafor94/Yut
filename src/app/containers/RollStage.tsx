@@ -6,6 +6,7 @@ import { PENDING_ROLL_RESULT_HOLD_MS } from '../config/gameTimings';
 import {
   createGameAnimationSequence,
   gameAnimationQueue,
+  getRemoteRollResultHoldDelayMs,
   getRollPresentationAnimationId,
   waitForGameAnimation,
   type GameAnimationSequence,
@@ -184,10 +185,12 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       ? createRollPresentationCompletion()
       : createRollPresentationCompletion({
           resultHoldMs: ONLINE_ROLL_RESULT_HOLD_MS,
-          waitForHold: () => waitForGameAnimation(Math.max(
-            0,
-            authoritativeResultRevealAt + ONLINE_ROLL_RESULT_HOLD_MS - Date.now(),
-          )),
+          waitForHold: () => waitForGameAnimation(
+            getRemoteRollResultHoldDelayMs(
+              authoritativeResultRevealAt,
+              ONLINE_ROLL_RESULT_HOLD_MS,
+            ),
+          ),
         });
     presentationCompletionByIdRef.current.set(queuedAnimation.id, completion);
     setSettledAnimationId(null);

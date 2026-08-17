@@ -10,6 +10,26 @@ export function getRollPresentationAnimationId(sourceAnimationId: number, now = 
   return Math.max(sourceAnimationId, now);
 }
 
+export function getRemoteRollResultHoldDelayMs(
+  resultRevealAt: number,
+  authoritativeHoldMs: number,
+  now = Date.now(),
+) {
+  const normalizedRevealAt = Number(resultRevealAt);
+  const normalizedHoldMs = Number(authoritativeHoldMs);
+  const normalizedNow = Number(now);
+  if (
+    !Number.isFinite(normalizedRevealAt)
+    || normalizedRevealAt <= 0
+    || !Number.isFinite(normalizedHoldMs)
+    || normalizedHoldMs < 0
+    || !Number.isFinite(normalizedNow)
+  ) return REMOTE_ROLL_RESULT_HOLD_MS;
+
+  const authoritativeRemainingMs = normalizedRevealAt + normalizedHoldMs - normalizedNow;
+  return authoritativeRemainingMs > 0 ? authoritativeRemainingMs : REMOTE_ROLL_RESULT_HOLD_MS;
+}
+
 export type GameAnimationTask = () => void | Promise<void>;
 
 export type GameAnimationSequence<T> = {
