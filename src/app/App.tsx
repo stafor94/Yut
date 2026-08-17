@@ -3078,6 +3078,8 @@ export function App() {
 
   async function recoverStalledTurnMove(recoveryKey: string, options: { source?: string } = {}) {
     if (!activeRoomId || onlineAuthoritativeGameStatePending || !canSubmitDeadlineRecovery() || !activeSeat || !roll || !stalledTurnFallbackPiece) return false;
+    const currentRecoveryPrefix = `${activeRoomId}:${lastAppliedSequenceRef.current}:`;
+    if (!recoveryKey.startsWith(currentRecoveryPrefix)) return false;
     const recoveryToken = `${activeRoomId}:move:${recoveryKey}`;
     if (turnRecoveryInFlightRef.current?.roomId === activeRoomId || stalledTurnRecoveryKeyRef.current === recoveryKey) return false;
     if (winner || rollResultHolding || rollAnimation || movingPieceId || moveInProgress || pendingTrapPlacement) return false;
@@ -4033,7 +4035,7 @@ export function App() {
         nodeId: candidateNodeId,
         score: piecesRef.current
           .filter((piece) => !canSeatControlPiece(seat, piece) && piece.started && !piece.finished)
-          .reduce((score, piece) => score + (getMovePathNodeIds(piece.nodeId, 5, 'outer').includes(candidateNodeId) ? 10 : 0), 0),
+          .reduce((score, piece) => score + (getMovePathNodeIds(piece.nodeId, 5, 'outer').includes(nodeId) ? 10 : 0), 0),
       }))
       .sort((left, right) => right.score - left.score)[0]?.nodeId;
     if (!nodeId) return false;
