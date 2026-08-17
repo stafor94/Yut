@@ -132,6 +132,27 @@ export function getLandingMotion(progress: number, index: number): LandingMotion
   };
 }
 
+export function getRemoteRollMotionElapsedMs(
+  animationStartedAt: number,
+  resultRevealAt: number | undefined,
+  now: number,
+) {
+  const safeStartedAt = Number.isFinite(animationStartedAt) ? animationStartedAt : now;
+  const fallbackElapsedMs = Math.min(
+    REMOTE_ROLL_PRE_RESULT_MS,
+    Math.max(0, now - safeStartedAt),
+  );
+  if (!Number.isFinite(resultRevealAt) || Number(resultRevealAt) <= 0) return fallbackElapsedMs;
+
+  const authoritativeRevealAt = Number(resultRevealAt);
+  if (authoritativeRevealAt <= safeStartedAt) {
+    return now >= safeStartedAt ? REMOTE_ROLL_PRE_RESULT_MS : 0;
+  }
+  return REMOTE_ROLL_PRE_RESULT_MS * clampUnit(
+    (now - safeStartedAt) / (authoritativeRevealAt - safeStartedAt),
+  );
+}
+
 export function getRemoteTimelineElapsedMs(remoteElapsedMs: number) {
   const remoteProgress = clampUnit(remoteElapsedMs / REMOTE_ROLL_PRE_RESULT_MS);
   return REMOTE_ROLL_LOCAL_TIMELINE_START_MS

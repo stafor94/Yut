@@ -9,6 +9,7 @@ import { GOLDEN_YUT_CHOICES, chooseAiRollTimingZone, getRollTimingPositionPercen
 import { makeTimeoutActionKey, resolveGoldenYutTimeout, resolveMoveTimeout, resolveRollTimeout } from '../features/room/services/timeoutResolvers';
 import { canRoll, canSubmitTurnAction as canSubmitTurnActionFromEngine, getRollActionBlockReasons, getTurnActionBlockReasons } from '../game-core/gameEngine';
 import { cancelRoomGameStart, commitAuthoritativeGameAction, completeTurnOrderIntro, createRoom, deleteRoom, getGameSequencesSince, getLatestGameState, getProcessedGameAction, getRoom, initializeGameState, isRoomInGame, joinRoom, requestRoomGameStart, resolveTurnOrderIntro, updateRoomOptions, updateRoomPlayer, type GameAction, type GameSeatSnapshot, type GameSequence, type RoomPlayer, type RoomSummary, type SaveGameStateResult } from '../features/room/services/roomService';
+import { ONLINE_ROLL_RESULT_HOLD_MS } from '../features/room/services/rollPresentationTiming';
 import { useRooms } from '../features/room/hooks/useRooms';
 import { useAppPreferences } from './hooks/useAppPreferences';
 import { useRoomCreationController } from './controllers/useRoomCreationController';
@@ -1443,11 +1444,33 @@ export function App() {
     return true;
   }
 
-  function playRollAnimationOnce(result: YutResult, sticks: YutStick[], key: string, turnOrder = false, fallCount = 0, timingZone?: RollTimingZone | null) {
+  function playRollAnimationOnce(
+    result: YutResult,
+    sticks: YutStick[],
+    key: string,
+    turnOrder = false,
+    fallCount = 0,
+    timingZone?: RollTimingZone | null,
+    resultRevealAt?: number,
+  ) {
     if (lastAnimatedRollKeyRef.current === key) return;
     lastAnimatedRollKeyRef.current = key;
     if (rollAnimationTimerRef.current !== null) window.clearTimeout(rollAnimationTimerRef.current);
-    setRollAnimation({ id: Date.now(), result, sticks, turnOrder, fallCount, timingZone: timingZone ?? undefined });
+    const presentationStartedAt = Date.now();
+    const authoritativeResultRevealAt = Number.isFinite(resultRevealAt) && Number(resultRevealAt) > 0
+      ? Number(resultRevealAt)
+      : undefined;
+    setRollAnimation({
+      id: presentationStartedAt,
+      result,
+      sticks,
+      turnOrder,
+      fallCount,
+      timingZone: timingZone ?? undefined,
+      ...(authoritativeResultRevealAt === undefined
+        ? {}
+        : { animationStartedAt: presentationStartedAt, resultRevealAt: authoritativeResultRevealAt }),
+    });
     rollAnimationTimerRef.current = window.setTimeout(() => {
       setRollAnimation(null);
       rollAnimationTimerRef.current = null;
@@ -1801,7 +1824,11 @@ export function App() {
     const clientMutationId = typeof sequence.clientMutationId === 'string' ? sequence.clientMutationId : '';
     const isCurrentPendingRoll = Boolean(clientMutationId && pendingRollAnimationRef.current?.actionKey === clientMutationId);
     if (sequenceRoll && !hasOptimisticallyPlayedLocalAction(clientMutationId)) {
-      const readyAt = normalizeRollResultReadyAt(Number(stateAfter?.rollResultReadyAt ?? 0));
+      const authoritativeRollResultReadyAt = Number(stateAfter?.rollResultReadyAt ?? 0);
+      const readyAt = normalizeRollResultReadyAt(authoritativeRollResultReadyAt);
+      const resultRevealAt = Number.isFinite(authoritativeRollResultReadyAt) && authoritativeRollResultReadyAt > 0
+        ? authoritativeRollResultReadyAt - ONLINE_ROLL_RESULT_HOLD_MS
+        : undefined;
       const animationKey = `sequence-roll:${Number(sequence.sequence ?? 0)}:${clientMutationId}:${sequenceRoll.name}:${sequenceRoll.steps}:${readyAt}`;
       const fallCount = Number(payload.fallCount ?? 0);
       const resolvedFallCount = fallCount > 0 ? Math.min(4, Math.max(1, fallCount)) : 0;
@@ -1812,7 +1839,7 @@ export function App() {
         rollInProgressStartedAtRef.current = 0;
         setRollInProgress(false);
       } else {
-        playRollAnimationOnce(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, false, resolvedFallCount, authoritativeTimingZone);
+        playRollAnimationOnce(sequenceRoll, makeDisplaySticks(sequenceRoll), animationKey, false, resolvedFallCount, authoritativeTimingZone, resultRevealAt);
         playSyncedRollSoundOnce(sequenceRoll, animationKey, clientMutationId);
       }
     }
@@ -3780,7 +3807,7 @@ export function App() {
       }
 
       void presentation.completion.catch((error) => {
-        recordRemoteActionDiagnostic('move_piece', 'presentation-completion-error', error instanceof Error ? error.message : '말 이동 연출 완료에 실패했습니다.', { actionKey });
+        recordRemoteActionDiagnostic('move_piece', 'presentation-completion-error', error instanceof Error ? error.message : '로컬 말 이동 연출 완료에 실패했습니다.', { actionKey });
         void syncLatestAuthoritativeState('로컬 말 이동 연출 오류로 최신 authoritative 상태로 재동기화합니다.', { diagnosticType: 'move_piece' });
       });
       try {

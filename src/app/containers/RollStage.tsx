@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { ONLINE_ROLL_RESULT_HOLD_MS } from '../../features/room/services/rollPresentationTiming';
 import { gamePresentationLock } from '../../shared/gamePresentationLock';
 import { YutRollScenePhysics } from '../components/YutRollScenePhysics';
 import { PENDING_ROLL_RESULT_HOLD_MS } from '../config/gameTimings';
@@ -6,6 +7,7 @@ import {
   createGameAnimationSequence,
   gameAnimationQueue,
   getRollPresentationAnimationId,
+  waitForGameAnimation,
   type GameAnimationSequence,
 } from '../flows/gameAnimationQueue';
 import {
@@ -66,6 +68,12 @@ const getPresentationTimingGrade = (animation: RollAnimation): PresentationTimin
 };
 
 const isResolvedRollAnimation = (animation: RollAnimation) => animation.phase === undefined || animation.phase === 'resolved';
+const getAuthoritativeResultRevealAt = (animation: RollAnimation) => isResolvedRollAnimation(animation)
+  && 'resultRevealAt' in animation
+  && Number.isFinite(animation.resultRevealAt)
+  && Number(animation.resultRevealAt) > 0
+    ? Number(animation.resultRevealAt)
+    : null;
 
 const isSameRollStageLayout = (current: RollStageLayout | null, next: RollStageLayout) => Boolean(
   current
@@ -171,7 +179,16 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
       id: getRollPresentationAnimationId(sourceAnimation.id),
       sticks: sourceAnimation.sticks.map((stick) => ({ ...stick })),
     };
-    const completion = createRollPresentationCompletion();
+    const authoritativeResultRevealAt = getAuthoritativeResultRevealAt(queuedAnimation);
+    const completion = authoritativeResultRevealAt === null
+      ? createRollPresentationCompletion()
+      : createRollPresentationCompletion({
+          resultHoldMs: ONLINE_ROLL_RESULT_HOLD_MS,
+          waitForHold: () => waitForGameAnimation(Math.max(
+            0,
+            authoritativeResultRevealAt + ONLINE_ROLL_RESULT_HOLD_MS - Date.now(),
+          )),
+        });
     presentationCompletionByIdRef.current.set(queuedAnimation.id, completion);
     setSettledAnimationId(null);
     setSettleSource('pending');
@@ -266,6 +283,8 @@ export function RollStage({ rollAnimation, presentationActorId = '', onPresentat
           sticks: resolvedAnimation.sticks,
           fallCount: resolvedAnimation.fallCount,
           timingZone: resolvedAnimation.timingZone,
+          animationStartedAt: 'animationStartedAt' in resolvedAnimation ? resolvedAnimation.animationStartedAt : undefined,
+          resultRevealAt: 'resultRevealAt' in resolvedAnimation ? resolvedAnimation.resultRevealAt : undefined,
         });
         return;
       }

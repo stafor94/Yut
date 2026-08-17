@@ -27,6 +27,7 @@ import {
   getPrimaryHorizontalProgress,
   getPrimaryThrowHeight,
   getRemoteLandingElapsedMs,
+  getRemoteRollMotionElapsedMs,
   getRemoteTimelineElapsedMs,
 } from '../../src/app/flows/yutRollMotion.js';
 import { getYutRollSceneFraming } from '../../src/app/flows/yutRollSceneLayout.js';
@@ -37,6 +38,33 @@ test('roll animation adds one second before landing for local and remote playbac
   assert.equal(LOCAL_ROLL_LANDING_MS, 1700);
   assert.equal(LOCAL_ROLL_PRE_RESULT_MS, 3900);
   assert.equal(REMOTE_ROLL_PRE_RESULT_MS, 2200);
+});
+
+test('authoritative remote roll reaches the same reveal target despite different receipt times', () => {
+  const resultRevealAt = 10_000;
+  assert.equal(getRemoteRollMotionElapsedMs(7_000, resultRevealAt, 7_000), 0);
+  assert.equal(getRemoteRollMotionElapsedMs(9_000, resultRevealAt, 9_000), 0);
+  assert.equal(getRemoteRollMotionElapsedMs(7_000, resultRevealAt, resultRevealAt), REMOTE_ROLL_PRE_RESULT_MS);
+  assert.equal(getRemoteRollMotionElapsedMs(9_000, resultRevealAt, resultRevealAt), REMOTE_ROLL_PRE_RESULT_MS);
+});
+
+test('authoritative remote roll stretches early receipt and fast-forwards late receipt toward the same reveal target', () => {
+  const resultRevealAt = 10_000;
+  assert.equal(getRemoteRollMotionElapsedMs(6_000, resultRevealAt, 8_000), REMOTE_ROLL_PRE_RESULT_MS / 2);
+  assert.equal(getRemoteRollMotionElapsedMs(8_000, resultRevealAt, 9_000), REMOTE_ROLL_PRE_RESULT_MS / 2);
+  assert.equal(getRemoteRollMotionElapsedMs(8_000, resultRevealAt, 9_500), REMOTE_ROLL_PRE_RESULT_MS * 0.75);
+});
+
+test('authoritative remote roll immediately settles when the reveal target already passed', () => {
+  assert.equal(getRemoteRollMotionElapsedMs(10_500, 10_000, 10_500), REMOTE_ROLL_PRE_RESULT_MS);
+  assert.equal(getRemoteRollMotionElapsedMs(9_500, 10_000, 10_250), REMOTE_ROLL_PRE_RESULT_MS);
+});
+
+test('remote roll without authoritative reveal target keeps the fixed 2.2 second fallback', () => {
+  assert.equal(getRemoteRollMotionElapsedMs(1_000, undefined, 1_000), 0);
+  assert.equal(getRemoteRollMotionElapsedMs(1_000, undefined, 2_100), REMOTE_ROLL_PRE_RESULT_MS / 2);
+  assert.equal(getRemoteRollMotionElapsedMs(1_000, undefined, 3_200), REMOTE_ROLL_PRE_RESULT_MS);
+  assert.equal(getRemoteRollMotionElapsedMs(1_000, Number.NaN, 3_500), REMOTE_ROLL_PRE_RESULT_MS);
 });
 
 test('remote roll starts one second before the midpoint so the high descent remains visible', () => {
