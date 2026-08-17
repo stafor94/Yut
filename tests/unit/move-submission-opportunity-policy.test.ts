@@ -13,7 +13,10 @@ import {
   resetManualStackMoveSelectionForTests,
   shouldAttemptAutoMove,
 } from '../../src/app/flows/moveSubmissionOpportunityPolicy';
-import { publishMoveSubmissionPending } from '../../src/app/flows/moveSubmissionPresentationState';
+import {
+  publishMoveSubmissionPending,
+  shouldHidePendingFinalRollStackPresentation,
+} from '../../src/app/flows/moveSubmissionPresentationState';
 import { isTurnActionPresentationPending } from '../../src/app/flows/turnActionPresentationPolicy';
 
 test('canonical transition readiness 전에는 auto move opportunity를 시작하지 않고 ready가 되면 추가 지연 없이 즉시 제출 가능하다', () => {
@@ -176,4 +179,49 @@ test('stacked roll preselection은 move request readiness와 무관하게 pendin
     canSubmitTurnAction: true,
     rollResultHolding: false,
   }), false);
+});
+
+test('마지막 누적 윷 이동은 local move pending과 실제 이동 시작이 모두 성립한 동안에만 표시 스택을 소비한다', () => {
+  const finalYutMove = {
+    stackedRollMode: true,
+    authoritativeRollStackLength: 1,
+    rollStackClosed: true,
+    moveSubmissionPending: true,
+    movementStarted: true,
+    isLocalTurn: true,
+  };
+
+  assert.equal(shouldHidePendingFinalRollStackPresentation(finalYutMove), true);
+  assert.equal(shouldHidePendingFinalRollStackPresentation({ ...finalYutMove, moveSubmissionPending: false }), false);
+  assert.equal(shouldHidePendingFinalRollStackPresentation({ ...finalYutMove, movementStarted: false }), false);
+});
+
+test('걸을 먼저 이동해 윷 하나가 남은 시점과 서버 거부 복구 시점에는 authoritative 마지막 스택 표시를 유지한다', () => {
+  const remainingYut = {
+    stackedRollMode: true,
+    authoritativeRollStackLength: 1,
+    rollStackClosed: true,
+    moveSubmissionPending: false,
+    movementStarted: false,
+    isLocalTurn: true,
+  };
+
+  assert.equal(shouldHidePendingFinalRollStackPresentation(remainingYut), false);
+  assert.equal(shouldHidePendingFinalRollStackPresentation({ ...remainingYut, movementStarted: true }), false);
+});
+
+test('다중 스택·열린 스택·AI/원격 이동에는 마지막 스택 presentation 마스크를 적용하지 않는다', () => {
+  const pendingMove = {
+    stackedRollMode: true,
+    authoritativeRollStackLength: 1,
+    rollStackClosed: true,
+    moveSubmissionPending: true,
+    movementStarted: true,
+    isLocalTurn: true,
+  };
+
+  assert.equal(shouldHidePendingFinalRollStackPresentation({ ...pendingMove, authoritativeRollStackLength: 2 }), false);
+  assert.equal(shouldHidePendingFinalRollStackPresentation({ ...pendingMove, rollStackClosed: false }), false);
+  assert.equal(shouldHidePendingFinalRollStackPresentation({ ...pendingMove, isLocalTurn: false }), false);
+  assert.equal(shouldHidePendingFinalRollStackPresentation({ ...pendingMove, stackedRollMode: false }), false);
 });

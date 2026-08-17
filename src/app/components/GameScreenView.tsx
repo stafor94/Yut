@@ -30,6 +30,7 @@ import {
 import { getBoardTurnIndicatorText } from '../flows/boardTurnIndicator';
 import { getGamePresentationTurn } from '../flows/gamePresentationTurn';
 import type { MoveActionSubmissionOptions } from '../flows/moveActionReadiness';
+import { getMoveSubmissionPendingSnapshot, shouldHidePendingFinalRollStackPresentation } from '../flows/moveSubmissionPresentationState';
 import { getStackedRollAutomaticPiece } from '../flows/stackedRollAutomaticPieceSelection';
 import {
   EMPTY_ROLL_PRESENTATION_STATE,
@@ -220,8 +221,20 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
   const revealedRollSnapshot = rollPresentation.resultVisible && rollPresentation.sourceAnimationId !== null
     ? rollDerivedSnapshotsRef.current.get(rollPresentation.sourceAnimationId)
     : undefined;
-  const displayedBoardTurnIndicatorRollStack = revealedRollSnapshot?.boardRollStack ?? (deferRollDerivedContent ? visibleBoardTurnIndicatorRollStackRef.current : boardTurnIndicatorRollStack);
-  const displayedRollStack = revealedRollSnapshot?.rollStack ?? (deferRollDerivedContent ? visibleRollStackRef.current : rollStack);
+  const baseDisplayedBoardTurnIndicatorRollStack = revealedRollSnapshot?.boardRollStack ?? (deferRollDerivedContent ? visibleBoardTurnIndicatorRollStackRef.current : boardTurnIndicatorRollStack);
+  const baseDisplayedRollStack = revealedRollSnapshot?.rollStack ?? (deferRollDerivedContent ? visibleRollStackRef.current : rollStack);
+  const shouldHidePendingFinalRollStack = shouldHidePendingFinalRollStackPresentation({
+    stackedRollMode,
+    authoritativeRollStackLength: rollStack.length,
+    rollStackClosed,
+    moveSubmissionPending: getMoveSubmissionPendingSnapshot(),
+    movementStarted: Boolean(movingPieceId),
+    isLocalTurn: isMyTurn,
+  });
+  const displayedBoardTurnIndicatorRollStack = shouldHidePendingFinalRollStack ? [] : baseDisplayedBoardTurnIndicatorRollStack;
+  const displayedRollStack = shouldHidePendingFinalRollStack ? [] : baseDisplayedRollStack;
+  const displayedSelectedRollStackIndex = shouldHidePendingFinalRollStack ? null : selectedRollStackIndex;
+  const displayedRollStackClosed = shouldHidePendingFinalRollStack ? false : rollStackClosed;
   const displayedLogs = revealedRollSnapshot?.logs ?? (deferRollDerivedContent ? visibleLogsRef.current : logs);
   const hasBackDoMovablePiece = useMemo(() => Boolean(
     activeSeat
@@ -738,8 +751,8 @@ export function GameScreenView({ activeItemPromptTypes, activeMovablePiece, acti
         stackedRollMode={stackedRollMode}
         rollStack={displayedRollStack}
         rollStackSelectionAvailability={rollStackSelectionAvailability}
-        selectedRollStackIndex={selectedRollStackIndex}
-        rollStackClosed={rollStackClosed}
+        selectedRollStackIndex={displayedSelectedRollStackIndex}
+        rollStackClosed={displayedRollStackClosed}
         onSelectRollStackIndex={handleSelectRollStackIndex}
         onMoveRollStackIndex={handleMoveRollStackIndex}
         moveSelectionTimedOut={moveSelectionTimedOut}
